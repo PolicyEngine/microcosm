@@ -31,6 +31,7 @@ from microcosm.build.us_runtime import worker_identity as worker_identity_runtim
 from microcosm.build.us_runtime.block_location import (
     POPULACE_BLOCK_LADDER_SHA256_ATTR,
     POPULACE_BLOCK_LADDER_VINTAGES_ATTR,
+    POPULACE_CD_PLAN_REGISTRY_SHA256_ATTR,
     POPULACE_LOCATION_CLONES_ATTR,
     POPULACE_LOCATION_RULE_ATTR,
     POPULACE_LOCATION_SEED_ATTR,
@@ -184,18 +185,33 @@ _STACKED_BLOCK_LOCATION_COHERENT_COLUMNS = (
     "puma",
     CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
 )
+# Every location root attribute a stacked pool may carry.  A legacy-rule pool
+# carries none of them; a block_v1 pool carries all but the CD-plan registry
+# digest, which it carries exactly when its contract binds that registry.
 US_STACKED_BLOCK_LOCATION_ROOT_ATTRIBUTES = (
     POPULACE_LOCATION_RULE_ATTR,
     POPULACE_LOCATION_SEED_ATTR,
     POPULACE_LOCATION_CLONES_ATTR,
     POPULACE_BLOCK_LADDER_SHA256_ATTR,
     POPULACE_BLOCK_LADDER_VINTAGES_ATTR,
+    POPULACE_CD_PLAN_REGISTRY_SHA256_ATTR,
 )
 _STACKED_BLOCK_LOCATION_RULE = "block_v1"
 _STACKED_BLOCK_LADDER_ROLE = "block_ladder"
 _STACKED_BLOCK_LADDER_SOURCE_REF = "source:us_block_ladder_2020_puma"
 _STACKED_CPS_ASEC_ROLE_PREFIX = "cps_asec_household_geography_"
 _STACKED_CD_CROSSWALK_ROLE = "congressional_district_vintage_crosswalk"
+# The optional pinned block -> CD-plan registry authority of a block_v1 pool
+# (--cd-plan-registry).  Its 119th-Congress plan is the ladder's own
+# congressional_district_geoid; each other plan is one household column.
+_STACKED_CD_PLAN_REGISTRY_ROLE = "cd_plan_registry"
+_STACKED_CD_PLAN_REGISTRY_SOURCE_REF = "source:us_cd_plan_registry_2020"
+_STACKED_CD_PLAN_COLUMN_PREFIX = "congressional_district_geoid__"
+_STACKED_CD_PLAN_REGISTRY_COLUMNS = (
+    "congressional_district_geoid__117th_congress",
+    "congressional_district_geoid__118th_congress",
+    "congressional_district_geoid__120th_congress",
+)
 _LEGACY_POOL_OPERATOR_ORDER = (
     "assemble",
     "clone",
@@ -1837,13 +1853,17 @@ def expected_us_stacked_block_location_contract(
     block_ladder_sha256: str,
     crosswalk_sha256: str,
     cps_asec_sha256: Mapping[int, str],
+    cd_plan_registry_sha256: str | None = None,
 ) -> dict[str, object]:
     """The closed ``block_v1`` household-location contract a stacked pool binds.
 
     This is the consumer's independent statement of the contract the stacked
     pool tool writes (``_stacked_block_location_contract``); a differential
     test pins the two together.  Only the seed, the clone count and the
-    authenticated input digests vary between runs.
+    authenticated input digests vary between runs.  With
+    ``cd_plan_registry_sha256`` the contract also binds the pinned block ->
+    CD-plan registry as an authority and derives its non-primary plan
+    columns; without it the contract is exactly the registry-free one.
     """
 
     authorities: dict[str, object] = {
@@ -1872,6 +1892,14 @@ def expected_us_stacked_block_location_contract(
             "income_year": int(income_year),
             "sha256": sha256,
         }
+    derive = list(_STACKED_BLOCK_LOCATION_COHERENT_COLUMNS)
+    if cd_plan_registry_sha256 is not None:
+        authorities[_STACKED_CD_PLAN_REGISTRY_ROLE] = {
+            "input_role": _STACKED_CD_PLAN_REGISTRY_ROLE,
+            "source_ref": _STACKED_CD_PLAN_REGISTRY_SOURCE_REF,
+            "sha256": cd_plan_registry_sha256,
+        }
+        derive.extend(_STACKED_CD_PLAN_REGISTRY_COLUMNS)
     return {
         "declaration": {
             "anchor": "block",
@@ -1891,7 +1919,7 @@ def expected_us_stacked_block_location_contract(
                 },
                 "uniforms": "stable_identity_uniforms",
             },
-            "derive": list(_STACKED_BLOCK_LOCATION_COHERENT_COLUMNS),
+            "derive": derive,
             "assertions": [
                 "observed_acs_puma_preserved",
                 "block_state_matches_state_fips",
@@ -2006,12 +2034,19 @@ def _validate_stacked_block_location_manifest_binding(
         raise ValueError(
             f"{label} block-location contract binds no CPS ASEC source geography."
         )
+    registry_authority = authorities.get(_STACKED_CD_PLAN_REGISTRY_ROLE)
+    if registry_authority is not None and not isinstance(registry_authority, Mapping):
+        raise ValueError(f"{label} CD-plan registry authority is malformed.")
+    registry_sha256 = (
+        None if registry_authority is None else str(registry_authority.get("sha256"))
+    )
     expected_contract = expected_us_stacked_block_location_contract(
         seed=int(seed),
         clones=1,
         block_ladder_sha256=str(block_authority.get("sha256")),
         crosswalk_sha256=str(crosswalk_authority.get("sha256")),
         cps_asec_sha256=cps_asec_sha256,
+        cd_plan_registry_sha256=registry_sha256,
     )
     if contract != expected_contract:
         raise ValueError(f"{label} block-location contract changed.")
@@ -2055,6 +2090,34 @@ def _validate_stacked_block_location_manifest_binding(
             f"{label} household_location record does not match its "
             "block-location contract."
         )
+    registry_record = location.get("cd_plan_registry")
+    if registry_sha256 is None:
+        if "cd_plan_registry" in location:
+            raise ValueError(
+                f"{label} household_location records a CD-plan registry its "
+                "block-location contract does not bind."
+            )
+    else:
+        columns = (
+            registry_record.get("columns")
+            if isinstance(registry_record, Mapping)
+            else None
+        )
+        if (
+            not isinstance(registry_record, Mapping)
+            or registry_record.get("sha256") != registry_sha256
+            or not isinstance(columns, Mapping)
+            or sorted(
+                str(column)
+                for column in columns.values()
+                if column != CONGRESSIONAL_DISTRICT_GEOID_COLUMN
+            )
+            != list(_STACKED_CD_PLAN_REGISTRY_COLUMNS)
+        ):
+            raise ValueError(
+                f"{label} household_location CD-plan registry record does not "
+                "match its block-location contract authority."
+            )
     _block_ladder_layer_vintages(manifest, manifest_path=manifest_path)
 
     output = assignment.get("output")
@@ -2375,6 +2438,21 @@ def _validate_stacked_block_location_h5_binding(
         contract.get("algorithm"),
         label=f"US stacked pool manifest {manifest_path} block-location algorithm",
     ).get("clones")
+    # The registry digest attr is expected exactly when the contract binds the
+    # registry (the manifest binding has proved household_location records the
+    # same digest); an absent authority expects the attr absent (None).
+    registry = authorities.get(_STACKED_CD_PLAN_REGISTRY_ROLE)
+    registry_sha256 = (
+        _mapping(
+            registry,
+            label=(
+                "US stacked pool manifest "
+                f"{manifest_path}.geography_assignment CD-plan registry authority"
+            ),
+        ).get("sha256")
+        if registry is not None
+        else None
+    )
     expected_attributes = {
         CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR: crosswalk.get("sha256"),
         CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR: crosswalk.get("target_vintage"),
@@ -2386,6 +2464,7 @@ def _validate_stacked_block_location_h5_binding(
             dict(_block_ladder_layer_vintages(manifest, manifest_path=manifest_path)),
             sort_keys=True,
         ),
+        POPULACE_CD_PLAN_REGISTRY_SHA256_ATTR: registry_sha256,
     }
     if (
         expected_attributes[CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR]
@@ -2454,17 +2533,53 @@ def _validate_stacked_block_location_h5_binding(
                 f"{boundary} {column!r} is not the prefix of its household's "
                 "located block."
             )
+    # CD-plan columns are outside the ordered digest (existing block_v1
+    # digests must not move), so they are bound here: present, in the located
+    # block's state and coherent across clones exactly when the contract binds
+    # the registry, and absent otherwise.
+    plan_columns = _STACKED_CD_PLAN_REGISTRY_COLUMNS if registry is not None else ()
+    unbound_plan_columns = sorted(
+        str(column)
+        for column in household.columns
+        if str(column).startswith(_STACKED_CD_PLAN_COLUMN_PREFIX)
+        and column not in plan_columns
+    )
+    if unbound_plan_columns:
+        raise ValueError(
+            f"{boundary} carries CD-plan column(s) {unbound_plan_columns} that "
+            "its block-location contract does not derive."
+        )
+    coherent_columns = (*_STACKED_BLOCK_LOCATION_COHERENT_COLUMNS, *plan_columns)
     missing_coherent = [
-        column
-        for column in _STACKED_BLOCK_LOCATION_COHERENT_COLUMNS
-        if column not in household
+        column for column in coherent_columns if column not in household
     ]
     if missing_coherent:
         raise ValueError(
             f"{boundary} is missing block-location column(s): {missing_coherent}."
         )
+    block_state = (
+        pd.to_numeric(block.str[:2], errors="coerce").to_numpy(
+            dtype=np.float64, na_value=np.nan
+        )
+        if plan_columns
+        else None
+    )
+    for column in plan_columns:
+        numeric = pd.to_numeric(household[column], errors="coerce").to_numpy(
+            dtype=np.float64, na_value=np.nan
+        )
+        valid = (
+            np.isfinite(numeric)
+            & (numeric == np.floor(numeric))
+            & (np.floor_divide(numeric, 100) == block_state)
+        )
+        if not valid.all():
+            raise ValueError(
+                f"{boundary} {column!r} is not an integral congressional district "
+                "in its household's located block's state."
+            )
     grouped = household.groupby(source_column, sort=False, dropna=False)
-    for column in _STACKED_BLOCK_LOCATION_COHERENT_COLUMNS:
+    for column in coherent_columns:
         incoherent = grouped[column].nunique(dropna=False) > 1
         if bool(incoherent.any()):
             raise ValueError(

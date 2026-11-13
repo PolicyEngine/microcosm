@@ -191,22 +191,61 @@ def staging_household_location(staging_summary: dict) -> dict | None:
     return record
 
 
+def staging_cd_plan_registry(staging_summary: dict) -> dict | None:
+    """The CD-plan registry record a ``block_v1`` staging run attached, or ``None``.
+
+    ``None`` for a legacy run and for a ``block_v1`` run without
+    ``--cd-plan-registry``. A run that attached one records the registry's
+    record (``household_location.cd_plan_registry``), the file it loaded
+    (``household_location.cd_plan_registry_path``) and the same digest under
+    ``orchestration.cd_plan_registry_sha256``; a summary missing any of them,
+    or whose two digests differ, is refused: finalize could not re-attach the
+    registry to verify the plan columns.
+    """
+
+    record = staging_household_location(staging_summary)
+    orchestration = staging_summary.get("orchestration")
+    recorded_sha = (
+        orchestration.get("cd_plan_registry_sha256")
+        if isinstance(orchestration, dict)
+        else None
+    )
+    registry = None if record is None else record.get("cd_plan_registry")
+    if registry is None and recorded_sha is None:
+        return None
+    record_sha = registry.get("sha256") if isinstance(registry, dict) else None
+    path = None if record is None else record.get("cd_plan_registry_path")
+    if not record_sha or record_sha != recorded_sha or not path:
+        raise SystemExit(
+            "The staging summary records a CD-plan registry inconsistently "
+            f"(orchestration.cd_plan_registry_sha256 {recorded_sha!r}, "
+            f"household_location.cd_plan_registry.sha256 {record_sha!r}, "
+            f"household_location.cd_plan_registry_path {path!r}); re-run "
+            "staging with the current builder."
+        )
+    return registry
+
+
 def staging_refresh_recipe(staging_summary: dict) -> str:
     """The staging command that reproduces the recorded location rule.
 
     A legacy staging run's recipe is :data:`LEGACY_STAGING_REFRESH_RECIPE`,
-    unchanged; a ``block_v1`` run's names its rule, seed and block ladder.
+    unchanged; a ``block_v1`` run's names its rule, seed and block ladder,
+    and the pinned CD-plan registry when the run attached one.
     """
 
     if staging_household_location(staging_summary) is None:
         return LEGACY_STAGING_REFRESH_RECIPE
     orchestration = staging_summary["orchestration"]
-    return (
+    recipe = (
         f"{LEGACY_STAGING_REFRESH_RECIPE} "
         f"--location-rule {BLOCK_V1_LOCATION_RULE} "
         f"--location-seed {int(orchestration.get('location_seed', 0))} "
         "--block-ladder <us_block_ladder_2020_puma.npz>"
     )
+    if staging_cd_plan_registry(staging_summary) is not None:
+        recipe += " --cd-plan-registry <us_cd_plan_registry_2020.npz>"
+    return recipe
 
 
 def calibrated_location_root_attributes(
@@ -219,6 +258,8 @@ def calibrated_location_root_attributes(
     population targets were materialized from (run identity
     ``ladder_sha256``); under ``block_v1`` it must be the ladder staging
     recorded, because the attribute names that ladder as the targets' source.
+    A run that attached the CD-plan registry also gets its digest
+    (``populace_cd_plan_registry_sha256``), as the staging H5 did.
     """
 
     record = staging_household_location(staging_summary)
@@ -235,6 +276,7 @@ def calibrated_location_root_attributes(
             "that cannot name it."
         )
     require_block_v1_targets_ladder(staging_summary, targets_ladder_sha256)
+    registry = staging_cd_plan_registry(staging_summary)
     return _legacy.location_root_attributes(
         location_rule=BLOCK_V1_LOCATION_RULE,
         location_seed=int(orchestration.get("location_seed", record.get("seed", 0))),
@@ -245,6 +287,7 @@ def calibrated_location_root_attributes(
         block_ladder_vintages=dict(record["block_ladder"].get("layer_vintages") or {}),
         puma_ladder_sha256=str(geography_ladder["sha256"]),
         puma_ladder_vintages=dict(geography_ladder.get("layer_vintages") or {}),
+        cd_plan_registry_sha256=(None if registry is None else str(registry["sha256"])),
     )
 
 
@@ -272,11 +315,23 @@ def require_block_v1_targets_ladder(
         )
 
 
-def load_staging_block_ladder(staging_summary: dict, override: Path | None = None):
+def load_staging_block_ladder(
+    staging_summary: dict,
+    override: Path | None = None,
+    *,
+    cd_plan_registry: Path | None = None,
+):
     """Load the block ladder a ``block_v1`` staging run recorded, sha-verified.
 
     ``override`` relocates the file (another machine or volume); its sha256
-    must still equal the one the staging summary recorded.
+    must still equal the one the staging summary recorded. When the staging
+    run attached the pinned CD-plan registry
+    (:func:`staging_cd_plan_registry`), the registry is re-attached, so the
+    returned ladder is the one households were located with and the finalize
+    gate verifies their plan columns too: the file (``cd_plan_registry``
+    relocates it) must hash to the recorded sha256, which must be the package
+    pin (:func:`staged_cd_plan_registry_file`, checked before the block ladder
+    is loaded), and must attach the recorded plans to the same columns.
     """
 
     from microcosm.build.us_runtime.block_location import load_us_location_ladder
@@ -288,6 +343,8 @@ def load_staging_block_ladder(staging_summary: dict, override: Path | None = Non
                 "--block-ladder applies only to a block_v1 staging run; this "
                 "staging summary records the legacy location rule."
             )
+        # Refuses a --cd-plan-registry override; reads nothing else.
+        staged_cd_plan_registry_file(staging_summary, cd_plan_registry)
         return None
     path = Path(override or record["block_ladder_path"])
     expected = record["block_ladder"]["sha256"]
@@ -303,7 +360,142 @@ def load_staging_block_ladder(staging_summary: dict, override: Path | None = Non
             f"{str(expected)[:12]}… the block_v1 staging run located households "
             "with."
         )
-    return load_us_location_ladder(path)
+    staged = staged_cd_plan_registry_file(staging_summary, cd_plan_registry)
+    ladder = load_us_location_ladder(path)
+    if staged is None:
+        return ladder
+    return _reattach_staging_cd_plan_registry(ladder, *staged)
+
+
+def staged_cd_plan_registry_file(
+    staging_summary: dict, override: Path | None = None
+) -> tuple[dict, Path] | None:
+    """The CD-plan registry a staging run attached and its verified file.
+
+    ``None`` for a legacy run and for a ``block_v1`` run without
+    ``--cd-plan-registry``; ``override`` (the release's ``--cd-plan-registry``)
+    is then refused. Otherwise the file (``override`` relocates the recorded
+    ``cd_plan_registry_path``) must exist, hash to the recorded sha256 and be
+    the package pin
+    (:func:`~microcosm.build.us_runtime.block_location.pinned_cd_plan_registry_sha256`):
+    one streamed hash, no load, so a finalize that could not re-attach the
+    registry is refused before anything large is read. Returns the recorded
+    ``cd_plan_registry`` record and the file's path.
+    """
+
+    from microcosm.build.us_runtime.block_location import (
+        pinned_cd_plan_registry_sha256,
+    )
+
+    record = staging_household_location(staging_summary)
+    if record is None:
+        if override is not None:
+            raise SystemExit(
+                "--cd-plan-registry applies only to a block_v1 staging run "
+                "that attached the registry; this staging summary records the "
+                "legacy location rule."
+            )
+        return None
+    registry = staging_cd_plan_registry(staging_summary)
+    if registry is None:
+        if override is not None:
+            raise SystemExit(
+                "--cd-plan-registry applies only to a staging run that attached "
+                "the CD-plan registry; this staging summary records none."
+            )
+        return None
+    path = Path(override or record["cd_plan_registry_path"])
+    expected = str(registry["sha256"])
+    if not path.is_file():
+        raise SystemExit(
+            f"CD-plan registry {path} (recorded by the block_v1 staging run) is "
+            "missing; pass --cd-plan-registry with the same bytes."
+        )
+    actual = _sha256(path)
+    if actual != expected:
+        raise SystemExit(
+            f"CD-plan registry {path} has sha256 {actual[:12]}…, not the "
+            f"{expected[:12]}… the block_v1 staging run attached."
+        )
+    pinned = pinned_cd_plan_registry_sha256()
+    if actual != pinned:
+        raise SystemExit(
+            f"CD-plan registry {path} was refused: its SHA-256 {actual} (the "
+            f"one the staging run attached) is not the pinned {pinned}."
+        )
+    return registry, path
+
+
+def preflight_staging_cd_plan_registry(args) -> None:
+    """Refuse, before any stage runs, a CD-plan registry the later stages need.
+
+    Calibrate writes the registry digest from the staging summary after its
+    fit, and finalize re-attaches the registry after loading the calibrated
+    H5; ``--stage all`` reaches both only after materialize and calibrate. So
+    with ``calibrate`` among the stages an inconsistent registry record
+    (:func:`staging_cd_plan_registry`) is refused here, and with ``finalize``
+    also a missing, moved-bytes or unpinned registry file and a
+    ``--cd-plan-registry`` override for a run that attached none
+    (:func:`staged_cd_plan_registry_file`). The stages repeat every check on
+    the bytes they use. A legacy staging run is not examined, and a
+    ``block_v1`` run without a registry reads nothing beyond its summary.
+    """
+
+    stages = set(args.stages)
+    if not {"calibrate", "finalize"} & stages:
+        return
+    staging_summary = _load_json(_staging_summary_path(args))
+    if "finalize" in stages:
+        staged_cd_plan_registry_file(
+            staging_summary, getattr(args, "cd_plan_registry", None)
+        )
+    elif staging_location_rule(staging_summary) != "legacy":
+        staging_cd_plan_registry(staging_summary)
+
+
+def _refuse_unverified_cd_plan_columns(households: pd.DataFrame, block_ladder) -> None:
+    """Refuse household CD-plan columns the finalize gate cannot verify.
+
+    The block-location gate checks exactly the columns ``block_ladder``
+    writes, so a ``congressional_district_geoid__<plan>`` column it does not
+    attach (a staging summary that lost its registry record, or a legacy run,
+    ``block_ladder=None``) would ship unchecked.
+    """
+
+    from microcosm.build.us_runtime.base_pool import unwritten_cd_plan_columns
+
+    unverified = unwritten_cd_plan_columns(households.columns, block_ladder)
+    if unverified:
+        raise SystemExit(
+            f"The calibrated H5 carries CD-plan column(s) {unverified} that no "
+            "CD-plan registry recorded by the staging summary attaches, so "
+            "finalize cannot verify them."
+        )
+
+
+def _reattach_staging_cd_plan_registry(ladder, registry: dict, path: Path):
+    """Attach the registry :func:`staged_cd_plan_registry_file` verified.
+
+    The pinned loader hashes the bytes it loads again, so a file swapped
+    since the check is refused too; the attached plans and columns must be
+    the ones the staging run recorded.
+    """
+
+    from microcosm.build.us_runtime.block_location import (
+        attach_pinned_cd_plan_registry,
+    )
+
+    try:
+        attached, record = attach_pinned_cd_plan_registry(ladder, path)
+    except (FileNotFoundError, ValueError) as error:
+        raise SystemExit(f"CD-plan registry {path} was refused: {error}") from error
+    for key in ("sha256", "plans", "columns"):
+        if record[key] != registry.get(key):
+            raise SystemExit(
+                f"CD-plan registry {path} re-attaches {key} {record[key]!r}, but "
+                f"the staging run recorded {registry.get(key)!r}."
+            )
+    return attached
 
 
 # ---------------------------------------------------------------------------
@@ -1908,8 +2100,11 @@ def do_finalize(args) -> None:
     block_location_gate = None
     require_block_v1_targets_ladder(staging_summary, ladder_sha)
     block_ladder = load_staging_block_ladder(
-        staging_summary, getattr(args, "block_ladder", None)
+        staging_summary,
+        getattr(args, "block_ladder", None),
+        cd_plan_registry=getattr(args, "cd_plan_registry", None),
     )
+    _refuse_unverified_cd_plan_columns(households, block_ladder)
     if block_ladder is not None:
         from microcosm.build.us_runtime.block_location import us_block_location_gate
 
@@ -2026,6 +2221,12 @@ def do_finalize(args) -> None:
             "failures": list(block_location_gate.failures),
             "detail": dict(block_location_gate.details),
         }
+        registry = staging_cd_plan_registry(staging_summary)
+        if registry is not None:
+            # The plan columns were gated against this re-attached registry.
+            gates["us_block_location_gate"]["cd_plan_registry_sha256"] = registry[
+                "sha256"
+            ]
     if spine_qa:
         gates["spine_ssi_qa"] = {
             "passed": True,
@@ -2118,6 +2319,8 @@ _STAGING_LOCATION_ORCHESTRATION_KEYS = (
     "location_seed",
     "location_clones",
     "block_ladder_sha256",
+    # Only a block_v1 run with --cd-plan-registry records this one.
+    "cd_plan_registry_sha256",
 )
 
 
@@ -2684,6 +2887,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "sha256 must equal the recorded one; refused for a legacy run."
         ),
     )
+    parser.add_argument(
+        "--cd-plan-registry",
+        type=Path,
+        default=None,
+        help=(
+            "Relocated copy of the pinned CD-plan registry a block_v1 staging "
+            "run attached with --cd-plan-registry (default: the path in its "
+            "summary). Finalize re-attaches it to gate the plan columns; its "
+            "sha256 must equal the recorded one, and it is refused for a run "
+            "that attached none."
+        ),
+    )
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument(
         "--allow-partial-geography",
@@ -2719,6 +2934,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+    preflight_staging_cd_plan_registry(args)
     args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
     sampler = RssSampler()
     sampler.start()

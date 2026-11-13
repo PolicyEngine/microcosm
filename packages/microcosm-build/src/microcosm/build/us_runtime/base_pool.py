@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import re
+from collections.abc import Collection, Mapping
 from typing import Any
 
 import numpy as np
@@ -15,6 +17,7 @@ from microcosm.build.us_runtime.block_location import (
     LOCATION_SOURCE_GEOGRAPHY_COLUMN,
     SOURCE_GEOGRAPHY_PUMA,
     SOURCE_GEOGRAPHY_STATE,
+    US_CD_PLAN_COLUMN_PREFIX,
     US_LOCATION_RULE_BLOCK_V1,
     US_LOCATION_RULE_CHOICES,
     US_LOCATION_RULE_LEGACY,
@@ -22,6 +25,8 @@ from microcosm.build.us_runtime.block_location import (
     derive_us_block_geography,
     draw_us_block_locations,
     location_geography_columns,
+    plan_column,
+    stale_cd_plan_columns,
     us_block_location_manifest,
 )
 from microcosm.build.us_runtime.puf_support import (
@@ -53,7 +58,9 @@ __all__ = [
     "donor_assigned_geography_complete",
     "estimate_optional_acs_pool_peak_bytes",
     "preflight_pooled_ladder_geography",
+    "refuse_unwritten_cd_plan_columns",
     "spine_column",
+    "unwritten_cd_plan_columns",
     "validate_pool_location_options",
     "with_optional_acs_spine",
 ]
@@ -129,6 +136,7 @@ def with_optional_acs_spine(
     block_ladder: UsLocationLadder | None = None,
     location_seed: int = 0,
     location_clones: int = 1,
+    cd_plan_registry: Mapping[str, Any] | None = None,
 ) -> Frame:
     """Append an ACS frame while conserving the base's household mass.
 
@@ -173,6 +181,18 @@ def with_optional_acs_spine(
     ``puma_ladder`` and ``geography_seed`` play no part in a ``block_v1``
     assignment, so a ``puma_ladder`` or a nonzero ``geography_seed`` is
     refused rather than ignored.
+
+    ``cd_plan_registry`` (``block_v1`` only; refused under ``legacy``) is the
+    record :func:`~microcosm.build.us_runtime.block_location.attach_pinned_cd_plan_registry`
+    returned for ``block_ladder``: every plan it lists must be attached to the
+    ladder. It is recorded in the location record under ``cd_plan_registry``;
+    without it the record has no such key.
+
+    Whenever this pool assigns geography (``block_v1``, or ``legacy`` with a
+    ``puma_ladder``), an input household column
+    ``congressional_district_geoid__<plan>`` that the location step does not
+    rewrite is refused (:func:`refuse_unwritten_cd_plan_columns`): it would
+    keep one spine's values and be null on the other's.
     """
 
     if acs is None:
@@ -184,6 +204,7 @@ def with_optional_acs_spine(
         location_seed=location_seed,
         location_clones=location_clones,
         geography_seed=geography_seed,
+        cd_plan_registry=cd_plan_registry,
     )
     if location_rule == US_LOCATION_RULE_BLOCK_V1 and puma_ladder is not None:
         raise ValueError(
@@ -195,6 +216,12 @@ def with_optional_acs_spine(
     limit = _validated_peak_limit(max_peak_bytes)
     _require_us_base_frame(base, label="base")
     _require_us_base_frame(acs, label="ACS")
+    if location_rule == US_LOCATION_RULE_BLOCK_V1 or puma_ladder is not None:
+        refuse_unwritten_cd_plan_columns(
+            base.table("household"),
+            acs.table("household"),
+            block_ladder=block_ladder,
+        )
 
     base_tables = _entity_table_refs(base)
     acs_tables = _entity_table_refs(acs)
@@ -265,6 +292,7 @@ def with_optional_acs_spine(
             expected_congressional_district_vintage=(
                 expected_congressional_district_vintage
             ),
+            cd_plan_registry=cd_plan_registry,
         )
     elif puma_ladder is not None:
         _assign_pooled_puma_ladder(
@@ -677,6 +705,10 @@ def preflight_pooled_ladder_geography(
     :data:`DONOR_BLOCK_PRESERVED` (every donor carries a ladder block),
     :data:`DONOR_BLOCK_STATE_DRAWN` (none does) or
     ``"preserved_donor_block_with_state_draws"`` (some do).
+
+    Under either rule a household ``congressional_district_geoid__<plan>``
+    column the assignment would not rewrite is refused here too
+    (:func:`refuse_unwritten_cd_plan_columns`).
     """
 
     if location_rule != US_LOCATION_RULE_LEGACY:
@@ -697,6 +729,7 @@ def preflight_pooled_ladder_geography(
         )
     if ladder is None:
         raise ValueError("The legacy location rule requires a PUMA ladder.")
+    refuse_unwritten_cd_plan_columns(base_household, acs_household)
 
     mode = "ladder_drawn"
     if len(base_household):
@@ -817,6 +850,112 @@ def _assign_pooled_puma_ladder(
     tables["household"] = assigned
 
 
+def unwritten_cd_plan_columns(
+    columns: Collection[str], block_ladder: UsLocationLadder | None = None
+) -> list[str]:
+    """CD-plan household columns a pooled location step would not rewrite.
+
+    A ``block_v1`` pool rewrites exactly
+    :func:`~microcosm.build.us_runtime.block_location.location_geography_columns`
+    of ``block_ladder`` for every row, so these are
+    :func:`~microcosm.build.us_runtime.block_location.stale_cd_plan_columns`.
+    The legacy PUMA-ladder assignment (``block_ladder=None``) writes no plan
+    column, so every ``congressional_district_geoid__<plan>`` column is one.
+    Sorted.
+    """
+
+    if block_ladder is not None:
+        return stale_cd_plan_columns(columns, block_ladder)
+    return sorted(
+        str(column)
+        for column in columns
+        if str(column).startswith(US_CD_PLAN_COLUMN_PREFIX)
+    )
+
+
+def refuse_unwritten_cd_plan_columns(
+    base_household: pd.DataFrame,
+    acs_household: pd.DataFrame | None = None,
+    *,
+    block_ladder: UsLocationLadder | None = None,
+) -> None:
+    """Refuse input CD-plan columns the pooled location step would not rewrite.
+
+    Pooling aligns the two spines' columns with missing values, and the
+    location step then rewrites only its own geography columns. A
+    ``congressional_district_geoid__<plan>`` column carried in by one spine
+    (a donor base built with a block -> CD-plan registry, pooled without that
+    registry) would keep that spine's values and be null on every row of the
+    other, and no location gate checks a column the ladder does not attach.
+    Such an input is refused by name (:func:`unwritten_cd_plan_columns`).
+    """
+
+    tables = {"base": base_household}
+    if acs_household is not None:
+        tables["ACS"] = acs_household
+    stale = {
+        label: unwritten_cd_plan_columns(table.columns, block_ladder)
+        for label, table in tables.items()
+    }
+    stale = {label: columns for label, columns in stale.items() if columns}
+    if not stale:
+        return
+    remedy = (
+        "Attach the block -> CD-plan registry those columns came from "
+        "(--cd-plan-registry / cd_plan_registry) so every row's plan columns "
+        "are re-derived from its block, or drop them from the input."
+        if block_ladder is not None
+        else "The legacy PUMA-ladder assignment writes no CD-plan column; use "
+        "--location-rule block_v1 with the block -> CD-plan registry those "
+        "columns came from, or drop them from the input."
+    )
+    raise ValueError(
+        "Refusing CD-plan household column(s) the pooled location step would "
+        f"not rewrite: {stale}. They would keep one spine's values and be null "
+        f"on every row of the other. {remedy}"
+    )
+
+
+def _validate_cd_plan_registry_record(
+    record: Any, block_ladder: UsLocationLadder
+) -> None:
+    """A ``cd_plan_registry`` record must describe plans attached to the ladder."""
+
+    if not isinstance(record, Mapping):
+        raise ValueError(
+            "cd_plan_registry must be the record attach_pinned_cd_plan_registry "
+            f"returned, got {type(record).__name__}."
+        )
+    digest = record.get("sha256")
+    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise ValueError(f"cd_plan_registry records no valid sha256 (got {digest!r}).")
+    plans = record.get("plans")
+    if (
+        isinstance(plans, (str, bytes))
+        or not isinstance(plans, Collection)
+        or not plans
+    ):
+        raise ValueError(f"cd_plan_registry records no plans (got {plans!r}).")
+    unattached = sorted(
+        str(plan)
+        for plan in plans
+        if plan not in block_ladder.congressional_district_plans
+    )
+    if unattached:
+        raise ValueError(
+            f"cd_plan_registry lists plan(s) {unattached} that block_ladder does "
+            "not attach; pass the ladder attach_pinned_cd_plan_registry returned "
+            "with this record."
+        )
+    expected = {str(plan): plan_column(str(plan), block_ladder) for plan in plans}
+    columns = record.get("columns")
+    if not isinstance(columns, Mapping) or dict(columns) != expected:
+        raise ValueError(
+            f"cd_plan_registry columns {columns!r} are not the columns "
+            f"block_ladder writes for its plans ({expected})."
+        )
+
+
 def validate_pool_location_options(
     location_rule: str,
     *,
@@ -824,8 +963,13 @@ def validate_pool_location_options(
     location_seed: int,
     location_clones: int,
     geography_seed: int,
+    cd_plan_registry: Mapping[str, Any] | None = None,
 ) -> None:
-    """Refuse location options the selected rule would silently ignore."""
+    """Refuse location options the selected rule would silently ignore.
+
+    ``cd_plan_registry`` is accepted only under ``block_v1``, and only when
+    every plan it records is attached to ``block_ladder``.
+    """
 
     if location_rule not in US_LOCATION_RULE_CHOICES:
         raise ValueError(
@@ -847,6 +991,11 @@ def validate_pool_location_options(
             raise ValueError(
                 "block_ladder is only used by location_rule='block_v1'; the "
                 "legacy rule assigns geography from the PUMA ladder."
+            )
+        if cd_plan_registry is not None:
+            raise ValueError(
+                "cd_plan_registry is only used by location_rule='block_v1'; the "
+                "legacy PUMA-ladder assignment writes no CD-plan column."
             )
         if int(location_seed) != 0 or int(location_clones) != 1:
             raise ValueError(
@@ -876,6 +1025,8 @@ def validate_pool_location_options(
             "location_rule='block_v1' the draw is seeded by location_seed. "
             f"Refusing geography_seed={geography_seed!r} rather than ignoring it."
         )
+    if cd_plan_registry is not None:
+        _validate_cd_plan_registry_record(cd_plan_registry, block_ladder)
 
 
 def _acs_block_pumas(puma: pd.Series, ladder: UsLocationLadder) -> np.ndarray:
@@ -999,6 +1150,7 @@ def _preflight_pooled_block_location(
             "location_rule='block_v1' on the ACS pool needs a block ladder that "
             "carries the per-block 'puma' array."
         )
+    refuse_unwritten_cd_plan_columns(base_household, acs_household, block_ladder=ladder)
     has_block = np.zeros(0, dtype=bool)
     if len(base_household):
         has_block, _ = _donor_block_index(base_household, ladder)
@@ -1020,6 +1172,7 @@ def _assign_pooled_block_location(
     *,
     seed: int,
     expected_congressional_district_vintage: str | None,
+    cd_plan_registry: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Locate every pooled household on one 2020 block (``block_v1``).
 
@@ -1038,7 +1191,9 @@ def _assign_pooled_block_location(
     tract, county, place, SLDU/SLDL, CBSA, PUMA, primary CD and any attached
     plan) is then written from the ladder's lookup of the block, for every
     row, so no household carries a geography its block contradicts.
-    ``state_fips`` is never rewritten. Returns the manifest record.
+    ``state_fips`` is never rewritten. Returns the manifest record, which
+    carries ``cd_plan_registry`` (the record of the pinned registry whose
+    plans ``ladder`` attaches) only when one is given.
     """
 
     household = tables["household"]
@@ -1126,6 +1281,7 @@ def _assign_pooled_block_location(
                 f"ladder; a donor row without a block: {SOURCE_GEOGRAPHY_STATE}"
             ),
         },
+        cd_plan_registry=cd_plan_registry,
     )
     n_state_drawn = int((drawn & donor_rows).sum())
     record.update(

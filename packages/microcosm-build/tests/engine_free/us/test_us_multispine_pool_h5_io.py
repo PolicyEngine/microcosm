@@ -27,6 +27,9 @@ from microcosm.build.serialization_dtypes import (
     canonicalize_frame_string_dtypes,
     canonicalize_table_string_dtypes,
 )
+from microcosm.build.us_runtime.block_location import (
+    POPULACE_CD_PLAN_REGISTRY_SHA256_ATTR,
+)
 from microcosm.build.us_runtime.congressional_district_vintage import (
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
     CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
@@ -3394,6 +3397,47 @@ _BLOCK_FIXTURE_CPS_SHA256 = {2023: "a" * 64}
 _BLOCK_FIXTURE_BLOCKS = ("060014001001000", "060014002002001", "060014002002001")
 
 
+# A --cd-plan-registry pool: the pinned registry's digest (any lowercase
+# SHA-256 is a valid authority to the consumer) and, per non-primary plan, the
+# three rows' districts: in the located blocks' state (06) and equal across
+# household 20 and its support clone.
+_REGISTRY_FIXTURE_SHA256 = "d" * 64
+_REGISTRY_FIXTURE_PLAN_VALUES = {
+    "congressional_district_geoid__117th_congress": (612, 613, 613),
+    "congressional_district_geoid__118th_congress": (612, 612, 612),
+    "congressional_district_geoid__120th_congress": (611, 613, 613),
+}
+
+
+def _cd_plan_registry_record(sha256: str) -> dict[str, object]:
+    """The ``cd_plan_registry`` record ``attach_pinned_cd_plan_registry`` returns."""
+
+    plans = ["117th_congress", "118th_congress", "119th_congress", "120th_congress"]
+    return {
+        "sha256": sha256,
+        "pinned_by": (
+            "microcosm.build.us_runtime/us_cd_plan_registry.provenance.json "
+            "output_sha256"
+        ),
+        "blocks": 3,
+        "plans": plans,
+        "columns": {
+            plan: (
+                "congressional_district_geoid"
+                if plan == "119th_congress"
+                else f"congressional_district_geoid__{plan}"
+            )
+            for plan in plans
+        },
+        "known_deviations": {},
+        "primary_plan_check": {
+            "plan": "119th_congress",
+            "ladder_blocks": 3,
+            "blocks_disagreeing": 0,
+        },
+    }
+
+
 def _block_location_root_attributes(seed: int) -> dict[str, str]:
     return {
         h5_io.POPULACE_LOCATION_RULE_ATTR: "block_v1",
@@ -3410,8 +3454,16 @@ def _rewrite_as_block_location_pool(
     manifest_path: Path,
     *,
     seed: int = 5,
+    cd_plan_registry_sha256: str | None = None,
 ) -> dict[str, object]:
-    """Turn the ready stacked fixture into a block_v1 pool and manifest."""
+    """Turn the ready stacked fixture into a block_v1 pool and manifest.
+
+    With ``cd_plan_registry_sha256`` the pool is a ``--cd-plan-registry``
+    pool: the contract binds the registry authority, the household_location
+    record carries its ``cd_plan_registry`` record, the household table its
+    three plan columns and the H5 root the registry digest.  Without it the
+    fixture is exactly the registry-free block_v1 pool.
+    """
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     pool_path = Path(manifest["pool_h5"]["path"])
@@ -3425,10 +3477,15 @@ def _rewrite_as_block_location_pool(
         household["sldu"] = pd.Series(["06009", "06010", "06010"], dtype=object)
         household["sldl"] = pd.Series(["06018", "06020", "06020"], dtype=object)
         household["cbsa_code"] = pd.Series(["41860"] * 3, dtype=object)
+        if cd_plan_registry_sha256 is not None:
+            for column, values in _REGISTRY_FIXTURE_PLAN_VALUES.items():
+                household[column] = np.asarray(values, dtype=np.int64)
         store.put("household", household, format="fixed")
         attributes = store.get_node("/")._v_attrs
         for key, value in _block_location_root_attributes(seed).items():
             attributes[key] = value
+        if cd_plan_registry_sha256 is not None:
+            attributes[POPULACE_CD_PLAN_REGISTRY_SHA256_ATTR] = cd_plan_registry_sha256
 
     clone_column = support_clone_index_column("household")
     native = household.loc[household[clone_column].eq(0)]
@@ -3443,6 +3500,7 @@ def _rewrite_as_block_location_pool(
             ]["sha256"]
         ),
         cps_asec_sha256=_BLOCK_FIXTURE_CPS_SHA256,
+        cd_plan_registry_sha256=cd_plan_registry_sha256,
     )
     location = {
         "rule": h5_io.US_STACKED_BLOCK_LOCATION_ALGORITHM_ID,
@@ -3456,6 +3514,8 @@ def _rewrite_as_block_location_pool(
         "households": len(native),
         "rows": len(native),
     }
+    if cd_plan_registry_sha256 is not None:
+        location["cd_plan_registry"] = _cd_plan_registry_record(cd_plan_registry_sha256)
     assignment = {
         **legacy,
         "contract": contract,
@@ -3600,3 +3660,375 @@ def test_legacy_stacked_manifest_refuses_h5_location_rule_attrs(
 
     with pytest.raises(ValueError, match="legacy-rule manifest"):
         load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+# --------------------------------------------------------------------------
+# block_v1 --cd-plan-registry: the full ready-pool loader path
+# --------------------------------------------------------------------------
+
+
+def _registry_assignments(manifest: dict[str, object]) -> list[dict[str, object]]:
+    """Both copies of the geography receipt (they must stay equal)."""
+
+    return [
+        manifest["geography_assignment"],
+        manifest["stage_receipts"]["geography_assignment"],
+    ]
+
+
+def _rewrite_pool_household(
+    manifest: dict[str, object],
+    manifest_path: Path,
+    mutate: Callable[[pd.DataFrame], pd.DataFrame],
+) -> None:
+    """Rewrite the pool H5 household table and re-pin the file in the manifest."""
+
+    pool_path = Path(manifest["pool_h5"]["path"])
+    with pd.HDFStore(pool_path, mode="a") as store:
+        household = mutate(h5_io.read_frame_table(store, "household"))
+        store.put("household", household, format="fixed")
+    manifest["pool_h5"]["sha256"] = _sha256(pool_path)
+    manifest["pool_h5"]["size_bytes"] = pool_path.stat().st_size
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def _rewrite_pool_root_attribute(
+    manifest: dict[str, object],
+    manifest_path: Path,
+    key: str,
+    value: str | None,
+) -> None:
+    """Set (or, with ``None``, delete) one pool H5 root attr and re-pin the file."""
+
+    pool_path = Path(manifest["pool_h5"]["path"])
+    with pd.HDFStore(pool_path, mode="a") as store:
+        attributes = store.get_node("/")._v_attrs
+        if value is None:
+            del attributes[key]
+        else:
+            attributes[key] = value
+    manifest["pool_h5"]["sha256"] = _sha256(pool_path)
+    manifest["pool_h5"]["size_bytes"] = pool_path.stat().st_size
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def test_ready_stacked_pool_loader_accepts_a_cd_plan_registry_pool(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    _rewrite_as_block_location_pool(
+        manifest_path, seed=5, cd_plan_registry_sha256=_REGISTRY_FIXTURE_SHA256
+    )
+
+    frame, manifest, _ = load_simulation_ready_us_multispine_pool(manifest_path)
+
+    household = frame.table("household")
+    for column, values in _REGISTRY_FIXTURE_PLAN_VALUES.items():
+        assert household[column].astype(np.int64).tolist() == list(values)
+    assert manifest["household_location"]["cd_plan_registry"]["sha256"] == (
+        _REGISTRY_FIXTURE_SHA256
+    )
+    authorities = manifest["geography_assignment"]["contract"]["authorities"]
+    assert authorities["cd_plan_registry"] == {
+        "input_role": "cd_plan_registry",
+        "source_ref": "source:us_cd_plan_registry_2020",
+        "sha256": _REGISTRY_FIXTURE_SHA256,
+    }
+    assert manifest["provenance_pins"]["cd_plan_registry"]["actual_sha256"] == (
+        _REGISTRY_FIXTURE_SHA256
+    )
+    assert manifest["geography_assignment"]["contract"]["declaration"]["derive"][
+        -3:
+    ] == list(_REGISTRY_FIXTURE_PLAN_VALUES)
+    assert h5_io.us_stacked_pool_operator_order(manifest) == (
+        h5_io.US_STACKED_POOL_BLOCK_LOCATION_OPERATOR_ORDER
+    )
+
+
+def test_cd_plan_columns_leave_the_ordered_block_location_digest_unchanged(
+    tmp_path: Path,
+) -> None:
+    """Existing block_v1 digests must not move: the ordered receipt of a
+    registry pool equals the registry-free pool's over the same draw."""
+
+    pytest.importorskip("tables")
+    plain = _rewrite_as_block_location_pool(
+        _write_ready_pool(tmp_path / "plain", stacked=True)
+    )
+    registry = _rewrite_as_block_location_pool(
+        _write_ready_pool(tmp_path / "registry", stacked=True),
+        cd_plan_registry_sha256=_REGISTRY_FIXTURE_SHA256,
+    )
+    assert (
+        registry["geography_assignment"]["assigned_household_geography"]
+        == (plain["geography_assignment"]["assigned_household_geography"])
+    )
+    assert not set(_REGISTRY_FIXTURE_PLAN_VALUES) & set(
+        h5_io.US_STACKED_BLOCK_LOCATION_DIGEST_COLUMNS
+    )
+    assert "cd_plan_registry" not in plain["household_location"]
+    assert "cd_plan_registry" not in plain["provenance_pins"]
+
+
+def _drop_registry_authority(manifest: dict[str, object]) -> None:
+    for assignment in _registry_assignments(manifest):
+        contract = assignment["contract"]
+        del contract["authorities"]["cd_plan_registry"]
+        contract["declaration"]["derive"] = contract["declaration"]["derive"][:-3]
+    manifest["provenance_pins"].pop("cd_plan_registry")
+
+
+def _set_registry_authority(manifest: dict[str, object]) -> None:
+    for assignment in _registry_assignments(manifest):
+        assignment["contract"]["authorities"]["cd_plan_registry"]["sha256"] = "f" * 64
+
+
+def _drop_registry_derive(manifest: dict[str, object]) -> None:
+    for assignment in _registry_assignments(manifest):
+        assignment["contract"]["declaration"]["derive"].pop()
+
+
+def _each_location(manifest: dict[str, object]) -> list[dict[str, object]]:
+    return [
+        manifest["household_location"],
+        *(
+            assignment["household_location"]
+            for assignment in _registry_assignments(manifest)
+        ),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (
+            lambda manifest: [
+                location["cd_plan_registry"].update({"sha256": "f" * 64})
+                for location in _each_location(manifest)
+            ],
+            "CD-plan registry record does not match",
+        ),
+        (
+            lambda manifest: [
+                location.pop("cd_plan_registry")
+                for location in _each_location(manifest)
+            ],
+            "CD-plan registry record does not match",
+        ),
+        (
+            lambda manifest: [
+                location["cd_plan_registry"]["columns"].pop("120th_congress")
+                for location in _each_location(manifest)
+            ],
+            "CD-plan registry record does not match",
+        ),
+        (
+            lambda manifest: manifest["household_location"]["cd_plan_registry"].update(
+                {"sha256": "f" * 64}
+            ),
+            "household_location record does not match",
+        ),
+        (
+            _set_registry_authority,
+            "'cd_plan_registry' differs from its authenticated input pin",
+        ),
+        (
+            lambda manifest: manifest["provenance_pins"]["cd_plan_registry"].update(
+                {"actual_sha256": "f" * 64}
+            ),
+            "'cd_plan_registry' differs from its authenticated input pin",
+        ),
+        (
+            lambda manifest: manifest["provenance_pins"].pop("cd_plan_registry"),
+            "'cd_plan_registry' differs from its authenticated input pin",
+        ),
+        (_drop_registry_derive, "block-location contract changed"),
+        (_drop_registry_authority, "does not bind"),
+    ],
+)
+def test_ready_stacked_pool_loader_refuses_a_changed_registry_manifest(
+    tmp_path: Path,
+    mutate: Callable[[dict[str, object]], object],
+    message: str,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = _rewrite_as_block_location_pool(
+        manifest_path, cd_plan_registry_sha256=_REGISTRY_FIXTURE_SHA256
+    )
+    mutate(manifest)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=message):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_ready_stacked_pool_loader_binds_the_registry_root_attr(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    for value in ("f" * 64, None):
+        case = tmp_path / ("changed" if value else "absent")
+        manifest_path = _write_ready_pool(case, stacked=True)
+        manifest = _rewrite_as_block_location_pool(
+            manifest_path, cd_plan_registry_sha256=_REGISTRY_FIXTURE_SHA256
+        )
+        _rewrite_pool_root_attribute(
+            manifest, manifest_path, POPULACE_CD_PLAN_REGISTRY_SHA256_ATTR, value
+        )
+        with pytest.raises(ValueError, match="location root attributes"):
+            load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+_PLAN_120 = "congressional_district_geoid__120th_congress"
+
+
+def _drift_clone_plan(household: pd.DataFrame) -> pd.DataFrame:
+    clone = household[support_clone_index_column("household")].eq(1)
+    household.loc[clone, _PLAN_120] = 614
+    return household
+
+
+def _move_plan_out_of_state(household: pd.DataFrame) -> pd.DataFrame:
+    household.loc[household.index[0], _PLAN_120] = 3601
+    return household
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (
+            lambda household: household.drop(columns=_PLAN_120),
+            "missing block-location column",
+        ),
+        (
+            _drift_clone_plan,
+            f"cloned household rows disagree on assigned geography column "
+            f"'{_PLAN_120}'",
+        ),
+        (_move_plan_out_of_state, "not an integral congressional district"),
+    ],
+)
+def test_ready_stacked_pool_loader_refuses_registry_plan_column_drift(
+    tmp_path: Path,
+    mutate: Callable[[pd.DataFrame], pd.DataFrame],
+    message: str,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = _rewrite_as_block_location_pool(
+        manifest_path, cd_plan_registry_sha256=_REGISTRY_FIXTURE_SHA256
+    )
+    _rewrite_pool_household(manifest, manifest_path, mutate)
+
+    with pytest.raises(ValueError, match=message):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_registry_free_block_pool_refuses_registry_evidence(
+    tmp_path: Path,
+) -> None:
+    """A registry-free block_v1 pool still loads unchanged, and refuses a plan
+    column or registry digest attr its contract does not bind."""
+
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path / "plain", stacked=True)
+    manifest = _rewrite_as_block_location_pool(manifest_path)
+    load_simulation_ready_us_multispine_pool(manifest_path)
+
+    def add_plan_column(household: pd.DataFrame) -> pd.DataFrame:
+        household[_PLAN_120] = np.asarray(
+            _REGISTRY_FIXTURE_PLAN_VALUES[_PLAN_120], dtype=np.int64
+        )
+        return household
+
+    _rewrite_pool_household(manifest, manifest_path, add_plan_column)
+    with pytest.raises(ValueError, match="carries CD-plan column"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+    manifest_path = _write_ready_pool(tmp_path / "attr", stacked=True)
+    manifest = _rewrite_as_block_location_pool(manifest_path)
+    _rewrite_pool_root_attribute(
+        manifest,
+        manifest_path,
+        POPULACE_CD_PLAN_REGISTRY_SHA256_ATTR,
+        _REGISTRY_FIXTURE_SHA256,
+    )
+    with pytest.raises(ValueError, match="location root attributes"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+    manifest_path = _write_ready_pool(tmp_path / "record", stacked=True)
+    manifest = _rewrite_as_block_location_pool(manifest_path)
+    for location in _each_location(manifest):
+        location["cd_plan_registry"] = _cd_plan_registry_record(
+            _REGISTRY_FIXTURE_SHA256
+        )
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match="does not bind"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_legacy_stacked_manifest_refuses_the_registry_root_attr(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    _rewrite_pool_root_attribute(
+        manifest,
+        manifest_path,
+        POPULACE_CD_PLAN_REGISTRY_SHA256_ATTR,
+        _REGISTRY_FIXTURE_SHA256,
+    )
+
+    with pytest.raises(ValueError, match="legacy-rule manifest"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_consumer_contract_registry_authority_is_conditional_for_every_input() -> None:
+    """Property: the registry adds exactly one authority and the three plan
+    columns to the consumer contract, and removing them gives back the
+    registry-free contract, for every seed and digest set."""
+
+    pytest.importorskip("hypothesis")
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    digest = st.text("0123456789abcdef", min_size=64, max_size=64)
+
+    @settings(max_examples=100, deadline=None)
+    @given(
+        seed=st.integers(0, 2**63 - 1),
+        ladder_sha256=digest,
+        crosswalk_sha256=digest,
+        cps=st.dictionaries(st.integers(2000, 2030), digest, min_size=1, max_size=4),
+        registry_sha256=digest,
+    )
+    def check(seed, ladder_sha256, crosswalk_sha256, cps, registry_sha256) -> None:
+        arguments = {
+            "seed": seed,
+            "clones": 1,
+            "block_ladder_sha256": ladder_sha256,
+            "crosswalk_sha256": crosswalk_sha256,
+            "cps_asec_sha256": cps,
+        }
+        plain = h5_io.expected_us_stacked_block_location_contract(**arguments)
+        assert plain == h5_io.expected_us_stacked_block_location_contract(
+            **arguments, cd_plan_registry_sha256=None
+        )
+        bound = h5_io.expected_us_stacked_block_location_contract(
+            **arguments, cd_plan_registry_sha256=registry_sha256
+        )
+        assert bound["authorities"].pop("cd_plan_registry") == {
+            "input_role": "cd_plan_registry",
+            "source_ref": "source:us_cd_plan_registry_2020",
+            "sha256": registry_sha256,
+        }
+        assert bound["declaration"]["derive"][-3:] == list(
+            _REGISTRY_FIXTURE_PLAN_VALUES
+        )
+        del bound["declaration"]["derive"][-3:]
+        assert bound == plain
+
+    check()

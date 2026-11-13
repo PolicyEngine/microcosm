@@ -106,6 +106,7 @@ def build_optional_acs_multispine(
     block_ladder: UsLocationLadder | None = None,
     location_seed: int = 0,
     location_clones: int = 1,
+    cd_plan_registry: Mapping[str, Any] | None = None,
 ) -> AcsMultispineResult:
     """Optionally build, transfer, and append the ACS 2024 1-year spine.
 
@@ -127,6 +128,12 @@ def build_optional_acs_multispine(
     (:func:`~microcosm.build.us_runtime.base_pool.with_optional_acs_spine`);
     its record lands in ``provenance["household_location"]``. The location
     options are validated before the ACS spine is loaded.
+
+    ``cd_plan_registry`` (``block_v1`` only) is the record
+    :func:`~microcosm.build.us_runtime.block_location.attach_pinned_cd_plan_registry`
+    returned with ``block_ladder``; it is passed to the pool, whose location
+    record (``provenance["household_location"]``) then carries it under
+    ``cd_plan_registry``. Omitted, the pool call and the record are unchanged.
     """
 
     if source is None:
@@ -140,6 +147,7 @@ def build_optional_acs_multispine(
         or block_ladder is not None
         or location_seed != 0
         or location_clones != 1
+        or cd_plan_registry is not None
     ):
         validate_pool_location_options(
             location_rule,
@@ -147,6 +155,7 @@ def build_optional_acs_multispine(
             location_seed=location_seed,
             location_clones=location_clones,
             geography_seed=geography_seed,
+            cd_plan_registry=cd_plan_registry,
         )
 
     raw_acs, loader_metadata = build_acs_pums_unit_frame(
@@ -270,6 +279,8 @@ def build_optional_acs_multispine(
                 "location_clones": location_clones,
             }
         )
+        if cd_plan_registry is not None:
+            pool_options["cd_plan_registry"] = cd_plan_registry
     elif puma_ladder is not None:
         pool_options.update(
             {

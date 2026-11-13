@@ -107,12 +107,18 @@ from microcosm.build.us_runtime.asec_checkpoint import (
     load_asec_raw_stage_checkpoint,
 )
 from microcosm.build.us_runtime.block_location import (
+    POPULACE_CD_PLAN_REGISTRY_SHA256_ATTR,
     US_BLOCK_LOCATION_RULE_ID,
+    US_CD_PLAN_COLUMN_PREFIX,
     US_LOCATION_RULE_BLOCK_V1,
     US_LOCATION_RULE_CHOICES,
     US_LOCATION_RULE_LEGACY,
     UsLocationLadder,
+    attach_pinned_cd_plan_registry,
     load_us_location_ladder,
+    location_geography_columns,
+    pinned_cd_plan_registry_sha256,
+    stale_cd_plan_columns,
     us_block_location_gate,
     us_block_location_manifest,
     with_household_us_block_location,
@@ -411,6 +417,17 @@ _STACKED_BLOCK_LOCATION_DERIVED_COLUMNS = (
     "cbsa_code",
     "puma",
     CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
+)
+# --cd-plan-registry (optional under block_v1): the pinned block -> CD-plan
+# registry.  Its 119th-Congress plan is the ladder's primary and is checked
+# block for block; each other plan is one derived household column.  The
+# configured pin is the packaged provenance digest, so argv alone still
+# determines the configured identity.
+_STACKED_CD_PLAN_REGISTRY_INPUT_ROLE = "cd_plan_registry"
+_STACKED_CD_PLAN_REGISTRY_SOURCE_REF = "source:us_cd_plan_registry_2020"
+_STACKED_CD_PLAN_REGISTRY_COLUMNS = tuple(
+    f"{US_CD_PLAN_COLUMN_PREFIX}{plan}"
+    for plan in ("117th_congress", "118th_congress", "120th_congress")
 )
 # The downstream checks that fix one household row per source record and so
 # cannot yet admit K > 1 location clones on the stacked line.
@@ -789,6 +806,19 @@ def _location_parser() -> argparse.ArgumentParser:
         metavar="INCOME_YEAR=SHA256",
         help="Expected SHA-256 of each --cps-asec-h5, keyed by the same year.",
     )
+    parser.add_argument(
+        "--cd-plan-registry",
+        type=Path,
+        help=(
+            "Optional block_v1 input: the pinned 2020-block -> congressional-"
+            "district plan registry (us_cd_plan_registry_2020.npz). Each "
+            "household also gets congressional_district_geoid__<plan> for "
+            "every non-primary plan (117th, 118th, 120th Congress); the "
+            "registry's 119th plan must equal the ladder's block for block. "
+            "Only the file whose SHA-256 is the packaged provenance pin "
+            "loads; refused under the legacy rule."
+        ),
+    )
     return parser
 
 
@@ -1049,6 +1079,7 @@ def _stacked_block_location_contract(
     *,
     cps_asec_sha256: Mapping[int, str],
     crosswalk_sha256: str = _STACKED_CD_CROSSWALK_SHA256,
+    cd_plan_registry_sha256: str | None = None,
 ) -> dict[str, object]:
     """Return the closed ``block_v1`` household-location authority.
 
@@ -1059,7 +1090,10 @@ def _stacked_block_location_contract(
     the block ladder, the congressional-district vintage crosswalk (target
     universe and release attrs) and every CPS ASEC household-geography H5
     the ASEC candidate sets read.  ``h5_io.expected_us_stacked_block_location_contract``
-    is the consumer's independent copy.
+    is the consumer's independent copy.  Only with ``cd_plan_registry_sha256``
+    (``--cd-plan-registry``) does the pinned CD-plan registry join the
+    authorities and its non-primary plan columns join ``derive``; without it
+    the contract is exactly the registry-free one.
     """
 
     authorities: dict[str, object] = {
@@ -1086,6 +1120,14 @@ def _stacked_block_location_contract(
             "income_year": int(income_year),
             "sha256": sha256,
         }
+    derive = list(_STACKED_BLOCK_LOCATION_DERIVED_COLUMNS)
+    if cd_plan_registry_sha256 is not None:
+        authorities[_STACKED_CD_PLAN_REGISTRY_INPUT_ROLE] = {
+            "input_role": _STACKED_CD_PLAN_REGISTRY_INPUT_ROLE,
+            "source_ref": _STACKED_CD_PLAN_REGISTRY_SOURCE_REF,
+            "sha256": cd_plan_registry_sha256,
+        }
+        derive.extend(_STACKED_CD_PLAN_REGISTRY_COLUMNS)
     return {
         "declaration": {
             "anchor": "block",
@@ -1105,7 +1147,7 @@ def _stacked_block_location_contract(
                 },
                 "uniforms": "stable_identity_uniforms",
             },
-            "derive": list(_STACKED_BLOCK_LOCATION_DERIVED_COLUMNS),
+            "derive": derive,
             "assertions": [
                 "observed_acs_puma_preserved",
                 "block_state_matches_state_fips",
@@ -1199,6 +1241,25 @@ def _cps_asec_h5_arguments(
     return paths, pins
 
 
+def _cd_plan_registry_path(args: argparse.Namespace) -> Path | None:
+    """``--cd-plan-registry``; namespaces without the option have none."""
+
+    value = getattr(args, "cd_plan_registry", None)
+    return None if value is None else Path(value)
+
+
+def _configured_cd_plan_registry_sha256(args: argparse.Namespace) -> str | None:
+    """The configured registry pin: the packaged digest, only when requested.
+
+    The pin is available before the file is read, so the configured identity
+    stays a pure function of argv; the file is verified against it later.
+    """
+
+    if _cd_plan_registry_path(args) is None:
+        return None
+    return pinned_cd_plan_registry_sha256()
+
+
 def _stacked_location_contract_for_args(
     args: argparse.Namespace,
 ) -> dict[str, object]:
@@ -1214,6 +1275,7 @@ def _stacked_location_contract_for_args(
         args.block_ladder_sha256,
         cps_asec_sha256=cps_pins,
         crosswalk_sha256=args.congressional_district_vintage_crosswalk_sha256,
+        cd_plan_registry_sha256=_configured_cd_plan_registry_sha256(args),
     )
 
 
@@ -1243,6 +1305,7 @@ def _require_location_rule_arguments(args: argparse.Namespace) -> None:
         "--block-ladder-sha256": getattr(args, "block_ladder_sha256", None),
         "--cps-asec-h5": getattr(args, "cps_asec_h5", None) or None,
         "--cps-asec-h5-sha256": getattr(args, "cps_asec_h5_sha256", None) or None,
+        "--cd-plan-registry": getattr(args, "cd_plan_registry", None),
     }
     if rule == US_LOCATION_RULE_LEGACY:
         if seed != 0 or clones != 1:
@@ -1476,15 +1539,25 @@ def _verify_block_location_inputs(
             cps_paths[year],
             cps_pins[year],
         )
+    registry_path = _cd_plan_registry_path(args)
+    if registry_path is not None:
+        # Refused here, before any source loads: only the packaged pin loads.
+        verified[_STACKED_CD_PLAN_REGISTRY_INPUT_ROLE] = _verify_file(
+            "US CD plan registry",
+            registry_path,
+            pinned_cd_plan_registry_sha256(),
+        )
     return verified
 
 
 def _block_location_source_paths(args: argparse.Namespace) -> set[Path]:
     cps_paths, _cps_pins = _cps_asec_h5_arguments(args)
+    registry_path = _cd_plan_registry_path(args)
     return {
         Path(args.block_ladder).resolve(),
         Path(args.congressional_district_vintage_crosswalk).resolve(),
         *(Path(path).resolve() for path in cps_paths.values()),
+        *(() if registry_path is None else (registry_path.resolve(),)),
     }
 
 
@@ -1807,6 +1880,9 @@ def _configured_input_pins_digest(args: argparse.Namespace) -> str:
                 },
             }
         )
+        registry_sha256 = _configured_cd_plan_registry_sha256(args)
+        if registry_sha256 is not None:
+            payload[_STACKED_CD_PLAN_REGISTRY_INPUT_ROLE] = registry_sha256
     elif not args.legacy_two_spine:
         _require_stacked_geography_arguments(args)
         payload.update(
@@ -1888,6 +1964,19 @@ def _assert_block_location_verified_inputs(
             f"Stacked verified input {_STACKED_CD_CROSSWALK_INPUT_ROLE!r} differs "
             f"from its canonical SHA-256 {_STACKED_CD_CROSSWALK_SHA256}."
         )
+    registry = verified_inputs.get(_STACKED_CD_PLAN_REGISTRY_INPUT_ROLE)
+    if (registry is None) != (_STACKED_CD_PLAN_REGISTRY_INPUT_ROLE not in authorities):
+        raise ValueError(
+            "A block-location identity binds a verified CD plan registry exactly "
+            "when its contract names the registry authority."
+        )
+    if registry is not None:
+        pinned = pinned_cd_plan_registry_sha256()
+        if registry.actual_sha256 != pinned:
+            raise ValueError(
+                f"Stacked verified input {_STACKED_CD_PLAN_REGISTRY_INPUT_ROLE!r} "
+                f"differs from its packaged pin {pinned}."
+            )
 
 
 def _stacked_checkpoint_base_identity(
@@ -2557,6 +2646,9 @@ def _expected_block_location_contract_from(
                 f"block-location CPS ASEC authority {role!r} is malformed."
             )
         cps_asec_sha256[year] = str(authority.get("sha256"))
+    registry = authorities.get(_STACKED_CD_PLAN_REGISTRY_INPUT_ROLE)
+    if registry is not None and not isinstance(registry, Mapping):
+        raise ValueError("block-location CD plan registry authority is malformed.")
     value = seed.get("value")
     clones = algorithm.get("clones")
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -2572,6 +2664,51 @@ def _expected_block_location_contract_from(
         str(block.get("sha256")),
         cps_asec_sha256=cps_asec_sha256,
         crosswalk_sha256=str(crosswalk.get("sha256")),
+        cd_plan_registry_sha256=(
+            None if registry is None else str(registry.get("sha256"))
+        ),
+    )
+
+
+def _contract_cd_plan_registry_sha256(
+    contract: Mapping[str, object],
+) -> str | None:
+    """The CD plan registry authority digest a block_v1 contract binds, if any."""
+
+    authorities = contract.get("authorities")
+    registry = (
+        authorities.get(_STACKED_CD_PLAN_REGISTRY_INPUT_ROLE)
+        if isinstance(authorities, Mapping)
+        else None
+    )
+    if registry is None:
+        return None
+    sha256 = registry.get("sha256") if isinstance(registry, Mapping) else None
+    if not isinstance(sha256, str):
+        raise ValueError("block-location CD plan registry authority is malformed.")
+    return sha256
+
+
+def _contract_cd_plan_columns(contract: Mapping[str, object]) -> tuple[str, ...]:
+    """The non-primary CD plan columns a block_v1 contract derives, in order."""
+
+    return (
+        _STACKED_CD_PLAN_REGISTRY_COLUMNS
+        if _contract_cd_plan_registry_sha256(contract) is not None
+        else ()
+    )
+
+
+def _cd_plan_registry_record_columns(record: Mapping[str, object]) -> list[str]:
+    """Sorted non-primary plan columns a ``cd_plan_registry`` record names."""
+
+    columns = record.get("columns")
+    if not isinstance(columns, Mapping):
+        return []
+    return sorted(
+        str(column)
+        for column in columns.values()
+        if column != CONGRESSIONAL_DISTRICT_GEOID_COLUMN
     )
 
 
@@ -2725,6 +2862,58 @@ def _validate_stacked_block_location_receipt(
             f"{boundary}: household_location record differs from its "
             "block-location contract."
         )
+    registry_sha256 = _contract_cd_plan_registry_sha256(expected_contract)
+    plan_columns = _contract_cd_plan_columns(expected_contract)
+    registry_record = location.get("cd_plan_registry")
+    if registry_sha256 is None:
+        if "cd_plan_registry" in location:
+            raise ValueError(
+                f"{boundary}: household_location records a CD plan registry "
+                "its block-location contract does not bind."
+            )
+    elif (
+        not isinstance(registry_record, Mapping)
+        or registry_record.get("sha256") != registry_sha256
+        or _cd_plan_registry_record_columns(registry_record) != list(plan_columns)
+    ):
+        raise ValueError(
+            f"{boundary}: household_location CD plan registry record differs "
+            "from its block-location contract authority."
+        )
+    unbound_plan_columns = sorted(
+        str(column)
+        for column in household.columns
+        if str(column).startswith(US_CD_PLAN_COLUMN_PREFIX)
+        and column not in plan_columns
+    )
+    if unbound_plan_columns:
+        raise ValueError(
+            f"{boundary}: household table carries CD plan column(s) "
+            f"{unbound_plan_columns} its block-location contract does not derive."
+        )
+    if plan_columns:
+        if "state_fips" not in household:
+            raise ValueError(f"{boundary}: household table lost 'state_fips'.")
+        state = pd.to_numeric(household["state_fips"], errors="coerce").to_numpy(
+            dtype=np.float64, na_value=np.nan
+        )
+        for column in plan_columns:
+            if column not in household:
+                raise ValueError(
+                    f"{boundary}: household table lost CD plan column {column!r}."
+                )
+            district = pd.to_numeric(household[column], errors="coerce").to_numpy(
+                dtype=np.float64, na_value=np.nan
+            )
+            if not (
+                np.isfinite(district)
+                & (district == np.floor(district))
+                & (np.floor_divide(district, 100) == state)
+            ).all():
+                raise ValueError(
+                    f"{boundary}: CD plan column {column!r} is not an integral "
+                    "congressional district in every household's state."
+                )
     gate_receipt = receipt.get("gate")
     gates = gate_receipt.get("gates") if isinstance(gate_receipt, Mapping) else None
     if (
@@ -2767,7 +2956,7 @@ def _validate_stacked_block_location_receipt(
     source_column = support_source_id_column("household")
     if source_column in household and clone_column in household:
         grouped = household.groupby(source_column, sort=False, dropna=False)
-        for column in _STACKED_BLOCK_LOCATION_DERIVED_COLUMNS:
+        for column in (*_STACKED_BLOCK_LOCATION_DERIVED_COLUMNS, *plan_columns):
             if column not in household:
                 raise ValueError(
                     f"{boundary}: household table lost block-location column "
@@ -2888,6 +3077,7 @@ def _assign_stacked_household_block_location(
     crosswalk: pd.DataFrame,
     cps_household_geography: pd.DataFrame,
     contract: Mapping[str, object],
+    cd_plan_registry: Mapping[str, object] | None = None,
 ) -> tuple[Frame, dict[str, object], tuple[int, ...]]:
     """Apply the ``block_v1`` household-location rule after source assembly.
 
@@ -2897,6 +3087,12 @@ def _assign_stacked_household_block_location(
     minus the counties its ASEC vintage identifies (``GTCO = 0``), per
     ``cps_source_geography``.  Every other geography is the block's ladder
     lookup.  PUF support clones are created later and inherit it.
+
+    ``cd_plan_registry`` is the record ``attach_pinned_cd_plan_registry``
+    returned with ``ladder``; it is required exactly when the contract binds
+    the registry, its digest must be the contract's, and the ladder must carry
+    exactly the plan columns the contract derives.  Attaching only adds
+    lookups, so the draw is the registry-free draw plus those columns.
     """
 
     if not _is_block_location_contract(contract):
@@ -2917,6 +3113,36 @@ def _assign_stacked_household_block_location(
         raise ValueError(
             "US block location ladder bytes differ from the contract's pinned "
             f"SHA-256: got {ladder.sha256}, expected {expected_ladder_sha256}."
+        )
+    expected_registry_sha256 = _contract_cd_plan_registry_sha256(contract)
+    if (cd_plan_registry is None) != (expected_registry_sha256 is None):
+        raise ValueError(
+            "block_v1 attaches the pinned CD plan registry exactly when its "
+            "contract binds it (contract binds it: "
+            f"{expected_registry_sha256 is not None}; registry attached: "
+            f"{cd_plan_registry is not None})."
+        )
+    if cd_plan_registry is not None and (
+        cd_plan_registry.get("sha256") != expected_registry_sha256
+    ):
+        raise ValueError(
+            "US CD plan registry bytes differ from the contract's pinned "
+            f"SHA-256: got {cd_plan_registry.get('sha256')}, expected "
+            f"{expected_registry_sha256}."
+        )
+    plan_columns = list(_contract_cd_plan_columns(contract))
+    ladder_plan_columns = [
+        column
+        for column in location_geography_columns(ladder)
+        if column.startswith(US_CD_PLAN_COLUMN_PREFIX)
+    ]
+    if ladder_plan_columns != plan_columns or (
+        cd_plan_registry is not None
+        and _cd_plan_registry_record_columns(cd_plan_registry) != plan_columns
+    ):
+        raise ValueError(
+            "US block location ladder CD plan columns differ from the "
+            f"contract's: ladder {ladder_plan_columns}, contract {plan_columns}."
         )
     if ladder.puma is None:
         raise ValueError(
@@ -2952,6 +3178,14 @@ def _assign_stacked_household_block_location(
     for column in ("state_fips", "puma"):
         if column not in household:
             raise ValueError(f"block_v1 assignment needs household column {column!r}.")
+    # The draw rewrites only the plan columns the ladder attaches; any other
+    # carried plan column would keep stale values beside the drawn block.
+    stale_plan_columns = stale_cd_plan_columns(household.columns, ladder)
+    if stale_plan_columns:
+        raise ValueError(
+            f"block_v1: household table carries CD plan column(s) "
+            f"{stale_plan_columns} that this draw does not write."
+        )
     n = len(household)
     observed = household["puma"].astype("string")
     has_puma = observed.str.fullmatch(r"[0-9]{7}").fillna(False).to_numpy(bool)
@@ -3067,6 +3301,7 @@ def _assign_stacked_household_block_location(
             seed=seed,
             clones=clones,
             candidate_set_rule=candidate_set_rule,
+            cd_plan_registry=cd_plan_registry,
         )
     )
     values = _assigned_congressional_district_values(
@@ -5766,7 +6001,10 @@ def _stacked_location_root_attributes(
     """H5 root attrs recording a block_v1 rule and seed (none under legacy).
 
     Seed and clones are text, as the base-H5 line writes them; the block
-    ladder digest and layer vintages use the ACS line's attribute names.
+    ladder digest and layer vintages use the ACS line's attribute names.  The
+    CD plan registry digest is written only when a registry was attached, from
+    the ``household_location`` record, which must agree with the contract and
+    the verified input.
     """
 
     if geography_contract is None or not _is_block_location_contract(
@@ -5790,7 +6028,7 @@ def _stacked_location_root_attributes(
             "A block_v1 pool H5 needs the household_location record's block "
             "ladder layer vintages."
         )
-    return {
+    attributes = {
         POPULACE_LOCATION_RULE_ATTR: US_LOCATION_RULE_BLOCK_V1,
         POPULACE_LOCATION_SEED_ATTR: str(int(seed)),
         POPULACE_LOCATION_CLONES_ATTR: str(int(clones)),
@@ -5801,6 +6039,31 @@ def _stacked_location_root_attributes(
             _json_ready(dict(vintages)), sort_keys=True
         ),
     }
+    registry_sha256 = _contract_cd_plan_registry_sha256(geography_contract)
+    registry_record = (
+        household_location.get("cd_plan_registry")
+        if isinstance(household_location, Mapping)
+        else None
+    )
+    if registry_sha256 is None and registry_record is None:
+        return attributes
+    verified_registry = verified_inputs.get(_STACKED_CD_PLAN_REGISTRY_INPUT_ROLE)
+    recorded_sha256 = (
+        registry_record.get("sha256") if isinstance(registry_record, Mapping) else None
+    )
+    if (
+        registry_sha256 is None
+        or recorded_sha256 != registry_sha256
+        or verified_registry is None
+        or verified_registry.actual_sha256 != recorded_sha256
+    ):
+        raise ValueError(
+            "A block_v1 pool H5 records a CD plan registry digest only when the "
+            "contract authority, the household_location record and the verified "
+            "input agree on it."
+        )
+    attributes[POPULACE_CD_PLAN_REGISTRY_SHA256_ATTR] = str(recorded_sha256)
+    return attributes
 
 
 def _write_stacked_outputs(
@@ -6192,12 +6455,16 @@ def _with_location_run_config(
 
     if not _is_block_location(args):
         return run_config
-    return {
+    located = {
         **run_config,
         "location_rule": US_LOCATION_RULE_BLOCK_V1,
         "location_seed": getattr(args, "location_seed", 0),
         "location_clones": getattr(args, "location_clones", 1),
     }
+    registry_sha256 = _configured_cd_plan_registry_sha256(args)
+    if registry_sha256 is not None:
+        located["cd_plan_registry_sha256"] = registry_sha256
+    return located
 
 
 def _requested_stacked_run_config(args: argparse.Namespace) -> dict[str, object]:
@@ -6737,18 +7004,27 @@ def _main_stacked(args: argparse.Namespace) -> int:
                     loaded.asec_raw_stage_checkpoint,
                     cps_asec_pins,
                 )
+                block_ladder = load_us_location_ladder(args.block_ladder)
+                cd_plan_registry: dict[str, object] | None = None
+                registry_path = _cd_plan_registry_path(args)
+                if registry_path is not None:
+                    # Only the packaged pin loads; its plans attach as lookups.
+                    block_ladder, cd_plan_registry = attach_pinned_cd_plan_registry(
+                        block_ladder, registry_path
+                    )
                 (
                     stack_frame,
                     geography_assignment_receipt,
                     assigned_target_districts,
                 ) = _assign_stacked_household_block_location(
                     stack.frame,
-                    ladder=load_us_location_ladder(args.block_ladder),
+                    ladder=block_ladder,
                     crosswalk=congressional_district_crosswalk,
                     cps_household_geography=load_cps_household_geography(
                         cps_asec_paths
                     ),
                     contract=geography_contract,
+                    cd_plan_registry=cd_plan_registry,
                 )
             if assigned_target_districts != geography_target_districts:
                 raise ValueError(

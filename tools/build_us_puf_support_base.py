@@ -155,6 +155,7 @@ from microcosm.build.us_runtime.asec_sources import ASEC_SOURCE_ARTIFACTS
 from microcosm.build.us_runtime.block_location import (
     POPULACE_BLOCK_LADDER_SHA256_ATTR,
     POPULACE_BLOCK_LADDER_VINTAGES_ATTR,
+    POPULACE_CD_PLAN_REGISTRY_SHA256_ATTR,
     POPULACE_LOCATION_CLONES_ATTR,
     POPULACE_LOCATION_RULE_ATTR,
     POPULACE_LOCATION_SEED_ATTR,
@@ -162,9 +163,11 @@ from microcosm.build.us_runtime.block_location import (
     US_LOCATION_RULE_CHOICES,
     US_LOCATION_RULE_LEGACY,
     UsLocationLadder,
+    attach_pinned_cd_plan_registry,
     load_us_location_ladder,
     us_block_location_gate,
     us_block_location_manifest,
+    verify_pinned_cd_plan_registry_file,
     with_household_us_block_location,
 )
 from microcosm.build.us_runtime.cps_source_geography import (
@@ -360,6 +363,18 @@ def _pipeline_for(args: object) -> StagePipeline:
     return BLOCK_V1_OUTER_STAGE_PIPELINE if _is_block_v1(args) else OUTER_STAGE_PIPELINE
 
 
+def _cd_plan_registry_path(args: object) -> Path | None:
+    """The ``--cd-plan-registry`` a ``block_v1`` run attaches, else ``None``.
+
+    Read with getattr, so an args object without the attribute (older
+    callers) and every legacy run attach nothing.
+    """
+
+    if not _is_block_v1(args):
+        return None
+    return getattr(args, "cd_plan_registry", None)
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     source = parser.add_mutually_exclusive_group(required=True)
@@ -553,6 +568,21 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "admitted on this line today; see the parse-time refusal."
         ),
     )
+    parser.add_argument(
+        "--cd-plan-registry",
+        type=Path,
+        default=None,
+        help=(
+            "Block -> congressional-district plan registry NPZ "
+            "(tools/build_us_cd_plan_registry_artifact.py; block_v1 only). "
+            "Only the file whose SHA-256 is the packaged pin "
+            "(us_cd_plan_registry.provenance.json output_sha256) is "
+            "admitted, verified before any stage runs. Its non-current plans "
+            "are attached to the block ladder, so the draw also writes "
+            "congressional_district_geoid__<plan> per household; its current "
+            "plan must agree with the ladder block for block."
+        ),
+    )
     args = parser.parse_args(argv)
     if args.location_rule == US_LOCATION_RULE_BLOCK_V1:
         _validate_block_v1_args(parser, args)
@@ -562,6 +592,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "--location-seed and --location-clones apply only to "
             "--location-rule block_v1; the legacy rule draws with "
             "--congressional-district-seed and --geography-ladder-seed"
+        )
+    if args.cd_plan_registry is not None:
+        parser.error(
+            "--cd-plan-registry applies only to --location-rule block_v1: "
+            "its plans attach to the block_v1 location ladder, and the "
+            "legacy rule draws its district from SOI return-count facts"
         )
     if (
         args.congressional_district_vintage_crosswalk is not None
@@ -830,12 +866,31 @@ def _verify_asec_source_digests(args: argparse.Namespace) -> None:
             )
 
 
+def _verify_cd_plan_registry_pin(args: argparse.Namespace) -> None:
+    """Refuse a ``--cd-plan-registry`` that is not the packaged pinned file.
+
+    One streamed hash, before any stage, so a wrong or missing registry
+    refuses in seconds rather than at the location stage after the QRF chain.
+    The location stage loads it through the pinned loader again, which
+    re-hashes the bytes it reads. A no-op without the flag.
+    """
+
+    path = _cd_plan_registry_path(args)
+    if path is None:
+        return
+    try:
+        verify_pinned_cd_plan_registry_file(path)
+    except (FileNotFoundError, ValueError) as error:
+        raise SystemExit(f"--cd-plan-registry: {error}") from None
+
+
 def main(argv: list[str] | None = None) -> None:
     """Dispatch the byte-identical legacy path or checkpoint scaffolding."""
 
     args = _parse_args() if argv is None else _parse_args(argv)
 
     _verify_asec_source_digests(args)
+    _verify_cd_plan_registry_pin(args)
     stage = getattr(args, "stage", "all")
     checkpoint_dir = getattr(args, "checkpoint_dir", None)
     if stage != "all":
@@ -963,6 +1018,11 @@ def _stage_cli_args(args: argparse.Namespace, stage: str) -> list[str]:
         command.extend(("--location-rule", _location_rule(args)))
         command.extend(("--location-seed", str(args.location_seed)))
         command.extend(("--location-clones", str(args.location_clones)))
+        # Only when set, so a block_v1 run without the registry keeps its
+        # child command lines too.
+        _append_path_argument(
+            command, "--cd-plan-registry", _cd_plan_registry_path(args)
+        )
     if getattr(args, "equivalence_deterministic_h5_metadata", False):
         command.append("--equivalence-deterministic-h5-metadata")
     return command
@@ -1117,6 +1177,22 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
                 ),
             }
         )
+        cd_plan_registry = _cd_plan_registry_path(args)
+        if cd_plan_registry is not None:
+            # Only when set, so a block_v1 checkpoint directory locked
+            # without the registry stays resumable, and neither can resume
+            # the other. The digest is locked like the ladder's; the location
+            # stage refuses a loaded registry whose digest differs from it.
+            config.update(
+                {
+                    "cd_plan_registry": path(cd_plan_registry),
+                    "cd_plan_registry_sha256": (
+                        _sha256(cd_plan_registry)
+                        if Path(cd_plan_registry).is_file()
+                        else None
+                    ),
+                }
+            )
     return config
 
 
@@ -1268,13 +1344,21 @@ def _write_policyengine_dataset(
         )
 
 
-def _load_block_v1_location_ladder(args: argparse.Namespace) -> UsLocationLadder:
+def _load_block_v1_location_ladder(
+    args: argparse.Namespace,
+) -> tuple[UsLocationLadder, dict[str, object] | None]:
     """Load the block_v1 ladder; its primary CD plan must be the current one.
 
     Route A reads the base's ``congressional_district_geoid`` as a
     current-vintage (119th Congress) district and checks the vintage attrs
     this builder writes, so a ladder whose primary plan is another vintage
     is refused before any draw.
+
+    With ``--cd-plan-registry``, every plan of the pinned registry is then
+    attached (:func:`attach_pinned_cd_plan_registry`): the current plan must
+    agree with the ladder block for block, the others add one household
+    column each. Returns the ladder and the registry's ``cd_plan_registry``
+    manifest record (with its resolved ``artifact`` path), or ``None``.
     """
 
     ladder = load_us_location_ladder(args.block_ladder_artifact)
@@ -1292,7 +1376,38 @@ def _load_block_v1_location_ladder(args: argparse.Namespace) -> UsLocationLadder
     load_congressional_district_vintage_crosswalk(
         args.congressional_district_vintage_crosswalk
     )
-    return ladder
+    registry_path = _cd_plan_registry_path(args)
+    if registry_path is None:
+        return ladder, None
+    try:
+        ladder, registry = attach_pinned_cd_plan_registry(ladder, registry_path)
+    except (FileNotFoundError, ValueError) as error:
+        raise SystemExit(f"--cd-plan-registry: {error}") from None
+    return ladder, {"artifact": str(Path(registry_path).resolve()), **registry}
+
+
+def _require_cd_plan_registry_matches_lock(
+    household_location: Mapping[str, object],
+    run_config: Mapping[str, object],
+) -> None:
+    """Refuse a location record whose registry differs from the locked one.
+
+    The run config locks ``cd_plan_registry_sha256`` (the file's digest when
+    the run started) only when the flag is set; the record's
+    ``cd_plan_registry.sha256`` is the digest of the bytes the pinned loader
+    read. Both must be absent, or both present and equal, so a registry
+    swapped mid-run, or a record from a run with the other setting, refuses
+    here at no extra I/O.
+    """
+
+    locked = run_config.get("cd_plan_registry_sha256")
+    registry = household_location.get("cd_plan_registry")
+    loaded = registry.get("sha256") if isinstance(registry, Mapping) else None
+    if locked != loaded:
+        raise SystemExit(
+            "--cd-plan-registry: the location stage attached a registry with "
+            f"sha256 {loaded}, but the run config locked {locked}."
+        )
 
 
 def _block_v1_household_location(
@@ -1308,9 +1423,17 @@ def _block_v1_household_location(
     else its state outside that ASEC year's identified counties), while each
     copy gets its own keyed draw. Returns the located frame and the
     ``household_location`` manifest record.
+
+    With ``--cd-plan-registry`` the draw runs on the ladder with the
+    registry's plans attached: attaching adds lookups and moves no block, so
+    the drawn blocks and every other column are those of the plain ladder,
+    and each ``congressional_district_geoid__<plan>`` is the registry's
+    district of the drawn block (the location gate checks it). The record
+    then carries the registry under ``cd_plan_registry``; without the flag it
+    has no such key.
     """
 
-    ladder = _load_block_v1_location_ladder(args)
+    ladder, cd_plan_registry = _load_block_v1_location_ladder(args)
     asec_paths = _asec_source_paths(args)
     source_year, source_household_id = household_source_keys(frame)
     geography = cps_source_geography(
@@ -1353,6 +1476,7 @@ def _block_v1_household_location(
         seed=args.location_seed,
         clones=args.location_clones,
         candidate_set_rule=geography.record,
+        cd_plan_registry=cd_plan_registry,
     )
     record.update(
         {
@@ -1402,7 +1526,8 @@ def _write_block_v1_location_attrs(
     checks before it runs. The ladder digest and vintages go under both the
     legacy ladder names and the ``populace_block_ladder_*`` names every
     block_v1 line writes. Seed and clones are written as text, as the stacked
-    pool writes them.
+    pool writes them. A record that attached the pinned CD-plan registry also
+    writes its digest; one that did not writes nothing more.
     """
 
     ladder = household_location["block_ladder"]
@@ -1425,6 +1550,13 @@ def _write_block_v1_location_attrs(
     attrs[POPULACE_LOCATION_RULE_ATTR] = str(household_location["location_rule"])
     attrs[POPULACE_LOCATION_SEED_ATTR] = str(household_location["seed"])
     attrs[POPULACE_LOCATION_CLONES_ATTR] = str(household_location["clones"])
+    if "cd_plan_registry" in household_location:
+        # From the record, never from args, so the final-export repair
+        # regenerates the same bytes; absent when no registry was attached.
+        registry = household_location["cd_plan_registry"]
+        if not isinstance(registry, Mapping):
+            raise TypeError("household_location['cd_plan_registry'] must be a mapping.")
+        attrs[POPULACE_CD_PLAN_REGISTRY_SHA256_ATTR] = str(registry["sha256"])
 
 
 def _run_all(
@@ -2351,6 +2483,9 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
             assert_unchanged_identity(before, after, stage=args.stage)
         elif args.stage == HOUSEHOLD_LOCATION_STAGE_NAME:
             after, household_location = _block_v1_household_location(args, before)
+            _require_cd_plan_registry_matches_lock(
+                household_location, runtime.context.run_config
+            )
             metadata = {"household_location": household_location}
             # --location-clones is 1 on this line (refused at parse time), so
             # the draw adds geography columns and changes no row or id.

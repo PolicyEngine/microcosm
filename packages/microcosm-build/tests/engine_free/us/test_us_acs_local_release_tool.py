@@ -1577,8 +1577,16 @@ def _block_located_hours_frame(tmp_path: Path, *, tamper: bool = False):
 
 
 def _mark_staging_block_v1(
-    module, args, ladder_path: Path, *, targets_ladder: bool = False
+    module,
+    args,
+    ladder_path: Path,
+    *,
+    targets_ladder: bool = False,
+    registry: tuple[dict, Path] | None = None,
 ) -> None:
+    """Mark the staging summary block_v1; ``registry`` is ``(record, path)``
+    of a CD-plan registry the staging run attached."""
+
     path = module._staging_summary_path(args)
     summary = json.loads(path.read_text())
     sha = module._sha256(ladder_path)
@@ -1590,6 +1598,11 @@ def _mark_staging_block_v1(
         "block_ladder": {"sha256": sha, "layer_vintages": {}},
         "block_ladder_path": str(ladder_path),
     }
+    if registry is not None:
+        record, registry_path = registry
+        summary["orchestration"]["cd_plan_registry_sha256"] = record["sha256"]
+        summary["household_location"]["cd_plan_registry"] = record
+        summary["household_location"]["cd_plan_registry_path"] = str(registry_path)
     if targets_ladder:
         # Under block_v1 the targets' --ladder must be the PUMA ladder staging
         # recorded (require_block_v1_targets_ladder).
@@ -1652,18 +1665,25 @@ def test_finalize_report_of_a_legacy_staging_run_has_no_block_gate(
 
 
 def _write_calibrated(
-    module, monkeypatch, tmp_path: Path, frame, *, block_ladder: Path | None
+    module,
+    monkeypatch,
+    tmp_path: Path,
+    frame,
+    *,
+    block_ladder: Path | None,
+    registry: tuple[dict, Path] | None = None,
 ):
     """Run ``_write_calibrated_artifact`` on ``frame`` with its heavy steps stubbed.
 
     ``block_ladder`` marks the staging summary as a ``block_v1`` run located
-    with that ladder; ``None`` leaves it a legacy run.
+    with that ladder (``registry``: with that CD-plan registry attached);
+    ``None`` leaves it a legacy run.
     """
 
     args = _finalize_args(module, tmp_path)
     args.out_h5.unlink()
     if block_ladder is not None:
-        _mark_staging_block_v1(module, args, block_ladder)
+        _mark_staging_block_v1(module, args, block_ladder, registry=registry)
         path = module._staging_summary_path(args)
         summary = json.loads(path.read_text())
         summary["geography_ladder"] = {
@@ -1831,3 +1851,480 @@ def test_finalize_refuses_a_block_v1_run_whose_targets_ladder_is_not_the_staged_
     for key in ("location_rule", "location_seed", "location_clones"):
         legacy["orchestration"].pop(key, None)
     module.require_block_v1_targets_ladder(legacy, "e" * 64)
+
+
+# ---------------------------------------------------------------------------
+# --cd-plan-registry staging: finalize re-attaches the pinned block -> CD-plan
+# registry the staging run recorded, so the block-location gate covers every
+# congressional_district_geoid__<plan> column; the calibrated artifact carries
+# the registry's digest; the package gate registers the plan columns. A run
+# without the registry is unchanged (the tests above pin it).
+# ---------------------------------------------------------------------------
+
+_PLAN_COLUMNS = (
+    "congressional_district_geoid__117th_congress",
+    "congressional_district_geoid__118th_congress",
+    "congressional_district_geoid__120th_congress",
+)
+
+
+def _registry_located_hours_frame(tmp_path: Path, monkeypatch, *, tamper=False):
+    """The plausible-hours frame located on a registry-attached ladder.
+
+    Returns ``(ladder_path, registry_path, record, frame)``; the synthetic
+    registry is pinned for the rest of the test.
+    """
+
+    from microcosm.build.us_runtime.block_location import (
+        attach_pinned_cd_plan_registry,
+        load_us_location_ladder,
+        with_household_us_block_location,
+    )
+    from microcosm.frame import US_SCHEMA, Frame
+    from test_support.microcosm_build.us_block_location import (
+        synthetic_blocks,
+        write_location_ladder,
+    )
+    from test_support.microcosm_build.us_cd_plan_registry import (
+        pin_cd_plan_registry,
+        registry_ready_blocks,
+        write_cd_plan_registry,
+    )
+
+    arrays = registry_ready_blocks(synthetic_blocks(3, states=(1, 2, 36)))
+    ladder_path = write_location_ladder(tmp_path / "blocks.npz", arrays)
+    registry_path = write_cd_plan_registry(tmp_path / "registry.npz", arrays)
+    pin_cd_plan_registry(monkeypatch, registry_path)
+    attached, record = attach_pinned_cd_plan_registry(
+        load_us_location_ladder(ladder_path), registry_path
+    )
+    frame = _plausible_hours_frame()
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["household"]["state_fips"] = [1, 1, 2, 2, 36, 36, 1, 2]
+    frame = Frame(tables, US_SCHEMA, {"household": frame.weights_for("household")})
+    located, _ = with_household_us_block_location(frame, attached, seed=0)
+    if tamper:
+        tables = {entity: located.table(entity).copy() for entity in located.entities}
+        tables["household"].loc[0, _PLAN_COLUMNS[1]] += 1
+        located = Frame(
+            tables, US_SCHEMA, {"household": located.weights_for("household")}
+        )
+    return ladder_path, registry_path, json.loads(json.dumps(record)), located
+
+
+def _without_plan_columns(frame):
+    from microcosm.frame import US_SCHEMA, Frame
+
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["household"] = tables["household"].drop(columns=list(_PLAN_COLUMNS))
+    return Frame(tables, US_SCHEMA, {"household": frame.weights_for("household")})
+
+
+def test_finalize_gates_the_plan_columns_against_the_reattached_registry(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    ladder_path, registry_path, record, frame = _registry_located_hours_frame(
+        tmp_path, monkeypatch
+    )
+    _mark_staging_block_v1(
+        module, args, ladder_path, targets_ladder=True, registry=(record, registry_path)
+    )
+    message, report = _run_finalize(module, monkeypatch, args, frame)
+    gate = report["gates"]["us_block_location_gate"]
+    assert gate["passed"] is True, gate["failures"]
+    assert set(_PLAN_COLUMNS) <= set(gate["detail"]["columns"])
+    assert gate["cd_plan_registry_sha256"] == record["sha256"]
+    assert record["sha256"] == module._sha256(registry_path)
+    assert "us_block_location_gate" not in message
+
+
+def test_finalize_hard_fails_a_plan_column_that_left_its_block(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    ladder_path, registry_path, record, frame = _registry_located_hours_frame(
+        tmp_path, monkeypatch, tamper=True
+    )
+    _mark_staging_block_v1(
+        module, args, ladder_path, targets_ladder=True, registry=(record, registry_path)
+    )
+    message, report = _run_finalize(module, monkeypatch, args, frame)
+    gate = report["gates"]["us_block_location_gate"]
+    assert gate["passed"] is False
+    assert any(failure.startswith(_PLAN_COLUMNS[1]) for failure in gate["failures"])
+    assert "us_block_location_gate" in message
+
+
+def test_finalize_refuses_plan_columns_no_recorded_registry_verifies(
+    tmp_path, monkeypatch
+) -> None:
+    """A staging summary that lost its registry record (or a legacy run)
+    cannot re-attach it, so the plan columns would ship unchecked: refused
+    before any report is written."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    ladder_path, _registry_path, _record, frame = _registry_located_hours_frame(
+        tmp_path, monkeypatch
+    )
+    message, report = _run_finalize(module, monkeypatch, args, frame)
+    assert "no CD-plan registry recorded by the staging summary" in message
+    assert report is None
+    _mark_staging_block_v1(module, args, ladder_path, targets_ladder=True)
+    message, report = _run_finalize(module, monkeypatch, args, frame)
+    assert "finalize cannot verify them" in message
+    assert all(column in message for column in _PLAN_COLUMNS)
+    assert report is None
+
+
+def test_finalize_of_a_registry_run_without_plan_columns_fails_the_gate(
+    tmp_path, monkeypatch
+) -> None:
+    """The converse binding: a summary that records a registry needs an
+    artifact that carries its plan columns."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    ladder_path, registry_path, record, frame = _registry_located_hours_frame(
+        tmp_path, monkeypatch
+    )
+    _mark_staging_block_v1(
+        module, args, ladder_path, targets_ladder=True, registry=(record, registry_path)
+    )
+    message, report = _run_finalize(
+        module, monkeypatch, args, _without_plan_columns(frame)
+    )
+    gate = report["gates"]["us_block_location_gate"]
+    assert gate["passed"] is False
+    assert "missing geography column" in gate["failures"][0]
+    assert "us_block_location_gate" in message
+
+
+def test_finalize_refuses_a_registry_run_whose_registry_bytes_moved(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    ladder_path, registry_path, record, frame = _registry_located_hours_frame(
+        tmp_path, monkeypatch
+    )
+    _mark_staging_block_v1(
+        module, args, ladder_path, targets_ladder=True, registry=(record, registry_path)
+    )
+    registry_path.write_bytes(b"different registry bytes")
+    message, report = _run_finalize(module, monkeypatch, args, frame)
+    assert "the block_v1 staging run attached" in message
+    assert report is None
+
+
+def test_finalize_reattaches_a_relocated_registry_through_the_override(
+    tmp_path, monkeypatch
+) -> None:
+    """The remedy the missing-registry refusal names: finalize threads the
+    release's --cd-plan-registry into the reload, so relocated bytes gate the
+    plan columns and the gate records their digest; without the override the
+    moved registry is refused before any report is written."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    ladder_path, registry_path, record, frame = _registry_located_hours_frame(
+        tmp_path, monkeypatch
+    )
+    _mark_staging_block_v1(
+        module, args, ladder_path, targets_ladder=True, registry=(record, registry_path)
+    )
+    moved = tmp_path / "moved" / "registry.npz"
+    moved.parent.mkdir()
+    registry_path.rename(moved)
+    assert args.cd_plan_registry is None
+
+    message, report = _run_finalize(module, monkeypatch, args, frame)
+    assert "missing; pass --cd-plan-registry" in message
+    assert report is None
+
+    args.cd_plan_registry = moved
+    message, report = _run_finalize(module, monkeypatch, args, frame)
+    gate = report["gates"]["us_block_location_gate"]
+    assert gate["passed"] is True, gate["failures"]
+    assert set(_PLAN_COLUMNS) <= set(gate["detail"]["columns"])
+    assert gate["cd_plan_registry_sha256"] == record["sha256"]
+    assert record["sha256"] == module._sha256(moved)
+    assert "us_block_location_gate" not in message
+
+
+_ALL_STAGES = ["materialize", "calibrate", "qa", "finalize", "package"]
+
+
+def _main_argv(tmp_path: Path, stage: str, *extra: str) -> list[str]:
+    """``main`` argv over the :func:`_finalize_args` fixture's files."""
+
+    return [
+        "--stage",
+        stage,
+        "--staging-h5",
+        str(tmp_path / "staging.h5"),
+        "--checkpoint-dir",
+        str(tmp_path / "ckpt"),
+        "--feed",
+        str(tmp_path / "feed.json"),
+        "--out-h5",
+        str(tmp_path / "out.h5"),
+        "--out",
+        str(tmp_path / "release"),
+        "--ladder",
+        str(tmp_path / "ladder.npz"),
+        *extra,
+    ]
+
+
+def _stub_stages(module, monkeypatch) -> list[str]:
+    """Replace every stage with a recorder; returns the stages ``main`` ran."""
+
+    ran: list[str] = []
+    for stage in _ALL_STAGES:
+        monkeypatch.setattr(
+            module, f"do_{stage}", lambda args, stage=stage: ran.append(stage)
+        )
+    return ran
+
+
+def _registry_release_fixture(tmp_path: Path, monkeypatch):
+    """A registry run's staging summary on the finalize fixture's files."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    ladder_path, registry_path, record, _frame = _registry_located_hours_frame(
+        tmp_path, monkeypatch
+    )
+    _mark_staging_block_v1(
+        module, args, ladder_path, targets_ladder=True, registry=(record, registry_path)
+    )
+    return module, args, registry_path
+
+
+@pytest.mark.parametrize("case", ["missing", "other_bytes", "unpinned"])
+def test_main_refuses_a_registry_finalize_cannot_reattach_before_any_stage(
+    tmp_path, monkeypatch, case: str
+) -> None:
+    """Invariant 4 on the release: ``--stage all`` reaches finalize only after
+    materialize and calibrate, so a registry it could not re-attach (moved,
+    replaced or no longer the package pin) is refused before the first stage
+    runs, and nothing is written to the checkpoint directory."""
+
+    from microcosm.build.us_runtime import cd_plan_registry
+
+    module, _args, registry_path = _registry_release_fixture(tmp_path, monkeypatch)
+    if case == "missing":
+        registry_path.unlink()
+        expected = "missing; pass --cd-plan-registry"
+    elif case == "other_bytes":
+        registry_path.write_bytes(b"different registry bytes")
+        expected = "the block_v1 staging run attached"
+    else:
+        monkeypatch.setattr(
+            cd_plan_registry,
+            "packaged_us_cd_plan_registry_provenance",
+            lambda: {"output_sha256": "0" * 64},
+        )
+        expected = "was refused: .*SHA-256"
+    ran = _stub_stages(module, monkeypatch)
+    for stage in ("all", "finalize"):
+        with pytest.raises(SystemExit, match=expected):
+            module.main(_main_argv(tmp_path, stage))
+    assert ran == []
+    assert not (tmp_path / "ckpt" / "rss_samples.json").exists()
+    # Stages that never re-attach the registry are not held up by it.
+    assert module.main(_main_argv(tmp_path, "materialize")) == 0
+    assert ran == ["materialize"]
+
+
+def test_main_runs_every_stage_with_a_relocated_registry(
+    tmp_path, monkeypatch
+) -> None:
+    module, _args, registry_path = _registry_release_fixture(tmp_path, monkeypatch)
+    moved = tmp_path / "moved" / "registry.npz"
+    moved.parent.mkdir()
+    registry_path.rename(moved)
+    ran = _stub_stages(module, monkeypatch)
+    with pytest.raises(SystemExit, match="missing; pass --cd-plan-registry"):
+        module.main(_main_argv(tmp_path, "all"))
+    assert ran == []
+    argv = _main_argv(tmp_path, "all", "--cd-plan-registry", str(moved))
+    assert module.main(argv) == 0
+    assert ran == _ALL_STAGES
+
+
+def test_main_refuses_an_inconsistent_registry_record_before_calibrate(
+    tmp_path, monkeypatch
+) -> None:
+    """Calibrate writes the registry digest from the staging summary after
+    its fit; an inconsistent record is refused before the fit starts."""
+
+    module, args, _registry_path = _registry_release_fixture(tmp_path, monkeypatch)
+    path = module._staging_summary_path(args)
+    summary = json.loads(path.read_text())
+    del summary["orchestration"]["cd_plan_registry_sha256"]
+    path.write_text(json.dumps(summary))
+    ran = _stub_stages(module, monkeypatch)
+    for stage in ("all", "calibrate", "finalize"):
+        with pytest.raises(SystemExit, match="records a CD-plan registry inconsistently"):
+            module.main(_main_argv(tmp_path, stage))
+    assert ran == []
+    assert module.main(_main_argv(tmp_path, "materialize")) == 0
+    assert ran == ["materialize"]
+
+
+@pytest.mark.parametrize("rule", ["legacy", "block_v1"])
+def test_main_preflight_reads_nothing_for_a_run_without_the_registry(
+    tmp_path, monkeypatch, rule: str
+) -> None:
+    """Invariants 1 and 2 on the release: without a staging registry the
+    preflight hashes no file and every stage runs as before; only a
+    --cd-plan-registry override (which such a run cannot use) is refused."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    if rule == "block_v1":
+        ladder_path, _frame = _block_located_hours_frame(tmp_path)
+        _mark_staging_block_v1(module, args, ladder_path, targets_ladder=True)
+    hashed: list[Path] = []
+    sha256 = module._sha256
+    monkeypatch.setattr(
+        module, "_sha256", lambda path: hashed.append(Path(path)) or sha256(path)
+    )
+    ran = _stub_stages(module, monkeypatch)
+    assert module.main(_main_argv(tmp_path, "all")) == 0
+    assert ran == _ALL_STAGES
+    assert hashed == []
+    ran.clear()
+    expected = "legacy location rule" if rule == "legacy" else "records none"
+    override = ("--cd-plan-registry", str(tmp_path / "registry.npz"))
+    with pytest.raises(SystemExit, match=expected):
+        module.main(_main_argv(tmp_path, "finalize", *override))
+    assert ran == []
+
+
+@requires_pytables
+def test_calibrated_artifact_of_a_registry_run_records_the_registry_digest(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    ladder_path, registry_path, record, frame = _registry_located_hours_frame(
+        tmp_path, monkeypatch
+    )
+    attributes = _write_calibrated(
+        module,
+        monkeypatch,
+        tmp_path,
+        frame,
+        block_ladder=ladder_path,
+        registry=(record, registry_path),
+    )
+    assert attributes["populace_cd_plan_registry_sha256"] == module._sha256(
+        registry_path
+    )
+    written = module._load_staging_frame(tmp_path / "out.h5").table("household")
+    for column in _PLAN_COLUMNS:
+        np.testing.assert_array_equal(
+            written[column].to_numpy(),
+            frame.table("household")[column].to_numpy(),
+        )
+
+
+@requires_pytables
+def test_calibrated_artifact_of_a_block_v1_run_without_the_registry_has_no_digest(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    ladder_path, frame = _block_located_hours_frame(tmp_path)
+    attributes = _write_calibrated(
+        module, monkeypatch, tmp_path, frame, block_ladder=ladder_path
+    )
+    assert "populace_cd_plan_registry_sha256" not in attributes
+    assert len(attributes) == 7
+
+
+def test_package_of_a_registry_run_records_the_registry(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    ladder_path, registry_path, record, _frame = _registry_located_hours_frame(
+        tmp_path, monkeypatch
+    )
+    _mark_staging_block_v1(module, args, ladder_path, registry=(record, registry_path))
+    result = module.do_package(args)
+    build_manifest = json.loads(
+        (Path(result["release_dir"]) / "build_manifest.json").read_text()
+    )
+    orchestration = build_manifest["staging_orchestration"]
+    assert orchestration["cd_plan_registry_sha256"] == module._sha256(registry_path)
+    assert orchestration["household_location"]["cd_plan_registry"] == record
+    staging_recipe = build_manifest["refresh_recipe"]["staging"]
+    assert staging_recipe.endswith(
+        "--block-ladder <us_block_ladder_2020_puma.npz> "
+        "--cd-plan-registry <us_cd_plan_registry_2020.npz>"
+    )
+
+
+@requires_pytables
+def test_package_stored_input_gate_registers_the_plan_columns(tmp_path, monkeypatch):
+    """The three plan columns are model-named non-variables; the real
+    stored-input contract accepts them only through the reviewed register
+    and lists them under registered_non_variables."""
+
+    from microcosm.frame import Frame
+
+    monkeypatch.setattr(
+        stored_inputs, "require_h5_stored_inputs", _REAL_REQUIRE_H5_STORED_INPUTS
+    )
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    frame = _plausible_hours_frame()
+    household = frame.table("household").assign(
+        **{column: 101 for column in _PLAN_COLUMNS}
+    )
+    frame = Frame(
+        {
+            **{entity: frame.table(entity) for entity in frame.entities},
+            "household": household,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    _load_staging_builder_module()._write_dataset(
+        frame, args.out_h5, period=2024, artifact_kind="calibrated_local_area_artifact"
+    )
+    _refresh_package_evidence_bindings(module, args)
+    result = module.do_package(args)
+    gate = json.loads((Path(result["release_dir"]) / "gate_summary.json").read_text())[
+        "gates"
+    ]["stored_inputs"]
+    assert gate["passed"] is True
+    assert gate["registered_non_variables"] == sorted(_PLAN_COLUMNS)
+    assert gate["register_sha256"] == stored_inputs.register_sha256()
+
+
+def test_release_parser_accepts_a_relocated_registry(tmp_path: Path) -> None:
+    module = _load_tool_module()
+    base = [
+        "--stage",
+        "finalize",
+        "--staging-h5",
+        str(tmp_path / "staging.h5"),
+        "--checkpoint-dir",
+        str(tmp_path / "ckpt"),
+        "--out-h5",
+        str(tmp_path / "out.h5"),
+    ]
+    assert module._parse_args(base).cd_plan_registry is None
+    moved = module._parse_args([*base, "--cd-plan-registry", str(tmp_path / "r.npz")])
+    assert moved.cd_plan_registry == tmp_path / "r.npz"

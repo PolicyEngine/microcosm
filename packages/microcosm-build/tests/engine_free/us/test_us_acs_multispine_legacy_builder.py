@@ -131,6 +131,7 @@ def test_parser_exposes_production_defaults_and_transfer_controls() -> None:
     assert args.seed == 0
     assert args.geography_seed == 0
     assert args.donor_channel == builder.ACS_DONOR_CHANNEL_AUTO
+    assert args.cd_plan_registry is None
 
     custom = builder._parse_args(
         [
@@ -525,6 +526,61 @@ def test_default_transfer_fails_closed_before_fetch_without_benefit_participatio
 
     assert "no takes_up_*" in str(exc.value)
     assert "must run after the benefit input-family stages" in str(exc.value)
+
+
+def test_legacy_rule_refuses_base_cd_plan_columns_before_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The legacy PUMA-ladder assignment writes no CD-plan column, so a donor
+    base carrying one (a registry-attached block_v1 base) would ship it null
+    on every ACS row. The legacy line refuses it right after the base loads;
+    a base without one (every existing base) is unaffected."""
+
+    builder = _load_builder_module()
+    base = _frame()
+    base.table("household")["congressional_district_geoid__118th_congress"] = [
+        601,
+        3601,
+    ]
+    monkeypatch.setattr(
+        builder.acs_sources, "load_acs_source_manifest", lambda path: _manifest()
+    )
+    monkeypatch.setattr(builder, "_load_base_frame", lambda path: base)
+    monkeypatch.setattr(builder, "_sha256", lambda path: "0" * 64)
+
+    def must_not_fetch(*_args, **_kwargs):
+        raise AssertionError("source fetch must not run for a stale-plan donor")
+
+    monkeypatch.setattr(builder.acs_sources, "fetch_acs_pums_sources", must_not_fetch)
+    with pytest.raises(SystemExit) as exc:
+        builder.main(["--base-h5", "planned.h5", "--out-h5", "combined.h5"])
+    message = str(exc.value)
+    assert message.startswith("--base-h5: Refusing CD-plan household column(s)")
+    assert "congressional_district_geoid__118th_congress" in message
+    assert "legacy PUMA-ladder assignment writes no CD-plan column" in message
+
+
+def test_legacy_rule_refuses_the_registry_flag_before_reading_anything(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = _load_builder_module()
+
+    def must_not_run(*_args, **_kwargs):
+        raise AssertionError("argument validation must refuse first")
+
+    monkeypatch.setattr(builder.acs_sources, "load_acs_source_manifest", must_not_run)
+    monkeypatch.setattr(builder, "_load_base_frame", must_not_run)
+    with pytest.raises(SystemExit, match="--cd-plan-registry is only used"):
+        builder.main(
+            [
+                "--base-h5",
+                "dense.h5",
+                "--out-h5",
+                "combined.h5",
+                "--cd-plan-registry",
+                "registry.npz",
+            ]
+        )
 
 
 def test_empty_transfer_audit_is_not_treated_as_success() -> None:

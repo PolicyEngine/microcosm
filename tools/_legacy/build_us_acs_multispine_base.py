@@ -15,6 +15,16 @@ geography derives from the block. The block-location gate is then a hard
 failure, and the rule, seed and both ladders' sha256 are recorded in the
 summary (``household_location``, ``orchestration``, ``geography_ladder``) and
 the staging H5's root attributes. The legacy default is unchanged.
+
+``--cd-plan-registry`` (``block_v1`` only) attaches the pinned block ->
+congressional-district plan registry to the block ladder before any other
+stage: every household then also carries
+``congressional_district_geoid__<plan>`` for each non-current plan, looked up
+from its block, and the registry's sha256 is recorded in
+``household_location.cd_plan_registry``, ``orchestration`` and the
+``populace_cd_plan_registry_sha256`` root attribute. Without the flag nothing
+about a ``block_v1`` run changes. A donor base carrying plan columns the run
+would not rewrite is refused under either rule.
 """
 
 from __future__ import annotations
@@ -68,21 +78,27 @@ from microcosm.build.us_runtime.base_pool import (
     ACS_POOL_LOCATION_CLONES_REFUSAL,
     DONOR_BLOCK_PRESERVED,
     DONOR_BLOCK_STATE_DRAWN,
+    refuse_unwritten_cd_plan_columns,
     spine_column,
+    unwritten_cd_plan_columns,
 )
 from microcosm.build.us_runtime.block_location import (
     POPULACE_BLOCK_LADDER_SHA256_ATTR,
     POPULACE_BLOCK_LADDER_VINTAGES_ATTR,
+    POPULACE_CD_PLAN_REGISTRY_SHA256_ATTR,
     POPULACE_LOCATION_CLONES_ATTR,
     POPULACE_LOCATION_RULE_ATTR,
     POPULACE_LOCATION_SEED_ATTR,
+    US_CD_PLAN_COLUMN_PREFIX,
     US_LOCATION_RULE_BLOCK_V1,
     US_LOCATION_RULE_CHOICES,
     US_LOCATION_RULE_LEGACY,
     UsLocationLadder,
+    attach_pinned_cd_plan_registry,
     load_us_location_ladder,
     location_geography_columns,
     us_block_location_gate,
+    verify_pinned_cd_plan_registry_file,
 )
 from microcosm.build.us_runtime.h5_io import (
     assert_h5_unchanged,
@@ -127,6 +143,10 @@ LOCATION_SEED_ATTR = POPULACE_LOCATION_SEED_ATTR
 LOCATION_CLONES_ATTR = POPULACE_LOCATION_CLONES_ATTR
 LOCATION_BLOCK_LADDER_SHA256_ATTR = POPULACE_BLOCK_LADDER_SHA256_ATTR
 LOCATION_BLOCK_LADDER_VINTAGES_ATTR = POPULACE_BLOCK_LADDER_VINTAGES_ATTR
+#: Written (with the attributes above) only when ``--cd-plan-registry``
+#: attached the pinned block -> CD-plan registry; read from a donor base that
+#: records one, whose registry must then be this run's.
+LOCATION_CD_PLAN_REGISTRY_SHA256_ATTR = POPULACE_CD_PLAN_REGISTRY_SHA256_ATTR
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -228,6 +248,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--cd-plan-registry",
+        type=Path,
+        help=(
+            "The pinned block -> congressional-district plan registry NPZ "
+            "(only accepted with --location-rule block_v1; any file but the "
+            "one microcosm.build.us_runtime/us_cd_plan_registry.provenance.json "
+            "pins is refused). Every household then also carries "
+            "congressional_district_geoid__<plan> for each non-current plan, "
+            "looked up from its block."
+        ),
+    )
+    parser.add_argument(
         "--n-estimators",
         default=DEFAULT_N_ESTIMATORS,
         type=_positive_int,
@@ -325,6 +357,11 @@ def _validate_location_arguments(args: argparse.Namespace) -> None:
                 "--block-ladder is only used by --location-rule block_v1; the "
                 "legacy rule assigns geography from --puma-ladder."
             )
+        if getattr(args, "cd_plan_registry", None) is not None:
+            raise SystemExit(
+                "--cd-plan-registry is only used by --location-rule block_v1; "
+                "the legacy PUMA-ladder rule writes no CD-plan column."
+            )
         return
     if args.block_ladder is None:
         raise SystemExit("--location-rule block_v1 requires --block-ladder.")
@@ -342,7 +379,10 @@ def _base_location_rule(path: Path) -> dict[str, object]:
     """The donor base's recorded location rule, from its H5 root attributes.
 
     A base H5 without :data:`LOCATION_RULE_ATTR` predates the attribute, so
-    its rule is recorded as ``legacy``.
+    its rule is recorded as ``legacy``. A base whose location attached the
+    block -> CD-plan registry also records
+    :data:`LOCATION_CD_PLAN_REGISTRY_SHA256_ATTR`; an absent attribute is
+    omitted, not recorded as empty.
     """
 
     with pd.HDFStore(path, mode="r") as store:
@@ -350,7 +390,12 @@ def _base_location_rule(path: Path) -> dict[str, object]:
         names = set(attributes._v_attrnames)
         recorded = {
             key: _attribute_text(attributes[key])
-            for key in (LOCATION_RULE_ATTR, LOCATION_SEED_ATTR, LOCATION_CLONES_ATTR)
+            for key in (
+                LOCATION_RULE_ATTR,
+                LOCATION_SEED_ATTR,
+                LOCATION_CLONES_ATTR,
+                LOCATION_CD_PLAN_REGISTRY_SHA256_ATTR,
+            )
             if key in names
         }
     return {
@@ -376,14 +421,27 @@ def main(argv: list[str] | None = None) -> int:
     block_location = args.location_rule != US_LOCATION_RULE_LEGACY
     block_ladder: UsLocationLadder | None = None
     base_location: dict[str, object] | None = None
+    cd_plan_registry: dict[str, Any] | None = None
     if block_location:
+        if args.cd_plan_registry is not None:
+            # One streamed hash: a missing or unpinned registry is refused
+            # before the block ladder (or anything larger) is read.
+            _verify_cd_plan_registry_file(args.cd_plan_registry)
         block_ladder = load_us_location_ladder(args.block_ladder)
         if block_ladder.puma is None:
             raise SystemExit(
                 f"--block-ladder {args.block_ladder} carries no per-block 'puma' "
                 "array; block_v1 ACS rows draw within their observed PUMA."
             )
+        if args.cd_plan_registry is not None:
+            # Before the base load, so a registry that contradicts the
+            # ladder fails fast; every later stage (ladder agreement, pool,
+            # gate, manifest) sees the attached plans.
+            block_ladder, cd_plan_registry = _attach_cd_plan_registry(
+                block_ladder, args.cd_plan_registry
+            )
         base_location = _base_location_rule(args.base_h5)
+        _require_base_cd_plan_registry(base_location, cd_plan_registry)
 
     manifest = acs_sources.load_acs_source_manifest(args.source_manifest)
     manifest_file = _manifest_file(args.source_manifest)
@@ -391,6 +449,7 @@ def main(argv: list[str] | None = None) -> int:
     base_sha256 = _sha256(args.base_h5)
     donor_release = _donor_release_identity(args.donor_release_manifest, base_sha256)
     base = _load_base_frame(args.base_h5)
+    _refuse_unwritten_base_cd_plan_columns(base, block_ladder)
     _require_benefit_participation_inputs(base)
     transfer_plan = declared_acs_transfer_target_families()
     _require_dense_donor_coverage(
@@ -423,6 +482,8 @@ def main(argv: list[str] | None = None) -> int:
             "location_seed": args.location_seed,
             "location_clones": args.location_clones,
         }
+        if cd_plan_registry is not None:
+            location_options["cd_plan_registry"] = cd_plan_registry
     result = build_optional_acs_multispine(
         base,
         source,
@@ -445,7 +506,9 @@ def main(argv: list[str] | None = None) -> int:
     location_gate = None
     if block_location:
         assert block_ladder is not None
-        location_gate = _require_block_location(result, block_ladder)
+        location_gate = _require_block_location(
+            result, block_ladder, cd_plan_registry=cd_plan_registry
+        )
     _require_benefit_participation_transfer(result)
     transfer_coverage = _require_default_transfer_coverage(
         result,
@@ -485,6 +548,13 @@ def main(argv: list[str] | None = None) -> int:
                 block_ladder_vintages=block_ladder.layer_vintages,
                 puma_ladder_sha256=puma_ladder_sha256,
                 puma_ladder_vintages=puma_ladder.layer_vintages,
+                # The loaded file's digest, from the attach record (never an
+                # argument); None writes no registry attribute.
+                cd_plan_registry_sha256=(
+                    None
+                    if cd_plan_registry is None
+                    else str(cd_plan_registry["sha256"])
+                ),
             ),
         )
     else:
@@ -720,9 +790,19 @@ def _require_puma_ladder_assignment(result: AcsMultispineResult) -> None:
 
 
 def _require_block_location(
-    result: AcsMultispineResult, block_ladder: UsLocationLadder
+    result: AcsMultispineResult,
+    block_ladder: UsLocationLadder,
+    *,
+    cd_plan_registry: Mapping[str, Any] | None = None,
 ) -> GateResult:
-    """Hard-gate a ``block_v1`` pool: every geography is its block's lookup."""
+    """Hard-gate a ``block_v1`` pool: every geography is its block's lookup.
+
+    ``block_ladder`` is the ladder this run located with, so an attached
+    registry's plan columns are among the gated columns. A plan column the
+    ladder does not write is refused (nothing could verify it), and the
+    recorded ``cd_plan_registry`` must name exactly the registry this run
+    attached (``cd_plan_registry``; none recorded when none was attached).
+    """
 
     household = result.frame.table("household")
     columns = location_geography_columns(block_ladder)
@@ -736,14 +816,114 @@ def _require_block_location(
     }
     if nulls:
         raise SystemExit(f"Block location left null household values: {nulls}.")
-    if not isinstance(result.provenance.get("household_location"), dict):
+    unwritten = unwritten_cd_plan_columns(household.columns, block_ladder)
+    if unwritten:
+        raise SystemExit(
+            f"Block location carries CD-plan column(s) {unwritten} that the "
+            "block ladder does not attach, so no gate can verify them."
+        )
+    location = result.provenance.get("household_location")
+    if not isinstance(location, dict):
         raise SystemExit(
             "ACS multispine did not record the block_v1 household location."
+        )
+    recorded = location.get("cd_plan_registry")
+    recorded_sha = recorded.get("sha256") if isinstance(recorded, Mapping) else None
+    expected_sha = None if cd_plan_registry is None else cd_plan_registry["sha256"]
+    if (recorded is None) != (cd_plan_registry is None) or recorded_sha != expected_sha:
+        raise SystemExit(
+            "The block_v1 household location records CD-plan registry "
+            f"{recorded_sha!r}, but this run attached {expected_sha!r}."
         )
     gate = us_block_location_gate(household, block_ladder)
     if not gate.passed:
         raise SystemExit("Block location gate failed: " + "; ".join(gate.failures))
     return gate
+
+
+def _verify_cd_plan_registry_file(path: Path) -> str:
+    """Refuse ``--cd-plan-registry`` unless it is the packaged pin's bytes.
+
+    :func:`~microcosm.build.us_runtime.block_location.verify_pinned_cd_plan_registry_file`
+    hashes the file once, so a wrong or missing registry fails before any
+    ladder, base or ACS input is read; the attach re-verifies the bytes it
+    loads.
+    """
+
+    try:
+        return verify_pinned_cd_plan_registry_file(path)
+    except (FileNotFoundError, ValueError) as error:
+        raise SystemExit(f"--cd-plan-registry {path} was refused: {error}") from error
+
+
+def _attach_cd_plan_registry(
+    block_ladder: UsLocationLadder, path: Path
+) -> tuple[UsLocationLadder, dict[str, Any]]:
+    """Attach the pinned block -> CD-plan registry at ``path`` to the ladder.
+
+    :func:`~microcosm.build.us_runtime.block_location.attach_pinned_cd_plan_registry`
+    refuses any file but the packaged pin and a registry whose current plan
+    disagrees with the ladder's own on any block. Returns the attached ladder
+    and the ``cd_plan_registry`` record the pool's manifest carries.
+    """
+
+    try:
+        return attach_pinned_cd_plan_registry(block_ladder, path)
+    except (FileNotFoundError, ValueError) as error:
+        raise SystemExit(f"--cd-plan-registry {path} was refused: {error}") from error
+
+
+def _require_base_cd_plan_registry(
+    base_location: Mapping[str, object], cd_plan_registry: Mapping[str, Any] | None
+) -> None:
+    """Refuse a donor base located with a registry other than this run's.
+
+    A base whose location attached a block -> CD-plan registry records its
+    digest (:data:`LOCATION_CD_PLAN_REGISTRY_SHA256_ATTR`). Its donors' plan
+    columns are re-derived from their preserved blocks through this run's
+    registry, so a different registry (or none) would silently replace or
+    drop them. A base that records none is accepted with or without one.
+    """
+
+    attributes = base_location.get("attributes")
+    recorded = (
+        attributes.get(LOCATION_CD_PLAN_REGISTRY_SHA256_ATTR)
+        if isinstance(attributes, Mapping)
+        else None
+    )
+    if recorded is None:
+        return
+    expected = None if cd_plan_registry is None else str(cd_plan_registry["sha256"])
+    if recorded != expected:
+        attached = (
+            "attaches none; pass --cd-plan-registry with that registry"
+            if expected is None
+            else f"attaches {expected}"
+        )
+        raise SystemExit(
+            f"--base-h5 was located with CD-plan registry {recorded} "
+            f"({LOCATION_CD_PLAN_REGISTRY_SHA256_ATTR}), but this run {attached}."
+        )
+
+
+def _refuse_unwritten_base_cd_plan_columns(
+    base: Frame, block_ladder: UsLocationLadder | None
+) -> None:
+    """Refuse, before the ACS spine loads, base plan columns the pool won't rewrite.
+
+    The pool refuses them too
+    (:func:`~microcosm.build.us_runtime.base_pool.refuse_unwritten_cd_plan_columns`);
+    checking here fails before the ACS archives are fetched and read.
+    ``block_ladder`` is ``None`` under the legacy rule, which writes no plan
+    column.
+    """
+
+    try:
+        refuse_unwritten_cd_plan_columns(
+            base.table("household"), block_ladder=block_ladder
+        )
+    except ValueError as error:
+        raise SystemExit(f"--base-h5: {error}") from error
 
 
 def _block_puma_ladder_agreement(
@@ -835,6 +1015,7 @@ def location_root_attributes(
     block_ladder_vintages: Mapping[str, str],
     puma_ladder_sha256: str,
     puma_ladder_vintages: Mapping[str, str],
+    cd_plan_registry_sha256: str | None = None,
 ) -> dict[str, str]:
     """H5 root attributes recording a ``block_v1`` location step.
 
@@ -842,9 +1023,11 @@ def location_root_attributes(
     because the local release draws its state and CD population targets from
     it. ``tools/build_us_acs_local_release.py`` writes the same attributes on
     the calibrated artifact from the staging summary.
+    ``cd_plan_registry_sha256`` (the attached registry's digest) adds
+    :data:`LOCATION_CD_PLAN_REGISTRY_SHA256_ATTR`; ``None`` adds nothing.
     """
 
-    return {
+    attributes = {
         LOCATION_RULE_ATTR: location_rule,
         LOCATION_SEED_ATTR: str(int(location_seed)),
         LOCATION_CLONES_ATTR: str(int(location_clones)),
@@ -857,6 +1040,9 @@ def location_root_attributes(
             dict(puma_ladder_vintages), sort_keys=True
         ),
     }
+    if cd_plan_registry_sha256 is not None:
+        attributes[LOCATION_CD_PLAN_REGISTRY_SHA256_ATTR] = str(cd_plan_registry_sha256)
+    return attributes
 
 
 def _household_location_summary(
@@ -869,11 +1055,16 @@ def _household_location_summary(
     ladder_agreement: dict[str, object] | None,
     gate: GateResult,
 ) -> dict[str, object]:
-    """The staging summary's ``household_location`` block (``block_v1`` only)."""
+    """The staging summary's ``household_location`` block (``block_v1`` only).
+
+    With ``--cd-plan-registry`` it also names the registry file
+    (``cd_plan_registry_path``) next to the pool's ``cd_plan_registry``
+    record, so the local release can re-attach it for its finalize gate.
+    """
 
     record = result.provenance["household_location"]
     assert isinstance(record, dict)
-    return {
+    summary: dict[str, object] = {
         **record,
         "block_ladder_path": str(args.block_ladder.resolve()),
         "puma_ladder": {
@@ -893,6 +1084,10 @@ def _household_location_summary(
             "details": dict(gate.details),
         },
     }
+    registry_path = getattr(args, "cd_plan_registry", None)
+    if registry_path is not None:
+        summary["cd_plan_registry_path"] = str(registry_path.resolve())
+    return summary
 
 
 def _require_default_transfer_coverage(
@@ -1246,6 +1441,28 @@ def _block_v1_sub_puma_limitation(geography: dict[str, object]) -> dict[str, obj
             "redrawn); donors without one draw a block within their state "
             "(counts in household_location.donor_blocks)."
         )
+    treatment = (
+        "Give each ACS household one 2020 census block drawn with "
+        "probability proportional to 2020 block population within its "
+        "observed PUMA, keep each donor's already-assigned block (a donor "
+        "without one draws within its state), and derive block, tract, "
+        "county, place, SLDU/SLDL, CBSA, PUMA and congressional district "
+        "from the block through the block ladder. ACS rows therefore now "
+        "carry block/tract/place/SLD/CBSA, and no household's geographies "
+        "contradict each other."
+    )
+    plan_columns = [
+        str(column)
+        for column in columns
+        if str(column).startswith(US_CD_PLAN_COLUMN_PREFIX)
+    ]
+    if plan_columns:
+        # Only with --cd-plan-registry: a run without it keeps the text above.
+        treatment += (
+            " The pinned block -> congressional-district plan registry's other "
+            f"plans ({', '.join(plan_columns)}) are looked up from the same "
+            "block."
+        )
     return {
         "id": "sub_puma_geographic_precision",
         "status": "reviewed_probabilistic_assignment",
@@ -1264,16 +1481,7 @@ def _block_v1_sub_puma_limitation(geography: dict[str, object]) -> dict[str, obj
             "so the block an ACS household occupies cannot be recovered for "
             "a source microrecord; it is drawn. " + donor_reason
         ),
-        "treatment": (
-            "Give each ACS household one 2020 census block drawn with "
-            "probability proportional to 2020 block population within its "
-            "observed PUMA, keep each donor's already-assigned block (a donor "
-            "without one draws within its state), and derive block, tract, "
-            "county, place, SLDU/SLDL, CBSA, PUMA and congressional district "
-            "from the block through the block ladder. ACS rows therefore now "
-            "carry block/tract/place/SLD/CBSA, and no household's geographies "
-            "contradict each other."
-        ),
+        "treatment": treatment,
         "assignment_seed": geography.get("seed"),
         "layer_vintages": geography.get("block_layer_vintages", {}),
         "calibration_blocker": False,
@@ -1376,6 +1584,9 @@ def _build_summary(
                 "block_ladder_sha256": household_location["block_ladder"]["sha256"],
             }
         )
+        registry = household_location.get("cd_plan_registry")
+        if registry is not None:
+            orchestration["cd_plan_registry_sha256"] = registry["sha256"]
     return {
         "version": 1,
         "stage": "acs_2024_1yr_multispine_base",
@@ -1492,6 +1703,9 @@ def _validate_artifact_paths(
     block_ladder = getattr(args, "block_ladder", None)
     if block_ladder is not None and block_ladder.resolve() in {output, summary}:
         raise SystemExit("--block-ladder must differ from --out-h5 and --summary.")
+    registry = getattr(args, "cd_plan_registry", None)
+    if registry is not None and registry.resolve() in {output, summary}:
+        raise SystemExit("--cd-plan-registry must differ from --out-h5 and --summary.")
 
 
 def _spine_totals(frame: Frame) -> dict[str, dict[str, Any]]:
