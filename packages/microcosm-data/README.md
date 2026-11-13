@@ -50,7 +50,8 @@ it bypasses the release pointer, manifest, digest, and engine compatibility
 checks. The loader refuses it for an entry whose repository records its builds
 in `releases.json`, which every registered entry's repository does since the
 UK and US switches. Builds published into folders write no root file, so the
-US repository's root `populace_us_2024.h5` stopped changing at its switch.
+US repository's root `populace_us_2024.h5` stopped changing at its switch,
+and the switch tool's `delete-old-layout` step deletes it.
 
 ## Why a shard, not a repo per country
 
