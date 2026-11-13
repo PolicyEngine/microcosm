@@ -566,7 +566,23 @@ to accept them before it closes the emitter. The printed outcome's
 submissions not yet accepted when the wait ends, are warnings and never fail
 the command. Once the collector has accepted them, its own processing decides
 whether it builds a tree from them or rejects them (for example
-`provenance_mismatch`); the command doesn't wait for that. The calibration diagnostics dashboard posts
+`provenance_mismatch`); the command doesn't wait for that. A promotion names
+its build for the collector in the same way, so once it has landed the
+emitter submits `releases.json` at the commit its receipt reports, naming the
+build now current, and the command waits for the collector to accept it,
+with the same `collector_submission` output and warnings, less the advice
+about files on disk (the emitter keeps the `releases.json` it sends). A
+change that writes nothing, such as promoting the build already current,
+sends the same record as the change that last wrote `releases.json`; when
+another Hugging Face user sent that one, the collector refuses the copy and
+the command warns `COLLECTOR_REFUSED_403`, although the collector already
+holds the record. For a promotion
+that has not landed the command says nothing of the collector: a refused one
+sends nothing, and a pending one is sent by the emitter that lands it later. The collector then reads `releases.json` at the repository's
+head and points the country's latest calibration tree at the current build
+of its default release, older or newer, when it has that build's tree.
+`--make-current` needs no separate record: the publication's calibration
+diagnostics already name the build it made current. The calibration diagnostics dashboard posts
 these releases' Slack alerts from changes to `releases.json`. The UK
 assemblers, the US national builder and the US ACS package stage print the
 exact commands; the UK
@@ -574,6 +590,35 @@ exact commands; the UK
 [dense](docs/uk-dense-release-assembly-runbook-762.md) runbooks describe them.
 `microcosm.data.load` reads the current build of such a release from
 `releases.json`, or the listed build `build=` names.
+
+**Withdrawing a build.** A published build that should no longer be used is
+withdrawn, not deleted:
+
+```bash
+uv run microcosm-withdraw-release-build <repository> <release> <build>
+```
+
+The command hands the withdrawal to the emitter's release writer, which sets
+the build's `withdrawn` flag in `releases.json` and leaves its folder as
+published. The writer refuses the release's current build (make another
+build current first: `--promote` with that build's release directory) and a
+build `releases.json` does not list, and never makes a withdrawn build
+current: `--promote` is refused, and publishing it again with
+`--make-current` reports it published but not current. The command refuses
+offline and while a `latest*.json` file exists, before it starts an emitter,
+checks the emitter's write access first, waits up to five minutes, prints
+the receipt as JSON with `"change": "withdraw"` and `"withdrawn"`, and exits
+1 unless the build is withdrawn. Like a promotion, the withdrawal names its
+build for the collector: once it has landed, the emitter submits
+`releases.json`, naming the release's current build, and the command waits
+for the collector to accept it (`collector_submission`). A release left with
+no current build sends nothing (`NO_CURRENT_BUILD`), which the command
+reports as a warning. The publish and promote commands' JSON
+carries `"change"` too, and `"withdrawn": null`: they cannot tell. `microcosm.data.load` loads a withdrawn build only when `build=`
+pins it, with a warning. A compatibility recertification or an annual
+projection whose parent or base is a build-folder build is refused before
+anything is handed over when `releases.json` withdrew or no longer lists that
+build, and the UK cut reference refuses a withdrawn build.
 
 **The US releases.** `policyengine/populace-us` has five releases
 (`microcosm.data.contract.US_RELEASES`):

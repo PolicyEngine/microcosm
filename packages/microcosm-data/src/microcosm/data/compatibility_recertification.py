@@ -3092,7 +3092,7 @@ def require_parent_publication(
     :func:`microcosm.data.build_folder_manifests.referenced_build` says: at
     ``main`` from its build folder ``releases/<release>/<build>/``, which
     never changes, or at its immutable tag from ``releases/<id>/`` for a
-    parent that keeps only its tag. Two checks, both there:
+    parent that keeps only its tag. Three checks:
 
     - the carried ``release_manifest.json`` and ``build_manifest.json`` are
       byte for byte the parent's published ones. The release manifest pins
@@ -3106,6 +3106,8 @@ def require_parent_publication(
       locally; at a tag this is what stops a root artifact moved into the
       release directory from publishing as a release file. The child's copy
       of the H5 is read from ``artifact_root`` under its own name.
+    - last, a build-folder parent is listed in ``releases.json`` and not
+      withdrawn.
 
     ``api`` needs ``hf_hub_download`` and ``get_paths_info``. Absence and
     difference both refuse. A transient Hub failure propagates.
@@ -3222,6 +3224,19 @@ def require_parent_publication(
                 f"{path_in_repo} {where} is not the artifact the child "
                 "carries; refusing to publish it there"
             )
+    if build_folder:
+        # A recertification republishes its parent's data under a wider
+        # claim, so a parent its repository withdrew, or no longer lists, is
+        # refused.
+        from microcosm.data.build_folder_manifests import require_offered_build
+
+        require_offered_build(
+            api,
+            repo_id=repo_id,
+            release=str(parent.get("release")),
+            build=str(parent.get("build")),
+            label="the parent build",
+        )
 
 
 # ---------------------------------------------------------------------------

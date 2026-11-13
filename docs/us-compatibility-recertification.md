@@ -66,7 +66,7 @@ Offline, the validator:
 
 `microcosm-publish-release-build` adds the online anchor
 (`require_parent_publication`). After the child passes its checks, and before
-anything is handed to the emitter, it checks two things where the parent is
+anything is handed to the emitter, it checks three things where the parent is
 read:
 
 - both parent manifests are byte for byte the carried ones, so a child is
@@ -75,7 +75,9 @@ read:
   folder, every file in that folder; at a tag, each release file under
   `releases/<parent>/` and each root artifact at its root path. It compares an
   LFS file's SHA-256, or the git blob id of the carried bytes. The child's H5
-  is read from the artifact root under its own name.
+  is read from the artifact root under its own name;
+- a build-folder parent is listed in the repository's `releases.json` and not
+  withdrawn (a withdrawn parent's data is not republished).
 
 For a parent that keeps only its tag, which artifacts count as release files
 rests offline on where the files sit locally, and this check is what stops a

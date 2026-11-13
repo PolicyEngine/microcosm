@@ -45,6 +45,7 @@ __all__ = [
     "ReleaseEntry",
     "ReleasesRecord",
     "build_folder",
+    "build_refusal",
     "parse_releases_record",
 ]
 
@@ -158,3 +159,26 @@ def parse_releases_record(content: bytes) -> ReleasesRecord:
     if default is not None and default not in releases:
         raise ValueError(f"its default {default} is not listed")
     return ReleasesRecord(default=default, releases=releases)
+
+
+def build_refusal(record: ReleasesRecord, *, release: str, build: str) -> str | None:
+    """Why a reader may not take ``build`` of ``release`` from ``record``, or None.
+
+    The record must list the build, and the build must not be withdrawn. A
+    withdrawn build stays in its folder and loads only when ``build=`` pins
+    it; a compatibility recertification and an annual projection refuse it
+    as their parent or base (:func:`microcosm.data.build_folder_manifests.
+    require_offered_build`).
+    """
+    entry = record.releases.get(release)
+    if entry is None:
+        return f"{RELEASES_RECORD_PATH} does not list release {release!r}"
+    listed = entry.builds.get(build)
+    if listed is None:
+        return (
+            f"{RELEASES_RECORD_PATH} does not list build {build!r} of release "
+            f"{release!r}"
+        )
+    if listed.withdrawn:
+        return f"build {build!r} of release {release!r} has been withdrawn"
+    return None

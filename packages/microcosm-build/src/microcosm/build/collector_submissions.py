@@ -1,15 +1,17 @@
-"""What becomes of a staged bundle's or release publication's collector submissions.
+"""What becomes of a staged bundle's or release change's collector submissions.
 
 Every emitter a build starts has its Hugging Face module's collector
 submissions on (``telemetry_emitter.COLLECTOR_SUBMISSIONS``). A staged bundle
 or release publication that names its build (``CollectorProvenance``) is then
 also submitted to the collector, from the emitter's own worker, once its
-Hugging Face commit lands. An emitter that is closing starts no new
-submission, so a build or command that closes its emitter straight after the
-commit would leave them queued for the next emitter started on the machine.
-:func:`follow_collector_submissions` waits, after the commit, until the
-collector has accepted them, and says what became of them. Nothing here
-raises into the build or fails a staging or a publication.
+Hugging Face commit lands; a promotion or withdrawal that names its build
+submits ``releases.json`` once its commit lands. An emitter that is closing
+starts no new submission, so a build or command that closes its emitter
+straight after the commit would leave them queued for the next emitter
+started on the machine. :func:`follow_collector_submissions` waits, after
+the commit, until the collector has accepted them, and says what became of
+them. Nothing here raises into the build or fails a staging or a release
+change.
 """
 
 from __future__ import annotations
@@ -39,12 +41,14 @@ __all__ = [
 UK_COLLECTOR_COUNTRY_CODE: Final = "UK"
 #: The country code a US build's collector provenance names.
 US_COLLECTOR_COUNTRY_CODE: Final = "US"
-#: How long a build or command waits, once a described bundle or publication
-#: has landed on Hugging Face, for the collector to accept its submissions.
-#: The emitter's collector row may have retried every five minutes while it
-#: waited for the commit, and its next attempt then uploads the files, so ten
-#: minutes covers one attempt after the commit. The wait also ends at that
-#: attempt when it fails.
+#: How long a build or command waits, once a described bundle or release
+#: change has landed on Hugging Face, for the collector to accept its
+#: submissions. A bundle's or publication's collector row may have retried
+#: every five minutes while it waited for the commit, and its next attempt
+#: then uploads the files, so ten minutes covers one attempt after the commit.
+#: A promotion's or withdrawal's row, queued just before the change, retries
+#: sooner. The wait also ends at the first attempt after the commit when it
+#: fails.
 COLLECTOR_SUBMISSION_WAIT_SECONDS: Final = 600.0
 #: How often the receipt is asked for meanwhile.
 COLLECTOR_RECEIPT_POLL_SECONDS: Final = 1.0
@@ -62,6 +66,22 @@ _SKIPPED_REASONS: Final[Mapping[str, str]] = {
     ),
     "NOT_STAGED_ON_HUGGING_FACE": _NOT_ON_HUGGING_FACE,
     "NOT_PUBLISHED_ON_HUGGING_FACE": _NOT_ON_HUGGING_FACE,
+    # A promotion or withdrawal submits releases.json only when it leaves the
+    # release a current build to name.
+    "NO_CURRENT_BUILD": "the release has no current build after the change",
+    # The emitter that landed the change kept no releases.json for it: an
+    # older emitter release sharing the machine's hand-over database. (The
+    # emitter's other cause, a request handed over again after it landed
+    # with submissions off, cannot arise: every command run makes a new
+    # request.) A new request is submitted once an emitter that keeps the
+    # file lands it.
+    "RELEASES_RECORD_MISSING": (
+        "the emitter that landed the change kept no copy of releases.json to "
+        "submit, as an older emitter release sharing this machine's hand-over "
+        "database does; running the same command again hands the change over "
+        "as a new request, which is submitted once an emitter that keeps the "
+        "file lands it"
+    ),
 }
 #: Which credential collector submissions use. An emitter given a collector
 #: token in the environment uses it instead of the Hugging Face credential,
@@ -72,7 +92,7 @@ _CREDENTIAL_ADVICE: Final = (
     " given a collector token uses that token instead, which only sends"
     " telemetry: unset MICROCOSM_COLLECTOR_TOKEN,"
     " MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT and MICROCOSM_COLLECTOR_ORIGIN for a"
-    " staging or publication that should reach the collector."
+    " staging or release change that should reach the collector."
 )
 #: Added to a ``COLLECTOR_SETTINGS_REFUSED`` warning.
 _SETTINGS_REFUSED_ADVICE: Final = (
@@ -121,8 +141,14 @@ def _attempted_after_commit(
     )
 
 
-def _collector_warning(receipt: Mapping[str, Any], subject: str) -> str | None:
-    """What the build says about a collector receipt, or None."""
+def _collector_warning(
+    receipt: Mapping[str, Any], subject: str, *, reads_local_files: bool = True
+) -> str | None:
+    """What the build says about a collector receipt, or None.
+
+    Without ``reads_local_files``, a ``pending`` warning gives no advice about
+    files left on disk.
+    """
     status = receipt.get("status")
     raw_code = receipt.get("error_code")
     code = raw_code if isinstance(raw_code, str) and _CODE.fullmatch(raw_code) else None
@@ -154,12 +180,16 @@ def _collector_warning(receipt: Mapping[str, Any], subject: str) -> str | None:
         )
     if status == "pending":
         detail = f" ({code})" if code else ""
+        file_advice = (
+            " Leave unchanged any of their files the emitter did not copy at "
+            "hand-over until the hand-over settles."
+            if reads_local_files
+            else ""
+        )
         return (
             f"the collector had not accepted the submissions of {subject} when "
             f"the wait ended{detail}; the emitter keeps them queued on this "
-            "machine, and an emitter running here later sends them. Leave "
-            "unchanged any of their files the emitter did not copy at hand-over "
-            "until the hand-over settles."
+            f"machine, and an emitter running here later sends them.{file_advice}"
         )
     return None
 
@@ -173,6 +203,7 @@ def follow_collector_submissions(
     poll_seconds: float = COLLECTOR_RECEIPT_POLL_SECONDS,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
+    reads_local_files: bool = True,
 ) -> CollectorSubmissionReceipt | None:
     """The hand-over's collector receipt, once the collector has taken it.
 
@@ -186,7 +217,9 @@ def follow_collector_submissions(
     emitter. Any answer but an accepted or succeeded one is a warning naming
     ``subject``. None, without a warning, when the emitter has no collector
     row for the hand-over (it named no build, or no file the collector
-    takes) or does not answer.
+    takes) or does not answer. ``reads_local_files`` is False for a promotion
+    or withdrawal: the emitter keeps the ``releases.json`` it submits, so its
+    warnings give no advice about files on disk.
     """
 
     if not emitter.available:
@@ -217,7 +250,7 @@ def follow_collector_submissions(
             receipt = latest
     elif receipt.get("status") == "pending":
         return receipt
-    warning = _collector_warning(receipt, subject)
+    warning = _collector_warning(receipt, subject, reads_local_files=reads_local_files)
     if warning is not None:
         _warn(warning)
     return receipt
