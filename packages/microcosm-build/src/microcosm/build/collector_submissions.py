@@ -130,23 +130,27 @@ def _code(raw_code: object) -> str | None:
     return raw_code if isinstance(raw_code, str) and _CODE.fullmatch(raw_code) else None
 
 
+def _turned_down(status: object) -> bool:
+    return isinstance(status, str) and status in _TURNED_DOWN
+
+
 def _submission_warning(submission: Mapping[str, Any], subject: str) -> str | None:
     """What the build says about one submission of a hand-over, or None.
 
     Only a submission the collector or the emitter turned down is a warning;
-    one still being sent, awaiting its final status or succeeded is not.
+    one still being sent, awaiting its final status or succeeded is not, and
+    neither is an entry whose status is not one of the interface's.
     """
     status = submission.get("status")
-    if status not in _TURNED_DOWN:
+    if not _turned_down(status):
         return None
-    raw_kind = submission.get("kind")
-    kind = (
-        raw_kind
-        if isinstance(raw_kind, str) and _KIND.fullmatch(raw_kind)
-        else "collector"
+    kind = submission.get("kind")
+    named = (
+        f"the {kind} submission of {subject}"
+        if isinstance(kind, str) and _KIND.fullmatch(kind)
+        else f"a submission of {subject}"
     )
     shown = _code(submission.get("error_code")) or "no code"
-    named = f"the {kind} submission of {subject}"
     if status == "rejected":
         return f"the collector rejected {named} ({shown})."
     if status == "failed":
@@ -160,14 +164,16 @@ def _submission_warning(submission: Mapping[str, Any], subject: str) -> str | No
 def _collector_warnings(receipt: Mapping[str, Any], subject: str) -> list[str]:
     """What the build says about a collector receipt: each warning, if any.
 
-    A UK bundle makes two submissions, its calibration diagnostics and its
-    Orrery inputs. Once none is still being sent, the emitter sums them up as
-    ``awaiting_final_status`` while one awaits its final status, even when
-    the other was already turned down, and once all are settled the summed
-    status and code are one submission's. So a receipt that lists its
-    submissions is read one by one, and each turned-down submission is a
-    warning naming its kind. A ``pending`` or ``skipped`` receipt, and one
-    that lists no submissions, is read as a whole.
+    A UK bundle with recorded execution makes two submissions, its
+    calibration diagnostics and its Orrery inputs. The emitter sums them up
+    as ``pending`` while one is still being sent and ``awaiting_final_status``
+    while one awaits its final status, even when the other was already
+    turned down, and once all are settled the summed status and code are one
+    submission's. So a receipt that lists its submissions is read one by one:
+    each turned-down submission is a warning naming its kind, and a
+    ``pending`` receipt then also says the rest stay queued. A turned-down
+    receipt whose entries explain nothing, a ``skipped`` receipt and one
+    that lists no submissions are read as a whole.
     """
     raw_submissions = receipt.get("submissions")
     submissions = (
@@ -175,15 +181,32 @@ def _collector_warnings(receipt: Mapping[str, Any], subject: str) -> list[str]:
         if isinstance(raw_submissions, list)
         else []
     )
-    if submissions and receipt.get("status") not in ("pending", "skipped"):
-        warnings = (_submission_warning(entry, subject) for entry in submissions)
-        return [warning for warning in warnings if warning is not None]
-    warning = _collector_warning(receipt, subject)
-    return [] if warning is None else [warning]
+    status = receipt.get("status")
+    if not submissions or status == "skipped":
+        warning = _collector_warning(receipt, subject)
+        return [] if warning is None else [warning]
+    warnings = [
+        warning
+        for warning in (_submission_warning(entry, subject) for entry in submissions)
+        if warning is not None
+    ]
+    whole = None
+    if status == "pending":
+        rest = "the rest of the submissions" if warnings else "the submissions"
+        whole = _collector_warning(receipt, subject, submissions=rest)
+    elif not warnings and _turned_down(status):
+        whole = _collector_warning(receipt, subject)
+    return warnings if whole is None else [*warnings, whole]
 
 
-def _collector_warning(receipt: Mapping[str, Any], subject: str) -> str | None:
-    """What the build says about a collector receipt as a whole, or None."""
+def _collector_warning(
+    receipt: Mapping[str, Any], subject: str, *, submissions: str = "the submissions"
+) -> str | None:
+    """What the build says about a collector receipt as a whole, or None.
+
+    ``submissions`` names, in a ``pending`` receipt's warning, the
+    submissions still being sent.
+    """
     status = receipt.get("status")
     code = _code(receipt.get("error_code"))
     shown = code or "no code"
@@ -206,7 +229,7 @@ def _collector_warning(receipt: Mapping[str, Any], subject: str) -> str | None:
         )
     if status == "pending" and code == _CREDENTIAL_MISSING:
         return (
-            f"the collector had not accepted the submissions of {subject} when "
+            f"the collector had not accepted {submissions} of {subject} when "
             f"the wait ended ({code}): the emitter has no credential to submit "
             f"them with. {_CREDENTIAL_ADVICE} A build with no Hugging Face "
             "credential needs HF_TOKEN or `hf auth login`. The emitter keeps them "
@@ -215,7 +238,7 @@ def _collector_warning(receipt: Mapping[str, Any], subject: str) -> str | None:
     if status == "pending":
         detail = f" ({code})" if code else ""
         return (
-            f"the collector had not accepted the submissions of {subject} when "
+            f"the collector had not accepted {submissions} of {subject} when "
             f"the wait ended{detail}; the emitter keeps them queued on this "
             "machine, and an emitter running here later sends them. Leave "
             "unchanged any of their files the emitter did not copy at hand-over "
@@ -245,8 +268,9 @@ def follow_collector_submissions(
     accepted ends ``pending``, and one that failed is retried by the
     emitter. Any answer but an accepted or succeeded one is a warning naming
     ``subject``; a receipt that lists its submissions gives one warning per
-    submission turned down, naming its kind, even while another awaits its
-    final status. None, without a warning, when the emitter has no collector
+    submission turned down, naming its kind, even while another is still
+    being sent or awaits its final status. None, without a warning, when the
+    emitter has no collector
     row for the hand-over (it named no build, or no file the collector
     takes) or does not answer.
     """

@@ -271,13 +271,13 @@ not waited for. The build carries on in every case, with a warning when:
   refused (`NOT_STAGED_ON_HUGGING_FACE`), or its folder is longer than the
   collector accepts (`COLLECTOR_FOLDER_TOO_LONG`);
 - the collector refused a submission at intake (`rejected` or `failed`),
-  with the code the receipt gives. Each submission the receipt lists is
-  reported by its own outcome and kind (`calibration-diagnostics` or
-  `orrery-inputs`), so a refused one is reported even while the other awaits
-  its final status. Once it has accepted them, its own
-  processing decides whether it builds a tree or rejects them, and the build
-  doesn't wait for that; a re-stage that resumes an older hand-over can show
-  that later result, or `timed_out`;
+  with the code the receipt gives. The warning names the submission's kind
+  (`calibration-diagnostics` or `orrery-inputs`), and a refused submission is
+  reported even while the bundle's other submission is still being sent or
+  awaits its final status. Once the collector has accepted a submission, the
+  collector's own processing decides whether it builds a tree or rejects the
+  submission, and the build doesn't wait for that; a re-stage that resumes an
+  older hand-over can show that later result, or `timed_out`;
 - the emitter had no credential for them (`CREDENTIAL_MISSING`): it was given
   a collector token, which only sends telemetry, or found no Hugging Face
   credential;
