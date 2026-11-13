@@ -36,6 +36,7 @@ from test_support.microcosm_build.uk_full_build_cli import (
     load_tool,
     run_dense_main,
     single_run_id,
+    spool_rows,
 )
 
 PRIVATE_REPOSITORY = "policyengine/populace-uk-private"
@@ -162,6 +163,16 @@ def test_copied_back_outputs_are_handed_over_as_a_local_build_is_restaged(
     (request,) = client.bundle_requests
     roles = {item.name: item.role for item in request.files}
     assert roles[f"{STEM}.h5"] == "dataset"
+    # Named for the collector as the build itself would have named it.
+    from microcosm_emitter_interface import CollectorProvenance
+
+    (row,) = spool_rows(copied)
+    assert request.collector == CollectorProvenance(
+        country_code="UK",
+        build_id=row.build_id,
+        licensed_data=True,
+        release="microcosm-uk-2024-25-dense",
+    )
     assert roles[stager.MANIFEST_FILENAME] == "build_manifest"
     assert roles["staged_manifest.json"] == "staged_manifest"
     assert roles["sha256sums.txt"] == "checksums"

@@ -90,7 +90,7 @@ that release's current build.
    and asserts `HEAD` equals the commit. It then runs
    `uv sync --all-packages --extra us --frozen` against that tree's own
    `uv.lock` into `/opt/venv`, installs the newest `microcosm-emitter`
-   release (0.14.0 or later, the oldest a build starts) on its own with
+   release (0.15.0 or later, the oldest a build starts) on its own with
    `uv tool install` into `/usr/local/bin`, checks that
    `microcosm-emitter version` runs, and asserts `git status --porcelain` is
    empty. Emitter releases from 0.10.0 on send telemetry to the collector's
@@ -108,7 +108,7 @@ that release's current build.
    (`/root/minimum_emitter_version.json`), and the copy reads that one: the
    check, which runs there, reports the install step the image was built
    with. The install step and its
-   `>=0.14.0` floor come from the checkout that launches the app
+   `>=0.15.0` floor come from the checkout that launches the app
    (`image_build_commands`, `image_emitter_requirement`), while the minimum
    the build enforces comes from the commit the plan pins, so a launch can
    combine an older checkout's floor with a newer commit's minimum, or the
@@ -357,8 +357,9 @@ that release's current build.
      the newest emitter release when Modal builds its install step, and
      Modal reuses that step for a commit while the step's command is the
      same. Since #1455 (merged 2026-11-03), the command asks for at least
-     0.11.9, since #1522 for `microcosm-emitter>=0.13.0`, and since #1556 for
-     `microcosm-emitter>=0.14.0`, so every image this runner builds has an
+     0.11.9, since #1522 for `microcosm-emitter>=0.13.0`, since #1556 for
+     `microcosm-emitter>=0.14.0`, and since #1599 for
+     `microcosm-emitter>=0.15.0`, so every image this runner builds has an
      emitter that reports a collector origin and has `status`. An image whose install step an
      older checkout built (with `>=0.7.0`, possibly before 0.11.0) is not
      reused: the changed command rebuilds that step, for each commit, at its
