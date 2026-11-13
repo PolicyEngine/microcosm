@@ -315,7 +315,19 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # 2020 tract/county -> 2023 county-equivalent metadata and its gate;
         # writes calibration geography only, no population treatment.
         "county_vintage.py",
+        # Household location v1 (#696): one block per household within its
+        # finest source geography; every geography derives from the block.
+        # Reached by the stacked pool under --location-rule block_v1 and
+        # scanned there like every other reached module.
+        "block_location.py",
         "cps_carried.py",
+        # Parser for Census's CPS ASEC identified-county list (List 4); no
+        # population treatment.
+        "cps_identified_county_sources.py",
+        # Joins each CPS household's GTCO/GESTFIPS by its (source_year,
+        # source_household_id) key for the block_v1 draw; no source-spine
+        # read. Remains subject to the all-runtime source-identity scan.
+        "cps_source_geography.py",
         "demographics.py",
         "education_assistance_source.py",
         "eligibility_inputs.py",
@@ -3837,13 +3849,15 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
         # block_ladder_sources.py, whose CT_STATE_FIPS they import (#1376). All
         # are classified by the runtime registries and scanned below like every
         # reached module. 81 adds puf_source_schedule_e.py, the PUF donor's
-        # Schedule E line-32 and passive supplement (#1239). 82 adds
+        # Schedule E line-32 and passive supplement (#1239). 83 adds
+        # block_location.py and cps_source_geography.py, which the
+        # --location-rule block_v1 household location reaches (#696). 84 adds
         # local_jurisdictions.py, which the PUMA ladder calls to write the
         # county-rule local-jurisdiction flags; it re-exports
         # microcosm.build.us_local_jurisdictions, which sits outside
         # us_runtime and so outside this graph (#1453).
-        assert len(runtime_graph) == 82, (
-            f"{tool.name} must reach the pinned 82-module runtime graph; "
+        assert len(runtime_graph) == 84, (
+            f"{tool.name} must reach the pinned 84-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

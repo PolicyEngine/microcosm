@@ -91,7 +91,6 @@ def fake_telemetry_emitters(monkeypatch, tmp_path):
     from test_support.microcosm_build.telemetry import (
         FakeTelemetryEmitter,
         fake_publication_inventory,
-        fake_publish_graph,
     )
 
     for name in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"):
@@ -140,7 +139,6 @@ def fake_telemetry_emitters(monkeypatch, tmp_path):
     monkeypatch.setattr(
         orrery_publication, "publication_inventory", fake_publication_inventory
     )
-    monkeypatch.setattr(orrery_publication, "publish_graph", fake_publish_graph)
 
     def unexpected_start(*args, **options):
         pytest.fail("A build test tried to start a real emitter")

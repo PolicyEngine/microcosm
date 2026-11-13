@@ -1,0 +1,308 @@
+"""What becomes of a staged bundle's or release publication's collector submissions.
+
+Every emitter a build starts has its Hugging Face module's collector
+submissions on (``telemetry_emitter.COLLECTOR_SUBMISSIONS``). A staged bundle
+or release publication that names its build (``CollectorProvenance``) is then
+also submitted to the collector, from the emitter's own worker, once its
+Hugging Face commit lands. An emitter that is closing starts no new
+submission, so a build or command that closes its emitter straight after the
+commit would leave them queued for the next emitter started on the machine.
+:func:`follow_collector_submissions` waits, after the commit, until the
+collector has accepted them, and says what became of them. Nothing here
+raises into the build or fails a staging or a publication.
+"""
+
+from __future__ import annotations
+
+import re
+import sys
+import time
+from collections.abc import Callable, Mapping
+from typing import Any, Final, Protocol
+
+from microcosm_emitter_interface.submissions import CollectorSubmissionReceipt
+
+__all__ = [
+    "COLLECTOR_RECEIPT_POLL_SECONDS",
+    "COLLECTOR_SUBMISSION_WAIT_SECONDS",
+    "UK_COLLECTOR_COUNTRY_CODE",
+    "US_COLLECTOR_COUNTRY_CODE",
+    "CollectorReceipts",
+    "follow_collector_submissions",
+]
+
+#: The country code a UK build's collector provenance names. Staging
+#: telemetry registers UK runs as ``GB``, but the collector's calibration
+#: tree handler knows the country as ``UK`` and builds no tree from a
+#: submission naming another code. Its Orrery graph handler records whatever
+#: code it is given.
+UK_COLLECTOR_COUNTRY_CODE: Final = "UK"
+#: The country code a US build's collector provenance names.
+US_COLLECTOR_COUNTRY_CODE: Final = "US"
+#: How long a build or command waits, once a described bundle or publication
+#: has landed on Hugging Face, for the collector to accept its submissions.
+#: The emitter's collector row may have retried every five minutes while it
+#: waited for the commit, and its next attempt then uploads the files, so ten
+#: minutes covers one attempt after the commit. The wait also ends at that
+#: attempt when it fails.
+COLLECTOR_SUBMISSION_WAIT_SECONDS: Final = 600.0
+#: How often the receipt is asked for meanwhile.
+COLLECTOR_RECEIPT_POLL_SECONDS: Final = 1.0
+#: A receipt's ``pending`` code while the Hugging Face commit has not landed.
+_WAITING_FOR_HUGGING_FACE: Final = "WAITING_FOR_HUGGING_FACE"
+#: What each ``skipped`` code means.
+_NOT_ON_HUGGING_FACE: Final = "its Hugging Face upload failed or was refused"
+_SKIPPED_REASONS: Final[Mapping[str, str]] = {
+    "COLLECTOR_SETTINGS_REFUSED": (
+        "the emitter refused its collector settings or the collector-token "
+        "variables it inherits"
+    ),
+    "COLLECTOR_FOLDER_TOO_LONG": (
+        "its Hugging Face folder is longer than the collector accepts"
+    ),
+    "NOT_STAGED_ON_HUGGING_FACE": _NOT_ON_HUGGING_FACE,
+    "NOT_PUBLISHED_ON_HUGGING_FACE": _NOT_ON_HUGGING_FACE,
+}
+#: Which credential collector submissions use. An emitter given a collector
+#: token in the environment uses it instead of the Hugging Face credential,
+#: and the token only sends telemetry, so its submissions never have a
+#: credential: the variables are to be unset, not completed.
+_CREDENTIAL_ADVICE: Final = (
+    "Collector submissions use the Hugging Face credential, and an emitter"
+    " given a collector token uses that token instead, which only sends"
+    " telemetry: unset MICROCOSM_COLLECTOR_TOKEN,"
+    " MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT and MICROCOSM_COLLECTOR_ORIGIN for a"
+    " staging or publication that should reach the collector."
+)
+#: Added to a ``COLLECTOR_SETTINGS_REFUSED`` warning.
+_SETTINGS_REFUSED_ADVICE: Final = (
+    " The emitter's own warning gives the error type: a collector origin or"
+    " development collector it does not trust, or collector-token variables"
+    f" it cannot use. {_CREDENTIAL_ADVICE}"
+)
+#: A ``pending`` code: the emitter has no credential for the submissions,
+#: because it was given a telemetry-only collector token or finds no Hugging
+#: Face credential. A later emitter sends them only once it has one.
+_CREDENTIAL_MISSING: Final = "CREDENTIAL_MISSING"
+#: A receipt's code, printed only when it has this shape: the emitter's codes,
+#: or the collector's own, which are lower case (``content_mismatch``).
+_CODE: Final = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
+#: A submission's kind, printed only when it has this shape
+#: (``calibration-diagnostics``, ``orrery-inputs``).
+_KIND: Final = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
+#: A submission's statuses once the collector or the emitter turned it down.
+_TURNED_DOWN: Final = frozenset({"rejected", "failed", "timed_out"})
+
+
+class CollectorReceipts(Protocol):
+    """The emitter calls :func:`follow_collector_submissions` makes."""
+
+    @property
+    def available(self) -> bool: ...
+
+    def collector_submission_receipt(
+        self, handover_id: str
+    ) -> CollectorSubmissionReceipt | None: ...
+
+
+def _warn(message: str) -> None:
+    print(f"warning: {message}", file=sys.stderr, flush=True)
+
+
+def _minutes(seconds: float) -> str:
+    return f"{seconds / 60:g} minutes"
+
+
+def _attempted_after_commit(
+    receipt: Mapping[str, Any], earlier_attempts: object
+) -> bool:
+    """Whether an attempt that found the Hugging Face commit has finished."""
+    attempts = receipt.get("attempts")
+    return (
+        isinstance(attempts, int)
+        and isinstance(earlier_attempts, int)
+        and attempts > earlier_attempts
+        and receipt.get("error_code") != _WAITING_FOR_HUGGING_FACE
+    )
+
+
+def _code(raw_code: object) -> str | None:
+    return raw_code if isinstance(raw_code, str) and _CODE.fullmatch(raw_code) else None
+
+
+def _turned_down(status: object) -> bool:
+    return isinstance(status, str) and status in _TURNED_DOWN
+
+
+def _submission_warning(submission: Mapping[str, Any], subject: str) -> str | None:
+    """What the build says about one submission of a hand-over, or None.
+
+    Only a submission the collector or the emitter turned down is a warning;
+    one still being sent, awaiting its final status or succeeded is not, and
+    neither is an entry whose status is not one of the interface's.
+    """
+    status = submission.get("status")
+    if not _turned_down(status):
+        return None
+    kind = submission.get("kind")
+    named = (
+        f"the {kind} submission of {subject}"
+        if isinstance(kind, str) and _KIND.fullmatch(kind)
+        else f"a submission of {subject}"
+    )
+    shown = _code(submission.get("error_code")) or "no code"
+    if status == "rejected":
+        return f"the collector rejected {named} ({shown})."
+    if status == "failed":
+        return f"{named} to the collector failed ({shown})."
+    return (
+        f"the collector gave no final status for {named} within a day of "
+        f"accepting it ({shown})."
+    )
+
+
+def _collector_warnings(receipt: Mapping[str, Any], subject: str) -> list[str]:
+    """What the build says about a collector receipt: each warning, if any.
+
+    A UK bundle with recorded execution makes two submissions, its
+    calibration diagnostics and its Orrery inputs. The emitter sums them up
+    as ``pending`` while one is still being sent and ``awaiting_final_status``
+    while one awaits its final status, even when the other was already
+    turned down, and once all are settled the summed status and code are one
+    submission's. So a receipt that lists its submissions is read one by one:
+    each turned-down submission is a warning naming its kind, and a
+    ``pending`` receipt then also says the rest stay queued. A turned-down
+    receipt whose entries explain nothing, a ``skipped`` receipt and one
+    that lists no submissions are read as a whole.
+    """
+    raw_submissions = receipt.get("submissions")
+    submissions = (
+        [entry for entry in raw_submissions if isinstance(entry, Mapping)]
+        if isinstance(raw_submissions, list)
+        else []
+    )
+    status = receipt.get("status")
+    if not submissions or status == "skipped":
+        warning = _collector_warning(receipt, subject)
+        return [] if warning is None else [warning]
+    warnings = [
+        warning
+        for warning in (_submission_warning(entry, subject) for entry in submissions)
+        if warning is not None
+    ]
+    whole = None
+    if status == "pending":
+        rest = "the rest of the submissions" if warnings else "the submissions"
+        whole = _collector_warning(receipt, subject, submissions=rest)
+    elif not warnings and _turned_down(status):
+        whole = _collector_warning(receipt, subject)
+    return warnings if whole is None else [*warnings, whole]
+
+
+def _collector_warning(
+    receipt: Mapping[str, Any], subject: str, *, submissions: str = "the submissions"
+) -> str | None:
+    """What the build says about a collector receipt as a whole, or None.
+
+    ``submissions`` names, in a ``pending`` receipt's warning, the
+    submissions still being sent.
+    """
+    status = receipt.get("status")
+    code = _code(receipt.get("error_code"))
+    shown = code or "no code"
+    if status == "skipped":
+        reason = _SKIPPED_REASONS.get(shown, "the emitter skipped them")
+        advice = (
+            _SETTINGS_REFUSED_ADVICE if code == "COLLECTOR_SETTINGS_REFUSED" else ""
+        )
+        return (
+            f"the collector receives nothing of {subject}: {reason} ({shown}).{advice}"
+        )
+    if status == "rejected":
+        return f"the collector rejected the submissions of {subject} ({shown})."
+    if status == "failed":
+        return f"the submissions of {subject} to the collector failed ({shown})."
+    if status == "timed_out":
+        return (
+            f"the collector gave no final status for the submissions of {subject} "
+            f"within a day of accepting them ({shown})."
+        )
+    if status == "pending" and code == _CREDENTIAL_MISSING:
+        return (
+            f"the collector had not accepted {submissions} of {subject} when "
+            f"the wait ended ({code}): the emitter has no credential to submit "
+            f"them with. {_CREDENTIAL_ADVICE} A build with no Hugging Face "
+            "credential needs HF_TOKEN or `hf auth login`. The emitter keeps them "
+            "queued on this machine for a later emitter that has the credential."
+        )
+    if status == "pending":
+        detail = f" ({code})" if code else ""
+        return (
+            f"the collector had not accepted {submissions} of {subject} when "
+            f"the wait ended{detail}; the emitter keeps them queued on this "
+            "machine, and an emitter running here later sends them. Leave "
+            "unchanged any of their files the emitter did not copy at hand-over "
+            "until the hand-over settles."
+        )
+    return None
+
+
+def follow_collector_submissions(
+    emitter: CollectorReceipts,
+    handover_id: str,
+    *,
+    subject: str,
+    wait_seconds: float | None,
+    poll_seconds: float = COLLECTOR_RECEIPT_POLL_SECONDS,
+    clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> CollectorSubmissionReceipt | None:
+    """The hand-over's collector receipt, once the collector has taken it.
+
+    ``wait_seconds`` is None for a hand-over whose Hugging Face commit has
+    not landed: its submissions wait for the commit, so this asks once, and
+    warns only when the collector will receive nothing or turned them down.
+    Otherwise it says, on stderr, that ``subject`` is on Hugging Face and
+    waits, at most ``wait_seconds``, while the receipt is ``pending``, until
+    an attempt that found the commit has finished: one that the collector
+    accepted ends ``pending``, and one that failed is retried by the
+    emitter. Any answer but an accepted or succeeded one is a warning naming
+    ``subject``; a receipt that lists its submissions gives one warning per
+    submission turned down, naming its kind, even while another is still
+    being sent or awaits its final status. None, without a warning, when the
+    emitter has no collector
+    row for the hand-over (it named no build, or no file the collector
+    takes) or does not answer.
+    """
+
+    if not emitter.available:
+        return None
+    receipt = emitter.collector_submission_receipt(handover_id)
+    if receipt is None:
+        return None
+    if wait_seconds is not None:
+        if receipt.get("status") == "pending":
+            print(
+                f"{subject} is on Hugging Face; waiting up to "
+                f"{_minutes(wait_seconds)} for the collector to accept its "
+                "submissions...",
+                file=sys.stderr,
+                flush=True,
+            )
+        earlier_attempts = receipt.get("attempts")
+        deadline = clock() + max(0.0, float(wait_seconds))
+        while (
+            receipt.get("status") == "pending"
+            and not _attempted_after_commit(receipt, earlier_attempts)
+            and clock() < deadline
+        ):
+            sleep(poll_seconds)
+            latest = emitter.collector_submission_receipt(handover_id)
+            if latest is None:
+                break
+            receipt = latest
+    elif receipt.get("status") == "pending":
+        return receipt
+    for warning in _collector_warnings(receipt, subject):
+        _warn(warning)
+    return receipt

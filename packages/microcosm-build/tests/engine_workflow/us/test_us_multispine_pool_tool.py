@@ -353,9 +353,10 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # The opt-in cross-fitted gate calibration in microcosm.fit.qrf moves it.
             # microcosm#1073's scf_wealth education-debt declaration moves it
             # through the bundle's source stages.
-            # microcosm#1453's local-jurisdiction flags in geography_ladder,
-            # puma_ladder and the pool move it.
-            "spec_sha256": "aa7433b70fa47883a1e4b177d8356580050068c8cfb8b842d65d52c69d4988be",
+            # The hierarchy value ranks move it through medicaid_take_up's
+            # attested bytes. microcosm#1453's local-jurisdiction flags in
+            # geography_ladder, puma_ladder and the pool move it.
+            "spec_sha256": "98d583653d37fe58edcace1cf3e21a139b69ebe7d1c3dac6a58f08b2b5aab8cf",
         },
     }
 

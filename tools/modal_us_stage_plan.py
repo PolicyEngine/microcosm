@@ -781,6 +781,9 @@ US_ACS_LOCAL_RELEASE = ToolSpec(
             "--out",
             # A Modal run always builds a clean clone of a pushed commit.
             "--allow-dirty",
+            # The block ladder a block_v1 staging needs (#696). The runner
+            # never passes it, and a Modal staging run keeps `legacy`.
+            "--block-ladder",
         }
     ),
     argv_builder=_acs_local_release_argv,
@@ -1007,18 +1010,27 @@ PUF_SUPPORT_BASE_BUILDER_FLAGS = frozenset(
 #: an alternative source (--base-h5, --support-spine-spec, the weeks-
 #: unemployed path, which the home seed covers), a smoke limit, the
 #: equivalence-test harness, and the geography-ladder escape hatches.
-PUF_SUPPORT_BASE_WITHHELD_FLAGS = frozenset(
-    {
-        "--base-h5",
-        "--support-spine-spec",
-        "--asec-2023-weeks-unemployed-source",
-        "--asec-max-households",
-        "--equivalence-boundary-dir",
-        "--equivalence-deterministic-h5-metadata",
-        "--without-block-ladder",
-        "--geography-ladder-seed",
-        "--allow-geography-ladder-gate-failures",
-    }
+#: The household-location flags (#696, after 4b57d15a2). A plan builds
+#: Route A's certified base, which keeps the default ``legacy`` rule, so no
+#: plan may switch it to ``block_v1``, reseed its draw or clone it.
+PUF_SUPPORT_BASE_LOCATION_FLAGS = frozenset(
+    {"--location-rule", "--location-seed", "--location-clones"}
+)
+PUF_SUPPORT_BASE_WITHHELD_FLAGS = (
+    frozenset(
+        {
+            "--base-h5",
+            "--support-spine-spec",
+            "--asec-2023-weeks-unemployed-source",
+            "--asec-max-households",
+            "--equivalence-boundary-dir",
+            "--equivalence-deterministic-h5-metadata",
+            "--without-block-ladder",
+            "--geography-ladder-seed",
+            "--allow-geography-ladder-gate-failures",
+        }
+    )
+    | PUF_SUPPORT_BASE_LOCATION_FLAGS
 )
 
 US_PUF_SUPPORT_BASE = ToolSpec(
@@ -1173,6 +1185,13 @@ US_ACS_MULTISPINE_STAGING = ToolSpec(
             # option can point it at a path the container lacks. Staging the
             # file as a pinned volume input (a HomeSeed) is a follow-up.
             "--sipp-donor",
+            # The household-location flags (#696). The runner never passes
+            # them, so a staging plan keeps the default `legacy` rule and no
+            # option can switch it to block_v1, reseed its draw or clone it.
+            "--location-rule",
+            "--location-seed",
+            "--location-clones",
+            "--block-ladder",
         }
     ),
     argv_builder=_acs_multispine_staging_argv,

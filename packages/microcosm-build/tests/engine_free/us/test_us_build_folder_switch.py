@@ -409,3 +409,37 @@ def test_a_declared_build_manifest_changed_after_the_copy_makes_its_folder_occup
         "build_manifest.json" in problem and "its manifest records" in problem
         for problem in report.get("problems", [])
     )
+
+
+def test_delete_old_layout_removes_every_tag_s_release_folder_and_root_file(
+    hub, capsys
+):
+    """Every US build had its own release folder, ``releases/<tag>/``; after
+    the switch those folders, the leftover build's included, and the root
+    dataset files are the old layout, and build folders stay."""
+    run(hub, capsys, "copy", "--write", *INCLUDES)
+    switch_code, _, switch_error = run(
+        hub, capsys, "switch", "--write", *SWITCH_OPTIONS, *FINISHED
+    )
+    assert switch_code == 0, switch_error
+    before = dict(hub.files_at())
+    try:
+        exit_code, report, error_output = run(
+            hub, capsys, "delete-old-layout", "--write"
+        )
+    except SystemExit as refusal:
+        exit_code, report, error_output = int(refusal.code or 0), {}, ""
+
+    assert exit_code == 0, error_output
+    files = hub.files_at()
+    kept_folders = (SPM_FOLDER, ACS_FOLDER)
+    assert set(files) == {"releases.json", ".gitattributes"} | {
+        path
+        for path in before
+        if any(path.startswith(f"{folder}/") for folder in kept_folders)
+    }
+    assert any(path.startswith(f"releases/{SPM_TAG}/") for path in report["delete"])
+    assert any(
+        path.startswith(f"releases/{FINISHED_TAG}/") for path in report["delete"]
+    )
+    assert "populace_us_2024.h5" in report["delete"]

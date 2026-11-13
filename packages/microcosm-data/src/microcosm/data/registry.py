@@ -37,8 +37,10 @@ class DatasetSpec:
         hf_repo: The Hugging Face **dataset** repo holding the artifact, e.g.
             ``"policyengine/populace-us"``.
         filename: The artifact filename within ``hf_repo``, e.g.
-            ``"populace_us_2024.h5"``: the file at the repository's root,
-            and the name a tagged build's manifest declares.
+            ``"populace_us_2024.h5"``: the name a tagged build's manifest
+            declares, and the file the repository's root held in the tagged
+            layout, which the switch tool's ``delete-old-layout`` step
+            deletes.
         build_folder_filename: The dataset file name new builds of
             ``release`` declare, when it differs from ``filename``: the US
             national release's builds declare ``microcosm_us_2024.h5``,
