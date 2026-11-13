@@ -102,9 +102,11 @@ def _parent_local_jurisdiction_flags(frame: Frame) -> dict:
     in every year.
     """
 
-    # Imported here so that importing this module (for --help, or for the
-    # serializer registry's _write_year) does not load the us_runtime package.
-    from microcosm.build.us_runtime.local_jurisdictions import (
+    # From microcosm.build.us_local_jurisdictions, never through us_runtime:
+    # importing any us_runtime module asserts the engine ABI lock wherever
+    # policyengine-us is installed, so this check would refuse every parent
+    # under another engine version (test_us_annual_static_aging_gate_imports).
+    from microcosm.build.us_local_jurisdictions import (
         us_local_jurisdiction_artifact_receipt,
     )
 

@@ -17,8 +17,11 @@ line writes.
 
 ## Registry
 
-`us_local_jurisdictions.json` holds the table above, and
-`local_jurisdictions.py` pins its SHA-256. A county rule holds when
+`microcosm/build/us_local_jurisdictions.json` holds the table above, and
+`microcosm/build/us_local_jurisdictions.py` pins its SHA-256. Both sit outside
+`us_runtime`, whose package import asserts the engine ABI lock wherever
+policyengine-us is installed; `us_runtime/local_jurisdictions.py` re-exports
+the module's names for the geography lines. A county rule holds when
 `county_fips` equals the registry county. A place rule holds when the first two
 digits of `county_fips` equal the registry state and `place_fips` equals the
 registry place code; place codes repeat across states, so the state is part of
@@ -84,7 +87,10 @@ parent's columns and base-year bytes, so it cannot write the flags. It calls
 lacks a flag its geography decides or carries one that disagrees with it, and
 records the receipt as `base.local_jurisdiction_flags` in the candidate
 manifest. A parent built before the flags existed therefore cannot seed annual
-files until a rebuild adds them.
+files until a rebuild adds them. The lane imports the helper from
+`microcosm.build.us_local_jurisdictions`, so the check loads no `us_runtime`
+module and so never asserts the engine ABI lock
+(`test_us_annual_static_aging_gate_imports.py`).
 
 The helper reads the rungs from the artifact's own geography
 (`us_local_jurisdiction_rungs_present`): the county rung when `county_fips` is

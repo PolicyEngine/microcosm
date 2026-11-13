@@ -46,7 +46,7 @@ from microcosm.build.us_runtime.local_jurisdictions import (
 
 DEFAULT_REGISTRY = (
     Path(__file__).resolve().parents[1]
-    / "packages/microcosm-build/src/microcosm/build/us_runtime"
+    / "packages/microcosm-build/src/microcosm/build"
     / US_LOCAL_JURISDICTION_REGISTRY_RESOURCE
 )
 

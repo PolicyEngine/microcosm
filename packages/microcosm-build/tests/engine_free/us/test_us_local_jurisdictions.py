@@ -28,13 +28,7 @@ import pytest
 from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
-from microcosm.build.us_runtime.geography_ladder import (
-    assign_us_geography_ladder,
-    us_geography_ladder_assignment_summary,
-    us_geography_ladder_gate,
-    with_household_us_geography_ladder,
-)
-from microcosm.build.us_runtime.local_jurisdictions import (
+from microcosm.build.us_local_jurisdictions import (
     BLOCK_GEOGRAPHY_RUNGS,
     JURISDICTION_FLAG_DERIVED,
     JURISDICTION_FLAG_UNAVAILABLE,
@@ -51,6 +45,12 @@ from microcosm.build.us_runtime.local_jurisdictions import (
     us_local_jurisdiction_flag_values,
     us_local_jurisdiction_rungs_present,
     with_us_local_jurisdiction_flags,
+)
+from microcosm.build.us_runtime.geography_ladder import (
+    assign_us_geography_ladder,
+    us_geography_ladder_assignment_summary,
+    us_geography_ladder_gate,
+    with_household_us_geography_ladder,
 )
 from microcosm.build.us_runtime.puma_ladder import (
     UsPumaLadder,
@@ -71,7 +71,7 @@ from test_support.paths import paths_for
 
 REGISTRY_PATH = (
     paths_for("microcosm-build").package
-    / "src/microcosm/build/us_runtime"
+    / "src/microcosm/build"
     / US_LOCAL_JURISDICTION_REGISTRY_RESOURCE
 )
 REGISTRY = packaged_us_local_jurisdiction_registry()
