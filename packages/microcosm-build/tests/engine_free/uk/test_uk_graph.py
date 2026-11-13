@@ -1270,11 +1270,14 @@ _REFUSAL_ONLY_HELPERS: dict[tuple[str, str], str] = {
     ),
     (
         "microcosm.build.uk_runtime.graph_national",
-        "refuse_clone_first_national_spine",
+        "require_national_bound_spine",
     ): (
-        "reads only whether the bound spine's household table carries the "
-        "geographic clone index, and refuses the spine if it does; the "
-        "national problem calls it before it resolves anything (microcosm#931)"
+        "reads the bound spine's build sidecar, which the bound checkpoint "
+        "authenticated against its frame, for its stage and operation names, "
+        "its geography block's keys and its geographic clone count only, and "
+        "refuses the spine unless it is geography-first at one clone, through "
+        "spine_posture.require_national_spine; the national problem calls it "
+        "before it reads its frame or resolves anything (microcosm#931)"
     ),
     ("microcosm.build.uk_runtime.full_measure", "_require_engine_clone_count"): (
         "reads only the frame's geographic clone count, through "
@@ -1373,8 +1376,8 @@ _KERNEL_UNBOUND_NAMES: dict[tuple[str, str], str] = {
         "resolves its measures in one block of one clone, which never reads "
         "it but through that refusal-only check "
         "(full_measure._engine_block_frames; checked); its early refusal of a "
-        "clone-first spine reads it only through "
-        "refuse_clone_first_national_spine, a refusal-only helper"
+        "spine of another clone count reads the bound sidecar's count, not "
+        "the columns"
     ),
 }
 #: Where the kernel rule stops, each with why a kernel that names the

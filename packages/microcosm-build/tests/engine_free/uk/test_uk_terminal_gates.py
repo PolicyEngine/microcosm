@@ -556,6 +556,80 @@ def test_the_release_boundary_drops_the_root_area_conditioning_carriers() -> Non
     assert set(FRS_AREA_CONDITIONING_COLUMNS) <= set(frame.table("household").columns)
 
 
+def test_what_a_national_release_of_a_one_clone_spine_exports_is_allow_listed() -> None:
+    """The national allow-list pin (microcosm#931). A national release of a
+    geography-first spine of one clone keeps every lineage column but the
+    geographic clone indices, and every column the spine's clone, key and
+    area stages write, the three area codes under the consumers' names; each
+    is reviewed in UK_ALLOWED_EXTRA_EXPORT_COLUMNS, as is every other column
+    the export-surface gate reads beyond the spine's own before the clones,
+    so the national line needs no list change. The clone indices stay in the
+    list, as the dense line's lineage."""
+    from microcosm.build.uk_runtime.atomic_area_conditioning import (
+        UK_SPINE_AREA_COLUMNS,
+    )
+    from microcosm.build.uk_runtime.geographic_clones import (
+        GEOGRAPHY_HOUSEHOLD_KEY_COLUMN,
+        UK_GEOGRAPHIC_SOURCE_COLUMNS,
+        ladder_clone_index_column,
+    )
+    from microcosm.build.uk_runtime.geography_ladder import (
+        UK_EXPORT_AREA_CODE_COLUMNS,
+    )
+    from microcosm.build.uk_runtime.household_lineage import (
+        UK_HOUSEHOLD_LINEAGE_COLUMNS,
+    )
+    from microcosm.build.uk_runtime.national_frame import (
+        UK_BUILD_IDENTIFIER_COLUMNS,
+        uk_release_export_frame,
+    )
+    from microcosm.build.uk_runtime.terminal_gates import (
+        UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
+        uk_export_candidate_columns,
+    )
+    from test_support.microcosm_build.uk_full_population_graph import (
+        source_frame,
+        spine_frame,
+    )
+
+    allowed = set(UK_ALLOWED_EXTRA_EXPORT_COLUMNS)
+    clone_indices = {
+        f"{entity}.{ladder_clone_index_column(entity)}"
+        for entity in ("person", "benunit", "household")
+    }
+    before = uk_export_candidate_columns(
+        uk_release_export_frame(source_frame(), line="national")
+    )
+    after = uk_export_candidate_columns(
+        uk_release_export_frame(spine_frame(1), line="national")
+    )
+    lineage = {
+        f"household.{column}"
+        for column in (
+            *UK_HOUSEHOLD_LINEAGE_COLUMNS,
+            *UK_GEOGRAPHIC_SOURCE_COLUMNS,
+            GEOGRAPHY_HOUSEHOLD_KEY_COLUMN,
+        )
+    } - clone_indices
+    lineage |= {
+        f"{entity}.{column}" for entity, column in UK_BUILD_IDENTIFIER_COLUMNS.items()
+    }
+    areas = {
+        f"household.{UK_EXPORT_AREA_CODE_COLUMNS.get(column, column)}"
+        for column in (
+            *UK_SPINE_AREA_COLUMNS,
+            "local_authority",
+            "in_rural_fuel_duty_relief_area",
+        )
+    }
+    assert lineage | areas <= after
+    assert lineage | areas <= allowed
+    assert not clone_indices & after
+    assert clone_indices <= allowed
+    added = after - before
+    assert added <= allowed, sorted(added - allowed)
+
+
 def test_no_spine_column_writes_an_input_signed_at_the_engine_default() -> None:
     """A signed engine default (microcosm#1095) holds only while no stage writes it."""
 

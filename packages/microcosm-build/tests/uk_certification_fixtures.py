@@ -29,6 +29,10 @@ from microcosm.build.uk_runtime.calibration_run import (
 from microcosm.build.uk_runtime.release_certification import (
     uk_release_cut_scope_exclusions,
 )
+from test_support.microcosm_build.uk_full_build_cli import (
+    patch_support_register,
+    synthetic_spine_geography,
+)
 
 TEST_KEY = base64.b64encode(bytes(range(32))).decode("ascii")
 #: The projection source the stub seam records on its fence: the certifier
@@ -164,8 +168,14 @@ def green_score_receipt(candidate_sha: str) -> dict:
 
 
 @pytest.fixture(name="green_certification_inputs")
-def green_certification_inputs(tmp_path: Path):
-    """Three green signed parts plus a closed identity join."""
+def green_certification_inputs(tmp_path: Path, monkeypatch):
+    """Three green signed parts plus a closed identity join.
+
+    The spine sidecar describes a spine of one geographic clone whose
+    geography binding is a release's (microcosm#931): the stand-in spine's
+    block, whose toy support pins the fixture registers as sources.yaml's
+    conditioned supports for the test (``patch_support_register``).
+    """
 
     candidate = tmp_path / "microcosm_uk_2024_25.h5"
     candidate.write_bytes(b"candidate-bytes")
@@ -211,12 +221,15 @@ def green_certification_inputs(tmp_path: Path):
         },
     )
     seam_report_sha = sha256(seam_report)
+    patch_support_register(monkeypatch)
     sidecar = {
         "stages": ["frs_spine"],
         "spine_gate_report": {
             "path": str(spine_report),
             "sha256": sha256(spine_report),
         },
+        "geographic_clone_count": 1,
+        "geography": synthetic_spine_geography(),
     }
     build_record = {
         "run_config": {

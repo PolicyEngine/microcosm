@@ -24,6 +24,11 @@ recorded clone count and rung are the spine's. Its engine blocks are one or
 the spine's K, and a release candidate needs an unsampled spine of the
 doctrine's K, built as a release candidate, whose geography binding is a
 release's (:func:`~microcosm.build.uk_runtime.country_adapter.uk_spine_geography_binding_failures`).
+The national line builds only on a geography-first spine of one geographic
+clone, and only once the degenerate-surface register's area-basis exclusion
+is signed for the national line and in force on the build's review date:
+:func:`prepare_national_build` refuses otherwise before it pins the input or
+does any engine work (microcosm#931).
 ``tools/build_uk_rowwise_candidate.py`` and ``tools/build_uk_full.py`` are
 stubs over :func:`main`, so every UK line is built by this one command.
 
@@ -233,7 +238,13 @@ from .rowwise_staging import (
 )
 from .size_checkpoint import uk_size_checkpoint_identity
 from .solve_scope import UK_GATE_ONLY_RESOURCES
-from .spine_posture import require_geography_first_spine, spec_roster, stage_roster
+from .spine_posture import (
+    require_geography_first_spine,
+    require_national_exclusion_signed,
+    require_national_spine,
+    spec_roster,
+    stage_roster,
+)
 from .staging import UK_STAGED_DATASET_REPOSITORY, UK_STAGING_REPOSITORY
 from .weight_year import uk_dataset_year_frame
 
@@ -2826,7 +2837,20 @@ def refuse_occupied_national_output(args: argparse.Namespace) -> None:
 def prepare_national_build(
     args: argparse.Namespace, *, telemetry=None, attempt: dict | None = None
 ) -> PreparedUKNationalBuild:
-    """Bind the national request to its graph: the checkpoint, the doctrine, the register."""
+    """Bind the national request to its graph: the checkpoint, the doctrine, the register.
+
+    The national line builds only once the degenerate-surface register's
+    area-basis exclusion is signed for it and in force on ``--review-date``,
+    the build's own review date (the release cut reads the register again on
+    the day it certifies), and only on a geography-first spine of one
+    geographic clone (microcosm#931). Both are
+    refused before the input is pinned or any engine work: the exclusion
+    before any input is read, and the spine by its build sidecar, read ahead
+    of the checkpoint's authentication and checked again on the sidecar the
+    authentication returns. The register decides: an entry signed for the
+    national line, in force on the review date, lifts the first refusal with
+    no code change.
+    """
     from .hmrc_uprating import assert_installed_engine_is_pinned
     from .spine_build import _rules_engine, _rules_engine_provenance
 
@@ -2834,20 +2858,28 @@ def prepare_national_build(
     assert_installed_engine_is_pinned()
     posture = posture_of(args)
     national_role.require_bound_input(args)
+    require_national_exclusion_signed(args.review_date)
     release = load_uk_frs_release()
     input_h5 = national_role.require_file(args.input_h5, label="--input-h5")
+    sidecar_path = args.input_sidecar or input_h5.with_suffix(".build.json")
+    gates_path = args.input_spine_gates or input_h5.with_suffix(".spine_gates.json")
+    # The spine's clone count and roster, read off its build sidecar before
+    # the input is pinned (_read_spine_sidecar refuses an absent, unreadable
+    # or non-object sidecar as the authentication does).
+    require_national_spine(_read_spine_sidecar(Path(sidecar_path)))
     pins = {"dataset": _pin(input_h5, args.input_sha256)}
     inputs = {"dataset": _input_record(input_h5, pins["dataset"], pinned=True)}
     frame, _ = load_uk_national_frame(input_h5)
     require_uk_producer_isa_income_contract(frame, label="--input-h5")
-    sidecar_path = args.input_sidecar or input_h5.with_suffix(".build.json")
-    gates_path = args.input_spine_gates or input_h5.with_suffix(".spine_gates.json")
-    load_bound_spine_checkpoint(
+    sidecar = load_bound_spine_checkpoint(
         sidecar_path,
         frame,
         gate_report_path=gates_path,
         input_sha256=pins["dataset"]["sha256"],
     )
+    # The authenticated sidecar is the one the build binds, so it is checked
+    # again: one changed since the early read is refused too.
+    require_national_spine(sidecar)
     spine = bound_spine_graph(frame)
     _rules_engine()  # the uk extra must be installed; the identity is provenance
     engine_identity = hashlib.sha256(
@@ -3334,13 +3366,16 @@ def _execute_national_build(
     # 7. The H5, then the graph's readback of it.
     stage(telemetry, "candidate_h5_creation", "started")
     # The release boundary (microcosm#1063 c9): the reviewed export exclusions
-    # leave the candidate here, and the graph readback expects the same. The
+    # leave the candidate here, with the national line's geographic clone
+    # indices (microcosm#931), and the graph readback expects the same. The
     # weights are written at the dataset's year, so policyengine-uk's own
     # projection returns the solved weights at the solve year (microcosm#796
     # A19); the solve, its gates and its evidence keep the solved weights.
     solve_year = int(registry_document["calibration_year"])
     write_uk_national_frame(
-        uk_dataset_year_frame(uk_release_export_frame(frame), solve_year=solve_year),
+        uk_dataset_year_frame(
+            uk_release_export_frame(frame, line="national"), solve_year=solve_year
+        ),
         paths["dataset"],
     )
     if state is not None:

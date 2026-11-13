@@ -300,8 +300,8 @@ def test_a_resumed_spine_records_the_batches_a_fresh_run_does(
     }
     assert _sidecar(fresh, frame)["rules_engine"] == expected
     assert _sidecar(ran, frame)["rules_engine"] == expected
-    # One clone, or no clone index (a national spine), records no batches,
-    # and no microdf version.
+    # One clone, or no clone index (a spine from before #931 group (b)),
+    # records no batches, and no microdf version.
     for final in (_final_frame((0,)), _final_frame()):
         record = _sidecar(fresh, final)["rules_engine"]
         assert "engine_batches" not in record

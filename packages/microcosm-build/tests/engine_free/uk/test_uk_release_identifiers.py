@@ -273,6 +273,44 @@ def test_the_national_readback_passes_the_release_and_refuses_build_identifiers(
     assert not any(str(COPY) in failure for failure in report["failures"])
 
 
+def test_the_national_readback_expects_the_national_lines_export(tmp_path) -> None:
+    """The national writer and the graph's readback hold one export: the
+    national line's, which leaves a one-clone spine's geographic clone indices
+    behind (microcosm#931). A calibrated one-clone geography-first spine
+    written that way reads back as its population; written as the dense
+    line's export writes it, clone indices kept, it does not."""
+    pytest.importorskip("tables")
+    from test_support.microcosm_build.uk_full_population_graph import spine_frame
+
+    spine = spine_frame(1)
+    calibrated = uk_national_frame(
+        **{
+            entity: spine.table(entity) for entity in ("person", "benunit", "household")
+        },
+        time_period="2024",
+        weight_kind=WeightKind.CALIBRATED,
+        household_weights=spine.weights_for("household").values,
+    )
+    national = write_uk_national_frame(
+        uk_dataset_year_frame(
+            uk_release_export_frame(calibrated, line="national"), solve_year=2025
+        ),
+        tmp_path / "national.h5",
+    )
+    report = _readback(calibrated, national)
+    assert report["passed"] is True and report["outcome"] == "pass"
+
+    kept = write_uk_national_frame(
+        uk_dataset_year_frame(uk_release_export_frame(calibrated), solve_year=2025),
+        tmp_path / "clone-indices-kept.h5",
+    )
+    report = _readback(calibrated, kept)
+    assert report["passed"] is False and report["outcome"] == "fail"
+    assert report["failures"] == [
+        "Written national H5 content identity differs from the calibrated population."
+    ]
+
+
 def test_the_national_readback_refuses_a_repeated_identifier(tmp_path) -> None:
     pytest.importorskip("tables")
     built = _frame()

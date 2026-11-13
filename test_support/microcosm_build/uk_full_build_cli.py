@@ -212,6 +212,140 @@ def geography_first_sidecar_fields(*stages: str) -> dict:
     }
 
 
+#: A test register's window for the national line's area-basis entry
+#: (microcosm#931). The dates are invented, and the tests review inside it or
+#: across its edges with explicit dates, never the wall clock.
+NATIONAL_EXCLUSION_WINDOW = {"approved_on": "2026-12-01", "expires_on": "2027-06-01"}
+
+
+def write_national_exclusion_register(
+    path: Path,
+    *,
+    release_lines: tuple[str, ...] | None = ("local", "national"),
+    approved_on: str = NATIONAL_EXCLUSION_WINDOW["approved_on"],
+    expires_on: str = NATIONAL_EXCLUSION_WINDOW["expires_on"],
+) -> Path:
+    """Write a test degenerate-surface register to ``path`` and return it.
+
+    It holds the entry the national line needs signed
+    (``spine_posture.NATIONAL_AREA_EXCLUSION``) alone, on ``release_lines``
+    (``None``: an entry that names no line, so applies on every one) and in
+    the given window, with an invented receipt (microcosm#931).
+    """
+    from microcosm.build.uk_runtime.spine_posture import NATIONAL_AREA_EXCLUSION
+
+    entry: dict[str, object] = {
+        "reason": "synthetic area-basis entry",
+        "approved_by": "synthetic_reviewer",
+        "adjudication": "synthetic decision",
+        "approved_on": approved_on,
+        "expires_on": expires_on,
+    }
+    if release_lines is not None:
+        entry["release_lines"] = list(release_lines)
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "description": "A test degenerate-surface register.",
+                "exclusions": {NATIONAL_AREA_EXCLUSION: entry},
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def use_national_exclusion_register(monkeypatch, path: Path) -> list:
+    """Hold the national preparation's exclusion check to the test register at
+    ``path`` in place of the committed one: the real check, on that register
+    (microcosm#931). Returns the review dates it is evaluated on, in order."""
+    from microcosm.build.uk_runtime import spine_posture
+
+    evaluated: list = []
+
+    def check(review_date):
+        evaluated.append(review_date)
+        spine_posture.require_national_exclusion_signed(review_date, source=path)
+
+    monkeypatch.setattr(cli, "require_national_exclusion_signed", check)
+    return evaluated
+
+
+def stand_in_signed_national_exclusion(monkeypatch) -> list:
+    """Stand the national preparation's exclusion check in as passed, for
+    tests of what a national build does once the area-basis exclusion is
+    signed for the national line (microcosm#931); the check's own tests hold
+    it to registers at explicit dates. Returns the review dates it was handed,
+    in order, and reads no register."""
+    evaluated: list = []
+    monkeypatch.setattr(cli, "require_national_exclusion_signed", evaluated.append)
+    return evaluated
+
+
+def committed_registers_review_date() -> str:
+    """A fixed review date for a national graph run on the committed
+    reviewed-exclusion registers: the latest approval across them.
+
+    The national graph evaluates the real registers on its review date, and a
+    reviewed entry approved after that date is refused as not yet in force
+    (the South East target-fit deferral, approved 2026-10-02, failed a review
+    at 2026-09-29; microcosm#1063). Reviewing at the latest approval keeps
+    every entry in force without pinning a calendar date that the next
+    approval would break, and without reading the wall clock (microcosm#931);
+    an expired entry still fails, as the real build's review would, which is
+    the register's discipline.
+    """
+    from microcosm.build.uk_runtime.measure_simulation import (
+        load_uk_calibration_measure_exclusions,
+    )
+    from microcosm.build.uk_runtime.support_floor import (
+        load_uk_support_floor_declaration,
+    )
+    from microcosm.build.uk_runtime.terminal_gates import (
+        uk_default_degenerate_reviewed_exclusions,
+        uk_default_target_fit_reviewed_exclusions,
+    )
+    from microcosm.build.uk_runtime.weighted_integrity import (
+        uk_default_input_mass_reviewed_exclusions,
+    )
+
+    def records(value):
+        if hasattr(value, "approved_on"):
+            yield value
+        elif isinstance(value, dict) and "approved_on" in value:
+            yield value
+        elif hasattr(value, "values"):
+            for item in value.values():
+                yield from records(item)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                yield from records(item)
+
+    def field(record, name):
+        return record[name] if isinstance(record, dict) else getattr(record, name)
+
+    entries = [
+        record
+        for register in (
+            uk_default_target_fit_reviewed_exclusions(),
+            uk_default_degenerate_reviewed_exclusions(),
+            uk_default_input_mass_reviewed_exclusions(),
+            load_uk_calibration_measure_exclusions(),
+            # The sparse-band support floor's signature (microcosm#1095 U3).
+            [load_uk_support_floor_declaration() or {}],
+        )
+        for record in records(register)
+    ]
+    latest_approval = max(str(field(record, "approved_on")) for record in entries)
+    earliest_expiry = min(str(field(record, "expires_on")) for record in entries)
+    assert latest_approval < earliest_expiry, (latest_approval, earliest_expiry)
+    return latest_approval
+
+
 STEM = "microcosm_uk_2024_25_local"
 #: The UK gate signing key's variable and a synthetic 32-byte key: a
 #: release-candidate request is refused without one, and the dense build signs

@@ -7,6 +7,7 @@ import os
 import shutil
 import signal
 import weakref
+from datetime import date
 from types import SimpleNamespace
 
 import test_support.microcosm_build.uk_full_build_cli as support  # noqa: E402
@@ -514,6 +515,253 @@ def test_national_role_refuses_a_spine_request(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="bound spine checkpoint.*--input-h5"):
         cli.main(argv)
     assert not (tmp_path / "out").exists()
+
+
+#: A fixed review date inside the test registers' window
+#: (``NATIONAL_EXCLUSION_WINDOW``); no national preparation test reads the
+#: wall clock (microcosm#931).
+_NATIONAL_REVIEW = "2027-01-15"
+_NATIONAL_SPINE_LEAD = (
+    "The national line builds only on a geography-first spine of one "
+    "geographic clone, one that assigns every household its area "
+    "(microcosm#931); "
+)
+
+
+def _national_request(tmp_path, monkeypatch, *extra, frame=None, sidecar=None):
+    """A national request over a bound checkpoint of ``frame`` (the seam's
+    stand-in by default) at ``--review-date`` 2027-01-15, with ``extra``
+    arguments.
+
+    The checkpoint's sidecar records the stand-in geography-first roster and
+    block at the frame's clone count, with ``sidecar``'s fields replacing any
+    of them (microcosm#931). The engine freeze stands in, and any later engine
+    work fails the test; ``--input-sha256`` is the stand-in pin, not the
+    file's, so a refusal raised before the input is pinned is the only one
+    the request can meet. Returns the parsed arguments and the H5's digest.
+    """
+    from microcosm.build.uk_runtime import hmrc_uprating, spine_build
+    from microcosm.build.uk_runtime.geographic_clones import geographic_clone_count
+    from microcosm.build.uk_runtime.national_frame import (
+        load_uk_national_frame,
+        write_uk_national_frame,
+    )
+    from test_support.microcosm_build import uk_calibration_run as seam
+
+    pytest.importorskip("tables")
+    path = write_uk_national_frame(
+        seam._frame() if frame is None else frame, tmp_path / "spine.h5"
+    )
+    loaded, _ = load_uk_national_frame(path)
+    sidecar_path, _gates, recorded = seam._bound_checkpoint(tmp_path, loaded)
+    recorded.update(geography_first_sidecar_fields("frs_spine"))
+    recorded["geographic_clone_count"] = geographic_clone_count(
+        loaded.table("household")
+    )
+    recorded.update(sidecar or {})
+    sidecar_path.write_text(json.dumps(recorded))
+    ledger = tmp_path / "ledger"
+    ledger.mkdir()
+    (ledger / "consumer_facts.jsonl").write_text("{}\n")
+    monkeypatch.setattr(
+        hmrc_uprating, "assert_installed_engine_is_pinned", lambda: "fixture"
+    )
+    monkeypatch.setattr(
+        spine_build,
+        "_rules_engine",
+        lambda: pytest.fail("the national preparation reached the engine"),
+    )
+    args = cli.parse_args(
+        _national_argv(tmp_path, "--review-date", _NATIONAL_REVIEW, *extra)
+    )
+    return args, hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_national_preparation_refuses_an_unsigned_exclusion_before_reading_input(
+    tmp_path, monkeypatch
+):
+    """The national line builds only once the degenerate-surface register's
+    area-basis exclusion is signed for the national line (microcosm#931): an
+    entry on the local line alone is refused on ``--review-date`` before any
+    input is read, here before the H5 even exists, and the refusal names the
+    exclusion, the line and the window alone."""
+    from microcosm.build.uk_runtime import hmrc_uprating
+
+    register = write_national_exclusion_register(
+        tmp_path / "register.json", release_lines=("local",)
+    )
+    evaluated = use_national_exclusion_register(monkeypatch, register)
+    monkeypatch.setattr(
+        hmrc_uprating, "assert_installed_engine_is_pinned", lambda: "fixture"
+    )
+    monkeypatch.setattr(
+        cli,
+        "load_uk_national_frame",
+        lambda *args, **kwargs: pytest.fail("the refusal must precede the input"),
+    )
+    args = cli.parse_args(_national_argv(tmp_path, "--review-date", _NATIONAL_REVIEW))
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_national_build(args)
+    assert str(refused.value) == (
+        "The national line builds only once the degenerate-surface exclusion "
+        "household.atomic_area_basis is signed for the national line and in "
+        "force on the build's review date (microcosm#931); its entry, in force "
+        "from 2026-12-01 through 2027-06-01, does not list the national line."
+    )
+    assert evaluated == [date(2027, 1, 15)]
+    assert not (tmp_path / "spine.h5").exists()
+
+
+@pytest.mark.parametrize(
+    ("review", "needle"),
+    [
+        ("2026-11-30", "its entry is not yet in force"),
+        ("2027-06-02", "its entry has expired"),
+    ],
+)
+def test_national_preparation_refuses_an_exclusion_out_of_its_window(
+    tmp_path, monkeypatch, review, needle
+):
+    """An entry signed for the national line is refused on a review date
+    outside its window, the day before it takes force or the day after it
+    expires (microcosm#931)."""
+    from microcosm.build.uk_runtime import hmrc_uprating
+
+    register = write_national_exclusion_register(tmp_path / "register.json")
+    evaluated = use_national_exclusion_register(monkeypatch, register)
+    monkeypatch.setattr(
+        hmrc_uprating, "assert_installed_engine_is_pinned", lambda: "fixture"
+    )
+    args = cli.parse_args(_national_argv(tmp_path, "--review-date", review))
+    with pytest.raises(ValueError, match=needle):
+        cli.prepare_national_build(args)
+    assert evaluated == [date.fromisoformat(review)]
+
+
+def test_national_preparation_refuses_a_spine_of_another_clone_count(
+    tmp_path, monkeypatch
+):
+    """With the exclusion signed, a bound spine of three clones, whose sidecar
+    records its K as the checkpoint requires, is refused before its input is
+    pinned or any engine work, naming K (microcosm#931)."""
+    from test_support.microcosm_build import uk_calibration_run as seam
+    from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
+
+    use_national_exclusion_register(
+        monkeypatch, write_national_exclusion_register(tmp_path / "register.json")
+    )
+    args, _digest = _national_request(
+        tmp_path, monkeypatch, frame=clone_first_frame(seam._frame(), 3)
+    )
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_national_build(args)
+    assert str(refused.value) == (
+        _NATIONAL_SPINE_LEAD + "the bound spine's geographic clone count is K = 3."
+    )
+
+
+def test_national_preparation_refuses_a_spine_from_before_its_area_stages(
+    tmp_path, monkeypatch
+):
+    """A one-clone spine whose roster is group (b)'s, with no area stage, no
+    main-residence localiser and no geography block, is refused before its
+    input is pinned, naming what its roster lacks (microcosm#931)."""
+    from microcosm.build.uk_runtime.geography_first_roster import (
+        GEOGRAPHY_FIRST_STAGES,
+    )
+    from test_support.microcosm_build import uk_calibration_run as seam
+    from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
+
+    use_national_exclusion_register(
+        monkeypatch, write_national_exclusion_register(tmp_path / "register.json")
+    )
+    pre_areas = ["frs_spine", "geographic_expand", "geographic_identity", "was_wealth"]
+    args, _digest = _national_request(
+        tmp_path,
+        monkeypatch,
+        frame=clone_first_frame(seam._frame(), 1),
+        sidecar={
+            "stages": pre_areas,
+            "operations": {name: [] for name in pre_areas},
+            "geography": None,
+        },
+    )
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_national_build(args)
+    lacking = "; ".join(
+        (
+            *(f"stage {stage}" for stage in GEOGRAPHY_FIRST_STAGES[2:]),
+            "operation localise_main_residence_value in was_wealth",
+            "geography block",
+        )
+    )
+    assert str(refused.value) == (
+        _NATIONAL_SPINE_LEAD + f"the bound spine's build sidecar lacks: {lacking}."
+    )
+
+
+def test_national_preparation_checks_the_authenticated_sidecar_again(
+    tmp_path, monkeypatch
+):
+    """The sidecar the checkpoint authentication returns is the one the build
+    binds, so it is checked again: one that no longer holds one clone is
+    refused there, before any engine work (microcosm#931)."""
+    use_national_exclusion_register(
+        monkeypatch, write_national_exclusion_register(tmp_path / "register.json")
+    )
+    args, digest = _national_request(tmp_path, monkeypatch)
+    args.input_sha256 = digest
+    authenticated = cli.load_bound_spine_checkpoint
+    monkeypatch.setattr(
+        cli,
+        "load_bound_spine_checkpoint",
+        lambda *a, **k: {**authenticated(*a, **k), "geographic_clone_count": 2},
+    )
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_national_build(args)
+    assert str(refused.value) == (
+        _NATIONAL_SPINE_LEAD + "the bound spine's geographic clone count is K = 2."
+    )
+
+
+@pytest.mark.parametrize("review", ["2026-12-01", _NATIONAL_REVIEW, "2027-06-01"])
+def test_national_preparation_binds_a_one_clone_geography_first_spine(
+    tmp_path, monkeypatch, review
+):
+    """With the exclusion signed for the national line and in force on the
+    review date, its window's first and last days among them, a geography-first
+    spine of one clone prepares: the check is evaluated on --review-date, the
+    build's own review date, which the national gate node takes too, and the
+    national problem reads the bound spine's build sidecar for its own refusal
+    (microcosm#931)."""
+    from microcosm.build.uk_runtime import spine_build
+    from microcosm.build.uk_runtime.graph_national import (
+        NATIONAL_GATES_NODE,
+        NATIONAL_PROBLEM_NODE,
+        SPINE_SIDECAR_SOURCE,
+    )
+    from test_support.microcosm_build import uk_calibration_run as seam
+    from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
+
+    evaluated = use_national_exclusion_register(
+        monkeypatch, write_national_exclusion_register(tmp_path / "register.json")
+    )
+    args, digest = _national_request(
+        tmp_path, monkeypatch, frame=clone_first_frame(seam._frame(), 1)
+    )
+    args.review_date = date.fromisoformat(review)
+    args.input_sha256 = digest
+    monkeypatch.setattr(spine_build, "_rules_engine", lambda: object())
+    monkeypatch.setattr(
+        spine_build, "_rules_engine_provenance", lambda: {"version": "fixture"}
+    )
+    prepared = cli.prepare_national_build(args)
+    assert evaluated == [date.fromisoformat(review)]
+    assert prepared.bindings["review_date"] == review
+    graph = prepared.national.graph
+    assert graph.node(NATIONAL_GATES_NODE).params["review_date"] == review
+    assert graph.node(NATIONAL_PROBLEM_NODE).sources == (SPINE_SIDECAR_SOURCE,)
+    assert prepared.sources[SPINE_SIDECAR_SOURCE] == tmp_path / "spine.build.json"
 
 
 def test_candidate_clone_counts_are_dry_run_only(tmp_path):

@@ -3081,3 +3081,247 @@ def test_the_band_donor_check_recomputes_a_capped_seating_from_the_phase_frame(
         "spi_income_band_donors: band from 200000's seats do not each hold one "
         "carrier.",
     )
+
+
+# ---------------------------------------------------------------------------
+# The national line's export in the battery (microcosm#931)
+# ---------------------------------------------------------------------------
+
+#: Each entity's geographic clone index, as the clone-first spine names it.
+_CLONE_INDICES = {
+    "person": "person_clone_index",
+    "benunit": "benunit_clone_index",
+    "household": "household_clone_index",
+}
+_DEGENERATE_PARAMETERS = {
+    "reviewed_exclusions_resource": "degenerate_reviewed_exclusions.json"
+}
+
+
+def _one_clone_national_frame(*, indices: bool = True):
+    """An invented national frame of one geographic clone: every column but
+    the clone indices carries signal, and every clone index is zero, as on
+    any spine of one clone (microcosm#931). ``indices=False`` is the frame the
+    national release writes, without them."""
+    tables = {
+        "person": pd.DataFrame(
+            {
+                "person_id": np.asarray([101, 102, 103], dtype=np.int64),
+                "person_household_id": np.asarray([1, 2, 3], dtype=np.int64),
+                "person_benunit_id": np.asarray([201, 202, 203], dtype=np.int64),
+                "age": [30, 45, 70],
+            }
+        ),
+        "benunit": pd.DataFrame(
+            {
+                "benunit_id": np.asarray([201, 202, 203], dtype=np.int64),
+                "would_claim_uc": [True, False, True],
+            }
+        ),
+        "household": pd.DataFrame(
+            {
+                "household_id": np.asarray([1, 2, 3], dtype=np.int64),
+                "household_weight": [1.0, 2.0, 3.0],
+                "source_household_id": np.asarray([1, 2, 3], dtype=np.int64),
+                "source_year": np.asarray([2023, 2022, 2023], dtype=np.int64),
+            }
+        ),
+    }
+    if indices:
+        for entity, column in _CLONE_INDICES.items():
+            tables[entity][column] = np.zeros(len(tables[entity]), dtype=np.int64)
+    return uk_national_frame(**tables, time_period="2023")
+
+
+class TestNationalLineExport:
+    """The national line exports a one-clone spine without its clone indices
+    (microcosm#931), and the gates that read what the release ships follow
+    the context's line: the degenerate surface, the spine's answer for the
+    columns the export drops, and the coverage and input-mass reads."""
+
+    @staticmethod
+    def _degenerate(frame, line):
+        artifacts = {
+            "exclusions_evaluated_on": CLOCK,
+            # No reviewed exclusion, so only the clone indices can fail.
+            "reviewed_degenerate_exclusions": {},
+        }
+        if line is not None:
+            artifacts["release_line"] = line
+        return UK_GATE_REGISTRY["degenerate_release_surface"].evaluate(
+            EvidenceContext(frame=frame, artifacts=artifacts),
+            _DEGENERATE_PARAMETERS,
+        )
+
+    def test_the_degenerate_gate_drops_the_clone_indices_on_the_national_line(
+        self, monkeypatch
+    ) -> None:
+        """Fed the national frame before export, clone indices present, the
+        gate passes with both the line-aware drop and the national line, and
+        fails without either: the shared list alone fails all three indices
+        at one clone, as it did before the national line had a list."""
+        from microcosm.build.uk_runtime import battery_bindings
+        from microcosm.build.uk_runtime.national_frame import (
+            UK_RELEASE_EXPORT_DROPPED_COLUMNS,
+        )
+
+        frame = _one_clone_national_frame()
+        indices = sorted(
+            f"{entity}.{column}" for entity, column in _CLONE_INDICES.items()
+        )
+        national = self._degenerate(frame, "national")
+        assert national.passed, national.failures
+        assert set(indices) <= set(national.details["dropped_at_export"])
+        assert national.details["all_zero_columns"] == []
+        for line in ("local", None):
+            off_line = self._degenerate(frame, line)
+            assert off_line.passed is False
+            assert off_line.details["all_zero_columns"] == indices
+            assert not set(indices) & set(off_line.details["dropped_at_export"])
+        monkeypatch.setattr(
+            battery_bindings,
+            "uk_release_export_dropped_columns",
+            lambda line=None: UK_RELEASE_EXPORT_DROPPED_COLUMNS,
+        )
+        shared_only = self._degenerate(frame, "national")
+        assert shared_only.passed is False
+        assert shared_only.details["all_zero_columns"] == indices
+        # Each failure names its column and the kind, never a value.
+        assert sorted(shared_only.failures) == [
+            f"{name}: persisted release column is all-zero; populate it with "
+            "signal, drop it, or record a reviewed exclusion."
+            for name in indices
+        ]
+
+    def test_the_spine_answers_the_clone_indices_on_the_national_line_only(
+        self,
+    ) -> None:
+        """The national release carries no clone index, so a gate that checks
+        a declared stage output reads them off the certifier's spine frame on
+        the national line; on any other line the export keeps them, and the
+        spine is not asked."""
+        from microcosm.build.uk_runtime.battery_bindings import (
+            _export_dropped_columns_from_spine,
+        )
+
+        release = _one_clone_national_frame(indices=False)
+        spine = _one_clone_national_frame()
+        requested = list(_CLONE_INDICES.values())
+
+        def found(line):
+            artifacts = {"spine_frame": spine}
+            if line is not None:
+                artifacts["release_line"] = line
+            return _export_dropped_columns_from_spine(
+                EvidenceContext(frame=release, artifacts=artifacts), requested
+            )
+
+        national = found("national")
+        assert set(national) == set(requested)
+        assert all(national[column].tolist() == [0, 0, 0] for column in requested)
+        assert found("local") == {}
+        assert found(None) == {}
+
+    def test_the_nonnegative_gate_checks_a_national_releases_clone_indices(
+        self,
+    ) -> None:
+        """The geographic expansion declares the clone indices non-negative,
+        so the release cut's nonnegative gate, on a national candidate that
+        does not carry them, checks them on the spine frame, and fails them
+        as missing without the national line or the spine."""
+        binding = UK_GATE_REGISTRY["nonnegative_columns"]
+        release = _one_clone_national_frame(indices=False)
+        spine = _one_clone_national_frame()
+
+        def evaluate(line, *, spine_frame=spine):
+            artifacts = {"build_stage_names": ("geographic_expand",)}
+            if spine_frame is not None:
+                artifacts["spine_frame"] = spine_frame
+            if line is not None:
+                artifacts["release_line"] = line
+            return binding.evaluate(
+                EvidenceContext(frame=release, artifacts=artifacts), {}
+            )
+
+        missing = sorted(
+            f"{column}: required non-negative column missing."
+            for column in _CLONE_INDICES.values()
+        )
+        assert evaluate("national").passed is True
+        for result in (
+            evaluate("local"),
+            evaluate(None),
+            evaluate("national", spine_frame=None),
+        ):
+            assert result.passed is False
+            assert sorted(result.failures) == missing
+
+    @pytest.mark.parametrize("line", ["national", "local", None])
+    def test_the_coverage_and_input_mass_gates_read_the_lines_export(
+        self, monkeypatch, uk_gates, line
+    ) -> None:
+        """The two terminal gates that compare the surface the release ships
+        read the export of the context's line: on the national line without
+        the clone indices, on any other with them."""
+        from microcosm.build.uk_runtime import battery_bindings
+
+        frame = _one_clone_national_frame()
+        seen: dict[str, dict[str, set[str]]] = {}
+
+        def coverage(surface, engine, **kwargs):
+            seen["coverage"] = {
+                entity: set(getattr(surface, entity).columns)
+                for entity in _CLONE_INDICES
+            }
+            return GateResult(name="release_input_coverage", passed=True)
+
+        def totals(export):
+            seen["input_mass"] = {
+                entity: set(export.table(entity).columns) for entity in _CLONE_INDICES
+            }
+            return {}
+
+        monkeypatch.setattr(
+            battery_bindings, "uk_release_input_coverage_gate", coverage
+        )
+        monkeypatch.setattr(battery_bindings, "uk_input_mass_totals", totals)
+        monkeypatch.setattr(
+            battery_bindings,
+            "uk_input_mass_parity_gate",
+            lambda *args, **kwargs: GateResult(name="input_mass_parity", passed=True),
+        )
+        artifacts = {
+            "coverage_engine": object(),
+            "spine_frame": frame,
+            "exclusions_evaluated_on": CLOCK,
+            "input_mass_reference": object(),
+        }
+        if line is not None:
+            artifacts["release_line"] = line
+        context = EvidenceContext(frame=frame, artifacts=artifacts)
+        entries = {entry.id: entry for entry in uk_gates.gates}
+        for gate, entry in (
+            ("release_input_coverage", "uk_release_input_coverage"),
+            ("input_mass_parity", "uk_input_mass_parity"),
+        ):
+            result = UK_GATE_REGISTRY[gate].evaluate(context, entries[entry].parameters)
+            assert result.passed is True
+        for read in ("coverage", "input_mass"):
+            for entity, column in _CLONE_INDICES.items():
+                assert (column in seen[read][entity]) is (line != "national")
+
+    def test_the_coverage_gate_refuses_a_line_the_gates_do_not_know(self) -> None:
+        """The coverage gate reads the line as declared, since it also runs
+        the preflight's manifest check, and the export refuses a line the
+        gate contexts do not declare, as the other gates' line check does."""
+        frame = _one_clone_national_frame()
+        context = EvidenceContext(
+            frame=frame,
+            artifacts={
+                "coverage_engine": object(),
+                "spine_frame": frame,
+                "release_line": "regional",
+            },
+        )
+        with pytest.raises(ValueError, match="line must be one of"):
+            UK_GATE_REGISTRY["release_input_coverage"].evaluate(context, {})

@@ -419,9 +419,11 @@ def compose_uk_release_certification(
     Every check is a refusal: a certification only exists when the parts
     union to the full declared entry set with no gap, no overlap beyond
     ``UK_SHARED_GATE_IDS``, full phase coverage, verified signatures, the
-    committed spec's scoped digests, green release-blocking verdicts, and a
+    committed spec's scoped digests, green release-blocking verdicts, a
     closed identity join from the spine report through the sidecar, the
-    build record, the diagnostics digest, and the candidate bytes.
+    build record, the diagnostics digest, and the candidate bytes, and a
+    spine of one geographic clone whose geography binding is a release's
+    (:func:`_verify_spine_geography`, microcosm#931).
     """
 
     parts_raw = {
@@ -482,6 +484,7 @@ def compose_uk_release_certification(
         spine_sha256=spine_sha256,
         release_id=release_id,
     )
+    _verify_spine_geography(spine_sidecar)
     score_receipt_bytes = score_receipt_path.read_bytes()
     score_receipt = json.loads(score_receipt_bytes)
     _verify_score_receipt(
@@ -855,6 +858,55 @@ def _verify_identity_join(
     if release_cut_payload.get("shippable") is not True:
         raise UKReleaseCertificationError(
             "the release-cut battery's own report is not shippable."
+        )
+
+
+def _verify_spine_geography(spine_sidecar: Mapping[str, Any]) -> None:
+    """Refuse a spine whose areas a national release cannot certify.
+
+    The certifier's half of the geography binding check (microcosm#931; the
+    dense release pre-flight's is the other). The national line builds on a
+    geography-first spine of one geographic clone, so the spine's build
+    sidecar must record K = 1 (``geographic_clone_count``, the int one; a
+    sidecar that records none describes one clone, as the bound checkpoint
+    reads it) and a ``geography`` block that is a release's. The block is
+    held, with the sidecar's K beside it, to K = 1 by the helper the
+    pre-flight holds a dense candidate's binding to,
+    :func:`~microcosm.build.uk_runtime.country_adapter.uk_spine_geography_binding_failures`:
+    the atomic law, keyed on the geography key, under a definition named by
+    its SHA-256, on exactly the conditioned supports ``sources.yaml``
+    registers, on the spine's area stream. The certifier tool holds the
+    sidecar to the one the calibration recorded (its digest in the build
+    record's ``spine_provenance``) and runs this check before its battery as
+    well. The refusal names each field that fails and K, never a value.
+    """
+
+    from microcosm.build.uk_runtime import country_adapter
+    from microcosm.build.uk_runtime.spine_posture import NATIONAL_CLONE_COUNT
+
+    lead = (
+        "a national release certifies only a spine of one geographic clone "
+        "whose geography binding is a release's (microcosm#931); "
+    )
+    clones = spine_sidecar.get("geographic_clone_count", NATIONAL_CLONE_COUNT)
+    geography = spine_sidecar.get("geography")
+    if not (isinstance(geography, Mapping) and geography):
+        refusal = (
+            "the spine sidecar records no geography binding (a spine that "
+            "runs no area draw writes none)"
+        )
+        if type(clones) is not int or clones != NATIONAL_CLONE_COUNT:
+            refusal += (
+                f", and its geographic_clone_count is not K = {NATIONAL_CLONE_COUNT}"
+            )
+        raise UKReleaseCertificationError(lead + refusal + ".")
+    failures = country_adapter.uk_spine_geography_binding_failures(
+        {**geography, "geographic_clone_count": clones},
+        clone_count=NATIONAL_CLONE_COUNT,
+    )
+    if failures:
+        raise UKReleaseCertificationError(
+            lead + "the spine sidecar's binding fails: " + "; ".join(failures) + "."
         )
 
 

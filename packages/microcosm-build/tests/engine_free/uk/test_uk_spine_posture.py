@@ -1,14 +1,20 @@
-"""The dense line's spine posture (microcosm#931): the geography-first names
-and the roster check that refuses a spine lacking any of them.
+"""The UK lines' spine posture (microcosm#931): the geography-first names and
+the roster check that refuses a spine lacking any of them, and the national
+line's own checks: a geography-first spine of one geographic clone, and the
+area-basis exclusion signed for the national line and in force on the build's
+review date.
 
 Every roster here is invented, read off the packaged spec, or written by the
 spine build's own sidecar writer over a synthetic frame; no sidecar of a built
-spine is read.
+spine is read. Every register is a test register with invented dates, but for
+one test of the committed register as it stands, on a fixed date inside its
+entry's window; no test reads the wall clock.
 """
 
 import ast
 import inspect
 import json
+from datetime import date, datetime, timedelta
 from types import MappingProxyType, SimpleNamespace
 
 import pytest
@@ -21,14 +27,26 @@ from microcosm.build.uk_runtime.geography_first_roster import (
     SIDECAR_GEOGRAPHY_KEYS,
 )
 from microcosm.build.uk_runtime.spine_posture import (
+    NATIONAL_AREA_EXCLUSION,
+    NATIONAL_CLONE_COUNT,
+    NATIONAL_LINE,
     require_geography_first_spine,
+    require_national_exclusion_signed,
+    require_national_spine,
     roster_failures,
     spec_roster,
     stage_roster,
 )
+from microcosm.build.uk_runtime.weighted_integrity import (
+    UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
+    UK_RELEASE_LINES,
+    load_uk_reviewed_exclusion_register,
+)
 from test_support.microcosm_build.uk_full_build_cli import (
+    NATIONAL_EXCLUSION_WINDOW,
     geography_first_sidecar_fields,
     synthetic_spine_geography,
+    write_national_exclusion_register,
 )
 
 #: What a geography-first spine runs that a spine built from the packaged spec
@@ -383,3 +401,276 @@ def test_the_refusal_names_what_the_roster_lacks_and_nothing_else():
     for refused in (sidecar, request, everything):
         text = str(refused.value).replace("microcosm#931", "").replace("sha256", "")
         assert not any(character.isdigit() for character in text)
+
+
+# The national line (microcosm#931): a geography-first spine of one geographic
+# clone, and the area-basis exclusion signed for the national line.
+
+_NATIONAL_LEAD = (
+    "The national line builds only on a geography-first spine of one "
+    "geographic clone, one that assigns every household its area "
+    "(microcosm#931); "
+)
+
+
+def _national_sidecar(**fields) -> dict:
+    """A stand-in build sidecar the national line builds on: the stand-in
+    geography-first roster and block at one clone, with ``fields`` replacing
+    any of its fields."""
+    return {
+        **geography_first_sidecar_fields("frs_spine"),
+        "geographic_clone_count": 1,
+        **fields,
+    }
+
+
+def test_the_national_names_are_the_lines_the_clone_count_and_the_entry():
+    assert (NATIONAL_LINE, NATIONAL_CLONE_COUNT, NATIONAL_AREA_EXCLUSION) == (
+        "national",
+        1,
+        "household.atomic_area_basis",
+    )
+    assert NATIONAL_LINE in UK_RELEASE_LINES
+
+
+def test_the_national_line_builds_on_a_geography_first_spine_of_one_clone():
+    assert require_national_spine(_national_sidecar()) is None
+    # A sidecar that records no clone count describes a spine of one clone,
+    # as the checkpoint authentication reads it.
+    unrecorded = _national_sidecar()
+    del unrecorded["geographic_clone_count"]
+    assert require_national_spine(unrecorded) is None
+    # Extra names and fields never fail, and read-only forms read alike.
+    stages = _national_sidecar()["stages"]
+    assert (
+        require_national_spine(
+            _national_sidecar(stages=[*stages, "nts_bus_travel"], sampling=None)
+        )
+        is None
+    )
+    assert require_national_spine(MappingProxyType(_national_sidecar())) is None
+
+
+def test_the_national_line_refuses_a_spine_of_another_clone_count():
+    """K is the int one: any other count, or a value that is not an int (a
+    bool among them), is refused in one sentence naming K and nothing else."""
+    for clones in (0, 2, 3, 15):
+        with pytest.raises(ValueError) as refused:
+            require_national_spine(_national_sidecar(geographic_clone_count=clones))
+        assert str(refused.value) == (
+            _NATIONAL_LEAD
+            + f"the bound spine's geographic clone count is K = {clones}."
+        )
+    for clones in (True, "1", 1.0, None):
+        with pytest.raises(ValueError) as refused:
+            require_national_spine(_national_sidecar(geographic_clone_count=clones))
+        assert str(refused.value) == (
+            _NATIONAL_LEAD
+            + f"the bound spine's geographic clone count is K = {clones!r}."
+        )
+
+
+def test_the_national_line_refuses_a_roster_that_is_not_geography_first():
+    """A one-clone spine built before the area stages (the roster group (b)
+    left, with no geography block) is refused, naming what its roster lacks
+    in the leaf's order; K, where it is wrong too, comes first."""
+    pre_areas = ["frs_spine", "geographic_expand", "geographic_identity", "was_wealth"]
+    operations = {name: [] for name in pre_areas}
+    lacking = "; ".join(
+        (
+            *(f"stage {stage}" for stage in GEOGRAPHY_FIRST_STAGES[2:]),
+            "operation localise_main_residence_value in was_wealth",
+            "geography block",
+        )
+    )
+    with pytest.raises(ValueError) as refused:
+        require_national_spine(
+            _national_sidecar(stages=pre_areas, operations=operations, geography=None)
+        )
+    assert str(refused.value) == (
+        _NATIONAL_LEAD + f"the bound spine's build sidecar lacks: {lacking}."
+    )
+    without_block = _national_sidecar(geographic_clone_count=3)
+    del without_block["geography"]
+    with pytest.raises(ValueError) as both:
+        require_national_spine(without_block)
+    assert str(both.value) == (
+        _NATIONAL_LEAD + "the bound spine's geographic clone count is K = 3; "
+        "the bound spine's build sidecar lacks: geography block."
+    )
+    for sidecar in (None, [], "sidecar", 1):
+        with pytest.raises(ValueError, match="build sidecar is a JSON object"):
+            require_national_spine(sidecar)
+
+
+def test_the_national_spine_refusal_names_k_and_names_only():
+    """What else the sidecar holds, figures among it, never enters the
+    refusal: it names K and the leaf's missing names alone."""
+    sidecar = _national_sidecar(
+        geographic_clone_count=2,
+        stages=[
+            name
+            for name in _national_sidecar()["stages"]
+            if name not in {"rfdr", "private_rent"}
+        ],
+        entity_row_counts={"household": 4321},
+        household_weight_total=98765.0,
+    )
+    sidecar["geography"]["support_pins"] = {"uk_system": {"size_bytes": 5555}}
+    with pytest.raises(ValueError) as refused:
+        require_national_spine(sidecar)
+    text = str(refused.value)
+    assert text == (
+        _NATIONAL_LEAD + "the bound spine's geographic clone count is K = 2; "
+        "the bound spine's build sidecar lacks: stage rfdr; stage private_rent."
+    )
+    rest = text.replace("microcosm#931", "").replace("K = 2", "")
+    assert not any(character.isdigit() for character in rest)
+
+
+_WINDOW = tuple(
+    date.fromisoformat(NATIONAL_EXCLUSION_WINDOW[name])
+    for name in ("approved_on", "expires_on")
+)
+#: A fixed review date inside the test registers' window.
+_REVIEW = date(2027, 1, 15)
+_EXCLUSION_LEAD = (
+    "The national line builds only once the degenerate-surface exclusion "
+    "household.atomic_area_basis is signed for the national line and in force "
+    "on the build's review date (microcosm#931); "
+)
+
+
+def test_the_test_registers_review_date_lies_inside_their_window():
+    approved, expires = _WINDOW
+    assert approved < _REVIEW < expires
+
+
+def test_an_entry_signed_for_the_national_line_passes_through_its_window(tmp_path):
+    """In force from approved_on through expires_on, both days included, on
+    the national line; an entry that names no line applies on every one."""
+    approved, expires = _WINDOW
+    for lines in (("local", "national"), ("national",), None):
+        register = write_national_exclusion_register(
+            tmp_path / "register.json", release_lines=lines
+        )
+        for day in (approved, _REVIEW, expires):
+            assert require_national_exclusion_signed(day, source=register) is None
+
+
+def test_an_entry_not_signed_for_the_national_line_is_refused(tmp_path):
+    register = write_national_exclusion_register(
+        tmp_path / "register.json", release_lines=("local",)
+    )
+    for day in (*_WINDOW, _REVIEW):
+        with pytest.raises(ValueError) as refused:
+            require_national_exclusion_signed(day, source=register)
+        assert str(refused.value) == (
+            _EXCLUSION_LEAD + "its entry, in force from 2026-12-01 through "
+            "2027-06-01, does not list the national line."
+        )
+
+
+def test_an_entry_out_of_its_window_is_refused(tmp_path):
+    """Expired strictly after expires_on, premature strictly before
+    approved_on, as the gates read the register."""
+    register = write_national_exclusion_register(tmp_path / "register.json")
+    approved, expires = _WINDOW
+    for day in (expires + timedelta(days=1), date(2031, 1, 1)):
+        with pytest.raises(ValueError) as expired:
+            require_national_exclusion_signed(day, source=register)
+        assert str(expired.value) == (
+            _EXCLUSION_LEAD + "its entry has expired: it was in force from "
+            "2026-12-01 through 2027-06-01."
+        )
+    for day in (approved - timedelta(days=1), date(2026, 1, 1)):
+        with pytest.raises(ValueError) as premature:
+            require_national_exclusion_signed(day, source=register)
+        assert str(premature.value) == (
+            _EXCLUSION_LEAD + "its entry is not yet in force: it is in force "
+            "from 2026-12-01 through 2027-06-01."
+        )
+    # A register that does not list the national line refuses on that first,
+    # in any window.
+    local = write_national_exclusion_register(
+        tmp_path / "local.json", release_lines=("local",)
+    )
+    with pytest.raises(ValueError, match="does not list the national line"):
+        require_national_exclusion_signed(expires + timedelta(days=1), source=local)
+
+
+def test_a_register_without_the_entry_is_refused(tmp_path):
+    register = write_national_exclusion_register(tmp_path / "register.json")
+    payload = json.loads(register.read_text())
+    payload["exclusions"] = {
+        "household.another_column": payload["exclusions"][NATIONAL_AREA_EXCLUSION]
+    }
+    register.write_text(json.dumps(payload))
+    with pytest.raises(ValueError) as refused:
+        require_national_exclusion_signed(_REVIEW, source=register)
+    assert str(refused.value) == _EXCLUSION_LEAD + "the register has no such entry."
+
+
+def test_the_exclusion_check_takes_the_review_date_and_reads_no_clock(tmp_path):
+    """The review date is the build's, a ``date``; a ``datetime``, a string or
+    nothing is refused before any register is read."""
+    missing = tmp_path / "absent.json"
+    for bad in (None, datetime(2027, 1, 15, 12), "2027-01-15"):
+        with pytest.raises(TypeError, match="datetime.date"):
+            require_national_exclusion_signed(bad, source=missing)
+    assert (
+        inspect.signature(require_national_exclusion_signed)
+        .parameters["review_date"]
+        .default
+        is inspect.Parameter.empty
+    )
+    source = inspect.getsource(require_national_exclusion_signed)
+    assert "today" not in source and "now(" not in source
+
+
+def test_the_committed_register_is_not_yet_signed_for_the_national_line():
+    """The committed register as it stands, on a fixed date inside its entry's
+    window: the entry applies on the local line alone, so the national line
+    refuses. Signing the entry for the national line (a register edit and the
+    contract re-pin, in their own commit) lifts the refusal with no code
+    change, and flips this test."""
+    entry = load_uk_reviewed_exclusion_register(
+        None, resource=UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE
+    )[NATIONAL_AREA_EXCLUSION]
+    day = date(2027, 1, 15)
+    assert not entry.premature(day) and not entry.expired(day)
+    assert not entry.applies_on(NATIONAL_LINE)
+    with pytest.raises(ValueError) as refused:
+        require_national_exclusion_signed(day)
+    assert str(refused.value) == (
+        _EXCLUSION_LEAD + f"its entry, in force from {entry.approved_on} through "
+        f"{entry.expires_on}, does not list the national line."
+    )
+
+
+def test_the_exclusion_refusals_name_the_entry_the_line_and_the_window_only(
+    tmp_path,
+):
+    approved, expires = _WINDOW
+    refusals = []
+    for lines, day in (
+        (("local",), _REVIEW),
+        (("national",), expires + timedelta(days=1)),
+        (("national",), approved - timedelta(days=1)),
+    ):
+        register = write_national_exclusion_register(
+            tmp_path / "register.json", release_lines=lines
+        )
+        with pytest.raises(ValueError) as refused:
+            require_national_exclusion_signed(day, source=register)
+        refusals.append(str(refused.value))
+    for text in refusals:
+        rest = (
+            text.replace("microcosm#931", "")
+            .replace(NATIONAL_EXCLUSION_WINDOW["approved_on"], "")
+            .replace(NATIONAL_EXCLUSION_WINDOW["expires_on"], "")
+        )
+        assert NATIONAL_AREA_EXCLUSION in rest and "national line" in rest
+        assert not any(character.isdigit() for character in rest), text
+        # The review date is not the register's, and is not named.
+        assert _REVIEW.isoformat() not in text

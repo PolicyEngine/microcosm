@@ -3,7 +3,8 @@
 A geography-first spine runs every stage ``GEOGRAPHY_FIRST_STAGES`` names and
 ``was_wealth``'s ``localise_main_residence_value`` operation, and its build
 sidecar records how its area draw was bound in a ``geography`` block under
-``SIDECAR_GEOGRAPHY_KEYS``. The dense line builds only on such a spine
+``SIDECAR_GEOGRAPHY_KEYS``. The dense and national lines build only on such a
+spine, the national line at one clone
 (:mod:`~microcosm.build.uk_runtime.spine_posture`), and the spine build's
 sidecar writer writes the block under these keys. The stages' transforms read
 their own names from here, so a stage and the roster cannot name it apart; a

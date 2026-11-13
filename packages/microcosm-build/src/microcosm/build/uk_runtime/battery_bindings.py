@@ -84,8 +84,8 @@ from microcosm.build.uk_runtime.local_targets import (
     metric_names,
 )
 from microcosm.build.uk_runtime.national_frame import (
-    UK_RELEASE_EXPORT_DROPPED_COLUMNS,
     _uk_gate_surface,
+    uk_release_export_dropped_columns,
     uk_release_export_frame,
 )
 from microcosm.build.uk_runtime.release_input_coverage import (
@@ -260,8 +260,17 @@ def _evaluate_release_input_coverage(
         build_state = _uk_gate_surface(spine_frame)
     else:
         build_state = spine_frame
+    # The export of the context's line: on the national line the geographic
+    # clone indices leave too (microcosm#931). The line is read raw and the
+    # export refuses one it does not know: this binding also runs the
+    # preflight's manifest check, and _release_line would bring
+    # weighted_integrity into that phase's reach.
     return uk_release_input_coverage_gate(
-        _uk_gate_surface(uk_release_export_frame(context.frame)),
+        _uk_gate_surface(
+            uk_release_export_frame(
+                context.frame, line=context.artifacts.get("release_line")
+            )
+        ),
         engine,
         manifest=manifest,
         build_state_frame=build_state,
@@ -406,26 +415,27 @@ def _export_dropped_columns_from_spine(
 ) -> dict[str, Any]:
     """Columns the release export drops, read from the certifier's spine frame.
 
-    ``UK_RELEASE_EXPORT_DROPPED_COLUMNS`` leave at the release boundary
-    (microcosm#1063 c9 and the salary-sacrifice pre-conversion pay carrier),
-    so a gate that checks every declared stage output cannot find them on
-    the release candidate. The certifier passes the spine frame as the
-    ``spine_frame`` artifact; this returns each requested column that is an
-    export-dropped column present on that frame, keyed by column name. Any
-    other requested column, or any column when no spine frame is supplied,
-    is left to the caller's missing-column path.
+    The columns ``national_frame.uk_release_export_dropped_columns`` lists
+    for the context's release line leave at the release boundary
+    (microcosm#1063 c9 and the salary-sacrifice pre-conversion pay carrier
+    on every line, and on the national line the geographic clone indices of
+    its one-clone spine, microcosm#931), so a gate that checks every declared
+    stage output cannot find them on the release candidate. The certifier
+    passes the spine frame as the ``spine_frame`` artifact; this returns each
+    requested column that the context's line drops at export and that is
+    present on that frame, keyed by column name. Any other requested column,
+    or any column when no spine frame is supplied, is left to the caller's
+    missing-column path.
     """
-
-    from microcosm.build.uk_runtime.national_frame import (
-        UK_RELEASE_EXPORT_DROPPED_COLUMNS,
-    )
 
     spine_frame = context.artifacts.get("spine_frame")
     if spine_frame is None:
         return {}
     dropped = {
         column: entity
-        for entity, names in UK_RELEASE_EXPORT_DROPPED_COLUMNS.items()
+        for entity, names in uk_release_export_dropped_columns(
+            _release_line(context)
+        ).items()
         for column in names
     }
     found: dict[str, Any] = {}
@@ -1267,8 +1277,11 @@ def _evaluate_degenerate_release_surface(
         now=_exclusion_clock(context),
         # The release boundary drops these before writing; the certifier never
         # sees them on the exported H5, so a gate fed the pre-export frame
-        # must not report them (found by the first graph dense build).
-        dropped_at_export=UK_RELEASE_EXPORT_DROPPED_COLUMNS,
+        # must not report them (found by the first graph dense build). What
+        # it drops is the context's line's: on the national line, the
+        # geographic clone indices too, constant on its one-clone spine
+        # (microcosm#931).
+        dropped_at_export=uk_release_export_dropped_columns(_release_line(context)),
         **kwargs,
     )
     return _with_out_of_line(result, context, out_of_line)
@@ -1857,13 +1870,16 @@ def _evaluate_input_mass_parity(
         reviewed_exclusions=exclusions,
     )
     # The reference is compared against the surface the release ships: the
-    # export frame, with the reviewed export exclusions dropped. The release
+    # export frame, with the reviewed export exclusions dropped (and on the
+    # national line the geographic clone indices, microcosm#931). The release
     # cut already loads that frame; at the national seam the raw frame still
     # carries the spine's WAS property_wealth, which the reference also
     # stores, so comparing it there would call the signed exclusion stale
     # (microcosm#1106).
     result = uk_input_mass_parity_gate(
-        uk_input_mass_totals(uk_release_export_frame(context.frame)),
+        uk_input_mass_totals(
+            uk_release_export_frame(context.frame, line=_release_line(context))
+        ),
         context.artifacts["input_mass_reference"],
         descriptor=coerced_registry[reference_name],
         policy=policy,
