@@ -4271,9 +4271,35 @@ _BLOCK_FIXTURE_LAYER_VINTAGES = {
     "congressional_district": "119th_congress",
 }
 _BLOCK_FIXTURE_CPS_SHA256 = {2023: "a" * 64}
-# Native households 10 and 20, plus the PUF-support clone of 20; every
-# derived column is a prefix or ladder lookup of the one located block.
-_BLOCK_FIXTURE_BLOCKS = ("060014001001000", "060014002002001", "060014002002001")
+# The first native household and its PUF-support clone, when the fixture has
+# one, sit in the first block; every other native household sits in the
+# second. Every derived column is a prefix or ladder lookup of the one
+# located block.
+_BLOCK_FIXTURE_BLOCKS = ("060014001001000", "060014002002001")
+_BLOCK_FIXTURE_LADDER_LOOKUPS = {
+    "060014001001000": {"place_fips": "", "sldu": "06009", "sldl": "06018"},
+    "060014002002001": {"place_fips": "53000", "sldu": "06010", "sldl": "06020"},
+}
+
+
+def _block_fixture_blocks(household: pd.DataFrame) -> pd.Series:
+    """Each household row's fixture block: a clone carries its source's."""
+
+    native = household.loc[
+        household[support_clone_index_column("household")].eq(0), "household_id"
+    ]
+    block_by_source = {
+        int(household_id): _BLOCK_FIXTURE_BLOCKS[min(position, 1)]
+        for position, household_id in enumerate(native)
+    }
+    return pd.Series(
+        [
+            block_by_source[int(source_id)]
+            for source_id in household[support_source_id_column("household")]
+        ],
+        index=household.index,
+        dtype=object,
+    )
 
 
 def _block_location_root_attributes(seed: int) -> dict[str, str]:
@@ -4299,16 +4325,21 @@ def _rewrite_as_block_location_pool(
     pool_path = Path(manifest["pool_h5"]["path"])
     with pd.HDFStore(pool_path, mode="a") as store:
         household = h5_io.read_frame_table(store, "household")
-        blocks = pd.Series(_BLOCK_FIXTURE_BLOCKS, index=household.index, dtype=object)
+        blocks = _block_fixture_blocks(household)
         household["block_geoid"] = blocks
         household["tract_geoid"] = blocks.str[:11]
         household["county_fips"] = blocks.str[:5]
         # Alameda keeps its county as its 2023 county-equivalent.
         household["county_fips_2023"] = blocks.str[:5]
-        household["place_fips"] = pd.Series(["", "53000", "53000"], dtype=object)
-        household["sldu"] = pd.Series(["06009", "06010", "06010"], dtype=object)
-        household["sldl"] = pd.Series(["06018", "06020", "06020"], dtype=object)
-        household["cbsa_code"] = pd.Series(["41860"] * 3, dtype=object)
+        for column in ("place_fips", "sldu", "sldl"):
+            household[column] = pd.Series(
+                [_BLOCK_FIXTURE_LADDER_LOOKUPS[block][column] for block in blocks],
+                index=household.index,
+                dtype=object,
+            )
+        household["cbsa_code"] = pd.Series(
+            ["41860"] * len(household), index=household.index, dtype=object
+        )
         store.put("household", household, format="fixed")
         attributes = store.get_node("/")._v_attrs
         for key, value in _block_location_root_attributes(seed).items():
@@ -4382,13 +4413,22 @@ def test_ready_stacked_pool_loader_accepts_a_block_location_pool(
     tmp_path: Path,
 ) -> None:
     pytest.importorskip("tables")
-    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest_path = _write_ready_pool(
+        tmp_path,
+        stacked=True,
+        include_zero_weight_clone=True,
+    )
     _rewrite_as_block_location_pool(manifest_path, seed=5)
 
     frame, manifest, _ = load_simulation_ready_us_multispine_pool(manifest_path)
 
     household = frame.table("household")
-    assert household["block_geoid"].astype(str).tolist() == list(_BLOCK_FIXTURE_BLOCKS)
+    blocks = household["block_geoid"].astype(str).tolist()
+    clone = household[support_clone_index_column("household")].eq(1).tolist()
+    # The first household, its clone (the last row) and the rest between.
+    assert clone == [False] * (len(blocks) - 1) + [True]
+    assert blocks[0] == blocks[-1] == _BLOCK_FIXTURE_BLOCKS[0]
+    assert set(blocks[1:-1]) == {_BLOCK_FIXTURE_BLOCKS[1]}
     assert manifest["operator_order"] == list(
         h5_io.US_STACKED_POOL_BLOCK_LOCATION_OPERATOR_ORDER
     )
@@ -4453,13 +4493,19 @@ def test_ready_stacked_pool_loader_refuses_block_drift_across_clones(
     tmp_path: Path,
 ) -> None:
     pytest.importorskip("tables")
-    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest_path = _write_ready_pool(
+        tmp_path,
+        stacked=True,
+        include_zero_weight_clone=True,
+    )
     manifest = _rewrite_as_block_location_pool(manifest_path)
     pool_path = Path(manifest["pool_h5"]["path"])
     clone_column = support_clone_index_column("household")
     with pd.HDFStore(pool_path, mode="a") as store:
         household = h5_io.read_frame_table(store, "household")
-        household.loc[household[clone_column].eq(1), "sldl"] = "06099"
+        clone_row = household[clone_column].eq(1)
+        assert int(clone_row.sum()) == 1
+        household.loc[clone_row, "sldl"] = "06099"
         store.put("household", household, format="fixed")
     manifest["pool_h5"]["sha256"] = _sha256(pool_path)
     manifest["pool_h5"]["size_bytes"] = pool_path.stat().st_size
