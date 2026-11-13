@@ -249,6 +249,30 @@ def test_a_published_build_waits_until_the_collector_accepts_its_submissions(
     assert "warning" not in err
 
 
+def test_a_publication_the_collector_has_not_accepted_keeps_the_file_advice(
+    national: Path,
+    artifact_root: Path,  # noqa: F811
+    clock: Clock,
+    capsys,
+) -> None:
+    """A publication's submissions may read files the emitter did not copy at
+    hand-over, so its end-of-wait warning still says to leave them unchanged;
+    only a promotion's or withdrawal's leaves that out."""
+    client = FakeEmitterClient(collector_receipts=[{"status": "pending"}])
+
+    outcome = release_publication.publish_release_build(
+        national, artifact_root=artifact_root, client=client, collector_wait_seconds=2
+    )
+
+    assert outcome.succeeded
+    assert (
+        "the emitter keeps them queued on this machine, and an emitter running "
+        "here later sends them. Leave unchanged any of their files the emitter "
+        "did not copy at hand-over until the hand-over settles."
+        in capsys.readouterr().err
+    )
+
+
 def test_the_collector_receipt_is_asked_for_by_the_emitters_hand_over_id(
     national: Path,
     artifact_root: Path,  # noqa: F811
@@ -1545,11 +1569,10 @@ def test_a_withdrawal_whose_releases_json_was_not_kept_says_to_run_it_again(
         "the collector receives nothing of releases.json with build "
         f"{UK_OTHER_BUILD} of {UK_NATIONAL_RELEASE_ID} withdrawn: the emitter that "
         "landed the change kept no copy of releases.json to submit, as an older "
-        "emitter release sharing this machine's hand-over database, or one with "
-        "collector submissions off, does; running the same command again hands "
-        "the change over as a new request, which is submitted once an emitter "
-        "that keeps the file lands it (RELEASES_RECORD_MISSING)."
-        in capsys.readouterr().err
+        "emitter release sharing this machine's hand-over database does; running "
+        "the same command again hands the change over as a new request, which is "
+        "submitted once an emitter that keeps the file lands it "
+        "(RELEASES_RECORD_MISSING)." in capsys.readouterr().err
     )
 
 
