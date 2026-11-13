@@ -824,6 +824,80 @@ def test_a_submission_the_collector_turned_down_is_a_warning(
     assert f"warning: {warned}" in capsys.readouterr().err
 
 
+def _submission(kind: str, status: str, code: str | None = None) -> dict:
+    return {
+        "kind": kind,
+        "status": status,
+        "error_code": code,
+        "submission_id": None,
+        "collector_status": None,
+    }
+
+
+def test_a_submission_turned_down_beside_one_awaiting_its_status_is_a_warning(
+    tmp_path, capsys
+):
+    """A UK bundle makes two submissions. The emitter sums them up as
+    ``awaiting_final_status`` while one awaits the collector's final status,
+    even when the other has already failed, so the build reads each one."""
+    bundle = _bundle(tmp_path)
+    emitter = FakeEmitterClient(
+        hub_api=FakeHub(tmp_path),
+        collector_receipts=[
+            {
+                "status": "awaiting_final_status",
+                "attempts": 1,
+                "submissions": [
+                    _submission("calibration-diagnostics", "awaiting_final_status"),
+                    _submission("orrery-inputs", "failed", "COLLECTOR_REFUSED_422"),
+                ],
+            }
+        ],
+    )
+
+    staged = _stage(bundle, emitter, collector=PROVENANCE)
+
+    assert staged.delivery["status"] == "uploaded"
+    assert staged.collector_receipt["status"] == "awaiting_final_status"
+    warning = capsys.readouterr().err
+    assert (
+        f"warning: the orrery-inputs submission of the staged dataset bundle "
+        f"staged/{RUN_ID} to the collector failed (COLLECTOR_REFUSED_422)."
+        in warning
+    )
+    assert "calibration-diagnostics" not in warning
+
+
+def test_each_settled_submission_is_reported_by_its_own_outcome(tmp_path, capsys):
+    """Once both have settled, the summed status is one submission's; the
+    warning names the one that was turned down, not both."""
+    bundle = _bundle(tmp_path)
+    emitter = FakeEmitterClient(
+        hub_api=FakeHub(tmp_path),
+        collector_receipts=[
+            {
+                "status": "rejected",
+                "error_code": "content_mismatch",
+                "attempts": 1,
+                "submissions": [
+                    _submission("calibration-diagnostics", "succeeded"),
+                    _submission("orrery-inputs", "rejected", "content_mismatch"),
+                ],
+            }
+        ],
+    )
+
+    _stage(bundle, emitter, collector=PROVENANCE)
+
+    warning = capsys.readouterr().err
+    assert (
+        f"warning: the collector rejected the orrery-inputs submission of the "
+        f"staged dataset bundle staged/{RUN_ID} (content_mismatch)." in warning
+    )
+    assert "the submissions of" not in warning
+    assert "calibration-diagnostics" not in warning
+
+
 @pytest.mark.parametrize("status", ["succeeded", "skipped"])
 def test_no_wait_is_announced_when_the_first_receipt_is_settled(
     tmp_path, capsys, status
