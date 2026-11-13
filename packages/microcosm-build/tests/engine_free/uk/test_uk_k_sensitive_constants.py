@@ -29,6 +29,7 @@ from microcosm.build.uk_runtime import (
     company_cars,
     frs_person_draws,
     frs_take_up,
+    private_rent_localisation,
     regional_home_values,
     salary_sacrifice,
     spi_band_donors,
@@ -40,9 +41,10 @@ from microcosm.build.uk_runtime import (
     uc_capital_coherence,
 )
 
-#: What a constant counts.
+#: What a constant counts: "ratio" bounds a ratio of weighted means, which
+#: K clones at 1 / K of their weight leave as it was.
 COUNTS = frozenset(
-    {"source count", "survey records", "rows", "weight", "hyperparameter"}
+    {"source count", "survey records", "rows", "weight", "ratio", "hyperparameter"}
 )
 #: How the code meets the clone count, each with what it means.
 TREATMENTS = {
@@ -123,6 +125,34 @@ _PROPERTY_MAXIMA = (
 )
 
 K_SENSITIVE_CONSTANTS: tuple[KSensitiveConstant, ...] = (
+    KSensitiveConstant(
+        name="private rents' sampled region renters",
+        where="private_rent_localisation.MIN_SAMPLED_REGION_RENTERS",
+        read=lambda: private_rent_localisation.MIN_SAMPLED_REGION_RENTERS,
+        value=10,
+        counts="source count",
+        treatment="invariant",
+        reason=(
+            "a sampled spine ranks and scales a region against Great Britain "
+            "where it holds fewer FRS renters than this, counted in distinct "
+            "true source households, so a renter's K clones and copies count "
+            "once (private_rent, microcosm#931)"
+        ),
+    ),
+    KSensitiveConstant(
+        name="private rents' scale band",
+        where="private_rent_localisation.SCALE_BAND",
+        read=lambda: private_rent_localisation.SCALE_BAND,
+        value=(0.25, 4.0),
+        counts="ratio",
+        treatment="invariant",
+        reason=(
+            "bounds each region's scale, the FRS mean rent over the census mix "
+            "of its BRMAs' list means, both weighted means that K clones at "
+            "1 / K of their weight leave unchanged (private_rent, "
+            "microcosm#931)"
+        ),
+    ),
     KSensitiveConstant(
         name="band donor maximum weight",
         where="spi_band_donors.SPI_INCOME_BAND_MAXIMUM_DONOR_WEIGHT",

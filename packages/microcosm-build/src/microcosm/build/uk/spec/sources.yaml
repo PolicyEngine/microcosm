@@ -1274,7 +1274,7 @@ stages:
   - source_household_id
   - source_year
   rewrites: []
-  notes: 'Gives every FRS household K geographic clones before any other copy step (microcosm#931), so that each clone can later take an area of its own while together they stand for the survey household once. Clone 0 is the frame''s own rows and ids; clone k repeats every person, benefit unit and household with each id minted in the copy-id table''s geographic_support field at ordinal k (id_remapping), and every table carries its rows'' clone, 0 to K - 1, in its clone index column. Each clone carries an equal share of its household''s design weight, the same float in every clone, and the frame''s mass log gains one record whose reason names no clone count. Every household carries its source_household_id (its clone-0 id), source_year (the frame''s year) and source_household_key, so the stages after it count true sources in survey households. K is a parameter of the stage''s graph node, never of this declaration, so the declaration and its contract are the same at every K. The stage runs after frs_hmrc_spine_leaves and frs_annual_income_spells, which join the raw FRS tabs on raw person ids, and before frs_take_up, frs_person_draws, frs_household_draws and frs_brma, which run on every clone. Its evidence gives K, the copy-id field and its radix, the distinct source households rounded by the shared disclosure rules, and the weight split and kind; no row count, id or weight.'
+  notes: 'Gives every FRS household K geographic clones before any other copy step (microcosm#931), so that each clone can later take an area of its own while together they stand for the survey household once. Clone 0 is the frame''s own rows and ids; clone k repeats every person, benefit unit and household with each id minted in the copy-id table''s geographic_support field at ordinal k (id_remapping), and every table carries its rows'' clone, 0 to K - 1, in its clone index column. Each clone carries an equal share of its household''s design weight, the same float in every clone, and the frame''s mass log gains one record whose reason names no clone count. Every household carries its source_household_id (its clone-0 id), source_year (the frame''s year) and source_household_key, so the stages after it count true sources in survey households. K is a parameter of the stage''s graph node, never of this declaration, so the declaration and its contract are the same at every K. The stage runs after frs_hmrc_spine_leaves and frs_annual_income_spells, which join the raw FRS tabs on raw person ids, and before the area stages (atomic_area_assign, local_authority and rfdr), frs_take_up, frs_person_draws, frs_household_draws and area_brma, which run on every clone. Its evidence gives K, the copy-id field and its radix, the distinct source households rounded by the shared disclosure rules, and the weight split and kind; no row count, id or weight.'
 - stage: geographic_identity
   survey: Family Resources Survey 2024-25
   source: Microcosm structural operator (microcosm#931); the FRS vintage frs_release.json pins, no publisher input
@@ -1292,7 +1292,154 @@ stages:
   outputs:
   - geography_household_key
   rewrites: []
-  notes: 'Keys every household for the area assignment (microcosm#931): geography_household_key, as the dense line''s uk.full.identity writes it, from the identity source (source), the FRS vintage frs_release.json pins for the household''s source_year, its source_household_id and its clone path, read from the lineage columns geographic_expand writes, never from ids, weights or values: no branch for clone 0 and the geographic_support branch at ordinal k for clone k. So clone 0 keys as the dense line keys the same base household, and growing K never changes an existing household''s key. A source year the release pins no vintage for, and keys that repeat, are refused by count. The copy steps after it copy a household''s key with the household. Its evidence gives the distinct source households rounded by the shared disclosure rules, that the keys are unique, the source, the vintages and the columns it reads; no key is printed.'
+  notes: 'Keys every household for the area assignment (microcosm#931): geography_household_key, from the identity source (source), the FRS vintage frs_release.json pins for the household''s source_year, its source_household_id and its clone path, read from the lineage columns geographic_expand writes, never from ids, weights or values: no branch for clone 0 and the geographic_support branch at ordinal k for clone k. So clone 0 keys as a one-clone spine keys the same base household, and growing K never changes an existing household''s key. A source year the release pins no vintage for, and keys that repeat, are refused by count. spi_copy_areas gives each SPI copy and income band donor a key of its own, over its own copy path, and the later copy steps copy a household''s key with the household. Its evidence gives the distinct source households rounded by the shared disclosure rules, that the keys are unique, the source, the vintages and the columns it reads; no key is printed.'
+- stage: atomic_area_assign
+  survey: Family Resources Survey 2024-25
+  source: 'Microcosm structural operator (microcosm#931): the shared atomic-area operator over the three conditioned atomic-area supports sources.yaml declares, each system''s areas with their IMD deciles and, in England, Wales and Scotland, their households by council-tax band'
+  grain: household
+  artifacts: []
+  operations:
+  - kind: assign_atomic_area
+    identity: geography_household_key
+    sources:
+      uk_ew_output_area_2021: uk_ew_output_area_2021_conditioned_support
+      uk_scotland_output_area_2022: uk_scotland_output_area_2022_conditioned_support
+      uk_ni_data_zone_2021: uk_ni_data_zone_2021_conditioned_support
+    constraints:
+    - input: region
+      support: frs_region
+      required: true
+    - input: atomic_draw_imd_decile
+      support: imd_decile
+      required: false
+    weight_by:
+      input: atomic_draw_council_tax_band
+      default: households
+      bands:
+        uk_ew_output_area_2021:
+        - A
+        - B
+        - C
+        - D
+        - E
+        - F
+        - G
+        - H
+        - I
+        uk_scotland_output_area_2022:
+        - A
+        - B
+        - C
+        - D
+        - E
+        - F
+        - G
+        - H
+        uk_ni_data_zone_2021: []
+    draw_inputs:
+      atomic_draw_imd_decile:
+        column: imd_decile
+        unobserved: 0
+      atomic_draw_council_tax_band:
+        column: council_tax_band
+        observed: council_tax_band_observed
+      missing_on_copies_of: spi_support_channel
+    fallback_levels:
+    - name: L0
+      constraints:
+      - region
+      - atomic_draw_imd_decile
+      weight_by: true
+    - name: L1
+      constraints:
+      - region
+      - atomic_draw_imd_decile
+      weight_by: false
+    - name: L2
+      constraints:
+      - region
+      weight_by: true
+    - name: L3
+      constraints:
+      - region
+      weight_by: false
+    layers:
+    - oa_code
+    - lsoa_code
+    - msoa_code
+    - local_authority_code
+    - ward_code
+    - constituency_code
+    - region_code
+    - itl3_code
+    - itl2_code
+    - itl1_code
+    outputs:
+    - atomic_area_code
+    - atomic_area_system
+    - atomic_area_basis
+    stream: uk-spine-atomic-area-v1
+    seed: 0
+  outputs:
+  - atomic_area_code
+  - atomic_area_system
+  - atomic_area_basis
+  - oa_code
+  - lsoa_code
+  - msoa_code
+  - local_authority_code
+  - ward_code
+  - constituency_code
+  - region_code
+  - itl3_code
+  - itl2_code
+  - itl1_code
+  rewrites: []
+  notes: 'Draws each geographic clone''s atomic area within its FRS region (microcosm#931) with the shared atomic-area operator, on the three conditioned supports the operation names: a 2021 output area in England and Wales, a 2022 output area in Scotland and a 2021 data zone in Northern Ireland. The draw is conditioned on the household''s IMD decile, its imd_decile as "1" to "10" and missing where it is 0, and, where council_tax_band_observed is true, on its council-tax band, by which England, Wales and Scotland weight each area''s households; Northern Ireland''s supports carry no band, so it draws by households. A household whose cell holds no area falls back a level at a time, L0 (decile, by band), L1 (decile, by households), L2 (by band) and L3 (by households), each within the region, as the shared fallback-level chooser picks it, and a level''s dropped input is missing, so one definition serves every level. The inputs are a narrow, transient frame keyed on geography_household_key, so each clone''s draw depends on its key, its own inputs, the supports and the stream alone, and growing K never moves an existing clone''s area. A copy of the SPI support channel would draw at L3, its decile and band missing by rule; none exists yet here, and spi_copy_areas draws the copies'' areas. The stage writes the three assignment columns and the ten ladder columns in the graph''s string dtype, and refuses when the shared operator''s mapping-integrity validation fails. Its evidence gives K, the seed, the stream, the definition''s and supports'' digests, the validation outcome and the distinct source households by system, by level and by fallback reason, rounded by the shared disclosure rules; no key, area code or count of a cell.'
+- stage: local_authority
+  survey: Family Resources Survey 2024-25
+  source: The committed ONS April 2023 local authority district names roster (local_authority_names.json) and policyengine-uk's local_authority members
+  grain: household
+  artifacts:
+  - role: local_authority_names
+    kind: public_aggregate_reference
+    resource: local_authority_names.json
+    format: json
+    runtime_sha256_required: true
+  operations:
+  - kind: resolve_local_authority
+    code_column: local_authority_code
+    output: local_authority
+    names_resource: local_authority_names.json
+    vintage: 2023_april_lad
+  outputs:
+  - local_authority
+  rewrites: []
+  notes: 'Resolves each household''s engine local_authority from the local_authority_code its area draw gives it (microcosm#931), through the committed April 2023 local authority names roster (local_authority_names.json), fail-closed: a code off the roster refuses the stage, and the engine input is never defaulted (microcosm#953). The column is written in the graph''s string dtype. Its evidence gives K, the roster''s vintage and digest and the distinct source households, rounded by the shared disclosure rules.'
+- stage: rfdr
+  survey: Family Resources Survey 2024-25
+  source: HMRC Notice 2001's Rural Fuel Duty Relief areas, as the committed RFDR area layer (rfdr_area_layer.json) places them in 2021 England and Wales and 2022 Scotland output areas
+  grain: household
+  artifacts:
+  - role: rfdr_area_layer
+    kind: public_aggregate_reference
+    resource: rfdr_area_layer.json
+    format: json
+    runtime_sha256_required: true
+  operations:
+  - kind: assign_rfdr_flags
+    layer_resource: rfdr_area_layer.json
+    method: uk-rfdr-area-layer-v1
+    area_system: atomic_area_system
+    area_code: atomic_area_code
+    roster_sources:
+      uk_ew_output_area_2021: uk_ew_output_area_2021_conditioned_support
+      uk_scotland_output_area_2022: uk_scotland_output_area_2022_conditioned_support
+    require_flagged: false
+  outputs:
+  - in_rural_fuel_duty_relief_area
+  rewrites: []
+  notes: Sets each household's in_rural_fuel_duty_relief_area from its drawn output area through the committed Rural Fuel Duty Relief area layer (rfdr_area_layer.json), as a boolean (microcosm#931). Every output area the layer flags must be an area of its system's conditioned support (roster_sources), so the layer and the supports share one code vintage; a system none of whose households is flagged is reported, as a boolean, and not refused (require_flagged), since a spine, a sampled one above all, can miss every flagged area by chance. Northern Ireland has no area in the scheme, so its households are never flagged. Its evidence gives K, the layer's and the supports' digests and the method, the roster check, those booleans and, among clone-0 rows, the distinct flagged source households by system, rounded by the shared disclosure rules.
 - stage: frs_take_up
   survey: Family Resources Survey 2024-25
   source: Family Resources Survey 2024-25 reported receipt anchors plus sourced UK take-up contract rates.
@@ -1403,7 +1550,7 @@ stages:
   nonnegative_outputs:
   - maximum_extended_childcare_hours_usage
   - max_free_entitlement_hours_used
-  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.174.1's is_uc_eligible, whose education condition (from 2.173.2) every claimant meets because the build flags nobody in full-time education; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095). The universal childcare flag is nested under the working-parent one. A unit that claims the extended hours claims the universal hours, and any other unit claims them at the contract's universal_childcare rate, the rate conditional on not claiming the extended hours; the extended draw is unchanged. childcare_copy_take_up later re-draws the childcare flags and hours of the support and CGT copies on their own benefit units. A child of DfE age 0 or 1 (its age on 31 December of the fit's model year, the age DfE counts by) in a unit that claims the working-parent hours uses them at its age's contract rate, extended_childcare_age_0_usage or extended_childcare_age_1_usage (DfE registers far fewer of the youngest eligible children than of those aged 2 to 4, and fewer at 9 to 11 months than at age 1); a child that does not gets max_free_entitlement_hours_used 0, so the engine funds it no hours, and every other person keeps the engine's default of 30.
+  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The three anchored draws, would_claim_child_benefit, would_claim_pc and would_claim_uc, count their contract targets within each geographic clone (household_clone_index, microcosm#931), so each clone fills its own residual to int(rate * n_units) over its own units, clone 0 takes a one-clone spine's flags at any K, and a spine without the clone index counts over every unit. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.174.1's is_uc_eligible, whose education condition (from 2.173.2) every claimant meets because the build flags nobody in full-time education; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095). The universal childcare flag is nested under the working-parent one. A unit that claims the extended hours claims the universal hours, and any other unit claims them at the contract's universal_childcare rate, the rate conditional on not claiming the extended hours; the extended draw is unchanged. childcare_copy_take_up later re-draws the childcare flags and hours of the support and CGT copies on their own benefit units. A child of DfE age 0 or 1 (its age on 31 December of the fit's model year, the age DfE counts by) in a unit that claims the working-parent hours uses them at its age's contract rate, extended_childcare_age_0_usage or extended_childcare_age_1_usage (DfE registers far fewer of the youngest eligible children than of those aged 2 to 4, and fewer at 9 to 11 months than at age 1); a child that does not gets max_free_entitlement_hours_used 0, so the engine funds it no hours, and every other person keeps the engine's default of 30.
 - stage: frs_person_draws
   survey: Family Resources Survey 2024-25
   source: Sourced UK take-up contract rates and identity-keyed deterministic draws.
@@ -1442,7 +1589,7 @@ stages:
     rate_key: apprentice_stock_19_to_24
     assignment_unit: person
     eligibility: 'employees (employment_status FT_EMPLOYED or PT_EMPLOYED, from frs_employment) aged 21 to 24: SSCBA 1992 s.9A already zero-rates every earner under 21 and s.9B ends the apprentice zero rate at 25, so no other age changes employer NICs, and leaving them False keeps is_in_non_advanced_education, minimum_wage, Care to Learn and the 16 to 19 Bursary Fund unchanged; the flagged keep their age-related minimum_wage too, because policyengine-uk 2.162.8 (policyengine-uk#2683) gives the apprentice rate only under 19 or with is_in_first_year_of_apprenticeship, which the build leaves at its default (False), and the stage refuses an engine without that split or the s.9B threshold'
-    rate_derivation: 'the contract''s apprentice_stock_19_to_24 is DfE''s England apprentices in learning at the start of the academic year (participation less starts) per head aged 19 to 24, a point-in-time count taken as uniform across those ages and UK-wide; the target is r times the weighted population aged 21 to 24 at the frame''s household weights, and eligible employees are flagged in the order of their identity-keyed uniform until their weight is nearest it (uc_take_up''s rule), or all of them when they weigh no more than it; the receipt records the target, the flagged weight, the support bands and the relief the flags imply at the installed engine''s Class 1 schedule, and uk_stage_frs_person_draws_apprentices gates them, the relief at or below HMRC''s NIC - NS1'
+    rate_derivation: 'the contract''s apprentice_stock_19_to_24 is DfE''s England apprentices in learning at the start of the academic year (participation less starts) per head aged 19 to 24, a point-in-time count taken as uniform across those ages and UK-wide; the target is r times the weighted population aged 21 to 24 at the frame''s household weights, counted within each geographic clone (household_clone_index, microcosm#931): each clone''s eligible employees are flagged in the order of their identity-keyed uniform until their weight is nearest its own target (uc_take_up''s rule), or all of them when they weigh no more than it; the receipt records the target, the flagged weight, the support bands and the relief the flags imply at the installed engine''s Class 1 schedule, and uk_stage_frs_person_draws_apprentices gates them, the relief at or below HMRC''s NIC - NS1'
     seed: 0
   outputs:
   - would_claim_marriage_allowance
@@ -1486,23 +1633,37 @@ stages:
   - main_residential_property_purchased_is_first_home
   - property_purchased
   notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100. TV evasion remains an independent draw, matching the incumbent reference share.
-- stage: frs_brma
+- stage: area_brma
   survey: Family Resources Survey 2024-25
-  source: Census private-rented households by region, BRMA and bedrooms (ONS and NISRA 2021, NRS 2022) and policyengine-uk LHA_category predictor.
+  source: 'Great Britain: the committed area-to-BRMA layer (brma_area_layer.json). Northern Ireland: census private-rented households by region, BRMA and bedrooms (ONS and NISRA 2021, NRS 2022) and the policyengine-uk LHA_category predictor.'
   grain: household
   artifacts:
-  - role: count_resource
-    resource: brma_private_rented_households.json
-    kind: public_aggregated_counts
+  - role: brma_area_layer
+    kind: public_aggregate_reference
+    resource: brma_area_layer.json
     format: json
+    runtime_sha256_required: true
+  - role: count_resource
+    kind: public_aggregate_reference
+    resource: brma_private_rented_households.json
+    format: json
+    runtime_sha256_required: true
   operations:
   - kind: materialize_rules_engine_predictors
     predictors:
     - LHA_category
     consumed_only: true
-  - kind: sample_categorical_from_count_table
+  - kind: assign_area_brma
     output: brma
+    area_system: atomic_area_system
+    layer_resource: brma_area_layer.json
+    method: uk-brma-area-layer-v1
+    area_codes:
+      uk_ew_output_area_2021: lsoa_code
+      uk_scotland_output_area_2022: oa_code
     count_resource: brma_private_rented_households.json
+    count_table_systems:
+    - uk_ni_data_zone_2021
     cell_columns:
     - region
     - LHA_category
@@ -1510,9 +1671,13 @@ stages:
     collapse_to: household
     collapse_method: uniform_member_pick
     seed: 0
+    salts:
+      benunit: brma
+      household_pick: brma:household_pick
   outputs:
   - brma
-  notes: Identity-keyed seed 0 streams replace the incumbent BRMA seed 0 sequential generator. Household collapse uses salt brma:household_pick.
+  rewrites: []
+  notes: 'Writes each household''s brma, in the place frs_brma held, after the draws (microcosm#931): LHA_category reads frs_take_up''s would_claim_uc. Great Britain households read it off their drawn LSOA (England and Wales) or output area (Scotland) through the committed area-to-BRMA layer (brma_area_layer.json), fail-closed on an area the layer does not hold or places in another FRS region. Northern Ireland has no open BRMA geography: one engine call over the whole frame materialises LHA_category, and its benefit units draw from the census count table by region and LHA category (count_table_systems) with frs_brma''s identity-keyed seed 0 streams, salt brma for the benefit units and brma:household_pick for the household collapse, so each takes the BRMA frs_brma drew for it. brma stays an object column. Its evidence gives K, the layer''s and the count table''s digests, the seed and salts, and the distinct source households each Great Britain grain reads and those Northern Ireland draws, rounded by the shared disclosure rules.'
 - stage: spi_support_channel
   survey: Family Resources Survey 2024-25
   source: Synthetic SPI support channel drawn from every geographic clone of the raw FRS spine's households as a keyed Bernoulli share, each household on its own identity-keyed uniform.
@@ -1566,7 +1731,7 @@ stages:
   - benunit_source_id
   - household_support_clone_index
   - household_source_id
-  notes: "Stacks the SPI support channel as a keyed Bernoulli share (microcosm#931): a household is copied when its uniform, keyed on its own household id under the stage's seed and salt, falls below min(1, 10,000 times the sample fraction over the distinct source households entering the stage). Each household's uniform depends on its own id and the stage's seed and salt alone, and whether it is copied also on that probability. The denominator counts a source once however many geographic clones carry it, so every clone draws at the same probability on its own ids, and each clone's copy count is binomial with mean min(10,000 times the sample fraction, its source households). A stage-local declaration gates the zero-weight synthetic households at the share of the household rows entering the stage plus the repo's four-sigma binomial band. The stage then allocates prior mass with exact national conservation within each region, and within each geographic clone where the frame carries household_clone_index, split by whether the household has a member at or over State Pension age (the engine's at the build instant): the SPI channel takes 50 percent of the stratum mass of households without one and pension_age_share of those with one. The channel's households are drawn unweighted with one weight per stratum and every adult in them carries a taxpayer's income, so a region-only allocation gave the channel more pension-age mass than the FRS design gives pension-age households (microcosm#1069)."
+  notes: "Stacks the SPI support channel as a keyed Bernoulli share (microcosm#931): a household is copied when its uniform, keyed on its own household id under the stage's seed and salt, falls below min(1, 10,000 times the sample fraction over the distinct source households entering the stage). Each household's uniform depends on its own id and the stage's seed and salt alone, and whether it is copied also on that probability. The denominator counts a source once however many geographic clones carry it, so every clone draws at the same probability on its own ids, and each clone's copy count is binomial with mean min(10,000 times the sample fraction, its source households). A stage-local declaration gates the zero-weight synthetic households at the share of the household rows entering the stage plus the repo's four-sigma binomial band. The stage then allocates prior mass with exact national conservation within each region, and within each geographic clone where the frame carries household_clone_index, split by whether the household has a member at or over State Pension age (the engine's at the build instant): the SPI channel takes 50 percent of the stratum mass of households without one and pension_age_share of those with one. A stratum with base mass and no SPI copy refuses the stage at every clone count: a geographic clone's stratum that the share left without a copy is never given its base mass back, which would leave that clone short of its SPI share, so it refuses as a one-clone spine's stratum would (microcosm#931). The channel's households are drawn unweighted with one weight per stratum and every adult in them carries a taxpayer's income, so a region-only allocation gave the channel more pension-age mass than the FRS design gives pension-age households (microcosm#1069)."
 - stage: spi_income_band_donors
   survey: Survey of Personal Incomes Public Use Tape 2022-23 and HMRC Income Tax liabilities statistics July 2026 Table 2.5
   source: Reserved SPI support households for the HMRC Table 2.5 total-income bands from GBP 200,000, stacked at the published band taxpayer count over the donors per band (PolicyEngine/chronicle#280 lane).
@@ -1650,6 +1815,119 @@ stages:
   nonnegative_outputs:
   - spi_income_band_donor_lower_bound
   notes: Reserves SPI-channel households for every Table 2.5 band from GBP 200,000 so the top of the income distribution has support before calibration. A band seats enough donors that none starts above the maximum weight and never fewer than the minimum, at equal weights of the build tax year's published taxpayers over the band's count. Carriers are FRS adults seated by identity-keyed draws on household weight times the tape's own band propensity given region, sex and age band; their households are copied whole at clone index 2 with the synthetic flag. The mass the donors carry is taken in proportion from the households of each donor's region, so the national total and every region's mass are unchanged (microcosm#1063). On a clone-first spine each geographic clone seats its own donors by the same walk, and every clone takes the same seats, sized against the eligible households counted in distinct source households. Each donor weighs its band's weight over the clone count, and each clone's regions fund their own donors at one mass scale for every clone; a spine without household_clone_index is one clone (microcosm#931). The income stage gives every carrier a band-conditional draw from the tape (resample_band_donor_leaves).
+- stage: spi_copy_areas
+  survey: Family Resources Survey 2024-25
+  source: 'Microcosm structural operator (microcosm#931): atomic_area_assign''s draw and the local_authority, area_brma and rfdr lookups, re-run on the rows the SPI support channel copied'
+  grain: household
+  artifacts:
+  - role: frs_release
+    kind: public_aggregate_reference
+    resource: frs_release.json
+    format: json
+    runtime_sha256_required: true
+  - role: local_authority_names
+    kind: public_aggregate_reference
+    resource: local_authority_names.json
+    format: json
+    runtime_sha256_required: true
+  - role: brma_area_layer
+    kind: public_aggregate_reference
+    resource: brma_area_layer.json
+    format: json
+    runtime_sha256_required: true
+  - role: count_resource
+    kind: public_aggregate_reference
+    resource: brma_private_rented_households.json
+    format: json
+    runtime_sha256_required: true
+  - role: rfdr_area_layer
+    kind: public_aggregate_reference
+    resource: rfdr_area_layer.json
+    format: json
+    runtime_sha256_required: true
+  operations:
+  - kind: materialize_rules_engine_predictors
+    predictors:
+    - LHA_category
+    consumed_only: true
+  - kind: assign_spi_copy_areas
+    copies:
+      branch: spi_support_channel
+      paths_require:
+      - spi_support_channel
+      - geographic_support
+      kinds:
+        '1': spi_support_copy
+        '2': income_band_donor
+    key:
+      column: geography_household_key
+      source: frs
+      vintage_resource: frs_release.json
+    area_draw:
+      definition_of: atomic_area_assign
+      level: L3
+      stream: uk-spine-atomic-area-v1
+      seed: 0
+    local_authority:
+      as_stage: local_authority
+    brma:
+      as_stage: area_brma
+      engine_households: northern_ireland_copies
+      engine_simulations: one
+      count_resource: brma_private_rented_households.json
+      count_table_systems:
+      - uk_ni_data_zone_2021
+      cell_columns:
+      - region
+      - LHA_category
+      assignment_grain: benunit
+      collapse_to: household
+      collapse_method: uniform_member_pick
+      seed: 0
+      salts:
+        benunit: brma
+        household_pick: brma:household_pick
+    rfdr:
+      as_stage: rfdr
+      require_flagged: false
+    rewrites:
+    - geography_household_key
+    - atomic_area_code
+    - atomic_area_system
+    - atomic_area_basis
+    - oa_code
+    - lsoa_code
+    - msoa_code
+    - local_authority_code
+    - ward_code
+    - constituency_code
+    - region_code
+    - itl3_code
+    - itl2_code
+    - itl1_code
+    - local_authority
+    - brma
+    - in_rural_fuel_duty_relief_area
+  outputs: []
+  rewrites:
+  - geography_household_key
+  - atomic_area_code
+  - atomic_area_system
+  - atomic_area_basis
+  - oa_code
+  - lsoa_code
+  - msoa_code
+  - local_authority_code
+  - ward_code
+  - constituency_code
+  - region_code
+  - itl3_code
+  - itl2_code
+  - itl1_code
+  - local_authority
+  - brma
+  - in_rural_fuel_duty_relief_area
+  notes: Gives every row the SPI support channel copied, an SPI copy (spi_support_channel) or an income band donor (spi_income_band_donors), a key and a place of its own, where each copy had its parent's (microcosm#931). The key is geography_household_key over the copy's own path, read on the support channel's and the geographic clones' branches as geographic_identity reads a path, with the FRS vintage frs_release.json pins for its source_year; the area is drawn at L3, its region by households, with atomic_area_assign's definition, stream and seed, since a copy's decile and band inputs are missing by rule; then its local authority (as local_authority), its BRMA (as area_brma) and its fuel-relief flag (as rfdr). A Great Britain copy reads its BRMA off its area through the layer. Northern Ireland's copies draw theirs from the census count table on their own benefit units with area_brma's seed and salts, after one engine call over their households alone materialises their LHA_category, one simulation over every clone's copies (engine_simulations), so each copy takes a draw of its own (María's ruling of 2026-11-11). Every other row is left as it was, and each rewrite keeps its column's dtype; the copies later stages make inherit their parent's key and area. Its evidence gives K, the seed, the stream, the digests, the validation and roster outcomes and, among clone-0 rows, the distinct source households copied, by kind and system, and those whose copies are flagged, by Great Britain system, rounded by the shared disclosure rules; where one system of a kind rests on one or two source households, every system of that kind is withheld, zeros included, since at one clone the support channel's and the band donors' own copy counts would give it back by difference; no key or area code.
 - stage: hmrc_spi_income_spine
   survey: Survey of Personal Incomes Public Use Tape 2022-23 and HMRC Personal Incomes Tables 3.6/3.7 2023-24
   source: https://assets.publishing.service.gov.uk/media/69f1f12d2fae53a03709682f/Collated_Tables_3_1_to_3_11_2324.ods
@@ -2868,6 +3146,54 @@ stages:
   - housing_benefit_reported
   - council_tax_benefit_reported
   notes: 'Runs after the SPI income chain and before the income-conditioned donor stages, the household counterpart of the SPI stage-2 FRS-only fill. The support copies and income band donors are whole FRS households, so without this stage each kept its FRS parent''s housing, drawn for the parent''s income. Trained on the FRS base households (positive household weight) and drawn for every SPI-channel household from engine-free predictors (region, household type, adults, children, single-adult status, reference-person age and household income components). Tenure, dwelling type, bedrooms and council-tax band are drawn in that order by weighted multiclass classifiers with an inverse-CDF draw; the housing amounts and the head benefit unit''s Housing Benefit and the reference person''s council tax benefit by one chained regime-gated QRF conditioned on the drawn categories, clipped to the training range. The QRF''s sign gates are cross-fitted (gate_calibration: cross_fitted; microcosm#1359), as lcfs_consumption''s are: each is calibrated on the donors its fold gates left out, so a sign is drawn at its donor rate on households the gates were not fitted to. Every draw reads uniforms keyed on household_id. An amount is zero wherever the training households have no positive value for its tenure or region; mortgage payments need a mortgaged tenure (true of every FRS household); Housing Benefit needs a rented tenure (the engine pays it to renting reporters only); council tax benefit is capped at council tax and the household council_tax_rebate equals it, both on the reference person as the FRS holds them. Region, single-adult status, BRMA (region and the recipient''s own LHA category), the flat-rate household draws and composition are kept; FRS base rows are byte-unchanged.'
+- stage: private_rent
+  survey: Family Resources Survey 2024-25
+  source: The BRMAs' weekly lists of rents (brma_rent_quantiles.json) and the census private-rented households by region, BRMA and bedrooms (brma_private_rented_households.json).
+  grain: household
+  artifacts:
+  - role: rent_quantiles
+    kind: public_aggregate_reference
+    resource: brma_rent_quantiles.json
+    format: json
+    runtime_sha256_required: true
+  - role: count_resource
+    kind: public_aggregate_reference
+    resource: brma_private_rented_households.json
+    format: json
+    runtime_sha256_required: true
+  operations:
+  - kind: localise_private_rents
+    tenure_type: RENT_PRIVATELY
+    excluded_regions:
+    - NORTHERN_IRELAND
+    identity: geography_household_key
+    process: rent_rank
+    stream: uk-spine-private-rent-v1
+    seed: 0
+    categories:
+    - B
+    - C
+    - D
+    - E
+    reference_channel: frs
+    quantiles_resource: brma_rent_quantiles.json
+    quantiles_method: uk-brma-rent-quantiles-v1
+    counts_resource: brma_private_rented_households.json
+    weeks_in_year: 52
+    scale_band:
+    - 0.25
+    - 4.0
+    sampled_region_renters: 10
+    method: uk-private-rent-localisation-v1
+  - kind: record_mass_conservation_receipt
+    entity: household
+    reason: 'Private rents read off the BRMA lists on the source spine: household weights pass through unchanged and total household mass is conserved.'
+    declared_factor: 1.0
+    gate_coupling: The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.
+  outputs: []
+  rewrites:
+  - rent
+  notes: 'Reads each Great Britain private renter''s rent (tenure_type RENT_PRIVATELY, a positive rent, outside Northern Ireland) off the list of rents of the BRMA its drawn area sits in (brma_rent_quantiles.json), as the dense line''s private-rent node did (microcosm#1262, microcosm#931). The renter keeps its rank among the FRS renters of its FRS region and bedroom category, the rank reads the list of its BRMA and category, and each region is scaled so that, on the census private-renter mix of its BRMAs (brma_private_rented_households.json), its mean rent is the FRS level. Each row ranks as a household of its own, on its geography_household_key, and its tie-break uniform is keyed on that key on the stage''s own stream at its declared seed, so two FRS renters at one rent, or two clones of one renter, take ranks of their own, and clone 0''s tie-breaks are the same at every K. A region''s FRS renters are counted in true source households, so a renter''s clones and copies count once: a sampled spine ranks and scales a region with fewer FRS renters than sampled_region_renters against Great Britain''s, and a full-scale spine ranks every region on its own and refuses one with none. Only rent is rewritten: reported Housing Benefit, Universal Credit and mortgage payments stay as reported, the weights pass through, and the stage records its household mass receipt. Its evidence gives K, the seed, the stream, the resources'' digests, the method, the strictness, the numbers of (region, bedroom category) cells ranked against their region or against Great Britain and, among clone-0 rows, the distinct source households re-drawn, rounded by the shared disclosure rules.'
 - stage: was_wealth
   survey: Wealth and Assets Survey round 8
   source: Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed 2006-22 household tab.

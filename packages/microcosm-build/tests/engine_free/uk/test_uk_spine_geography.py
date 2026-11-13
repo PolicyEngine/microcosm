@@ -2,9 +2,11 @@
 
 G2 draws each geographic clone's area, G3 resolves its local authority, G4
 its BRMA and G5 its fuel-relief flag, and the SPI-copy area stage re-keys and
-re-places the rows the SPI support channel copied. No stage declares them
-yet, so each transform here runs as a stage built from the reviewed
-declaration spine_geography states. The tests run them on toy conditioned
+re-places the rows the SPI support channel copied. sources.yaml declares the
+five stages (microcosm#931), and each transform here runs as a stage built
+from the reviewed declaration spine_geography states, which the last tests
+hold equal to the packaged stage; the packaged stages' own transforms give
+the same frames and evidence. The tests run them on toy conditioned
 supports whose codes resolve against the committed resources (test_support's
 uk_conditioned_support_fixtures), on invented households cloned and keyed by
 the spine's own expansion and identity steps. G4 and the copy stage read
@@ -24,8 +26,9 @@ authority, BRMA (Northern Ireland's drawn on the copy's own benefit units,
 after one engine call over those copies alone, which the UK adapter's clone
 rule takes as one simulation at every K) and flag, with every other row left
 as it was; every refusal, count-free and naming no key or code of a
-household, the frame's refusals before any engine call; and every evidence
-count byte-equal at K = 1 and K = 3.
+household, the frame's refusals before any engine call; every evidence
+count byte-equal at K = 1 and K = 3; and the packaged stages, which are the
+reviewed declarations and run as them.
 """
 
 from __future__ import annotations
@@ -84,10 +87,13 @@ from microcosm.build.uk_runtime.local_authority_input import (
     local_authority_engine_key_by_code,
 )
 from microcosm.build.uk_runtime.national_frame import (
-    uk_national_frame,
     uk_time_period,
 )
-from microcosm.build.uk_runtime.receipt_counts import rounded_count
+from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
+    rounded_count,
+)
 from microcosm.build.uk_runtime.rfdr_area_layer import (
     RFDR_COLUMN,
     load_rfdr_area_layer,
@@ -130,7 +136,7 @@ from microcosm.build.uk_runtime.spine_geography import (
     spi_copy_areas_operation_parameters,
     uk_spi_copy_keys,
 )
-from microcosm.frame import Frame, MassChangeRecord
+from microcosm.frame import Frame
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 from test_support.microcosm_build.uk_atomic_support_fixtures import toy_support_payloads
 from test_support.microcosm_build.uk_conditioned_support_fixtures import (
@@ -142,9 +148,11 @@ from test_support.microcosm_build.uk_conditioned_support_fixtures import (
     TOY_HOUSEHOLDS,
     ToyHousehold,
     committed_rfdr_areas,
+    invented_copy_picks,
     toy_conditioned_support_payloads,
     toy_conditioned_supports,
     toy_spine_frame,
+    with_invented_support_channel,
 )
 
 _STRING = pd.StringDtype(storage="python")
@@ -534,17 +542,31 @@ def test_g2_evidence_counts_sources_by_system_level_and_reason(runs) -> None:
     assert "households" not in evidence["validation"]
 
 
-def test_clone_zero_draws_at_k_1_2_and_3_what_k_1_draws(runs) -> None:
+def test_clone_zero_draws_at_k_1_2_and_3_what_k_1_draws(
+    runs, definition, supports
+) -> None:
     columns = [IDENTITY_COLUMN, *UK_ATOMIC_AREA_ASSIGN_OUTPUT_COLUMNS]
     single = _clone_zero(_household(runs, 1))[columns]
     for clones in (2, 3):
         assert _clone_zero(_household(runs, clones))[columns].equals(single)
-    # Each clone draws its own key, so the areas vary across clones.
-    household = _household(runs, 3)
+    # Every row's area is the operator's draw on its own key, so each clone
+    # draws its own: at every clone index after 0, some household's area is
+    # not its clone 0's.
+    household = _household(runs, 3, "g2")
+    own = draw_uk_spine_areas(
+        runs[3]["frames"]["keyed"].table("household"),
+        definition=definition,
+        supports=supports,
+    )
+    assert household[list(UK_SPINE_AREA_COLUMNS)].equals(own.columns)
     assert household[IDENTITY_COLUMN].is_unique
-    assert (
-        household.groupby("source_household_id")["atomic_area_code"].nunique() > 1
-    ).any()
+    zero = _clone_zero(household).set_index("source_household_id")["atomic_area_code"]
+    for clone in (1, 2):
+        rows = household.loc[household[_CLONE] == clone]
+        assert (
+            rows["atomic_area_code"].to_numpy()
+            != zero.loc[rows["source_household_id"]].to_numpy()
+        ).any(), clone
 
 
 def test_the_draw_does_not_depend_on_row_order(runs, definition, supports) -> None:
@@ -890,97 +912,11 @@ def _replace_household(frame: Frame, household: pd.DataFrame) -> Frame:
     )
 
 
-def _copy_picks(source: int, clone: int) -> tuple[int, ...]:
-    """The invented copies spi_support_channel and spi_income_band_donors
-    make of a household, by ordinal.
-
-    In clone 0 every household is copied (1) and every third one is a band
-    donor too (2), by its source alone, so clone 0's copies are the same at
-    every clone count; a later clone copies other households, so a union of
-    copied sources over clones grows with K.
-    """
-
-    if clone == 0:
-        return (1, 2) if source % 3 == 0 else (1,)
-    return tuple(
-        ordinal
-        for ordinal, picked in (
-            (1, (source + clone) % 2 == 0),
-            (2, (source + clone) % 3 == 0),
-        )
-        if picked
-    )
-
-
-def _with_support_channel(frame: Frame, picks=_copy_picks) -> Frame:
-    """``frame`` as spi_support_channel and spi_income_band_donors leave it,
-    for these tests alone.
-
-    Every row is on the support channel's FRS side at ordinal 0; each
-    household ``picks`` names is copied whole at the channel's ordinals,
-    every id minted in the copy-id table's ``spi_support_channel`` field, each
-    copy at half its parent's invented weight, with a mass record for the
-    copies. No other lineage column is added.
-    """
-
-    person, benunit = frame.table("person"), frame.table("benunit")
-    household = frame.table("household").copy()
-    household[_SUPPORT_CHANNEL] = "frs"
-    household[_SUPPORT_ORDINAL] = np.zeros(len(household), dtype=np.int64)
-    weights = frame.weights_for("household").values
-    persons, benunits, households = [person], [benunit], [household]
-    masses = [weights]
-    for ordinal in (1, 2):
-        positions = [
-            position
-            for position, (source, clone) in enumerate(
-                zip(
-                    household["source_household_id"].tolist(),
-                    household[_CLONE].tolist(),
-                    strict=True,
-                )
-            )
-            if ordinal in picks(int(source), int(clone))
-        ]
-        if not positions:
-            continue
-        copied = household.iloc[positions].copy()
-        members = person.loc[person["person_household_id"].isin(copied["household_id"])]
-        members = members.copy()
-        units = benunit.loc[benunit["benunit_id"].isin(members["person_benunit_id"])]
-        units = units.copy()
-        for column in ("person_id", "person_household_id", "person_benunit_id"):
-            members[column] = copy_id_table.mint(
-                members[column], "spi_support_channel", ordinal
-            )
-        units["benunit_id"] = copy_id_table.mint(
-            units["benunit_id"], "spi_support_channel", ordinal
-        )
-        copied["household_id"] = copy_id_table.mint(
-            copied["household_id"], "spi_support_channel", ordinal
-        )
-        copied[_SUPPORT_CHANNEL] = "spi"
-        copied[_SUPPORT_ORDINAL] = np.int64(ordinal)
-        persons.append(members)
-        benunits.append(units)
-        households.append(copied)
-        masses.append(weights[positions] * 0.5)
-    values = np.concatenate(masses)
-    record = MassChangeRecord(
-        entity="household",
-        old_total=float(weights.sum()),
-        new_total=float(values.sum()),
-        declared_factor=None,
-        reason="invented copies standing in for the SPI support channel",
-    )
-    return uk_national_frame(
-        person=pd.concat(persons, ignore_index=True),
-        benunit=pd.concat(benunits, ignore_index=True),
-        household=pd.concat(households, ignore_index=True),
-        time_period=uk_time_period(frame),
-        household_weights=values,
-        mass_log=(*frame.mass_log, record),
-    )
+#: The invented copies the stand-in for spi_support_channel and
+#: spi_income_band_donors makes, and the stand-in itself, shared with the
+#: engine tier's three-system test (test support).
+_copy_picks = invented_copy_picks
+_with_support_channel = with_invented_support_channel
 
 
 def _copy_run(payloads, base: Frame, picks=_copy_picks) -> dict[str, object]:
@@ -1740,6 +1676,15 @@ def test_the_copy_stage_refuses_a_missing_column_or_misaligned_engine_values(
     assert "not aligned" in text
 
 
+def _kind_by_system(counts: dict[str, int]) -> dict[str, object]:
+    """A kind's copied sources by system as the evidence must print them:
+    rounded, or every system withheld where one rests on one or two."""
+
+    if any(0 < count < UK_DISCLOSURE_FLOOR for count in counts.values()):
+        return dict.fromkeys(counts, UK_WITHHELD)
+    return {system: rounded_count(count) for system, count in counts.items()}
+
+
 def test_the_copy_stage_counts_copies_donors_and_flags_among_clone_zero(
     copy_runs,
 ) -> None:
@@ -1750,15 +1695,15 @@ def test_the_copy_stage_counts_copies_donors_and_flags_among_clone_zero(
         return rows.loc[mask, "source_household_id"].nunique()
 
     expected = {
-        kind: {
-            system: rounded_count(
-                sources(
+        kind: _kind_by_system(
+            {
+                system: sources(
                     (rows[_SUPPORT_ORDINAL] == ordinal)
                     & (rows["atomic_area_system"] == system)
                 )
-            )
-            for system in (EW, SCOT, NI)
-        }
+                for system in (EW, SCOT, NI)
+            }
+        )
         for ordinal, kind in ((1, "spi_support_copy"), (2, "income_band_donor"))
     }
     flagged = {
@@ -1781,6 +1726,40 @@ def test_the_copy_stage_counts_copies_donors_and_flags_among_clone_zero(
         assert evidence["brma"]["engine_households"] == "northern_ireland_copies"
         assert evidence["brma"]["engine_simulations"] == "one"
         assert evidence["rewrites"] == list(UK_SPI_COPY_AREAS_REWRITE_COLUMNS)
+
+
+def test_the_copy_stage_withholds_a_kinds_systems_where_one_rests_on_one_or_two(
+    payloads, runs
+) -> None:
+    """At one clone the support channel's exact copy count is the SPI copies'
+    total over the three systems, so two systems printed rounded would give a
+    third resting on one source back by difference. Where any system of a
+    kind rests on one or two sources, the evidence withholds every system of
+    that kind, zeros included; the other kind prints its own."""
+
+    base = runs[1]["frames"]["g5"]
+    household = base.table("household")
+    northern_ireland = sorted(
+        set(
+            household.loc[
+                household["region"] == "NORTHERN_IRELAND", "source_household_id"
+            ]
+        )
+    )
+    lone = northern_ireland[0]
+
+    def picks(source: int, clone: int) -> tuple[int, ...]:
+        if source in northern_ireland:
+            return (1,) if source == lone else ()
+        return (1,)
+
+    run = _copy_run(payloads, base, picks=picks)
+    exact = run["results"]["copy"].by_kind
+    assert dict(exact["spi_support_copy"])[NI] == 1
+    assert dict(exact["spi_support_copy"])[EW] >= UK_DISCLOSURE_FLOOR
+    copied = run["evidence"]["copy"]["copy_source_households"]
+    assert copied["spi_support_copy"] == dict.fromkeys((EW, SCOT, NI), UK_WITHHELD)
+    assert copied["income_band_donor"] == dict.fromkeys((EW, SCOT, NI), 0)
 
 
 def test_the_copy_stage_counts_clone_zero_where_later_clones_copy_others(
@@ -1865,3 +1844,180 @@ def test_the_evidence_prints_no_key_and_no_code_of_a_household(runs) -> None:
         # The region codes the ladder writes are the regions' own GSS codes,
         # which the evidence never names either.
         assert not any(value in text for value in values), column
+
+
+# --- The packaged declarations ------------------------------------------------------
+
+_DECLARED_STAGES = (
+    ATOMIC_AREA_ASSIGN_STAGE_NAME,
+    LOCAL_AUTHORITY_STAGE_NAME,
+    RFDR_STAGE_NAME,
+    AREA_BRMA_STAGE_NAME,
+    SPI_COPY_AREAS_STAGE_NAME,
+)
+
+
+def _packaged_stages() -> dict:
+    from microcosm.build.country_spec import load_country_spec
+
+    return dict(load_country_spec("uk").sources.stage_map())
+
+
+def test_the_packaged_stages_are_the_reviewed_declarations(payloads) -> None:
+    """sources.yaml declares each area stage as its transform states it: its
+    grain, outputs, rewrites, operations verbatim and artifacts, each with
+    runtime_sha256_required (microcosm#931). So every transform builds from
+    its packaged stage, and frs_brma's stage is gone."""
+
+    from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
+
+    stages = _packaged_stages()
+    assert "frs_brma" not in stages
+    for name in _DECLARED_STAGES:
+        packaged, reviewed = stages[name], _stage(name)
+        assert packaged.grain == reviewed.grain == "household", name
+        assert packaged.outputs == reviewed.outputs, name
+        assert packaged.rewrites == reviewed.rewrites, name
+        assert [
+            (operation.kind, dict(operation.parameters))
+            for operation in packaged.operations
+        ] == [
+            (operation.kind, dict(operation.parameters))
+            for operation in reviewed.operations
+        ], name
+        assert sorted(
+            (artifact["role"], artifact["resource"]) for artifact in packaged.artifacts
+        ) == sorted(
+            (artifact["role"], artifact["resource"]) for artifact in reviewed.artifacts
+        ), name
+        assert all(
+            artifact.get("runtime_sha256_required") is True
+            for artifact in packaged.artifacts
+        ), name
+    engine = PolicyEngineUKEngine()
+    UKAtomicAreaAssignStageTransform(
+        stage=stages[ATOMIC_AREA_ASSIGN_STAGE_NAME], supports=payloads
+    )
+    UKLocalAuthorityStageTransform(stage=stages[LOCAL_AUTHORITY_STAGE_NAME])
+    UKRFDRStageTransform(stage=stages[RFDR_STAGE_NAME], supports=payloads)
+    UKAreaBRMAStageTransform(stage=stages[AREA_BRMA_STAGE_NAME], engine=engine)
+    UKSPICopyAreasStageTransform(
+        stage=stages[SPI_COPY_AREAS_STAGE_NAME], engine=engine, supports=payloads
+    )
+
+
+def test_the_area_draws_optional_constraint_is_the_frs_channels_observed_one():
+    """The area draw's one optional constraint reads the support column the
+    FRS channel declares it observes in spine.yaml (microcosm#931), and its
+    required one is the region the channel observes."""
+    from microcosm.build.country_spec import load_country_spec
+
+    spec = load_country_spec("uk")
+    (channel,) = spec.resolved_spec.resource("spine").domain.to_wire()["channels"]
+    (operation,) = _packaged_stages()[ATOMIC_AREA_ASSIGN_STAGE_NAME].operations
+    constraints = operation.parameters["constraints"]
+    assert [c["support"] for c in constraints if not c["required"]] == list(
+        channel["observed_constraints"]
+    )
+    assert [c["input"] for c in constraints if c["required"]] == [
+        channel["observed_geography"]
+    ]
+
+
+@pytest.mark.parametrize("clones", (1, 3))
+def test_the_packaged_stages_transforms_give_the_reviewed_frames_and_evidence(
+    payloads, runs, copy_runs, clones: int
+) -> None:
+    """The transforms the spine build installs, each built from its packaged
+    stage, give the toy frames the frames and evidence the reviewed stages
+    give them (microcosm#931): G2, G3 and G5 on the keyed clones, then G4 and
+    the copy stage, each on a recording engine of its own, on G5's frame and
+    on the stand-in for the support channel's copies of G4's."""
+
+    from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
+
+    stages = _packaged_stages()
+    reviewed, copied = runs[clones], copy_runs[clones]
+    frame = reviewed["frames"]["keyed"]
+    for label, transform in (
+        (
+            "g2",
+            UKAtomicAreaAssignStageTransform(
+                stage=stages[ATOMIC_AREA_ASSIGN_STAGE_NAME], supports=payloads
+            ),
+        ),
+        (
+            "g3",
+            UKLocalAuthorityStageTransform(stage=stages[LOCAL_AUTHORITY_STAGE_NAME]),
+        ),
+        (
+            "g5",
+            UKRFDRStageTransform(stage=stages[RFDR_STAGE_NAME], supports=payloads),
+        ),
+    ):
+        frame = transform(frame)
+        assert uk_frame_content_identity(frame) == uk_frame_content_identity(
+            reviewed["frames"][label]
+        ), (label, clones)
+        assert (
+            transform.checkpoint_metadata()["evidence"] == reviewed["evidence"][label]
+        ), (label, clones)
+    for label, transform, given in (
+        (
+            "g4",
+            UKAreaBRMAStageTransform(
+                stage=stages[AREA_BRMA_STAGE_NAME], engine=_RecordingEngine()
+            ),
+            frame,
+        ),
+        (
+            "copy",
+            UKSPICopyAreasStageTransform(
+                stage=stages[SPI_COPY_AREAS_STAGE_NAME],
+                engine=_RecordingEngine(),
+                supports=payloads,
+            ),
+            copied["frames"]["copied"],
+        ),
+    ):
+        result = uk_frame_content_identity(transform(given))
+        expected = uk_frame_content_identity(copied["frames"][label])
+        assert result == expected, (label, clones)
+        evidence = transform.checkpoint_metadata()["evidence"]
+        assert evidence == copied["evidence"][label], (label, clones)
+
+
+def test_the_copies_draw_with_the_area_draws_stream_and_the_brmas_seed() -> None:
+    """The SPI copies' areas name the area draw's definition and declare its
+    stream and seed, and their Northern Ireland BRMAs the BRMA stage's seed,
+    salts, count table and cells (microcosm#931): the copy stage declares
+    what it re-runs as those stages declare it."""
+
+    stages = _packaged_stages()
+    (draw,) = stages[ATOMIC_AREA_ASSIGN_STAGE_NAME].operations
+    brma = stages[AREA_BRMA_STAGE_NAME].operations[1].parameters
+    copies = stages[SPI_COPY_AREAS_STAGE_NAME].operations[1].parameters
+    assert copies["area_draw"]["definition_of"] == ATOMIC_AREA_ASSIGN_STAGE_NAME
+    assert copies["area_draw"]["stream"] == draw.parameters["stream"]
+    assert copies["area_draw"]["seed"] == draw.parameters["seed"]
+    assert copies["key"]["source"] == "frs"
+    assert copies["local_authority"]["as_stage"] == LOCAL_AUTHORITY_STAGE_NAME
+    assert copies["rfdr"]["as_stage"] == RFDR_STAGE_NAME
+    assert copies["brma"]["as_stage"] == AREA_BRMA_STAGE_NAME
+    for key in (
+        "count_resource",
+        "count_table_systems",
+        "cell_columns",
+        "assignment_grain",
+        "collapse_to",
+        "collapse_method",
+        "seed",
+        "salts",
+    ):
+        assert copies["brma"][key] == brma[key], key
+    # The engine call is declared on both stages that make one.
+    for name in (AREA_BRMA_STAGE_NAME, SPI_COPY_AREAS_STAGE_NAME):
+        predictors = stages[name].operations[0]
+        assert predictors.kind == "materialize_rules_engine_predictors"
+        assert predictors.parameters["predictors"] == ["LHA_category"]
+    assert copies["brma"]["engine_simulations"] == "one"

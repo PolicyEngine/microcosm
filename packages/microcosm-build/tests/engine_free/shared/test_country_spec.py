@@ -1203,8 +1203,11 @@ class TestUKCountryPackage:
         # hmrc_spi_income_spine (PolicyEngine/uk-autumn-budget-dashboard-2026#316);
         # microcosm#1490 spi_employment_shell after it and aps_occupation next;
         # microcosm#931 geographic_expand and geographic_identity after
-        # frs_annual_income_spells, before frs_take_up.
-        assert len(spec.sources.stages) == 56
+        # frs_annual_income_spells, before frs_take_up, then the area stages
+        # (atomic_area_assign, local_authority and rfdr) after them, area_brma
+        # in frs_brma's place, spi_copy_areas after spi_income_band_donors and
+        # private_rent after spi_housing_shell.
+        assert len(spec.sources.stages) == 61
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )

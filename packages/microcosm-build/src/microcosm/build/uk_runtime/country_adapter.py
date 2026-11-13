@@ -168,6 +168,77 @@ def uk_atomic_support_register(
 
 _SHA256_HEX = re.compile(r"[0-9a-f]{64}")
 
+#: The register a spine's support pins were held to, by the name its
+#: ``geography`` block records under ``register`` (microcosm#931): a release's
+#: are held to sources.yaml's conditioned supports
+#: (:func:`uk_atomic_support_register` with ``conditioned=True``), which the
+#: spine build does before any stage runs. A synthetic fixture's toy supports
+#: are held to no register, and its block says so.
+UK_SPINE_SUPPORT_REGISTER = "sources.yaml"
+UK_SYNTHETIC_SUPPORT_REGISTER = "synthetic"
+_SUPPORT_REGISTERS = (UK_SPINE_SUPPORT_REGISTER, UK_SYNTHETIC_SUPPORT_REGISTER)
+
+
+def uk_spine_geography_binding(
+    supports: Mapping[str, bytes], *, register: str
+) -> dict[str, object]:
+    """A spine's ``geography`` block: how its areas were drawn (microcosm#931).
+
+    ``supports`` holds the three conditioned supports' bytes, by system, as
+    the spine's area stages read them, and ``register`` names the register
+    their pins were held to (:data:`UK_SPINE_SUPPORT_REGISTER`, or
+    :data:`UK_SYNTHETIC_SUPPORT_REGISTER` for a synthetic fixture's toys).
+    The block holds, under the roster leaf's keys and in their order
+    (``geography_first_roster.SIDECAR_GEOGRAPHY_KEYS``): the atomic law
+    (``assignment``), the geography key's column (``identity``), the SHA-256
+    of the conditioned definition the area draw builds on those supports at
+    its declared seed, as the shared operator digests a definition
+    (``definition_sha256``), each system's support SHA-256 and size in bytes
+    (``support_pins``, the size an integer), the definition's stream, its seed
+    at index 3 (``stream``) and ``register``. The spine build's sidecar writer
+    and a spine request's dense build both compose it here, so
+    :func:`uk_spine_geography_binding_failures` reads one shape whichever
+    route bound the spine.
+
+    Refused: a register other than those two, and every refusal of the
+    definition (a support missing or not held to canonical bytes), by the
+    shared operator's texts, which name no value.
+    """
+
+    from microcosm.graph.canonical import canonical_json
+
+    from .atomic_area_conditioning import (
+        IDENTITY_COLUMN,
+        UK_SPINE_ATOMIC_AREA_SEED,
+        uk_conditioned_assignment_definition,
+    )
+    from .atomic_area_support import SYSTEMS
+    from .geography_first_roster import SIDECAR_GEOGRAPHY_KEYS
+
+    if register not in _SUPPORT_REGISTERS:
+        raise ValueError(
+            "A spine's geography block names the register its support pins were "
+            f"held to: one of {list(_SUPPORT_REGISTERS)}."
+        )
+    definition = uk_conditioned_assignment_definition(
+        supports, seed=UK_SPINE_ATOMIC_AREA_SEED
+    )
+    values: dict[str, object] = {
+        "assignment": "atomic",
+        "identity": IDENTITY_COLUMN,
+        "definition_sha256": hashlib.sha256(canonical_json(definition)).hexdigest(),
+        "support_pins": {
+            system: {
+                "sha256": hashlib.sha256(supports[system]).hexdigest(),
+                "size_bytes": len(supports[system]),
+            }
+            for system in SYSTEMS
+        },
+        "stream": [*definition["stream"]],
+        "register": register,
+    }
+    return {key: values[key] for key in SIDECAR_GEOGRAPHY_KEYS}
+
 
 def uk_spine_geography_binding_failures(
     binding: object,
@@ -187,9 +258,13 @@ def uk_spine_geography_binding_failures(
     ``sources.yaml`` registers (``support_pins``, each system's ``sha256`` and
     ``size_bytes`` as :func:`uk_atomic_support_register` gives them with
     ``conditioned=True``, the size an integer) and no system it does not
-    list; with ``clone_count``, the block's K must be that integer, so a
-    boolean or a float such as ``15.0`` is not it. A binding that is not a
-    record fails every field.
+    list, on the spine's area stream at its declared seed (``stream``, the
+    four entries of ``UK_SPINE_ATOMIC_AREA_DRAW_STREAM``, each of the same
+    type as there), with the pins held to sources.yaml's register (``register``,
+    :data:`UK_SPINE_SUPPORT_REGISTER`); with ``clone_count``, the block's K
+    must be that integer, so a boolean or a float such as ``15.0`` is not it.
+    A binding that is not a record fails every field. Its fields are those
+    :func:`uk_spine_geography_binding` composes.
 
     The dense build's preparation holds a release candidate's spine to it,
     and the dense release pre-flight a candidate's manifest. Each failure
@@ -197,6 +272,7 @@ def uk_spine_geography_binding_failures(
     refusal carries names and K only.
     """
 
+    from .atomic_area_conditioning import UK_SPINE_ATOMIC_AREA_DRAW_STREAM
     from .atomic_area_support import IDENTITY_COLUMN
 
     block = binding if isinstance(binding, Mapping) else {}
@@ -224,6 +300,19 @@ def uk_spine_geography_binding_failures(
             )
     if set(pins) - set(register):
         failures.append("support_pins names a system the register does not")
+    stream = block.get("stream")
+    expected_stream = list(UK_SPINE_ATOMIC_AREA_DRAW_STREAM)
+    if not (
+        isinstance(stream, list)
+        and stream == expected_stream
+        and all(
+            type(found) is type(wanted)
+            for found, wanted in zip(stream, expected_stream, strict=True)
+        )
+    ):
+        failures.append("stream is not the spine's area stream at its declared seed")
+    if block.get("register") != UK_SPINE_SUPPORT_REGISTER:
+        failures.append(f"register is not {UK_SPINE_SUPPORT_REGISTER!r}")
     if clone_count is not None:
         clones = block.get("geographic_clone_count")
         if type(clones) is not int or clones != clone_count:

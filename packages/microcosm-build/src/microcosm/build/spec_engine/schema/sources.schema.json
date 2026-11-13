@@ -9852,6 +9852,587 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "identity",
+      "sources",
+      "constraints",
+      "weight_by",
+      "draw_inputs",
+      "fallback_levels",
+      "layers",
+      "outputs",
+      "stream",
+      "seed"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_atomic_area"
+      },
+      "identity": {
+       "type": "string"
+      },
+      "sources": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "constraints": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "input",
+         "support",
+         "required"
+        ],
+        "properties": {
+         "input": {
+          "type": "string"
+         },
+         "support": {
+          "type": "string"
+         },
+         "required": {
+          "type": "boolean"
+         }
+        }
+       }
+      },
+      "weight_by": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "input",
+        "default",
+        "bands"
+       ],
+       "properties": {
+        "input": {
+         "type": "string"
+        },
+        "default": {
+         "type": "string"
+        },
+        "bands": {
+         "type": "object",
+         "minProperties": 1,
+         "additionalProperties": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      },
+      "draw_inputs": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "oneOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+           "type": [
+            "string",
+            "integer"
+           ]
+          }
+         }
+        ]
+       }
+      },
+      "fallback_levels": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "name",
+         "constraints",
+         "weight_by"
+        ],
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "constraints": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+           "type": "string"
+          }
+         },
+         "weight_by": {
+          "type": "boolean"
+         }
+        }
+       }
+      },
+      "layers": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "outputs": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "stream": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer",
+       "minimum": 0
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "code_column",
+      "output",
+      "names_resource",
+      "vintage"
+     ],
+     "properties": {
+      "kind": {
+       "const": "resolve_local_authority"
+      },
+      "code_column": {
+       "type": "string"
+      },
+      "output": {
+       "type": "string"
+      },
+      "names_resource": {
+       "type": "string"
+      },
+      "vintage": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "area_system",
+      "layer_resource",
+      "method",
+      "area_codes",
+      "count_resource",
+      "count_table_systems",
+      "cell_columns",
+      "assignment_grain",
+      "collapse_to",
+      "collapse_method",
+      "seed",
+      "salts"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_area_brma"
+      },
+      "output": {
+       "type": "string"
+      },
+      "area_system": {
+       "type": "string"
+      },
+      "layer_resource": {
+       "type": "string"
+      },
+      "method": {
+       "type": "string"
+      },
+      "area_codes": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "count_resource": {
+       "type": "string"
+      },
+      "count_table_systems": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "cell_columns": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "assignment_grain": {
+       "type": "string"
+      },
+      "collapse_to": {
+       "type": "string"
+      },
+      "collapse_method": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "salts": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "layer_resource",
+      "method",
+      "area_system",
+      "area_code",
+      "roster_sources",
+      "require_flagged"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_rfdr_flags"
+      },
+      "layer_resource": {
+       "type": "string"
+      },
+      "method": {
+       "type": "string"
+      },
+      "area_system": {
+       "type": "string"
+      },
+      "area_code": {
+       "type": "string"
+      },
+      "roster_sources": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "require_flagged": {
+       "type": "boolean"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "copies",
+      "key",
+      "area_draw",
+      "local_authority",
+      "brma",
+      "rfdr",
+      "rewrites"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_spi_copy_areas"
+      },
+      "copies": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "branch",
+        "paths_require",
+        "kinds"
+       ],
+       "properties": {
+        "branch": {
+         "type": "string"
+        },
+        "paths_require": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string"
+         }
+        },
+        "kinds": {
+         "type": "object",
+         "minProperties": 1,
+         "additionalProperties": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "key": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "column",
+        "source",
+        "vintage_resource"
+       ],
+       "properties": {
+        "column": {
+         "type": "string"
+        },
+        "source": {
+         "type": "string"
+        },
+        "vintage_resource": {
+         "type": "string"
+        }
+       }
+      },
+      "area_draw": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "definition_of",
+        "level",
+        "stream",
+        "seed"
+       ],
+       "properties": {
+        "definition_of": {
+         "type": "string"
+        },
+        "level": {
+         "type": "string"
+        },
+        "stream": {
+         "type": "string"
+        },
+        "seed": {
+         "type": "integer",
+         "minimum": 0
+        }
+       }
+      },
+      "local_authority": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "as_stage"
+       ],
+       "properties": {
+        "as_stage": {
+         "type": "string"
+        }
+       }
+      },
+      "brma": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "as_stage",
+        "engine_households",
+        "engine_simulations",
+        "count_resource",
+        "count_table_systems",
+        "cell_columns",
+        "assignment_grain",
+        "collapse_to",
+        "collapse_method",
+        "seed",
+        "salts"
+       ],
+       "properties": {
+        "as_stage": {
+         "type": "string"
+        },
+        "engine_households": {
+         "type": "string"
+        },
+        "engine_simulations": {
+         "type": "string"
+        },
+        "count_resource": {
+         "type": "string"
+        },
+        "count_table_systems": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string"
+         }
+        },
+        "cell_columns": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string"
+         }
+        },
+        "assignment_grain": {
+         "type": "string"
+        },
+        "collapse_to": {
+         "type": "string"
+        },
+        "collapse_method": {
+         "type": "string"
+        },
+        "seed": {
+         "type": "integer",
+         "minimum": 0
+        },
+        "salts": {
+         "type": "object",
+         "minProperties": 1,
+         "additionalProperties": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "rfdr": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "as_stage",
+        "require_flagged"
+       ],
+       "properties": {
+        "as_stage": {
+         "type": "string"
+        },
+        "require_flagged": {
+         "type": "boolean"
+        }
+       }
+      },
+      "rewrites": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "tenure_type",
+      "excluded_regions",
+      "identity",
+      "process",
+      "stream",
+      "seed",
+      "categories",
+      "reference_channel",
+      "quantiles_resource",
+      "quantiles_method",
+      "counts_resource",
+      "weeks_in_year",
+      "scale_band",
+      "sampled_region_renters",
+      "method"
+     ],
+     "properties": {
+      "kind": {
+       "const": "localise_private_rents"
+      },
+      "tenure_type": {
+       "type": "string"
+      },
+      "excluded_regions": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "identity": {
+       "type": "string"
+      },
+      "process": {
+       "type": "string"
+      },
+      "stream": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "categories": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "reference_channel": {
+       "type": "string"
+      },
+      "quantiles_resource": {
+       "type": "string"
+      },
+      "quantiles_method": {
+       "type": "string"
+      },
+      "counts_resource": {
+       "type": "string"
+      },
+      "weeks_in_year": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "scale_band": {
+       "type": "array",
+       "minItems": 2,
+       "maxItems": 2,
+       "items": {
+        "type": "number"
+       }
+      },
+      "sampled_region_renters": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "method": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "clone_flag_column",
       "id_remapping",
       "pairing",

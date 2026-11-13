@@ -96,6 +96,7 @@ __all__ = [
     "UK_DRAW_CONSTRAINTS",
     "UK_FALLBACK_STATUSES",
     "UK_SPINE_AREA_COLUMNS",
+    "UK_SPINE_ATOMIC_AREA_DRAW_STREAM",
     "UK_SPINE_ATOMIC_AREA_SEED",
     "UK_SPINE_ATOMIC_AREA_STREAM",
     "UK_SPINE_LADDER_COLUMNS",
@@ -123,6 +124,15 @@ IDENTITY_COLUMN = GEOGRAPHY_HOUSEHOLD_KEY_COLUMN
 UK_SPINE_ATOMIC_AREA_STREAM = "uk-spine-atomic-area-v1"
 UK_SPINE_ATOMIC_AREA_SEED = 0
 _STREAM_ALGORITHM = "sha256-u53-v1"
+#: The definition's stream at that seed, the draw's ``stream`` entry
+#: (:func:`uk_conditioned_assignment_definition`), which a spine's geography
+#: binding records with the seed at its index 3 (microcosm#931).
+UK_SPINE_ATOMIC_AREA_DRAW_STREAM = (
+    _STREAM_ALGORITHM,
+    UK_SPINE_ATOMIC_AREA_STREAM,
+    0,
+    UK_SPINE_ATOMIC_AREA_SEED,
+)
 
 #: The household columns the inputs are read from. The band flag and the
 #: unobserved decile are frs_spine's (``FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN``

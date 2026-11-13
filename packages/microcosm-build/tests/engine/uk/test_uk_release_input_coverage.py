@@ -472,6 +472,7 @@ class TestUKManifest:
                 "salary_sacrifice",
                 "student_loans",
                 "private_school_attendance",
+                "private_rent",
                 "was_wealth",
                 "was_lisa",
                 "isa_subscriptions",

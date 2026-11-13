@@ -310,6 +310,10 @@ def test_e4_identity_receipt_survives_permutation_on_synthetic_frame() -> None:
             "universal_credit_reported": [0.0, 0.0, 20.0, 0.0],
         }
     )
+    # The BRMA is area_brma's (microcosm#931): the London household's is
+    # read off its stored drawn area (a toy support's LSOA, on the committed
+    # BRMA layer in London), and the Northern Ireland household's drawn from
+    # its count-table cell.
     frame = uk_national_frame(
         person=person,
         benunit=pd.DataFrame(
@@ -318,16 +322,21 @@ def test_e4_identity_receipt_survives_permutation_on_synthetic_frame() -> None:
         household=pd.DataFrame(
             {
                 "household_id": [1, 2],
-                "region": ["LONDON", "SCOTLAND"],
+                "region": ["LONDON", "NORTHERN_IRELAND"],
                 "household_weight": [2.0, 3.0],
+                "atomic_area_system": [
+                    "uk_ew_output_area_2021",
+                    "uk_ni_data_zone_2021",
+                ],
+                "oa_code": ["E00000001", "N20000001"],
+                "lsoa_code": ["E01000001", "N20000001"],
             }
         ),
         time_period="2023",
     )
     count_resource = {
         "cells": {
-            "LONDON": {"A": {"CENTRAL_LONDON": 3, "OUTER_LONDON": 1}},
-            "SCOTLAND": {"A": {"LOTHIAN": 2}},
+            "NORTHERN_IRELAND": {"A": {"BELFAST": 2, "SOUTH_EAST_NI": 1}},
         }
     }
 
@@ -354,50 +363,199 @@ def test_e4_identity_receipt_survives_permutation_on_synthetic_frame() -> None:
     }
 
 
-def test_brma_cell_distribution_masks_small_counts_and_reports_z() -> None:
-    tool = _load_tool("emit_uk_brma_distribution")
-    benunit = pd.DataFrame(
+#: An invented count table for Northern Ireland, the one region whose BRMAs
+#: area_brma draws from it (microcosm#931).
+_NI_COUNTS = {
+    "cells": {
+        "NORTHERN_IRELAND": {
+            "A": {"BELFAST": 1, "NORTH": 1},
+            "B": {"BELFAST": 2, "NORTH": 1, "WEST": 1},
+        }
+    }
+}
+
+
+def _ni_units(cells: dict[str, list[tuple[str, int]]]) -> pd.DataFrame:
+    """Invented Northern Ireland benefit units: per LHA category, each unit's
+    BRMA and true source household."""
+
+    rows = [
         {
-            "benunit_id": [10, 20, 30, 40],
-            "region": ["LONDON"] * 4,
-            "LHA_category": ["A"] * 4,
-            "brma": ["CENTRAL", "CENTRAL", "CENTRAL", "OUTER"],
-            "source_household": [1, 2, 3, 4],
+            "region": "NORTHERN_IRELAND",
+            "LHA_category": category,
+            "brma": brma,
+            "source_household": source,
+        }
+        for category, units in cells.items()
+        for brma, source in units
+    ]
+    frame = pd.DataFrame(rows)
+    frame.insert(0, "benunit_id", range(1, len(frame) + 1))
+    return frame
+
+
+def test_brma_cell_distribution_counts_rounded_sources_and_reports_z() -> None:
+    tool = _load_tool("emit_uk_brma_distribution")
+    # Cell A: twelve units of twelve sources, eight in BELFAST and four in
+    # NORTH; a household's second unit (source 1 twice) counts once.
+    benunit = _ni_units(
+        {
+            "A": [("BELFAST", source) for source in range(1, 9)]
+            + [("NORTH", source) for source in range(9, 13)]
+            + [("BELFAST", 1)],
         }
     )
-    resource = {"cells": {"LONDON": {"A": {"CENTRAL": 1, "OUTER": 1}}}}
 
-    payload = tool.brma_cell_distribution(
-        benunit,
-        count_resource=resource,
-        minimum_count=3,
-    )
+    payload = tool.brma_cell_distribution(benunit, count_resource=_NI_COUNTS)
 
     rows = {row["brma"]: row for row in payload["rows"]}
-    assert rows["CENTRAL"]["built_count"] == 3
-    assert rows["CENTRAL"]["cell_n"] == 4
-    assert rows["CENTRAL"]["z"] is not None
-    assert rows["OUTER"]["built_count"] == "<3"
-    assert rows["OUTER"]["built_share"] is None
-    assert rows["OUTER"]["z"] is None
-    assert payload["max_abs_z"] > 0
+    assert payload["private"] is True
+    assert payload["minimum_count"] == 3
+    # Twelve sources round to ten; eight and four sources are banded.
+    assert rows["BELFAST"]["cell_n"] == rows["NORTH"]["cell_n"] == 10
+    assert rows["BELFAST"]["built_count"] == "3-9"
+    assert rows["NORTH"]["built_count"] == "3-9"
+    # The shares read benefit units, the sampler's own unit, floored to the
+    # hundredth (9/13 and 4/13), and z is rounded to one decimal, so neither
+    # gives the cell's unit counts back.
+    assert rows["BELFAST"]["built_share"] == 0.69
+    assert rows["NORTH"]["built_share"] == 0.30
+    for brma in ("BELFAST", "NORTH"):
+        z = rows[brma]["z"]
+        assert z is not None and z == round(z, 1)
+    assert payload["cells_withheld"] == 0
+    assert payload["max_abs_z"] == max(abs(row["z"]) for row in rows.values()) > 0
+
+
+def test_brma_cell_distribution_withholds_a_cell_with_any_withheld_brma() -> None:
+    """A BRMA one or two source households carry withholds every figure of
+    its cell, the cell's count, every BRMA's count, share and z, which would
+    give it back by difference; another cell keeps its own."""
+
+    tool = _load_tool("emit_uk_brma_distribution")
+    benunit = _ni_units(
+        {
+            "A": [("BELFAST", source) for source in range(1, 9)]
+            + [("NORTH", source) for source in range(9, 13)],
+            # WEST on two units of one source: withheld, with its cell.
+            "B": [("BELFAST", source) for source in range(20, 25)]
+            + [("NORTH", source) for source in range(25, 29)]
+            + [("WEST", 30), ("WEST", 30)],
+        }
+    )
+
+    payload = tool.brma_cell_distribution(benunit, count_resource=_NI_COUNTS)
+
+    rows = {(row["lha_category"], row["brma"]): row for row in payload["rows"]}
+    for brma in ("BELFAST", "NORTH", "WEST"):
+        withheld = rows[("B", brma)]
+        assert withheld["cell_n"] == withheld["built_count"] == "<3"
+        assert withheld["built_share"] is None
+        assert withheld["z"] is None
+        assert set(withheld) == {
+            "region",
+            "lha_category",
+            "brma",
+            "cell_n",
+            "expected_share",
+            "built_count",
+            "built_share",
+            "z",
+        }
+    assert rows[("A", "BELFAST")]["built_share"] is not None
+    assert rows[("A", "BELFAST")]["cell_n"] == 10
+    assert payload["cells_withheld"] == 1
+    # Only the cells nothing in is withheld enter the largest z.
+    assert payload["max_abs_z"] == max(
+        abs(row["z"]) for row in payload["rows"] if row["lha_category"] == "A"
+    )
+
+
+def test_brma_cell_distribution_prints_no_share_in_a_cell_of_under_ten_sources() -> (
+    None
+):
+    """A cell resting on fewer than ten source households, none of its BRMAs
+    withheld, prints its rounded counts but no share or z, which as
+    benefit-unit ratios would narrow its unit counts."""
+
+    tool = _load_tool("emit_uk_brma_distribution")
+    benunit = _ni_units(
+        {
+            "A": [("BELFAST", source) for source in (1, 2, 3)]
+            + [("NORTH", source) for source in (4, 5, 6)]
+        }
+    )
+
+    payload = tool.brma_cell_distribution(benunit, count_resource=_NI_COUNTS)
+
+    for row in payload["rows"]:
+        assert row["cell_n"] == "3-9"
+        assert row["built_share"] is None and row["z"] is None
+    assert {row["brma"]: row["built_count"] for row in payload["rows"]} == {
+        "BELFAST": "3-9",
+        "NORTH": "3-9",
+    }
+    assert payload["cells_withheld"] == 0
+    assert payload["max_abs_z"] == 0.0
+
+
+def test_brma_cell_distribution_refuses_great_britain_rows() -> None:
+    """Great Britain's BRMAs are read off their drawn areas since area_brma
+    (microcosm#931), so they hold no count-table draw to compare."""
+
+    tool = _load_tool("emit_uk_brma_distribution")
+    benunit = _ni_units({"A": [("BELFAST", 1)]})
+    benunit.loc[0, "region"] = "LONDON"
+    with pytest.raises(ValueError, match="Northern Ireland's benefit units alone"):
+        tool.brma_cell_distribution(benunit, count_resource=_NI_COUNTS)
+
+
+def test_brma_cell_distribution_refuses_a_floor_below_the_uk_floor() -> None:
+    tool = _load_tool("emit_uk_brma_distribution")
+    with pytest.raises(ValueError, match="UK disclosure floor"):
+        tool.brma_cell_distribution(
+            _ni_units({"A": [("BELFAST", 1)]}),
+            count_resource=_NI_COUNTS,
+            minimum_count=2,
+        )
 
 
 def test_brma_cell_distribution_fails_closed_on_missing_cell() -> None:
     tool = _load_tool("emit_uk_brma_distribution")
-    benunit = pd.DataFrame(
-        {
-            "benunit_id": [10],
-            "region": ["LONDON"],
-            "LHA_category": ["B"],
-            "brma": ["CENTRAL"],
-            "source_household": [1],
-        }
-    )
-    resource = {"cells": {"LONDON": {"A": {"CENTRAL": 1}}}}
+    benunit = _ni_units({"C": [("BELFAST", 1)]})
 
     with pytest.raises(KeyError, match="LHA_category"):
-        tool.brma_cell_distribution(benunit, count_resource=resource)
+        tool.brma_cell_distribution(benunit, count_resource=_NI_COUNTS)
+
+
+def test_brma_distribution_output_stays_outside_every_work_tree(
+    monkeypatch, tmp_path
+) -> None:
+    """The diagnostics are private: an --output git could commit is refused
+    before the frame is read."""
+
+    import sys
+
+    tool = _load_tool("emit_uk_brma_distribution")
+    loaded: list[object] = []
+    monkeypatch.setattr(
+        tool, "load_uk_national_frame", lambda path: loaded.append(path)
+    )
+    inside = paths_for("microcosm-build").repository / "brma-distribution.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "emit_uk_brma_distribution.py",
+            "--input-h5",
+            str(tmp_path / "spine.h5"),
+            "--output",
+            str(inside),
+        ],
+    )
+    with pytest.raises(SystemExit, match="outside every checkout"):
+        tool.main()
+    assert loaded == [] and not inside.exists()
 
 
 def _frame():

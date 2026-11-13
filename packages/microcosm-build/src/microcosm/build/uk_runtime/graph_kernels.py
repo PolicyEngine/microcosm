@@ -59,6 +59,8 @@ from microcosm.graph import randomness as graph_randomness
 from microcosm.graph.population import dtype_for_token
 
 from .. import (
+    atomic_geography,
+    atomic_support_conditioning,
     chronicle_epoch,
     clone_expansion,
     gates,
@@ -74,8 +76,11 @@ from . import (
     advani_summers,
     annuity_trust_column,
     area_home_values,
+    atomic_area_conditioning,
+    atomic_area_support,
     atomic_household_identity,
     birth_month,
+    brma_area_layer,
     bus_fare_pricing,
     bus_support_pricing,
     bus_use_incidence,
@@ -101,6 +106,9 @@ from . import (
     frs_take_up,
     gambling_participation,
     geographic_clones,
+    geographic_identity,
+    geography_first_roster,
+    geography_sources,
     graph_frames,
     hmrc_capital_gains,
     hmrc_company_car_statistics,
@@ -114,15 +122,18 @@ from . import (
     household_lineage,
     ledger_fact_vendoring,
     legacy_closure_take_up,
+    local_authority_input,
     national_frame,
     nts_car_attributes,
     occupation_constants,
     pension_coherence,
+    private_rent_localisation,
     property_localisation,
     qrf_gates,
     receipt_counts,
     regional_uprating,
     release_input_coverage,
+    rfdr_area_layer,
     rowwise_geography,
     spi_band_donors,
     spi_income,
@@ -146,6 +157,7 @@ if TYPE_CHECKING:
     from microcosm.build.source_manifest import SourceStageSpec
 
 __all__ = [
+    "FIXTURE_SUPPORT_INPUTS",
     "UKClaimKernel",
     "UKCreateKernel",
     "UKExpandStageKernel",
@@ -155,6 +167,12 @@ __all__ = [
     "fixture_stage_plan_inputs",
 ]
 
+
+#: The H2 fixture's inputs that hold its toy conditioned atomic-area supports,
+#: by system: each is named by the id sources.yaml declares the system's
+#: conditioned support under, as the production graph's raw-byte source is
+#: (microcosm#931).
+FIXTURE_SUPPORT_INPUTS = MappingProxyType(dict(atomic_area_support.CONDITIONED_SOURCES))
 
 _STAGE_MODULES = {
     "frs_spine": "frs_spine",
@@ -168,7 +186,14 @@ _STAGE_MODULES = {
     "frs_take_up": "frs_take_up",
     "frs_person_draws": "frs_person_draws",
     "frs_household_draws": "frs_household_draws",
-    "frs_brma": "frs_brma",
+    # The area stages' transforms live in spine_geography, the private rents'
+    # in spine_private_rent (microcosm#931).
+    "atomic_area_assign": "spine_geography",
+    "local_authority": "spine_geography",
+    "rfdr": "spine_geography",
+    "area_brma": "spine_geography",
+    "spi_copy_areas": "spine_geography",
+    "private_rent": "spine_private_rent",
     "was_wealth": "was_wealth",
     "was_lisa": "was_lisa",
     "nts_bus_travel": "nts_bus_travel",
@@ -339,10 +364,90 @@ _STAGE_HELPER_MODULES = {
     # The geographic clones are the shared clone expansion core's, under the
     # UK's declaration, whose ids are minted in the copy-id table's
     # geographic_support field (microcosm#931).
-    "geographic_expand": (clone_expansion, copy_id_table),
+    # Every geography-first stage's transform reads its stage's name from the
+    # names-only roster leaf (microcosm#931).
+    "geographic_expand": (clone_expansion, copy_id_table, geography_first_roster),
     # The geography key is household_draw_key, encoded canonically, over the
     # FRS vintage the release pins for each source year (microcosm#931).
-    "geographic_identity": (atomic_household_identity, frs_release, graph_canonical),
+    "geographic_identity": (
+        atomic_household_identity,
+        frs_release,
+        graph_canonical,
+        geography_first_roster,
+    ),
+    # The area draw runs the shared atomic-area operator and the shared
+    # fallback-level chooser on the conditioned supports, through
+    # atomic_area_conditioning's definition and draw inputs, which read the
+    # support profile, the band order and the FRS region map; the operator
+    # encodes its definition canonically and keys its draws through
+    # microcosm.graph's uniforms. The fuel-relief flag decodes the same
+    # supports for its roster and reads the RFDR layer; the local authority
+    # reads the names roster (microcosm#931). Their module, spine_geography,
+    # imports the BRMA stages' Northern Ireland draw, which draws through the
+    # keyed-draw helpers, so every stage it holds binds them.
+    "atomic_area_assign": (
+        atomic_geography,
+        atomic_support_conditioning,
+        atomic_area_conditioning,
+        atomic_area_support,
+        council_tax_constants,
+        rowwise_geography,
+        geography_first_roster,
+        graph_canonical,
+        graph_randomness,
+        stochastic_assignment,
+    ),
+    "local_authority": (
+        local_authority_input,
+        geography_sources,
+        geography_first_roster,
+        stochastic_assignment,
+    ),
+    "rfdr": (
+        atomic_geography,
+        atomic_support_conditioning,
+        atomic_area_conditioning,
+        atomic_area_support,
+        rfdr_area_layer,
+        rowwise_geography,
+        geography_first_roster,
+        graph_canonical,
+        stochastic_assignment,
+    ),
+    # The SPI copies' areas re-key each copy as the geography identity does,
+    # draw its area with the area draw's definition, and re-run the local
+    # authority, the BRMA (Northern Ireland's on the copies' own benefit units
+    # after one engine call) and the fuel-relief flag (microcosm#931).
+    "spi_copy_areas": (
+        *_ENGINE_STAGE_MODULES,
+        atomic_geography,
+        atomic_support_conditioning,
+        atomic_area_conditioning,
+        atomic_area_support,
+        atomic_household_identity,
+        brma_area_layer,
+        council_tax_constants,
+        frs_brma,
+        frs_release,
+        geographic_identity,
+        local_authority_input,
+        geography_sources,
+        rfdr_area_layer,
+        rowwise_geography,
+        geography_first_roster,
+        graph_canonical,
+        graph_randomness,
+        stochastic_assignment,
+    ),
+    # The private rents read the BRMA lists through the localiser and key their
+    # tie-breaks through microcosm.graph's uniforms, which encode each draw's
+    # coordinates as canonical JSON (microcosm#931).
+    "private_rent": (
+        private_rent_localisation,
+        geography_first_roster,
+        graph_canonical,
+        graph_randomness,
+    ),
     # The SPI income stage's imputation, band-donor resample and receipt live
     # in spi_income, so an edit there moves the stage's hash (microcosm#1278),
     # and its twin transport in spi_rank_transport (microcosm#840). The
@@ -516,7 +621,18 @@ _STAGE_HELPER_MODULES = {
         stochastic_assignment,
     ),
     "frs_education_grant_split": (*_ENGINE_STAGE_MODULES, frs_release),
-    "frs_brma": (*_ENGINE_STAGE_MODULES, stochastic_assignment),
+    # The BRMA takes frs_brma's engine binding: one engine call materialises
+    # LHA_category, and Northern Ireland's benefit units draw on frs_brma's
+    # keyed uniforms; Great Britain's read the area-to-BRMA layer, by the
+    # systems atomic_area_support names (microcosm#931).
+    "area_brma": (
+        *_ENGINE_STAGE_MODULES,
+        atomic_area_support,
+        brma_area_layer,
+        frs_brma,
+        geography_first_roster,
+        stochastic_assignment,
+    ),
     # The donor stages read their donor tabs through frs_spine, record each
     # fit's weight kind, gate the fits and clip donor support to the donor's
     # range (microcosm#931); the WAS recipients' predictors map benefit units to
@@ -903,6 +1019,14 @@ _COUNTING_STAGES = frozenset(
         # shared lineage reader (microcosm#931).
         "geographic_expand",
         "geographic_identity",
+        # So do the area stages and the private rents; the SPI copies' areas
+        # read each copy's path through the shared reader too (microcosm#931).
+        "atomic_area_assign",
+        "local_authority",
+        "rfdr",
+        "area_brma",
+        "spi_copy_areas",
+        "private_rent",
         "hmrc_spi_income_spine",
         "spi_support_channel",
         "spi_income_band_donors",
@@ -1272,7 +1396,6 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .etb_services import UKETBServicesStageTransform
     from .etb_vat import UKETBVATStageTransform
     from .frs_annual_income import UKFRSAnnualIncomeStageTransform
-    from .frs_brma import UKFRSBRMAStageTransform
     from .frs_council_tax import UKFRSCouncilTaxStageTransform
     from .frs_disability import UKFRSDisabilityStageTransform
     from .frs_education import UKFRSEducationStageTransform
@@ -1309,6 +1432,14 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
         UKSPIIncomeSpineStageTransform,
         UKSPISupportChannelStageTransform,
     )
+    from .spine_geography import (
+        UKAreaBRMAStageTransform,
+        UKAtomicAreaAssignStageTransform,
+        UKLocalAuthorityStageTransform,
+        UKRFDRStageTransform,
+        UKSPICopyAreasStageTransform,
+    )
+    from .spine_private_rent import UKPrivateRentStageTransform
     from .student_loans import UKStudentLoansStageTransform
     from .take_up_contract import load_uk_take_up_contract
     from .trading_allowance_receipts import UKTradingAllowanceReceiptsStageTransform
@@ -1389,6 +1520,13 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             _mapping(descriptor.get("cgt_badr_parameters"), label="CGT BADR parameters")
         )
     )
+    # The fixture's toy conditioned atomic-area supports, one input each under
+    # the id sources.yaml declares the system's support by, read as the donor
+    # tables are (microcosm#931).
+    supports = {
+        system: _fixture_input(source, inputs, source_id).read_bytes()
+        for system, source_id in FIXTURE_SUPPORT_INPUTS.items()
+    }
 
     # The fixture's spine clones every household geographic_clones times, and
     # its engine refuses a frame of any other clone count (microcosm#931).
@@ -1437,8 +1575,23 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             "frs_household_draws": UKFRSHouseholdDrawsStageTransform(
                 contract=contract, stage=stages["frs_household_draws"]
             ),
-            "frs_brma": UKFRSBRMAStageTransform(
-                stage=stages["frs_brma"], engine=engine
+            "atomic_area_assign": UKAtomicAreaAssignStageTransform(
+                stage=stages["atomic_area_assign"], supports=supports
+            ),
+            "local_authority": UKLocalAuthorityStageTransform(
+                stage=stages["local_authority"]
+            ),
+            "rfdr": UKRFDRStageTransform(stage=stages["rfdr"], supports=supports),
+            "area_brma": UKAreaBRMAStageTransform(
+                stage=stages["area_brma"], engine=engine
+            ),
+            "spi_copy_areas": UKSPICopyAreasStageTransform(
+                stage=stages["spi_copy_areas"], engine=engine, supports=supports
+            ),
+            # The fixture is a sampled rung, as its SPI stages are, so the
+            # private rents take the sampled rung's region rule (microcosm#931).
+            "private_rent": UKPrivateRentStageTransform(
+                stage=stages["private_rent"], sampled_rung=True
             ),
             "was_wealth": UKWASWealthStageTransform(
                 stage=stages["was_wealth"], engine=engine, donor=was

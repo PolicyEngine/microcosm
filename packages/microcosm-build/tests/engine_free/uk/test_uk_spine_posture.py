@@ -32,17 +32,10 @@ from test_support.microcosm_build.uk_full_build_cli import (
 )
 
 #: What a geography-first spine runs that a spine built from the packaged spec
-#: does not yet: the area stages and the main-residence localiser. The
-#: geography declarations shorten this list until it is empty.
-_PACKAGED_ROSTER_LACKS = (
-    "stage atomic_area_assign",
-    "stage local_authority",
-    "stage rfdr",
-    "stage area_brma",
-    "stage spi_copy_areas",
-    "stage private_rent",
-    "operation localise_main_residence_value in was_wealth",
-)
+#: does not yet: the main-residence localiser inside the WAS chain, which the
+#: last geography declarations add with the gates they register. The area
+#: stages are declared (microcosm#931).
+_PACKAGED_ROSTER_LACKS = ("operation localise_main_residence_value in was_wealth",)
 
 
 def _passing():
@@ -119,24 +112,14 @@ def test_each_roster_stage_is_the_stage_its_transform_runs_as():
     )
 
 
-def test_the_packaged_roster_is_refused_naming_what_it_lacks(monkeypatch):
-    """A spine built on this code lacks the area stages and the localiser,
-    and the sidecar the spine build's own writer records for it has no
-    geography block: so the dense line refuses every spine until the
-    geography declarations land (microcosm#931). The stages the spine already
-    runs pass."""
+def _written_sidecar(monkeypatch, spec, geography):
+    """The sidecar the spine build's own writer records over a synthetic frame
+    and the packaged stages in the spine graph's order, with ``geography``,
+    read back through JSON as the dense preparation reads it. Only the
+    engine's provenance stands in."""
     from microcosm.build.uk_runtime import spine_build
     from test_support.microcosm_build.uk_full_population_graph import source_frame
 
-    spec = load_country_spec("uk")
-    stages, operations = spec_roster(spec)
-    assert {"geographic_expand", "geographic_identity", "was_wealth"} <= set(stages)
-    assert roster_failures(stages, operations, from_sidecar=False) == (
-        _PACKAGED_ROSTER_LACKS
-    )
-    # The writer every spine build calls, over a synthetic frame and the
-    # stages in the spine graph's order, read back through JSON as the dense
-    # preparation reads it. Only the engine's provenance stands in.
     monkeypatch.setattr(
         spine_build, "_rules_engine_provenance", lambda: {"version": "stand-in"}
     )
@@ -152,13 +135,75 @@ def test_the_packaged_roster_is_refused_naming_what_it_lacks(monkeypatch):
         stochastic_contract_sha256="0" * 64,
         frs_vintage="stand-in",
         sampling=None,
+        geography=geography,
     )
-    sidecar = json.loads(json.dumps(written))
+    return json.loads(json.dumps(written))
+
+
+def _toy_block(register: str = "synthetic") -> dict:
+    """The block the spine build composes for toy conditioned supports."""
+    from microcosm.build.uk_runtime.country_adapter import uk_spine_geography_binding
+    from test_support.microcosm_build.uk_conditioned_support_fixtures import (
+        toy_conditioned_support_payloads,
+    )
+
+    return uk_spine_geography_binding(
+        toy_conditioned_support_payloads(), register=register
+    )
+
+
+def test_the_packaged_roster_is_refused_naming_what_it_lacks(monkeypatch):
+    """A spine built on this code runs every area stage, and the sidecar the
+    spine build's own writer records for it carries the geography block, but
+    it lacks the main-residence localiser: so the dense line still refuses
+    every spine until the last geography declarations land (microcosm#931).
+    The stages the spine already runs pass."""
+    spec = load_country_spec("uk")
+    stages, operations = spec_roster(spec)
+    assert set(GEOGRAPHY_FIRST_STAGES) | {"was_wealth"} <= set(stages)
+    assert roster_failures(stages, operations, from_sidecar=False) == (
+        _PACKAGED_ROSTER_LACKS
+    )
+    sidecar = _written_sidecar(monkeypatch, spec, _toy_block())
     recorded = (sidecar["stages"], sidecar["operations"], sidecar.get("geography"))
     assert set(sidecar["stages"]) == set(stages)
-    assert roster_failures(*recorded) == (*_PACKAGED_ROSTER_LACKS, "geography block")
+    assert roster_failures(*recorded) == _PACKAGED_ROSTER_LACKS
     with pytest.raises(ValueError, match="builds only on a geography-first spine"):
         require_geography_first_spine(*recorded)
+    # A spine whose writer records no block fails on that too.
+    bare = _written_sidecar(monkeypatch, spec, None)
+    assert "geography" not in bare
+    assert roster_failures(bare["stages"], bare["operations"], None) == (
+        *_PACKAGED_ROSTER_LACKS,
+        "geography block",
+    )
+
+
+def test_every_stage_the_leaf_names_is_declared_in_its_order():
+    """The packaged spec declares every geography-first stage, in the leaf's
+    order, and every stage a geography-first operation runs in (microcosm#931)."""
+    spec = load_country_spec("uk")
+    stages, _ = spec_roster(spec)
+    assert [name for name in stages if name in GEOGRAPHY_FIRST_STAGES] == list(
+        GEOGRAPHY_FIRST_STAGES
+    )
+    assert set(GEOGRAPHY_FIRST_OPERATIONS) <= set(stages)
+
+
+def test_the_sidecar_writer_writes_the_block_under_the_leafs_keys(monkeypatch):
+    """The spine build's sidecar writer records the block it is handed under
+    the leaf's keys, in their order, ints as ints, through JSON
+    (microcosm#931)."""
+    spec = load_country_spec("uk")
+    block = _toy_block(register="sources.yaml")
+    sidecar = _written_sidecar(monkeypatch, spec, block)
+    assert tuple(sidecar["geography"]) == SIDECAR_GEOGRAPHY_KEYS
+    assert sidecar["geography"] == block
+    assert type(sidecar["geography"]["stream"][3]) is int
+    assert all(
+        type(pin["size_bytes"]) is int
+        for pin in sidecar["geography"]["support_pins"].values()
+    )
 
 
 def test_spec_roster_reads_the_declared_names_and_kinds_in_order():

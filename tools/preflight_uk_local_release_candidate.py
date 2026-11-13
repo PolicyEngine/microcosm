@@ -374,10 +374,11 @@ def check_candidate_dir(candidate_dir: Path, *, today: date | None = None) -> li
     # records the spine's geography binding as geography.assignment, and it
     # must be a release's, the identity-keyed atomic law on exactly the
     # conditioned supports sources.yaml registers, whatever digests the
-    # operator pinned, at the doctrine's clone count, the run's n_clones. The
-    # build's preparation holds a release candidate's spine to the same
-    # check (country_adapter.uk_spine_geography_binding_failures), which
-    # names fields only.
+    # operator pinned, on the spine's area stream at its declared seed, its
+    # pins held to that register, at the doctrine's clone count, the run's
+    # n_clones. The build's preparation holds a release candidate's spine to
+    # the same check (country_adapter.uk_spine_geography_binding_failures),
+    # which names fields only.
     from microcosm.build.uk_runtime import country_adapter
 
     failures.extend(

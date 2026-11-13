@@ -2,9 +2,12 @@
 
 G7 reads each Great Britain private renter's rent off its BRMA's list of rents
 with every row its own spine household, keyed on its geography key, tie-broken
-on the stage's own stream. No stage declares it yet, so the transform here
-runs as a stage built from the reviewed declaration spine_private_rent states,
-on the committed lists of rents and census counts.
+on the stage's own stream. sources.yaml declares the stage after
+spi_housing_shell (microcosm#931), and the transform here runs as a stage
+built from the reviewed declaration spine_private_rent states, which a test
+holds equal to the packaged stage, on the committed lists of rents and census
+counts; the packaged stage's own transform gives the same frames and
+evidence.
 
 The frames are invented households (toy rents, tenures and bedrooms), cloned
 and keyed by the spine's own expansion and identity steps, placed by the
@@ -490,8 +493,16 @@ def test_the_reviewed_operations_are_declarative_and_name_the_stages_stream() ->
     )
     assert rents["seed"] == UK_SPINE_PRIVATE_RENT_SEED == _DESIGN_STREAM[3] == 0
     assert rents["identity"] == _KEY and rents["process"] == RENT_RANK_PROCESS
-    # The stage's stream is its own, not the retired dense node's.
-    assert UK_SPINE_PRIVATE_RENT_STREAM_EXPERIMENT != prl.STREAM_EXPERIMENT
+    # The stage's stream is its own, declared with its seed in the packaged
+    # stage the transform runs as (microcosm#931); the retired dense node's
+    # stream left with it.
+    assert not hasattr(prl, "STREAM_EXPERIMENT")
+    from microcosm.build.country_spec import load_country_spec
+
+    declared = load_country_spec("uk").sources.stage_map()["private_rent"]
+    assert dict(declared.operations[0].parameters) == rents
+    assert declared.operations[0].parameters["stream"] == _DESIGN_STREAM[1]
+    assert declared.operations[0].parameters["seed"] == _DESIGN_STREAM[3]
     assert rents["sampled_region_renters"] == prl.MIN_SAMPLED_REGION_RENTERS
     assert rents["scale_band"] == list(prl.SCALE_BAND)
     assert rents["weeks_in_year"] == prl.WEEKS_IN_YEAR
@@ -565,6 +576,50 @@ def test_the_transform_reads_the_committed_resources_and_needs_a_run() -> None:
         transform.checkpoint_metadata()
     with pytest.raises(TypeError, match="Frame"):
         transform(_household(1))
+
+
+@pytest.mark.parametrize("sampled_rung", (False, True))
+def test_the_packaged_stage_is_the_reviewed_one_and_runs_as_it(sampled_rung) -> None:
+    """sources.yaml declares G7 as the reviewed declaration states it
+    (microcosm#931): household grain, no outputs, the rent as its one
+    rewrite, the reviewed operations verbatim and its two artifacts, each
+    with runtime_sha256_required. So the transform the spine build installs,
+    built from the packaged stage, gives the toy spine, its SPI copies among
+    it, the frame and evidence the reviewed stage gives it, at one clone and
+    at three, on a full-scale spine and on a sampled rung."""
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
+
+    packaged = load_country_spec("uk").sources.stage_map()[PRIVATE_RENT_STAGE_NAME]
+    reviewed = _stage()
+    assert packaged.grain == reviewed.grain == "household"
+    assert packaged.outputs == reviewed.outputs == ()
+    assert packaged.rewrites == reviewed.rewrites == UK_PRIVATE_RENT_REWRITES
+    assert [
+        (operation.kind, dict(operation.parameters))
+        for operation in packaged.operations
+    ] == [
+        (operation.kind, dict(operation.parameters))
+        for operation in reviewed.operations
+    ]
+    assert sorted(
+        (artifact["role"], artifact["resource"], artifact["runtime_sha256_required"])
+        for artifact in packaged.artifacts
+    ) == sorted(
+        (artifact["role"], artifact["resource"], artifact["runtime_sha256_required"])
+        for artifact in reviewed.artifacts
+    )
+    for clones in (1, 3):
+        frame = _frame(clones)
+        expected = UKPrivateRentStageTransform(
+            stage=reviewed, sampled_rung=sampled_rung
+        )
+        wired = UKPrivateRentStageTransform(stage=packaged, sampled_rung=sampled_rung)
+        assert uk_frame_content_identity(wired(frame)) == uk_frame_content_identity(
+            expected(frame)
+        ), clones
+        assert wired.checkpoint_metadata() == expected.checkpoint_metadata(), clones
 
 
 # --- G7 against localise_rents ------------------------------------------------------

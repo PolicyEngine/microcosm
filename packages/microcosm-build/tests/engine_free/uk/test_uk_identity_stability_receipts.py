@@ -3218,10 +3218,22 @@ _STACKING_MAP_EXCEPTIONS = {
         "before it, frs_spine to frs_education_grant_split, "
         "frs_hmrc_spine_leaves and frs_annual_income_spells, and no E4 to E9 "
         "receipt recomputes a draw of those; E4 recomputes frs_take_up, "
-        "frs_person_draws, frs_household_draws and frs_brma, which run on "
+        "frs_person_draws, frs_household_draws and area_brma, which run on "
         "every clone (microcosm#931)"
     ),
 }
+#: The area stages (microcosm#931) are no structural stages: each writes or
+#: rewrites columns on the rows it is given and adds none, so the stacking
+#: map needs no entry for them; spi_copy_areas re-places rows the support
+#: channel's entry already drops.
+_AREA_STAGES = (
+    "atomic_area_assign",
+    "local_authority",
+    "rfdr",
+    "area_brma",
+    "spi_copy_areas",
+    "private_rent",
+)
 
 
 def test_the_stacking_map_names_every_structural_stage_flag() -> None:
@@ -3264,14 +3276,24 @@ def test_the_stacking_map_names_every_structural_stage_flag() -> None:
     assert declared["geographic_expand"] == []
     names = [stage["stage"] for stage in tool._source_stage_roster()]
     assert names.index("geographic_expand") < min(
-        names.index(stage)
-        for stage in (
-            "frs_take_up",
-            "frs_person_draws",
-            "frs_household_draws",
-            "frs_brma",
-        )
+        names.index(stage) for stage in tool._E4_STAGES
     )
+    assert tool._E4_STAGES == (
+        "frs_take_up",
+        "frs_person_draws",
+        "frs_household_draws",
+        "area_brma",
+    )
+    # The area stages add no rows, so none is structural, and none declares a
+    # stacking flag.
+    roster = {stage["stage"]: stage for stage in tool._source_stage_roster()}
+    assert set(_AREA_STAGES) <= set(roster)
+    assert not set(_AREA_STAGES) & set(UK_SPINE_STRUCTURAL_STAGES)
+    for name in _AREA_STAGES:
+        assert not any(
+            "flag_column" in operation
+            for operation in roster[name].get("operations", ())
+        ), name
 
 
 # The clone count every receipt reads, the columns later stages rewrite, and
@@ -3564,31 +3586,40 @@ class TestLaterRewrites:
         assert before["matches_stored_columns"] is True
 
 
-# E4 on a frame the stages built. Sixteen synthetic households in two regions:
-# a claimant in each, aged 22 in full-time work in the odd ones (the apprentice
-# walk's population) and 40 in part-time work in the even ones, a child in
-# every fourth and a pension-age member, in a
-# benefit unit of their own, in every third. They run through
-# geographic_expand, frs_take_up, frs_person_draws, frs_household_draws and
-# frs_brma (on an engine whose LHA_category reads a claim to Universal Credit,
-# would_claim_uc or one at legacy closure, as policyengine-uk's does through
-# uc_non_dependants_counted), the SPI support channel at the manifest's shares
-# and the income band donors. Then a later stage rewrites would_claim_uc and
-# uc_legacy_closure_take_up first writes its claim, as their declarations say
-# they do (both drawn here from keyed uniforms).
+# E4 on a frame the stages built. Sixteen synthetic households, in London
+# (the odd ones) and Northern Ireland (the even ones): a claimant in each, aged
+# 22 in full-time work in the odd ones (the apprentice walk's population) and
+# 40 in part-time work in the even ones, a child in every fourth and a
+# pension-age member, in a benefit unit of their own, in every third. They run
+# through geographic_expand, geographic_identity, the area stages on the toy
+# conditioned supports (atomic_area_assign, local_authority, rfdr),
+# frs_take_up, frs_person_draws, frs_household_draws and area_brma (on an
+# engine whose LHA_category reads a claim to Universal Credit, would_claim_uc
+# or one at legacy closure, as policyengine-uk's does through
+# uc_non_dependants_counted), the SPI support channel at the manifest's
+# shares, the income band donors and the SPI copies' areas (microcosm#931).
+# area_brma reads London's BRMAs off their drawn areas through the committed
+# layer and draws Northern Ireland's from an invented count table whose two
+# categories hold BRMAs of their own, so a unit's category decides its BRMA.
+# Then a later stage rewrites would_claim_uc and uc_legacy_closure_take_up
+# first writes its claim, as their declarations say they do (both drawn here
+# from keyed uniforms).
 
 _E4_POLICY = UKTakeUpPopulationPolicy(
     adult_age=18, state_pension_age=66, instant="2024-01-01", source="test"
 )
+#: The scenario's two regions: odd households in London, even ones in
+#: Northern Ireland.
+_E4_REGIONS = ("NORTHERN_IRELAND", "LONDON")
 _E4_BRMA_COUNTS = {
     "cells": {
-        region: {
-            "A": {f"{region}_A1": 3, f"{region}_A2": 1},
-            "B": {f"{region}_B1": 1, f"{region}_B2": 2},
+        "NORTHERN_IRELAND": {
+            "A": {"NORTHERN_IRELAND_A1": 3, "NORTHERN_IRELAND_A2": 1},
+            "B": {"NORTHERN_IRELAND_B1": 1, "NORTHERN_IRELAND_B2": 2},
         }
-        for region in ("LONDON", "SOUTH_EAST")
     }
 }
+_E4_BRMA_COUNTS_SHA256 = "e4-invented-counts"
 
 
 class _E4Contract:
@@ -3727,7 +3758,15 @@ def _e4_raw_frame(n_households: int = 16):
         household=pd.DataFrame(
             {
                 "household_id": ids,
-                "region": np.where(ids % 2 == 0, "SOUTH_EAST", "LONDON"),
+                "region": pd.Series(
+                    [_E4_REGIONS[h % 2] for h in ids.tolist()], dtype=object
+                ),
+                # The area draw's inputs, as the root types them: no decile and
+                # no observed band, so every household draws in its region by
+                # households.
+                "imd_decile": np.zeros(n_households, dtype=np.int64),
+                "council_tax_band": pd.Series(["D"] * n_households, dtype=object),
+                "council_tax_band_observed": np.zeros(n_households, dtype=bool),
             }
         ),
         household_weights=np.full(n_households, 100.0),
@@ -3769,7 +3808,7 @@ def _e4_propensity() -> pd.DataFrame:
                 "cell_weight": 10.0,
                 "propensity": 0.1,
             }
-            for region in ("LONDON", "SOUTH_EAST")
+            for region in _E4_REGIONS
             for gender in ("MALE", "FEMALE")
             for lower, _ in SPI_INCOME_BAND_PROPENSITY_AGE_BANDS
             for band in SPI_INCOME_BAND_DONOR_LOWER_BOUNDS
@@ -3782,7 +3821,11 @@ def _e4_chain(clones: int, contract: _E4Contract | None = None) -> SimpleNamespa
     frame. ``contract`` defaults to the scenario's rates."""
 
     from microcosm.build.stochastic_assignment import stable_identity_uniforms
-    from microcosm.build.uk_runtime.frs_brma import UKFRSBRMAStageTransform
+    from microcosm.build.uk_runtime.atomic_area_conditioning import (
+        UK_SPINE_ATOMIC_AREA_SEED,
+        uk_conditioned_assignment_definition,
+        uk_conditioned_supports,
+    )
     from microcosm.build.uk_runtime.frs_household_draws import (
         add_frs_household_draws,
     )
@@ -3799,19 +3842,49 @@ def _e4_chain(clones: int, contract: _E4Contract | None = None) -> SimpleNamespa
     from microcosm.build.uk_runtime.geographic_expand import (
         expand_uk_geographic_clones,
     )
+    from microcosm.build.uk_runtime.geographic_identity import (
+        UKGeographicIdentityStageTransform,
+    )
     from microcosm.build.uk_runtime.receipt_counts import record_source_households
     from microcosm.build.uk_runtime.spi_band_donors import (
         stack_spi_income_band_donors,
     )
     from microcosm.build.uk_runtime.spi_spine import UKSPISupportChannelStageTransform
+    from microcosm.build.uk_runtime.spine_geography import (
+        UKAtomicAreaAssignStageTransform,
+        UKLocalAuthorityStageTransform,
+        UKRFDRStageTransform,
+        assign_uk_spi_copy_areas,
+        assign_uk_spine_brmas,
+        load_committed_brma_layer,
+        load_committed_rfdr_layer,
+    )
+    from test_support.microcosm_build.uk_conditioned_support_fixtures import (
+        toy_conditioned_support_payloads,
+    )
 
     contract = _E4Contract() if contract is None else contract
+    supports = toy_conditioned_support_payloads()
     expanded = expand_uk_geographic_clones(_e4_raw_frame(), clones=clones).frame
+    keyed = UKGeographicIdentityStageTransform(
+        stage=_manifest_stage("geographic_identity")
+    )(expanded)
+    # Each clone's area, local authority and fuel-relief flag, before the
+    # draws, as the spine places them (microcosm#931).
+    placed = UKAtomicAreaAssignStageTransform(
+        stage=_manifest_stage("atomic_area_assign"), supports=supports
+    )(keyed)
+    placed = UKLocalAuthorityStageTransform(stage=_manifest_stage("local_authority"))(
+        placed
+    )
+    placed = UKRFDRStageTransform(stage=_manifest_stage("rfdr"), supports=supports)(
+        placed
+    )
     taken = UKFRSTakeUpStageTransform(
         contract=contract,
         stage=_manifest_stage("frs_take_up"),
         population_policy=_E4_POLICY,
-    )(expanded)
+    )(placed)
     # The person draws through their derivation, with what the stage hands
     # it: the stage transform reads the installed engine's apprentice
     # schedule, which only its receipt uses.
@@ -3831,11 +3904,19 @@ def _e4_chain(clones: int, contract: _E4Contract | None = None) -> SimpleNamespa
     households = add_frs_household_draws(
         _with_tables(taken, person=person), contract=contract
     )
-    brma = UKFRSBRMAStageTransform(
-        stage=_manifest_stage("frs_brma"),
-        engine=_LHAEngine(),
+    # area_brma's own function, on its one engine call over the whole frame,
+    # with the scenario's invented count table for Northern Ireland.
+    layer, layer_sha256 = load_committed_brma_layer()
+    brma = assign_uk_spine_brmas(
+        households,
+        lha_category=_LHAEngine().materialize(households, ("LHA_category",), "2024")[
+            "LHA_category"
+        ],
+        layer=layer,
+        layer_sha256=layer_sha256,
         count_resource=_E4_BRMA_COUNTS,
-    )(households)
+        count_resource_sha256=_E4_BRMA_COUNTS_SHA256,
+    ).frame
     supported = UKSPISupportChannelStageTransform(
         stage=_manifest_stage("spi_support_channel"),
         state_pension_age=_E4_POLICY.state_pension_age,
@@ -3853,7 +3934,25 @@ def _e4_chain(clones: int, contract: _E4Contract | None = None) -> SimpleNamespa
         maximum_donor_weight=100.0,
         taxpayer_period=2024,
     ).frame
-    benunit = donors.table("benunit").copy()
+    # The SPI copies' own keys and areas, through the copy stage's function on
+    # the same count table; it rewrites the copies' brma and leaves every
+    # other row's as area_brma drew it.
+    rfdr_layer, rfdr_layer_sha256 = load_committed_rfdr_layer()
+    copied = assign_uk_spi_copy_areas(
+        donors,
+        definition=uk_conditioned_assignment_definition(
+            supports, seed=UK_SPINE_ATOMIC_AREA_SEED
+        ),
+        supports=uk_conditioned_supports(supports),
+        engine=_LHAEngine(),
+        brma_layer=layer,
+        brma_layer_sha256=layer_sha256,
+        count_resource=_E4_BRMA_COUNTS,
+        count_resource_sha256=_E4_BRMA_COUNTS_SHA256,
+        rfdr_layer=rfdr_layer,
+        rfdr_layer_sha256=rfdr_layer_sha256,
+    ).frame
+    benunit = copied.table("benunit").copy()
     ids = benunit["benunit_id"].to_numpy()
     redrawn = stable_identity_uniforms(ids, seed=5, salt="later_uc_redraw") < 0.5
     claims = benunit["would_claim_uc"].to_numpy(dtype=bool)
@@ -3865,7 +3964,8 @@ def _e4_chain(clones: int, contract: _E4Contract | None = None) -> SimpleNamespa
         contract=contract,
         brma=brma,
         donors=donors,
-        final=_with_tables(donors, benunit=benunit),
+        copied=copied,
+        final=_with_tables(copied, benunit=benunit),
     )
 
 
@@ -3873,6 +3973,20 @@ def _weights_by_household(frame) -> pd.Series:
     return pd.Series(
         np.asarray(frame.weights_for("household").values, dtype=float),
         index=frame.table("household")["household_id"].to_numpy(),
+    )
+
+
+def _northern_ireland_benunits(frame) -> set[int]:
+    """The ids of the benefit units of ``frame``'s Northern Ireland
+    households, whose BRMA area_brma draws from their LHA_category cell."""
+
+    household = frame.table("household")
+    homes = set(
+        household.loc[household["region"].eq("NORTHERN_IRELAND"), "household_id"]
+    )
+    person = frame.table("person")
+    return set(
+        person.loc[person["person_household_id"].isin(homes), "person_benunit_id"]
     )
 
 
@@ -3966,6 +4080,11 @@ class TestE4OnAFrameTheStagesBuilt:
         }
         assert childcare and childcare <= still_equal
         assert "would_claim_uc" not in still_equal
+        # spi_copy_areas declares rewriting brma on the rows the SPI support
+        # channel copied alone, every one of which the scope drops, so its
+        # rewrite is taken back: the BRMA is compared, and holds.
+        assert "brma" not in receipt["rewritten_later"].get("household", {})
+        assert "brma" not in still_equal
 
     @pytest.mark.parametrize("universal_credit", [0.5, 0.4])
     def test_the_recompute_counts_within_each_clone_at_three_clones(
@@ -3980,8 +4099,9 @@ class TestE4OnAFrameTheStagesBuilt:
         index, as E4 recomputed before, the walk stops at another prefix and
         the Child Benefit residual is not the stored one; at a Universal
         Credit rate of 0.4, whose int(rate x units) rounds otherwise over
-        every clone, the BRMA stage's would_claim_uc, and so its BRMA, differ
-        too."""
+        every clone, the BRMA stage's would_claim_uc differs too, on Northern
+        Ireland's units among others, and so does Northern Ireland's BRMA,
+        which E4 compares and then flags."""
 
         tool = _load_tool()
         built = _e4_chain(3, _E4UniversalCreditContract(universal_credit))
@@ -3989,10 +4109,12 @@ class TestE4OnAFrameTheStagesBuilt:
             built.final, state_pension_age=_E4_POLICY.state_pension_age
         )
         stage_time = built.brma.table("benunit").set_index("benunit_id")
+        northern_ireland = _northern_ireland_benunits(built.brma)
 
-        def recompute() -> tuple[dict[str, object], int]:
-            """The receipt, and how many benefit units the BRMA stage's
-            restored would_claim_uc puts off the stage's."""
+        def recompute() -> tuple[dict[str, object], int, int]:
+            """The receipt, and how many benefit units, and how many of
+            Northern Ireland's, the BRMA stage's restored would_claim_uc puts
+            off the stage's."""
 
             engine = _LHAEngine()
             receipt = _e4_receipt(tool, scoped, built.contract, engine=engine)
@@ -4000,33 +4122,43 @@ class TestE4OnAFrameTheStagesBuilt:
             benunit = read.table("benunit").set_index("benunit_id")
             restored = benunit["would_claim_uc"].to_numpy(dtype=bool)
             drawn = stage_time["would_claim_uc"].reindex(benunit.index).to_numpy()
-            return receipt, int((restored != drawn.astype(bool)).sum())
+            off = restored != drawn.astype(bool)
+            return (
+                receipt,
+                int(off.sum()),
+                int(off[benunit.index.isin(northern_ireland)].sum()),
+            )
 
-        receipt, off = recompute()
+        receipt, off, off_in_northern_ireland = recompute()
         assert receipt["matches_stored_columns"] is True
         assert receipt["stored_mismatches"] == {}
         assert receipt["held_to_tolerance"] == {}
         still_equal = set(receipt["rewritten_later_still_equal"]["benunit"])
         assert {"would_claim_child_benefit", "would_claim_pc"} <= still_equal
+        assert "brma" not in receipt["rewritten_later"].get("household", {})
         assert off == 0
 
         monkeypatch.setattr(tool, "geographic_clone_indices", lambda *_: None)
-        pooled, off = recompute()
+        pooled, off, off_in_northern_ireland = recompute()
         assert "is_apprentice" in pooled["stored_mismatches"]["person"]
         still_equal = set(pooled["rewritten_later_still_equal"]["benunit"])
         assert "would_claim_child_benefit" not in still_equal
         if universal_credit == 0.4:
             assert off > 0
+            assert off_in_northern_ireland > 0
             assert "brma" in pooled["stored_mismatches"]["household"]
 
     def test_brma_on_the_final_frames_flags_draws_from_other_cells(self) -> None:
         # The BRMA stage read LHA_category on its own input, carrying
         # frs_take_up's would_claim_uc and no legacy closure claim. The final
         # frame carries both as later stages left them, so LHA_category
-        # materialized there puts some benefit units in another cell, and
-        # their BRMA draws differ, though no later stage declares writing
-        # brma. On the frame the stage read, as the recompute restores it,
-        # every draw is the stage's.
+        # materialized there puts some Northern Ireland benefit units in
+        # another cell, and their BRMA draws differ: E4 flags them, since the
+        # one later stage that declares writing brma, spi_copy_areas, writes
+        # only rows the scope drops, so its rewrite is taken back and brma is
+        # compared. London's BRMAs are read off their drawn areas, whatever
+        # the category. On the frame the stage read, as the recompute restores
+        # it, every draw is the stage's.
         tool = _load_tool()
         built = _e4_chain(1)
         scoped = tool._frame_as_draw_stages_saw(
@@ -4037,11 +4169,13 @@ class TestE4OnAFrameTheStagesBuilt:
         )["LHA_category"]
         on_final = _e4_receipt(tool, scoped, built.contract, lha_category=final_lha)
         assert "brma" in on_final["stored_mismatches"]["household"]
+        assert on_final["matches_stored_columns"] is False
 
         engine = _LHAEngine()
         receipt = _e4_receipt(tool, scoped, built.contract, engine=engine)
         assert receipt["stored_mismatches"] == {}
         assert receipt["matches_stored_columns"] is True
+        assert "brma" not in receipt["rewritten_later"].get("household", {})
         (read,) = engine.frames
         benunit = read.table("benunit").set_index("benunit_id")
         stage_time = built.brma.table("benunit").set_index("benunit_id")
@@ -4051,7 +4185,7 @@ class TestE4OnAFrameTheStagesBuilt:
             stage_time["would_claim_uc"].reindex(benunit.index).to_numpy(),
         )
         scope = receipt["lha_category_scope"]
-        assert scope["stage"] == "frs_brma"
+        assert scope["stage"] == "area_brma"
         assert "would_claim_uc" in scope["restored_from_the_recompute"]
         assert scope["columns_first_written_later"] > 0
         # What the artifact cannot restore is named, with its writers: the
@@ -4061,6 +4195,46 @@ class TestE4OnAFrameTheStagesBuilt:
             "uc_reporter_redraw"
             in scope["carried_as_stored"]["universal_credit_reported"]
         )
+
+    def test_brma_is_compared_only_where_the_scope_drops_every_copy(self) -> None:
+        """E4 compares brma by taking spi_copy_areas' rewrite back, which
+        holds only where the scope dropped every row the SPI support channel
+        copied, the only rows that stage rewrites (microcosm#931). Without the
+        reversal brma is reported, not compared; a frame that keeps a copy is
+        refused, by the column alone."""
+
+        tool = _load_tool()
+        built = _e4_chain(1)
+        scoped = tool._frame_as_draw_stages_saw(
+            built.final, state_pension_age=_E4_POLICY.state_pension_age
+        )
+        kept = _e4_receipt(
+            tool,
+            scoped,
+            built.contract,
+            engine=_LHAEngine(),
+            reversed_stages=tool._SCOPE_REVERSALS,
+        )
+        assert kept["rewritten_later"]["household"]["brma"] == ["spi_copy_areas"]
+        assert "brma" in kept["rewritten_later_still_equal"]["household"]
+
+        copies = built.final.table("household")["household_support_clone_index"]
+        assert copies.ne(0).any()
+        for reversed_stages in (None, tool._E4_SCOPE_REVERSALS):
+            arguments = (
+                {} if reversed_stages is None else {"reversed_stages": reversed_stages}
+            )
+            with pytest.raises(ValueError) as refused:
+                _e4_receipt(
+                    tool, built.final, built.contract, engine=_LHAEngine(), **arguments
+                )
+            assert str(refused.value) == (
+                "E4 compares area_brma's brma by taking spi_copy_areas' rewrite "
+                "back, which holds only on rows the SPI support channel did not "
+                "copy; the frame keeps rows whose household_support_clone_index "
+                "is not 0, so it is not scoped as E4's stages saw it "
+                "(_frame_as_draw_stages_saw)."
+            )
 
     def test_the_apprentice_walk_on_the_final_weights_flags_another_prefix(
         self,
@@ -4155,6 +4329,32 @@ class TestE4OnAFrameTheStagesBuilt:
         receipt = _e4_receipt(tool, unflagged, built.contract, engine=_LHAEngine())
         assert receipt["stored_mismatches"] == {}
         assert receipt["held_to_tolerance"] == {"person": ["is_apprentice"]}
+
+    def test_a_spine_without_the_drawn_areas_is_refused_by_name(self) -> None:
+        """E4 reads each household's stored area as area_brma did; a spine
+        built before the area stages carries none, and no retired-rule path
+        reads it (microcosm#931). The refusal names the columns only."""
+
+        tool = _load_tool()
+        built = _e4_chain(1)
+        scoped = tool._frame_as_draw_stages_saw(
+            built.final, state_pension_age=_E4_POLICY.state_pension_age
+        )
+        household = scoped.table("household").drop(
+            columns=["atomic_area_system", "lsoa_code", "oa_code"]
+        )
+        with pytest.raises(ValueError) as caught:
+            _e4_receipt(
+                tool,
+                _with_tables(scoped, household=household),
+                built.contract,
+                engine=_LHAEngine(),
+            )
+        assert str(caught.value) == (
+            "E4's BRMA recompute reads household ['atomic_area_system', "
+            "'lsoa_code', 'oa_code'], which earlier stages write; the frame "
+            "lacks them (microcosm#931)."
+        )
 
 
 class TestTheApprenticeWalkToRounding:

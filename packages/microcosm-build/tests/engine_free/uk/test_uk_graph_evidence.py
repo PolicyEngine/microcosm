@@ -353,7 +353,10 @@ def test_spine_inventory_is_roster_derived_and_gates_bind_checkpoint_versions(
     compiled = compile_graph(graph)
     assembled = graph.node("spine.gates.assembled")
     transferred = graph.node("spine.gates.transferred")
-    assert assembled.population == compiled.versions["frs_brma"]
+    # The assembled checkpoint follows area_brma, in frs_brma's place
+    # (microcosm#931).
+    assert assembled.population == compiled.versions["area_brma"]
+    assert "frs_brma" not in compiled.versions
     assert assembled.population != compiled.versions["was_wealth"]
     assert transferred.population == endpoint.population
     assert {edge.producer for edge in transferred.artifact_inputs} >= {
@@ -381,17 +384,21 @@ def test_spine_inventory_is_roster_derived_and_gates_bind_checkpoint_versions(
     # does with UK_SPINE_ASSEMBLED_FINAL_STAGE. Since the HMRC leaves and the
     # annual income spells moved ahead of the geographic clones, which the
     # draws and the BRMA follow, that is the SPI support channel
-    # (microcosm#931).
+    # (microcosm#931). The area stages run before the draws, and area_brma,
+    # in frs_brma's place, closes the assembled phase.
     stages = endpoint.stage_names
-    admitted = stages[stages.index("frs_brma") + 1]
+    admitted = stages[stages.index("area_brma") + 1]
     assert admitted == "spi_support_channel"
     assert {
         "frs_hmrc_spine_leaves",
         "frs_annual_income_spells",
         "geographic_expand",
         "geographic_identity",
-    } <= set(stages[: stages.index("frs_brma")])
-    assert "spine.gates.assembled" in compiled.predecessors["frs_brma.checkpoint"]
+        "atomic_area_assign",
+        "local_authority",
+        "rfdr",
+    } <= set(stages[: stages.index("area_brma")])
+    assert "spine.gates.assembled" in compiled.predecessors["area_brma.checkpoint"]
     assert "spine.gates.assembled" in compiled.predecessors[admitted]
     assert graph.node(admitted).params["spine_gate_phase"] == "assembled"
     assert "spine_gate_phase" not in graph.node("was_wealth").params

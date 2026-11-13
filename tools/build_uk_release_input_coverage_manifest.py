@@ -930,6 +930,13 @@ def build_manifest(
             "hmrc_spi_income": _hmrc_family_coverage_contract(
                 candidate_source=candidate_source
             ),
+            # Great Britain private renters' rents are read off their BRMA's
+            # list in the spine (microcosm#931); the stage rewrites rent only
+            # and records its own conservation receipt.
+            "private_rent": _source_stage_family_coverage_contract(
+                stage_name="private_rent",
+                candidate_source=candidate_source,
+            ),
             "was_wealth": _source_stage_family_coverage_contract(
                 stage_name="was_wealth",
                 candidate_source=candidate_source,

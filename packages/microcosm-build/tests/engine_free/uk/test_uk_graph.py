@@ -85,8 +85,12 @@ def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     # (PolicyEngine/uk-autumn-budget-dashboard-2026#316); and microcosm#1490
     # spi_employment_shell after company_cars, then aps_occupation; and
     # microcosm#931 geographic_expand and geographic_identity after
-    # frs_annual_income_spells, before frs_take_up.
-    assert len(expected) == 56
+    # frs_annual_income_spells, before frs_take_up; and then the area stages
+    # (atomic_area_assign, local_authority and rfdr) after them, area_brma in
+    # frs_brma's place, spi_copy_areas after spi_income_band_donors and
+    # private_rent after spi_housing_shell.
+    assert len(expected) == 61
+    assert "frs_brma" not in expected
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
     assert set(expected) <= ids
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(ids)
@@ -137,7 +141,13 @@ def test_uk_spine_compile_order_is_derived_from_declared_inputs() -> None:
     assert "high_value_home_support" in compiled.predecessors["property_components"]
     assert "property_components" in compiled.predecessors["lcfs_consumption"]
     assert "spi_support_channel" in compiled.predecessors["spi_income_band_donors"]
-    assert "spi_income_band_donors" in compiled.predecessors["hmrc_spi_income_spine"]
+    # The SPI copies' areas follow the band donors, and the SPI income stage
+    # opens its own version after them (microcosm#931).
+    assert "spi_income_band_donors" in compiled.predecessors["spi_copy_areas"]
+    assert "spi_copy_areas" in compiled.predecessors["hmrc_spi_income_spine.boundary"]
+    assert compiled.predecessors["hmrc_spi_income_spine"] == (
+        "hmrc_spi_income_spine.boundary",
+    )
 
 
 def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> None:
@@ -163,7 +173,33 @@ def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> N
         "aps",
         "spi",
         "hmrc_income",
+        # The conditioned atomic-area supports (microcosm#931).
+        "uk_ew_output_area_2021_conditioned_support",
+        "uk_scotland_output_area_2022_conditioned_support",
+        "uk_ni_data_zone_2021_conditioned_support",
     }
+    # The supports are raw bytes; every other split source is a table.
+    assert {
+        source.name for source in graph.sources if source.codec == "raw-bytes-v1"
+    } == {
+        "uk_ew_output_area_2021_conditioned_support",
+        "uk_scotland_output_area_2022_conditioned_support",
+        "uk_ni_data_zone_2021_conditioned_support",
+    }
+    assert {source.codec for source in graph.sources} == {"csv-tables", "raw-bytes-v1"}
+    # The area draw, the fuel-relief flag's roster and the SPI copies' own draw
+    # read them, in the systems' order; no other node does.
+    for stage in ("atomic_area_assign", "rfdr", "spi_copy_areas"):
+        assert graph.node(stage).sources == (
+            "uk_ew_output_area_2021_conditioned_support",
+            "uk_scotland_output_area_2022_conditioned_support",
+            "uk_ni_data_zone_2021_conditioned_support",
+        ), stage
+    assert {
+        node.id
+        for node in graph.nodes
+        if any(name.endswith("_conditioned_support") for name in node.sources)
+    } == {"atomic_area_assign", "rfdr", "spi_copy_areas"}
     # The NTS household and vehicle tabs feed the zero-emission share by income
     # fifth and the household-paid road-fuel mix (microcosm#1095 B3).
     assert graph.node("lcfs_consumption").sources == (
@@ -778,6 +814,14 @@ _ENGINE_CALLS = frozenset(
 #: with why. The ISA subscriptions only check that the engine is the UK's
 #: (assert_rules_engine_country).
 _ENGINE_TAKEN_FOR_ITS_COUNTRY_ONLY = frozenset({"isa_subscriptions"})
+#: Stages whose module calls the engine only in another stage's transform, so
+#: their own transform neither takes nor calls one: spine_geography holds the
+#: area draw, the local authority and the fuel-relief flag beside the BRMA and
+#: the SPI copies' areas, the two that call it (microcosm#931). The test below
+#: holds each transform to taking no engine and naming no engine method.
+_ENGINE_FREE_TRANSFORMS_OF_AN_ENGINE_MODULE = frozenset(
+    {"atomic_area_assign", "local_authority", "rfdr"}
+)
 
 
 def _calls_the_engine(module) -> bool:
@@ -841,7 +885,9 @@ def _engine_stages() -> frozenset[str]:
     one, less those that take it for its country only."""
 
     calling, taking = _engine_use()
-    return calling | (taking - _ENGINE_TAKEN_FOR_ITS_COUNTRY_ONLY)
+    return (calling | (taking - _ENGINE_TAKEN_FOR_ITS_COUNTRY_ONLY)) - (
+        _ENGINE_FREE_TRANSFORMS_OF_AN_ENGINE_MODULE
+    )
 
 
 def test_every_stage_that_calls_the_engine_binds_the_engine_modules() -> None:
@@ -865,7 +911,8 @@ def test_every_stage_that_calls_the_engine_binds_the_engine_modules() -> None:
     calling, taking = _engine_use()
     assert {
         "frs_legacy_proxies",
-        "frs_brma",
+        "area_brma",
+        "spi_copy_areas",
         "was_lisa",
         "uc_take_up",
         "private_school_attendance",
@@ -873,6 +920,21 @@ def test_every_stage_that_calls_the_engine_binds_the_engine_modules() -> None:
     } <= calling
     # The exception is still one: it takes the engine and never calls it.
     assert _ENGINE_TAKEN_FOR_ITS_COUNTRY_ONLY <= taking - calling
+    # The engine-free transforms of a module that calls the engine take no
+    # engine and name none of its methods (microcosm#931).
+    import importlib
+    import inspect
+
+    engine_class = _engine_class()
+    for module, name in (
+        _stage_transforms()[stage]
+        for stage in sorted(_ENGINE_FREE_TRANSFORMS_OF_AN_ENGINE_MODULE)
+    ):
+        transform = getattr(importlib.import_module(module), name)
+        assert "engine" not in inspect.signature(transform).parameters, name
+    for stage in sorted(_ENGINE_FREE_TRANSFORMS_OF_AN_ENGINE_MODULE):
+        assert stage in calling, stage
+        assert not _engine_methods(engine_class, _transform_walks()[stage]), stage
     computing = _engine_stages()
     transform_walks = _transform_walks()
     for stage in graph_kernels._STAGE_MODULES:
@@ -2351,7 +2413,7 @@ def test_the_spine_builds_profile_proxy_is_no_kernel_class() -> None:
         [(spine_build.__name__, Path(spine_build.__file__))]
     )
     assert proxy_class not in defined
-    for ref in ("uk.create@1", "uk.stage.frs_brma@1", "uk.spine-gates@1"):
+    for ref in ("uk.create@1", "uk.stage.area_brma@1", "uk.spine-gates@1"):
         kernel = _uk_graph_kernels()[ref]
         proxy = proxy_class(kernel, Path("unused"))
         assert isinstance(proxy, Kernel)

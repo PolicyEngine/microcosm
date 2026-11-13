@@ -35,6 +35,8 @@ from microcosm.graph import (
 
 from ..country_spec import CountrySpec, load_country_spec
 from ..stage_evidence import STAGE_EVIDENCE_TYPE
+from .atomic_area_conditioning import UK_SPINE_AREA_COLUMNS
+from .atomic_area_support import CONDITIONED_SOURCES, SYSTEMS
 from .national_sampling import UK_SAMPLE_SEED_DEFAULT
 
 __all__ = [
@@ -62,14 +64,18 @@ UK_SPINE_STRUCTURAL_STAGES = frozenset(
 
 #: The last stage of the assembled checkpoint: everything through the base
 #: FRS mapping and the stochastic draws, with the HMRC leaves, the annual
-#: income spells and the geographic clones and their keys, which run before
-#: the draws (microcosm#931). A name, not an index — a position
-#: standing in for a key is correct only while two independently-maintained
-#: orderings happen to agree (the uk-data#468 class). The graph freezes the
-#: checkpoint after it, and the graph's spine gates and the plan path read it,
-#: so an assembled-phase gate's stage is checked against the boundary the
-#: build runs (the third and fourth reviews of microcosm#1422).
-UK_SPINE_ASSEMBLED_FINAL_STAGE = "frs_brma"
+#: income spells, the geographic clones, their keys and their areas (the
+#: area draw, the local authority and the fuel-relief flag), which run before
+#: the draws, and the BRMA, which runs after them, since the engine's
+#: LHA_category reads frs_take_up's would_claim_uc (microcosm#931). area_brma
+#: took frs_brma's place, and the boundary with it. A name, not an index — a
+#: position standing in for a key is correct only while two
+#: independently-maintained orderings happen to agree (the uk-data#468 class).
+#: The graph freezes the checkpoint after it, and the graph's spine gates and
+#: the plan path read it, so an assembled-phase gate's stage is checked
+#: against the boundary the build runs (the third and fourth reviews of
+#: microcosm#1422).
+UK_SPINE_ASSEMBLED_FINAL_STAGE = "area_brma"
 
 # The executor's mass ledger is weighted *person* mass per stratum
 # (``Frame.stratum_mass``: household weights broadcast through membership), so
@@ -174,6 +180,11 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
         # open-surface SPI income stage, which would otherwise bind the cells
         # they rewrite (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
         "company_cars",
+        # The SPI income stage rewrites the root income and report cells right
+        # after the open-surface SPI copies' area stage, which would otherwise
+        # bind them, while the income stage, itself open, reads the keys and
+        # areas that stage rewrites (microcosm#931).
+        "hmrc_spi_income_spine",
         # The student-loan stage moves each household's balance to its
         # borrowers, rewriting was_wealth's ``student_loan_balance``, which the
         # open-surface readers before it bind (microcosm#1095 B9).
@@ -184,6 +195,14 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
 # root stage, and the root version already owns ``age``, so the same-version
 # owner rule opens its boundary.  Every later age reader then binds to the
 # disaggregated cell — the #785 contract — instead of the top-coded root.
+
+#: The three conditioned atomic-area supports, by the ids sources.yaml
+#: declares them under, in the systems' order: graph sources of their raw
+#: bytes, which the area stages decode and hold to canonical bytes
+#: (microcosm#931).
+_ATOMIC_SUPPORT_SOURCES = tuple(CONDITIONED_SOURCES[system] for system in SYSTEMS)
+#: The split sources read as raw bytes; every other is a pinned local table.
+_RAW_BYTE_SOURCES = frozenset(_ATOMIC_SUPPORT_SOURCES)
 
 _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     "frs_spine": ("frs",),
@@ -224,6 +243,12 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     "frs_annual_income_spells": ("frs",),
     "spi_income_band_donors": ("spi",),
     "hmrc_spi_income_spine": ("spi", "hmrc_income"),
+    # The area draw, the fuel-relief flag's roster and the SPI copies' own
+    # draw read the three conditioned atomic-area supports, whose bytes enter
+    # their nodes' keys (microcosm#931).
+    "atomic_area_assign": _ATOMIC_SUPPORT_SOURCES,
+    "rfdr": _ATOMIC_SUPPORT_SOURCES,
+    "spi_copy_areas": _ATOMIC_SUPPORT_SOURCES,
 }
 
 _SPLIT_SOURCE_DESCRIPTIONS = {
@@ -242,6 +267,12 @@ _SPLIT_SOURCE_DESCRIPTIONS = {
     "aps": "Pinned local APS person donor table.",
     "spi": "Pinned local SPI donor table.",
     "hmrc_income": "Pinned local HMRC income facts workbook.",
+    **{
+        source: (
+            f"Registered local {system} conditioned atomic-area support, as raw bytes."
+        )
+        for system, source in CONDITIONED_SOURCES.items()
+    },
 }
 
 #: The geographic clones' lineage: each household's true source and its clone.
@@ -249,6 +280,8 @@ _SPLIT_SOURCE_DESCRIPTIONS = {
 #: after geographic_expand, and count their receipts' support before the
 #: copies, which the shared reader does on the source column wherever the
 #: frame carries it, refusing the clone index without it (microcosm#931).
+#: frs_take_up's three anchored draws and frs_person_draws' apprentice walk
+#: also read household_clone_index to count their targets within each clone.
 _GEOGRAPHIC_CLONE_LINEAGE = frozenset(
     {("household", "source_household_id"), ("household", "household_clone_index")}
 )
@@ -323,7 +356,10 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     )
     | _GEOGRAPHIC_CLONE_LINEAGE,
     "frs_household_draws": _GEOGRAPHIC_CLONE_LINEAGE,
-    "frs_brma": None,
+    # The BRMA, in frs_brma's place: one engine materialization of
+    # LHA_category over the whole frame, as frs_brma's, so its surface is
+    # open (microcosm#931).
+    "area_brma": None,
     "was_wealth": None,
     # The LISA model reads the was_wealth household predictors through the
     # engine (household net income over the whole frame), an open surface like
@@ -419,8 +455,37 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "household_clone_index"),
         }
     ),
+    # Engine-free: the area draw reads each household's geography key, region,
+    # IMD decile and observed council-tax band, the root's area-conditioning
+    # carriers, and its true source and clone, which its evidence counts by
+    # (microcosm#931).
+    "atomic_area_assign": frozenset(
+        {
+            ("household", "geography_household_key"),
+            ("household", "region"),
+            ("household", "imd_decile"),
+            ("household", "council_tax_band"),
+            ("household", "council_tax_band_observed"),
+        }
+    )
+    | _GEOGRAPHIC_CLONE_LINEAGE,
+    # Engine-free: the local authority reads the drawn district code
+    # (microcosm#931).
+    "local_authority": frozenset({("household", "local_authority_code")})
+    | _GEOGRAPHIC_CLONE_LINEAGE,
+    # Engine-free: the fuel-relief flag reads the drawn output area and its
+    # system (microcosm#931).
+    "rfdr": frozenset(
+        {("household", "atomic_area_code"), ("household", "atomic_area_system")}
+    )
+    | _GEOGRAPHIC_CLONE_LINEAGE,
     "spi_support_channel": None,
     "spi_income_band_donors": None,
+    # The SPI copies' areas read every household's copy path and rewrite the
+    # copies' keys and areas, and Northern Ireland's copies take one engine
+    # materialization of LHA_category over their households: an open surface
+    # (microcosm#931).
+    "spi_copy_areas": None,
     "hmrc_spi_income_spine": None,
     # Engine-free: the occupation predictors, the drawn-row rule and the channel
     # split. The rewritten occupation, industry and sector cells arrive as the
@@ -490,6 +555,21 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "household_support_channel"),
         }
     ),
+    # Engine-free: the private rents read each household's geography key, its
+    # region, tenure, bedrooms, BRMA and channel, and its true source and
+    # clone, which its rule and evidence count by. The rewritten rent arrives
+    # as the rewrite's incumbent (microcosm#931).
+    "private_rent": frozenset(
+        {
+            ("household", "geography_household_key"),
+            ("household", "region"),
+            ("household", "tenure_type"),
+            ("household", "num_bedrooms"),
+            ("household", "brma"),
+            ("household", "household_support_channel"),
+        }
+    )
+    | _GEOGRAPHIC_CLONE_LINEAGE,
     # Runs one temporary engine materialization over the whole frame for its
     # award screen, so its input surface is genuinely open.
     "uc_reporter_redraw": None,
@@ -1026,7 +1106,9 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         ),
         "bool",
     ),
-    "frs_brma": (_Cell("household", "brma", "string"),),
+    # The BRMA keeps frs_brma's cell, an object column read as a legacy
+    # string (microcosm#931).
+    "area_brma": (_Cell("household", "brma", "string"),),
     "was_wealth": (
         *_cells(
             "household",
@@ -1233,6 +1315,12 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("household", "household_clone_index", "int64"),
     ),
     "geographic_identity": (_Cell("household", "geography_household_key", "string"),),
+    # The area draw's three assignment and ten ladder columns, the engine's
+    # local authority and the fuel-relief flag (microcosm#931), in the order
+    # each stage writes them.
+    "atomic_area_assign": _cells("household", UK_SPINE_AREA_COLUMNS, "string"),
+    "local_authority": (_Cell("household", "local_authority", "string"),),
+    "rfdr": (_Cell("household", "in_rural_fuel_duty_relief_area", "bool"),),
     # The households' source columns are geographic_expand's cells; the
     # channel's copies inherit them (microcosm#931).
     "spi_support_channel": (
@@ -1263,6 +1351,15 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("household", "household_is_spi_income_band_donor", "bool"),
         _Cell("household", "spi_income_band_donor_lower_bound", "float64"),
         _Cell("person", "person_is_spi_income_band_carrier", "bool"),
+    ),
+    # The SPI copies' own keys and areas rewrite the cells the identity and
+    # area stages own (microcosm#931).
+    "spi_copy_areas": (
+        _Cell("household", "geography_household_key", "string"),
+        *_cells("household", UK_SPINE_AREA_COLUMNS, "string"),
+        _Cell("household", "local_authority", "string"),
+        _Cell("household", "brma", "string"),
+        _Cell("household", "in_rural_fuel_duty_relief_area", "bool"),
     ),
     "hmrc_spi_income_spine": (),  # populated below from typed groups
     "spi_employment_shell": (
@@ -1296,6 +1393,9 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         ),
         *_cells("person", ("housing_benefit_reported", "council_tax_benefit_reported")),
     ),
+    # Great Britain private renters' rents, read off their BRMA's list
+    # (microcosm#931).
+    "private_rent": (_Cell("household", "rent", "float64"),),
     "uc_reporter_redraw": (_Cell("person", "universal_credit_reported", "float64"),),
     "spi_benefit_coherence": (
         *_cells(
@@ -1704,8 +1804,14 @@ def _source_refs(source_mode: str) -> tuple[SourceRef, ...]:
                 "Content-bound UK FRS and donor fixture/source bundle.",
             ),
         )
+    # The conditioned supports are one file each, read as raw bytes
+    # (microcosm#931); every other split source is a table directory or file.
     return tuple(
-        SourceRef(name, "csv-tables", description)
+        SourceRef(
+            name,
+            "raw-bytes-v1" if name in _RAW_BYTE_SOURCES else "csv-tables",
+            description,
+        )
         for name, description in _SPLIT_SOURCE_DESCRIPTIONS.items()
     )
 

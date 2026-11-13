@@ -1064,12 +1064,17 @@ def _bound_spine_binding(sidecar: Mapping[str, object]) -> dict[str, object]:
     }
 
 
-def _requested_spine_binding(raw: argparse.Namespace) -> dict[str, object]:
+def _requested_spine_binding(
+    raw: argparse.Namespace, geography: Mapping[str, object] | None
+) -> dict[str, object]:
     """What a spine request binds the dense build to: the request's
-    ``--n-clones``, ``--sample-fraction`` and ``--sample-seed``, and the
-    release posture the spine build's sidecar writer gives the same request
-    (microcosm#931). The in-graph spine writes no sidecar, so its geography
-    binding carries K alone."""
+    ``--n-clones``, ``--sample-fraction`` and ``--sample-seed``, the release
+    posture the spine build's sidecar writer gives the same request, and the
+    ``geography`` block its preparation composed, through the helper the
+    sidecar writer calls (``country_adapter.uk_spine_geography_binding``),
+    with K beside it (microcosm#931). The in-graph spine writes no sidecar,
+    so its preparation's block stands in for one: a spine whose roster runs
+    no area draw composes none, and its binding carries K alone."""
     clones = int(raw.n_clones)
     return {
         "geographic_clone_count": clones,
@@ -1081,7 +1086,7 @@ def _requested_spine_binding(raw: argparse.Namespace) -> dict[str, object]:
             if raw.release_candidate
             else "development"
         ),
-        "geography": {"geographic_clone_count": clones},
+        "geography": {**dict(geography or {}), "geographic_clone_count": clones},
     }
 
 
@@ -1153,10 +1158,12 @@ def _require_release_candidate_spine(
     binding passes
     :func:`~microcosm.build.uk_runtime.country_adapter.uk_spine_geography_binding_failures`
     (microcosm#931). A sampled spine is refused before this, where its rung is
-    read. A spine request's in-graph spine records no geography block, so its
-    binding carries K alone and a release candidate on one is refused here,
-    as recording no geography binding. The refusal names every failure, with
-    K, never a value.
+    read. A spine request's binding carries the block its preparation
+    composed, through the helper the sidecar writer calls, so both routes are
+    held to the same check; a spine that runs no area draw, a bound spine
+    built before its area stages among them, records no block, and a release
+    candidate on one is refused here, as recording no geography binding. The
+    refusal names every failure, with K, never a value.
     """
     clones = int(binding["geographic_clone_count"])
     failures: list[str] = []
@@ -1170,7 +1177,7 @@ def _require_release_candidate_spine(
     geography = binding.get("geography") or {}
     if set(geography) <= {"geographic_clone_count"}:
         failures.append(
-            "it records no geography binding (a spine request's in-graph spine "
+            "it records no geography binding (a spine that runs no area draw "
             "writes none)"
         )
     else:
@@ -1281,7 +1288,7 @@ def prepare_full_build(
         sources.update(prepared.sources)
         endpoint = uk_spine_endpoint(spine).population
         time_period = prepared.frs_release.time_period
-        spine_binding = _requested_spine_binding(raw)
+        spine_binding = _requested_spine_binding(raw, prepared.geography)
         stages = prepared.stage_names
         engine_identity = prepared.engine_identity
         inputs["dataset"] = {

@@ -209,6 +209,19 @@ def _apply_pending_roster_transformations(
         "geographic_expand",
         "geographic_identity",
     ]
+    # microcosm#931 re-mint pending, part 1 (the area stages): each clone's
+    # area, local authority and fuel-relief flag after its key and before the
+    # draws; area_brma in frs_brma's place; the SPI copies' own areas after
+    # the band donors; the private rents after the housing shell. Part 2, the
+    # main-residence localiser, runs inside was_wealth and adds no stage.
+    area_stages = ["atomic_area_assign", "local_authority", "rfdr"]
+    added = [*area_stages, "area_brma", "spi_copy_areas", "private_rent"]
+    assert not set(added) & set(roster)
+    take_up = roster.index("frs_take_up")
+    roster[take_up:take_up] = area_stages
+    roster[roster.index("frs_brma")] = "area_brma"
+    roster.insert(roster.index("spi_income_band_donors") + 1, "spi_copy_areas")
+    roster.insert(roster.index("spi_housing_shell") + 1, "private_rent")
     return tuple(roster)
 
 

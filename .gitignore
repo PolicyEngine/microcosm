@@ -10,6 +10,13 @@ out/
 *.h5
 # Licensed run outputs: pool tables and audit directories (UKDS CD137 cl. 8).
 *.npz
+# Except the H2 parity fixture's three toy conditioned atomic-area supports,
+# which tools/graph_uk_spine_fixture.py writes from test support's invented
+# table over public area codes, as toy_<source id>.npz: a real support keeps
+# its own name and stays ignored (microcosm#931).
+!packages/microcosm-graph/tests/fixtures/parity/uk_spine/sources/toy_uk_ew_output_area_2021_conditioned_support.npz
+!packages/microcosm-graph/tests/fixtures/parity/uk_spine/sources/toy_uk_scotland_output_area_2022_conditioned_support.npz
+!packages/microcosm-graph/tests/fixtures/parity/uk_spine/sources/toy_uk_ni_data_zone_2021_conditioned_support.npz
 audit-*/
 !packages/*/build/
 # microcosm.build is a real namespace package, not a build-artifact dir

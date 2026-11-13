@@ -30,12 +30,16 @@ import pandas as pd
 import pytest
 
 from microcosm.build import atomic_geography as geo
+from microcosm.build.uk_runtime.atomic_area_conditioning import (
+    UK_SPINE_ATOMIC_AREA_DRAW_STREAM,
+)
 from microcosm.build.uk_runtime.atomic_area_support import (
     IDENTITY_COLUMN,
     SYSTEMS,
     uk_atomic_assignment_definition,
 )
 from microcosm.build.uk_runtime.atomic_household_identity import household_draw_key
+from microcosm.build.uk_runtime.country_adapter import UK_SPINE_SUPPORT_REGISTER
 from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
 from microcosm.build.uk_runtime.geographic_expand import (
     GEOGRAPHIC_EXPAND_MASS_CHANGE_REASON,
@@ -166,8 +170,12 @@ def _toy_geography_binding() -> dict:
             }
             for system in SYSTEMS
         },
-        "stream": list(definition["stream"]),
-        "register": "synthetic",
+        # A release's stream and register, which the binding check holds by
+        # value (microcosm#931): the spine's area stream at its declared seed,
+        # and sources.yaml's register, which patch_support_register stands
+        # the toy supports' pins in for.
+        "stream": list(UK_SPINE_ATOMIC_AREA_DRAW_STREAM),
+        "register": UK_SPINE_SUPPORT_REGISTER,
     }
 
 
@@ -176,9 +184,12 @@ def toy_geography_binding() -> dict:
     records one (microcosm#931): the atomic law keyed on the geography key,
     the digest of the definition its areas are drawn with
     (:func:`toy_area_definition`, as the shared operator digests a
-    definition), the toy supports' pins and the definition's stream. Its
-    register is the synthetic one tests put in place of ``sources.yaml``
-    (``uk_full_build_cli.patch_support_register``). A fresh copy each call.
+    definition) and the toy supports' pins, with a release's stream and
+    register: the spine's area stream at its declared seed, and
+    ``sources.yaml``'s register, whose conditioned pins tests replace with the
+    toy supports' (``uk_full_build_cli.patch_support_register``). The binding
+    check reads every field by value and recomputes no definition, so the
+    stand-in passes it where tests patch the register. A fresh copy each call.
     """
     return copy.deepcopy(_toy_geography_binding())
 

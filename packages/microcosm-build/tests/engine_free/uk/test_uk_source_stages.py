@@ -37,7 +37,9 @@ E4_STAGE_NAMES = [
     "frs_take_up",
     "frs_person_draws",
     "frs_household_draws",
-    "frs_brma",
+    # microcosm#931: the BRMA, in frs_brma's place, reads frs_take_up's
+    # would_claim_uc through the engine's LHA_category.
+    "area_brma",
 ]
 E5_STAGE_NAMES = [
     "was_wealth",
@@ -74,10 +76,20 @@ GEOGRAPHIC_CLONE_STAGE_NAMES = [
     "geographic_expand",
     "geographic_identity",
 ]
+#: microcosm#931: each clone's area, local authority and fuel-relief flag,
+#: after its key and before the E4 draws.
+AREA_STAGE_NAMES = [
+    "atomic_area_assign",
+    "local_authority",
+    "rfdr",
+]
 #: E7's SPI block, which copies the clones' households.
 E7_STAGE_NAMES = [
     "spi_support_channel",
     "spi_income_band_donors",
+    # microcosm#931: the support channel's copies take keys and areas of their
+    # own right after the stages that make them.
+    "spi_copy_areas",
     "hmrc_spi_income_spine",
     # The company cars carve their benefits out of SPI-channel pay right after
     # the income stage writes it, so every later stage reads pay without them
@@ -91,6 +103,11 @@ E7_STAGE_NAMES = [
 ]
 HOUSING_SHELL_STAGE_NAMES = [
     "spi_housing_shell",
+]
+#: microcosm#931: Great Britain private renters' rents off their BRMA's list,
+#: after the housing shell draws the SPI copies' tenure, bedrooms and rents.
+PRIVATE_RENT_STAGE_NAMES = [
+    "private_rent",
 ]
 UC_REPORTER_REDRAW_STAGE_NAMES = [
     "uc_reporter_redraw",
@@ -155,11 +172,13 @@ UK_SOURCE_STAGE_NAMES = [
     *E3_STAGE_NAMES,
     *E7_SOURCE_ROW_STAGE_NAMES,
     *GEOGRAPHIC_CLONE_STAGE_NAMES,
+    *AREA_STAGE_NAMES,
     *E4_STAGE_NAMES,
     # The SPI block runs before the income-conditioned donor imputations, so
     # E5 and E6 impute onto the SPI rows from their SPI incomes.
     *E7_STAGE_NAMES,
     *HOUSING_SHELL_STAGE_NAMES,
+    *PRIVATE_RENT_STAGE_NAMES,
     *E5_STAGE_NAMES,
     *E6_STAGE_NAMES,
     *UC_REPORTER_REDRAW_STAGE_NAMES,
@@ -217,23 +236,30 @@ class TestUKSourceStagesManifest:
         canonical = _load_json(CANONICAL_SOURCE_STAGES)
         names = [stage["stage"] for stage in canonical["stages"]]
 
-        assert names[names.index("frs_brma") + 1 : names.index("was_wealth")] == [
+        assert names[names.index("area_brma") + 1 : names.index("was_wealth")] == [
             *E7_STAGE_NAMES,
             *HOUSING_SHELL_STAGE_NAMES,
+            *PRIVATE_RENT_STAGE_NAMES,
         ]
+        assert "frs_brma" not in names
 
     def test_the_geographic_clones_follow_the_raw_tab_readers_and_precede_e4(
         self,
     ) -> None:
         # The HMRC leaves and the annual income spells join the raw FRS tabs on
         # raw person ids, so they run on the survey's own rows, and the E4
-        # draws then run on every geographic clone (microcosm#931).
+        # draws then run on every geographic clone, each clone with its area
+        # (microcosm#931).
         canonical = _load_json(CANONICAL_SOURCE_STAGES)
         names = [stage["stage"] for stage in canonical["stages"]]
 
         assert names[
             names.index(E3_STAGE_NAMES[-1]) + 1 : names.index(E4_STAGE_NAMES[0])
-        ] == [*E7_SOURCE_ROW_STAGE_NAMES, *GEOGRAPHIC_CLONE_STAGE_NAMES]
+        ] == [
+            *E7_SOURCE_ROW_STAGE_NAMES,
+            *GEOGRAPHIC_CLONE_STAGE_NAMES,
+            *AREA_STAGE_NAMES,
+        ]
 
     def test_e5_and_e6_follow_e7_and_precede_the_uc_rewrites(self) -> None:
         # uc_reporter_redraw stays after the donor stages: its engine screen
@@ -246,6 +272,7 @@ class TestUKSourceStagesManifest:
             names.index(E7_STAGE_NAMES[-1]) + 1 : names.index("cgt_support_split")
         ] == [
             *HOUSING_SHELL_STAGE_NAMES,
+            *PRIVATE_RENT_STAGE_NAMES,
             *E5_STAGE_NAMES,
             *E6_STAGE_NAMES,
             *UC_REPORTER_REDRAW_STAGE_NAMES,
@@ -323,7 +350,12 @@ class TestUKSourceStagesManifest:
                     "frs_take_up": _identity,
                     "frs_person_draws": _identity,
                     "frs_household_draws": _identity,
-                    "frs_brma": _identity,
+                    "atomic_area_assign": _identity,
+                    "local_authority": _identity,
+                    "rfdr": _identity,
+                    "area_brma": _identity,
+                    "spi_copy_areas": _identity,
+                    "private_rent": _identity,
                     "was_wealth": _identity,
                     "was_lisa": _identity,
                     "nts_bus_travel": _identity,
@@ -504,7 +536,8 @@ class TestDeclaredOutputsAreWrittenColumns:
         assert (
             stages["frs_household_draws"].outputs == FRS_HOUSEHOLD_DRAW_OUTPUT_COLUMNS
         )
-        assert stages["frs_brma"].outputs == FRS_BRMA_OUTPUT_COLUMNS
+        # microcosm#931: area_brma writes frs_brma's one column.
+        assert stages["area_brma"].outputs == FRS_BRMA_OUTPUT_COLUMNS
         assert stages["was_wealth"].outputs == UK_WAS_WEALTH_STAGE_OUTPUT_COLUMNS
         assert (
             stages["was_wealth"].nonnegative_outputs
@@ -690,9 +723,9 @@ class TestE3ManifestLockstep:
             "assign_binary_from_rate",
             "assign_binary_from_rate",
         ]
-        assert [op.kind for op in stages["frs_brma"].operations] == [
+        assert [op.kind for op in stages["area_brma"].operations] == [
             "materialize_rules_engine_predictors",
-            "sample_categorical_from_count_table",
+            "assign_area_brma",
         ]
         assert [op.kind for op in stages["was_wealth"].operations] == [
             "derive",
@@ -937,7 +970,7 @@ class TestE3ManifestLockstep:
             == UC_REPORTER_PREDICTORS
         )
         assert (
-            tuple(stages["frs_brma"].operations[0].parameters["predictors"])
+            tuple(stages["area_brma"].operations[0].parameters["predictors"])
             == UK_BRMA_PREDICTORS
         )
         assert (
@@ -1052,6 +1085,7 @@ class TestE3ManifestLockstep:
                     "assign_uniform_draw",
                     "assign_clipped_normal",
                     "sample_categorical_from_count_table",
+                    "assign_area_brma",
                 }:
                     assert isinstance(operation.parameters.get("seed"), int)
 

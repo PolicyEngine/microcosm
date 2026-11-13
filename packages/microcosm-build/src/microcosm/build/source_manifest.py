@@ -81,6 +81,15 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         # geography key from its source and clone path.
         "expand_geographic_clones",
         "key_households_by_clone_path",
+        # microcosm#931: each clone's atomic area, its local authority, BRMA
+        # and fuel-relief flag, the SPI copies' own areas, and private rents
+        # read off the drawn area's BRMA.
+        "assign_atomic_area",
+        "resolve_local_authority",
+        "assign_area_brma",
+        "assign_rfdr_flags",
+        "assign_spi_copy_areas",
+        "localise_private_rents",
         "clean_nts_travel_tables",
         "clean_was_lisa_donor",
         "clean_aps_occupation_table",

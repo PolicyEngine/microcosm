@@ -685,7 +685,14 @@ def _manifest_stage() -> SourceStageSpec:
     return spec.sources.stage_map()["frs_spine"]
 
 
-def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
+def _synthetic_spec(
+    stage: SourceStageSpec, *, assembled_boundary: bool = False
+) -> SimpleNamespace:
+    """A synthetic roster over the fixture's tabs. ``assembled_boundary`` adds
+    the packaged area_brma stage, the assembled checkpoint's last, after the
+    draws, for a test that arms the spine battery without running a stage:
+    the stage reads the areas the synthetic roster draws none of
+    (microcosm#931)."""
     packaged = load_country_spec("uk")
     assert packaged.sources is not None
     packaged_stages = packaged.sources.stage_map()
@@ -1037,21 +1044,10 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         "main_residential_property_purchased_is_first_home",
                         "property_purchased",
                     ),
-                ),
-                source_stage(
-                    "frs_brma",
-                    grain="household",
-                    operations=[
-                        {"kind": "materialize_rules_engine_predictors"},
-                        {
-                            "kind": "sample_categorical_from_count_table",
-                            "output": "brma",
-                            "seed": 0,
-                        },
-                    ],
-                    outputs=("brma",),
-                    # Mirrors the real manifest's non-tab resource artifact so
-                    # the driver's pin split is exercised without licensed data.
+                    # A non-tab resource artifact, as the real manifest's
+                    # area stages declare one, so the driver's pin split is
+                    # exercised without licensed data; the synthetic roster
+                    # runs no area stage (microcosm#931).
                     extra_artifacts=(
                         {
                             "role": "count_resource",
@@ -1061,6 +1057,7 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         },
                     ),
                 ),
+                *((packaged_stages["area_brma"],) if assembled_boundary else ()),
                 source_stage(
                     "spi_support_channel",
                     grain="household",
@@ -1145,6 +1142,8 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
             "brma_private_rented_households.json": "f" * 64,
             # The geography keys' FRS release, the packaged bytes'.
             "frs_release.json": packaged.resource_hashes["frs_release.json"],
+            # The BRMA layer, which the packaged area_brma stage declares.
+            "brma_area_layer.json": packaged.resource_hashes["brma_area_layer.json"],
         },
     )
 
@@ -3149,7 +3148,6 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
         "would_evade_tv_licence_fee",
         "main_residential_property_purchased_is_first_home",
         "property_purchased",
-        "brma",
     } <= set(frame.table("household"))
     # The spine build clones every household once (microcosm#931): it asks
     # for its engine at that one clone, so the adapter refuses a frame of any
@@ -3212,7 +3210,10 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     assert sidecar["household_weight_total"] == 30.0
     assert set(sidecar["artifact_pins"]) == set(FRS_SPINE_TABLES)
     assert sidecar["declared_seeds"]["frs_take_up"]["would_claim_child_benefit"] == 0
-    assert sidecar["declared_seeds"]["frs_brma"] == {"brma": 0}
+    # The synthetic roster runs no area stage, so the sidecar records no
+    # geography block (microcosm#931).
+    assert "frs_brma" not in sidecar["declared_seeds"]
+    assert "geography" not in sidecar
     assert sidecar["declared_seeds"]["spi_support_channel"] == {
         "stack_zero_weight_donors": 42
     }
@@ -4514,7 +4515,9 @@ def test_driver_materializes_a_blocked_assembled_gate_report_before_failing(
     stage = _write_fixture(raw_dir)
     output = tmp_path / "blocked.h5"
     tool = _load_tool()
-    spec = _synthetic_spec(stage)
+    # The assembled checkpoint ends at area_brma, which the roster carries; no
+    # stage runs here (microcosm#931).
+    spec = _synthetic_spec(stage, assembled_boundary=True)
     # The synthetic roster carries the real gate declarations, so the driver
     # arms the spine battery and the graph gains its gate nodes.
     spec.gates = load_country_spec("uk").gates
@@ -5746,3 +5749,317 @@ def test_a_spine_build_that_must_send_telemetry_stops_before_any_input_without_a
 
     assert raised.value.reason == "command_not_found"
     assert sorted(path.name for path in tmp_path.iterdir()) == ["raw"]
+
+
+#: The geography stages whose seeds the driver records (microcosm#931).
+_GEOGRAPHY_STAGES = (
+    "atomic_area_assign",
+    "local_authority",
+    "rfdr",
+    "area_brma",
+    "spi_copy_areas",
+    "private_rent",
+)
+
+
+def test_the_geography_stages_declare_their_seeds_to_the_sidecar() -> None:
+    """The area draw and the private rents declare seed 0 on their own
+    streams, recorded under each stream; the SPI copies' areas record the
+    area draw's seed on its stream and the BRMA's under its benefit-unit salt;
+    and the BRMA records its seed through its output, as frs_brma's did
+    (C-43, microcosm#931). The local authority and the fuel-relief flag draw
+    nothing, so record none."""
+
+    tool = _load_tool()
+    stages = load_country_spec("uk").sources.stage_map()
+    assert "frs_brma" not in stages
+    assert tool._declared_seeds([stages[name] for name in _GEOGRAPHY_STAGES]) == {
+        "atomic_area_assign": {"uk-spine-atomic-area-v1": 0},
+        "area_brma": {"brma": 0},
+        "spi_copy_areas": {"uk-spine-atomic-area-v1": 0, "brma": 0},
+        "private_rent": {"uk-spine-private-rent-v1": 0},
+    }
+
+
+def _support_arguments(**paths: Path | None) -> SimpleNamespace:
+    """The support flags as the parser leaves them, without a fixture."""
+
+    return SimpleNamespace(
+        synthetic_fixture_dir=None,
+        atomic_support_ew=paths.get("ew"),
+        atomic_support_scotland=paths.get("scotland"),
+        atomic_support_ni=paths.get("ni"),
+    )
+
+
+def test_the_area_draw_requires_every_conditioned_support() -> None:
+    """Where atomic_area_assign is scheduled, every --atomic-support-* flag is
+    required, and the refusal names the missing flags only; a roster without
+    the area draw, or a synthetic fixture with its own toy supports, reads
+    none (microcosm#931)."""
+
+    tool = _load_tool()
+    roster = ("frs_spine", "geographic_identity", "atomic_area_assign")
+    with pytest.raises(ValueError) as refused:
+        tool._registered_atomic_supports(_support_arguments(), roster)
+    assert str(refused.value) == (
+        "atomic_area_assign draws every geographic clone's area on the "
+        "conditioned atomic-area supports, so it requires --atomic-support-ew, "
+        "--atomic-support-scotland, --atomic-support-ni (microcosm#931)."
+    )
+    assert (
+        tool._registered_atomic_supports(_support_arguments(), ("frs_spine",)) is None
+    )
+    synthetic = _support_arguments()
+    synthetic.synthetic_fixture_dir = Path("fixture")
+    assert tool._registered_atomic_supports(synthetic, roster) is None
+
+
+def test_a_support_off_the_register_is_refused_by_its_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each support is held to the conditioned register before any stage runs
+    (C-22, microcosm#931): files whose SHA-256 and size are the register's are
+    read, and one byte more, or a path that is not a file, is refused by the
+    flag and the system it names, never a digest, a size or a path. The
+    toy supports stand in for the register's."""
+
+    from test_support.microcosm_build.uk_conditioned_support_fixtures import (
+        toy_conditioned_support_payloads,
+    )
+
+    tool = _load_tool()
+    payloads = toy_conditioned_support_payloads()
+    register = {
+        system: {
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "size_bytes": len(payload),
+        }
+        for system, payload in payloads.items()
+    }
+    asked: list[bool] = []
+
+    def toy_register(spec=None, *, conditioned=False):
+        asked.append(conditioned)
+        return {system: dict(pin) for system, pin in register.items()}
+
+    monkeypatch.setattr(tool, "uk_atomic_support_register", toy_register)
+    paths = {}
+    for label, payload in zip(("ew", "scotland", "ni"), payloads.values(), strict=True):
+        paths[label] = tmp_path / f"{label}.bin"
+        paths[label].write_bytes(payload)
+    roster = ("frs_spine", "atomic_area_assign")
+    assert tool._registered_atomic_supports(_support_arguments(**paths), roster) == (
+        payloads
+    )
+    assert asked == [True]
+    with pytest.raises(ValueError) as absent:
+        tool._registered_atomic_supports(
+            _support_arguments(**{**paths, "ni": tmp_path}), roster
+        )
+    assert str(absent.value) == "--atomic-support-ni must name an existing file."
+    paths["scotland"].write_bytes(payloads["uk_scotland_output_area_2022"] + b" ")
+    with pytest.raises(ValueError) as refused:
+        tool._registered_atomic_supports(_support_arguments(**paths), roster)
+    message = str(refused.value)
+    assert message == (
+        "--atomic-support-scotland is not the conditioned support sources.yaml "
+        "registers for uk_scotland_output_area_2022: its SHA-256 or size is not "
+        "the register's (microcosm#931)."
+    )
+    assert str(tmp_path) not in message
+    assert not any(pin["sha256"][:8] in message for pin in register.values())
+
+
+def test_the_parser_refuses_supports_beside_a_synthetic_fixture(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A synthetic fixture carries its own toy conditioned supports, so the
+    parser refuses a support flag beside it (microcosm#931)."""
+
+    tool = _load_tool()
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    with pytest.raises(SystemExit):
+        tool._parse_args(
+            [
+                "--spine-h5",
+                str(tmp_path / "spine.h5"),
+                "--synthetic-fixture-dir",
+                str(fixture),
+                "--smoke",
+                "--atomic-support-ni",
+                str(tmp_path / "ni.bin"),
+            ]
+        )
+    assert (
+        "--synthetic-fixture-dir cannot be combined with --atomic-support-ni: the "
+        "fixture carries its own toy conditioned supports (microcosm#931)."
+    ) in capsys.readouterr().err
+
+
+#: The packaged roster's private inputs besides the FRS, SPI and HMRC ones,
+#: which the spine CLI requires by name before it reads the supports.
+_PACKAGED_PRIVATE_TAB_FLAGS = (
+    "--was-tab",
+    "--was-person-tab",
+    "--nts-household-tab",
+    "--nts-individual-tab",
+    "--nts-trip-tab",
+    "--nts-stage-tab",
+    "--nts-ticket-tab",
+    "--nts-vehicle-tab",
+    "--lcfs-hh-tab",
+    "--lcfs-person-tab",
+    "--etb-tab",
+    "--aps-tab",
+)
+
+
+def test_the_spine_cli_holds_each_support_to_the_register_before_its_engine(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The spine CLI, parsing and preparing the packaged roster as main does,
+    holds each --atomic-support-* file to the conditioned register before it
+    builds its engine (C-22, microcosm#931). Supports whose SHA-256 and size
+    are the register's reach the engine. A file of the register's size whose
+    SHA-256 is not the register's, for each of the three systems, is refused
+    by its flag and system alone, and no engine is built. Against
+    sources.yaml's own register the toy supports are refused too. With the
+    engine built, the preparation composes the sidecar's geography block from
+    those supports under sources.yaml's register, hands the area stages the
+    three files as graph sources, which they hold to the block's pins, and
+    gives a full-scale spine's private rents the strict rule. The toy supports
+    stand in for the register's; the other private inputs are named and never
+    read."""
+
+    from test_support.microcosm_build.uk_conditioned_support_fixtures import (
+        toy_conditioned_support_payloads,
+    )
+
+    tool = _load_tool()
+    payloads = toy_conditioned_support_payloads()
+    toy_register = {
+        system: {
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "size_bytes": len(payload),
+        }
+        for system, payload in payloads.items()
+    }
+    packaged_register = tool.uk_atomic_support_register
+
+    def conditioned_toys(spec=None, *, conditioned=False):
+        assert conditioned, "the spine CLI reads the conditioned register"
+        return {system: dict(pin) for system, pin in toy_register.items()}
+
+    class _EngineBuiltError(Exception):
+        """The preparation reached its engine."""
+
+    built: list[int | None] = []
+
+    def rules_engine(*, clones: int | None = None):
+        built.append(clones)
+        raise _EngineBuiltError
+
+    monkeypatch.setattr(tool, "uk_atomic_support_register", conditioned_toys)
+    monkeypatch.setattr(tool, "_rules_engine", rules_engine)
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    spi_tab, hmrc_ods = tmp_path / "put2223uk.tab", tmp_path / "hmrc.ods"
+    spi_tab.write_bytes(b"")
+    hmrc_ods.write_bytes(b"")
+    private = [
+        argument
+        for flag in _PACKAGED_PRIVATE_TAB_FLAGS
+        for argument in (flag, str(tmp_path / f"{flag.removeprefix('--')}.tab"))
+    ]
+    supports: dict[str, Path] = {}
+    for flag, (system, payload) in zip(
+        ("--atomic-support-ew", "--atomic-support-scotland", "--atomic-support-ni"),
+        payloads.items(),
+        strict=True,
+    ):
+        supports[flag] = tmp_path / f"{system}.npz"
+        supports[flag].write_bytes(payload)
+
+    def prepare():
+        argv = [
+            *_driver_arguments(raw_dir, tmp_path / "spine.h5", spi_tab, hmrc_ods),
+            *private,
+            *(argument for flag, path in supports.items() for argument in (flag, path)),
+        ]
+        return tool.prepare_uk_spine_execution(
+            tool.parse_uk_spine_args([str(argument) for argument in argv])
+        )
+
+    with pytest.raises(_EngineBuiltError):
+        prepare()
+    assert built == [1]
+
+    def flipped(payload: bytes) -> bytes:
+        """``payload`` with its last byte flipped: its size, another SHA-256."""
+
+        tampered = bytearray(payload)
+        tampered[-1] ^= 0xFF
+        return bytes(tampered)
+
+    for flag, system in zip(supports, payloads, strict=True):
+        tampered = flipped(payloads[system])
+        assert len(tampered) == toy_register[system]["size_bytes"]
+        supports[flag].write_bytes(tampered)
+        with pytest.raises(ValueError) as refused:
+            prepare()
+        # The refusal names the flag and the system, never a digest, a size
+        # or a path.
+        assert str(refused.value) == (
+            f"{flag} is not the conditioned support sources.yaml registers for "
+            f"{system}: its SHA-256 or size is not the register's (microcosm#931)."
+        )
+        assert str(tmp_path) not in str(refused.value)
+        assert built == [1]
+        supports[flag].write_bytes(payloads[system])
+    # sources.yaml's own conditioned register: the toys are not its supports,
+    # so the first system's flag is refused.
+    monkeypatch.setattr(tool, "uk_atomic_support_register", packaged_register)
+    with pytest.raises(ValueError) as refused:
+        prepare()
+    assert str(refused.value) == (
+        "--atomic-support-ew is not the conditioned support sources.yaml "
+        "registers for uk_ew_output_area_2021: its SHA-256 or size is not "
+        "the register's (microcosm#931)."
+    )
+    assert built == [1]
+
+    # The register's supports and an engine: the preparation completes.
+    monkeypatch.setattr(tool, "uk_atomic_support_register", conditioned_toys)
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
+    monkeypatch.setattr(
+        tool,
+        "_rules_engine_provenance",
+        lambda: {"package": "policyengine-uk", "version": "stand-in"},
+    )
+    prepared = prepare()
+    assert prepared.geography == tool.uk_spine_geography_binding(
+        payloads, register=tool.UK_SPINE_SUPPORT_REGISTER
+    )
+    assert prepared.geography["register"] == "sources.yaml"
+    for flag, system in zip(supports, payloads, strict=True):
+        assert prepared.sources[tool.CONDITIONED_SOURCES[system]] == supports[flag]
+    assert prepared.implementations["private_rent"].sampled_rung is False
+    # The area stages hold the files they read to the block's pins: a support
+    # replaced after the spine was prepared is refused by its system and graph
+    # source alone.
+    area_draw = prepared.implementations["atomic_area_assign"]
+    area_draw.factory(prepared.sources)
+    supports["--atomic-support-ni"].write_bytes(
+        flipped(payloads["uk_ni_data_zone_2021"])
+    )
+    for stage in ("atomic_area_assign", "rfdr", "spi_copy_areas"):
+        with pytest.raises(ValueError) as refused:
+            prepared.implementations[stage].factory(prepared.sources)
+        assert str(refused.value) == (
+            "The uk_ni_data_zone_2021 conditioned support the area stages read "
+            "(graph source uk_ni_data_zone_2021_conditioned_support) is not the "
+            "one the spine's geography block pins: it changed after the spine "
+            "was prepared (microcosm#931)."
+        )

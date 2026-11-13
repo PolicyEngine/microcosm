@@ -70,6 +70,7 @@ from microcosm.build.telemetry_emitter import (
 from microcosm.build.termination import BuildTerminatedError, raise_on_sigterm
 from microcosm.build.uk_runtime.age_tail import UKAgeTailStageTransform
 from microcosm.build.uk_runtime.aps_occupation import UKAPSOccupationStageTransform
+from microcosm.build.uk_runtime.atomic_area_support import CONDITIONED_SOURCES, SYSTEMS
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.calibration_run import (
     UK_SPINE_GATE_SCOPE,
@@ -100,12 +101,17 @@ from microcosm.build.uk_runtime.company_cars import (
     UKCompanyCarsStageTransform,
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
+from microcosm.build.uk_runtime.country_adapter import (
+    UK_SPINE_SUPPORT_REGISTER,
+    UK_SYNTHETIC_SUPPORT_REGISTER,
+    uk_atomic_support_register,
+    uk_spine_geography_binding,
+)
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
 from microcosm.build.uk_runtime.frs_annual_income import (
     UKFRSAnnualIncomeStageTransform,
 )
-from microcosm.build.uk_runtime.frs_brma import UKFRSBRMAStageTransform
 from microcosm.build.uk_runtime.frs_council_tax import UKFRSCouncilTaxStageTransform
 from microcosm.build.uk_runtime.frs_disability import UKFRSDisabilityStageTransform
 from microcosm.build.uk_runtime.frs_education import UKFRSEducationStageTransform
@@ -221,7 +227,16 @@ from microcosm.build.uk_runtime.spi_spine import (
     UKSPIIncomeSpineStageTransform,
     UKSPISupportChannelStageTransform,
 )
+from microcosm.build.uk_runtime.spine_geography import (
+    ATOMIC_AREA_ASSIGN_STAGE_NAME,
+    UKAreaBRMAStageTransform,
+    UKAtomicAreaAssignStageTransform,
+    UKLocalAuthorityStageTransform,
+    UKRFDRStageTransform,
+    UKSPICopyAreasStageTransform,
+)
 from microcosm.build.uk_runtime.spine_posture import roster_failures, spec_roster
+from microcosm.build.uk_runtime.spine_private_rent import UKPrivateRentStageTransform
 from microcosm.build.uk_runtime.staging import UK_STAGING_REPOSITORY
 from microcosm.build.uk_runtime.student_loans import UKStudentLoansStageTransform
 from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
@@ -311,6 +326,27 @@ def _release_candidate_clones_refusal(clones: int) -> str | None:
             + "."
         )
     return None
+
+
+#: The three conditioned atomic-area supports' flags, by system, in the
+#: systems' order (microcosm#931): the area stages read each one's bytes as
+#: the graph source sources.yaml declares the system's conditioned support
+#: by (atomic_area_support.CONDITIONED_SOURCES), held to the register.
+_ATOMIC_SUPPORT_FLAGS: Mapping[str, str] = {
+    "uk_ew_output_area_2021": "--atomic-support-ew",
+    "uk_scotland_output_area_2022": "--atomic-support-scotland",
+    "uk_ni_data_zone_2021": "--atomic-support-ni",
+}
+if tuple(_ATOMIC_SUPPORT_FLAGS) != SYSTEMS:
+    raise RuntimeError(
+        "the atomic-area support flags must name every system, in order."
+    )
+
+
+def _atomic_support_argument(flag: str) -> str:
+    """The parsed argument's attribute for a support flag."""
+
+    return flag.removeprefix("--").replace("-", "_")
 
 
 #: Declared outputs whose nonzero share no stage record reports: the root's
@@ -544,6 +580,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "aps_occupation."
         ),
     )
+    for system, flag in _ATOMIC_SUPPORT_FLAGS.items():
+        parser.add_argument(
+            flag,
+            type=Path,
+            help=(
+                f"Local {system} conditioned atomic-area support "
+                f"({CONDITIONED_SOURCES[system]} in sources.yaml) for "
+                "atomic_area_assign, rfdr and spi_copy_areas, required when "
+                "atomic_area_assign is scheduled: its SHA-256 and size must be "
+                "the ones sources.yaml registers (microcosm#931)."
+            ),
+        )
     parser.add_argument(
         "--emit-nonzero-shares",
         type=Path,
@@ -604,6 +652,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             parser.error(
                 "--synthetic-fixture-dir cannot be combined with licensed input "
                 f"options: {', '.join(supplied)}."
+            )
+        supports = [
+            flag
+            for flag in _ATOMIC_SUPPORT_FLAGS.values()
+            if getattr(args, _atomic_support_argument(flag)) is not None
+        ]
+        if supports:
+            parser.error(
+                "--synthetic-fixture-dir cannot be combined with "
+                f"{', '.join(supports)}: the fixture carries its own toy "
+                "conditioned supports (microcosm#931)."
             )
         if not args.smoke:
             parser.error("--synthetic-fixture-dir requires --smoke.")
@@ -781,6 +840,16 @@ def _synthetic_graph_sources(source: Path) -> dict[str, Path]:
         "spi": "spi_donor",
         "hmrc_income": "hmrc_income_targets",
     }
+    # The toy conditioned supports, each the graph source of the id
+    # sources.yaml declares its system's support under (microcosm#931).
+    from microcosm.build.uk_runtime.graph_kernels import FIXTURE_SUPPORT_INPUTS
+
+    names.update(
+        {
+            CONDITIONED_SOURCES[system]: name
+            for system, name in FIXTURE_SUPPORT_INPUTS.items()
+        }
+    )
     resolved = {"frs": root}
     for role, name in names.items():
         relative = inputs.get(name)
@@ -1056,6 +1125,17 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                 if isinstance(walk_seed, int):
                     stage_seeds[str(operation.parameters["tie_salt"])] = walk_seed
                 continue
+            if operation.kind == "assign_spi_copy_areas":
+                # The SPI copies' areas are drawn with the area draw's seed on
+                # its stream, and Northern Ireland's copies' BRMAs with the
+                # BRMA's seed under its benefit-unit salt (microcosm#931).
+                draw = operation.parameters.get("area_draw") or {}
+                if isinstance(draw.get("seed"), int):
+                    stage_seeds[str(draw["stream"])] = draw["seed"]
+                brma = operation.parameters.get("brma") or {}
+                if isinstance(brma.get("seed"), int):
+                    stage_seeds[str(brma["salts"]["benunit"])] = brma["seed"]
+                continue
             output = operation.parameters.get("output")
             seed = operation.parameters.get("seed")
             if seed is None:
@@ -1103,6 +1183,14 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     stage_seeds["within_band_draws"] = seed
                 elif operation.kind == "assign_badr_qualifying_gains":
                     stage_seeds[operation.kind] = seed
+                elif operation.kind in (
+                    "assign_atomic_area",
+                    "localise_private_rents",
+                ):
+                    # The area draw and the private rents' tie-breaks are keyed
+                    # on each household's geography key on the stage's own
+                    # stream, whose seed is the stage's (microcosm#931).
+                    stage_seeds[str(operation.parameters["stream"])] = seed
                 elif operation.kind in (
                     "convert_donors_to_target_stock",
                     "convert_bonuses_to_bonus_sacrifice",
@@ -1152,9 +1240,17 @@ def _build_sidecar(
     staging_delivery: Mapping[str, object] | None = None,
     spine_gate_report: dict[str, object] | None = None,
     engine: object | None = None,
+    geography: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
+    """The spine's build sidecar.
+
+    ``geography`` is the spine's ``geography`` block where its area stages
+    ran (``country_adapter.uk_spine_geography_binding``, composed before any
+    stage runs from the supports they read, microcosm#931); a spine without
+    them records none.
+    """
     household_weight = frame.weights_for("household")
-    return {
+    sidecar: dict[str, object] = {
         "schema_version": 2,
         "pipeline": _PIPELINE,
         "uk_frame_content_identity": uk_frame_content_identity(frame),
@@ -1208,6 +1304,9 @@ def _build_sidecar(
         # reach every output built on them (microcosm#1095).
         UK_SPI_PUBLIC_USE_TAPE_KEY: uk_spi_public_use_tape_marker(stages),
     }
+    if geography is not None:
+        sidecar["geography"] = json.loads(json.dumps(dict(geography)))
+    return sidecar
 
 
 def _mark_non_release_h5(path: Path, *, build_id: str) -> None:
@@ -1760,6 +1859,137 @@ class PreparedUKSpineExecution:
     frs_release: object
     implementations: Mapping[str, object]
     synthetic_fixture: Mapping[str, object] | None
+    #: The spine's ``geography`` block where its area stages are scheduled,
+    #: composed from the supports they read (microcosm#931), else ``None``.
+    geography: Mapping[str, object] | None = None
+
+
+def _support_path(args: argparse.Namespace, system: str) -> Path | None:
+    """The path a support flag names, or ``None`` where it is not given."""
+
+    return getattr(args, _atomic_support_argument(_ATOMIC_SUPPORT_FLAGS[system]), None)
+
+
+def _registered_atomic_supports(
+    args: argparse.Namespace, stage_names: Sequence[str]
+) -> dict[str, bytes] | None:
+    """The conditioned supports' bytes, by system, held to the register.
+
+    ``None`` where atomic_area_assign is not scheduled, or with
+    ``--synthetic-fixture-dir``, whose fixture carries its own toy supports.
+    Otherwise every ``--atomic-support-*`` flag is required, each must name a
+    file, and each file's SHA-256 and size must be those sources.yaml
+    registers for its system's conditioned support
+    (``country_adapter.uk_atomic_support_register`` with ``conditioned=True``,
+    C-22, microcosm#931), before any stage runs. A refusal names the flags and
+    what they must be, never a digest, a size or a path.
+    """
+
+    if (
+        args.synthetic_fixture_dir is not None
+        or ATOMIC_AREA_ASSIGN_STAGE_NAME not in stage_names
+    ):
+        return None
+    missing = [
+        flag
+        for system, flag in _ATOMIC_SUPPORT_FLAGS.items()
+        if _support_path(args, system) is None
+    ]
+    if missing:
+        raise ValueError(
+            f"{ATOMIC_AREA_ASSIGN_STAGE_NAME} draws every geographic clone's area "
+            "on the conditioned atomic-area supports, so it requires "
+            f"{', '.join(missing)} (microcosm#931)."
+        )
+    register = uk_atomic_support_register(conditioned=True)
+    supports: dict[str, bytes] = {}
+    for system, flag in _ATOMIC_SUPPORT_FLAGS.items():
+        path = _support_path(args, system)
+        if not path.is_file():
+            raise ValueError(f"{flag} must name an existing file.")
+        payload = path.read_bytes()
+        pin = register[system]
+        if (
+            hashlib.sha256(payload).hexdigest() != pin["sha256"]
+            or len(payload) != pin["size_bytes"]
+        ):
+            raise ValueError(
+                f"{flag} is not the conditioned support sources.yaml registers for "
+                f"{system}: its SHA-256 or size is not the register's "
+                "(microcosm#931)."
+            )
+        supports[system] = payload
+    return supports
+
+
+def _fixture_atomic_supports(source: Path) -> dict[str, bytes]:
+    """A synthetic fixture's toy conditioned supports' bytes, by system: its
+    inputs named by the ids sources.yaml declares the supports under
+    (``graph_kernels.FIXTURE_SUPPORT_INPUTS``, microcosm#931)."""
+
+    from microcosm.build.uk_runtime.graph_kernels import FIXTURE_SUPPORT_INPUTS
+
+    return {
+        system: _synthetic_fixture_input(source, name).read_bytes()
+        for system, name in FIXTURE_SUPPORT_INPUTS.items()
+    }
+
+
+def _spine_geography(
+    args: argparse.Namespace,
+    stage_names: Sequence[str],
+    atomic_supports: Mapping[str, bytes] | None,
+) -> dict[str, object] | None:
+    """The spine's ``geography`` block: how its areas are drawn, on the
+    supports its area stages read, held to sources.yaml's register, or a
+    synthetic fixture's toys (``country_adapter.uk_spine_geography_binding``,
+    microcosm#931); ``None`` where atomic_area_assign is not scheduled."""
+
+    if atomic_supports is not None:
+        return uk_spine_geography_binding(
+            atomic_supports, register=UK_SPINE_SUPPORT_REGISTER
+        )
+    if (
+        args.synthetic_fixture_dir is not None
+        and ATOMIC_AREA_ASSIGN_STAGE_NAME in stage_names
+    ):
+        return uk_spine_geography_binding(
+            _fixture_atomic_supports(args.synthetic_fixture_dir),
+            register=UK_SYNTHETIC_SUPPORT_REGISTER,
+        )
+    return None
+
+
+def _source_supports(
+    sources: Mapping[str, Path],
+    pins: Mapping[str, Mapping[str, object]] | None,
+) -> dict[str, bytes]:
+    """The conditioned supports' bytes, by system, from a node's declared
+    graph sources (microcosm#931).
+
+    The executor refuses a source that changes while the graph runs; with
+    ``pins``, the spine's ``geography`` block's ``support_pins``, each file
+    must also still be the support the block records, so a file replaced
+    after the spine was prepared is refused, naming its system and graph
+    source only, never a digest, a size or a path.
+    """
+
+    supports: dict[str, bytes] = {}
+    for system in SYSTEMS:
+        payload = Path(sources[CONDITIONED_SOURCES[system]]).read_bytes()
+        pin = None if pins is None else pins[system]
+        if pin is not None and (
+            hashlib.sha256(payload).hexdigest() != pin["sha256"]
+            or len(payload) != pin["size_bytes"]
+        ):
+            raise ValueError(
+                f"The {system} conditioned support the area stages read (graph "
+                f"source {CONDITIONED_SOURCES[system]}) is not the one the "
+                "spine's geography block pins: it changed after the spine was "
+                "prepared (microcosm#931)."
+            )
+        supports[system] = payload
+    return supports
 
 
 def parse_uk_spine_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -1776,13 +2006,15 @@ def prepare_uk_spine_execution(
     """Bind source paths and lazy transforms without fitting models or writing files.
 
     Everything ``main`` decides before the graph runs lives here: the stage
-    roster, the private-input checks, the geographic clone count, the stage
+    roster, the private-input checks, the conditioned atomic-area supports
+    held to their register, the geographic clone count, the stage
     implementations (licensed or synthetic fixture), the sampling root, the
-    optional observation wrap, the declared graph sources, the gate nodes bound
-    to the rules engine and, with ``--stage-profile-dir``, the profiled
-    kernels. ``observer`` is the staging run bundle's stage observer when that
-    bundle is enabled; ``main`` supplies it, and a caller without telemetry
-    passes none.
+    optional observation wrap, the declared graph sources, the spine's
+    ``geography`` block (microcosm#931), the gate nodes bound to the rules
+    engine and, with ``--stage-profile-dir``, the profiled kernels.
+    ``observer`` is the staging run bundle's stage observer when that bundle
+    is enabled; ``main`` supplies it, and a caller without telemetry passes
+    none.
     """
 
     _validate_args(args)
@@ -1877,6 +2109,12 @@ def prepare_uk_spine_execution(
         and args.aps_tab is None
     ):
         raise ValueError("--aps-tab is required when aps_occupation is scheduled.")
+    # The area stages' supports, held to the register before any stage runs
+    # (C-22, microcosm#931), and the spine's geography block, whose pins the
+    # stages hold the files they read to.
+    atomic_supports = _registered_atomic_supports(args, stage_names)
+    geography = _spine_geography(args, stage_names, atomic_supports)
+    support_pins = None if geography is None else geography["support_pins"]
     stages = [stages_by_name[name] for name in stage_names]
     synthetic_fixture = _synthetic_fixture_evidence(args.synthetic_fixture_dir)
     engine = _rules_engine(clones=clones)
@@ -1949,11 +2187,13 @@ def prepare_uk_spine_execution(
             contract=stochastic_contract,
             stage=stages_by_name["frs_household_draws"],
         ),
-        "frs_brma": UKFRSBRMAStageTransform(
-            stage=stages_by_name["frs_brma"],
-            engine=engine,
-        ),
     }
+    # The BRMA, in frs_brma's place, after the draws (microcosm#931).
+    if "area_brma" in stage_names:
+        implementations["area_brma"] = UKAreaBRMAStageTransform(
+            stage=stages_by_name["area_brma"],
+            engine=engine,
+        )
     if "was_wealth" in stage_names:
         implementations["was_wealth"] = _GraphSourceTransform(
             lambda sources: UKWASWealthStageTransform(
@@ -2071,6 +2311,27 @@ def prepare_uk_spine_execution(
         implementations["geographic_identity"] = UKGeographicIdentityStageTransform(
             stage=stages_by_name["geographic_identity"]
         )
+    # Each clone's area, local authority and fuel-relief flag, the area draw
+    # and the flag's roster read from the supports' graph sources
+    # (microcosm#931).
+    if "atomic_area_assign" in stage_names:
+        implementations["atomic_area_assign"] = _GraphSourceTransform(
+            lambda sources: UKAtomicAreaAssignStageTransform(
+                stage=stages_by_name["atomic_area_assign"],
+                supports=_source_supports(sources, support_pins),
+            )
+        )
+    if "local_authority" in stage_names:
+        implementations["local_authority"] = UKLocalAuthorityStageTransform(
+            stage=stages_by_name["local_authority"]
+        )
+    if "rfdr" in stage_names:
+        implementations["rfdr"] = _GraphSourceTransform(
+            lambda sources: UKRFDRStageTransform(
+                stage=stages_by_name["rfdr"],
+                supports=_source_supports(sources, support_pins),
+            )
+        )
     implementations["spi_support_channel"] = UKSPISupportChannelStageTransform(
         stage=stages_by_name["spi_support_channel"],
         sample_fraction=args.sample_fraction,
@@ -2081,6 +2342,15 @@ def prepare_uk_spine_execution(
                 sources["spi"],
                 stage=stages_by_name["spi_income_band_donors"],
                 sample_fraction=args.sample_fraction,
+            )
+        )
+    # The SPI copies' own keys and areas (microcosm#931).
+    if "spi_copy_areas" in stage_names:
+        implementations["spi_copy_areas"] = _GraphSourceTransform(
+            lambda sources: UKSPICopyAreasStageTransform(
+                stage=stages_by_name["spi_copy_areas"],
+                engine=engine,
+                supports=_source_supports(sources, support_pins),
             )
         )
     implementations["hmrc_spi_income_spine"] = hmrc_spine_transform
@@ -2098,6 +2368,13 @@ def prepare_uk_spine_execution(
     if "spi_housing_shell" in stage_names:
         implementations["spi_housing_shell"] = UKSPIHousingShellStageTransform(
             stage=stages_by_name["spi_housing_shell"]
+        )
+    # Great Britain private renters' rents off their BRMA's list; a sampled
+    # rung takes the thin-region rule (microcosm#931).
+    if "private_rent" in stage_names:
+        implementations["private_rent"] = UKPrivateRentStageTransform(
+            stage=stages_by_name["private_rent"],
+            sampled_rung=_is_sampled(args),
         )
     if "uc_reporter_redraw" in stage_names:
         implementations["uc_reporter_redraw"] = UKUCReporterRedrawStageTransform(
@@ -2295,6 +2572,9 @@ def prepare_uk_spine_execution(
         if "hmrc_spi_income_spine" in stage_names:
             graph_sources["spi"] = args.spi_tab
             graph_sources["hmrc_income"] = args.hmrc_ods
+        if atomic_supports is not None:
+            for system in SYSTEMS:
+                graph_sources[CONDITIONED_SOURCES[system]] = _support_path(args, system)
     engine_identity = hashlib.sha256(
         canonical_json_bytes(_rules_engine_provenance())
     ).hexdigest()
@@ -2329,6 +2609,7 @@ def prepare_uk_spine_execution(
         frs_release=frs_release,
         implementations=implementations,
         synthetic_fixture=synthetic_fixture,
+        geography=geography,
     )
 
 
@@ -2639,6 +2920,7 @@ def _main(argv: list[str] | None = None) -> int:
                 else None
             ),
             engine=prepared.engine,
+            geography=prepared.geography,
         )
         sidecar["operation_inventory"] = list(uk_spine_operation_inventory(graph, spec))
 

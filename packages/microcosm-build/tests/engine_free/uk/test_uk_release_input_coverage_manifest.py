@@ -93,6 +93,34 @@ def test_committed_manifest_matches_regeneration() -> None:
     assert generator.build_manifest() == committed
 
 
+def test_the_private_rent_family_rewrites_the_rent_and_conserves_mass() -> None:
+    """The spine's private_rent stage reads Great Britain private renters'
+    rents off their BRMA's list (microcosm#931), so the release requires it
+    at build as a family of its own: it writes no column, rewrites the rent
+    alone and records the stage's own mass-conservation reason, at
+    importance weights."""
+    from microcosm.build.uk_runtime.spine_private_rent import (
+        PRIVATE_RENT_STAGE_NAME,
+        UK_PRIVATE_RENT_MASS_CONSERVATION_REASON,
+        UK_PRIVATE_RENT_REWRITES,
+    )
+
+    families = _resource("release_input_coverage_manifest.json")["family_coverage"]
+    family = families[PRIVATE_RENT_STAGE_NAME]
+    assert family["stage"] == PRIVATE_RENT_STAGE_NAME
+    assert family["status"] == "required_at_build"
+    assert family["outputs"] == []
+    assert family["rewrites"] == list(UK_PRIVATE_RENT_REWRITES)
+    assert family["mass_change_semantics"] == "mass_conserving"
+    assert family["required_mass_change_reason"] == (
+        UK_PRIVATE_RENT_MASS_CONSERVATION_REASON
+    )
+    assert family["output_weight_kind"] == "importance"
+    assert family["source_manifest"] == "source_stages.json"
+    shared = families["was_wealth"]["source_manifest_sha256"]
+    assert family["source_manifest_sha256"] == shared
+
+
 def test_frozen_candidate_retains_its_original_engine_provenance() -> None:
     evidence = _resource("efrs_parity_known_gaps.json")["candidate_evidence"]
     assert evidence["engine"]["version"] == "2.89.0"
