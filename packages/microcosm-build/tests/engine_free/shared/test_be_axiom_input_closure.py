@@ -4,7 +4,7 @@
 family-benefit modules whose programs run on the engine entity ``Child``, and
 ``build/be/axiom_input_closure.json`` decides how each of their 277 ``Child``
 root inputs is fed: a ``person_role`` binding of the ``axiom:be`` concept
-mapping encodes 35, and the other 242 take a default with a reason and a
+mapping encodes 39, and the other 238 take a default with a reason and a
 citation. No frame entity maps to ``Child``, so each binding declares a
 binding-local view on it (``docs/transport-declared-units.md``).
 
@@ -32,8 +32,8 @@ from microcosm.build.transport.evidence_contract import (
 )
 from microcosm.frame.adapters.axiom import BE_SCHEMA, axiom_concept_mapping
 from microcosm.frame.adapters.axiom_input_surface import load_axiom_input_surface
-from microcosm.frame.concept_mapping import GroupRule
-from microcosm.frame.concepts import ContentBasis
+from microcosm.frame.concept_mapping import GroupRule, Predicate
+from microcosm.frame.concepts import AlignmentRelation, ContentBasis
 from microcosm.frame.input_closure import ClosureClass, EncodedBy, InputClosure
 from test_support.paths import paths_for
 
@@ -48,22 +48,22 @@ SURFACE_PATH = _FRAME.tests / "fixtures/axiom_input_surfaces/be.json"
 LOGICAL_ENTITY = "Child"
 MODULES = 12
 ROOTS = 277
-ENCODED = 35
-DEFAULTED = 242
+ENCODED = 39
+DEFAULTED = 238
 #: Roots, encoded and defaulted per module, in rulespec_path order.
 PER_MODULE = {
     "be-bru/statutes/family_benefits/basic_amounts.yaml": (3, 2, 1),
-    "be-bru/statutes/family_benefits/eligibility.yaml": (19, 4, 15),
+    "be-bru/statutes/family_benefits/eligibility.yaml": (19, 5, 14),
     "be-bru/statutes/family_benefits/selected_amount.yaml": (8, 3, 5),
     "be-bru/statutes/family_benefits/social_supplements.yaml": (5, 1, 4),
     "be-dg/statutes/family_benefits/amounts.yaml": (12, 0, 12),
     "be-dg/statutes/family_benefits/eligibility.yaml": (31, 2, 29),
     "be-vlg/statutes/family_benefits/amounts.yaml": (7, 1, 6),
-    "be-vlg/statutes/family_benefits/eligibility.yaml": (23, 2, 21),
+    "be-vlg/statutes/family_benefits/eligibility.yaml": (23, 3, 20),
     "be-wal/statutes/family_benefits/amounts.yaml": (11, 2, 9),
     "be-wal/statutes/family_benefits/eligibility.yaml": (33, 4, 29),
     "be/statutes/family_benefits/lgaf_amounts.yaml": (18, 2, 16),
-    "be/statutes/family_benefits/regional_routing.yaml": (107, 12, 95),
+    "be/statutes/family_benefits/regional_routing.yaml": (107, 14, 93),
 }
 
 #: Each binding's module, the selector column of its Child view, and the
@@ -393,6 +393,53 @@ class TestClosure:
         }
         assert encoded == bound
         assert len(encoded) == ENCODED
+
+    def test_the_post_18_education_flags_read_one_enrolment_predicate(self) -> None:
+        # Each scheme extends entitlement past 18 for a child in education
+        # (Brussels article 25, Flanders article 8 section 2 item 3, the
+        # German-speaking Community and Wallonia). Each flag is bound in its
+        # scheme's eligibility module and in the routing bridge, which imports
+        # that module, and every binding counts the same enrolled bands.
+        flags = {
+            "brussels_family_benefits_child_in_qualifying_education_training_or_stage": "be-bru",
+            "flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver": "be-vlg",
+            "german_speaking_community_family_benefits_child_in_training": "be-dg",
+            "wallonia_family_benefits_child_in_qualifying_courses_or_stage": "be-wal",
+        }
+        enrolment = "fact:person.education_enrollment"
+        enrolled = (
+            "early_childhood",
+            "primary",
+            "lower_secondary",
+            "upper_secondary",
+            "post_secondary_non_tertiary",
+            "tertiary",
+        )
+        bindings = [
+            binding for binding in MAPPING.bindings if binding.engine_input in flags
+        ]
+        assert sorted((b.engine_input, b.module) for b in bindings) == sorted(
+            (name, module)
+            for name, unit in flags.items()
+            for module in (
+                f"{unit}/statutes/family_benefits/eligibility.yaml",
+                "be/statutes/family_benefits/regional_routing.yaml",
+            )
+        )
+        for binding in bindings:
+            assert binding.engine_entity == LOGICAL_ENTITY
+            assert binding.group_rule is GroupRule.PERSON_ROLE
+            assert binding.relation is AlignmentRelation.APPROXIMATE
+            assert binding.concepts == (enrolment,)
+            assert isinstance(binding.transform, Predicate)
+            assert binding.transform.clauses == ((enrolment, enrolled),)
+        closure = InputClosure.from_dict(_closure_payload())
+        classes = {
+            (entry.input, entry.closure_class)
+            for entry in closure.entries
+            if entry.input in flags
+        }
+        assert classes == {(name, ClosureClass.ENCODED) for name in flags}
 
     def test_a_name_keeps_one_default_across_modules(self) -> None:
         # The routing module reads the four regional schemes' roots through

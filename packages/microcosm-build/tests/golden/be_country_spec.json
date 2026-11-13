@@ -1,6 +1,6 @@
 {
   "country": "be",
-  "fingerprint": "8c7c8f9416daedc5dc30b532316587d979e96c01df26e7d2dcb051327ec37def",
+  "fingerprint": "ce7e2c3e44372d1f91279d40e16a1f99bcdd417732d50409d43acb2b772f6796",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_nuts1_admin_aggregates",
@@ -29,7 +29,7 @@
     "staging_repo": "policyengine/populace-be-staging"
   },
   "resource_hashes": {
-    "axiom_input_closure.json": "53188dfc831f2e607e74b79e60bac9a8f264aaf28d407e56d49972633af8e52b",
+    "axiom_input_closure.json": "6dc9f84cdf9173d2976149379a4589cb6d3903267a212d819d6f684d39830fb2",
     "axiom_rules_bindings.json": "21f133ce2875d6454c96eb00fb8560b9ad590e1614c481c72fae2405608ac916",
     "chronicle_feed.json": "71f3967cefa12d8ad6c4b955547bfc37e33183ee839b3edf3a43e0cb72559030",
     "country_package.json": "204c8c06934160c856d86a9d6c5305d40e9b3a85713c11c3ab031bebb27fbe89",
