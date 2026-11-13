@@ -2,7 +2,7 @@
   "format": "microcosm.axiom_input_closure.v1",
   "country": "be",
   "content_basis": "transport",
-  "description": "The input closure covers the twelve rulespec-be family-benefit modules that axiom_rules_bindings.json binds. Each runs on the engine entity Child through a binding-local view. A person_role concept binding of the axiom:be mapping encodes 35 of their 277 Child root inputs (a child's age and enrolment facts), and the other 242 take explicit defaults, each with a reason and a citation. The axiom adapter omits an input the frame lacks, and the engine fails a request that reaches an absent input (engine_optional_evidence), so a run feeds every entry here. The routing bridge reads the four regional schemes' roots through its imports, and a view reads each root from the person column of the same name, so a name takes one default in every module that reads it. Nothing executes these modules yet: Belgium has no composed transport graph, and METHOD-CARD-BE reports child benefits as not modelled at level until indexed amounts are encoded.",
+  "description": "The input closure covers the twelve rulespec-be family-benefit modules that axiom_rules_bindings.json binds. Each runs on the engine entity Child through a binding-local view. A person_role concept binding of the axiom:be mapping encodes 35 of their 277 Child root inputs (a child's age and enrolment facts), and the other 242 take explicit defaults, each with a reason and a citation. The axiom adapter omits an input the frame lacks, and the engine fails a request that reaches an absent input (engine_optional_evidence), so a run feeds every entry here. The routing bridge reads the four regional schemes' roots through its imports, and a view reads each root from the person column of the same name, so a name takes one default in every module that reads it. Nothing executes these modules yet: Belgium has no composed transport graph, and METHOD-CARD-BE's row BE-MC0 reports child benefits as not modelled at level until indexed amounts are encoded. METHOD-CARD-BE is the Belgium port's method card, the document Max rules on; it is kept with the port's notes, outside this repository.",
   "status": "awaiting Max's METHOD-CARD-BE ruling: every default is a proposal (new_default true)",
   "work_package": "PR 4a (Child bindings and input closure); PR 4b adds the graph that runs them",
   "mapping": {
@@ -446,7 +446,7 @@
       "input": "german_speaking_community_family_benefits_current_index_factor",
       "class": "defaulted",
       "value": 1.0,
-      "reason": "A factor of 1 keeps amounts at their 2019 statutory level; METHOD-CARD-BE line 26 reports child benefits as not modelled at level until RuleSpec encodes indexed amounts. For benefit year 2026 the rule does not use this factor, because the 2025-2027 freeze selects pre_2025_index_factor.",
+      "reason": "A factor of 1 keeps amounts at their 2019 statutory level; METHOD-CARD-BE's row BE-MC0 reports child benefits as not modelled at level until RuleSpec encodes indexed amounts. For benefit year 2026 the rule does not use this factor, because the 2025-2027 freeze selects pre_2025_index_factor.",
       "citation": "German-speaking Community family-benefits decree article 38 and program decree of 22 December 2025 article 17 (german_speaking_community_family_benefits_indexed_amount_factor); module corpus_citation_path be-dg/statute/moniteur/decret-2018-04-23/2018202523/family-benefits/block-1",
       "new_default": true
     },
@@ -506,7 +506,7 @@
       "input": "german_speaking_community_family_benefits_pre_2025_index_factor",
       "class": "defaulted",
       "value": 1.0,
-      "reason": "A factor of 1 keeps amounts at their 2019 statutory level (157 EUR base); METHOD-CARD-BE line 26 reports child benefits as not modelled at level until RuleSpec encodes indexed amounts. For benefit years 2025 to 2027 the freeze makes this the factor every amount multiplies by, except the 2025 annual supplement of 62.55 EUR, which takes no factor. An official value with a source would lift that caveat for this scheme.",
+      "reason": "A factor of 1 keeps amounts at their 2019 statutory level (157 EUR base); METHOD-CARD-BE's row BE-MC0 reports child benefits as not modelled at level until RuleSpec encodes indexed amounts. For benefit years 2025 to 2027 the freeze makes this the factor every amount multiplies by, except the 2025 annual supplement of 62.55 EUR, which takes no factor. An official value with a source would lift that caveat for this scheme.",
       "citation": "German-speaking Community family-benefits decree article 38 and program decree of 22 December 2025 article 17 (german_speaking_community_family_benefits_indexed_amount_factor); module corpus_citation_path be-dg/statute/moniteur/decret-2018-04-23/2018202523/family-benefits/block-1",
       "new_default": true
     },
@@ -670,7 +670,7 @@
       "input": "german_speaking_community_family_benefits_current_index_factor",
       "class": "defaulted",
       "value": 1.0,
-      "reason": "A factor of 1 keeps amounts at their 2019 statutory level; METHOD-CARD-BE line 26 reports child benefits as not modelled at level until RuleSpec encodes indexed amounts. For benefit year 2026 the rule does not use this factor, because the 2025-2027 freeze selects pre_2025_index_factor.",
+      "reason": "A factor of 1 keeps amounts at their 2019 statutory level; METHOD-CARD-BE's row BE-MC0 reports child benefits as not modelled at level until RuleSpec encodes indexed amounts. For benefit year 2026 the rule does not use this factor, because the 2025-2027 freeze selects pre_2025_index_factor.",
       "citation": "German-speaking Community family-benefits decree article 38 and program decree of 22 December 2025 article 17 (german_speaking_community_family_benefits_indexed_amount_factor); module corpus_citation_path be-dg/statute/moniteur/decret-2018-04-23/2018202523/family-benefits/block-1",
       "new_default": true
     },
@@ -810,7 +810,7 @@
       "input": "german_speaking_community_family_benefits_pre_2025_index_factor",
       "class": "defaulted",
       "value": 1.0,
-      "reason": "A factor of 1 keeps amounts at their 2019 statutory level (157 EUR base); METHOD-CARD-BE line 26 reports child benefits as not modelled at level until RuleSpec encodes indexed amounts. For benefit years 2025 to 2027 the freeze makes this the factor every amount multiplies by, except the 2025 annual supplement of 62.55 EUR, which takes no factor. An official value with a source would lift that caveat for this scheme.",
+      "reason": "A factor of 1 keeps amounts at their 2019 statutory level (157 EUR base); METHOD-CARD-BE's row BE-MC0 reports child benefits as not modelled at level until RuleSpec encodes indexed amounts. For benefit years 2025 to 2027 the freeze makes this the factor every amount multiplies by, except the 2025 annual supplement of 62.55 EUR, which takes no factor. An official value with a source would lift that caveat for this scheme.",
       "citation": "German-speaking Community family-benefits decree article 38 and program decree of 22 December 2025 article 17 (german_speaking_community_family_benefits_indexed_amount_factor); module corpus_citation_path be-dg/statute/moniteur/decret-2018-04-23/2018202523/family-benefits/block-1",
       "new_default": true
     },
@@ -1647,7 +1647,7 @@
       "input": "belgium_lgaf_current_index_multiplier",
       "class": "defaulted",
       "value": 1.0,
-      "reason": "The multiplier scales the monthly amount, the annual age supplement, the birth allowance and the adoption premium. The module encodes no current index value, so 1 keeps every amount at its statutory base; METHOD-CARD-BE reports child benefits as not modelled at level until indexed amounts are encoded.",
+      "reason": "The multiplier scales the monthly amount, the annual age supplement, the birth allowance and the adoption premium. The module encodes no current index value, so 1 keeps every amount at its statutory base; METHOD-CARD-BE's row BE-MC0 reports child benefits as not modelled at level until indexed amounts are encoded.",
       "citation": "LGAF (Loi g\u00e9n\u00e9rale relative aux allocations familiales, 19 December 1939) article 76bis (belgium_lgaf_selected_monthly_indexed_amount, belgium_lgaf_article_44ter_annual_age_supplement_indexed_amount, belgium_lgaf_article_73bis_birth_allowance_indexed_amount; belgium_lgaf_article_73quater_adoption_premium_indexed_amount cites articles 73quater and 76bis); corpus_citation_path be/statute/loi/1939/12/19/1939121901/article/76bis, which the parameter belgium_lgaf_index_pivot_1996_base_100 records (the reading rules record none)",
       "new_default": true
     },
@@ -1657,7 +1657,7 @@
       "input": "belgium_lgaf_current_revaluation_coefficient",
       "class": "defaulted",
       "value": 1.0,
-      "reason": "The coefficient multiplies the same four amounts as the index multiplier. The module encodes no current revaluation value, so 1 leaves the amounts unrevalued, in line with METHOD-CARD-BE's caveat that child benefits are not modelled at level.",
+      "reason": "The coefficient multiplies the same four amounts as the index multiplier. The module encodes no current revaluation value, so 1 leaves the amounts unrevalued, in line with the caveat in METHOD-CARD-BE's row BE-MC0 that child benefits are not modelled at level.",
       "citation": "LGAF (Loi g\u00e9n\u00e9rale relative aux allocations familiales, 19 December 1939) article 76bis (belgium_lgaf_selected_monthly_indexed_amount, belgium_lgaf_article_44ter_annual_age_supplement_indexed_amount, belgium_lgaf_article_73bis_birth_allowance_indexed_amount; belgium_lgaf_article_73quater_adoption_premium_indexed_amount cites articles 73quater and 76bis); corpus_citation_path be/statute/loi/1939/12/19/1939121901/article/76bis, which the parameter belgium_lgaf_index_pivot_1996_base_100 records (the reading rules record none)",
       "new_default": true
     },
@@ -2273,7 +2273,7 @@
       "input": "german_speaking_community_family_benefits_current_index_factor",
       "class": "defaulted",
       "value": 1.0,
-      "reason": "A factor of 1 keeps amounts at their 2019 statutory level; METHOD-CARD-BE line 26 reports child benefits as not modelled at level until RuleSpec encodes indexed amounts. For benefit year 2026 the rule does not use this factor, because the 2025-2027 freeze selects pre_2025_index_factor.",
+      "reason": "A factor of 1 keeps amounts at their 2019 statutory level; METHOD-CARD-BE's row BE-MC0 reports child benefits as not modelled at level until RuleSpec encodes indexed amounts. For benefit year 2026 the rule does not use this factor, because the 2025-2027 freeze selects pre_2025_index_factor.",
       "citation": "German-speaking Community family-benefits decree article 38 and program decree of 22 December 2025 article 17 (german_speaking_community_family_benefits_indexed_amount_factor); module corpus_citation_path be-dg/statute/moniteur/decret-2018-04-23/2018202523/family-benefits/block-1",
       "new_default": true
     },
@@ -2413,7 +2413,7 @@
       "input": "german_speaking_community_family_benefits_pre_2025_index_factor",
       "class": "defaulted",
       "value": 1.0,
-      "reason": "A factor of 1 keeps amounts at their 2019 statutory level (157 EUR base); METHOD-CARD-BE line 26 reports child benefits as not modelled at level until RuleSpec encodes indexed amounts. For benefit years 2025 to 2027 the freeze makes this the factor every amount multiplies by, except the 2025 annual supplement of 62.55 EUR, which takes no factor. An official value with a source would lift that caveat for this scheme.",
+      "reason": "A factor of 1 keeps amounts at their 2019 statutory level (157 EUR base); METHOD-CARD-BE's row BE-MC0 reports child benefits as not modelled at level until RuleSpec encodes indexed amounts. For benefit years 2025 to 2027 the freeze makes this the factor every amount multiplies by, except the 2025 annual supplement of 62.55 EUR, which takes no factor. An official value with a source would lift that caveat for this scheme.",
       "citation": "German-speaking Community family-benefits decree article 38 and program decree of 22 December 2025 article 17 (german_speaking_community_family_benefits_indexed_amount_factor); module corpus_citation_path be-dg/statute/moniteur/decret-2018-04-23/2018202523/family-benefits/block-1",
       "new_default": true
     },

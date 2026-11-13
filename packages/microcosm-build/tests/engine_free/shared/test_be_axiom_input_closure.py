@@ -66,58 +66,103 @@ PER_MODULE = {
     "be/statutes/family_benefits/regional_routing.yaml": (107, 12, 95),
 }
 
-#: Each binding's module and the selector column of its Child view. A
-#: selector keeps other regions' residents out of a scheme, and the closure's
-#: domicile defaults rely on that, so the pairing is pinned here: neither the
-#: registry nor the adapter refuses a scheme that runs behind another's column.
+#: Each binding's module, the selector column of its Child view, and the
+#: variables it requests with their outside values. A selector keeps other
+#: regions' residents out of a scheme, and the closure's domicile defaults
+#: rely on that: neither the registry nor the adapter refuses a scheme that
+#: runs behind another's column. The variables are the choice each binding's
+#: notes state, and an outside value keeps its output's type: 0.0 for Money and
+#: 0 for a Count. The pinned engine gives a Count a decimal dtype, which takes
+#: either, but ``_outside_values`` refuses a float for an integer output, so an
+#: integer 0 stays valid if a Count becomes one (the bindings' views_note).
 BINDINGS = {
     "brussels_family_benefits_basic_amounts": (
         "be-bru/statutes/family_benefits/basic_amounts.yaml",
         "brussels_family_benefits_child_candidate",
+        {
+            "brussels_family_benefits_article_7_base_monthly_amount": 0.0,
+        },
     ),
     "brussels_family_benefits_eligibility": (
         "be-bru/statutes/family_benefits/eligibility.yaml",
         "brussels_family_benefits_child_candidate",
+        {
+            "brussels_family_benefits_eligible_monthly_amount": 0.0,
+            "brussels_family_benefits_child_entitlement": 0,
+        },
     ),
     "brussels_family_benefits_selected_amount": (
         "be-bru/statutes/family_benefits/selected_amount.yaml",
         "brussels_family_benefits_child_candidate",
+        {
+            "brussels_family_benefits_selected_monthly_amount": 0.0,
+        },
     ),
     "brussels_family_benefits_social_supplements": (
         "be-bru/statutes/family_benefits/social_supplements.yaml",
         "brussels_family_benefits_child_candidate",
+        {
+            "brussels_family_benefits_article_9_social_supplement_monthly_amount": 0.0,
+        },
     ),
     "german_speaking_community_family_benefits_amounts": (
         "be-dg/statutes/family_benefits/amounts.yaml",
         "german_speaking_community_family_benefits_child_candidate",
+        {
+            "german_speaking_community_family_benefits_selected_monthly_amount": 0.0,
+        },
     ),
     "german_speaking_community_family_benefits_eligibility": (
         "be-dg/statutes/family_benefits/eligibility.yaml",
         "german_speaking_community_family_benefits_child_candidate",
+        {
+            "german_speaking_community_family_benefits_eligible_monthly_amount": 0.0,
+            "german_speaking_community_family_benefits_statutory_base_entitlement": 0,
+        },
     ),
     "flanders_family_benefits_amounts": (
         "be-vlg/statutes/family_benefits/amounts.yaml",
         "flanders_family_benefits_child_candidate",
+        {
+            "flanders_family_benefits_selected_monthly_amount": 0.0,
+        },
     ),
     "flanders_family_benefits_eligibility": (
         "be-vlg/statutes/family_benefits/eligibility.yaml",
         "flanders_family_benefits_child_candidate",
+        {
+            "flanders_family_benefits_eligible_monthly_amount": 0.0,
+            "flanders_family_benefits_child_entitlement": 0,
+        },
     ),
     "wallonia_family_benefits_amounts": (
         "be-wal/statutes/family_benefits/amounts.yaml",
         "wallonia_family_benefits_child_candidate",
+        {
+            "wallonia_family_benefits_selected_monthly_amount": 0.0,
+        },
     ),
     "wallonia_family_benefits_eligibility": (
         "be-wal/statutes/family_benefits/eligibility.yaml",
         "wallonia_family_benefits_child_candidate",
+        {
+            "wallonia_family_benefits_eligible_monthly_amount": 0.0,
+            "wallonia_family_benefits_child_entitlement": 0,
+        },
     ),
     "belgium_lgaf_amounts": (
         "be/statutes/family_benefits/lgaf_amounts.yaml",
         "belgium_lgaf_child_candidate",
+        {
+            "belgium_lgaf_selected_monthly_indexed_amount": 0.0,
+        },
     ),
     "belgium_family_benefits_regional_routing": (
         "be/statutes/family_benefits/regional_routing.yaml",
         "belgium_family_benefits_child_candidate",
+        {
+            "belgium_family_benefits_eligibility_gated_monthly_amount": 0.0,
+        },
     ),
 }
 
@@ -170,7 +215,7 @@ class TestPartition:
         assert len(rows) == MODULES
         assert len({row["id"] for row in rows}) == MODULES
         assert {row["id"]: row["rulespec_path"] for row in rows} == {
-            binding: path for binding, (path, _) in BINDINGS.items()
+            binding: path for binding, (path, _, _) in BINDINGS.items()
         }
         assert {row["rulespec_path"] for row in rows} == set(PER_MODULE)
         # The surface holds no other module with a root on Child.
@@ -387,7 +432,7 @@ class TestBindings:
         # The registry needs the unit entity too, once a benefit unit rule
         # declares one (entity_names_note), so the mapping's two are a floor.
         assert MAPPING.entity_correspondence.items() <= payload["entity_names"].items()
-        assert payload["entity_names_note"]
+        assert len(payload["entity_names_note"]) > 40
         for row in payload["bindings"]:
             module = SURFACE.modules[row["rulespec_path"]]
             assert module.status == "compiled"
@@ -404,11 +449,15 @@ class TestBindings:
 
     def test_each_binding_has_one_child_view_over_its_variables(self) -> None:
         payload = _bindings_payload()
-        # The columns the registry and the adapter refuse as a selector.
+        # The adapter's default schema refuses its structural columns as a
+        # selector. The registry's transport schema adds the membership column
+        # of each unit a benefit unit rule declares, so a selector also avoids
+        # every person_<group>_id name, whatever the unit is called.
         structural = {BE_SCHEMA.person_id_column} | {
             BE_SCHEMA.membership_column(group) for group in BE_SCHEMA.group_entities
         }
         assert structural == {"person_id", "person_household_id"}
+        membership = re.compile(r"person(?:_\w+)?_id")
         for row in payload["bindings"]:
             assert binding_view_entities(row) == {LOGICAL_ENTITY}
             (view,) = row["views"]
@@ -416,25 +465,34 @@ class TestBindings:
             assert set(view["selector"]) == {"column"}
             selector = view["selector"]["column"]
             variables = row["variables"]
+            _, expected_selector, expected_outside = BINDINGS[row["id"]]
             assert variables and len(variables) == len(set(variables))
+            assert variables == list(expected_outside)
             assert set(view["outside"]) == set(variables)
-            # Outside the view a person gets no amount and no entitlement.
+            # Outside the view a person gets no amount and no entitlement...
             assert all(
                 value == 0 and not isinstance(value, bool)
                 for value in view["outside"].values()
             )
-            assert selector == BINDINGS[row["id"]][1]
+            # ...as a value of the output's own type.
+            assert {
+                name: (type(value), value) for name, value in view["outside"].items()
+            } == {
+                name: (type(value), value) for name, value in expected_outside.items()
+            }
+            assert selector == expected_selector
             assert selector not in variables
             assert selector not in structural
+            assert not membership.fullmatch(selector)
             # A view input reads the person column of the same name, so a
             # selector must not shadow a root input either.
             module = SURFACE.modules[row["rulespec_path"]]
             assert selector not in module.inputs[LOGICAL_ENTITY]
         # The selectors block describes each column in use and no other.
         assert set(payload["selectors"]) == {
-            selector for _, selector in BINDINGS.values()
+            selector for _, selector, _ in BINDINGS.values()
         }
-        assert all(payload["selectors"].values())
+        assert all(len(text) > 40 for text in payload["selectors"].values())
 
     def test_the_engine_pins_await_the_surface_refresh(self) -> None:
         engine = _bindings_payload()["engine"]
