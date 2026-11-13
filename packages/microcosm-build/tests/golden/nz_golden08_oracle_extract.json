@@ -359,6 +359,11 @@
           "source": "requests",
           "pointer": "/requests/0/request/dataset/inputs/1/value/value"
         }
+      },
+      "request_sha256": {
+        "source": "full_responses",
+        "pointer": "/requests/0/request_sha256",
+        "value": "1ac639dd25ef790c315c1622ca064c20fad7d5f76e7ddbf13f9c5269dc6c5b08"
       }
     },
     "golden-07": {
@@ -477,6 +482,11 @@
           "source": "requests",
           "pointer": "/requests/7/request/dataset/inputs/10/value/value"
         }
+      },
+      "request_sha256": {
+        "source": "full_responses",
+        "pointer": "/requests/7/request_sha256",
+        "value": "074a15620602b8de42f2bde008e8767b1db112d691bf072a8c7a723c9a4829b2"
       }
     }
   }

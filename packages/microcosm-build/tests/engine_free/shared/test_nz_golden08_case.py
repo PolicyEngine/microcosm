@@ -1,26 +1,34 @@
 """The NZ golden-08 differential case: generated, valid against its oracle, traced.
 
-The engine-free tests check that the committed case is the generator's output,
-that the differential tool's own validation accepts it against the committed
-oracle extract, that the extract agrees with the committed golden-08 fixture,
-that the packaged pipeline reproduces every input the oracle states, and that
-every table and concept-frame cell names its source. The engine-gated tests run
-the differential and check that perturbing the case's placeholder and
-secondary cells moves no compared output.
+The engine-free tests check that the committed case is the generator's output;
+that it declares the five comparisons and tolerances written out here; that the
+oracle extract rebuilds each oracle request to the hash the oracle recorded and
+agrees with the committed golden-08 fixture and the packaged pins; that the
+packaged pipeline reproduces every input the oracle states, with one known
+conflict; that every cell whose provenance names the fixture or the extract
+equals the value there; that the unit rule and call order are the packaged
+ones; and that every table and concept-frame cell names its source. The
+engine-gated tests run the differential, check that perturbing the case's
+placeholder and secondary cells (some through the generator's own pipeline)
+moves no compared output, and check that a rent change does move one.
 """
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
 from copy import deepcopy
+from decimal import Decimal
+from functools import cache
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.transport import compose
 from microcosm.build.transport.registry import transport_entity_schema
 from microcosm.frame import Frame, WeightKind, Weights
 from microcosm.frame.unit_construction import BenefitUnitRule
@@ -33,6 +41,11 @@ CASE_TEXT = generator.CASE.read_text(encoding="utf-8")
 CASE = json.loads(CASE_TEXT)
 EXTRACT = json.loads(generator.EXTRACT.read_text(encoding="utf-8"))
 FIXTURE = json.loads(generator.FIXTURE.read_text(encoding="utf-8"))
+FIXTURE_FILE = (
+    "packages/microcosm-build/tests/fixtures/nz/"
+    "axiom_oracle_golden_08_accommodation_supplement.json"
+)
+REGENERATE = "uv run --no-sync python tools/generate_nz_golden08_case.py"
 #: Where a case table cell comes from.
 TABLE_SOURCES = {
     "structural",
@@ -81,46 +94,238 @@ MASK_COLUMNS = {
     "accommodation_supplement_bridge_single_without_dependent_child",
 }
 
+BASE_RATE = "accommodation_supplement_base_rate_weekly_amount"
+CUTOUT = "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount"
+QUALIFYING = "accommodation_supplement_weekly_qualifying_accommodation_costs"
+BEFORE_ROUNDING = "accommodation_supplement_weekly_amount_before_rounding"
+ROUNDED = "accommodation_supplement_rounded_weekly_payment"
+#: The five comparisons as (call, column, oracle_pointer, tolerance). The
+#: tolerances follow the ruling at
+#: https://github.com/PolicyEngine/microcosm/issues/1183#issuecomment-6856239769:
+#: 1e-9 for an unsolved weekly amount, the cutout solve's 1e-9 plus 5e-10, and
+#: the rounded payment exactly.
+COMPARISONS = (
+    (
+        "nz.scn.S0.bridge.base_rate",
+        BASE_RATE,
+        f"/golden_08/request/inputs/{BASE_RATE}/value",
+        1e-9,
+    ),
+    (
+        "nz.as.bridge.cutout",
+        CUTOUT,
+        f"/golden_08/request/inputs/{CUTOUT}/value",
+        1.5e-9,
+    ),
+    (
+        "nz.scn.S0.as",
+        QUALIFYING,
+        f"/golden_08/response/outputs/{QUALIFYING}/value",
+        1e-9,
+    ),
+    (
+        "nz.scn.S0.as",
+        BEFORE_ROUNDING,
+        f"/golden_08/response/outputs/{BEFORE_ROUNDING}/value",
+        1e-9,
+    ),
+    (
+        "nz.scn.S0.as",
+        ROUNDED,
+        f"/golden_08/response/outputs/{ROUNDED}/value",
+        0,
+    ),
+)
+CALLS = [
+    "nz.as.bridge.sole_parent_gross_rate",
+    "nz.scn.S0.bridge.base_rate",
+    "nz.as.bridge.cutout",
+    "nz.scn.S0.as",
+]
+#: The one input where the pipeline differs from the oracle, as (request,
+#: entity, column, oracle value, pipeline value): the closure's default.
+KNOWN_CONFLICT = (
+    "golden-07",
+    "person",
+    "jobseeker_support_benefit_commenced_on_or_after_1998_07_01",
+    False,
+    True,
+)
+#: Where each oracle request sits in the extract and in the requests file.
+REQUESTS = {
+    "golden-08": ("/golden_08/request", 8),
+    "golden-00": ("/household_requests/golden-00", 0),
+    "golden-07": ("/household_requests/golden-07", 7),
+}
+
+
+@cache
+def _spec():
+    return compose.load_transport_spec("nz")
+
+
+def _canonical(value):
+    """JSON text that tells True from 1 and 25 from 25.0."""
+    return json.dumps(value, sort_keys=True)
+
+
+def _same(left, right):
+    return _canonical(left) == _canonical(right)
+
+
+def _sha256(value):
+    text = json.dumps(value, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _equals_oracle(cell, entry):
+    """Whether a table cell is an oracle input's value, exactly, by its kind.
+
+    A bool input needs a bool, an integer input an int (not a bool), and a
+    decimal input a number (not a bool) whose exact binary value is the
+    decimal's. The closure's defaults for decimal inputs are ints (0), as in
+    the graph, so a decimal accepts an int.
+    """
+    kind, value = entry["kind"], entry["value"]
+    if kind == "bool":
+        assert type(value) is bool, entry
+        return type(cell) is bool and cell is value
+    if kind == "integer":
+        assert type(value) is int, entry
+        return type(cell) is int and cell == value
+    assert kind == "decimal" and type(value) is str, entry
+    return type(cell) in (int, float) and Decimal(cell) == Decimal(value)
+
+
+def _entry(extract_pointer):
+    """The extract input record a ``.../inputs/<name>/value`` pointer names."""
+    head, _, last = extract_pointer.rpartition("/")
+    assert last == "value", extract_pointer
+    return driver._pointer(EXTRACT, head)
+
 
 def test_committed_case_is_the_generators_output():
-    assert generator.render(generator.build_case()) == CASE_TEXT
+    assert generator.render(generator.build_case()) == CASE_TEXT, (
+        "The golden-08 differential case is stale. If the change is intended, "
+        f"run `{REGENERATE}`, review the diff and commit it."
+    )
 
 
-def test_case_passes_the_tools_validation_against_the_extract():
-    expected = driver._validate_case(CASE, EXTRACT)
-    declared = [
-        (row["call"], row["column"], row["tolerance"]) for row in CASE["comparisons"]
+def test_case_declares_the_ruled_comparisons_and_passes_the_tools_validation():
+    assert CASE["comparisons"] == [
+        {
+            "call": call,
+            "entity": "family",
+            "column": column,
+            "oracle_pointer": pointer,
+            "tolerance": tolerance,
+        }
+        for call, column, pointer, tolerance in COMPARISONS
     ]
-    assert declared == [
-        (call, column, tolerance)
-        for call, _, column, tolerance in generator.COMPARISONS
-    ]
+    assert [
+        row["column"]
+        for row in CASE["comparisons"]
+        if row["oracle_pointer"].startswith("/golden_08/request/")
+    ] == EXTRACT["golden_08"]["bridge_inputs"]
     assert {
-        column
-        for _, section, column, _ in generator.COMPARISONS
-        if section == "response"
+        row["column"]
+        for row in CASE["comparisons"]
+        if row["oracle_pointer"].startswith("/golden_08/response/")
     } == set(extractor.OUTPUTS)
+    expected = driver._validate_case(CASE, EXTRACT)
     for row, values in zip(CASE["comparisons"], expected, strict=True):
         assert values.tolist() == [
             float(driver._pointer(EXTRACT, row["oracle_pointer"]))
         ]
 
 
+def _rebuilt_request(request):
+    """The oracle request an extract record describes, as the requests file
+    holds it."""
+    period = request["period"]["value"]
+    entity_id = request["entity_id"]["value"]
+    interval = {"start": period["start"], "end": period["end"]}
+    return {
+        "dataset": {
+            "inputs": [
+                {
+                    "entity": request["entity"],
+                    "entity_id": entity_id,
+                    "interval": interval,
+                    "name": row["name"],
+                    "value": {"kind": row["kind"], "value": row["value"]},
+                }
+                for row in request["inputs"].values()
+            ],
+            "relations": [],
+        },
+        "mode": request["mode"]["value"],
+        "queries": [
+            {
+                "entity_id": entity_id,
+                "outputs": request["queried_outputs"]["value"],
+                "period": period,
+            }
+        ],
+    }
+
+
+def test_each_oracle_request_rebuilds_from_the_extract_to_its_recorded_hash():
+    golden = EXTRACT["golden_08"]
+    households = EXTRACT["household_requests"]
+    assert set(households) == {"golden-00", "golden-07"}
+    requests = {"golden-08": golden["request"], **households}
+    recorded = {
+        "golden-08": golden["response"]["request_sha256"],
+        **{name: request["request_sha256"] for name, request in households.items()},
+    }
+    for name, request in requests.items():
+        _, index = REQUESTS[name]
+        assert request["id"]["value"] == name
+        assert recorded[name]["source"] == "full_responses"
+        assert recorded[name]["pointer"] == f"/requests/{index}/request_sha256"
+        assert _sha256(_rebuilt_request(request)) == recorded[name]["value"], name
+
+
+def test_extract_is_bound_to_the_packaged_pins():
+    assert EXTRACT["golden_08"]["bridge_inputs"] == [BASE_RATE, CUTOUT]
+    assert EXTRACT["sources"] == extractor.SOURCES
+    bridge = compose.transport_resource(_spec(), "as_rate_bridge")
+    source = bridge["differential_expectations"]["source"]
+    assert EXTRACT["sources"]["requests"]["sha256"] == source["sha256"]
+    assert EXTRACT["oracle"]["commit"] == source["commit"]
+
+
 def test_extract_agrees_with_the_committed_golden_08_fixture():
     request = EXTRACT["golden_08"]["request"]
-    assert {
-        name: {"kind": row["kind"], "value": row["value"]}
-        for name, row in request["inputs"].items()
-    } == FIXTURE["inputs"]
+    inputs = request["inputs"]
+    # The requests file lists inputs in name order, so this ties each input's
+    # pointer index below to its name.
+    assert list(inputs) == sorted(inputs)
+    assert _canonical(
+        {
+            name: {"kind": row["kind"], "value": row["value"]}
+            for name, row in inputs.items()
+        }
+    ) == _canonical(FIXTURE["inputs"])
+    assert request["entity"] == FIXTURE["entity"]
+    module = "nz:" + FIXTURE["module"].removeprefix("nz/").removesuffix(".yaml")
+    for name, row in inputs.items():
+        assert row["name"] == f"{module}#input.{name}"
     outputs = EXTRACT["golden_08"]["response"]["outputs"]
     assert list(outputs) == list(extractor.OUTPUTS)
-    assert set(outputs) == set(FIXTURE["outputs"])
+    assert _canonical(
+        {
+            name: {"kind": row["kind"], "value": row["value"]}
+            for name, row in outputs.items()
+        }
+    ) == _canonical(FIXTURE["outputs"])
     for name, row in outputs.items():
-        assert {"kind": row["kind"], "value": row["value"]} == FIXTURE["outputs"][name]
+        assert row["id"] == f"{module}#{name}"
     assert EXTRACT["oracle"]["commit"] == FIXTURE["source"]["commit"]
     assert request["entity_id"]["value"] == FIXTURE["entity_id"]
-    assert request["period"]["value"] == FIXTURE["period"]
-    positions = [row["pointer"] for row in request["inputs"].values()]
+    assert _same(request["period"]["value"], FIXTURE["period"])
+    positions = [row["pointer"] for row in inputs.values()]
     assert positions == [
         f"/requests/8/request/dataset/inputs/{index}/value/value"
         for index in range(len(positions))
@@ -158,6 +363,20 @@ def test_every_cell_names_a_source_and_only_known_cells_are_unstated():
     assert set(provenance["unstated"]) == UNSTATED
     for name in UNSTATED:
         assert hasattr(generator, name)
+    writers = provenance["graph_start"]["writers"]
+    assert {entity: list(columns) for entity, columns in writers.items()} == {
+        entity: list(columns) for entity, columns in frame.items()
+    }
+    assert {
+        column: node
+        for column, node in writers["person"].items()
+        if column.startswith("receives_")
+    } == {
+        "receives_nz_super": "nz.takeup.assign",
+        "receives_supported_living_payment": "nz.takeup.assign",
+        "receives_sole_parent_support": "nz.takeup.assign",
+        "receives_jobseeker_support": "nz.takeup.assign",
+    }
 
 
 def test_the_parents_age_is_golden_07s_applicant_age():
@@ -184,38 +403,121 @@ def test_the_parents_age_is_golden_07s_applicant_age():
 def test_the_pipeline_reproduces_every_input_the_oracle_states():
     records = CASE["provenance"]["oracle_cross_check"]
     golden = EXTRACT["golden_08"]
-    requests = [
-        ("golden-08", golden["request"]),
-        *EXTRACT["household_requests"].items(),
-    ]
+    requests = {"golden-08": golden["request"], **EXTRACT["household_requests"]}
     stated = [
         (name, column)
-        for name, request in requests
+        for name, request in requests.items()
         for column in request["inputs"]
-        if name != "golden-08" or column not in golden["bridge_inputs"]
+        if name != "golden-08" or column not in (BASE_RATE, CUTOUT)
     ]
     assert [(row["request"], row["column"]) for row in records] == stated
-    differ = {
-        (row["entity"], row["column"]) for row in records if row["status"] != "equal"
-    }
-    assert differ == set(generator.EXPECTED_CLOSURE_CONFLICTS)
-    assert all(row["exact"] for row in records if row["status"] == "equal")
+    conflicts = []
+    for row in records:
+        prefix, _ = REQUESTS[row["request"]]
+        assert row["extract_pointer"] == f"{prefix}/inputs/{row['column']}/value"
+        assert row["entity"] == requests[row["request"]]["entity"].lower()
+        entry = _entry(row["extract_pointer"])
+        assert _same(row["oracle"], entry["value"])
+        if row["status"] == "equal":
+            assert _equals_oracle(row["pipeline"], entry), row
+            assert row["exact"] is True
+        else:
+            assert row["status"] == "known_closure_conflict", row
+            conflicts.append(
+                (
+                    row["request"],
+                    row["entity"],
+                    row["column"],
+                    row["oracle"],
+                    row["pipeline"],
+                )
+            )
+    assert _canonical(conflicts) == _canonical([KNOWN_CONFLICT])
     parent = {
         "person": CASE["tables"]["person"][0],
         "family": CASE["tables"]["family"][0],
     }
     for row in records:
-        assert driver._pointer(EXTRACT, row["extract_pointer"]) == row["oracle"]
         table = CASE["provenance"]["tables"][row["entity"]]
         if row["column"] in parent[row["entity"]]:
-            assert parent[row["entity"]][row["column"]] == row["pipeline"]
+            assert _same(parent[row["entity"]][row["column"]], row["pipeline"])
             assert table[row["column"]]["checked_against"] == row["extract_pointer"]
+
+
+def test_cells_equal_the_fixture_and_extract_values_their_provenance_names():
+    conflict = KNOWN_CONFLICT[:3]
+    checked = 0
+    for entity, rows in CASE["tables"].items():
+        for column, record in CASE["provenance"]["tables"][entity].items():
+            if record["from"] == "concept":
+                cells = record["cells"]
+                cells = cells if isinstance(cells, list) else [cells] * len(rows)
+                for row, cell in zip(rows, cells, strict=True):
+                    if cell["from"] == "fixture":
+                        assert cell["file"] == FIXTURE_FILE
+                        value = driver._pointer(FIXTURE, cell["pointer"])
+                        assert _same(row[column], value), (entity, column, cell)
+                    elif cell["from"] == "oracle":
+                        entry = _entry(cell["extract_pointer"])
+                        assert _equals_oracle(row[column], entry), (column, cell)
+                    else:
+                        continue
+                    checked += 1
+            pointer = record.get("checked_against")
+            if pointer is not None:
+                request = next(
+                    name
+                    for name, (prefix, _) in REQUESTS.items()
+                    if pointer.startswith(f"{prefix}/")
+                )
+                if (request, entity, column) == conflict:
+                    assert _same(rows[0][column], KNOWN_CONFLICT[4])
+                else:
+                    entry = _entry(pointer)
+                    assert _equals_oracle(rows[0][column], entry), (column, pointer)
+                checked += 1
+    # Four ages (the parent's from golden-07, three from the fixture) and the
+    # 39 oracle-checked inputs: golden-08's 28 less the two bridges,
+    # golden-07's 11 and golden-00's 2.
+    assert checked == 43
+
+
+def test_the_family_is_the_fixtures_sole_parent_with_three_children():
+    members = FIXTURE["household"]["members"]
+    assert [member["role"] for member in members] == [
+        "sole parent",
+        "child",
+        "child",
+        "child",
+    ]
+    assert _same([member["age"] for member in members], [None, 0, 1, 10])
+    assert _same([row["age"] for row in CASE["tables"]["person"][1:]], [0, 1, 10])
+    family = CASE["tables"]["family"]
+    expected = {
+        "is_sole_parent": True,
+        "is_single": True,
+        "is_partnered": False,
+        "n_dependent_children": 3,
+        "youngest_dependent_child_age": 0,
+        "accommodation_supplement_bridge_has_dependent_child": True,
+        "accommodation_supplement_bridge_single_without_dependent_child": False,
+    }
+    assert len(family) == 1
+    assert _same({column: family[0][column] for column in expected}, expected)
+
+
+def test_the_unit_rule_and_call_order_are_the_packaged_ones():
+    packaged = compose.transport_resource(_spec(), "benefit_unit_rule")
+    rule = BenefitUnitRule.from_spec(packaged)
+    assert _same(CASE["unit_rule"], rule.to_dict())
+    # The driver loads the case's unit rule this way.
+    assert BenefitUnitRule.from_dict(CASE["unit_rule"]) == rule
+    assert [call["id"] for call in CASE["calls"]] == CALLS
 
 
 def test_masks_are_family_data_and_the_tool_can_build_every_call():
     assert MASK_COLUMNS <= set(CASE["tables"]["family"][0])
     assert all(call["kernel"] != "calibration.prepare@1" for call in CASE["calls"])
-    assert [call["id"] for call in CASE["calls"]] == list(generator.CALLS)
     rule = BenefitUnitRule.from_dict(CASE["unit_rule"])
     schema, _ = transport_entity_schema(rule)
     tables = {name: pd.DataFrame(rows) for name, rows in CASE["tables"].items()}
@@ -274,49 +576,72 @@ def test_the_engine_reproduces_golden_08():
     assert receipt["status"] == "passed", receipt["comparisons"]
 
 
-def _set_person(case, row, value, *columns):
-    for column in columns:
-        case["tables"]["person"][row][column] = value
+# Concept-frame perturbations: each edits the person and household concept
+# tables and the generator's own pipeline rebuilds the case from them, so the
+# encoded and unit-attribute cells that read an edited column move with it.
+def _parent_age(person, household):
+    # golden-07 states 25; the concept frame in test_nz_axiom_input_closure.py
+    # uses 30.
+    person.loc[person["person_id"] == 1, "age"] = 30
 
 
-def _parent_age(case):
-    # The concept frame's parent age; the case uses golden-07's 25.
-    _set_person(case, 0, 30, "age", "supported_living_payment_applicant_age")
+def _child_ages(person, household):
+    # The youngest stays under 14, the Jobseeker Support rates' age threshold.
+    person.loc[person["person_id"] > 1, "age"] = [3, 6, 10]
 
 
-def _child_ages(case):
-    # Test perturbations within the dependent-child age limit, not case data.
-    for row, age in ((2, 5), (3, 16)):
-        _set_person(
-            case,
-            row,
-            age,
-            "age",
-            "jobseeker_support_applicant_age",
-            "supported_living_payment_applicant_age",
-        )
+def _rent(person, household):
+    # 500 a week instead of 600; the rent concept is annual.
+    household["rent"] = 500.0 * 52
+
+
+def _through_the_pipeline(edit, moved):
+    def perturb(case):
+        case = generator.build_case(concept_edit=edit)
+        for entity, row, column, value in moved:
+            assert _same(case["tables"][entity][row][column], value), column
+        return case
+
+    return perturb
+
+
+PARENT_AGE_MOVES = [
+    ("person", 0, "age", 30),
+    ("person", 0, "jobseeker_support_applicant_age", 30),
+    ("person", 0, "supported_living_payment_applicant_age", 30),
+]
+CHILD_AGES_MOVE = [
+    ("person", 1, "age", 3),
+    ("person", 2, "age", 6),
+    ("family", 0, "youngest_dependent_child_age", 3),
+    ("family", 0, "n_dependent_children", 3),
+]
+RENT_MOVES = [("family", 0, "accommodation_supplement_weekly_rent_paid", 500.0)]
 
 
 def _family_id(case):
     case["tables"]["family"][0]["family_id"] = 7
     for row in case["tables"]["person"]:
         row["person_family_id"] = 7
+    return case
 
 
 def _weight(case):
     case["weights"]["household"]["values"] = [2.0]
+    return case
 
 
-# The NZ hub accepted the fixture's tenure as a source (ruling 6, 2026-11-13)
-# on the expectation that these two perturbations move no compared output;
-# cash assets are now the placeholder CASE_DATA_UNSTATED_LIQUID_FINANCIAL_ASSETS.
-# At the pinned rulespec-nz 8dc2507, accommodation_supplement/core.yaml reads
-# these four inputs only through
-# accommodation_supplement_non_rate_entitlement_requirements and the two
-# judgments it combines (lines 403-516); no compared amount reads it. If the
-# engine run shows a compared output moving, the hub revisits that ruling.
+# The case takes the household's tenure from the fixture on the expectation
+# that these two perturbations move no compared output; cash assets are the
+# placeholder CASE_DATA_UNSTATED_LIQUID_FINANCIAL_ASSETS. At the pinned
+# rulespec-nz 8dc2507, accommodation_supplement/core.yaml reads these four
+# inputs only through accommodation_supplement_non_rate_entitlement_requirements
+# and the two judgments it combines; no compared amount reads it. If the engine
+# run shows a compared output moving, the fixture's tenure is no longer a
+# sufficient source and the case must state these cells.
 def _cash_assets(case):
     case["tables"]["family"][0]["accommodation_supplement_cash_assets"] = 1000000.0
+    return case
 
 
 def _tenure(case):
@@ -324,12 +649,20 @@ def _tenure(case):
     family["accommodation_supplement_has_accommodation_costs"] = False
     family["accommodation_supplement_rent_paid_to_kainga_ora"] = True
     family[SOCIAL_HOUSING] = True
+    return case
 
 
 @needs_engine
 @pytest.mark.parametrize(
     "perturb",
-    [_parent_age, _child_ages, _family_id, _weight, _cash_assets, _tenure],
+    [
+        _through_the_pipeline(_parent_age, PARENT_AGE_MOVES),
+        _through_the_pipeline(_child_ages, CHILD_AGES_MOVE),
+        _family_id,
+        _weight,
+        _cash_assets,
+        _tenure,
+    ],
     ids=[
         "parent-age",
         "child-ages",
@@ -342,9 +675,27 @@ def _tenure(case):
 def test_placeholder_and_secondary_cells_move_no_compared_output(perturb):
     root = Path(RULESPEC_NZ)
     base = driver.differential(deepcopy(CASE), EXTRACT, root)
-    case = deepcopy(CASE)
-    perturb(case)
-    changed = driver.differential(case, EXTRACT, root)
+    assert base["status"] == "passed", base["comparisons"]
+    changed = driver.differential(perturb(deepcopy(CASE)), EXTRACT, root)
     assert [row["actual"] for row in changed["comparisons"]] == [
         row["actual"] for row in base["comparisons"]
     ]
+
+
+@needs_engine
+def test_a_rent_change_through_the_pipeline_moves_the_qualifying_costs():
+    # The positive control: the comparison detects a perturbation that must
+    # move a compared amount (core.yaml's qualifying costs are the weekly rent
+    # paid less accommodation income, which is 0 here).
+    root = Path(RULESPEC_NZ)
+    base = driver.differential(deepcopy(CASE), EXTRACT, root)
+    assert base["status"] == "passed", base["comparisons"]
+    case = _through_the_pipeline(_rent, RENT_MOVES)(deepcopy(CASE))
+    changed = driver.differential(case, EXTRACT, root)
+    moved = {
+        row["column"]: (row["actual"], before["actual"])
+        for row, before in zip(changed["comparisons"], base["comparisons"], strict=True)
+        if row["actual"] != before["actual"]
+    }
+    assert QUALIFYING in moved, changed["comparisons"]
+    assert changed["status"] == "failed"

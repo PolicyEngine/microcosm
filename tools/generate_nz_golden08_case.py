@@ -25,7 +25,11 @@ The tables come from the packaged pipeline, run on golden-08's household:
    record, the oracle extract (golden-07's applicant age, and the mortgage
    concepts golden-08's owner payments imply), or a named
    ``CASE_DATA_UNSTATED_*`` constant. A column without a rule stops the
-   generator.
+   generator. The frame stands in for the outputs of the packaged graph nodes
+   that write these columns (CREATE, nz.money.normalize, nz.earnings.map,
+   nz.rent.map, nz.geo.derive and nz.takeup.assign): the case starts after
+   them, and of them runs only CREATE's unit construction (step 2).
+   ``provenance.graph_start`` names each column's writer.
 2. Units from CREATE's own unit construction (``create_unit_declaration`` and
    ``build_declared_units``) under the packaged benefit unit rule.
 3. The family structure columns, the person inputs and the Accommodation
@@ -36,7 +40,8 @@ The tables come from the packaged pipeline, run on golden-08's household:
 4. A cross-check: every input value the oracle extract states (golden-08's,
    less the two bridge amounts, and golden-00's and golden-07's on the parent)
    must equal the encoded or defaulted value. Only the one known closure
-   conflict may differ; any other difference stops the generator.
+   conflict (its request, column, oracle value and pipeline value) may
+   differ; any other difference stops the generator.
 
 The case's ``provenance`` names every cell's source; the tool ignores that key.
 ``--check`` fails if the committed case differs from the generated one.
@@ -107,9 +112,10 @@ KERNELS = {
     GROUP_ENCODE: ConceptsEncodeGroupsKernel,
 }
 
-#: Tolerances follow the NZ hub's 2026-11-03 ruling: every weekly amount that
-#: no solve produces within 1e-9, a solved one within its solve's declared
-#: tolerance plus 5e-10, and the rounded payment exactly.
+#: Tolerances follow the tolerance ruling recorded at
+#: https://github.com/PolicyEngine/microcosm/issues/1183#issuecomment-6856239769:
+#: every weekly amount that no solve produces within 1e-9, a solved one within
+#: its solve's declared tolerance plus 5e-10, and the rounded payment exactly.
 WEEKLY_TOLERANCE = 1e-9
 SOLVE_MARGIN = 5e-10
 CUTOUT_TOLERANCE = 1.5e-9
@@ -151,11 +157,21 @@ COMPARISONS = (
 #: weekly tolerance; booleans and integers compare exactly. Each record says
 #: whether its match was exact.
 CROSS_CHECK_TOLERANCE = WEEKLY_TOLERANCE
-#: The one input where the closure's default differs from an oracle value:
-#: golden-07 sends False, the closure defaults True. base_rate and cutout
-#: override it to False, as the oracle sends it.
-EXPECTED_CLOSURE_CONFLICTS = frozenset(
-    {("person", "jobseeker_support_benefit_commenced_on_or_after_1998_07_01")}
+#: The one input where the closure's default differs from an oracle value, as
+#: (request, entity, column, oracle value, pipeline value): golden-07 sends
+#: False, the closure defaults True. base_rate and cutout override it to False,
+#: as the oracle sends it. The sole-parent gross-rate call also reads it and
+#: does not override it, so that call reads the closure's True; at the pinned
+#: rules its overrides (single, one dependent child) take a branch of
+#: jobseeker_support_gross_weekly_rate that does not read it.
+EXPECTED_CLOSURE_CONFLICTS = (
+    (
+        "golden-07",
+        "person",
+        "jobseeker_support_benefit_commenced_on_or_after_1998_07_01",
+        False,
+        True,
+    ),
 )
 
 #: The parent's age: golden-07's applicant age, a request on golden-08's
@@ -185,8 +201,8 @@ WEEKS_PER_YEAR = 52
 PERSON_IDS = (1, 2, 3, 4)
 HOUSEHOLD_ID = 1
 
-#: Stated placeholders: no source states these cells. OPEN-QUESTIONS.md lists
-#: each with what reads it.
+#: Stated placeholders: no source states these cells. The case's
+#: provenance.unstated lists them.
 #: Which main benefit the parent receives. The fixture states that the parent
 #: receives one (/household/receives_main_benefit) and golden-08 sends
 #: non_beneficiary false; neither names the benefit.
@@ -204,8 +220,9 @@ CASE_DATA_UNSTATED_TAKE_UP_SEED = 0.5
 CASE_DATA_UNSTATED_SOURCE_HOUSEHOLD_ID = "golden-08"
 CASE_DATA_UNSTATED_DONOR_SUPPORT_STRATUM = "golden-08"
 CASE_DATA_UNSTATED_AS_AREA_ALT = "1"
-#: Stated placeholders (NZ hub ruling, 2026-11-13): no source weights a
-#: one-household case. The NZ graph weights households.
+#: Stated placeholders: no source weights a one-household case, and the NZ
+#: graph weights households, so the case gives its one household a design
+#: weight of 1.
 CASE_DATA_UNSTATED_HOUSEHOLD_WEIGHT_KIND = "design"
 CASE_DATA_UNSTATED_HOUSEHOLD_WEIGHT = 1.0
 UNSTATED = (
@@ -386,6 +403,27 @@ def _skeleton(spec, config):
             raise ValueError(f"{name} is not a plain {kernel.ref} node.")
         nodes[name] = node
     return create, nodes
+
+
+def _graph_writers(spec, create_id, frame):
+    """For each concept-frame column, the packaged graph node that writes it.
+
+    A column no transport_graph row declares as an output is CREATE's.
+    """
+    writers = {}
+    for row in compose.transport_graph_document(spec)["nodes"]:
+        for output in row.get("outputs", ()):
+            key = (output["entity"], output["column"])
+            writers.setdefault(key, []).append(row["id"])
+    named = {}
+    for entity, columns in frame.items():
+        named[entity] = {}
+        for column in columns:
+            found = writers.get((entity, column), [create_id])
+            if len(found) != 1:
+                raise ValueError(f"{entity}.{column} has writers {found}.")
+            named[entity][column] = found[0]
+    return named
 
 
 def _run(name, node, tables):
@@ -703,8 +741,18 @@ def _matches(actual, expected):
     return abs(number - expected) <= CROSS_CHECK_TOLERANCE, number == expected
 
 
-def _cross_check(oracle, bridge, encoded, ids):
-    """Every oracle-stated input against the pipeline's value for it."""
+def _conflict_key(*fields):
+    """A conflict key that tells True from 1 and None from False."""
+    return json.dumps(list(fields))
+
+
+def _cross_check(oracle, bridge, encoded, ids, strict=True):
+    """Every oracle-stated input against the pipeline's value for it.
+
+    ``strict=False`` records disagreements without refusing them; only a
+    perturbed concept frame (``build_case(concept_edit=...)``) uses it.
+    """
+    expected_conflicts = [_conflict_key(*row) for row in EXPECTED_CLOSURE_CONFLICTS]
     records, failures = [], []
     for request in oracle.requests:
         section = oracle.request(request)
@@ -720,8 +768,14 @@ def _cross_check(oracle, bridge, encoded, ids):
             cell = table.at[row, name]
             expected = _oracle_cell(entry)
             equal, exact = _matches(cell, expected)
-            known = (entity, name) in EXPECTED_CLOSURE_CONFLICTS
-            if not equal and not known:
+            pipeline = _jsonable(cell)
+            key = _conflict_key(request, entity, name, entry["value"], pipeline)
+            if equal:
+                status = "equal"
+            elif key in expected_conflicts:
+                status = "known_closure_conflict"
+            else:
+                status = "differs"
                 failures.append(
                     f"{request} {name}: oracle {expected!r}, pipeline {cell!r}."
                 )
@@ -732,22 +786,26 @@ def _cross_check(oracle, bridge, encoded, ids):
                     "column": name,
                     "extract_pointer": source["extract_pointer"],
                     "oracle": entry["value"],
-                    "pipeline": _jsonable(cell),
-                    "status": "equal" if equal else "known_closure_conflict",
+                    "pipeline": pipeline,
+                    "status": status,
                     "exact": exact,
                 }
             )
+    if not strict:
+        return records
     if failures:
         raise ValueError(
             "The pipeline disagrees with the oracle:\n" + "\n".join(failures)
         )
-    conflicts = {
-        (row["entity"], row["column"])
+    conflicts = [
+        _conflict_key(
+            row["request"], row["entity"], row["column"], row["oracle"], row["pipeline"]
+        )
         for row in records
         if row["status"] == "known_closure_conflict"
-    }
-    if conflicts != EXPECTED_CLOSURE_CONFLICTS:
-        raise ValueError(f"Closure/oracle conflicts changed: {sorted(conflicts)}.")
+    ]
+    if conflicts != expected_conflicts:
+        raise ValueError(f"Closure/oracle conflicts changed: {conflicts}.")
     return records
 
 
@@ -812,8 +870,14 @@ def _encoded_source(node_id, node, column, engine_entity, closure, mapping):
     return record
 
 
-def build_case(extract_path=EXTRACT, fixture_path=FIXTURE):
-    """The golden-08 case document."""
+def build_case(extract_path=EXTRACT, fixture_path=FIXTURE, concept_edit=None):
+    """The golden-08 case document.
+
+    ``concept_edit``, for tests only, is called with the person and household
+    concept tables before units are built, so a perturbation moves every
+    encoded and unit-attribute cell that reads it. The cross-check then records
+    disagreements with the oracle instead of refusing them.
+    """
     spec = compose.load_transport_spec("nz")
     resource = compose.transport_resource
     bindings = resource(spec, "axiom_rules_bindings")
@@ -864,8 +928,10 @@ def build_case(extract_path=EXTRACT, fixture_path=FIXTURE):
     household, household_sources = _household_frame(
         frame_columns["household"], fixture, oracle, mapping
     )
+    if concept_edit is not None:
+        concept_edit(person, household)
 
-    # 2. Units, as CREATE builds them (population_kernels.py:234-244).
+    # 2. Units, as CREATE's kernel (TransportCreateKernel.run) builds them.
     declaration = create_unit_declaration(create["kernel"], unit_document)
     partitions = build_declared_units(person, household, declaration)
     tables = {"person": person, "household": household}
@@ -897,6 +963,7 @@ def build_case(extract_path=EXTRACT, fixture_path=FIXTURE):
         set(extract["golden_08"]["bridge_inputs"]),
         {"person": person_inputs, "family": family_inputs},
         {"person": PERSON_IDS[0], "family": family_id},
+        strict=concept_edit is None,
     )
     checked = {
         (row["entity"], row["column"]): row["extract_pointer"] for row in cross_check
@@ -999,22 +1066,21 @@ def build_case(extract_path=EXTRACT, fixture_path=FIXTURE):
                 ),
             )
 
-    cutout = next(call for call in calls if call["id"] == "nz.as.bridge.cutout")
-    if not math.isclose(
-        cutout["params"]["tolerance"] + SOLVE_MARGIN, CUTOUT_TOLERANCE, abs_tol=1e-24
-    ):
-        raise ValueError(
-            "The cutout solve's tolerance changed; restate its comparison."
-        )
     comparisons = []
     for call_id, section, column, tolerance in COMPARISONS:
+        call = next(call for call in calls if call["id"] == call_id)
         if ("family", column) not in {
-            (output["entity"], output["column"])
-            for call in calls
-            if call["id"] == call_id
-            for output in call["outputs"]
+            (output["entity"], output["column"]) for output in call["outputs"]
         }:
             raise ValueError(f"{call_id} does not produce family.{column}.")
+        solve = call["params"].get("tolerance")
+        if solve is not None and not math.isclose(
+            tolerance, solve + SOLVE_MARGIN, rel_tol=0, abs_tol=1e-24
+        ):
+            raise ValueError(
+                f"{call_id} solves within {solve}; its comparison of {column} "
+                f"must use that plus {SOLVE_MARGIN}, not {tolerance}."
+            )
         group = "inputs" if section == "request" else "outputs"
         record = extract["golden_08"][section][group][column]
         if record["source"] not in extract["sources"]:
@@ -1085,6 +1151,28 @@ def build_case(extract_path=EXTRACT, fixture_path=FIXTURE):
                     "each kernel's own run() on its packaged node, with the "
                     "node's params, a view of each entity it reads or owns, "
                     "and no artifacts"
+                ),
+            },
+            "graph_start": {
+                "note": (
+                    "The case starts after the packaged transport_graph nodes "
+                    "that write its concept frame: the frame stands in for "
+                    "their outputs. Of those nodes the generator runs only "
+                    f"{create['id']}'s unit construction (pipeline.units). "
+                    "writers names the node that writes each column "
+                    f"({create['id']} where no other node declares it as an "
+                    "output). The four receives_* flags are nz.takeup.assign's "
+                    "output in the graph, not CREATE's; the case states them "
+                    "as placeholders."
+                ),
+                "writers": _graph_writers(
+                    spec,
+                    create["id"],
+                    {
+                        "person": list(person_sources),
+                        "household": list(household_sources),
+                        "family": list(family_sources),
+                    },
                 ),
             },
             "weights": {

@@ -713,9 +713,21 @@ bindings whose declared outputs may feed calibration; see
 The zero solver requires independent, non-increasing row residuals and verifies
 the returned answers after its fixed iterations. Its receipt counts the final
 verification. The local differential driver validates call and output identities
-before execution and uses canonical RFC 6901 oracle pointers. The packaged NZ
-spec remains inactive; the approved golden-08 evaluation assembly, real WFF
-inputs and law certification remain deferred.
+before execution and uses canonical RFC 6901 oracle pointers. The golden-08
+differential case
+(`packages/microcosm-build/tests/golden/nz_golden08_differential_case.json`)
+declares the packaged reg 17 base rate, reg 18 cutout, sole-parent gross rate
+and S0 Accommodation Supplement calls on golden-08's family, compared with the
+oracle extract beside it; its real-engine run is still to come (the
+engine-gated tests in `test_nz_golden08_case.py` skip without
+`axiom_rules_engine` and `POPULACE_RULESPEC_NZ`). After a change to the NZ spec
+or the generator, regenerate the case with
+`uv run --no-sync python tools/generate_nz_golden08_case.py` and review the
+diff. The extract changes only with its pinned oracle files: rebuild it with
+`uv run --no-sync python tools/extract_nz_golden08_oracle.py --requests
+<requests.json> --full-responses <full-responses.json>` from local copies of
+the two pinned files, then regenerate the case. The packaged NZ spec remains
+inactive; real WFF inputs and law certification remain deferred.
 
 UK size experiments use `microcosm-build-uk --release-role dense --dataset-households`
 (`tools/build_uk_full.py`; `tools/build_uk_rowwise_candidate.py` is a stub over it)

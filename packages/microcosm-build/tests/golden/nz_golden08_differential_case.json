@@ -778,6 +778,57 @@
       },
       "context": "each kernel's own run() on its packaged node, with the node's params, a view of each entity it reads or owns, and no artifacts"
     },
+    "graph_start": {
+      "note": "The case starts after the packaged transport_graph nodes that write its concept frame: the frame stands in for their outputs. Of those nodes the generator runs only nz.create's unit construction (pipeline.units). writers names the node that writes each column (nz.create where no other node declares it as an output). The four receives_* flags are nz.takeup.assign's output in the graph, not CREATE's; the case states them as placeholders.",
+      "writers": {
+        "person": {
+          "person_id": "nz.create",
+          "person_household_id": "nz.create",
+          "age": "nz.create",
+          "partner_person_id": "nz.create",
+          "parent_1_person_id": "nz.create",
+          "parent_2_person_id": "nz.create",
+          "usual_weekly_hours": "nz.create",
+          "sex": "nz.create",
+          "take_up_seed": "nz.create",
+          "liquid_financial_assets": "nz.money.normalize",
+          "employment_income": "nz.earnings.map",
+          "nonfarm_self_employment_income": "nz.money.normalize",
+          "farm_self_employment_income": "nz.money.normalize",
+          "interest_income": "nz.money.normalize",
+          "dividend_income": "nz.money.normalize",
+          "rental_income": "nz.money.normalize",
+          "private_pension_income": "nz.money.normalize",
+          "enrolled_full_time": "nz.create",
+          "legal_marital_status": "nz.create",
+          "has_disability": "nz.create",
+          "receives_nz_super": "nz.takeup.assign",
+          "receives_supported_living_payment": "nz.takeup.assign",
+          "receives_sole_parent_support": "nz.takeup.assign",
+          "receives_jobseeker_support": "nz.takeup.assign",
+          "person_family_id": "nz.create"
+        },
+        "household": {
+          "household_id": "nz.create",
+          "reference_person_id": "nz.create",
+          "source_household_id": "nz.create",
+          "donor_support_stratum": "nz.create",
+          "tenure": "nz.create",
+          "rent": "nz.rent.map",
+          "mortgage_interest": "nz.money.normalize",
+          "mortgage_principal": "nz.money.normalize",
+          "property_tax": "nz.money.normalize",
+          "as_area": "nz.geo.derive",
+          "as_area_alt": "nz.geo.derive"
+        },
+        "family": {
+          "family_id": "nz.create",
+          "family_household_id": "nz.create",
+          "family_head_person_id": "nz.create",
+          "family_source_household_id": "nz.create"
+        }
+      }
+    },
     "weights": {
       "entity": "household",
       "kind": {
@@ -1186,7 +1237,7 @@
         "exact": true
       }
     ],
-    "oracle_extract_sha256": "de4ac4d3b8296ec59326d557a745041a95db4e87d75ae4ee1aa4b1048510557d",
+    "oracle_extract_sha256": "7fe54a1e6281ee8b30356e347b8516ee17d6819331579d748ba63223b751dc36",
     "fixture_sha256": "f2b82adaacb3e885da65ae2b71366b39f5ffedff60686e0b0414f1c956b04633",
     "unstated": [
       "CASE_DATA_UNSTATED_PARENT_MAIN_BENEFIT_FLAG",

@@ -8,12 +8,17 @@ Pass local copies; each must match its pinned SHA-256 and schema id.
 The extract keeps golden-08's request (``requests[8]``: 28 Family inputs,
 including the reg 17 base rate and the reg 18 cutout), the three
 Accommodation Supplement outputs it queries (the full responses'
-``requests[8].response.results[0]``), and the inputs of golden-00 and golden-07, whose entity ids share golden-08's
-scenario stem. The golden-08 differential case reads person facts from those
-two. Every value records its source and RFC 6901 pointer. The script resolves
-each pointer in its source, compares it with a direct walk of the same path,
-and refuses any mismatch, so the extract holds only values read there. It also
-recomputes the full responses' ``request_sha256`` and ``response_sha256``.
+``requests[8].response.results[0]``), and the inputs of golden-00 and
+golden-07, whose entity ids share golden-08's scenario stem and wage point and
+whose period is golden-08's. The golden-08 differential case reads person facts
+from those two. Every value records its source and RFC 6901 pointer. The script
+resolves each pointer in its source, compares it with a direct walk of the same
+path, and refuses any mismatch, so the extract holds only values read there.
+For all three requests it records the full responses' ``request_sha256`` and
+recomputes it from the requests file, requires every input interval to equal
+the query period, and refuses a response whose metadata shows a fallback
+(a ``fallback_reason`` or an ``actual_mode`` other than its
+``requested_mode``). It also recomputes golden-08's ``response_sha256``.
 
 ``--check`` rebuilds the extract from the given files and fails if the
 committed extract differs.
@@ -150,8 +155,12 @@ def _request(documents, request_id, index, entity):
         {row["entity"] for row in rows} == {entity},
         f"{request_id} inputs must all be {entity}.",
     )
-    intervals = {json.dumps(row["interval"], sort_keys=True) for row in rows}
-    _require(len(intervals) == 1, f"{request_id} inputs span several intervals.")
+    period = queries[0]["period"]
+    interval = {"start": period["start"], "end": period["end"]}
+    _require(
+        all(row["interval"] == interval for row in rows),
+        f"{request_id} has an input interval other than its query period.",
+    )
     inputs = {}
     for position, row in enumerate(rows):
         module, separator, name = row["name"].partition("#input.")
@@ -183,8 +192,13 @@ def _request(documents, request_id, index, entity):
     }
 
 
-def _response(documents, request_id, index, request):
-    """golden-08's compared outputs, with the request/response digest checks."""
+def _full_entry(documents, request_id, index, request):
+    """A request's full-responses entry, its id and its ``request_sha256``.
+
+    Refuses an entry for another request or program, a ``request_sha256`` that
+    does not hash the requests file's request, and a response whose metadata
+    shows a fallback.
+    """
     base = ("requests", index)
     identity = _read(documents, "full_responses", *base, "id")
     _require(identity["value"] == request_id, f"full responses [{index}] mismatch.")
@@ -192,11 +206,24 @@ def _response(documents, request_id, index, request):
     _require(entry["program"] == request["program"]["value"], "Programs differ.")
     source_request = documents["requests"]["requests"][index]["request"]
     request_sha256 = _read(documents, "full_responses", *base, "request_sha256")
-    response_sha256 = _read(documents, "full_responses", *base, "response_sha256")
     _require(
         request_sha256["value"] == _canonical_sha256(source_request),
         f"{request_id} request_sha256 does not hash the requests file's request.",
     )
+    metadata = entry["response"]["metadata"]
+    _require(
+        metadata["fallback_reason"] is None
+        and metadata["actual_mode"] == metadata["requested_mode"],
+        f"{request_id}'s response shows a fallback: {metadata}.",
+    )
+    return entry, identity, request_sha256
+
+
+def _response(documents, request_id, index, request):
+    """golden-08's compared outputs, with the request/response digest checks."""
+    base = ("requests", index)
+    entry, identity, request_sha256 = _full_entry(documents, request_id, index, request)
+    response_sha256 = _read(documents, "full_responses", *base, "response_sha256")
     _require(
         response_sha256["value"] == _canonical_sha256(entry["response"]),
         f"{request_id} response_sha256 does not hash its response.",
@@ -249,6 +276,17 @@ def extract(requests_path, full_responses_path):
     names = list(request["inputs"])
     for position, name in BRIDGE_INPUTS.items():
         _require(names[position] == name, f"golden-08 input {position} is not {name}.")
+    household_requests = {}
+    for name, position, kind in HOUSEHOLD_REQUESTS:
+        household = _request(documents, name, position, kind)
+        _require(
+            household["entity_id"]["value"].split(":")[-1]
+            == request["entity_id"]["value"].split(":")[-1]
+            and household["period"]["value"] == request["period"]["value"],
+            f"{name} is not at golden-08's wage point and period.",
+        )
+        _, _, request_sha256 = _full_entry(documents, name, position, household)
+        household_requests[name] = {**household, "request_sha256": request_sha256}
     return {
         "format": FORMAT,
         "description": (
@@ -267,10 +305,7 @@ def extract(requests_path, full_responses_path):
             ],
             "response": _response(documents, request_id, index, request),
         },
-        "household_requests": {
-            name: _request(documents, name, position, kind)
-            for name, position, kind in HOUSEHOLD_REQUESTS
-        },
+        "household_requests": household_requests,
     }
 
 
