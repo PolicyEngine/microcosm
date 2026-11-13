@@ -453,22 +453,133 @@ def test_promoting_makes_a_published_build_current(
     outcome = release_publication.promote_release_build(national, client=client)
 
     assert client.calls.count("promote_build") == 1
-    # A promotion changes only releases.json, so it names no build for the
-    # collector, and the command asks nothing about it.
-    assert client.collector_receipt_requests == [
-        client.release_requests[0].handover_id()
-    ]
-    assert outcome.collector_receipt is None
-    assert outcome.as_json()["collector_submission"] is None
-    (_, promotion) = client.release_requests
+    (publication, promotion) = client.release_requests
     assert (promotion.release, promotion.build) == (
         UK_NATIONAL_RELEASE_ID,
         UK_NATIONAL_BUILD,
     )
+    # A promotion names its build for the collector, as a publication does,
+    # so the emitter submits the releases.json its commit wrote, and the
+    # command asks what became of that submission. This emitter has no
+    # collector row for it.
+    assert promotion.collector == CollectorProvenance(
+        country_code="UK",
+        build_id=UK_NATIONAL_BUILD,
+        licensed_data=True,
+        release=UK_NATIONAL_RELEASE_ID,
+    )
+    assert client.collector_receipt_requests == [
+        publication.handover_id(),
+        promotion.handover_id(),
+    ]
+    assert outcome.collector_receipt is None
+    assert outcome.as_json()["collector_submission"] is None
     assert _record(client)["releases"][UK_NATIONAL_RELEASE_ID]["current"] == (
         UK_NATIONAL_BUILD
     )
     assert outcome.current and outcome.succeeded
+
+
+def test_a_promotion_waits_until_the_collector_accepts_the_new_releases_json(
+    national: Path,
+    artifact_root: Path,  # noqa: F811
+    clock: Clock,
+    capsys,
+) -> None:
+    """The emitter submits the releases.json the promotion wrote, and a
+    closing emitter starts no new submission, so the command waits for the
+    collector to accept it before it closes."""
+    repository: dict = {}
+    release_publication.publish_release_build(
+        national,
+        artifact_root=artifact_root,
+        client=FakeEmitterClient(hub_files=repository),
+    )
+    client = FakeEmitterClient(
+        hub_files=repository,
+        collector_receipts=[{"status": "pending"}, {"status": "awaiting_final_status"}],
+    )
+    capsys.readouterr()
+
+    outcome = release_publication.promote_release_build(national, client=client)
+
+    (promotion,) = client.release_requests
+    assert client.collector_receipt_requests == [promotion.handover_id()] * 2
+    assert clock.slept == [collector_submissions.COLLECTOR_RECEIPT_POLL_SECONDS]
+    assert outcome.collector_receipt is not None
+    assert outcome.collector_receipt["status"] == "awaiting_final_status"
+    assert outcome.as_json()["collector_submission"] == {
+        "status": "awaiting_final_status",
+        "error_code": None,
+    }
+    assert outcome.current and outcome.succeeded
+    err = capsys.readouterr().err
+    assert (
+        f"releases.json with build {UK_NATIONAL_BUILD} current in "
+        f"{UK_NATIONAL_RELEASE_ID} is on Hugging Face; waiting up to 10 minutes "
+        "for the collector to accept its submissions..." in err
+    )
+    assert "warning" not in err
+
+
+def test_the_promote_command_asks_the_collector_before_closing_its_emitter(
+    national: Path,
+    artifact_root: Path,  # noqa: F811
+    monkeypatch,
+    capsys,
+) -> None:
+    """A collector that turns the submission down is a warning; the
+    promotion, which landed, still succeeds."""
+    started, _ = _start_emitters(
+        monkeypatch,
+        {},
+        {
+            "collector_receipts": [
+                {"status": "rejected", "error_code": "invalid_submission"}
+            ]
+        },
+    )
+    assert _run([str(national), "--artifact-root", str(artifact_root)], capsys)[0] == 0
+
+    code, output, error = _run([str(national), "--promote"], capsys)
+
+    assert code == 0, error
+    assert output["current"] is True
+    assert output["collector_submission"] == {
+        "status": "rejected",
+        "error_code": "invalid_submission",
+    }
+    assert (
+        "warning: the collector rejected the submissions of releases.json with "
+        f"build {UK_NATIONAL_BUILD} current in {UK_NATIONAL_RELEASE_ID} "
+        "(invalid_submission)." in error
+    )
+    promoter = started[1]
+    assert promoter.calls.index("collector_submission_receipt") < (
+        promoter.calls.index("close")
+    )
+
+
+def test_a_promotion_that_has_not_landed_is_not_waited_for(
+    national: Path,
+    clock: Clock,
+) -> None:
+    """Its submission waits for the commit, so the command asks once."""
+    client = FakeEmitterClient(
+        release_receipts=[
+            {"status": "pending", "error_code": "REPOSITORY_UNAVAILABLE"}
+        ],
+        collector_receipts=[
+            {"status": "pending", "error_code": "WAITING_FOR_HUGGING_FACE"}
+        ],
+    )
+
+    outcome = release_publication.promote_release_build(national, client=client)
+
+    (promotion,) = client.release_requests
+    assert client.collector_receipt_requests == [promotion.handover_id()]
+    assert clock.slept == []
+    assert not outcome.succeeded
 
 
 def test_a_repeated_publication_is_published_not_refused(
@@ -1170,13 +1281,14 @@ def test_the_roles_microcosm_names_are_the_interfaces() -> None:
 UK_OTHER_BUILD = "uk-frs-calibration-attempt-20261001T000000Z-0decade0"
 
 
-def _two_listed_builds() -> dict:
-    """A switched repository listing two national builds; the first is current."""
+def _two_listed_builds(*, with_current: bool = True) -> dict:
+    """A switched repository listing two national builds; the first is current
+    unless ``with_current`` is False, when neither is."""
     from microcosm_emitter_interface.releases import add_build
 
     record = ReleasesRecord.empty()
     files: dict = {}
-    for build, current in ((UK_EARLIER_BUILD, True), (UK_OTHER_BUILD, False)):
+    for build, current in ((UK_EARLIER_BUILD, with_current), (UK_OTHER_BUILD, False)):
         record = add_build(
             record,
             release=UK_NATIONAL_RELEASE_ID,
@@ -1235,6 +1347,97 @@ def test_withdrawing_sets_a_published_builds_withdrawn_flag() -> None:
     assert outcome.as_json()["change"] == "withdraw"
     assert outcome.as_json()["withdrawn"] is True
     assert "is withdrawn" in outcome.explanation()
+
+
+def test_a_withdrawal_names_the_withdrawn_build_for_the_collector() -> None:
+    """The interface takes provenance naming the change's own release and
+    build; the emitter then submits the releases.json the withdrawal wrote,
+    naming the release's current build, which the collector's latest
+    calibration tree follows."""
+    client = FakeEmitterClient(hub_files=_two_listed_builds())
+
+    outcome = _withdraw_function()(
+        UK_REPO_ID, UK_NATIONAL_RELEASE_ID, UK_OTHER_BUILD, client=client
+    )
+
+    (withdrawal,) = client.release_requests
+    assert withdrawal.collector == CollectorProvenance(
+        country_code="UK",
+        build_id=UK_OTHER_BUILD,
+        licensed_data=True,
+        release=UK_NATIONAL_RELEASE_ID,
+    )
+    # This emitter has no collector row for it.
+    assert client.collector_receipt_requests == [withdrawal.handover_id()]
+    assert outcome.collector_receipt is None
+    assert outcome.withdrawn
+
+
+def test_a_withdrawal_waits_until_the_collector_accepts_the_new_releases_json(
+    clock: Clock, capsys
+) -> None:
+    client = FakeEmitterClient(
+        hub_files=_two_listed_builds(),
+        collector_receipts=[{"status": "pending"}, {"status": "succeeded"}],
+    )
+
+    outcome = _withdraw_function()(
+        UK_REPO_ID, UK_NATIONAL_RELEASE_ID, UK_OTHER_BUILD, client=client
+    )
+
+    (withdrawal,) = client.release_requests
+    assert client.collector_receipt_requests == [withdrawal.handover_id()] * 2
+    assert clock.slept == [collector_submissions.COLLECTOR_RECEIPT_POLL_SECONDS]
+    assert outcome.collector_receipt is not None
+    assert outcome.collector_receipt["status"] == "succeeded"
+    assert outcome.as_json()["collector_submission"] == {
+        "status": "succeeded",
+        "error_code": None,
+    }
+    assert outcome.withdrawn
+    err = capsys.readouterr().err
+    assert (
+        f"releases.json with build {UK_OTHER_BUILD} of {UK_NATIONAL_RELEASE_ID} "
+        "withdrawn is on Hugging Face; waiting up to 10 minutes for the "
+        "collector to accept its submissions..." in err
+    )
+    assert "warning" not in err
+
+
+def test_the_withdraw_command_says_why_a_release_without_a_current_build_sends_nothing(
+    monkeypatch, capsys
+) -> None:
+    """The emitter submits nothing when the release has no current build
+    after the change (``NO_CURRENT_BUILD``); the withdrawal still succeeds."""
+    started, repository = _start_emitters(
+        monkeypatch,
+        {
+            "collector_receipts": [
+                {"status": "skipped", "error_code": "NO_CURRENT_BUILD"}
+            ]
+        },
+    )
+    repository.update(_two_listed_builds(with_current=False))
+
+    code, output, error = _withdraw_command(
+        [UK_REPO_ID, UK_NATIONAL_RELEASE_ID, UK_OTHER_BUILD], capsys
+    )
+
+    assert code == 0, error
+    assert output["withdrawn"] is True
+    assert output["collector_submission"] == {
+        "status": "skipped",
+        "error_code": "NO_CURRENT_BUILD",
+    }
+    assert (
+        "the collector receives nothing of releases.json with build "
+        f"{UK_OTHER_BUILD} of {UK_NATIONAL_RELEASE_ID} withdrawn: the release has "
+        "no current build after the change (NO_CURRENT_BUILD)." in error
+    )
+    (emitter,) = started
+    assert emitter.calls.index("collector_submission_receipt") < (
+        emitter.calls.index("close")
+    )
 
 
 def test_the_current_build_cannot_be_withdrawn() -> None:

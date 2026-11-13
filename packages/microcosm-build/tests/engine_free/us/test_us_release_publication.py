@@ -15,6 +15,7 @@ from microcosm_emitter_interface import CollectorProvenance
 from microcosm.build import release_publication
 from microcosm.data.contract import US_RELEASES
 from microcosm.data.release import BuildFolderFile
+from test_support.microcosm_build.emitter import FakeEmitterClient
 
 #: The largest US builds, the ACS local-area ones, are about 10 GB.
 LARGEST_US_BUILD_BYTES = 10e9
@@ -90,6 +91,55 @@ def test_a_us_publication_names_its_build_for_the_collector(tmp_path) -> None:
         licensed_data=False,
         release="microcosm-us-2024-national",
     )
+
+
+#: A US build handed to the in-memory emitter by the promotion and
+#: withdrawal tests, and the build the receipts name as current.
+_US_BUILD = "populace-us-2024-20261201T000000Z"
+_US_CURRENT_BUILD = "populace-us-2024-20261101T000000Z"
+
+
+def test_a_us_promotion_names_its_build_for_the_collector(
+    tmp_path, monkeypatch
+) -> None:
+    """The emitter submits the releases.json the promotion wrote under the
+    US country code, as for the build's publication."""
+    release = "microcosm-us-2024-national"
+    release_dir = tmp_path / release
+    release_dir.mkdir()
+    monkeypatch.setattr(
+        release_publication,
+        "build_folder_identity",
+        lambda _path: (_US_REPOSITORY, release, _US_BUILD),
+    )
+    monkeypatch.setattr(release_publication, "_repository_files", lambda _repo: [])
+    client = FakeEmitterClient(release_receipts=[{"current": _US_BUILD}])
+
+    outcome = release_publication.promote_release_build(release_dir, client=client)
+
+    (promotion,) = client.release_requests
+    assert promotion.collector == CollectorProvenance(
+        country_code="US", build_id=_US_BUILD, licensed_data=False, release=release
+    )
+    assert client.collector_receipt_requests == [promotion.handover_id()]
+    assert outcome.current
+
+
+def test_a_us_withdrawal_names_its_build_for_the_collector(monkeypatch) -> None:
+    release = "microcosm-us-2024-local"
+    monkeypatch.setattr(release_publication, "_repository_files", lambda _repo: [])
+    client = FakeEmitterClient(release_receipts=[{"current": _US_CURRENT_BUILD}])
+
+    outcome = release_publication.withdraw_release_build(
+        _US_REPOSITORY, release, _US_BUILD, client=client
+    )
+
+    (withdrawal,) = client.release_requests
+    assert withdrawal.collector == CollectorProvenance(
+        country_code="US", build_id=_US_BUILD, licensed_data=False, release=release
+    )
+    assert client.collector_receipt_requests == [withdrawal.handover_id()]
+    assert outcome.withdrawn
 
 
 def _prepared(release_dir):
