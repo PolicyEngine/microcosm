@@ -253,16 +253,22 @@ def scale_cap_rescale(
     if total > cap.sum() * (1 + 1e-12):
         raise ValueError("The total exceeds the sum of the caps.")
     capped = np.zeros(raw.shape, dtype=bool)
+    tolerance = 1e-9 * max(total, 1.0)
     while True:
         free = ~capped
         remaining = total - cap[capped].sum()
+        if remaining < -tolerance:
+            raise ValueError("The capped entries add up to more than the total.")
         mass = raw[free].sum()
+        out = np.where(capped, cap, 0.0)
         if mass <= 0:
-            if remaining > 1e-9 * max(total, 1.0):
+            if remaining > tolerance:
                 raise ValueError("No uncapped entry is left to carry the total.")
-            out = np.where(capped, cap, 0.0)
             break
-        out = np.where(capped, cap, raw * (remaining / mass))
+        # Each free entry takes its share of the free mass, which is at most
+        # one, so a tiny mass cannot overflow the scale and cap an entry that
+        # should carry only part of the total.
+        out[free] = raw[free] / mass * max(remaining, 0.0)
         over = free & (out > cap)
         if not over.any():
             break
@@ -323,9 +329,11 @@ def convex_mean(values: np.ndarray, weights: np.ndarray) -> float:
     if values.shape != weights.shape or not np.all(np.isfinite(values)):
         raise ValueError("Values must be finite and match the weights.")
     total = weights.sum()
-    if not total > 0:
-        raise ValueError("The weights must have a positive total.")
-    mean = float((values * weights).sum() / total)
+    if not (total > 0 and math.isfinite(total)):
+        raise ValueError("The weights must have a finite, positive total.")
+    # The weights are made shares first, so a tiny weight cannot underflow
+    # its value × weight to zero.
+    mean = float((values * (weights / total)).sum())
     carried = values[weights > 0]
     span = max(abs(carried.min()), abs(carried.max()), 1.0)
     if not (carried.min() - 1e-12 * span <= mean <= carried.max() + 1e-12 * span):

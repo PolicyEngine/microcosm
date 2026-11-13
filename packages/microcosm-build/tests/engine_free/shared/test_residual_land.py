@@ -182,8 +182,12 @@ def test_unit_cost_multiplies_its_parts() -> None:
 
 @st.composite
 def _patterns(draw):
+    # The real patterns are £ totals, so an entry is zero or well above the
+    # subnormal range, where the proportionality check below cannot hold;
+    # the subnormal case has its own test.
     n = draw(st.integers(1, 25))
-    raw = np.array(draw(st.lists(st.floats(0.0, 1e6), min_size=n, max_size=n)))
+    entry = st.one_of(st.just(0.0), st.floats(1e-3, 1e6))
+    raw = np.array(draw(st.lists(entry, min_size=n, max_size=n)))
     cap = np.array(draw(st.lists(st.floats(1.0, 1e6), min_size=n, max_size=n)))
     raw[draw(st.integers(0, n - 1))] += 1.0  # some mass to scale
     fraction = draw(st.floats(0.0, 1.0))
@@ -204,6 +208,17 @@ def test_scale_cap_rescale_holds_the_total(pattern) -> None:
     if free.sum() >= 2:
         ratios = out[free] / raw[free]
         assert np.allclose(ratios, ratios[0], rtol=1e-9)
+
+
+def test_scale_cap_rescale_holds_the_total_when_the_free_mass_is_subnormal() -> None:
+    # The microcosm#1597 review's case: once the first entry is capped, the
+    # free mass is 5e-324, and scaling by remaining ÷ mass overflowed, capped
+    # the last entry at 2 and returned a sum of 3.
+    out, capped = scale_cap_rescale(
+        np.array([1.0, 0.0, 5e-324]), np.array([1.0, 1.0, 2.0]), 1.5
+    )
+    assert out.tolist() == [1.0, 0.0, 0.5]
+    assert capped.tolist() == [True, False, False]
 
 
 def test_scale_cap_rescale_refuses_a_total_above_the_caps() -> None:
@@ -264,3 +279,10 @@ def test_convex_means_lie_between_their_values(pairs) -> None:
     mean = convex_mean(values, weights)
     carried = values[weights > 0]
     assert carried.min() <= mean <= carried.max()
+
+
+def test_a_convex_mean_of_subnormal_weights_is_its_value() -> None:
+    # value × 5e-324 underflowed to 0 before the weights were made shares
+    # (microcosm#1597 review).
+    assert convex_mean(np.array([0.5]), np.array([5e-324])) == 0.5
+    assert convex_mean(np.array([2.0, 4.0]), np.array([5e-324, 5e-324])) == 3.0
