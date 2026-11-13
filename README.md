@@ -568,12 +568,13 @@ the command. Once the collector has accepted them, its own processing decides
 whether it builds a tree from them or rejects them (for example
 `provenance_mismatch`); the command doesn't wait for that. A promotion names
 its build for the collector in the same way, so once it has landed the
-emitter submits the `releases.json` its commit wrote, naming the build now
-current, and the command waits for the collector to accept it, with the same
-`collector_submission` output and warnings. The collector then reads
-`releases.json` at the repository's head and points the country's latest
-calibration tree at the current build of its default release, older or
-newer, so a promotion in another release leaves the latest as it was.
+emitter submits `releases.json` at the commit its receipt reports, naming the
+build now current, and the command waits for the collector to accept it,
+with the same `collector_submission` output and warnings; a promotion that
+has not landed or was refused sends nothing, and the command says nothing of
+the collector. The collector then reads `releases.json` at the repository's
+head and points the country's latest calibration tree at the current build
+of its default release, older or newer, when it has that build's tree.
 `--make-current` needs no separate record: the publication's calibration
 diagnostics already name the build it made current. The calibration diagnostics dashboard posts
 these releases' Slack alerts from changes to `releases.json`. The UK
@@ -602,10 +603,11 @@ offline and while a `latest*.json` file exists, before it starts an emitter,
 checks the emitter's write access first, waits up to five minutes, prints
 the receipt as JSON with `"change": "withdraw"` and `"withdrawn"`, and exits
 1 unless the build is withdrawn. Like a promotion, the withdrawal names its
-build for the collector: the emitter submits the `releases.json` it wrote,
-naming the release's current build, and the command waits for the collector
-to accept it (`collector_submission`). A release left with no current build
-sends nothing (`NO_CURRENT_BUILD`), which the command reports as a warning. The publish and promote commands' JSON
+build for the collector: once it has landed, the emitter submits
+`releases.json`, naming the release's current build, and the command waits
+for the collector to accept it (`collector_submission`). A release left with
+no current build sends nothing (`NO_CURRENT_BUILD`), which the command
+reports as a warning. The publish and promote commands' JSON
 carries `"change"` too, and `"withdrawn": null`: they cannot tell. `microcosm.data.load` loads a withdrawn build only when `build=`
 pins it, with a warning. A compatibility recertification or an annual
 projection whose parent or base is a build-folder build is refused before

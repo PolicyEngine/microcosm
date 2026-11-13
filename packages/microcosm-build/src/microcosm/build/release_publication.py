@@ -46,17 +46,20 @@ and never fails the publication.
 
 A promotion (``--promote``) and a withdrawal name their own release and
 build for the collector too, as the interface requires. Once the change has
-landed, the emitter submits the ``releases.json`` its commit wrote to the
-collector as a ``releases-record`` submission naming the build that is the
-release's current build after the change: the promoted build, or, for a
-withdrawal, the current build it left in place. The collector then points
-the country's latest calibration tree at the current build of the country's
-default release in ``releases.json`` at the repository's head, an older
-build as well as a newer one. The command waits for the collector to accept
-it, as for a publication, and a release with no current build after the
-change sends nothing (``NO_CURRENT_BUILD``). A publication with
-``make_current`` needs no record of its own: its calibration diagnostics
-submission already names the build it made current.
+landed, the emitter submits ``releases.json`` at the commit its receipt
+reports (for a promotion of the build already current, which writes
+nothing, the commit that last changed it) to the collector as a
+``releases-record`` submission naming the release's current build after the
+change: the promoted build, or, for a withdrawal, the current build it left
+in place. The collector then reads ``releases.json`` at the repository's
+head and points the country's latest calibration tree at its default
+release's current build, an older build as well as a newer one, when it has
+that build's tree. The command waits for the collector to accept the
+submission, as for a publication, and says nothing of the collector for a
+change that has not landed: a refused change submits nothing. A release with
+no current build after the change sends nothing (``NO_CURRENT_BUILD``). A
+publication with ``make_current`` needs no record of its own: its
+calibration diagnostics submission already names the build it made current.
 
 The emitter finds its Hugging Face credential the way a build's emitter
 does: it is this command's child process and inherits its environment
@@ -425,7 +428,15 @@ def _hand_over(
                 receipt = emitter.withdraw_build(change, wait_seconds=wait_seconds)
             else:
                 receipt = emitter.promote_build(change, wait_seconds=wait_seconds)
-            if change.collector is not None and receipt["status"] != "unavailable":
+            landed = receipt["status"] == "published"
+            # A publication is asked about once even before it lands, so a
+            # collector that will receive nothing is said at once. A promotion
+            # or withdrawal submits only the releases.json it wrote, so only
+            # once it has landed: before that, a warning would name a change
+            # the writer may never make.
+            if change.collector is not None and (
+                landed if kind != "publish" else receipt["status"] != "unavailable"
+            ):
                 # Before the emitter closes: a closing emitter starts no new
                 # submission. The emitter keeps the collector row under the
                 # hand-over ID its receipt names.
@@ -433,14 +444,11 @@ def _hand_over(
                     emitter,
                     _receipt_handover_id(receipt) or change.handover_id(),
                     subject=_collector_subject(kind, change.release, change.build),
-                    wait_seconds=(
-                        collector_wait_seconds
-                        if receipt["status"] == "published"
-                        else None
-                    ),
+                    wait_seconds=collector_wait_seconds if landed else None,
                     poll_seconds=COLLECTOR_RECEIPT_POLL_SECONDS,
                     clock=_clock,
                     sleep=_sleep,
+                    reads_local_files=kind == "publish",
                 )
     finally:
         if owned:
@@ -697,9 +705,9 @@ def promote_release_build(
 
     It refuses and checks write access as :func:`publish_release_build` does,
     and refuses a compatibility recertification, which is never current. The
-    promotion names the build for the collector, so the emitter submits the
-    ``releases.json`` it wrote; once the promotion has landed, it waits at
-    most ``collector_wait_seconds`` for the collector to accept it.
+    promotion names the build for the collector, so the emitter submits
+    ``releases.json`` once the promotion has landed; it then waits at most
+    ``collector_wait_seconds`` for the collector to accept it.
     """
     if client is None:
         _refuse_offline()
@@ -740,10 +748,9 @@ def withdraw_release_build(
     the repository has ``latest*.json`` pointer files, before any emitter
     starts, and hands nothing over unless the emitter's write-access check
     passes, as :func:`publish_release_build` does. The withdrawal names the
-    build for the collector, so the emitter submits the ``releases.json`` it
-    wrote, naming the release's current build; once the withdrawal has
-    landed, it waits at most ``collector_wait_seconds`` for the collector to
-    accept it.
+    build for the collector, so the emitter submits ``releases.json``, naming
+    the release's current build, once the withdrawal has landed; it then
+    waits at most ``collector_wait_seconds`` for the collector to accept it.
     """
     request = _described(
         WithdrawBuild(repository=repository, release=release, build=build)
