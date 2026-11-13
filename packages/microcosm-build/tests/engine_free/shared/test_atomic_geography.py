@@ -1,5 +1,6 @@
 """Invented support controls; no survey, Census or administrative files are read."""
 
+import hashlib
 import json
 from copy import deepcopy
 from dataclasses import replace
@@ -187,6 +188,46 @@ def test_stage_law_uses_declared_weights_at_each_level():
     index = geo._SupportIndex(supports["invented_block"])
     assert index.pick((("region", "R"),), spec["systems"][0]["stages"][0], 0.49) == "A"
     assert index.pick((("region", "R"),), spec["systems"][0]["stages"][0], 0.5) == "B"
+
+
+def test_every_draw_key_binds_identity_system_level_and_both_digests(monkeypatch):
+    """Each draw is keyed on the household's identity, its system's id, the
+    stage's level, the bound definition's digest and the support's digest, on
+    the declared stream, so a draw moves with any of them: the operator's
+    draw-key law, which every term of the key is held to here and the pinned
+    draws below hold through the definition's digest (microcosm#931)."""
+
+    households, spec, supports, _ = fixture()
+    spec["systems"][0]["stages"] = [
+        {"level": "puma", "weight": "households"},
+        {"level": "area", "weight": "population"},
+    ]
+    recorded = []
+    keyed_uniform = geo.keyed_uniform
+
+    def recording(*, stream, keys):
+        recorded.append((tuple(stream), list(keys)))
+        return keyed_uniform(stream=stream, keys=keys)
+
+    monkeypatch.setattr(geo, "keyed_uniform", recording)
+    geo.assign_atomic(households, spec, supports)
+    definition = hashlib.sha256(
+        canonical_json(geo.validate_assignment_spec(spec))
+    ).hexdigest()
+    (system,) = spec["systems"]
+    support = supports[system["id"]]
+    identities = list(households[spec["identity"]].itertuples(index=False, name=None))
+    # The spec's own check draws on its stream with no key; the draws key every
+    # household.
+    draws = [(stream, keys) for stream, keys in recorded if keys]
+    assert [stream for stream, _ in draws] == [tuple(spec["stream"])] * 2
+    assert [keys for _, keys in draws] == [
+        [
+            (*identity, system["id"], stage["level"], definition, support.sha256)
+            for identity in identities
+        ]
+        for stage in system["stages"]
+    ]
 
 
 def test_declarations_without_weight_by_keep_their_bytes_and_draws():

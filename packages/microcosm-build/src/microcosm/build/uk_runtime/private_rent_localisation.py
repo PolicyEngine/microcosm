@@ -41,7 +41,6 @@ __all__ = [
     "QUANTILES_METHOD",
     "QUANTILES_SCHEMA_VERSION",
     "QUANTILES_SOURCE",
-    "STREAM_EXPERIMENT",
     "WEEKS_IN_YEAR",
     "RentQuantiles",
     "knot_mean",
@@ -56,7 +55,6 @@ __all__ = [
 ]
 
 METHOD_VERSION = "uk-private-rent-localisation-v1"
-STREAM_EXPERIMENT = "uk-post-clone-private-rent-v1"
 #: Graph source names: the committed rent quantiles and the census counts of
 #: private-rented households by region, BRMA and bedrooms (microcosm#1087).
 QUANTILES_SOURCE = "uk_brma_rent_quantiles"

@@ -47,8 +47,9 @@ def test_the_dense_line_composes_its_pool_on_the_spines_version():
     """The dense line samples, expands, keys and places nothing of its own
     (microcosm#931): its targets read the spine's version, the keep-all pool
     checkpoint follows them on it with no typed edge, and the spine's
-    geography key, which geographic_identity writes, reaches the pool
-    unrewritten."""
+    geography key, which geographic_identity writes and spi_copy_areas
+    rewrites on the SPI support channel's copies, reaches the pool with no
+    dense node writing it."""
     from microcosm.build.uk_runtime.geographic_clones import (
         GEOGRAPHY_HOUSEHOLD_KEY_COLUMN,
     )
@@ -79,7 +80,7 @@ def test_the_dense_line_composes_its_pool_on_the_spines_version():
         for owned in node.outputs
         if (owned.entity, owned.column) == ("household", GEOGRAPHY_HOUSEHOLD_KEY_COLUMN)
     ]
-    assert writers == ["geographic_identity"]
+    assert writers == ["geographic_identity", "spi_copy_areas"]
 
 
 def test_the_pool_checkpoint_keeps_every_person():

@@ -20,14 +20,20 @@ engine-uk-after-merge job on pushes to main.
   geographic_expand on.
 - **Exact:** clone 0 after geographic_expand and geographic_identity is the
   one-clone frame on every column, at K x its weight bitwise. Through
-  frs_brma it is still the one-clone frame on every column: frs_take_up's
-  anchored residual and frs_person_draws' apprentice walk count within each
-  clone, the walk on prefixes that 1/4 scales exactly, every other draw is
-  keyed on the row's own id, and frs_brma's cell reads the LHA_category the
-  engine computes for clone 0 from that clone's rows. spi_support_channel
-  copies K = 1's households in clone 0, at nesting weights, and
-  spi_income_band_donors seats K = 1's households in K = 1's bands with
-  K = 1's carriers.
+  area_brma it is still the one-clone frame on every column: the area draw
+  (atomic_area_assign) keys each row's draw on its geography key, which
+  clone 0 shares with one clone, and picks its fallback level from its
+  source's own inputs, the local authority and the fuel-relief flag read the
+  drawn area, frs_take_up's anchored residual and frs_person_draws'
+  apprentice walk count within each clone, the walk on prefixes that 1/4
+  scales exactly, every other draw is keyed on the row's own id, and
+  area_brma reads each Great Britain household's BRMA off its drawn area (the
+  fixture holds no Northern Ireland household, whose BRMA would read the
+  LHA_category the engine computes for clone 0 from that clone's rows).
+  spi_support_channel copies K = 1's households in clone 0, at nesting
+  weights, spi_income_band_donors seats K = 1's households in K = 1's bands
+  with K = 1's carriers, and spi_copy_areas gives clone 0's copies K = 1's
+  keys and areas (microcosm#931).
 - **The band donors' weights:** their mass scale is reported first. The stage
   funds every clone's donors at one scale, the smallest any clone's region
   allows, and on this fixture's capped rung that scale at K = 4 is below one
@@ -36,13 +42,23 @@ engine-uk-after-merge job on pushes to main.
   the stratum's own: K x clone-0 weights nest on one clone's only where the
   two scales are equal. Whether the stage takes a scale per clone is open
   (microcosm#931).
-- **Tolerance classes:** the draws keep their K-invariant receipt fields;
-  from frs_take_up on, every output every clone carries, at a weighted share
-  near one clone's, and every node keeps K = 1's household mass.
+- **Tolerance classes:** the draws keep their K-invariant receipt fields, and
+  the area stages and private_rent every receipt field but K; from
+  frs_take_up on, every output every clone carries, at a weighted share near
+  one clone's (private_rent's ranks and scales pool over the clones, so its
+  rents nest only so), and every node keeps K = 1's household mass.
 - **Receipts:** the clone count in geographic_expand's, spi_support_channel's
   and spi_income_band_donors' receipts and, at K = 4 only, the support clips'
   and property components'; the geographic fold receipts at the six folding
   fits at K = 4, and none at one clone.
+- **Areas and keys, at one clone and at four:** from area_brma on every
+  household carries its area, ladder, local authority, fuel-relief flag and
+  BRMA; the geography keys are unique through area_brma, the SPI copies and
+  band donors repeat the key they copy until spi_copy_areas gives each its
+  own, and every later copy carries a key spi_copy_areas gave; private_rent
+  re-draws Great Britain's private renters' rents and leaves every other
+  row's, and H2's root households all own their homes, so it re-draws none
+  here (microcosm#931).
 
 It cannot catch within-batch int32 collisions: ids past 2**31 reach the engine
 at K = 1 already, and these households are too few. The adapter's rank rule
@@ -71,6 +87,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.uk_runtime import private_rent_localisation as prl
 from microcosm.build.uk_runtime import spi_band_donors, spi_support
 from microcosm.build.uk_runtime.geographic_clones import (
     GEOGRAPHY_HOUSEHOLD_KEY_COLUMN,
@@ -92,6 +109,11 @@ from microcosm.build.uk_runtime.private_school_attendance import (
     PRIVATE_SCHOOL_ATTENDANCE_ENGINE_ROUTE,
     PRIVATE_SCHOOL_ATTENDANCE_POOLED_ROUTE,
 )
+from microcosm.build.uk_runtime.receipt_counts import (
+    distinct_carriers,
+    rounded_count,
+    source_household_ids,
+)
 from microcosm.build.uk_runtime.spi_band_donors import (
     HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR,
     PERSON_IS_SPI_INCOME_BAND_CARRIER,
@@ -104,6 +126,15 @@ from microcosm.build.uk_runtime.spi_support import (
     support_channel_column,
     support_source_id_column,
 )
+from microcosm.build.uk_runtime.spine_geography import (
+    AREA_BRMA_STAGE_NAME,
+    ATOMIC_AREA_ASSIGN_STAGE_NAME,
+    LOCAL_AUTHORITY_STAGE_NAME,
+    RFDR_STAGE_NAME,
+    SPI_COPY_AREAS_STAGE_NAME,
+    UK_SPI_COPY_AREAS_REWRITE_COLUMNS,
+)
+from microcosm.build.uk_runtime.spine_private_rent import PRIVATE_RENT_STAGE_NAME
 from microcosm.frame import Frame
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 from microcosm.graph import ContentStore, compile_graph, run_graph
@@ -115,29 +146,59 @@ G1 = GEOGRAPHIC_EXPAND_STAGE_NAME
 G1B = GEOGRAPHIC_IDENTITY_STAGE_NAME
 SPI = UK_SPI_SUPPORT_STAGE_NAME
 DONORS = UK_SPI_INCOME_BAND_DONORS_STAGE_NAME
-#: The spine's stage count since the clone-first move: 54 and G1, G1b.
-_STAGE_COUNT = 56
-#: The first stage after the clones, and the last before spi_support_channel,
-#: which is the first engine call after G1.
+COPY_AREAS = SPI_COPY_AREAS_STAGE_NAME
+#: The spine's stage count since the area stages (microcosm#931): 54, G1 and
+#: G1b, then atomic_area_assign, local_authority, rfdr, spi_copy_areas and
+#: private_rent, with area_brma in frs_brma's place.
+_STAGE_COUNT = 61
+#: The area stages before the draws, which key each row's area on its
+#: geography key, as G1b left it.
+_AREA_STAGES = (
+    ATOMIC_AREA_ASSIGN_STAGE_NAME,
+    LOCAL_AUTHORITY_STAGE_NAME,
+    RFDR_STAGE_NAME,
+)
+#: The first stage after the area stages, and the last before
+#: spi_support_channel, which is the first engine call after G1.
 _FIRST_DRAW = "frs_take_up"
-_LAST_DRAW = "frs_brma"
+_LAST_DRAW = AREA_BRMA_STAGE_NAME
 #: The draws that count within each geographic clone before
 #: spi_support_channel: frs_take_up's anchored residual takes
 #: ``int(rate x units)`` of each clone's units, and frs_person_draws'
 #: apprentice walk meets the rate times each clone's weight aged 21 to 24, so
 #: clone 0's draws are one clone's (microcosm#931). Every other draw from
-#: frs_take_up to frs_brma is keyed on the row's own id, which clone 0 shares
-#: with one clone.
+#: frs_take_up to area_brma is keyed on the row's own id, which clone 0
+#: shares with one clone.
 _COUNTED_WITHIN_EACH_CLONE = {
     ("benunit", "would_claim_child_benefit"),
     ("benunit", "would_claim_pc"),
     ("benunit", "would_claim_uc"),
     ("person", "is_apprentice"),
 }
-#: frs_brma's draw, whose count-table cell reads the engine's LHA_category.
+#: area_brma's BRMA: Great Britain's off the drawn area, Northern Ireland's
+#: from a count-table cell that reads the engine's LHA_category.
 _BRMA = ("household", "brma")
-#: The populations the exact checks compare, by stage.
-_KEPT = (G1, G1B, _LAST_DRAW, SPI, DONORS)
+#: The stages whose every receipt field but K is one clone's: the area
+#: stages count their sources over every clone where each is the same at
+#: every K, and among clone-0 rows where a union could grow with K
+#: (microcosm#931).
+_K_INVARIANT_RECEIPTS = (*_AREA_STAGES, _LAST_DRAW, COPY_AREAS, PRIVATE_RENT_STAGE_NAME)
+#: The housing shell, whose rents private_rent reads.
+_HOUSING = "spi_housing_shell"
+#: The populations the exact checks and the area and key checks read, by
+#: stage.
+_KEPT = (
+    G1,
+    G1B,
+    _LAST_DRAW,
+    SPI,
+    DONORS,
+    COPY_AREAS,
+    _HOUSING,
+    PRIVATE_RENT_STAGE_NAME,
+)
+#: The label of the spine's last population, which the key checks read too.
+_FINAL = "the last node"
 #: The fits that fold geographic clones into their survey records, each
 #: receipting the fold at K > 1 (hmrc_spi_income_spine's two forests share one
 #: receipt).
@@ -309,6 +370,8 @@ def _run(directory: Path, clones: int, pending: Mapping[str, list]) -> _Run:
         for stage in stage_names[stage_names.index(_FIRST_DRAW) :]
     }
     kept = {_output_node(nodes, stage): stage for stage in _KEPT}
+    assert order[-1] not in kept
+    kept[order[-1]] = _FINAL
     calls: dict[str, tuple[int, ...]] = {}
     masses: dict[str, float] = {}
     problems: dict[str, tuple[str, ...]] = {}
@@ -560,7 +623,11 @@ def test_every_stage_runs_and_every_engine_call_after_g1_runs_clone_by_clone(
     first = many.order.index(G1)
     called = [node for node in many.order if many.calls[node]]
     after = [node for node in called if many.order.index(node) >= first]
-    assert {"frs_brma", "private_school_attendance"} <= set(after)
+    assert {_LAST_DRAW, "private_school_attendance"} <= set(after)
+    # The area stages before the draws and private_rent call no engine, and
+    # neither does spi_copy_areas on a fixture without a Northern Ireland
+    # copy, the one its call reads.
+    assert not {*_AREA_STAGES, COPY_AREAS, PRIVATE_RENT_STAGE_NAME} & set(called)
     for node in called:
         # As many calls as at one clone: no stage calls the engine per clone.
         assert len(many.calls[node]) == len(one.calls[node]), node
@@ -629,21 +696,23 @@ def test_clone_zero_after_the_clones_is_the_one_clone_frame(runs, stage: str) ->
     assert (weights * _CLONES).tobytes() == _weights(one).to_numpy().tobytes()
 
 
-def test_clone_zero_through_frs_brma_is_the_one_clone_frame(runs) -> None:
-    """Through frs_brma clone 0 is the one-clone frame on every column, every
-    draw from frs_take_up to frs_brma among them:
+def test_clone_zero_through_area_brma_is_the_one_clone_frame(runs) -> None:
+    """Through area_brma clone 0 is the one-clone frame on every column, every
+    area and every draw from atomic_area_assign to area_brma among them:
 
+    - atomic_area_assign keys each row's draw on its geography key, which
+      clone 0 shares with one clone, at the fallback level its source's own
+      decile and band give it; local_authority and rfdr read the drawn area.
     - frs_take_up's anchored residual and frs_person_draws' apprentice walk
       count within each clone (``_COUNTED_WITHIN_EACH_CLONE``); the walk
       compares prefixes of clone 0's weights, one clone's over 4, which the
       split scales exactly.
     - Every other draw is keyed on the row's own id, which clone 0 shares
       with one clone.
-    - frs_brma takes each unit's count-table cell from the engine's
-      LHA_category, which reads the household's members and units (a claim
-      to Universal Credit decides whose non-dependants count). The batched
-      engine computes it for clone 0 from that clone's rows alone, which are
-      one clone's, so the BRMA is one clone's too.
+    - area_brma reads each Great Britain household's BRMA off its drawn area;
+      a Northern Ireland household's would take its count-table cell from the
+      engine's LHA_category, which the batched engine computes for clone 0
+      from that clone's rows alone, which are one clone's.
     """
 
     one, many = runs[1].frames[_LAST_DRAW], runs[_CLONES].frames[_LAST_DRAW]
@@ -662,6 +731,7 @@ def test_clone_zero_through_frs_brma_is_the_one_clone_frame(runs) -> None:
     drawn = {
         (entity, column)
         for stage in (
+            *_AREA_STAGES,
             _FIRST_DRAW,
             "frs_person_draws",
             "frs_household_draws",
@@ -671,7 +741,45 @@ def test_clone_zero_through_frs_brma_is_the_one_clone_frame(runs) -> None:
         for entity in UK_NATIONAL_SCHEMA.entities
         if column in one.table(entity).columns
     }
-    assert _COUNTED_WITHIN_EACH_CLONE | {_BRMA} <= drawn <= compared
+    areas = {
+        ("household", column)
+        for stage in _AREA_STAGES
+        for column in _stage_outputs(stages, stage)
+    }
+    assert areas
+    assert _COUNTED_WITHIN_EACH_CLONE | {_BRMA} | areas <= drawn <= compared
+
+
+def test_clone_zero_s_copies_take_the_one_clone_copies_keys_and_areas(runs) -> None:
+    """spi_copy_areas keys each SPI copy over its own path, which clone 0's
+    copies share with one clone's, and draws its area on that key: clone 0's
+    households carry K = 1's key, areas, local authority, BRMA and
+    fuel-relief flag on every row, the copies' rewrites among them, and some
+    other clone's copies take other keys."""
+
+    one, many = runs[1].frames[COPY_AREAS], runs[_CLONES].frames[COPY_AREAS]
+    reference = one.table("household").set_index("household_id")
+    clone_zero = _clone_zero(many, "household").set_index("household_id")
+    assert set(clone_zero.index) == set(reference.index)
+    copies = reference.index[
+        reference[support_channel_column("household")].eq(SPI_SYNTHETIC_SUPPORT_CHANNEL)
+    ]
+    assert len(copies)
+    differing = [
+        column
+        for column in UK_SPI_COPY_AREAS_REWRITE_COLUMNS
+        if not clone_zero.loc[reference.index, column].equals(reference[column])
+    ]
+    assert not differing, f"Clone 0 after {COPY_AREAS} differs on {differing}."
+    household = many.table("household")
+    keys = household.set_index("household_id")["geography_household_key"]
+    assert keys.is_unique
+    later = household.loc[
+        household[support_channel_column("household")].eq(SPI_SYNTHETIC_SUPPORT_CHANNEL)
+        & household[ladder_clone_index_column("household")].gt(0),
+        "geography_household_key",
+    ]
+    assert not set(later) & set(reference.loc[copies, "geography_household_key"])
 
 
 def _stage_outputs(stage_names: tuple[str, ...], stage: str) -> tuple[str, ...]:
@@ -846,6 +954,34 @@ def test_the_draws_keep_their_k_invariant_receipt_fields(runs) -> None:
             assert found == expected, field
 
 
+def test_the_area_stages_receipts_are_one_clone_s_but_for_k(runs) -> None:
+    """The area stages, the SPI copies' areas and the private rents count
+    distinct true sources, over every clone where each count is the same at
+    every K and among clone-0 rows where a union could grow with K
+    (microcosm#931), so every field of their receipts but the clone count is
+    one clone's at K = 4: the counts, the levels and fallback reasons, the
+    booleans, the digests, the seed and the stream."""
+
+    one, many = runs[1].evidence, runs[_CLONES].evidence
+    for stage in _K_INVARIANT_RECEIPTS:
+        assert one[stage]["clone_count"] == 1, stage
+        assert many[stage]["clone_count"] == _CLONES, stage
+        same = {
+            name: value for name, value in many[stage].items() if name != "clone_count"
+        }
+        reference = {
+            name: value for name, value in one[stage].items() if name != "clone_count"
+        }
+        differing = sorted(
+            name
+            for name in set(same) | set(reference)
+            if same.get(name) != reference.get(name)
+        )
+        assert not differing, (
+            f"{stage}'s receipt at K={_CLONES} differs on {differing}."
+        )
+
+
 def test_every_later_output_is_carried_by_every_clone_at_a_nearby_share(
     runs,
 ) -> None:
@@ -876,6 +1012,132 @@ def test_every_later_output_is_carried_by_every_clone_at_a_nearby_share(
         if rows >= _PRESENCE_ROWS and min(many[(stage, column)][1]) == 0
     )
     assert not absent, f"Outputs a clone at K={_CLONES} does not carry: {absent}."
+
+
+# --- areas and keys ---------------------------------------------------------------------
+
+
+def _area_columns(stage_names: tuple[str, ...]) -> tuple[str, ...]:
+    """The household columns the area stages and area_brma write."""
+
+    return tuple(
+        column
+        for stage in (*_AREA_STAGES, _LAST_DRAW)
+        for column in _stage_outputs(stage_names, stage)
+    )
+
+
+def _keys_by_id(frame: Frame) -> pd.Series:
+    household = frame.table("household")
+    return pd.Series(
+        household[GEOGRAPHY_HOUSEHOLD_KEY_COLUMN].to_numpy(dtype=object),
+        index=household["household_id"].to_numpy(),
+    )
+
+
+@pytest.mark.parametrize("clones", (1, _CLONES))
+def test_on_h2_every_household_has_an_area_from_area_brma_on(runs, clones) -> None:
+    """After area_brma, after spi_copy_areas and in the spine's last
+    population, every household row, the SPI copies, the band donors and
+    every later stage's copies among them, carries a drawn area and its
+    ladder, a local authority, a fuel-relief flag and a BRMA (microcosm#931)."""
+
+    run = runs[clones]
+    columns = _area_columns(run.stage_names)
+    assert {
+        "atomic_area_code",
+        "local_authority",
+        "in_rural_fuel_duty_relief_area",
+        "brma",
+    } <= set(columns)
+    for stage in (_LAST_DRAW, COPY_AREAS, _FINAL):
+        household = run.frames[stage].table("household")
+        lacking = sorted(
+            column
+            for column in columns
+            if column not in household.columns
+            or household[column].isna().any()
+            or (
+                not pd.api.types.is_bool_dtype(household[column].dtype)
+                and household[column].astype(str).eq("").any()
+            )
+        )
+        assert not lacking, f"After {stage} at K={clones} a household lacks {lacking}."
+
+
+@pytest.mark.parametrize("clones", (1, _CLONES))
+def test_on_h2_every_spi_channel_row_takes_a_key_of_its_own(runs, clones) -> None:
+    """The geography keys are unique from geographic_identity through
+    area_brma. spi_support_channel's copies and the band donors carry the key
+    of the household they copy until spi_copy_areas gives every SPI-channel
+    row a key of its own and leaves every other row's, so the keys are unique
+    again after it. Later stages keep each row's key and give their copies
+    keys spi_copy_areas gave, their parents' (microcosm#931)."""
+
+    run = runs[clones]
+    for stage in (G1B, _LAST_DRAW):
+        assert _keys_by_id(run.frames[stage]).is_unique, f"{stage} at K={clones}"
+    base = set(_keys_by_id(run.frames[_LAST_DRAW]))
+    household = run.frames[DONORS].table("household")
+    channel = (
+        household[support_channel_column("household")]
+        .eq(SPI_SYNTHETIC_SUPPORT_CHANNEL)
+        .to_numpy()
+    )
+    assert channel.any() and not channel.all()
+    ids = household["household_id"].to_numpy()
+    before = _keys_by_id(run.frames[DONORS])
+    after = _keys_by_id(run.frames[COPY_AREAS])
+    assert set(after.index) == set(ids)
+    # Before the copy stage each SPI-channel row repeats a key the geography
+    # identity gave a household it copies.
+    assert set(before.loc[ids[channel]]) <= base
+    # After it every SPI-channel row has a key of its own, every other row
+    # keeps its key, and the keys are unique.
+    assert after.is_unique, f"K={clones}"
+    assert not set(after.loc[ids[channel]]) & base, f"K={clones}"
+    assert after.loc[ids[~channel]].equals(before.loc[ids[~channel]]), f"K={clones}"
+    # Later stages keep each row's key; their copies carry keys the copy
+    # stage gave.
+    final = _keys_by_id(run.frames[_FINAL])
+    earlier = final.index.isin(after.index)
+    assert final[earlier].equals(after.loc[final.index[earlier]]), f"K={clones}"
+    assert set(final[~earlier]) <= set(after), f"K={clones}"
+
+
+@pytest.mark.parametrize("clones", (1, _CLONES))
+def test_on_h2_private_rent_rewrites_only_great_britain_private_renters(
+    runs, clones
+) -> None:
+    """private_rent re-draws the rent of every row it reads as a Great
+    Britain private renter with a rent, and leaves every other row's bit for
+    bit; its receipt counts the re-drawn rows' clone-0 sources
+    (microcosm#931). H2's root households all own their homes, so the stage
+    re-draws no row here: test_uk_spine_three_systems.py re-draws renters on
+    the BRMAs the spine's own stages give them."""
+
+    run = runs[clones]
+    before = run.frames[_HOUSING].table("household")
+    after = run.frames[PRIVATE_RENT_STAGE_NAME].table("household")
+    assert after["household_id"].tolist() == before["household_id"].tolist()
+    redrawn = prl.redraw_mask(
+        before["region"].to_numpy(dtype=object),
+        before["tenure_type"].to_numpy(dtype=object),
+        before["rent"].to_numpy(dtype=float),
+    )
+    old = before["rent"].to_numpy(dtype=np.float64).view(np.int64)
+    same = old == after["rent"].to_numpy(dtype=np.float64).view(np.int64)
+    assert same[~redrawn].all(), f"K={clones}"
+    assert not same[redrawn].any(), f"K={clones}"
+    # The housing shell draws the SPI copies' tenures from a classifier it
+    # trains on the FRS households, all owners on H2, so H2 holds no row to
+    # re-draw; a fixture that gains one gets its re-draw checked above.
+    assert not redrawn.any(), f"H2 now holds a private renter to re-draw (K={clones})."
+    clone_zero = before[ladder_clone_index_column("household")].eq(0).to_numpy()
+    sources = source_household_ids(before, stage=PRIVATE_RENT_STAGE_NAME)
+    assert run.evidence[PRIVATE_RENT_STAGE_NAME]["source_households_redrawn"] == (
+        rounded_count(distinct_carriers(sources[redrawn & clone_zero].tolist()))
+    )
 
 
 # --- receipts ---------------------------------------------------------------------------

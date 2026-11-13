@@ -79,6 +79,7 @@ from microcosm.build.uk_runtime.geographic_clones import (
     UK_GEOGRAPHIC_SOURCE_COLUMNS,
     ladder_clone_index_column,
 )
+from microcosm.build.uk_runtime.geography_first_roster import GEOGRAPHIC_EXPAND_STAGE
 from microcosm.build.uk_runtime.household_lineage import UK_COPY_LINEAGE
 from microcosm.build.uk_runtime.national_frame import (
     UK_NATIONAL_SCHEMA,
@@ -116,7 +117,7 @@ __all__ = [
     "require_room_for_geographic_clones",
 ]
 
-GEOGRAPHIC_EXPAND_STAGE_NAME = "geographic_expand"
+GEOGRAPHIC_EXPAND_STAGE_NAME = GEOGRAPHIC_EXPAND_STAGE
 # The copy-id table's field the clones' ids are minted in
 # (GEOGRAPHIC_COPY_ID_FIELD) is named in the geographic_clones leaf, which
 # regional_home_values reads it from, and re-exported here.

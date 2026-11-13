@@ -23,11 +23,7 @@ import pandas as pd
 
 from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime.frs_brma import (
-    UK_BRMA_DECLARED_SEEDS,
-    _benunit_regions,
     _enum_name,
-    assign_brma_by_cell,
-    collapse_benunit_brma_to_household,
     load_brma_count_resource,
 )
 from microcosm.build.uk_runtime.frs_household_draws import derive_frs_household_draws
@@ -59,6 +55,12 @@ from microcosm.build.uk_runtime.spi_band_donors import (
     HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR,
     SPI_INCOME_BAND_DONOR_CLONE_INDEX,
     UK_SPI_INCOME_BAND_DONORS_STAGE_NAME,
+)
+from microcosm.build.uk_runtime.spine_geography import (
+    AREA_BRMA_STAGE_NAME,
+    SPI_COPY_AREAS_STAGE_NAME,
+    load_committed_brma_layer,
+    uk_area_brmas,
 )
 from microcosm.build.uk_runtime.was_wealth import (
     allocate_student_loan_balance_to_people,
@@ -111,6 +113,7 @@ def e4_identity_receipt(
     population_policy=None,
     rewritten_later: Mapping[str, Sequence[str]] | None = None,
     reversed_stages: Sequence[str] | None = None,
+    brma_layer=None,
 ) -> dict[str, object]:
     """Recompute every E4 column in original and permuted row order.
 
@@ -127,11 +130,27 @@ def e4_identity_receipt(
     by entity id onto the permuted tables; a frame without the clone index is
     one clone.
 
-    ``lha_category`` is the BRMA draw's predictor, aligned to the benefit-unit
-    rows. Without it, ``engine`` materializes it on the frame the BRMA stage
-    read, as far as the artifact restores it (``_brma_stage_lha_category``):
-    LHA_category reads would_claim_uc, which later stages rewrite, so the
-    final frame's flags would draw some benefit units from another cell.
+    The BRMA is area_brma's (microcosm#931), through the stage's own
+    derivation (``spine_geography.uk_area_brmas``): each Great Britain
+    household's BRMA is read off its stored drawn area through the
+    area-to-BRMA layer (``brma_layer``, the committed layer by default), and
+    each Northern Ireland household's is drawn on its own benefit units from
+    the census count table (``count_resource``) with frs_brma's keys, seed and
+    salts. A frame without the drawn area columns is refused, by the stage's
+    own text: no retired-rule path reads a spine built before them. The one
+    later stage that declares writing ``brma``, spi_copy_areas, rewrites it
+    on the rows the SPI support channel copied alone, which the scope drops,
+    so by default (``reversed_stages`` unset) its rewrite counts as taken back
+    and ``brma`` is compared bitwise; a frame that keeps a row the support
+    channel copied is then refused (``_require_no_support_channel_copies``).
+
+    ``lha_category`` is the Northern Ireland draw's predictor, aligned to the
+    benefit-unit rows; a Great Britain unit's is not read. Without it,
+    ``engine`` materializes it on the frame the BRMA stage read, as far as
+    the artifact restores it (``_brma_stage_lha_category``): LHA_category
+    reads would_claim_uc, which frs_take_up draws and later stages rewrite,
+    so the final frame's flags would draw some Northern Ireland benefit units
+    from another cell.
 
     Two claims are receipted: a row permutation of the input tables changes
     no assignment per entity id, and the original-order recomputation equals
@@ -159,7 +178,9 @@ def e4_identity_receipt(
     if population_policy is None:
         population_policy = uk_take_up_population_policy(uk_time_period(frame))
     if reversed_stages is None:
-        reversed_stages = _SCOPE_REVERSALS
+        reversed_stages = _E4_SCOPE_REVERSALS
+    if SPI_COPY_AREAS_STAGE_NAME in reversed_stages:
+        _require_no_support_channel_copies(household)
     # is_apprentice's rate among eligible employees reads the household
     # weights, which a row permutation carries with each household id.
     weight_by_household = dict(
@@ -232,22 +253,22 @@ def e4_identity_receipt(
         )
     if len(lha_category) != len(benunit):
         raise ValueError("LHA_category materialization must align to benunit rows.")
+    # Carried as a column, so a row permutation moves each unit's category
+    # with it.
     benunit["LHA_category"] = [_enum_name(value) for value in lha_category]
-    benunit["region"] = _benunit_regions(person, household, benunit)
+    if brma_layer is None:
+        brma_layer, _ = load_committed_brma_layer()
 
     def recompute(person_t, benunit_t, household_t) -> dict[str, pd.DataFrame]:
         values = draws(person_t, benunit_t, household_t)
-        seed = UK_BRMA_DECLARED_SEEDS["brma"]
-        benunit_brma = pd.DataFrame(
-            {
-                "benunit_id": benunit_t["benunit_id"].to_numpy(),
-                "brma": assign_brma_by_cell(
-                    benunit_t, count_resource=count_resource, seed=seed
-                ),
-            }
-        )
-        values["household"]["brma"] = collapse_benunit_brma_to_household(
-            person_t, benunit_brma, household_t, seed=seed
+        values["household"]["brma"] = uk_area_brmas(
+            person_t,
+            benunit_t,
+            household_t,
+            lha_category=benunit_t["LHA_category"].to_numpy(dtype=object),
+            layer=brma_layer,
+            count_resource=count_resource,
+            what="E4's BRMA recompute",
         )
         return values
 
@@ -340,8 +361,13 @@ def e4_identity_receipt(
             f"a relative {_APPRENTICE_WALK_RELATIVE_TOLERANCE:g} of the weight "
             "of the clone's people aged 21 to 24 (held_to_tolerance names it "
             "then); "
-            "brma: bitwise, on LHA_category materialized on the frame frs_brma "
-            "read as far as the artifact restores it (lha_category_scope)"
+            "brma: bitwise, area_brma's, Great Britain's read off the stored "
+            "drawn areas through the area-to-BRMA layer and Northern Ireland's "
+            "drawn on LHA_category materialized on the frame area_brma read as "
+            "far as the artifact restores it (lha_category_scope); "
+            "spi_copy_areas rewrites it on the rows the SPI support channel "
+            "copied alone, which the scope drops, so its rewrite is taken back "
+            "(a scoped frame keeping such a row is refused)"
         ),
         "columns_by_entity": {
             entity: list(values.columns) for entity, values in original.items()
@@ -376,13 +402,14 @@ def _brma_stage_lha_category(
 ) -> tuple[object, dict[str, object]]:
     """LHA_category materialized on the frame the BRMA stage read.
 
-    The stage materialized it on its own input (``UKFRSBRMAStageTransform``),
-    which carried no column a later stage first writes and the flags E4's
-    earlier stages drew. policyengine-uk's LHA_category reads both: its
-    bedrooms and its shared-accommodation test read which family counts the
-    household's non-dependants (``uc_non_dependants_counted``), which reads
-    ``claims_universal_credit``, would_claim_uc or a claim at legacy
-    closure; later stages rewrite would_claim_uc, and
+    The stage materialized it on its own input (``UKAreaBRMAStageTransform``,
+    one call over the whole frame, as frs_brma's), which carried no column a
+    later stage first writes and the flags E4's earlier stages drew; only
+    its Northern Ireland units read it. policyengine-uk's LHA_category reads
+    both: its bedrooms and its shared-accommodation test read which family
+    counts the household's non-dependants (``uc_non_dependants_counted``),
+    which reads ``claims_universal_credit``, would_claim_uc or a claim at
+    legacy closure; later stages rewrite would_claim_uc, and
     ``uc_legacy_closure_take_up`` first writes the closure claim's input. So
     the engine reads ``frame`` without the columns first written after the
     BRMA stage (``_columns_first_written_after``), with every column an E4
@@ -2918,7 +2945,9 @@ def main() -> int:
         # (the post-#717 scoping rule the E5 receipt already applies), at the
         # weights the stages read, as far as the artifact restores them. The
         # engine runs clone by clone at the spine's clone count, as the
-        # stages' did.
+        # stages' did. The scope drops every row the SPI support channel
+        # copied, the only rows spi_copy_areas rewrites, so its rewrite is
+        # taken back too and brma is compared (microcosm#931).
         population_policy = uk_take_up_population_policy(uk_time_period(frame))
         receipt = e4_identity_receipt(
             _frame_as_draw_stages_saw(
@@ -2929,8 +2958,9 @@ def main() -> int:
             engine=PolicyEngineUKEngine(clones=clones["frame"]),
             permutation_seed=args.permutation_seed,
             population_policy=population_policy,
-            reversed_stages=_reversals_applied(
-                frame, UK_SPI_INCOME_BAND_DONORS_STAGE_NAME
+            reversed_stages=(
+                *_reversals_applied(frame, UK_SPI_INCOME_BAND_DONORS_STAGE_NAME),
+                SPI_COPY_AREAS_STAGE_NAME,
             ),
         )
         ok = bool(
@@ -3038,12 +3068,21 @@ _E6_FIRST_STAGE = "nts_bus_travel"
 #: holding its value instead of the recomputed stage's (``_later_writers``). E4's
 #: stages run after geographic_expand, on every geographic clone, and before
 #: the SPI support channel stacks its copies (microcosm#931); E5 checks the
-#: wealth stage's layers and the regional uprating's fixed point.
-_E4_STAGES = ("frs_take_up", "frs_person_draws", "frs_household_draws", "frs_brma")
+#: wealth stage's layers and the regional uprating's fixed point. The BRMA is
+#: area_brma's, in frs_brma's place since the area stages landed
+#: (microcosm#931). The area stages before the draws (atomic_area_assign,
+#: local_authority, rfdr) add no rows and draw nothing E4 recomputes: E4 reads
+#: their stored areas.
+_E4_STAGES = (
+    "frs_take_up",
+    "frs_person_draws",
+    "frs_household_draws",
+    AREA_BRMA_STAGE_NAME,
+)
 _E5_STAGES = ("was_wealth", "regional_property_uprating")
 #: The stage whose LHA_category E4's BRMA draw reads
 #: (``_brma_stage_lha_category``).
-_BRMA_STAGE = "frs_brma"
+_BRMA_STAGE = AREA_BRMA_STAGE_NAME
 #: The SPI support channel, whose prior-mass allocation E4's scope takes back
 #: (``_frame_as_draw_stages_saw``).
 _SPI_SUPPORT_STAGE = "spi_support_channel"
@@ -4099,6 +4138,40 @@ _REGIONAL_HOME_VALUE_COLUMNS = ("main_residence_value", "property_wealth")
 #: before them, when the artifact keeps the carrier (``_reversals_applied``):
 #: what a receipt assumes of a frame it is handed scoped.
 _SCOPE_REVERSALS = (_SALARY_SACRIFICE_STAGE, _REGIONAL_HOME_VALUES_STAGE)
+#: What E4 assumes of a frame it is handed scoped: those, and spi_copy_areas,
+#: whose rewrites (brma among them) fall on the rows the SPI support channel
+#: copied alone, every one of which E4's scope drops
+#: (``_frame_as_draw_stages_saw``); E4 refuses a frame that keeps one
+#: (``_require_no_support_channel_copies``, microcosm#931).
+_E4_SCOPE_REVERSALS = (*_SCOPE_REVERSALS, SPI_COPY_AREAS_STAGE_NAME)
+
+
+def _require_no_support_channel_copies(household: pd.DataFrame) -> None:
+    """Refuse a household table that keeps a row the SPI support channel
+    copied: an SPI copy or an income band donor, a nonzero ordinal on the
+    channel's branch of the copy lineage.
+
+    E4 takes spi_copy_areas' rewrite back, and so compares ``brma`` with
+    area_brma's, only because its scope drops every such row, the only rows
+    that stage rewrites (microcosm#931). A table without the branch's ordinal
+    holds no copy. The refusal names the column only.
+    """
+
+    (branch,) = [
+        branch
+        for branch in UK_COPY_LINEAGE.branches
+        if branch.name == _SPI_SUPPORT_STAGE
+    ]
+    if branch.index not in household.columns:
+        return
+    ordinals = pd.to_numeric(household[branch.index], errors="coerce")
+    if ordinals.isna().any() or ordinals.ne(0).any():
+        raise ValueError(
+            "E4 compares area_brma's brma by taking spi_copy_areas' rewrite back, "
+            "which holds only on rows the SPI support channel did not copy; the "
+            f"frame keeps rows whose {branch.index} is not 0, so it is not scoped "
+            "as E4's stages saw it (_frame_as_draw_stages_saw)."
+        )
 
 
 def _source_stage_roster() -> list[dict[str, object]]:

@@ -57,10 +57,11 @@ re-drawn, rounded through ``receipt_counts``, and the (region, category) cells
 ranked against their region or against Great Britain; with K, the seed, the
 stream, the resources' digests, the method and the strictness (C-44).
 
-No stage declares it yet: the transform checks the stage it runs as against
-the reviewed declaration this module states (name, household grain, no
-outputs, ``rent`` as its one rewrite, the reviewed operations verbatim and its
-two artifacts), which the declaration will carry.
+``sources.yaml`` declares the stage after ``spi_housing_shell``: the
+transform checks the stage it runs as against the reviewed declaration this
+module states (name, household grain, no outputs, ``rent`` as its one
+rewrite, the reviewed operations verbatim and its two artifacts), which the
+declaration carries, its stream and seed among them.
 """
 
 from __future__ import annotations
@@ -82,6 +83,7 @@ from microcosm.build.uk_runtime.geographic_clones import (
     geographic_clone_count,
     ladder_clone_index_column,
 )
+from microcosm.build.uk_runtime.geography_first_roster import PRIVATE_RENT_STAGE
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_mass_conservation_receipt,
     validate_uk_national_frame,
@@ -120,11 +122,11 @@ __all__ = [
     "uk_spine_rent_tie_uniforms",
 ]
 
-PRIVATE_RENT_STAGE_NAME = "private_rent"
+PRIVATE_RENT_STAGE_NAME = PRIVATE_RENT_STAGE
 PRIVATE_RENT_OPERATION_KIND = "localise_private_rents"
-#: The stage's own stream, apart from the dense node's
-#: (``private_rent_localisation.STREAM_EXPERIMENT``), and the seed the stage
-#: declares (C-43): one constant, so clone 0's tie-breaks nest at every K.
+#: The stage's own stream, apart from the retired dense node's, and the seed
+#: the stage declares (C-43): one constant, so clone 0's tie-breaks nest at
+#: every K.
 UK_SPINE_PRIVATE_RENT_STREAM_EXPERIMENT = "uk-spine-private-rent-v1"
 UK_SPINE_PRIVATE_RENT_SEED = 0
 UK_SPINE_PRIVATE_RENT_STREAM = (

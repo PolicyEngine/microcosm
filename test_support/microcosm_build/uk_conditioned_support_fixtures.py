@@ -33,14 +33,18 @@ flagged toy area's codes.
 :data:`TOY_HOUSEHOLDS` are invented households, each with the fallback level
 the toy supports give it; :func:`toy_spine_frame` builds them into a frame of
 ``K`` geographic clones keyed as the spine keys them, through the spine's own
-expansion and identity steps.
+expansion and identity steps. :func:`with_invented_support_channel` stands in
+for spi_support_channel and spi_income_band_donors, copying the households
+:func:`invented_copy_picks` names at the support channel's two ordinals, so
+the SPI-copy area stage has copies to re-place, in the engine-free tests and
+in the engine tier's three-system test alike.
 """
 
 from __future__ import annotations
 
 import functools
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib.resources import files
 
@@ -70,10 +74,12 @@ __all__ = [
     "ToyArea",
     "ToyHousehold",
     "committed_rfdr_areas",
+    "invented_copy_picks",
     "toy_conditioned_support_payloads",
     "toy_conditioned_supports",
     "toy_household_table",
     "toy_spine_frame",
+    "with_invented_support_channel",
 ]
 
 EW, SCOT, NI = SYSTEMS
@@ -470,3 +476,116 @@ def toy_spine_frame(
     )
     expanded = expand_uk_geographic_clones(frame, clones=clones).frame
     return key_uk_households_by_clone_path(expanded).frame
+
+
+def invented_copy_picks(source: int, clone: int) -> tuple[int, ...]:
+    """The invented copies spi_support_channel and spi_income_band_donors
+    make of a household, by ordinal.
+
+    In clone 0 every household is copied (1) and every third one is a band
+    donor too (2), by its source alone, so clone 0's copies are the same at
+    every clone count; a later clone copies other households, so a union of
+    copied sources over clones grows with K.
+    """
+
+    if clone == 0:
+        return (1, 2) if source % 3 == 0 else (1,)
+    return tuple(
+        ordinal
+        for ordinal, picked in (
+            (1, (source + clone) % 2 == 0),
+            (2, (source + clone) % 3 == 0),
+        )
+        if picked
+    )
+
+
+def with_invented_support_channel(
+    frame: Frame, picks: Callable[[int, int], tuple[int, ...]] = invented_copy_picks
+) -> Frame:
+    """``frame`` as spi_support_channel and spi_income_band_donors leave it,
+    for tests alone.
+
+    Every row is on the support channel's FRS side at ordinal 0; each
+    household ``picks`` names (by its source and clone) is copied whole at
+    the channel's ordinals, every id minted in the copy-id table's
+    ``spi_support_channel`` field, each copy at half its parent's invented
+    weight, with a mass record for the copies. No other lineage column is
+    added.
+    """
+
+    from microcosm.build.uk_runtime import copy_id_table
+    from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_national_frame,
+        uk_time_period,
+    )
+    from microcosm.build.uk_runtime.spi_support import (
+        BASE_FRS_SUPPORT_CHANNEL,
+        SPI_SYNTHETIC_SUPPORT_CHANNEL,
+        support_channel_column,
+        support_clone_index_column,
+    )
+    from microcosm.frame import MassChangeRecord
+
+    channel = support_channel_column("household")
+    ordinal_column = support_clone_index_column("household")
+    clone_column = ladder_clone_index_column("household")
+    person, benunit = frame.table("person"), frame.table("benunit")
+    household = frame.table("household").copy()
+    household[channel] = BASE_FRS_SUPPORT_CHANNEL
+    household[ordinal_column] = np.zeros(len(household), dtype=np.int64)
+    weights = frame.weights_for("household").values
+    persons, benunits, households = [person], [benunit], [household]
+    masses = [weights]
+    for ordinal in (1, 2):
+        positions = [
+            position
+            for position, (source, clone) in enumerate(
+                zip(
+                    household["source_household_id"].tolist(),
+                    household[clone_column].tolist(),
+                    strict=True,
+                )
+            )
+            if ordinal in picks(int(source), int(clone))
+        ]
+        if not positions:
+            continue
+        copied = household.iloc[positions].copy()
+        members = person.loc[person["person_household_id"].isin(copied["household_id"])]
+        members = members.copy()
+        units = benunit.loc[benunit["benunit_id"].isin(members["person_benunit_id"])]
+        units = units.copy()
+        for column in ("person_id", "person_household_id", "person_benunit_id"):
+            members[column] = copy_id_table.mint(
+                members[column], "spi_support_channel", ordinal
+            )
+        units["benunit_id"] = copy_id_table.mint(
+            units["benunit_id"], "spi_support_channel", ordinal
+        )
+        copied["household_id"] = copy_id_table.mint(
+            copied["household_id"], "spi_support_channel", ordinal
+        )
+        copied[channel] = SPI_SYNTHETIC_SUPPORT_CHANNEL
+        copied[ordinal_column] = np.int64(ordinal)
+        persons.append(members)
+        benunits.append(units)
+        households.append(copied)
+        masses.append(weights[positions] * 0.5)
+    values = np.concatenate(masses)
+    record = MassChangeRecord(
+        entity="household",
+        old_total=float(weights.sum()),
+        new_total=float(values.sum()),
+        declared_factor=None,
+        reason="invented copies standing in for the SPI support channel",
+    )
+    return uk_national_frame(
+        person=pd.concat(persons, ignore_index=True),
+        benunit=pd.concat(benunits, ignore_index=True),
+        household=pd.concat(households, ignore_index=True),
+        time_period=uk_time_period(frame),
+        household_weights=values,
+        mass_log=(*frame.mass_log, record),
+    )
