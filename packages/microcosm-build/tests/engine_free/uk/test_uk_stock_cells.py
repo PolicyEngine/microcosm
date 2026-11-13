@@ -26,6 +26,13 @@ from test_support.paths import paths_for
 PATHS = paths_for("microcosm-build")
 UK = importlib_resources.files("microcosm.build.uk")
 _PINNED_FEED_NAME = ".codex-work/consumer_facts_uk.jsonl"
+# Census 2021 TS054, England: households renting from the council or other
+# social landlords over all households, and owner occupiers over private
+# households (the microcosm#1597 review's figures).
+_TS054_ENGLAND_SOCIAL_SHARE = 4_005_663 / 23_436_085
+_TS054_ENGLAND_OWNER_SHARE_OF_PRIVATE = 14_369_065 / 19_430_422
+# VOA CTSOP 1.1, England and Wales, all properties, 31 March 2026.
+_VOA_ENGLAND_AND_WALES_DWELLINGS = 27_438_780
 
 
 @pytest.fixture(scope="module")
@@ -78,6 +85,56 @@ def test_land_shares_lie_in_the_unit_interval_and_fall_with_kappa(committed) -> 
         authorities.land[n] for n in ("kappa_0_75", "kappa_1", "kappa_1_25")
     )
     assert np.all(low >= one - 1) and np.all(one >= high - 1)
+
+
+def test_the_tenure_split_matches_the_census(committed) -> None:
+    """The structure tests passed when the social stock was half the
+    census's, so these pin the quantities themselves (microcosm#1597
+    review). VOA's counts and the census's households differ a little."""
+    value, *_ = committed
+    english = np.char.startswith(value.authority_of_rows().astype(str), "E")
+    private = value.private_count[english].sum()
+    social = value.social_count[english].sum()
+    assert social / (social + private) == pytest.approx(
+        _TS054_ENGLAND_SOCIAL_SHARE, abs=0.005
+    )
+    owners = (value.private_count * value.owner_share)[english].sum()
+    assert owners / private == pytest.approx(
+        _TS054_ENGLAND_OWNER_SHARE_OF_PRIVATE, abs=0.005
+    )
+
+
+def test_the_cells_hold_voas_dwellings(committed) -> None:
+    value, *_, provenance = committed
+    split = provenance["level"]["uk_split"]
+    assert split["england_and_wales"] == _VOA_ENGLAND_AND_WALES_DWELLINGS
+    # VOA rounds small areas' counts and the cells read `[c]` as 2.5, so
+    # the cells' sum is close to the national count, not equal to it.
+    assert value.voa_count.sum() == pytest.approx(
+        _VOA_ENGLAND_AND_WALES_DWELLINGS, rel=2e-3
+    )
+    assert (value.private_count + value.social_count).sum() == pytest.approx(
+        value.voa_count.sum(), rel=1e-9
+    )
+
+
+def test_three_in_ten_sold_homes_take_a_pooled_floor_area(committed) -> None:
+    """UCL's linked file ends in October 2023. A home with no linked floor
+    area takes its cell's mean, and seldom one from further away."""
+    *_, provenance = committed
+    imputation = provenance["receipts"]["floor_area_imputation"]
+    imputed = imputation["imputed"]
+    assert imputation["imputed_share"] == pytest.approx(0.304, abs=0.03)
+    assert (
+        provenance["level"]["by_variant"]["central"]["homes_floor_area_imputed"]
+        == imputed
+    )
+    for breakdown in ("by_region", "by_sale_year"):
+        assert sum(row["imputed"] for row in imputation[breakdown].values()) == imputed
+    by_level = imputation["imputed_by_pool_level"]
+    assert sum(by_level.values()) == imputed
+    # An authority's, region's or nation's mean stands in for under 5%.
+    assert (imputed - by_level["msoa_band"]) / imputed < 0.05
 
 
 def test_the_digests_chain(committed) -> None:
