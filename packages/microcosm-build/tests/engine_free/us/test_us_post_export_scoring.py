@@ -1885,3 +1885,29 @@ def test_recording_the_smoke_plan_builds_no_reform_and_needs_no_engine(
     assert {
         (probe.budget_measure, int(probe.period or builder.PERIOD)) for probe in probes
     } <= {(variable, period) for variable, period, _ in keys}
+
+
+def test_scorer_dataset_keeps_the_engine_projection(
+    builder, monkeypatch, tmp_path
+) -> None:
+    """Consumer plans read years after PERIOD, so the scorer's default
+    dataset keeps policyengine-us's projection; in-build simulations do not."""
+    calls: list[dict[str, object]] = []
+
+    def recording_dataset_from_frame(frame, **kwargs):
+        calls.append(kwargs)
+        return frame
+
+    monkeypatch.setattr(builder, "_dataset_from_frame", recording_dataset_from_frame)
+    scorer = builder._HouseholdBatchedPostExportScorer(
+        _written_h5(tmp_path),
+        maximum_microsim_batch_size=3,
+        microsimulation_cls=_fake_engine(_EngineLog()),
+        load_frame=lambda path, *, expected_sha256: _nested_frame(),
+    )
+    first_batch = scorer._batches()[0]
+
+    assert scorer._dataset_from_frame(first_batch) is first_batch
+    assert calls == [
+        {"assert_no_formula_owned_columns": False, "keep_engine_projection": True}
+    ]

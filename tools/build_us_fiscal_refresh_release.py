@@ -455,6 +455,7 @@ from microcosm.frame import Frame, MassChange, WeightKind, Weights, read_frame_t
 from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSEngine,
     PolicyEngineUSVariableMetadataIndex,
+    us_dataset_through,
 )
 from microcosm.frame.units import US_SCHEMA
 
@@ -4575,7 +4576,18 @@ def _dataset_from_frame(
     zero_variables: Iterable[str] = (),
     system=None,
     assert_no_formula_owned_columns: bool = True,
+    keep_engine_projection: bool = False,
 ):
+    """The frame as a policyengine-us dataset for ``PERIOD``.
+
+    The in-build simulations read only ``PERIOD`` (``_calculate_array``, and
+    the December SSI month), so by default the dataset holds that year alone
+    (``us_dataset_through``). Given a single-year dataset, policyengine-us
+    would add an uprated copy of every later year to its last CPI-U year and
+    store them all, and copy them again into each branch it opens.
+    ``keep_engine_projection`` keeps that projection: post-export scoring
+    plans keys in later years too.
+    """
     if assert_no_formula_owned_columns:
         _assert_no_formula_owned_columns(frame)
 
@@ -4589,7 +4601,7 @@ def _dataset_from_frame(
         if entity is not None and variable_name in tables[entity]:
             tables[entity][variable_name] = 0
     tables["household"]["household_weight"] = frame.weights_for("household").values
-    return USSingleYearDataset(
+    dataset = USSingleYearDataset(
         person=tables["person"],
         household=tables["household"],
         tax_unit=tables["tax_unit"],
@@ -4598,6 +4610,9 @@ def _dataset_from_frame(
         marital_unit=tables["marital_unit"],
         time_period=PERIOD,
     )
+    if keep_engine_projection:
+        return dataset
+    return us_dataset_through(dataset, PERIOD)
 
 
 def _calculate_array(
@@ -5352,9 +5367,13 @@ class _HouseholdBatchedPostExportScorer:
         if dataset_from_frame is None:
 
             def dataset_from_frame(batch_frame: Frame):
+                # Consumer plans read years after PERIOD (reform validation
+                # reaches past 2025), so the scorer keeps the engine's
+                # projection.
                 return _dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
+                    keep_engine_projection=True,
                 )
 
         self._dataset_from_frame = dataset_from_frame

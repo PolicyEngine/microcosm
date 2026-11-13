@@ -1147,14 +1147,9 @@ class PolicyEngineUSEngine:
         some state taxes) copies all of them again. ``materialize`` reads
         only ``period``, which is the dataset's own year, and no
         policyengine-us formula reads a later year's data. So the adapter
-        stops the extension at ``period``: the engine receives a multi-year
-        dataset that holds that one year and takes it as already extended.
+        stops the extension at ``period`` (:func:`us_dataset_through`).
         """
-        from policyengine_us.data import extend_single_year_dataset
-
-        return extend_single_year_dataset(
-            self._build_dataset(tables, period), end_year=int(period)
-        )
+        return us_dataset_through(self._build_dataset(tables, period), int(period))
 
     def _default_entity(self, column: str) -> str:
         """Owning table for a defaulted column, from PolicyEngine metadata.
@@ -1408,6 +1403,22 @@ def uprating_series(
             }
         column_series[column] = series_path
     return totals, indices, column_series
+
+
+def us_dataset_through(dataset: Any, end_year: int) -> Any:
+    """A one-year ``USSingleYearDataset`` extended only to ``end_year``.
+
+    Given a ``USSingleYearDataset``, ``Microsimulation`` adds an uprated copy
+    of each later year up to the last year of the CPI-U parameter and stores
+    every year's inputs; a simulation that reads no year after ``end_year``
+    pays for those years in memory and gains nothing. policyengine-us's own
+    ``extend_single_year_dataset`` with ``end_year`` returns a
+    ``USMultiYearDataset`` holding the dataset's year through ``end_year``,
+    which ``Microsimulation`` takes as already extended.
+    """
+    from policyengine_us.data import extend_single_year_dataset
+
+    return extend_single_year_dataset(dataset, end_year=int(end_year))
 
 
 def multi_year_dataset(
