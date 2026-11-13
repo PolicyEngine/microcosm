@@ -1368,6 +1368,7 @@ def _resign_gate_battery(
         "country": payload["country"],
         "release_id": payload["release_id"],
         "release_candidate": payload["release_candidate"],
+        "synthetic_smoke": payload["synthetic_smoke"],
         "spec_fingerprint": payload["spec_fingerprint"],
         "gates_manifest_sha256": payload["gates_manifest_sha256"],
         "policy_sha256": payload["policy_sha256"],
@@ -1603,6 +1604,7 @@ def _gate_battery_payload(
         "country": "uk",
         "release_id": release_id,
         "release_candidate": True,
+        "synthetic_smoke": False,
         "spec_fingerprint": UK_GATE_BATTERY_SPEC_FINGERPRINT,
         "gates_manifest_sha256": UK_GATE_BATTERY_GATES_MANIFEST_SHA256,
         "phases": ["preflight", "assembled", "transferred", "terminal"],
@@ -5195,6 +5197,18 @@ def test_exact_k_uk_gate_battery_rejects_a_non_candidate_report(
     _rewrite_battery_report(directory, payload)
 
     assert "release_candidate must be true" in _battery_failures(directory)
+
+
+def test_exact_k_uk_gate_battery_rejects_a_synthetic_smoke_report(
+    tmp_path: Path,
+) -> None:
+    # The executor writes synthetic_smoke into the body and the attestation of
+    # every schema-4 report; a smoke build ran on a fixture and never ships.
+    directory, payload = _write_battery_release(tmp_path)
+    payload["synthetic_smoke"] = True
+    _rewrite_battery_report(directory, payload)
+
+    assert "synthetic_smoke must be false" in _battery_failures(directory)
 
 
 def test_exact_k_uk_gate_battery_rejects_loosened_input_mass_tolerance(
