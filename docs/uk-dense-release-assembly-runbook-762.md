@@ -38,9 +38,10 @@ the gates stood on. See [Optional diagnostics](#optional-diagnostics-microcosm13
   bytes), which the publication command's release-contract check also reads.
 - For publication: `HF_TOKEN` (or `HUGGINGFACE_TOKEN`, or a token saved by
   `hf auth login`) with write access to `policyengine/populace-uk-private`,
-  and the separately installed `microcosm-emitter` 0.14.0 or later, which the
+  and the separately installed `microcosm-emitter` 0.15.0 or later, which the
   publication command starts as its child process and which uses the token it
-  inherits. These come from your shell: the command does not read
+  inherits, for the release commit and for submitting the build's calibration
+  diagnostics to the collector. These come from your shell: the command does not read
   `tools/release.env`, so if you keep the values there, `source
   tools/release.env` first.
 - The Ledger consumer artifact, the spine H5 with its sidecar, the OA ladder.
@@ -153,8 +154,10 @@ households, nor of the rows that would give them back by difference
 (microcosm#1262, #1383). Every row is judged by the fit gates and carries its
 figures in the diagnostics, the targets table and the gate reports, so a
 release goes only to the licensed private repository. The graph's evidence
-summaries carry them too, which is why a build publishes to the public Orrery
-only on `--publish-orrery`.
+summaries do not: the export stops if a summary carries a row's estimates or
+a failure line. No build publishes its graph to the public Orrery; its staged
+bundle submits the graph's inputs to the collector, which keeps a licensed
+build's graph private ([UK graph publication](orrery-publication.md)).
 
 ### Sized release (microcosm#1124)
 

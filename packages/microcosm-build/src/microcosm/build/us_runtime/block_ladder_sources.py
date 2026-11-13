@@ -575,6 +575,7 @@ def assemble_us_block_ladder(
     cbsa_by_county: Mapping[str, int],
     metadata: Mapping[str, Any],
     cbsa_county_by_block: Mapping[int, str] | None = None,
+    tract_to_puma: Mapping[int, int] | None = None,
 ) -> dict[str, np.ndarray]:
     """Join the parsed sources into the ladder artifact's NPZ payload.
 
@@ -590,6 +591,11 @@ def assemble_us_block_ladder(
     Every delineated county-equivalent in a built state must be reached by at
     least one populated block; one that is not means the delineation and the
     blocks disagree on county-equivalents, and the join refuses.
+
+    With ``tract_to_puma`` (additive to schema 1) every populated block carries its
+    2020 PUMA: 2020 blocks nest in 2020 tracts and 2020 tracts in 2020 PUMAs,
+    so the PUMA is the block's tract's PUMA. A populated block whose tract
+    the relationship file omits is a source defect.
     """
 
     blocks = np.asarray(sorted(block_population), dtype=np.int64)
@@ -637,7 +643,7 @@ def assemble_us_block_ladder(
     cbsa = np.asarray(
         [cbsa_by_county.get(county, 0) for county in county_codes], dtype=np.int32
     )[county_index]
-    return {
+    payload = {
         "block_geoid": blocks,
         "population": population,
         "congressional_district_geoid": cd,
@@ -647,6 +653,21 @@ def assemble_us_block_ladder(
         "cbsa_code": cbsa,
         "metadata_json": np.asarray(json.dumps(dict(metadata), sort_keys=True)),
     }
+    if tract_to_puma is not None:
+        missing_puma = [
+            block for block in blocks.tolist() if block // 10**4 not in tract_to_puma
+        ]
+        if missing_puma:
+            examples = [f"{block:015d}" for block in missing_puma[:5]]
+            raise ValueError(
+                f"{len(missing_puma)} populated block(s) have a tract absent "
+                f"from the tract-to-PUMA relationship file; examples: {examples}."
+            )
+        payload["puma"] = np.asarray(
+            [tract_to_puma[block // 10**4] for block in blocks.tolist()],
+            dtype=np.int64,
+        )
+    return payload
 
 
 def _cbsa_county_equivalents(

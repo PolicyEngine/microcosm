@@ -24,9 +24,10 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # The ACS SSI disability-criteria stage (microcosm#1022) moves
     # ssi_disability_criteria's attested bytes.
     # The opt-in cross-fitted gate calibration moves the fit kernels' bytes.
+    # The hierarchy value ranks move medicaid_take_up's attested bytes.
     # microcosm#1096's exact softmax cap projection in solve moves it too.
     assert first.spec_sha256 == (
-        "eeba65f746100a162a5ff3cddfbbcdf78bdf3010d136d0afc3607ecc52549e20"
+        "0b417bfc9a83b4483a1db9c73378b49c4e2f547604a3dd7787a47ae7a5dd6f5c"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

@@ -8,7 +8,7 @@ have any number of dimensions, including none.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any
 
 __all__ = [
@@ -65,12 +65,21 @@ class HierarchyGeography(HierarchyNode):
 
 @dataclass(frozen=True)
 class HierarchyDimension:
-    """One Chronicle dimension and the categorical value selected by a target."""
+    """One Chronicle dimension and the categorical value selected by a target.
+
+    ``value_rank`` is the position, from 0, of the value's row among its
+    source table's rows: Chronicle's ``layout.groupby_ordinal`` for the
+    fact's group-by dimension. It is ``None`` when the source gives the
+    value no position, so a reader sorts such values its own way. A rank
+    orders the values one source table lists; two tables may rank the same
+    value differently, or give two values the same rank.
+    """
 
     id: str
     label: str
     value_id: str
     value_label: str
+    value_rank: int | None = None
 
     def __post_init__(self) -> None:
         for field_name, value in (
@@ -83,6 +92,32 @@ class HierarchyDimension:
                 value,
                 field_name=f"HierarchyDimension {self.id!r}.{field_name}",
             )
+        if self.value_rank is not None and (
+            isinstance(self.value_rank, bool)
+            or not isinstance(self.value_rank, int)
+            or self.value_rank < 0
+        ):
+            raise ValueError(
+                f"HierarchyDimension {self.id!r}.value_rank must be a "
+                f"non-negative integer or None, got {self.value_rank!r}."
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        """The canonical mapping; ``value_rank`` is left out when it is None.
+
+        Leaving it out keeps a rank-less dimension's encoding, and so the
+        content version of every registry written before ranks existed.
+        """
+
+        raw: dict[str, Any] = {
+            "id": self.id,
+            "label": self.label,
+            "value_id": self.value_id,
+            "value_label": self.value_label,
+        }
+        if self.value_rank is not None:
+            raw["value_rank"] = self.value_rank
+        return raw
 
 
 @dataclass(frozen=True)
@@ -148,6 +183,21 @@ class CalibrationHierarchy:
                 f"Hierarchy target {self.target.id!r} contains duplicate dimension "
                 f"identifiers: {dimension_ids!r}."
             )
+
+    def to_dict(self) -> dict[str, Any]:
+        """The canonical registry/diagnostics mapping :meth:`from_dict` reads.
+
+        It is ``dataclasses.asdict`` except that a dimension without a
+        ``value_rank`` leaves the key out (:meth:`HierarchyDimension.to_dict`).
+        """
+
+        return {
+            "provider": asdict(self.provider),
+            "category": asdict(self.category),
+            "geography": asdict(self.geography),
+            "dimensions": tuple(dimension.to_dict() for dimension in self.dimensions),
+            "target": asdict(self.target),
+        }
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> CalibrationHierarchy:

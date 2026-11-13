@@ -379,11 +379,14 @@ EXPECTED_HASHES = {
     # gains the passive partnership/S-corp leaf, so the PUF QRF targets change.
     # microcosm#1259's recipient-share bound in puf_support moves both again.
     # microcosm#1261 moves both again: the PUF donor carries partnership and
-    # S-corp line-32 shares as separate leaves. microcosm#1096 moves both
+    # S-corp line-32 shares as separate leaves.
+    # The hierarchy value ranks move both again: medicaid_take_up, an
+    # attested kernel module, gives a substituted enrollment spec's value no
+    # rank. No draw, RNG rule or QRF target changes. microcosm#1096 moves both
     # again: solve's opt-in softmax mass parametrization projects exactly onto
     # the capped simplex; the default projection parametrization is unchanged.
-    "seed_map": "d216f75cd0e832016e320a0cee3577abe7dfcfab659c65b85cb86fbd38973310",
-    "seed_protocol": "2316aa41d7b018339bc6dafe8241700d5b0d13572f4ed3ee3ec6fdf233cb374f",
+    "seed_map": "d29d95beaccb4e4a06464a9112c5a956eb8720e30efd8dd04dcdb61897c4b32f",
+    "seed_protocol": "f3738669eadc7c51a3bce862371f059930f2f39e92172dff0f8089d2b40725d5",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
