@@ -21,6 +21,7 @@ from microcosm.build.uk_runtime.measure_simulation import UKMeasureResolver
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import WeightKind
+from test_support.microcosm_build.uk_engine_window import stub_scratch_engine_window
 
 STORED = np.array([100.0, 0.0, 200.0])
 GROWTH = 1.034
@@ -105,6 +106,7 @@ def test_both_routes_measure_the_stored_value_at_the_calibration_period(
         "_policyengine_uk_module",
         lambda: SimpleNamespace(__version__="test"),
     )
+    stub_scratch_engine_window(monkeypatch)
 
     def resolver_factory(**kwargs):
         kwargs.setdefault("simulation_source", None)

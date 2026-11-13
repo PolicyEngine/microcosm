@@ -61,6 +61,15 @@ def test_adapter_refuses_unconsumed_explicit_uc_roles(monkeypatch, defect):
         "_import_policyengine_uk",
         lambda: SimpleNamespace(Microsimulation=lambda **kwargs: simulation),
     )
+    # The engine's year window needs policyengine-uk itself; the stand-in
+    # engine is built from the dataset as it is.
+    monkeypatch.setattr(
+        engine,
+        "_read_year_simulation",
+        lambda microsimulation_class, dataset, period: microsimulation_class(
+            dataset=dataset
+        ),
+    )
     bundle = SimpleNamespace(
         table=lambda entity: pd.DataFrame({"is_uc_claimant": [True]}),
         n=lambda entity: 1,
@@ -103,6 +112,15 @@ def _role_engine(monkeypatch, variables, *, loaded, values):
         engine,
         "_import_policyengine_uk",
         lambda: SimpleNamespace(Microsimulation=lambda **kwargs: simulation),
+    )
+    # The engine's year window needs policyengine-uk itself; the stand-in
+    # engine is built from the dataset as it is.
+    monkeypatch.setattr(
+        engine,
+        "_read_year_simulation",
+        lambda microsimulation_class, dataset, period: microsimulation_class(
+            dataset=dataset
+        ),
     )
     bundle = SimpleNamespace(
         table=lambda entity: pd.DataFrame(_SUPPLIED), n=lambda entity: 2
@@ -152,3 +170,109 @@ def test_adapter_accepts_person_type_roles_the_model_reads(monkeypatch):
     )
     engine.materialize(bundle, ["income_tax"], 2025)
     assert calls == [*_ROLES, "income_tax"]
+
+
+def _stand_in_engine_modules(monkeypatch, path: str, **attributes) -> None:
+    """Install stand-in policyengine-uk modules down to ``path``."""
+
+    import sys
+    from types import ModuleType
+
+    parts = path.split(".")
+    parent = None
+    for depth in range(1, len(parts) + 1):
+        name = ".".join(parts[:depth])
+        module = ModuleType(name)
+        monkeypatch.setitem(sys.modules, name, module)
+        if parent is not None:
+            setattr(parent, parts[depth - 1], module)
+        parent = module
+    for key, value in attributes.items():
+        setattr(parent, key, value)
+
+
+def test_uk_dataset_through_asks_policyengine_uk_for_the_years_to_end_year(
+    monkeypatch,
+):
+    from microcosm.frame.adapters.policyengine_uk import uk_dataset_through
+
+    calls = []
+
+    def extend_single_year_dataset(dataset, parameters, end_year=None):
+        calls.append((dataset, parameters, end_year))
+        return list(range(int(dataset.time_period), end_year + 1))
+
+    _stand_in_engine_modules(
+        monkeypatch,
+        "policyengine_uk.data.economic_assumptions",
+        extend_single_year_dataset=extend_single_year_dataset,
+    )
+    dataset = SimpleNamespace(time_period="2024")
+    parameters = object()
+
+    assert uk_dataset_through(dataset, "2025", parameters) == [2024, 2025]
+    assert uk_dataset_through(dataset, 2024, parameters) == [2024]
+    assert calls == [(dataset, parameters, 2025), (dataset, parameters, 2024)]
+    with pytest.raises(ValueError, match="forward only"):
+        uk_dataset_through(dataset, 2023, parameters)
+    assert len(calls) == 2
+
+
+def _stand_in_rebalancing(monkeypatch, years):
+    _stand_in_engine_modules(
+        monkeypatch, "policyengine_uk.scenarios.uc_reform", REBALANCING_YEARS=years
+    )
+    import sys
+
+    return sys.modules["policyengine_uk.scenarios.uc_reform"]
+
+
+@pytest.mark.parametrize(
+    ("end_year", "inside"),
+    [
+        (2024, range(2026, 2026)),
+        (2025, range(2026, 2026)),
+        (2027, range(2026, 2028)),
+        (2040, range(2026, 2033)),
+    ],
+)
+def test_rebalancing_years_stop_at_end_year_inside_the_block(
+    monkeypatch, end_year, inside
+):
+    from microcosm.frame.adapters.policyengine_uk import uk_rebalancing_years_through
+
+    installed = range(2026, 2033)
+    uc_reform = _stand_in_rebalancing(monkeypatch, installed)
+
+    with uk_rebalancing_years_through(end_year) as years:
+        assert uc_reform.REBALANCING_YEARS == inside
+        assert years == inside
+
+    assert uc_reform.REBALANCING_YEARS is installed
+
+
+def test_rebalancing_years_are_restored_when_the_block_raises(monkeypatch):
+    from microcosm.frame.adapters.policyengine_uk import uk_rebalancing_years_through
+
+    installed = range(2026, 2033)
+    uc_reform = _stand_in_rebalancing(monkeypatch, installed)
+
+    with pytest.raises(RuntimeError, match="construction failed"):
+        with uk_rebalancing_years_through(2025):
+            assert uc_reform.REBALANCING_YEARS == range(2026, 2026)
+            raise RuntimeError("construction failed")
+
+    assert uc_reform.REBALANCING_YEARS is installed
+
+
+@pytest.mark.parametrize("installed", [(2026, 2027), range(2026, 2033, 2)])
+def test_rebalancing_years_refuse_a_changed_engine(monkeypatch, installed):
+    from microcosm.frame.adapters.policyengine_uk import uk_rebalancing_years_through
+
+    uc_reform = _stand_in_rebalancing(monkeypatch, installed)
+
+    with pytest.raises(TypeError, match="REBALANCING_YEARS"):
+        with uk_rebalancing_years_through(2025):
+            pass
+
+    assert uc_reform.REBALANCING_YEARS is installed

@@ -87,6 +87,8 @@ from microcosm.calibrate import TargetRegistry
 from microcosm.frame import Frame, MassChangeRecord, Weights
 from microcosm.frame.adapters.policyengine_uk import (
     frame_isa_income_contract,
+    uk_dataset_through,
+    uk_rebalancing_years_through,
     validate_uc_claimant_input,
 )
 
@@ -1072,7 +1074,10 @@ class UKMeasureResolver:
                 identifier_universe=engine_identifier_universe,
             )
             write_uk_national_frame(engine_frame, source_path)
+            _project_scratch_engine_input(source_path, self.year)
             mode = "scratch_frame_export"
+            # The scratch engine holds no year after the resolver's.
+            simulation_end_year: int | None = self.year
         else:
             if self._engine_weight_scale is not None:
                 raise ValueError(
@@ -1087,12 +1092,16 @@ class UKMeasureResolver:
             dropped = ()
             source_path = Path(simulation_source)
             mode = "direct_h5"
+            # A release is scored as users load it: policyengine-uk's whole
+            # projection and its checks on every year.
+            simulation_end_year = None
             if frame is None:
                 frame, _provenance = load_uk_national_frame(source_path)
         self.frame = frame
         self._engine_scratch_dropped_columns = tuple(dropped)
         self._factory = factory
         self._source_path = source_path
+        self._simulation_end_year = simulation_end_year
         self._counterfactuals: dict[tuple[str, str | None], Any] = {}
         self._counterfactual_measures: dict[str, dict[str, Any]] = {}
         # The domestic energy measures, computed together on first read.
@@ -1137,7 +1146,7 @@ class UKMeasureResolver:
                 "DfE spring-term measures must not be persisted as source inputs: "
                 f"{persisted_spring_term}"
             )
-        self.simulation = factory(dataset=str(source_path))
+        self.simulation = self._new_simulation()
         validate_uc_claimant_input(self.simulation, frame.table("person"), self.year)
         self.contract_targets = _uk_contract_targets()
         bound_cgt_periods = {}
@@ -1630,6 +1639,21 @@ class UKMeasureResolver:
             return int(period)
         return self.year
 
+    def _new_simulation(self) -> Any:
+        """A new engine simulation of the resolver's source.
+
+        In scratch mode the source holds the frame's year through the
+        resolver's year (:func:`_project_scratch_engine_input`), and
+        policyengine-uk's Universal Credit rebalancing loop stops at the
+        resolver's year while the simulation is built: the measures read no
+        later year. A direct H5 keeps the engine's whole projection.
+        """
+
+        if self._simulation_end_year is None:
+            return self._factory(dataset=str(self._source_path))
+        with uk_rebalancing_years_through(self._simulation_end_year):
+            return self._factory(dataset=str(self._source_path))
+
     def _annual_income_simulation(self) -> Any:
         """The simulation of each person's year, built once from the same source.
 
@@ -1649,7 +1673,7 @@ class UKMeasureResolver:
         if self._annual_income_simulation_cache is not None:
             return self._annual_income_simulation_cache
         person = self.frame.table("person")
-        simulation = self._factory(dataset=str(self._source_path))
+        simulation = self._new_simulation()
         annual_inputs: dict[str, np.ndarray] = {}
         for name, share_column, other_column in _ANNUAL_INCOME_INPUTS:
             current = _values(self.simulation.calculate(name, self.year)).astype(float)
@@ -1734,7 +1758,7 @@ class UKMeasureResolver:
         key = (zeroed, folded)
         if key in self._counterfactuals:
             return self._counterfactuals[key]
-        simulation = self._factory(dataset=str(self._source_path))
+        simulation = self._new_simulation()
         amount = np.asarray(self.simulation.calculate(zeroed, self.year), dtype=float)
         if not np.isfinite(amount).all():
             raise ValueError(f"{zeroed} must be finite to substitute it.")
@@ -2054,6 +2078,31 @@ def _policyengine_uk_module() -> Any:
     import policyengine_uk
 
     return policyengine_uk
+
+
+def _project_scratch_engine_input(path: Path, end_year: int) -> None:
+    """Rewrite the one-year scratch H5 at ``path`` through ``end_year``.
+
+    policyengine-uk projects a one-year file to its ``PROJECTION_END_YEAR``
+    (2032) when it loads it. The measure step reads only the frame's year and
+    the resolver's, so the scratch file becomes a multi-year H5 of those years
+    alone, projected by policyengine-uk's own uprating on current-law
+    parameters (:func:`~microcosm.frame.adapters.policyengine_uk.uk_dataset_through`).
+    policyengine-uk loads a multi-year file as given.
+    """
+
+    from policyengine_uk.data import UKSingleYearDataset
+
+    one_year = UKSingleYearDataset(file_path=str(path))
+    parameters = _policyengine_uk_module().CountryTaxBenefitSystem().parameters
+    projected = uk_dataset_through(one_year, end_year, parameters)
+    with warnings.catch_warnings():
+        # PyTables warns once per table that a year ("2025") is no Python
+        # identifier; policyengine-uk's multi-year layout names tables so.
+        warnings.filterwarnings(
+            "ignore", message="object name is not a valid Python identifier"
+        )
+        projected.save(str(path))
 
 
 def _uk_contract_targets() -> dict[str, Any]:

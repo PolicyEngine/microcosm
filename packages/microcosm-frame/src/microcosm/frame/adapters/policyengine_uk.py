@@ -8,7 +8,8 @@ without the UK extra.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from importlib import metadata
 from pathlib import Path
 from types import MappingProxyType
@@ -39,7 +40,9 @@ __all__ = [
     "UK_SCHEMA",
     "frame_isa_income_contract",
     "frame_savings_income_projection",
+    "uk_dataset_through",
     "uk_isa_income_contract_from",
+    "uk_rebalancing_years_through",
     "uk_savings_income_projection_from",
     "validate_uc_claimant_input",
 ]
@@ -171,6 +174,66 @@ def frame_savings_income_projection(bundle: Frame) -> str:
     return uk_savings_income_projection_from(declared)
 
 
+def uk_dataset_through(dataset: Any, end_year: int | str, parameters: Any) -> Any:
+    """A one-year ``UKSingleYearDataset`` projected only to ``end_year``.
+
+    policyengine-uk's ``Simulation`` projects a one-year dataset (an object,
+    or a path to a one-year H5) with its own uprating to
+    ``PROJECTION_END_YEAR`` (2032) and holds every year, whatever years the
+    caller reads. ``extend_single_year_dataset`` with ``end_year`` returns
+    that projection from the dataset's year through ``end_year`` alone, as a
+    ``UKMultiYearDataset``, which ``Simulation`` takes as given.
+    policyengine-uk builds each year only from earlier years, so the kept
+    years are the ones the full projection holds. ``parameters`` is the
+    parameter tree the uprating reads: current law in a build.
+    """
+
+    from policyengine_uk.data.economic_assumptions import extend_single_year_dataset
+
+    end_year = int(end_year)
+    data_year = int(str(dataset.time_period)[:4])
+    if end_year < data_year:
+        raise ValueError(
+            f"end_year {end_year} is before the dataset's year {data_year}; "
+            "policyengine-uk projects a dataset forward only."
+        )
+    return extend_single_year_dataset(dataset, parameters, end_year=end_year)
+
+
+@contextmanager
+def uk_rebalancing_years_through(end_year: int | str) -> Iterator[range]:
+    """Run policyengine-uk's Universal Credit rebalancing loop only to ``end_year``.
+
+    Every policyengine-uk constructor runs ``add_universal_credit_reform``
+    (``scenarios/uc_reform.py``). For each year of the module's
+    ``REBALANCING_YEARS``, 2026 to ``PROJECTION_END_YEAR``, it computes
+    ``uc_LCWRA_element`` and the arrays behind it, whatever years the dataset
+    holds. Inside the block that range stops at ``end_year`` (it is empty for
+    2024 and 2025), and it never gains a year. On exit, on success or on error,
+    the installed range is restored. The range is built from
+    ``PROJECTION_END_YEAR`` when the module is imported, so a patch of that
+    constant would not reach the loop. The patch is process-wide and not
+    thread-safe: wrap only the construction of one simulation at a time.
+    """
+
+    from policyengine_uk.scenarios import uc_reform
+
+    installed = uc_reform.REBALANCING_YEARS
+    if not isinstance(installed, range) or installed.step != 1:
+        raise TypeError(
+            "policyengine-uk's uc_reform.REBALANCING_YEARS is no longer a range "
+            f"of consecutive years ({installed!r}); review the rebalancing cut "
+            "against the installed engine."
+        )
+    uc_reform.REBALANCING_YEARS = range(
+        installed.start, min(installed.stop, int(end_year) + 1)
+    )
+    try:
+        yield uc_reform.REBALANCING_YEARS
+    finally:
+        uc_reform.REBALANCING_YEARS = installed
+
+
 _PERSON_TABLE = "person"
 _GROUP_TABLES = ("benunit", "household")
 _DTYPE_KIND_BY_VALUE_TYPE: dict[type, str] = {
@@ -261,6 +324,9 @@ class PolicyEngineUKEngine:
         ``dataset_period`` where they belong to an earlier year: the dataset is
         then stamped with that year and policyengine-uk projects it forward to
         ``period`` as it does a released file (``extend_single_year_dataset``).
+
+        The simulation reads only ``period``, so it holds no later year
+        (:meth:`_read_year_simulation`).
         """
 
         microsimulation_class = self._import_policyengine_uk().Microsimulation
@@ -272,7 +338,7 @@ class PolicyEngineUKEngine:
         dataset = self._build_dataset(
             bundle, period if dataset_period is None else dataset_period
         )
-        simulation = microsimulation_class(dataset=dataset)
+        simulation = self._read_year_simulation(microsimulation_class, dataset, period)
         validate_uc_claimant_input(simulation, bundle.table("person"), period)
         results: dict[str, np.ndarray] = {}
         for name in variables:
@@ -308,6 +374,26 @@ class PolicyEngineUKEngine:
             "adapter yet; use microcosm.build.uk_runtime.national_frame."
             "write_uk_national_frame."
         )
+
+    def _read_year_simulation(
+        self, microsimulation_class: Any, dataset: Any, period: int | str
+    ) -> Any:
+        """A simulation of a one-year ``dataset`` that holds no year after ``period``.
+
+        The dataset's year through ``period`` is projected by policyengine-uk's
+        own uprating on the adapter's current-law parameters
+        (:func:`uk_dataset_through`), and the Universal Credit rebalancing
+        loop stops at ``period`` while the simulation is built
+        (:func:`uk_rebalancing_years_through`). A later year would change no
+        value at ``period``: policyengine-uk builds each year only from
+        earlier ones.
+        """
+
+        projected = uk_dataset_through(
+            dataset, period, self._tax_benefit_system().parameters
+        )
+        with uk_rebalancing_years_through(period):
+            return microsimulation_class(dataset=projected)
 
     def _import_policyengine_uk(self) -> Any:
         try:

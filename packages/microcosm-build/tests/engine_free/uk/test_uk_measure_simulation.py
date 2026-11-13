@@ -24,6 +24,7 @@ from microcosm.frame.adapters.policyengine_uk import (
     UK_ISA_INCOME_CONTRACT_ATTR,
     UK_LEGACY_ISA_INCOME_CONTRACT,
 )
+from test_support.microcosm_build.uk_engine_window import stub_scratch_engine_window
 
 
 class FrameStub:
@@ -1162,6 +1163,7 @@ def test_employer_nics_are_a_measured_diagnostic():
 
 
 def test_measure_resolver_direct_and_scratch_receipts(monkeypatch, tmp_path: Path):
+    projections = stub_scratch_engine_window(monkeypatch)
     created = []
 
     class FakeMicrosimulation:
@@ -1207,6 +1209,8 @@ def test_measure_resolver_direct_and_scratch_receipts(monkeypatch, tmp_path: Pat
         str(tmp_path / "input.h5"),
         str(tmp_path / "simulation-input.h5"),
     ]
+    # Only the scratch engine's file is projected, and only to the resolver's year.
+    assert projections == [("simulation-input.h5", 2025)]
 
 
 def test_scratch_engine_input_leaves_property_wealth_to_the_engine(
@@ -1216,6 +1220,7 @@ def test_scratch_engine_input_leaves_property_wealth_to_the_engine(
     sum of the three property components and is never uprated, so the scratch
     H5 the calibration engine loads drops it, as the release export does. The
     resolver's own frame keeps it, and the receipt names what was left out."""
+    stub_scratch_engine_window(monkeypatch)
 
     from microcosm.build.uk_runtime.national_frame import uk_national_frame
 
@@ -1556,6 +1561,7 @@ def test_scratch_engine_input_leaves_the_native_alias_codes_behind(
     so the scratch export the engine loads drops them like the release export
     does. The first K=25 dense build from main (2026-10-04) failed on exactly
     this at ``uk.full.measures``."""
+    stub_scratch_engine_window(monkeypatch)
     loaded = []
 
     class FakeMicrosimulation:
@@ -1599,6 +1605,7 @@ def test_scratch_engine_input_leaves_the_native_alias_codes_behind(
 def test_scratch_engine_input_without_aliases_is_the_frame_itself(
     monkeypatch, tmp_path
 ):
+    stub_scratch_engine_window(monkeypatch)
     monkeypatch.setitem(
         sys.modules,
         "policyengine_uk",
@@ -1791,6 +1798,7 @@ def test_engine_scratch_frame_scales_household_weights_for_the_engine_only():
 def test_resolver_writes_the_scaled_engine_frame_and_records_the_scale(
     monkeypatch, tmp_path: Path
 ):
+    stub_scratch_engine_window(monkeypatch)
     created = []
 
     class FakeMicrosimulation:
