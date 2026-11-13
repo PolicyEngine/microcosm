@@ -55,6 +55,7 @@ __all__ = [
     "UK_EXPORTED_WEIGHT_COLUMNS",
     "UK_HOUSEHOLD_WEIGHT_KIND_ATTR",
     "UK_MASS_LOG_ATTR",
+    "UK_NATIONAL_EXPORT_DROPPED_COLUMNS",
     "UK_NATIONAL_H5_TABLES",
     "UK_NATIONAL_SCHEMA",
     "UK_TIME_PERIOD_METADATA_KEY",
@@ -75,6 +76,7 @@ __all__ = [
     "uk_time_period",
     "validate_uk_national_frame",
     "uk_published_release_frame",
+    "uk_release_export_dropped_columns",
     "uk_release_export_frame",
     "write_uk_national_frame",
 ]
@@ -793,8 +795,10 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
     ),
     "household": (
         "property_wealth",
-        # The value the spine's regional home values replaced (microcosm#1112):
-        # the dense node ranks on it, and it is no engine input.
+        # The WAS chain's own draw of the main residence (microcosm#1112,
+        # microcosm#931): was_wealth ranks England and Wales owners on it to
+        # localise their homes and keeps it beside the localised value, and
+        # regional_property_uprating divides by it. It is no engine input.
         "main_residence_value_rank_basis",
         # Since policyengine-uk 2.164.0 these add the person cash_isa_balance
         # and stocks_and_shares_isa_balance, which the isa_subscriptions stage
@@ -814,6 +818,60 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         "council_tax_band_observed",
     ),
 }
+
+#: What the national line's release boundary drops beside
+#: :data:`UK_RELEASE_EXPORT_DROPPED_COLUMNS` (microcosm#931): each entity's
+#: geographic clone index, spelled as
+#: ``geographic_clones.ladder_clone_index_column`` spells it (here, so that
+#: this module imports nothing more; a test holds the spellings equal). The
+#: national line builds on a spine of one geographic clone, so every index is
+#: zero there: a constant column the degenerate-surface gate would fail, which
+#: tells a consumer nothing. The dense line's export keeps them, as the
+#: lineage of its clones.
+UK_NATIONAL_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "person": ("person_clone_index",),
+        "benunit": ("benunit_clone_index",),
+        "household": ("household_clone_index",),
+    }
+)
+
+#: The release lines an export can be cut for, as a gate context declares its
+#: ``release_line`` (``weighted_integrity.UK_RELEASE_LINES``, spelled here so
+#: that this module imports nothing more; a test holds the two equal).
+_UK_EXPORT_LINES = frozenset({"national", "local"})
+
+
+def uk_release_export_dropped_columns(
+    line: str | None = None,
+) -> Mapping[str, tuple[str, ...]]:
+    """What the release boundary drops on ``line``, by entity (microcosm#931).
+
+    On every line the reviewed export exclusions
+    (:data:`UK_RELEASE_EXPORT_DROPPED_COLUMNS`); on the national line each
+    entity's geographic clone index as well
+    (:data:`UK_NATIONAL_EXPORT_DROPPED_COLUMNS`), after them. ``line`` is a
+    gate context's ``release_line``: ``"national"``, ``"local"`` (the dense
+    line's K-clone pool) or ``None``, a caller that declares no line, which
+    the boundary treats as the local line. Any other is refused.
+    """
+
+    if line is not None and line not in _UK_EXPORT_LINES:
+        raise ValueError(
+            f"A release export's line must be one of {sorted(_UK_EXPORT_LINES)} "
+            f"or None, got {line!r}."
+        )
+    if line != "national":
+        return UK_RELEASE_EXPORT_DROPPED_COLUMNS
+    return MappingProxyType(
+        {
+            entity: (
+                *UK_RELEASE_EXPORT_DROPPED_COLUMNS.get(entity, ()),
+                *UK_NATIONAL_EXPORT_DROPPED_COLUMNS.get(entity, ()),
+            )
+            for entity in ("person", "benunit", "household")
+        }
+    )
 
 
 #: The largest identifier policyengine-uk stores. Its five identifier
@@ -1045,121 +1103,41 @@ def uk_build_identifier_frame(frame: Frame) -> Frame:
     )
 
 
-#: The components of policyengine-uk's two share keys, whose UK totals a
-#: release carries (policyengine-uk 2.178.0, PolicyEngine/policyengine-uk#2901):
-#: corporate_sector_wealth adds the first two and consumption the twelve
-#: spending categories (``policyengine_uk.utils.uk_totals.components``). The
-#: engine tier checks this list, and the sums, against policyengine-uk's own.
-UK_TOTAL_COMPONENTS: tuple[str, ...] = (
-    "corporate_wealth",
-    "private_pension_wealth",
-    "food_and_non_alcoholic_beverages_consumption",
-    "alcohol_and_tobacco_consumption",
-    "clothing_and_footwear_consumption",
-    "housing_water_and_electricity_consumption",
-    "household_furnishings_consumption",
-    "health_consumption",
-    "transport_consumption",
-    "communication_consumption",
-    "recreation_consumption",
-    "education_consumption",
-    "restaurants_and_hotels_consumption",
-    "miscellaneous_consumption",
-)
-UK_TOTAL_PREFIX = "uk_total_"
-UK_TOTAL_COLUMNS: tuple[str, ...] = tuple(
-    f"{UK_TOTAL_PREFIX}{component}" for component in UK_TOTAL_COMPONENTS
-)
-
-
-def uk_household_totals(household: pd.DataFrame, weights: Any) -> pd.DataFrame:
-    """The household table with the UK total of each share-key component.
-
-    policyengine-uk's ``shareholding`` and ``consumption_shareholding`` divide
-    a household's corporate wealth and spending by the UK's totals where the
-    data carries them, so a simulation of part of the file (a region, an
-    extract, a household subset) gives each household its share of the UK's
-    totals. Without them, each part shares the national totals out among its
-    own households. A release holds every UK household, so it carries them:
-    each ``uk_total_*`` column is the same on every row, its component's sum
-    at ``weights``, as ``policyengine_uk.utils.uk_totals.uk_totals`` sums it
-    (María's call of 19 November 2026; her ruling D-e on
-    PolicyEngine/policyengine-uk#2896). The table comes back as it is when it
-    already carries these totals, or holds none of the components (a test
-    frame); one holding only some of them is refused.
-    """
-
-    present = [column for column in UK_TOTAL_COMPONENTS if column in household]
-    if not present:
-        return household
-    if len(present) != len(UK_TOTAL_COMPONENTS):
-        missing = sorted(set(UK_TOTAL_COMPONENTS) - set(present))
-        raise ValueError(
-            "The UK totals need every component of policyengine-uk's share "
-            f"keys; the household table lacks {missing}."
-        )
-    weight = np.asarray(weights, dtype=np.float64)
-    if weight.shape != (len(household),):
-        raise ValueError("The UK totals need one household weight per household.")
-    totals: dict[str, float] = {}
-    for component in UK_TOTAL_COMPONENTS:
-        values = pd.to_numeric(household[component], errors="coerce").to_numpy(
-            dtype=np.float64
-        )
-        if not np.isfinite(values).all():
-            raise ValueError(f"The UK total of {component} needs finite values.")
-        totals[f"{UK_TOTAL_PREFIX}{component}"] = float(np.sum(values * weight))
-    if all(
-        column in household
-        and np.array_equal(
-            household[column].to_numpy(dtype=np.float64),
-            np.full(len(household), total),
-        )
-        for column, total in totals.items()
-    ):
-        return household
-    return household.assign(**totals)
-
-
-def uk_release_export_frame(frame: Frame) -> Frame:
+def uk_release_export_frame(frame: Frame, *, line: str | None = None) -> Frame:
     """The frame the release boundary writes: reviewed export exclusions dropped.
 
-    The three area codes leave under the consumers' names (microcosm#1114,
-    ``geography_ladder.UK_EXPORT_AREA_CODE_COLUMNS``); a national frame
-    carries none. The identifiers leave inside the 32-bit range the engine
-    stores, with the build identifiers beside them (microcosm#1194,
-    :func:`uk_release_identifier_tables`). The households carry the UK totals
-    of the share keys' components at the frame's weights
-    (:func:`uk_household_totals`); the dataset-year division sums them again at
-    the weights the file stores (``weight_year.uk_dataset_year_frame``). A
-    frame that already left passes unchanged. The tables are copied below, so
-    shared columns are checked first.
+    ``line`` is a gate context's ``release_line``; the boundary drops what
+    :func:`uk_release_export_dropped_columns` lists for it, on the national
+    line each entity's geographic clone index too (microcosm#931). The three
+    area codes leave under the consumers' names on every line (microcosm#1114,
+    ``geography_ladder.UK_EXPORT_AREA_CODE_COLUMNS``). The identifiers leave
+    inside the 32-bit range the engine stores, with the build identifiers
+    beside them (microcosm#1194, :func:`uk_release_identifier_tables`). A
+    frame that already left on ``line`` passes unchanged: a household table
+    with a consumer name and no ladder name is not renamed again, since the
+    release cut's gates re-export the candidate they load (microcosm#931),
+    and one with both is refused.
     """
 
-    from .geography_ladder import export_area_code_columns
+    from .geography_ladder import UK_EXPORT_AREA_CODE_COLUMNS, export_area_code_columns
 
     frame.check_shared_columns()
+    drops = uk_release_export_dropped_columns(line)
     tables: dict[str, pd.DataFrame] = {}
     changed = False
     for entity in ("person", "benunit", "household"):
         table = frame.table(entity)
         dropped = [
-            column
-            for column in UK_RELEASE_EXPORT_DROPPED_COLUMNS.get(entity, ())
-            if column in table.columns
+            column for column in drops.get(entity, ()) if column in table.columns
         ]
         if dropped:
             table = table.drop(columns=dropped)
             changed = True
-        if entity == "household":
-            renamed = export_area_code_columns(table)
-            if renamed is not table:
-                table = renamed
-                changed = True
-            totalled = uk_household_totals(table, frame.weights_for("household").values)
-            if totalled is not table:
-                table = totalled
-                changed = True
+        if entity == "household" and any(
+            ladder in table.columns for ladder in UK_EXPORT_AREA_CODE_COLUMNS
+        ):
+            table = export_area_code_columns(table)
+            changed = True
         tables[entity] = table
     if not _uk_build_identifier_state(tables):
         tables = uk_release_identifier_tables(tables)

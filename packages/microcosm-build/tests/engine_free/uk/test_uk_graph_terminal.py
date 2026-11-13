@@ -153,7 +153,7 @@ def test_export_writes_area_codes_under_consumer_names_and_refuses_ladder_names(
     stale = ladder.assign(constituency_code_oa=["stale", "stale"])
     with pytest.raises(ValueError, match="already carries consumer area-code"):
         export_area_code_columns(stale)
-    # A table without geography passes unchanged (the national line).
+    # A table without geography passes unchanged.
     plain = pd.DataFrame({"household_id": [1], "region": ["LONDON"]})
     assert export_area_code_columns(plain) is plain
 
