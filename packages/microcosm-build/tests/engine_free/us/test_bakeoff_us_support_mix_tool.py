@@ -451,3 +451,59 @@ def test_report_with_allow_stale_alone_leaves_stale_receipts_out(tool, tmp_path)
     args.allow_stale = True
     tool.do_report(args)
     assert (args.out / "arms.csv").exists()
+
+
+
+def test_the_arm_solve_is_the_optimize_call_it_replaced(tool, monkeypatch) -> None:
+    """The arm's own _SparseOperator through the public solve, bit for bit
+    against the direct _optimize call the arm made before (microcosm#1585)."""
+    import torch
+
+    from microcosm.calibrate.solve import (
+        CONSERVE_MASS,
+        _optimize,
+        default_target_loss_scales,
+        solve_constraint_system,
+    )
+
+    monkeypatch.setattr(tool, "_SpMV", tool._spmv_class())
+    rng = np.random.default_rng(1585)
+    matrix = sp.random(8, 300, density=0.3, format="csr", random_state=rng) * 10.0
+    w0 = rng.uniform(0.5, 2.0, 300)
+    targets = (matrix @ w0) * rng.uniform(0.8, 1.2, 8)
+    loss_weights = rng.uniform(0.5, 2.0, 8)
+    scales = default_target_loss_scales(targets)
+    operator = tool._SparseOperator(matrix)
+    weights, trajectory = solve_constraint_system(
+        operator,
+        targets,
+        w0,
+        target_loss_weights=loss_weights,
+        target_loss_scales=scales,
+        target_loss_cap=1.0,
+        mass=CONSERVE_MASS,
+        max_weight_ratio=5.0,
+        epochs=50,
+        learning_rate=0.02,
+    )
+    expected_weights, expected_trajectory = _optimize(
+        operator,
+        torch.tensor(targets, dtype=torch.float32),
+        torch.tensor(loss_weights, dtype=torch.float32),
+        torch.tensor(scales, dtype=torch.float32),
+        1.0,
+        w0,
+        epochs=50,
+        learning_rate=0.02,
+        conserve_mass=True,
+        max_weight_ratio=5.0,
+        l0_lambda=0.0,
+        l2_lambda=0.0,
+        target_records=None,
+        init_mean=0.999,
+        temperature=0.25,
+    )
+    assert weights.view(np.uint64).tolist() == expected_weights.view(np.uint64).tolist()
+    assert trajectory.view(np.uint64).tolist() == (
+        expected_trajectory.view(np.uint64).tolist()
+    )

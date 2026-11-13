@@ -59,6 +59,15 @@ _GATE = _TOOL.district_ess_collapse_gate
 _LIMITATION = _TOOL.district_ess_collapse_limitation
 
 
+@pytest.mark.parametrize("bad", (-1.0, float("nan"), float("inf")))
+def test_kish_ess_refuses_a_negative_nan_or_infinite_weight(bad) -> None:
+    """The surfaces' ESS is calibrate's effective_sample_size, which refuses
+    weights its own copy scored (microcosm#1585); an empty cell scores 0."""
+    with pytest.raises(ValueError, match="finite, non-negative"):
+        _CD.kish_ess(np.array([1.0, bad]))
+    assert _CD.kish_ess(np.empty(0)) == 0.0
+
+
 def _origin(design: dict, calibrated: dict) -> dict:
     """A calibration summary's ``weight_origin`` with per-district ESS only."""
 
