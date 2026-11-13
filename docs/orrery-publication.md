@@ -136,7 +136,7 @@ Hugging Face.
 ## Emitter dependency
 
 `packages/microcosm-build` depends on `microcosm-emitter-interface`
-(`>=0.14.0,<1`), the dependency-free package of typed calls, which `uv.lock`
+(`>=0.15.0,<1`), the dependency-free package of typed calls, which `uv.lock`
 records with its hashes. The emitter itself, `microcosm-emitter`, is not a
 workspace dependency: each machine installs it on its own with
 `uv tool install microcosm-emitter`, and the Modal image installs the newest
@@ -148,9 +148,9 @@ versions interfaces still send, and an emitter that lacks a module the build
 asks for starts without it.
 
 A build does not start an emitter older than `MINIMUM_EMITTER_VERSION` in
-`microcosm.build.telemetry_emitter`, now 0.14.0, and the Modal image installs
+`microcosm.build.telemetry_emitter`, now 0.15.0, and the Modal image installs
 at least the same release (`image_emitter_requirement()` in
-`tools/modal_us_stage_plan.py`, `microcosm-emitter>=0.14.0`). The release is
+`tools/modal_us_stage_plan.py`, `microcosm-emitter>=0.15.0`). The release is
 written once, in microcosm-build's package data,
 `packages/microcosm-build/src/microcosm/build/minimum_emitter_version.json`:
 the adapter reads it as package data, and the runner, which imports nothing
@@ -165,20 +165,28 @@ changes when the collector moves to another Google Cloud project. From 0.10.0
 on, the emitter's default collector address is the collector's hostname,
 which stays the same. Microcosm passes the emitter no collector address: the
 adapter's `development_collector_url` parameter, which no build command sets,
-accepts only a loopback address.
+accepts only a loopback address, and reaches telemetry, Orrery graph
+publication and the Hugging Face module's collector submissions alike.
 
-The minimum is 0.14.0, the newest release on 2026-11-09. 0.14.0 adds the
-build machine's readings to each heartbeat, the sleeps the machine took, a
-description of the machine in the run's first event, each stage's awake and
-asleep time at its end, and a counter one level above a stage's progress,
-which the US fiscal refresh's post-export scoring sends as the reform pass
-each scoring batch belongs to (the interface's `OuterProgress`, from 0.14.0).
-The minimum before it, 0.13.0, added `microcosm-emitter status`, which the
-US Modal stage runner runs after each stage to record how many telemetry
-events the stage's emitter left undelivered; builds require the same release
-as the Modal image so that it is written once. Practically no machine ran
-the separately installed emitter on either date, so refusing 0.11.9 to
-0.13.0 cost nothing; the minimum before those, 0.11.9, came from the
+The minimum is 0.15.0, the newest release on 2026-11-13. 0.15.0 adds the
+Hugging Face module's setting that switches collector submissions on, which
+every emitter a build starts sets (`telemetry_emitter.COLLECTOR_SUBMISSIONS`),
+collector provenance on a release publication, which it submits after the
+release commit, and a `skipped` collector receipt with an error code when it
+refuses its collector settings. An older emitter accepts the setting but
+drops a publication's provenance, so it would submit no release. The
+minimum before it, 0.14.0, added the build machine's readings to each
+heartbeat, the sleeps the machine took, a description of the machine in the
+run's first event, each stage's awake and asleep time at its end, and a
+counter one level above a stage's progress, which the US fiscal refresh's
+post-export scoring sends as the reform pass each scoring batch belongs to
+(the interface's `OuterProgress`, from 0.14.0). 0.13.0 added
+`microcosm-emitter status`, which the US Modal stage runner runs after each
+stage to record how many telemetry events the stage's emitter left
+undelivered; builds require the same release as the Modal image so that it
+is written once. Practically no machine ran the separately installed
+emitter on any of these dates, so refusing 0.11.9 to 0.14.0 cost nothing;
+the minimum before those, 0.11.9, came from the
 collector's hostname, for which 0.10.0 would have been enough. A refused
 emitter does cost the build:
 
@@ -204,7 +212,7 @@ the new lockfile digest and rerun the tests and wheel checks.
 
 ## Migrating an existing workstation
 
-Install the emitter once with `uv tool install microcosm-emitter` (0.13.0 or
+Install the emitter once with `uv tool install microcosm-emitter` (0.15.0 or
 later; a build does not start an older emitter, says how to upgrade it and
 continues without it). It keeps using the existing spool database,
 `$XDG_CACHE_HOME/microcosm/telemetry/events.sqlite3`, at the same Alembic
@@ -217,7 +225,7 @@ modification. The emitter's README describes the repair for a machine that
 ran an earlier, unreleased build of the hand-over queue. No new credential,
 hosted service or infrastructure is required by this migration.
 
-To upgrade a machine whose emitter is older than 0.13.0, run
-`uv tool install --upgrade 'microcosm-emitter>=0.13.0'`; it also replaces a
+To upgrade a machine whose emitter is older than 0.15.0, run
+`uv tool install --upgrade 'microcosm-emitter>=0.15.0'`; it also replaces a
 version constraint given at install time, which `uv tool upgrade` keeps.
 `microcosm-emitter version` prints the installed release.

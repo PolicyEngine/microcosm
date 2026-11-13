@@ -4,11 +4,13 @@ Every other workspace test hands bundles to the in-memory emitter client. These
 start the separately installed ``microcosm-emitter`` command with
 ``start_bundle_emitter()``, as the UK re-stage command
 (``tools/stage_uk_rowwise_candidate.py``) starts it: the Hugging Face module
-only, so the telemetry module never starts and nothing contacts the collector.
-A build's own emitter also runs the telemetry and Orrery modules; its Hugging
-Face module is the same code. The emitter's Hugging Face Hub requests go to the
-loopback stand-in Hub (``HF_ENDPOINT``), which takes the dataset through the
-LFS upload a real Hub requires for it, since Xet is turned off.
+only, so the telemetry module never starts. A build's own emitter also runs
+the telemetry and Orrery modules; its Hugging Face module is the same code.
+The emitter's Hugging Face Hub requests go to the loopback stand-in Hub
+(``HF_ENDPOINT``), which takes the dataset through the LFS upload a real Hub
+requires for it, since Xet is turned off. The build switches the module's
+collector submissions on; the fixture points them at a closed loopback port,
+so nothing reaches a collector.
 
 ``tools/run_installed_emitter_tests.sh`` installs the minimum release builds
 accept and the newest pinned release, and runs this file once for each, with
@@ -22,6 +24,7 @@ import hashlib
 import json
 import os
 import shutil
+import socket
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -100,6 +103,13 @@ print(json.dumps(
 """
 
 
+def _closed_loopback_url() -> str:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    return f"http://127.0.0.1:{port}"
+
+
 def _sha256(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
@@ -174,6 +184,12 @@ class InstalledEmitter:
     monkeypatch: pytest.MonkeyPatch
     processes: list[launcher.EmitterProcess] = field(default_factory=list)
     clients: list[EmitterClient] = field(default_factory=list)
+    #: The module settings the build gave each emitter it started, before
+    #: the fixture pointed collector submissions at ``closed_collector_url``.
+    configurations: list[dict[str, Any]] = field(default_factory=list)
+    #: A loopback port nothing listens on: a collector submission fails to
+    #: connect and stays queued, so nothing reaches the production collector.
+    closed_collector_url: str = field(default_factory=lambda: _closed_loopback_url())
 
     def start(self, *, queue_directory: Path | None = None) -> EmitterClient:
         """``start_bundle_emitter()``, optionally with a queue of its own.
@@ -188,8 +204,19 @@ class InstalledEmitter:
         self.clients.append(client)
         return client
 
-    def record_start(self, *arguments: Any, **options: Any) -> launcher.EmitterProcess:
-        process = launcher.start_emitter(*arguments, **options)
+    def record_start(
+        self, modules: dict[str, dict[str, Any]], **options: Any
+    ) -> launcher.EmitterProcess:
+        """Start the emitter with the build's settings, collector submissions
+        sent to ``closed_collector_url`` unless the build named a collector."""
+        self.configurations.append(json.loads(json.dumps(modules)))
+        started = {name: dict(settings) for name, settings in modules.items()}
+        hugging_face = started.get("huggingface")
+        if hugging_face is not None:
+            hugging_face.setdefault(
+                "development_collector_url", self.closed_collector_url
+            )
+        process = launcher.start_emitter(started, **options)
         self.processes.append(process)
         return process
 
@@ -301,6 +328,12 @@ def test_the_build_starts_the_installed_emitter_with_only_its_hub_module(
     assert client.emitter_version == installed_emitter.version
     assert client.modules == {"huggingface"}
     assert len(installed_emitter.processes) == 1
+    # The build switches collector submissions on, and names no collector of
+    # its own, so they would go to the production collector.
+    (configuration,) = installed_emitter.configurations
+    hugging_face = configuration["huggingface"]
+    assert hugging_face.get("collector_submissions") is True
+    assert "development_collector_url" not in hugging_face
 
 
 def test_an_emitter_older_than_the_minimum_is_never_started(
@@ -386,7 +419,10 @@ def test_the_installed_emitter_uploads_the_bundle_in_one_commit(
 
 
 def test_a_modal_runs_copied_back_outputs_are_staged_by_the_re_stage_command(
-    tmp_path: Path, stand_in_hub: StandInHub, installed_emitter: InstalledEmitter
+    tmp_path: Path,
+    stand_in_hub: StandInHub,
+    installed_emitter: InstalledEmitter,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """After ``modal volume get``, the UK re-stage command checks the build
     manifest and the outputs against the stage's receipt, starts the installed
@@ -445,6 +481,15 @@ def test_a_modal_runs_copied_back_outputs_are_staged_by_the_re_stage_command(
     )
     assert staged["run_id"] == RUN_ID
     assert manifest["staged_dataset_handover"]["run_dir"] == str(copied.resolve())
+    # The hand-over names the build, so after the commit the command waited
+    # for the collector. The fixture's collector port is closed: the first
+    # attempt after the commit failed, which ended the wait, and the
+    # submissions stay queued.
+    assert (
+        f"warning: the collector had not accepted the submissions of the staged "
+        f"dataset bundle {PREFIX} when the wait ended (COLLECTOR_UNAVAILABLE)"
+        in capsys.readouterr().err
+    )
 
 
 def test_a_commit_on_a_moved_head_is_refused_then_made_on_the_new_head(

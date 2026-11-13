@@ -19,6 +19,7 @@ from hypothesis import strategies as st
 
 from microcosm.build.gates import single_record_concentration, tail_concentration_gate
 from microcosm.build.us_runtime import h5_io as builder_h5_io
+from microcosm.build.us_runtime.input_mass import UsLine32Carriers
 from microcosm.calibrate import (
     CalibrationHierarchy,
     HierarchyCategory,
@@ -15632,11 +15633,30 @@ def _sentinel_frame(label: str):
     """A stand-in frame whose only role is object identity.
 
     The export-gate tests patch ``us_input_mass_totals`` to key off ``id(frame)``
-    and never touch the schema, so a bare tagged object suffices — building a
-    real US-schema Frame (which needs the engine + every entity table) is
+    and the line 32 carriers reader to check which frames it gets, and never
+    touch the schema, so a bare tagged object suffices — building a real
+    US-schema Frame (which needs the engine + every entity table) is
     unnecessary to exercise the #327 reference-selection logic.
     """
     return SimpleNamespace(label=label)
+
+
+def _expect_line_32_carriers_from(monkeypatch, builder, candidate, reference):
+    """Patch the line 32 carriers reader to check the frames the gate passes.
+
+    The gate reads carriers from the frames whose totals it compares, so the
+    reference it passes follows the same #327 selection as the totals. These
+    tests total no line 32 column, so the carriers don't change the verdict.
+    """
+
+    def carriers(candidate_frame, reference_frame):
+        assert candidate_frame is candidate
+        assert reference_frame is reference
+        return UsLine32Carriers(
+            candidate_partnership_income=False, reference_s_corp_income=False
+        )
+
+    monkeypatch.setattr(builder, "us_line_32_carriers", carriers)
 
 
 def test_export_input_mass_gate_defaults_to_base_reference(monkeypatch) -> None:
@@ -15661,6 +15681,7 @@ def test_export_input_mass_gate_defaults_to_base_reference(monkeypatch) -> None:
         "us_input_mass_totals",
         lambda frame, columns=None: totals[id(frame)],
     )
+    _expect_line_32_carriers_from(monkeypatch, builder, export, base)
 
     gate = builder._export_input_mass_gate(
         export,
@@ -15700,6 +15721,7 @@ def test_export_input_mass_gate_passes_against_certified_reference(monkeypatch) 
         "us_input_mass_totals",
         lambda frame, columns=None: totals[id(frame)],
     )
+    _expect_line_32_carriers_from(monkeypatch, builder, export, reference)
 
     gate = builder._export_input_mass_gate(
         export,
@@ -15749,6 +15771,7 @@ def test_export_input_mass_gate_still_fails_genuine_drift_vs_reference(
         "us_input_mass_totals",
         lambda frame, columns=None: totals[id(frame)],
     )
+    _expect_line_32_carriers_from(monkeypatch, builder, export, reference)
 
     gate = builder._export_input_mass_gate(
         export,
