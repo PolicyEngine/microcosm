@@ -338,8 +338,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "input_mass.py",
         "l0_refit_export.py",
         "late_producer_dag.py",  # Pure contract/schedule derivation; no treatment.
-        # Local-jurisdiction flags as a pure function of county/place codes;
-        # no population treatment.
+        # Re-exports microcosm.build.us_local_jurisdictions (local-jurisdiction
+        # flags as a pure function of county/place codes, kept outside
+        # us_runtime); no population treatment.
         "local_jurisdictions.py",
         "medicaid_take_up.py",
         # Reviewed held-out Medicare IRMAA diagnostic; no population treatment.
@@ -3838,7 +3839,9 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
         # reached module. 81 adds puf_source_schedule_e.py, the PUF donor's
         # Schedule E line-32 and passive supplement (#1239). 82 adds
         # local_jurisdictions.py, which the PUMA ladder calls to write the
-        # county-rule local-jurisdiction flags.
+        # county-rule local-jurisdiction flags; it re-exports
+        # microcosm.build.us_local_jurisdictions, which sits outside
+        # us_runtime and so outside this graph (#1453).
         assert len(runtime_graph) == 82, (
             f"{tool.name} must reach the pinned 82-module runtime graph; "
             f"reached {len(runtime_graph)}"

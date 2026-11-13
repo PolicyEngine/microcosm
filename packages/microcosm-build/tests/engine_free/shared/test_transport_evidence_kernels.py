@@ -171,6 +171,12 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         "microcosm.data.source_enrichment",
         "microcosm.data.stored_inputs",
         "microcosm.data.us_critical_targets",
+        # microcosm#1453: the us_runtime package imports geography_ladder and
+        # puma_ladder, which import the local-jurisdiction flags through
+        # us_runtime.local_jurisdictions, a re-export of
+        # microcosm.build.us_local_jurisdictions.
+        "microcosm.build.us_local_jurisdictions",
+        "microcosm.build.us_runtime.local_jurisdictions",
     ]
 )
 BATTERY = "toy.gates.terminal"
