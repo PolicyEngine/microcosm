@@ -76,7 +76,7 @@
       "eligible"
     ],
     "new_default": true,
-    "reason": "No binding requests a judgment output: each requested variable is a Money amount or a 0/1 Count. The policy refuses an undetermined judgment, so a later binding that requests one stops the run until a reviewer chooses how such a judgment reaches take-up."
+    "reason": "No binding requests a judgment output: each requested variable is a Money amount or a 0/1 Count. The policy records refuse as the reviewed choice for a later binding that requests one. Nothing reads it yet: the take-up and receipt kernels refuse an undetermined code themselves (transport/column_kernels.py and transport/receipt_contract.py call resolve_judgments with UndeterminedAction.REFUSE)."
   },
   "knobs": [],
   "entries": [
@@ -1031,7 +1031,7 @@
       "input": "flanders_family_benefits_child_raised_or_studies_outside_belgium",
       "class": "defaulted",
       "value": false,
-      "reason": "Article 8 section 3 withholds benefits from children raised or taught outside Belgium. The selector admits children domiciled in the region, and the mapping carries no fact on upbringing or schooling abroad, so false applies the exclusion to nobody.",
+      "reason": "Article 8 section 3 withholds benefits from children raised or taught outside Belgium. The selector will admit children domiciled in the region, and the mapping carries no fact on upbringing or schooling abroad, so false applies the exclusion to nobody.",
       "citation": "Flemish Groeipakket decree article 8 section 3 outside-Belgium exclusion (flanders_family_benefits_outside_belgium_exclusion_applies); corpus_citation_path be-vlg/statute/decreet/2018/04/27/2018040369/article/8, recorded on the module (source_verification) and on flanders_family_benefits_child_entitlement, not on this rule",
       "new_default": true
     },
@@ -1343,7 +1343,7 @@
       "input": "wallonia_family_benefits_child_legal_domicile_in_french_language_region",
       "class": "defaulted",
       "value": true,
-      "reason": "Article 4 asks for a legal domicile in the French-language region. The selector column admits to the Walloon scheme only children domiciled there, so the default describes those children; the selector must follow the language region, which leaves out the German-language municipalities of the Walloon Region. W3's region node, from NIS geography, will replace the default.",
+      "reason": "Article 4 asks for a legal domicile in the French-language region. A selector column will admit to the Walloon scheme only children domiciled there, so the default describes those children; the selector must follow the language region, which leaves out the German-language municipalities of the Walloon Region. W3's region node, from NIS geography, will replace the default.",
       "citation": "Walloon family-benefits decree article 4 residence, status, and supranational conditions (wallonia_family_benefits_article_4_residence_and_status_condition_met); corpus_citation_path be-wal/statute/decret/2018/02/08/2018201006/article/4",
       "new_default": true
     },
@@ -2039,7 +2039,7 @@
       "input": "flanders_family_benefits_child_raised_or_studies_outside_belgium",
       "class": "defaulted",
       "value": false,
-      "reason": "Article 8 section 3 withholds benefits from children raised or taught outside Belgium. The selector admits children domiciled in the region, and the mapping carries no fact on upbringing or schooling abroad, so false applies the exclusion to nobody.",
+      "reason": "Article 8 section 3 withholds benefits from children raised or taught outside Belgium. The selector will admit children domiciled in the region, and the mapping carries no fact on upbringing or schooling abroad, so false applies the exclusion to nobody.",
       "citation": "Flemish Groeipakket decree article 8 section 3 outside-Belgium exclusion (flanders_family_benefits_outside_belgium_exclusion_applies); corpus_citation_path be-vlg/statute/decreet/2018/04/27/2018040369/article/8, recorded on the module (source_verification) and on flanders_family_benefits_child_entitlement, not on this rule",
       "new_default": true
     },
@@ -2551,7 +2551,7 @@
       "input": "wallonia_family_benefits_child_legal_domicile_in_french_language_region",
       "class": "defaulted",
       "value": true,
-      "reason": "Article 4 asks for a legal domicile in the French-language region. The selector column admits to the Walloon scheme only children domiciled there, so the default describes those children; the selector must follow the language region, which leaves out the German-language municipalities of the Walloon Region. W3's region node, from NIS geography, will replace the default.",
+      "reason": "Article 4 asks for a legal domicile in the French-language region. A selector column will admit to the Walloon scheme only children domiciled there, so the default describes those children; the selector must follow the language region, which leaves out the German-language municipalities of the Walloon Region. W3's region node, from NIS geography, will replace the default.",
       "citation": "Walloon family-benefits decree article 4 residence, status, and supranational conditions (wallonia_family_benefits_article_4_residence_and_status_condition_met); corpus_citation_path be-wal/statute/decret/2018/02/08/2018201006/article/4",
       "new_default": true
     },

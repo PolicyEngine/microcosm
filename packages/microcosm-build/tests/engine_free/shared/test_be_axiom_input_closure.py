@@ -20,6 +20,7 @@ frame-slice checks need a producer's slice, which the graph change brings.
 
 import copy
 import json
+import re
 from collections import Counter
 
 import pytest
@@ -29,8 +30,9 @@ from microcosm.build.transport.evidence_contract import (
     closure_partition,
     partition_counts,
 )
-from microcosm.frame.adapters.axiom import axiom_concept_mapping
+from microcosm.frame.adapters.axiom import BE_SCHEMA, axiom_concept_mapping
 from microcosm.frame.adapters.axiom_input_surface import load_axiom_input_surface
+from microcosm.frame.concept_mapping import GroupRule
 from microcosm.frame.concepts import ContentBasis
 from microcosm.frame.input_closure import ClosureClass, EncodedBy, InputClosure
 from test_support.paths import paths_for
@@ -64,6 +66,61 @@ PER_MODULE = {
     "be/statutes/family_benefits/regional_routing.yaml": (107, 12, 95),
 }
 
+#: Each binding's module and the selector column of its Child view. A
+#: selector keeps other regions' residents out of a scheme, and the closure's
+#: domicile defaults rely on that, so the pairing is pinned here: neither the
+#: registry nor the adapter refuses a scheme that runs behind another's column.
+BINDINGS = {
+    "brussels_family_benefits_basic_amounts": (
+        "be-bru/statutes/family_benefits/basic_amounts.yaml",
+        "brussels_family_benefits_child_candidate",
+    ),
+    "brussels_family_benefits_eligibility": (
+        "be-bru/statutes/family_benefits/eligibility.yaml",
+        "brussels_family_benefits_child_candidate",
+    ),
+    "brussels_family_benefits_selected_amount": (
+        "be-bru/statutes/family_benefits/selected_amount.yaml",
+        "brussels_family_benefits_child_candidate",
+    ),
+    "brussels_family_benefits_social_supplements": (
+        "be-bru/statutes/family_benefits/social_supplements.yaml",
+        "brussels_family_benefits_child_candidate",
+    ),
+    "german_speaking_community_family_benefits_amounts": (
+        "be-dg/statutes/family_benefits/amounts.yaml",
+        "german_speaking_community_family_benefits_child_candidate",
+    ),
+    "german_speaking_community_family_benefits_eligibility": (
+        "be-dg/statutes/family_benefits/eligibility.yaml",
+        "german_speaking_community_family_benefits_child_candidate",
+    ),
+    "flanders_family_benefits_amounts": (
+        "be-vlg/statutes/family_benefits/amounts.yaml",
+        "flanders_family_benefits_child_candidate",
+    ),
+    "flanders_family_benefits_eligibility": (
+        "be-vlg/statutes/family_benefits/eligibility.yaml",
+        "flanders_family_benefits_child_candidate",
+    ),
+    "wallonia_family_benefits_amounts": (
+        "be-wal/statutes/family_benefits/amounts.yaml",
+        "wallonia_family_benefits_child_candidate",
+    ),
+    "wallonia_family_benefits_eligibility": (
+        "be-wal/statutes/family_benefits/eligibility.yaml",
+        "wallonia_family_benefits_child_candidate",
+    ),
+    "belgium_lgaf_amounts": (
+        "be/statutes/family_benefits/lgaf_amounts.yaml",
+        "belgium_lgaf_child_candidate",
+    ),
+    "belgium_family_benefits_regional_routing": (
+        "be/statutes/family_benefits/regional_routing.yaml",
+        "belgium_family_benefits_child_candidate",
+    ),
+}
+
 SURFACE = load_axiom_input_surface(SURFACE_PATH)
 MAPPING = axiom_concept_mapping("be")
 
@@ -79,10 +136,14 @@ def _bindings_payload() -> dict:
 def _partition(closure_payload: dict, bindings_payload: dict) -> dict:
     """The closure kernel's partition, fed from the surface and the bindings.
 
-    ``roots`` and ``module_sha256`` come from the committed surface, and
-    ``module_imports`` from each binding's ``imports_declared``; the kernel
-    reads the same three from its prepared engines. ``mapped_entities`` is
-    the bindings' ``entity_names`` values, as the kernel passes them.
+    The closure, the mapping, the binding rows and ``mapped_entities`` (the
+    bindings' ``entity_names`` values) reach ``closure_partition`` as the
+    kernel passes them. Three arguments stand in for values the kernel takes
+    from its prepared engines and the module bytes: ``roots`` and
+    ``module_sha256`` come from the committed surface, and ``module_imports``
+    from each binding's ``imports_declared``. The kernel also passes
+    ``entity_names`` and ``person_entity``; they matter only to relations and
+    to the frame-slice checks, and these bindings declare no relation.
     """
 
     rows = bindings_payload["bindings"]
@@ -108,6 +169,9 @@ class TestPartition:
         rows = _bindings_payload()["bindings"]
         assert len(rows) == MODULES
         assert len({row["id"] for row in rows}) == MODULES
+        assert {row["id"]: row["rulespec_path"] for row in rows} == {
+            binding: path for binding, (path, _) in BINDINGS.items()
+        }
         assert {row["rulespec_path"] for row in rows} == set(PER_MODULE)
         # The surface holds no other module with a root on Child.
         assert {
@@ -254,12 +318,19 @@ class TestClosure:
         ]
         assert len(defaults) == DEFAULTED
         assert closure.new_defaults() == tuple(defaults)
-        assert all(entry.reason and entry.citation for entry in defaults)
+        # ClosureEntry refuses an empty reason or citation; a stub is no better.
+        assert all(len(entry.reason) > 40 for entry in defaults)
+        assert all(len(entry.citation) > 20 for entry in defaults)
         assert "proposal" in payload["status"]
         assert "new_default" in payload["status"]
 
     def test_the_mapping_encodes_the_rest_by_person_role(self) -> None:
         closure = InputClosure.from_dict(_closure_payload())
+        assert all(
+            binding.group_rule is GroupRule.PERSON_ROLE
+            for binding in MAPPING.bindings
+            if binding.ref.entity == LOGICAL_ENTITY
+        )
         encoded = {
             entry.ref
             for entry in closure.entries
@@ -290,27 +361,33 @@ class TestClosure:
                 )
         assert {name: found for name, found in values.items() if len(found) > 1} == {}
 
-    def test_engine_line_citations_are_pinned_at_the_surface_engine(self) -> None:
+    def test_every_engine_line_citation_is_pinned_at_the_surface_engine(self) -> None:
+        # A line citation into axiom-rules-engine names one file version only
+        # when a pin records that file at input_surface.engine's commit.
         payload = _closure_payload()
         engine = payload["input_surface"]["engine"]
         assert engine["commit"] == SURFACE.engine_commit
         pins = payload["engine_source_pins"]["pins"]
+        pinned = {pin["path"] for pin in pins}
         assert all(
             pin["repository"] == engine["repository"]
             and pin["commit"] == engine["commit"]
             for pin in pins
         )
-        evidence = payload["engine_optional_evidence"]
-        assert {pin["path"] for pin in pins} == {
-            path for path in (pin["path"] for pin in pins) if f"{path}:" in evidence
-        }
+        cited = set(re.findall(r"((?:[\w-]+/)*[\w-]+\.rs):\d", json.dumps(payload)))
+        assert cited, "the closure cites engine source lines"
+        assert cited <= pinned
+        assert pinned <= cited, "every pin is cited"
 
 
 class TestBindings:
     def test_each_binding_pins_its_module_as_the_surface_does(self) -> None:
         payload = _bindings_payload()
         assert payload["country"] == "be"
-        assert payload["entity_names"] == MAPPING.entity_correspondence
+        # The registry needs the unit entity too, once a benefit unit rule
+        # declares one (entity_names_note), so the mapping's two are a floor.
+        assert MAPPING.entity_correspondence.items() <= payload["entity_names"].items()
+        assert payload["entity_names_note"]
         for row in payload["bindings"]:
             module = SURFACE.modules[row["rulespec_path"]]
             assert module.status == "compiled"
@@ -327,7 +404,11 @@ class TestBindings:
 
     def test_each_binding_has_one_child_view_over_its_variables(self) -> None:
         payload = _bindings_payload()
-        structural = {"person_id", "household_id"}
+        # The columns the registry and the adapter refuse as a selector.
+        structural = {BE_SCHEMA.person_id_column} | {
+            BE_SCHEMA.membership_column(group) for group in BE_SCHEMA.group_entities
+        }
+        assert structural == {"person_id", "person_household_id"}
         for row in payload["bindings"]:
             assert binding_view_entities(row) == {LOGICAL_ENTITY}
             (view,) = row["views"]
@@ -337,12 +418,23 @@ class TestBindings:
             variables = row["variables"]
             assert variables and len(variables) == len(set(variables))
             assert set(view["outside"]) == set(variables)
+            # Outside the view a person gets no amount and no entitlement.
+            assert all(
+                value == 0 and not isinstance(value, bool)
+                for value in view["outside"].values()
+            )
+            assert selector == BINDINGS[row["id"]][1]
             assert selector not in variables
             assert selector not in structural
             # A view input reads the person column of the same name, so a
             # selector must not shadow a root input either.
             module = SURFACE.modules[row["rulespec_path"]]
             assert selector not in module.inputs[LOGICAL_ENTITY]
+        # The selectors block describes each column in use and no other.
+        assert set(payload["selectors"]) == {
+            selector for _, selector in BINDINGS.values()
+        }
+        assert all(payload["selectors"].values())
 
     def test_the_engine_pins_await_the_surface_refresh(self) -> None:
         engine = _bindings_payload()["engine"]
@@ -350,12 +442,16 @@ class TestBindings:
         assert engine["wheel_sha256"] is None
         assert engine["status"]
 
-    def test_the_rulespec_pin_holds_the_surface_bytes(self) -> None:
-        # The surface was generated at an ancestor of the pin; the bindings
-        # record that every bound module has the same bytes at both.
+    def test_the_rulespec_pin_names_the_surface_commit_it_was_checked_against(
+        self,
+    ) -> None:
+        # The surface was generated at an ancestor of the pin. While the two
+        # commits differ, the verification note must name the surface's, since
+        # the sha256 values above were compared at both. The byte check itself
+        # needs a rulespec-be tree, which this test doesn't have.
         payload = _bindings_payload()
-        assert payload["rulespec"]["commit"] != SURFACE.rulespec_commit
-        assert SURFACE.rulespec_commit in payload["rulespec"]["verification"]
+        if payload["rulespec"]["commit"] != SURFACE.rulespec_commit:
+            assert SURFACE.rulespec_commit in payload["rulespec"]["verification"]
         closure = _closure_payload()
         assert closure["rulespec_pin"]["commit"] == payload["rulespec"]["commit"]
 
