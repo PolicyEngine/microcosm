@@ -34,6 +34,7 @@ from microcosm.build.uk_runtime.was_wealth import (
     UK_WAS_UNDRAWN_DIRECT_SHARE_FRACTION,
     UK_WAS_WEALTH_OUTPUT_COLUMNS,
     UK_WAS_WEALTH_PREDICTORS,
+    UK_WAS_WEALTH_STAGE_NAME,
     UK_WAS_WEALTH_STAGE_OUTPUT_COLUMNS,
     UKWASWealthStageTransform,
     allocate_student_loan_balance_to_people,
@@ -1880,6 +1881,14 @@ def test_a_declared_stage_localises_its_owners_and_the_uprating_lands_them() -> 
     )
     result = transform(frame)
     household = result.table("household")
+    # The stage writes its columns in the order it declares them, the kept
+    # draw beside the main residence it is the draw of, as the graph writes
+    # the stage's cells, so the legacy plan and the graph give one column
+    # order (microcosm#931).
+    declared = transform.output_columns()
+    assert [column for column in household.columns if column in declared] == [
+        column for column in declared if column in household.columns
+    ]
 
     drawn = household[RANK_BASIS_COLUMN].to_numpy()
     resources = ahv.load_committed_area_home_values_resources()
@@ -1948,6 +1957,28 @@ def test_a_declared_stage_localises_its_owners_and_the_uprating_lands_them() -> 
         character.isdigit()
         for character in str(caught.value).replace("microcosm#931", "")
     )
+
+
+def test_the_graph_writes_the_packaged_stage_s_cells_in_its_declared_order() -> None:
+    """The graph writes the packaged WAS stage's household cells in the order
+    the stage declares its outputs, the kept draw beside the main residence,
+    the order its transform writes them in: H2 parity holds the two to one
+    column order (microcosm#931)."""
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.graph import _declared_stage_cells
+
+    stage = load_country_spec("uk").sources.stage_map()[UK_WAS_WEALTH_STAGE_NAME]
+    household = [
+        cell.column
+        for cell in _declared_stage_cells(stage)
+        if cell.entity == "household"
+    ]
+    assert household == [column for column in stage.outputs if column in household]
+    transform = UKWASWealthStageTransform(
+        stage=stage, engine=_FakeEngine(), donor=_raw_was()
+    )
+    assert transform.output_columns() == tuple(stage.outputs)
 
 
 def test_the_stage_hands_the_cap_the_rows_its_localiser_rewrote(

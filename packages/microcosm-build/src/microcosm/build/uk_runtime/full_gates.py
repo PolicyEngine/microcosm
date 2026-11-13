@@ -321,8 +321,10 @@ def classify_full_gate_outcomes(
 
     The combined driver exports a diagnostic candidate after failures of its
     five local fit/support/weight checks, but stops on a non-passing geography
-    ladder or local BRMA domain check. Below f100 those five checks are
-    recorded without enforcement.
+    ladder check. Below f100 those five checks are recorded without
+    enforcement. The local BRMA domain recheck retired when the dense line
+    took its areas from the spine, whose transferred gate checks the column
+    (``uk_brma_enum_domain``, microcosm#931).
     All newly included national/source checks keep the shared battery's own
     BLOCKS_ARTIFACT policy, including its declared missing-evidence rules.
     """
@@ -333,10 +335,7 @@ def classify_full_gate_outcomes(
         raise TypeError("Classify a validated GatePhaseReport, not unbound JSON.")
     if not 0.0 < sample_fraction <= 1.0:
         raise ValueError("sample_fraction must be in (0, 1].")
-    structural_local = {
-        "uk_local_geography_ladder_post_calibration",
-        "uk_local_brma_enum_domain",
-    }
+    structural_local = {"uk_local_geography_ladder_post_calibration"}
     local_export_exception = set(UK_LOCAL_GATE_SCOPE) - structural_local
     blocking = {
         outcome.entry.id

@@ -1206,11 +1206,15 @@ class TestUKCountryPackage:
         # frs_annual_income_spells, before frs_take_up, then the area stages
         # (atomic_area_assign, local_authority and rfdr) after them, area_brma
         # in frs_brma's place, spi_copy_areas after spi_income_band_donors and
-        # private_rent after spi_housing_shell.
-        assert len(spec.sources.stages) == 61
-        assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
-            stage.stage for stage in spec.sources.stages
-        )
+        # private_rent after spi_housing_shell; and microcosm#931 retires
+        # regional_home_values, whose England and Wales home values was_wealth
+        # reads off each owner's constituency.
+        assert len(spec.sources.stages) == 60
+        assert not {
+            "frs_hmrc_retained_leaves",
+            "hmrc_spi_income",
+            "regional_home_values",
+        }.intersection(stage.stage for stage in spec.sources.stages)
 
 
 class TestExistingPackagesGeneralize:
@@ -1640,7 +1644,11 @@ class TestUKGatesManifest:
             "uk_stage_student_loans_realization",
             "uk_stage_age_tail_targets",
             "uk_stage_frs_relationships_composition",
-            "uk_stage_regional_home_values_ranking",
+            "uk_stage_area_home_values_ranking",
+            # microcosm#931: the spine geography gates.
+            "uk_atomic_area_mapping_integrity",
+            "uk_spi_copy_area_mapping_integrity",
+            "uk_copy_area_agreement",
             "uk_stage_property_purchases_fit",
             "uk_stage_uc_legacy_closure_take_up_contract",
             "uk_stage_frs_person_draws_apprentices",
@@ -1666,6 +1674,8 @@ class TestUKGatesManifest:
             "uk_export_surface",
             "uk_take_up_signal",
             "uk_brma_enum_domain",
+            "uk_local_authority_enum_domain",
+            "uk_geography_ladder",
             "uk_ons_household_type_enum_domain",
             "uk_capital_gains_asset_type_enum_domain",
             "uk_council_tax_band_domain",
@@ -1680,7 +1690,6 @@ class TestUKGatesManifest:
             "uk_cgt_projection_entrants",
             "uk_input_mass_parity",
             "uk_local_geography_ladder_post_calibration",
-            "uk_local_brma_enum_domain",
             "uk_local_area_support",
             "uk_local_target_fit",
             "uk_local_per_family_fit",
@@ -1784,7 +1793,10 @@ class TestUKGatesManifest:
             "uk_stage_student_loans_realization",
             "uk_stage_age_tail_targets",
             "uk_stage_frs_relationships_composition",
-            "uk_stage_regional_home_values_ranking",
+            "uk_stage_area_home_values_ranking",
+            "uk_atomic_area_mapping_integrity",
+            "uk_spi_copy_area_mapping_integrity",
+            "uk_copy_area_agreement",
             "uk_stage_property_purchases_fit",
             "uk_stage_uc_legacy_closure_take_up_contract",
             "uk_stage_frs_person_draws_apprentices",
@@ -1801,21 +1813,33 @@ class TestUKGatesManifest:
             # The #970 projection fence: a seam that cannot project cannot
             # certify the candidate's sub-exempt gainers.
             "uk_cgt_projection_entrants",
-            "uk_local_brma_enum_domain",
         ]
         assert all(g.not_applicable is None for g in manifest.gates)
 
-    def test_brma_domain_is_checked_on_the_spine_and_local_candidate(
+    def test_the_area_domains_are_checked_at_the_spines_transferred_boundary(
         self, manifest
     ) -> None:
+        """spi_copy_areas, the last spine stage that writes brma and
+        local_authority, gives the SPI copies and income band donors their own,
+        so both domains are checked at the transferred boundary. The BRMA gate
+        replaces the local battery's recheck of the dense line's own rewrite,
+        which retired with it and is named in the gate's notes (microcosm#931)."""
+
         entries = {gate.id: gate for gate in manifest.gates}
-        assembled = entries["uk_brma_enum_domain"]
-        local = entries["uk_local_brma_enum_domain"]
-        assert assembled.phase == "assembled"
-        assert local.phase == "terminal"
-        assert assembled.gate == local.gate == "enum_domain"
-        assert assembled.parameters == local.parameters == {"columns": ("brma",)}
-        assert local.evidence_absent_blocks is True
+        assert "uk_local_brma_enum_domain" not in entries
+        for gate_id, column in (
+            ("uk_brma_enum_domain", "brma"),
+            ("uk_local_authority_enum_domain", "local_authority"),
+        ):
+            entry = entries[gate_id]
+            assert entry.phase == "transferred"
+            assert entry.gate == "enum_domain"
+            assert entry.parameters == {"columns": (column,)}
+            assert entry.criticality == "release_blocking"
+        assert "uk_local_brma_enum_domain" in entries["uk_brma_enum_domain"].notes
+        ladder = entries["uk_geography_ladder"]
+        assert (ladder.gate, ladder.phase) == ("spine_agreement", "transferred")
+        assert ladder.population_fact_check is True
 
     def test_gate_names_are_country_neutral(self, manifest) -> None:
         by_id = {gate.id: gate.gate for gate in manifest.gates}

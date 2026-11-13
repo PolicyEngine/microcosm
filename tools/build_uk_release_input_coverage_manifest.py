@@ -937,6 +937,10 @@ def build_manifest(
                 stage_name="private_rent",
                 candidate_source=candidate_source,
             ),
+            # The WAS chain reads England and Wales home values off each
+            # owner's constituency inside the stage (microcosm#931), so the
+            # family carries the draw it keeps beside them; the retired
+            # regional_home_values family went with that stage.
             "was_wealth": _source_stage_family_coverage_contract(
                 stage_name="was_wealth",
                 candidate_source=candidate_source,
@@ -969,10 +973,6 @@ def build_manifest(
             ),
             "property_components": _source_stage_family_coverage_contract(
                 stage_name="property_components",
-                candidate_source=candidate_source,
-            ),
-            "regional_home_values": _source_stage_family_coverage_contract(
-                stage_name="regional_home_values",
                 candidate_source=candidate_source,
             ),
             "property_purchases": _source_stage_family_coverage_contract(

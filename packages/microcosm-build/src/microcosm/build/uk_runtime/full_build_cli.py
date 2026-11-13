@@ -641,14 +641,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--source-year", type=int)
     parser.add_argument("--calibration-year", type=int)
     parser.add_argument(
-        "--expected-constituency-vintage",
-        help=(
-            "Dense role only: recorded in the run's parameters. The dense line "
-            "takes its areas from the spine (microcosm#931), so no dense node "
-            "checks the ladder against it."
-        ),
-    )
-    parser.add_argument(
         "--rotated-holdout",
         action="store_true",
         help=(

@@ -88,9 +88,12 @@ def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     # frs_annual_income_spells, before frs_take_up; and then the area stages
     # (atomic_area_assign, local_authority and rfdr) after them, area_brma in
     # frs_brma's place, spi_copy_areas after spi_income_band_donors and
-    # private_rent after spi_housing_shell.
-    assert len(expected) == 61
+    # private_rent after spi_housing_shell; and microcosm#931 retires
+    # regional_home_values, whose England and Wales home values was_wealth
+    # now reads off each owner's constituency.
+    assert len(expected) == 60
     assert "frs_brma" not in expected
+    assert "regional_home_values" not in expected
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
     assert set(expected) <= ids
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(ids)
@@ -507,11 +510,12 @@ def test_copy_id_table_changes_invalidate_every_stage_that_reads_it(monkeypatch)
         return content
 
     monkeypatch.setattr(Path, "read_bytes", changed_helper_bytes)
-    # Twelve since the geographic clones mint their ids in the table's
-    # geographic_support field and regional_home_values reads clone 0 from
-    # it (microcosm#931).
-    assert {"geographic_expand", "regional_home_values"} <= set(stages)
-    assert len(affected) == 12
+    # Eleven: the geographic clones mint their ids in the table's
+    # geographic_support field, and regional_home_values, which read clone 0
+    # from it, retired (microcosm#931).
+    assert "geographic_expand" in stages
+    assert "regional_home_values" not in stages
+    assert len(affected) == 11
     for ref in affected:
         assert registry.implementation_hash(ref) != before[ref], ref
     for ref in controls:
@@ -750,7 +754,7 @@ def test_stochastic_assignment_changes_invalidate_every_stage_that_draws(
     ]
     # Three stages that draw through nothing of it.
     control_stages = (
-        "regional_home_values",
+        "frs_education_grant_split",
         "regional_property_uprating",
         "private_school_attendance",
     )
@@ -1140,8 +1144,8 @@ _FRAME_REASON = (
 #: node on any edit to it. The Frame's are the only ones a stage's transform
 #: names; the executor and the modules that compute node keys run every node
 #: from outside it. microcosm.graph.canonical also encodes every key, but
-#: regional_home_values draws through it, and so do the WAS stage's area home
-#: values (microcosm#931), so those stages bind it instead.
+#: the WAS stage's area home values draw through it (microcosm#931), so that
+#: stage binds it instead.
 #: test_the_core_modules_are_on_every_nodes_path checks the table.
 _CORE_MODULES: dict[str, str] = {
     "microcosm.frame.bundle": f"the Frame: {_FRAME_REASON}",
@@ -1936,14 +1940,14 @@ def test_the_core_modules_are_on_every_nodes_path() -> None:
     registry = uk_registry(graph=graph)
     for stage, (node_id, _, _) in walks.items():
         kernel = registry.get(graph.node(node_id).kernel)
-        # regional_home_values draws its keyed uniforms through
+        # The WAS stage's area home values draw their keyed uniforms through
         # microcosm.graph.randomness, whose contract asks a kernel drawing
         # through it to declare SeedSource.KEYED. Every spine stage kernel,
-        # its own included, declares NONE through the one stage kernel class,
-        # as María ruled on 9 Nov (microcosm#931 ruling 7): its stream is a
-        # stage parameter, which its contract hash covers, and it reads no
-        # generator the executor seeds. The WAS stage's area home values draw
-        # the same way on a fixed stream of their own (C-43).
+        # the WAS stage's included, declares NONE through the one stage
+        # kernel class, as María ruled on 9 Nov for the retired
+        # regional_home_values (microcosm#931 ruling 7): the stream is a stage
+        # parameter, which the stage's contract hash covers, and it reads no
+        # generator the executor seeds (C-43).
         assert kernel.capabilities.seed_source is SeedSource.NONE, stage
 
 
@@ -3903,3 +3907,14 @@ def test_microdf_version_joins_every_spine_nodes_numerical_dependencies() -> Non
     assert {node.id for node in bound} >= {"create_uk_frs", "geographic_expand"}
     for node in bound:
         assert dict(node.params["numerical_dependencies"]) == versions, node.id
+
+
+def test_the_wealth_stage_that_runs_the_area_home_values_is_bitwise() -> None:
+    """microcosm#931: the area home values (G8) run inside was_wealth's stage
+    kernel, whose numeric class is BITWISE, the class of every spine stage
+    (design default C-2). F10, whether the G stages declare the platform-bitwise
+    class, is Max's question: a ruling for it changes this pin on purpose."""
+    from microcosm.build.uk_runtime.graph_kernels import UKStageKernel
+    from microcosm.graph import Numeric
+
+    assert UKStageKernel("was_wealth").capabilities.numeric is Numeric.BITWISE

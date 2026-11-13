@@ -265,17 +265,23 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.household_lifetime_isa_balance",
     # #930: the NTS bus-travel stage's household journey cell.
     "household.household_local_bus_trips",
-    # microcosm#1418: the dense build's Rural Fuel Duty Relief flag, set off
-    # each placed household's output area; the incumbent does not carry it.
+    # microcosm#1418: the Rural Fuel Duty Relief flag, set off each household's
+    # output area, by the spine's rfdr stage since microcosm#931 (and by
+    # spi_copy_areas for the SPI copies and income band donors); the incumbent
+    # does not carry it.
     "household.in_rural_fuel_duty_relief_area",
     "household.spi_income_band_donor_lower_bound",
     "household.intermediate_zone_code",
     "household.la_code_oa",
-    # #953: the engine's household local_authority enum input, written by the
-    # rowwise geography ladder from local_authority_code. The incumbent never
+    # #953: the engine's household local_authority enum input, resolved from
+    # local_authority_code by the spine's local_authority stage since
+    # microcosm#931 (and by spi_copy_areas for the SPI copies and income band
+    # donors), as the rowwise geography ladder resolves it. The incumbent never
     # carried it, so the coverage manifest cannot list it; this allow-list
-    # binds at the national release-cut export gate, and the rowwise lane's
-    # own guard is the ladder gate's code/member consistency check.
+    # binds at the national release-cut export gate. The spine battery holds
+    # it to the engine's enum (uk_local_authority_enum_domain) and to its code
+    # (uk_geography_ladder), and the rowwise lane's own guard is the ladder
+    # gate's code/member consistency check.
     "household.local_authority",
     "household.lsoa_code",
     "household.mortgage_debt",

@@ -9699,6 +9699,9 @@
       "factor": {
        "type": "string"
       },
+      "denominator": {
+       "type": "string"
+      },
       "owner_rows": {
        "type": "string"
       },
@@ -10422,6 +10425,91 @@
       "sampled_region_renters": {
        "type": "integer",
        "minimum": 1
+      },
+      "method": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "value_column",
+      "after_segment",
+      "rows",
+      "rank",
+      "stream",
+      "knots",
+      "knots_level",
+      "constituency_column",
+      "regional_reference",
+      "value",
+      "factor",
+      "region_map",
+      "rank_basis_column",
+      "kept",
+      "method"
+     ],
+     "properties": {
+      "kind": {
+       "const": "localise_main_residence_value"
+      },
+      "value_column": {
+       "type": "string"
+      },
+      "after_segment": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "rows": {
+       "type": "string"
+      },
+      "rank": {
+       "type": "string"
+      },
+      "stream": {
+       "type": "array",
+       "minItems": 4,
+       "maxItems": 4,
+       "items": {
+        "type": [
+         "string",
+         "integer"
+        ]
+       }
+      },
+      "knots": {
+       "type": "string"
+      },
+      "knots_level": {
+       "type": "string"
+      },
+      "constituency_column": {
+       "type": "string"
+      },
+      "regional_reference": {
+       "type": "string"
+      },
+      "value": {
+       "type": "string"
+      },
+      "factor": {
+       "type": "string"
+      },
+      "region_map": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "rank_basis_column": {
+       "type": "string"
+      },
+      "kept": {
+       "type": "string"
       },
       "method": {
        "type": "string"
@@ -11793,67 +11881,6 @@
        ]
       },
       "weights": {
-       "type": "string"
-      }
-     }
-    },
-    {
-     "type": "object",
-     "additionalProperties": false,
-     "required": [
-      "kind",
-      "knots",
-      "knots_level",
-      "region_map",
-      "rows",
-      "rank",
-      "support_stratum_lower",
-      "stream",
-      "value",
-      "property_wealth",
-      "rank_basis_column"
-     ],
-     "properties": {
-      "kind": {
-       "const": "assign_regional_home_values"
-      },
-      "knots": {
-       "type": "string"
-      },
-      "knots_level": {
-       "type": "string"
-      },
-      "region_map": {
-       "type": "object",
-       "additionalProperties": {
-        "type": "string"
-       }
-      },
-      "rows": {
-       "type": "string"
-      },
-      "rank": {
-       "type": "string"
-      },
-      "support_stratum_lower": {
-       "type": "number"
-      },
-      "stream": {
-       "type": "array",
-       "items": {
-        "type": [
-         "string",
-         "integer"
-        ]
-       }
-      },
-      "value": {
-       "type": "string"
-      },
-      "property_wealth": {
-       "type": "string"
-      },
-      "rank_basis_column": {
        "type": "string"
       }
      }

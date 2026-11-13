@@ -223,7 +223,6 @@ _STAGE_MODULES = {
     "carers_allowance_take_up": "carers_allowance_take_up",
     "uc_deduction_attributes": "uc_deduction_attributes",
     "high_value_home_support": "high_value_home_support",
-    "regional_home_values": "regional_home_values",
     "cgt_support_split": "cgt_support",
     "cgt_incidence_clone": "cgt_structure",
     "cgt_incidence_anchor": "cgt_structure",
@@ -702,21 +701,6 @@ _STAGE_HELPER_MODULES = {
         hmrc_uprating,
         stochastic_assignment,
     ),
-    # The regional values rank as the dense node does and read its knots
-    # (microcosm#1112), over the tenure map's owners; their keyed uniforms are
-    # microcosm.graph's, which encodes each draw's coordinates as canonical
-    # JSON, and the cap count reads each row's geographic clone from its id
-    # through the copy-id table (microcosm#931). The knots' regions for the
-    # FRS regions are the area home values' (area_home_values, microcosm#931).
-    "regional_home_values": (
-        area_home_values,
-        copy_id_table,
-        property_localisation,
-        rowwise_geography,
-        tenure_constants,
-        graph_randomness,
-        graph_canonical,
-    ),
     # The purchases read the vendored HMRC Stamp Tax rows through the feed-pinned
     # reader and mark SDLT's regions from the FRS region map (microcosm#1095).
     "property_purchases": (
@@ -1038,7 +1022,6 @@ _COUNTING_STAGES = frozenset(
         "was_wealth",
         "was_lisa",
         "high_value_home_support",
-        "regional_home_values",
         "property_components",
         "property_purchases",
         "nts_bus_travel",
@@ -1420,7 +1403,6 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
         UKPropertyPurchasesStageTransform,
         UKPropertyPurchaseTargets,
     )
-    from .regional_home_values import UKRegionalHomeValuesStageTransform
     from .regional_uprating import UKRegionalPropertyUpratingStageTransform
     from .salary_sacrifice import UKSalarySacrificeStageTransform
     from .spi_band_donors import UKSPIIncomeBandDonorStageTransform
@@ -1623,9 +1605,6 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             "property_purchases": UKPropertyPurchasesStageTransform(
                 stage=stages["property_purchases"],
                 targets=property_purchase_targets,
-            ),
-            "regional_home_values": UKRegionalHomeValuesStageTransform(
-                stage=stages["regional_home_values"]
             ),
             "lcfs_consumption": UKLCFSConsumptionStageTransform(
                 stage=stages["lcfs_consumption"],

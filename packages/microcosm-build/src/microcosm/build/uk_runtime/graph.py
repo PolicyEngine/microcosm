@@ -366,11 +366,13 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # the WAS chain it conditions on.
     "was_lisa": None,
     # The factor's mean is taken over FRS-base owners only, so the support
-    # channel is a direct read.
+    # channel is a direct read, and over the declared denominator, the WAS
+    # chain's draw that its area home values keep (microcosm#931).
     "regional_property_uprating": frozenset(
         {
             ("household", "region"),
             ("household", "main_residence_value"),
+            ("household", "main_residence_value_rank_basis"),
             ("household", "property_wealth"),
             ("household", "owned_land"),
             ("household", "other_residential_property_value"),
@@ -397,19 +399,6 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "other_residential_property_value"),
             ("household", "non_residential_property_value"),
             ("household", "household_clone_index"),
-        }
-    ),
-    # Engine-free: the owners' region, tenure, value and wealth, the support
-    # copies the ranking spreads, and the source household the receipt counts
-    # distinct support by (microcosm#1112, microcosm#1095).
-    "regional_home_values": frozenset(
-        {
-            ("household", "region"),
-            ("household", "tenure_type"),
-            ("household", "main_residence_value"),
-            ("household", "property_wealth"),
-            ("household", "household_is_high_value_support_copy"),
-            ("household", "source_household_id"),
         }
     ),
     # Engine-free: each kind's stock, the region that marks where SDLT
@@ -1120,6 +1109,10 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
                 "gross_financial_wealth",
                 "net_financial_wealth",
                 "main_residence_value",
+                # The chain's draw of the main residence, which its area home
+                # values keep and the regional uprating divides by
+                # (microcosm#931).
+                "main_residence_value_rank_basis",
                 "other_residential_property_value",
                 "non_residential_property_value",
                 "savings",
@@ -1170,16 +1163,6 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
     "property_components": _cells(
         "person",
         ("property_income", "property_finance_costs", "property_rental_income"),
-    ),
-    # The region's Land Registry values on the spine, and the value they
-    # replace for the dense node to rank on (microcosm#1112).
-    "regional_home_values": _cells(
-        "household",
-        (
-            "main_residence_value",
-            "property_wealth",
-            "main_residence_value_rank_basis",
-        ),
     ),
     # Annual purchases from each kind of property stock (uk-data#573).
     "property_purchases": _cells(

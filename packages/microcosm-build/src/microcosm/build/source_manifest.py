@@ -90,6 +90,9 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "assign_rfdr_flags",
         "assign_spi_copy_areas",
         "localise_private_rents",
+        # microcosm#931: England and Wales main residences read off each
+        # owner's constituency inside the WAS chain.
+        "localise_main_residence_value",
         "clean_nts_travel_tables",
         "clean_was_lisa_donor",
         "clean_aps_occupation_table",
@@ -165,7 +168,6 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "gate_zero_weight_strata",
         "head_carry",
         "impute_annual_property_purchases",
-        "assign_regional_home_values",
         "draw_uc_claim_at_legacy_closure",
         "impute_bus_use_band",
         "impute_frs_property_finance_costs",

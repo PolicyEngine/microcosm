@@ -15,6 +15,7 @@ import hashlib
 import json
 import sys
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import NamedTuple
 
@@ -22,6 +23,11 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.uk_runtime import copy_id_table
+from microcosm.build.uk_runtime.area_home_values import (
+    UKAreaHomeValuesResources,
+    load_committed_area_home_values_resources,
+    localise_area_home_values,
+)
 from microcosm.build.uk_runtime.frs_brma import (
     _enum_name,
     load_brma_count_resource,
@@ -46,8 +52,11 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_build_identifier_frame,
     uk_time_period,
 )
+from microcosm.build.uk_runtime.property_localisation import RANK_BASIS_COLUMN
 from microcosm.build.uk_runtime.receipt_counts import own_source_households
 from microcosm.build.uk_runtime.regional_uprating import (
+    UK_REGIONAL_PROPERTY_DENOMINATORS,
+    declared_regional_reference_denominator,
     load_regional_land_values_resource,
     uprate_household_property_by_region,
 )
@@ -579,8 +588,31 @@ def e5_identity_receipt(
     permutation_seed: int,
     rewritten_later: Mapping[str, Sequence[str]] | None = None,
     reversed_stages: Sequence[str] | None = None,
+    denominator: str | None = None,
+    area_home_values_resources: UKAreaHomeValuesResources | None = None,
 ) -> dict[str, object]:
     """Receipt E5 deterministic layers under row permutation by entity id.
+
+    The regional property uprating is recomputed as its stage runs, dividing
+    by the column the packaged stage declares (``denominator``, by default
+    ``_declared_uprating_denominator()``). Dividing by
+    ``main_residence_value``, the stage leaves its values at the factor's
+    fixed point, so re-applying it to the stored values gives them back.
+    Dividing by the WAS chain's kept draw, ``main_residence_value_rank_basis``
+    (microcosm#931), it does not: the factor reads a column the stage does
+    not rewrite. Its input is then the area home values' output, a layer of
+    ``was_wealth`` keyed on the household id (``area_home_values``, G8), so
+    the main residence is recomputed from the kept draw through both: an
+    England and Wales owner's draw read off its constituency's knots
+    (``area_home_values_resources``, the committed ones by default) at its
+    weighted mid-rank within its FRS region at the frame's household
+    weights, divided by its region's factor and uprated by it; every other
+    owner's draw uprated. Both read ``regional_resource``, as the WAS stage
+    and the uprating declare the one regional reference. The property total
+    the stage scales was drawn later in the WAS chain, on the localised
+    value, so it is not recomputed; ``not_recomputed`` names it, and both
+    columns on a frame that keeps them without the kept draw (a release,
+    whose boundary drops it).
 
     A column a stage after its own declares writing, in the packaged manifest
     (``rewritten_later``, by default ``_later_writers`` over the E5 stages,
@@ -592,8 +624,50 @@ def e5_identity_receipt(
     """
 
     resource = regional_resource or load_regional_land_values_resource()
+    denominator = (
+        _declared_uprating_denominator() if denominator is None else denominator
+    )
+    if denominator not in UK_REGIONAL_PROPERTY_DENOMINATORS:
+        raise ValueError(
+            "E5 recomputes the regional property uprating dividing by one of "
+            f"{list(UK_REGIONAL_PROPERTY_DENOMINATORS)}, as the stage does."
+        )
+    uprating_columns = {"region", "main_residence_value", "property_wealth"}
+    not_recomputed: dict[str, dict[str, str]] = {}
+    if denominator == RANK_BASIS_COLUMN and uprating_columns <= set(
+        frame.table("household").columns
+    ):
+        not_recomputed["household"] = (
+            {
+                "property_wealth": (
+                    "drawn by the WAS chain on the localised main residence and "
+                    "scaled by the uprating's factor; the artifact keeps no "
+                    "value it was drawn from"
+                )
+            }
+            if RANK_BASIS_COLUMN in frame.table("household").columns
+            else {
+                column: (
+                    f"the artifact does not keep {RANK_BASIS_COLUMN}, the "
+                    "denominator the regional property uprating declares (the "
+                    "release boundary drops it)"
+                )
+                for column in ("main_residence_value", "property_wealth")
+            }
+        )
+    area_resources = None
+    if (
+        denominator == RANK_BASIS_COLUMN
+        and RANK_BASIS_COLUMN in frame.table("household").columns
+    ):
+        area_resources = replace(
+            area_home_values_resources or load_committed_area_home_values_resources(),
+            regional_reference=resource,
+        )
 
-    def recompute(person_t, benunit_t, household_t) -> dict[str, pd.DataFrame]:
+    def recompute(
+        person_t, benunit_t, household_t, household_weights
+    ) -> dict[str, pd.DataFrame]:
         del benunit_t
         household = household_t.copy()
         person = pd.DataFrame(index=person_t["person_id"].to_numpy())
@@ -607,10 +681,19 @@ def e5_identity_receipt(
                 dtype=float
             )
             household["corporate_wealth"] = household_out["corporate_wealth"].to_numpy()
-        if {"region", "main_residence_value", "property_wealth"} <= set(
+        if area_resources is not None and uprating_columns <= set(household.columns):
+            household_out["main_residence_value"] = _area_home_values_uprated(
+                household,
+                household_weights,
+                resource=resource,
+                resources=area_resources,
+            )
+        elif denominator != RANK_BASIS_COLUMN and uprating_columns <= set(
             household.columns
         ):
-            uprated = uprate_household_property_by_region(household, resource)
+            uprated = uprate_household_property_by_region(
+                household, resource, denominator_column=denominator
+            )
             household_out["main_residence_value"] = uprated[
                 "main_residence_value"
             ].to_numpy()
@@ -653,25 +736,32 @@ def e5_identity_receipt(
     # The caller scopes the frame to the population the wealth and uprating
     # stages saw (``_frame_as_stage_saw``): the SPI support rows run before
     # them and are imputed there, while the high-value home copies and the
-    # CGT layers are stacked later. The same scoping takes back the regional
-    # home values' later rewrite of both property columns, so the uprating's
-    # fixed point is read off the values the uprating stage left.
+    # CGT layers are stacked later, and folding them back gives the rows the
+    # weights the area home values ranked at, to rounding.
     person = frame.table("person")
     benunit = frame.table("benunit")
     household = frame.table("household")
-    original = recompute(person, benunit, household)
+    household_weights = np.asarray(frame.weights_for("household").values, dtype=float)
+    original = recompute(person, benunit, household, household_weights)
     rng = np.random.default_rng(permutation_seed)
+    person_order = rng.permutation(len(person))
+    benunit_order = rng.permutation(len(benunit))
+    household_order = rng.permutation(len(household))
     permuted = recompute(
-        person.iloc[rng.permutation(len(person))].reset_index(drop=True),
-        benunit.iloc[rng.permutation(len(benunit))].reset_index(drop=True),
-        household.iloc[rng.permutation(len(household))].reset_index(drop=True),
+        person.iloc[person_order].reset_index(drop=True),
+        benunit.iloc[benunit_order].reset_index(drop=True),
+        household.iloc[household_order].reset_index(drop=True),
+        household_weights[household_order],
     )
     # Permutation comparison is bitwise for the uprating layer (its factor
-    # is computed order-independently). The stored-column cross-check re-
-    # applies uprating to already-uprated values: the fixed point holds
-    # exactly only in exact arithmetic, so one rounding generation of
-    # tolerance applies there, as it does to the waterfall re-allocation
-    # (sums and proportional splits are float arithmetic).
+    # is computed order-independently, and the area home values' rank too).
+    # The stored-column cross-check re-applies uprating to already-uprated
+    # values, or recomputes the main residence from the kept draw at the
+    # restored weights: the fixed point holds exactly only in exact
+    # arithmetic, and the restored weights are the stage's to rounding, so
+    # one rounding generation of tolerance applies there, as it does to the
+    # waterfall re-allocation (sums and proportional splits are float
+    # arithmetic).
     tolerances = {("person", "student_loan_balance"): (1e-12, 1e-6)}
     stored_tolerances = {
         ("household", "main_residence_value"): (1e-12, 1e-6),
@@ -724,18 +814,22 @@ def e5_identity_receipt(
         "matches_stored_columns": not stored_mismatches,
         "stored_column_mismatches": stored_mismatches,
         "rewritten_later": rewritten,
+        "uprating_denominator": denominator,
+        "not_recomputed": not_recomputed,
         "tolerance_policy": (
             "permutation: bitwise for the regional-uprating rewrite "
-            "(order-independent factor), rtol 1e-12 / atol 1e-6 GBP for the "
-            "waterfall re-allocation; stored-column cross-check: rtol 1e-12 "
-            "/ atol 1e-6 GBP for both layers (re-applying uprating to the "
-            "uprated fixed point and re-summing allocations each cost one "
-            "float rounding generation, and the scoping's reversal of the "
-            "regional home values' wealth move one more), except a column a "
-            "stage after its own declares writing, which is not compared "
-            "(rewritten_later names the stages); corporate_wealth "
-            "fold not reconstructible from the artifact (components consumed) - "
-            "unit-tested only"
+            "(order-independent factor, and the area home values' "
+            "order-independent rank where the uprating divides by their kept "
+            "draw), rtol 1e-12 / atol 1e-6 GBP for the waterfall "
+            "re-allocation; stored-column cross-check: rtol 1e-12 / atol 1e-6 "
+            "GBP for both layers (re-applying uprating to the uprated fixed "
+            "point, ranking at weights the scoping restores to rounding and "
+            "re-summing allocations each cost one float rounding generation), "
+            "except a column a stage after its own declares writing, which is "
+            "not compared (rewritten_later names the stages), and a column "
+            "the artifact cannot recompute (not_recomputed names it); "
+            "corporate_wealth fold not reconstructible from the artifact "
+            "(components consumed) - unit-tested only"
         ),
         "columns_by_entity": {
             entity: list(values.columns) for entity, values in original.items()
@@ -745,6 +839,49 @@ def e5_identity_receipt(
             "determinism rather than identity-keyed row permutation"
         ),
     }
+
+
+#: The stage E5 recomputes the regional property uprating of.
+_UPRATING_STAGE = "regional_property_uprating"
+
+
+def _declared_uprating_denominator() -> str:
+    """The column the packaged regional property uprating's factor divides
+    by, read off its stage as the stage reads it
+    (``regional_uprating.declared_regional_reference_denominator``)."""
+
+    from microcosm.build.source_manifest import SourceStageSpec
+
+    (stage,) = [
+        stage for stage in _source_stage_roster() if stage["stage"] == _UPRATING_STAGE
+    ]
+    return declared_regional_reference_denominator(SourceStageSpec.from_mapping(stage))
+
+
+def _area_home_values_uprated(
+    household: pd.DataFrame,
+    household_weights: np.ndarray,
+    *,
+    resource: Mapping[str, object],
+    resources: UKAreaHomeValuesResources,
+) -> np.ndarray:
+    """Each household's main residence as the WAS chain's area home values
+    and then the regional property uprating, dividing by their kept draw,
+    leave it (microcosm#931), recomputed from that draw at
+    ``household_weights``, in ``household``'s row order."""
+
+    localised = localise_area_home_values(
+        household,
+        household_weights,
+        household[RANK_BASIS_COLUMN].to_numpy(dtype=float),
+        resources=resources,
+    )
+    staged = household.copy()
+    staged["main_residence_value"] = localised.value
+    uprated = uprate_household_property_by_region(
+        staged, resource, denominator_column=RANK_BASIS_COLUMN
+    )
+    return uprated["main_residence_value"].to_numpy(dtype=float)
 
 
 def e6_identity_receipt(
@@ -1985,11 +2122,11 @@ def _e8_band_donors(
     (``_frame_as_stage_saw``), gives the frame the stage wrote at the weights
     it left, to rounding, and the stored seats, carriers and band weights are
     read there, so a later copy of a donor is not read as a donor. That
-    scoping also reverses the in-place rewrites of ``salary_sacrifice`` and
-    ``regional_home_values``, so ``frame`` must not be a frame already
-    scoped or reversed: a second salary-sacrifice reversal refuses. Scaling
-    each funding stratum's incumbents back to the stratum's whole mass then
-    gives the weights the stage read. The stored layer must agree with
+    scoping also reverses the in-place rewrite of ``salary_sacrifice``, so
+    ``frame`` must not be a frame already scoped or reversed: a second
+    salary-sacrifice reversal refuses. Scaling each funding stratum's
+    incumbents back to the stratum's whole mass then gives the weights the
+    stage read. The stored layer must agree with
     itself (one carrier per donor, each parent household copied once, equal
     weights within a band, the mass record conserving the total) and, when
     the tape's band propensities are supplied (they need the licensed SPI
@@ -2969,13 +3106,13 @@ def main() -> int:
     elif args.check == "e5":
         # E5's wealth stages run after the SPI support rows are stacked and
         # before the high-value home copies and the CGT layers. The regional
-        # property uprating's mean is over FRS-base owners, so a frame still
-        # carrying the later copies shifts that denominator and the
-        # recomputation stops matching what the stage stored. Scope to the
-        # population the stage saw. regional_home_values then rewrites both
-        # property columns, so the fixed point holds only on the values the
-        # uprating left, which the scoping restores from that stage's rank
-        # basis where the artifact keeps it.
+        # property uprating's mean is over FRS-base owners, and the area home
+        # values rank every owner of a region at the stage's weights, so a
+        # frame still carrying the later copies shifts both and the
+        # recomputation stops matching what the stages stored. Scope to the
+        # population the stages saw, at the weights they read. No later
+        # stage writes either property column (microcosm#931), so the scope
+        # takes no rewrite of them back.
         receipt = e5_identity_receipt(
             _frame_as_stage_saw(frame, _E5_FIRST_STAGE),
             permutation_seed=args.permutation_seed,
@@ -3068,7 +3205,8 @@ _E6_FIRST_STAGE = "nts_bus_travel"
 #: holding its value instead of the recomputed stage's (``_later_writers``). E4's
 #: stages run after geographic_expand, on every geographic clone, and before
 #: the SPI support channel stacks its copies (microcosm#931); E5 checks the
-#: wealth stage's layers and the regional uprating's fixed point. The BRMA is
+#: wealth stage's layers, its area home values among them, and the regional
+#: uprating, dividing by the denominator it declares. The BRMA is
 #: area_brma's, in frs_brma's place since the area stages landed
 #: (microcosm#931). The area stages before the draws (atomic_area_assign,
 #: local_authority, rfdr) add no rows and draw nothing E4 recomputes: E4 reads
@@ -3778,16 +3916,16 @@ def _frame_as_stage_saw(frame, stage: str):
     """Scope the artifact to the rows present when ``stage`` ran.
 
     A stage before ``salary_sacrifice`` also saw every converted record's
-    pay and employee contribution before the conversion rewrote them, and a
-    stage before ``regional_home_values`` every owner's home value and
-    property wealth before that stage rewrote them.
+    pay and employee contribution before the conversion rewrote them. No
+    other stage rewrites a column in place for the scope to take back: the
+    retired ``regional_home_values`` did, and the WAS chain's area home
+    values, which replace it, keep their draw beside the value they write
+    (microcosm#931).
     """
 
     positions = _roster_positions()
     if positions[stage] < positions[_SALARY_SACRIFICE_STAGE]:
         frame = _pre_salary_sacrifice_frame(frame)
-    if positions[stage] < positions[_REGIONAL_HOME_VALUES_STAGE]:
-        frame = _pre_regional_home_values_frame(frame)
     return _drop_stacked_layers(
         frame, _flags_stacked_after(stage, frame.table("household"))
     )
@@ -3796,13 +3934,12 @@ def _frame_as_stage_saw(frame, stage: str):
 def _reversals_applied(frame, stage: str) -> tuple[str, ...]:
     """The stages whose rewrite ``_frame_as_stage_saw(frame, stage)`` takes back.
 
-    Each reversal reads a carrier the artifact keeps (the salary-sacrifice
-    stage's pre-conversion pay, the regional home values' rank basis), so an
-    artifact without it, a release say, keeps the later stage's values, and
-    a receipt reports that stage's columns as rewritten later.
+    The reversal reads a carrier the artifact keeps (the salary-sacrifice
+    stage's pre-conversion pay), so an artifact without it, a release say,
+    keeps the later stage's values, and a receipt reports that stage's
+    columns as rewritten later.
     """
 
-    from microcosm.build.uk_runtime.regional_home_values import RANK_BASIS_COLUMN
     from microcosm.build.uk_runtime.salary_sacrifice import (
         SALSAC_PRE_CONVERSION_PAY_COLUMN,
     )
@@ -3813,10 +3950,6 @@ def _reversals_applied(frame, stage: str) -> tuple[str, ...]:
         SALSAC_PRE_CONVERSION_PAY_COLUMN in frame.table("person").columns
     ):
         applied.append(_SALARY_SACRIFICE_STAGE)
-    if positions[stage] < positions[_REGIONAL_HOME_VALUES_STAGE] and (
-        RANK_BASIS_COLUMN in frame.table("household").columns
-    ):
-        applied.append(_REGIONAL_HOME_VALUES_STAGE)
     return tuple(applied)
 
 
@@ -4130,14 +4263,13 @@ def _pre_salary_sacrifice_frame(frame):
     )
 
 
-#: The stage that rewrites owners' home values in place (microcosm#1112).
-_REGIONAL_HOME_VALUES_STAGE = "regional_home_values"
-#: The household columns that stage rewrites, which the reversal restores.
-_REGIONAL_HOME_VALUE_COLUMNS = ("main_residence_value", "property_wealth")
 #: The stages whose rewrite ``_frame_as_stage_saw`` takes back for a stage
 #: before them, when the artifact keeps the carrier (``_reversals_applied``):
-#: what a receipt assumes of a frame it is handed scoped.
-_SCOPE_REVERSALS = (_SALARY_SACRIFICE_STAGE, _REGIONAL_HOME_VALUES_STAGE)
+#: what a receipt assumes of a frame it is handed scoped. The retired
+#: regional_home_values was the other; the WAS chain's area home values,
+#: which replace it, keep their draw beside the value they write, so they
+#: need none (microcosm#931).
+_SCOPE_REVERSALS = (_SALARY_SACRIFICE_STAGE,)
 #: What E4 assumes of a frame it is handed scoped: those, and spi_copy_areas,
 #: whose rewrites (brma among them) fall on the rows the SPI support channel
 #: copied alone, every one of which E4's scope drops
@@ -4185,82 +4317,6 @@ def _source_stage_roster() -> list[dict[str, object]]:
         .read_text(encoding="utf-8")
     )
     return list(spec["stages"])
-
-
-def _require_regional_home_values_last_writer() -> None:
-    """Refuse when a stage after ``regional_home_values`` declares a column
-    the reversal restores: the reversal would then hide that stage's rewrite
-    from every receipt scoped before stage 27, instead of failing on it."""
-
-    stages = _source_stage_roster()
-    names = [str(stage["stage"]) for stage in stages]
-    later = [
-        stage
-        for stage in stages[names.index(_REGIONAL_HOME_VALUES_STAGE) + 1 :]
-        if set(_REGIONAL_HOME_VALUE_COLUMNS)
-        & {*stage.get("outputs", ()), *stage.get("rewrites", ())}
-    ]
-    if later:
-        raise ValueError(
-            f"{len(later)} stage(s) after {_REGIONAL_HOME_VALUES_STAGE} declare "
-            "main_residence_value or property_wealth, so the reversal of its "
-            "rewrite no longer gives the values an earlier stage saw."
-        )
-
-
-def _pre_regional_home_values_frame(frame):
-    """The artifact with the regional home values' rewrite reversed.
-
-    ``regional_home_values`` gives England-and-Wales owners the value their
-    region's Land Registry distribution holds at their rank, keeps the value
-    it replaced on every household in ``main_residence_value_rank_basis``
-    (its only writer) and moves ``property_wealth`` by the value's change,
-    floored at zero. So the rewrite reverses: the value back from the rank
-    basis, exactly, and the wealth moved back by the same change, at one
-    rounding. ``was_wealth`` derives ``property_wealth`` as a sum of property
-    values that includes ``main_residence_value``, so the moved wealth is at
-    least the new value and the floor binds only where a frame broke that
-    sum; there the wealth it replaced is lost, and the reversal gives the
-    largest wealth the floor allows. The rank basis is dropped, since no
-    earlier stage had it. An artifact without it (built before the stage, or
-    a release, whose boundary drops it with ``property_wealth``) is returned
-    as it is. The reversal holds only while stage 27 is the last stage to
-    write either column, so it refuses a roster where a later stage declares
-    one of them.
-    """
-
-    from microcosm.build.uk_runtime.national_frame import (
-        uk_household_weight_kind,
-        uk_national_frame,
-    )
-    from microcosm.build.uk_runtime.regional_home_values import RANK_BASIS_COLUMN
-
-    household = frame.table("household")
-    if RANK_BASIS_COLUMN not in household.columns:
-        return frame
-    _require_regional_home_values_last_writer()
-    household = household.copy()
-    basis = pd.to_numeric(household[RANK_BASIS_COLUMN], errors="raise").to_numpy(
-        dtype=float
-    )
-    value = pd.to_numeric(household["main_residence_value"], errors="raise").to_numpy(
-        dtype=float
-    )
-    if "property_wealth" in household.columns:
-        wealth = pd.to_numeric(household["property_wealth"], errors="raise").to_numpy(
-            dtype=float
-        )
-        household["property_wealth"] = wealth - (value - basis)
-    household["main_residence_value"] = basis
-    return uk_national_frame(
-        person=frame.table("person"),
-        benunit=frame.table("benunit"),
-        household=household.drop(columns=[RANK_BASIS_COLUMN]),
-        time_period=uk_time_period(frame),
-        weight_kind=uk_household_weight_kind(frame),
-        household_weights=frame.weights_for("household").values,
-        mass_log=frame.mass_log,
-    )
 
 
 def _drop_stacked_layers(frame, flags: Sequence[str]):

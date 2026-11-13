@@ -3269,7 +3269,7 @@
       "artifacts": [],
       "grain": "household",
       "nonnegative_outputs": [],
-      "notes": "Spine-only, deterministic, mass-conserving support split for the dense graph's post-geography home value map (microcosm#1240). The value node reads every owner clone's home value off its assigned constituency's Land Registry sale distribution at the household's weighted rank among its region's owners, so each seat's homes over 2 million rest on the few households whose rank is in the top of the region; this stage copies every owner household in the top five per cent of its region six ways at equal weight, each copy carrying its index in high_value_support_copy_index (0 on roots), the explicit lineage the geography identity keys on, and the value node gives each copy its own keyed rank inside the stratum. The exact-total correction lands on one of the 64 heaviest households the stage leaves whole, and on a root or copy only where none of them can carry it (copy_rule). No value is assigned here; the one draw is the stratum's tie-break, a uniform keyed on each household's own household_id (seed, salt) that orders owners tied on value, so no copy or clone ordinal ranks highest on every tie.",
+      "notes": "Spine-only, deterministic, mass-conserving support split (microcosm#1240). Within each FRS region, every owner household in the top five per cent of the region's owner weight by main_residence_value is copied six ways at equal weight, each copy carrying its index in high_value_support_copy_index (0 on roots) and its ids minted in the copy-id table's high_value_support field. The stage runs after the regional property uprating, so it selects on the values was_wealth reads off each England and Wales owner's constituency, which the uprating returns to their knots (microcosm#931), and every copy keeps its parent's value, area and geography key. The exact-total correction lands on one of the 64 heaviest households the stage leaves whole, and on a root or copy only where none of them can carry it (copy_rule). No value is assigned here; the one draw is the stratum's tie-break, a uniform keyed on each household's own household_id (seed, salt) that orders owners tied on value, so no copy or clone ordinal ranks highest on every tie.",
       "operations": [
         {
           "conservation": "exact_total",
@@ -6989,70 +6989,6 @@
       "stage": "property_purchases",
       "survey": "HMRC Annual Stamp Tax Statistics 2024 to 2025 (corrected 11 March 2026), Tables 6b, 8a and 8b"
     },
-    "regional_home_values": {
-      "artifacts": [
-        {
-          "format": "json",
-          "kind": "public_aggregate_reference",
-          "resource": "high_value_home_value_knots.json",
-          "role": "value_knots",
-          "runtime_sha256_required": true
-        }
-      ],
-      "grain": "household",
-      "nonnegative_outputs": [
-        "main_residence_value_rank_basis"
-      ],
-      "notes": "The national line's home values (microcosm#1112, microcosm#1095). The national release solves the bound spine, which has no area, so main_residence_value stayed the WAS-imputed value after the regional uprating, not a Land Registry value; the dense line reads values off the assigned constituency's distribution only after areas exist (uk.full.property.value, microcosm#1240). This stage gives every England-and-Wales owner household with a value the one its region's uprated Land Registry distribution holds at the household's weighted mid-rank among the owner households of its FRS region, at the spine's weights, ranked as the dense node ranks (ties broken by a keyed draw; the high-value support copies spread over the top stratum by their own draws), and moves property_wealth by the change. Scotland, Northern Ireland, renters and owners without a value keep theirs, and the council-tax band is untouched. The replaced value is kept in main_residence_value_rank_basis, which the dense node ranks on, so the dense line's values, wealth and bands do not change; the release boundary drops it on both lines. The value reaches three national rows: obr.sdlt through the main-home purchase value, and ons.land.land_value and ons.land.household_land_value through property_wealth and the engine's land intensity; corporate land value does not move. The region knots run up to each region's largest sale and down to its smallest, as the dense line's constituency knots do, so the national line places more homes in the top surcharge bands than the derived stock facts; the tails are to be fixed on both lines together (#1112, Mar\u00eda's ruling of 2026-10-17).",
-      "operations": [
-        {
-          "kind": "assign_regional_home_values",
-          "knots": "high_value_home_value_knots.json",
-          "knots_level": "region",
-          "property_wealth": "moves by the value's change, floored at 0",
-          "rank": "weighted mid-rank of main_residence_value among the owner households of the FRS region at the spine's weights, ties broken by a keyed draw; high-value support copies take support_stratum_lower + (1 - support_stratum_lower) * draw",
-          "rank_basis_column": "main_residence_value_rank_basis",
-          "region_map": {
-            "EAST_MIDLANDS": "E12000004",
-            "EAST_OF_ENGLAND": "E12000006",
-            "LONDON": "E12000007",
-            "NORTH_EAST": "E12000001",
-            "NORTH_WEST": "E12000002",
-            "SOUTH_EAST": "E12000008",
-            "SOUTH_WEST": "E12000009",
-            "WALES": "W92000004",
-            "WEST_MIDLANDS": "E12000005",
-            "YORKSHIRE": "E12000003"
-          },
-          "rows": "owner households (tenure owned outright or with a mortgage) with main_residence_value > 0 in the mapped regions",
-          "stream": [
-            "sha256-u53-v1",
-            "uk-spine-regional-home-values-v1",
-            0,
-            0
-          ],
-          "support_stratum_lower": 0.95,
-          "value": "np.interp(rank, grid, region knots)"
-        },
-        {
-          "declared_factor": 1,
-          "entity": "household",
-          "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.",
-          "kind": "record_mass_conservation_receipt",
-          "reason": "Regional home values assigned on the source spine: household weights pass through unchanged and total household mass is conserved."
-        }
-      ],
-      "outputs": [
-        "main_residence_value_rank_basis"
-      ],
-      "rewrites": [
-        "main_residence_value",
-        "property_wealth"
-      ],
-      "source": "uk/high_value_home_value_knots.json, built by tools/build_uk_high_value_home_stock.py from PolicyEngine/chronicle#343's registrations",
-      "stage": "regional_home_values",
-      "survey": "HM Land Registry Price Paid latest sales uprated with the UK House Price Index, owner-weighted by region (the dense value node's knots, region level)"
-    },
     "regional_property_uprating": {
       "artifacts": [
         {
@@ -7064,10 +7000,11 @@
       ],
       "grain": "household",
       "nonnegative_outputs": [],
-      "notes": "Deterministically rescales owner rows so regional unweighted owner means match the public house-price reference. Northern Ireland has no reference row and is never scaled; empty and nonpositive regions are skipped. The unweighted mean follows the incumbent behavior. The factor is read off the main residence and has always scaled the property total; since microcosm#1063 it scales the total's other components in the frame as well (land, other houses, buildings), so an owner's property_wealth stays the sum of its components after the uprating. Mortgage debt is never uprated.",
+      "notes": "Deterministically rescales owner rows by each region's factor: its public house-price reference over the unweighted mean of main_residence_value_rank_basis, the WAS chain's draw of the main residence, among its FRS-base owners. was_wealth keeps that draw beside the values it reads off each England and Wales owner's constituency, which it divides by the same factor, so the uprating returns those values to the constituency's knots (microcosm#931); Scotland's owners hold the draw itself, so the region's unweighted owner mean matches the reference as before. Northern Ireland has no reference row and is never scaled; empty and nonpositive regions are skipped. The unweighted mean follows the incumbent behavior. The factor has always scaled the property total; since microcosm#1063 it scales the total's other components in the frame as well (land, other houses, buildings), so an owner's property_wealth stays the sum of its components after the uprating. Mortgage debt is never uprated.",
       "operations": [
         {
-          "factor": "avg_house_price / unweighted_mean(main_residence_value | region, >0)",
+          "denominator": "main_residence_value_rank_basis",
+          "factor": "avg_house_price / unweighted_mean(main_residence_value_rank_basis | region, FRS-base owners, main_residence_value > 0)",
           "kind": "uprate_to_regional_reference",
           "owner_rows": "main_residence_value > 0",
           "resource": "regional_land_values.json",
@@ -8672,6 +8609,20 @@
           "sha256": "18b3eb980c02c99f3d8a3254af859bee31682b2bdc11703877677292b3ce9374",
           "size_bytes": 39073613,
           "ukds_study_number": 7215
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "high_value_home_value_knots.json",
+          "role": "value_knots",
+          "runtime_sha256_required": true
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "regional_land_values.json",
+          "role": "regional_reference",
+          "runtime_sha256_required": true
         }
       ],
       "grain": "household",
@@ -8682,6 +8633,7 @@
         "private_pension_wealth",
         "gross_financial_wealth",
         "main_residence_value",
+        "main_residence_value_rank_basis",
         "other_residential_property_value",
         "non_residential_property_value",
         "savings",
@@ -8873,6 +8825,40 @@
           "weights": "explicit"
         },
         {
+          "after_segment": 2,
+          "constituency_column": "constituency_code",
+          "factor": "avg_house_price / unweighted_mean(drawn main_residence_value | region, FRS-base owners, >0), the regional property uprating's factor on the draw",
+          "kept": "Scotland, Northern Ireland, renters and owners without a positive draw keep the draw",
+          "kind": "localise_main_residence_value",
+          "knots": "high_value_home_value_knots.json",
+          "knots_level": "constituency",
+          "method": "uk-spine-area-home-values-v1",
+          "rank": "weighted mid-rank of the drawn main_residence_value among the owner households of the FRS region with a positive draw, both support channels, at the stage's household weights, ties broken by a draw keyed on the household id",
+          "rank_basis_column": "main_residence_value_rank_basis",
+          "region_map": {
+            "EAST_MIDLANDS": "E12000004",
+            "EAST_OF_ENGLAND": "E12000006",
+            "LONDON": "E12000007",
+            "NORTH_EAST": "E12000001",
+            "NORTH_WEST": "E12000002",
+            "SOUTH_EAST": "E12000008",
+            "SOUTH_WEST": "E12000009",
+            "WALES": "W92000004",
+            "WEST_MIDLANDS": "E12000005",
+            "YORKSHIRE": "E12000003"
+          },
+          "regional_reference": "regional_land_values.json",
+          "rows": "owner households (tenure owned outright or with a mortgage) with a positive drawn main_residence_value in the FRS regions of England and Wales",
+          "stream": [
+            "sha256-u53-v1",
+            "uk-spine-area-home-values-v1",
+            0,
+            0
+          ],
+          "value": "np.interp(rank, grid, the assigned constituency's knots) divided by the FRS region's factor, a home at the knots' cap taking the largest quotient the factor multiplies back to the cap or below",
+          "value_column": "main_residence_value"
+        },
+        {
           "drop_inputs": [
             "corporate_wealth_excl_isa"
           ],
@@ -8884,6 +8870,10 @@
           "output": "corporate_wealth"
         },
         {
+          "exempt": [
+            "main_residence_value",
+            "property_wealth"
+          ],
           "kind": "support_clip",
           "range": "donor_realized"
         },
@@ -8917,6 +8907,7 @@
         "gross_financial_wealth",
         "net_financial_wealth",
         "main_residence_value",
+        "main_residence_value_rank_basis",
         "other_residential_property_value",
         "non_residential_property_value",
         "savings",
@@ -8932,7 +8923,7 @@
         "non_residential_property_secured_debt"
       ],
       "rewrites": [],
-      "source": "Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed 2006-22 household tab.",
+      "source": "Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed 2006-22 household tab. England and Wales owners' main residences are read off HM Land Registry Price Paid latest sales uprated with the UK House Price Index, by constituency (uk/high_value_home_value_knots.json, built by tools/build_uk_high_value_home_stock.py from PolicyEngine/chronicle#343's registrations), and the public regional reference (uk/regional_land_values.json) (microcosm#931).",
       "stage": "was_wealth",
       "survey": "Wealth and Assets Survey round 8"
     }

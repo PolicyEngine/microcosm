@@ -1079,11 +1079,13 @@ class TestBatteryRegressions:
         # Plus the #970 projection fence, armed here with the pinned growth
         # path over distinct sub-exempt gains that never cross the exempt
         # amount, and the release-frame council-tax band check (#1278).
-        # Plus uk_local_brma_enum_domain, the terminal recheck of the area-BRMA
-        # rewrite (microcosm#1262; its enum_domain binding is stubbed here), and
-        # the SOC 2020 major and sub-major groups' enum checks (microcosm#1490).
-        assert len(passed) == 24
-        assert "uk_local_brma_enum_domain" in passed
+        # Plus the SOC 2020 major and sub-major groups' enum checks
+        # (microcosm#1490). uk_local_brma_enum_domain, the terminal recheck of
+        # the dense line's area-BRMA rewrite (microcosm#1262), retired when the
+        # dense line took its areas from the spine, whose transferred gate
+        # checks the column (microcosm#931).
+        assert len(passed) == 23
+        assert "uk_local_brma_enum_domain" not in by_id
         assert "uk_soc2020_major_group_enum_domain" in passed
         assert "uk_soc2020_sub_major_group_enum_domain" in passed
 
@@ -2207,21 +2209,23 @@ class TestEnumDomainResolution:
         )
         assert result.passed
 
-    def test_an_off_domain_brma_fails_the_local_recheck_as_a_structural_stop(
+    def test_an_off_domain_brma_fails_the_spines_transferred_gate_as_a_stop(
         self,
     ) -> None:
-        """microcosm#1305 review: the unstubbed binding, then the classification.
+        """microcosm#1305 review: the unstubbed binding, then the blocking.
 
-        The area-BRMA rewrite is rechecked by ``uk_local_brma_enum_domain``;
-        a value outside the engine's enum fails it, and the failure stops even
-        a development build (no candidate is exported).
+        ``area_brma`` and ``spi_copy_areas`` write the column, so the spine
+        checks it at its transferred boundary (``uk_brma_enum_domain``,
+        microcosm#931), in place of the local battery's retired recheck; a
+        value outside the engine's enum fails it, and the failure stops even a
+        development or synthetic smoke build, before any line reads the spine.
         """
 
         import enum
 
         from microcosm.build.gate_battery import GateOutcome, GatePhaseReport
-        from microcosm.build.uk_runtime import full_gates
         from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
+        from microcosm.build.uk_runtime.gate_scopes import UK_SPINE_GATE_SCOPE
 
         person, benunit, household = _tables()
         household["brma"] = ["LOTHIAN", "NOT_A_BRMA", "CARDIFF", "LOTHIAN"][
@@ -2243,13 +2247,18 @@ class TestEnumDomainResolution:
         entry = next(
             gate
             for gate in load_country_spec("uk").gates.gates
-            if gate.id == "uk_local_brma_enum_domain"
+            if gate.id == "uk_brma_enum_domain"
         )
+        assert entry.phase == "transferred"
+        assert entry.id in UK_SPINE_GATE_SCOPE
         result = _evaluate_enum_domain(
             EvidenceContext(frame=frame, artifacts={"rules_engine": Accessor()}),
             entry.parameters,
         )
         assert not result.passed
+        assert result.failures == (
+            "brma: a value lies outside the engine's enum domain.",
+        )
         report = GatePhaseReport(
             entry.phase,
             (
@@ -2258,12 +2267,14 @@ class TestEnumDomainResolution:
                 ),
             ),
         )
-        for fraction in (0.1, 1.0):
-            outcome = full_gates.classify_full_gate_outcomes(
-                report, sample_fraction=fraction, release_candidate=False
-            )
-            assert outcome["artifact_permitted"] is False
-            assert outcome["structural_failures"] == ["uk_local_brma_enum_domain"]
+        for posture in (
+            {"release_candidate": False},
+            {"release_candidate": True},
+            {"release_candidate": False, "synthetic_smoke": True},
+        ):
+            assert [
+                outcome.entry.id for outcome in report.blocking_outcomes(**posture)
+            ] == ["uk_brma_enum_domain"]
 
     def test_the_verdict_carries_no_count_or_example_of_the_values(self) -> None:
         """The UK wrapper rebuilds the shared gate's verdict without the count
@@ -2979,19 +2990,32 @@ def _capped_band_donor_receipt() -> dict[str, object]:
     }
 
 
-def test_the_stage_health_binding_reads_the_frame_for_the_band_donor_check_only(
+def test_the_stage_health_binding_reads_the_frame_for_its_two_frame_checks_only(
     uk_gates,
 ) -> None:
+    """Of the packaged stage-health gates, only the band donor check and the
+    copy area check (uk_copy_area_agreement, microcosm#931) read the phase's
+    frame."""
+
     binding = UK_GATE_REGISTRY["stage_health"]
     entries = [entry for entry in uk_gates.gates if entry.gate == "stage_health"]
-    assert any(entry.parameters["check"] != _BAND_DONOR_CHECK for entry in entries)
+    frame_checks = {_BAND_DONOR_CHECK, "copy_area_agreement"}
+    assert any(entry.parameters["check"] not in frame_checks for entry in entries)
     for entry in entries:
         assert binding.requires_frame(entry.parameters) is (
-            entry.parameters["check"] == _BAND_DONOR_CHECK
+            entry.parameters["check"] in frame_checks
         ), entry.id
-    # The check runs at the spine's transferred boundary, whose battery hands
-    # every gate the phase's frame.
+    assert sorted(
+        entry.id for entry in entries if binding.requires_frame(entry.parameters)
+    ) == ["uk_copy_area_agreement", "uk_stage_spi_income_band_donors_support"]
+    # Both run at the spine's transferred boundary, whose battery hands every
+    # gate the phase's frame.
     assert _band_donor_entry(uk_gates).phase == "transferred"
+    assert {
+        entry.phase
+        for entry in entries
+        if entry.parameters["check"] == "copy_area_agreement"
+    } == {"transferred"}
 
 
 def test_the_copy_area_check_reads_the_phase_frame_and_the_new_keys_route() -> None:

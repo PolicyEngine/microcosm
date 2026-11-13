@@ -123,10 +123,10 @@ def _apply_pending_roster_transformations(
     # follow the uprated rental property values.
     assert "property_components" not in roster
     roster.insert(roster.index("high_value_home_support") + 1, "property_components")
-    # microcosm#1112 re-mint pending: the regions' home values replace the
-    # owners' values after the support copies, before the components.
+    # microcosm#1112's regional_home_values, never in the accepted roster,
+    # retired before a re-mint (microcosm#931, part 2 below), so it takes no
+    # pending insertion.
     assert "regional_home_values" not in roster
-    roster.insert(roster.index("high_value_home_support") + 1, "regional_home_values")
     # microcosm#1095 re-mint pending: the annual property purchases read the
     # uprated stocks after the support copies (uk-data#573).
     assert "property_purchases" not in roster
@@ -212,8 +212,10 @@ def _apply_pending_roster_transformations(
     # microcosm#931 re-mint pending, part 1 (the area stages): each clone's
     # area, local authority and fuel-relief flag after its key and before the
     # draws; area_brma in frs_brma's place; the SPI copies' own areas after
-    # the band donors; the private rents after the housing shell. Part 2, the
-    # main-residence localiser, runs inside was_wealth and adds no stage.
+    # the band donors; the private rents after the housing shell. Part 2: the
+    # main-residence localiser runs inside was_wealth and adds no stage, and
+    # regional_home_values, whose England and Wales values it replaces, retired
+    # with no pending insertion above.
     area_stages = ["atomic_area_assign", "local_authority", "rfdr"]
     added = [*area_stages, "area_brma", "spi_copy_areas", "private_rent"]
     assert not set(added) & set(roster)

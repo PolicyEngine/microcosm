@@ -93,12 +93,15 @@
           "stocks_and_shares_isa",
           "student_loan_balance"
         ],
+        "exempt_columns": [
+          "main_residence_value",
+          "property_wealth"
+        ],
         "max_clipped_low_rows_by_column": {
           "cash_isa": 0,
           "consumer_debt": 0,
           "corporate_wealth": 0,
           "gross_financial_wealth": 0,
-          "main_residence_value": 0,
           "mortgage_debt": 0,
           "net_financial_wealth": 0,
           "non_residential_property_value": 0,
@@ -106,7 +109,6 @@
           "other_residential_property_value": 0,
           "owned_land": 0,
           "private_pension_wealth": 0,
-          "property_wealth": 0,
           "savings": 0,
           "stocks_and_shares_isa": 0,
           "student_loan_balance": 0
@@ -116,7 +118,6 @@
           "consumer_debt": 0,
           "corporate_wealth": 0,
           "gross_financial_wealth": 0,
-          "main_residence_value": 0,
           "mortgage_debt": 0,
           "net_financial_wealth": 0,
           "non_residential_property_value": 0,
@@ -124,7 +125,6 @@
           "other_residential_property_value": 0,
           "owned_land": 0,
           "private_pension_wealth": 0,
-          "property_wealth": 0,
           "savings": 0,
           "stocks_and_shares_isa": 0,
           "student_loan_balance": 0
@@ -717,7 +717,7 @@
         "copies": 6,
         "maximum_relative_mass_deviation": 1e-09
       },
-      "notes": "Stage-time gate over the high-value home support receipt (microcosm#1240 fix 1). Total household mass is conserved to the declared deviation; the receipt restates the ruled stratum (owner households at or above the 0.95 weighted rank of main_residence_value within their region) and copy count (6); every region with owner households selects at least one; copies created equal five per selected household. The stage assigns no value and makes no draw, so it holds no distributional threshold."
+      "notes": "Stage-time gate over the high-value home support receipt (microcosm#1240 fix 1). Total household mass is conserved to the declared deviation; the receipt restates the ruled stratum (owner households at or above the 0.95 weighted rank of main_residence_value within their region) and copy count (6); every region with owner households selects at least one; copies created equal five per selected household. Since microcosm#931 the stratum ranks the values was_wealth reads off each England and Wales owner's constituency, which the regional property uprating returns to their knots, and every copy keeps its parent's value, area and geography key (uk_copy_area_agreement checks the area and the key). The stage assigns no value, and its one draw only orders owners tied on value, so it holds no distributional threshold."
     },
     {
       "id": "uk_stage_cgt_support_split_mass",
@@ -875,15 +875,15 @@
       "notes": "Stage-time invariants over the #791 relationship receipt: exactly one HEAD per household agreeing with hrpid and hrpnum, contiguous person numbers, no person with two partners, no unmapped relhrp code, family index and enum domains consistent, and the ten-cell household-type partition covering every household exactly once. The grid reciprocity tolerance is the reviewed 2024-25 tape count; a re-issued tape with a different count refuses for review."
     },
     {
-      "id": "uk_stage_regional_home_values_ranking",
+      "id": "uk_stage_area_home_values_ranking",
       "gate": "stage_health",
       "phase": "transferred",
       "criticality": "release_blocking",
       "evidence_absent_blocks": true,
       "population_fact_check": true,
       "parameters": {
-        "stage": "regional_home_values",
-        "check": "regional_home_values",
+        "stage": "was_wealth",
+        "check": "area_home_values",
         "regions": [
           "E12000001",
           "E12000002",
@@ -896,11 +896,154 @@
           "E12000009",
           "W92000004"
         ],
-        "maximum_sources_at_cap": 0,
+        "maximum_sources_at_cap": 9,
         "knots_basis_year": 2024,
+        "knots_level": "constituency",
         "rank_basis": "weighted_midpoint_within_frs_region"
       },
-      "notes": "Stage-time gate over the regional home-values receipt (microcosm#1308, gated with the next policyengine-uk bump on María's ruling of 2026-10-17): every English region and Wales has rows re-ranked on the regional knots, no more rows are rewritten than the stage carries, no source sits at the value cap, the knots are the 2024 basis and the ranking is the weighted midpoint within each FRS region, and the weighted value stays positive before and after the stage. A synthetic smoke build records a failure without blocking on it (population_fact_check): the fixture holds a few regions, not the population the regional knots describe."
+      "notes": "Stage-time gate over the WAS stage's area home values block, the regional home values ranking of microcosm#1308 (gated on María's ruling of 2026-10-17) read inside the WAS chain since microcosm#931: every English region and Wales has sources whose main residence was read off their assigned constituency's knots, the knots are the 2024 basis at the constituency level, the ranking is the weighted midpoint within each FRS region, and the sources are counted among geographic clone 0's rows, so the declared maximum holds at any clone count. A weighted mid-rank stays below 1, so a source reads the knots' cap only where its constituency's knots reach the cap below the top grid point and its rank is near the top of its FRS region; the maximum is the top of the receipt's 3-9 band, so the gate fails once the receipt prints 10-29 or more. A region the receipt prints <3 is flagged rather than failed (María's ruling of 2026-10-26). A synthetic smoke build records a failure without blocking on it (population_fact_check): the fixture holds a few regions, not the population the knots describe."
+    },
+    {
+      "id": "uk_atomic_area_mapping_integrity",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "atomic_area_assign",
+        "check": "atomic_mapping_integrity",
+        "validation_scope": "atomic_geography_mapping_integrity",
+        "support_systems": [
+          "uk_ew_output_area_2021",
+          "uk_scotland_output_area_2022",
+          "uk_ni_data_zone_2021"
+        ]
+      },
+      "notes": "Stage-time gate over the spine's area draw (microcosm#931). atomic_area_assign validates every drawn ladder through the shared operator's mapping-integrity check and refuses to finish unless it passes; the gate reads the record the stage keeps: an accepted outcome (pass), the declared scope, and SHA-256 digests of the assignment definition and of each declared support system's conditioned support. Evaluated at the assembled boundary, which closes after area_brma, so a record that fails stops the spine there, before any stage after area_brma runs. Its texts name the field, never a count or a value."
+    },
+    {
+      "id": "uk_spi_copy_area_mapping_integrity",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "spi_copy_areas",
+        "check": "atomic_mapping_integrity",
+        "validation_scope": "atomic_geography_mapping_integrity",
+        "support_systems": [
+          "uk_ew_output_area_2021",
+          "uk_scotland_output_area_2022",
+          "uk_ni_data_zone_2021"
+        ],
+        "accepted_outcomes": [
+          "pass",
+          "not_run"
+        ]
+      },
+      "notes": "The mapping-integrity record of spi_copy_areas, which draws the area and ladder of every SPI copy and income band donor with the area draw's definition (microcosm#931). On a frame without a copy neither the draw's validation nor the RFDR layer's roster check runs and the stage records not_run, so the gate accepts pass or not_run. Evaluated at the transferred boundary: spi_copy_areas runs after the assembled boundary closes."
+    },
+    {
+      "id": "uk_copy_area_agreement",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "cgt_residential_split",
+        "check": "copy_area_agreement",
+        "columns_by_copy_layer": {
+          "spi_support_channel": [
+            "region",
+            "household_clone_index"
+          ],
+          "high_value_support": [
+            "region",
+            "household_clone_index",
+            "geography_household_key",
+            "atomic_area_code",
+            "atomic_area_system",
+            "atomic_area_basis",
+            "oa_code",
+            "lsoa_code",
+            "msoa_code",
+            "local_authority_code",
+            "ward_code",
+            "constituency_code",
+            "region_code",
+            "itl3_code",
+            "itl2_code",
+            "itl1_code",
+            "local_authority",
+            "brma",
+            "in_rural_fuel_duty_relief_area"
+          ],
+          "cgt_support_split": [
+            "region",
+            "household_clone_index",
+            "geography_household_key",
+            "atomic_area_code",
+            "atomic_area_system",
+            "atomic_area_basis",
+            "oa_code",
+            "lsoa_code",
+            "msoa_code",
+            "local_authority_code",
+            "ward_code",
+            "constituency_code",
+            "region_code",
+            "itl3_code",
+            "itl2_code",
+            "itl1_code",
+            "local_authority",
+            "brma",
+            "in_rural_fuel_duty_relief_area"
+          ],
+          "cgt_incidence_clone": [
+            "region",
+            "household_clone_index",
+            "geography_household_key",
+            "atomic_area_code",
+            "atomic_area_system",
+            "atomic_area_basis",
+            "oa_code",
+            "lsoa_code",
+            "msoa_code",
+            "local_authority_code",
+            "ward_code",
+            "constituency_code",
+            "region_code",
+            "itl3_code",
+            "itl2_code",
+            "itl1_code",
+            "local_authority",
+            "brma",
+            "in_rural_fuel_duty_relief_area"
+          ],
+          "cgt_residential_split": [
+            "region",
+            "household_clone_index",
+            "geography_household_key",
+            "atomic_area_code",
+            "atomic_area_system",
+            "atomic_area_basis",
+            "oa_code",
+            "lsoa_code",
+            "msoa_code",
+            "local_authority_code",
+            "ward_code",
+            "constituency_code",
+            "region_code",
+            "itl3_code",
+            "itl2_code",
+            "itl1_code",
+            "local_authority",
+            "brma",
+            "in_rural_fuel_duty_relief_area"
+          ]
+        }
+      },
+      "notes": "Every copy the spine makes after spi_copy_areas equals its immediate parent, the household its id names with the copy layer's copy-id field cleared (copy_id_table.parent), on the columns spi_copy_areas rewrites (the geography key, the area and ladder, local_authority, brma and the Rural Fuel Duty Relief flag) and on region and household_clone_index (C-11, C-20, microcosm#931): the high-value support, CGT support split, CGT incidence clone and CGT residential split copies. The SPI support channel's copies and income band donors draw areas of their own, so they are held on region and household_clone_index alone. The check reads the transferred frame; it is declared on cgt_residential_split, the last copy layer, whose receipt the gate requires. Its details are booleans by layer and column, and its texts name the layer and column, never an id, a count or a value."
     },
     {
       "id": "uk_stage_property_purchases_fit",
@@ -1269,7 +1412,7 @@
           "price_paid_property_support_bounds.json"
         ]
       },
-      "notes": "Every WAS/LCFS/ETB imputed output covered by support clipping must remain inside committed disclosure-safe donor support bounds. Exact donor ranges are used in-run for clipping; this release gate uses outward-rounded reviewed bounds so unit-record donor minima and maxima are never committed. The nts_bus_travel person outputs (band and annual trips) are bounded by the NTS donor's ranges since microcosm#930. The was_lisa person balance is bounded by the WAS person donor's credible holders since microcosm#1003. Since microcosm#1240 the dense graph rewrites main_residence_value and property_wealth per clone from the Land Registry value knots, winsorised at the knots' declared cap; price_paid_property_support_bounds.json, generated beside the knots, carries that cap as the two columns' bound and is listed last so it overrides the WAS donor bound for them."
+      "notes": "Every WAS/LCFS/ETB imputed output covered by support clipping must remain inside committed disclosure-safe donor support bounds. Exact donor ranges are used in-run for clipping; this release gate uses outward-rounded reviewed bounds so unit-record donor minima and maxima are never committed. The nts_bus_travel person outputs (band and annual trips) are bounded by the NTS donor's ranges since microcosm#930. The was_lisa person balance is bounded by the WAS person donor's credible holders since microcosm#1003. Since microcosm#931 England and Wales owners' main_residence_value is read off their constituency's Land Registry value knots, winsorised at the knots' declared cap, inside the spine's WAS stage, which the regional property uprating returns them to, and the WAS stage's support clip exempts main_residence_value and property_wealth (uk_stage_was_wealth_support); price_paid_property_support_bounds.json, generated beside the knots for the dense value node of microcosm#1240, carries that cap as main_residence_value's bound and the cap plus the WAS donor bound's headroom over the main residence as property_wealth's, and is listed last so it overrides the WAS donor bound for both."
     },
     {
       "id": "uk_aggregate_admin",
@@ -1569,14 +1712,35 @@
     {
       "id": "uk_brma_enum_domain",
       "gate": "enum_domain",
-      "phase": "assembled",
+      "phase": "transferred",
       "criticality": "release_blocking",
       "parameters": {
         "columns": [
           "brma"
         ]
       },
-      "notes": "The household BRMA assignment must remain inside the PolicyEngine-UK brma enum domain. Evaluated at the assembled boundary, right after frs_brma writes the column: enum membership is a property of the values themselves, so checking it there is identical to checking it at the end and refuses fourteen stages earlier. Take-up signal stays terminal by contrast, because its weighted shares are not the same statistic before and after calibration."
+      "notes": "The household BRMA assignment must remain inside the PolicyEngine-UK brma enum domain. area_brma writes the column, Great Britain's from each household's assigned area and Northern Ireland's from the count table, and spi_copy_areas, the last spine stage that writes it, gives every SPI copy and income band donor a BRMA of its own (microcosm#931), so the gate is evaluated at the transferred boundary; later copies inherit their parent's, which uk_copy_area_agreement checks. Enum membership is a property of the values themselves, so checking it there is identical to checking it at the end. It replaces uk_local_brma_enum_domain, the local battery's recheck of the dense line's own BRMA rewrite, which retired when the dense line took its areas from the spine. Take-up signal stays terminal by contrast, because its weighted shares are not the same statistic before and after calibration."
+    },
+    {
+      "id": "uk_local_authority_enum_domain",
+      "gate": "enum_domain",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "columns": [
+          "local_authority"
+        ]
+      },
+      "notes": "Every household's local_authority must be a member of the installed PolicyEngine-UK LocalAuthority enum (microcosm#953, microcosm#931). The spine's local_authority stage resolves it from each household's assigned local_authority_code, and spi_copy_areas from each SPI copy's and income band donor's own; the spine battery supplies the rules engine the domain is read from. Evaluated at the transferred boundary, after spi_copy_areas, the last spine stage that writes the column; later copies inherit their parent's, which uk_copy_area_agreement checks."
+    },
+    {
+      "id": "uk_geography_ladder",
+      "gate": "spine_agreement",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "population_fact_check": true,
+      "parameters": {},
+      "notes": "The UK geography-ladder evaluator (uk_geography_ladder_gate) on the spine's transferred frame (C-31, microcosm#931): every ladder column present and its codes well formed, the ITL layers nested, every local_authority the engine key its local_authority_code resolves to, London's share of England and Wales household weight within its bounds, and ward, ITL and constituency coverage. Evaluated after spi_copy_areas gives the SPI copies and income band donors ladders of their own, so their ladders are checked, and the national line's with them. The London share is a population fact, so a synthetic smoke build records a failure without blocking on it (population_fact_check). The local battery reruns the evaluator on the calibrated candidate (uk_local_geography_ladder_post_calibration)."
     },
     {
       "id": "uk_ons_household_type_enum_domain",
@@ -1746,7 +1910,7 @@
           ]
         }
       },
-      "notes": "The nation check of uk_council_tax_band_domain, on the frame the release ships (microcosm#1278 review). The spine entry stops at the transferred boundary, so a later step that writes council_tax_band, such as a full build's band redraw after geography derivation, is checked only here. Its parameters must equal the spine entry's."
+      "notes": "The nation check of uk_council_tax_band_domain, on the frame the release ships (microcosm#1278 review). The spine entry stops at the transferred boundary, so a step after it that writes council_tax_band would be checked only here; none does since the dense line's band redraw retired and the dense line took its areas from the spine (microcosm#931), and the entry stays as the shipped frame's own check. Its parameters must equal the spine entry's."
     },
     {
       "id": "uk_calibration_reference_coverage",
@@ -1843,19 +2007,6 @@
       "criticality": "release_blocking",
       "parameters": {},
       "notes": "The existing UK geography-ladder evaluator is rerun on the locally calibrated candidate weights and adapted through UKGateBinding; no second ladder verdict implementation is introduced."
-    },
-    {
-      "id": "uk_local_brma_enum_domain",
-      "gate": "enum_domain",
-      "phase": "terminal",
-      "criticality": "release_blocking",
-      "evidence_absent_blocks": true,
-      "parameters": {
-        "columns": [
-          "brma"
-        ]
-      },
-      "notes": "The post-geography node uk.full.geography.brma rewrites household brma from the assigned LSOA or output area after the spine's assembled enum check (microcosm#1262). Recheck the local candidate against the PolicyEngine-UK brma enum domain before export: an invalid value or missing domain evidence is structural and stops even a development build. A separate local entry keeps the assembled spine declaration, and the spine checkpoint identity it feeds, unchanged."
     },
     {
       "id": "uk_local_area_support",

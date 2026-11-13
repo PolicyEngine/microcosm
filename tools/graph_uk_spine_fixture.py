@@ -173,9 +173,6 @@ from microcosm.build.uk_runtime.property_purchases import (
     sdlt_region_mask,
     select_property_purchasers,
 )
-from microcosm.build.uk_runtime.regional_home_values import (
-    UKRegionalHomeValuesStageTransform,
-)
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
@@ -246,9 +243,10 @@ _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added. The
 #: area stages (atomic_area_assign, local_authority, rfdr, area_brma in
-#: frs_brma's place, spi_copy_areas) and private_rent made it 61
-#: (microcosm#931).
-UK_FIXTURE_STAGE_COUNT = 61
+#: frs_brma's place, spi_copy_areas) and private_rent made it 61, and
+#: regional_home_values' retirement 60: the WAS chain localises the home
+#: values (microcosm#931).
+UK_FIXTURE_STAGE_COUNT = 60
 _QRF_ESTIMATORS = 4
 #: The fixture spine's geographic clone count K (microcosm#931). The config
 #: records it, the oracle builds geographic_expand and its engine with it, as
@@ -2482,9 +2480,6 @@ def _build_implementations(
             spi_tab_path=raw_dir.parent / "spi_donor.csv",
             donor_table=spi_donor,
             facts=property_rental_facts,
-        ),
-        "regional_home_values": UKRegionalHomeValuesStageTransform(
-            stage=stages["regional_home_values"]
         ),
         "property_purchases": UKPropertyPurchasesStageTransform(
             stage=stages["property_purchases"],

@@ -121,6 +121,25 @@ def test_the_private_rent_family_rewrites_the_rent_and_conserves_mass() -> None:
     assert family["source_manifest_sha256"] == shared
 
 
+def test_the_wealth_family_carries_the_area_home_values_kept_draw() -> None:
+    """The WAS chain reads England and Wales home values off each owner's
+    constituency inside was_wealth (microcosm#931), so its family requires
+    the draw the step keeps beside them, in the stage's own order, and
+    regional_home_values' family retires with that stage."""
+    from microcosm.build.uk_runtime.property_localisation import RANK_BASIS_COLUMN
+    from microcosm.build.uk_runtime.was_wealth import (
+        UK_WAS_WEALTH_LOCALISED_OUTPUT_COLUMNS,
+    )
+
+    families = _resource("release_input_coverage_manifest.json")["family_coverage"]
+    assert "regional_home_values" not in families
+    family = families["was_wealth"]
+    assert family["outputs"] == list(UK_WAS_WEALTH_LOCALISED_OUTPUT_COLUMNS)
+    assert RANK_BASIS_COLUMN in family["outputs"]
+    assert family["rewrites"] == []
+    assert family["mass_change_semantics"] == "mass_conserving"
+
+
 def test_frozen_candidate_retains_its_original_engine_provenance() -> None:
     evidence = _resource("efrs_parity_known_gaps.json")["candidate_evidence"]
     assert evidence["engine"]["version"] == "2.89.0"

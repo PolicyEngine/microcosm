@@ -309,11 +309,6 @@ def rowwise_parameters(args: argparse.Namespace, *, source_year: int) -> dict[st
         "skip_holdout": bool(getattr(args, "skip_holdout", False)),
         "epochs": int(args.epochs),
         "learning_rate": float(args.learning_rate),
-        "expected_constituency_vintage": (
-            None
-            if args.expected_constituency_vintage is None
-            else str(args.expected_constituency_vintage)
-        ),
         "doctrine": doctrine_bounds(posture),
         "solve_options": {
             "conserve_mass": CONSERVE_MASS,
@@ -441,7 +436,6 @@ ROLE_DEFAULTED_ARGUMENTS = (
     "epochs",
     "learning_rate",
     "target_weight_rule",
-    "expected_constituency_vintage",
 )
 _ROLE_DEFAULTED_ARGUMENTS = ROLE_DEFAULTED_ARGUMENTS
 
@@ -470,8 +464,6 @@ def resolve_role_arguments(args: argparse.Namespace) -> UKRowwisePosture:
         args.learning_rate = posture.learning_rate
     if args.target_weight_rule is None:
         args.target_weight_rule = posture.target_weight_rule
-    if args.expected_constituency_vintage is None:
-        args.expected_constituency_vintage = posture.expected_constituency_vintage
     _resolve_size_defaults(args, posture)
     # The rotated holdout is an opt-in, report-only diagnostic (microcosm#1301):
     # a dense build skips it unless --rotated-holdout asks for it, and the
@@ -1078,11 +1070,6 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         not np.isfinite(args.target_loss_cap) or args.target_loss_cap <= 0
     ):
         raise ValueError("--target-loss-cap must be positive and finite.")
-    if (
-        args.expected_constituency_vintage is not None
-        and not str(args.expected_constituency_vintage).strip()
-    ):
-        raise ValueError("--expected-constituency-vintage must be non-empty.")
 
 
 _validate_cli_args = validate_cli_args
@@ -1112,8 +1099,6 @@ def refuse_dense_role_arguments(
         refused.append("--ladder")
     if args.ladder_sha256 is not None:
         refused.append("--ladder-sha256")
-    if "expected_constituency_vintage" in explicit:
-        refused.append("--expected-constituency-vintage")
     if args.source_year is not None:
         refused.append("--source-year")
     if "n_clones" in explicit:

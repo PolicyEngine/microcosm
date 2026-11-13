@@ -23,7 +23,6 @@ from microcosm.build.country_spec import GatesManifest, load_country_spec
 
 UK_LOCAL_GATE_SCOPE = (
     "uk_local_geography_ladder_post_calibration",
-    "uk_local_brma_enum_domain",
     "uk_local_area_support",
     "uk_local_target_fit",
     "uk_local_per_family_fit",
@@ -73,7 +72,14 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_student_loans_realization",
     "uk_stage_age_tail_targets",
     "uk_stage_frs_relationships_composition",
-    "uk_stage_regional_home_values_ranking",
+    "uk_stage_area_home_values_ranking",
+    # The spine geography gates (microcosm#931): the area draw's mapping
+    # integrity at the assembled boundary, which closes after area_brma; the
+    # SPI-copy area stage's, and each later copy's agreement with its parent
+    # on the areas, at the transferred boundary, after spi_copy_areas.
+    "uk_atomic_area_mapping_integrity",
+    "uk_spi_copy_area_mapping_integrity",
+    "uk_copy_area_agreement",
     "uk_stage_property_purchases_fit",
     "uk_stage_uc_legacy_closure_take_up_contract",
     "uk_stage_frs_person_draws_apprentices",
@@ -99,9 +105,16 @@ UK_SPINE_GATE_SCOPE = (
     # the band, so the transferred boundary checks every row's nation
     # (microcosm#1278).
     "uk_council_tax_band_domain",
-    # Weight-independent, and its column exists from frs_brma onward, so the
-    # spine checks it at the assembled boundary instead of the release end.
+    # Weight-independent; spi_copy_areas is the last spine stage that writes
+    # brma and local_authority (the SPI copies and income band donors draw
+    # their own, microcosm#931), so the transferred boundary checks every
+    # row's, as for the band above. The BRMA gate replaces the local battery's
+    # retired recheck (uk_local_brma_enum_domain).
     "uk_brma_enum_domain",
+    "uk_local_authority_enum_domain",
+    # The geography ladder on the transferred frame, the SPI copies' own
+    # ladders and the national line's among them (C-31, microcosm#931).
+    "uk_geography_ladder",
 )
 
 

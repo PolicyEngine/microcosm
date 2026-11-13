@@ -47,9 +47,8 @@ E5_STAGE_NAMES = [
     "was_lisa",
     "regional_property_uprating",
     "high_value_home_support",
-    # microcosm#1112: the regions' Land Registry home values on the spine, on
-    # the uprated values and the support copies.
-    "regional_home_values",
+    # microcosm#931: regional_home_values (microcosm#1112) retired; was_wealth
+    # reads England and Wales main residences off each owner's constituency.
     # #1106: landlords' receipts and finance costs follow the uprated rental
     # property values their coherence receipt reads.
     "property_components",
@@ -361,7 +360,6 @@ class TestUKSourceStagesManifest:
                     "nts_bus_travel": _identity,
                     "regional_property_uprating": _identity,
                     "high_value_home_support": _identity,
-                    "regional_home_values": _identity,
                     "property_components": _identity,
                     "property_purchases": _identity,
                     "lcfs_consumption": _identity,
@@ -501,7 +499,8 @@ class TestDeclaredOutputsAreWrittenColumns:
             UK_WAS_LISA_OUTPUT_COLUMNS,
         )
         from microcosm.build.uk_runtime.was_wealth import (
-            UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS,
+            UK_WAS_WEALTH_LOCALISED_NONNEGATIVE_OUTPUT_COLUMNS,
+            UK_WAS_WEALTH_LOCALISED_OUTPUT_COLUMNS,
             UK_WAS_WEALTH_STAGE_OUTPUT_COLUMNS,
         )
 
@@ -538,10 +537,15 @@ class TestDeclaredOutputsAreWrittenColumns:
         )
         # microcosm#931: area_brma writes frs_brma's one column.
         assert stages["area_brma"].outputs == FRS_BRMA_OUTPUT_COLUMNS
-        assert stages["was_wealth"].outputs == UK_WAS_WEALTH_STAGE_OUTPUT_COLUMNS
+        # microcosm#931: the chain's outputs and the draw its area home
+        # values keep, after the main residence it is the draw of.
+        assert stages["was_wealth"].outputs == UK_WAS_WEALTH_LOCALISED_OUTPUT_COLUMNS
+        assert set(stages["was_wealth"].outputs) - set(
+            UK_WAS_WEALTH_STAGE_OUTPUT_COLUMNS
+        ) == {"main_residence_value_rank_basis"}
         assert (
             stages["was_wealth"].nonnegative_outputs
-            == UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS
+            == UK_WAS_WEALTH_LOCALISED_NONNEGATIVE_OUTPUT_COLUMNS
         )
         assert stages["was_lisa"].outputs == UK_WAS_LISA_OUTPUT_COLUMNS
         assert (
@@ -731,6 +735,8 @@ class TestE3ManifestLockstep:
             "derive",
             "materialize_rules_engine_predictors",
             "fit_weighted_qrf_chain",
+            # microcosm#931: the area home values, inside the chain.
+            "localise_main_residence_value",
             "fold_into",
             "support_clip",
             "allocate_within_group_waterfall",

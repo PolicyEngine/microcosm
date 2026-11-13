@@ -3649,13 +3649,15 @@ def test_a_release_candidate_spine_takes_the_dense_k_only_on_a_geography_first_r
     assert tool._parse_args(release).n_clones == 15
     assert tool._release_candidate_clones_refusal(15) is None
     assert tool._release_candidate_clones_refusal(7) is not None
-    # On the packaged spec, 15 is accepted exactly when its roster is
-    # geography-first.
+    # The packaged spec's roster is geography-first, the WAS chain's
+    # main-residence localiser included, so it takes 15 (microcosm#931).
     monkeypatch.setattr(tool, "spec_roster", spec_roster)
     packaged = roster_failures(
         *spec_roster(load_country_spec("uk")), from_sidecar=False
     )
-    assert (tool._release_candidate_clones_refusal(15) is None) is (not packaged)
+    assert packaged == ()
+    assert tool._release_candidate_clones_refusal(15) is None
+    assert tool._parse_args(release).n_clones == 15
 
 
 def test_driver_refuses_a_clone_count_its_synthetic_fixture_does_not_make(

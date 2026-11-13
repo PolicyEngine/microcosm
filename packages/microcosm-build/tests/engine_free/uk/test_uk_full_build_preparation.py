@@ -225,8 +225,10 @@ def stand_in_engine(monkeypatch):
 def spine_request(tmp_path, toy_ladder, stand_in_engine, monkeypatch):
     """Dense requests over an in-graph spine (``--spine-request``).
 
-    The roster checks and the spine's own preparation stand in, since the
-    packaged spec is not yet geography-first: the stand-in composes the
+    The roster checks and the spine's own preparation stand in, so these
+    tests read the request's plumbing alone (test_uk_spine_posture and
+    test_uk_full_build_cli check the packaged roster, geography-first since
+    microcosm#931): the stand-in composes the
     declared spine at the request's ``--n-clones``, ``--sample-fraction`` and
     ``--sample-seed``, as the spine build does, with the geography block a
     synthetic request composes, over the toy conditioned supports under the

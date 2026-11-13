@@ -41,6 +41,30 @@ def test_the_dense_geography_flags_are_gone(tmp_path, capsys, flag, value):
         assert flag in capsys.readouterr().err
 
 
+def test_the_constituency_vintage_flag_is_gone(tmp_path, capsys):
+    """María's ruling of 13 Nov: the dense line takes its areas from the
+    spine (microcosm#931), and no dense node read the ladder's vintage
+    against --expected-constituency-vintage, so the flag is retired. Either
+    role's parser refuses it by name, the posture keeps no vintage and the
+    run's parameters record none."""
+    from microcosm.build.uk_runtime.rowwise_cli import rowwise_parameters
+
+    flag = ("--expected-constituency-vintage", "2024_pcon")
+    for role in ("dense", "national"):
+        with pytest.raises(SystemExit):
+            if role == "dense":
+                arguments(tmp_path, *flag)
+            else:
+                cli.parse_args(_national_argv(tmp_path, *flag))
+        assert f"unrecognized arguments: {' '.join(flag)}" in capsys.readouterr().err
+    args = arguments(tmp_path)
+    assert not hasattr(args, "expected_constituency_vintage")
+    assert not hasattr(cli.UK_ROWWISE_DENSE_POSTURE, "expected_constituency_vintage")
+    assert "expected_constituency_vintage" not in rowwise_parameters(
+        args, source_year=2024
+    )
+
+
 #: The two routes to the spine the dense line binds, by their request builder.
 _ROUTES = ("input_h5", "spine_request")
 
@@ -207,7 +231,6 @@ def test_release_role_is_required_and_supplies_the_dense_posture(tmp_path):
     # the doctrine's clone count stays in the recorded doctrine bounds.
     assert args.n_clones is None
     assert args.target_weight_rule == "nation_grain_family_equal_sqrt_count"
-    assert args.expected_constituency_vintage == "2024_pcon"
     assert args.sample_seed == 578
     assert args.staging_upload_interval_seconds == 300.0
     assert args._explicit_arguments == frozenset()
@@ -585,7 +608,8 @@ def _write_sidecar(tmp_path, roster) -> None:
 
 def _packaged_sidecar_roster() -> dict:
     """The packaged spec's stages and kinds as sidecar fields (lists), with no
-    geography block: the names a spine built on this code records."""
+    geography block: the names a spine built on this code records, without the
+    block its writer adds where the spine drew its areas."""
     stages, operations = cli._spine_request_roster()
     return {
         "stages": list(stages),
@@ -667,7 +691,9 @@ def _without_geography(roster) -> dict:
 @pytest.mark.parametrize(
     "roster",
     [
-        pytest.param(_packaged_sidecar_roster, id="the packaged roster"),
+        pytest.param(
+            _packaged_sidecar_roster, id="the packaged roster but no geography block"
+        ),
         pytest.param(lambda: _PRE_GEOGRAPHY_ROSTER, id="a pre-geography roster"),
         pytest.param(
             lambda: _without_geography(geography_first_sidecar_fields("frs_spine")),
@@ -738,6 +764,21 @@ def test_a_bound_spine_whose_sidecar_cannot_be_read_is_refused_before_anything_i
             load_bound_spine_checkpoint(sidecar, None)
         assert str(refused.value) == str(loaded.value)
     assert calls == []
+
+
+def test_a_bound_spine_on_the_packaged_roster_goes_on_once_it_records_its_block(
+    tmp_path, monkeypatch
+):
+    """The packaged spec's roster is geography-first (microcosm#931): a bound
+    spine whose sidecar records its stages and kinds and a geography block
+    passes the posture check, and the preparation goes on to pin its first
+    input, the ladder."""
+    roster = {**_packaged_sidecar_roster(), "geography": synthetic_spine_geography()}
+    _write_sidecar(tmp_path, roster)
+    calls = _record_preparation(monkeypatch)
+    with pytest.raises(_StandInStopError):
+        cli.prepare_full_build(arguments(tmp_path))
+    assert calls == ["_pin"]
 
 
 def test_a_bound_spine_read_through_its_named_sidecar_goes_on_once_geography_first(
@@ -832,23 +873,18 @@ def test_a_spine_request_reads_its_roster_without_composing_a_graph(
 ):
     """The real request-roster reader runs under the recording stand-ins, so a
     reader that composed the spine graph to read its roster would be caught.
-    While the packaged roster lacks a geography-first name it is refused
-    before anything is pinned, read or composed; once it has them all, the
-    preparation goes on to pin the ladder."""
+    The packaged roster has every geography-first name (microcosm#931), so
+    the dense line accepts it and the preparation goes on to pin the ladder
+    before anything is read or composed."""
     from microcosm.build.country_spec import load_country_spec
     from microcosm.build.uk_runtime.spine_posture import roster_failures, spec_roster
 
     stages, operations = spec_roster(load_country_spec("uk"))
+    assert roster_failures(stages, operations, from_sidecar=False) == ()
     calls = _record_preparation(monkeypatch)
-    with pytest.raises((ValueError, _StandInStopError)) as stopped:
+    with pytest.raises(_StandInStopError):
         cli.prepare_full_build(_request_arguments(tmp_path))
-    if roster_failures(stages, operations, from_sidecar=False):
-        assert str(stopped.value) == _posture_refusal(
-            {"stages": stages, "operations": operations}, from_sidecar=False
-        )
-        assert calls == []
-    else:
-        assert calls == ["_pin"]
+    assert calls == ["_pin"]
 
 
 def test_a_spine_request_is_checked_again_on_the_spine_it_composes(
@@ -1180,7 +1216,7 @@ def test_the_kept_pool_is_the_version_the_declared_size_search_reads(tmp_path):
 def test_the_dense_gate_replay_signs_a_bound_attempt_the_contract_accepts(
     tmp_path, monkeypatch
 ):
-    """The seven local outcomes of the graph's terminal document become a signed
+    """The six local outcomes of the graph's terminal document become a signed
     battery report bound to the attempt, which the dense contract verifies."""
     from microcosm.build.uk_runtime.graph_national import replay_uk_dense_gate_battery
     from microcosm.data.contract import _check_uk_dense_gate_report
@@ -1695,7 +1731,7 @@ def test_main_runs_the_logbook_envelope_around_a_dense_build(tmp_path, monkeypat
     assert row.disposition == "iterating"
     assert row.artifact_location.endswith(f"{STEM}.h5")
     assert "published" in row.phases_reached
-    # The seven local gates resolve in the signed local report; every other
+    # The six local gates resolve in the signed local report; every other
     # gate in the graph's full document, by its outcome position.
     assert row.gate_verdicts and all(
         item["verdict"] == "passed" for item in row.gate_verdicts.values()
@@ -2936,7 +2972,7 @@ def test_blocked_gates_partition_failures_by_criticality(tmp_path, monkeypatch, 
     report = json.loads(
         Path(manifest["outputs"]["local_gate_report"]["path"]).read_text()
     )
-    # The local battery report carries the graph's outcomes for its seven
+    # The local battery report carries the graph's outcomes for its six
     # gates, blocked ones included, and is never shippable.
     assert set(report["gates"]) == set(UK_LOCAL_GATE_SCOPE)
     for gate_id in ("uk_local_area_support", "uk_local_weight_ratio"):

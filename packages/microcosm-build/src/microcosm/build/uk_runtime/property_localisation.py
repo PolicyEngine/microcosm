@@ -65,7 +65,6 @@ __all__ = [
     "localise_bands",
     "localise_main_residence_values",
     "localise_values",
-    "main_residence_rank_basis",
     "owner_uniforms",
     "spine_household_keys",
 ]
@@ -85,8 +84,10 @@ METHOD_VERSION = "uk-property-localisation-v1"
 #: Owner households at or above this within-region rank are the high-value
 #: support stratum (microcosm#1240 fix 1, ruled top 5%).
 SUPPORT_STRATUM_LOWER = 0.95
-#: The value the spine's regional home values replace (microcosm#1112), kept
-#: so this node ranks owners on what it ranked them on before that stage.
+#: The WAS chain's segment-2 draw of the main residence, which its area home
+#: values keep beside the value they read off the owner's constituency and
+#: the regional property uprating divides by (``area_home_values``,
+#: microcosm#931). The release boundary drops it.
 RANK_BASIS_COLUMN = "main_residence_value_rank_basis"
 COUNCIL_TAX_BANDS: tuple[str, ...] = ("A", "B", "C", "D", "E", "F", "G", "H", "I")
 KNOTS_KIND = "uk_high_value_home_value_knots"
@@ -265,26 +266,6 @@ def spine_household_keys(
         for source_id, path in zip(source_ids, spine_paths, strict=True)
     ]
     return np.asarray(keys, dtype=object)
-
-
-def main_residence_rank_basis(household: pd.DataFrame, *, declared: bool) -> np.ndarray:
-    """The value owners are ranked on: the one the regional stage replaced.
-
-    ``declared`` says whether the regional home values stage stored
-    ``RANK_BASIS_COLUMN`` (the dense graph then declares it in the value
-    node's slice). A declared column must arrive and an undeclared one must
-    not: ranking on the regional values instead would move every owner's
-    draw, so either mismatch refuses rather than falling back.
-    """
-
-    if declared != (RANK_BASIS_COLUMN in household):
-        raise ValueError(
-            f"The value node's rank basis {RANK_BASIS_COLUMN!r} is "
-            f"{'declared but missing' if declared else 'present but undeclared'}; "
-            "owners must rank on the value the regional stage replaced."
-        )
-    column = RANK_BASIS_COLUMN if declared else "main_residence_value"
-    return household[column].to_numpy(dtype=float)
 
 
 def owner_mask(tenure_type: np.ndarray) -> np.ndarray:

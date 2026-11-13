@@ -25,12 +25,14 @@ from microcosm.build import stochastic_assignment
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.uk_runtime import (
     aps_occupation,
+    area_home_values,
     cgt_support,
     company_cars,
     frs_person_draws,
     frs_take_up,
+    high_value_home_support,
     private_rent_localisation,
-    regional_home_values,
+    property_localisation,
     salary_sacrifice,
     spi_band_donors,
     spi_benefit_coherence,
@@ -42,9 +44,20 @@ from microcosm.build.uk_runtime import (
 )
 
 #: What a constant counts: "ratio" bounds a ratio of weighted means, which
-#: K clones at 1 / K of their weight leave as it was.
+#: K clones at 1 / K of their weight leave as it was; "share" a share of a
+#: group's weight, which they leave as it was too; "value" a value in the
+#: data's own units, which they do not change.
 COUNTS = frozenset(
-    {"source count", "survey records", "rows", "weight", "ratio", "hyperparameter"}
+    {
+        "source count",
+        "survey records",
+        "rows",
+        "weight",
+        "ratio",
+        "share",
+        "value",
+        "hyperparameter",
+    }
 )
 #: How the code meets the clone count, each with what it means.
 TREATMENTS = {
@@ -295,26 +308,74 @@ K_SENSITIVE_CONSTANTS: tuple[KSensitiveConstant, ...] = (
         ),
     ),
     KSensitiveConstant(
-        name="regional home values sources at the cap",
+        name="area home values sources at the cap",
         where=(
-            "the regional home values gate's maximum_sources_at_cap "
-            "(stage_health), against the stage's sources_at_cap "
-            "(regional_home_values)"
+            "the area home values ranking gate's maximum_sources_at_cap "
+            "(uk_stage_area_home_values_ranking, stage_health), against the "
+            "WAS stage's area home values sources_at_cap (area_home_values)"
         ),
-        read=lambda: _declared_parameters(
-            "regional_home_values", "maximum_sources_at_cap"
-        ),
+        read=lambda: _declared_parameters("area_home_values", "maximum_sources_at_cap"),
         value=frozenset(
-            {("uk_stage_regional_home_values_ranking", "maximum_sources_at_cap")}
+            {("uk_stage_area_home_values_ranking", "maximum_sources_at_cap")}
         ),
         counts="source count",
         treatment="clone 0",
         reason=(
-            "each clone ranks on its own draw, so the sources at the cap over "
-            "every clone grow with K"
+            "each clone ranks on its own draw and reads its own constituency's "
+            "knots, so the sources at the cap over every clone grow with K"
         ),
         gate_parameters=frozenset(
-            {("uk_stage_regional_home_values_ranking", "maximum_sources_at_cap")}
+            {("uk_stage_area_home_values_ranking", "maximum_sources_at_cap")}
+        ),
+    ),
+    KSensitiveConstant(
+        name="area home values knots cap",
+        where=(
+            "the cap of the constituency knots the WAS stage's area home "
+            "values read (high_value_home_value_knots.json, area_home_values)"
+        ),
+        read=lambda: (
+            area_home_values.load_committed_area_home_values_resources().knots.cap
+        ),
+        value=20_000_000.0,
+        counts="value",
+        treatment="invariant",
+        reason=(
+            "a home value the published knots are winsorised at, which every "
+            "clone reads the same; what moves with K is the count of sources "
+            "at it, counted in clone 0 (above)"
+        ),
+    ),
+    KSensitiveConstant(
+        name="high-value support stratum",
+        where=(
+            "property_localisation.SUPPORT_STRATUM_LOWER, the high-value "
+            "home support's stratum_lower "
+            "(high_value_home_support.HIGH_VALUE_SUPPORT_STRATUM_LOWER)"
+        ),
+        read=lambda: (
+            property_localisation.SUPPORT_STRATUM_LOWER,
+            high_value_home_support.HIGH_VALUE_SUPPORT_STRATUM_LOWER,
+        ),
+        value=(0.95, 0.95),
+        counts="share",
+        treatment="invariant",
+        reason=(
+            "a weighted mid-rank within each FRS region's owners, a share of "
+            "their weight, which K clones at 1 / K of it leave as it was"
+        ),
+    ),
+    KSensitiveConstant(
+        name="high-value support copies",
+        where="high_value_home_support.HIGH_VALUE_SUPPORT_COPIES",
+        read=lambda: high_value_home_support.HIGH_VALUE_SUPPORT_COPIES,
+        value=6,
+        counts="hyperparameter",
+        treatment="invariant",
+        reason=(
+            "the copies each selected household row becomes, at an equal "
+            "share of its weight; the count does not move with K, though the "
+            "stratum ranks every clone's rows together (C-34)"
         ),
     ),
     KSensitiveConstant(
@@ -512,21 +573,28 @@ K_SENSITIVE_CONSTANTS: tuple[KSensitiveConstant, ...] = (
     KSensitiveConstant(
         name="zero-weight SPI strata rows",
         where="the zero-weight strata gate's maximum_zero_weight_rows",
+        # The gate and key of each declared maximum, with its value.
         read=lambda: frozenset(
-            ("uk_zero_weight_strata", "maximum_zero_weight_rows")
+            (
+                "uk_zero_weight_strata",
+                "maximum_zero_weight_rows",
+                declaration["maximum_zero_weight_rows"],
+            )
             for gate in _gates()
             if gate["id"] == "uk_zero_weight_strata"
             for declaration in gate["parameters"]["declarations"]
             if "maximum_zero_weight_rows" in declaration
         ),
-        value=frozenset({("uk_zero_weight_strata", "maximum_zero_weight_rows")}),
+        value=frozenset({("uk_zero_weight_strata", "maximum_zero_weight_rows", 0)}),
         counts="rows",
-        treatment="later",
+        treatment="kept",
         reason=(
-            "a terminal gate: the national line refuses a clone-first spine, "
-            "and the dense line builds only on a geography-first one, which "
-            "no packaged spine is yet; its rows are taken up with the dense "
-            "line's clone count pin, later in #931"
+            "a terminal gate whose every declared maximum is zero rows, which "
+            "K clones leave at zero: the dense line, which builds on the "
+            "packaged geography-first spine at the K its clone count pin holds "
+            "it to, reads K rows where one clone has one, and any SPI-synthetic "
+            "row at zero weight still fails; the national line refuses a "
+            "clone-first spine"
         ),
         gate_parameters=frozenset(
             {("uk_zero_weight_strata", "maximum_zero_weight_rows")}
@@ -658,13 +726,14 @@ def test_the_scaled_and_clone_zero_treatments_are_the_codes() -> None:
     ):
         assert _source_names(function, "_receipt_clone_count", "clone_count")
     assert _source_names(support_clip.UKSupportClipReceipt.evidence, '"clone_count"')
+    # The area home values count the sources at the knots' cap among geographic
+    # clone 0's rows (microcosm#931), and their check reads its declared
+    # maximum as it stands.
     assert _source_names(
-        regional_home_values.assign_regional_home_values,
-        "clone_zero",
-        "GEOGRAPHIC_COPY_ID_FIELD",
+        area_home_values.localise_area_home_values, "clone_zero_rows", "at_cap"
     )
-    # The regional home values check reads its declared maximum as it stands.
-    assert not _source_names(stage_health._regional_home_values_gate, "clone_count")
+    assert _source_names(area_home_values.clone_zero_rows, "_CLONE_INDEX_COLUMN")
+    assert not _source_names(stage_health._area_home_values_gate, "clone_count")
     assert _source_names(
         frs_take_up.uk_take_up_signal_receipt, "clone_zero", "population_support"
     )

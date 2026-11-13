@@ -454,11 +454,11 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     # disability carriers, the salary-sacrifice pre-conversion pay carrier,
     # the landlord carrier, the FRS bonus carrier (microcosm#1340), the
     # in-household care hours carrier (microcosm#1418), the company car
-    # carriers (PolicyEngine/uk-autumn-budget-dashboard-2026#316), the value
-    # the regional home values replaced (microcosm#1112), the household ISA
-    # totals policyengine-uk sums from the person balances (microcosm#1415)
-    # and the root's area-conditioning carriers (microcosm#931), and nothing
-    # else.
+    # carriers (PolicyEngine/uk-autumn-budget-dashboard-2026#316), the WAS
+    # chain's kept draw of the main residence (microcosm#1112, microcosm#931),
+    # the household ISA totals policyengine-uk sums from the person balances
+    # (microcosm#1415) and the root's area-conditioning carriers
+    # (microcosm#931), and nothing else.
     from microcosm.build.uk_runtime.frs_disability import (
         UK_INTERNAL_DISABILITY_REPORTED_COLUMNS,
     )
