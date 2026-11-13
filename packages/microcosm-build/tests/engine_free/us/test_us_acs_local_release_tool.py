@@ -7323,6 +7323,112 @@ def test_package_manifest_reads_a_legacy_summary_as_the_historical_solve(
     assert manifest["calibration"]["softmax_in_loop_max_cap_ratio"] is None
 
 
+@pytest.mark.parametrize("exhausted_epochs", [713, 0])
+def test_package_refuses_a_softmax_summary_from_before_the_exact_cap_step(
+    tmp_path: Path, monkeypatch, exhausted_epochs: int
+) -> None:
+    """A softmax solve by the old cap step reaches no manifest (review R4).
+
+    Before microcosm#1096 a softmax solve recorded how many epochs ran out of
+    cap rounds, and nothing under the key the manifest carries now. Packaging
+    it would write null for that key: the value of a solve with no softmax
+    cap step. A count of 0 is a softmax solve by the old step all the same.
+    """
+
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    summary_path = args.checkpoint_dir / "calibration_summary.json"
+    summary = json.loads(summary_path.read_text())
+    summary.update(
+        mass_parametrization="softmax",
+        softmax_cap_rounds_exhausted_epochs=exhausted_epochs,
+    )
+    summary_path.write_text(json.dumps(summary))
+
+    with pytest.raises(
+        SystemExit,
+        match=(
+            rf"softmax_cap_rounds_exhausted_epochs={exhausted_epochs} and no "
+            r"softmax_in_loop_max_cap_ratio: this checkpoint's softmax solve "
+            r"predates the exact cap step .*Calibrate the checkpoint again "
+            r"before --stage package"
+        ),
+    ):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+
+
+@pytest.mark.parametrize(
+    ("recorded", "carried"),
+    [
+        ({"softmax_cap_rounds_exhausted_epochs": None}, None),
+        (
+            {
+                "mass_parametrization": "softmax",
+                "softmax_in_loop_max_cap_ratio": 1.0000087,
+            },
+            1.0000087,
+        ),
+        (
+            {"mass_parametrization": "softmax", "softmax_in_loop_max_cap_ratio": None},
+            None,
+        ),
+        (
+            {
+                "mass_parametrization": "softmax",
+                "softmax_cap_rounds_exhausted_epochs": 713,
+                "softmax_in_loop_max_cap_ratio": 1.0000087,
+            },
+            1.0000087,
+        ),
+    ],
+    ids=[
+        "projection-before-the-cap-step",
+        "softmax-with-the-cap-step",
+        "softmax-without-a-cap",
+        "both-keys",
+    ],
+)
+def test_package_carries_the_cap_receipt_of_a_summary_it_can_read(
+    tmp_path: Path, monkeypatch, recorded, carried
+) -> None:
+    """The summaries the refusal above leaves alone package as before.
+
+    A projection solve from before the exact cap step recorded the old key as
+    null. A softmax solve since records the new key: the largest in-loop
+    weight over its cap, or null without a cap. No tool writes both keys, but
+    a summary that holds the new one has its receipt, whatever else it holds.
+    The summary that records neither key is the legacy one in the test before
+    the refusal.
+    """
+
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    summary_path = args.checkpoint_dir / "calibration_summary.json"
+    summary = json.loads(summary_path.read_text())
+    summary.update(recorded)
+    summary_path.write_text(json.dumps(summary))
+
+    result = module.do_package(args)
+
+    manifest = json.loads(
+        (Path(result["release_dir"]) / "build_manifest.json").read_text()
+    )
+    assert manifest["calibration"][module.SOFTMAX_CAP_RECEIPT] == carried
+    assert module.PRE_EXACT_CAP_SOFTMAX_RECEIPT not in manifest["calibration"]
+
+
 def test_concentration_limitation_is_true_to_the_penalty_solved() -> None:
     module = _load_tool_module()
     base = {

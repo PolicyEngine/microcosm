@@ -281,6 +281,15 @@ any other solver setting (cap, loss cap, `l2_lambda`, `l2_basis`,
 `mass_parametrization`, seed, epoch batch); a stamp written before these two
 options existed reads as the historical solve. The manifest's refresh recipe
 carries the three flags whenever they differ from the historical solve.
+The summary and the manifest name the ratio `softmax_in_loop_max_cap_ratio`;
+it is null for a projection solve and for a softmax solve without a cap.
+Before the exact cap projection, a softmax solve's summary recorded
+`softmax_cap_rounds_exhausted_epochs` in its place, a count of epochs. The
+two measure different things, so `--stage package` refuses a summary that
+holds such a count and no ratio: its checkpoint was solved by the old cap
+step and has to be calibrated again (`--stage calibrate` without `--resume`).
+A summary whose old key is null (a projection solve) or absent packages as
+before.
 `calibrate_l0_refit` takes `l2_basis` / `refit_l2_basis`
 and `refit_mass_parametrization`; `refit_l0_selection` and `static_aging` take
 `l2_basis`.

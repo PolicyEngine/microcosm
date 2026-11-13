@@ -2729,6 +2729,41 @@ def _require_current_calibration(identity: dict, summary: dict, *, stage: str) -
         )
 
 
+#: What a softmax solve's summary recorded before the exact cap step
+#: (microcosm#1096): how many epochs ran out of renormalize-and-clamp rounds.
+PRE_EXACT_CAP_SOFTMAX_RECEIPT = "softmax_cap_rounds_exhausted_epochs"
+#: What it records since: the largest in-loop weight over its cap. ``None``
+#: for a solve with no softmax cap step (projection, or softmax uncapped).
+SOFTMAX_CAP_RECEIPT = "softmax_in_loop_max_cap_ratio"
+
+
+def _require_exact_cap_step_summary(summary: dict, *, stage: str) -> None:
+    """Refuse a softmax calibration summary from before the exact cap step.
+
+    The old receipt counts epochs and the new one is a weight-to-cap ratio,
+    so neither can stand in for the other. A summary that holds a count under
+    the old key and lacks the new key was solved by the old step, and the
+    manifest would carry ``None`` for the new key: the value of a solve with
+    no softmax cap step, over a capped softmax solve. A projection solve from
+    before the change recorded the old key as ``None``, and an older summary
+    records neither key; both read as before.
+    """
+
+    if (
+        summary.get(PRE_EXACT_CAP_SOFTMAX_RECEIPT) is not None
+        and SOFTMAX_CAP_RECEIPT not in summary
+    ):
+        raise SystemExit(
+            f"calibration_summary.json records {PRE_EXACT_CAP_SOFTMAX_RECEIPT}="
+            f"{summary[PRE_EXACT_CAP_SOFTMAX_RECEIPT]!r} and no "
+            f"{SOFTMAX_CAP_RECEIPT}: this checkpoint's softmax solve predates "
+            "the exact cap step (microcosm#1096), and the two receipts measure "
+            "different things. Calibrate the checkpoint again before --stage "
+            f"{stage}: run --stage calibrate without --resume (--resume keeps "
+            "a completed weights_latest.npz and this summary)."
+        )
+
+
 def load_checkpoint_surface(checkpoint_dir: Path, identity: dict | None = None):
     """The lean frame, design weights, registry, roles and matrix of a checkpoint.
 
@@ -6162,6 +6197,7 @@ def do_package(args) -> dict:
     soi_mode = _require_recorded_soi_mode(materialize_rss)
     _require_full_rung(identity)
     _require_current_calibration(identity, diagnostics, stage="package")
+    _require_exact_cap_step_summary(diagnostics, stage="package")
     _require_blocking_district_ess_gate(gate_report, args)
     calibrated_h5 = Path(args.out_h5)
     if not calibrated_h5.exists():
