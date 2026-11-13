@@ -3068,6 +3068,10 @@ def calibration_evidence(
 
 
 def do_calibrate(args) -> None:
+    # The checkout's code identity as this stage starts, before it loads or
+    # solves anything. The write reads it again and refuses if the commit or
+    # the dirty state changed in between (review of #1311).
+    code = _repo_code_identity(allow_dirty=True)
     from microcosm.calibrate import write_calibration_diagnostics
 
     identity = _verify_run_identity(args)
@@ -3163,7 +3167,11 @@ def do_calibrate(args) -> None:
                 "weights_latest.npz to recalibrate)."
             )
             _write_calibrated_artifact(
-                args, np.asarray(warm, dtype=np.float64), identity, settings
+                args,
+                np.asarray(warm, dtype=np.float64),
+                identity,
+                settings,
+                code=code,
             )
             county_surface.write_reports(
                 args.checkpoint_dir, previous, identity=identity
@@ -3269,7 +3277,11 @@ def do_calibrate(args) -> None:
     }
     county_surface.write_reports(args.checkpoint_dir, summary, identity=identity)
     _write_calibrated_artifact(
-        args, np.asarray(result.weights, dtype=np.float64), identity, settings
+        args,
+        np.asarray(result.weights, dtype=np.float64),
+        identity,
+        settings,
+        code=code,
     )
 
     holdout = summary["cd_holdout"]
@@ -3401,7 +3413,7 @@ def _with_live_stored_inputs(frame):
 
 
 def _write_calibrated_artifact(
-    args, weights: np.ndarray, identity: dict, settings: dict
+    args, weights: np.ndarray, identity: dict, settings: dict, *, code: dict
 ) -> None:
     """Write the consumer-ready calibrated H5 with verified attachment.
 
@@ -3412,7 +3424,10 @@ def _write_calibrated_artifact(
     fill — so a plain ``USSingleYearDataset``/``Microsimulation`` consumer
     loads the published file directly. The nullable staging H5 remains the
     archival nullable truth; every fill is recorded in the run's consumer
-    manifest.
+    manifest. ``code`` is the code identity the calibrate stage read when it
+    started; ``consumer_export.json`` records it, and this function writes
+    neither that file nor the H5 unless the checkout still has that commit
+    and dirty state just before the H5.
     """
 
     if args.out_h5 is None:
@@ -3487,6 +3502,8 @@ def _write_calibrated_artifact(
         projected.strata,
         mass_log=projected.mass_log,
     )
+    # The last moment before any byte of the artifact exists.
+    _require_unchanged_code(code)
     _write_dataset(
         calibrated,
         Path(args.out_h5),
@@ -3512,6 +3529,10 @@ def _write_calibrated_artifact(
                     "assignment_file": ssi_medicaid["assignment_file"],
                 },
                 "live_stored_inputs": live_inputs.provenance,
+                # The code that wrote these bytes, as read when the stage
+                # started. The build's ID names the packaging code, so
+                # package refuses any other writer.
+                "code": code,
                 "note": (
                     "The engine-pass contract (input-schema projection + "
                     "reviewed-null default fill) is applied to the published "
@@ -3886,6 +3907,53 @@ def do_qa(args) -> None:
     )
 
 
+def _require_artifact_written_by(
+    consumer_export: dict, code: dict, *, allow_dirty: bool
+) -> bool:
+    """Refuse to give a build an ID that names code other than its writer.
+
+    The calibrate stage writes the published bytes and records its code in
+    ``consumer_export.json``; the build's ID names the packaging code. They
+    must be the same commit, so the build's ID names the code that produced
+    the artifact. A checkpoint that records no writer is refused, not
+    trusted. A writer record that does not say ``dirty: false`` counts as
+    dirty, so it needs ``allow_dirty``.
+
+    Returns whether the writer's tree counts as dirty, so the build can
+    record it even when packaging runs from a clean tree.
+    """
+
+    written_by = consumer_export.get("code")
+    commit = written_by.get("commit") if isinstance(written_by, dict) else None
+    # A commit is a non-empty string; anything else names no code.
+    if not isinstance(commit, str) or not commit:
+        raise SystemExit(
+            "consumer_export.json records no code identity for the calibrated "
+            "H5, so the build's ID cannot be shown to name the code that wrote "
+            "it. Re-run --stage calibrate (then qa and finalize) with the "
+            "current tool."
+        )
+    # Full commits: the abbreviated sha's length depends on the checkout (a
+    # shallow clone abbreviates shorter), so it cannot be compared.
+    if written_by["commit"] != code["commit"]:
+        raise SystemExit(
+            f"The calibrated H5 was written by code {written_by['commit']}, but "
+            f"packaging runs {code['commit']}, and the build's ID names the "
+            "packaging code. Package with the code that wrote the artifact, or "
+            "re-run --stage calibrate (then qa and finalize) with this code."
+        )
+    # Only a record that says its tree was clean reads as clean.
+    writer_dirty = written_by.get("dirty") is not False
+    if writer_dirty and not allow_dirty:
+        raise SystemExit(
+            "The calibrated H5 was written from a dirty tree, or its record "
+            f"does not say the tree was clean (dirty={written_by.get('dirty')!r}); "
+            "a build's ID names a committed code vintage. Re-run --stage "
+            "calibrate from a clean tree, or pass --allow-dirty."
+        )
+    return writer_dirty
+
+
 def _repo_code_identity(allow_dirty: bool) -> dict[str, object]:
     def _git(*parts: str) -> str:
         return subprocess.check_output(
@@ -3893,6 +3961,7 @@ def _repo_code_identity(allow_dirty: bool) -> dict[str, object]:
         ).strip()
 
     sha = _git("rev-parse", "--short", "HEAD")
+    commit = _git("rev-parse", "HEAD")
     dirty = bool(_git("status", "--porcelain"))
     if dirty and not allow_dirty:
         raise SystemExit(
@@ -3900,7 +3969,34 @@ def _repo_code_identity(allow_dirty: bool) -> dict[str, object]:
             "committed code vintage. Commit first or pass --allow-dirty "
             "(the manifest will record dirty=true)."
         )
-    return {"sha": sha, "dirty": dirty, "branch": _git("branch", "--show-current")}
+    return {
+        "sha": sha,
+        "commit": commit,
+        "dirty": dirty,
+        "branch": _git("branch", "--show-current"),
+    }
+
+
+def _require_unchanged_code(started: dict) -> None:
+    """Refuse to write the calibrated artifact from a checkout that moved.
+
+    ``consumer_export.json`` records the code identity the calibrate stage
+    read when it started. A solve can run for hours, so just before calibrate
+    writes the H5 the checkout must still be at that commit and in that dirty
+    state; otherwise the record would name code other than the code that ran.
+    The branch's name may change: it names no code.
+    """
+
+    now = _repo_code_identity(allow_dirty=True)
+    if (now["commit"], now["dirty"]) != (started["commit"], started["dirty"]):
+        raise SystemExit(
+            "The checkout changed while calibrate ran: it started at "
+            f"{started['commit']} (dirty={started['dirty']}) and is now at "
+            f"{now['commit']} (dirty={now['dirty']}). Refusing to write the "
+            "calibrated H5 and consumer_export.json, whose record would name "
+            "code other than the code that ran. Re-run --stage calibrate from "
+            "a checkout that does not change during the run."
+        )
 
 
 def _ess_concentration_limitation(diagnostics: dict) -> dict:
@@ -4034,6 +4130,9 @@ def _acs_wic_takeup_limitation(consumer_export: dict | None) -> dict | None:
     assumed = wic.get("people_assumed_true")
     if not assumed:
         return None
+    # A receipt written before the count existed states no count.
+    allowed = wic.get("people_allowed_without_decision")
+    of_allowed = "" if allowed is None else f", of {allowed} ACS-spine people"
     return {
         "id": "acs_wic_takeup_assumed_interim",
         "status": "reviewed_interim_assumption",
@@ -4046,8 +4145,9 @@ def _acs_wic_takeup_limitation(consumer_export: dict | None) -> dict | None:
             "people, and the donor stores its decisions under the retired "
             f"input name {wic.get('from')!r}, which the installed "
             "policyengine-us ignores. The consumer artifact stores them as "
-            f"{wic.get('to')!r}: every donor decision is kept, and every ACS "
-            "person is set to take WIC up when eligible. That is the engine's "
+            f"{wic.get('to')!r}: every stored decision is kept, and every "
+            f"person without one ({assumed}, all on the ACS spine{of_allowed}) "
+            "is set to take WIC up when eligible. That is the engine's "
             "default and the assumption policyengine.py applies to the same "
             "cells today; it is a modelling assumption, not observed "
             "participation."
@@ -5776,6 +5876,8 @@ def do_finalize(args) -> None:
                 "filled_columns",
                 "total_values_filled",
                 "staging_sha256",
+                "live_stored_inputs",
+                "code",
             )
         }
         if consumer_export
@@ -6158,6 +6260,9 @@ def do_package(args) -> dict:
     )
 
     code = _repo_code_identity(args.allow_dirty)
+    writer_dirty = _require_artifact_written_by(
+        consumer_export, code, allow_dirty=args.allow_dirty
+    )
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     # The build's ID; it names the build within the local-area release.
     build_id = f"{RELEASE_ID_PREFIX}-{code['sha']}-{timestamp}"
@@ -6378,7 +6483,9 @@ def do_package(args) -> dict:
     build_manifest = {
         "build_id": build_id,
         "build_sha": code["sha"],
-        "build_dirty": code["dirty"],
+        # Dirty if either the packaging tree or the tree that wrote the
+        # artifact was.
+        "build_dirty": bool(code["dirty"]) or writer_dirty,
         "created_at": datetime.now(UTC).isoformat(),
         "code": {"branch": code["branch"], "repo": "microcosm"},
         "runtime": {

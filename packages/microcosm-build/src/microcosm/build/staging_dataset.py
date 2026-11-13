@@ -16,7 +16,10 @@ upload attempt, and turns the emitter's receipt into the build's
 ``staged_dataset`` delivery record. The emitter copies the bundle's small
 files before it answers; it uploads every other file from disk, so the build
 rewrites a bundle file afterwards only when the receipt lists it in
-``copied_files`` (:meth:`StagedBundleHandOver.may_rewrite`).
+``copied_files`` (:meth:`StagedBundleHandOver.may_rewrite`). A hand-over that
+names its build (``collector``, a ``CollectorProvenance``) also asks the
+emitter to submit the bundle's calibration diagnostics to the collector once
+its commit lands, while the emitter's collector submissions are on.
 
 The module knows nothing about a country's manifest beyond the ``outputs``
 mapping shape ``{name: {"path", "sha256", "bytes"}}``; callers pass the manifest
@@ -38,7 +41,11 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Final, Literal, TypedDict, cast, get_args
 
-from microcosm_emitter_interface import BundleFile, StageDatasetBundle
+from microcosm_emitter_interface import (
+    BundleFile,
+    CollectorProvenance,
+    StageDatasetBundle,
+)
 from microcosm_emitter_interface.bundles import (
     BUILD_MANIFEST_ROLE,
     BUNDLE_INVENTORY_ROLE,
@@ -899,12 +906,15 @@ def bundle_request(
     repository: str,
     prefix: str = DEFAULT_STAGED_DATASET_PREFIX,
     message: str | None = None,
+    collector: CollectorProvenance | None = None,
 ) -> StageDatasetBundle:
     """The hand-over of every bundle file, by path, with its role and digest.
 
     The outputs keep their digests from the manifest check; the manifest and
-    the two sidecars are measured now, as they are handed over. The interface
-    raises ``ValueError`` for a request that breaks its rules.
+    the two sidecars are measured now, as they are handed over. ``collector``
+    names the build for the collector; without it the bundle goes only to
+    Hugging Face. The interface raises ``ValueError`` for a request that
+    breaks its rules.
     """
 
     files = [
@@ -938,6 +948,7 @@ def bundle_request(
         files=files,
         prefix=_safe_prefix(prefix),
         commit_message=message,
+        collector=collector,
     )
 
 
@@ -1128,12 +1139,15 @@ def stage_bundle(
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
     earlier_files: Mapping[str, Any] | None = None,
+    collector: CollectorProvenance | None = None,
 ) -> StagedBundleHandOver:
     """Hand the bundle and its sidecars to the emitter; record, never raise.
 
     ``earlier_files`` are the outputs' digests of an earlier hand-over of
     this run, if any; a ``REMOTE_DIFFERS`` warning then says when the folder
-    may hold that bundle.
+    may hold that bundle. ``collector`` names the build, so the emitter also
+    submits the bundle's calibration diagnostics to the collector (see
+    :func:`bundle_request`).
 
     The emitter writes every file under ``<prefix>/<run_id>/`` in one commit,
     idempotent on the outputs' digests (``already_staged``, or
@@ -1156,7 +1170,11 @@ def stage_bundle(
     )
     try:
         request = bundle_request(
-            bundle, repository=record["repository"], prefix=prefix, message=message
+            bundle,
+            repository=record["repository"],
+            prefix=prefix,
+            message=message,
+            collector=collector,
         )
     except (OSError, ValueError) as error:
         _warn(

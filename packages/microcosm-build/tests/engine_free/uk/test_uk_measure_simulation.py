@@ -809,8 +809,11 @@ def test_packaged_exclusions_load():
     # Scottish NSND outturn and taxpayers for 2024-25 (S4), DWP's people on UC
     # aged 16 to 24 as the check on its two bound parts (Y4), DWP's PIP cases
     # but for England's and Wales's award split, which binds (P3 and P2), and
-    # ONS's NEET count (Y3).
-    assert len(names) == len(set(names)) == 135
+    # ONS's NEET count (Y3). PR3 holds PAYE RTI's payrolled employees aged 0 to
+    # 17 and 18 to 24 (B1), DWP's people on UC aged 16 to 21 and 22 to 24 in two
+    # conditionality groups (B5), and Social Security Scotland's ADP and Carer
+    # Support Payment caseloads (B10).
+    assert len(names) == len(set(names)) == 143
     (gas,) = [
         entry
         for entry in exclusions

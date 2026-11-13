@@ -72,6 +72,29 @@ SCOTTISH_BAND_D_EQUIVALENTS_CONCEPT = "scotgov.council_tax.band_d_equivalents"
 SCOTTISH_BAND_D_RATES_RECORD_SET = "scotgov.ctas2026.band_d.fy2024"
 SCOTTISH_BAND_D_RATE_CONCEPT = "scotgov.council_tax.average_band_d"
 SCOTTISH_COUNCIL_AREA_COUNT = 32
+#: B11 of the November event-data plan's PR3 (microcosm#1095; Vahid's second
+#: review of microcosm#1550, Should 2): the liability counts every chargeable
+#: dwelling, including second homes and liable empty homes that no FRS
+#: household occupies, so the level is the liability times Scotland's
+#: main-residence share at September 2024, in dwellings, since no published
+#: table splits Band D equivalents by class.
+SCOTLAND_COUNTRY_CODE = "S92000003"
+#: CTAXBASE 2024's chargeable dwellings in Scotland at September 2024.
+SCOTTISH_CHARGEABLE_DWELLINGS_RECORD_SET = (
+    "scotgov.ctaxbase2024.chargeable_dwellings.scotland"
+)
+SCOTTISH_CHARGEABLE_DWELLINGS_CONCEPT = "scotgov.chargeable_dwellings_total"
+#: Second homes, and empty homes liable for council tax (empty more than six
+#: months), in Scotland at September 2024 (Second homes and empty properties
+#: in September 2025, from the councils' CTAXBASE returns).
+SCOTTISH_SECOND_HOMES_RECORD_SET = (
+    "scotgov.second_homes_empty_properties_2025.second_homes.y2024"
+)
+SCOTTISH_SECOND_HOMES_CONCEPT = "scotgov.council_tax.second_homes"
+SCOTTISH_EMPTY_HOMES_RECORD_SET = (
+    "scotgov.second_homes_empty_properties_2025.empty_properties.y2024"
+)
+SCOTTISH_EMPTY_HOMES_CONCEPT = "scotgov.council_tax.empty_properties"
 
 
 def frs_council_tax_operation_parameters() -> dict[str, Any]:
@@ -106,10 +129,16 @@ def frs_council_tax_resource_operation_parameters() -> dict[str, Any]:
         "record_sets": [
             SCOTTISH_BAND_D_EQUIVALENTS_RECORD_SET,
             SCOTTISH_BAND_D_RATES_RECORD_SET,
+            SCOTTISH_CHARGEABLE_DWELLINGS_RECORD_SET,
+            SCOTTISH_SECOND_HOMES_RECORD_SET,
+            SCOTTISH_EMPTY_HOMES_RECORD_SET,
         ],
         "source_vintage": (
             "CTAXBASE 2025 Band D equivalents at September 2024; CTAS 2026 "
-            "average Band D for 2024-25"
+            "average Band D for 2024-25; CTAXBASE 2024 chargeable dwellings, "
+            "and second homes and empty properties (6 months +) from Second "
+            "homes and empty properties in September 2025, in Scotland at "
+            "September 2024"
         ),
         "mapped_build_period": FRS_COUNCIL_TAX_BUILD_PERIOD,
         "period_mapping": "september_base_within_and_band_d_of_the_build_tax_year",
@@ -129,7 +158,12 @@ def frs_council_tax_levelling_operation_parameters() -> dict[str, Any]:
         "level": (
             "the sum over Scotland's 32 council areas of CTAXBASE 2025's Band D "
             "equivalent dwellings before council tax reduction at September 2024 "
-            "times CTAS 2026's average Band D council tax for 2024-25"
+            "times CTAS 2026's average Band D council tax for 2024-25, times "
+            "Scotland's main-residence share at September 2024: one less its "
+            "second homes and its empty homes liable for council tax (empty more "
+            "than 6 months) over its CTAXBASE 2024 chargeable dwellings, in "
+            "dwellings, since no published table splits Band D equivalents by "
+            "class"
         ),
         "stored": (
             "the Scottish households' council_tax after impute_cell_means, at the "
@@ -217,10 +251,13 @@ def _plain(value: object) -> object:
 class ScottishCouncilTaxLevel:
     """Scotland's 2024-25 council tax before council tax reduction, from its councils.
 
-    ``total`` sums, over the 32 council areas, the area's Band D equivalent
+    The liability sums, over the 32 council areas, the area's Band D equivalent
     dwellings before council tax reduction times its average Band D council
     tax: the liability after discounts and exemptions that council tax
-    reduction is then taken from, as the stage's bills are.
+    reduction is then taken from, as the stage's bills are. ``total`` is that
+    liability times Scotland's main-residence share, one less its second homes
+    and liable empty homes over its chargeable dwellings at September 2024, so
+    it leaves out the dwellings no FRS household occupies (B11).
     """
 
     total: float
@@ -256,6 +293,33 @@ def scottish_council_tax_level_from_rows(
             values[area] = value
         return values
 
+    def scotland(record_set: str, concept: str) -> float:
+        values: list[float] = []
+        for row in rows:
+            layout = row.get("layout") or {}
+            geography = row.get("geography") or {}
+            if layout.get("record_set_id") != record_set:
+                continue
+            if geography.get("level") != "country" or row.get("concept") != concept:
+                continue
+            if str(geography.get("id")) != SCOTLAND_COUNTRY_CODE:
+                raise ValueError(
+                    f"{record_set} carries a country other than Scotland, "
+                    f"{geography.get('id')!r}."
+                )
+            value = float(row["value"])
+            if not np.isfinite(value) or value <= 0:
+                raise ValueError(
+                    f"{record_set} gives Scotland a non-positive {concept}."
+                )
+            values.append(value)
+        if len(values) != 1:
+            raise ValueError(
+                f"The main-residence share needs Scotland's {concept} from "
+                f"{record_set} once; got {len(values)}."
+            )
+        return values[0]
+
     equivalents = by_area(
         SCOTTISH_BAND_D_EQUIVALENTS_RECORD_SET, SCOTTISH_BAND_D_EQUIVALENTS_CONCEPT
     )
@@ -269,16 +333,44 @@ def scottish_council_tax_level_from_rows(
             f"{len(equivalents)} and {len(rates)}, "
             f"{len(set(equivalents) ^ set(rates))} unmatched."
         )
-    total = float(sum(equivalents[area] * rates[area] for area in sorted(equivalents)))
+    liability = float(
+        sum(equivalents[area] * rates[area] for area in sorted(equivalents))
+    )
+    chargeable = scotland(
+        SCOTTISH_CHARGEABLE_DWELLINGS_RECORD_SET, SCOTTISH_CHARGEABLE_DWELLINGS_CONCEPT
+    )
+    second_homes = scotland(
+        SCOTTISH_SECOND_HOMES_RECORD_SET, SCOTTISH_SECOND_HOMES_CONCEPT
+    )
+    empty_homes = scotland(
+        SCOTTISH_EMPTY_HOMES_RECORD_SET, SCOTTISH_EMPTY_HOMES_CONCEPT
+    )
+    if second_homes + empty_homes >= chargeable:
+        raise ValueError(
+            "Scotland's second homes and liable empty homes must be fewer than "
+            "its chargeable dwellings."
+        )
+    share = 1.0 - (second_homes + empty_homes) / chargeable
+    total = liability * share
     return ScottishCouncilTaxLevel(
         total=total,
         receipt={
             "record_sets": [
                 SCOTTISH_BAND_D_EQUIVALENTS_RECORD_SET,
                 SCOTTISH_BAND_D_RATES_RECORD_SET,
+                SCOTTISH_CHARGEABLE_DWELLINGS_RECORD_SET,
+                SCOTTISH_SECOND_HOMES_RECORD_SET,
+                SCOTTISH_EMPTY_HOMES_RECORD_SET,
             ],
             "council_areas": len(equivalents),
             "band_d_equivalents": float(sum(equivalents.values())),
+            "liability_gbp": liability,
+            # The Scottish Government's published counts at September 2024.
+            "chargeable_dwellings": chargeable,
+            "second_homes": second_homes,
+            "empty_homes": empty_homes,
+            "main_residence_share": share,
+            "main_residence_share_basis": "dwellings",
             "level_gbp": total,
         },
     )

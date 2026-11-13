@@ -262,6 +262,11 @@ def test_store_pip_points_writes_both_points_and_keeps_every_award() -> None:
         "scotland": {"records": "3-9", "support": "3-9", "weighted": 50},
         "northern_ireland": {"records": 0, "support": 0, "weighted": 0},
     }
+    # The counts sit at the spine's weights, so the receipt says how to net
+    # these recipients out at release weights instead.
+    assert receipt["recipients_by_country_note"] == pip_points.PIP_POINTS_COUNTRY_NOTE
+    assert "before calibration" in receipt["recipients_by_country_note"]
+    assert "filter the release on region" in receipt["recipients_by_country_note"]
 
 
 def test_a_country_on_fewer_than_three_households_shows_no_weighted_count() -> None:

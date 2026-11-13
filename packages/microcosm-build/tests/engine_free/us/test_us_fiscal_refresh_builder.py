@@ -11,10 +11,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import h5py
+import hypothesis
 import numpy as np
 import pandas as pd
 import pytest
+from hypothesis import strategies as st
 
+from microcosm.build.gates import single_record_concentration, tail_concentration_gate
 from microcosm.build.us_runtime import h5_io as builder_h5_io
 from microcosm.calibrate import (
     CalibrationHierarchy,
@@ -16285,6 +16288,747 @@ def test_qrf_tail_concentration_gate_passes_dispersed_sparse_mass() -> None:
     gate, _ = builder._qrf_tail_concentration_gate(_qrf_export_frame(builder, values))
 
     assert gate.passed
+
+
+# --- Single-record concentration: reported beside the gate, never graded ---
+
+#: The gate's details keys before the single-record diagnostic. The
+#: diagnostic lives in the surface, so the details keep exactly these.
+_TAIL_GATE_DETAIL_KEYS = {
+    "columns_checked",
+    "top_k",
+    "max_top_share",
+    "min_nonzero_records",
+    "top_share",
+    "carrier_counts",
+    "thin_columns",
+    "reviewed_exclusions",
+    "stale_exclusions",
+    "dormant_exclusions",
+}
+
+
+def _qrf_person_frame(
+    builder,
+    columns: dict[str, np.ndarray],
+    household_weights: np.ndarray,
+    *,
+    household_columns: dict[str, np.ndarray] | None = None,
+    tax_unit_weights: np.ndarray | None = None,
+) -> Frame:
+    n = int(household_weights.size)
+    ids = np.arange(1, n + 1, dtype="int64")
+    person = pd.DataFrame(
+        {
+            "person_id": ids,
+            "person_household_id": ids,
+            "person_tax_unit_id": ids,
+            "person_spm_unit_id": ids,
+            "person_family_id": ids,
+            "person_marital_unit_id": ids,
+            **columns,
+        }
+    )
+    weights = {
+        "household": builder.Weights(
+            values=np.asarray(household_weights, dtype=np.float64),
+            kind=WeightKind.DESIGN,
+        )
+    }
+    if tax_unit_weights is not None:
+        weights["tax_unit"] = builder.Weights(
+            values=np.asarray(tax_unit_weights, dtype=np.float64),
+            kind=WeightKind.DESIGN,
+        )
+    return Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame(
+                {"household_id": ids, **(household_columns or {})}
+            ),
+            "tax_unit": pd.DataFrame({"tax_unit_id": ids}),
+            "spm_unit": pd.DataFrame({"spm_unit_id": ids}),
+            "family": pd.DataFrame({"family_id": ids}),
+            "marital_unit": pd.DataFrame({"marital_unit_id": ids}),
+        },
+        builder.US_SCHEMA,
+        weights,
+    )
+
+
+def _single_record_fixture(builder) -> tuple[Frame, np.ndarray]:
+    """One record carries 57% of a checked column whose gate passes.
+
+    ``non_sch_d_capital_gains``: 500 carriers of 12,000 records. Record 0 has
+    weight 2 and value $1M, so mass $2M of $3,486,521 (57.4%); the top 100
+    carry 65.8%, under the 0.75 threshold. ``taxable_interest_income`` is
+    dense, ``casualty_loss`` thin (10 carriers), ``estate_income`` all zero,
+    ``business_is_sstb`` boolean, and ``short_term_capital_gains`` absent.
+    """
+    n = 12_000
+    weights = np.ones(n)
+    weights[0] = 2.0
+    non_sch_d = np.zeros(n)
+    non_sch_d[:500] = 2_979.0
+    non_sch_d[0] = 1_000_000.0
+    interest = np.zeros(n)
+    interest[: n // 2] = 1_000.0
+    interest[1] = 50_000.0
+    casualty = np.zeros(n)
+    casualty[100:110] = 500.0
+    frame = _qrf_person_frame(
+        builder,
+        {
+            "non_sch_d_capital_gains": non_sch_d,
+            "taxable_interest_income": interest,
+            "casualty_loss": casualty,
+            "estate_income": np.zeros(n),
+            "business_is_sstb": np.zeros(n, dtype=bool),
+        },
+        weights,
+    )
+    return frame, weights
+
+
+def test_qrf_tail_surface_reports_the_largest_single_record() -> None:
+    builder = _load_builder_module()
+    frame, weights = _single_record_fixture(builder)
+
+    gate, surface = builder._qrf_tail_concentration_gate(frame)
+
+    # The measurement leaves the gate as it was: it passes and carries only
+    # its own detail keys.
+    assert gate.passed
+    assert set(gate.details) == _TAIL_GATE_DETAIL_KEYS
+    sparse = ["casualty_loss", "estate_income", "non_sch_d_capital_gains"]
+    direct = tail_concentration_gate(
+        {column: frame.table("person")[column].to_numpy() for column in sparse},
+        {column: weights for column in sparse},
+        top_k=builder.US_QRF_TAIL_CONCENTRATION_TOP_K,
+        max_top_share=builder.US_QRF_TAIL_CONCENTRATION_MAX_TOP_SHARE,
+        min_nonzero_records=builder.US_QRF_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS,
+    )
+    assert gate.details == direct.details
+    assert surface["checked_sparse_columns"] == sparse
+
+    block = surface["single_record_concentration"]
+    assert block["top_k"] == 100
+    assert block["unmeasured"] == {}
+    # The surface measures every numeric output, dense and thin ones included.
+    assert (
+        set(block["columns"])
+        == set(surface["nonzero_shares"])
+        == {
+            *sparse,
+            "taxable_interest_income",
+        }
+    )
+    columns = block["columns"]
+    assert columns["non_sch_d_capital_gains"] == {
+        "carriers": 500,
+        "top_1_share": pytest.approx(2_000_000.0 / 3_486_521.0),
+        "top_1_weight": 2.0,
+        "top_k_share": gate.details["top_share"]["non_sch_d_capital_gains"],
+    }
+    assert gate.details["top_share"]["non_sch_d_capital_gains"] == pytest.approx(
+        2_294_921.0 / 3_486_521.0
+    )
+    assert columns["taxable_interest_income"] == {
+        "carriers": 6_000,
+        # Record 0 (weight 2) carries $2,000 here: 5,998 x $1,000 + $2,000
+        # + $50,000, and the top 100 are $50,000 + $2,000 + 98 x $1,000.
+        "top_1_share": pytest.approx(50_000.0 / 6_050_000.0),
+        "top_1_weight": 1.0,
+        "top_k_share": pytest.approx(150_000.0 / 6_050_000.0),
+    }
+    assert columns["casualty_loss"] == {
+        "carriers": 10,
+        "top_1_share": pytest.approx(0.1),
+        "top_1_weight": 1.0,
+        "top_k_share": 1.0,
+    }
+    # The surface reports a zero-mass column and never divides by its mass.
+    assert columns["estate_income"] == {
+        "carriers": 0,
+        "top_1_share": None,
+        "top_1_weight": None,
+        "top_k_share": None,
+    }
+
+
+def test_qrf_tail_evidence_file_carries_the_single_record_block(tmp_path) -> None:
+    builder = _load_builder_module()
+    frame, _ = _single_record_fixture(builder)
+    _, surface = builder._qrf_tail_concentration_gate(frame)
+    failures: list[str] = []
+
+    _record_qrf_tail(
+        builder, tmp_path, frame, register=None, allow=False, failures=failures
+    )
+
+    assert failures == []
+
+    def refuse(constant: str) -> None:
+        raise AssertionError(f"non-finite {constant} in the evidence file")
+
+    payload = json.loads(
+        (tmp_path / "qrf_tail_concentration.json").read_text(),
+        parse_constant=refuse,
+    )
+    assert payload["surface"]["single_record_concentration"] == json.loads(
+        json.dumps(surface["single_record_concentration"])
+    )
+    assert set(payload["tail_concentration"]["details"]) == _TAIL_GATE_DETAIL_KEYS
+
+
+def test_a_dense_output_with_unresolvable_weights_is_unmeasured_not_fatal() -> None:
+    """Weighted on two group entities, person weights do not resolve. The gate
+    never resolves weights for a dense output, so neither may its measurement
+    fail the run; a sparse person output still raises, as it always did."""
+    builder = _load_builder_module()
+    n = 12_000
+    interest = np.zeros(n)
+    interest[: n // 2] = 1_000.0
+    auto_loans = np.zeros(n)
+    auto_loans[:500] = 4_000.0
+    frame = _qrf_person_frame(
+        builder,
+        {"taxable_interest_income": interest},
+        np.ones(n),
+        household_columns={"auto_loan_balance": auto_loans},
+        tax_unit_weights=np.ones(n),
+    )
+
+    gate, surface = builder._qrf_tail_concentration_gate(frame)
+
+    assert gate.passed
+    assert surface["dense_columns"] == ["taxable_interest_income"]
+    assert surface["checked_sparse_columns"] == ["auto_loan_balance"]
+    block = surface["single_record_concentration"]
+    assert set(block["columns"]) == {"auto_loan_balance"}
+    assert block["columns"]["auto_loan_balance"]["top_1_share"] == pytest.approx(
+        1 / 500
+    )
+    assert set(block["unmeasured"]) == {"taxable_interest_income"}
+    assert block["unmeasured"]["taxable_interest_income"].startswith(
+        "ValueError: Cannot resolve person-level weights"
+    )
+
+    sparse_person = np.zeros(n)
+    sparse_person[:500] = 2_979.0
+    broken = _qrf_person_frame(
+        builder,
+        {"taxable_interest_income": interest, "casualty_loss": sparse_person},
+        np.ones(n),
+        tax_unit_weights=np.ones(n),
+    )
+    with pytest.raises(ValueError, match="Cannot resolve person-level weights"):
+        builder._qrf_tail_concentration_gate(broken)
+
+
+class _WeightResolutionSpy:
+    """An export frame that records each entity whose weights it resolves.
+
+    For ``entity`` it raises ``error``, or returns ``values`` as the weights,
+    in place of the frame's own; every other attribute is the frame's.
+    """
+
+    def __init__(
+        self,
+        frame: Frame,
+        entity: str | None = None,
+        *,
+        error: Exception | None = None,
+        values: np.ndarray | None = None,
+    ) -> None:
+        self._frame = frame
+        self._entity = entity
+        self._error = error
+        self._values = values
+        self.resolved: list[str] = []
+
+    def __getattr__(self, name: str):
+        return getattr(self._frame, name)
+
+    def resolve_weights(self, entity: str):
+        self.resolved.append(entity)
+        if entity == self._entity and self._error is not None:
+            raise self._error
+        if entity == self._entity and self._values is not None:
+            return SimpleNamespace(values=self._values)
+        return self._frame.resolve_weights(entity)
+
+
+@pytest.mark.parametrize(
+    ("failure", "reason"),
+    [
+        (
+            {"error": RuntimeError("weight store offline")},
+            "RuntimeError: weight store offline",
+        ),
+        (
+            {"values": np.array([object()] * 12_000, dtype=object)},
+            "TypeError: ",
+        ),
+        (
+            {"values": np.ones(11_999)},
+            "ValueError: values and weights must align, got 12000 values vs "
+            "11999 weights.",
+        ),
+    ],
+    ids=["resolution-raises", "weights-not-numbers", "weights-misaligned"],
+)
+def test_any_error_measuring_a_dense_output_lands_under_unmeasured(
+    failure, reason
+) -> None:
+    """Review N1: the gate never weighs a dense output, so no error from
+    measuring one may fail the run, whatever its type or its source."""
+    builder = _load_builder_module()
+    n = 12_000
+    interest = np.zeros(n)
+    interest[: n // 2] = 1_000.0
+    auto_loans = np.zeros(n)
+    auto_loans[:500] = 4_000.0
+    frame = _WeightResolutionSpy(
+        _qrf_person_frame(
+            builder,
+            {"taxable_interest_income": interest},
+            np.ones(n),
+            household_columns={"auto_loan_balance": auto_loans},
+        ),
+        "person",
+        **failure,
+    )
+
+    gate, surface = builder._qrf_tail_concentration_gate(frame)
+
+    assert gate.passed
+    assert surface["dense_columns"] == ["taxable_interest_income"]
+    assert surface["checked_sparse_columns"] == ["auto_loan_balance"]
+    block = surface["single_record_concentration"]
+    assert set(block["columns"]) == {"auto_loan_balance"}
+    assert set(block["unmeasured"]) == {"taxable_interest_income"}
+    assert block["unmeasured"]["taxable_interest_income"].startswith(reason)
+    # The sparse output's measurement reuses the weights the gate loop
+    # resolved, so the frame resolves the household's weights once; the dense
+    # output's measurement then asks for the person's.
+    assert frame.resolved == ["household", "person"]
+
+
+class _StrRaisesError(Exception):
+    def __str__(self) -> str:
+        raise RuntimeError("str failed")
+
+
+class _FormatRaisesError(Exception):
+    def __format__(self, spec: str) -> str:
+        raise LookupError("format failed")
+
+
+class _NameRaisesMeta(type):
+    @property
+    def __name__(cls) -> str:
+        raise OSError("name failed")
+
+
+class _NameRaisesError(Exception, metaclass=_NameRaisesMeta):
+    pass
+
+
+def test_a_dense_output_whose_error_cannot_print_itself_is_unmeasured() -> None:
+    """Review G-1: resolving a dense output's weights raises an error whose
+    ``__str__`` raises. Formatting the reason must not raise in its turn: the
+    gate passes, and the output goes under ``unmeasured`` with the type's
+    name."""
+    builder = _load_builder_module()
+    n = 12_000
+    interest = np.zeros(n)
+    interest[: n // 2] = 1_000.0
+    auto_loans = np.zeros(n)
+    auto_loans[:500] = 4_000.0
+    frame = _WeightResolutionSpy(
+        _qrf_person_frame(
+            builder,
+            {"taxable_interest_income": interest},
+            np.ones(n),
+            household_columns={"auto_loan_balance": auto_loans},
+        ),
+        "person",
+        error=_StrRaisesError(),
+    )
+
+    gate, surface = builder._qrf_tail_concentration_gate(frame)
+
+    assert gate.passed
+    block = surface["single_record_concentration"]
+    assert set(block["columns"]) == {"auto_loan_balance"}
+    assert block["unmeasured"] == {
+        "taxable_interest_income": "_StrRaisesError: unprintable error"
+    }
+
+
+@pytest.mark.parametrize(
+    ("error_type", "reason"),
+    [
+        (ValueError, "ValueError: weights do not align"),
+        (_StrRaisesError, "_StrRaisesError: unprintable error"),
+        (_FormatRaisesError, "_FormatRaisesError: unprintable error"),
+        (_NameRaisesError, "unprintable error"),
+    ],
+    ids=["prints", "str-raises", "format-raises", "type-name-raises"],
+)
+def test_a_single_record_unmeasured_reason_never_raises(error_type, reason) -> None:
+    """Review G-1: the reason is the error's type and text; an error whose
+    text cannot format keeps its type's name, and one whose type cannot name
+    itself keeps the fixed text.
+
+    The test takes the error's class and builds the instance inside the call:
+    pytest prints a failing test's arguments with ``reprlib``, which reads
+    ``type(argument).__name__`` and so cannot print a ``_NameRaisesError``.
+    """
+    builder = _load_builder_module()
+
+    assert builder._unmeasured_reason(error_type("weights do not align")) == reason
+
+
+def test_a_single_record_unmeasured_reason_is_total() -> None:
+    """For every error the strategies build, the reason is the text the error
+    can still give, and no ``Exception`` leaves the helper. Each of
+    ``__str__``, ``__format__`` and the type's ``__name__`` either works or
+    raises a drawn ``Exception``, and ``__str__`` may return a number. The
+    reason is the type's name and the text, then the type's name with
+    ``unprintable error``, then ``unprintable error`` alone."""
+    builder = _load_builder_module()
+    raised = st.sampled_from(
+        [
+            ArithmeticError,
+            AttributeError,
+            KeyError,
+            MemoryError,
+            OSError,
+            RecursionError,
+            RuntimeError,
+            StopIteration,
+            TypeError,
+            ValueError,
+        ]
+    )
+    works_or_raises = st.one_of(st.none(), raised)
+
+    @hypothesis.settings(max_examples=200, deadline=None, database=None)
+    @hypothesis.given(
+        text=st.text(max_size=20),
+        str_raises=works_or_raises,
+        str_returns_a_number=st.booleans(),
+        format_raises=works_or_raises,
+        name_raises=works_or_raises,
+    )
+    def check(
+        text, str_raises, str_returns_a_number, format_raises, name_raises
+    ) -> None:
+        def broken_str(self):
+            if str_raises is not None:
+                raise str_raises("str failed")
+            return 7
+
+        def broken_format(self, spec):
+            raise format_raises("format failed")
+
+        def broken_name(cls):
+            raise name_raises("name failed")
+
+        methods: dict[str, object] = {}
+        if str_raises is not None or str_returns_a_number:
+            methods["__str__"] = broken_str
+        if format_raises is not None:
+            methods["__format__"] = broken_format
+        meta_methods: dict[str, object] = {}
+        if name_raises is not None:
+            meta_methods["__name__"] = property(broken_name)
+        meta = type("DrawnMeta", (type,), meta_methods)
+        error_type = meta("DrawnError", (Exception,), methods)
+
+        reason = builder._unmeasured_reason(error_type(text))
+
+        if name_raises is not None:
+            assert reason == "unprintable error"
+        elif methods:
+            assert reason == "DrawnError: unprintable error"
+        else:
+            assert reason == f"DrawnError: {text}"
+
+    check()
+
+
+class _TableSpy:
+    """An export frame that records each table it hands out.
+
+    Once ``offline`` is set, asking for a table raises; every other attribute
+    is the frame's.
+    """
+
+    def __init__(self, frame: Frame) -> None:
+        self._frame = frame
+        self.offline = False
+        self.tables_read: list[str] = []
+
+    def __getattr__(self, name: str):
+        return getattr(self._frame, name)
+
+    def table(self, entity: str):
+        self.tables_read.append(entity)
+        if self.offline:
+            raise RuntimeError("frame offline")
+        return self._frame.table(entity)
+
+
+def test_a_dense_output_the_frame_cannot_give_again_is_unmeasured_not_fatal() -> None:
+    """Review G-2: the gate loop stores no dense output's values, so the
+    measurement reads a dense column from the frame again, after the gate. A
+    frame that fails then leaves the gate's verdict alone: the dense output
+    goes under ``unmeasured`` and the sparse one keeps its measurement."""
+    builder = _load_builder_module()
+    n = 12_000
+    interest = np.zeros(n)
+    interest[: n // 2] = 1_000.0
+    auto_loans = np.zeros(n)
+    auto_loans[:500] = 4_000.0
+    frame = _TableSpy(
+        _qrf_person_frame(
+            builder,
+            {"taxable_interest_income": interest},
+            np.ones(n),
+            household_columns={"auto_loan_balance": auto_loans},
+        )
+    )
+    shared_gate = builder.tail_concentration_gate
+
+    def gate_then_offline(*args, **kwargs):
+        result = shared_gate(*args, **kwargs)
+        frame.offline = True
+        return result
+
+    builder.tail_concentration_gate = gate_then_offline
+
+    gate, surface = builder._qrf_tail_concentration_gate(frame)
+
+    assert gate.passed
+    assert surface["dense_columns"] == ["taxable_interest_income"]
+    # The loop reads each output's table once; the measurement asks for the
+    # dense output's table again.
+    assert frame.tables_read == ["household", "person", "person"]
+    block = surface["single_record_concentration"]
+    assert set(block["columns"]) == {"auto_loan_balance"}
+    assert block["unmeasured"] == {
+        "taxable_interest_income": "RuntimeError: frame offline"
+    }
+
+
+def test_a_dense_output_stored_as_text_is_measured_as_the_gate_loop_read_it() -> None:
+    """Review G-2: the measurement converts a dense column as the gate loop
+    does, so an entry that is no number counts as zero in both. The column
+    holds text and one missing entry: 6,000 entries read ``"0"``, and of the
+    other 6,000 one is not a number and one is missing. The loop counts 5,998
+    nonzero records, and the measurement finds the same 5,998 carriers."""
+    builder = _load_builder_module()
+    n = 12_000
+    interest = np.array(["0"] * n, dtype=object)
+    interest[: n // 2] = "1000"
+    interest[1] = "50000"
+    interest[2] = "not a number"
+    interest[3] = None
+    frame = _TableSpy(
+        _qrf_person_frame(builder, {"taxable_interest_income": interest}, np.ones(n))
+    )
+
+    gate, surface = builder._qrf_tail_concentration_gate(frame)
+
+    assert gate.passed
+    assert surface["dense_columns"] == ["taxable_interest_income"]
+    assert surface["nonzero_records"] == {"taxable_interest_income": 5_998}
+    assert frame.tables_read == ["person", "person"]
+    block = surface["single_record_concentration"]
+    assert block["unmeasured"] == {}
+    # 5,997 records of $1,000 and one of $50,000, at weight 1.
+    assert block["columns"] == {
+        "taxable_interest_income": {
+            "carriers": 5_998,
+            "top_1_share": pytest.approx(50_000.0 / 6_047_000.0),
+            "top_1_weight": 1.0,
+            "top_k_share": pytest.approx(149_000.0 / 6_047_000.0),
+        }
+    }
+
+
+def test_a_dense_output_is_measured_at_float64_as_the_gate_loop_read_it() -> None:
+    """Review G-2: the measurement rereads a dense column as float64, the
+    type the gate loop read it at. The block equals the shared measurement on
+    the column's float64 values, with no tolerance. 0.1 is not a float32
+    number, so a float32 reread would move both shares."""
+    builder = _load_builder_module()
+    n = 12_000
+    interest = np.zeros(n)
+    interest[: n // 2] = 0.1
+    interest[1] = 50_000.0
+    frame = _qrf_person_frame(
+        builder, {"taxable_interest_income": interest}, np.ones(n)
+    )
+
+    gate, surface = builder._qrf_tail_concentration_gate(frame)
+
+    assert gate.passed
+    assert surface["dense_columns"] == ["taxable_interest_income"]
+    block = surface["single_record_concentration"]
+    assert block["unmeasured"] == {}
+    assert block["columns"] == {
+        "taxable_interest_income": single_record_concentration(
+            interest, np.ones(n), top_k=builder.US_QRF_TAIL_CONCENTRATION_TOP_K
+        )
+    }
+
+
+def test_a_misaligned_sparse_output_fails_with_the_gates_own_message() -> None:
+    """Review N2: misaligned weights on a sparse output raise the gate's error,
+    which names the column, because no measurement runs before the gate."""
+    builder = _load_builder_module()
+    n = 12_000
+    casualty = np.zeros(n)
+    casualty[:500] = 2_979.0
+    frame = _WeightResolutionSpy(
+        _qrf_person_frame(builder, {"casualty_loss": casualty}, np.ones(n)),
+        "person",
+        values=np.ones(n - 1),
+    )
+
+    with pytest.raises(ValueError) as raised:
+        builder._qrf_tail_concentration_gate(frame)
+
+    assert str(raised.value) == (
+        "casualty_loss: values and weights must align, got 12000 values vs "
+        "11999 weights."
+    )
+
+
+def test_no_measurement_runs_before_the_gate_raises() -> None:
+    """A sparse household output's weights do not align with its values, and
+    a dense person output waits for its measurement. The gate raises its own
+    message, and the frame has resolved the household's weights only: the
+    measurement, which would resolve the person's, has not run."""
+    builder = _load_builder_module()
+    n = 12_000
+    interest = np.zeros(n)
+    interest[: n // 2] = 1_000.0
+    auto_loans = np.zeros(n)
+    auto_loans[:500] = 4_000.0
+    frame = _WeightResolutionSpy(
+        _qrf_person_frame(
+            builder,
+            {"taxable_interest_income": interest},
+            np.ones(n),
+            household_columns={"auto_loan_balance": auto_loans},
+        ),
+        "household",
+        values=np.ones(n - 1),
+    )
+
+    with pytest.raises(ValueError) as raised:
+        builder._qrf_tail_concentration_gate(frame)
+
+    assert str(raised.value) == (
+        "auto_loan_balance: values and weights must align, got 12000 values vs "
+        "11999 weights."
+    )
+    assert frame.resolved == ["household"]
+
+
+def test_a_dense_output_before_a_sparse_one_leaves_the_gate_to_raise() -> None:
+    """Review N4: a dense output sorts before a sparse output of the same
+    entity, and that entity's weights do not resolve. The sparse output's
+    error still fails the run, and the frame resolves the entity's weights
+    once, for the sparse output: the dense output's measurement waits until
+    after the gate, so it never runs."""
+    builder = _load_builder_module()
+    n = 12_000
+    dense = np.zeros(n)
+    dense[: n // 2] = 500.0
+    sparse = np.zeros(n)
+    sparse[:500] = 2_979.0
+    frame = _WeightResolutionSpy(
+        _qrf_person_frame(
+            builder,
+            {"casualty_loss": dense, "taxable_interest_income": sparse},
+            np.ones(n),
+            tax_unit_weights=np.ones(n),
+        )
+    )
+
+    with pytest.raises(ValueError, match="Cannot resolve person-level weights"):
+        builder._qrf_tail_concentration_gate(frame)
+
+    assert frame.resolved == ["person"]
+
+
+def test_qrf_tail_single_record_measurement_never_moves_the_gate() -> None:
+    """For any column geometry the strategies reach: the gate's details equal
+    the shared gate run on the sparse columns alone; the surface measures
+    every numeric output exactly once, with the shared measurement at the
+    frame's weights; and a checked column's top-k share is the gate's own,
+    capped at 1."""
+    builder = _load_builder_module()
+    n = 12_000
+    max_share = builder.US_QRF_SPARSE_NONZERO_SHARE_MAX
+    columns = ("non_sch_d_capital_gains", "casualty_loss", "estate_income")
+
+    @hypothesis.settings(max_examples=40, deadline=None, database=None)
+    @hypothesis.given(
+        carriers=st.tuples(*(st.integers(0, 1_200) for _ in columns)),
+        sigma=st.floats(min_value=0.1, max_value=4.0),
+        seed=st.integers(0, 2**32 - 1),
+    )
+    def check(carriers, sigma, seed) -> None:
+        rng = np.random.default_rng(seed)
+        weights = rng.uniform(0.5, 900.0, size=n)
+        values: dict[str, np.ndarray] = {}
+        for column, count in zip(columns, carriers, strict=True):
+            array = np.zeros(n)
+            chosen = rng.choice(n, size=count, replace=False)
+            array[chosen] = rng.lognormal(8.0, sigma, size=count) * rng.choice(
+                [-1.0, 1.0], size=count
+            )
+            values[column] = array
+        frame = _qrf_person_frame(builder, values, weights)
+
+        gate, surface = builder._qrf_tail_concentration_gate(frame)
+
+        sparse = {
+            column: array
+            for column, array in values.items()
+            if (array != 0.0).mean() <= max_share
+        }
+        direct = tail_concentration_gate(
+            sparse,
+            {column: weights for column in sparse},
+            top_k=builder.US_QRF_TAIL_CONCENTRATION_TOP_K,
+            max_top_share=builder.US_QRF_TAIL_CONCENTRATION_MAX_TOP_SHARE,
+            min_nonzero_records=(builder.US_QRF_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS),
+        )
+        assert gate.passed == direct.passed
+        assert gate.failures == direct.failures
+        assert gate.details == direct.details
+        block = surface["single_record_concentration"]
+        assert block["unmeasured"] == {}
+        assert set(block["columns"]) == set(columns)
+        for column, array in values.items():
+            measured = block["columns"][column]
+            assert measured == single_record_concentration(array, weights)
+            if column in gate.details["top_share"]:
+                assert measured["top_k_share"] == min(
+                    gate.details["top_share"][column], 1.0
+                )
+            if measured["carriers"]:
+                assert 0.0 < measured["top_1_share"] <= measured["top_k_share"] <= 1.0
+
+    check()
 
 
 def test_allow_qrf_tail_concentration_flag_parses(monkeypatch) -> None:
