@@ -9,9 +9,11 @@ manifest registers as an output, the manifest itself, ``staged_manifest.json``
 and ``sha256sums.txt``, which the emitter commits in one commit under
 ``staged/<run_id>/``. The command starts a short-lived emitter of its own,
 with only its Hugging Face module, and waits for its first upload attempt,
-for up to three hours by default (``--wait-seconds``). When it stops waiting
-it closes its emitter, which abandons an upload still running; the next
-emitter started on the machine retries it.
+for up to three hours by default (``--wait-seconds``). Once the upload has
+landed it waits up to ten more minutes for the collector to accept the
+bundle's submissions. When it stops waiting it closes its emitter, which
+abandons an upload still running; the next emitter started on the machine
+retries it.
 
 When the manifest names the build's own hand-over
 (``staged_dataset_handover``) and this machine's emitter still holds it, the
@@ -58,6 +60,23 @@ build's record is still compared by later runs with the receipt. Without
 build manifest, which on a copied-back directory can make every later run with
 the receipt refuse it; pass the receipt with ``--local-only`` there.
 
+The hand-over names the build for the collector, as the build's own does
+(``rowwise_staging.collector_provenance``). The build ID is the manifest's
+``build_id`` (a national build's), else the ``release_id`` its local gate
+report records (a dense build's), else ``--build-id``, which may not
+contradict either, else the one build its Logbook rows name. Rows naming
+more than one build stop the command before it starts an emitter, and a
+directory with none of these is named by the run ID. Without ``--run-id``,
+the bundle is staged under the run ID of the manifest's staged record, else
+the one ``staged_manifest.json`` records, else the same build ID; so
+``--local-only`` stops on those rows too. The release is the manifest's
+``release_id``.
+The emitter, whose collector submissions are on, then submits the bundle's
+calibration diagnostics to the collector once the commit lands, and the
+command waits up to ten minutes for the collector to accept them before it
+closes the emitter. A hand-over the command resumes keeps what the build
+named, and its collector receipt is followed the same way.
+
 Staging is not publication: ``releases/`` and ``latest.json`` are untouched.
 """
 
@@ -80,6 +99,7 @@ from microcosm.build.staging_dataset import (
     RESTAGE_WAIT_SECONDS,
     RETRYING_ERROR_CODES,
     SHA256SUMS_FILENAME,
+    STAGED_MANIFEST_SCHEMA,
     StagedBundleHandOver,
     StagedDatasetBundle,
     StagedDatasetDelivery,
@@ -102,7 +122,10 @@ from microcosm.build.uk_runtime.rowwise_cli import (
     BUILD_RECORD_FILENAME,
     SCORE_RECEIPT_FILENAME,
 )
-from microcosm.build.uk_runtime.rowwise_staging import STAGED_DATASET_PHASES
+from microcosm.build.uk_runtime.rowwise_staging import (
+    STAGED_DATASET_PHASES,
+    collector_provenance,
+)
 from microcosm.build.uk_runtime.staging import (
     UK_STAGED_DATASET_PREFIX,
     UK_STAGED_DATASET_REPOSITORY,
@@ -154,7 +177,21 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--run-id",
         help=(
             "Staged run id; defaults to the manifest's staged_dataset.run_id, "
-            "then the Logbook build id, then the directory name."
+            "then the run_id staged_manifest.json records, then the build ID "
+            "(see --build-id), then the directory name."
+        ),
+    )
+    parser.add_argument(
+        "--build-id",
+        help=(
+            "The build's attempt ID, which names the build for the collector "
+            "and, without --run-id or a staged record, the run it is staged "
+            "under. Defaults to the manifest's build_id, then the release_id "
+            "its local gate report records, then the one build the Logbook "
+            "rows name, then the run ID. Needed when the rows name more than "
+            "one build and nothing else records one (it is not compared with "
+            "the rows); refused when it differs from the one the directory "
+            "records."
         ),
     )
     parser.add_argument(
@@ -178,7 +215,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "How long to wait for the emitter's upload attempt before closing it "
             f"(default {RESTAGE_WAIT_SECONDS:g}: a 2.4 GB bundle at 2 Mbit/s). "
             "Closing the emitter abandons an upload still running; the next "
-            "emitter started on this machine retries it."
+            "emitter started on this machine retries it. After an upload lands, "
+            "the command also waits up to ten minutes for the collector."
         ),
     )
     parser.add_argument(
@@ -209,19 +247,127 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
-def _default_run_id(run_dir: Path, manifest: dict) -> str:
-    staged = manifest.get("staged_dataset")
-    if isinstance(staged, dict) and staged.get("run_id"):
-        return str(staged["run_id"])
-    rows = sorted(glob.glob(str(run_dir / "logbook-spool" / "*.json")))
-    for row_path in reversed(rows):
+def _logbook_build_ids(run_dir: Path) -> set[str]:
+    """Every build ID the run directory's readable Logbook spool rows name."""
+
+    named = set()
+    for row_path in glob.glob(str(run_dir / "logbook-spool" / "*.json")):
         try:
             row = json.loads(Path(row_path).read_text(encoding="utf-8"))
         except ValueError:
             continue
         if isinstance(row, dict) and row.get("build_id"):
-            return str(row["build_id"])
-    return run_dir.name
+            named.add(str(row["build_id"]))
+    return named
+
+
+def _gate_report_build_id(run_dir: Path, manifest: dict) -> str | None:
+    """The attempt ID a dense build's local gate report records, if any.
+
+    The report is a registered output of the bundle, and its ``release_id``
+    is the build's attempt ID, which the dense release assembler checks
+    against the Logbook row.
+    """
+
+    outputs = manifest.get("outputs")
+    entry = outputs.get("local_gate_report") if isinstance(outputs, dict) else None
+    if not isinstance(entry, dict) or not entry.get("path"):
+        return None
+    try:
+        report = json.loads(
+            (run_dir / PurePosixPath(str(entry["path"])).name).read_text(
+                encoding="utf-8"
+            )
+        )
+    except (OSError, ValueError):
+        return None
+    release_id = report.get("release_id") if isinstance(report, dict) else None
+    return release_id if isinstance(release_id, str) and release_id else None
+
+
+def _recorded_build_id(run_dir: Path, manifest: dict) -> str | None:
+    """The build's attempt ID as the directory itself records it, if it does.
+
+    A national manifest's ``build_id``, else the ``release_id`` a dense
+    build's local gate report records.
+    """
+
+    recorded = manifest.get("build_id")
+    if isinstance(recorded, str) and recorded:
+        return recorded
+    return _gate_report_build_id(run_dir, manifest)
+
+
+def _build_id(run_dir: Path, manifest: dict, given: str | None = None) -> str | None:
+    """The build's attempt ID, which names it for the collector, if anything does.
+
+    ``--build-id`` where the directory records no build ID (it may not
+    contradict one), else the recorded one, else the one build the Logbook
+    rows name. A retried output directory keeps an earlier attempt's row
+    beside the new one, and the spool names rows by digest, so rows that name
+    more than one build stop the command. None when nothing names the build.
+    """
+
+    recorded = _recorded_build_id(run_dir, manifest)
+    if given:
+        if recorded is not None and given != recorded:
+            raise SystemExit(
+                f"error: --build-id {given} is not the build this directory "
+                f"records ({recorded}); nothing was handed over."
+            )
+        return given
+    if recorded is not None:
+        return recorded
+    named = _logbook_build_ids(run_dir)
+    if len(named) > 1:
+        raise SystemExit(
+            f"error: the Logbook rows in {run_dir / 'logbook-spool'} name more "
+            f"than one build ({', '.join(sorted(named))}) and nothing else in "
+            "the directory records which built this bundle; pass --build-id "
+            "with that build's attempt ID (with --local-only, --run-id also "
+            "names the run). Nothing was handed over."
+        )
+    return next(iter(named), None)
+
+
+def _sidecar_run_id(run_dir: Path) -> str | None:
+    """The run ID the directory's ``staged_manifest.json`` records, if any.
+
+    The build writes it before its hand-over, under the run ID it staged
+    with (``--staging-run-id`` included), so it survives a build interrupted
+    before the manifest gained its staged record.
+    """
+
+    try:
+        sidecar = json.loads(
+            (run_dir / "staged_manifest.json").read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return None
+    if not isinstance(sidecar, dict) or sidecar.get("schema_name") != (
+        STAGED_MANIFEST_SCHEMA
+    ):
+        return None
+    run_id = sidecar.get("run_id")
+    return run_id if isinstance(run_id, str) and run_id else None
+
+
+def _default_run_id(run_dir: Path, manifest: dict, given_build: str | None) -> str:
+    """The run ID a bundle is staged under.
+
+    The staged record's, else the one ``staged_manifest.json`` records, else
+    the build's ID; a directory that names no build is staged under its own
+    name.
+    """
+
+    staged = manifest.get("staged_dataset")
+    if isinstance(staged, dict) and staged.get("run_id"):
+        return str(staged["run_id"])
+    return (
+        _sidecar_run_id(run_dir)
+        or _build_id(run_dir, manifest, given_build)
+        or run_dir.name
+    )
 
 
 def _rewrite_manifest(path: Path, manifest: dict) -> None:
@@ -244,7 +390,7 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(f"error: {manifest_path} is not valid JSON") from None
     if not isinstance(manifest, dict):
         raise SystemExit(f"error: {manifest_path} must be a JSON object")
-    run_id = args.run_id or _default_run_id(run_dir, manifest)
+    run_id = args.run_id or _default_run_id(run_dir, manifest, args.build_id)
     repository = None if args.local_only else str(args.repo_id).strip()
     if repository == "":
         raise SystemExit("error: --repo-id must be non-empty unless --local-only")
@@ -306,6 +452,23 @@ def main(argv: list[str] | None = None) -> int:
                 "error: HF_HUB_OFFLINE is set, so the emitter cannot upload the "
                 "bundle; unset it, or pass --local-only."
             )
+        build_id = _build_id(run_dir, manifest, args.build_id)
+        if build_id is None:
+            print(
+                f"note: nothing in {run_dir} records the build's attempt ID, so "
+                f"the bundle names the build by its run ID, {run_id}; pass "
+                "--build-id to name another.",
+                file=sys.stderr,
+                flush=True,
+            )
+            build_id = run_id
+        try:
+            provenance = collector_provenance(manifest, build_id=build_id)
+        except ValueError as exc:
+            raise SystemExit(
+                f"error: the build ID {build_id!r} is not one the collector "
+                f"accepts ({exc}); nothing was handed over."
+            ) from exc
         print(
             f"staging {run_dir} to {repository} under "
             f"{bundle.remote_prefix(UK_STAGED_DATASET_PREFIX)}...",
@@ -337,6 +500,7 @@ def main(argv: list[str] | None = None) -> int:
                     prefix=UK_STAGED_DATASET_PREFIX,
                     wait_seconds=args.wait_seconds,
                     earlier_files=None if handed_over is None else handed_over["files"],
+                    collector=provenance,
                 )
         finally:
             emitter.close()

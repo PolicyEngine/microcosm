@@ -1,8 +1,9 @@
 # Route A release driver
 
 `route_a.sh` builds a US PUF-support base, builds a fiscal-refresh release
-candidate from that base, runs two release-gate preflights and runs the
-publisher with `--preflight-only`. It leaves a hand-off with `published: false`.
+candidate from that base, a build of `microcosm-us-2024-national`, runs
+`preflight_us_release_gates.py` twice and runs `microcosm-publish-release-build`
+with `--preflight-only`. It leaves a hand-off with `published: false`.
 Publication remains a separate manual step that Max authorizes.
 
 The driver, `supervise.py`, `sample_series.py`, `check_flags.py` and
@@ -91,9 +92,9 @@ overnight chain is alive, unless `EARLY_START_AFTER_HEAVY=1` and its log records
 | `prefetch` | Fetches the ASEC unemployment archive, SCF summary/full extracts, SIPP financial-assets/tips donors and ORG donor through the release's fetch helpers. Exit 0 is required before release. An initial failure lets the base proceed; release retries it. |
 | `base` | Runs `build_us_puf_support_base.py --stage all` on the pinned raw inputs, with seed 0, 32 estimators, target year 2024, district assignment/crosswalk and block ladder. Requires exit 0 and the expected H5, then hashes it. |
 | `preflight-base` | Runs `preflight_us_release_gates.py` on that H5 and the pinned feed, with the configured new-lineage mode and optional export-mass reference. Accepts 0 (clean) or 2 (AT-RISK); `RELEASE_DESPITE_PREFLIGHT_FAIL=1` also accepts 1 here. |
-| `release` | Runs `build_us_fiscal_refresh_release.py --base-h5` with the feed, SSI basis, SCF extract and configured release arguments. Requires exit 0 and `release_manifest.json`. Staging telemetry is enabled for this stage. |
+| `release` | Runs `build_us_fiscal_refresh_release.py --base-h5` with the feed, SSI basis, SCF extract and configured release arguments; its `--release-id` is the build ID. Requires exit 0 and `<release-out>/releases/microcosm-us-2024-national/release_manifest.json`. Staging telemetry is enabled for this stage. |
 | `preflight-release` | Repeats the release-gate preflight with the candidate's release manifest. Accepts 0 or 2. |
-| `publisher-preflight` | Runs `microcosm-publish-release --preflight-only` against the local release directory and artifacts. Requires exit 0. The publisher calls `prepare_release` and returns before its publishing call. |
+| `publisher-preflight` | Runs `microcosm-publish-release-build --preflight-only` against the release directory, `<release-out>/releases/microcosm-us-2024-national`, where a national run writes its build, and the artifacts. Requires exit 0. The command checks the build with its release contract, prints what it would publish, and starts no emitter. |
 
 Both gate preflights and the publisher preflight remove the HF credential
 variables and Slack webhook variables, set `POPULACE_RELEASE_ENV=/dev/null` and
@@ -133,8 +134,12 @@ is waited for, and failed/refused directories are moved aside. Base stages
 resume by completed checkpoint prefix. Failed release attempts get a new
 release ID while retaining the shared checkpoint root. With
 `PRUNE_BASE_CHECKPOINTS=1`, base `*.frame.h5` files are removed after hashing the
-finished H5. Terminal hand-offs record the candidate paths and preflight
-verdicts, plus a suggested manual publication command; they never execute it.
+finished H5. The hand-off file written at the end (`ROUTE_A_DONE.json` or
+`ROUTE_A_BLOCKED.json`) records the candidate paths and preflight verdicts,
+plus two manual commands the driver never runs: `publish_command` publishes
+the build through the emitter into its folder of `microcosm-us-2024-national`,
+and `promote_command` then makes it that release's current build (the root
+README's "Releasing & alerts").
 
 ## Published run's release argv
 
@@ -229,7 +234,7 @@ Telemetry is written locally under
 `runs.json` allowing discovery. The base, donor prefetch, offline preflights
 and supervisor resource series do not emit these staging records. If uploads
 fail, dashboard visibility is not guaranteed. A staging upload does not publish
-the release or update production `latest.json`.
+the build or change `releases.json` in `policyengine/populace-us`.
 
 ## 18 October rerun (d1386)
 

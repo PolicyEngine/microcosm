@@ -200,6 +200,40 @@ _GITHUB_URL = re.compile(r"https://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+\.
 #: environment that would carry any other value (``hash_seed_problem``).
 HASH_SEED_ENV = "PYTHONHASHSEED"
 HASH_SEED = "0"
+#: Variables withheld from git commands that name their repository with
+#: ``-C``. Most come from ``git rev-parse --local-env-vars`` (git 2.55), the
+#: variables git treats as local to one repository, which outrank ``-C``; the
+#: ``git -c`` carriers ``GIT_CONFIG_PARAMETERS`` and ``GIT_CONFIG_COUNT`` stay,
+#: because git itself keeps them when it runs a command in another repository.
+#: The set adds ``GIT_QUARANTINE_PATH``, which git leaves out of that list and
+#: sets for a ``pre-receive`` hook beside ``GIT_OBJECT_DIRECTORY``. Under it
+#: git forbids ref updates, so the scratch ``git init`` fails and the branch
+#: check would come back unverified. Git exports an absolute ``GIT_DIR`` to
+#: the hooks, ``rebase --exec`` commands and shell aliases it runs in a linked
+#: worktree. A runner started under one would fetch the branch check into
+#: that worktree's repository (a promisor remote and filter in its config,
+#: a ``refs/branch-check/tip`` ref and promisor packs) and would report that
+#: repository's ``HEAD`` as the clone's. :func:`git_environment` drops them
+#: from the runner's own git commands and :func:`tool_environment` from the
+#: tool's.
+GIT_REPOSITORY_ENV = frozenset(
+    {
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_COMMON_DIR",
+        "GIT_CONFIG",
+        "GIT_DIR",
+        "GIT_GRAFT_FILE",
+        "GIT_IMPLICIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_NO_REPLACE_OBJECTS",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_PREFIX",
+        "GIT_QUARANTINE_PATH",
+        "GIT_REPLACE_REF_BASE",
+        "GIT_SHALLOW_FILE",
+        "GIT_WORK_TREE",
+    }
+)
 #: Whether the stage's build must send telemetry, read by the build adapter
 #: (``microcosm.build.telemetry_emitter``). The runner sets ``1``, so a build
 #: that starts its emitter stops at once when that emitter cannot be used. A
@@ -248,6 +282,12 @@ _TOKEN_ENV_NAMES = frozenset(COLLECTOR_TOKEN_ENV) | frozenset(RUNNER_TOKEN_SECRE
 TELEMETRY_RUN_ID_ENV = "MICROCOSM_TELEMETRY_RUN_ID"
 TELEMETRY_PARENT_PID_ENV = "MICROCOSM_TELEMETRY_PARENT_PID"
 _TELEMETRY_RUN_ENV_NAMES = frozenset({TELEMETRY_RUN_ID_ENV, TELEMETRY_PARENT_PID_ENV})
+#: The resource class the stage's container requested, as JSON (``class``,
+#: ``cpu``, ``cpu_limit`` and ``memory_mib``), which the build reports in its
+#: runtime identity (``microcosm.build.telemetry_identity``, whose name this
+#: must stay). Only the runner sets it, from the plan's tool; a plan may not,
+#: and the runner removes it from whatever else the container holds.
+MODAL_RESOURCES_ENV = "MICROCOSM_MODAL_RESOURCES"
 #: Where the build's interface finds the emitter command, and where the
 #: launch looks first for the operator's emitter on the operator's machine
 #: (then ``PATH``). In the container the image sets it (IMAGE_ENVIRONMENT) to
@@ -1468,6 +1508,11 @@ def parse_plan(data: object) -> Plan:
                 "and the build programs set themselves (the run is "
                 "<plan run_id>.<stage>)"
             )
+        if key == MODAL_RESOURCES_ENV:
+            raise PlanError(
+                f"env {key!r} names the container's resource class, which the "
+                "runner sets from the plan's tool"
+            )
         if key == EMITTER_COMMAND_ENV:
             raise PlanError(
                 f"env {key!r} would start another emitter than the image's "
@@ -1750,6 +1795,17 @@ def planned_argv(plan: Plan, work_root: str | None = None) -> list[str]:
     )
 
 
+def git_environment(base: Mapping[str, str]) -> dict[str, str]:
+    """``base`` for a git command that names its repository with ``-C``.
+
+    Without any GIT_REPOSITORY_ENV variable, so the command reaches the
+    directory it names (the pinned clone, the branch check's scratch
+    repository) and no other.
+    """
+
+    return {key: value for key, value in base.items() if key not in GIT_REPOSITORY_ENV}
+
+
 def _telemetry_setting_refusal(value: str) -> str:
     """Why a plan may not set MICROCOSM_TELEMETRY_REQUIRED to ``value``.
 
@@ -1791,16 +1847,18 @@ def tool_environment(
     plan_env: Mapping[str, str],
     *,
     telemetry_run_id: str | None = None,
+    resources: Resources | None = None,
 ) -> tuple[dict[str, str], list[str]]:
     """The stage tool's environment, and the names removed from ``base``.
 
     The container's environment without any credential-looking variable
-    (``HF_TOKEN`` from an attached Hub secret, Modal's own tokens) and
-    without its ``PYTHONHASHSEED`` (HASH_SEED_ENV: with none, the base's
-    pinned tool gives its stages "0", the value Route A's local base
-    recorded), with ``HF_HUB_OFFLINE=1`` so the tool cannot reach the Hub, and
-    with the plan's allowlisted overrides last. Only names are returned, for
-    the receipt; never values.
+    (``HF_TOKEN`` from an attached Hub secret, Modal's own tokens), without
+    its ``PYTHONHASHSEED`` (HASH_SEED_ENV: with none, the base's pinned tool
+    gives its stages "0", the value Route A's local base recorded) and
+    without any GIT_REPOSITORY_ENV variable (the tool records the clone's
+    commit with git), with ``HF_HUB_OFFLINE=1`` so the tool cannot reach the
+    Hub, and with the plan's allowlisted overrides last. Only names are
+    returned, for the receipt; never values.
 
     The tool must send telemetry (``MICROCOSM_TELEMETRY_REQUIRED=1``) unless
     the plan sets ``0``. It gets the collector token (COLLECTOR_TOKEN_ENV)
@@ -1815,6 +1873,11 @@ def tool_environment(
     (``telemetry_run_id(plan)``); without it the tool makes its own attempt
     ID. A plan may not set that variable or TELEMETRY_PARENT_PID_ENV, and
     both are removed from ``base``.
+
+    The tool gets the stage container's resource class ``resources`` in
+    MODAL_RESOURCES_ENV, which the runner always passes (``plan.resources``),
+    for the build to report. A plan may not set it, and it is removed from
+    ``base``.
     """
 
     for key in plan_env:
@@ -1824,6 +1887,7 @@ def tool_environment(
             or key in _TOKEN_ENV_NAMES
             or key in _TELEMETRY_RUN_ENV_NAMES
             or key == EMITTER_COMMAND_ENV
+            or key == MODAL_RESOURCES_ENV
         ):
             raise PlanError(f"env {key!r} may not be passed to the tool")
     if plan_env.get(TELEMETRY_REQUIRED_ENV, "0") != "0":
@@ -1833,8 +1897,10 @@ def tool_environment(
         for key in base
         if is_credential_env_key(key)
         or key == HASH_SEED_ENV
+        or key in GIT_REPOSITORY_ENV
         or key in _TOKEN_ENV_NAMES
         or key in _TELEMETRY_RUN_ENV_NAMES
+        or key == MODAL_RESOURCES_ENV
     )
     dropped = set(removed)
     env = {key: value for key, value in base.items() if key not in dropped}
@@ -1842,6 +1908,15 @@ def tool_environment(
     env[TELEMETRY_REQUIRED_ENV] = "1"
     if telemetry_run_id is not None:
         env[TELEMETRY_RUN_ID_ENV] = telemetry_run_id
+    if resources is not None:
+        env[MODAL_RESOURCES_ENV] = json.dumps(
+            {
+                "class": resources.name,
+                "cpu": resources.cpu,
+                "cpu_limit": resources.cpu_limit,
+                "memory_mib": resources.memory_mib,
+            }
+        )
     given = _runner_token_values(base) if telemetry_required(plan_env) else None
     if given is not None:
         env.update(

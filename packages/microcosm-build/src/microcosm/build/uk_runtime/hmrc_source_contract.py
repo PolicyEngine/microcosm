@@ -37,6 +37,9 @@ from microcosm.build.uk_runtime.spi_income import (
     SPI_DONOR_DOCUMENTATION_URL,
     SPI_DONOR_DOI,
     SPI_DONOR_FILENAME,
+    SPI_DONOR_FRAME_DESIGNS,
+    SPI_DONOR_FRAME_FACT_BOOTSTRAP,
+    SPI_DONOR_FRAME_FIT_WEIGHT,
     SPI_DONOR_REQUIRED_COLUMNS,
     SPI_DONOR_SHA256,
     SPI_DONOR_SIZE_BYTES,
@@ -441,17 +444,26 @@ def assert_uk_hmrc_income_source_contract_current(
         stage1.get("sample_size"),
         DEFAULT_SPI_DONOR_SAMPLE_SIZE,
     )
+    # The donor frame design decides both the replacement and the fit weight
+    # (microcosm#1276); an undeclared design is the FACT-weighted bootstrap.
+    sample_design = stage1.get("sample_design", SPI_DONOR_FRAME_FACT_BOOTSTRAP)
+    if sample_design not in SPI_DONOR_FRAME_DESIGNS:
+        failures.append(
+            f"stage1.sample_design: expected one of {SPI_DONOR_FRAME_DESIGNS!r}, "
+            f"got {sample_design!r}"
+        )
+        sample_design = SPI_DONOR_FRAME_FACT_BOOTSTRAP
     _expect(
         failures,
         "stage1.sample_with_replacement",
         stage1.get("sample_with_replacement"),
-        True,
+        sample_design == SPI_DONOR_FRAME_FACT_BOOTSTRAP,
     )
     _expect(
         failures,
         "stage1.post_sample_fit_weight",
         stage1.get("post_sample_fit_weight"),
-        "uniform",
+        SPI_DONOR_FRAME_FIT_WEIGHT[sample_design],
     )
     _expect(failures, "stage1.fit_weight_kind", stage1.get("fit_weight_kind"), "design")
     _expect(

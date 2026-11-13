@@ -10,8 +10,8 @@ bindings and the closure's defaults. With a closure, each selected path names
 a module the closure lists, which may bind nothing, since a module may default
 every input it reads; without one, each names a module the mapping binds.
 ``concepts.encode@1`` writes the defaults of the mapping's ``person_role``
-entities on the person table, beside their bindings, and the group kernels
-refuse such an entity.
+entities on the person table, beside their bindings. The group kernels refuse
+such an entity, and any entity the mapping's correspondence names.
 
 The encode and scenario kernels derive no take-up draws: they refuse
 ``take_up_rates``, so the encoder refuses any selected take-up-threshold
@@ -470,6 +470,16 @@ def _group_inputs(context: KernelContext, ref: str):
         raise ValueError(
             f"{ref} engine_entity {entity!r} holds persons in a role, not built "
             "units; concepts.encode@1 writes its inputs on the person table."
+        )
+    if entity in mapping.entity_correspondence.values():
+        frame_entity = next(
+            frame
+            for frame, engine in mapping.entity_correspondence.items()
+            if engine == entity
+        )
+        raise ValueError(
+            f"{ref} engine_entity {entity!r} belongs on the {frame_entity} table, "
+            "not built units; concepts.encode@1 writes its inputs there."
         )
     declaration = _unit_declaration(context, ref)
     physical = context.params.get("unit_entity")

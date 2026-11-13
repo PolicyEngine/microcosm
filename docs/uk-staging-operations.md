@@ -232,6 +232,56 @@ its revision. `releases/` and `latest.json` are never touched, no tag is
 created, and the release contract is not consulted: a staged bundle is not a
 release and cannot be loaded as one.
 
+The hand-over also names the build for the collector, with the interface's
+`CollectorProvenance` (`rowwise_staging.collector_provenance`):
+
+| Field | Value |
+|---|---|
+| `country_code` | `UK`. Staging telemetry registers UK runs as `GB`, but the collector's calibration tree handler knows the country as `UK` and builds no tree from a submission naming another code. |
+| `build_id` | The build's attempt ID, which a release build of it keeps as its folder name, even when `--staging-run-id` stages it under another run ID. |
+| `licensed_data` | `true`: every UK staged bundle holds licensed microdata. |
+| `release` | The manifest's `release_id` when it is the national or the dense release (`microcosm-uk-2024-25-national`, `microcosm-uk-2024-25-dense`). Every national and dense build records its role's release, whether or not it is fit to release, so `null` comes only from an older or another kind of manifest. The collector labels the staging calibration tree with it, or with the run ID when it is `null`. |
+
+With that, the emitter submits the bundle's calibration diagnostics (with the
+build manifest as `build_manifest`) to the collector once the Hugging Face
+commit lands, as a `calibration-diagnostics` submission whose folder is
+`staged/<run_id>`, with the build's Hugging Face credential. Every emitter a
+build or the re-stage command starts has its collector submissions switched
+on (`telemetry_emitter.COLLECTOR_SUBMISSIONS`, through the setting emitter
+0.15.0 added; the emitter's own default leaves them off, so switching them
+off again is a Microcosm change). Once the bundle has landed, the build waits
+up to ten minutes for the collector to accept the submissions
+(`collector_submissions.follow_collector_submissions`), because an emitter that is
+closing starts no new submission; an attempt after the commit that fails
+ends the wait sooner. A bundle that has not landed is asked about once and
+not waited for. The build carries on in every case, with a warning when:
+
+- the collector receives nothing (`skipped`): the emitter refused its
+  collector settings or the collector-token variables it inherits
+  (`COLLECTOR_SETTINGS_REFUSED`; an emitter given a collector token uses it
+  instead of the Hugging Face credential, and it only sends telemetry, so
+  unset those variables), the bundle's Hugging Face upload failed or was
+  refused (`NOT_STAGED_ON_HUGGING_FACE`), or its folder is longer than the
+  collector accepts (`COLLECTOR_FOLDER_TOO_LONG`);
+- the collector refused the submissions at intake (`rejected` or `failed`),
+  with the code the receipt gives. Once it has accepted them, its own
+  processing decides whether it builds a tree or rejects them, and the build
+  doesn't wait for that; a re-stage that resumes an older hand-over can show
+  that later result, or `timed_out`;
+- the emitter had no credential for them (`CREDENTIAL_MISSING`): it was given
+  a collector token, which only sends telemetry, or found no Hugging Face
+  credential;
+- they were still queued when the wait ended: an emitter running on this
+  machine later sends them, and files the emitter did not copy at hand-over
+  must stay unchanged until the hand-over settles.
+
+The staged dataset record (`staged_dataset`) describes the Hugging Face
+upload alone and does not change. A different `collector` block gives the
+bundle a different hand-over ID, so a bundle handed over before the
+provenance was added is not the same hand-over as one handed over after it;
+the re-stage command resumes a recorded hand-over by its recorded ID either
+way, and follows its collector receipt as the build does.
+
 Modes follow the staging switch. The default uploads telemetry and the bundle;
 `--staging-local-only` keeps both on disk (the sidecars are still written);
 `--no-staging` disables both and records the opt-out; `--no-staged-dataset`
@@ -302,13 +352,14 @@ manifest the command prints. The telemetry run declares two reviewed
 artifacts, `artifacts/staged_dataset.json` (the same block) and
 `artifacts/fit_summary.json` (loss, fit by family, gate verdicts, the size
 receipt without its per-row arrays), so a run in the dashboard points at its
-bundle. A national run given `--incumbent-h5` adds a third,
-`artifacts/score_vs_incumbent.json`: the rule-1 score receipt against the
-incumbent on the surface both can materialize, produced after the bundle is
-staged and before the telemetry completes, with the rows the incumbent cannot
-materialize pruned from both arms and listed; the manifest's `evaluation`
-block records its verdict, and the release-cut certifier requires that
-verdict to be `passed`.
+bundle. A national run given `--reference-h5` and `--reference-record` adds a
+third, `artifacts/score_vs_reference.json`: its comparison with the current
+national build (microcosm#1095) on the surface both can materialize, produced
+after the bundle is staged and before the telemetry completes, with the rows
+the reference cannot materialize pruned from both arms and listed. It is a
+report with no verdict; the manifest's `evaluation` block summarizes it, and
+the release-cut certifier requires the receipt to name the candidate and the
+cut's reference.
 
 Re-stage a finished directory, including runs built before this lane existed,
 runs that kept their bundle local, and runs whose upload failed or was still
@@ -442,9 +493,24 @@ receipt.
 > receipt refuses the directory as "not the build manifest the Modal stage
 > wrote". If that has happened, fetch the run again with `modal volume get`.
 
-Nothing here submits the bundle to the collector: the command's emitter runs its Hugging Face module only, and builds do not submit
-artifacts to the collector's artifact intake yet
-(PolicyEngine/microcosm-collector#12).
+The re-stage command names the build for the collector as the build does
+(see above). It takes the build ID from the manifest's `build_id` (a
+national build records it), else the `release_id` the registered local gate
+report records (a dense build's attempt ID, as the dense release assembler
+reads it), else `--build-id`, which may not contradict either, else the one
+build the directory's Logbook spool rows name, else the run ID, with a note.
+A retried output directory keeps an earlier attempt's row beside the new
+one, and the spool names rows by digest, so rows that name more than one
+build stop the command before its emitter starts, asking for `--build-id`,
+when nothing else records the build. Without `--run-id`, the bundle is
+staged under the run ID of the manifest's staged record, else the one
+`staged_manifest.json` records (a build staged under `--staging-run-id` and
+interrupted before its record was written keeps that run), else that build
+ID; so `--local-only` stops on such rows too, unless `--run-id` names the
+run. The release comes from
+the manifest's `release_id`. A hand-over it resumes keeps what the build
+named. A build ID the interface refuses stops the command before its emitter
+starts.
 
 Fetch a bundle for a scorecard, an evaluation leg or the
 dashboard's local-directory mode with:

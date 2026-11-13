@@ -353,6 +353,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "operator_boundary.py",  # Raw-stage validator; no population treatment.
         "org_wages.py",
         "parity_reference.py",
+        # Reviewed held-out population-structure diagnostic over the written
+        # H5; no population treatment.
+        "population_structure_holdout.py",
         "pregnancy.py",
         # Pinned-archive sidecar restore (PAW_TYP); no population treatment.
         "public_assistance_type_source.py",
@@ -383,6 +386,11 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "release_gate_preflight.py",
         "release_input_coverage.py",
         "release_target_parity.py",
+        # Consumer-artifact remedy for two retired stored inputs (microcosm#1263):
+        # renames the WIC draw (keeping stored decisions and defaulting missing
+        # ones to True) and drops a dead column. It reads no provenance column;
+        # the release tool passes the people who may lack a decision.
+        "retired_stored_inputs.py",
         "scf_auto_loans.py",
         # SCF 2025 federal student loan inputs (microcosm#1073); a donor-model
         # stage shaped like scf_auto_loans.
@@ -421,11 +429,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "spm_universe_source.py",
         # Reviewed held-out SSI/Social Security diagnostic; no population treatment.
         "ssi_social_security_holdout.py",
-        # Consumer-artifact remedy for two retired stored inputs (microcosm#1263):
-        # renames the WIC draw and drops a dead column. It reads no provenance
-        # column; the release tool passes the people who may lack a decision.
-        "retired_stored_inputs.py",
         "stacked_spine.py",  # Provenance owner (#578 revision); see owners list.
+        # Bake-off arm accounting, split mirror and ESS; evaluates support mixes,
+        # never transforms a population.
+        "support_mix.py",
         "support_provenance.py",
         "take_up.py",
         "take_up_contract.py",
