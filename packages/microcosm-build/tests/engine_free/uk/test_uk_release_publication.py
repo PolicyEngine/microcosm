@@ -16,9 +16,10 @@ from pathlib import Path
 import httpx
 import huggingface_hub
 import pytest
+from microcosm_emitter_interface import CollectorProvenance
 from microcosm_emitter_interface.releases import ReleaseRecordError, ReleasesRecord
 
-from microcosm.build import release_publication
+from microcosm.build import collector_submissions, release_publication
 from microcosm.data import release as release_module
 from microcosm.data.releases_record import parse_releases_record
 from test_support.microcosm_build.emitter import FakeEmitterClient
@@ -104,6 +105,29 @@ def _record(client: FakeEmitterClient) -> dict:
     return json.loads(client.hub_files[(UK_REPO_ID, "releases.json")])
 
 
+class Clock:
+    """The command's clock and sleep while it waits for the collector."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+        self.slept: list[float] = []
+
+    def __call__(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.slept.append(seconds)
+        self.now += seconds
+
+
+@pytest.fixture
+def clock(monkeypatch) -> Clock:
+    clock = Clock()
+    monkeypatch.setattr(release_publication, "_clock", clock)
+    monkeypatch.setattr(release_publication, "_sleep", clock.sleep)
+    return clock
+
+
 def test_publishing_hands_every_file_over_with_its_role(
     national: Path,
     artifact_root: Path,  # noqa: F811
@@ -139,6 +163,213 @@ def test_publishing_hands_every_file_over_with_its_role(
     assert list(release["builds"]) == [UK_NATIONAL_BUILD]
     assert outcome.published and not outcome.current and outcome.succeeded
     assert client.closed is False, "a client the caller passed stays open"
+
+
+def test_a_publication_names_its_build_for_the_collector(
+    national: Path,
+    artifact_root: Path,  # noqa: F811
+) -> None:
+    """The emitter submits the build's calibration diagnostics to the
+    collector after the release commit, under the build's own folder."""
+    client = FakeEmitterClient()
+
+    release_publication.publish_release_build(
+        national, artifact_root=artifact_root, client=client
+    )
+
+    (request,) = client.release_requests
+    assert request.collector == CollectorProvenance(
+        country_code="UK",
+        build_id=UK_NATIONAL_BUILD,
+        licensed_data=True,
+        release=UK_NATIONAL_RELEASE_ID,
+    )
+
+
+@pytest.mark.parametrize(
+    "release",
+    [
+        UK_NATIONAL_RELEASE_ID,
+        "microcosm-uk-2024-25-dense",
+        "microcosm-uk-2024-25-local-k1",
+        "microcosm-uk-2024-25-local-k12",
+    ],
+)
+def test_every_uk_release_names_its_builds_as_licensed_uk_builds(release) -> None:
+    assert release_publication.collector_provenance(
+        release, UK_NATIONAL_BUILD
+    ) == CollectorProvenance(
+        country_code="UK",
+        build_id=UK_NATIONAL_BUILD,
+        licensed_data=True,
+        release=release,
+    )
+
+
+def test_a_release_that_publishes_with_tags_names_no_build() -> None:
+    assert (
+        release_publication.collector_provenance(
+            "populace-uk-2023-dd68c73", UK_NATIONAL_BUILD
+        )
+        is None
+    )
+
+
+def test_a_published_build_waits_until_the_collector_accepts_its_submissions(
+    national: Path,
+    artifact_root: Path,  # noqa: F811
+    clock: Clock,
+    capsys,
+) -> None:
+    """A short-lived emitter starts no new submission once it is closing, so
+    the command waits for the collector to accept them before it closes."""
+    client = FakeEmitterClient(
+        collector_receipts=[{"status": "pending"}, {"status": "awaiting_final_status"}]
+    )
+
+    outcome = release_publication.publish_release_build(
+        national, artifact_root=artifact_root, client=client
+    )
+
+    (request,) = client.release_requests
+    assert client.collector_receipt_requests == [request.handover_id()] * 2
+    assert clock.slept == [collector_submissions.COLLECTOR_RECEIPT_POLL_SECONDS]
+    assert outcome.collector_receipt is not None
+    assert outcome.collector_receipt["status"] == "awaiting_final_status"
+    assert outcome.as_json()["collector_submission"] == {
+        "status": "awaiting_final_status",
+        "error_code": None,
+    }
+    assert outcome.succeeded
+    err = capsys.readouterr().err
+    assert (
+        f"build {UK_NATIONAL_BUILD} of {UK_NATIONAL_RELEASE_ID} is on Hugging Face; "
+        "waiting up to 10 minutes for the collector to accept its submissions..." in err
+    )
+    assert "warning" not in err
+
+
+def test_the_collector_receipt_is_asked_for_by_the_emitters_hand_over_id(
+    national: Path,
+    artifact_root: Path,  # noqa: F811
+    clock: Clock,
+) -> None:
+    """The emitter keeps the collector row under the hand-over ID its receipt
+    names, so that is the ID the command asks about."""
+    emitter_handover_id = "f" * 32
+    client = FakeEmitterClient(
+        release_receipts=[{"handover_id": emitter_handover_id}],
+        collector_receipts=[{"status": "succeeded", "attempts": 1}],
+    )
+
+    outcome = release_publication.publish_release_build(
+        national, artifact_root=artifact_root, client=client
+    )
+
+    assert client.collector_receipt_requests == [emitter_handover_id]
+    assert outcome.collector_receipt["status"] == "succeeded"
+
+
+def test_a_receipt_without_a_hand_over_id_falls_back_to_the_requests_own(
+    national: Path,
+    artifact_root: Path,  # noqa: F811
+    clock: Clock,
+) -> None:
+    client = FakeEmitterClient(
+        release_receipts=[{"handover_id": ""}],
+        collector_receipts=[{"status": "succeeded", "attempts": 1}],
+    )
+
+    outcome = release_publication.publish_release_build(
+        national, artifact_root=artifact_root, client=client
+    )
+
+    (request,) = client.release_requests
+    assert client.collector_receipt_requests == [request.handover_id()]
+    assert outcome.collector_receipt["status"] == "succeeded"
+
+
+def test_a_published_build_the_emitter_has_no_collector_row_for_is_not_waited_for(
+    national: Path,
+    artifact_root: Path,  # noqa: F811
+    clock: Clock,
+) -> None:
+    client = FakeEmitterClient()
+
+    outcome = release_publication.publish_release_build(
+        national, artifact_root=artifact_root, client=client
+    )
+
+    assert len(client.collector_receipt_requests) == 1
+    assert clock.slept == []
+    assert outcome.collector_receipt is None
+    assert outcome.as_json()["collector_submission"] is None
+    assert outcome.succeeded
+
+
+def test_refused_collector_settings_are_reported_and_the_publication_succeeds(
+    national: Path,
+    artifact_root: Path,  # noqa: F811
+    monkeypatch,
+    capsys,
+) -> None:
+    client = FakeEmitterClient(
+        collector_receipts=[
+            {"status": "skipped", "error_code": "COLLECTOR_SETTINGS_REFUSED"}
+        ]
+    )
+    monkeypatch.setattr(release_publication, "_start_release_emitter", lambda: client)
+
+    code, output, error = _run(
+        [str(national), "--artifact-root", str(artifact_root)], capsys
+    )
+
+    assert code == 0
+    assert output["status"] == "published"
+    assert output["collector_submission"] == {
+        "status": "skipped",
+        "error_code": "COLLECTOR_SETTINGS_REFUSED",
+    }
+    assert (
+        f"warning: the collector receives nothing of build {UK_NATIONAL_BUILD} "
+        f"of {UK_NATIONAL_RELEASE_ID}: the emitter refused its collector "
+        "settings or the collector-token variables it inherits "
+        "(COLLECTOR_SETTINGS_REFUSED)." in error
+    )
+    # The command asked before it closed the emitter.
+    assert client.calls.index("collector_submission_receipt") < client.calls.index(
+        "close"
+    )
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        {"status": "pending", "error_code": "REPOSITORY_UNAVAILABLE"},
+        {"status": "refused", "error_code": "BUILD_FOLDER_EXISTS"},
+    ],
+    ids=["pending", "refused"],
+)
+def test_a_publication_that_has_not_landed_is_asked_about_once(
+    national: Path,
+    artifact_root: Path,  # noqa: F811
+    clock: Clock,
+    receipt: dict,
+) -> None:
+    client = FakeEmitterClient(
+        release_receipts=[receipt],
+        collector_receipts=[
+            {"status": "pending", "error_code": "WAITING_FOR_HUGGING_FACE"}
+        ],
+    )
+
+    outcome = release_publication.publish_release_build(
+        national, artifact_root=artifact_root, client=client
+    )
+
+    assert len(client.collector_receipt_requests) == 1
+    assert clock.slept == []
+    assert outcome.collector_receipt["status"] == "pending"
 
 
 def test_a_build_published_as_current_is_current(
@@ -222,6 +453,13 @@ def test_promoting_makes_a_published_build_current(
     outcome = release_publication.promote_release_build(national, client=client)
 
     assert client.calls.count("promote_build") == 1
+    # A promotion changes only releases.json, so it names no build for the
+    # collector, and the command asks nothing about it.
+    assert client.collector_receipt_requests == [
+        client.release_requests[0].handover_id()
+    ]
+    assert outcome.collector_receipt is None
+    assert outcome.as_json()["collector_submission"] is None
     (_, promotion) = client.release_requests
     assert (promotion.release, promotion.build) == (
         UK_NATIONAL_RELEASE_ID,
@@ -259,6 +497,7 @@ def test_an_emitter_without_its_hugging_face_module_publishes_nothing(
     assert outcome.receipt["status"] == "unavailable"
     assert outcome.problem is not None and not outcome.succeeded
     assert client.release_requests == []
+    assert client.collector_receipt_requests == []
 
 
 def test_a_started_emitter_is_closed_after_the_publication(

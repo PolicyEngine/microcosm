@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "default": "microcosm-us-2024-national",
+  "releases": {
+    "microcosm-us-2024-national": {
+      "role": "national",
+      "current": "populace-us-2024-0000000-20260101",
+      "builds": {
+        "populace-us-2024-0000000-20260101": {
+          "published_at": "2026-01-01T00:00:00+00:00",
+          "withdrawn": false
+        }
+      }
+    }
+  }
+}

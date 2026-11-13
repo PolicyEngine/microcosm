@@ -2153,6 +2153,7 @@ def _close_attempt(
             output_paths={"manifest": output / MANIFEST_FILENAME},
             run_id=state.build_id if telemetry is None else telemetry.run_id,
             staging_bundle=telemetry,
+            build_id=state.build_id,
         )
         staged_dataset = staged.delivery
         append_phase(state, STAGED_DATASET_PHASES[staged_dataset["status"]])
@@ -3569,6 +3570,7 @@ def _close_national_attempt(
             output_paths=paths,
             run_id=state.build_id if telemetry is None else telemetry.run_id,
             staging_bundle=telemetry,
+            build_id=state.build_id,
         )
         staged_dataset = staged.delivery
         append_phase(state, STAGED_DATASET_PHASES[staged_dataset["status"]])
