@@ -32,13 +32,13 @@ import json
 from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from datetime import date, datetime
-from importlib.resources import files
 from types import MappingProxyType
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from microcosm.build.country_spec import country_resource
 from microcosm.build.gate_battery import (
     DEFAULT_REGISTRY,
     EvaluatorBinding,
@@ -789,9 +789,7 @@ def _evaluate_support(
         )
     donor_ranges: dict[str, tuple[float, float]] = {}
     for resource_name in resource_names:
-        resource = json.loads(
-            files("microcosm.build.uk").joinpath(str(resource_name)).read_text()
-        )
+        resource = json.loads(country_resource("uk", str(resource_name)).read_text())
         raw_bounds = resource.get("bounds")
         if not isinstance(raw_bounds, Mapping):
             raise ValueError(f"{resource_name} is missing bounds.")
@@ -1258,7 +1256,7 @@ def _evaluate_geography_ladder(
 def _local_area_roster(
     resource: str, levels: tuple[str, ...]
 ) -> dict[str, tuple[str, ...]]:
-    payload = json.loads(files("microcosm.build.uk").joinpath(resource).read_text())
+    payload = json.loads(country_resource("uk", resource).read_text())
     declared = payload.get("levels")
     if not isinstance(declared, Mapping):
         raise ValueError(f"{resource} must expose a levels object.")
@@ -1509,12 +1507,8 @@ def _target_surface_evidence(
     )
     crosswalk_resource = str(parameters["crosswalk_resource"])
     membership_resource = str(parameters["membership_resource"])
-    crosswalk_text = (
-        files("microcosm.build.uk").joinpath(crosswalk_resource).read_text()
-    )
-    membership_text = (
-        files("microcosm.build.uk").joinpath(membership_resource).read_text()
-    )
+    crosswalk_text = country_resource("uk", crosswalk_resource).read_text()
+    membership_text = country_resource("uk", membership_resource).read_text()
     candidate_targets = sorted(_local_default_candidate_surface(registry))
     reference_targets = sorted(_local_default_expected_surface(crosswalk_resource))
     reviewed_exclusions = _local_default_reviewed_exclusions(membership_resource)
@@ -1554,9 +1548,7 @@ def _local_default_candidate_surface(registry: object) -> frozenset[str]:
 
 
 def _local_default_expected_surface(crosswalk_resource: str) -> frozenset[str]:
-    crosswalk = json.loads(
-        files("microcosm.build.uk").joinpath(crosswalk_resource).read_text()
-    )
+    crosswalk = json.loads(country_resource("uk", crosswalk_resource).read_text())
     levels = crosswalk.get("levels")
     if not isinstance(levels, Mapping):
         raise ValueError(f"{crosswalk_resource} must expose levels.")
@@ -1613,9 +1605,7 @@ def _metric_area_scope(
 def _local_default_reviewed_exclusions(
     membership_resource: str,
 ) -> dict[str, str]:
-    membership = json.loads(
-        files("microcosm.build.uk").joinpath(membership_resource).read_text()
-    )
+    membership = json.loads(country_resource("uk", membership_resource).read_text())
     metric_by_target_id = _local_metric_by_target_id()
     reviewed: dict[str, str] = {}
     for deferral in membership.get("signed_deferrals", ()):
@@ -1808,7 +1798,7 @@ def _evaluate_ledger_compile_parity(
     signed_resource = parameters.get("signed_differences_resource")
     if signed_resource is not None:
         signed_differences = json.loads(
-            files("microcosm.build.uk").joinpath(str(signed_resource)).read_text()
+            country_resource("uk", str(signed_resource)).read_text()
         )["differences"]
     target_period = parameters["target_period"]
     registry_artifact = _ledger_compile_parity_registry_artifact(parameters)
@@ -1830,9 +1820,7 @@ def _evaluate_ledger_compile_parity(
 
 
 def _load_ledger_compile_parity_fixture(fixture_resource: str) -> dict[str, Any]:
-    fixture = json.loads(
-        files("microcosm.build.uk").joinpath(fixture_resource).read_text()
-    )
+    fixture = json.loads(country_resource("uk", fixture_resource).read_text())
     if fixture_resource == LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE:
         return align_uk_local_registry_parity_fixture(fixture)
     # The national fixtures spell the incumbent's regional rows their own way;
@@ -1851,7 +1839,7 @@ def _ledger_compile_parity_evidence(
         registry_artifact=registry_artifact,
     )
     fixture_resource = str(parameters["fixture_resource"])
-    fixture_text = files("microcosm.build.uk").joinpath(fixture_resource).read_text()
+    fixture_text = country_resource("uk", fixture_resource).read_text()
     return {
         "registry_artifact": registry_artifact,
         "registry_version": getattr(registry, "version", None),
