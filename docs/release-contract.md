@@ -919,7 +919,15 @@ repository that has no `releases.json`.
   itself and deletes the repository's `latest*.json` files in the same
   commit; after that only the emitter's release writer changes the record.
   The switch's `copy` step moves each tagged build into a folder and rewrites
-  its manifests, as C1 describes.
+  its manifests, as C1 describes. Its `delete-old-layout` step then deletes,
+  in one commit, the files the tagged layout leaves on `main`: every file
+  under `releases/` outside a build folder, and every dataset file (`.h5`,
+  `.hdf5`, `.npz`) at the repository's root. It keeps `releases.json`, every
+  build folder the record lists, the other root files and every directory
+  outside `releases/`, and it refuses a repository without `releases.json`,
+  one that still has a `latest*.json` pointer file, and a build folder the
+  record does not list. Each tagged build stays readable at its tag, and each
+  deleted file stays in `main`'s history.
 - **The tagged publisher and the pointer files.** `microcosm-publish-release`
   (`publish_cli`, which `tools/publish_release.sh` wraps) still publishes a
   release that keeps tags. It runs `publication_refusal`, then

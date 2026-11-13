@@ -9,9 +9,11 @@ manifest registers as an output, the manifest itself, ``staged_manifest.json``
 and ``sha256sums.txt``, which the emitter commits in one commit under
 ``staged/<run_id>/``. The command starts a short-lived emitter of its own,
 with only its Hugging Face module, and waits for its first upload attempt,
-for up to three hours by default (``--wait-seconds``). When it stops waiting
-it closes its emitter, which abandons an upload still running; the next
-emitter started on the machine retries it.
+for up to three hours by default (``--wait-seconds``). Once the upload has
+landed it waits up to ten more minutes for the collector to accept the
+bundle's submissions. When it stops waiting it closes its emitter, which
+abandons an upload still running; the next emitter started on the machine
+retries it.
 
 When the manifest names the build's own hand-over
 (``staged_dataset_handover``) and this machine's emitter still holds it, the
@@ -69,9 +71,11 @@ the bundle is staged under the run ID of the manifest's staged record, else
 the one ``staged_manifest.json`` records, else the same build ID; so
 ``--local-only`` stops on those rows too. The release is the manifest's
 ``release_id``.
-The emitter then submits the bundle's calibration diagnostics to the
-collector once the commit lands, while its collector submissions are on. A
-hand-over the command resumes keeps what the build named.
+The emitter, whose collector submissions are on, then submits the bundle's
+calibration diagnostics and Orrery inputs to the collector once the commit
+lands, and the command waits up to ten minutes for the collector to accept
+them before it closes the emitter. A hand-over the command resumes keeps what
+the build named, and its collector receipt is followed the same way.
 
 Staging is not publication: ``releases/`` and ``latest.json`` are untouched.
 """
@@ -211,7 +215,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "How long to wait for the emitter's upload attempt before closing it "
             f"(default {RESTAGE_WAIT_SECONDS:g}: a 2.4 GB bundle at 2 Mbit/s). "
             "Closing the emitter abandons an upload still running; the next "
-            "emitter started on this machine retries it."
+            "emitter started on this machine retries it. After an upload lands, "
+            "the command also waits up to ten minutes for the collector."
         ),
     )
     parser.add_argument(
