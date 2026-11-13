@@ -158,6 +158,11 @@ from microcosm.build.us_runtime.housing_inputs import (
     ACS_2022_RENT_ARTIFACT_SHA256,
     load_acs_2022_rent_donor,
 )
+from microcosm.build.us_runtime.local_jurisdictions import (
+    BLOCK_GEOGRAPHY_RUNGS,
+    us_local_jurisdiction_flag_receipt,
+    us_local_jurisdiction_flag_values,
+)
 from microcosm.build.us_runtime.multispine_pool import (
     POOL_CHECKPOINT_STAGE_ORDER,
     POOL_DERIVE_OPERATOR_ORDER,
@@ -2588,6 +2593,8 @@ def _expected_block_location_contract_from(
 def _block_location_summary(
     household: pd.DataFrame,
     record: Mapping[str, object],
+    *,
+    weights: np.ndarray,
 ) -> dict[str, object]:
     return {
         "applied": True,
@@ -2606,6 +2613,14 @@ def _block_location_summary(
                 CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
             )
         },
+        # The drawn block fixes county and place, so the draw writes every
+        # registry flag (microcosm#1453); the legacy summary records the same
+        # key with the PUMA ladder's county rung only.
+        "local_jurisdiction_flags": us_local_jurisdiction_flag_receipt(
+            us_local_jurisdiction_flag_values(household, rungs=BLOCK_GEOGRAPHY_RUNGS),
+            rungs=BLOCK_GEOGRAPHY_RUNGS,
+            household_weights=weights,
+        ),
     }
 
 
@@ -3113,7 +3128,9 @@ def _assign_stacked_household_block_location(
             "positive_congressional_district_rows": len(values),
             "unique_congressional_district_values": int(len(np.unique(values))),
         },
-        "summary": _block_location_summary(located, record),
+        "summary": _block_location_summary(
+            located, record, weights=assigned.weights_for("household").values
+        ),
         "household_location": record,
         "gate": gate_report.to_manifest(),
     }

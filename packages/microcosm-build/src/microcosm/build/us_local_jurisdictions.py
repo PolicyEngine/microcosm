@@ -25,12 +25,16 @@ flag to one 2020 geography, and its SHA-256 is pinned here:
   ``10``/``77580``). Place codes are unique only within a state, so the state
   is part of the match.
 
-A geography line derives the flags from the rungs it actually writes. The
-block ladder (and the block-location draw) writes county and place from one
-block, so every flag is derived. The PUMA ladder writes a county but no
+A geography line derives the flags from the rungs it actually writes, once
+that geography is final. The block ladder and the ``block_v1`` block-location
+draw (``with_household_us_block_location``, microcosm#1047) each put a
+household on one block, which fixes county and place, so every flag is
+derived, after the block is assigned. The PUMA ladder writes a county but no
 place, so the place-rule flags are *unavailable* there: the line never writes
 them (any stale column is removed) and its receipt records them as
-unavailable with the reason, rather than writing ``False``.
+unavailable with the reason, rather than writing ``False``. The pooled ACS
+line follows its location rule: the PUMA ladder's county rung under the
+default ``legacy`` rule, the block rungs under ``block_v1``.
 
 An artifact built before the flags existed carries none, so a step that
 exports or recalibrates an existing artifact instead of running a geography
@@ -89,7 +93,7 @@ US_LOCAL_JURISDICTION_REGISTRY_SCHEMA_VERSION = 1
 JURISDICTION_RUNG_COUNTY = "county"
 JURISDICTION_RUNG_PLACE = "place"
 JURISDICTION_RUNGS = (JURISDICTION_RUNG_COUNTY, JURISDICTION_RUNG_PLACE)
-#: What the block ladder and the block-location draw write.
+#: What the block ladder and the ``block_v1`` block-location draw write.
 BLOCK_GEOGRAPHY_RUNGS = JURISDICTION_RUNGS
 #: What the PUMA ladder writes.
 PUMA_GEOGRAPHY_RUNGS = (JURISDICTION_RUNG_COUNTY,)
@@ -508,10 +512,12 @@ def with_us_local_jurisdiction_flags(
 ) -> tuple[Frame, dict[str, Any]]:
     """Return ``frame`` with its local-jurisdiction flags and the receipt.
 
-    The one call every geography line makes once its county (and, where it
-    has one, place) is final: ``rungs`` is :data:`BLOCK_GEOGRAPHY_RUNGS` for
-    a block-anchored line and :data:`PUMA_GEOGRAPHY_RUNGS` for the PUMA
-    ladder.
+    For a geography line whose county (and, where it has one, place) is
+    final: ``rungs`` is :data:`BLOCK_GEOGRAPHY_RUNGS` for a block-anchored
+    line and :data:`PUMA_GEOGRAPHY_RUNGS` for the PUMA ladder. The ladders,
+    the block-location draw and the ACS pool hold their tables before they
+    build a frame, so they call :func:`apply_us_local_jurisdiction_flags` on
+    those instead.
     """
 
     tables = {entity: frame.table(entity) for entity in frame.entities}

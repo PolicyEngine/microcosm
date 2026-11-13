@@ -1566,9 +1566,13 @@ def pool_remaining_stage_input_manifest(
         for entity, variables in _POOL_NATIVE_COMPLETE_OUTPUTS.items()
         for variable in variables
     }
-    # The stacked pool's geography comes from the PUMA ladder, which draws a
-    # county but no place: county-rule jurisdiction flags are derived with
-    # it, place-rule flags are never written (local_jurisdictions).
+    # Under the default legacy location rule the stacked pool's geography
+    # comes from the PUMA ladder, which draws a county but no place:
+    # county-rule jurisdiction flags are derived with it, place-rule flags
+    # are never written (local_jurisdictions). This manifest is static and
+    # describes that default. A block_v1 pool (microcosm#696) puts every
+    # household on a block and writes the place-rule flags too, so the
+    # fallback named below never applies to one.
     local_jurisdiction_inputs = {
         (item.entity, item.flag): item.rule in PUMA_GEOGRAPHY_RUNGS
         for item in packaged_us_local_jurisdiction_registry().jurisdictions

@@ -80,9 +80,16 @@ from microcosm.build.us_runtime.block_location import (
     us_block_location_manifest,
     with_household_us_block_location,
 )
+from microcosm.build.us_runtime.local_jurisdictions import (
+    BLOCK_GEOGRAPHY_RUNGS,
+    us_local_jurisdiction_flag_failures,
+)
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from test_support.microcosm_build.us_block_location import (
+    assert_local_jurisdiction_flags_follow_geography,
+    expected_local_jurisdiction_flags,
     ladder_metadata,
+    local_jurisdiction_blocks,
     synthetic_blocks,
     write_location_ladder,
 )
@@ -890,6 +897,127 @@ def test_clone_frame_refuses_a_second_clone_pass() -> None:
     with pytest.raises(ValueError, match="already location-cloned"):
         clone_frame_for_location(frame, 2)
     assert clone_frame_for_location(frame, 1) is frame
+
+
+# --------------------------------------------------------------------------
+# Local-jurisdiction flags follow the drawn block (microcosm#1453)
+# --------------------------------------------------------------------------
+
+# (state, identified county or 0). Per state: a household identified in each
+# registry jurisdiction's county, one in each place-code decoy's county, and
+# one statewide draw.
+_JURISDICTION_HOUSEHOLDS = (
+    (8, 8031),
+    (8, 8003),
+    (8, 0),
+    (42, 42101),
+    (42, 42003),
+    (42, 0),
+    (36, 36003),
+    (36, 36047),
+    (36, 0),
+    (10, 10003),
+    (10, 10001),
+    (10, 0),
+)
+
+
+def _frame_located_before(rows) -> Frame:
+    """Households that an earlier rule located in Denver, flags and all.
+
+    Every household carries Denver's county, Yonkers' place code and every
+    flag ``True``: what the frame would hold if its flags had been derived
+    before the block draw.
+    """
+
+    n = len(rows)
+    household_ids = np.arange(1, n + 1, dtype=np.int64) * 10
+    person_household = np.repeat(household_ids, 2)
+    person_ids = np.arange(1, 2 * n + 1, dtype=np.int64)
+    tables = {
+        "person": pd.DataFrame(
+            {
+                "person_id": person_ids,
+                "person_household_id": person_household,
+                "person_tax_unit_id": person_household + 1,
+                "person_spm_unit_id": person_household + 2,
+                "person_family_id": person_household + 3,
+                "person_marital_unit_id": person_ids + 10**6,
+                "pa_philadelphia_wage_tax_resident": True,
+            }
+        ),
+        "household": pd.DataFrame(
+            {
+                "household_id": household_ids,
+                "state_fips": np.array([row[0] for row in rows], dtype=np.int64),
+                "county_fips": "08031",
+                "place_fips": "84000",
+                "in_denver": True,
+                "in_yonkers": True,
+                "in_wilmington": True,
+            }
+        ),
+        "tax_unit": pd.DataFrame({"tax_unit_id": household_ids + 1}),
+        "spm_unit": pd.DataFrame({"spm_unit_id": household_ids + 2}),
+        "family": pd.DataFrame({"family_id": household_ids + 3}),
+        "marital_unit": pd.DataFrame({"marital_unit_id": person_ids + 10**6}),
+    }
+    weights = {"household": Weights(np.linspace(1.0, 9.0, n), WeightKind.DESIGN)}
+    return Frame(tables, US_SCHEMA, weights, pd.Series(["s"] * (2 * n)))
+
+
+@pytest.mark.parametrize("clones", [1, 3])
+def test_frame_location_writes_the_flags_its_drawn_block_decides(clones) -> None:
+    ladder = _load(local_jurisdiction_blocks(4))
+    rows = _JURISDICTION_HOUSEHOLDS * 4
+    frame = _frame_located_before(rows)
+    identified = np.array([row[1] for row in rows], dtype=np.int64)
+
+    located, table = with_household_us_block_location(
+        frame, ladder, seed=17, clones=clones, county_fips=identified
+    )
+
+    household, person = located.table("household"), located.table("person")
+    assert us_block_location_gate(household, ladder).passed
+    # The draw moved the households: nothing stays in the stand-in geography.
+    np.testing.assert_array_equal(
+        household["county_fips"].to_numpy(), table["county_fips"].to_numpy()
+    )
+    county = household["county_fips"].astype(str).to_numpy()
+    np.testing.assert_array_equal(
+        county[np.repeat(identified > 0, clones)],
+        [f"{value:05d}" for value in np.repeat(identified[identified > 0], clones)],
+    )
+    # Each flag is its rule on the drawn block, for every household and
+    # person, whatever the frame said before.
+    assert_local_jurisdiction_flags_follow_geography(household, person)
+    assert (
+        us_local_jurisdiction_flag_failures(
+            household, person=person, required_rungs=BLOCK_GEOGRAPHY_RUNGS
+        )
+        == []
+    )
+    # No flag passes by being constant: each is true for the households
+    # identified in its jurisdiction, and false behind its decoy.
+    expected = expected_local_jurisdiction_flags(household)
+    per_county = 4 * clones
+    assert expected["in_denver"][county == "08031"].all()
+    assert expected["pa_philadelphia_wage_tax_resident"][county == "42101"].all()
+    assert expected["in_yonkers"][county == "36003"].all()
+    assert expected["in_wilmington"][county == "10003"].all()
+    for code in ("08031", "42101", "36003", "10003", "36047", "10001"):
+        assert (county == code).sum() >= per_county, code
+    for flag, values in expected.items():
+        assert 0 < values.sum() < len(values), flag
+    assert not household.loc[county == "10001", "in_yonkers"].any()
+    assert (household.loc[county == "10001", "place_fips"] == "84000").all()
+    assert not household.loc[county == "36047", "in_wilmington"].any()
+    assert (household.loc[county == "36047", "place_fips"] == "77580").all()
+    philadelphia = person["person_household_id"].isin(
+        household.loc[county == "42101", "household_id"]
+    )
+    assert philadelphia.sum() == person["pa_philadelphia_wage_tax_resident"].sum()
+    assert person.loc[philadelphia, "pa_philadelphia_wage_tax_resident"].all()
 
 
 # --------------------------------------------------------------------------

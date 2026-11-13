@@ -71,6 +71,10 @@ from microcosm.build.us_runtime.geography_ladder import (
     UsBlockLadder,
     load_us_block_ladder,
 )
+from microcosm.build.us_runtime.local_jurisdictions import (
+    BLOCK_GEOGRAPHY_RUNGS,
+    apply_us_local_jurisdiction_flags,
+)
 from microcosm.frame import Frame, Weights
 
 #: The rule id every build records when it locates households this way; also
@@ -1255,6 +1259,12 @@ def with_household_us_block_location(
     such as an ACS ``puma`` (which the draw reproduces). ``state_fips`` is
     never rewritten; the draw asserts each block lies in it. The frame's
     metadata gains a :data:`US_BLOCK_LOCATION_METADATA_KEY` receipt.
+
+    The drawn block fixes county and place together, so every registry
+    local-jurisdiction flag is then derived from them and written as an
+    engine input (person flags through ``person_household_id``), as the
+    block ladder does (microcosm#1453). A flag the frame already carried is
+    overwritten: it described the geography this draw replaced.
     """
 
     household = frame.table("household")
@@ -1291,6 +1301,9 @@ def with_household_us_block_location(
         raise AssertionError("internal error: cloned household order drifted.")
     for column in location_geography_columns(ladder):
         target[column] = table[column].to_numpy()
+    # After the draw, never before it: the flags follow the county and place
+    # of the block each household (or clone) just received.
+    tables, _ = apply_us_local_jurisdiction_flags(tables, rungs=BLOCK_GEOGRAPHY_RUNGS)
     for link_name in located.links:
         tables[link_name] = located.link(link_name).copy()
     location_receipt = {

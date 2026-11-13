@@ -46,9 +46,6 @@ the new SHA-256 to pin.
 
 - **Block ladder** (`with_household_us_geography_ladder`): one block fixes
   county and place, so the line writes all four flags.
-- **Block-location draw** (microcosm#1047): call
-  `with_us_local_jurisdiction_flags(frame, rungs=BLOCK_GEOGRAPHY_RUNGS)` once
-  `county_fips` and `place_fips` are final.
 - **PUMA ladder** (`with_household_us_puma_ladder`, the stacked pool): the
   ladder draws a county but no place. The line writes `in_denver` and the
   Philadelphia flag and never writes `in_yonkers` or `in_wilmington`; it also
@@ -64,6 +61,34 @@ the new SHA-256 to pin.
 
 Missing, null or malformed geography raises; no line writes `False` for a
 household whose county or place it does not know.
+
+### Under `--location-rule block_v1`
+
+The opt-in block-location rule (microcosm#1047, `docs/us-location-v1.md`) puts
+every household on one drawn block and looks county and place up from it. The
+default `legacy` rule is the list above, unchanged. Under `block_v1` every
+line that draws derives all four flags with `BLOCK_GEOGRAPHY_RUNGS`, after the
+draw, and overwrites any flag the frame carried before it:
+
+- **Base-h5 line and stacked pool** (`with_household_us_block_location`): the
+  draw writes the flags with the block's geography, as the block ladder does.
+  The base-h5 line records the receipt in its summary, at
+  `household_location.coverage.local_jurisdiction_flags`, and its
+  geography-ladder gate requires the household flags. The stacked pool
+  records it in its geography-assignment receipt, at
+  `summary.local_jurisdiction_flags`, and its PUMA-ladder gate requires
+  `in_denver`.
+- **Pooled ACS line** (`with_optional_acs_spine`): ACS rows draw a block and
+  donors keep theirs, so `acs_pool_local_jurisdiction_rungs` returns the block
+  rungs and the pool re-derives all four flags for every row after the block
+  assignment. `build_optional_acs_multispine` records that receipt as
+  `provenance["local_jurisdiction_flags"]` and again inside
+  `provenance["geography_ladder"]`, whatever PUMA ladder staging also holds.
+
+The engine ABI lock's `unavailable_place_jurisdiction_input` rows describe the
+default rule. The pool's remaining-stage manifest is static, so it still
+lists `in_yonkers` and `in_wilmington` that way for a `block_v1` pool, which
+writes them; the fallback those rows name does not apply to it.
 
 ## Existing artifacts
 

@@ -99,6 +99,8 @@ What each line does:
   - ACS households draw within their observed PUMA. Donors keep the block their base drew. That base must record `block_v1`, so each donor's block lies in its CPS source geography; staging refuses a legacy base before the ACS fetch, and refuses any donor without a block.
   - Finalize runs `us_block_location_gate` on the staged ladder. The targets' `--ladder` must be the PUMA ladder staging recorded.
 
+Each line also derives the four input-only local-jurisdiction flags (`in_denver`, `in_yonkers`, `in_wilmington` and `pa_philadelphia_wage_tax_resident`) from the county and place of the block it drew or kept, after the draw, and records that the block rungs decided them. `packages/microcosm-build/src/microcosm/build/us_runtime/US_LOCAL_JURISDICTIONS.md` says where each line records it.
+
 ## Invariants
 
 Each of these is a property test in `tests/engine_free/us/test_us_block_location.py` (Hypothesis over nested synthetic ladders) or `test_us_cps_source_geography.py`:
