@@ -3702,73 +3702,6 @@ def test_spi_hourly_pay_gate_holds_drawn_employees_to_their_floor() -> None:
     assert "no employment pay floor" in missing.failures[0]
 
 
-def _home_values_receipt() -> dict:
-    regions = [f"E1200000{index}" for index in range(1, 10)] + ["W92000004"]
-    return {
-        "stage": "regional_home_values",
-        "rows": 100,
-        # Counts as the receipt prints them (receipt_counts.rounded_count).
-        "rows_rewritten_by_region": {region: 10 for region in regions},
-        "sources_at_cap": 0,
-        "knots_basis_year": 2024,
-        "ranking": {"rank_basis": "weighted_midpoint_within_frs_region"},
-        "weighted_value_before": 1.0e9,
-        "weighted_value_after": 1.2e9,
-    }
-
-
-@pytest.mark.parametrize(
-    ("mutate", "fragment"),
-    [
-        (lambda r: r["rows_rewritten_by_region"].pop("W92000004"), "rewrites regions"),
-        (lambda r: r["rows_rewritten_by_region"].update(E12000007=0), "no row"),
-        (lambda r: r.update(rows=90), "more rows"),
-        (lambda r: r.update(sources_at_cap=1), "value cap"),
-        # A band past the limit fails as plainly as the count it stands for.
-        (lambda r: r.update(sources_at_cap="<3"), "value cap"),
-        (lambda r: r.update(knots_basis_year=2023), "basis year"),
-        (lambda r: r["ranking"].update(rank_basis="national"), "ranking basis"),
-        (lambda r: r.update(weighted_value_after=0.0), "not positive"),
-    ],
-)
-def test_regional_home_values_gate_holds_the_ranking_contract(mutate, fragment) -> None:
-    assert _passed(
-        _gate("uk_stage_regional_home_values_ranking", _home_values_receipt())
-    )
-    receipt = _home_values_receipt()
-    mutate(receipt)
-    result = _gate("uk_stage_regional_home_values_ranking", receipt)
-    assert not result.passed
-    assert any(fragment in failure for failure in result.failures), result.failures
-
-
-def test_regional_home_values_gate_holds_one_cap_limit_at_any_clone_count() -> None:
-    """The stage counts the sources at the value cap in geographic clone 0's
-    rows (test_uk_regional_home_values), so the check has no clone
-    allowance: a clone count in the receipt does not widen its limit
-    (microcosm#931)."""
-
-    gate_id = "uk_stage_regional_home_values_ranking"
-    for at_cap in (1, "<3", "3-9"):
-        receipt = _home_values_receipt()
-        receipt["sources_at_cap"] = at_cap
-        one = _gate(gate_id, receipt)
-        cloned = _gate(gate_id, {**receipt, "clone_count": 3})
-        assert not one.passed
-        assert cloned == one
-
-
-def test_regional_home_values_gate_flags_a_region_of_fewer_than_three_rows() -> None:
-    """A region the receipt prints "<3" rewrote one or two rows: not empty,
-    and flagged rather than failed (María's ruling of 2026-10-26)."""
-    receipt = _home_values_receipt()
-    receipt["rows_rewritten_by_region"]["W92000004"] = "<3"
-    result = _gate("uk_stage_regional_home_values_ranking", receipt)
-    assert result.passed, result.failures
-    assert result.details["regions_rewritten_under_floor"] == ["W92000004"]
-    assert result.details["sources_at_cap_unchecked"] is False
-
-
 def test_a_printed_count_stands_for_exactly_the_counts_that_print_as_it() -> None:
     """Up to 20,000, the bounds the gates read a printed count at are the
     lowest and highest counts that print as it, so an edge one count too wide
@@ -3790,42 +3723,6 @@ def test_a_printed_count_stands_for_exactly_the_counts_that_print_as_it() -> Non
     assert wrong == {}
     assert _count_bounds(10) == (10, 14)
     assert _count_bounds(1000) == (995, 1049)
-
-
-def test_regional_home_values_gate_reads_a_banded_count_at_its_bounds() -> None:
-    """A region the receipt prints "3-9" rewrote three to nine rows: not empty,
-    above the floor, so not flagged, and read at three in the sum check. A
-    rounded count is read at the lowest count that rounds to it, and the
-    stage's own row count at the highest."""
-    gate_id = "uk_stage_regional_home_values_ranking"
-    receipt = _home_values_receipt()
-    receipt["rows_rewritten_by_region"]["W92000004"] = "3-9"
-    result = _gate(gate_id, receipt)
-    assert result.passed, result.failures
-    assert result.details["regions_rewritten_under_floor"] == []
-    # Nine regions printed 10 (ten rows at the least, as five to nine print
-    # "3-9") and one of at least three: 93 rows at the least, more than a stage
-    # printed 80 (84 at the most) carries, and no more than one printed 90.
-    receipt["rows"] = 80
-    assert "more rows" in _gate(gate_id, receipt).failures[0]
-    receipt["rows"] = 90
-    assert _gate(gate_id, receipt).passed
-    # Ten regions of 15 rows print 20 each; a stage of 150 rows is not short.
-    rounded = _home_values_receipt()
-    rounded["rows_rewritten_by_region"] = {
-        region: 20 for region in rounded["rows_rewritten_by_region"]
-    }
-    rounded["rows"] = 150
-    assert _gate(gate_id, rounded).passed
-    # A stage whose own count is banded is read at the band's top.
-    small = _home_values_receipt()
-    small["rows_rewritten_by_region"] = {
-        region: "<3" for region in small["rows_rewritten_by_region"]
-    }
-    small["rows"] = 20
-    assert _gate(gate_id, small).passed
-    small["rows"] = "3-9"
-    assert "more rows" in _gate(gate_id, small).failures[0]
 
 
 def _legacy_closure_receipt() -> dict:
@@ -3896,7 +3793,7 @@ def test_the_1308_fact_gates_record_without_blocking_a_synthetic_smoke_build() -
         )["gates"]
     }
     for gate_id in (
-        "uk_stage_regional_home_values_ranking",
+        "uk_stage_area_home_values_ranking",
         "uk_stage_property_purchases_fit",
     ):
         assert gates[gate_id]["population_fact_check"] is True
@@ -4372,9 +4269,10 @@ def test_assembled_stage_gates_read_only_stages_run_by_the_assembled_boundary() 
 def test_the_assembled_gates_read_up_to_area_brma() -> None:
     """The assembled checkpoint closes at area_brma, in frs_brma's place after
     the draws and after the area stages (microcosm#931), so every column an
-    assembled domain gate reads is written by area_brma or an earlier stage:
-    the BRMA domain gate reads the brma area_brma writes, before
-    spi_copy_areas rewrites the SPI copies' brma at the transferred phase."""
+    assembled domain gate reads is written by area_brma or an earlier stage
+    and by no later one. spi_copy_areas rewrites the SPI copies' and income
+    band donors' brma and local_authority after that boundary, so both domain
+    gates sit at the transferred boundary, after their last writer."""
     from microcosm.build import load_country_spec
     from microcosm.build.uk_runtime.graph import UK_SPINE_ASSEMBLED_FINAL_STAGE
 
@@ -4390,16 +4288,27 @@ def test_the_assembled_gates_read_up_to_area_brma() -> None:
     for position, stage in enumerate(stages):
         for column in (*stage.outputs, *stage.rewrites):
             writers.setdefault(column, []).append(position)
-    read = {
-        str(column)
-        for entry in spec.gates.gates
-        if entry.phase == "assembled" and entry.gate == "enum_domain"
-        for column in entry.parameters["columns"]
-    }
-    assert "brma" in read
-    assert sorted(column for column in read if writers[column][0] > boundary) == []
+
+    def read(phase: str) -> set[str]:
+        return {
+            str(column)
+            for entry in spec.gates.gates
+            if entry.phase == phase and entry.gate == "enum_domain"
+            for column in entry.parameters["columns"]
+        }
+
+    assembled = read("assembled")
+    assert (
+        sorted(column for column in assembled if writers[column][-1] > boundary) == []
+    )
+    assert not {"brma", "local_authority"} & assembled
+    assert {"brma", "local_authority"} <= read("transferred")
     assert [order[position] for position in writers["brma"]] == [
         "area_brma",
+        "spi_copy_areas",
+    ]
+    assert [order[position] for position in writers["local_authority"]] == [
+        "local_authority",
         "spi_copy_areas",
     ]
 
@@ -4529,15 +4438,10 @@ def test_the_copy_stage_may_accept_a_record_without_copies() -> None:
 
 
 def _area_home_values_parameters() -> dict:
-    """The ranking gate's packaged parameters, read at the WAS stage with the
-    knots level the area home values add (microcosm#931)."""
+    """The area home values ranking gate's packaged parameters, at the WAS
+    stage (microcosm#931)."""
 
-    return {
-        **_packaged_parameters("uk_stage_regional_home_values_ranking"),
-        "stage": "was_wealth",
-        "check": "area_home_values",
-        "knots_level": "constituency",
-    }
+    return dict(_packaged_parameters("uk_stage_area_home_values_ranking"))
 
 
 def _area_home_values_receipt() -> dict:
@@ -4591,8 +4495,13 @@ def _area_home_values_gate(receipt: dict):
             ),
             "not a printed count",
         ),
-        (lambda r: r["area_home_values"].update(sources_at_cap=1), "knots' cap"),
-        (lambda r: r["area_home_values"].update(sources_at_cap="<3"), "knots' cap"),
+        # Past the packaged maximum, the top of the receipt's 3-9 band.
+        (lambda r: r["area_home_values"].update(sources_at_cap=10), "knots' cap"),
+        (
+            lambda r: r["area_home_values"].update(sources_at_cap="10-29"),
+            "knots' cap",
+        ),
+        (lambda r: r["area_home_values"].update(sources_at_cap="30+"), "knots' cap"),
         (
             lambda r: r["area_home_values"].update(sources_at_cap=None),
             "not a printed count or band",
@@ -4641,7 +4550,7 @@ def test_area_home_values_flags_a_region_under_the_floor_and_reads_the_wealth_st
     assert result.details["regions_rewritten_under_floor"] == ["W92000004"]
     assert result.details["sources_at_cap_unchecked"] is False
     # The block is read from the WAS stage's own receipt.
-    other = {**_area_home_values_receipt(), "stage": "regional_home_values"}
+    other = {**_area_home_values_receipt(), "stage": "regional_property_uprating"}
     assert not _area_home_values_gate(other).passed
 
 
@@ -4707,6 +4616,215 @@ def test_area_home_values_reads_the_block_the_wealth_stage_records() -> None:
     from microcosm.build.uk_runtime import stage_health, was_wealth
 
     assert stage_health._AREA_HOME_VALUES_BLOCK == was_wealth.AREA_HOME_VALUES_EVIDENCE
+
+
+def test_the_packaged_ranking_gate_reads_the_localisers_constants() -> None:
+    """The area home values ranking gate declares what the WAS stage's
+    localiser records: the knots' codes for England's regions and Wales, the
+    committed knots' basis year and level, and the rank basis the owner ranks
+    print (microcosm#931)."""
+
+    from microcosm.build.uk_runtime import area_home_values
+    from microcosm.build.uk_runtime.property_localisation import owner_uniforms
+
+    parameters = _area_home_values_parameters()
+    assert (parameters["stage"], parameters["check"]) == (
+        "was_wealth",
+        "area_home_values",
+    )
+    assert sorted(parameters["regions"]) == sorted(
+        area_home_values.FRS_REGION_TO_KNOTS_REGION.values()
+    )
+    knots = area_home_values.load_committed_area_home_values_resources().knots
+    assert parameters["knots_basis_year"] == knots.basis_year
+    assert parameters["knots_level"] == area_home_values.KNOTS_LEVEL
+    _, receipt = owner_uniforms(
+        spine_key=np.array(["a", "b"], dtype=object),
+        region=np.array(["LONDON", "LONDON"]),
+        tenure_type=np.array(["OWNED_OUTRIGHT", "OWNED_WITH_MORTGAGE"]),
+        value=np.array([1.0, 2.0]),
+        weight=np.array([1.0, 1.0]),
+        stream=area_home_values.AREA_HOME_VALUES_STREAM,
+    )
+    assert parameters["rank_basis"] == receipt["rank_basis"]
+
+
+def test_the_cap_maximum_rests_on_the_committed_knots() -> None:
+    """The maximum is re-derived for constituency knots (microcosm#931). The
+    retired stage's zero held by construction: the regional knots reach the
+    cap at the top grid point at most, which a weighted mid-rank never reaches
+    (owner_uniforms keeps every rank below 1). Some constituencies' knots
+    reach it below the top grid point, so a correct localiser can put a few
+    sources there: owners ranked in the top hundredth of their FRS region's
+    owner weight and placed in such a constituency. The packaged maximum is
+    the top of the receipt's 3-9 band, so no band the receipt prints
+    straddles it: the gate passes through "3-9" and fails from "10-29". The
+    count is clone 0's sources, so the maximum holds at any clone count."""
+
+    from importlib.resources import files
+
+    from microcosm.build.uk_runtime import area_home_values
+    from microcosm.build.uk_runtime.receipt_counts import UK_BELOW_TEN_BAND
+    from microcosm.build.uk_runtime.stage_health import _SUPPORT_BAND_BOUNDS
+
+    knots = area_home_values.load_committed_area_home_values_resources().knots
+
+    def first_point_at_cap(values) -> float | None:
+        at_cap = np.flatnonzero(np.asarray(values, dtype=float) >= knots.cap)
+        return float(knots.grid[at_cap[0]]) if at_cap.size else None
+
+    seats = {
+        code: first_point_at_cap(values) for code, values in knots.quantiles.items()
+    }
+    below_top = [point for point in seats.values() if point is not None and point < 1]
+    assert below_top
+    assert min(below_top) >= 0.99
+    payload = json.loads(
+        files("microcosm.build.uk")
+        .joinpath(area_home_values.KNOTS_RESOURCE)
+        .read_text(encoding="utf-8")
+    )
+    regional = [
+        first_point_at_cap(entry["quantiles"])
+        for entry in payload["levels"]["region"].values()
+    ]
+    assert all(point in (None, 1.0) for point in regional)
+
+    maximum = _area_home_values_parameters()["maximum_sources_at_cap"]
+    assert maximum == _SUPPORT_BAND_BOUNDS[UK_BELOW_TEN_BAND][1]
+    assert all(
+        high <= maximum or low > maximum for low, high in _SUPPORT_BAND_BOUNDS.values()
+    )
+    for at_cap, passes in (
+        (0, True),
+        ("<3", True),
+        ("3-9", True),
+        ("10-29", False),
+        ("30+", False),
+    ):
+        receipt = _area_home_values_receipt()
+        receipt["area_home_values"]["sources_at_cap"] = at_cap
+        result = _area_home_values_gate(receipt)
+        assert result.passed is passes, at_cap
+        assert result.details["sources_at_cap_unchecked"] is False
+        # A clone count in the block does not widen the limit.
+        cloned = _area_home_values_receipt()
+        cloned["area_home_values"].update(sources_at_cap=at_cap, clone_count=3)
+        assert _area_home_values_gate(cloned) == result
+
+
+def test_the_packaged_was_support_gate_exempts_the_area_home_values_columns() -> None:
+    """The WAS stage's support clip exempts the two columns a localised home
+    can lift past the donor's range (C-18); its gate declares the same
+    exemption and no allowance for them, so a receipt marking them exempt
+    passes (microcosm#931)."""
+
+    from microcosm.build import load_country_spec
+    from microcosm.build.uk_runtime.area_home_values import (
+        AREA_HOME_VALUES_EXEMPT_COLUMNS,
+        support_clip_exemptions,
+    )
+
+    parameters = _packaged_parameters("uk_stage_was_wealth_support")
+    stage = load_country_spec("uk").sources.stage_map()["was_wealth"]
+    exempt = tuple(parameters["exempt_columns"])
+    assert exempt == AREA_HOME_VALUES_EXEMPT_COLUMNS
+    assert set(exempt) == support_clip_exemptions(stage)
+    assert set(exempt) <= set(parameters["columns"])
+    for key in _CLIP_ALLOWANCE_KEYS:
+        assert set(parameters[key]) == set(parameters["columns"]) - set(exempt)
+    receipts = {
+        column: (
+            {"exempt": True, "rows_considered": 4}
+            if column in exempt
+            else {
+                "donor_min": 0.0,
+                "donor_max": 1.0,
+                "clipped_low_rows": 0,
+                "clipped_high_rows": 0,
+                "rows_considered": 4,
+            }
+        )
+        for column in parameters["columns"]
+    }
+    result = _gate(
+        "uk_stage_was_wealth_support",
+        {"stage": "was_wealth", "support_clip": {"columns": receipts}},
+    )
+    assert _passed(result), result.failures
+    assert result.details["exempt_columns"] == sorted(exempt)
+    clipped = {**receipts, exempt[0]: receipts[parameters["columns"][0]]}
+    failed = _gate(
+        "uk_stage_was_wealth_support",
+        {"stage": "was_wealth", "support_clip": {"columns": clipped}},
+    )
+    assert not failed.passed
+
+
+_CLIP_ALLOWANCE_KEYS = (
+    "max_clipped_low_rows_by_column",
+    "max_clipped_high_rows_by_column",
+)
+
+
+def test_the_packaged_mapping_gates_read_the_area_stages_records() -> None:
+    """Both mapping-integrity gates declare the scope the area stages record
+    and the three conditioned support systems; the copy stage's accepts the
+    not_run it records on a frame without a copy, and the base draw's accepts
+    a pass alone (microcosm#931)."""
+
+    from microcosm.build.uk_runtime import spine_geography
+    from microcosm.build.uk_runtime.atomic_area_support import SYSTEMS
+
+    base = _packaged_parameters("uk_atomic_area_mapping_integrity")
+    copies = _packaged_parameters("uk_spi_copy_area_mapping_integrity")
+    assert base["stage"] == spine_geography.ATOMIC_AREA_ASSIGN_STAGE_NAME
+    assert copies["stage"] == spine_geography.SPI_COPY_AREAS_STAGE_NAME
+    for parameters in (base, copies):
+        assert parameters["check"] == "atomic_mapping_integrity"
+        assert parameters["validation_scope"] == spine_geography._VALIDATION_SCOPE
+        assert tuple(parameters["support_systems"]) == SYSTEMS
+    assert "accepted_outcomes" not in base
+    assert copies["accepted_outcomes"] == ["pass", spine_geography._CHECKS_NOT_RUN]
+
+    assert _passed(_gate("uk_atomic_area_mapping_integrity", _mapping_evidence()))
+    not_run = {"outcome": spine_geography._CHECKS_NOT_RUN, "scope": _SCOPE}
+    assert _passed(
+        _gate(
+            "uk_spi_copy_area_mapping_integrity",
+            _mapping_evidence(stage="spi_copy_areas", validation=not_run),
+        )
+    )
+    assert not _passed(
+        _gate("uk_atomic_area_mapping_integrity", _mapping_evidence(validation=not_run))
+    )
+
+
+def test_the_packaged_copy_gate_holds_each_later_layer_on_the_copy_stages_columns() -> (
+    None
+):
+    """Every copy layer after spi_copy_areas is held on the columns that stage
+    rewrites, beside region and the clone index, and the support channel's
+    copies on region and the clone index alone. The layers are the copy-id
+    fields from the support channel's on, and the gate's stage is the last of
+    them (C-11, C-20, microcosm#931)."""
+
+    from microcosm.build.uk_runtime import copy_id_table
+    from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
+    from microcosm.build.uk_runtime.spine_geography import (
+        UK_SPI_COPY_AREAS_REWRITE_COLUMNS,
+    )
+
+    parameters = _packaged_parameters("uk_copy_area_agreement")
+    layers = parameters["columns_by_copy_layer"]
+    fields = [field.name for field in copy_id_table.UK_COPY_ID_FIELDS]
+    later = fields[fields.index("spi_support_channel") + 1 :]
+    held = ["region", ladder_clone_index_column("household")]
+    assert list(layers) == ["spi_support_channel", *later]
+    assert layers["spi_support_channel"] == held
+    for layer in later:
+        assert layers[layer] == [*held, *UK_SPI_COPY_AREAS_REWRITE_COLUMNS], layer
+    assert parameters["stage"] == later[-1] == "cgt_residential_split"
 
 
 class _FrameStandIn:

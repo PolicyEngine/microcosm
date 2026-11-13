@@ -52,7 +52,6 @@ def test_uk_dense_posture_mirrors_the_ruled_constants() -> None:
         "nation_grain_family_equal",
         "nation_grain_family_equal_sqrt_count",
     )
-    assert posture.expected_constituency_vintage == "2024_pcon"
     assert posture.gate_scope == tuple(UK_LOCAL_GATE_SCOPE)
     assert (posture.gate_posture, posture.gate_policy_suffix) == (
         "local_candidate",
@@ -92,7 +91,6 @@ def test_uk_national_posture_is_the_seam_doctrine_with_no_overrides() -> None:
     assert (posture.epochs, posture.learning_rate, posture.seed) == (1500, 0.02, 0)
     assert posture.target_weight_rule == "family_equal"
     assert posture.allowed_target_weight_rules == ("family_equal", "uniform")
-    assert posture.expected_constituency_vintage is None
     assert posture.gate_scope == tuple(UK_CALIBRATION_GATE_SCOPE)
     assert (posture.gate_posture, posture.gate_policy_suffix) == (
         "calibration_seam",
@@ -140,6 +138,16 @@ def test_uk_national_posture_is_the_seam_doctrine_with_no_overrides() -> None:
     }
 
 
+def test_no_posture_keeps_a_constituency_vintage() -> None:
+    """María's ruling of 13 Nov: the dense line takes its areas from the
+    spine (microcosm#931), so its posture no longer names the constituency
+    vintage the retired --expected-constituency-vintage defaulted to."""
+    fields = {field.name for field in dataclasses.fields(UKRowwisePosture)}
+    assert "expected_constituency_vintage" not in fields
+    for posture in UK_ROWWISE_POSTURES.values():
+        assert not hasattr(posture, "expected_constituency_vintage")
+
+
 def test_uk_rowwise_role_map_is_closed() -> None:
     assert UK_ROWWISE_RELEASE_ROLES == ("national", "dense")
     assert set(UK_ROWWISE_POSTURES) == set(UK_ROWWISE_RELEASE_ROLES)
@@ -164,7 +172,6 @@ def test_uk_rowwise_role_map_is_closed() -> None:
             {"allowed_target_weight_rules": ("uniform", "family_equal")},
             "not among its allowed rules",
         ),
-        ({"expected_constituency_vintage": None}, "constituency vintage"),
         ({"gate_scope": ()}, "at least one gate"),
         ({"pipeline": " "}, "pipeline must be non-empty"),
         ({"dataset_filename_template": "microcosm_uk_local.h5"}, "{vintage}"),

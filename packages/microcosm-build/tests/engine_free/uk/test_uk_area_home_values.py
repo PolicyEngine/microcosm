@@ -33,13 +33,14 @@ from microcosm.build.uk_runtime.property_localisation import (
     localise_main_residence_values,
     owner_uniforms,
 )
-from microcosm.build.uk_runtime.regional_home_values import (
-    REGIONAL_HOME_VALUES_STREAM,
-)
 from microcosm.build.uk_runtime.regional_uprating import (
     UK_REGIONAL_LAND_VALUES_RESOURCE,
     regional_reference_factors,
     uprate_household_property_by_region,
+)
+from test_support.microcosm_build.uk_area_home_values import (
+    toy_area_home_values_resources,
+    toy_knots_payload,
 )
 
 _GRID = [0.0, 0.5, 1.0]
@@ -63,27 +64,12 @@ _REGIONAL = {
 
 
 def _knots_payload(seats=None) -> dict:
-    return {
-        "schema_version": 1,
-        "kind": "uk_high_value_home_value_knots",
-        "grid": _GRID,
-        "cap": _CAP,
-        "basis_year": 2024,
-        "inputs_sha256": "toy",
-        "method": "toy",
-        "levels": {
-            "constituency": {
-                code: {"quantiles": quantiles}
-                for code, quantiles in (seats or _SEATS).items()
-            }
-        },
-    }
+    return toy_knots_payload(seats or _SEATS, grid=_GRID, cap=_CAP)
 
 
 def _resources(seats=None) -> ahv.UKAreaHomeValuesResources:
-    return ahv.load_area_home_values_resources(
-        knots=json.dumps(_knots_payload(seats)).encode(),
-        regional_reference=json.dumps(_REGIONAL).encode(),
+    return toy_area_home_values_resources(
+        seats or _SEATS, _REGIONAL, grid=_GRID, cap=_CAP
     )
 
 
@@ -241,6 +227,74 @@ def test_the_regional_uprating_lands_localised_homes_on_the_knots() -> None:
     )
 
 
+def test_a_home_at_the_knots_cap_comes_back_at_most_at_the_cap() -> None:
+    """The uprating multiplies a localised home back by its region's factor,
+    so a home at the knots' cap, divided and multiplied by a factor whose
+    round trip rounds up, would land one rounding above the cap: past
+    uk_support's price-paid bound, which is the cap, and the support check's
+    slack. The localiser takes the largest quotient whose product is the cap
+    or below (microcosm#931). Invented owners, a toy seat that reaches the
+    committed bound's cap from the median up, and an invented London price
+    chosen so the plain quotient would round up."""
+
+    from importlib.resources import files
+
+    from microcosm.build.gates import support_gate
+
+    bounds = json.loads(
+        files("microcosm.build.uk")
+        .joinpath("price_paid_property_support_bounds.json")
+        .read_text(encoding="utf-8")
+    )["bounds"]
+    cap = float(bounds["main_residence_value"][1])
+    household = pd.DataFrame(
+        {
+            "household_id": np.arange(1, 5, dtype=np.int64),
+            "region": ["LONDON"] * 4,
+            "tenure_type": ["OWNED_OUTRIGHT"] * 4,
+            "constituency_code": pd.array(["E14000001"] * 4, dtype="string"),
+            "source_household_id": np.arange(1, 5, dtype=np.int64),
+        }
+    )
+    drawn = np.array([300_000.0, 400_000.0, 500_000.0, 900_000.0])
+    weights = np.ones(4)
+    mean = float(np.sort(drawn).sum() / len(drawn))
+    rounding_up = [
+        float(price)
+        for price in np.linspace(600_000.0, 700_000.0, 2_001)
+        if (cap / (price / mean)) * (price / mean) > cap
+    ]
+    assert rounding_up, "no invented price rounds the cap's round trip up"
+    regional = {"values": [{"region": "LONDON", "avg_house_price": rounding_up[0]}]}
+    resources = toy_area_home_values_resources(
+        {"E14000001": [100_000.0, cap, cap]}, regional, grid=_GRID, cap=cap
+    )
+
+    result = ahv.localise_area_home_values(
+        household, weights, drawn, resources=resources
+    )
+    uprated = uprate_household_property_by_region(
+        household.assign(
+            main_residence_value=result.value,
+            property_wealth=result.value,
+            **{RANK_BASIS_COLUMN: result.rank_basis},
+        ),
+        regional,
+        denominator_column=RANK_BASIS_COLUMN,
+    )
+    landed = uprated["main_residence_value"].to_numpy()
+    # The two owners ranked from the median up read the cap; the uprating
+    # returns them to it or a few roundings below, never above.
+    at_cap = np.array([False, False, True, True])
+    assert result.sources_at_cap == 2
+    assert np.all(landed[at_cap] <= cap)
+    assert np.all(landed[at_cap] >= cap - 4 * np.spacing(cap))
+    assert support_gate(
+        {"main_residence_value": landed},
+        {"main_residence_value": tuple(bounds["main_residence_value"])},
+    ).passed
+
+
 def _random_households(n: int = 240, seed: int = 931):
     """Invented owners and renters over the toy seats, in two clones and two
     channels, with non-integer draws and weights, so that a sum taken in row
@@ -346,8 +400,9 @@ def test_a_copy_sharing_its_parents_source_ranks_on_its_own_key() -> None:
 
 
 def test_the_rank_is_its_own_stream_with_no_seed_of_its_own() -> None:
-    """Seed source NONE with a fixed keyed stream, as ruled for
-    regional_home_values on 9 Nov (C-43); the stream is the step's own."""
+    """Seed source NONE with a fixed keyed stream, as ruled for the retired
+    regional_home_values on 9 Nov (C-43); the stream is the step's own, not
+    that stage's ``uk-spine-regional-home-values-v1``."""
 
     assert ahv.AREA_HOME_VALUES_STREAM == (
         "sha256-u53-v1",
@@ -355,7 +410,6 @@ def test_the_rank_is_its_own_stream_with_no_seed_of_its_own() -> None:
         0,
         0,
     )
-    assert ahv.AREA_HOME_VALUES_STREAM != REGIONAL_HOME_VALUES_STREAM
     parameters = ahv.area_home_values_operation_parameters()
     assert parameters["stream"] == list(ahv.AREA_HOME_VALUES_STREAM)
     assert "seed" not in parameters
@@ -788,10 +842,18 @@ def test_a_stage_declares_the_step_whole_or_not_at_all() -> None:
         ahv.AREA_HOME_VALUES_EXEMPT_COLUMNS
     )
     assert ahv.support_clip_exemptions(_was_stage(localise=False)) == frozenset()
-    # The packaged WAS stage does not declare it yet.
+    # The packaged WAS stage declares it whole (microcosm#931).
     packaged = load_country_spec("uk").sources.stage_map()["was_wealth"]
-    assert ahv.area_home_values_declared(packaged) is False
-    assert ahv.support_clip_exemptions(packaged) == frozenset()
+    assert ahv.area_home_values_declared(packaged) is True
+    assert ahv.support_clip_exemptions(packaged) == frozenset(
+        ahv.AREA_HOME_VALUES_EXEMPT_COLUMNS
+    )
+    (operation,) = [
+        operation
+        for operation in packaged.operations
+        if operation.kind == ahv.AREA_HOME_VALUES_OPERATION_KIND
+    ]
+    assert dict(operation.parameters) == ahv.area_home_values_operation_parameters()
 
 
 @pytest.mark.parametrize(
@@ -875,15 +937,63 @@ def test_the_dense_roster_names_the_localisers_operation() -> None:
 def test_the_packaged_spec_pairs_the_localiser_with_the_upratings_denominator() -> None:
     """Form F (C-15) holds only where the WAS stage localises and the regional
     uprating divides by the kept draw: either alone lands England and Wales
-    homes off their knots. Neither is declared yet; the declaration commit
-    declares both."""
+    homes off their knots. The packaged spec declares both, and the stage that
+    wrote Land Registry region values after the support copies is retired
+    (microcosm#931)."""
 
     from microcosm.build.uk_runtime.regional_uprating import (
         declared_regional_reference_denominator,
     )
 
     stages = load_country_spec("uk").sources.stage_map()
-    assert ahv.area_home_values_declared(stages["was_wealth"]) == (
+    assert ahv.area_home_values_declared(stages["was_wealth"]) is True
+    assert (
         declared_regional_reference_denominator(stages["regional_property_uprating"])
         == RANK_BASIS_COLUMN
     )
+    assert "regional_home_values" not in stages
+    # The uprating reads the kept draw after the WAS stage writes it.
+    order = list(stages)
+    assert order.index("was_wealth") < order.index("regional_property_uprating")
+
+
+def test_the_knots_regions_are_england_and_wales_with_the_wales_country_code() -> None:
+    """The evidence counts by the knots' region codes: England's nine regions
+    and Wales by the country code the knots use (moved here with the constant
+    when regional_home_values retired, microcosm#931)."""
+
+    assert ahv.FRS_REGION_TO_KNOTS_REGION["WALES"] == "W92000004"
+    assert "SCOTLAND" not in ahv.FRS_REGION_TO_KNOTS_REGION
+    assert "NORTHERN_IRELAND" not in ahv.FRS_REGION_TO_KNOTS_REGION
+    assert len(ahv.FRS_REGION_TO_KNOTS_REGION) == 10
+    with pytest.raises(TypeError):
+        ahv.FRS_REGION_TO_KNOTS_REGION["SCOTLAND"] = "S92000003"  # type: ignore[index]
+
+
+def test_the_release_drops_the_rank_basis() -> None:
+    """The draw the WAS stage keeps is a spine carrier: the release boundary
+    drops it on both lines (microcosm#931)."""
+
+    from microcosm.build.uk_runtime.national_frame import (
+        UK_RELEASE_EXPORT_DROPPED_COLUMNS,
+    )
+
+    assert RANK_BASIS_COLUMN in UK_RELEASE_EXPORT_DROPPED_COLUMNS["household"]
+
+
+def test_the_release_boundary_drops_the_kept_draw_from_a_frame_carrying_it() -> None:
+    """The release export of a frame whose households carry the kept draw
+    leaves it out and keeps the main residence, and the frame it exported
+    still carries it (microcosm#931)."""
+
+    from microcosm.build.uk_runtime.national_frame import uk_release_export_frame
+
+    household, drawn, weights = _household()
+    frame = _frame(
+        household.assign(main_residence_value=drawn, **{RANK_BASIS_COLUMN: drawn}),
+        weights,
+    )
+    released = uk_release_export_frame(frame).table("household")
+    assert RANK_BASIS_COLUMN not in released.columns
+    assert "main_residence_value" in released.columns
+    assert RANK_BASIS_COLUMN in frame.table("household").columns

@@ -122,8 +122,6 @@ def uk_stage_health_gate(
         return _property_purchases_gate(stage, evidence, parameters)
     if check == "spi_hourly_pay":
         return _spi_hourly_pay_gate(stage, evidence, parameters)
-    if check == "regional_home_values":
-        return _regional_home_values_gate(stage, evidence, parameters)
     if check == "legacy_closure_take_up":
         return _legacy_closure_take_up_gate(stage, evidence, parameters)
     if check == "apprentice_draw":
@@ -5035,93 +5033,6 @@ def _property_purchases_gate(
     return _pass(stage, check, details)
 
 
-def _regional_home_values_gate(
-    stage: str,
-    evidence: Mapping[str, object],
-    parameters: Mapping[str, object],
-) -> GateResult:
-    """Home values are re-ranked in every region on the declared knots (#1308).
-
-    Every declared region has rewritten rows and no more than the stage's
-    rows; no source sits at the value cap beyond the declared count; the knots
-    are the declared basis year and the ranking the declared basis; and the
-    weighted value stays positive on both sides of the stage. A count the
-    receipt bands for resting on fewer than three records is flagged rather
-    than failed where the band cannot tell (María's ruling of 2026-10-26).
-    The stage counts the sources at the cap in geographic clone 0's rows, so
-    the declared count holds at any clone count (microcosm#931).
-    """
-
-    check = "regional_home_values"
-    regions = sorted(str(region) for region in parameters["regions"])
-    failures: list[str] = []
-    rewritten = evidence.get("rows_rewritten_by_region")
-    if not isinstance(rewritten, Mapping):
-        rewritten = {}
-    if sorted(rewritten) != regions:
-        failures.append(
-            f"{stage}: the receipt rewrites regions {sorted(rewritten)}, not {regions}."
-        )
-    # A count the receipt bands ("<3" for one or two rows, "3-9" for three to
-    # nine) is not empty, and the sum check takes it at its lower bound and the
-    # stage's own row count at its upper bound. A region printed "<3" is
-    # flagged (a small-cell rule never fails a build, María's ruling of
-    # 2026-10-26).
-    banded = sorted(
-        str(region) for region, count in rewritten.items() if count == UK_WITHHELD
-    )
-    counts = {
-        str(region): _count_bounds(count)[0] for region, count in rewritten.items()
-    }
-    empty = sorted(region for region, count in counts.items() if count <= 0)
-    if empty:
-        failures.append(f"{stage}: no row is rewritten in {empty}.")
-    if sum(counts.values()) > _count_bounds(evidence.get("rows", 0))[1]:
-        failures.append(f"{stage}: more rows are rewritten than the stage carries.")
-    at_cap = evidence.get("sources_at_cap", -1)
-    maximum_at_cap = int(parameters["maximum_sources_at_cap"])
-    cap_unchecked = False
-    if at_cap in _SUPPORT_BAND_BOUNDS:
-        # The receipt bands the count: it fails only when the whole band is
-        # past the limit, and a band straddling the limit is flagged.
-        lowest, highest = _SUPPORT_BAND_BOUNDS[at_cap]
-        if lowest > maximum_at_cap:
-            failures.append(
-                f"{stage}: {at_cap} sources sit at the value cap "
-                f"(limit {maximum_at_cap})."
-            )
-        elif highest > maximum_at_cap:
-            cap_unchecked = True
-    elif not 0 <= int(at_cap) <= maximum_at_cap:
-        failures.append(
-            f"{stage}: {at_cap} sources sit at the value cap (limit {maximum_at_cap})."
-        )
-    if evidence.get("knots_basis_year") != parameters["knots_basis_year"]:
-        failures.append(
-            f"{stage}: the knots' basis year is {evidence.get('knots_basis_year')!r}, "
-            f"not {parameters['knots_basis_year']!r}."
-        )
-    ranking = evidence.get("ranking")
-    basis = ranking.get("rank_basis") if isinstance(ranking, Mapping) else None
-    if basis != parameters["rank_basis"]:
-        failures.append(
-            f"{stage}: the ranking basis is {basis!r}, not {parameters['rank_basis']!r}."
-        )
-    for side in ("weighted_value_before", "weighted_value_after"):
-        value = _finite_number(evidence.get(side), label=f"{stage}.{side}")
-        if value <= 0.0:
-            failures.append(f"{stage}: {side} is not positive.")
-    details = {
-        "regions": regions,
-        "sources_at_cap": at_cap,
-        "regions_rewritten_under_floor": banded,
-        "sources_at_cap_unchecked": cap_unchecked,
-    }
-    if failures:
-        return _fail(stage, check, failures, details)
-    return _pass(stage, check, details)
-
-
 _SHA256_HEX = re.compile(r"[0-9a-f]{64}")
 
 
@@ -5222,8 +5133,9 @@ def _area_home_values_gate(
     """The WAS chain read its home values off each owner's constituency
     (microcosm#931).
 
-    The regional home values check, for the area home values the WAS stage
-    records in its ``area_home_values`` block: every declared region has
+    The home-value ranking check (microcosm#1308), for the area home values
+    the WAS stage records in its ``area_home_values`` block, in place of the
+    retired ``regional_home_values`` stage's: every declared region has
     rewritten sources; no more sources sit at the knots' cap than the
     declared count, which the stage counts in geographic clone 0's rows, so
     the count holds at any clone count; the knots are the declared basis year

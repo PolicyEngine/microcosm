@@ -46,11 +46,15 @@ engine-uk-after-merge job on pushes to main.
   the area stages and private_rent every receipt field but K; from
   frs_take_up on, every output every clone carries, at a weighted share near
   one clone's (private_rent's ranks and scales pool over the clones, so its
-  rents nest only so), and every node keeps K = 1's household mass.
+  rents nest only so, and so do the main residences the WAS chain's area home
+  values read off each owner's constituency at a rank within its region, G8,
+  and the regional uprating that divides by their kept draw), and every node
+  keeps K = 1's household mass.
 - **Receipts:** the clone count in geographic_expand's, spi_support_channel's
   and spi_income_band_donors' receipts and, at K = 4 only, the support clips'
-  and property components'; the geographic fold receipts at the six folding
-  fits at K = 4, and none at one clone.
+  and property components' (was_wealth's area home values block carries its
+  own at every K); the geographic fold receipts at the six folding fits at
+  K = 4, and none at one clone.
 - **Areas and keys, at one clone and at four:** from area_brma on every
   household carries its area, ladder, local authority, fuel-relief flag and
   BRMA; the geography keys are unique through area_brma, the SPI copies and
@@ -59,6 +63,15 @@ engine-uk-after-merge job on pushes to main.
   re-draws Great Britain's private renters' rents and leaves every other
   row's, and H2's root households all own their homes, so it re-draws none
   here (microcosm#931).
+- **Home values, at one clone and at four:** after was_wealth every England
+  and Wales owner with a positive draw holds the value the area home values
+  read off its constituency's knots, with the draw beside it, and every other
+  row the draw bit for bit; the draw reaches the spine's last population and
+  the release boundary drops it. was_wealth's values are the area home values
+  on the frame the stage ran on, bit for bit; regional_property_uprating
+  returns each localised home to its knot within one rounding, and a home at
+  the knots' cap to the cap or a few roundings below; and every high-value
+  support copy keeps its parent's every column but its ids (microcosm#931).
 
 It cannot catch within-batch int32 collisions: ids past 2**31 reach the engine
 at K = 1 already, and these households are too few. The adapter's rank rule
@@ -87,8 +100,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.uk_runtime import copy_id_table, spi_band_donors, spi_support
 from microcosm.build.uk_runtime import private_rent_localisation as prl
-from microcosm.build.uk_runtime import spi_band_donors, spi_support
+from microcosm.build.uk_runtime.area_home_values import (
+    AREA_HOME_VALUES_STREAM,
+    FRS_REGION_TO_KNOTS_REGION,
+    load_committed_area_home_values_resources,
+    localise_area_home_values,
+)
 from microcosm.build.uk_runtime.geographic_clones import (
     GEOGRAPHY_HOUSEHOLD_KEY_COLUMN,
     ladder_clone_index_column,
@@ -103,11 +122,29 @@ from microcosm.build.uk_runtime.geographic_identity import (
 from microcosm.build.uk_runtime.graph import uk_registry, uk_spine_graph
 from microcosm.build.uk_runtime.graph_evidence import load_spine_stage_artifacts
 from microcosm.build.uk_runtime.graph_kernels import fixture_stage_plan_inputs
-from microcosm.build.uk_runtime.household_lineage import GEOGRAPHIC_FOLD_EVIDENCE
-from microcosm.build.uk_runtime.national_frame import UK_NATIONAL_SCHEMA
+from microcosm.build.uk_runtime.high_value_home_support import (
+    HIGH_VALUE_SUPPORT_COPIES_COLUMN,
+    HIGH_VALUE_SUPPORT_COPY_ID_FIELD,
+    HIGH_VALUE_SUPPORT_STAGE_NAME,
+)
+from microcosm.build.uk_runtime.household_lineage import (
+    GEOGRAPHIC_FOLD_EVIDENCE,
+    HIGH_VALUE_SUPPORT_COPY_COLUMN,
+    HIGH_VALUE_SUPPORT_INDEX_COLUMN,
+)
+from microcosm.build.uk_runtime.national_frame import (
+    UK_NATIONAL_SCHEMA,
+    uk_release_export_frame,
+)
 from microcosm.build.uk_runtime.private_school_attendance import (
     PRIVATE_SCHOOL_ATTENDANCE_ENGINE_ROUTE,
     PRIVATE_SCHOOL_ATTENDANCE_POOLED_ROUTE,
+)
+from microcosm.build.uk_runtime.property_localisation import (
+    RANK_BASIS_COLUMN,
+    localise_main_residence_values,
+    owner_mask,
+    owner_uniforms,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
     distinct_carriers,
@@ -135,6 +172,10 @@ from microcosm.build.uk_runtime.spine_geography import (
     UK_SPI_COPY_AREAS_REWRITE_COLUMNS,
 )
 from microcosm.build.uk_runtime.spine_private_rent import PRIVATE_RENT_STAGE_NAME
+from microcosm.build.uk_runtime.was_wealth import (
+    AREA_HOME_VALUES_EVIDENCE,
+    UK_WAS_WEALTH_STAGE_NAME,
+)
 from microcosm.frame import Frame
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 from microcosm.graph import ContentStore, compile_graph, run_graph
@@ -149,8 +190,9 @@ DONORS = UK_SPI_INCOME_BAND_DONORS_STAGE_NAME
 COPY_AREAS = SPI_COPY_AREAS_STAGE_NAME
 #: The spine's stage count since the area stages (microcosm#931): 54, G1 and
 #: G1b, then atomic_area_assign, local_authority, rfdr, spi_copy_areas and
-#: private_rent, with area_brma in frs_brma's place.
-_STAGE_COUNT = 61
+#: private_rent, with area_brma in frs_brma's place, less regional_home_values,
+#: whose England and Wales home values the WAS chain now reads.
+_STAGE_COUNT = 60
 #: The area stages before the draws, which key each row's area on its
 #: geography key, as G1b left it.
 _AREA_STAGES = (
@@ -185,6 +227,14 @@ _BRMA = ("household", "brma")
 _K_INVARIANT_RECEIPTS = (*_AREA_STAGES, _LAST_DRAW, COPY_AREAS, PRIVATE_RENT_STAGE_NAME)
 #: The housing shell, whose rents private_rent reads.
 _HOUSING = "spi_housing_shell"
+#: The WAS stage, whose chain reads England and Wales home values off each
+#: owner's constituency (the area home values, G8; microcosm#931).
+_WAS = UK_WAS_WEALTH_STAGE_NAME
+#: The regional property uprating, which divides by the draw the WAS stage
+#: keeps, and the high-value support, whose copies keep their parents'
+#: values and areas (microcosm#931).
+_UPRATING = "regional_property_uprating"
+_HIGH_VALUE = HIGH_VALUE_SUPPORT_STAGE_NAME
 #: The populations the exact checks and the area and key checks read, by
 #: stage.
 _KEPT = (
@@ -196,6 +246,9 @@ _KEPT = (
     COPY_AREAS,
     _HOUSING,
     PRIVATE_RENT_STAGE_NAME,
+    _WAS,
+    _UPRATING,
+    _HIGH_VALUE,
 )
 #: The label of the spine's last population, which the key checks read too.
 _FINAL = "the last node"
@@ -1140,6 +1193,151 @@ def test_on_h2_private_rent_rewrites_only_great_britain_private_renters(
     )
 
 
+@pytest.mark.parametrize("clones", (1, _CLONES))
+def test_on_h2_the_wealth_chain_localises_every_england_and_wales_owner(
+    runs, clones
+) -> None:
+    """After was_wealth every England and Wales owner with a positive draw
+    holds the value the area home values read off its constituency's knots,
+    with the draw kept beside it, and every other row keeps the draw bit for
+    bit (G8, form F); the stage's block counts the rewritten sources of each
+    knots region H2 holds, at its clone count. The draw reaches the spine's
+    last population and the release boundary drops it (microcosm#931). H2's
+    root holds Scottish owners, whose draws stay. At K = 4 the rank pools over
+    the clones, so the values nest on one clone's only to the share class."""
+
+    run = runs[clones]
+    household = run.frames[_WAS].table("household")
+    basis = household[RANK_BASIS_COLUMN].to_numpy(dtype=np.float64)
+    value = household["main_residence_value"].to_numpy(dtype=np.float64)
+    region = household["region"].astype(str).to_numpy()
+    england_wales = np.isin(region, list(FRS_REGION_TO_KNOTS_REGION))
+    owners = owner_mask(household["tenure_type"].to_numpy()) & (basis > 0)
+    localised = owners & england_wales
+    assert localised.any() and (owners & ~england_wales).any(), f"K={clones}"
+    moved = value.view(np.int64) != basis.view(np.int64)
+    assert np.array_equal(moved, localised), (
+        f"After {_WAS} at K={clones} the rows whose main residence moved off "
+        "the draw are not England and Wales's owners."
+    )
+    block = run.evidence[_WAS][AREA_HOME_VALUES_EVIDENCE]
+    assert block["clone_count"] == clones
+    assert block["knots_level"] == "constituency"
+    assert set(block["sources_rewritten_by_region"]) == {
+        FRS_REGION_TO_KNOTS_REGION[name] for name in set(region[localised])
+    }
+    final = run.frames[_FINAL]
+    assert RANK_BASIS_COLUMN in final.table("household").columns
+    released = uk_release_export_frame(final).table("household")
+    assert RANK_BASIS_COLUMN not in released.columns
+
+
+def _same_column(left: pd.Series, right: pd.Series) -> bool:
+    """Whether two columns hold the same values row for row, by position:
+    floats bit for bit (or equal, missing values alike), anything else as
+    objects with a missing value as None."""
+
+    if pd.api.types.is_float_dtype(left.dtype) and pd.api.types.is_float_dtype(
+        right.dtype
+    ):
+        a = left.to_numpy(dtype=np.float64)
+        b = right.to_numpy(dtype=np.float64)
+        return bool(
+            np.array_equal(a.view(np.int64), b.view(np.int64))
+            or np.array_equal(a, b, equal_nan=True)
+        )
+    a = left.astype(object).where(left.notna(), None).to_numpy()
+    b = right.astype(object).where(right.notna(), None).to_numpy()
+    return bool((a == b).all())
+
+
+@pytest.mark.parametrize("clones", (1, _CLONES))
+def test_on_h2_the_uprating_lands_localised_homes_and_copies_keep_them(
+    runs, clones
+) -> None:
+    """At one clone and at four (microcosm#931): was_wealth's main residences
+    are the area home values on the frame the stage ran on, at its household
+    weights and the draw it kept, bit for bit; regional_property_uprating,
+    dividing by that draw, returns each localised home to the knot its
+    owner's rank reads, within one rounding, and a home at the knots' cap to
+    the cap or a few roundings below, never above; and every high-value
+    support copy equals the row the copy-id table names its parent on every
+    column but its ids and the stage's own three, its value, kept draw, area
+    and geography key among them (C-19). H2 parity cannot see these laws: its
+    oracle and the graph run the same code."""
+
+    run = runs[clones]
+    resources = load_committed_area_home_values_resources()
+    before = run.frames[PRIVATE_RENT_STAGE_NAME]
+    household = before.table("household").reset_index(drop=True)
+    order = household["household_id"].to_numpy()
+    weights = np.asarray(before.weights_for("household").values, dtype=np.float64)
+    was = run.frames[_WAS].table("household").set_index("household_id")
+    drawn = was.loc[order, RANK_BASIS_COLUMN].to_numpy(dtype=np.float64)
+    stored = was.loc[order, "main_residence_value"].to_numpy(dtype=np.float64)
+    direct = localise_area_home_values(household, weights, drawn, resources=resources)
+    assert np.array_equal(stored.view(np.int64), direct.value.view(np.int64)), (
+        f"{_WAS} at K={clones} does not hold the area home values on its input."
+    )
+    tenure = household["tenure_type"].to_numpy()
+    rank, _ = owner_uniforms(
+        spine_key=household["household_id"].astype(str).to_numpy(dtype=object),
+        region=household["region"].astype(str).to_numpy(),
+        tenure_type=tenure,
+        value=drawn,
+        weight=weights,
+        stream=AREA_HOME_VALUES_STREAM,
+    )
+    knot, rewritten = localise_main_residence_values(
+        u=rank,
+        constituency_code=household["constituency_code"]
+        .to_numpy(dtype=object)
+        .astype(str),
+        tenure_type=tenure,
+        value=drawn,
+        knots=resources.knots,
+    )
+    assert rewritten.any() and np.array_equal(rewritten, direct.rewritten)
+    uprated = (
+        run.frames[_UPRATING]
+        .table("household")
+        .set_index("household_id")
+        .loc[order, "main_residence_value"]
+        .to_numpy(dtype=np.float64)
+    )
+    capped = rewritten & (knot >= resources.knots.cap)
+    plain = rewritten & ~capped
+    assert np.all(np.abs(uprated[plain] - knot[plain]) <= np.spacing(knot[plain])), (
+        f"{_UPRATING} at K={clones} leaves a localised home off its knot."
+    )
+    assert np.all(uprated[capped] <= knot[capped]) and np.all(
+        uprated[capped] >= knot[capped] - 4 * np.spacing(knot[capped])
+    ), f"{_UPRATING} at K={clones} returns a home at the cap past it."
+    split = (
+        run.frames[_HIGH_VALUE].table("household").set_index("household_id", drop=False)
+    )
+    copies = split[split[HIGH_VALUE_SUPPORT_COPY_COLUMN].astype(bool)]
+    assert len(copies), f"H2 holds no high-value support copy at K={clones}."
+    parents = copy_id_table.parent(
+        copies["household_id"].to_numpy(np.int64), HIGH_VALUE_SUPPORT_COPY_ID_FIELD
+    )
+    owned = {
+        "household_id",
+        HIGH_VALUE_SUPPORT_COPY_COLUMN,
+        HIGH_VALUE_SUPPORT_INDEX_COLUMN,
+        HIGH_VALUE_SUPPORT_COPIES_COLUMN,
+    }
+    off = [
+        column
+        for column in split.columns
+        if column not in owned
+        and not _same_column(copies[column], split.loc[parents, column])
+    ]
+    assert not off, (
+        f"High-value support copies at K={clones} differ from their parents on {off}."
+    )
+
+
 # --- receipts ---------------------------------------------------------------------------
 
 
@@ -1172,14 +1370,27 @@ def test_the_receipts_carry_the_clone_count_and_the_fold_receipts(runs) -> None:
     for evidence in (one, many):
         assert evidence[DONORS]["funding_within_share"] is True
         assert evidence[DONORS]["funding_matches_bands"] is True
+    # The area home values' block in was_wealth's receipt carries its clone
+    # count at every K, as the area stages' receipts do (microcosm#931), so the
+    # support clip's count is read beside it.
     counted = {
         clones: {
             stage
             for stage, document in evidence.items()
-            if document is not None and _found(document, "clone_count")
+            if document is not None
+            and _found(
+                {
+                    name: item
+                    for name, item in document.items()
+                    if name != AREA_HOME_VALUES_EVIDENCE
+                },
+                "clone_count",
+            )
         }
         for clones, evidence in ((1, one), (_CLONES, many))
     }
+    for clones, evidence in ((1, one), (_CLONES, many)):
+        assert evidence[_WAS][AREA_HOME_VALUES_EVIDENCE]["clone_count"] == clones
     assert counted[_CLONES] - counted[1] >= _CLONE_SCALED_RECEIPTS | _FOLDING_STAGES
     assert not counted[1] & (_CLONE_SCALED_RECEIPTS | _FOLDING_STAGES)
     for stage in counted[_CLONES]:

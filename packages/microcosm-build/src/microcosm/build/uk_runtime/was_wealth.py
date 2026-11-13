@@ -276,6 +276,26 @@ UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS = tuple(
     for column in UK_WAS_WEALTH_STAGE_OUTPUT_COLUMNS
     if column != "net_financial_wealth"
 )
+
+
+def _with_rank_basis(columns: tuple[str, ...]) -> tuple[str, ...]:
+    """``columns`` with the kept draw after the main residence it draws."""
+
+    after = columns.index("main_residence_value") + 1
+    return (*columns[:after], RANK_BASIS_COLUMN, *columns[after:])
+
+
+#: Every column a stage that declares the area home values emits, and the
+#: nonnegative ones: the chain's, with the segment-2 draw the step keeps after
+#: the main residence it is the draw of, which the regional property uprating
+#: divides by and the release boundary drops (``area_home_values``,
+#: microcosm#931). The packaged stage declares them.
+UK_WAS_WEALTH_LOCALISED_OUTPUT_COLUMNS = _with_rank_basis(
+    UK_WAS_WEALTH_STAGE_OUTPUT_COLUMNS
+)
+UK_WAS_WEALTH_LOCALISED_NONNEGATIVE_OUTPUT_COLUMNS = _with_rank_basis(
+    UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS
+)
 UK_WAS_WEALTH_DECLARED_SEEDS = {"was_wealth": 0}
 UK_WAS_WEALTH_FIT_NAME = "uk_was_2018_20_wealth"
 UK_WAS_WEALTH_STAGE_NAME = "was_wealth"
@@ -552,15 +572,17 @@ class UKWASWealthStageTransform:
         )
         person = frame.table("person").copy()
         household = frame.table("household").copy()
-        for column in (
+        household_columns = (
             *UK_WAS_WEALTH_HOUSEHOLD_OUTPUT_COLUMNS,
             *UK_WAS_APPENDED_OUTPUT_COLUMNS,
-        ):
-            household[column] = household_draws[column].to_numpy()
+        )
         if localisation is not None:
             # The draw the area home values read, which the regional uprating
-            # divides by (microcosm#931).
-            household[RANK_BASIS_COLUMN] = household_draws[RANK_BASIS_COLUMN].to_numpy()
+            # divides by, beside the main residence it is the draw of, where
+            # the stage declares it and the graph writes it (microcosm#931).
+            household_columns = _with_rank_basis(household_columns)
+        for column in household_columns:
+            household[column] = household_draws[column].to_numpy()
         person["student_loan_balance"] = allocate_student_loan_balance_to_people(
             household_balances=household_draws["student_loan_balance"].clip(lower=0),
             household_ids=household["household_id"],
@@ -593,9 +615,15 @@ class UKWASWealthStageTransform:
         )
         return result
 
-    @staticmethod
-    def output_columns() -> tuple[str, ...]:
-        return UK_WAS_WEALTH_STAGE_OUTPUT_COLUMNS
+    def output_columns(self) -> tuple[str, ...]:
+        """The columns the stage emits: the chain's, with the draw the area
+        home values keep where the stage declares them (microcosm#931)."""
+
+        return (
+            UK_WAS_WEALTH_LOCALISED_OUTPUT_COLUMNS
+            if area_home_values_declared(self.stage)
+            else UK_WAS_WEALTH_STAGE_OUTPUT_COLUMNS
+        )
 
     def checkpoint_metadata(self) -> dict[str, object]:
         if self.last_result is None:

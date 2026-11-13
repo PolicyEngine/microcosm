@@ -48,6 +48,9 @@ from microcosm.build.uk_runtime.household_lineage import (
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.frame import WeightKind
+from test_support.microcosm_build.uk_area_home_values import (
+    toy_area_home_values_resources,
+)
 from test_support.microcosm_build.uk_cgt_support import (
     BAND_INCOMES,
     PARAMETERS,
@@ -71,6 +74,74 @@ def _load_tool():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+#: The area home values' toy knots (microcosm#931): one invented seat in
+#: London and one in Wales, each rising across the grid. The regional
+#: reference is the committed one unless a test gives its own, as the WAS
+#: stage and the regional uprating declare one reference between them.
+_TOY_GRID = (0.0, 0.5, 1.0)
+_TOY_CAP = 1_200_000.0
+_TOY_SEATS = {
+    "E14000001": (150_000.0, 450_000.0, 900_000.0),
+    "W07000001": (90_000.0, 240_000.0, 480_000.0),
+}
+_SEAT_BY_REGION = {"LONDON": "E14000001", "WALES": "W07000001"}
+
+
+def _toy_area_resources(regional_reference=None):
+    from microcosm.build.uk_runtime.regional_uprating import (
+        load_regional_land_values_resource,
+    )
+
+    return toy_area_home_values_resources(
+        _TOY_SEATS,
+        regional_reference or load_regional_land_values_resource(),
+        grid=_TOY_GRID,
+        cap=_TOY_CAP,
+    )
+
+
+def _localised_and_uprated(
+    household: pd.DataFrame,
+    weights,
+    drawn,
+    *,
+    regional_reference,
+    other_property=0.0,
+) -> pd.DataFrame:
+    """``household`` as the WAS chain's area home values and the regional
+    uprating, dividing by their kept draw, leave it (microcosm#931).
+
+    The area home values read ``drawn`` off the toy knots at ``weights`` and
+    keep it as the rank basis; the property total is the localised value
+    plus ``other_property``, as the chain derives it; the uprating then
+    scales both by the region's factor on the kept draw.
+    """
+
+    from microcosm.build.uk_runtime.area_home_values import (
+        localise_area_home_values,
+    )
+    from microcosm.build.uk_runtime.property_localisation import RANK_BASIS_COLUMN
+    from microcosm.build.uk_runtime.regional_uprating import (
+        uprate_household_property_by_region,
+    )
+
+    localised = localise_area_home_values(
+        household,
+        np.asarray(weights, dtype=float),
+        np.asarray(drawn, dtype=float),
+        resources=_toy_area_resources(regional_reference),
+    )
+    valued = household.copy()
+    valued["main_residence_value"] = localised.value
+    valued[RANK_BASIS_COLUMN] = localised.rank_basis
+    valued["property_wealth"] = localised.value + np.asarray(
+        other_property, dtype=float
+    )
+    return uprate_household_property_by_region(
+        valued, regional_reference, denominator_column=RANK_BASIS_COLUMN
+    )
 
 
 def _frame(
@@ -722,10 +793,9 @@ class TestRosterOrderedScoping:
         ]
 
     def test_e5_receipt_covers_the_spi_rows_the_stage_imputed(self) -> None:
-        from microcosm.build.uk_runtime.regional_uprating import (
-            uprate_household_property_by_region,
-        )
-
+        # The SPI row ranks beside the FRS owners in the area home values and
+        # is uprated by its region's factor, but is left out of the factor's
+        # mean (microcosm#931).
         tool = _load_tool()
         resource = {
             "values": [{"region": "LONDON", "avg_house_price": 400.0, "dwellings": 1}]
@@ -734,13 +804,19 @@ class TestRosterOrderedScoping:
             {
                 "household_id": [100, 200, 300],
                 "region": ["LONDON", "LONDON", "LONDON"],
+                "tenure_type": ["OWNED_OUTRIGHT"] * 3,
+                "constituency_code": pd.array(["E14000001"] * 3, dtype="string"),
+                "source_household_id": [100, 200, 300],
                 "household_support_channel": ["frs", "frs", "spi"],
                 "household_is_spi_synthetic": [False, False, True],
-                "main_residence_value": [100.0, 300.0, 1_000.0],
-                "property_wealth": [100.0, 300.0, 1_000.0],
             }
         )
-        stored = uprate_household_property_by_region(household, resource)
+        stored = _localised_and_uprated(
+            household,
+            [10.0, 10.0, 20.0],
+            [100.0, 300.0, 1_000.0],
+            regional_reference=resource,
+        )
         frame = uk_national_frame(
             person=pd.DataFrame(
                 {
@@ -759,10 +835,22 @@ class TestRosterOrderedScoping:
         scoped = tool._frame_as_stage_saw(frame, "was_wealth")
         assert scoped.table("household")["household_id"].tolist() == [100, 200, 300]
         receipt = tool.e5_identity_receipt(
-            scoped, regional_resource=resource, permutation_seed=7
+            scoped,
+            regional_resource=resource,
+            permutation_seed=7,
+            area_home_values_resources=_toy_area_resources(),
         )
+        assert receipt["columns_by_entity"]["household"] == ["main_residence_value"]
         assert receipt["identical_under_permutation"] is True
         assert receipt["matches_stored_columns"] is True
+        # Ranked or averaged without the SPI row, the recompute is red.
+        frs_only = tool.e5_identity_receipt(
+            tool._drop_stacked_layers(scoped, ["household_is_spi_synthetic"]),
+            regional_resource=resource,
+            permutation_seed=7,
+            area_home_values_resources=_toy_area_resources(),
+        )
+        assert frs_only["matches_stored_columns"] is False
 
 
 # --- the CGT support split (microcosm#1045) -----------------------------------
@@ -2863,38 +2951,36 @@ class TestReceiptsOnFramesTheStagesBuilt:
         assert support["copies"] == 5 and support["families"] == 3
 
 
-# --- the high-value home copies and the regional home values -----------------
+# --- the high-value home copies and the area home values -----------------------
 #
-# The split scenario's six one-person households, all FRS-base owners, through
-# the real stages from the regional uprating on. The uprating (stage 25) sets
-# each region's unweighted mean of base owners' values to its public price;
-# the high-value home support (stage 26, microcosm#1240) divides the top of
-# each region, at stratum 0.6, into three rows at a third of the weight (id 5
-# in Wales, ids 4 and 6 in London); the regional home values (stage 27,
-# microcosm#1112) read every value off the region's knots and keep the value
-# they replaced. With ``cgt`` the CGT support split and the clone follow.
+# The split scenario's six one-person households, all FRS-base owners (ids 1,
+# 3 and 5 in Wales, 2, 4 and 6 in London, each region in one toy seat), through
+# the real steps from the WAS chain's area home values on (microcosm#931): each
+# owner's drawn value is kept as the rank basis and read off its seat's toy
+# knots at its weighted mid-rank within its region, divided by the region's
+# factor on the draw; the regional uprating, dividing by the kept draw, lands it
+# back on the knots. The high-value home support (microcosm#1240) then divides
+# the top of each region, at stratum 0.6, into three rows at a third of the
+# weight (id 5 in Wales, ids 4 and 6 in London). With ``cgt`` the CGT support
+# split and the clone follow.
 
 _HOME_VALUES = [100_000.0, 200_000.0, 300_000.0, 400_000.0, 500_000.0, 600_000.0]
 _OTHER_PROPERTY = [0.0, 50_000.0, 10_000.0, 0.0, 120_000.0, 30_000.0]
 
 
 def _home_values_chain(*, cgt: bool, tamper: bool = False) -> SimpleNamespace:
-    """The scenario before stage 26, after it, after stage 27, and at the end.
+    """The scenario before the high-value home support, after it, and at the end.
 
     With ``tamper`` the first household's uprated value and wealth move off
-    the uprating's factor before stage 26, as an uprating that stored a value
-    off its fixed point would leave them.
+    the value the two steps give it before the support, as a stage that
+    stored another value would leave them.
     """
 
     from microcosm.build.uk_runtime.high_value_home_support import (
         split_high_value_support_households,
     )
-    from microcosm.build.uk_runtime.regional_home_values import (
-        assign_regional_home_values,
-    )
     from microcosm.build.uk_runtime.regional_uprating import (
         load_regional_land_values_resource,
-        uprate_household_property_by_region,
     )
     from test_support.microcosm_build.uk_cgt_support import support_tables
 
@@ -2902,11 +2988,16 @@ def _home_values_chain(*, cgt: bool, tamper: bool = False) -> SimpleNamespace:
         weights=_SPLIT_WEIGHTS, wealth=_SPLIT_WEALTH, incomes=_SPLIT_INCOMES
     )
     household["tenure_type"] = "OWNED_OUTRIGHT"
-    household["main_residence_value"] = _HOME_VALUES
-    household["property_wealth"] = np.add(_HOME_VALUES, _OTHER_PROPERTY)
+    household["constituency_code"] = pd.array(
+        [_SEAT_BY_REGION[region] for region in household["region"]], dtype="string"
+    )
     household["source_household_id"] = household["household_id"]
-    uprated = uprate_household_property_by_region(
-        household, load_regional_land_values_resource()
+    uprated = _localised_and_uprated(
+        household,
+        weights,
+        _HOME_VALUES,
+        regional_reference=load_regional_land_values_resource(),
+        other_property=_OTHER_PROPERTY,
     )
     if tamper:
         uprated.loc[0, ["main_residence_value", "property_wealth"]] *= 1.25
@@ -2920,19 +3011,18 @@ def _home_values_chain(*, cgt: bool, tamper: bool = False) -> SimpleNamespace:
     split = split_high_value_support_households(
         pre_split, stratum_lower=0.6, copies=3
     ).frame
-    valued = assign_regional_home_values(split).frame
-    final = valued
+    final = split
     if cgt:
         final = clone_cgt_incidence(
             split_cgt_support_households(
-                valued,
+                split,
                 distribution=support_distribution(_SPLIT_TOP_CELLS),
                 parameters=PARAMETERS,
                 clone_count=1,
             ).frame,
             distribution=load_advani_summers_distribution(),
         ).frame
-    return SimpleNamespace(pre_split=pre_split, split=split, valued=valued, final=final)
+    return SimpleNamespace(pre_split=pre_split, split=split, final=final)
 
 
 def _cgt_layers(frame) -> list[str]:
@@ -2944,8 +3034,20 @@ def _cgt_layers(frame) -> list[str]:
     ]
 
 
-class TestHighValueCopiesAndRegionalHomeValues:
-    """E5 reads the uprating where stage 25 left it, on the rows it saw."""
+def _e5(frame, **arguments) -> dict:
+    """E5 on ``frame`` with the toy knots the chain localised on."""
+
+    return _load_tool().e5_identity_receipt(
+        frame,
+        permutation_seed=7,
+        area_home_values_resources=_toy_area_resources(),
+        **arguments,
+    )
+
+
+class TestHighValueCopiesAndAreaHomeValues:
+    """E5 recomputes the main residence the area home values and the uprating
+    left, on the rows they saw, at the weights they ranked at."""
 
     @pytest.mark.parametrize("cgt", [False, True])
     def test_the_wealth_scope_folds_every_copy_onto_its_root(self, cgt: bool) -> None:
@@ -2978,46 +3080,52 @@ class TestHighValueCopiesAndRegionalHomeValues:
         travel = tool._frame_as_stage_saw(chain.final, "nts_bus_travel")
         assert int(travel.table("household")[HIGH_VALUE_SUPPORT_COPY_COLUMN].sum()) == 6
 
-    @pytest.mark.parametrize("cgt", [False, True])
-    def test_e5_holds_the_uprating_where_it_left_the_values(self, cgt: bool) -> None:
-        tool = _load_tool()
-        final = _home_values_chain(cgt=cgt).final
-        receipt = tool.e5_identity_receipt(
-            tool._frame_as_stage_saw(final, "was_wealth"), permutation_seed=7
+    def test_the_chain_localises_every_owner_and_lands_on_the_knots(self) -> None:
+        # Every owner is in England and Wales, so every one is localised, and
+        # the uprating, dividing by the kept draw, leaves its main residence
+        # at the knot its rank reads, to one rounding; the draw stays beside
+        # it, bit for bit.
+        from microcosm.build.uk_runtime.property_localisation import (
+            RANK_BASIS_COLUMN,
         )
-        assert receipt["columns_by_entity"]["household"] == [
-            "main_residence_value",
-            "property_wealth",
-        ]
-        assert receipt["identical_under_permutation"] is True
-        assert receipt["matches_stored_columns"] is True
-        # Either half of the scope alone stays red: the values stage 27
-        # stored, or the copies, FRS-base owners that enter the uprating's
-        # mean when they stay in scope.
-        stored_values = tool._drop_stacked_layers(
-            final, [HIGH_VALUE_SUPPORT_COPY_COLUMN, *_cgt_layers(final)]
-        )
-        copies_kept = tool._drop_stacked_layers(
-            tool._pre_regional_home_values_frame(final), _cgt_layers(final)
-        )
-        for partial in (stored_values, copies_kept):
-            red = tool.e5_identity_receipt(partial, permutation_seed=7)
-            assert red["matches_stored_columns"] is False
-            assert red["stored_column_mismatches"] == {
-                "household": ["main_residence_value", "property_wealth"]
-            }
+
+        household = _home_values_chain(cgt=False).pre_split.table("household")
+        assert household[RANK_BASIS_COLUMN].tolist() == _HOME_VALUES
+        value = household["main_residence_value"].to_numpy()
+        assert not np.any(value == np.asarray(_HOME_VALUES))
+        for code, knots in _TOY_SEATS.items():
+            rows = (household["constituency_code"] == code).to_numpy()
+            assert np.all((value[rows] >= knots[0]) & (value[rows] <= knots[-1]))
 
     @pytest.mark.parametrize("cgt", [False, True])
-    def test_e5_reports_an_uprated_value_off_its_fixed_point(self, cgt: bool) -> None:
+    def test_e5_holds_the_main_residence_the_two_steps_left(self, cgt: bool) -> None:
+        tool = _load_tool()
+        final = _home_values_chain(cgt=cgt).final
+        receipt = _e5(tool._frame_as_stage_saw(final, "was_wealth"))
+        assert receipt["uprating_denominator"] == "main_residence_value_rank_basis"
+        assert receipt["columns_by_entity"]["household"] == ["main_residence_value"]
+        assert set(receipt["not_recomputed"]["household"]) == {"property_wealth"}
+        assert receipt["identical_under_permutation"] is True
+        assert receipt["matches_stored_columns"] is True
+        assert receipt["rewritten_later"] == {}
+        # The copies stay red when they stay in scope: FRS-base owners that
+        # enter the region's rank and the uprating's mean.
+        copies_kept = tool._drop_stacked_layers(final, _cgt_layers(final))
+        red = _e5(copies_kept)
+        assert red["matches_stored_columns"] is False
+        assert red["stored_column_mismatches"] == {
+            "household": ["main_residence_value"]
+        }
+
+    @pytest.mark.parametrize("cgt", [False, True])
+    def test_e5_reports_a_main_residence_off_the_two_steps(self, cgt: bool) -> None:
         tool = _load_tool()
         final = _home_values_chain(cgt=cgt, tamper=True).final
-        receipt = tool.e5_identity_receipt(
-            tool._frame_as_stage_saw(final, "was_wealth"), permutation_seed=7
-        )
+        receipt = _e5(tool._frame_as_stage_saw(final, "was_wealth"))
         assert receipt["identical_under_permutation"] is True
         assert receipt["matches_stored_columns"] is False
         assert receipt["stored_column_mismatches"] == {
-            "household": ["main_residence_value", "property_wealth"]
+            "household": ["main_residence_value"]
         }
 
     @pytest.mark.parametrize("tamper", [False, True])
@@ -3030,6 +3138,9 @@ class TestHighValueCopiesAndRegionalHomeValues:
         tool = _load_tool()
         final = _home_values_chain(cgt=True, tamper=tamper).final
         monkeypatch.setattr(tool, "load_uk_national_frame", lambda path: (final, {}))
+        monkeypatch.setattr(
+            tool, "load_committed_area_home_values_resources", _toy_area_resources
+        )
         output = tmp_path / "receipt.json"
         monkeypatch.setattr(
             sys,
@@ -3047,31 +3158,126 @@ class TestHighValueCopiesAndRegionalHomeValues:
         assert tool.main() == (1 if tamper else 0)
         assert json.loads(output.read_text())["matches_stored_columns"] is not tamper
 
-    def test_the_reversals_follow_the_carriers_the_artifact_keeps(self) -> None:
-        from microcosm.build.uk_runtime.regional_home_values import RANK_BASIS_COLUMN
-
+    def test_the_scope_takes_nothing_back_for_the_area_home_values(self) -> None:
+        # The area home values keep their draw beside the value they write,
+        # and no later stage writes either property column, so no reversal
+        # applies to them: the salary-sacrifice conversion's is the scope's
+        # only one (microcosm#931).
         tool = _load_tool()
         final = _home_values_chain(cgt=False).final
-        assert tool._reversals_applied(final, "was_wealth") == ("regional_home_values",)
-        released = _with_tables(
-            final, household=final.table("household").drop(columns=[RANK_BASIS_COLUMN])
+        assert tool._SCOPE_REVERSALS == ("salary_sacrifice",)
+        assert tool._reversals_applied(final, "was_wealth") == ()
+        scoped = tool._frame_as_stage_saw(final, "was_wealth")
+        stored = final.table("household").set_index("household_id")
+        for column in ("main_residence_value", "property_wealth"):
+            np.testing.assert_array_equal(
+                scoped.table("household")[column].to_numpy(),
+                stored.loc[[1, 2, 3, 4, 5, 6], column].to_numpy(),
+            )
+        assert (
+            tool._later_writers(
+                ["main_residence_value", "property_wealth"],
+                checked_stages=tool._E5_STAGES,
+            )
+            == {}
         )
-        assert tool._reversals_applied(released, "was_wealth") == ()
-        # A stage after both reversed stages reverses neither.
-        assert tool._reversals_applied(final, "isa_subscriptions") == ()
 
-    def test_the_entry_point_reports_the_rewrite_an_artifact_cannot_reverse(
+    def test_e5_follows_the_denominator_the_stage_declares(self) -> None:
+        tool = _load_tool()
+        assert tool._declared_uprating_denominator() == (
+            "main_residence_value_rank_basis"
+        )
+        # Dividing by the main residence, the stage leaves its fixed point,
+        # which E5 holds the stored values to; dividing by the kept draw, it
+        # does not, so read that way the same values are red.
+        from microcosm.build.uk_runtime.regional_uprating import (
+            load_regional_land_values_resource,
+            uprate_household_property_by_region,
+        )
+
+        household = _home_values_chain(cgt=False).pre_split.table("household")
+        fixed_point = uprate_household_property_by_region(
+            household.drop(columns=["main_residence_value_rank_basis"]),
+            load_regional_land_values_resource(),
+        )
+        frame = _with_tables(
+            _home_values_chain(cgt=False).pre_split, household=fixed_point
+        )
+        held = _e5(frame, denominator="main_residence_value")
+        assert held["matches_stored_columns"] is True
+        assert held["columns_by_entity"]["household"] == [
+            "main_residence_value",
+            "property_wealth",
+        ]
+        assert held["not_recomputed"] == {}
+        with pytest.raises(ValueError, match="dividing by one of"):
+            _e5(frame, denominator="property_wealth")
+
+    def test_e5_holds_the_two_steps_pooled_over_two_geographic_clones(self) -> None:
+        # The area home values rank each region's owners over every
+        # geographic clone, at the clones' weights, and the uprating's mean
+        # is over every clone's FRS-base owners, so E5 recomputes both over
+        # the clones the frame carries: green on the two clones, red on
+        # clone 0 alone, whose ranks are not the pooled ones (microcosm#931).
+        from microcosm.build.uk_runtime.regional_uprating import (
+            load_regional_land_values_resource,
+        )
+        from test_support.microcosm_build.uk_cgt_support import support_tables
+
+        tool = _load_tool()
+        person, benunit, household, weights = support_tables(
+            weights=_SPLIT_WEIGHTS, wealth=_SPLIT_WEALTH, incomes=_SPLIT_INCOMES
+        )
+        household["tenure_type"] = "OWNED_OUTRIGHT"
+        household["constituency_code"] = pd.array(
+            [_SEAT_BY_REGION[region] for region in household["region"]],
+            dtype="string",
+        )
+        household["main_residence_value"] = _HOME_VALUES
+        cloned = clone_first_frame(
+            uk_national_frame(
+                person=person,
+                benunit=benunit,
+                household=household,
+                household_weights=weights,
+                time_period="2024",
+            ),
+            2,
+        )
+        drawn = cloned.table("household")["main_residence_value"].to_numpy()
+        stored = _localised_and_uprated(
+            cloned.table("household"),
+            cloned.weights_for("household").values,
+            drawn,
+            regional_reference=load_regional_land_values_resource(),
+        )
+        frame = _with_tables(cloned, household=stored)
+        assert sorted(set(stored["household_clone_index"].tolist())) == [0, 1]
+        receipt = _e5(tool._frame_as_stage_saw(frame, "was_wealth"))
+        assert receipt["identical_under_permutation"] is True
+        assert receipt["matches_stored_columns"] is True
+        clone_zero = uk_national_frame(
+            person=frame.table("person").iloc[: len(person)],
+            benunit=frame.table("benunit").iloc[: len(benunit)],
+            household=frame.table("household").iloc[: len(household)],
+            household_weights=frame.weights_for("household").values[: len(household)],
+            time_period="2024",
+        )
+        assert _e5(clone_zero)["matches_stored_columns"] is False
+
+    def test_the_entry_point_names_what_a_release_cannot_recompute(
         self, monkeypatch, tmp_path
     ) -> None:
-        # An artifact without regional_home_values' rank basis, a release
-        # say, keeps that stage's values, which the scope cannot take back:
-        # the entry point passes E5 only the reversals the scope applied, so
-        # both property columns are reported as rewritten later rather than
-        # held to values the scope did not restore.
+        # A release drops the kept draw at its boundary, the uprating's
+        # declared denominator, so E5 cannot recompute the uprating there:
+        # the entry point names both property columns as not recomputed
+        # rather than holding them to values it could not rebuild.
         import json
         import sys
 
-        from microcosm.build.uk_runtime.regional_home_values import RANK_BASIS_COLUMN
+        from microcosm.build.uk_runtime.property_localisation import (
+            RANK_BASIS_COLUMN,
+        )
 
         tool = _load_tool()
         final = _home_values_chain(cgt=False).final
@@ -3095,56 +3301,11 @@ class TestHighValueCopiesAndRegionalHomeValues:
         )
         assert tool.main() == 0
         receipt = json.loads(output.read_text())
-        assert set(receipt["rewritten_later"]["household"]) == {
+        assert set(receipt["not_recomputed"]["household"]) == {
             "main_residence_value",
             "property_wealth",
         }
-
-    def test_the_reversal_restores_what_stage_27_replaced(self) -> None:
-        from microcosm.build.uk_runtime.regional_home_values import RANK_BASIS_COLUMN
-
-        tool = _load_tool()
-        chain = _home_values_chain(cgt=False)
-        before = chain.split.table("household")
-        after = chain.valued.table("household")
-        assert (
-            after["main_residence_value"].to_numpy()
-            != before["main_residence_value"].to_numpy()
-        ).all()
-        reversed_frame = tool._pre_regional_home_values_frame(chain.valued)
-        restored = reversed_frame.table("household")
-        assert RANK_BASIS_COLUMN not in restored.columns
-        np.testing.assert_array_equal(
-            restored["main_residence_value"].to_numpy(),
-            before["main_residence_value"].to_numpy(),
-        )
-        np.testing.assert_allclose(
-            restored["property_wealth"].to_numpy(),
-            before["property_wealth"].to_numpy(),
-            rtol=1e-12,
-        )
-        # Nothing to take back on a frame without the rank basis.
-        assert tool._pre_regional_home_values_frame(reversed_frame) is reversed_frame
-        assert tool._pre_regional_home_values_frame(chain.split) is chain.split
-
-    @pytest.mark.parametrize("key", ["outputs", "rewrites"])
-    def test_the_reversal_refuses_a_later_writer_of_the_values(
-        self, key: str, monkeypatch
-    ) -> None:
-        # The reversal assumes stage 27 writes the two columns last. A roster
-        # where a later stage declares one of them fails closed, instead of
-        # hiding that stage's rewrite from E5.
-        tool = _load_tool()
-        stages = tool._source_stage_roster()
-        names = [stage["stage"] for stage in stages]
-        later = names.index("regional_home_values") + 1
-        edited = [dict(stage) for stage in stages]
-        edited[later][key] = [*edited[later].get(key, ()), "main_residence_value"]
-        valued = _home_values_chain(cgt=False).valued
-        assert tool._pre_regional_home_values_frame(valued) is not valued
-        monkeypatch.setattr(tool, "_source_stage_roster", lambda: edited)
-        with pytest.raises(ValueError, match=r"^1 stage\(s\) after regional_home"):
-            tool._pre_regional_home_values_frame(valued)
+        assert "main_residence_value" not in receipt["columns_by_entity"]["household"]
 
     def test_dropping_the_copies_under_a_kept_cgt_layer_is_refused(self) -> None:
         tool = _load_tool()

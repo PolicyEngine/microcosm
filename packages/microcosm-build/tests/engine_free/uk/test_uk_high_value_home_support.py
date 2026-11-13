@@ -19,7 +19,10 @@ from microcosm.build.uk_runtime.household_lineage import (
     uk_household_clone_paths,
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
-from microcosm.build.uk_runtime.property_localisation import SUPPORT_STRATUM_LOWER
+from microcosm.build.uk_runtime.property_localisation import (
+    RANK_BASIS_COLUMN,
+    SUPPORT_STRATUM_LOWER,
+)
 from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
 from microcosm.frame import WeightKind
 from test_support.microcosm_build.uk_clone_first_frames import (
@@ -304,6 +307,84 @@ def test_copies_take_their_roots_ids_plus_k_times_the_declared_radix() -> None:
         ordinal_column=HIGH_VALUE_SUPPORT_INDEX_COLUMN,
     )
     assert checked == result.copies_created == 4 * (hv.HIGH_VALUE_SUPPORT_COPIES - 1)
+
+
+def _localised_owners(n: int = 40):
+    """``n`` single-adult London owner households, each in its own invented
+    seat, as the WAS chain's area home values leave them: the localised
+    values rise with the id while the draw kept beside them falls
+    (microcosm#931)."""
+
+    frame = _frame(n)
+    household = frame.table("household").assign(
+        tenure_type=pd.array(["OWNED_OUTRIGHT"] * n, dtype="string"),
+        **{
+            RANK_BASIS_COLUMN: np.linspace(900_000.0, 50_000.0, n),
+            "property_wealth": np.linspace(120_000.0, 2_100_000.0, n),
+            "constituency_code": pd.array(
+                [f"E1400{index:04d}" for index in range(n)], dtype="string"
+            ),
+            "geography_household_key": pd.array(
+                [f"key-{index}" for index in range(n)], dtype="string"
+            ),
+        },
+    )
+    return uk_national_frame(
+        person=frame.table("person"),
+        benunit=frame.table("benunit"),
+        household=household,
+        time_period="2024",
+        weight_kind=WeightKind.IMPORTANCE,
+        household_weights=np.full(n, 10.0),
+    )
+
+
+def test_every_high_value_copy_keeps_its_parents_value_draw_and_area() -> None:
+    """Each copy equals the row the copy-id table names its parent on every
+    column but its ids and the stage's own three: the localised value, the
+    kept draw, the property total, the seat and the geography key
+    (C-19, microcosm#931)."""
+
+    result = hv.split_high_value_support_households(
+        _localised_owners(), stratum_lower=0.9
+    )
+    household = result.frame.table("household").set_index("household_id", drop=False)
+    copies = household[household[HIGH_VALUE_SUPPORT_COPY_COLUMN].astype(bool)]
+    assert len(copies) == result.copies_created > 0
+    parents = copy_id_table.parent(
+        copies["household_id"].to_numpy(np.int64), hv.HIGH_VALUE_SUPPORT_COPY_ID_FIELD
+    )
+    owned = {
+        "household_id",
+        HIGH_VALUE_SUPPORT_COPY_COLUMN,
+        HIGH_VALUE_SUPPORT_INDEX_COLUMN,
+        hv.HIGH_VALUE_SUPPORT_COPIES_COLUMN,
+    }
+    for column in household.columns:
+        if column in owned:
+            continue
+        assert (
+            copies[column].astype(str).to_numpy()
+            == household.loc[parents, column].astype(str).to_numpy()
+        ).all(), column
+
+
+def test_the_stratum_is_selected_on_the_localised_value_not_the_kept_draw() -> None:
+    """The stage ranks main_residence_value, which the uprating has returned
+    to the knots, never the WAS chain's kept draw (microcosm#931)."""
+
+    result = hv.split_high_value_support_households(
+        _localised_owners(), stratum_lower=0.9
+    )
+    household = result.frame.table("household")
+    roots = household.loc[
+        ~household[HIGH_VALUE_SUPPORT_COPY_COLUMN].astype(bool)
+        & household[hv.HIGH_VALUE_SUPPORT_COPIES_COLUMN].gt(1),
+        "household_id",
+    ]
+    # The localised values rise with the id, so the top ids are selected;
+    # ranked on the kept draw, which falls, the bottom ids would be.
+    assert sorted(roots.tolist()) == [37, 38, 39, 40]
 
 
 def _frame_with_spi_copies():

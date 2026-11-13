@@ -15,11 +15,16 @@ write point; :func:`uk_geography_ladder_gate` reports any row whose
 ``local_authority`` disagrees with its code; and the rowwise clone verifies
 the assigned member names against the installed engine
 (:func:`verify_local_authority_engine_domain`), with the whole roster asserted
-by ``test_uk_local_authority_input.py``. No battery ``enum_domain`` gate is
-declared for this column: that family needs a ``rules_engine`` evidence
-artifact the rowwise local battery never supplies, and
-``uk_local_geography_ladder_post_calibration`` already reruns the ladder gate,
-consistency check included, on the calibrated candidate (microcosm#953).
+by ``test_uk_local_authority_input.py``. The spine writes the column in its
+``local_authority`` stage, and ``spi_copy_areas`` for the SPI copies and
+income band donors, so the spine battery checks it at its transferred
+boundary: ``uk_local_authority_enum_domain`` holds every row to the installed
+engine's enum, whose domain the battery's rules engine supplies, and
+``uk_geography_ladder`` runs the ladder gate, consistency check included
+(microcosm#953, microcosm#931). The rowwise local battery supplies no
+``rules_engine`` evidence artifact, so it declares no ``enum_domain`` gate for
+the column; ``uk_local_geography_ladder_post_calibration`` reruns the ladder
+gate on the calibrated candidate.
 """
 
 from __future__ import annotations
