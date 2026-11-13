@@ -2,7 +2,8 @@
 
 ``python -m microcosm.build.transport.cli`` once imported the module and exited
 0 without calling ``main`` (microcosm#1604): the module had no ``__main__``
-block. A wrapper that read only the exit code took that for a finished build.
+block. A wrapper that reads only the exit code would take that for a finished
+build.
 """
 
 from __future__ import annotations
@@ -35,7 +36,8 @@ def _run(command: list[str], *arguments: str) -> subprocess.CompletedProcess[str
     return subprocess.run(
         [sys.executable, *command, *arguments],
         cwd=ROOT,
-        env={**os.environ, "PYTHONPATH": pythonpath},
+        # argparse colours its usage text when the caller's shell asks for colour.
+        env={**os.environ, "PYTHONPATH": pythonpath, "PYTHON_COLORS": "0"},
         capture_output=True,
         text=True,
         check=False,
@@ -48,6 +50,8 @@ def test_each_entry_form_prints_the_clis_usage(command: list[str]) -> None:
     assert result.returncode == 0, result.stderr
     assert result.stdout.startswith("usage: "), result.stdout
     assert "--country" in result.stdout and "--resume" in result.stdout
+    # Started as a module, cli must not already be imported by its package.
+    assert "RuntimeWarning" not in result.stderr, result.stderr
 
 
 @ENTRY_FORMS
