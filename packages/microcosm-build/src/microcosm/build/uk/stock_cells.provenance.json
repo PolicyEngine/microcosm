@@ -906,43 +906,43 @@
   "depreciation_target": 0.454663,
   "inputs": {
    "dwellings_gross_capital_stock": {
-    "key": "ledger.aggregate_fact.v2:af220bcab845fd709d32d6b3",
+    "aggregate_fact_key": "ledger.aggregate_fact.v2:af220bcab845fd709d32d6b3",
     "name": "dwellings_gross_capital_stock",
     "status": "feed",
     "value": 4632000000000.0
    },
    "dwellings_net_capital_stock": {
-    "key": "ledger.aggregate_fact.v2:17524464cf34275f022d7ea6",
+    "aggregate_fact_key": "ledger.aggregate_fact.v2:17524464cf34275f022d7ea6",
     "name": "dwellings_net_capital_stock",
     "status": "feed",
     "value": 2526000000000.0
    },
    "dwellings_whole_economy": {
-    "key": "ledger.aggregate_fact.v2:fdfc624fb23c6b3ab3c98d12",
+    "aggregate_fact_key": "ledger.aggregate_fact.v2:fdfc624fb23c6b3ab3c98d12",
     "name": "dwellings_whole_economy",
     "status": "feed",
     "value": 2525540000000.0
    },
    "dwellings_whole_economy_2021": {
-    "key": "ledger.aggregate_fact.v2:e053e906b9027b11213ebf5d",
+    "aggregate_fact_key": "ledger.aggregate_fact.v2:e053e906b9027b11213ebf5d",
     "name": "dwellings_whole_economy_2021",
     "status": "feed",
     "value": 2097345000000.0
    },
    "households_land": {
-    "key": "ledger.aggregate_fact.v2:0e5f9867ab377dffd8a8941f",
+    "aggregate_fact_key": "ledger.aggregate_fact.v2:0e5f9867ab377dffd8a8941f",
     "name": "households_land",
     "status": "feed",
     "value": 4559831000000.0
    },
    "land_underlying_dwellings_2021": {
-    "key": "ledger.aggregate_fact.v2:9a7700f7ef795c395d55703e",
+    "aggregate_fact_key": "ledger.aggregate_fact.v2:9a7700f7ef795c395d55703e",
     "name": "land_underlying_dwellings_2021",
     "status": "feed",
     "value": 5900000000000.0
    },
    "whole_economy_land": {
-    "key": "ledger.aggregate_fact.v2:4daf8d1b8830f72bba924d56",
+    "aggregate_fact_key": "ledger.aggregate_fact.v2:4daf8d1b8830f72bba924d56",
     "name": "whole_economy_land",
     "status": "feed",
     "value": 7117771000000.0

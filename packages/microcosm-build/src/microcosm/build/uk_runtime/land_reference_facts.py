@@ -402,7 +402,9 @@ def resolve_level_input(
     """One ONS level input: the feed's fact, else a stated parameter, else absent.
 
     The status says which: a resource built on a parameter records it as a
-    parameter, never as a fact.
+    parameter, never as a fact. A feed input names its fact as
+    ``aggregate_fact_key``, the field every package resource uses for a
+    Chronicle fact's identity.
     """
     if feed_value is not None:
         if parameter is not None and not math.isclose(feed_value, parameter):
@@ -410,7 +412,12 @@ def resolve_level_input(
                 f"{name}: the feed carries {feed_value}, but the command line "
                 f"states {parameter}; drop the parameter."
             )
-        return {"name": name, "status": "feed", "value": feed_value, "key": feed_key}
+        return {
+            "name": name,
+            "status": "feed",
+            "value": feed_value,
+            "aggregate_fact_key": feed_key,
+        }
     if parameter is not None:
         return {"name": name, "status": "parameter", "value": float(parameter)}
     return {"name": name, "status": "absent", "value": None}

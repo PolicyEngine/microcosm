@@ -274,7 +274,12 @@ def test_epc_mean_floor_area_counts_a_recoded_council_once() -> None:
 def test_level_inputs_resolve_feed_then_parameter_then_absent() -> None:
     assert facts.resolve_level_input(
         "e46y", feed_value=2.5e12, feed_key="k", parameter=None
-    ) == {"name": "e46y", "status": "feed", "value": 2.5e12, "key": "k"}
+    ) == {
+        "name": "e46y",
+        "status": "feed",
+        "value": 2.5e12,
+        "aggregate_fact_key": "k",
+    }
     assert (
         facts.resolve_level_input(
             "e46y", feed_value=None, feed_key=None, parameter=2.5e12
