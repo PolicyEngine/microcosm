@@ -342,11 +342,14 @@ def test_the_stage_reads_its_declared_denominator() -> None:
         )
     with pytest.raises(ValueError, match="more than once"):
         declared_regional_reference_denominator(stage({"kind": kind}, {"kind": kind}))
-    # The packaged stage declares none yet: it divides by the main residence.
+    # The packaged stage divides by the draw the WAS chain's area home values
+    # keep, which the WAS stage declares among its outputs (microcosm#931).
     from microcosm.build.country_spec import load_country_spec
 
-    packaged = load_country_spec("uk").sources.stage_map()["regional_property_uprating"]
-    assert declared_regional_reference_denominator(packaged) == "main_residence_value"
+    stages = load_country_spec("uk").sources.stage_map()
+    packaged = stages["regional_property_uprating"]
+    assert declared_regional_reference_denominator(packaged) == RANK_BASIS_COLUMN
+    assert RANK_BASIS_COLUMN in stages["was_wealth"].outputs
 
 
 def test_the_stage_refuses_the_kept_draw_unless_it_divides_by_it() -> None:

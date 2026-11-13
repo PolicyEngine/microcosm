@@ -6,14 +6,16 @@ knots (``high_value_home_value_knots.json``) at its weighted mid-rank within
 its FRS region, divided by the factor ``regional_property_uprating`` computes
 on ``v2``; that stage, declaring the kept ``v2``
 (``main_residence_value_rank_basis``) its denominator, returns it to the knot
-value to one rounding. A region without a factor keeps the knot value, as that
-stage leaves it. Every other row keeps ``v2`` bit for bit, and the release
+value to one rounding, and a home read at the knots' cap to the cap or below.
+A region without a factor keeps the knot value, as that stage leaves it. Every other row keeps ``v2`` bit for bit, and the release
 boundary drops the kept column. Ties break on household-id keys over a fixed
 stream with seed source NONE (C-43). The evidence counts clone 0's distinct
 true sources, rounded or banded, with no value, sum or factor (C-16, C-44);
 the module's own refusals name columns and declared constants only. It reads
-the areas the spine's area stages assign, so no stage declares it yet
-(:func:`area_home_values_declared`).
+the areas the spine's area stages assign; the packaged WAS stage declares it,
+and the regional property uprating the kept draw as its denominator
+(:func:`area_home_values_declared`), in place of the retired
+``regional_home_values`` stage (microcosm#931).
 """
 
 from __future__ import annotations
@@ -171,7 +173,8 @@ def area_home_values_operation_parameters() -> dict[str, object]:
         "regional_reference": UK_REGIONAL_LAND_VALUES_RESOURCE,
         "value": (
             "np.interp(rank, grid, the assigned constituency's knots) divided by "
-            "the FRS region's factor"
+            "the FRS region's factor, a home at the knots' cap taking the largest "
+            "quotient the factor multiplies back to the cap or below"
         ),
         "factor": (
             "avg_house_price / unweighted_mean(drawn main_residence_value | "
@@ -386,7 +389,9 @@ def localise_area_home_values(
     ``weights`` the stage's household weights in that order. Each England and
     Wales owner with a positive draw reads its assigned constituency's knots
     at its weighted mid-rank within its FRS region, divided by its region's
-    factor on the draw; every other row keeps its draw bit for bit. A row's
+    factor on the draw; a home read at the knots' cap takes the largest
+    quotient the factor multiplies back to the cap or below. Every other row
+    keeps its draw bit for bit. A row's
     value depends on its own key and its region's pooled ranks and factor,
     never on the table's row order.
 
@@ -454,9 +459,20 @@ def localise_area_home_values(
     factor_table["main_residence_value"] = drawn
     factors = regional_reference_factors(factor_table, resources.regional_reference)
     localised = knot_value.copy()
+    at_knots_cap = knot_value >= resources.knots.cap
     for name, factor in factors.items():
         rows = rewritten & (region == name)
-        localised[rows] = knot_value[rows] / factor
+        quotient = knot_value[rows] / factor
+        # The regional uprating multiplies the quotient back by this factor.
+        # A home read at the knots' cap takes the largest quotient whose
+        # product does not pass the cap, so the uprating never returns it one
+        # rounding above uk_support's price-paid bound (microcosm#931).
+        capped = at_knots_cap[rows]
+        over = capped & (quotient * factor > knot_value[rows])
+        while over.any():
+            quotient[over] = np.nextafter(quotient[over], 0.0)
+            over = capped & (quotient * factor > knot_value[rows])
+        localised[rows] = quotient
     if not np.isfinite(localised).all() or np.any(localised[rewritten] <= 0):
         raise ValueError(f"{_WHAT} must be finite and positive where they localise.")
     counted = clone_zero_rows(household)

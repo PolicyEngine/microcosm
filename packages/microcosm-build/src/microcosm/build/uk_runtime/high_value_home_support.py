@@ -1,27 +1,19 @@
 """UK high-value home support: light copies of the top value stratum of owner
 households (microcosm#1240, fix 1).
 
-The dense graph reads every owner clone's home value off its assigned
-constituency's Land Registry sale distribution at the household's within-region
-rank (``uk.full.property.value``), so where the rank lands decides whether a
-clone is a £2m-plus home. The top of that rank is thin: a few hundred FRS owner
-households carry the top five per cent of each region, and each seat's £2m-plus
-cell then rests on the handful of them whose clones landed there. This stage
-copies every owner household in the top stratum of its FRS region ``m`` times
-at equal weight, each copy carrying its index in
+This stage copies every owner household in the top stratum of its FRS region
+``m`` times at equal weight, each copy carrying its index in
 ``high_value_support_copy_index`` (0 on roots and unsplit households), the
-explicit lineage the geography identity keys on; the value node then gives each
-copy its own keyed rank inside the stratum instead of the household's single
-rank, so the copies spread across the tail and across seats.
+explicit lineage the geography identity keys on. Since microcosm#931 the
+stratum ranks England and Wales owners on the values ``was_wealth`` reads off
+their constituency's knots, which the regional property uprating returns them
+to, and every copy keeps its parent's value, area and geography key
+(``uk_copy_area_agreement`` checks the area and the key).
 
 Deterministic and mass-conserving: every household's mass and the total
 household mass are conserved exactly, and the one draw is the stratum's
 tie-break, a uniform keyed on each household's own id that orders
-households tied on value (microcosm#931). The stratum is selected on the
-spine's weights with that tie-break; the value node ranks the pool's weights
-with a keyed tie-break of its own and ranks the copies beside their root, so
-the two agree up to ties and up to any weight change between the spine and
-the pool, not by construction. No value moves here.
+households tied on value (microcosm#931). No value moves here.
 """
 
 from __future__ import annotations

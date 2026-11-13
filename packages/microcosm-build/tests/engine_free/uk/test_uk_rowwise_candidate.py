@@ -745,7 +745,6 @@ def test_release_role_supplies_the_solve_defaults(tmp_path) -> None:
     # The dense line's clone count is its spine's (microcosm#931).
     assert dense.n_clones is None
     assert dense.target_weight_rule == "nation_grain_family_equal_sqrt_count"
-    assert dense.expected_constituency_vintage == "2024_pcon"
     assert not hasattr(dense, "staging_upload_interval_seconds")
     assert dense._explicit_arguments == frozenset()
     builder._validate_cli_args(dense)
@@ -756,7 +755,6 @@ def test_release_role_supplies_the_solve_defaults(tmp_path) -> None:
     assert national.n_clones is None
     assert (national.seed, national.epochs, national.learning_rate) == (0, 1500, 0.02)
     assert national.target_weight_rule == "loss_family_equal"
-    assert national.expected_constituency_vintage is None
     builder._validate_cli_args(national)
     explicit = builder._parse_args(_role_argv(tmp_path, "national", "--epochs", "5"))
     assert explicit.epochs == 5
@@ -799,7 +797,6 @@ def test_dense_role_requires_the_ladder(tmp_path) -> None:
     [
         (["--ladder", "ladder.npz"], "--ladder"),
         (["--ladder-sha256", "3" * 64], "--ladder-sha256"),
-        (["--expected-constituency-vintage", "2024_pcon"], "--expected-constituency"),
         (["--source-year", "2023"], "--source-year"),
         (["--n-clones", "15"], "--n-clones"),
         (["--candidate-clone-counts", "2,4", "--dry-run"], "--candidate-clone-counts"),

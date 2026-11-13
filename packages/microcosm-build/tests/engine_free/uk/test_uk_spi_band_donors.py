@@ -36,9 +36,6 @@ from microcosm.build.uk_runtime.household_lineage import (
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.receipt_counts import UK_WITHHELD, rounded_count
-from microcosm.build.uk_runtime.regional_home_values import (
-    assign_regional_home_values,
-)
 from microcosm.build.uk_runtime.salary_sacrifice import (
     SALSAC_OUTPUT,
     SALSAC_PRE_CONVERSION_PAY_COLUMN,
@@ -2176,9 +2173,10 @@ def _framed(previous, tables, weights):
 def _through_the_later_layers(stacked) -> SimpleNamespace:
     """Stage 17's output carried through every layer stacked after it.
 
-    The high-value home support (stage 26) and the regional home values (27)
-    run as built, every household an owner valued on its true source, at a
-    stratum that divides donors, SPI copies and base households alike. The
+    The high-value home support (stage 26) runs as built, every household an
+    owner valued on its true source, at a stratum that divides donors, SPI
+    copies and base households alike; regional_home_values, which
+    rewrote owners' values in place after it, retired (microcosm#931). The
     CGT layers are replayed by hand with ``copy_households``: the support
     split (42) divides the households of one source in four into two or
     three rows at equal shares, the incidence twin (43) copies every
@@ -2199,7 +2197,7 @@ def _through_the_later_layers(stacked) -> SimpleNamespace:
     high_value = split_high_value_support_households(
         _with_tables(stacked, household=household), stratum_lower=0.9, copies=3
     )
-    valued = assign_regional_home_values(high_value.frame).frame
+    valued = high_value.frame
 
     household = valued.table("household").copy()
     source = household["source_household_id"].to_numpy()

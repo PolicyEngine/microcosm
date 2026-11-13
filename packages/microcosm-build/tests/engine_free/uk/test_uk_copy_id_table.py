@@ -727,11 +727,11 @@ _DENSE_RULE_MODULES = {
 #: clone paths from the lineage columns, never from ids. The stage-health
 #: gates decode them: the band donor check reads a capped seating's seats as
 #: the donor rows whose ids hold no ordinal in a field minted after the band
-#: donors, and the regional home values count the sources at the value cap in
-#: the rows whose ids hold no geographic_support ordinal, clone 0's
-#: (microcosm#931). The size evaluation decodes a dense dataset's ids, which
-#: are its clone-first spine's, through the geographic_support field, and
-#: refuses any other layout.
+#: donors (microcosm#931); the regional home values, which counted the
+#: sources at the value cap in the rows whose ids hold no geographic_support
+#: ordinal, retired with their stage. The size evaluation decodes a dense
+#: dataset's ids, which are its clone-first spine's, through the
+#: geographic_support field, and refuses any other layout.
 _COPY_ID_MODULES = frozenset(
     {
         *(
@@ -744,7 +744,6 @@ _COPY_ID_MODULES = frozenset(
                 "geographic_expand",
                 "graph_kernels",
                 "high_value_home_support",
-                "regional_home_values",
                 "size_evaluation",
                 "spi_band_donors",
                 "spi_support",

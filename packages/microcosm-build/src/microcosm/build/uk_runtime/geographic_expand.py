@@ -120,7 +120,7 @@ __all__ = [
 GEOGRAPHIC_EXPAND_STAGE_NAME = GEOGRAPHIC_EXPAND_STAGE
 # The copy-id table's field the clones' ids are minted in
 # (GEOGRAPHIC_COPY_ID_FIELD) is named in the geographic_clones leaf, which
-# regional_home_values reads it from, and re-exported here.
+# size_evaluation reads it from, and re-exported here.
 #: The most clones the field numbers: clone ordinals run below it. Exported
 #: so the spine and its graph can read the limit from here.
 GEOGRAPHIC_CLONE_LIMIT = copy_id_table.ordinal_bound(GEOGRAPHIC_COPY_ID_FIELD)
