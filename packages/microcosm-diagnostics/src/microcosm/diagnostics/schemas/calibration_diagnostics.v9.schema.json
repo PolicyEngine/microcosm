@@ -176,7 +176,7 @@
     },
     "HierarchyDimensionValueEntry": {
       "additionalProperties": false,
-      "description": "One value of a catalog dimension.\n\n``rank`` is the rows' ``value_rank`` for the value, from 0 in the order\nits source lists the dimension's values. It is absent when no row ranks\nthe value, and for every value of a dimension whose rows rank a value two\nways or give two values in one category the same rank\n(``catalog_calibration_diagnostics``). Readers sort by it.",
+      "description": "One value of a catalog dimension.\n\n``rank`` is the rows' ``value_rank`` for the value: the position, from 0,\nof its row among its source table's rows. It is absent when no row ranks\nthe value, and for every value of a dimension whose rows rank a value two\nways or give two values in one category the same rank\n(``catalog_calibration_diagnostics``). Ranks order values within one\ncategory: a reader sorts the values that category's rows select by\n``rank``, with unranked values last. Values from different categories\ncan share a rank, so ranks do not order a dimension's whole list.",
       "properties": {
         "id": {
           "title": "Id",

@@ -89,7 +89,7 @@
     },
     "HierarchyDimension": {
       "additionalProperties": false,
-      "description": "A dimension and the value a target selects.\n\n``value_rank`` is the value's position, from 0, in the order its source\nlists the dimension's values; absent when the source gives none.",
+      "description": "A dimension and the value a target selects.\n\n``value_rank`` is the position, from 0, of the value's row among its\nsource table's rows; absent when the source gives none.",
       "properties": {
         "id": {
           "title": "Id",

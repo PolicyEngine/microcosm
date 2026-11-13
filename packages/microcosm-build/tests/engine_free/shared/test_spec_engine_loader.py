@@ -26,7 +26,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # The opt-in cross-fitted gate calibration moves the fit kernels' bytes.
     # The hierarchy value ranks move medicaid_take_up's attested bytes.
     assert first.spec_sha256 == (
-        "335ca119990022ca19b143a98fddf12bba3d853e6d23dcc31aa723f1746df0ad"
+        "99f9b82ed263b57936d29d0a74076860e44bbec2c3e37c1075a5a570b31d6d29"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

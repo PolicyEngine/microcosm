@@ -210,11 +210,12 @@ unranked. The rows' dimension references stay `{id, value_id}`.
 
 Ranks order values within one category. A reader sorts the values that
 category's rows select by `rank` and puts unranked values last: the CMS
-Medicaid state dimension ranks its states and leaves the national `us` value
+Medicaid state dimension ranks 51 values and leaves the national `us` value
 unranked. Ranks do not order a dimension's whole list, because values from
-different categories can share a rank: `age` holds both the Census
-population bands and the SSI recipient bands, each numbered from its own
-table's first row.
+different categories can share a rank. On the pinned US feed, `age` holds
+the Census population bands and the SSI recipient bands, 21 values on 18
+ranks, and "Age 0 to 4" and "SSI federal payment recipients under 18" both
+have rank 1.
 
 Producers still assemble schema 8 (`CALIBRATION_DIAGNOSTICS_ASSEMBLY_SCHEMA_VERSION`);
 the writer publishes schema 9 (`catalog_calibration_diagnostics`). It refuses,
