@@ -881,6 +881,14 @@ def _solve_logistic(
         a = _solve_a(log_gains, weights, b=b, count_target=count_target, offset=offset)
         return float((weights * gains * _logistic(log_gains, a, b, offset)).sum())
 
+    # A pool whose own mean gain sits far from the published one needs a steep
+    # tilt, and stage-1 draws that move who lands in a band can push it past
+    # 12 (microcosm#1276). The bracket doubles, up to 48, only where [-12, 12]
+    # cannot reach the target, so a solve that fits inside it is unchanged.
+    while high < 48.0 and not expected_gains(low) <= gains_target <= expected_gains(
+        high
+    ):
+        low, high = 2.0 * low, 2.0 * high
     if not expected_gains(low) <= gains_target <= expected_gains(high):
         raise ValueError(
             f"{label} gains target lies outside the range a logistic tilt of "

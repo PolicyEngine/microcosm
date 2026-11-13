@@ -1843,3 +1843,45 @@ def test_a_consumer_scored_without_a_recorded_plan_counts_its_own_passes(
     assert outer
     assert {counter.total for counter in outer} == {passes}
     assert outer[-1].done == passes
+
+
+def test_recording_the_smoke_plan_builds_no_reform_and_needs_no_engine(
+    builder, monkeypatch
+) -> None:
+    """Sol review of microcosm#1197, finding 3: the plan's dry run records the
+    real smoke consumer with ``_build_reform`` left in place and the engine
+    packages unimportable. The recorder flags its simulate as
+    RECORDS_REQUESTS_ONLY, so the gate builds no reform and resolves no list
+    edit, and the plan still holds every probe's baseline measure."""
+    import microcosm.build.us_runtime.release_input_coverage as coverage_module
+
+    for module in ("policyengine_us", "policyengine_core", "policyengine_core.reforms"):
+        monkeypatch.setitem(sys.modules, module, None)
+
+    def resolved_on_an_engine():
+        raise AssertionError("the plan's dry run resolved a list edit")
+
+    # The installed-engine reader is cached per process, so blocking the
+    # imports alone would not catch a resolution served from an earlier test.
+    monkeypatch.setattr(
+        coverage_module, "_installed_parameter_stages", resolved_on_an_engine
+    )
+    original = smoke_module._build_reform
+    built: list[str] = []
+
+    def spy(probe):
+        built.append(probe.id)
+        return original(probe)
+
+    monkeypatch.setattr(smoke_module, "_build_reform", spy)
+    probes = us_release_reform_coverage_probes()
+    assert sum(1 for probe in probes if probe.list_edits) >= 10
+
+    keys = builder._record_post_export_baseline_plan(
+        builder._reform_coverage_smoke_consumer
+    )
+
+    assert built == []
+    assert {
+        (probe.budget_measure, int(probe.period or builder.PERIOD)) for probe in probes
+    } <= {(variable, period) for variable, period, _ in keys}

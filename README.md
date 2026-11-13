@@ -46,12 +46,11 @@ until you restart the kernel, load it by path with
 
 ## Build progress and staging run files
 
-UK build completion automatically exports Orrery execution graphs, attempts
-immutable publication before Hugging Face artifact staging when
-`--publish-orrery` asks for it, and preserves durable retry jobs and receipt
-snapshots. No upload is published today; see
-[the status of graph publication](docs/orrery-publication.md#status). See
-[graph publication](docs/orrery-publication.md) for configuration and retry.
+UK build completion automatically exports Orrery execution graphs for viewing
+offline and uploads none. Its staged dataset bundle hands the graph's inputs
+to the emitter for the collector, which builds the Orrery graph files; see
+[graph publication](docs/orrery-publication.md) and
+[its status](docs/orrery-publication.md#status).
 
 Supported US and UK build commands start the local emitter as the build's
 child process, with its telemetry, graph-publication and Hugging Face
@@ -63,7 +62,7 @@ change:
 ```bash
 uv tool install microcosm-emitter   # once per machine
 uv tool upgrade microcosm-emitter   # to take a new release
-microcosm-emitter version           # the installed release; builds need 0.14.0 or later
+microcosm-emitter version           # the installed release; builds need 0.15.0 or later
 ```
 
 The build finds the `microcosm-emitter` command through
@@ -71,12 +70,17 @@ The build finds the `microcosm-emitter` command through
 environment variables and user, so it uses the build's Hugging Face
 credential (`HF_TOKEN`, then `HUGGINGFACE_TOKEN`, then the `hf auth login`
 token). Without the command the build continues with no hosted telemetry and
-no remote staging, and queues no Orrery graph publication; a UK build given
+no remote staging, and measures no Orrery publication inventory; a UK build given
 `--staging-read-back` fails at the read-back, and a UK build asked to stage
 its dataset bundle remotely, as it is by default, is refused before it
 starts, since the emitter uploads the bundle. Before it starts the emitter,
 the build reads its version from `microcosm-emitter version` and does not
-start one older than 0.14.0. That release adds the build machine's
+start one older than 0.15.0. That release adds the setting that switches
+the Hugging Face module's collector submissions on, which every emitter a
+build starts sets, so staged bundles and release publications that name
+their build reach the collector; collector provenance on a release
+publication; and a `skipped` collector receipt when the emitter refuses its
+collector settings. 0.14.0 added the build machine's
 readings: each heartbeat carries the machine's memory, CPU and disk use and
 the build's processes, a heartbeat after the machine wakes carries the sleep,
 the run's first event describes the machine, each stage's end says how long
@@ -90,12 +94,12 @@ which builds read as package data and the Modal image's install step reads
 from the launching checkout. Releases before 0.10.0 send telemetry to the
 collector's Cloud Run address, which changes when the collector moves to
 another Google Cloud project; from 0.10.0 on, releases send to the
-collector's hostname, which stays the same. 0.13.0 and 0.14.0 were each
-the newest release when practically no machine ran the emitter yet, so
+collector's hostname, which stays the same. 0.13.0, 0.14.0 and 0.15.0 were
+each the newest release when practically no machine ran the emitter yet, so
 requiring them cost nothing (see
 [graph publication](docs/orrery-publication.md#emitter-dependency)). The
 build prints the installed and required versions, what it loses and the
-upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.14.0'`,
+upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.15.0'`,
 and continues as it does without the command. `uv tool upgrade` keeps any
 version constraint given at install time, such as `==0.7.0`; that
 `uv tool install --upgrade` command replaces it. Microcosm supplies build
@@ -118,7 +122,7 @@ if the emitter cannot be prepared or is missing, its
 `microcosm-emitter version` times out or fails, it is older than the
 minimum, it lists no protocol version 1, its `hello` fails, it exits or
 times out before it is ready, or it starts without its telemetry module.
-Every emitter a build starts (0.14.0 and later, the minimum) reads a given
+Every emitter a build starts (0.15.0 and later, the minimum) reads a given
 collector token, and exits at that point when the collector-token
 variables it inherits (`MICROCOSM_COLLECTOR_TOKEN`,
 `MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT`, `MICROCOSM_COLLECTOR_ORIGIN`) are set
@@ -215,7 +219,11 @@ AT-RISK only, `0` clean):
 3. **Export-mass parity risk** — each export-mass column's pool mass at *base*
    weights against its reference band, honoring the release tool's
    `US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS` register (reused, never
-   re-declared). A column out of band pre-solve is flagged for review.
+   re-declared). A column out of band pre-solve is flagged for review. Against
+   a reference where no record holds `s_corp_income`, the pool's
+   `partnership_income` counts both columns when a pool record with nonzero
+   weight holds it, as the export gate's candidate does, and the check's
+   details then name both columns.
 4. **Smoke-probe support audit** — every reform-coverage probe leaf's pool vs
    *selected* nonzero support and pool sign-leg decomposition. A leaf with pool
    support but zero selected support **fails** (the input the frozen selection
@@ -319,7 +327,16 @@ never as a release refusal. The checks:
 - **`export_input_mass`** runs the export input-mass gate with the staged
   frame standing in for the export. It classifies the
   `US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS` register as the gate does: `used`,
-  `below_reference_floor` or `unused`.
+  `below_reference_floor` or `unused`. The gate and this check read a reference
+  where no record holds `s_corp_income` as one from before microcosm#1261 split
+  Schedule E line 32: they count `partnership_income` plus `s_corp_income` as
+  the candidate's `partnership_income`, and the gate's details name both
+  columns. Any reference record that holds `s_corp_income` marks the split, even
+  when those amounts cancel, and the gate then compares each column alone.
+  Without a record of nonzero weight that holds `partnership_income`, the
+  candidate's column counts alone, so S corporation income can't stand in for a
+  lost column. A reference without the split can't show a wrong division of the
+  income between the columns.
 - **`degenerate_input_register`**, **`ecps_parity_register`**,
   **`input_coverage_register`**, **`stored_inputs`**, **`spm_composition`**,
   **`zero_support_preview`** and **`pre_solve_battery`** grade the remaining
@@ -417,6 +434,10 @@ register. The certainty model lives in
 including Hypothesis properties) run in the normal `uv run pytest` suite.
 
 ## Releasing & alerts
+
+[The release contract](docs/release-contract.md) (C1 to C5) says what the
+release validator, the publication commands and the loaders enforce today, and
+what version 1 (ARCH-1, cos d1160) asks of every country's releases.
 
 The [native SPM role source-enrichment lane](docs/us-native-spm-role-source-enrichment.md)
 creates a new US H5 from the exact reviewed BuildP parent, preserves its original
@@ -531,7 +552,20 @@ three hours for a publication to land or be refused, which covers the
 emitter's one-hour expiry of a pending change and the upload of a US ACS
 local-area build of about 10 GB, and five minutes for a promotion.
 `--preflight-only` checks the build and lists what would be published,
-offline, and starts no emitter. The calibration diagnostics dashboard posts
+offline, and starts no emitter. A publication names its build for the
+collector: country `UK` with licensed data for the UK releases, `US`
+without for the US releases, and the release and build of its folder. The
+emitter submits the build's calibration diagnostics, with its build and
+release manifests, to the collector after the release commit, so once the
+publication has landed the command waits up to ten minutes for the collector
+to accept them before it closes the emitter. The printed outcome's
+`collector_submission` gives the collector receipt's `status` and
+`error_code`. A collector that receives nothing (`skipped`, for example
+`COLLECTOR_SETTINGS_REFUSED`) or refuses the submissions at intake, and
+submissions not yet accepted when the wait ends, are warnings and never fail
+the command. Once the collector has accepted them, its own processing decides
+whether it builds a tree from them or rejects them (for example
+`provenance_mismatch`); the command doesn't wait for that. The calibration diagnostics dashboard posts
 these releases' Slack alerts from changes to `releases.json`. The UK
 assemblers, the US national builder and the US ACS package stage print the
 exact commands; the UK
@@ -689,6 +723,24 @@ record the per-run QRF tail register (`qrf_tail_register`), the export-mass
 reference and the stored-input verdict (`stored_inputs`), so a waiver ships
 with the release it waives, and a `gate_evidence` block that says of each
 verdict whether it is bound, skipped by flag or never evaluated.
+
+The QRF tail gate checks a sparse QRF output only when it has 500 or more
+carriers, the records with positive weighted absolute mass, and reports one
+with fewer as thin. It fails a checked column whose top 100 records carry
+more than 75% of its weighted absolute mass, unless the run's register
+(`--qrf-tail-concentration-exclusions`) lists the column with a reason. That
+test cannot see one record carrying a fifth of a column: in #1259's seed-0
+rerun of the #1251 chain, one tax unit of weight 644.7 carried 21.7% of line
+32's weighted absolute mass at initial weights, while the top 100 of its
+16,001 carriers carried 45.1%.
+`qrf_tail_concentration.json` therefore also reports, for every numeric QRF
+output, dense and thin ones included, the largest single record's share of
+the weighted absolute mass and that record's weight, beside the top-100 share
+(`surface.single_record_concentration`). These numbers never change the
+gate's verdict: the release tool measures after the gate runs and lists an
+output it cannot measure under `unmeasured` with the reason. A column with no
+mass reports no share. The dry run reports the same two numbers at base weights,
+and the post-export probe compares the block, unmeasured reasons included.
 
 A US release may not store a column that looks like a policyengine-us variable
 (lowercase snake_case) unless the engine it is certified against defines that

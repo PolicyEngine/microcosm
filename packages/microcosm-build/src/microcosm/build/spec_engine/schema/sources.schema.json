@@ -8430,6 +8430,12 @@
       "source_sampling_weight": {
        "type": "string"
       },
+      "sample_design": {
+       "enum": [
+        "fact_weighted_bootstrap",
+        "rare_carriers_certain"
+       ]
+      },
       "sample_size": {
        "type": "integer"
       },
@@ -8735,8 +8741,16 @@
       "gate_calibration": {
        "enum": [
         "in_sample",
-        "cross_fitted"
+        "cross_fitted",
+        "cross_fitted_balanced"
        ]
+      },
+      "gate_level_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       },
+       "uniqueItems": true
       }
      }
     },
