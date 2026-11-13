@@ -3,12 +3,14 @@
 Downloads (with a local cache) the 2020 P.L. 94-171 geographic headers
 (block populations), the 119th Congressional District block equivalency
 file, the 2020 Block Assignment Files (SLDU/SLDL/INCPLACE_CDP, plus the MCD
-layer for Connecticut), the OMB CBSA delineation workbook, and Census's
-Connecticut county-to-county-subdivision crosswalk; joins them at
-2020-tabulation-block grain; and writes one national NPZ artifact whose
-embedded metadata records a vintage and source per derived layer
-(``vintage_policy: error`` — the loader refuses an artifact missing any of
-them). No per-area files, the standing rule.
+layer for Connecticut), the OMB CBSA delineation workbook, Census's
+Connecticut county-to-county-subdivision crosswalk, and the 2020
+tract-to-PUMA relationship file; joins them at 2020-tabulation-block grain
+(every block also carries its 2020 PUMA, an additive array, so an ACS
+record's PUMA can constrain its block draw); and writes one national NPZ
+artifact whose embedded metadata records a vintage and source per derived
+layer (``vintage_policy: error`` — the loader refuses an artifact missing any
+of them). No per-area files, the standing rule.
 
 Connecticut blocks reach their CBSA through their town's 2022 planning
 region, the county-equivalent the OMB 2023 delineations list the state by
@@ -58,6 +60,10 @@ from microcosm.build.us_runtime.block_ladder_sources import (
     parse_pl_geo_blocks,
     us_block_ladder_cbsa_coverage_failures,
 )
+from microcosm.build.us_runtime.block_location import load_us_location_ladder
+from microcosm.build.us_runtime.puma_ladder_sources import (
+    parse_tract_to_puma_relationship,
+)
 
 CD119_BEF_URL = (
     "https://www2.census.gov/programs-surveys/decennial/rdo/mapping-files/"
@@ -79,6 +85,10 @@ CBSA_DELINEATIONS_URL = (
 CT_PLANNING_REGION_CROSSWALK_URL = (
     "https://www2.census.gov/geo/docs/reference/ct_change/"
     "ct_cou_to_cousub_crosswalk.txt"
+)
+TRACT_TO_PUMA_URL = (
+    "https://www2.census.gov/geo/docs/maps-data/data/rel2020/"
+    "2020_Census_Tract_to_2020_PUMA.txt"
 )
 
 LAYER_VINTAGES = {
@@ -118,6 +128,14 @@ LAYER_VINTAGES = {
         ),
         "url": CBSA_DELINEATIONS_URL,
         "ct_planning_region_crosswalk_url": CT_PLANNING_REGION_CROSSWALK_URL,
+    },
+    "puma": {
+        "vintage": "2020_puma",
+        "source": (
+            "Census 2020 Census Tract to 2020 PUMA relationship file (each "
+            "block's PUMA is its tract's PUMA)"
+        ),
+        "url": TRACT_TO_PUMA_URL,
     },
 }
 
@@ -236,6 +254,17 @@ def main(argv: list[str] | None = None) -> None:
     cbsa_by_county = parse_cbsa_delineations(_cbsa_rows(cbsa_xlsx))
     _log(f"  OMB delineations: {len(cbsa_by_county):,} counties in a CBSA")
 
+    tract_puma_txt = _download(TRACT_TO_PUMA_URL, args.cache_dir)
+    source_files["tract_to_puma"] = {
+        "path": str(tract_puma_txt),
+        "sha256": _sha256(tract_puma_txt),
+    }
+    tract_to_puma = parse_tract_to_puma_relationship(
+        tract_puma_txt.read_text(encoding="utf-8-sig").splitlines(),
+        allowed_state_fips=frozenset(fips for fips, _, _ in states),
+    )
+    _log(f"  tract-to-PUMA: {len(tract_to_puma):,} tracts")
+
     block_population: dict[int, int] = {}
     sldu_by_block: dict[int, str] = {}
     sldl_by_block: dict[int, str] = {}
@@ -328,6 +357,10 @@ def main(argv: list[str] | None = None) -> None:
         "cbsa_delineated_states": cbsa_delineated_states(
             cbsa_by_county, (fips for fips, _, _ in states)
         ),
+        # Additive to schema 1: the per-block 2020 PUMA. The schema-1 loader
+        # ignores arrays it does not require, so legacy builds load this file
+        # unchanged; microcosm.build.us_runtime.block_location reads it.
+        "optional_arrays": {"puma": "puma"},
         "source_files": source_files,
     }
     _log(f"  assembling {len(block_population):,} populated blocks")
@@ -340,6 +373,7 @@ def main(argv: list[str] | None = None) -> None:
         cbsa_by_county=cbsa_by_county,
         metadata=metadata,
         cbsa_county_by_block=cbsa_county_by_block,
+        tract_to_puma=tract_to_puma,
     )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(args.out, **payload)
@@ -353,6 +387,7 @@ def main(argv: list[str] | None = None) -> None:
         )
     block_state = ladder.block_geoid // 10**13
     in_cbsa = ladder.cbsa_code > 0
+    location = load_us_location_ladder(args.out)  # and so must the PUMA array
     summary = {
         "output": str(args.out.resolve()),
         "output_sha256": _sha256(args.out),
@@ -362,6 +397,7 @@ def main(argv: list[str] | None = None) -> None:
             np.unique(ladder.congressional_district_geoid).size
         ),
         "counties": int(np.unique(ladder.block_geoid // 10**10).size),
+        "pumas": int(np.unique(location.puma).size),
         "layer_vintages": ladder.layer_vintages,
         "states": [fips for fips, _, _ in states],
         "missing_baf_layers": metadata["missing_baf_layers"],
