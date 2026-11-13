@@ -408,6 +408,7 @@ from microcosm.calibrate.diagnostics import (
     target_surface_payload,
     write_calibration_diagnostics,
 )
+from microcosm.data import compatibility_recertification as recert
 from microcosm.data.build_folder_manifests import (
     publication_commands,
     rewrite_release_dir,
@@ -4739,13 +4740,9 @@ PostExportKey = tuple[str, int, str | None]
 #: this list against the installed engine's variable sources; that pattern
 #: scan is a drift detector, not a proof of household locality
 #: (microcosm#956). ``test_us_post_export_scoring.py`` exercises the
-#: post-export Medicaid refusal on a written fixture H5.
-US_POPULATION_AGGREGATE_VARIABLES = (
-    "household_income_decile",
-    "medicaid_slcsp_state_average_cost_index",
-    "medicaid_slcsp_state_denominator",
-    "spm_unit_income_decile",
-)
+#: post-export Medicaid refusal on a written fixture H5. Shared with the
+#: recertification tool (microcosm#1585).
+US_POPULATION_AGGREGATE_VARIABLES = recert.POPULATION_AGGREGATE_VARIABLES
 
 #: policyengine-us formulas whose value reads the engine's ``baseline`` branch,
 #: which a batch reform engine does not have. ``medicaid_slcsp_state_denominator``
@@ -6369,21 +6366,7 @@ def _assert_supported_ledger_filter_metadata(
     )
 
 
-def _signed_component(values: np.ndarray, source_name: str) -> np.ndarray:
-    values = np.asarray(values, dtype=np.float64)
-    if source_name in {"adjusted_gross_income", "rent_and_royalty_net_income"}:
-        return values
-    if source_name == "capital_gains_losses":
-        return np.maximum(values, 0.0)
-    if source_name.endswith("_losses") or source_name in {
-        "business_net_losses",
-        "capital_gains_losses",
-        "estate_losses",
-        "partnership_and_s_corp_losses",
-        "rent_and_royalty_net_losses",
-    }:
-        return np.minimum(values, 0.0) * -1.0
-    return np.maximum(values, 0.0)
+_signed_component = recert.signed_component
 
 
 def _soi_component_row(
@@ -6922,40 +6905,7 @@ def _record_engine_branches(simulation):
                 release_engine_simulation(current)
 
 
-def _engine_known_periods(simulation, variables: Sequence[str]) -> set[tuple[str, str]]:
-    """The (variable, period) values an engine or any engine it reaches holds.
-
-    Batched target materialization and post-export scoring both read this. The
-    holder's ``get_known_periods`` includes memory and disk storage. The walk
-    covers live branches, branches target materialization recorded before they
-    were detached, and the ``baseline`` simulation a ``reform=`` engine keeps
-    (policyengine-core sets it only when a reform is passed, so the post-export
-    scorer's engines have none). The real-engine guard tests check that the
-    watched Medicaid computation leaves a known period visible through this
-    API.
-    """
-
-    known: set[tuple[str, str]] = set()
-    stack = [simulation]
-    seen: set[int] = set()
-    while stack:
-        current = stack.pop()
-        if id(current) in seen:
-            continue
-        seen.add(id(current))
-        for variable in variables:
-            known.update(
-                (variable, str(period))
-                for period in current.get_holder(variable).get_known_periods()
-            )
-        branches = getattr(current, "branches", None)
-        if isinstance(branches, dict):
-            stack.extend(branches.values())
-        stack.extend(getattr(current, "_target_materialization_branches", ()))
-        baseline = getattr(current, "baseline", None)
-        if baseline is not None:
-            stack.append(baseline)
-    return known
+_engine_known_periods = recert.engine_known_periods
 
 
 def _refuse_batch_population_aggregates(

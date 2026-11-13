@@ -1,0 +1,1 @@
+The ACS local-area district surface's Kish ESS (`tools/us_acs_local_cd_surface.py`) is now `microcosm.calibrate.solve.effective_sample_size`, so it refuses negative, NaN or infinite weights instead of scoring them, and every valid weight vector scores as before (microcosm#1585).
