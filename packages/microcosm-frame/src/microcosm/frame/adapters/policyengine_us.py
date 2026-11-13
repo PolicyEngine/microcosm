@@ -932,9 +932,11 @@ class PolicyEngineUSEngine:
     ) -> Mapping[str, np.ndarray]:
         """Compute ``variables`` for ``period`` with a Microsimulation.
 
-        Builds a ``USSingleYearDataset`` from the bundle's entity tables
+        Builds a dataset for ``period`` from the bundle's entity tables
         (with the bundle's household weights as ``household_weight``), runs a
-        ``Microsimulation`` over it, and calculates each variable.
+        ``Microsimulation`` over it, and calculates each variable. The
+        simulation holds ``period`` alone, not policyengine-us's projection
+        to later years (see :meth:`_read_year_dataset`).
 
         Args:
             bundle: A US-schema bundle.
@@ -953,7 +955,7 @@ class PolicyEngineUSEngine:
         """
         microsimulation_class = self._import_policyengine_us().Microsimulation
         tables = self._engine_tables(bundle)
-        dataset = self._build_dataset(tables, period)
+        dataset = self._read_year_dataset(tables, period)
         simulation = microsimulation_class(
             dataset=dataset,
             **({"spm": dict(self._spm)} if self._spm is not None else {}),
@@ -1131,6 +1133,27 @@ class PolicyEngineUSEngine:
             family=tables["family"].copy(),
             marital_unit=tables["marital_unit"].copy(),
             time_period=int(period),
+        )
+
+    def _read_year_dataset(
+        self, tables: Mapping[str, pd.DataFrame], period: int | str
+    ) -> Any:
+        """The tables as an engine dataset whose years end at ``period``.
+
+        Given a ``USSingleYearDataset``, ``Microsimulation`` extends it with
+        an uprated copy of each later year up to the last year of the CPI-U
+        parameter (2035 on policyengine-us 2.2.1). The engine then stores
+        every year's inputs, and each branch it opens (federal itemization,
+        some state taxes) copies all of them again. ``materialize`` reads
+        only ``period``, which is the dataset's own year, and no
+        policyengine-us formula reads a later year's data. So the adapter
+        stops the extension at ``period``: the engine receives a multi-year
+        dataset that holds that one year and takes it as already extended.
+        """
+        from policyengine_us.data import extend_single_year_dataset
+
+        return extend_single_year_dataset(
+            self._build_dataset(tables, period), end_year=int(period)
         )
 
     def _default_entity(self, column: str) -> str:

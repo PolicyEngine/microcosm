@@ -742,3 +742,57 @@ class TestSpmSelection:
         first, second = _RecordingMicrosimulation.calls
         assert first["spm"] == second["spm"] == {"geography_kind": "national"}
         assert first["spm"] is not second["spm"]
+
+
+class TestReadYearWindow:
+    """The engine holds the read year alone, not its projection to later years.
+
+    Given a single-year dataset, ``Microsimulation`` adds an uprated copy of
+    each year up to the last CPI-U year and stores all of them. ``materialize``
+    reads only the dataset's own year, so the adapter stops the extension there.
+    """
+
+    @pytest.mark.parametrize("period", [2024, 2026])
+    def test_the_engine_receives_the_read_year_alone(
+        self, adapter, us_bundle, monkeypatch, period
+    ) -> None:
+        import policyengine_us
+        from policyengine_us.data import USMultiYearDataset
+
+        _RecordingMicrosimulation.calls = []
+        monkeypatch.setattr(
+            policyengine_us, "Microsimulation", _RecordingMicrosimulation
+        )
+
+        adapter.materialize(us_bundle, ["household_net_income"], period=period)
+
+        (call,) = _RecordingMicrosimulation.calls
+        dataset = call["dataset"]
+        assert isinstance(dataset, USMultiYearDataset)
+        assert dataset.years == [period]
+
+    def test_values_match_the_engine_default_window(self, adapter, us_bundle) -> None:
+        from policyengine_us import Microsimulation
+
+        variables = [
+            "employment_income",
+            "ssi",
+            "snap",
+            "income_tax",
+            "state_income_tax",
+            "household_net_income",
+        ]
+        default = Microsimulation(
+            dataset=adapter._build_dataset(adapter._engine_tables(us_bundle), 2024)
+        )
+        # The comparison is only meaningful while the engine still extends.
+        assert len(default.get_holder("age").get_known_periods()) > 1
+
+        results = adapter.materialize(us_bundle, variables, period=2024)
+
+        for name in variables:
+            np.testing.assert_array_equal(
+                results[name],
+                np.asarray(default.calculate(name, period=2024)),
+                err_msg=name,
+            )
