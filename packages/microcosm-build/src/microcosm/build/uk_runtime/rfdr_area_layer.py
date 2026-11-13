@@ -17,8 +17,9 @@ flag on each household from the output area the spine draws it, and holds
 the layer to the spine's supports: every output area the layer flags must be
 an area of its system's support (:func:`area_flags`' ``roster``). Northern
 Ireland has no area in the scheme. A dataset built from a spine without
-areas carries no flag and keeps the engine's default of false, which María's
-ruling of 2026-10-28 set for the national line.
+areas carries no flag and keeps the engine's default of false, as María's
+ruling of 2026-10-28 set for the national line while it built on such spines;
+it now builds only on a spine that assigns areas (microcosm#931).
 
 Everything here is pure and depends on the standard library, numpy and
 pandas only, so the build tool can load this module by path.

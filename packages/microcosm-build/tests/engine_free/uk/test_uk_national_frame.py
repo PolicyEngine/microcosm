@@ -469,3 +469,170 @@ def test_spi_replacement_output_constructs_a_frame() -> None:
     )
     validate_uk_national_frame(frame)
     assert uk_household_weight_kind(frame) is WeightKind.IMPORTANCE
+
+
+# ---------------------------------------------------------------------------
+# The national line's release export (microcosm#931)
+# ---------------------------------------------------------------------------
+
+#: Each entity's geographic clone index, as the clone-first spine names it.
+_CLONE_INDEX_COLUMNS = {
+    "person": "person_clone_index",
+    "benunit": "benunit_clone_index",
+    "household": "household_clone_index",
+}
+
+
+def test_the_national_drop_list_is_the_clone_indices_on_the_gate_lines() -> None:
+    """The national line's release drops each entity's geographic clone index
+    beside the reviewed export exclusions (microcosm#931). The list spells the
+    clone-first spine's column names and the export takes the gate contexts'
+    release lines; a line the gates do not know is refused, by the list and
+    by the export."""
+    from microcosm.build.uk_runtime import national_frame
+    from microcosm.build.uk_runtime.geographic_clones import (
+        ladder_clone_index_column,
+    )
+    from microcosm.build.uk_runtime.weighted_integrity import UK_RELEASE_LINES
+
+    entities = ("person", "benunit", "household")
+    assert dict(national_frame.UK_NATIONAL_EXPORT_DROPPED_COLUMNS) == {
+        entity: (ladder_clone_index_column(entity),) for entity in entities
+    }
+    assert _CLONE_INDEX_COLUMNS == {
+        entity: ladder_clone_index_column(entity) for entity in entities
+    }
+    assert national_frame._UK_EXPORT_LINES == UK_RELEASE_LINES
+    shared = national_frame.UK_RELEASE_EXPORT_DROPPED_COLUMNS
+    # No reviewed exclusion is a clone index, so the national line adds them
+    # and only them, after the shared drops.
+    assert not set(_CLONE_INDEX_COLUMNS.values()) & {
+        column for columns in shared.values() for column in columns
+    }
+    for line in (None, "local"):
+        assert national_frame.uk_release_export_dropped_columns(line) is shared
+    assert national_frame.uk_release_export_dropped_columns() is shared
+    national = national_frame.uk_release_export_dropped_columns("national")
+    assert dict(national) == {
+        entity: (*shared.get(entity, ()), _CLONE_INDEX_COLUMNS[entity])
+        for entity in entities
+    }
+    for line in ("dense", "regional", "National", ""):
+        with pytest.raises(ValueError, match="line must be one of"):
+            national_frame.uk_release_export_dropped_columns(line)
+        with pytest.raises(ValueError, match="line must be one of"):
+            national_frame.uk_release_export_frame(_frame(), line=line)
+
+
+def test_the_national_export_leaves_the_clone_indices_and_keeps_the_areas() -> None:
+    """A national release of a one-clone geography-first spine carries no
+    geographic clone index on any entity and keeps every column the spine's
+    clone and area stages write, value for value, the three area codes under
+    the consumers' names (microcosm#931, microcosm#1114). Exported once, it
+    passes the boundary again unchanged."""
+    from microcosm.build.uk_runtime.atomic_area_conditioning import (
+        UK_SPINE_AREA_COLUMNS,
+    )
+    from microcosm.build.uk_runtime.geographic_clones import (
+        GEOGRAPHY_HOUSEHOLD_KEY_COLUMN,
+        UK_GEOGRAPHIC_SOURCE_COLUMNS,
+    )
+    from microcosm.build.uk_runtime.geography_ladder import (
+        UK_EXPORT_AREA_CODE_COLUMNS,
+    )
+    from microcosm.build.uk_runtime.national_frame import uk_release_export_frame
+    from test_support.microcosm_build.uk_full_population_graph import spine_frame
+
+    frame = spine_frame(1)
+    for entity, column in _CLONE_INDEX_COLUMNS.items():
+        assert set(frame.table(entity)[column]) == {0}
+    exported = uk_release_export_frame(frame, line="national")
+    for entity, column in _CLONE_INDEX_COLUMNS.items():
+        assert column not in exported.table(entity).columns
+    household = frame.table("household")
+    released = exported.table("household")
+    kept = (
+        *UK_GEOGRAPHIC_SOURCE_COLUMNS,
+        GEOGRAPHY_HOUSEHOLD_KEY_COLUMN,
+        *UK_SPINE_AREA_COLUMNS,
+        "local_authority",
+        "brma",
+        "in_rural_fuel_duty_relief_area",
+    )
+    for column in kept:
+        export = UK_EXPORT_AREA_CODE_COLUMNS.get(column, column)
+        assert released[export].tolist() == household[column].tolist(), column
+    for ladder in UK_EXPORT_AREA_CODE_COLUMNS:
+        assert ladder not in released.columns
+    assert (
+        exported.weights_for("household").values.tolist()
+        == frame.weights_for("household").values.tolist()
+    )
+    assert exported.mass_log == frame.mass_log
+    assert uk_release_export_frame(exported, line="national") is exported
+
+
+@pytest.mark.parametrize("clones", [1, 3])
+def test_an_export_without_the_national_line_keeps_the_clone_indices(clones) -> None:
+    """Without a line, and on the local line, the boundary drops what it did
+    before the national line had a list of its own (microcosm#931): the
+    clone indices stay, as the dense line's lineage, and the two calls give
+    one frame. The national line's export differs from it by the three
+    clone indices alone."""
+    from microcosm.build.uk_runtime.content_identity import (
+        uk_frame_content_identity,
+    )
+    from microcosm.build.uk_runtime.national_frame import uk_release_export_frame
+    from test_support.microcosm_build.uk_full_population_graph import spine_frame
+
+    frame = spine_frame(clones)
+    plain = uk_release_export_frame(frame)
+    local = uk_release_export_frame(frame, line="local")
+    national = uk_release_export_frame(frame, line="national")
+    assert uk_frame_content_identity(plain) == uk_frame_content_identity(local)
+    for entity, column in _CLONE_INDEX_COLUMNS.items():
+        pd.testing.assert_frame_equal(plain.table(entity), local.table(entity))
+        assert column in plain.table(entity).columns
+        assert set(plain.table(entity)[column]) == set(range(clones))
+        pd.testing.assert_frame_equal(
+            plain.table(entity).drop(columns=[column]), national.table(entity)
+        )
+
+
+@pytest.mark.parametrize("line", [None, "local", "national"])
+def test_a_released_frame_with_areas_passes_the_boundary_again(
+    line, tmp_path: Path
+) -> None:
+    """The release cut's gates read the export of the candidate they load
+    (microcosm#931): a national candidate now carries the three area codes
+    under the consumers' names, so the boundary passes such a frame through
+    unchanged on any line, written and read back as the H5 holds it. A
+    household table that carries a ladder name beside its consumer name is
+    refused, as the area-code rename refuses it."""
+    pytest.importorskip("tables")
+    from microcosm.build.uk_runtime.geography_ladder import (
+        UK_EXPORT_AREA_CODE_COLUMNS,
+    )
+    from microcosm.build.uk_runtime.national_frame import uk_release_export_frame
+    from test_support.microcosm_build.uk_full_population_graph import spine_frame
+
+    released = uk_release_export_frame(spine_frame(1), line="national")
+    assert uk_release_export_frame(released, line=line) is released
+    candidate, _provenance = load_uk_national_frame(
+        write_uk_national_frame(released, tmp_path / "release.h5")
+    )
+    assert uk_release_export_frame(candidate, line=line) is candidate
+    ladder, export = next(iter(UK_EXPORT_AREA_CODE_COLUMNS.items()))
+    household = candidate.table("household").copy()
+    household[ladder] = household[export]
+    both = uk_national_frame(
+        person=candidate.table("person"),
+        benunit=candidate.table("benunit"),
+        household=household,
+        time_period=uk_time_period(candidate),
+        weight_kind=uk_household_weight_kind(candidate),
+        household_weights=candidate.weights_for("household").values,
+        mass_log=candidate.mass_log,
+    )
+    with pytest.raises(ValueError, match="already carries consumer area-code"):
+        uk_release_export_frame(both, line=line)

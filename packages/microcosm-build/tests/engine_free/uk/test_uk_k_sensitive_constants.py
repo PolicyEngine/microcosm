@@ -593,8 +593,8 @@ K_SENSITIVE_CONSTANTS: tuple[KSensitiveConstant, ...] = (
             "K clones leave at zero: the dense line, which builds on the "
             "packaged geography-first spine at the K its clone count pin holds "
             "it to, reads K rows where one clone has one, and any SPI-synthetic "
-            "row at zero weight still fails; the national line refuses a "
-            "clone-first spine"
+            "row at zero weight still fails; the national line builds at one "
+            "clone, where K is one"
         ),
         gate_parameters=frozenset(
             {("uk_zero_weight_strata", "maximum_zero_weight_rows")}
