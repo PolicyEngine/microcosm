@@ -44,6 +44,20 @@ starts no new submission once it is closing, and prints the collector's
 status; a collector that receives nothing or turns them down is a warning,
 and never fails the publication.
 
+A promotion (``--promote``) and a withdrawal name their own release and
+build for the collector too, as the interface requires. Once the change has
+landed, the emitter submits the ``releases.json`` its commit wrote to the
+collector as a ``releases-record`` submission naming the build that is the
+release's current build after the change: the promoted build, or, for a
+withdrawal, the current build it left in place. The collector then points
+the country's latest calibration tree at the current build of the country's
+default release in ``releases.json`` at the repository's head, an older
+build as well as a newer one. The command waits for the collector to accept
+it, as for a publication, and a release with no current build after the
+change sends nothing (``NO_CURRENT_BUILD``). A publication with
+``make_current`` needs no record of its own: its calibration diagnostics
+submission already names the build it made current.
+
 The emitter finds its Hugging Face credential the way a build's emitter
 does: it is this command's child process and inherits its environment
 (``HF_TOKEN``, then ``HUGGINGFACE_TOKEN``, then the token saved by
@@ -66,7 +80,7 @@ import re
 import sys
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
@@ -270,9 +284,11 @@ class ReleasePublication:
     is ``publish``, ``promote`` or ``withdraw``. ``problem`` says why nothing
     was handed over, when the emitter could not take the change or its
     write-access check refused it.
-    ``collector_receipt`` is the emitter's last collector receipt of a
-    publication, or None for a promotion, a withdrawal, a change handed
-    nothing, or a publication the emitter has no collector row for.
+    ``collector_receipt`` is the emitter's last collector receipt of the
+    change (a publication's calibration diagnostics, or the ``releases.json``
+    a promotion or withdrawal wrote), or None for a change handed nothing,
+    one that names no build for the collector, or one the emitter has no
+    collector row for.
     """
 
     repository: str
@@ -402,8 +418,13 @@ def _hand_over(
             kind = "promote"
         if problem is not None:
             receipt = unavailable_release_receipt(change)
-        elif isinstance(change, PublishRelease):
-            receipt = emitter.publish_release(change, wait_seconds=wait_seconds)
+        else:
+            if isinstance(change, PublishRelease):
+                receipt = emitter.publish_release(change, wait_seconds=wait_seconds)
+            elif isinstance(change, WithdrawBuild):
+                receipt = emitter.withdraw_build(change, wait_seconds=wait_seconds)
+            else:
+                receipt = emitter.promote_build(change, wait_seconds=wait_seconds)
             if change.collector is not None and receipt["status"] != "unavailable":
                 # Before the emitter closes: a closing emitter starts no new
                 # submission. The emitter keeps the collector row under the
@@ -411,7 +432,7 @@ def _hand_over(
                 collector_receipt = follow_collector_submissions(
                     emitter,
                     _receipt_handover_id(receipt) or change.handover_id(),
-                    subject=f"build {change.build} of {change.release}",
+                    subject=_collector_subject(kind, change.release, change.build),
                     wait_seconds=(
                         collector_wait_seconds
                         if receipt["status"] == "published"
@@ -421,10 +442,6 @@ def _hand_over(
                     clock=_clock,
                     sleep=_sleep,
                 )
-        elif isinstance(change, WithdrawBuild):
-            receipt = emitter.withdraw_build(change, wait_seconds=wait_seconds)
-        else:
-            receipt = emitter.promote_build(change, wait_seconds=wait_seconds)
     finally:
         if owned:
             emitter.close()
@@ -438,6 +455,27 @@ def _hand_over(
         change=kind,
         collector_receipt=collector_receipt,
     )
+
+
+def _collector_subject(kind: ReleaseChangeKind, release: str, build: str) -> str:
+    """What the command calls a change's collector submission in its messages."""
+    if kind == "promote":
+        return f"releases.json with build {build} current in {release}"
+    if kind == "withdraw":
+        return f"releases.json with build {build} of {release} withdrawn"
+    return f"build {build} of {release}"
+
+
+def _described[RecordChange: (PromoteBuild, WithdrawBuild)](
+    change: RecordChange,
+) -> RecordChange:
+    """``change`` naming its own release and build for the collector.
+
+    The change is built first without it, so a name the interface refuses is
+    reported as the change's own (``build``), not the provenance's
+    (``build_id``).
+    """
+    return replace(change, collector=collector_provenance(change.release, change.build))
 
 
 def _receipt_handover_id(receipt: ReleaseReceipt) -> str | None:
@@ -653,11 +691,15 @@ def promote_release_build(
     repository: str | None = None,
     client: ReleaseEmitter | None = None,
     wait_seconds: float = PROMOTION_WAIT_SECONDS,
+    collector_wait_seconds: float = COLLECTOR_SUBMISSION_WAIT_SECONDS,
 ) -> ReleasePublication:
     """Make a published build, named by its local manifest, the current build.
 
     It refuses and checks write access as :func:`publish_release_build` does,
-    and refuses a compatibility recertification, which is never current.
+    and refuses a compatibility recertification, which is never current. The
+    promotion names the build for the collector, so the emitter submits the
+    ``releases.json`` it wrote; once the promotion has landed, it waits at
+    most ``collector_wait_seconds`` for the collector to accept it.
     """
     if client is None:
         _refuse_offline()
@@ -670,10 +712,13 @@ def promote_release_build(
         )
     _refuse_pointer_files(named_repository)
     return _hand_over(
-        PromoteBuild(repository=named_repository, release=release, build=build),
+        _described(
+            PromoteBuild(repository=named_repository, release=release, build=build)
+        ),
         client=client,
         wait_seconds=wait_seconds,
         wanted_current=True,
+        collector_wait_seconds=collector_wait_seconds,
     )
 
 
@@ -684,6 +729,7 @@ def withdraw_release_build(
     *,
     client: ReleaseEmitter | None = None,
     wait_seconds: float = WITHDRAWAL_WAIT_SECONDS,
+    collector_wait_seconds: float = COLLECTOR_SUBMISSION_WAIT_SECONDS,
 ) -> ReleasePublication:
     """Withdraw a published build: set its ``withdrawn`` flag in ``releases.json``.
 
@@ -693,14 +739,24 @@ def withdraw_release_build(
     and files stay as published. It refuses (``ValueError``) offline and while
     the repository has ``latest*.json`` pointer files, before any emitter
     starts, and hands nothing over unless the emitter's write-access check
-    passes, as :func:`publish_release_build` does.
+    passes, as :func:`publish_release_build` does. The withdrawal names the
+    build for the collector, so the emitter submits the ``releases.json`` it
+    wrote, naming the release's current build; once the withdrawal has
+    landed, it waits at most ``collector_wait_seconds`` for the collector to
+    accept it.
     """
-    request = WithdrawBuild(repository=repository, release=release, build=build)
+    request = _described(
+        WithdrawBuild(repository=repository, release=release, build=build)
+    )
     if client is None:
         _refuse_offline()
     _refuse_pointer_files(repository)
     return _hand_over(
-        request, client=client, wait_seconds=wait_seconds, wanted_current=False
+        request,
+        client=client,
+        wait_seconds=wait_seconds,
+        wanted_current=False,
+        collector_wait_seconds=collector_wait_seconds,
     )
 
 

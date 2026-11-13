@@ -1,15 +1,17 @@
-"""What becomes of a staged bundle's or release publication's collector submissions.
+"""What becomes of a staged bundle's or release change's collector submissions.
 
 Every emitter a build starts has its Hugging Face module's collector
 submissions on (``telemetry_emitter.COLLECTOR_SUBMISSIONS``). A staged bundle
 or release publication that names its build (``CollectorProvenance``) is then
 also submitted to the collector, from the emitter's own worker, once its
-Hugging Face commit lands. An emitter that is closing starts no new
-submission, so a build or command that closes its emitter straight after the
-commit would leave them queued for the next emitter started on the machine.
-:func:`follow_collector_submissions` waits, after the commit, until the
-collector has accepted them, and says what became of them. Nothing here
-raises into the build or fails a staging or a publication.
+Hugging Face commit lands; a promotion or withdrawal that names its build
+submits the ``releases.json`` its commit wrote. An emitter that is closing
+starts no new submission, so a build or command that closes its emitter
+straight after the commit would leave them queued for the next emitter
+started on the machine. :func:`follow_collector_submissions` waits, after
+the commit, until the collector has accepted them, and says what became of
+them. Nothing here raises into the build or fails a staging or a release
+change.
 """
 
 from __future__ import annotations
@@ -62,6 +64,9 @@ _SKIPPED_REASONS: Final[Mapping[str, str]] = {
     ),
     "NOT_STAGED_ON_HUGGING_FACE": _NOT_ON_HUGGING_FACE,
     "NOT_PUBLISHED_ON_HUGGING_FACE": _NOT_ON_HUGGING_FACE,
+    # A promotion or withdrawal submits releases.json only when it leaves the
+    # release a current build to name.
+    "NO_CURRENT_BUILD": "the release has no current build after the change",
 }
 #: Which credential collector submissions use. An emitter given a collector
 #: token in the environment uses it instead of the Hugging Face credential,
