@@ -76,6 +76,9 @@ class _StubFittedQRF:
     def __init__(self, record: dict[str, object]) -> None:
         self.record = record
 
+    def gate_outcomes(self) -> dict[str, str]:
+        return {"universal_credit_reported_amount": "cross_fitted"}
+
     def predict_from_uniforms(
         self, table: pd.DataFrame, *, quantiles, sign_uniforms
     ) -> pd.DataFrame:
@@ -91,11 +94,15 @@ class _StubFittedQRF:
 
 
 class _StubQRF:
-    def __init__(self, record: dict[str, object], *, seed: int) -> None:
+    def __init__(
+        self, record: dict[str, object], *, seed: int, gate_calibration: str
+    ) -> None:
         record["seed"] = seed
+        record["gate_calibration"] = gate_calibration
         self.record = record
 
-    def fit(self, table, predictors, targets, *, weights):
+    def fit(self, table, predictors, targets, *, weights, groups):
+        self.record["fit_groups"] = np.asarray(groups).copy()
         self.record["fit_table"] = table.copy()
         self.record["fit_index"] = table.index.tolist()
         self.record["fit_predictors"] = list(predictors)
@@ -108,8 +115,8 @@ class _StubQRFFactory:
     def __init__(self) -> None:
         self.record: dict[str, object] = {}
 
-    def __call__(self, *, seed: int):
-        return _StubQRF(self.record, seed=seed)
+    def __call__(self, *, seed: int, gate_calibration: str):
+        return _StubQRF(self.record, seed=seed, gate_calibration=gate_calibration)
 
 
 def _frame(*, child_only: bool = False):

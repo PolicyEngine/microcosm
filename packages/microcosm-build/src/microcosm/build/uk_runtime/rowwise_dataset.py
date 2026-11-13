@@ -29,12 +29,14 @@ from microcosm.build.uk_runtime.local_authority_input import (
 from microcosm.build.uk_runtime.national_frame import (
     _mass_log_from_stored,
     _read_isa_income_contract,
+    _read_savings_income_projection,
     _read_weight_metadata,
     _weight_kind_from_stored,
     _write_uk_single_year_tables,
     uk_household_weight_kind,
     uk_isa_income_contract,
     uk_national_frame,
+    uk_savings_income_projection,
     uk_time_period,
 )
 from microcosm.build.uk_runtime.rowwise_geography import (
@@ -142,6 +144,8 @@ class UKRowwiseDatasetResult:
     mass_log: tuple[MassChangeRecord, ...] = ()
     #: The source's ISA income contract; ``None`` is the producer's.
     isa_income_contract: Mapping[str, object] | None = None
+    #: The source's savings income projection rule; ``None`` is the producer's.
+    savings_income_projection: str | None = None
 
     @property
     def id_multiplier(self) -> int:
@@ -177,6 +181,7 @@ def clone_uk_dataset_tables_with_rowwise_geography(
     mass_log: tuple[MassChangeRecord, ...] = (),
     source_lineage_modulus: int | None = None,
     isa_income_contract: Mapping[str, object] | None = None,
+    savings_income_projection: str | None = None,
 ) -> UKRowwiseDatasetResult:
     """Clone UK person/benunit/household tables and assign row-wise geography."""
 
@@ -280,6 +285,7 @@ def clone_uk_dataset_tables_with_rowwise_geography(
         household_weight_kind=household_weight_kind,
         mass_log=(*mass_log, clone_record),
         isa_income_contract=isa_income_contract,
+        savings_income_projection=savings_income_projection,
     )
     validate_uk_rowwise_dataset_tables(result.person, result.benunit, result.household)
     return result
@@ -337,6 +343,7 @@ def expand_uk_geographic_pool(
     mass_log: tuple[MassChangeRecord, ...] = (),
     source_lineage_modulus: int | None = None,
     isa_income_contract: Mapping[str, object] | None = None,
+    savings_income_projection: str | None = None,
 ) -> UKGeographicPool:
     """Prepare lineage and expand linked entities using shared clone operations.
 
@@ -460,6 +467,7 @@ def expand_uk_geographic_pool(
             weight_kind=household_weight_kind,
             mass_log=(*mass_log, clone_record),
             isa_income_contract=isa_income_contract,
+            savings_income_projection=savings_income_projection,
         ),
         n_clones=n_clones,
         id_multiplier=id_multiplier,
@@ -493,6 +501,7 @@ def assign_uk_geographic_pool(
         household_weights=frame.weights_for("household").values,
         mass_log=frame.mass_log,
         isa_income_contract=uk_isa_income_contract(frame),
+        savings_income_projection=uk_savings_income_projection(frame),
     )
 
 
@@ -544,6 +553,7 @@ def clone_uk_dataset_tables_with_ladder_geography(
     mass_log: tuple[MassChangeRecord, ...] = (),
     source_lineage_modulus: int | None = None,
     isa_income_contract: Mapping[str, object] | None = None,
+    savings_income_projection: str | None = None,
 ) -> UKLadderRowwiseDatasetResult:
     """Clone UK tables and assign geography through the OA ladder.
 
@@ -563,6 +573,7 @@ def clone_uk_dataset_tables_with_ladder_geography(
         mass_log=mass_log,
         source_lineage_modulus=source_lineage_modulus,
         isa_income_contract=isa_income_contract,
+        savings_income_projection=savings_income_projection,
     )
     frame = assign_uk_geographic_pool(
         pool,
@@ -626,6 +637,7 @@ def clone_uk_dataset_with_ladder_geography(
         mass_log=tables["mass_log"],
         source_lineage_modulus=source_lineage_modulus,
         isa_income_contract=tables["isa_income_contract"],
+        savings_income_projection=tables["savings_income_projection"],
     )
     if output_path is None:
         return result
@@ -777,6 +789,7 @@ def clone_uk_dataset_with_rowwise_geography(
         mass_log=tables["mass_log"],
         source_lineage_modulus=source_lineage_modulus,
         isa_income_contract=tables["isa_income_contract"],
+        savings_income_projection=tables["savings_income_projection"],
     )
     if output_path is None:
         return result
@@ -791,6 +804,7 @@ def clone_uk_dataset_with_rowwise_geography(
         household_weight_kind=result.household_weight_kind,
         mass_log=result.mass_log,
         isa_income_contract=result.isa_income_contract,
+        savings_income_projection=result.savings_income_projection,
     )
 
 
@@ -830,6 +844,7 @@ def load_uk_rowwise_dataset(path: str | Path):
         weight_kind=payload["household_weight_kind"],
         mass_log=payload["mass_log"],
         isa_income_contract=payload["isa_income_contract"],
+        savings_income_projection=payload["savings_income_projection"],
     )
     validate_uk_national_frame(frame)
     return frame, UKStagingProvenance(source_h5=input_path, fingerprint=fingerprint)
@@ -864,6 +879,7 @@ def write_uk_rowwise_dataset(
         mass_log=result.mass_log,
         isa_income_contract=_result_isa_income_contract(result),
         path=Path(output_path),
+        savings_income_projection=result.savings_income_projection,
     )
 
 
@@ -927,6 +943,7 @@ def _write_uk_ladder_rowwise_dataset(
         mass_log=frame.mass_log,
         isa_income_contract=uk_isa_income_contract(frame),
         path=Path(output_path),
+        savings_income_projection=uk_savings_income_projection(frame),
     )
 
 
@@ -1003,6 +1020,7 @@ def _dataset_tables(
             "household_weight_kind": uk_household_weight_kind(dataset),
             "mass_log": dataset.mass_log,
             "isa_income_contract": uk_isa_income_contract(dataset),
+            "savings_income_projection": uk_savings_income_projection(dataset),
         }
     raise TypeError(
         "UK dataset table extraction requires a microcosm Frame or a UK "
@@ -1019,6 +1037,7 @@ def _read_uk_single_year_h5(path: str | Path) -> dict[str, Any]:
         raise FileNotFoundError(f"UK single-year dataset not found: {dataset_path}.")
     weight_kind, mass_log = read_uk_single_year_weight_metadata(dataset_path)
     isa_income_contract = _read_isa_income_contract(dataset_path)
+    savings_income_projection = _read_savings_income_projection(dataset_path)
     with pd.HDFStore(dataset_path, mode="r") as store:
         keys = {key.lstrip("/") for key in store.keys()}
         missing = sorted(set(UK_SINGLE_YEAR_TABLES) - keys)
@@ -1033,6 +1052,7 @@ def _read_uk_single_year_h5(path: str | Path) -> dict[str, Any]:
             "household_weight_kind": weight_kind,
             "mass_log": mass_log,
             "isa_income_contract": isa_income_contract,
+            "savings_income_projection": savings_income_projection,
         }
 
 

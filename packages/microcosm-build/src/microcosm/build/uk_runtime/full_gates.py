@@ -25,7 +25,6 @@ from microcosm.build.uk_runtime.calibration_run import (
 from microcosm.build.uk_runtime.cgt_projection import UK_CGT_PROJECTION_ARTIFACT_KEY
 from microcosm.build.uk_runtime.graph_evidence import uk_spine_gate_artifacts
 from microcosm.build.uk_runtime.national_frame import uk_release_export_frame
-from microcosm.build.uk_runtime.parity_reference import load_efrs_parity_reference
 from microcosm.build.uk_runtime.support_floor import uk_support_floor_names
 from microcosm.build.uk_runtime.terminal_gates import uk_export_candidate_columns
 from microcosm.calibrate import TargetRegistry
@@ -254,7 +253,6 @@ def build_full_gate_context(
         for spec in reference_registry.specs
         if (spec.name, spec.period) in selected
     }
-    reference = load_efrs_parity_reference()
     manifest = uk_full_gate_manifest(selection_receipt)
     admin_totals, admin_receipt = uk_aggregate_admin_totals(frame, manifest)
     artifacts = dict(supporting_evidence)
@@ -281,14 +279,14 @@ def build_full_gate_context(
                 "resolved_reference_count": len(problem.targets),
                 "matrix_target_count": len(problem.names),
             },
+            # The export-surface and input-coverage gates read the reference
+            # build's surface (``reference_surface``, the dense line's
+            # current build, from --reference-surface) beside this; without
+            # it they are evidence_absent (microcosm#1095).
             "parity_evidence": SimpleNamespace(
                 candidate_columns=uk_export_candidate_columns(
                     uk_release_export_frame(frame)
                 ),
-                reference_columns={
-                    f"{entity}.{name}"
-                    for name, entity in reference.input_entities.items()
-                },
                 candidate_targets=set(national_errors),
                 reference_targets=national_reference,
                 target_relative_errors=national_errors,

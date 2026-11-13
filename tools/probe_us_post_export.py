@@ -78,7 +78,9 @@ authority only to a variance estimate that at least
 ``--min-effective-households`` households effectively carry
 (``(sum q)^2 / sum q^2`` over their variance terms).
 
-``--reference-release-dir`` (a full-size build's ``releases/<id>/``) adds each
+``--reference-release-dir`` (a full-size build's release directory: the
+builder's ``releases/<release>/`` since microcosm#1570, or an older build's
+``releases/<build id>/``) adds each
 smoke probe's full-scale effect and z-score, a row-by-row validation
 comparison, the build's target surface, its QRF register and its in-sample
 fit, and two fidelity checks: the probe's baseline plans and reform pass
@@ -97,7 +99,7 @@ Usage::
     .venv/bin/python tools/probe_us_post_export.py \\
         --export <subsample dir>/populace_us_2024.h5 --out <dir> \\
         [--sample-receipt <subsample dir>/sample_receipt.json] \\
-        [--reference-release-dir <release dir>/releases/<release id>]
+        [--reference-release-dir <build out>/releases/<release>]
 
 writes ``<dir>/probe_report.json``, ``<dir>/passes.jsonl`` and each stage's
 artifact under the release tool's file name (``reform_coverage_smoke.json``,
@@ -1363,7 +1365,11 @@ def compare_qrf_tail(
 ) -> dict[str, Any]:
     """The probe's source-export QRF tail result against a release's
     ``qrf_tail_concentration.json`` (same frame columns and weights, so the
-    shares must agree to rounding)."""
+    shares must agree to rounding).
+
+    It compares the single-record measurements, and the reason behind each
+    unmeasured output, when the release recorded them, and none against a
+    release built before its surface carried them."""
     differences: list[str] = []
     tail = reference["tail_concentration"]
     if bool(tail["passed"]) != bool(result["passed"]):
@@ -1387,7 +1393,51 @@ def compare_qrf_tail(
             continue
         if not math.isclose(float(left), float(right), rel_tol=1e-9, abs_tol=1e-12):
             differences.append(f"{column}: top share {left!r} vs {right!r}")
-    return {"differences": differences, "columns_compared": len(shares)}
+    block = _single_record_block(result["surface"])
+    reference_block = _single_record_block(reference["surface"])
+    if block is None or reference_block is None:
+        block = reference_block = {"columns": {}, "unmeasured": {}}
+    measured, recorded = block["columns"], reference_block["columns"]
+    if sorted(measured) != sorted(recorded):
+        differences.append(
+            "single-record columns differ: only probe "
+            f"{sorted(set(measured) - set(recorded))}, only release "
+            f"{sorted(set(recorded) - set(measured))}"
+        )
+    compared = sorted(set(measured) & set(recorded))
+    for column in compared:
+        for field in ("carriers", "top_1_share", "top_1_weight", "top_k_share"):
+            left, right = measured[column].get(field), recorded[column].get(field)
+            if left is None or right is None:
+                if left != right:
+                    differences.append(f"{column}: {field} {left} vs {right}")
+                continue
+            if not math.isclose(float(left), float(right), rel_tol=1e-9, abs_tol=1e-12):
+                differences.append(f"{column}: {field} {left!r} vs {right!r}")
+    skipped, recorded_skipped = block["unmeasured"], reference_block["unmeasured"]
+    if sorted(skipped) != sorted(recorded_skipped):
+        differences.append(
+            "unmeasured columns differ: only probe "
+            f"{sorted(set(skipped) - set(recorded_skipped))}, only release "
+            f"{sorted(set(recorded_skipped) - set(skipped))}"
+        )
+    for column in sorted(set(skipped) & set(recorded_skipped)):
+        if skipped[column] != recorded_skipped[column]:
+            differences.append(
+                f"{column}: unmeasured as {skipped[column]!r} vs "
+                f"{recorded_skipped[column]!r}"
+            )
+    return {
+        "differences": differences,
+        "columns_compared": len(shares),
+        "single_record_columns_compared": len(compared),
+    }
+
+
+def _single_record_block(surface: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """A tail surface's single-record block (``columns`` and ``unmeasured``),
+    if it has one."""
+    return surface.get("single_record_concentration")
 
 
 def compare_post_export_plans(
@@ -1533,13 +1583,17 @@ def _timed_scorer_class(builder, passes_path: Path, clock: StageClock):
     base = builder._HouseholdBatchedPostExportScorer
 
     class TimedScorer(base):
-        def _score(self, keys, *, label, reform_system=None):
+        def _score(self, keys, *, label, reform_system=None, **options):
+            # ``options`` is whatever else the release scorer takes, such as a
+            # reform pass's outer progress counter.
             sampler = clock.sampler
             before = sampler.reset() if sampler else 0
             wall = time.perf_counter()
             cpu = time.process_time()
             try:
-                return super()._score(keys, label=label, reform_system=reform_system)
+                return super()._score(
+                    keys, label=label, reform_system=reform_system, **options
+                )
             finally:
                 row = {
                     "stage": clock.current,
@@ -2262,7 +2316,12 @@ class ExportProbe:
                     "pass" if not comparison["differences"] else "fail",
                     AUTHORITATIVE,
                     "; ".join(comparison["differences"])
-                    or "same verdict, columns and top-k shares",
+                    or (
+                        "same verdict, columns, top-k shares and single-record "
+                        "measurements"
+                        if comparison["single_record_columns_compared"]
+                        else "same verdict, columns and top-k shares"
+                    ),
                     "fidelity of this probe to the release",
                 )
         _write_json(self.out_dir / "qrf_tail_concentration.json", record)
@@ -2988,7 +3047,8 @@ def _summary(report: Mapping[str, Any], receipt) -> dict[str, Any]:
     return summary
 
 
-#: Files of a release directory (``releases/<release id>/``) the probe reads.
+#: Files of a release directory (``releases/<release>/``, or an older build's
+#: ``releases/<build id>/``) the probe reads.
 REFERENCE_FILES = {
     "smoke": "reform_coverage_smoke.json",
     "validation": "reform_validation.json",
@@ -3004,13 +3064,18 @@ def resolve_target_surface(
     dropped: int | None,
     release_manifest: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
-    """The build's target surface: the flag, else the release manifest's
-    ``build.target_surface_selection``, else ``full``."""
-    selection = (
-        None
-        if release_manifest is None
-        else (release_manifest.get("build") or {}).get("target_surface_selection")
-    )
+    """The build's target surface: the flag, else the reference release
+    manifest's ``target_surface_selection``, else ``full``.
+
+    A manifest in the build-folder layout (microcosm#1570) names its build in
+    ``build`` and records the selection at its top level; one in the tagged
+    layout records it in its ``build`` object.
+    """
+    build = None if release_manifest is None else release_manifest.get("build")
+    tagged = isinstance(build, Mapping)
+    details = build if tagged else release_manifest or {}
+    selection = details.get("target_surface_selection")
+    field = "build.target_surface_selection" if tagged else "target_surface_selection"
     if flag is not None:
         return {
             "mode": flag,
@@ -3025,7 +3090,7 @@ def resolve_target_surface(
                 if dropped is not None
                 else selection.get("dropped_congressional_district_targets")
             ),
-            "source": "reference release_manifest.json build.target_surface_selection",
+            "source": f"reference release_manifest.json {field}",
         }
     return {
         "mode": "full",
@@ -3089,7 +3154,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--reference-release-dir",
         type=Path,
         default=None,
-        help="a full-size build's release directory (releases/<release id>/): "
+        help="a full-size build's release directory (releases/<release>/, or "
+        "an older build's releases/<build id>/): "
         "defaults --reference-smoke, --reference-validation, "
         "--reference-build-manifest and --calibration-diagnostics to its files",
     )

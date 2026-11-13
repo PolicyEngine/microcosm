@@ -6,7 +6,7 @@ import copy
 import json
 import os
 from datetime import date
-from decimal import Decimal, localcontext
+from decimal import ROUND_FLOOR, ROUND_HALF_EVEN, Decimal, localcontext
 from fractions import Fraction
 from pathlib import Path
 
@@ -34,16 +34,16 @@ from tools.generate_nz_reference_aging import (
 _PATHS = paths_for("microcosm-build")
 _SPEC = _PATHS.package / "src/microcosm/build/nz"
 _EXPECTED = {
-    "ird_ty2024_to_ty2027_low": 1115056,
-    "ird_ty2024_to_ty2027_central": 1117109,
-    "ird_ty2024_to_ty2027_high": 1119158,
-    "p1_ty2026_to_ty2027_low": 1026690,
-    "p1_ty2026_to_ty2027_central": 1028580,
-    "p1_ty2026_to_ty2027_high": 1030467,
+    "ird_ty2024_to_ty2027_low": 1117460,
+    "ird_ty2024_to_ty2027_central": 1118491,
+    "ird_ty2024_to_ty2027_high": 1119519,
+    "p1_ty2026_to_ty2027_low": 1028904,
+    "p1_ty2026_to_ty2027_central": 1029853,
+    "p1_ty2026_to_ty2027_high": 1030799,
     "observed_ty2026_over_ty2024": 1086069,
-    "donor_cy2024_to_ty2027_low": 1077090,
-    "donor_cy2024_to_ty2027_central": 1079073,
-    "donor_cy2024_to_ty2027_high": 1081052,
+    "donor_cy2024_to_ty2027_low": 1079413,
+    "donor_cy2024_to_ty2027_central": 1080408,
+    "donor_cy2024_to_ty2027_high": 1081401,
 }
 _DENOMINATORS = {
     "p1_": Fraction("1670.0725"),
@@ -107,7 +107,7 @@ def test_packaged_factor_context_validation_ignores_the_wall_clock(monkeypatch):
     class FutureDate(date):
         @classmethod
         def today(cls):
-            return cls(2026, 11, 5)
+            return cls(2027, 2, 3)
 
     monkeypatch.setattr(reference_factors, "date", FutureDate)
 
@@ -117,10 +117,10 @@ def test_packaged_factor_context_validation_ignores_the_wall_clock(monkeypatch):
 @pytest.mark.parametrize(
     "today,current",
     [
-        (date(2026, 10, 22), False),
-        (date(2026, 10, 23), True),
-        (date(2026, 11, 3), True),
-        (date(2026, 11, 4), False),
+        (date(2026, 11, 3), False),
+        (date(2026, 11, 4), True),
+        (date(2027, 2, 2), True),
+        (date(2027, 2, 3), False),
     ],
 )
 def test_factor_currency_uses_inclusive_declared_boundaries(today, current):
@@ -222,17 +222,78 @@ def test_treasury_fy2027_source_column_uses_chronicle_2026_and_2027_refuses(
         )
 
 
-def test_p1_high_rounds_once_to_1030467_and_old_truncation_refuses(operand_facts):
-    declaration = _entry("p1_ty2026_to_ty2027_high")["declaration"]
+def _p1_numerators(declaration):
+    """A P1 factor's numerator under one half-even rounding, and what truncation
+    or an intermediate rounding would declare instead, all in millionths."""
+    value = {period: Decimal(text) for _, period, _, text in _OPERANDS}
+    sources = [
+        row["selector"]["period_value"] for row in declaration["source_schedule"]
+    ]
+    cent = Decimal("0.01")
+    with localcontext() as context:
+        context.prec = 60
+        growth = Decimal("2.7") + Decimal(declaration["growth"]["scenario_delta"])
+        q = (1 + growth / 100).sqrt().sqrt()
+        q6 = q.quantize(Decimal("0.000001"))
+        june, september = value["2026-Q2"], value["2026-Q3"]
+        denominator = sum(value[period] for period in sources) / 4
+
+        def mean(projected):
+            return (june + september + sum(projected)) / 4
+
+        def millionths(numerator, rounding=ROUND_HALF_EVEN):
+            ratio = numerator / denominator * 1000000
+            return int(ratio.to_integral_value(rounding=rounding))
+
+        exact = mean([september * q, september * q * q])
+        return millionths(exact), {
+            "truncated": millionths(exact, ROUND_FLOOR),
+            "numerator rounded to cents": millionths(exact.quantize(cent)),
+            "projected quarters rounded to cents": millionths(
+                mean([(september * q**power).quantize(cent) for power in (1, 2)])
+            ),
+            "q rounded to six digits": millionths(
+                mean([september * q6, september * q6 * q6])
+            ),
+        }
+
+
+@pytest.mark.parametrize("profile", ["low", "central", "high"])
+def test_p1_rounds_once_and_refuses_truncated_or_intermediate_numerators(
+    profile, operand_facts
+):
+    factor_id = f"p1_ty2026_to_ty2027_{profile}"
+    declaration = _entry(factor_id)["declaration"]
     assert declaration["source_period"] == 2026
     assert [
         row["selector"]["period_value"] for row in declaration["source_schedule"]
     ] == ["2025-Q2", "2025-Q3", "2025-Q4", "2026-Q1"]
-    declaration["expected_operational_factor"]["numerator"] = 1030466
-    with pytest.raises(ValueError, match="expected factor mismatch"):
-        resolve_reference_factor(
-            declaration, operand_facts, _document()["feed_identity"]
-        )
+    once, alternatives = _p1_numerators(declaration)
+    assert once == _EXPECTED[factor_id]
+    for numerator in sorted(set(alternatives.values()) - {once}):
+        declaration["expected_operational_factor"]["numerator"] = numerator
+        with pytest.raises(ValueError, match="expected factor mismatch"):
+            resolve_reference_factor(
+                declaration, operand_facts, _document()["feed_identity"]
+            )
+
+
+def test_p1_profiles_separate_one_rounding_from_each_alternative():
+    """Each alternative misses some profile's declared numerator, so the
+    refusal test above exercises every alternative."""
+    missed = set()
+    for profile in ("low", "central", "high"):
+        declaration = _entry(f"p1_ty2026_to_ty2027_{profile}")["declaration"]
+        once, alternatives = _p1_numerators(declaration)
+        missed |= {
+            name for name, numerator in alternatives.items() if numerator != once
+        }
+    assert missed == {
+        "truncated",
+        "numerator rounded to cents",
+        "projected quarters rounded to cents",
+        "q rounded to six digits",
+    }
 
 
 def test_root_enclosure_certifies_no_rounded_quarters_and_irrational_root():
@@ -246,8 +307,13 @@ def test_root_enclosure_certifies_no_rounded_quarters_and_irrational_root():
         assert lower**4 < radicand < upper**4
         assert receipt["root_bounds"]["exact"] is False
         denominator = _fraction(receipt["denominator_mean"])
-        assert _fraction(receipt["numerator_mean_bounds"]["lower"]) == (
-            Fraction("1700.68") * sum(lower**i for i in range(4)) / 4
+        assert (
+            _fraction(receipt["numerator_mean_bounds"]["lower"])
+            == (
+                Fraction("1700.68")
+                + Fraction("1714.86") * sum(lower**i for i in range(3))
+            )
+            / 4
         )
         for bound in ("lower", "upper"):
             value = _fraction(receipt["unrounded_factor_bounds"][bound])
@@ -258,29 +324,30 @@ def test_root_enclosure_certifies_no_rounded_quarters_and_irrational_root():
             assert round(value * 1000000) == _EXPECTED[factor_id]
 
 
-def test_september_observation_reanchors_and_requires_reviewed_redeclaration(
+def test_december_observation_reanchors_and_requires_reviewed_redeclaration(
     operand_facts,
 ):
     declaration = _entry()["declaration"]
     anchor = next(
-        fact for fact in operand_facts if fact["period"]["value"] == "2026-Q2"
+        fact for fact in operand_facts if fact["period"]["value"] == "2026-Q3"
     )
-    september = copy.deepcopy(anchor)
-    september["aggregate_fact_key"] = "ledger.aggregate_fact.v2:synthetic_september"
-    september["period"]["value"] = "2026-Q3"
-    september["layout"]["record_set_id"] = "stats_nz.qes.awe.2026q3"
-    september["period_coverage"].update(
-        {"start_date": "2026-07-01", "end_date": "2026-09-30"}
+    december = copy.deepcopy(anchor)
+    december["aggregate_fact_key"] = "ledger.aggregate_fact.v2:synthetic_december"
+    december["period"]["value"] = "2026-Q4"
+    december["layout"]["record_set_id"] = "stats_nz.qes.awe.2026q4"
+    december["period_coverage"].update(
+        {"start_date": "2026-10-01", "end_date": "2026-12-31"}
     )
-    september["value"] = LexicalFloat("1750.00")
+    december["value"] = LexicalFloat("1750.00")
     declaration["feed_identity"]["facts_sha256"] = "9" * 64
-    facts = (*operand_facts, september)
+    facts = (*operand_facts, december)
     with pytest.raises(ValueError, match="expected factor mismatch.*re-declaration"):
         resolve_reference_factor(declaration, facts, declaration["feed_identity"])
     with localcontext() as context:
         context.prec = 80
         q = (Decimal("1.027").sqrt()).sqrt()
-        numerator = (Decimal("1700.68") + Decimal(1750) * (1 + q + q * q)) / 4
+        observed = Decimal("1700.68") + Decimal("1714.86")
+        numerator = (observed + Decimal(1750) * (1 + q)) / 4
         expected = round(numerator / Decimal("1537.7225") * 1000000)
     declaration["expected_operational_factor"]["numerator"] = expected
     factor, receipt = resolve_reference_factor(
@@ -290,17 +357,18 @@ def test_september_observation_reanchors_and_requires_reviewed_redeclaration(
     assert [slot["status"] for slot in receipt["target_schedule"]] == [
         "observed",
         "observed",
-        "projected",
+        "observed",
         "projected",
     ]
     lower = _fraction(receipt["root_bounds"]["lower"])
+    observed_sum = Fraction("1700.68") + Fraction("1714.86")
     assert (
         _fraction(receipt["numerator_mean_bounds"]["lower"])
-        == (Fraction("1700.68") + 1750 * (1 + lower + lower**2)) / 4
+        == (observed_sum + 1750 * (1 + lower)) / 4
     )
-    for slot in receipt["target_schedule"][2:]:
+    for slot in receipt["target_schedule"][3:]:
         assert slot["projection_anchor"] == {
-            "aggregate_fact_key": september["aggregate_fact_key"]
+            "aggregate_fact_key": december["aggregate_fact_key"]
         }
 
 
@@ -309,9 +377,9 @@ def test_donor_factors_average_calendar_2024_and_share_the_tax_year_numerator(
 ):
     """Hub-recomputed values (G8-w rulings 4, H1); the feed calculation governs."""
     for profile, numerator in (
-        ("low", 1077090),
-        ("central", 1079073),
-        ("high", 1081052),
+        ("low", 1079413),
+        ("central", 1080408),
+        ("high", 1081401),
     ):
         entry = _entry(f"donor_cy2024_to_ty2027_{profile}")
         ird = _entry(f"ird_ty2024_to_ty2027_{profile}")

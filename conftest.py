@@ -5,9 +5,15 @@ directory on ``sys.path``. Tests that exercise the F0 migration tooling
 import the ``tools.us_bundle_generation`` package from the repository
 root, so the root joins the path here explicitly rather than by the
 accident of ``python -m pytest``.
+
+A suite started by a hook, ``rebase --exec`` command or shell alias in a
+linked worktree inherits an absolute ``GIT_DIR``, which would send every
+fixture's git command to that worktree's repository. The variables
+``test_support.git_isolation`` names are removed here, before any test runs.
 """
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
@@ -17,11 +23,16 @@ _ROOT = str(Path(__file__).resolve().parent)
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
+from test_support.git_isolation import (  # noqa: E402
+    drop_inherited_git_repository,
+)
 from tools.ci_test_plan import (  # noqa: E402
     TEST_GROUPS,
     TestGroup,
     group_name_for_collection_path,
 )
+
+drop_inherited_git_repository(os.environ)
 
 
 def pytest_addoption(parser) -> None:
@@ -85,6 +96,22 @@ def fake_telemetry_emitters(monkeypatch, tmp_path):
 
     for name in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"):
         monkeypatch.delenv(name, raising=False)
+    # Whether a build must send telemetry, the telemetry run a build program
+    # reports under, and a collector token given to its emitter: a shell that
+    # exports them must not change what a test sees.
+    for name in (
+        "MICROCOSM_TELEMETRY_REQUIRED",
+        "MICROCOSM_TELEMETRY_RUN_ID",
+        "MICROCOSM_TELEMETRY_PARENT_PID",
+        "MICROCOSM_COLLECTOR_TOKEN",
+        "MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT",
+        "MICROCOSM_COLLECTOR_ORIGIN",
+        # The Modal runner's own names for the same three values.
+        "MICROCOSM_MODAL_TELEMETRY_TOKEN",
+        "MICROCOSM_MODAL_TELEMETRY_TOKEN_EXPIRES_AT",
+        "MICROCOSM_MODAL_TELEMETRY_ORIGIN",
+    ):
+        monkeypatch.delenv(name, raising=False)
     isolated_hf = tmp_path / "telemetry-hf"
     token_path = isolated_hf / "token"
     monkeypatch.setenv("HF_HOME", str(isolated_hf))
@@ -131,3 +158,44 @@ def fake_telemetry_emitters(monkeypatch, tmp_path):
     yield emitters
     for emitter in emitters:
         emitter.close()
+
+
+@pytest.fixture(autouse=True)
+def _admit_test_gate_signing_keys(request, monkeypatch):
+    """Let tests sign with their own UK gate keys.
+
+    Production verifies only keys registered in
+    ``microcosm.data.gate_signing_keys``. Tests sign with throwaway keys, so
+    every unregistered key counts as an active test key here, while the
+    committed entries keep their real status. A test marked
+    ``committed_gate_key_registry`` sees the committed registry unchanged.
+    """
+
+    if request.node.get_closest_marker("committed_gate_key_registry"):
+        return
+    try:
+        from microcosm.data import gate_signing_keys
+    except ImportError:
+        return
+    committed = gate_signing_keys._registry
+
+    class _AdmitTestKeys(dict):
+        def __missing__(self, key_sha256):
+            return gate_signing_keys.GateSigningKey(
+                key_sha256=key_sha256,
+                label="test-key",
+                status="active",
+                custodian="the test suite",
+                held_in="the test",
+                registered="test",
+                evidence="admitted by the root conftest",
+            )
+
+        def get(self, key_sha256, default=None):
+            return self[key_sha256]
+
+    def registry(country):
+        entries = committed(country)
+        return None if entries is None else _AdmitTestKeys(entries)
+
+    monkeypatch.setattr(gate_signing_keys, "_registry", registry)

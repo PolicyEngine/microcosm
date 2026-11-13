@@ -283,25 +283,36 @@ def test_launcher_delegates_to_house_builder_and_never_publishes(
         release_builder=fake_builder,
     )
 
+    from microcosm.data.build_folder_manifests import publication_commands
+
     assert captured[captured.index("--exact-k") + 1] == "N"
     assert captured[captured.index("--seed") + 1] == "17"
     assert "--no-staging" in captured
     assert captured[captured.index("--pool-manifest-sha256") + 1] == _sha256(manifest)
+    assert captured[captured.index("--release-id") + 1] == "populace-us-2024-k8-fixture"
+    # An exact-k run is a build of the national release (microcosm#1570): the
+    # build keeps its ID and the release directory is named after the release.
+    release_dir = tmp_path / "out" / "releases" / "microcosm-us-2024-national"
+    artifact_root = tmp_path / "out" / "artifacts"
+    assert result["release"] == "microcosm-us-2024-national"
+    assert result["build"] == "populace-us-2024-k8-fixture"
+    assert result["release_dir"] == str(release_dir)
+    assert result["artifact_root"] == str(artifact_root)
+    # The launcher neither publishes the build nor makes it current: it prints
+    # the commands that do, and says what promoting does.
     assert result["automatic_publish"] is False
-    assert result["release_dir"] == str(
-        tmp_path / "out" / "releases" / "populace-us-2024-k8-fixture"
+    assert result["makes_current"] is False
+    commands = publication_commands(
+        release_dir, repo_id="policyengine/populace-us", artifact_root=artifact_root
     )
-    assert result["artifact_root"] == str(tmp_path / "out" / "artifacts")
-    assert result["pointer_update"] is False
-    assert result["pointer_updates"]["production"]["pointer_update"] is False
-    assert result["pointer_updates"]["staging"]["pointer_update"] is False
-    assert result["publish_argv"][-3:] == [
-        "--create-tag",
-        "--no-latest",
-        "--tag-only",
-    ]
-    assert "--artifact-root" in result["publish_argv"]
-    assert "--repo-id policyengine/populace-us" in result["publish_command"]
+    assert result["publish_command"] == commands["publish_command"]
+    assert result["promote_command"] == commands["promote_command"]
+    assert "US default" in result["promotion"]
+    assert "microcosm-us-2024-national" in result["promotion"]
+    for command in (result["publish_command"], result["promote_command"]):
+        assert "publish_release.sh" not in command
+        assert "--tag-only" not in command
+    assert "publish_argv" not in result
     assert json.loads((tmp_path / "out" / "package_result.json").read_text()) == (
         result
     )

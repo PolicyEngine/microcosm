@@ -13,22 +13,28 @@ class TestUKReleaseInputCoverageGate:
             }
         )
         result = uk_release_input_coverage_gate(
-            frame, _StubEngine(_DEFAULTS), manifest=_CONTRACT
+            frame,
+            _StubEngine(_DEFAULTS),
+            reference_surface=NO_REFERENCE_INPUTS,
+            manifest=_CONTRACT,
         )
         assert result.passed
         assert result.failures == ()
         assert result.details["dormant_exclusions"] == ["property_income"]
 
-    def test_missing_required_column_fails_and_names_efrs(self) -> None:
+    def test_missing_required_column_fails_and_names_the_reference(self) -> None:
         frame = _person_frame({"employment_income": np.asarray([0.0, 52_000.0])})
         result = uk_release_input_coverage_gate(
-            frame, _StubEngine(_DEFAULTS), manifest=_CONTRACT
+            frame,
+            _StubEngine(_DEFAULTS),
+            reference_surface=NO_REFERENCE_INPUTS,
+            manifest=_CONTRACT,
         )
         assert not result.passed
         assert result.details["missing"] == ["dividend_income"]
         assert any(
             "dividend_income" in failure
-            and "enhanced-FRS input column is absent" in failure
+            and "reference input column is absent" in failure
             for failure in result.failures
         )
 
@@ -41,16 +47,19 @@ class TestUKReleaseInputCoverageGate:
         absent = uk_release_input_coverage_gate(
             _person_frame({"age": np.asarray([40, 70])}),
             engine,
+            reference_surface=NO_REFERENCE_INPUTS,
             manifest=contract,
         )
         default_only = uk_release_input_coverage_gate(
             _person_frame({"state_pension_reported": np.asarray([0.0, 0.0])}),
             engine,
+            reference_surface=NO_REFERENCE_INPUTS,
             manifest=contract,
         )
         populated = uk_release_input_coverage_gate(
             _person_frame({"state_pension_reported": np.asarray([0.0, 12_000.0])}),
             engine,
+            reference_surface=NO_REFERENCE_INPUTS,
             manifest=contract,
         )
 
@@ -66,7 +75,10 @@ class TestUKReleaseInputCoverageGate:
             }
         )
         result = uk_release_input_coverage_gate(
-            frame, _StubEngine(_DEFAULTS), manifest=_CONTRACT
+            frame,
+            _StubEngine(_DEFAULTS),
+            reference_surface=NO_REFERENCE_INPUTS,
+            manifest=_CONTRACT,
         )
         assert not result.passed
         assert result.details["degenerate_required"] == ["dividend_income"]
@@ -79,6 +91,7 @@ class TestUKReleaseInputCoverageGate:
         result = uk_release_input_coverage_gate(
             frame,
             _StubEngine(_DEFAULTS),
+            reference_surface=NO_REFERENCE_INPUTS,
             manifest=_CONTRACT,
         )
 
@@ -109,7 +122,10 @@ class TestUKReleaseInputCoverageGate:
             }
         )
         result = uk_release_input_coverage_gate(
-            frame, _StubEngine(_DEFAULTS), manifest=_CONTRACT
+            frame,
+            _StubEngine(_DEFAULTS),
+            reference_surface=NO_REFERENCE_INPUTS,
+            manifest=_CONTRACT,
         )
         assert not result.passed
         assert result.details["degenerate_required"] == ["dividend_income"]
@@ -123,7 +139,10 @@ class TestUKReleaseInputCoverageGate:
             }
         )
         result = uk_release_input_coverage_gate(
-            frame, _StubEngine(_DEFAULTS), manifest=_CONTRACT
+            frame,
+            _StubEngine(_DEFAULTS),
+            reference_surface=NO_REFERENCE_INPUTS,
+            manifest=_CONTRACT,
         )
         assert not result.passed
         assert result.details["stale_exclusions"] == ["property_income"]
@@ -140,7 +159,10 @@ class TestUKReleaseInputCoverageGate:
             }
         )
         result = uk_release_input_coverage_gate(
-            frame, _StubEngine(_DEFAULTS), manifest=_CONTRACT
+            frame,
+            _StubEngine(_DEFAULTS),
+            reference_surface=NO_REFERENCE_INPUTS,
+            manifest=_CONTRACT,
         )
         assert result.passed
         assert result.details["reviewed_exclusions"] == {
@@ -159,6 +181,7 @@ class TestUKReleaseInputCoverageGate:
         result = uk_release_input_coverage_gate(
             frame,
             _StubEngine({"gift_aid": 0.0}),
+            reference_surface=NO_REFERENCE_INPUTS,
             manifest=contract,
         )
 
@@ -180,6 +203,7 @@ class TestUKReleaseInputCoverageGate:
         result = uk_release_input_coverage_gate(
             frame,
             _StubEngine({"gift_aid": 0.0}),
+            reference_surface=NO_REFERENCE_INPUTS,
             manifest=contract,
         )
 
@@ -201,6 +225,7 @@ class TestUKReleaseInputCoverageGate:
         result = uk_release_input_coverage_gate(
             frame,
             _StubEngine({"gift_aid": 0.0}),
+            reference_surface=NO_REFERENCE_INPUTS,
             manifest=contract,
         )
 
@@ -240,6 +265,7 @@ class TestUKReleaseInputCoverageGate:
         result = uk_release_input_coverage_gate(
             frame,
             _StubEngine({"gift_aid": 0.0}),
+            reference_surface=NO_REFERENCE_INPUTS,
             manifest=_manifest((UKReleaseInputColumn("gift_aid", "required"),)),
         )
 
@@ -267,6 +293,7 @@ class TestUKReleaseInputCoverageGate:
         result = uk_release_input_coverage_gate(
             frame,
             _StubEngine({"gift_aid": 0.0}),
+            reference_surface=NO_REFERENCE_INPUTS,
             manifest=contract,
         )
 
@@ -289,6 +316,7 @@ class TestUKReleaseInputCoverageGate:
         result = uk_release_input_coverage_gate(
             frame,
             _StubEngine({"gift_aid": 0.0}),
+            reference_surface=NO_REFERENCE_INPUTS,
             manifest=contract,
         )
 
@@ -320,6 +348,7 @@ class TestUKReleaseInputCoverageGate:
         result = uk_release_input_coverage_gate(
             frame,
             _StubEngine({"gift_aid": 0.0}),
+            reference_surface=NO_REFERENCE_INPUTS,
             manifest=contract,
         )
 
@@ -360,6 +389,7 @@ class TestUKReleaseInputCoverageGate:
         result = uk_release_input_coverage_gate(
             frame,
             _StubEngine({"gift_aid": 0.0}),
+            reference_surface=NO_REFERENCE_INPUTS,
             manifest=contract,
         )
 
@@ -381,6 +411,7 @@ class TestUKReleaseInputCoverageGate:
         result = uk_release_input_coverage_gate(
             frame,
             PolicyEngineUKCoverageEngine(),
+            reference_surface=NO_REFERENCE_INPUTS,
             manifest=contract,
         )
 
@@ -390,13 +421,17 @@ class TestUKReleaseInputCoverageGate:
     def test_zero_mass_signal_does_not_stale_a_reviewed_exclusion(self) -> None:
         contract = _manifest((_reviewed_gift_aid_exclusion(),))
         frame = _weighted_person_frame(
-            {"gift_aid": np.asarray([900.0, 0.0])},
+            {
+                "gift_aid": np.asarray([900.0, 0.0]),
+                "employment_income": np.asarray([0.0, 30_000.0]),
+            },
             np.asarray([0.0, 1_000.0]),
         )
 
         result = uk_release_input_coverage_gate(
             frame,
-            _StubEngine({"gift_aid": 0.0}),
+            _StubEngine({"gift_aid": 0.0, "employment_income": 0.0}),
+            reference_surface=reference_surface("employment_income"),
             manifest=contract,
         )
 
@@ -416,13 +451,17 @@ class TestUKReleaseInputCoverageGate:
             family_coverage=family,
         )
         frame = _weighted_person_frame(
-            {"gift_aid": np.asarray([900.0, 0.0])},
+            {
+                "gift_aid": np.asarray([900.0, 0.0]),
+                "employment_income": np.asarray([0.0, 30_000.0]),
+            },
             np.asarray([0.0, 1_000.0]),
         )
 
         result = uk_release_input_coverage_gate(
             frame,
-            _StubEngine({"gift_aid": 0.0}),
+            _StubEngine({"gift_aid": 0.0, "employment_income": 0.0}),
+            reference_surface=reference_surface("employment_income"),
             manifest=contract,
         )
 
@@ -437,24 +476,34 @@ class TestUKManifest:
         assert_uk_release_input_coverage_manifest_current(
             engine=_StubEngine({}, set(manifest.declared_columns))
         )
-        # microcosm#1106: property_wealth is formula-owned in policyengine-uk,
-        # so the release leaves it to the engine; it is an engine-derived
-        # exclusion, not parity debt, and its components stay required. So is
+        # microcosm#1095: the required inputs come from the cut's reference
+        # build, so the manifest declares only the reviewed exclusions.
+        # property_wealth is formula-owned in policyengine-uk, so the release
+        # leaves it to the engine (microcosm#1106); so is
         # tax_free_savings_income under the additive ISA income contract
-        # (microcosm#1360).
-        assert manifest.required_columns == (
-            frozenset(load_efrs_parity_reference().populated_layers)
-            - {"property_wealth", "tax_free_savings_income"}
-        )
-        assert set(manifest.reviewed_exclusions) == {
-            "property_wealth",
-            "tax_free_savings_income",
-        }
-        assert load_efrs_parity_known_gaps() == ()
-        assert [gap.variable for gap in load_efrs_engine_derived_exclusions()] == [
+        # (microcosm#1360), and so are the PIP categories, which the engine
+        # derives from the points the release stores (microcosm#1095, P1), and
+        # so is the tax credit severe disability flag, which the engine
+        # derives from the disability categories (microcosm#1095, A4).
+        engine_derived = [
+            "is_severely_disabled_for_benefits",
+            "pip_dl_category",
+            "pip_m_category",
             "property_wealth",
             "tax_free_savings_income",
         ]
+        assert manifest.required_columns == frozenset()
+        # And the gross receipts microcosm#1550 stops writing, which the
+        # current builds still carry (María's signature of 2026-11-10).
+        assert set(manifest.reviewed_exclusions) == set(engine_derived) | {
+            "self_employment_gross_receipts"
+        }
+        assert load_efrs_parity_known_gaps() == ()
+        assert [
+            gap.variable for gap in load_efrs_engine_derived_exclusions()
+        ] == engine_derived
+        assert manifest.reference["kind"] == "current_build"
+        assert manifest.schema_version == 4
         assert manifest.required_build_stages == frozenset(
             {
                 "frs_hmrc_spine_leaves",
@@ -474,6 +523,8 @@ class TestUKManifest:
                 "was_wealth",
                 "was_lisa",
                 "isa_subscriptions",
+                "uc_limited_capability",
+                "pip_points",
                 "trading_allowance_receipts",
                 "company_cars",
                 "regional_property_uprating",
@@ -491,24 +542,29 @@ class TestUKManifest:
             {"charitable_investment_gifts", "gift_aid"}
         )
 
-    def test_manifest_refuses_empty_columns(self, tmp_path) -> None:
-        bad = tmp_path / "empty.json"
-        bad.write_text(
-            json.dumps(
-                {
-                    "reference": {},
-                    "candidate_evidence": {"tier": "frs"},
-                    "effective_mass_coverage": {
-                        "weight_source": "household_weight",
-                        "minimum_nondefault_mass_share": 1e-6,
-                        "reviewed_on": "2026-07-11",
-                        "rationale": "reviewed test floor",
-                    },
-                    "columns": {},
-                }
-            )
-        )
-        with pytest.raises(ValueError, match="vacuous"):
+    def test_manifest_refuses_another_schema_or_reference(self, tmp_path) -> None:
+        payload = {
+            "schema_version": 4,
+            "reference": {"kind": "current_build"},
+            "candidate_evidence": {"tier": "frs"},
+            "effective_mass_coverage": {
+                "weight_source": "household_weight",
+                "minimum_nondefault_mass_share": 1e-6,
+                "reviewed_on": "2026-07-11",
+                "rationale": "reviewed test floor",
+            },
+            "columns": {},
+        }
+        bad = tmp_path / "manifest.json"
+        # No declared column is fine: the reference supplies the required
+        # inputs, and the gate refuses an empty required set itself.
+        bad.write_text(json.dumps(payload))
+        assert load_uk_release_input_coverage_manifest(str(bad)).columns == ()
+        bad.write_text(json.dumps({**payload, "schema_version": 3}))
+        with pytest.raises(ValueError, match="schema_version must be 4"):
+            load_uk_release_input_coverage_manifest(str(bad))
+        bad.write_text(json.dumps({**payload, "reference": {"filename": "x.h5"}}))
+        with pytest.raises(ValueError, match="reference.kind must be"):
             load_uk_release_input_coverage_manifest(str(bad))
 
     def test_distributional_family_requires_channel_denominator(self, tmp_path) -> None:
@@ -671,41 +727,41 @@ class TestUKManifest:
 
     def test_engine_graph_drift_is_rejected(self) -> None:
         manifest = load_uk_release_input_coverage_manifest()
-        graph = set(manifest.declared_columns) - {"employment_income"}
-        with pytest.raises(ValueError, match="employment_income"):
+        graph = set(manifest.declared_columns) - {"property_wealth"}
+        with pytest.raises(ValueError, match="property_wealth"):
             assert_uk_release_input_coverage_manifest_current(
                 engine=_StubEngine({}, graph)
             )
 
-    def test_engine_entity_drift_is_rejected(self) -> None:
+    def test_unresolvable_owning_entity_is_rejected(self) -> None:
         manifest = load_uk_release_input_coverage_manifest()
-        graph = set(manifest.declared_columns)
-        with pytest.raises(ValueError, match="owning entities disagree"):
+
+        class _NoEntities(_StubEngine):
+            def variable_entities(self, names):
+                return {}
+
+        with pytest.raises(ValueError, match="property_wealth"):
             assert_uk_release_input_coverage_manifest_current(
-                engine=_StubEngine(
-                    {},
-                    graph,
-                    entities={"employment_income": "household"},
-                )
+                engine=_NoEntities({}, set(manifest.declared_columns))
             )
 
-    def test_manifest_cannot_demote_a_column_absent_from_known_gaps(self) -> None:
+    def test_manifest_cannot_exclude_a_restored_input(self) -> None:
         manifest = load_uk_release_input_coverage_manifest()
-        columns = tuple(
-            replace(
-                column,
-                status="reviewed_exclusion",
-                reason="not yet ported from enhanced FRS pipeline — pending review",
-                tracking_note="Tracked in UK_COVERAGE_PROGRESS.md.",
-            )
-            if column.name == "employment_income"
-            else column
-            for column in manifest.columns
+        demoted = replace(
+            manifest,
+            columns=(
+                *manifest.columns,
+                UKReleaseInputColumn(
+                    "charitable_investment_gifts",
+                    "reviewed_exclusion",
+                    reason="not yet ported from enhanced FRS pipeline — pending review",
+                    tracking_note="Tracked in UK_COVERAGE_PROGRESS.md.",
+                ),
+            ),
         )
-        demoted = replace(manifest, columns=columns)
-        with pytest.raises(ValueError, match="employment_income.*remain required"):
+        with pytest.raises(ValueError, match="charitable_investment_gifts.*restored"):
             assert_uk_release_input_coverage_manifest_current(
-                engine=_StubEngine({}, set(manifest.declared_columns)),
+                engine=_StubEngine({}, set(demoted.declared_columns)),
                 manifest=demoted,
             )
 
@@ -750,59 +806,67 @@ class TestUKManifest:
                 manifest=replace(manifest, family_coverage=families),
             )
 
-    def test_promoted_family_columns_must_be_required(self) -> None:
+    def test_promoted_family_columns_cannot_be_excluded(self) -> None:
         manifest = load_uk_release_input_coverage_manifest()
-        columns = tuple(
-            replace(
-                column,
-                status="reviewed_exclusion",
-                reason="not yet ported from enhanced FRS pipeline — pending review",
-                tracking_note="Tracked in UK_COVERAGE_PROGRESS.md.",
-            )
-            if column.name == "gift_aid"
-            else column
-            for column in manifest.columns
-        )
+        columns = (*manifest.columns, _reviewed_gift_aid_exclusion())
 
         with pytest.raises(ValueError, match="required_at_build"):
             assert_uk_release_input_coverage_manifest_current(
-                engine=_StubEngine({}, set(manifest.declared_columns)),
+                engine=_StubEngine({}, {*manifest.declared_columns, "gift_aid"}),
                 manifest=replace(manifest, columns=columns),
             )
 
-    def test_loader_aliases_are_hard_covered(self) -> None:
+    def test_loader_aliases_are_required_when_the_reference_carries_them(
+        self,
+    ) -> None:
+        # The required inputs come from the reference (microcosm#1095): an
+        # alias column the reference build carries is required of the
+        # candidate like any other input, and no alias is ever excluded.
         manifest = load_uk_release_input_coverage_manifest()
-        assert set(UK_LOADER_INPUT_ALIASES) <= set(manifest.required_columns)
+        assert set(UK_LOADER_INPUT_ALIASES).isdisjoint(manifest.reviewed_exclusions)
+        frame = _person_frame({"employment_income": np.asarray([0.0, 52_000.0])})
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine({name: 0.0 for name in UK_LOADER_INPUT_ALIASES}),
+            reference_surface=reference_surface(*UK_LOADER_INPUT_ALIASES),
+            manifest=_manifest(()),
+        )
+        assert not result.passed
+        assert result.details["missing"] == sorted(
+            set(UK_LOADER_INPUT_ALIASES) - {"employment_income"}
+        )
+        assert result.details["required_from_reference"] == len(UK_LOADER_INPUT_ALIASES)
 
-    def test_formula_owned_persisted_overrides_are_hard_covered(self) -> None:
+    def test_engine_derived_exclusions_are_the_only_excluded_overrides(self) -> None:
         manifest = load_uk_release_input_coverage_manifest()
-        reference = json.loads(
-            (
-                _REPO_ROOT
-                / "packages"
-                / "microcosm-build"
-                / "src"
-                / "microcosm"
-                / "build"
-                / "uk"
-                / "efrs_parity_reference.json"
-            ).read_text(encoding="utf-8")
-        )
-        overrides = set(
-            reference["engine"]["formula_owned_persisted_overrides_included"]
-        )
-        assert len(overrides) == 13
         # The exceptions are declared: property_wealth, whose persisted copy
         # overrides the engine's component sum and is never uprated, so the
         # release leaves it to the formula (microcosm#1106), and
         # tax_free_savings_income, the engine's sum of the ISA interest the
         # additive contract stores apart (microcosm#1360). Every other
-        # formula-owned override stays required.
+        # formula-owned override the reference carries is required.
+        #
+        # The PIP categories are engine-derived since the enhanced FRS: its
+        # engine (2.89.0) read them as plain inputs, but the pinned engine
+        # derives them from the points the release stores (microcosm#1095, P1).
+        since_reference = {"pip_dl_category", "pip_m_category"}
         engine_derived = {gap.variable for gap in load_efrs_engine_derived_exclusions()}
-        assert engine_derived == {"property_wealth", "tax_free_savings_income"}
-        assert engine_derived <= overrides
-        assert overrides - engine_derived <= set(manifest.required_columns)
-        assert engine_derived.isdisjoint(manifest.required_columns)
+        assert engine_derived == (
+            {
+                "is_severely_disabled_for_benefits",
+                "property_wealth",
+                "tax_free_savings_income",
+            }
+            | since_reference
+        )
+        from policyengine_uk import CountryTaxBenefitSystem
+
+        variables = CountryTaxBenefitSystem().variables
+        assert not any(variables[name].is_input_variable() for name in since_reference)
+        # Beside them, the one input retired since the current builds.
+        assert set(manifest.reviewed_exclusions) == engine_derived | {
+            "self_employment_gross_receipts"
+        }
 
     def test_live_uk_adapter_recognises_loader_aliases(self) -> None:
         engine = PolicyEngineUKCoverageEngine()

@@ -1,29 +1,30 @@
 {
- "schema_version": 3,
- "description": "Reviewed input-mass parity exclusions for the UK terminal battery, scoped per named comparison reference (microcosm#630): an exclusion suppresses only when its reference is the armed one, so a column excluded on a channel-blind reference is compared normally against a channel-aware one with no register change. Each entry is a complete approval receipt (schema-2 fields per #610). The gate reports dormant entries, FAILS stale ones, and FAILS expired ones until the adjudication is renewed, so this register cannot rot.",
- "references": {
-  "efrs-post-calibration": {
-   "dfe_education_spending": {
-    "reason": "The candidate carries DfE education spending through the build (GBP 98.8bn against the incumbent's GBP 52.8m, +187,061%): the enhanced-FRS reference carries almost none of this input, so the comparison measures the reference's omission, not the candidate's. The input stays on the release surface and in the coverage manifest.",
-    "approved_by": "juaristi22",
-    "adjudication": "microcosm#1063 c9 (certifier rehearsal R5 on the 2026-09-30 build, 2026-10-01; ruling 2026-10-02 in session)",
-    "approved_on": "2026-10-02",
-    "expires_on": "2027-04-02"
-   },
-   "property_wealth": {
-    "reason": "The candidate no longer ships household.property_wealth: policyengine-uk derives it as the sum of main_residence_value, other_residential_property_value and non_residential_property_value, and a persisted copy overrides that sum and has no uprating index (microcosm#1106, the uk-data#543 defect). The enhanced-FRS reference stores its own WAS total, so the column is present in the reference and absent from the candidate, which this gate otherwise fails whatever the tolerance. The gate compares the release surface (the export frame, reviewed exclusions dropped) on both paths, the national seam and the release cut; the three components stay compared.",
-    "approved_by": "juaristi22",
-    "adjudication": "microcosm#1106 (#1145): part B measured on the A9 candidate at 2025 and on the final-head arm c7 of 2026-10-11; ruling 2026-10-11 in session",
-    "approved_on": "2026-10-11",
-    "expires_on": "2027-04-11"
-   },
-   "tax_free_savings_income": {
-    "reason": "The candidate no longer ships person.tax_free_savings_income: policyengine-uk derives it as the sum of individual_savings_account_interest_income, which the candidate stores apart from non-ISA interest under the additive ISA income contract, and a persisted copy overrides that sum and is never uprated (microcosm#1360). The enhanced-FRS reference stores it in the legacy gross layout, so the column is present in the reference and absent from the candidate, which this gate otherwise fails whatever the tolerance. Non-ISA savings_interest_income stays compared; it falls below the reference's gross total by the ISA part.",
-    "approved_by": "juaristi22",
-    "adjudication": "microcosm#1360 folded into microcosm#1418's PR B (ruling 2026-10-28 in session)",
-    "approved_on": "2026-10-28",
-    "expires_on": "2027-04-28"
-   }
+  "schema_version": 3,
+  "description": "Reviewed input-mass parity exclusions for the UK battery, scoped per reference build (microcosm#1095): each key is the <release>@<build> a cut compared with, and an exclusion suppresses only while that build is the cut's reference, so a promotion leaves it dormant. Each entry is a complete approval receipt (schema-2 fields per #610). The gate reports dormant entries, FAILS stale ones, and FAILS expired ones until the adjudication is renewed. The enhanced-FRS reference's three entries retired with it.",
+  "references": {
+    "microcosm-uk-2024-25-dense@uk-local-candidate-f100-s42-20261107T173210Z-38605444": {
+      "self_employment_gross_receipts": {
+        "reason": "microcosm#1550 (microcosm#1439) stops writing self_employment_gross_receipts: the trading allowance stage stores each trader's claim status and leaves gross receipts at the engine's zero, since neither the FRS nor the SPI records them. This build still carries the receipts encoding microcosm#1428 wrote, so a candidate built after microcosm#1550 carries none of that mass by design.",
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#1095: María's ruling in session, 2026-11-10, on the PR that compares UK cuts with the current build of their line",
+        "approved_on": "2026-11-10",
+        "expires_on": "2027-05-10",
+        "release_lines": [
+          "local"
+        ]
+      }
+    },
+    "microcosm-uk-2024-25-national@uk-frs-calibration-attempt-20261107T020434Z-eeb6093e": {
+      "self_employment_gross_receipts": {
+        "reason": "microcosm#1550 (microcosm#1439) stops writing self_employment_gross_receipts: the trading allowance stage stores each trader's claim status and leaves gross receipts at the engine's zero, since neither the FRS nor the SPI records them. This build still carries the receipts encoding microcosm#1428 wrote, so a candidate built after microcosm#1550 carries none of that mass by design.",
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#1095: María's ruling in session, 2026-11-10, on the PR that compares UK cuts with the current build of their line",
+        "approved_on": "2026-11-10",
+        "expires_on": "2027-05-10",
+        "release_lines": [
+          "national"
+        ]
+      }
+    }
   }
- }
 }

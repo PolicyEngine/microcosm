@@ -26,6 +26,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
+from microcosm.fit import categorical as fit_categorical
+from microcosm.fit import donors as fit_donors
+from microcosm.fit import held_out as fit_held_out
 from microcosm.frame import Frame, MassChangeRecord, WeightKind
 from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
 from microcosm.graph import (
@@ -62,6 +65,7 @@ from . import (
     household_lineage,
     ledger_fact_vendoring,
     legacy_closure_take_up,
+    occupation_constants,
     property_localisation,
     receipt_counts,
     rowwise_geography,
@@ -116,10 +120,13 @@ _STAGE_MODULES = {
     "spi_support_channel": "spi_spine",
     "spi_income_band_donors": "spi_band_donors",
     "hmrc_spi_income_spine": "spi_spine",
+    "spi_employment_shell": "spi_employment_shell",
+    "aps_occupation": "aps_occupation",
     "spi_housing_shell": "spi_housing_shell",
     "uc_reporter_redraw": "uc_reporter_redraw",
     "spi_benefit_coherence": "spi_benefit_coherence",
     "uc_capital_coherence": "uc_capital_coherence",
+    "uc_limited_capability": "uc_limited_capability",
     "uc_take_up": "uc_take_up",
     "uc_legacy_closure_take_up": "legacy_closure_take_up",
     "pension_credit_take_up": "pension_credit_take_up",
@@ -138,6 +145,7 @@ _STAGE_MODULES = {
     "student_loans": "student_loans",
     "private_school_attendance": "private_school_attendance",
     "isa_subscriptions": "isa_subscriptions",
+    "pip_points": "pip_points",
     "trading_allowance_receipts": "trading_allowance_receipts",
     "company_cars": "company_cars",
     "childcare_copy_take_up": "childcare_copy_take_up",
@@ -200,6 +208,10 @@ _STAGE_HELPER_MODULES = {
     ),
     "uc_capital_coherence": (uc_relationships,),
     # The Universal Credit redraw reads the award through the adapter, the
+    # One engine materialization of the proxy, the claimant role and carer
+    # status; the frs_spine carrier's codes; the receipt's support counts
+    # (microcosm#1095, Y1).
+    "uc_limited_capability": (uk_engine_adapter, frs_spine, receipt_counts),
     # vendored DWP counts, the closure stage's rule and rates, the deduction
     # attributes, the take-up population and the family-type roles, and counts
     # its pools and receipt on the source lineage (microcosm#1334).
@@ -241,6 +253,9 @@ _STAGE_HELPER_MODULES = {
         hmrc_isa_statistics,
         receipt_counts,
     ),
+    # The points draws are keyed on identity, read the vendored DWP tables and
+    # round their receipt's support (microcosm#1095, P1).
+    "pip_points": (receipt_counts, stochastic_assignment, ledger_fact_vendoring),
     # The claimant draw is keyed on identity and its receipt rounds its
     # support (microcosm#1428).
     "trading_allowance_receipts": (receipt_counts, stochastic_assignment),
@@ -264,6 +279,29 @@ _STAGE_HELPER_MODULES = {
     # helper, reads each household's clone path, and measures its flags for
     # the stage-time signal gate by the shared disclosure rules (microcosm#1095).
     "childcare_copy_take_up": (frs_take_up, household_lineage, receipt_counts),
+    # The employment shell fits, scores and draws through microcosm.fit's
+    # categorical classifier, held-out scores and keyed donors, reads the
+    # shared occupation codes, and counts its receipt's support by the shared
+    # disclosure rules (microcosm#1490).
+    "spi_employment_shell": (
+        fit_categorical,
+        fit_donors,
+        fit_held_out,
+        occupation_constants,
+        receipt_counts,
+        stochastic_assignment,
+    ),
+    # The sub-major draw fits and scores through microcosm.fit's categorical
+    # classifier and held-out scores, reads the shared occupation codes, and
+    # counts its receipt's support by the shared disclosure rules
+    # (microcosm#1490).
+    "aps_occupation": (
+        fit_categorical,
+        fit_held_out,
+        occupation_constants,
+        receipt_counts,
+        stochastic_assignment,
+    ),
 }
 
 _COMPUTE = Capabilities(
@@ -563,6 +601,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
     from .age_tail import UKAgeTailStageTransform
+    from .aps_occupation import UKAPSOccupationStageTransform
     from .carers_allowance_take_up import UKCarersAllowanceTakeUpStageTransform
     from .cgt_asset_type import UKCGTAssetTypeStageTransform, UKCGTBADRParameters
     from .cgt_imputation import UKCGTPolicyParameters, uk_cgt_spine_stage_transform
@@ -595,6 +634,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .legacy_closure_take_up import UKLegacyClosureTakeUpStageTransform
     from .nts_bus_travel import UKNTSBusTravelStageTransform
     from .pension_credit_take_up import UKPensionCreditTakeUpStageTransform
+    from .pip_points import UKPIPPointsStageTransform
     from .private_school_attendance import UKPrivateSchoolAttendanceStageTransform
     from .property_components import UKPropertyComponentsStageTransform
     from .property_purchases import (
@@ -606,6 +646,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .salary_sacrifice import UKSalarySacrificeStageTransform
     from .spi_band_donors import UKSPIIncomeBandDonorStageTransform
     from .spi_benefit_coherence import UKSPIBenefitCoherenceStageTransform
+    from .spi_employment_shell import UKSPIEmploymentShellStageTransform
     from .spi_housing_shell import UKSPIHousingShellStageTransform
     from .spi_spine import (
         UKFRSHMRCSpineLeavesStageTransform,
@@ -617,6 +658,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .trading_allowance_receipts import UKTradingAllowanceReceiptsStageTransform
     from .uc_capital_coherence import UKUCCapitalCoherenceStageTransform
     from .uc_deduction_attributes import UKUCDeductionAttributesStageTransform
+    from .uc_limited_capability import UKUCLimitedCapabilityStageTransform
     from .uc_reporter_redraw import UKUCReporterRedrawStageTransform
     from .uc_take_up import UKUCTakeUpStageTransform
     from .was_lisa import UKWASLISAStageTransform
@@ -644,6 +686,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     etb = pd.read_csv(
         _fixture_input(source, inputs, "etb"), float_precision="round_trip"
     )
+    aps = pd.read_csv(
+        _fixture_input(source, inputs, "aps"), float_precision="round_trip"
+    )
     nts_household = pd.read_csv(
         _fixture_input(source, inputs, "nts_household"), float_precision="round_trip"
     )
@@ -655,6 +700,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     )
     nts_stage = pd.read_csv(
         _fixture_input(source, inputs, "nts_stage"), float_precision="round_trip"
+    )
+    nts_vehicle = pd.read_csv(
+        _fixture_input(source, inputs, "nts_vehicle"), float_precision="round_trip"
     )
     nts_ticket = pd.read_csv(
         _fixture_input(source, inputs, "nts_ticket"), float_precision="round_trip"
@@ -769,6 +817,8 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 engine=engine,
                 lcfs_household=lcfs_household,
                 lcfs_person=lcfs_person,
+                nts_household=nts_household,
+                nts_vehicle=nts_vehicle,
             ),
             "etb_vat": UKETBVATStageTransform(
                 stage=stages["etb_vat"], engine=engine, donor=etb
@@ -802,6 +852,14 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 donor_table=spi_donor,
                 source_targets=income_targets,
             ),
+            "spi_employment_shell": UKSPIEmploymentShellStageTransform(
+                stage=stages["spi_employment_shell"], boosted_max_iter=qrf_estimators
+            ),
+            "aps_occupation": UKAPSOccupationStageTransform(
+                stage=stages["aps_occupation"],
+                donor=aps,
+                boosted_max_iter=qrf_estimators,
+            ),
             "spi_housing_shell": UKSPIHousingShellStageTransform(
                 stage=stages["spi_housing_shell"], n_estimators=qrf_estimators
             ),
@@ -813,6 +871,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
                 stage=stages["uc_capital_coherence"]
+            ),
+            "uc_limited_capability": UKUCLimitedCapabilityStageTransform(
+                stage=stages["uc_limited_capability"], engine=engine
             ),
             "uc_take_up": UKUCTakeUpStageTransform(
                 stage=stages["uc_take_up"], engine=engine
@@ -880,6 +941,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 donor_household=was,
                 donor_person=was_person,
             ),
+            "pip_points": UKPIPPointsStageTransform(stage=stages["pip_points"]),
             "trading_allowance_receipts": UKTradingAllowanceReceiptsStageTransform(
                 stage=stages["trading_allowance_receipts"]
             ),

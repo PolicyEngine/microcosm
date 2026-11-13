@@ -146,7 +146,13 @@ _KEPT_TENS: dict[str, tuple[tuple[str, int], ...]] = {
     "uk_runtime/national_reconciliation.py": (("len(moved) > 10", 1),),
     "uk_runtime/size_evaluation.py": (("(values > 10)", 1),),
     "uk_runtime/spi_dependency.py": (("goes to HMRC at least ten", 2),),
-    "uk/spec/sources.yaml": (("over at least 10 rows (a statistical floor", 1),),
+    "uk/spec/sources.yaml": (
+        ("over at least 10 rows (a statistical floor", 1),
+        # The zero-emission share's pooling floor, a statistical floor
+        # (microcosm#1095 B3, J2).
+        ("minimum_zero_emission_cars: 10", 1),
+        ("a fifth on fewer than 10 zero-emission NTS cars", 1),
+    ),
     "uk/calibration_measure_exclusions.json": (
         ("a cell that rests on fewer than 10 records is no reason", 1),
         (

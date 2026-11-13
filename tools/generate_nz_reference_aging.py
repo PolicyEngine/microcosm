@@ -23,8 +23,9 @@ from microcosm.build.ledger_artifact import (
 from microcosm.build.reference_factors import resolve_reference_factor
 from tools.generate_nz_target_references import SPEC, _selector
 
-_QES_2025_HASH = "25053dcbd343320cad72e2896475eaebaf5f5bb0b5965ca788506ca15efcea30"
-_QES_2026_HASH = "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97"
+_QES_JUNE_2025_HASH = "25053dcbd343320cad72e2896475eaebaf5f5bb0b5965ca788506ca15efcea30"
+_QES_JUNE_2026_HASH = "1af2e7e37f1c108a2656842cf1f519c903e1a982bcdc03ee02d0ad888ebc3a97"
+_QES_SEPTEMBER_2026_HASH = "d6fb9a947185551292dd6e81a527d994615ae15053b800a11e364ddb915626f3"
 _TREASURY_HASH = "e2486375dde515d0722f8c3022f481804bb014beb83c81b8bfc99bc9426544d9"
 _OPERANDS = (
     (12028, "2023-Q2", "cfbce1343aa646fce0411631", "1502.27"),
@@ -32,38 +33,41 @@ _OPERANDS = (
     (12032, "2023-Q4", "fb5938810b7b37ae8534e5f7", "1556.16"),
     (12034, "2024-Q1", "854e91ec1dd95e396659ad8e", "1563.54"),
     (12036, "2024-Q2", "c07fd9ce3137fa20386bafe0", "1586.32"),
-    (12038, "2024-Q3", "54a0eeb64049ba4c15e397bf", "1595.11"),
-    (12040, "2024-Q4", "7fc35ba9682ceb04504f2ef9", "1622.73"),
-    (12044, "2025-Q2", "86ce22ba42a6e2a36b889f9b", "1652.72"),
-    (12046, "2025-Q3", "434e7b2736b4b16589034c72", "1661.12"),
-    (12048, "2025-Q4", "bc87e53157eaf53c846879dc", "1681.06"),
-    (12050, "2026-Q1", "78e735569814069f8066ba9f", "1685.39"),
-    (12052, "2026-Q2", "91583e3f39d11b8b4b2923d2", "1700.68"),
+    (12038, "2024-Q3", "d5556ef840710807f613f744", "1595.11"),
+    (12040, "2024-Q4", "245872b74d3fa4c5d3ff76ab", "1622.73"),
+    (12044, "2025-Q2", "e8b5cdf88ef225693d90ab7d", "1652.72"),
+    (12046, "2025-Q3", "2cc4746a60d99a9ec89bd329", "1661.12"),
+    (12048, "2025-Q4", "f6a6066ab1b1efdb6a8c0d37", "1681.06"),
+    (12050, "2026-Q1", "a8640856bd04c28d42ed22fa", "1685.39"),
+    (12052, "2026-Q2", "b7af729aa786dd45cfec097e", "1700.68"),
+    (12054, "2026-Q3", "8eacd5e7db3db27d35aa128a", "1714.86"),
 )
 _TY2024 = ("2023-Q2", "2023-Q3", "2023-Q4", "2024-Q1")
 _TY2026 = ("2025-Q2", "2025-Q3", "2025-Q4", "2026-Q1")
 _CY2024 = ("2024-Q1", "2024-Q2", "2024-Q3", "2024-Q4")
 _TARGET = ("2026-Q2", "2026-Q3", "2026-Q4", "2027-Q1")
 _EXPECTED = {
-    "ird_ty2024_to_ty2027_low": 1115056,
-    "ird_ty2024_to_ty2027_central": 1117109,
-    "ird_ty2024_to_ty2027_high": 1119158,
-    "p1_ty2026_to_ty2027_low": 1026690,
-    "p1_ty2026_to_ty2027_central": 1028580,
-    "p1_ty2026_to_ty2027_high": 1030467,
+    "ird_ty2024_to_ty2027_low": 1117460,
+    "ird_ty2024_to_ty2027_central": 1118491,
+    "ird_ty2024_to_ty2027_high": 1119519,
+    "p1_ty2026_to_ty2027_low": 1028904,
+    "p1_ty2026_to_ty2027_central": 1029853,
+    "p1_ty2026_to_ty2027_high": 1030799,
     "observed_ty2026_over_ty2024": 1086069,
-    "donor_cy2024_to_ty2027_low": 1077090,
-    "donor_cy2024_to_ty2027_central": 1079073,
-    "donor_cy2024_to_ty2027_high": 1081052,
+    "donor_cy2024_to_ty2027_low": 1079413,
+    "donor_cy2024_to_ty2027_central": 1080408,
+    "donor_cy2024_to_ty2027_high": 1081401,
 }
 _DECISIONS = [
     "d1599; IRD band ageing factors, 22 October 2026",
     "G8-r2 hub rulings 3, 23 October 2026, sections 1–2",
+    "NZ hub QES September 2026 re-declaration, 4 November 2026: each quarter from the newest Stats NZ vintage that publishes it (chronicle#405)",
 ]
 _DONOR_DECISIONS = [
     "d1952 card; NZ money year build item: donor money is calendar-2024 dollars",
     "G8-w hub rulings 5, 24 October 2026, items H1–H3",
     "G8-r2 hub rulings 3, 23 October 2026, section 1",
+    "NZ hub QES September 2026 re-declaration, 4 November 2026: each quarter from the newest Stats NZ vintage that publishes it (chronicle#405)",
 ]
 
 
@@ -76,6 +80,15 @@ def _coverage(period):
         "start_date": f"{year:04d}-{start_month:02d}-01",
         "end_date": f"{year:04d}-{start_month + 2:02d}-{end_day}",
     }
+
+
+def _qes_hash(period):
+    """Each quarter comes from the newest QES vintage that publishes it."""
+    if period in _TY2024:
+        return _QES_JUNE_2025_HASH
+    if period == "2024-Q2":
+        return _QES_JUNE_2026_HASH
+    return _QES_SEPTEMBER_2026_HASH
 
 
 def _validation(fact):
@@ -104,8 +117,7 @@ def build_aging_declarations(artifact, *, package_dir=SPEC):
         fact = facts_by_key[f"ledger.aggregate_fact.v2:{suffix}"]
         if str(fact["value"]) != expected or fact["period"]["value"] != period:
             raise ValueError(f"Reviewed QES operand changed for {period}")
-        historical = period in _TY2024
-        expected_hash = _QES_2025_HASH if historical else _QES_2026_HASH
+        expected_hash = _qes_hash(period)
         if (
             fact["source"]["source_sha256"] != expected_hash
             or fact["observed_measure"]["source_measure_id"] != "SBSZ9A"
@@ -186,10 +198,10 @@ def build_aging_declarations(artifact, *, package_dir=SPEC):
                         "denominator": 1000000,
                     },
                     "validity": {
-                        "declared_on": "2026-10-23",
-                        "valid_from": "2026-10-23",
-                        "valid_until": "2026-11-03",
-                        "as_of": "2026-10-23",
+                        "declared_on": "2026-11-04",
+                        "valid_from": "2026-11-04",
+                        "valid_until": "2027-02-02",
+                        "as_of": "2026-11-04",
                     },
                     "evidence": [
                         "Stats NZ QES Table 7; QEMQ.SBSZ9A; ordinary-time FTE, all sectors, actual",

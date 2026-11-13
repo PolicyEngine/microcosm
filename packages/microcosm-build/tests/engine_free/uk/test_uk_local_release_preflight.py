@@ -690,7 +690,7 @@ def test_env_check_names_the_missing_key_and_pins(tmp_path: Path) -> None:
     pins.write_text(
         f"spine={sha(spine)} ladder={sha(ladder)} facts={sha(ledger / 'consumer_facts.jsonl')} manifest={sha(ledger / 'manifest.json')}\n"
     )
-    good_env = {module.SIGNING_KEY_ENV: base64.b64encode(b"\x07" * 32).decode()}
+    good_env = {module.UK_GATE_SIGNING_KEY_ENV: base64.b64encode(b"\x07" * 32).decode()}
     assert (
         module.check_env(
             pins_path=pins,
@@ -704,7 +704,7 @@ def test_env_check_names_the_missing_key_and_pins(tmp_path: Path) -> None:
     failures = module.check_env(
         pins_path=pins, spine_h5=spine, ladder_npz=ladder, ledger_dir=ledger, environ={}
     )
-    assert any(module.SIGNING_KEY_ENV in f for f in failures)
+    assert any(module.UK_GATE_SIGNING_KEY_ENV in f for f in failures)
     pins.write_text("spine=deadbeef ladder=x facts=y manifest=z\n")
     failures = module.check_env(
         pins_path=pins,

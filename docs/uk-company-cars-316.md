@@ -35,12 +35,15 @@ car from their car job with the lowest JOBTYPE, the main job first, so a person 
 most one, as in the engine. The survey asks CARVAL and CARCON of a company van too;
 they are taken as the car's.
 
-SPI-channel rows carry their FRS twin's carriers, as they carry every root column.
-A row drawn from the SPI tape (`person_is_spi_income_recipient`) has the tape's PAY +
-EPB + TAXTERM as pay, where EPB is every taxable expense payment and benefit in kind,
-so it keeps its twin's car only where its drawn EPB is positive. The channel's other
-rows, the undrawn copies and the dependants aged 16 to 19, keep their twin's pay, and
-keep its car as an FRS row does.
+SPI-channel rows carry their FRS twin's carriers, as they carry every root column,
+and keep their twin's car. A row drawn from the SPI tape (`person_is_spi_income_recipient`)
+has the tape's PAY + EPB + TAXTERM as pay, where EPB is every taxable expense payment
+and benefit in kind. EPB is drawn on uniforms the car never conditions, so every tape
+row keeps its twin's car, whatever EPB it drew, and the part of the car's benefits above
+its EPB moves from its PAY into its EPB (below; María's rulings of 3 November 2026). The
+channel's other rows,
+the undrawn copies and the dependants aged 16 to 19, keep their twin's pay, and keep
+its car as an FRS row does.
 
 ## The draws
 
@@ -54,8 +57,7 @@ Every draw is keyed on the person's identity, so reordering rows moves none.
   fuels draw at HMRC Table 2C's shares together. A holder who reports private fuel,
   which an electric car cannot carry, draws among petrol and diesel alone, and the
   others draw electricity at the share that keeps Table 2C's among all of them at the
-  stage's weights (all of them, where the private fuel holders leave too few). The tape
-  rows that lose their car for want of EPB draw at the holders' electric share. Matching
+  stage's weights (all of them, where the private fuel holders leave too few). Matching
   Table 2C at the stage's weights makes each drawn fuel depend on the other drawn cars'
   private fuel and weights, as the CO2 split does: reordering rows moves none, but a
   car's fuel can move when other rows or weights do. It never draws a hybrid:
@@ -83,14 +85,20 @@ Every draw is keyed on the person's identity, so reordering rows moves none.
 ## The tape rows' pay
 
 On a tape row the engine's car and fuel benefits come out of `employment_income`,
-capped at EPB (María's ruling of 30 October 2026) within the pay the row's employee
-pension contribution leaves. The SPI income stage capped that contribution at the pay
+capped at EPB + PAY within the pay the row's employee pension contribution leaves
+(`cap: epb_then_pay`). EPB holds the benefits first, and the part above EPB moves from
+the row's PAY (`hmrc_spi_pay`) into its EPB (`hmrc_spi_employment_benefits`): its PAY +
+EPB + TAXTERM stays the tape's, and its split agrees with what the engine taxes (María's
+rulings of 3 November 2026). Until then the cap was EPB alone (María's ruling of 30
+October 2026), with PAY only where EPB was zero. That dropped or shrank the cars of the
+rows that drew a little EPB, which says no more about the car than a zero does (Vahid's
+review of microcosm#1491). A row whose EPB and PAY can't hold the car loses it as below.
+The SPI income stage capped that contribution at the pay
 it drew, and `salary_sacrifice`, which runs later on the carved pay, refuses a
 contribution above the pay that remains; it keeps the salary and bonus sacrifice within
 that pay itself. A row whose contribution takes all of its pay has no room, so it loses
-its car and keeps its pay. The room bites only where the SPI stage's drawn contribution
-exceeds the row's cash pay, PAY + TAXTERM, since that stage capped it at a pay that
-includes EPB. The receipt measures what it costs beside a cap of EPB within pay alone:
+its car and keeps its pay. The receipt measures what the room costs beside a cap of
+EPB + PAY within pay alone:
 the cars it scales further or drops, and the list price they give up
 (`spi_carve_out.cars_the_employee_contribution_scales_or_drops` and
 `weighted_list_price_given_up_for_the_employee_contribution_gbp`). Re-capping the
@@ -106,7 +114,7 @@ them alone.
    fits, with its contributions dropped. The benefit is the price above the capped
    contributions times the appropriate percentage, so the scaling is exact.
 3. A car that would need a list price below £5,000 to fit is dropped, and its EPB
-   stays in pay.
+   and PAY stay in pay.
 
 A scaled car's price is the room over its appropriate percentage, so what sets the
 percentage sets the price, and with it the base the 2030-31 rise acts on: the CO2
@@ -146,34 +154,64 @@ list prices and contributions grow by CPI, and the weights are not projected.
 Expect the static 2030-31 cost to come in well under Table 6.1's £310m, from the
 size of that base. The OBR's NICs line (£92.4m, at Class 1A's 15%) implies about
 £616m of extra taxable value, a list price base of about £60bn. HMRC's 2024-25
-taxable value implies roughly half of that, so even a file that matches Table 1's
-920,000 holders and £3,070m should fall about 30 to 45% short. Matching Table 1's
-taxable value does not pin the base, since a different electric mix and different
-prices reach the same total. So the stage's receipt records the weighted total list
-price of electric cars and of the others, for the results to read the gap as base
-size.
+taxable value implies roughly half of that, so a file that matches Table 1's
+920,000 holders and £3,070m, as the national now binds (below), should still fall
+about 30 to 45% short. With Table 2C's fuel counts bound as well the electric mix is
+pinned, but the prices are not: a different price mix reaches the same total. So the
+stage's receipt records the weighted total list price of electric cars and of the
+others, for the results to read the gap as base size.
 
-Two parts of a shortfall are measured here rather than corrected (María's ruling of 31
-October 2026: measure first).
+Two parts of a shortfall were measured first (María's ruling of 31 October 2026:
+measure first), and the first is corrected now.
 
-- **The tape rows' EPB draw.** A tape row keeps its twin's car only where its drawn
-  EPB is positive, and EPB is drawn on uniforms the car never conditions. The SPI
-  channel holds half the working-age prior mass, so before calibration holders and
-  the base come to about half the FRS level plus half of it times the share of tape
-  rows that draw EPB. The receipt records the weighted holders and list price lost
-  this way (`holders.spi_dropped_without_epb`).
-- **The carve-out.** Cars that do not fit their EPB are scaled or dropped, above.
+- **The tape rows' EPB draw.** Until 3 November 2026 a tape row kept its twin's car
+  only where its drawn EPB was positive, and the national `f6e33b93` lost about
+  272,000 weighted holders and £10.6bn of list price that way, at the stage's
+  weights. They are
+  kept now, their benefits moved from PAY into EPB. The receipt records the weighted
+  holders kept without EPB and the pay moved (`holders.spi_channel_tape_without_epb`
+  and `spi_carve_out.weighted_pay_moved_into_epb_gbp`), and how many of those rows the
+  car leaves with no PAY, their cash pay being their termination pay alone
+  (`spi_carve_out.kept_leaving_no_pay`). It also counts the rows with EPB whose car
+  takes more than it (`spi_carve_out.kept_with_epb_topped_up_from_pay`).
+- **The carve-out.** Cars that do not fit their EPB and PAY are
+  scaled or dropped, above.
 
 These figures, like the list price totals, are at the stage's weights, before
 calibration moves the holders. The results measure the base on the calibrated file.
 
-## Measured, not bound
+## Bound and measured
 
-No HMRC company car fact is a calibration target: the stage draws fuel and CO2 to
-Tables 2A and 2C, so binding them would be circular. No build step reads the other
-tables after calibration yet: comparing the calibrated file with HMRC's Table 1
-(recipients, taxable value, income tax and NICs), Table 3A (by income range) and Table
-4 (by region) is a manual step. `uk_stage_company_cars_invariants` blocks a release on
+The national calibration binds five of HMRC's 2024-25 facts from the Chronicle feed
+(María's ruling of 3 November 2026), in their own family, `hmrc_benefits_in_kind`:
+
+| Target | HMRC | Frame |
+|---|---|---|
+| `hmrc.benefits_in_kind.company_car_recipients` | Table 1, car recipients, 920,000 | People with a list price |
+| `hmrc.benefits_in_kind.company_car_taxable_value` | Table 1, car taxable value, £3,070m | The engine's company car benefit in 2024-25 |
+| `hmrc.benefits_in_kind.company_car_fuel.fully_electric` | Table 2C, 465,000 | `ELECTRIC` |
+| `hmrc.benefits_in_kind.company_car_fuel.petrol_including_hybrids` | Table 2C, 390,000 | `PETROL` and `ALTERNATIVE_FUEL` |
+| `hmrc.benefits_in_kind.company_car_fuel.diesel_including_hybrids` | Table 2C, 60,000 | `DIESEL_RDE2` and `DIESEL_NON_RDE2` |
+
+- **The taxable value** is measured in 2024-25 (`company_car_benefit_2024`,
+  `measurement_period` 2024), as the CGT rows are: the calibration year's appropriate
+  percentages are a point higher, so measuring 2025 would set 2024-25's total against
+  2025-26's rates and pull the base down.
+- **The counts** count stored inputs, so the year they are measured in moves nothing
+  but the fact. They are held at 2024-25 (`uprating_holds.json`): no index projects
+  company car holders, and HMRC's 2025-26 figures are due in July 2027.
+- **The fuel counts** bring the fuel mix to HMRC's rather than the FRS respondents':
+  about a third of the FRS's company cars are electric, and half of HMRC's. Table 2C
+  counts hybrids with their fuel, and the stage maps every FRS hybrid to
+  `ALTERNATIVE_FUEL`, which counts with petrol here, since diesel hybrids are few. If
+  the reweighting distorts other targets, redrawing the fuel types in the stage is
+  the next step.
+- The three fuel rows sum to 915,000 against Table 1's 920,000, from HMRC's rounding.
+
+The stage still draws fuel and CO2 from its vendored copy of Tables 2A and 2C, which
+the weight solve never reads. Comparing the calibrated file with Table 2A (by CO2),
+Table 3A (by income range) and Table 4 (by region) is a manual step.
+`uk_stage_company_cars_invariants` blocks a release on
 any record that breaks an invariant, a tape row whose employee pension contribution
 exceeds its carved pay included, and on a tape row whose pay plus benefits misses the
 tape's total by more than 5p.

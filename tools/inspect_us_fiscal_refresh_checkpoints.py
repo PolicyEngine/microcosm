@@ -24,7 +24,8 @@ from microcosm.build.us_runtime import (
 )
 from microcosm.frame import read_frame_table
 
-CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
+#: The calibration weights a national run writes (microcosm#1570).
+CALIBRATION_FILENAME = "microcosm_us_2024_calibration.npz"
 TARGET_MATERIALIZATION_CACHE_DIRNAME = "target_materialization_cache"
 
 H5AttrReader = Callable[[Path], Mapping[str, object]]

@@ -436,6 +436,59 @@ def test_appending_the_excise_shares_moves_no_spend_draw() -> None:
     assert ((shares >= 0.0) & (shares <= 1.0)).all()
 
 
+def test_the_chain_fits_the_gate_calibration_it_declares(monkeypatch) -> None:
+    """The committed chain cross-fits its gates; an undeclared one stays in sample."""
+
+    import dataclasses
+
+    import microcosm.fit
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import _qrf_gate_calibration
+
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    assert _qrf_gate_calibration(stage) == "cross_fitted"
+    undeclared = {
+        key: value
+        for key, value in next(
+            operation.parameters
+            for operation in stage.operations
+            if operation.kind == "fit_weighted_qrf_chain"
+        ).items()
+        if key != "gate_calibration"
+    }
+    plain = dataclasses.replace(
+        stage,
+        operations=tuple(
+            dataclasses.replace(operation, parameters=undeclared)
+            if operation.kind == "fit_weighted_qrf_chain"
+            else operation
+            for operation in stage.operations
+        ),
+    )
+    assert _qrf_gate_calibration(plain) == "in_sample"
+
+    built = []
+    real = microcosm.fit.RegimeGatedQRF
+
+    def recording(**kwargs):
+        built.append(kwargs.get("gate_calibration"))
+        return real(**kwargs)
+
+    monkeypatch.setattr(microcosm.fit, "RegimeGatedQRF", recording)
+    person, household = _synthetic_lcfs_donor()
+    donor = clean_lcfs_consumption_table(person, household)
+    recipient = donor.iloc[:20].loc[:, list(UK_LCFS_CONSUMPTION_PREDICTORS)]
+    impute_lcfs_consumption(
+        donor,
+        recipient,
+        seed=0,
+        n_estimators=2,
+        record_ids=np.arange(1, 21),
+        gate_calibration=_qrf_gate_calibration(stage),
+    )
+    assert built == ["cross_fitted"]
+
+
 def test_excise_spending_splits_each_drawn_total() -> None:
     from microcosm.build.uk_runtime.lcfs_consumption import excise_spending
 
@@ -920,7 +973,8 @@ def test_ice_share_comes_from_the_vendored_veh1103_stock() -> None:
     ) / licensed("all")
     assert rate == expected
     assert 0.95 < rate < 0.97
-    assert receipt["rule"] == "per_car_zero_emission_share"
+    # Since microcosm#1095 B3 (J2) the declared rule grades the share by income.
+    assert receipt["rule"] == "per_car_zero_emission_share_by_income_quintile"
     assert receipt["period_value"] == 2024
     assert receipt["geography_id"] == "K03000001"
     assert set(receipt["zero_emission_licensed_cars"]) == {
@@ -1527,7 +1581,10 @@ def _synthetic_lcfs_stage(household_columns=None, *, excise=True, gambling=True)
     the gambling top-up's stake forest are shrunk to four trees.
     ``household_columns(n)`` adds frame columns; with ``excise=False`` the
     excise step is dropped, and with it the top-up that re-keys it; with
-    ``gambling=False`` the top-up alone.
+    ``gambling=False`` the top-up alone. The fuel flag's income gradient reads
+    synthetic NTS cars (microcosm#1095 B3, J2); the road-fuel level keeps one
+    factor, since K's household mix reads the dropped uprating's litre-proxy
+    rows (its own tests cover it).
     """
 
     import dataclasses
@@ -1554,6 +1611,15 @@ def _synthetic_lcfs_stage(household_columns=None, *, excise=True, gambling=True)
             operation = SourceOperationSpec(
                 kind=operation.kind,
                 parameters={**operation.parameters, "n_estimators": 4},
+            )
+        if operation.kind == "level_road_fuel":
+            operation = SourceOperationSpec(
+                kind=operation.kind,
+                parameters={
+                    key: value
+                    for key, value in operation.parameters.items()
+                    if key not in ("mix_rule", "nts_cars")
+                },
             )
         operations.append(operation)
     stage = dataclasses.replace(committed, operations=tuple(operations))
@@ -1629,15 +1695,42 @@ def _synthetic_lcfs_stage(household_columns=None, *, excise=True, gambling=True)
                     "household_gross_income"
                 ].to_numpy()
                 * 0.2,
+                # The fuel flag's income fifths divide by the equivalence scale.
+                "household_equivalisation_bhc": np.full(rows, 1.5),
             }
             return {name: values.get(name, np.zeros(rows)) for name in variables}
 
+    # Thirty kept cars an income fifth, 10 + 2q of them zero-emission.
+    fifth = np.repeat(np.arange(1, 6), 30)
+    position = np.tile(np.arange(30), 5)
+    nts_household = pd.DataFrame(
+        {"HouseholdID": np.arange(1, 151), "W3": 1.0, "HHIncQISEngTS_B01ID": fifth}
+    )
+    nts_vehicle = pd.DataFrame(
+        {
+            "HouseholdID": np.arange(1, 151),
+            "SurveyYear": 2024,
+            "VehType_B03ID": 1,
+            "CarOwn_B01ID": 1,
+            "VehPropTypeTS_B01ID": np.where(position % 2 == 0, 1, 2),
+            "VehCO2Bands_B01ID": np.where(position < 10 + 2 * fifth, 1, 7),
+            "VehAnMileage": 6000.0,
+            "VehComMile": 1000.0,
+            "VehPriMile": 4000.0,
+            # The vehicle excise duty inputs' Table A-M band, engine size and age.
+            "VehCO2Tax2008_B01ID": np.where(position < 10 + 2 * fifth, 1, 4),
+            "EngineCap": 1400.0,
+            "VehAge_B01ID": 1 + position % 14,
+        }
+    )
     donor_person, donor_household = _synthetic_lcfs_donor()
     transform = UKLCFSConsumptionStageTransform(
         stage=stage,
         engine=_Engine(),
         lcfs_household=donor_household,
         lcfs_person=donor_person,
+        nts_household=nts_household,
+        nts_vehicle=nts_vehicle,
     )
     return SimpleNamespace(
         transform=transform,
@@ -1662,6 +1755,7 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
     from microcosm.build.uk_runtime.lcfs_consumption import (
         UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS,
         UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
+        UK_LCFS_CONSUMPTION_PERSON_OUTPUT_COLUMNS,
     )
 
     synthetic = _synthetic_lcfs_stage()
@@ -1676,6 +1770,10 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
 
     out = result.table("household")
     assert set(UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS) <= set(out.columns)
+    # The vehicle excise duty inputs are the person's (microcosm#1095 B3).
+    assert set(UK_LCFS_CONSUMPTION_PERSON_OUTPUT_COLUMNS) <= set(
+        result.table("person").columns
+    )
     # The 20 chain targets (the heating fuels after the spend targets,
     # pe-uk#2572) and the five excise shares (microcosm#1359), the road-fuel
     # redraw's total and petrol share, the prepayment-meter flag
@@ -1864,6 +1962,18 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
     assert evidence["energy_pricing"]["level"]["period_type"] == "calendar_year"
     assert evidence["bus_pricing"]["price_year"] == 2024
     for gate in gates:
+        if gate.parameters["check"] == "road_fuel_level":
+            # The committed level declares K's household mix (microcosm#1095
+            # B3), which reads the dropped uprating's litre-proxy rows: this
+            # run levels by one factor, so the gate refuses on exactly that.
+            with pytest.raises(ValueError, match="road_fuel_level.mix must be"):
+                uk_stage_health_gate(
+                    evidence=evidence,
+                    stage="lcfs_consumption",
+                    check=gate.parameters["check"],
+                    parameters=gate.parameters,
+                )
+            continue
         checked = uk_stage_health_gate(
             evidence=evidence,
             stage="lcfs_consumption",
@@ -2267,6 +2377,37 @@ def test_stage_transform_counts_source_households_in_its_receipts(
     assert np.array_equal(seen["division_capture"], expected)
 
 
+def test_stage_stores_the_kwh_its_energy_spend_is_priced_from() -> None:
+    """The stage keeps the rake's kWh beside the spend, for the energy
+    dashboards: the local DESNZ targets' reading of the stored spend gives them
+    back for every household, so the exported kWh and the targets agree."""
+
+    from microcosm.build.uk_runtime.domestic_energy_targets import (
+        household_energy_kwh,
+        household_energy_prices,
+    )
+    from microcosm.build.uk_runtime.energy_pricing import ELECTRICITY_KWH, GAS_KWH
+
+    synthetic = _synthetic_lcfs_stage()
+    out = synthetic.transform(synthetic.frame).table("household")
+
+    expected = household_energy_kwh(
+        out["electricity_consumption"],
+        out["gas_consumption"],
+        region=out["region"].astype(str).to_numpy(),
+        prices=household_energy_prices(),
+    )
+    for column in (ELECTRICITY_KWH, GAS_KWH):
+        stored = out[column].to_numpy(dtype=float)
+        assert (stored >= 0.0).all()
+        np.testing.assert_allclose(stored, expected[column], rtol=1e-12, atol=1e-9)
+    # A household is gas-connected exactly when it pays for gas, and the
+    # synthetic frame has households on both sides.
+    gas_kwh = out[GAS_KWH].to_numpy(dtype=float)
+    assert np.array_equal(gas_kwh > 0, out["gas_consumption"].to_numpy() > 0)
+    assert (gas_kwh > 0).any() and (gas_kwh == 0).any()
+
+
 def test_division_capture_places_an_over_draw_in_the_tail() -> None:
     """The frame's top 10% hold far more of a division than the donor's do."""
 
@@ -2576,6 +2717,372 @@ def test_level_road_fuel_scales_both_fuels_by_one_factor() -> None:
     ]
     with pytest.raises(ValueError, match="no road-fuel spend"):
         level_road_fuel(draws * 0.0, level=level, weights=weights)
+
+
+def _nts_car_rows(**columns) -> pd.DataFrame:
+    """NTS cars as ``nts_cars`` returns them: lower-cased columns, one row a car."""
+
+    base = {
+        "householdid": 1,
+        "surveyyear": 2024,
+        "vehtype_b03id": 1,
+        "carown_b01id": 1,
+        "vehproptypets_b01id": 1,
+        "vehco2bands_b01id": 5,
+        "vehanmileage": 5000.0,
+        "vehcommile": 0.0,
+        "vehprimile": 5000.0,
+        "w3": 1.0,
+        "hhincqisengts_b01id": 1,
+    }
+    length = max(len(value) for value in columns.values())
+    return pd.DataFrame(
+        {key: columns.get(key, [value] * length) for key, value in base.items()}
+    )
+
+
+def test_nts_cars_keeps_the_declared_cars_with_their_households() -> None:
+    """microcosm#1095 B3: 2022-2024's cars and four-by-fours, at W3 and the fifth."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import nts_cars
+
+    vehicle = pd.DataFrame(
+        {
+            "HouseholdID": [1, 1, 2, 3, 4],
+            "SurveyYear": [2022, 2024, 2023, 2019, 2024],
+            "VehType_B03ID": [1, 3, 2, 1, 1],
+            "CarOwn_B01ID": [1, 2, 1, 1, 1],
+            "VehPropTypeTS_B01ID": [1, 2, 1, 1, 3],
+            "VehCO2Bands_B01ID": [5, 1, 3, 2, 1],
+            "VehAnMileage": [5000, 8000, 3000, 4000, 6000],
+            "VehComMile": [1000, 0, 0, 0, 0],
+            "VehPriMile": [3500, 2000, 3000, 4000, 6000],
+            "VehCO2Tax2008_B01ID": [3, 1, 2, 1, 1],
+            "EngineCap": [1400, 2000, 125, 1600, 0],
+            "VehAge_B01ID": [6, 2, 12, 9, 3],
+        }
+    )
+    household = pd.DataFrame(
+        {
+            "HouseholdID": [1, 2, 3, 4],
+            "W3": [1.5, 2.0, 1.0, 0.5],
+            "HHIncQISEngTS_B01ID": [1, 2, 3, 5],
+        }
+    )
+
+    cars = nts_cars(vehicle, household)
+
+    # The motorcycle (type 2) and the 2019 car are left out.
+    assert cars["householdid"].tolist() == [1, 1, 4]
+    assert cars["w3"].tolist() == [1.5, 1.5, 0.5]
+    assert cars["hhincqisengts_b01id"].tolist() == [1, 1, 5]
+    with pytest.raises(ValueError, match="positive interview weight"):
+        nts_cars(vehicle, household.assign(W3=[1.5, 2.0, 1.0, 0.0]))
+    with pytest.raises(pd.errors.MergeError):
+        nts_cars(vehicle, pd.concat([household, household.iloc[:1]]))
+    with pytest.raises(ValueError, match="required column"):
+        nts_cars(vehicle.drop(columns="VehPriMile"), household)
+
+
+def _graded_cars() -> pd.DataFrame:
+    """Twenty kept, linked cars a fifth, 2q of them zero-emission in fifth q."""
+
+    fifth = np.repeat(np.arange(1, 6), 20)
+    position = np.tile(np.arange(20), 5)
+    cars = _nts_car_rows(
+        hhincqisengts_b01id=fifth.tolist(),
+        vehco2bands_b01id=np.where(position < 2 * fifth, 1, 6).tolist(),
+    )
+    # Neither a company car, a car with no linked band nor one of unknown
+    # fifth counts, zero-emission or not.
+    extra = _nts_car_rows(
+        hhincqisengts_b01id=[1, 1, -8],
+        carown_b01id=[2, 1, 1],
+        vehco2bands_b01id=[1, -8, 1],
+    )
+    return pd.concat([cars, extra], ignore_index=True)
+
+
+def test_zero_emission_relative_risks_grade_kept_linked_cars_by_fifth() -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        zero_emission_relative_risks,
+    )
+
+    risks, receipt = zero_emission_relative_risks(_graded_cars(), minimum_cars=2)
+
+    # Fifth q's share is q / 10 against 0.3 overall.
+    assert risks == pytest.approx({q: q / 3 for q in range(1, 6)})
+    assert receipt["zero_emission_share"] == pytest.approx(0.3)
+    assert receipt["fifths"] == [[1], [2], [3], [4], [5]]
+    assert receipt["zero_emission_cars"] == {
+        "1": "<3",
+        "2": "3-9",
+        "3": "3-9",
+        "4": "3-9",
+        "5": "10-29",
+    }
+    assert receipt["linked_share"] == pytest.approx(100 / 101)
+    # Weights count: a heavier fifth-5 zero-emission car lifts that fifth.
+    heavier = _graded_cars()
+    heavier.loc[80, "w3"] = 11.0
+    lifted, _ = zero_emission_relative_risks(heavier, minimum_cars=2)
+    assert lifted[5] > risks[5]
+    with pytest.raises(ValueError, match="no zero-emission car"):
+        zero_emission_relative_risks(
+            _graded_cars().assign(vehco2bands_b01id=6), minimum_cars=2
+        )
+
+
+def test_zero_emission_relative_risks_pool_a_thin_fifth_with_its_neighbour() -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        zero_emission_relative_risks,
+    )
+
+    risks, receipt = zero_emission_relative_risks(_graded_cars(), minimum_cars=5)
+
+    # Fifth 1 (two cars) pools toward the middle with fifth 2 (four): 6 of 40.
+    assert receipt["fifths"] == [[1, 2], [3], [4], [5]]
+    assert risks[1] == risks[2] == pytest.approx(0.15 / 0.3)
+    assert risks[3] == pytest.approx(1.0)
+    assert set(receipt["zero_emission_cars"]) == {"1+2", "3", "4", "5"}
+    with pytest.raises(ValueError, match="fewer than 31"):
+        zero_emission_relative_risks(_graded_cars(), minimum_cars=31)
+
+
+def test_frame_income_quintiles_rank_equivalised_income_at_household_weight() -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import frame_income_quintiles
+
+    income = np.arange(10.0, 101.0, 10.0)
+    assert frame_income_quintiles(income, np.ones(10), np.ones(10)).tolist() == [
+        1,
+        1,
+        2,
+        2,
+        3,
+        3,
+        4,
+        4,
+        5,
+        5,
+    ]
+    # The scale divides: the top earner, ten strong, ranks lowest.
+    scale = np.ones(10)
+    scale[-1] = 10.0
+    assert frame_income_quintiles(income, scale, np.ones(10))[-1] == 1
+    # Weights move the cut points: the lowest household holding half the
+    # weight fills the bottom two fifths alone.
+    weights = np.ones(10)
+    weights[0] = 9.0
+    assert frame_income_quintiles(income, np.ones(10), weights)[1] == 3
+    with pytest.raises(ValueError, match="positive equivalence scale"):
+        frame_income_quintiles(income, np.zeros(10), np.ones(10))
+
+
+def test_zero_emission_share_by_household_keeps_the_national_share_over_the_cars() -> (
+    None
+):
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        zero_emission_share_by_household,
+    )
+
+    risks = {1: 0.5, 2: 1.0, 3: 1.0, 4: 1.5, 5: 2.0}
+    vehicles = np.array([1, 2, 1, 1, 1, 0])
+    weights = np.array([1.0, 1.0, 3.0, 1.0, 2.0, 5.0])
+    share, receipt = zero_emission_share_by_household(
+        0.04, risks, [1, 2, 3, 4, 5, 5], vehicles=vehicles, weights=weights
+    )
+
+    cars = weights * vehicles
+    assert np.average(share, weights=cars) == pytest.approx(0.04)
+    assert share[4] / share[0] == pytest.approx(4.0)
+    assert receipt["national_share"] == 0.04
+    assert sum(receipt["frame_car_share_by_fifth"].values()) == pytest.approx(1.0)
+    assert receipt["share_by_fifth"]["5"] == pytest.approx(share[4])
+    with pytest.raises(ValueError, match="outside"):
+        zero_emission_share_by_household(
+            0.9, risks, [1, 2, 3, 4, 5, 5], vehicles=vehicles, weights=weights
+        )
+    with pytest.raises(ValueError, match="no vehicles"):
+        zero_emission_share_by_household(
+            0.04, risks, [1] * 6, vehicles=np.zeros(6), weights=weights
+        )
+
+
+def test_fuel_flag_by_income_keeps_the_uniforms_and_moves_only_the_threshold() -> None:
+    """microcosm#1095 B3 (J2): the household's own share replaces 1 - rate."""
+
+    ids = np.arange(1, 2_001)
+    vehicles = np.tile([0, 1, 2, 3], 500)
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {"person_id": ids, "person_benunit_id": ids, "person_household_id": ids}
+        ),
+        benunit=pd.DataFrame({"benunit_id": ids}),
+        household=pd.DataFrame(
+            {
+                "household_id": ids,
+                "household_weight": np.ones(len(ids)),
+                "num_vehicles": vehicles,
+            }
+        ),
+        time_period="2024",
+    )
+    rate = 0.7
+    flat = assign_recipient_has_fuel(frame, rate=rate, seed=0)
+    same = assign_recipient_has_fuel(
+        frame, rate=rate, seed=0, zero_emission_share=np.full(len(ids), 1.0 - rate)
+    )
+    assert same.tolist() == flat.tolist()
+    # A higher zero-emission share only ever turns a flag off.
+    higher = assign_recipient_has_fuel(
+        frame, rate=rate, seed=0, zero_emission_share=np.full(len(ids), 0.5)
+    )
+    assert not bool((higher & ~flat).any())
+    assert higher.sum() < flat.sum()
+    for bad in (np.full(len(ids) - 1, 0.3), np.full(len(ids), 1.0)):
+        with pytest.raises(ValueError, match="one share in"):
+            assign_recipient_has_fuel(frame, rate=rate, seed=0, zero_emission_share=bad)
+
+
+def test_household_paid_shares_count_kept_cars_private_and_commuting_miles() -> None:
+    """microcosm#1095 B3 (K): business and company-car miles are not household-paid."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        household_paid_road_fuel_shares,
+    )
+
+    cars = _nts_car_rows(
+        carown_b01id=[1, 2, 1, 1, -8, 1],
+        vehproptypets_b01id=[1, 1, 1, 2, 2, 2],
+        vehanmileage=[10000.0, 10000.0, np.nan, 20000.0, 5000.0, 1000.0],
+        vehcommile=[2000.0, 1000.0, 0.0, 5000.0, 0.0, np.nan],
+        vehprimile=[6000.0, 5000.0, 0.0, 10000.0, 5000.0, np.nan],
+        w3=[1.0, 1.0, 1.0, 2.0, 1.0, 1.0],
+    )
+
+    shares, receipt = household_paid_road_fuel_shares(cars)
+
+    # Petrol: 8,000 of the kept car's 10,000 miles, none of the company
+    # car's 10,000; the car with no annual miles is left out. Diesel: the
+    # kept car's 15,000 of 20,000; a car kept by neither, and a car whose
+    # miles are not split (blanks, never zeros), are left out.
+    assert shares == pytest.approx({"petrol_spending": 0.4, "diesel_spending": 0.75})
+    petrol = receipt["fuels"]["petrol_spending"]
+    assert petrol["company_car_share_of_miles"] == pytest.approx(0.5)
+    assert receipt["fuels"]["diesel_spending"]["company_car_share_of_miles"] == 0.0
+    assert receipt["survey_years"] == [2022, 2023, 2024]
+    with pytest.raises(ValueError, match="no diesel_spending miles"):
+        household_paid_road_fuel_shares(cars.assign(vehproptypets_b01id=1))
+
+
+def test_road_fuel_household_mix_weights_cars_litres_by_paid_share_and_price() -> None:
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        _road_fuel_prices_and_litres,
+        desnz_cars_share_by_fuel,
+        road_fuel_household_mix,
+        uprating_operation,
+    )
+
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    uprating = uprating_operation(stage)
+    terms = _road_fuel_prices_and_litres(
+        uprating, columns=("petrol_spending", "diesel_spending")
+    )
+    cars = desnz_cars_share_by_fuel(int(uprating["to_period"]))
+    spend = {
+        column: terms[column]["hmrc_litres_all_road_users"]
+        * cars[fuel]["cars_share"]
+        * terms[column]["price_pence_per_litre"]
+        for column, fuel in (
+            ("petrol_spending", "petrol"),
+            ("diesel_spending", "diesel"),
+        )
+    }
+
+    whole, receipt = road_fuel_household_mix(
+        stage, {"petrol_spending": 1.0, "diesel_spending": 1.0}
+    )
+    total = sum(spend.values())
+    assert whole == pytest.approx({key: value / total for key, value in spend.items()})
+    assert receipt["rule"] == "household_paid_litres"
+    assert receipt["period_value"] == 2024
+    half, _ = road_fuel_household_mix(
+        stage, {"petrol_spending": 1.0, "diesel_spending": 0.5}
+    )
+    assert half["diesel_spending"] == pytest.approx(
+        0.5
+        * spend["diesel_spending"]
+        / (spend["petrol_spending"] + 0.5 * spend["diesel_spending"])
+    )
+    for share in (0.0, 1.2):
+        with pytest.raises(ValueError, match="outside"):
+            road_fuel_household_mix(
+                stage, {"petrol_spending": share, "diesel_spending": 1.0}
+            )
+
+
+def test_level_road_fuel_levels_each_fuel_to_its_household_share() -> None:
+    """microcosm#1095 B3 (K): the level stays; each fuel takes its share of it."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        RoadFuelLevel,
+        level_road_fuel,
+    )
+
+    draws = pd.DataFrame(
+        {
+            "petrol_spending": [1000.0, 0.0, 500.0, 0.0],
+            "diesel_spending": [0.0, 300.0, 250.0, 0.0],
+        }
+    )
+    weights = np.array([2.0, 1.0, 1.0, 5.0])
+    level = RoadFuelLevel(5000.0, 0.02, {"operation": "level_road_fuel"})
+    mix = {"petrol_spending": 0.6, "diesel_spending": 0.4}
+
+    levelled, receipt = level_road_fuel(
+        draws, level=level, weights=weights, mix=mix, mix_receipt={"rule": "r"}
+    )
+
+    after = levelled.to_numpy() * weights[:, None]
+    assert after[:, 0].sum() == pytest.approx(4900.0 * 0.6)
+    assert after[:, 1].sum() == pytest.approx(4900.0 * 0.4)
+    assert receipt["frame_after"] == pytest.approx(4900.0)
+    assert receipt["petrol_share_of_level"] == pytest.approx(0.6)
+    assert receipt["factor"] == pytest.approx(4900.0 / 3050.0)
+    # Each fuel keeps every household's relative spend.
+    assert levelled.loc[0, "petrol_spending"] == pytest.approx(
+        2.0 * levelled.loc[2, "petrol_spending"]
+    )
+    assert receipt["mix"]["rule"] == "r"
+    assert receipt["mix"]["drawn_mix"]["petrol_spending"] == pytest.approx(2500 / 3050)
+    assert receipt["mix"]["frame_after"]["diesel_spending"] == pytest.approx(1960.0)
+    assert receipt["mix"]["factors"]["diesel_spending"] == pytest.approx(1960.0 / 550.0)
+    with pytest.raises(ValueError, match="diesel_spending"):
+        level_road_fuel(
+            draws.assign(diesel_spending=0.0), level=level, weights=weights, mix=mix
+        )
+
+
+def test_road_fuel_level_refuses_a_wrong_mix_declaration() -> None:
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        road_fuel_level,
+        road_fuel_level_operation,
+    )
+
+    declared = road_fuel_level_operation(
+        load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    )
+    assert declared["mix_rule"] == "household_paid_litres"
+    assert road_fuel_level(declared, other_fuels_share=0.0).receipt["mix_rule"] == (
+        "household_paid_litres"
+    )
+    with pytest.raises(ValueError, match="unsupported level_road_fuel mix_rule"):
+        road_fuel_level({**declared, "mix_rule": "diary"}, other_fuels_share=0.0)
+    cars = {**declared["nts_cars"], "survey_years": [2023, 2024]}
+    with pytest.raises(ValueError, match="nts_cars must declare"):
+        road_fuel_level({**declared, "nts_cars": cars}, other_fuels_share=0.0)
 
 
 def test_other_road_fuel_share_is_the_donor_weighted_c72213_share() -> None:
@@ -4018,7 +4525,7 @@ def test_stage_tops_up_the_gambling_keys_when_declared(monkeypatch) -> None:
             "gambling_participation",
             {
                 "maximum_stratum_shortfall": 0.01,
-                "amount_scale_bounds": [0.5, 2.5],
+                "amount_scale_bounds": [0.3, 2.5],
                 "required_support_band": "30+",
             },
         ),

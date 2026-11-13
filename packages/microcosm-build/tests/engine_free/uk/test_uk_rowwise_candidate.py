@@ -638,67 +638,78 @@ def test_uk_thinned_epochs_forward_each_solve_first_epoch():
 def test_remote_dataset_staging_is_refused_up_front_without_credential_or_repo(
     monkeypatch, tmp_path, capsys
 ):
+    """The build's emitter checks the credential and the repository before
+    the spine is read, so a stage it could not complete costs nothing."""
+    from test_support.microcosm_build.telemetry import configure_fake_emitter
+
     builder = _load_builder_module()
     input_h5, ladder_path, flags = _staging_run_setup(
         builder, monkeypatch, tmp_path, remote=True
     )
     out = tmp_path / "refused"
-    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: None)
+
+    def access(**answer):
+        return {
+            "status": "checked",
+            "credential": "present",
+            "reachable": True,
+            "can_write": True,
+            "error_type": None,
+            **answer,
+        }
+
+    # The emitter uploads the bundle: a build whose emitter cannot take it
+    # (none installed, or one without the Hugging Face module) is refused.
+    configure_fake_emitter(monkeypatch, modules={"telemetry", "orrery"})
+    with pytest.raises(ValueError, match="emitter"):
+        builder.main(_build_args(input_h5, ladder_path, flags, out))
+    assert not out.exists()
+
+    configure_fake_emitter(
+        monkeypatch,
+        write_access=access(credential="missing", reachable=None, can_write=None),
+    )
     with pytest.raises(ValueError, match="write credential"):
         builder.main(_build_args(input_h5, ladder_path, flags, out))
     assert not out.exists()
 
-    class Unreachable:
-        def repo_info(self, **kwargs):
-            raise RuntimeError("503 token=do-not-record")
-
-    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: "hf_test_token")
-    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: Unreachable())
-    with pytest.raises(ValueError, match="cannot reach") as info:
-        builder.main(_build_args(input_h5, ladder_path, flags, out))
-    assert "do-not-record" not in str(info.value)
-    assert not out.exists()
-
-    # A read token sees the private repository but cannot upload: refused
-    # before the spine is read, not after the solve (the Hub answers 403).
-    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: _FakeHub(role="read"))
-    with pytest.raises(ValueError, match="read-only"):
-        builder.main(_build_args(input_h5, ladder_path, flags, out))
-    assert not out.exists()
-
-    # A fine-grained token scoped to another owner is refused the same way;
-    # one scoped to the repository's organisation passes the pre-flight.
-    user_scoped = [
-        {"entity": {"type": "user", "name": "someone"}, "permissions": ["repo.write"]}
-    ]
-    monkeypatch.setattr(
-        rowwise_staging,
-        "_hub_api",
-        lambda: _FakeHub(role="fineGrained", scopes=user_scoped),
+    configure_fake_emitter(
+        monkeypatch,
+        write_access=access(reachable=False, can_write=None, error_type="HTTPError"),
     )
-    with pytest.raises(ValueError, match="repo.write"):
+    with pytest.raises(ValueError, match=r"cannot reach .*\(HTTPError\)"):
         builder.main(_build_args(input_h5, ladder_path, flags, out))
     assert not out.exists()
-    org_scoped = [
-        {
-            "entity": {"type": "org", "name": "policyengine"},
-            "permissions": ["repo.write"],
-        }
-    ]
-    org_hub = _FakeHub(role="fineGrained", scopes=org_scoped)
-    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: org_hub)
-    status = builder.main(
-        _build_args(input_h5, ladder_path, flags, tmp_path / "org-scoped")
-    )
-    # The pre-flight admits the org-scoped token; the synthetic spine
-    # carries no bound checkpoint sidecar, so the graph driver refuses
-    # later, on its inputs, never on the credential.
-    assert status == 1
-    assert "sidecar absent" in capsys.readouterr().err
+
+    # A read token, or a fine-grained token scoped elsewhere, sees the private
+    # repository but cannot upload: refused before the spine is read, not
+    # after the solve (the Hub answers 403).
+    configure_fake_emitter(monkeypatch, write_access=access(can_write=False))
+    with pytest.raises(ValueError, match="read-only") as info:
+        builder.main(_build_args(input_h5, ladder_path, flags, out))
+    assert "repo.write" in str(info.value)
+    assert not out.exists()
+
+    # A credential that can write, or whose scope the Hub does not describe,
+    # passes the pre-flight; the synthetic spine carries no bound checkpoint
+    # sidecar, so the graph driver refuses later, on its inputs, never on the
+    # credential.
+    for answer, warned in ((access(), False), (access(can_write=None), True)):
+        configure_fake_emitter(monkeypatch, write_access=answer)
+        status = builder.main(
+            _build_args(input_h5, ladder_path, flags, tmp_path / f"passes-{warned}")
+        )
+        assert status == 1
+        err = capsys.readouterr().err
+        assert "sidecar absent" in err
+        assert ("write scope could not be read" in err) is warned
 
     # Argument refusals cost nothing and come first: a missing credential is
     # never the reported reason when the arguments are wrong.
-    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: None)
+    configure_fake_emitter(
+        monkeypatch,
+        write_access=access(credential="missing", reachable=None, can_write=None),
+    )
     with pytest.raises(ValueError, match="only with --dry-run"):
         builder.main(
             _build_args(

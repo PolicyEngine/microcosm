@@ -171,7 +171,7 @@ def test_extract_incumbent_surface_names_the_register_when_uc_inputs_are_missing
 
     monkeypatch.setattr(tool, "compute_household_metrics", missing_uc_inputs)
     with pytest.raises(
-        ValueError, match="incumbent_unresolvable_measures.json"
+        ValueError, match="does not prune unresolvable measures"
     ) as raised:
         tool.extract_incumbent_surface(
             incumbent_h5=incumbent,

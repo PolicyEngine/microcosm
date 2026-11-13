@@ -45,6 +45,7 @@ from microcosm.build.gates import (
     parity_gate,
 )
 from microcosm.build.us_runtime import release_gate_dry_run as dry
+from microcosm.build.us_runtime.input_mass import UsLine32Carriers
 from microcosm.build.us_runtime.release_gate_preflight import PreflightReport
 from microcosm.build.us_runtime.spm_composition import CheckResult
 from microcosm.calibrate.registry import TargetSpec
@@ -807,6 +808,145 @@ def test_register_diff_matches_the_release_for_every_perturbation(
     check()
 
 
+_SINGLE_RECORD_ROW_KEYS = (
+    "top_1_share_at_base_weights",
+    "top_1_weight_at_base_weights",
+)
+
+
+def _register_check(builder, surface, gate, register, *, allow, margins):
+    mismatch = builder._qrf_tail_register_mismatch(register, gate)
+    gate_lines, register_lines = builder._qrf_tail_gate_lines(
+        gate, mismatch, allow_concentration=allow
+    )
+    return dry.qrf_tail_register_check(
+        qrf_outputs=sorted(builder._qrf_imputed_source_outputs()),
+        register=register,
+        surface=surface,
+        gate_details=gate.details,
+        release_lines_at_base_weights=[*gate_lines, *register_lines],
+        support_fixed=True,
+        margins=margins,
+        allow_concentration=allow,
+        register_source={},
+    )
+
+
+def test_rows_carry_the_single_record_measurements(builder, tail_frame) -> None:
+    register = {column: "reviewed" for column in _OVER}
+    gate, surface = builder._qrf_tail_concentration_gate(
+        tail_frame, reviewed_exclusions=register
+    )
+
+    check = _register_check(
+        builder, surface, gate, register, allow=False, margins=dry.DryRunMargins()
+    )
+
+    measured = surface["single_record_concentration"]["columns"]
+    rows = {row["column"]: row for row in check.rows}
+    for column, row in rows.items():
+        if column in measured:
+            assert (
+                row["top_1_share_at_base_weights"] == (measured[column]["top_1_share"])
+            )
+            assert (
+                row["top_1_weight_at_base_weights"]
+                == (measured[column]["top_1_weight"])
+            )
+        else:
+            assert row["top_1_share_at_base_weights"] is None
+            assert row["top_1_weight_at_base_weights"] is None
+    # 100 records of $594,484 and 450 of $2,979, all of weight 1.
+    assert rows["estate_income"]["top_1_share_at_base_weights"] == pytest.approx(
+        594_484.0 / (100 * 594_484.0 + 450 * 2_979.0)
+    )
+    assert set(_BOOLEAN) | set(_ABSENT) <= {
+        column for column in rows if column not in measured
+    }
+
+
+def test_single_record_measurements_never_move_a_dry_run_verdict(
+    builder, tail_frame
+) -> None:
+    """Reported only: any values in the block, or no block at all (a release
+    built before it existed), give the same verdicts, lines and details; the
+    rows differ only in the two reported fields."""
+
+    hypothesis, st = _hypothesis()
+    gate_base, surface = builder._qrf_tail_concentration_gate(tail_frame)
+    columns = sorted(surface["single_record_concentration"]["columns"])
+    share = st.one_of(st.none(), st.floats(min_value=0.0, max_value=1.0))
+    weight = st.one_of(st.none(), st.floats(min_value=0.0, max_value=1e6))
+
+    @hypothesis.settings(max_examples=60, deadline=None)
+    @hypothesis.given(
+        replacement=st.one_of(
+            st.none(),
+            st.fixed_dictionaries(
+                {
+                    column: st.fixed_dictionaries(
+                        {
+                            "carriers": st.integers(0, 10_000),
+                            "top_1_share": share,
+                            "top_1_weight": weight,
+                            "top_k_share": share,
+                        }
+                    )
+                    for column in columns
+                }
+            ),
+        ),
+        register=st.sets(st.sampled_from((*_OVER, *_UNDER, *_THIN))),
+        allow=st.booleans(),
+        exact=st.booleans(),
+    )
+    def check(replacement, register, allow, exact):
+        entries = {column: "reviewed" for column in register}
+        gate, original = builder._qrf_tail_concentration_gate(
+            tail_frame, reviewed_exclusions=entries
+        )
+        changed = dict(original)
+        if replacement is None:
+            del changed["single_record_concentration"]
+        else:
+            changed["single_record_concentration"] = {
+                "top_k": 100,
+                "columns": replacement,
+                "unmeasured": {},
+            }
+        margins = dry.DryRunMargins.exact() if exact else dry.DryRunMargins()
+
+        before = _register_check(
+            builder, original, gate, entries, allow=allow, margins=margins
+        )
+        after = _register_check(
+            builder, changed, gate, entries, allow=allow, margins=margins
+        )
+
+        assert after.status == before.status
+        assert after.summary == before.summary
+        assert after.failures == before.failures
+        assert after.at_risks == before.at_risks
+        assert after.details == before.details
+
+        def without(rows):
+            return [
+                {k: v for k, v in row.items() if k not in _SINGLE_RECORD_ROW_KEYS}
+                for row in rows
+            ]
+
+        assert without(after.rows) == without(before.rows)
+        if replacement is None:
+            assert all(
+                row[key] is None
+                for row in after.rows
+                for key in _SINGLE_RECORD_ROW_KEYS
+            )
+
+    assert gate_base.details["top_share"]
+    check()
+
+
 def test_a_surface_that_misplaces_an_output_is_refused() -> None:
     with pytest.raises(ValueError, match="exactly once"):
         dry.base_tail_classes(
@@ -1435,9 +1575,7 @@ def test_checkpoint_status_reads_only_the_identity(builder, tmp_path) -> None:
     assert not builder._dry_run_checkpoint_status(path, "def")["identity_matches"]
 
 
-def test_release_dry_run_checks_run_the_release_gates(
-    builder, tail_frame, monkeypatch
-) -> None:
+def _release_dry_run_checks(builder, tail_frame, monkeypatch, *extra_args):
     """The stop point's check assembly, on a real frame.
 
     Engine-backed pieces (input defaults, input coverage) are stubbed because
@@ -1461,6 +1599,7 @@ def test_release_dry_run_checks_run_the_release_gates(
             "--dense-default-dataset",
             "--dry-run-gates-report",
             "r.json",
+            *extra_args,
         ]
     )
     early = ["Retirement-distribution signal failed: fixture early failure"]
@@ -1498,6 +1637,13 @@ def test_release_dry_run_checks_run_the_release_gates(
         ),
         ecps_parity_gate=GateResult(name="parity", passed=True),
     )
+    return early, checks
+
+
+def test_release_dry_run_checks_run_the_release_gates(
+    builder, tail_frame, monkeypatch
+) -> None:
+    early, checks = _release_dry_run_checks(builder, tail_frame, monkeypatch)
     by_name = {check.name: check for check in checks}
     assert list(by_name) == [
         "pre_solve_battery",
@@ -1532,6 +1678,56 @@ def test_release_dry_run_checks_run_the_release_gates(
         for check in checks
         if check.name != "stored_inputs"
     )
+
+
+def test_release_dry_run_reads_line_32_as_the_gate_does(
+    builder, tail_frame, monkeypatch
+) -> None:
+    """The preview raises if it reads partnership_income alone here.
+
+    A reference built before microcosm#1261 holds partnership and S corporation
+    income together in partnership_income, so the gate counts both candidate
+    columns against it.
+    """
+    reference = SimpleNamespace(label="reference")
+    monkeypatch.setattr(builder, "load_us_frame", lambda path: reference)
+
+    def carriers(candidate, reference_frame):
+        # The gate and the preview read carriers from the frames whose totals
+        # they compare.
+        assert candidate is tail_frame
+        assert reference_frame is reference
+        return UsLine32Carriers(
+            candidate_partnership_income=True, reference_s_corp_income=False
+        )
+
+    monkeypatch.setattr(builder, "us_line_32_carriers", carriers)
+    monkeypatch.setattr(
+        builder,
+        "us_input_mass_totals",
+        lambda frame, columns=None: (
+            {"partnership_income": 8.5e11, "s_corp_income": 0.0}
+            if frame is reference
+            else {"partnership_income": 3.9e11, "s_corp_income": 6.6e11}
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_nonzero_shares",
+        lambda frame, columns=None: {"partnership_income": 0.02, "s_corp_income": 0.02},
+    )
+    _, checks = _release_dry_run_checks(
+        builder,
+        tail_frame,
+        monkeypatch,
+        "--export-input-mass-reference-h5",
+        "populace_us_2024.h5",
+    )
+    check = {item.name: item for item in checks}["export_input_mass"]
+    assert not check.details.get("evaluation_error")
+    row = {row["column"]: row for row in check.rows}["partnership_income"]
+    assert row["mass_at_base_weights"] == pytest.approx(1.05e12)
+    assert row["verdict"] == "in_band"
 
 
 def test_release_dry_run_checks_evidence_tier_missing_register_and_l0(

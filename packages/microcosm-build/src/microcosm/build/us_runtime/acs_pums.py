@@ -38,6 +38,7 @@ from microcosm.frame.units import assign_us_unit_structure
 
 __all__ = [
     "ACS_2024_1YR_SPINE",
+    "ACS_SOURCE_COLUMN_RENAMES",
     "AcsPumsSource",
     "build_acs_pums_unit_frame",
     "load_acs_pums_tables",
@@ -60,6 +61,14 @@ _HOUSEHOLD_REQUIRED = (
     "TYPEHUGQ",
 )
 _HOUSEHOLD_STATE_COLUMNS = ("ST", "STATE")
+# SNAP recipiency in the past 12 months (1 yes, 2 no), a housing-unit item the
+# ACS local lane reads as its native reported-receipt anchor (microcosm#1022,
+# acs_local_receipt_anchors), and vehicles available (0-6, 6 meaning six or
+# more), the housing-unit item its take-up stage records as vehicle
+# availability, never as the owned count (microcosm#1022,
+# acs_local_vehicles_head_start). Neither is a transfer predictor. Like the optional person columns below, an absent column
+# stays absent and a Census blank stays missing.
+_HOUSEHOLD_OPTIONAL: tuple[str, ...] = ("FS", "VEH")
 _HOUSEHOLD_FRAME_COLUMNS = (
     "NP",
     "ADJHSG",
@@ -89,9 +98,49 @@ _PERSON_REQUIRED = (
     "WKWN",
     "ESR",
 )
-# Preserve source hours and their universe/allocation evidence when supplied.
-# Older/minimal source fixtures remain loadable; absence is not a zero.
-_PERSON_OPTIONAL: tuple[str, ...] = ("WKHP", "WKL", "FWKHP")
+# Preserve source hours and their universe/allocation evidence when supplied,
+# the citizenship, entry-year, birthplace, coverage, class-of-worker, school
+# and military-service fields the ACS local lane's immigration stage reads
+# (microcosm#1020, acs_local_immigration), the six disability-difficulty items
+# the local lane maps natively (microcosm#1021, acs_local_work_disability),
+# all other income (OIP), the local income pass's child-support predictor
+# (microcosm#1022, acs_local_income), and the public assistance income the
+# local lane's receipt-anchor receipt records (microcosm#1022,
+# acs_local_receipt_anchors). The employment status (ESR) the immigration
+# stage reads and the weeks worked (WKWN) the local lane maps natively are
+# required above, for the work-experience inputs. Older or minimal source
+# fixtures remain loadable; an absent column stays absent and a Census blank
+# stays missing, never a zero.
+_PERSON_OPTIONAL: tuple[str, ...] = (
+    "WKHP",
+    "WKL",
+    "FWKHP",
+    "DDRS",
+    "DEAR",
+    "DEYE",
+    "DOUT",
+    "DPHY",
+    "DREM",
+    "CIT",
+    "YOEP",
+    "POBP",
+    "HINS3",
+    "HINS4",
+    "HINS5",
+    "HINS6",
+    "HINS7",
+    "COW",
+    "SCHG",
+    "MIL",
+    "OIP",
+    "PAP",
+)
+# ACS source columns whose Census name is already a different CPS ASEC field in
+# the pooled person table. ACS ``MIL`` is military service (veteran status);
+# CPS ``MIL`` is military health coverage, which the ASEC immigration stage
+# reads. Loading the ACS field under its own name would put two meanings in
+# one pooled column, so it is renamed at the read boundary.
+ACS_SOURCE_COLUMN_RENAMES: dict[str, str] = {"MIL": "ACS_MIL"}
 
 # Temporary aliases consumed only by microunit's dependent gross-income test.
 # ACS combined sources stay combined: INTP is placed on one gross-income
@@ -192,7 +241,7 @@ def load_acs_pums_tables(
         source.household_zip,
         member_prefix="psam_hus",
         required=_HOUSEHOLD_REQUIRED,
-        optional=_HOUSEHOLD_STATE_COLUMNS,
+        optional=(*_HOUSEHOLD_STATE_COLUMNS, *_HOUSEHOLD_OPTIONAL),
         chunksize=chunksize,
     )
     state_column = next(
@@ -227,6 +276,7 @@ def load_acs_pums_tables(
         valid_serials=all_household_serials,
         retained_serials=selected_serials,
     )
+    person = person.rename(columns=ACS_SOURCE_COLUMN_RENAMES)
     duplicate_people = person.duplicated(["SERIALNO", "SPORDER"], keep=False)
     if duplicate_people.any():
         examples = (
@@ -652,6 +702,9 @@ def _attach_household_source_columns(
     household["puma"] = household["puma_geoid"].to_numpy()
     for column in _HOUSEHOLD_FRAME_COLUMNS:
         household[column] = source[column].to_numpy()
+    for column in _HOUSEHOLD_OPTIONAL:
+        if column in source:
+            household[column] = source[column].to_numpy()
     return Frame(
         tables,
         frame.schema,

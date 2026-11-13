@@ -51,6 +51,10 @@ def _rates_selector(field):
     return {"binding": "main_benefits_rates", "field": field}
 
 
+def _super_selector(field):
+    return {"binding": "nz_super", "field": field}
+
+
 def documents(nz=NZ):
     bindings_document = json.loads((nz / "axiom_rules_bindings.json").read_text())
     bindings = {row["id"]: row for row in bindings_document["bindings"]}
@@ -197,6 +201,10 @@ def documents(nz=NZ):
                 "inputs": [_slice([nzs_source])],
                 "outputs": [_owned(nzs_cents, "int64")],
                 "params": {
+                    # R2C-2: attribute the NZS cents to the nz_super S5 stage,
+                    # as nz.benefits.net_cents attributes its cents.
+                    "engine_ref": _super_selector("engine_ref"),
+                    "period": _super_selector("period"),
                     "declaration": _json(
                         {
                             "entity": "person",
@@ -210,7 +218,7 @@ def documents(nz=NZ):
                                 }
                             ],
                         }
-                    )
+                    ),
                 },
             },
         ]
@@ -322,6 +330,40 @@ def documents(nz=NZ):
                     f"{rulespec_url}/{tax['rulespec_path']} (SHA-256 {tax['sha256']}); "
                     f"{msd_url}. Each gross-up inverts annualised Schedule 1 before credits "
                     "over 52 weeks independently of other income and recovers authoritative annual cents."
+                ),
+            },
+            {
+                # R2C-2: every rules output the stand-in income measure reads
+                # sits on the declared pre-calibration list; NZS joins it here.
+                "id": "nz.precal.nz_super",
+                "rules_binding": "nz_super",
+                "rulespec_path": bindings["nz_super"]["rulespec_path"],
+                "outputs": [
+                    {
+                        "entity": "person",
+                        "column": "entitled_to_new_zealand_superannuation",
+                        "purpose": "classification",
+                    },
+                    {
+                        "entity": "person",
+                        "column": nzs_source,
+                        "purpose": "calibration_measure",
+                    },
+                ],
+                "derived_outputs": [
+                    {
+                        "entity": "person",
+                        "column": nzs_cents,
+                        "purpose": "calibration_measure",
+                    }
+                ],
+                "citation": (
+                    f"{rulespec_url}/{bindings['nz_super']['rulespec_path']} "
+                    f"(SHA-256 {bindings['nz_super']['sha256']}). The NZS stage "
+                    "supplies eligibility for the receipt layer and the before-tax "
+                    "weekly amount; its cents node rounds that amount half-even, "
+                    "and the annual-transfers node feeds it to the stand-in income "
+                    "measure."
                 ),
             },
         ],

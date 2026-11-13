@@ -11,6 +11,10 @@ from pathlib import Path
 import numpy as np
 
 from microcosm.build.gates import ledger_compile_parity_signed_differences
+from microcosm.build.ledger_artifact import consumer_fact_schema_versions_of
+from microcosm.build.uk_runtime.chronicle_feed import (
+    require_uk_chronicle_feed_subset_row_contracts,
+)
 from microcosm.build.uk_runtime.derived_facts import uk_derived_fact_rows
 from microcosm.build.uk_runtime.ledger_targets import (
     LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE,
@@ -415,25 +419,50 @@ _ONS_TERMINAL_BAND_RATIONALES = {
 
 _ONS_15_19_BAND_SPLIT_FIXTURE_ONLY_RATIONALE = (
     "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): the five-year "
-    "15_19 sex band is split into ages 15, 16-17 and 18-19, because a fit to the "
-    "band left the ages inside it free to drift. The three rows partition this "
-    "row's population and read the same ONS mid-year estimate by single year of "
-    "age, so they sum to it. No single current row has this definition, so the "
-    "frozen fixture's row is fixture-only on the current surface."
+    "15_19 sex band is split, into ages 15, 16-17 and 18-19 by that ruling and "
+    "into the single years 15 to 19 by Y5 of the November event-data plan "
+    "(approved by María on 2026-11-06), because a fit to the band left the ages "
+    "inside it free to drift. The five rows partition this row's population and "
+    "read the same ONS mid-year estimate by single year of age, so they sum to "
+    "it. No single current row has this definition, so the frozen fixture's row "
+    "is fixture-only on the current surface."
 )
 _ONS_15_19_BAND_SPLIT_LEDGER_ONLY_RATIONALE = (
-    "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): one of the three "
-    "rows (ages 15, 16-17 and 18-19) that partition the incumbent five-year 15_19 "
-    "sex band, bound so the fit holds the age mix inside the band. The incumbent "
-    "binds only the band, so this row has no fixture counterpart."
+    "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563; single years since "
+    "Y5 of the November event-data plan, approved by María on 2026-11-06): one of "
+    "the five rows (the single years 15 to 19) that partition the incumbent "
+    "five-year 15_19 sex band, bound so the fit holds the age mix inside the "
+    "band. The incumbent binds only the band, so this row has no fixture "
+    "counterpart."
 )
 _ONS_15_19_BAND_ROWS = frozenset(
     f"ons.population.{sex}_15_19" for sex in ("female", "male")
 )
 _ONS_15_19_BAND_SPLIT_ROWS = frozenset(
-    f"ons.population.{sex}_{ages}"
-    for sex in ("female", "male")
-    for ages in ("15", "16_17", "18_19")
+    f"ons.population.{sex}_{age}" for sex in ("female", "male") for age in range(15, 20)
+)
+_ONS_20_24_BAND_SPLIT_FIXTURE_ONLY_RATIONALE = (
+    "microcosm#1095 (Y5 of the November event-data plan, approved by María on "
+    "2026-11-06): the five-year 20_24 sex band is split into the single years 20 "
+    "to 24, because the single ages inside the fitted band drifted from ONS "
+    "around the ages at which the young people and work review's measures "
+    "change (21, 22 and 25). The five rows partition this row's population and "
+    "read the same ONS mid-year estimate by single year of age, so they sum to "
+    "it. No single current row has this definition, so the frozen fixture's row "
+    "is fixture-only on the current surface."
+)
+_ONS_20_24_BAND_SPLIT_LEDGER_ONLY_RATIONALE = (
+    "microcosm#1095 (Y5 of the November event-data plan, approved by María on "
+    "2026-11-06): one of the five rows (the single years 20 to 24) that partition "
+    "the incumbent five-year 20_24 sex band, bound so the fit holds the age mix "
+    "inside the band. The incumbent binds only the band, so this row has no "
+    "fixture counterpart."
+)
+_ONS_20_24_BAND_ROWS = frozenset(
+    f"ons.population.{sex}_20_24" for sex in ("female", "male")
+)
+_ONS_20_24_BAND_SPLIT_ROWS = frozenset(
+    f"ons.population.{sex}_{age}" for sex in ("female", "male") for age in range(20, 25)
 )
 _ONS_SINGLE_YEAR_AGE_LEDGER_ONLY_RATIONALE = (
     "microcosm#1278 (the pre-Budget PR's plan, approved by María on 2026-10-20; "
@@ -997,6 +1026,10 @@ def _add_signed_rationale_notes(
             row["reason"] = _ONS_15_19_BAND_SPLIT_FIXTURE_ONLY_RATIONALE
         elif name in _ONS_15_19_BAND_SPLIT_ROWS and row.get("kind") == "ledger_only":
             row["reason"] = _ONS_15_19_BAND_SPLIT_LEDGER_ONLY_RATIONALE
+        elif name in _ONS_20_24_BAND_ROWS and row.get("kind") == "fixture_only":
+            row["reason"] = _ONS_20_24_BAND_SPLIT_FIXTURE_ONLY_RATIONALE
+        elif name in _ONS_20_24_BAND_SPLIT_ROWS and row.get("kind") == "ledger_only":
+            row["reason"] = _ONS_20_24_BAND_SPLIT_LEDGER_ONLY_RATIONALE
         elif name in _ONS_SINGLE_YEAR_AGE_ROWS and row.get("kind") == "ledger_only":
             row["reason"] = _ONS_SINGLE_YEAR_AGE_LEDGER_ONLY_RATIONALE
         elif name in _ONS_SINGLE_YEAR_AGE_0_6_ROWS and row.get("kind") == "ledger_only":
@@ -1184,6 +1217,11 @@ def _fixture_for_receipt(spec: ParityReceiptSpec) -> dict:
 def main() -> None:
     args = _parse_args()
     facts = _load_jsonl(args.ledger_facts)
+    # The rows of a subset of the pinned feed: each row contract must be one
+    # the committed pin lists and chronicle_epoch declares.
+    require_uk_chronicle_feed_subset_row_contracts(
+        consumer_fact_schema_versions_of(facts)
+    )
     args.output_dir.mkdir(parents=True, exist_ok=True)
     for spec in RECEIPTS:
         if args.surface != "all" and spec.surface != args.surface:
