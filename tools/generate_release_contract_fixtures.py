@@ -80,8 +80,9 @@ layout of ``_build_manifests`` and ``rewrite_release_dir``, the gate-evidence ke
 receipt's key, the dataset and calibration keys and file names, and the
 repository id. A pull request that changes one of those regenerates the
 fixtures. A real build also writes its timing, its ledger provenance, its
-optional gate blocks and receipts, and the blocks that its gate-evidence files
-bind, and the fixtures freeze none of those.
+optional gate blocks, the other optional blocks its run passes (``base_pool``
+and ``post_export_scoring``, for example), and the blocks that its
+gate-evidence files bind, and the fixtures freeze none of those.
 
 What the fixtures omit
 ----------------------

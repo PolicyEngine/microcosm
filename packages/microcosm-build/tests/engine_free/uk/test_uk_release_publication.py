@@ -23,7 +23,10 @@ from microcosm.build import collector_submissions, release_publication
 from microcosm.data import release as release_module
 from microcosm.data.releases_record import parse_releases_record
 from test_support.microcosm_build.emitter import FakeEmitterClient
-from test_support.microcosm_data.build_folders import UK_NATIONAL_BUILD
+from test_support.microcosm_data.build_folders import (
+    UK_NATIONAL_BUILD,
+    register_uk_local_release,
+)
 from test_support.microcosm_data.release import (
     _as_uk_national_build_folder_release,
     _as_uk_national_line_release,
@@ -195,7 +198,12 @@ def test_a_publication_names_its_build_for_the_collector(
         "microcosm-uk-2024-25-local-k12",
     ],
 )
-def test_every_uk_release_names_its_builds_as_licensed_uk_builds(release) -> None:
+def test_every_uk_release_names_its_builds_as_licensed_uk_builds(
+    release, monkeypatch
+) -> None:
+    if "-local-k" in release:
+        register_uk_local_release(monkeypatch, release)
+
     assert release_publication.collector_provenance(
         release, UK_NATIONAL_BUILD
     ) == CollectorProvenance(
@@ -203,6 +211,17 @@ def test_every_uk_release_names_its_builds_as_licensed_uk_builds(release) -> Non
         build_id=UK_NATIONAL_BUILD,
         licensed_data=True,
         release=release,
+    )
+
+
+def test_a_uk_local_area_release_the_registry_does_not_name_names_no_build() -> None:
+    """It does not publish into build folders, and ``prepare_build_folder_release``
+    refuses its name before a publication asks for its provenance."""
+    assert (
+        release_publication.collector_provenance(
+            "microcosm-uk-2024-25-local-k12", UK_NATIONAL_BUILD
+        )
+        is None
     )
 
 

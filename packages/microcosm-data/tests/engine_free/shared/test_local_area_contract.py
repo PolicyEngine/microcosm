@@ -17,6 +17,7 @@ import copy
 import hashlib
 import json
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -33,6 +34,7 @@ from microcosm.data.contract import (
     US_STORED_INPUTS_EVIDENCE_KEY,
     ReleaseContractError,
     release_dataset_role,
+    validate_evidence_release_dir,
     validate_release_dir,
 )
 from microcosm.data.release import prepare_release, publish_release
@@ -415,6 +417,62 @@ def test_uk_local_area_bundle_refuses_the_tagged_layout(tmp_path: Path) -> None:
     assert any(
         "build_manifest.json carries 'build_id'" in failure for failure in failures
     )
+
+
+def _write_tagged_uk_local_bundle(root: Path, monkeypatch) -> Path:
+    """A UK local-area bundle in the tagged layout: the build is the release
+    id, and each artifact is pinned to that id as its revision."""
+
+    def keep_tagged(manifest: dict, *, release_id: str) -> dict:
+        for artifact in manifest["artifacts"].values():
+            artifact["repo_id"] = "policyengine/populace-uk-private"
+        return manifest
+
+    module = sys.modules[__name__]
+    monkeypatch.setattr(module, "_as_uk_build_folder", keep_tagged)
+    monkeypatch.setattr(
+        module,
+        "build_folder_build_manifest",
+        lambda manifest, *, release, build: manifest,
+    )
+    return _write_local_bundle(root, release_id=UK_LOCAL_RELEASE_ID)
+
+
+@pytest.mark.parametrize("layout", ["build-folder", "tagged"])
+def test_no_layout_of_an_unregistered_uk_local_area_release_validates(
+    tmp_path: Path, monkeypatch, layout: str
+) -> None:
+    """The registry names no UK local-area release, so the contract refuses
+    the name itself, in either layout and at either tier. Without that
+    refusal the tagged layout would validate (microcosm#1586)."""
+    if layout == "tagged":
+        release_dir = _write_tagged_uk_local_bundle(tmp_path, monkeypatch)
+    else:
+        release_dir = _write_local_bundle(tmp_path, release_id=UK_LOCAL_RELEASE_ID)
+
+    failures = _failures(release_dir)
+
+    assert len(failures) == 1, failures
+    assert "the dataset registry" in failures[0]
+    assert "no layout of it validates" in failures[0]
+    with pytest.raises(ReleaseContractError, match="no layout of it validates"):
+        validate_evidence_release_dir(release_dir)
+
+
+def test_a_registered_uk_local_area_release_refuses_the_tagged_bundle(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The tagged bundle above is a real tagged layout: once the registry
+    names the release, the contract refuses it for its layout."""
+    release_dir = _write_tagged_uk_local_bundle(tmp_path, monkeypatch)
+    register_uk_local_release(monkeypatch, UK_LOCAL_RELEASE_ID)
+
+    failures = _failures(release_dir)
+
+    assert any(
+        "build_manifest.json carries 'build_id'" in failure for failure in failures
+    )
+    assert not any("no layout of it validates" in failure for failure in failures)
 
 
 @pytest.mark.usefixtures("uk_local_k_registered")

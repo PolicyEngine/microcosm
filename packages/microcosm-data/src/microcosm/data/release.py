@@ -1,8 +1,8 @@
 """Publish a release and move its approved repository pointer.
 
-**No UK or US release publishes here.** The UK national, dense and
-local-area releases and the US releases
-(:data:`~microcosm.data.contract.US_RELEASES`) publish each build into its
+**No UK or US release publishes here.** The UK national and dense releases,
+each UK local-area release that the dataset registry names, and the US
+releases (:data:`~microcosm.data.contract.US_RELEASES`) publish each build into its
 own folder, ``releases/<release>/<build>/``, through the emitter's
 ``publish_release`` call (``microcosm-publish-release-build``, in
 ``microcosm-build``), and the repository's ``releases.json`` records which
@@ -853,9 +853,10 @@ def publish_release(
 ) -> dict:
     """Publish a release directory and optionally point ``latest.json`` at it.
 
-    A release that publishes into build folders (the UK national, dense
-    and local-area releases) is refused before any check or Hub call; see
-    the module docstring.
+    A release that publishes into build folders (the UK national and dense
+    releases and each registered UK local-area release) is refused before
+    any check or Hub call, and so is a UK local-area release that the
+    registry does not name; see the module docstring.
 
     The order is the guarantee: the release contract is validated first (an
     invalid release never reaches the Hub), then an immutable branch commit is

@@ -846,11 +846,11 @@ repository that has no `releases.json`.
   publish into build folders: the UK national release
   `microcosm-uk-2024-25-national`, the dense release
   `microcosm-uk-2024-25-dense`, each local-area release
-  `microcosm-uk-2024-25-local-k<N>` that a registry entry names as its
+  `microcosm-uk-2024-25-local-k<N>` that a UK registry entry names as its
   `release`, and the five US releases in `US_RELEASES`. The function reads
-  the registry on each call. Both publishers refuse a local-area name that
-  no entry names, and each refusal points to the registry
-  (microcosm#1586).
+  the registry on each call. `validate_release_dir` and
+  `validate_evidence_release_dir` refuse every layout of a local-area name
+  that no entry names, and neither publisher takes one (microcosm#1586).
   `microcosm-us-2024-national` holds every national build:
   calibrated builds, SPM source enrichments, compatibility recertifications
   and exact-k builds. `microcosm-us-2024-local` holds the ACS local-area
@@ -1030,18 +1030,21 @@ work.
   release joins `publishes_to_build_folder` and the registry in the pull
   request that authorizes its first publication. The gaps on 2026-11-12:
   - *A new country's tagged publish.* Nothing refuses it: the tagged
-    publisher accepts any release outside `publishes_to_build_folder`, into a
-    repository without `releases.json`. M3's refusal of unknown countries
-    closes the gap, under M3's owners.
+    publisher accepts any release outside `publishes_to_build_folder`, except
+    a UK local-area name that the registry does not name, into a repository
+    without `releases.json`. M3's refusal of unknown countries closes the gap,
+    under M3's owners.
   - *The NZ, AM and BE declarations.* Each country's `release_contract.json`
     (under `packages/microcosm-build/src/microcosm/build/`) names
     `latest.json` in its boundary. Each country's owner changes its file
     before that country's first publication.
-  - *The first build of a new UK `k`* (2026-11-13). `rewrite_release_dir`
-    gives a directory the build-folder layout only for a release that
-    `publishes_to_build_folder` admits. A new `k`'s registry entry therefore
-    lands before its first build takes that layout, and until that build
-    publishes, the registry names a release with no published build.
+  - *The first build of a new UK `k`* (2026-11-13). `validate_release_dir`
+    refuses every layout of a local-area release until a registry entry names
+    it, and `build_folder_identity` and `microcosm-publish-release-build`
+    refuse its name. A new `k`'s registry entry therefore lands before its
+    first build validates. Until that build publishes, the registry names a
+    release with no published build: `available_variants()` lists the entry,
+    and `load` raises because `releases.json` does not list the release.
     `line_for_release_id` keeps its pattern, because the pointer reader still
     calls it.
   - *The tagged publisher.* `microcosm-publish-release` and

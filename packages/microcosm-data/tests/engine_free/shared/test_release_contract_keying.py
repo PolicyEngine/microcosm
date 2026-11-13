@@ -9,12 +9,13 @@ test together.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 from unittest import mock
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
 from microcosm.data import contract
@@ -126,13 +127,20 @@ def test_the_registry_names_no_uk_local_area_release():
     assert contract.unregistered_uk_local_release("microcosm-uk-2024-25-local-k55000")
 
 
-@settings(max_examples=200, deadline=None)
+@settings(max_examples=200, deadline=None, derandomize=True)
 @given(_registered_ks_and_a_k())
+@example((frozenset(), 1))
+@example((frozenset({12}), 12))
+# A registered id that contains, or sits inside, the id asked about.
+@example((frozenset({12}), 1))
+@example((frozenset({12}), 2))
+@example((frozenset({12}), 123))
+@example((frozenset({1, 123}), 12))
 def test_a_uk_local_area_release_publishes_only_once_the_registry_names_it(drawn):
     """For any positive ``k``, ``microcosm-uk-2024-25-local-k<k>`` publishes
     into build folders exactly when a registry entry names it as its release,
-    the tagged publisher refuses it either way, and its pointer line does not
-    depend on the registry (microcosm#1586)."""
+    the tagged publisher refuses it either way, and its pointer line is the
+    same whatever the registry holds (microcosm#1586)."""
 
     registered, k = drawn
     release_id = _uk_local_release_id(k)
@@ -150,6 +158,7 @@ def test_a_uk_local_area_release_publishes_only_once_the_registry_names_it(drawn
         with pytest.raises(ValueError) as refusal:
             release_module._refuse_build_folder_release(release_id)
         reason = release_module.not_a_build_folder_release_reason(release_id)
+        assert line_for_release_id(release_id) == f"local-k{k}"
     assert line_for_release_id(release_id) == f"local-k{k}"
     if k in registered:
         assert "publishes each build into its own folder" in str(refusal.value)
@@ -159,6 +168,44 @@ def test_a_uk_local_area_release_publishes_only_once_the_registry_names_it(drawn
         assert release_module.UNREGISTERED_UK_LOCAL_RELEASE_ADVICE in reason
     # Outside the patch the shipped registry names no local-area release.
     assert not publishes_to_build_folder(release_id)
+
+
+def test_a_registered_k_admits_its_own_name_and_no_other():
+    """An entry admits the release it names, whole: registering ``local-k12``
+    admits neither a ``k`` whose id sits inside that name nor one whose id
+    contains it."""
+
+    spec = uk_local_release_spec(_uk_local_release_id(12))
+    with mock.patch.dict(REGISTRY, {spec.key: spec}):
+        assert publishes_to_build_folder(_uk_local_release_id(12))
+        assert not contract.unregistered_uk_local_release(_uk_local_release_id(12))
+        for other in (1, 2, 120, 123, 112, 1212):
+            assert not publishes_to_build_folder(_uk_local_release_id(other))
+            assert contract.unregistered_uk_local_release(_uk_local_release_id(other))
+
+
+@pytest.mark.parametrize(
+    "changes",
+    (
+        {"release": None},
+        {"release": contract._UK_DENSE_RELEASE_ID},
+        {"release": "microcosm-uk-2024-25-local-k70"},
+        {"country": "us"},
+    ),
+    ids=("no-release", "another-release", "a-longer-k", "a-us-entry"),
+)
+def test_only_a_uk_entrys_release_admits_a_k(changes):
+    """A ``k`` is registered by a UK entry's ``release`` and by nothing else.
+    An entry whose variant and file name carry ``local-k7`` admits nothing
+    when its release is missing or names another release, and a US entry
+    that names the UK release admits nothing either."""
+
+    release_id = _uk_local_release_id(7)
+    spec = dataclasses.replace(uk_local_release_spec(release_id), **changes)
+    assert spec.variant == "local-k7"
+    with mock.patch.dict(REGISTRY, {spec.key: spec}):
+        assert not publishes_to_build_folder(release_id)
+        assert contract.unregistered_uk_local_release(release_id)
 
 
 @pytest.mark.parametrize(

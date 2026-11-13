@@ -193,15 +193,23 @@ def _write_uk_build_folder_release(
     [UK_NATIONAL_RELEASE_ID, "microcosm-uk-2024-25-dense", UK_LOCAL_RELEASE_ID],
 )
 def test_the_tagged_publisher_refuses_every_build_folder_release(
-    release_dir: Path, artifact_root: Path, tmp_path: Path, release_id: str
+    release_dir: Path,
+    artifact_root: Path,
+    tmp_path: Path,
+    monkeypatch,
+    release_id: str,
 ) -> None:
     """A UK build publishes into its own folder through the emitter; this
     publisher, which commits, tags and writes pointer files, refuses it
-    before any check or Hub call, on every path."""
+    before any check or Hub call, on every path. The local-area release is
+    one the registry names."""
+    from test_support.microcosm_data.build_folders import register_uk_local_release
+
+    register_uk_local_release(monkeypatch, UK_LOCAL_RELEASE_ID)
     uk_dir = _write_uk_build_folder_release(release_id, release_dir, tmp_path)
     uk_hub = FakeHub("policyengine/populace-uk-private")
     uk_hub._download_dir = tmp_path / "uk-hub-cache"
-    message = "microcosm-publish-release-build"
+    message = "publishes each build into its own folder"
 
     with pytest.raises(ValueError, match=message):
         release_module.prepare_release(uk_dir, artifact_root=artifact_root)
@@ -414,23 +422,52 @@ def test_build_folder_identity_says_where_a_tagged_release_publishes(
 
 
 def test_no_publisher_takes_a_uk_local_area_release_the_registry_does_not_name(
-    tmp_path: Path,
+    artifact_root: Path, tmp_path: Path
 ) -> None:
-    """Both publishers refuse the name before they read a file, and each
-    refusal points to the registry (microcosm#1586)."""
-    unregistered = tmp_path / "microcosm-uk-2024-25-local-k55000"
-    unregistered.mkdir()
+    """Neither publisher takes a complete bundle of a UK local-area release
+    that the registry does not name. Each refusal points to the registry, and
+    the tagged publisher makes no Hub call (microcosm#1586)."""
+    from .test_local_area_contract import _write_local_bundle
+
+    unregistered = _write_local_bundle(tmp_path, release_id=UK_LOCAL_RELEASE_ID)
+    uk_hub = FakeHub("policyengine/populace-uk-private")
+    uk_hub._download_dir = tmp_path / "uk-hub-cache"
+    refusals = []
 
     with pytest.raises(
         ValueError, match="does not publish into build folders"
-    ) as build_folder:
+    ) as refusal:
         release_module.build_folder_identity(unregistered)
-    with pytest.raises(ValueError, match="publishes through no publisher") as tagged:
-        release_module.prepare_release(unregistered)
+    refusals.append(refusal)
+    with pytest.raises(
+        ValueError, match="does not publish into build folders"
+    ) as refusal:
+        release_module.prepare_build_folder_release(
+            unregistered, artifact_root=artifact_root
+        )
+    refusals.append(refusal)
+    tagged = "publishes through no publisher"
+    with pytest.raises(ValueError, match=tagged) as refusal:
+        release_module.prepare_release(unregistered, artifact_root=artifact_root)
+    refusals.append(refusal)
+    with pytest.raises(ValueError, match=tagged) as refusal:
+        publish_release(
+            unregistered,
+            "policyengine/populace-uk-private",
+            api=uk_hub,
+            artifact_root=artifact_root,
+            update_latest=False,
+        )
+    refusals.append(refusal)
+    with pytest.raises(ValueError, match=tagged) as refusal:
+        publish_cli.main([str(unregistered), "--preflight-only", "--no-latest"])
+    refusals.append(refusal)
 
-    for refusal in (build_folder, tagged):
+    for refusal in refusals:
         assert release_module.UNREGISTERED_UK_LOCAL_RELEASE_ADVICE in str(refusal.value)
         assert "take no new builds" not in str(refusal.value)
+    assert uk_hub.events == []
+    assert uk_hub.uploads == []
 
 
 def test_prepare_build_folder_release_refuses_a_tagged_release(
