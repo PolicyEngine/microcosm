@@ -39,8 +39,11 @@ files (`execution.evidence.json` and `evidence-<phase>-*.json`) and
 submitted.
 
 A build submits its Orrery inputs only with remote staging: with
-`--staging-local-only`, `--no-staging` or `--no-staged-dataset` its graph
-files stay on disk. `--publish-orrery`, which asked for an upload to the
+`--staging-local-only`, `--no-staging` or `--no-staged-dataset`, or with
+`HF_HUB_OFFLINE` set, its graph files stay on disk. The re-stage command
+(`tools/stage_uk_rowwise_candidate.py`) can stage a finished run's dataset
+bundle kept on disk later, Orrery inputs included; it does not stage a failed
+build's evidence bundle. `--publish-orrery`, which asked for an upload to the
 public Orrery (María's ruling of 2026-10-26 made that upload opt-in), now
 prints a warning and changes nothing; `--no-publish-orrery` is accepted too.
 

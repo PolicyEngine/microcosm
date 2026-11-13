@@ -14,7 +14,8 @@ module makes no Hugging Face call. A build whose environment switches the Hub
 off (``HF_HUB_OFFLINE``, as on Modal) keeps its bundle local. The bundle's
 hand-over names the build for the collector (:func:`collector_provenance`),
 so the emitter, whose collector submissions are on, submits its calibration
-diagnostics there once the bundle's commit lands, and the build waits for the
+diagnostics and Orrery inputs there once the bundle's commit lands, and the
+build waits for the
 collector to accept them (``collector_submissions.follow_collector_submissions``).
 """
 

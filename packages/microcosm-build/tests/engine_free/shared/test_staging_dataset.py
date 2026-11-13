@@ -862,8 +862,7 @@ def test_a_submission_turned_down_beside_one_awaiting_its_status_is_a_warning(
     warning = capsys.readouterr().err
     assert (
         f"warning: the orrery-inputs submission of the staged dataset bundle "
-        f"staged/{RUN_ID} to the collector failed (COLLECTOR_REFUSED_422)."
-        in warning
+        f"staged/{RUN_ID} to the collector failed (COLLECTOR_REFUSED_422)." in warning
     )
     assert "calibration-diagnostics" not in warning
 

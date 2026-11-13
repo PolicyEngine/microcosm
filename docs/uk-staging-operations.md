@@ -270,8 +270,11 @@ not waited for. The build carries on in every case, with a warning when:
   unset those variables), the bundle's Hugging Face upload failed or was
   refused (`NOT_STAGED_ON_HUGGING_FACE`), or its folder is longer than the
   collector accepts (`COLLECTOR_FOLDER_TOO_LONG`);
-- the collector refused the submissions at intake (`rejected` or `failed`),
-  with the code the receipt gives. Once it has accepted them, its own
+- the collector refused a submission at intake (`rejected` or `failed`),
+  with the code the receipt gives. Each submission the receipt lists is
+  reported by its own outcome and kind (`calibration-diagnostics` or
+  `orrery-inputs`), so a refused one is reported even while the other awaits
+  its final status. Once it has accepted them, its own
   processing decides whether it builds a tree or rejects them, and the build
   doesn't wait for that; a re-stage that resumes an older hand-over can show
   that later result, or `timed_out`;
