@@ -1,6 +1,9 @@
 """Tests split from packages/microcosm-build/tests/test_us_scf_wealth.py."""
 
 # ruff: noqa: F403, F405
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
 from test_support.microcosm_build.us_scf_wealth import *
 
 
@@ -26,7 +29,43 @@ def test_output_columns_are_the_ssi_countable_resource_leaves() -> None:
 def test_stock_target_sums_stocks_and_nmmf() -> None:
     assert SCF_FINANCIAL_ASSET_TARGET_COMPONENTS["stock_assets"] == ("stocks", "nmmf")
     assert SCF_FINANCIAL_ASSET_TARGET_COMPONENTS["bank_account_assets"] == ("liq",)
-    assert SCF_FINANCIAL_ASSET_TARGET_COMPONENTS["bond_assets"] == ("bond",)
+    assert SCF_FINANCIAL_ASSET_TARGET_COMPONENTS["bond_assets"] == ("bond", "savbnd")
+
+
+#: The Fed's total financial assets, ``FIN``, is the sum of these ten disjoint
+#: summary-extract constituents (bulletin.macro.txt line 2177:
+#: ``FIN=LIQ+CDS+NMMF+STOCKS+BOND+RETQLIQ+SAVBND+CASHLI+OTHMA+OTHFIN``).
+_SCF_FIN_CONSTITUENTS = frozenset(
+    {
+        "liq",
+        "cds",
+        "nmmf",
+        "stocks",
+        "bond",
+        "retqliq",
+        "savbnd",
+        "cashli",
+        "othma",
+        "othfin",
+    }
+)
+
+
+def test_ssi_leaves_draw_on_distinct_scf_fin_constituents() -> None:
+    components = [
+        component
+        for leaf_components in SCF_FINANCIAL_ASSET_TARGET_COMPONENTS.values()
+        for component in leaf_components
+    ]
+    # No SCF component feeds two SSI leaves, so the leaves cannot double count.
+    assert len(components) == len(set(components))
+    # Every component is one of FIN's disjoint constituents (the leaves use five
+    # of the ten), so wherever the other constituents are nonnegative the three
+    # leaves together cannot exceed the household's total financial assets.
+    assert set(components) <= _SCF_FIN_CONSTITUENTS
+    # U.S. savings bonds (POMS SI 01140.240) reach an SSI leaf, as SIPP's
+    # TVAL_BOND does on the other half of the blend.
+    assert "savbnd" in SCF_FINANCIAL_ASSET_TARGET_COMPONENTS["bond_assets"]
 
 
 def test_net_worth_target_is_the_direct_signed_scf_anchor() -> None:
@@ -70,6 +109,14 @@ def test_load_donor_derives_targets_predictors_and_weight(tmp_path) -> None:
     np.testing.assert_allclose(
         np.sort(donor["stock_assets"].to_numpy()), np.sort(expected_stock), rtol=1e-6
     )
+    # bond_assets is the bond + savbnd sum, row for row (every fixture weight is
+    # positive, so the loader keeps row order).
+    assert (raw["savbnd"] > 0).any()
+    np.testing.assert_allclose(
+        donor["bond_assets"].to_numpy(),
+        raw["bond"].to_numpy() + raw["savbnd"].to_numpy(),
+        rtol=1e-6,
+    )
     # All weights positive; targets non-negative.
     assert (donor[_DONOR_WEIGHT_COLUMN] > 0).all()
     for column in US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS:
@@ -86,6 +133,137 @@ def test_load_donor_missing_column_raises(tmp_path) -> None:
     raw.to_stata(path, write_index=False)
     with pytest.raises(ValueError, match="missing required column"):
         load_scf_2022_financial_asset_donor(path)
+
+
+@pytest.mark.parametrize(
+    "column",
+    sorted(
+        {
+            component
+            for components in SCF_FINANCIAL_ASSET_TARGET_COMPONENTS.values()
+            for component in components
+        }
+        | {"networth"}
+    ),
+)
+def test_load_donor_requires_every_target_component(tmp_path, column) -> None:
+    raw = _raw_scf_summary().drop(columns=[column])
+    path = tmp_path / "rscfp2022.dta"
+    raw.to_stata(path, write_index=False)
+    with pytest.raises(ValueError, match=f"missing required column.*{column}"):
+        load_scf_2022_financial_asset_donor(path)
+
+
+_COMPONENT_COLUMNS = tuple(
+    sorted(
+        {
+            component
+            for components in SCF_FINANCIAL_ASSET_TARGET_COMPONENTS.values()
+            for component in components
+        }
+    )
+)
+#: A raw SCF amount: a missing-data sentinel or a nonnegative dollar value.
+_scf_amount = st.one_of(
+    st.sampled_from([float(code) for code in _SCF_SENTINELS]),
+    st.floats(min_value=0.0, max_value=1e10, allow_nan=False),
+)
+
+
+@st.composite
+def _raw_component_tables(draw) -> pd.DataFrame:
+    rows = draw(st.integers(min_value=1, max_value=12))
+    return pd.DataFrame(
+        {
+            column: draw(st.lists(_scf_amount, min_size=rows, max_size=rows))
+            for column in _COMPONENT_COLUMNS
+        }
+    )
+
+
+def _cleaned(values: pd.Series) -> np.ndarray:
+    array = values.to_numpy(dtype=np.float64)
+    return np.where(np.isin(array, _SCF_SENTINELS), 0.0, array)
+
+
+@settings(max_examples=200, deadline=None)
+@given(raw=_raw_component_tables())
+def test_scf_targets_sum_cleaned_components(raw) -> None:
+    # Differential check against a direct restatement of the rule: each leaf is
+    # the sum of its sentinel-cleaned components, floored at zero.
+    targets = _scf_financial_asset_targets(raw)
+    assert list(targets.columns) == list(US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS)
+    for leaf, components in SCF_FINANCIAL_ASSET_TARGET_COMPONENTS.items():
+        expected = np.maximum(
+            sum(_cleaned(raw[component]) for component in components), 0.0
+        )
+        np.testing.assert_allclose(targets[leaf].to_numpy(), expected, rtol=1e-12)
+        assert np.isfinite(targets[leaf].to_numpy()).all()
+        assert (targets[leaf].to_numpy() >= 0.0).all()
+
+
+#: A signed non-sentinel amount, so the zero floor can bind.
+_signed_scf_amount = st.floats(min_value=-1e10, max_value=1e10, allow_nan=False).filter(
+    lambda value: value not in _SCF_SENTINELS
+)
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    rows=st.integers(min_value=1, max_value=12).flatmap(
+        lambda rows: st.fixed_dictionaries(
+            {
+                column: st.lists(_signed_scf_amount, min_size=rows, max_size=rows)
+                for column in _COMPONENT_COLUMNS
+            }
+        )
+    )
+)
+def test_scf_targets_floor_negative_sums_at_zero(rows) -> None:
+    raw = pd.DataFrame(rows)
+    targets = _scf_financial_asset_targets(raw)
+    for leaf, components in SCF_FINANCIAL_ASSET_TARGET_COMPONENTS.items():
+        expected = np.maximum(sum(raw[c].to_numpy() for c in components), 0.0)
+        np.testing.assert_allclose(targets[leaf].to_numpy(), expected, rtol=1e-12)
+        assert (targets[leaf].to_numpy() >= 0.0).all()
+
+
+@settings(max_examples=200, deadline=None)
+@given(raw=_raw_component_tables())
+def test_savings_bonds_add_to_bond_assets_and_nothing_else(raw) -> None:
+    # Components here are nonnegative or sentinels, as in the SCF extract; with a
+    # negative non-sentinel bond the zero floor could absorb savings bonds.
+    targets = _scf_financial_asset_targets(raw)
+    without_savings_bonds = _scf_financial_asset_targets(raw.assign(savbnd=0.0))
+    # Savings bonds raise bond_assets by exactly their cleaned value, so the
+    # leaf never falls below the archive's bond-only target ...
+    np.testing.assert_allclose(
+        targets["bond_assets"].to_numpy(),
+        without_savings_bonds["bond_assets"].to_numpy() + _cleaned(raw["savbnd"]),
+        rtol=1e-12,
+    )
+    assert (
+        targets["bond_assets"].to_numpy()
+        >= without_savings_bonds["bond_assets"].to_numpy()
+    ).all()
+    # ... and leave the bank and stock leaves untouched.
+    for leaf in ("bank_account_assets", "stock_assets"):
+        np.testing.assert_array_equal(
+            targets[leaf].to_numpy(), without_savings_bonds[leaf].to_numpy()
+        )
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    raw=_raw_component_tables(),
+    column=st.sampled_from(_COMPONENT_COLUMNS),
+    sentinel=st.sampled_from(_SCF_SENTINELS),
+)
+def test_scf_sentinels_count_as_zero(raw, column, sentinel) -> None:
+    np.testing.assert_array_equal(
+        _scf_financial_asset_targets(raw.assign(**{column: float(sentinel)})),
+        _scf_financial_asset_targets(raw.assign(**{column: 0.0})),
+    )
 
 
 def test_replace_sentinels_zeroes_scf_missing_codes() -> None:
@@ -277,8 +455,9 @@ def test_with_inputs_writes_asset_and_net_worth_columns() -> None:
 
 
 def test_carry_signal_tolerates_a_single_constant_leaf() -> None:
-    # Bond holdings are ~97% zero in the donor: a healthy draw on a small
-    # frame can produce an all-zero bond column. That must NOT read as an
+    # About 93% of SCF donor households (by weight) hold neither bonds nor
+    # savings bonds: a healthy draw on a small frame can produce an all-zero
+    # bond column. That must NOT read as an
     # engine-default surface (per-leaf nonconstancy made pass-through
     # platform-dependent — the #510 CI failure). Only an all-leaves-constant
     # surface forces re-imputation.

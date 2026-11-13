@@ -46,9 +46,11 @@ from microcosm.build.us_runtime import (
     with_us_scf_wealth_inputs,
 )
 from microcosm.build.us_runtime.scf_wealth import (
+    _SCF_SENTINELS,
     _household_head_mask,
     _recipient_cps_race,
     _replace_sentinels,
+    _scf_financial_asset_targets,
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
@@ -85,6 +87,8 @@ def _raw_scf_summary() -> pd.DataFrame:
             "wageinc": rng.gamma(2.0, 20_000.0, n),
             "intdivinc": rng.gamma(1.0, 1_000.0, n),
             "ssretinc": rng.gamma(1.0, 8_000.0, n),
+            # Drawn last so every column above keeps its earlier values.
+            "savbnd": np.where(rng.random(n) < 0.07, rng.gamma(1.0, 3_000.0, n), 0.0),
         }
     )
 
