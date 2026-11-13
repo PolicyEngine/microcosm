@@ -30,10 +30,13 @@ Two files do the work:
   Staging tests are in
   `packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_acs_multispine_staging.py`.
 
-Nothing here uploads to the Hugging Face Hub, touches `latest.json` or
-notifies anyone. The furthest a stage goes is `package`, which writes a
-release directory onto the runs volume. Publication stays the human step in
-`tools/publish_release.sh`.
+Nothing here uploads to the Hugging Face Hub, changes `releases.json` or
+notifies anyone. The furthest a stage goes is `package`, which writes the
+release directory `releases/microcosm-us-2024-local/` onto the runs volume.
+Publication stays a human step: the two `microcosm-publish-release-build`
+commands that the stage's `package_result.json` records, one that publishes
+the build into its folder of the local-area release and one that makes it
+that release's current build.
 
 ## How a run works
 
@@ -529,6 +532,16 @@ if you like, since only materialize reads it. Run steps 3 and 4 again. Run
 one stage of a run at a time, because two concurrent stages would race on the
 same state directory. The attempt ledger enforces this, best effort (see
 "Preemption and restarts").
+
+For `us-acs-local-release`, run package at the commit calibrate ran at.
+Calibrate records the code that wrote the calibrated H5 in
+`consumer_export.json`: it reads the commit when the stage starts, reads it
+again just before it writes the H5, and refuses to write if the commit or
+the tree's dirty state changed in between. The build's ID names the
+packaging code, so package refuses to give a build an ID that names any
+other commit (microcosm#1263). A commit landing between the two stages means
+re-running calibrate, qa and finalize at the new commit, or packaging at the
+old one.
 
 For a gated or private Hub input, set `MICROCOSM_MODAL_HF_SECRET` to the name
 of a Modal secret that holds `HF_TOKEN`, for example `huggingface-token` in

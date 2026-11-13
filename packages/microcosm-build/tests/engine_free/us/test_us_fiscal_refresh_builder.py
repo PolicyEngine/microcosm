@@ -11,10 +11,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import h5py
+import hypothesis
 import numpy as np
 import pandas as pd
 import pytest
+from hypothesis import strategies as st
 
+from microcosm.build.gates import single_record_concentration, tail_concentration_gate
 from microcosm.build.us_runtime import h5_io as builder_h5_io
 from microcosm.calibrate import (
     CalibrationHierarchy,
@@ -330,6 +333,46 @@ def test_certified_release_dir_reuse_is_refused(tmp_path) -> None:
     (release_dir / "release_manifest.json").write_text("{}")
     with pytest.raises(RuntimeError, match="already carries a certified"):
         builder._refuse_certified_release_dir_reuse(release_dir)
+
+
+@pytest.mark.parametrize(
+    ("leftover", "skip_flag"),
+    [
+        ("reform_validation.json", "skip_reform_validation"),
+        ("demographics.json", "skip_demographics"),
+    ],
+)
+def test_a_skipped_check_s_file_from_an_earlier_attempt_is_refused(
+    tmp_path, leftover: str, skip_flag: str
+) -> None:
+    """The release directory is named after the release (microcosm#1570), so
+    a rerun into the same --out finds an earlier attempt's files. A file the
+    manifest declares whenever it exists, but this run will not write because
+    it skips that check, would be published as the new build's: the run
+    refuses before doing anything (review of #1571)."""
+    from types import SimpleNamespace
+
+    builder = _load_builder_module()
+    release_dir = tmp_path / "releases" / "microcosm-us-2024-national"
+    release_dir.mkdir(parents=True)
+    (release_dir / leftover).write_text("{}")
+    args = SimpleNamespace(skip_reform_validation=False, skip_demographics=False)
+
+    builder._refuse_skipped_checks_left_files(release_dir, args)  # rewritten
+
+    setattr(args, skip_flag, True)
+    with pytest.raises(RuntimeError, match=leftover):
+        builder._refuse_skipped_checks_left_files(release_dir, args)
+
+
+def test_the_run_refuses_skipped_checks_left_files_before_any_side_effect() -> None:
+    """The refusal sits beside the first refusal of a certified directory,
+    which precedes every download and output directory."""
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    first_refusal = source.index("    _refuse_certified_release_dir_reuse(\n")
+    following = source[first_refusal : first_refusal + 600]
+    assert "_refuse_skipped_checks_left_files(" in following
 
 
 def test_dense_ssi_fences_cover_the_enforced_bands_and_cite_the_adjudication() -> None:
@@ -2717,28 +2760,58 @@ def test_builder_reconciles_exact_k_count_before_any_release_write() -> None:
         assert count_gate < source.index(later_write)
 
 
-def test_legacy_cli_result_is_origin_main_three_key_fixture(
+@pytest.mark.parametrize(
+    ("release", "promotion"),
+    [
+        (
+            "microcosm-us-2024-national",
+            "Promoting makes this build the current build of "
+            "microcosm-us-2024-national, the US default dataset.",
+        ),
+        (
+            "microcosm-us-2024-evidence",
+            "Promoting makes this build the current build of "
+            "microcosm-us-2024-evidence, which is never the US default; the "
+            "release's current build takes the place of the latest-evidence.json "
+            "pointer file.",
+        ),
+    ],
+)
+def test_cli_result_names_the_build_and_its_publication_commands(
     capsys,
     tmp_path: Path,
+    release: str,
+    promotion: str,
 ) -> None:
+    """The result a run prints: the release, the build, where they are, and
+    the commands that publish the build and then make it current
+    (microcosm#1570). Nothing in it is the tagged publisher's command."""
+    from microcosm.data.build_folder_manifests import publication_commands
+
     builder = _load_builder_module()
-    release_dir = tmp_path / "releases" / "fixture-release"
+    release_dir = tmp_path / "releases" / release
     artifact_root = tmp_path / "artifacts"
+    commands = publication_commands(
+        release_dir, repo_id=builder.REPO_ID, artifact_root=artifact_root
+    )
 
     returned = builder._print_build_result(
-        release_id="fixture-release",
+        build="populace-us-2024-fixture-build",
         release_dir=release_dir,
         artifact_root=artifact_root,
+        publication=commands,
     )
 
     assert returned is None
-    assert capsys.readouterr().out == (
-        "{\n"
-        '  "release_id": "fixture-release",\n'
-        f'  "release_dir": "{release_dir}",\n'
-        f'  "artifact_root": "{artifact_root}"\n'
-        "}\n"
-    )
+    assert json.loads(capsys.readouterr().out) == {
+        "release": release,
+        "build": "populace-us-2024-fixture-build",
+        "release_dir": str(release_dir),
+        "artifact_root": str(artifact_root),
+        "publish_command": commands["publish_command"],
+        "promote_command": commands["promote_command"],
+        "promotion": promotion,
+    }
     assert builder.main.__annotations__["return"] in {None, "None"}
 
 
@@ -6490,7 +6563,7 @@ def _run_green_register_release(
     )
     from microcosm.data.release import _release_manifest_release_artifacts
 
-    release_dir = out / "releases" / release_id
+    release_dir = out / "releases" / builder.US_NATIONAL_RELEASE_ID
     # The harness stubs every hash to a constant. The run's own outputs, the
     # register and the export-mass reference hash for real, so the manifests
     # can be checked against the bytes on disk.
@@ -6658,8 +6731,22 @@ def _run_green_register_release(
         )
         return
 
+    # The run leaves the release contract to the publication command's
+    # preflight, as before the build-folder layout: a diagnostic run's output
+    # is written, not refused at its end. Any call would be recorded here.
+    validated: list[tuple[Path, Path | None]] = []
+
+    def record_certified_contract(directory, *, artifact_root=None):
+        validated.append((Path(directory), artifact_root))
+        return []
+
+    from microcosm.data import contract
+
+    monkeypatch.setattr(contract, "validate_release_dir", record_certified_contract)
+
     builder.main()
 
+    assert validated == []
     assert captured["terminal_gate_events"] == [
         "input_coverage",
         "input_mass_parity",
@@ -6737,6 +6824,13 @@ def _run_green_register_release(
     assert population["enforced"] is False
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    # A certified run is a build of the national release, in the build-folder
+    # layout: both manifests name the release and the build (microcosm#1570).
+    for manifest in (build_manifest, release_manifest):
+        assert manifest["release"] == builder.US_NATIONAL_RELEASE_ID
+        assert manifest["build"] == release_id
+    assert build_manifest["dataset"]["filename"] == "microcosm_us_2024.h5"
+    assert release_manifest["default_datasets"] == {"national": "microcosm_us_2024"}
     if not skipped_smoke:
         # The smoke verdict names the bytes it scored, and they are the bytes
         # the manifest pins.
@@ -6752,7 +6846,7 @@ def _run_green_register_release(
     # remediation PR-3's rule): the scorer's block, taken after every consumer
     # finished and naming the bytes the manifest pins. The observational
     # holdout is scored independently of whether the smoke was skipped.
-    for block in (build_manifest, release_manifest["build"]):
+    for block in (build_manifest, release_manifest):
         assert block["post_export_scoring"] == {
             "dataset_sha256": build_manifest["dataset"]["sha256"],
             "consumers": (
@@ -6777,15 +6871,15 @@ def _run_green_register_release(
             "kind": "diagnostics",
             "path": filename,
             "repo_id": builder.REPO_ID,
-            "revision": release_id,
             "sha256": hashlib.sha256((release_dir / filename).read_bytes()).hexdigest(),
+            "role": key,
         }
     assert artifacts["us_population_structure_holdout"] == {
         "kind": "diagnostics",
         "path": population_path.name,
         "repo_id": builder.REPO_ID,
-        "revision": release_id,
         "sha256": hashlib.sha256(population_path.read_bytes()).hexdigest(),
+        "role": "us_population_structure_holdout",
     }
     if not skipped_smoke:
         smoke = json.loads((release_dir / "reform_coverage_smoke.json").read_text())
@@ -6877,7 +6971,7 @@ def _run_green_register_release(
         "anchor_feed": {"enforced": True, "matches": True, "mismatches": []},
         "signal": {"base_frame": signal_evidence, "export_frame": signal_evidence},
     }
-    for block in (build_manifest, release_manifest["build"]):
+    for block in (build_manifest, release_manifest):
         assert block["gate_evidence"] == expected_gate_evidence
         assert block["qrf_tail_register"] == expected_register
         assert block["export_input_mass_reference"] == expected_reference
@@ -6901,8 +6995,8 @@ def _run_green_register_release(
     # The publisher contract accepts both manifests, verifies every gate
     # evidence hash against the local bytes, and uploads the files.
     failures: list[str] = []
-    _check_build_manifest(build_manifest, release_id, failures)
-    _check_release_manifest(release_manifest, release_id, failures)
+    _check_build_manifest(build_manifest, builder.US_NATIONAL_RELEASE_ID, failures)
+    _check_release_manifest(release_manifest, builder.US_NATIONAL_RELEASE_ID, failures)
     _check_local_artifact_hashes(release_dir, release_manifest, failures)
     # Producer and publisher agree: what the tool wrote meets the stored-input
     # evidence requirement (microcosm#1034).
@@ -7386,12 +7480,16 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             captured["gate_evidence_on_disk_at_first_gate"] = sorted(
                 filename
                 for filename in builder.US_RELEASE_GATE_EVIDENCE_FILES.values()
-                if (out / "releases" / release_id / filename).exists()
+                if (
+                    out / "releases" / builder.US_NATIONAL_RELEASE_ID / filename
+                ).exists()
             )
             captured["stale_gate_evidence_at_first_gate"] = sorted(
                 filename
                 for filename in captured["gate_evidence_on_disk_at_first_gate"]
-                if (out / "releases" / release_id / filename).read_text()
+                if (
+                    out / "releases" / builder.US_NATIONAL_RELEASE_ID / filename
+                ).read_text()
                 == '{"stale": true}'
             )
             return builder.GateResult(
@@ -9244,7 +9342,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     else:  # pragma: no cover - defensive assertion
         raise AssertionError("Expected post-calibration gate failure.")
 
-    release_dir = out / "releases" / release_id
+    release_dir = out / "releases" / builder.US_NATIONAL_RELEASE_ID
     written_diagnostics = json.loads(
         (release_dir / "calibration_diagnostics.json").read_text()
     )
@@ -12260,12 +12358,61 @@ def test_unknown_ledger_filter_metadata_fails_closed() -> None:
         raise AssertionError("Expected unknown Ledger filter metadata to fail closed.")
 
 
+def _finish_with_recorded_contract(
+    builder,
+    monkeypatch,
+    release_dir: Path,
+    *,
+    build: str,
+    artifact_root: Path,
+    evidence_release: bool = False,
+) -> tuple[dict[str, str], list[tuple[str, Path, Path | None]]]:
+    """Run the builder's last step, recording any release contract it runs.
+
+    It runs none: the publication command's preflight runs the contract, so
+    each test checks the rewritten manifests itself.
+    """
+    validated: list[tuple[str, Path, Path | None]] = []
+
+    def certified(directory, *, artifact_root=None):
+        validated.append(("certified", Path(directory), artifact_root))
+        return []
+
+    def evidence(directory):
+        validated.append(("evidence", Path(directory), None))
+
+    from microcosm.data import contract
+
+    monkeypatch.setattr(contract, "validate_release_dir", certified)
+    monkeypatch.setattr(contract, "validate_evidence_release_dir", evidence)
+    commands = builder._finish_build_folder_release(
+        release_dir,
+        build=build,
+        artifact_root=artifact_root,
+        evidence_release=evidence_release,
+    )
+    return commands, validated
+
+
 def test_build_manifests_emits_policyengine_certifiable_release_manifest(
     monkeypatch, tmp_path
 ) -> None:
+    """The manifests a certified run writes, after its last step rewrites
+    them into the build-folder layout of the national release: both name the
+    release and the build, the build's details sit at the release
+    manifest's top level, each artifact has its role and no revision, and the
+    dataset carries the national release's file name (microcosm#1570)."""
+    from microcosm.data.build_folder_manifests import publication_commands
+    from microcosm.data.contract import (
+        US_NATIONAL_RELEASE_ID,
+        US_RELEASE_DATASET_FILES,
+        _check_build_manifest,
+        _check_release_manifest,
+    )
+
     builder = _load_builder_module()
     release_id = "populace-us-2024-abcdef1-20260615"
-    release_dir = tmp_path / "release" / release_id
+    release_dir = tmp_path / "releases" / US_NATIONAL_RELEASE_ID
     release_dir.mkdir(parents=True)
     artifact_root = tmp_path / "artifacts"
     artifact_root.mkdir()
@@ -12377,16 +12524,31 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
             "join": {"acs_source_people": 856_626},
         },
     )
+    commands, validated = _finish_with_recorded_contract(
+        builder,
+        monkeypatch,
+        release_dir,
+        build=release_id,
+        artifact_root=artifact_root,
+    )
 
+    assert validated == []
+    assert commands == publication_commands(
+        release_dir, repo_id=builder.REPO_ID, artifact_root=artifact_root
+    )
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    for document in (manifest, build_manifest):
+        assert document["release"] == US_NATIONAL_RELEASE_ID
+        assert document["build"] == release_id
+        assert "build_id" not in document
     expected_acs_join = {
         "enabled": True,
         "crosswalk": {"sha256": "c" * 64},
         "join": {"acs_source_people": 856_626},
     }
     assert build_manifest["acs_predictor_join"] == expected_acs_join
-    assert manifest["build"]["acs_predictor_join"] == expected_acs_join
+    assert manifest["acs_predictor_join"] == expected_acs_join
     assert build_manifest["gates"]["target_profile_coverage"]["passed"]
     assert (
         build_manifest["gates"]["target_profile_coverage"]["details"][
@@ -12413,8 +12575,20 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         == "rescale_household_weights_to_census_person_population"
     )
     assert manifest["data_package"] == {"name": "microcosm-data", "version": "0.1.0"}
-    assert manifest["default_datasets"] == {"national": "populace_us_2024"}
-    assert manifest["build"]["built_with_model_package"] == {
+    assert manifest["default_datasets"] == {"national": "microcosm_us_2024"}
+    assert (
+        manifest["artifacts"]["microcosm_us_2024"]["path"]
+        == (US_RELEASE_DATASET_FILES[US_NATIONAL_RELEASE_ID])
+    )
+    assert manifest["artifacts"]["microcosm_us_2024"]["role"] == "dataset"
+    assert manifest["artifacts"]["microcosm_us_2024_calibration"] == {
+        "kind": "calibration",
+        "path": "microcosm_us_2024_calibration.npz",
+        "repo_id": builder.REPO_ID,
+        "sha256": hashlib.sha256(b"npz").hexdigest(),
+        "role": "calibration_weights",
+    }
+    assert manifest["built_with_model_package"] == {
         "name": "policyengine-us",
         "version": "1.729.0",
     }
@@ -12432,16 +12606,13 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         "l0_lambda_share": 0.8,
     }
     assert "area_artifacts" not in build_manifest
-    assert manifest["build"]["timing"] == {
+    assert manifest["timing"] == {
         "target_compilation_seconds": 3.0,
         "calibration_seconds": 4.0,
         "total_build_seconds": 7.0,
     }
-    assert manifest["build"]["default_dataset"] == build_manifest["dataset"]["default"]
-    assert (
-        manifest["build"]["base_population_scale"]["details"]["mass_repair"]["factor"]
-        == 5.87
-    )
+    assert manifest["default_dataset"] == build_manifest["dataset"]["default"]
+    assert manifest["base_population_scale"]["details"]["mass_repair"]["factor"] == 5.87
     assert manifest["compatible_core_packages"] == [
         {"name": "policyengine-core", "specifier": "==3.26.11"}
     ]
@@ -12455,14 +12626,20 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         "kind": "diagnostics",
         "path": "us_ssi_take_up.json",
         "repo_id": builder.REPO_ID,
-        "revision": release_id,
         "sha256": builder._sha256(ssi_diagnostics_path),
+        "role": "us_ssi_take_up",
     }
     for artifact in manifest["artifacts"].values():
         assert artifact["repo_id"] == builder.REPO_ID
-        assert artifact["revision"] == release_id
+        assert "revision" not in artifact
         assert artifact["kind"]
         assert artifact["sha256"]
+        assert artifact["role"]
+    # The release contract's own checks of both manifests accept them.
+    failures: list[str] = []
+    _check_build_manifest(build_manifest, US_NATIONAL_RELEASE_ID, failures)
+    _check_release_manifest(manifest, US_NATIONAL_RELEASE_ID, failures)
+    assert failures == []
 
 
 def _minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root):
@@ -12743,13 +12920,33 @@ def test_gate_failed_base_pool_verdict_is_carried_into_release_manifest(
 def test_build_manifests_uses_loadable_paths_and_round_trips_exact_count_receipt(
     monkeypatch, tmp_path
 ) -> None:
+    """An exact-k build is a build of the national release: it declares the
+    national release's dataset file and keys, and its exact-count receipt
+    rides into the release manifest's top level (microcosm#1570)."""
+    from microcosm.data.contract import (
+        US_EVIDENCE_RELEASE_ID,
+        US_NATIONAL_RELEASE_ID,
+        US_RELEASE_DATASET_FILES,
+    )
+
     builder = _load_builder_module()
     release_id = "populace-us-2024-k57240-fixture"
-    dataset_key = "populace_us_2024"
-    calibration_key = "populace_us_2024_calibration"
+    dataset_key = builder.DATASET_KEY
+    calibration_key = builder.CALIBRATION_KEY
     dataset_filename = builder.DATASET_FILENAME
     calibration_filename = builder.CALIBRATION_FILENAME
-    release_dir = tmp_path / "release" / release_id
+    assert (dataset_key, dataset_filename) == (
+        "microcosm_us_2024",
+        "microcosm_us_2024.h5",
+    )
+    assert (calibration_key, calibration_filename) == (
+        "microcosm_us_2024_calibration",
+        "microcosm_us_2024_calibration.npz",
+    )
+    # The national and evidence releases' new builds declare this one file.
+    assert dataset_filename == US_RELEASE_DATASET_FILES[US_NATIONAL_RELEASE_ID]
+    assert dataset_filename == US_RELEASE_DATASET_FILES[US_EVIDENCE_RELEASE_ID]
+    release_dir = tmp_path / "releases" / US_NATIONAL_RELEASE_ID
     release_dir.mkdir(parents=True)
     artifact_root = tmp_path / "artifacts"
     artifact_root.mkdir()
@@ -12828,9 +13025,19 @@ def test_build_manifests_uses_loadable_paths_and_round_trips_exact_count_receipt
         exact_k_ladder=ladder,
         **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
     )
+    _, validated = _finish_with_recorded_contract(
+        builder,
+        monkeypatch,
+        release_dir,
+        build=release_id,
+        artifact_root=artifact_root,
+    )
 
+    assert validated == []
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert release_manifest["release"] == US_NATIONAL_RELEASE_ID
+    assert release_manifest["build"] == release_id
     assert build_manifest["exact_k_ladder"] == ladder
     assert (
         build_manifest["gates"]["exact_k_frozen_register_fit"]
@@ -12840,10 +13047,9 @@ def test_build_manifests_uses_loadable_paths_and_round_trips_exact_count_receipt
         build_manifest["gates"]["exact_k_puf_capital_gains_tail"]
         == (ladder["invariant_battery"]["puf_capital_gains_tail"])
     )
-    assert release_manifest["build"]["exact_k_ladder"] == ladder
-    assert (
-        release_manifest["build"]["exact_k_ladder"]["selection_receipt"]
-        == selection_receipt
+    assert release_manifest["exact_k_ladder"] == ladder
+    assert release_manifest["exact_k_ladder"]["selection_receipt"] == (
+        selection_receipt
     )
     assert build_manifest["dataset"]["filename"] == dataset_filename
     assert build_manifest["calibration"]["filename"] == calibration_filename
@@ -12852,6 +13058,84 @@ def test_build_manifests_uses_loadable_paths_and_round_trips_exact_count_receipt
     assert (
         release_manifest["artifacts"][calibration_key]["path"] == calibration_filename
     )
+
+
+def test_an_evidence_run_finishes_its_build_in_the_evidence_release(
+    monkeypatch, tmp_path
+) -> None:
+    """An evidence-tier build is a build of the evidence release: its last
+    step rewrites the manifests for that release, checks them against the
+    evidence contract, and gives the build-folder publication commands, so
+    no latest-evidence.json pointer file is involved (microcosm#1570)."""
+    from microcosm.data.build_folder_manifests import publication_commands
+    from microcosm.data.contract import (
+        EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
+        US_EVIDENCE_RELEASE_ID,
+    )
+
+    builder = _load_builder_module()
+    build = "populace-us-2024-evidence-abcdef1-20260615"
+    release_dir = tmp_path / "releases" / US_EVIDENCE_RELEASE_ID
+    release_dir.mkdir(parents=True)
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
+    (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
+    (release_dir / "calibration_diagnostics.json").write_text("{}")
+    (release_dir / "us_source_coverage.json").write_text("{}")
+    (release_dir / "us_ssi_take_up.json").write_text("{}")
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "microcosm-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "1.752.2",
+        },
+    )
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "a" * 40)
+    known_failures = [
+        {
+            "failure": "QRF tail concentration failed: fixture column.",
+            "owner": "PolicyEngine/microcosm#481",
+        }
+    ]
+
+    builder._build_manifests(
+        evidence_known_failures=known_failures,
+        **_minimal_manifest_kwargs(builder, build, release_dir, artifact_root),
+    )
+    commands, validated = _finish_with_recorded_contract(
+        builder,
+        monkeypatch,
+        release_dir,
+        build=build,
+        artifact_root=artifact_root,
+        evidence_release=True,
+    )
+
+    assert validated == []
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    for document in (release_manifest, build_manifest):
+        assert document["release"] == US_EVIDENCE_RELEASE_ID
+        assert document["build"] == build
+    assert release_manifest["schema_version"] == (
+        EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION
+    )
+    assert release_manifest["tier"] == "evidence"
+    assert release_manifest["known_failures"] == known_failures
+    assert release_manifest["artifacts"]["microcosm_us_2024"]["path"] == (
+        "microcosm_us_2024.h5"
+    )
+    assert commands == publication_commands(
+        release_dir, repo_id=builder.REPO_ID, artifact_root=artifact_root
+    )
+    for command in commands.values():
+        assert "microcosm-publish-release-build" in command
+        assert "latest-evidence" not in command
+        assert "--evidence" not in command
 
 
 def _gate_evidence_release_dir(builder, monkeypatch, tmp_path, *, coverage):
@@ -14333,6 +14617,38 @@ def test_us_release_id_guard() -> None:
         assert "must start with 'populace-us-'" in str(exc)
     else:  # pragma: no cover - defensive assertion
         raise AssertionError("Expected non-US release id to fail.")
+
+    # --release-id names the build; a release's name is refused for it, with
+    # the reason (microcosm#1570).
+    for release in (builder.US_NATIONAL_RELEASE_ID, builder.US_EVIDENCE_RELEASE_ID):
+        with pytest.raises(ValueError, match="is a release, not a build"):
+            builder._assert_us_release_id(
+                release, evidence_release=release == builder.US_EVIDENCE_RELEASE_ID
+            )
+
+
+def test_a_run_without_base_h5_reads_the_national_release_s_current_build(
+    monkeypatch, tmp_path
+) -> None:
+    """Without --base-h5 a run starts from the US national release's current
+    build, SHA-verified by the loader: from releases.json once the repository
+    has one, from latest.json until then. The root file stops changing at the
+    switch, since builds in folders write no root files (microcosm#1570)."""
+    import microcosm.data
+
+    builder = _load_builder_module()
+    requested: list[tuple] = []
+
+    def fake_download(country, year=None, **options):
+        requested.append((country, year, options))
+        return tmp_path / "microcosm_us_2024.h5"
+
+    monkeypatch.setattr(microcosm.data, "download", fake_download)
+
+    path = builder._download_base_h5()
+
+    assert requested == [("us", 2024, {})]
+    assert path == tmp_path / "microcosm_us_2024.h5"
 
 
 class _TestEmitter:
@@ -15974,6 +16290,747 @@ def test_qrf_tail_concentration_gate_passes_dispersed_sparse_mass() -> None:
     assert gate.passed
 
 
+# --- Single-record concentration: reported beside the gate, never graded ---
+
+#: The gate's details keys before the single-record diagnostic. The
+#: diagnostic lives in the surface, so the details keep exactly these.
+_TAIL_GATE_DETAIL_KEYS = {
+    "columns_checked",
+    "top_k",
+    "max_top_share",
+    "min_nonzero_records",
+    "top_share",
+    "carrier_counts",
+    "thin_columns",
+    "reviewed_exclusions",
+    "stale_exclusions",
+    "dormant_exclusions",
+}
+
+
+def _qrf_person_frame(
+    builder,
+    columns: dict[str, np.ndarray],
+    household_weights: np.ndarray,
+    *,
+    household_columns: dict[str, np.ndarray] | None = None,
+    tax_unit_weights: np.ndarray | None = None,
+) -> Frame:
+    n = int(household_weights.size)
+    ids = np.arange(1, n + 1, dtype="int64")
+    person = pd.DataFrame(
+        {
+            "person_id": ids,
+            "person_household_id": ids,
+            "person_tax_unit_id": ids,
+            "person_spm_unit_id": ids,
+            "person_family_id": ids,
+            "person_marital_unit_id": ids,
+            **columns,
+        }
+    )
+    weights = {
+        "household": builder.Weights(
+            values=np.asarray(household_weights, dtype=np.float64),
+            kind=WeightKind.DESIGN,
+        )
+    }
+    if tax_unit_weights is not None:
+        weights["tax_unit"] = builder.Weights(
+            values=np.asarray(tax_unit_weights, dtype=np.float64),
+            kind=WeightKind.DESIGN,
+        )
+    return Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame(
+                {"household_id": ids, **(household_columns or {})}
+            ),
+            "tax_unit": pd.DataFrame({"tax_unit_id": ids}),
+            "spm_unit": pd.DataFrame({"spm_unit_id": ids}),
+            "family": pd.DataFrame({"family_id": ids}),
+            "marital_unit": pd.DataFrame({"marital_unit_id": ids}),
+        },
+        builder.US_SCHEMA,
+        weights,
+    )
+
+
+def _single_record_fixture(builder) -> tuple[Frame, np.ndarray]:
+    """One record carries 57% of a checked column whose gate passes.
+
+    ``non_sch_d_capital_gains``: 500 carriers of 12,000 records. Record 0 has
+    weight 2 and value $1M, so mass $2M of $3,486,521 (57.4%); the top 100
+    carry 65.8%, under the 0.75 threshold. ``taxable_interest_income`` is
+    dense, ``casualty_loss`` thin (10 carriers), ``estate_income`` all zero,
+    ``business_is_sstb`` boolean, and ``short_term_capital_gains`` absent.
+    """
+    n = 12_000
+    weights = np.ones(n)
+    weights[0] = 2.0
+    non_sch_d = np.zeros(n)
+    non_sch_d[:500] = 2_979.0
+    non_sch_d[0] = 1_000_000.0
+    interest = np.zeros(n)
+    interest[: n // 2] = 1_000.0
+    interest[1] = 50_000.0
+    casualty = np.zeros(n)
+    casualty[100:110] = 500.0
+    frame = _qrf_person_frame(
+        builder,
+        {
+            "non_sch_d_capital_gains": non_sch_d,
+            "taxable_interest_income": interest,
+            "casualty_loss": casualty,
+            "estate_income": np.zeros(n),
+            "business_is_sstb": np.zeros(n, dtype=bool),
+        },
+        weights,
+    )
+    return frame, weights
+
+
+def test_qrf_tail_surface_reports_the_largest_single_record() -> None:
+    builder = _load_builder_module()
+    frame, weights = _single_record_fixture(builder)
+
+    gate, surface = builder._qrf_tail_concentration_gate(frame)
+
+    # The measurement leaves the gate as it was: it passes and carries only
+    # its own detail keys.
+    assert gate.passed
+    assert set(gate.details) == _TAIL_GATE_DETAIL_KEYS
+    sparse = ["casualty_loss", "estate_income", "non_sch_d_capital_gains"]
+    direct = tail_concentration_gate(
+        {column: frame.table("person")[column].to_numpy() for column in sparse},
+        {column: weights for column in sparse},
+        top_k=builder.US_QRF_TAIL_CONCENTRATION_TOP_K,
+        max_top_share=builder.US_QRF_TAIL_CONCENTRATION_MAX_TOP_SHARE,
+        min_nonzero_records=builder.US_QRF_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS,
+    )
+    assert gate.details == direct.details
+    assert surface["checked_sparse_columns"] == sparse
+
+    block = surface["single_record_concentration"]
+    assert block["top_k"] == 100
+    assert block["unmeasured"] == {}
+    # The surface measures every numeric output, dense and thin ones included.
+    assert (
+        set(block["columns"])
+        == set(surface["nonzero_shares"])
+        == {
+            *sparse,
+            "taxable_interest_income",
+        }
+    )
+    columns = block["columns"]
+    assert columns["non_sch_d_capital_gains"] == {
+        "carriers": 500,
+        "top_1_share": pytest.approx(2_000_000.0 / 3_486_521.0),
+        "top_1_weight": 2.0,
+        "top_k_share": gate.details["top_share"]["non_sch_d_capital_gains"],
+    }
+    assert gate.details["top_share"]["non_sch_d_capital_gains"] == pytest.approx(
+        2_294_921.0 / 3_486_521.0
+    )
+    assert columns["taxable_interest_income"] == {
+        "carriers": 6_000,
+        # Record 0 (weight 2) carries $2,000 here: 5,998 x $1,000 + $2,000
+        # + $50,000, and the top 100 are $50,000 + $2,000 + 98 x $1,000.
+        "top_1_share": pytest.approx(50_000.0 / 6_050_000.0),
+        "top_1_weight": 1.0,
+        "top_k_share": pytest.approx(150_000.0 / 6_050_000.0),
+    }
+    assert columns["casualty_loss"] == {
+        "carriers": 10,
+        "top_1_share": pytest.approx(0.1),
+        "top_1_weight": 1.0,
+        "top_k_share": 1.0,
+    }
+    # The surface reports a zero-mass column and never divides by its mass.
+    assert columns["estate_income"] == {
+        "carriers": 0,
+        "top_1_share": None,
+        "top_1_weight": None,
+        "top_k_share": None,
+    }
+
+
+def test_qrf_tail_evidence_file_carries_the_single_record_block(tmp_path) -> None:
+    builder = _load_builder_module()
+    frame, _ = _single_record_fixture(builder)
+    _, surface = builder._qrf_tail_concentration_gate(frame)
+    failures: list[str] = []
+
+    _record_qrf_tail(
+        builder, tmp_path, frame, register=None, allow=False, failures=failures
+    )
+
+    assert failures == []
+
+    def refuse(constant: str) -> None:
+        raise AssertionError(f"non-finite {constant} in the evidence file")
+
+    payload = json.loads(
+        (tmp_path / "qrf_tail_concentration.json").read_text(),
+        parse_constant=refuse,
+    )
+    assert payload["surface"]["single_record_concentration"] == json.loads(
+        json.dumps(surface["single_record_concentration"])
+    )
+    assert set(payload["tail_concentration"]["details"]) == _TAIL_GATE_DETAIL_KEYS
+
+
+def test_a_dense_output_with_unresolvable_weights_is_unmeasured_not_fatal() -> None:
+    """Weighted on two group entities, person weights do not resolve. The gate
+    never resolves weights for a dense output, so neither may its measurement
+    fail the run; a sparse person output still raises, as it always did."""
+    builder = _load_builder_module()
+    n = 12_000
+    interest = np.zeros(n)
+    interest[: n // 2] = 1_000.0
+    auto_loans = np.zeros(n)
+    auto_loans[:500] = 4_000.0
+    frame = _qrf_person_frame(
+        builder,
+        {"taxable_interest_income": interest},
+        np.ones(n),
+        household_columns={"auto_loan_balance": auto_loans},
+        tax_unit_weights=np.ones(n),
+    )
+
+    gate, surface = builder._qrf_tail_concentration_gate(frame)
+
+    assert gate.passed
+    assert surface["dense_columns"] == ["taxable_interest_income"]
+    assert surface["checked_sparse_columns"] == ["auto_loan_balance"]
+    block = surface["single_record_concentration"]
+    assert set(block["columns"]) == {"auto_loan_balance"}
+    assert block["columns"]["auto_loan_balance"]["top_1_share"] == pytest.approx(
+        1 / 500
+    )
+    assert set(block["unmeasured"]) == {"taxable_interest_income"}
+    assert block["unmeasured"]["taxable_interest_income"].startswith(
+        "ValueError: Cannot resolve person-level weights"
+    )
+
+    sparse_person = np.zeros(n)
+    sparse_person[:500] = 2_979.0
+    broken = _qrf_person_frame(
+        builder,
+        {"taxable_interest_income": interest, "casualty_loss": sparse_person},
+        np.ones(n),
+        tax_unit_weights=np.ones(n),
+    )
+    with pytest.raises(ValueError, match="Cannot resolve person-level weights"):
+        builder._qrf_tail_concentration_gate(broken)
+
+
+class _WeightResolutionSpy:
+    """An export frame that records each entity whose weights it resolves.
+
+    For ``entity`` it raises ``error``, or returns ``values`` as the weights,
+    in place of the frame's own; every other attribute is the frame's.
+    """
+
+    def __init__(
+        self,
+        frame: Frame,
+        entity: str | None = None,
+        *,
+        error: Exception | None = None,
+        values: np.ndarray | None = None,
+    ) -> None:
+        self._frame = frame
+        self._entity = entity
+        self._error = error
+        self._values = values
+        self.resolved: list[str] = []
+
+    def __getattr__(self, name: str):
+        return getattr(self._frame, name)
+
+    def resolve_weights(self, entity: str):
+        self.resolved.append(entity)
+        if entity == self._entity and self._error is not None:
+            raise self._error
+        if entity == self._entity and self._values is not None:
+            return SimpleNamespace(values=self._values)
+        return self._frame.resolve_weights(entity)
+
+
+@pytest.mark.parametrize(
+    ("failure", "reason"),
+    [
+        (
+            {"error": RuntimeError("weight store offline")},
+            "RuntimeError: weight store offline",
+        ),
+        (
+            {"values": np.array([object()] * 12_000, dtype=object)},
+            "TypeError: ",
+        ),
+        (
+            {"values": np.ones(11_999)},
+            "ValueError: values and weights must align, got 12000 values vs "
+            "11999 weights.",
+        ),
+    ],
+    ids=["resolution-raises", "weights-not-numbers", "weights-misaligned"],
+)
+def test_any_error_measuring_a_dense_output_lands_under_unmeasured(
+    failure, reason
+) -> None:
+    """Review N1: the gate never weighs a dense output, so no error from
+    measuring one may fail the run, whatever its type or its source."""
+    builder = _load_builder_module()
+    n = 12_000
+    interest = np.zeros(n)
+    interest[: n // 2] = 1_000.0
+    auto_loans = np.zeros(n)
+    auto_loans[:500] = 4_000.0
+    frame = _WeightResolutionSpy(
+        _qrf_person_frame(
+            builder,
+            {"taxable_interest_income": interest},
+            np.ones(n),
+            household_columns={"auto_loan_balance": auto_loans},
+        ),
+        "person",
+        **failure,
+    )
+
+    gate, surface = builder._qrf_tail_concentration_gate(frame)
+
+    assert gate.passed
+    assert surface["dense_columns"] == ["taxable_interest_income"]
+    assert surface["checked_sparse_columns"] == ["auto_loan_balance"]
+    block = surface["single_record_concentration"]
+    assert set(block["columns"]) == {"auto_loan_balance"}
+    assert set(block["unmeasured"]) == {"taxable_interest_income"}
+    assert block["unmeasured"]["taxable_interest_income"].startswith(reason)
+    # The sparse output's measurement reuses the weights the gate loop
+    # resolved, so the frame resolves the household's weights once; the dense
+    # output's measurement then asks for the person's.
+    assert frame.resolved == ["household", "person"]
+
+
+class _StrRaisesError(Exception):
+    def __str__(self) -> str:
+        raise RuntimeError("str failed")
+
+
+class _FormatRaisesError(Exception):
+    def __format__(self, spec: str) -> str:
+        raise LookupError("format failed")
+
+
+class _NameRaisesMeta(type):
+    @property
+    def __name__(cls) -> str:
+        raise OSError("name failed")
+
+
+class _NameRaisesError(Exception, metaclass=_NameRaisesMeta):
+    pass
+
+
+def test_a_dense_output_whose_error_cannot_print_itself_is_unmeasured() -> None:
+    """Review G-1: resolving a dense output's weights raises an error whose
+    ``__str__`` raises. Formatting the reason must not raise in its turn: the
+    gate passes, and the output goes under ``unmeasured`` with the type's
+    name."""
+    builder = _load_builder_module()
+    n = 12_000
+    interest = np.zeros(n)
+    interest[: n // 2] = 1_000.0
+    auto_loans = np.zeros(n)
+    auto_loans[:500] = 4_000.0
+    frame = _WeightResolutionSpy(
+        _qrf_person_frame(
+            builder,
+            {"taxable_interest_income": interest},
+            np.ones(n),
+            household_columns={"auto_loan_balance": auto_loans},
+        ),
+        "person",
+        error=_StrRaisesError(),
+    )
+
+    gate, surface = builder._qrf_tail_concentration_gate(frame)
+
+    assert gate.passed
+    block = surface["single_record_concentration"]
+    assert set(block["columns"]) == {"auto_loan_balance"}
+    assert block["unmeasured"] == {
+        "taxable_interest_income": "_StrRaisesError: unprintable error"
+    }
+
+
+@pytest.mark.parametrize(
+    ("error_type", "reason"),
+    [
+        (ValueError, "ValueError: weights do not align"),
+        (_StrRaisesError, "_StrRaisesError: unprintable error"),
+        (_FormatRaisesError, "_FormatRaisesError: unprintable error"),
+        (_NameRaisesError, "unprintable error"),
+    ],
+    ids=["prints", "str-raises", "format-raises", "type-name-raises"],
+)
+def test_a_single_record_unmeasured_reason_never_raises(error_type, reason) -> None:
+    """Review G-1: the reason is the error's type and text; an error whose
+    text cannot format keeps its type's name, and one whose type cannot name
+    itself keeps the fixed text.
+
+    The test takes the error's class and builds the instance inside the call:
+    pytest prints a failing test's arguments with ``reprlib``, which reads
+    ``type(argument).__name__`` and so cannot print a ``_NameRaisesError``.
+    """
+    builder = _load_builder_module()
+
+    assert builder._unmeasured_reason(error_type("weights do not align")) == reason
+
+
+def test_a_single_record_unmeasured_reason_is_total() -> None:
+    """For every error the strategies build, the reason is the text the error
+    can still give, and no ``Exception`` leaves the helper. Each of
+    ``__str__``, ``__format__`` and the type's ``__name__`` either works or
+    raises a drawn ``Exception``, and ``__str__`` may return a number. The
+    reason is the type's name and the text, then the type's name with
+    ``unprintable error``, then ``unprintable error`` alone."""
+    builder = _load_builder_module()
+    raised = st.sampled_from(
+        [
+            ArithmeticError,
+            AttributeError,
+            KeyError,
+            MemoryError,
+            OSError,
+            RecursionError,
+            RuntimeError,
+            StopIteration,
+            TypeError,
+            ValueError,
+        ]
+    )
+    works_or_raises = st.one_of(st.none(), raised)
+
+    @hypothesis.settings(max_examples=200, deadline=None, database=None)
+    @hypothesis.given(
+        text=st.text(max_size=20),
+        str_raises=works_or_raises,
+        str_returns_a_number=st.booleans(),
+        format_raises=works_or_raises,
+        name_raises=works_or_raises,
+    )
+    def check(
+        text, str_raises, str_returns_a_number, format_raises, name_raises
+    ) -> None:
+        def broken_str(self):
+            if str_raises is not None:
+                raise str_raises("str failed")
+            return 7
+
+        def broken_format(self, spec):
+            raise format_raises("format failed")
+
+        def broken_name(cls):
+            raise name_raises("name failed")
+
+        methods: dict[str, object] = {}
+        if str_raises is not None or str_returns_a_number:
+            methods["__str__"] = broken_str
+        if format_raises is not None:
+            methods["__format__"] = broken_format
+        meta_methods: dict[str, object] = {}
+        if name_raises is not None:
+            meta_methods["__name__"] = property(broken_name)
+        meta = type("DrawnMeta", (type,), meta_methods)
+        error_type = meta("DrawnError", (Exception,), methods)
+
+        reason = builder._unmeasured_reason(error_type(text))
+
+        if name_raises is not None:
+            assert reason == "unprintable error"
+        elif methods:
+            assert reason == "DrawnError: unprintable error"
+        else:
+            assert reason == f"DrawnError: {text}"
+
+    check()
+
+
+class _TableSpy:
+    """An export frame that records each table it hands out.
+
+    Once ``offline`` is set, asking for a table raises; every other attribute
+    is the frame's.
+    """
+
+    def __init__(self, frame: Frame) -> None:
+        self._frame = frame
+        self.offline = False
+        self.tables_read: list[str] = []
+
+    def __getattr__(self, name: str):
+        return getattr(self._frame, name)
+
+    def table(self, entity: str):
+        self.tables_read.append(entity)
+        if self.offline:
+            raise RuntimeError("frame offline")
+        return self._frame.table(entity)
+
+
+def test_a_dense_output_the_frame_cannot_give_again_is_unmeasured_not_fatal() -> None:
+    """Review G-2: the gate loop stores no dense output's values, so the
+    measurement reads a dense column from the frame again, after the gate. A
+    frame that fails then leaves the gate's verdict alone: the dense output
+    goes under ``unmeasured`` and the sparse one keeps its measurement."""
+    builder = _load_builder_module()
+    n = 12_000
+    interest = np.zeros(n)
+    interest[: n // 2] = 1_000.0
+    auto_loans = np.zeros(n)
+    auto_loans[:500] = 4_000.0
+    frame = _TableSpy(
+        _qrf_person_frame(
+            builder,
+            {"taxable_interest_income": interest},
+            np.ones(n),
+            household_columns={"auto_loan_balance": auto_loans},
+        )
+    )
+    shared_gate = builder.tail_concentration_gate
+
+    def gate_then_offline(*args, **kwargs):
+        result = shared_gate(*args, **kwargs)
+        frame.offline = True
+        return result
+
+    builder.tail_concentration_gate = gate_then_offline
+
+    gate, surface = builder._qrf_tail_concentration_gate(frame)
+
+    assert gate.passed
+    assert surface["dense_columns"] == ["taxable_interest_income"]
+    # The loop reads each output's table once; the measurement asks for the
+    # dense output's table again.
+    assert frame.tables_read == ["household", "person", "person"]
+    block = surface["single_record_concentration"]
+    assert set(block["columns"]) == {"auto_loan_balance"}
+    assert block["unmeasured"] == {
+        "taxable_interest_income": "RuntimeError: frame offline"
+    }
+
+
+def test_a_dense_output_stored_as_text_is_measured_as_the_gate_loop_read_it() -> None:
+    """Review G-2: the measurement converts a dense column as the gate loop
+    does, so an entry that is no number counts as zero in both. The column
+    holds text and one missing entry: 6,000 entries read ``"0"``, and of the
+    other 6,000 one is not a number and one is missing. The loop counts 5,998
+    nonzero records, and the measurement finds the same 5,998 carriers."""
+    builder = _load_builder_module()
+    n = 12_000
+    interest = np.array(["0"] * n, dtype=object)
+    interest[: n // 2] = "1000"
+    interest[1] = "50000"
+    interest[2] = "not a number"
+    interest[3] = None
+    frame = _TableSpy(
+        _qrf_person_frame(builder, {"taxable_interest_income": interest}, np.ones(n))
+    )
+
+    gate, surface = builder._qrf_tail_concentration_gate(frame)
+
+    assert gate.passed
+    assert surface["dense_columns"] == ["taxable_interest_income"]
+    assert surface["nonzero_records"] == {"taxable_interest_income": 5_998}
+    assert frame.tables_read == ["person", "person"]
+    block = surface["single_record_concentration"]
+    assert block["unmeasured"] == {}
+    # 5,997 records of $1,000 and one of $50,000, at weight 1.
+    assert block["columns"] == {
+        "taxable_interest_income": {
+            "carriers": 5_998,
+            "top_1_share": pytest.approx(50_000.0 / 6_047_000.0),
+            "top_1_weight": 1.0,
+            "top_k_share": pytest.approx(149_000.0 / 6_047_000.0),
+        }
+    }
+
+
+def test_a_dense_output_is_measured_at_float64_as_the_gate_loop_read_it() -> None:
+    """Review G-2: the measurement rereads a dense column as float64, the
+    type the gate loop read it at. The block equals the shared measurement on
+    the column's float64 values, with no tolerance. 0.1 is not a float32
+    number, so a float32 reread would move both shares."""
+    builder = _load_builder_module()
+    n = 12_000
+    interest = np.zeros(n)
+    interest[: n // 2] = 0.1
+    interest[1] = 50_000.0
+    frame = _qrf_person_frame(
+        builder, {"taxable_interest_income": interest}, np.ones(n)
+    )
+
+    gate, surface = builder._qrf_tail_concentration_gate(frame)
+
+    assert gate.passed
+    assert surface["dense_columns"] == ["taxable_interest_income"]
+    block = surface["single_record_concentration"]
+    assert block["unmeasured"] == {}
+    assert block["columns"] == {
+        "taxable_interest_income": single_record_concentration(
+            interest, np.ones(n), top_k=builder.US_QRF_TAIL_CONCENTRATION_TOP_K
+        )
+    }
+
+
+def test_a_misaligned_sparse_output_fails_with_the_gates_own_message() -> None:
+    """Review N2: misaligned weights on a sparse output raise the gate's error,
+    which names the column, because no measurement runs before the gate."""
+    builder = _load_builder_module()
+    n = 12_000
+    casualty = np.zeros(n)
+    casualty[:500] = 2_979.0
+    frame = _WeightResolutionSpy(
+        _qrf_person_frame(builder, {"casualty_loss": casualty}, np.ones(n)),
+        "person",
+        values=np.ones(n - 1),
+    )
+
+    with pytest.raises(ValueError) as raised:
+        builder._qrf_tail_concentration_gate(frame)
+
+    assert str(raised.value) == (
+        "casualty_loss: values and weights must align, got 12000 values vs "
+        "11999 weights."
+    )
+
+
+def test_no_measurement_runs_before_the_gate_raises() -> None:
+    """A sparse household output's weights do not align with its values, and
+    a dense person output waits for its measurement. The gate raises its own
+    message, and the frame has resolved the household's weights only: the
+    measurement, which would resolve the person's, has not run."""
+    builder = _load_builder_module()
+    n = 12_000
+    interest = np.zeros(n)
+    interest[: n // 2] = 1_000.0
+    auto_loans = np.zeros(n)
+    auto_loans[:500] = 4_000.0
+    frame = _WeightResolutionSpy(
+        _qrf_person_frame(
+            builder,
+            {"taxable_interest_income": interest},
+            np.ones(n),
+            household_columns={"auto_loan_balance": auto_loans},
+        ),
+        "household",
+        values=np.ones(n - 1),
+    )
+
+    with pytest.raises(ValueError) as raised:
+        builder._qrf_tail_concentration_gate(frame)
+
+    assert str(raised.value) == (
+        "auto_loan_balance: values and weights must align, got 12000 values vs "
+        "11999 weights."
+    )
+    assert frame.resolved == ["household"]
+
+
+def test_a_dense_output_before_a_sparse_one_leaves_the_gate_to_raise() -> None:
+    """Review N4: a dense output sorts before a sparse output of the same
+    entity, and that entity's weights do not resolve. The sparse output's
+    error still fails the run, and the frame resolves the entity's weights
+    once, for the sparse output: the dense output's measurement waits until
+    after the gate, so it never runs."""
+    builder = _load_builder_module()
+    n = 12_000
+    dense = np.zeros(n)
+    dense[: n // 2] = 500.0
+    sparse = np.zeros(n)
+    sparse[:500] = 2_979.0
+    frame = _WeightResolutionSpy(
+        _qrf_person_frame(
+            builder,
+            {"casualty_loss": dense, "taxable_interest_income": sparse},
+            np.ones(n),
+            tax_unit_weights=np.ones(n),
+        )
+    )
+
+    with pytest.raises(ValueError, match="Cannot resolve person-level weights"):
+        builder._qrf_tail_concentration_gate(frame)
+
+    assert frame.resolved == ["person"]
+
+
+def test_qrf_tail_single_record_measurement_never_moves_the_gate() -> None:
+    """For any column geometry the strategies reach: the gate's details equal
+    the shared gate run on the sparse columns alone; the surface measures
+    every numeric output exactly once, with the shared measurement at the
+    frame's weights; and a checked column's top-k share is the gate's own,
+    capped at 1."""
+    builder = _load_builder_module()
+    n = 12_000
+    max_share = builder.US_QRF_SPARSE_NONZERO_SHARE_MAX
+    columns = ("non_sch_d_capital_gains", "casualty_loss", "estate_income")
+
+    @hypothesis.settings(max_examples=40, deadline=None, database=None)
+    @hypothesis.given(
+        carriers=st.tuples(*(st.integers(0, 1_200) for _ in columns)),
+        sigma=st.floats(min_value=0.1, max_value=4.0),
+        seed=st.integers(0, 2**32 - 1),
+    )
+    def check(carriers, sigma, seed) -> None:
+        rng = np.random.default_rng(seed)
+        weights = rng.uniform(0.5, 900.0, size=n)
+        values: dict[str, np.ndarray] = {}
+        for column, count in zip(columns, carriers, strict=True):
+            array = np.zeros(n)
+            chosen = rng.choice(n, size=count, replace=False)
+            array[chosen] = rng.lognormal(8.0, sigma, size=count) * rng.choice(
+                [-1.0, 1.0], size=count
+            )
+            values[column] = array
+        frame = _qrf_person_frame(builder, values, weights)
+
+        gate, surface = builder._qrf_tail_concentration_gate(frame)
+
+        sparse = {
+            column: array
+            for column, array in values.items()
+            if (array != 0.0).mean() <= max_share
+        }
+        direct = tail_concentration_gate(
+            sparse,
+            {column: weights for column in sparse},
+            top_k=builder.US_QRF_TAIL_CONCENTRATION_TOP_K,
+            max_top_share=builder.US_QRF_TAIL_CONCENTRATION_MAX_TOP_SHARE,
+            min_nonzero_records=(builder.US_QRF_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS),
+        )
+        assert gate.passed == direct.passed
+        assert gate.failures == direct.failures
+        assert gate.details == direct.details
+        block = surface["single_record_concentration"]
+        assert block["unmeasured"] == {}
+        assert set(block["columns"]) == set(columns)
+        for column, array in values.items():
+            measured = block["columns"][column]
+            assert measured == single_record_concentration(array, weights)
+            if column in gate.details["top_share"]:
+                assert measured["top_k_share"] == min(
+                    gate.details["top_share"][column], 1.0
+                )
+            if measured["carriers"]:
+                assert 0.0 < measured["top_1_share"] <= measured["top_k_share"] <= 1.0
+
+    check()
+
+
 def test_allow_qrf_tail_concentration_flag_parses(monkeypatch) -> None:
     builder = _load_builder_module()
 
@@ -16856,6 +17913,17 @@ def test_evidence_release_id_reserves_the_segment_for_the_tier() -> None:
         builder._assert_us_release_id(
             "populace-us-2024-evidence-abc1234-20260812T000000Z"
         )
+    # The segment names the build's tier; the tier names its release
+    # (microcosm#1570): an evidence build is a build of the evidence release,
+    # never of the national one.
+    assert (
+        builder._release_for_build(SimpleNamespace(evidence_release=True))
+        == "microcosm-us-2024-evidence"
+    )
+    assert (
+        builder._release_for_build(SimpleNamespace(evidence_release=False))
+        == "microcosm-us-2024-national"
+    )
 
 
 def test_default_release_id_carries_the_evidence_segment() -> None:
@@ -16875,13 +17943,36 @@ def test_default_release_id_carries_the_evidence_segment() -> None:
         commit="123456789abc",
         build_timestamp=stamp,
     )
+    exact_k_args = SimpleNamespace(exact_k=57_240, evidence_release=False)
+    exact_k = builder._default_release_id(
+        exact_k_args,
+        digest="abcdef0",
+        commit="123456789abc",
+        build_timestamp=stamp,
+    )
     assert certified == "populace-us-2024-abcdef0-123456789abc-20260812T010203Z"
     assert evidence == "populace-us-2024-evidence-abcdef0-123456789abc-20260812T010203Z"
+    assert exact_k == "populace-us-2024-k57240-abcdef0-123456789abc-20260812T010203Z"
     # The two ids differ ONLY by the tier segment, and each passes its own
     # tier's assertion while failing the other's.
     assert evidence.replace("-evidence-", "-") == certified
     builder._assert_us_release_id(certified)
     builder._assert_us_release_id(evidence, evidence_release=True)
+    builder._assert_exact_k_release_id(exact_k, 57_240)
+    # These are build IDs, and they keep their form after the switch
+    # (microcosm#1570): certified and exact-k builds are builds of the
+    # national release, evidence-tier builds of the evidence release.
+    assert builder._release_for_build(exact_k_args) == builder.US_NATIONAL_RELEASE_ID
+    assert (
+        builder._release_for_build(
+            SimpleNamespace(exact_k=None, evidence_release=False)
+        )
+        == builder.US_NATIONAL_RELEASE_ID
+    )
+    assert (
+        builder._release_for_build(SimpleNamespace(exact_k=None, evidence_release=True))
+        == builder.US_EVIDENCE_RELEASE_ID
+    )
 
 
 def test_evidence_known_failures_map_the_adjudicated_owner_register() -> None:
@@ -18170,7 +19261,12 @@ def test_national_state_surface_source_coverage_excludes_dropped_cd_sources() ->
         assert alias not in coverage["active_target_aliases"]
         reason = coverage["reviewed_exclusions"][alias]
         assert "--target-surface national_state dropped all 1 " in reason
-        assert "build.target_surface_selection" in reason
+        # Where the manifests record the selection in the build-folder layout
+        # (microcosm#1570): the release manifest's top level, and the build
+        # manifest's calibration block.
+        assert "build.target_surface_selection" not in reason
+        assert "release_manifest.json target_surface_selection" in reason
+        assert "build_manifest.json calibration.target_surface_selection" in reason
     population = coverage["hard_target_families"]["population_age_sex"]
     assert (
         "census-acs-s0101-congressional-district-age-2024"

@@ -90,14 +90,14 @@ def test_annual_files_preserve_base_shape_values_and_year(inputs, monkeypatch):
     manifest = annual.build_annual_static_aging(**inputs)
     assert calls == [2025, 2026]  # Every projection starts from the original frame.
     output = inputs["output_dir"]
-    assert (output / "populace_us_2024.h5").read_bytes() == inputs[
+    assert (output / "microcosm_us_2024.h5").read_bytes() == inputs[
         "base_h5"
     ].read_bytes()
     assert manifest["metadata"]["dataset_years"] == {
-        "populace_us_2024": {str(y): f"populace_us_{y}" for y in (2024, 2025, 2026)}
+        "microcosm_us_2024": {str(y): f"microcosm_us_{y}" for y in (2024, 2025, 2026)}
     }
     for year in (2025, 2026):
-        path = output / f"populace_us_{year}.h5"
+        path = output / f"microcosm_us_{year}.h5"
         import h5py
 
         with (
@@ -116,7 +116,7 @@ def test_annual_files_preserve_base_shape_values_and_year(inputs, monkeypatch):
             assert person["miscellaneous_income"].tolist() == [30, -20, 0]
             assert person["person_id"].tolist() == [1, 2, 3]
             assert person["age"].tolist() == [40, 40, 40]
-        artifact = manifest["artifacts"][f"populace_us_{year}"]
+        artifact = manifest["artifacts"][f"microcosm_us_{year}"]
         assert artifact["sha256"] == annual._sha256(path)
         assert artifact["rows"] == {entity: 3 for entity in US_SCHEMA.entities}
         assert artifact["round_trip"]["time_period"] == year
@@ -137,6 +137,42 @@ def test_annual_files_preserve_base_shape_values_and_year(inputs, monkeypatch):
         ]
 
 
+def test_the_base_year_keeps_the_base_build_s_dataset_key(inputs, monkeypatch):
+    """The family and the base year take the base build's key, here a build
+    the switch moved; projected years keep their microcosm_ names."""
+    projection = SimpleNamespace(
+        weights=Weights(np.array([2.0, 3.0, 4.0]), WeightKind.CALIBRATED),
+        factors={},
+        demographic_fit=pd.DataFrame({"target": [1.0], "achieved": [1.0]}),
+        fraction_within_10pct=1.0,
+    )
+    monkeypatch.setattr(
+        annual,
+        "static_aging",
+        lambda frame, **kwargs: SimpleNamespace(year=lambda requested: projection),
+    )
+    manifest = annual.build_annual_static_aging(
+        **inputs, base_dataset="populace_us_2024"
+    )
+    output = inputs["output_dir"]
+    assert manifest["base"]["dataset"] == "populace_us_2024"
+    assert manifest["metadata"]["dataset_years"] == {
+        "populace_us_2024": {
+            "2024": "populace_us_2024",
+            "2025": "microcosm_us_2025",
+            "2026": "microcosm_us_2026",
+        }
+    }
+    assert (output / "populace_us_2024.h5").read_bytes() == inputs[
+        "base_h5"
+    ].read_bytes()
+    assert sorted(manifest["artifacts"]) == [
+        "microcosm_us_2025",
+        "microcosm_us_2026",
+        "populace_us_2024",
+    ]
+
+
 def test_small_actual_calibration_exports_independent_years(inputs):
     manifest = annual.build_annual_static_aging(**inputs)
     assert manifest["status"] == "complete"
@@ -153,7 +189,7 @@ def test_base_h5_symlink_to_extensionless_cache_blob(inputs):
     manifest = annual.build_annual_static_aging(**inputs)
     assert manifest["base"]["path"] == str(base)
     assert (
-        inputs["output_dir"] / "populace_us_2024.h5"
+        inputs["output_dir"] / "microcosm_us_2024.h5"
     ).read_bytes() == blob.read_bytes()
 
 

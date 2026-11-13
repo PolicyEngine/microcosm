@@ -215,6 +215,10 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     # microcosm#1550 (microcosm#1095, Y1): the UC limited capability flags.
     "person.uc_limited_capability_for_WRA",
     "person.uc_limited_capability_for_work",
+    # PR3 of the November event-data plan (microcosm#1095, A3): whether a
+    # carer cares for a severely disabled person, policyengine-uk's input
+    # (2.177.3, pe-uk#2860), which frs_disability writes from the FRS care tab.
+    "person.cares_for_severely_disabled_person",
 )
 
 UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (
@@ -228,6 +232,14 @@ UK_REVIEWED_EXPORT_EXCLUSIONS: Mapping[str, str] = {
         "other_residential_property_value and non_residential_property_value; "
         "a persisted copy overrides that sum and has no uprating index, so the "
         "candidate must drop it (microcosm#1106, the uk-data#543 defect)."
+    ),
+    "person.is_severely_disabled_for_benefits": (
+        "policyengine-uk derives is_severely_disabled_for_benefits, the tax "
+        "credit severe disability condition, from the DLA care, PIP daily "
+        "living and Attendance Allowance categories and Armed Forces "
+        "Independence Payment; a persisted copy would override the formula "
+        "in every projected year, so the candidate leaves it to the formula "
+        "and drops it (microcosm#1095, A4; María's signature of 2026-11-11)."
     ),
     "person.pip_dl_category": (
         "policyengine-uk derives pip_dl_category from pip_dl_points (8 points "

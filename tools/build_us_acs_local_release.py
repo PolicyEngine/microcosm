@@ -86,13 +86,19 @@ package; each is separately resumable):
                 block, microcosm#1022), re-grade the packaged fill manifests
                 against the reviewed-fill consumer register (microcosm#1022),
                 then
-                assemble releases/<id>/ with the non-default local-area
-                manifest shape (dataset_role ``non_default_local_area``,
-                namespace ``buildo_acs_local``, donor identity chain, the
-                one-command refresh recipe) + sha256sums. Publication stays
-                a separate reviewed step (``microcosm-publish-release
-                <dir> --no-latest``); this tool never uploads and never
-                touches latest.json.
+                assemble releases/microcosm-us-2024-local/, a build of the
+                US local-area release in the build-folder layout
+                (microcosm#1570): the non-default local-area manifest shape
+                (dataset_role ``non_default_local_area``, namespace
+                ``buildo_acs_local``, donor identity chain, the one-command
+                refresh recipe), both manifests naming the release and the
+                build (``populace-us-2024-buildo-acs-local-<sha>-<timestamp>``),
+                the dataset ``microcosm_us_2024_acs_local.h5``, no revision
+                on any artifact, + sha256sums. Publication stays a separate
+                reviewed step: the printed ``microcosm-publish-release-build``
+                command publishes the build through the emitter without
+                making it current, and the promotion command makes it the
+                release's current build; this tool never uploads.
 
 Telemetry: after parsing its arguments the tool starts the emitter
 (``microcosm.build.program_telemetry``, pipeline ``us_acs_local_release``),
@@ -203,9 +209,15 @@ from microcosm.build.us_runtime.org_wages import (
 from microcosm.build.us_runtime.ssi_disability_criteria import (
     SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
 )
+from microcosm.data.build_folder_manifests import (
+    publication_commands,
+    rewrite_release_dir,
+)
 from microcosm.data.contract import (
     US_LOCAL_AREA_SPM_MEASUREMENT_STAGE,
     US_LOCAL_AREA_STORED_INPUTS_STAGE,
+    US_LOCAL_RELEASE_ID,
+    US_RELEASE_DATASET_FILES,
     US_SPM_MEASUREMENT_EVIDENCE_KEY,
     US_STORED_INPUTS_EVIDENCE_KEY,
     us_engine_scopes_spm_universe,
@@ -223,10 +235,15 @@ import us_acs_local_county_surface as county_surface  # noqa: E402
 
 PERIOD = 2024
 RELEASE_NAMESPACE = "buildo_acs_local"
+#: Every build's ID starts with this; the build is published into a folder of
+#: the US local-area release, ``US_LOCAL_RELEASE_ID`` (microcosm#1570).
 RELEASE_ID_PREFIX = "populace-us-2024-buildo-acs-local"
-ARTIFACT_NAME = "populace_us_2024_acs_local"
-ARTIFACT_FILENAME = f"{ARTIFACT_NAME}.h5"
+#: The dataset file a build of the local-area release declares, and its key.
+ARTIFACT_FILENAME = US_RELEASE_DATASET_FILES[US_LOCAL_RELEASE_ID]
+ARTIFACT_NAME = Path(ARTIFACT_FILENAME).stem
 HF_REPO_ID = "policyengine/populace-us"
+#: The release directory the package stage writes under ``--out``.
+RELEASE_DIR_PARTS = ("releases", US_LOCAL_RELEASE_ID)
 LEGACY_STAGING_REFRESH_RECIPE = (
     "uv run tools/build_us_acs_multispine_base.py "
     "--base-h5 <next-certified-release>.h5 "
@@ -2736,6 +2753,10 @@ def calibration_evidence(
 
 
 def do_calibrate(args) -> None:
+    # The checkout's code identity as this stage starts, before it loads or
+    # solves anything. The write reads it again and refuses if the commit or
+    # the dirty state changed in between (review of #1311).
+    code = _repo_code_identity(allow_dirty=True)
     from microcosm.calibrate import write_calibration_diagnostics
 
     identity = _verify_run_identity(args)
@@ -2831,7 +2852,11 @@ def do_calibrate(args) -> None:
                 "weights_latest.npz to recalibrate)."
             )
             _write_calibrated_artifact(
-                args, np.asarray(warm, dtype=np.float64), identity, settings
+                args,
+                np.asarray(warm, dtype=np.float64),
+                identity,
+                settings,
+                code=code,
             )
             county_surface.write_reports(
                 args.checkpoint_dir, previous, identity=identity
@@ -2937,7 +2962,11 @@ def do_calibrate(args) -> None:
     }
     county_surface.write_reports(args.checkpoint_dir, summary, identity=identity)
     _write_calibrated_artifact(
-        args, np.asarray(result.weights, dtype=np.float64), identity, settings
+        args,
+        np.asarray(result.weights, dtype=np.float64),
+        identity,
+        settings,
+        code=code,
     )
 
     holdout = summary["cd_holdout"]
@@ -3069,7 +3098,7 @@ def _with_live_stored_inputs(frame):
 
 
 def _write_calibrated_artifact(
-    args, weights: np.ndarray, identity: dict, settings: dict
+    args, weights: np.ndarray, identity: dict, settings: dict, *, code: dict
 ) -> None:
     """Write the consumer-ready calibrated H5 with verified attachment.
 
@@ -3080,7 +3109,10 @@ def _write_calibrated_artifact(
     fill — so a plain ``USSingleYearDataset``/``Microsimulation`` consumer
     loads the published file directly. The nullable staging H5 remains the
     archival nullable truth; every fill is recorded in the run's consumer
-    manifest.
+    manifest. ``code`` is the code identity the calibrate stage read when it
+    started; ``consumer_export.json`` records it, and this function writes
+    neither that file nor the H5 unless the checkout still has that commit
+    and dirty state just before the H5.
     """
 
     if args.out_h5 is None:
@@ -3155,6 +3187,8 @@ def _write_calibrated_artifact(
         projected.strata,
         mass_log=projected.mass_log,
     )
+    # The last moment before any byte of the artifact exists.
+    _require_unchanged_code(code)
     _write_dataset(
         calibrated,
         Path(args.out_h5),
@@ -3180,6 +3214,10 @@ def _write_calibrated_artifact(
                     "assignment_file": ssi_medicaid["assignment_file"],
                 },
                 "live_stored_inputs": live_inputs.provenance,
+                # The code that wrote these bytes, as read when the stage
+                # started. The build's ID names the packaging code, so
+                # package refuses any other writer.
+                "code": code,
                 "note": (
                     "The engine-pass contract (input-schema projection + "
                     "reviewed-null default fill) is applied to the published "
@@ -3554,6 +3592,53 @@ def do_qa(args) -> None:
     )
 
 
+def _require_artifact_written_by(
+    consumer_export: dict, code: dict, *, allow_dirty: bool
+) -> bool:
+    """Refuse to give a build an ID that names code other than its writer.
+
+    The calibrate stage writes the published bytes and records its code in
+    ``consumer_export.json``; the build's ID names the packaging code. They
+    must be the same commit, so the build's ID names the code that produced
+    the artifact. A checkpoint that records no writer is refused, not
+    trusted. A writer record that does not say ``dirty: false`` counts as
+    dirty, so it needs ``allow_dirty``.
+
+    Returns whether the writer's tree counts as dirty, so the build can
+    record it even when packaging runs from a clean tree.
+    """
+
+    written_by = consumer_export.get("code")
+    commit = written_by.get("commit") if isinstance(written_by, dict) else None
+    # A commit is a non-empty string; anything else names no code.
+    if not isinstance(commit, str) or not commit:
+        raise SystemExit(
+            "consumer_export.json records no code identity for the calibrated "
+            "H5, so the build's ID cannot be shown to name the code that wrote "
+            "it. Re-run --stage calibrate (then qa and finalize) with the "
+            "current tool."
+        )
+    # Full commits: the abbreviated sha's length depends on the checkout (a
+    # shallow clone abbreviates shorter), so it cannot be compared.
+    if written_by["commit"] != code["commit"]:
+        raise SystemExit(
+            f"The calibrated H5 was written by code {written_by['commit']}, but "
+            f"packaging runs {code['commit']}, and the build's ID names the "
+            "packaging code. Package with the code that wrote the artifact, or "
+            "re-run --stage calibrate (then qa and finalize) with this code."
+        )
+    # Only a record that says its tree was clean reads as clean.
+    writer_dirty = written_by.get("dirty") is not False
+    if writer_dirty and not allow_dirty:
+        raise SystemExit(
+            "The calibrated H5 was written from a dirty tree, or its record "
+            f"does not say the tree was clean (dirty={written_by.get('dirty')!r}); "
+            "a build's ID names a committed code vintage. Re-run --stage "
+            "calibrate from a clean tree, or pass --allow-dirty."
+        )
+    return writer_dirty
+
+
 def _repo_code_identity(allow_dirty: bool) -> dict[str, object]:
     def _git(*parts: str) -> str:
         return subprocess.check_output(
@@ -3561,6 +3646,7 @@ def _repo_code_identity(allow_dirty: bool) -> dict[str, object]:
         ).strip()
 
     sha = _git("rev-parse", "--short", "HEAD")
+    commit = _git("rev-parse", "HEAD")
     dirty = bool(_git("status", "--porcelain"))
     if dirty and not allow_dirty:
         raise SystemExit(
@@ -3568,7 +3654,34 @@ def _repo_code_identity(allow_dirty: bool) -> dict[str, object]:
             "committed code vintage. Commit first or pass --allow-dirty "
             "(the manifest will record dirty=true)."
         )
-    return {"sha": sha, "dirty": dirty, "branch": _git("branch", "--show-current")}
+    return {
+        "sha": sha,
+        "commit": commit,
+        "dirty": dirty,
+        "branch": _git("branch", "--show-current"),
+    }
+
+
+def _require_unchanged_code(started: dict) -> None:
+    """Refuse to write the calibrated artifact from a checkout that moved.
+
+    ``consumer_export.json`` records the code identity the calibrate stage
+    read when it started. A solve can run for hours, so just before calibrate
+    writes the H5 the checkout must still be at that commit and in that dirty
+    state; otherwise the record would name code other than the code that ran.
+    The branch's name may change: it names no code.
+    """
+
+    now = _repo_code_identity(allow_dirty=True)
+    if (now["commit"], now["dirty"]) != (started["commit"], started["dirty"]):
+        raise SystemExit(
+            "The checkout changed while calibrate ran: it started at "
+            f"{started['commit']} (dirty={started['dirty']}) and is now at "
+            f"{now['commit']} (dirty={now['dirty']}). Refusing to write the "
+            "calibrated H5 and consumer_export.json, whose record would name "
+            "code other than the code that ran. Re-run --stage calibrate from "
+            "a checkout that does not change during the run."
+        )
 
 
 def _ess_concentration_limitation(diagnostics: dict) -> dict:
@@ -3632,7 +3745,8 @@ def _ess_concentration_limitation(diagnostics: dict) -> dict:
     }
 
 
-#: Donor releases verified free of the microcosm#1178 Social Security erasure.
+#: Donor builds verified free of the microcosm#1178 Social Security erasure, by
+#: build ID (a tag donor's ``release_id``, a build-folder donor's ``build``).
 #: Before microcosm#1186 (merged 980282520), the PUF-support finalizer replaced
 #: CPS-reported Social Security with the PUF prediction, so a zero prediction
 #: erased a CPS reporter's benefit; on the national default
@@ -3640,24 +3754,35 @@ def _ess_concentration_limitation(diagnostics: dict) -> dict:
 #: fix runs where a national base is built. The ACS staging takes its donor
 #: as a finished H5 and never re-runs it, so a release inherits whatever its
 #: donor carries. The register is empty: every published US national release
-#: predates #1186. Add a donor's release id only after checking its
+#: predates #1186. Add a donor's build ID only after checking its
 #: PUF-support CPS reporters keep their reported benefit; until then the
 #: release discloses the inherited erasure.
 DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE: frozenset[str] = frozenset()
 
 
+def _donor_build_id(donor_release: dict) -> str | None:
+    """The donor build's ID from either reference form (microcosm#1570).
+
+    A donor that keeps only its tag is recorded with its ID as
+    ``release_id``; a donor in a build folder with it as ``build``, beside
+    its ``release``.
+    """
+
+    return donor_release.get("release_id") or donor_release.get("build")
+
+
 def _social_security_erasure_limitation(donor_release: dict) -> dict | None:
     """The inherited microcosm#1178 erasure, unless the donor is verified free."""
 
-    release_id = donor_release.get("release_id")
-    if release_id in DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE:
+    donor_build = _donor_build_id(donor_release)
+    if donor_build in DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE:
         return None
     return {
         "id": "social_security_cps_reporters_erased_inherited",
         "status": "reviewed_inherited_defect",
         "issue": "microcosm#1178",
         "fixed_by": "microcosm#1186 (980282520), in the national base build",
-        "donor_release": release_id,
+        "donor_release": donor_build,
         "affected_spines": ["asec_puf", "acs_2024_1yr"],
         "reason": (
             "The donor was built before microcosm#1186, so its PUF-support "
@@ -3675,7 +3800,7 @@ def _social_security_erasure_limitation(donor_release: dict) -> dict | None:
         "treatment": (
             "Refresh this artifact against the first national release built "
             "after microcosm#1186 (its refresh_recipe re-runs the chain with "
-            "that release as the donor), then add the donor's release id to "
+            "that release as the donor), then add the donor's build ID to "
             "DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE once its PUF-support CPS "
             "reporters are checked."
         ),
@@ -3690,6 +3815,9 @@ def _acs_wic_takeup_limitation(consumer_export: dict | None) -> dict | None:
     assumed = wic.get("people_assumed_true")
     if not assumed:
         return None
+    # A receipt written before the count existed states no count.
+    allowed = wic.get("people_allowed_without_decision")
+    of_allowed = "" if allowed is None else f", of {allowed} ACS-spine people"
     return {
         "id": "acs_wic_takeup_assumed_interim",
         "status": "reviewed_interim_assumption",
@@ -3702,8 +3830,9 @@ def _acs_wic_takeup_limitation(consumer_export: dict | None) -> dict | None:
             "people, and the donor stores its decisions under the retired "
             f"input name {wic.get('from')!r}, which the installed "
             "policyengine-us ignores. The consumer artifact stores them as "
-            f"{wic.get('to')!r}: every donor decision is kept, and every ACS "
-            "person is set to take WIC up when eligible. That is the engine's "
+            f"{wic.get('to')!r}: every stored decision is kept, and every "
+            f"person without one ({assumed}, all on the ACS spine{of_allowed}) "
+            "is set to take WIC up when eligible. That is the engine's "
             "default and the assumption policyengine.py applies to the same "
             "cells today; it is a modelling assumption, not observed "
             "participation."
@@ -4281,7 +4410,7 @@ def finalize_reviewed_limitations(
             "reason": (
                 "The QRF transfer donor is the certified Build O sparse "
                 "release "
-                f"({donor_release.get('release_id', 'unknown donor id')}): "
+                f"({_donor_build_id(donor_release) or 'unknown donor id'}): "
                 "the 57,240-household certified selection rather than a "
                 "dense full-row donor (buildl trained on the June dense "
                 "artifact). The conditioning set is thinner; per-fit donor "
@@ -5411,6 +5540,8 @@ def do_finalize(args) -> None:
                 "filled_columns",
                 "total_values_filled",
                 "staging_sha256",
+                "live_stored_inputs",
+                "code",
             )
         }
         if consumer_export
@@ -5683,7 +5814,25 @@ def _require_spm_measurement(frame) -> dict[str, object]:
     }
 
 
+def _new_release_dir(args) -> Path:
+    """The release directory the package stage will write, which must not exist.
+
+    It is named after the release, not the build (microcosm#1570), so an
+    earlier package's directory under the same ``--out`` would mix two
+    builds' files.
+    """
+
+    release_dir = args.out.joinpath(*RELEASE_DIR_PARTS)
+    if release_dir.exists() or release_dir.is_symlink():
+        raise SystemExit(
+            f"{release_dir} already exists from an earlier package; remove it, "
+            "or package into another --out."
+        )
+    return release_dir
+
+
 def do_package(args) -> dict:
+    release_dir = _new_release_dir(args)
     diagnostics = _load_json(args.checkpoint_dir / "calibration_summary.json")
     diagnostics_status = diagnostics.get("calibration_diagnostics")
     if not isinstance(diagnostics_status, dict) or diagnostics_status.get(
@@ -5771,9 +5920,12 @@ def do_package(args) -> dict:
     )
 
     code = _repo_code_identity(args.allow_dirty)
+    writer_dirty = _require_artifact_written_by(
+        consumer_export, code, allow_dirty=args.allow_dirty
+    )
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    release_id = f"{RELEASE_ID_PREFIX}-{code['sha']}-{timestamp}"
-    release_dir = args.out / "releases" / release_id
+    # The build's ID; it names the build within the local-area release.
+    build_id = f"{RELEASE_ID_PREFIX}-{code['sha']}-{timestamp}"
 
     gates = gate_report.get("gates")
     hours_gate = gates.get("hours_worked_signal") if isinstance(gates, dict) else None
@@ -5963,9 +6115,11 @@ def do_package(args) -> dict:
                 "family_multipliers"
             ),
         ),
-        "publish": (
-            "tools/publish_release.sh <release_dir> --no-latest "
-            f"--artifact-root <run> --repo-id {HF_REPO_ID}"
+        # The release recipe's --out is <run>/release, the artifact root.
+        "publish": publication_commands(
+            "<run>/release/" + "/".join(RELEASE_DIR_PARTS),
+            repo_id=HF_REPO_ID,
+            artifact_root="<run>/release",
         ),
     }
     refresh_recipe["release"] = county_surface.refresh_recipe(
@@ -5983,10 +6137,14 @@ def do_package(args) -> dict:
         (gate_report.get("gates") or {}).get(DISTRICT_ESS_GATE)
     )
 
+    # Both manifests are written in the tagged shape and rewritten into the
+    # build-folder layout below, by rewrite_release_dir.
     build_manifest = {
-        "build_id": release_id,
+        "build_id": build_id,
         "build_sha": code["sha"],
-        "build_dirty": code["dirty"],
+        # Dirty if either the packaging tree or the tree that wrote the
+        # artifact was.
+        "build_dirty": bool(code["dirty"]) or writer_dirty,
         "created_at": datetime.now(UTC).isoformat(),
         "code": {"branch": code["branch"], "repo": "microcosm"},
         "runtime": {
@@ -6110,7 +6268,7 @@ def do_package(args) -> dict:
             "kind": kind,
             "path": path_name,
             "repo_id": HF_REPO_ID,
-            "revision": release_id,
+            "revision": build_id,
             "sha256": _sha256(local),
         }
 
@@ -6119,7 +6277,7 @@ def do_package(args) -> dict:
             "kind": "microdata",
             "path": ARTIFACT_FILENAME,
             "repo_id": HF_REPO_ID,
-            "revision": release_id,
+            "revision": build_id,
             "sha256": h5_sha,
         },
         "gate_summary": _artifact(
@@ -6139,19 +6297,27 @@ def do_package(args) -> dict:
             "diagnostics",
             release_dir / "calibration_diagnostics.json",
         )
+    # The emitter publishes a build folder's manifests, checksum ledger and
+    # declared artifacts only (microcosm#1570), so every other file written
+    # above, the evidence JSON included, is declared, as the UK dense
+    # assembler declares its evidence.
+    for name in contract_files:
+        key = Path(name).stem
+        if name != "build_manifest.json" and key not in artifacts:
+            artifacts[key] = _artifact(name, "diagnostics", release_dir / name)
 
     release_manifest = {
         "schema_version": 1,
         "data_package": {"name": "microcosm-data", "version": "0.1.0"},
-        # NON-DEFAULT: this artifact claims NO default dataset slot.
-        # Publishing it must never flip latest.json; it is discoverable by
-        # its immutable release id / tag only.
+        # NON-DEFAULT: this artifact claims NO default dataset slot. Its
+        # release is a local-area release in releases.json, never the
+        # repository's default; the build is found there by its ID.
         "default_datasets": {},
         "dataset_role": "non_default_local_area",
         "is_default": False,
         "namespace": RELEASE_NAMESPACE,
         "build": {
-            "build_id": release_id,
+            "build_id": build_id,
             "built_at": datetime.now(UTC).isoformat(),
             "built_with_core_package": {
                 "name": "policyengine-core",
@@ -6177,6 +6343,11 @@ def do_package(args) -> dict:
     (release_dir / "sha256sums.txt").write_text(
         "".join(f"{digest}  {name}\n" for name, digest in sorted(sums.items()))
     )
+    # microcosm#1570: both manifests name the release and the build, the build's
+    # details move to the release manifest's top level, each artifact gets its
+    # role and loses its revision, and the ledger's lines for the two
+    # manifests get their new digests.
+    rewrite_release_dir(release_dir, build=build_id)
 
     artifact_root = args.out
     root_copy = artifact_root / ARTIFACT_FILENAME
@@ -6196,7 +6367,9 @@ def do_package(args) -> dict:
         )
 
     result = {
-        "release_id": release_id,
+        "release_id": US_LOCAL_RELEASE_ID,
+        "release": US_LOCAL_RELEASE_ID,
+        "build": build_id,
         "release_dir": str(release_dir),
         "artifact_root": str(artifact_root),
         "root_artifact": {
@@ -6206,9 +6379,10 @@ def do_package(args) -> dict:
         },
         "is_default": False,
         "files": sorted(path.name for path in release_dir.iterdir()),
-        "publish_command": (
-            f"tools/publish_release.sh {release_dir} --no-latest "
-            f"--artifact-root {artifact_root} --repo-id {HF_REPO_ID}"
+        # Publishing lists the build without making it current; promoting,
+        # after review, makes it the release's current build.
+        **publication_commands(
+            release_dir, repo_id=HF_REPO_ID, artifact_root=artifact_root
         ),
     }
     (args.out / "package_result.json").write_text(json.dumps(result, indent=2))
@@ -6386,7 +6560,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--out",
         type=Path,
-        help="Release root for --stage package (releases/<id>/ lands here).",
+        help=(
+            "Release root for --stage package (releases/microcosm-us-2024-local/ "
+            "and the dataset land here)."
+        ),
     )
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument(
@@ -6450,6 +6627,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--out-h5 is required for calibrate/qa/finalize/package.")
     if "package" in stages and args.out is None:
         parser.error("--out is required for the package stage.")
+    if "package" in stages:
+        # Refused here as well as when the package stage starts, so a run of
+        # every stage stops before hours of the others.
+        earlier = args.out.joinpath(*RELEASE_DIR_PARTS)
+        if earlier.exists() or earlier.is_symlink():
+            parser.error(
+                f"{earlier} already exists from an earlier package; remove it, "
+                "or package into another --out."
+            )
     if args.out_h5 is not None and args.out_summary is None:
         args.out_summary = args.out_h5.with_suffix(".summary.json")
     if args.gate_report is None:

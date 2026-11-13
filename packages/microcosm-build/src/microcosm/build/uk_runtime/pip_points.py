@@ -185,6 +185,16 @@ PIP_POINTS_COUNTRY_REGIONS: Mapping[str, tuple[str, ...]] = {
     "northern_ireland": ("NORTHERN_IRELAND",),
 }
 
+#: What the receipt's recipients_by_country counts, and how to net those
+#: recipients out of a release (Vahid's second review of microcosm#1550,
+#: Should 1; B12 of the November event-data plan's PR3).
+PIP_POINTS_COUNTRY_NOTE = (
+    "weighted at the spine's household weights at this stage, before "
+    "calibration, not the release's calibrated weights; to net Adult "
+    "Disability Payment and Northern Ireland PIP recipients out at release "
+    "weights, filter the release on region rather than lift these counts"
+)
+
 PIP_POINTS_SCOPE = (
     "every person with pip_dl_category or pip_m_category other than NONE; "
     "Scotland's and Northern Ireland's recipients, outside DWP's tables "
@@ -646,6 +656,7 @@ def store_pip_points(
         "recipients_by_country": _recipients_by_country(
             recipient=recipient, country=country, weights=weights, sources=sources
         ),
+        "recipients_by_country_note": PIP_POINTS_COUNTRY_NOTE,
         "components": {},
     }
     for name, category, output in PIP_COMPONENTS:

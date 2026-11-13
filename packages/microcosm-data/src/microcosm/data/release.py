@@ -1,17 +1,19 @@
 """Publish a release and move its approved repository pointer.
 
-**The UK national, dense and local-area releases no longer publish
-here.** They publish each build into its own folder,
-``releases/<release>/<build>/``, through the emitter's ``publish_release``
-call (``microcosm-publish-release-build``, in ``microcosm-build``), and the
-repository's ``releases.json`` records which build is current.
-:func:`prepare_build_folder_release` checks such a build and lists its files
-with their roles; :func:`prepare_release` and :func:`publish_release` refuse
-it. Everything below describes the tagged layout that every US release
-keeps until the stable releases US builds publish under are agreed. The
-June 2023 UK release and ``populace-uk-<year>-<tier>-k<N>`` releases take no
-new builds: :func:`publish_release` refuses any repository that records its
-builds in ``releases.json``, as the UK repository does after its switch.
+**No UK or US release publishes here.** The UK national, dense and
+local-area releases and the US releases
+(:data:`~microcosm.data.contract.US_RELEASES`) publish each build into its
+own folder, ``releases/<release>/<build>/``, through the emitter's
+``publish_release`` call (``microcosm-publish-release-build``, in
+``microcosm-build``), and the repository's ``releases.json`` records which
+build is current. :func:`prepare_build_folder_release` checks such a build
+and lists its files with their roles; :func:`prepare_release` and
+:func:`publish_release` refuse it. :func:`publish_release` also refuses any
+repository that records its builds in ``releases.json``, as the UK and US
+repositories do after their switches, so the June 2023 UK release and
+``populace-uk-<year>-<tier>-k<N>`` releases take no new builds. Everything
+below describes the tagged layout, which builds that keep only their tag
+still have.
 
 The Hub repo publishes builds under ``releases/<build_id>/``, but nothing
 identified which release is *current*: a consumer had to list the tree and
@@ -39,10 +41,15 @@ without changing the frozen repository-global ``latest.json``. Nothing
 writes them any more;
 :func:`latest_line_release` still reads them until they are deleted.
 
-The EVIDENCE tier (microcosm#506) publishes through the same producer with
+The EVIDENCE tier (microcosm#506) published through the same producer with
 ``evidence=True``: identical immutable-tag mechanics, but the pointer that
 moves is ``latest-evidence.json`` — structurally never ``latest.json`` —
-and :func:`latest_evidence_release` is its consumer.
+and :func:`latest_evidence_release` is its consumer. Since the US switch, an
+evidence-tier build is a build of
+:data:`~microcosm.data.contract.US_EVIDENCE_RELEASE_ID` instead, whose
+current build in ``releases.json`` takes the place of
+``latest-evidence.json``. The switch deleted every ``latest*.json`` file, and
+:func:`latest_evidence_release` reads that current build instead.
 
 The Hub client is injected (``api=``) everywhere it is used, so the suite
 exercises the real branch, commit, tag, and pointer ordering against a fake —
@@ -70,6 +77,8 @@ from microcosm.data.contract import (
     NATIONAL_DEFAULT_DATASET_ROLE,
     RELEASE_MANIFEST_FILE_ROLE,
     RELEASE_ROLES,
+    US_EVIDENCE_RELEASE_ID,
+    US_RELEASES,
     _uk_line_cut_tag_re,
     line_for_release_id,
     publishes_to_build_folder,
@@ -78,7 +87,11 @@ from microcosm.data.contract import (
     validate_evidence_release_dir,
     validate_release_dir,
 )
-from microcosm.data.releases_record import RELEASES_RECORD_PATH
+from microcosm.data.releases_record import (
+    RELEASES_RECORD_PATH,
+    build_folder,
+    parse_releases_record,
+)
 from microcosm.data.slack import notify_release
 
 __all__ = [
@@ -150,8 +163,10 @@ class LatestPointer:
             :data:`RELEASE_TIER_CERTIFIED` for ``latest.json`` (whose payload
             predates tiers and carries no field), or
             :data:`RELEASE_TIER_EVIDENCE` for ``latest-evidence.json``.
-        revision: Immutable tag to fetch. Repository-global and evidence
-            pointers default to ``release_id``; a line pointer may name a cut tag.
+        revision: Revision to fetch. Repository-global and evidence
+            pointers default to ``release_id``, an immutable tag; a line
+            pointer may name another tag; an evidence build in a build folder
+            is read at ``main``, at which its folder never changes.
         line: Publication line for ``latest-<line>.json``; otherwise ``None``.
     """
 
@@ -308,16 +323,19 @@ class PreparedRelease:
 #: Where a build-folder release publishes from: the workspace command that
 #: hands each build to the emitter (``microcosm.build.release_publication``).
 BUILD_FOLDER_PUBLICATION_COMMAND = "microcosm-publish-release-build"
-#: Where a release that does not publish into build folders goes. Every US
-#: release publishes with tags and ``latest.json``. No publisher takes builds
-#: of the other UK releases once the UK repository records its builds in
-#: ``releases.json``; its switch moves the June 2023 build into a build
-#: folder of release ``populace-uk-2023``.
+#: Where a release that does not publish into build folders goes. Once its
+#: repository records its builds in ``releases.json``, every US build
+#: publishes into one of the US releases (``microcosm.data.contract.
+#: US_RELEASES``), and the other UK releases take no new builds; the UK
+#: switch moved the June 2023 build into a build folder of release
+#: ``populace-uk-2023``.
 TAGGED_RELEASE_ADVICE = (
-    "US releases publish with tags and latest.json through "
-    "tools/publish_release.sh; the June 2023 UK release and "
-    "populace-uk-<year>-<tier>-k<N> releases take no new builds once the UK "
-    "repository records its builds in releases.json."
+    "US builds publish into microcosm-us-2024-national, -local, "
+    "-receipt-donor, -evidence or -annual, in a directory named after the "
+    "release; "
+    "the June 2023 UK release and populace-uk-<year>-<tier>-k<N> releases "
+    "take no new builds once the UK repository records its builds in "
+    "releases.json."
 )
 
 
@@ -403,19 +421,59 @@ def build_folder_identity(release_dir: Path | str) -> tuple[str, str, str]:
     return repositories[0], release, build
 
 
+def _refuse_misplaced_parent_inputs(
+    release_dir: Path,
+    parent_h5: Path | str | None,
+    compatibility_wheels: tuple[Path | str, ...],
+) -> None:
+    """Refuse a parent H5 or tested wheels for a build whose contract takes none.
+
+    A source enrichment's contract replays its parent's H5 and the tested
+    wheels; a recertification replays its loader under its tested wheels too,
+    but its H5 is its parent's, so it takes no parent H5.
+    """
+    if parent_h5 is None and not compatibility_wheels:
+        return
+    from microcosm.data.compatibility_recertification import (
+        RECERTIFICATION_RELEASE_TYPE,
+    )
+    from microcosm.data.source_enrichment import SOURCE_ENRICHMENT_RELEASE_TYPE
+
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
+    release_type = (
+        manifest.get("release_type") if isinstance(manifest, Mapping) else None
+    )
+    if not (
+        release_type == SOURCE_ENRICHMENT_RELEASE_TYPE
+        or (release_type == RECERTIFICATION_RELEASE_TYPE and parent_h5 is None)
+    ):
+        raise ValueError(
+            "parent_h5 and compatibility_wheels require a source_enrichment "
+            "release; compatibility_wheels alone also serve a "
+            "compatibility_recertification release."
+        )
+
+
 def prepare_build_folder_release(
     release_dir: Path | str,
     *,
     artifact_root: Path | str | None = None,
     repository: str | None = None,
+    parent_h5: Path | str | None = None,
+    compatibility_wheels: tuple[Path | str, ...] = (),
 ) -> BuildFolderRelease:
     """Check a build-folder release's build and list the files it publishes.
 
-    The release contract runs first. Each artifact is read from the release
+    The release contract runs first: the evidence contract for a build of
+    the US evidence-tier release, the certified one otherwise. Each artifact is read from the release
     directory, or else from ``artifact_root`` (the H5 and the calibration
     weights live beside the candidate), and must match the SHA-256 its
     manifest records. ``repository``, when given, must be the one the
-    artifacts name. Nothing on the Hub is read or written.
+    artifacts name. A source enrichment's contract also takes its parent's
+    H5 (``parent_h5``) and the tested wheels (``compatibility_wheels``), and a
+    recertification's the wheels; any other build refuses them. Nothing on
+    the Hub is read or written.
 
     Raises:
         ReleaseContractError: If the build breaks its release contract.
@@ -425,9 +483,21 @@ def prepare_build_folder_release(
     """
     release_dir = Path(release_dir)
     named_repository, release, build = build_folder_identity(release_dir)
-    contract_warnings = validate_release_dir(release_dir, artifact_root=artifact_root)
-    for contract_warning in contract_warnings:
-        warnings.warn(f"release contract: {contract_warning}", stacklevel=2)
+    _refuse_misplaced_parent_inputs(release_dir, parent_h5, compatibility_wheels)
+    contract_warnings: list[str] = []
+    if release == US_EVIDENCE_RELEASE_ID:
+        # An evidence-tier build records the validation checks it failed, so
+        # its own contract runs; the certified one would refuse it.
+        validate_evidence_release_dir(release_dir)
+    else:
+        contract_warnings = validate_release_dir(
+            release_dir,
+            parent_h5=parent_h5,
+            artifact_root=artifact_root,
+            compatibility_wheels=tuple(compatibility_wheels),
+        )
+        for contract_warning in contract_warnings:
+            warnings.warn(f"release contract: {contract_warning}", stacklevel=2)
     if repository is not None and repository != named_repository:
         raise ValueError(
             f"release {release!r} names {named_repository} in its artifacts, not "
@@ -440,6 +510,13 @@ def prepare_build_folder_release(
         raise ValueError(
             f"release {release!r} declares dataset_role {dataset_role!r}, which "
             "has no role in releases.json."
+        )
+    expected_role = US_RELEASES.get(release)
+    if expected_role is not None and release_role != expected_role:
+        raise ValueError(
+            f"release {release!r} has role {expected_role!r} in releases.json, but "
+            f"this build declares dataset_role {dataset_role!r} (role "
+            f"{release_role!r}); publish it into a release of its role."
         )
     root = Path(artifact_root) if artifact_root is not None else None
     sources: list[tuple[str, str, Path, str | None]] = [
@@ -520,30 +597,7 @@ def prepare_release(
     """
     release_dir = Path(release_dir)
     _refuse_build_folder_release(release_dir.name)
-    if parent_h5 is not None or compatibility_wheels:
-        from microcosm.data.compatibility_recertification import (
-            RECERTIFICATION_RELEASE_TYPE,
-        )
-        from microcosm.data.source_enrichment import SOURCE_ENRICHMENT_RELEASE_TYPE
-
-        manifest_path = release_dir / "release_manifest.json"
-        manifest = (
-            json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
-        )
-        release_type = (
-            manifest.get("release_type") if isinstance(manifest, Mapping) else None
-        )
-        # A recertification replays its loader under its tested wheels too,
-        # but its H5 is its parent's, so it takes no parent_h5.
-        if not (
-            release_type == SOURCE_ENRICHMENT_RELEASE_TYPE
-            or (release_type == RECERTIFICATION_RELEASE_TYPE and parent_h5 is None)
-        ):
-            raise ValueError(
-                "parent_h5 and compatibility_wheels require a source_enrichment "
-                "release; compatibility_wheels alone also serve a "
-                "compatibility_recertification release."
-            )
+    _refuse_misplaced_parent_inputs(release_dir, parent_h5, compatibility_wheels)
     contract_warnings: list[str] = []
     if evidence:
         validate_evidence_release_dir(release_dir)
@@ -1352,8 +1406,15 @@ def _is_absent_revision_error(exc: BaseException) -> bool:
 
 
 def _is_absent_entry_error(exc: BaseException) -> bool:
-    """A Hub (or fake) answer that the file does not exist at that revision."""
-    return bool({cls.__name__ for cls in type(exc).__mro__} & _ABSENT_ENTRY_ERRORS)
+    """A Hub (or fake) answer that the file does not exist at that revision.
+
+    huggingface_hub's ``LocalEntryNotFoundError`` is also an
+    ``EntryNotFoundError`` and a ``FileNotFoundError``, but it is raised when
+    the Hub could not be asked (a 403, a 5xx that outlasted the retries, or
+    offline with nothing cached), so it is not that answer.
+    """
+    names = {cls.__name__ for cls in type(exc).__mro__}
+    return bool(names & _ABSENT_ENTRY_ERRORS) and "LocalEntryNotFoundError" not in names
 
 
 def _require_tag_describes_release(
@@ -1549,6 +1610,69 @@ def latest_line_release(repo_id: str, *, line: str, api=None) -> LatestPointer:
     )
 
 
+def never_cached_offline(error: BaseException) -> bool:
+    """Whether huggingface_hub is offline and the file was never cached.
+
+    Offline, the cache is all a reader has, so a ``releases.json`` that was
+    never cached reads as absent, as the pointer files then do.
+    """
+    try:
+        from huggingface_hub import constants
+        from huggingface_hub.utils import LocalEntryNotFoundError
+    except ImportError:  # pragma: no cover - declared dependency
+        return False
+    return bool(constants.HF_HUB_OFFLINE) and isinstance(error, LocalEntryNotFoundError)
+
+
+def _releases_record_bytes(api: object, *, repo_id: str) -> bytes | None:
+    """The repository's ``releases.json``, or ``None`` when the Hub says it
+    has none, or, offline, when it was never cached
+    (:func:`never_cached_offline`); any other failure to read it propagates."""
+    try:
+        local = api.hf_hub_download(
+            repo_id=repo_id, filename=RELEASES_RECORD_PATH, repo_type="dataset"
+        )
+    except Exception as exc:
+        if missing_on_hub(exc) or never_cached_offline(exc):
+            return None
+        raise
+    return Path(local).read_bytes()
+
+
+def _current_evidence_build(repo_id: str, record_bytes: bytes) -> LatestPointer:
+    """The evidence release's current build in ``releases.json``, as a pointer."""
+    try:
+        record = parse_releases_record(record_bytes)
+    except ValueError as exc:
+        raise ValueError(
+            f"{RELEASES_RECORD_PATH} in {repo_id} is not a valid release record: {exc}."
+        ) from exc
+    release = US_EVIDENCE_RELEASE_ID
+    entry = record.releases.get(release)
+    if entry is None:
+        raise ValueError(
+            f"{RELEASES_RECORD_PATH} in {repo_id} does not list the evidence "
+            f"release {release!r}."
+        )
+    build = entry.current
+    if build is None:
+        raise ValueError(
+            f"The evidence release {release!r} in {repo_id} has no current build."
+        )
+    folder = build_folder(release, build)
+    paths = {
+        stem: f"{folder}/{posixpath.basename(path)}"
+        for stem, path in latest_pointer_payload(build, updated_at="")["paths"].items()
+    }
+    return LatestPointer(
+        release_id=build,
+        updated_at=entry.builds[build].published_at,
+        paths=paths,
+        tier=RELEASE_TIER_EVIDENCE,
+        revision="main",
+    )
+
+
 def latest_evidence_release(repo_id: str, *, api=None) -> LatestPointer:
     """Read ``latest-evidence.json``: the best *current* evidence release.
 
@@ -1556,6 +1680,15 @@ def latest_evidence_release(repo_id: str, *, api=None) -> LatestPointer:
     consumers discover the best available artifact when no certified release
     carries it yet. Each evidence publish supersedes the last, so this
     pointer always names the current one.
+
+    A repository that records its builds in ``releases.json`` (the US
+    repository since its switch, microcosm#1570) has no
+    ``latest-evidence.json``: its evidence tier is
+    :data:`~microcosm.data.contract.US_EVIDENCE_RELEASE_ID`, and this returns
+    that release's current build. ``release_id`` is then the build,
+    ``paths`` are in its folder ``releases/<release>/<build>/``,
+    ``revision`` is ``main``, at which a build folder never changes, and
+    ``updated_at`` is when the build was published.
 
     Args:
         repo_id: Hub dataset repo, e.g. ``"policyengine/populace-us"``.
@@ -1566,8 +1699,14 @@ def latest_evidence_release(repo_id: str, *, api=None) -> LatestPointer:
     Raises:
         ValueError: If the pointer is malformed, does not declare the
             evidence tier, or names a release id without the
-            ``-evidence-`` segment.
+            ``-evidence-`` segment; or, with ``releases.json``, if the
+            evidence release is not listed or has no current build.
     """
+    if api is None:
+        api = _hf_api()
+    record_bytes = _releases_record_bytes(api, repo_id=repo_id)
+    if record_bytes is not None:
+        return _current_evidence_build(repo_id, record_bytes)
     payload = _read_pointer(repo_id, api, pointer_path=LATEST_EVIDENCE_POINTER_PATH)
     tier = payload.get("tier")
     if tier != RELEASE_TIER_EVIDENCE:

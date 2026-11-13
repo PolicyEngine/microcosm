@@ -273,7 +273,13 @@ class SignedPart:
 
 @dataclass(frozen=True)
 class Product:
-    """The engine input is the product of two concepts (hours x weeks)."""
+    """A usual rate times the weeks it held over, in either order.
+
+    Reads exactly two concepts: one usual rate, a float, and one annual flow
+    counted in weeks. Usual weekly hours times weeks worked is the year's
+    hours. A usual rate holds over the reference year's weeks of activity, so
+    nothing else multiplies it to a year's total.
+    """
 
 
 @dataclass(frozen=True)
@@ -924,16 +930,20 @@ def bind(
 
 
 #: Transforms that do arithmetic on a year's amount: a scale restates it per
-#: week or month, a sum adds amounts (and a scaled sum scales the total), and
-#: a share or fraction splits one. Each reads annual flows only, so none of
-#: them takes a stock (a value at the reference date), a usual rate or a
-#: persistent draw by accident; a binding that needs one needs a new transform.
+#: week or month, a sum adds amounts (a scaled sum scales the total, and a
+#: signed part keeps one sign of it), and a share or fraction splits one. Each
+#: reads annual flows only, so none of them takes a stock (a value at the
+#: reference date), a usual rate or a persistent draw by accident; a binding
+#: that needs one needs a new transform.
 #: The rule checks the concepts a
 #: binding computes from (``concepts``), not the household reference person a
 #: binding allocated to the reference unit also reads to place its value. A
-#: product is outside the rule: it multiplies a usual rate (weekly hours) by
-#: weeks.
+#: product has its own rule (:data:`_PRODUCT_BASES`).
 _FLOW_TRANSFORMS = (Scale, Sum, ScaledSum, SignedPart, Share, Fraction)
+
+#: A product multiplies one usual rate by one annual flow (the weeks the rate
+#: held over), so it reads exactly these two bases, once each.
+_PRODUCT_BASES = (TemporalBasis.USUAL_RATE, TemporalBasis.ANNUAL_FLOW)
 
 
 def _check_transform_arity(binding: InputBinding) -> None:
@@ -999,8 +1009,8 @@ def _check_transform_arity(binding: InputBinding) -> None:
                     f"reads annual flows only, and {item.id} has temporal "
                     f"basis {item.temporal_basis.value}."
                 )
-    if isinstance(transform, Product) and len(items) != 2:
-        raise ValueError(f"Binding for {name!r}: a product reads two concepts.")
+    if isinstance(transform, Product):
+        _check_product(name, items)
     if isinstance(transform, AllocateToReferencePerson) and items[0].entity != (
         "household"
     ):
@@ -1055,6 +1065,39 @@ def _check_transform_arity(binding: InputBinding) -> None:
             raise ValueError(f"Binding for {name!r}: take-up reads the seed.")
         if not transform.program:
             raise ValueError(f"Binding for {name!r}: take-up names its program.")
+
+
+def _check_product(name: str, items: list[Concept]) -> None:
+    if len(items) != 2:
+        raise ValueError(f"Binding for {name!r}: a product reads two concepts.")
+    for item in items:
+        if item.temporal_basis not in _PRODUCT_BASES:
+            raise ValueError(
+                f"Binding for {name!r}: a product reads a usual rate and an "
+                f"annual flow, and {item.id} has temporal basis "
+                f"{item.temporal_basis.value}."
+            )
+    first, second = items
+    if first.temporal_basis is second.temporal_basis:
+        raise ValueError(
+            f"Binding for {name!r}: a product reads one usual rate and one "
+            f"annual flow, and {first.id} and {second.id} both have temporal "
+            f"basis {first.temporal_basis.value}."
+        )
+    rate, weeks = sorted(
+        items, key=lambda item: _PRODUCT_BASES.index(item.temporal_basis)
+    )
+    if rate.dtype != "float":
+        raise ValueError(
+            f"Binding for {name!r}: a product's usual rate is a float, and "
+            f"{rate.id} has dtype {rate.dtype}."
+        )
+    if weeks.unit is not Unit.WEEKS or weeks.dtype not in ("int", "float"):
+        raise ValueError(
+            f"Binding for {name!r}: a product multiplies a usual rate by a "
+            f"number of weeks, and {weeks.id} has unit {weeks.unit.value} and "
+            f"dtype {weeks.dtype}."
+        )
 
 
 def _check_group_rule(engine: str, binding: InputBinding) -> None:

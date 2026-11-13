@@ -154,6 +154,9 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         # release, and through them the rest.
         "microcosm.data",
         "microcosm.data.annual_projections",
+        # microcosm#1570: compatibility_recertification reads a parent's
+        # files from where build_folder_manifests.referenced_build says.
+        "microcosm.data.build_folder_manifests",
         "microcosm.data.compatibility_recertification",
         "microcosm.data.contract",
         "microcosm.data.denied_pools",
