@@ -1080,6 +1080,8 @@ class TestUKCountryPackage:
             "scotgov_chargeable_dwellings_by_band.json",
             # microcosm#1095 S2(a): frs_council_tax's Scottish level.
             "scotgov_band_d_liability_facts.json",
+            # microcosm#931: read through uk_runtime.council_tax_band_d.
+            "scotgov_band_d_council_tax_2024_25.json",
             "dwp_move_to_uc_facts.json",
             "dwp_uc_award_band_facts.json",
             # microcosm#1095 Y4: uc_take_up's age fit.
@@ -1125,6 +1127,8 @@ class TestUKCountryPackage:
             "scotland_brma_la_overlap.json",
             "rfdr_area_layer.json",
             "rfdr_area_layer.provenance.json",
+            # microcosm#931: read through uk_runtime.council_tax_band_d.
+            "council_tax_band_d_england_wales_2024_25.json",
             "price_paid_property_support_bounds.json",
             # microcosm#1524: the stock cells; the land side is post-solve.
             "stock_cells_value.json",
@@ -1277,6 +1281,8 @@ class TestExistingPackagesGeneralize:
             "scotgov_chargeable_dwellings_by_band.json",
             # microcosm#1095 S2(a): frs_council_tax's Scottish level.
             "scotgov_band_d_liability_facts.json",
+            # microcosm#931: read through uk_runtime.council_tax_band_d.
+            "scotgov_band_d_council_tax_2024_25.json",
             "dwp_move_to_uc_facts.json",
             "dwp_uc_award_band_facts.json",
             # microcosm#1095 Y4: uc_take_up's age fit.
@@ -1322,6 +1328,8 @@ class TestExistingPackagesGeneralize:
             "scotland_brma_la_overlap.json",
             "rfdr_area_layer.json",
             "rfdr_area_layer.provenance.json",
+            # microcosm#931: read through uk_runtime.council_tax_band_d.
+            "council_tax_band_d_england_wales_2024_25.json",
             "price_paid_property_support_bounds.json",
             # microcosm#1524: the stock cells; the land side is post-solve.
             "stock_cells_value.json",
