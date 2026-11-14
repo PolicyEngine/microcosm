@@ -1,0 +1,30 @@
+Two country-neutral helpers, shared for Max's review and imported by nothing yet (#931): the exact expectation of an area code's value under a conditioned draw cell, in `microcosm.build.atomic_support_expectations`, and amounts held within a bound each record carries, in `microcosm.build.bounded_amounts`. The UK's council-tax localisation will call both: the first for each household's reference over the cell its area was drawn from, the second for the check that a reduction stays within its bill.
+
+- **`draw_cell_expectations(support, households, *, constraint_columns, weight_by, default_weight, value_column, values)`** takes `choose_fallback_levels`' arguments but the ladder, with each household's inputs already at the level it is drawn at, and returns one exact `Fraction` per household, in row order: the mean of `values` over the household's cell, weighted by the column it samples by. `values` are ints or Fractions keyed by the codes of `value_column`, a support code column.
+  - It reads the inputs as the shared draw does. A present constraint input is an exact-match constraint on its support code column, and a missing one is skipped, as the draw skips an input declared `required: false`. The household samples by the weight column the rule maps its code to where the code is present, and by `default_weight` where it is missing or no rule is given.
+  - The integer weights are summed by cell and `value_column` code, each sum is multiplied by its code's value, and the total is divided by the cell's mass once. A code without mass in the cell is not read. It is vectorised, with one grouped mass table per set of constraints present and one expectation per distinct cell and weight column.
+  - Refusals name declared columns only, never a count, a household, a code or a value. It refuses `constraint_columns`, `weight_by` and `default_weight` as the chooser does; a `value_column` that is not a support code column; values that are not ints or Fractions, a float or a bool among them; a frame that lacks or repeats an input column; a present input that is not a nonempty string without surrounding whitespace; a present code the rule does not map, which the draw also refuses; a household whose cell has no support row, or no mass in the weight it samples by; and a code with mass in a household's cell but no value.
+- **`amounts_within_bound(tables, *, entity, id_column, bound_column, same_entity_columns, member_columns, membership_columns, absolute_tolerance)`** returns one boolean per named amount column and `finite_nonnegative`.
+  - Each column's boolean says whether every record's amount is at most its bound plus the tolerance. The amount sits on the record itself, or on its members, summed to the record through their membership column.
+  - `finite_nonnegative` says whether every value read of the bound and of the amounts, member rows included, is finite and nonnegative, so any NaN, infinite or negative value fails it. A missing value reads as NaN: a NaN amount fails its column, and a NaN bound fails every column. An amount of plus infinity fails its column unless its bound is plus infinity too; minus infinity, like any amount at most its bound, passes it.
+  - Exclusions are the caller's: a check drops the records it leaves out, with their members, before calling. Refusals name tables and columns only, never an id, a value or a count.
+- **Nothing calls them yet, and no key moves.** Neither module is imported by a stage, kernel, gate, tool or other module, so no node binds either.
+- **Tests**, on invented supports and tables only.
+  - `tests/engine_free/shared/test_atomic_support_expectations.py`:
+    - expectations worked by hand, which the region's mean, the cell's unweighted mean or the mean by another weight column would miss;
+    - a missing input skipped and the default weight used, whether the frame holds it as None, NaN or pd.NA, in object, StringDtype (either storage), pandas' `str` or category columns; a missing input never matches a code spelled like a missing value;
+    - inputs follow `constraint_columns`, the default weight is the declared column, two codes sharing a weight column both read it, and a code without mass in the cell needs no value;
+    - at the decoder's whole weight range the expectation stays exact, equal to no float and to no fraction with a smaller denominator recovered from one;
+    - two Hypothesis properties: the expectation equals a loop over the support's areas, and it equals the expectation built from the shared draw's own integer cumulative table for the household's cell and weight column, over which the drawn area's value divided by a nonzero expectation averages exactly one. Where the loop or the draw refuses a household, the helper refuses it;
+    - a draw that takes the value code first, by the same weight column, has the same expectation, read from the shared draw's own table at the code's level;
+    - the vectorised result equals one household at a time, and shuffling the households or the support's areas changes no household's expectation;
+    - each refusal, with no digit in its text.
+  - `tests/engine_free/shared/test_bounded_amounts.py`:
+    - amounts at the bound pass, and just above it fail;
+    - the tolerance is honoured, and a two-member sum above the bound fails;
+    - members count toward their own record only;
+    - NaN, infinite and negative values fail `finite_nonnegative` wherever they are read; a NaN or plus-infinite amount fails its own column, and a negative one, minus infinity included, does not; a missing value reads as NaN;
+    - integer columns and tables without rows are read, and exclusions are the caller's;
+    - the verdicts do not depend on row order, and several member tables report in the order named;
+    - each refusal, with no digit in its text.
+  - The expectation test reads the shared draw's private cumulative table, so a change to `atomic_geography`'s draw can fail it.
