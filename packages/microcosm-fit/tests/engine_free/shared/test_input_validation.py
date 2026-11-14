@@ -1,12 +1,19 @@
 """Input contracts the microimpute bug-parity audit reproduced on microcosm-fit.
 
-Each example test pins one input that main at ``dc00d158`` mishandled, quietly
-or with an unrelated crash: an aliased seed, a NaN tolerance, a duplicated
-column label, an invalid probability, a sign with no weight, an empty donor
-table, an empty recipient batch, a missing distance value or an unseen
-category. Each fails on that commit. The properties pin the contracts for every
-input: valid input fits and draws exactly as before, and invalid input is
-refused by name.
+Each example test pins one input that main mishandled, quietly or with an
+unrelated crash: an aliased seed, a NaN tolerance, a duplicated column label,
+an invalid probability, a sign with no weight, an empty donor table, an empty
+recipient batch, a missing distance value or an unseen category. Against main
+at ``52aea147`` most fail for the defect they name. A few fail there only
+because main lacks a new keyword or helper (``unseen_categories``,
+``validated_integer``) or raised a less specific error: ``float()``'s own
+``TypeError`` for ``zero_atol=None``, a matmul shape error for too few
+weights, an unknown label it did not name. The guards pass there: they pin
+what the fixes keep, such as integer seeds, a partly weighted sign, the
+checkpoint's refusal of a boolean or string tolerance, ``predict_from_uniforms``
+on an empty batch, exact integer tolerances and NumPy label equality. The
+Hypothesis properties check the contracts over generated inputs: valid input
+is accepted and keeps its draws, and invalid input is refused by name.
 """
 
 from __future__ import annotations
@@ -25,6 +32,7 @@ from microcosm.fit import (
     GateCalibration,
     GateOutcome,
     QRFChainState,
+    Regime,
     RegimeGatedQRF,
     donor_distance_features,
     fit,
@@ -50,9 +58,14 @@ FITTING_PROPERTY = settings(
 
 EMPTY_BATCH = pd.DataFrame({"x": pd.Series([], dtype=float)})
 
-#: Both sign-gate calibrations, so the empty-batch tests reach both gate types:
-#: one boosted classifier, and the cross-fitted gate that averages fold gates.
-CALIBRATIONS = (GateCalibration.IN_SAMPLE, GateCalibration.CROSS_FITTED)
+#: Every sign-gate calibration, so the empty-batch tests reach both gate types:
+#: one boosted classifier, and the cross-fitted gate that averages fold gates,
+#: fitted on the rows' own weights or class-balanced ones.
+CALIBRATIONS = (
+    GateCalibration.IN_SAMPLE,
+    GateCalibration.CROSS_FITTED,
+    GateCalibration.CROSS_FITTED_BALANCED,
+)
 
 
 def _gated_donors() -> pd.DataFrame:
@@ -81,7 +94,7 @@ def _fit_gated(seed: int = 7, calibration: str = GateCalibration.IN_SAMPLE):
         seed=seed,
         gate_calibration=calibration,
     )
-    if calibration == GateCalibration.CROSS_FITTED:
+    if calibration != GateCalibration.IN_SAMPLE:
         # Every class has a row in every fold, so no gate falls back in-sample.
         gated = [outcome for outcome in model.gate_outcomes().values() if outcome]
         assert gated and set(gated) == {GateOutcome.CROSS_FITTED}
@@ -204,6 +217,56 @@ def test_detect_regime_refuses_a_nan_tolerance() -> None:
         detect_regime(np.array([1.0, 2.0]), zero_atol=math.nan)
 
 
+@pytest.mark.parametrize(
+    ("value", "regime"),
+    [(2**53, Regime.DEGENERATE_ZERO), (2**53 + 1, Regime.POSITIVE_ONLY)],
+)
+def test_detect_regime_compares_an_integer_tolerance_exactly(value, regime) -> None:
+    """Checking the tolerance must not turn it into a float.
+
+    As a float, 2**53 cannot tell 2**53 + 1 from 2**53, so an integer target
+    one above an integer tolerance would read as zero.
+    """
+    assert detect_regime(np.array([value], dtype=np.int64), zero_atol=2**53) == regime
+
+
+def _exact_regime(values: list[int], tolerance: int) -> str:
+    """The regime by exact integer arithmetic, as Python compares ints."""
+    zero = any(abs(v) <= tolerance for v in values)
+    positive = any(v > tolerance for v in values)
+    negative = any(v < -tolerance for v in values)
+    if positive and negative:
+        return Regime.THREE_SIGN if zero else Regime.SIGN_ONLY
+    if positive:
+        return Regime.ZERO_INFLATED_POSITIVE if zero else Regime.POSITIVE_ONLY
+    if negative:
+        return Regime.ZERO_INFLATED_NEGATIVE if zero else Regime.NEGATIVE_ONLY
+    return Regime.DEGENERATE_ZERO
+
+
+@st.composite
+def _integer_regime_inputs(draw):
+    """Integer targets, many within 2 of the tolerance or its negation.
+
+    Half the tolerances sit where float64 can no longer hold every integer.
+    """
+    tolerance = draw(st.one_of(st.integers(0, 1000), st.integers(2**52, 2**62)))
+    near = st.integers(-2, 2).map(lambda step: tolerance + step)
+    value = st.one_of(
+        st.integers(-(2**62), 2**62), near, near.map(lambda near_value: -near_value)
+    )
+    return draw(st.lists(value, min_size=1, max_size=6)), tolerance
+
+
+@PROPERTY
+@given(inputs=_integer_regime_inputs())
+def test_detect_regime_reads_integer_input_exactly(inputs) -> None:
+    """Above 2**53 a float tolerance merges neighbouring integers."""
+    values, tolerance = inputs
+    y = np.array(values, dtype=np.int64)
+    assert detect_regime(y, zero_atol=tolerance) == _exact_regime(values, tolerance)
+
+
 def _chain_payload(tolerance: float = 0.0) -> dict:
     donors = pd.DataFrame({"x": [0.0, 1.0, 2.0], "y": [1.0, 2.0, 3.0]})
     state = RegimeGatedQRF(n_estimators=1, zero_atol=tolerance).start_chain(
@@ -263,7 +326,12 @@ def _donor_table() -> pd.DataFrame:
 
 @pytest.mark.parametrize("label", ["x", "y"])
 def test_a_fit_refuses_a_predictor_or_target_label_naming_two_columns(label) -> None:
-    """``table['y']`` read both columns: main fitted a degenerate zero target."""
+    """``table[label]`` reads both columns, and main never said so.
+
+    Main fitted a duplicated predictor without a word, and crashed on this
+    duplicated target with an unrelated ``IndexError``. (The audit's all-zero
+    duplicated target fitted as degenerate zero instead.)
+    """
     table = _duplicated(_donor_table(), label)
     with pytest.raises(ValueError, match="more than one column"):
         RegimeGatedQRF(n_estimators=1).fit(table, ["x"], ["y"], weights="none")
@@ -335,7 +403,11 @@ def test_scores_refuse_negative_or_non_finite_probabilities(proba) -> None:
 
 
 def test_scores_refuse_rows_that_do_not_sum_to_one() -> None:
-    """A row of zeros (a learner absent from a fold) floored the loss at 1e-4."""
+    """A row of zeros (a learner absent from a fold) scored a finite loss.
+
+    The log loss floors the true-class probability at 1e-4, so a zero row
+    scored -log(1e-4), about 9.21, instead of failing.
+    """
     proba = np.array([[0.3, 0.3], [0.0, 0.0], [0.6, 0.4]])
     with pytest.raises(ValueError, match="do not sum to 1"):
         categorical_scores(proba, _LABELS, _CLASSES, np.ones(3))
@@ -354,6 +426,20 @@ def test_scores_refuse_weights_that_cannot_weight(weights) -> None:
 def test_scores_refuse_weights_of_the_wrong_length() -> None:
     with pytest.raises(ValueError, match="weights need one value per label"):
         categorical_scores(_PROBA, _LABELS, _CLASSES, np.ones(2))
+
+
+@pytest.mark.parametrize("part", ["proba", "weights"])
+def test_scores_refuse_complex_values(part) -> None:
+    """Casting to float dropped the imaginary parts, a NaN or infinite one too."""
+    proba = np.array([[complex(0.8, np.nan), 0.2], [0.2, 0.8], [0.6, 0.4]])
+    weights = np.array([complex(1.0, np.inf), 1.0, 1.0])
+    with pytest.raises(ValueError, match=f"{part} must be real numbers"):
+        categorical_scores(
+            proba if part == "proba" else _PROBA,
+            _LABELS,
+            _CLASSES,
+            weights if part == "weights" else np.ones(3),
+        )
 
 
 def test_scores_map_labels_by_the_supplied_class_order() -> None:
@@ -378,7 +464,7 @@ def test_scores_refuse_a_probability_matrix_of_the_wrong_shape() -> None:
         categorical_scores(np.full((3, 3), 1 / 3), _LABELS, _CLASSES, np.ones(3))
 
 
-def test_scores_refuse_a_stratum_that_does_not_label_every_row() -> None:
+def test_scores_refuse_a_stratum_of_the_wrong_length() -> None:
     with pytest.raises(ValueError, match="needs one label per row"):
         categorical_scores(
             _PROBA, _LABELS, _CLASSES, np.ones(3), strata={"half": ["x", "y"]}
@@ -388,6 +474,35 @@ def test_scores_refuse_a_stratum_that_does_not_label_every_row() -> None:
 def test_scores_still_name_an_unknown_label() -> None:
     with pytest.raises(ValueError, match=r"one of classes; \['c'\]"):
         categorical_scores(_PROBA, np.array(["a", "b", "c"]), _CLASSES, np.ones(3))
+
+
+@pytest.mark.parametrize(
+    ("labels", "classes"),
+    [([False, True], [0, 1]), ([0, 1], [False, True])],
+    ids=["boolean-labels", "boolean-classes"],
+)
+def test_scores_match_labels_to_classes_by_numpy_equality(labels, classes) -> None:
+    """``True == 1`` in NumPy, and main scored these; a pandas lookup refused them."""
+    proba = np.array([[0.8, 0.2], [0.2, 0.8]])
+    scores = categorical_scores(proba, np.array(labels), np.array(classes), np.ones(2))
+    assert scores["log_loss"] == -math.log(0.8)
+
+
+def test_the_order_of_the_classes_moves_no_calibration_score() -> None:
+    """The calibration fit fixes its first class's offset, so it read the order.
+
+    With constant predictions the slope is unidentified: in sorted order the
+    fit falls back to class rates, but with the first two classes swapped it
+    reported a slope of about 0.70.
+    """
+    proba = np.tile([0.6, 0.3, 0.1], (3, 1))
+    classes = np.arange(3)
+    weights = np.array([1.0, 9.0, 1.0])
+    base = categorical_scores(proba, classes, classes, weights)
+    order = np.array([1, 0, 2])
+    swapped = categorical_scores(proba[:, order], classes, classes[order], weights)
+    assert swapped == base
+    assert base["calibration_outcome"] == GateOutcome.CLASS_RATES
 
 
 @st.composite
@@ -426,14 +541,32 @@ def test_scores_stay_in_bounds_for_every_valid_input(inputs) -> None:
 @PROPERTY
 @given(inputs=_scorer_inputs(), data=st.data())
 def test_scores_do_not_depend_on_the_order_of_the_classes(inputs, data) -> None:
+    """Every score, calibration and strata included, to the last bit.
+
+    Both inputs are C-ordered, as the scorer's bit-for-bit claim requires:
+    ``proba[:, order]`` alone is Fortran-ordered, and with sorted classes the
+    scorer leaves its input as main did, so the weighted sums would round in
+    another order.
+    """
     proba, labels, classes, weights = inputs
     order = np.array(data.draw(st.permutations(range(len(classes)))))
-    base = categorical_scores(proba, labels, classes, weights)
-    permuted = categorical_scores(proba[:, order], labels, classes[order], weights)
-    assert permuted["log_loss"] == pytest.approx(base["log_loss"], rel=1e-12, abs=1e-12)
-    assert permuted["share_gap"] == pytest.approx(
-        base["share_gap"], rel=1e-9, abs=1e-12
+    strata = {
+        "s": np.array(
+            data.draw(
+                st.lists(st.integers(0, 2), min_size=len(labels), max_size=len(labels))
+            )
+        )
+    }
+    base = categorical_scores(proba, labels, classes, weights, strata=strata)
+    permuted = categorical_scores(
+        np.ascontiguousarray(proba[:, order]),
+        labels,
+        classes[order],
+        weights,
+        strata=strata,
     )
+    # JSON spells NaN (a stratum level with no weight) the same on both sides.
+    assert json.dumps(permuted, sort_keys=True) == json.dumps(base, sort_keys=True)
 
 
 @PROPERTY
@@ -629,7 +762,7 @@ def _distance_donors() -> pd.DataFrame:
 @pytest.mark.parametrize("value", [np.nan, np.inf, -np.inf, None])
 @pytest.mark.parametrize("side", ["recipients", "donors"])
 def test_rank_values_must_be_finite(columns, value, side) -> None:
-    """A missing recipient age ranked 1.0, above every donor."""
+    """A missing recipient age took rank 1.0, tying the oldest donor."""
     donors = _distance_donors()
     recipients = donors.iloc[:1].copy()
     frame = recipients if side == "recipients" else donors
@@ -693,7 +826,10 @@ def test_distances_refuse_a_label_naming_two_columns(side) -> None:
 
 
 def _main_distance_features(recipients, donors, *, rank, presence, scaled):
-    """``donor_distance_features`` as main had it at ``dc00d158``, verbatim.
+    """``donor_distance_features`` as main had it at ``dc00d158``, adapted.
+
+    The arguments are renamed and the rank helper is copied in; the coordinates are
+    main's arithmetic, without the guards this branch adds.
 
     The properties use it to pin that every valid input still gets exactly
     the coordinates it got before this validation existed.

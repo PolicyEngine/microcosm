@@ -258,17 +258,19 @@ class Regime:
     DEGENERATE_ZERO = "degenerate_zero"
 
 
-def _validated_zero_atol(value: object) -> float:
-    """Return a zero tolerance as a float, refusing anything but finite ``>= 0``.
+def _check_zero_atol(value: object) -> None:
+    """Refuse a zero tolerance that is not a finite real ``>= 0``.
 
     Every sign comparison reads the tolerance (``|y| <= zero_atol`` is zero,
     ``y > zero_atol`` positive, ``y < -zero_atol`` negative), so a bad one
     silently changes the regime: NaN makes all three comparisons false, which
-    detects positive data as degenerate zero and draws zeros; infinity calls
-    every finite value zero; a negative tolerance calls no value zero and puts
-    every value within its magnitude of zero in both sign classes, so all-zero
-    data detects as sign-only and the sign labels call 0 and 0.5 negative at a
-    tolerance of -1.
+    detects positive data as degenerate zero and draws zeros; positive
+    infinity calls every finite value zero; a negative tolerance calls no
+    value zero and puts every value within its magnitude of zero in both sign
+    classes, so all-zero data detects as sign-only and the sign labels call 0
+    and 0.5 negative at a tolerance of -1. The check converts nothing: an
+    integer is finite and is compared as it is, so a caller's comparisons
+    keep its exact value.
 
     Raises:
         TypeError: If ``value`` is not a real number, or is a boolean.
@@ -278,15 +280,18 @@ def _validated_zero_atol(value: object) -> float:
         raise TypeError(
             f"zero_atol must be a real number, got {value!r} ({type(value).__name__})."
         )
-    tolerance = float(value)
-    if not math.isfinite(tolerance) or tolerance < 0.0:
+    if isinstance(value, numbers.Integral):
+        valid = value >= 0
+    else:
+        tolerance = float(value)
+        valid = math.isfinite(tolerance) and tolerance >= 0.0
+    if not valid:
         raise ValueError(
-            f"zero_atol must be finite and >= 0, got {tolerance!r}: every sign "
+            f"zero_atol must be finite and >= 0, got {value!r}: every sign "
             "comparison reads it, so a NaN, infinite or negative tolerance "
-            "silently changes which values count as zero (NaN or infinity "
-            "would fit positive data as degenerate zero and draw zeros)."
+            "silently changes which values count as zero (NaN or positive "
+            "infinity would fit positive data as degenerate zero and draw zeros)."
         )
-    return tolerance
 
 
 def detect_regime(y: np.ndarray, *, zero_atol: float) -> str:
@@ -306,7 +311,7 @@ def detect_regime(y: np.ndarray, *, zero_atol: float) -> str:
     Raises:
         TypeError, ValueError: If ``zero_atol`` is not a finite real ``>= 0``.
     """
-    zero_atol = _validated_zero_atol(zero_atol)
+    _check_zero_atol(zero_atol)
     if y.size == 0:
         return Regime.DEGENERATE_ZERO
     has_zero = bool((np.abs(y) <= zero_atol).any())
@@ -1722,7 +1727,7 @@ class QRFChainState:
         # JSON reads NaN and Infinity back as floats, so a checkpoint can carry
         # a tolerance the constructor would refuse.
         try:
-            _validated_zero_atol(self.zero_atol)
+            _check_zero_atol(self.zero_atol)
         except (TypeError, ValueError) as error:
             raise ValueError(f"QRF chain zero_atol is invalid: {error}") from None
         if self.gate_calibration not in _GATE_CALIBRATIONS:
@@ -2268,7 +2273,8 @@ class RegimeGatedQRF:
         self.n_estimators = validated_integer(
             n_estimators, name="n_estimators", minimum=1
         )
-        self.zero_atol = _validated_zero_atol(zero_atol)
+        _check_zero_atol(zero_atol)
+        self.zero_atol = float(zero_atol)
         self.max_samples_leaf = max_samples_leaf
         self.seed = validated_integer(seed, name="seed", minimum=0)
         self.gate_calibration = gate_calibration

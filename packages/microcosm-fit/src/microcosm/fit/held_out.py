@@ -144,21 +144,34 @@ def _scored_inputs(
     classes: np.ndarray,
     weights: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Validated ``(proba, class_positions, weights)`` for :func:`categorical_scores`.
+    """Validated ``(proba, class_positions, weights)``, in sorted class order.
 
-    Each label maps to its column by the supplied class order, so the classes
-    may come in any order. A sorted search would misplace labels among
-    unsorted classes.
+    The scores always read the classes in sorted order: ``proba``'s columns
+    come back sorted by class, and each label's position is its class's place
+    in that order. So the classes may come in any order, a permutation of
+    ``classes`` with ``proba``'s columns leaves every score unchanged (to the
+    last bit for a C-ordered ``proba``), and sorted classes score exactly as
+    they always did, their ``proba`` untouched. The calibration fit fixes the
+    first class's offset, so it would otherwise depend on the column order.
+    Labels are found by a sorted search and NumPy equality, as before, so a
+    ``True`` label still matches a class of ``1``.
     """
-    proba = np.asarray(proba, dtype=np.float64)
+    raw_proba, raw_weights = np.asarray(proba), np.asarray(weights)
+    for name, values in (("proba", raw_proba), ("weights", raw_weights)):
+        if values.dtype.kind == "c":
+            raise ValueError(
+                f"{name} must be real numbers: converting complex values would "
+                "drop their imaginary parts, NaN or infinite ones included."
+            )
+    proba = np.asarray(raw_proba, dtype=np.float64)
     labels = np.asarray(labels)
     classes = np.asarray(classes)
-    w = np.asarray(weights, dtype=np.float64)
+    w = np.asarray(raw_weights, dtype=np.float64)
     if classes.ndim != 1 or not len(classes):
         raise ValueError("classes must list at least one category.")
-    order = pd.Index(classes)
-    if not order.is_unique:
-        repeated = sorted({str(c) for c in order[order.duplicated()]})
+    listed = pd.Index(classes)
+    if not listed.is_unique:
+        repeated = sorted({str(c) for c in listed[listed.duplicated()]})
         raise ValueError(f"classes must be distinct; {repeated} repeat.")
     if labels.ndim != 1:
         raise ValueError("labels must hold one category per row.")
@@ -188,10 +201,20 @@ def _scored_inputs(
         raise ValueError(
             "weights must be finite and non-negative, with a positive total."
         )
-    positions = order.get_indexer(labels)
-    if (positions < 0).any():
-        unknown = sorted({str(label) for label in labels[positions < 0]})
-        raise ValueError(f"Every label must be one of classes; {unknown[:5]} are not.")
+    order = np.argsort(classes, kind="stable")
+    ranked = classes[order]
+    positions = np.searchsorted(ranked, labels)
+    unknown = (positions >= len(ranked)) | (
+        ranked[np.minimum(positions, len(ranked) - 1)] != labels
+    )
+    if unknown.any():
+        names = sorted({str(label) for label in labels[unknown]})
+        raise ValueError(f"Every label must be one of classes; {names[:5]} are not.")
+    if (order != np.arange(len(order))).any():
+        # ``take`` keeps the rows C-ordered, as the sorted case's array usually
+        # is; ``proba[:, order]`` would be Fortran-ordered, and the weighted
+        # sums would round differently.
+        proba = np.take(proba, order, axis=1)
     return proba, positions, w
 
 
@@ -210,11 +233,14 @@ def categorical_scores(
             each in ``[0, 1]``, each row summing to 1 (within
             :data:`PROBABILITY_SUM_TOLERANCE`).
         labels: Each row's observed category.
-        classes: The distinct categories in column order, sorted or not.
-        weights: Per-row weights: finite, non-negative, positive in total.
-        strata: Name -> one stratum label per row. Share gaps (total
-            variation between the weighted predicted and observed class
-            shares) are reported within each level.
+        classes: The distinct categories in column order, sorted or not. The
+            scores take the columns in sorted class order, so the order the
+            classes come in changes no score.
+        weights: Per-row weights: real, finite, non-negative, positive in total.
+        strata: Name -> one stratum label per row (only the count is
+            checked). Share gaps (total variation between the weighted
+            predicted and observed class shares) are reported within each
+            level.
 
     Returns:
         ``log_loss`` (true-class probabilities floored at
@@ -225,10 +251,11 @@ def categorical_scores(
         publishes them bands them first.
 
     Raises:
-        ValueError: If ``proba`` is not one probability distribution per row
-            over ``classes``, ``classes`` repeat, a label is not one of
-            ``classes``, the weights are not finite and non-negative with a
-            positive total, or a stratum does not label every row.
+        ValueError: If ``proba`` is not one real probability distribution per
+            row over ``classes``, ``classes`` repeat, a label is not one of
+            ``classes``, the weights are not real, finite and non-negative
+            with a positive total, or a stratum does not hold one label per
+            row.
     """
     proba, index, w = _scored_inputs(proba, labels, classes, weights)
     strata = {name: np.asarray(stratum) for name, stratum in (strata or {}).items()}

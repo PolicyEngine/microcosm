@@ -42,8 +42,8 @@ def _finite_values(frame: pd.DataFrame, column: str, side: str) -> np.ndarray:
         raise ValueError(
             f"Distance column {column!r} has {bad} missing or non-finite "
             f"value(s) among the {side}. A rank cannot place them (a missing "
-            "recipient value would rank above every donor); fill or drop them "
-            "before building distances."
+            "recipient value would take rank 1, tying the largest donor); fill "
+            "or drop them before building distances."
         )
     return values
 
