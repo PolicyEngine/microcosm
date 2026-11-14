@@ -4,8 +4,9 @@ Each projection starts from the same base frame. Only one projected year is
 held in memory at a time. The original H5 is copied byte for byte, and all later
 files retain its entity/column/row layout with an explicit ``_time_period``.
 No file adds a column, so the parent must already carry every local-jurisdiction
-flag its own geography decides; the lane refuses a parent that lacks one before
-any model work.
+flag its own geography decides; the lane refuses a parent that lacks one,
+carries one that disagrees with its geography, or carries one its geography
+cannot decide, before any model work.
 Each projected year's H5 is ``microcosm_us_<year>`` (key and file name); the
 base year, and the family, take the key of the base build's dataset
 (``base_dataset``, ``microcosm_us_<base year>`` unless given), so the

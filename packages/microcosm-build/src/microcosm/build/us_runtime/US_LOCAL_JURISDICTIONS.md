@@ -21,7 +21,8 @@ line writes.
 `microcosm/build/us_local_jurisdictions.py` pins its SHA-256. Both sit outside
 `us_runtime`, whose package import asserts the engine ABI lock wherever
 policyengine-us is installed; `us_runtime/local_jurisdictions.py` re-exports
-the module's names for the geography lines. A county rule holds when
+the module's names for the `us_runtime` importers and three tools. A county
+rule holds when
 `county_fips` equals the registry county. A place rule holds when the first two
 digits of `county_fips` equal the registry state and `place_fips` equals the
 registry place code; place codes repeat across states, so the state is part of
@@ -109,13 +110,15 @@ an existing artifact rather than a geography line, and both call
 A third step, the annual static-aging lane (`us_annual_static_aging`), keeps its
 parent's columns and base-year bytes, so it cannot write the flags. It calls
 `us_local_jurisdiction_artifact_receipt` instead, which refuses a parent that
-lacks a flag its geography decides or carries one that disagrees with it, and
-records the receipt as `base.local_jurisdiction_flags` in the candidate
-manifest. A parent built before the flags existed therefore cannot seed annual
-files until a rebuild adds them. The lane imports the helper from
+lacks a flag its geography decides, carries one that disagrees with it, or
+carries one its geography cannot decide, and records the receipt as
+`base.local_jurisdiction_flags` in the candidate manifest. A parent built
+before the flags existed therefore cannot seed annual files until a rebuild
+adds them. The lane imports the helper from
 `microcosm.build.us_local_jurisdictions`, so the check loads no `us_runtime`
-module and so never asserts the engine ABI lock
-(`test_us_annual_static_aging_gate_imports.py`).
+module, never loads the module that asserts the engine ABI lock
+(`spec_engine.engine_abi`) and runs before `policyengine_us` is imported
+(`test_us_annual_static_aging_gate_imports.py` pins all three).
 
 The helper reads the rungs from the artifact's own geography
 (`us_local_jurisdiction_rungs_present`): the county rung when `county_fips` is

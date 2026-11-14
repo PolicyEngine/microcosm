@@ -2846,6 +2846,21 @@ def test_builder_derives_flags_after_every_support_reduction() -> None:
     assert base_load < base < selection < frozen < selection_report < mass_repair
     assert full_pool_export < l0_export < export_assignment < export < first_export_use
     assert first_export_use < write
+    # Each derivation's result is assigned back to the frame it derived. A
+    # call whose return value is dropped would leave the unflagged frame in
+    # use while its receipt says the flags were derived (review D2): the
+    # call that names each support is the assigned one.
+    derive = "_with_local_jurisdiction_flags("
+    base_assignment = source.index(f"base_frame = {derive}")
+    frozen_assignment = source.index(f"base_frame = {derive}", base_assignment + 1)
+    assert source.count(f"base_frame = {derive}") == 2
+    assert base_load < base_assignment < base < selection < frozen_assignment < frozen
+    for assignment, support, frame in (
+        (base_assignment, base, "base_frame"),
+        (frozen_assignment, frozen, "base_frame"),
+        (export_assignment, export, "export_frame"),
+    ):
+        assert source.rfind(derive, 0, support) == assignment + len(f"{frame} = ")
     # Nothing reassigns the export frame after the derivation, and the
     # helper is the only caller of the derivation.
     assert source.rfind("export_frame = ") == export_assignment

@@ -56,9 +56,10 @@ local-jurisdiction flag its own geography decides (see
 `in_denver` and `pa_philadelphia_wage_tax_resident` when every household has a
 county, and also `in_yonkers` and `in_wilmington` when every household has a
 place and a block. The builder reads the parent first and refuses one that lacks
-such a flag, or carries one that disagrees with its geography, before any model
-or output work. Rebuild a parent that predates the flags before it seeds annual
-files.
+such a flag, carries one that disagrees with its geography, or carries one its
+geography cannot decide (`in_yonkers` where some household has no block, say),
+before any model or output work. Rebuild a parent that predates the flags before
+it seeds annual files.
 
 The output directory must be new. A failed attempt retains its partial files and
 `build_status.json`; rerunning requires another directory. `annual_manifest.json`

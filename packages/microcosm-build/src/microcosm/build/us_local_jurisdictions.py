@@ -60,7 +60,8 @@ take-up contract, which asserts the engine ABI lock wherever policyengine-us
 is installed. The annual static-aging lane checks its parent here before any
 model work, so through ``us_runtime`` it would refuse every parent under any
 policyengine-us other than the locked one. ``us_runtime.local_jurisdictions``
-re-exports these names for the geography lines.
+re-exports these names for the ``us_runtime`` modules and the tools that
+import them there.
 """
 
 from __future__ import annotations
