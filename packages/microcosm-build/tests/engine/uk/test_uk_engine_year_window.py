@@ -278,6 +278,15 @@ def _resolver_run(frame, read_year: int, scratch):
     counterfactual = resolver._counterfactual_simulation(
         "pension_contributions_via_salary_sacrifice", "employment_income"
     )
+    # The counterfactual is the one simulation the resolver changes after it
+    # is built, so outputs read on it are compared too, not only what it holds.
+    for name in ("income_tax", "universal_credit", "household_net_income"):
+        measures[f"counterfactual {name}"] = np.asarray(
+            counterfactual.calculate(name, read_year)
+        )
+    measures["household_net_income"] = np.asarray(
+        resolver.simulation.calculate("household_net_income", read_year)
+    )
     simulations = {
         "main": resolver.simulation,
         "annual income": resolver._annual_income_simulation(),
@@ -304,6 +313,12 @@ def test_the_resolver_scratch_cut_holds_what_the_whole_projection_holds(
         today_measures, today = _resolver_run(frame, read_year, tmp_path / "today")
 
     assert (measures["uc_LCWRA_element"] > 0).sum() == 2
+    # The substitution moves net income, so the counterfactual's outputs are
+    # its own and not the main simulation's.
+    assert not np.array_equal(
+        measures["counterfactual household_net_income"],
+        measures["household_net_income"],
+    )
     for name, values in measures.items():
         np.testing.assert_array_equal(values, today_measures[name], err_msg=name)
     extra = set()

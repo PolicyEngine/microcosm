@@ -280,14 +280,23 @@ def test_in_build_datasets_hold_period_alone_and_match_the_projection(
     """In-build simulations read only PERIOD, so their datasets stop there.
 
     Values must match policyengine-us's own projection to later years: the
-    target frame, Medicaid and SNAP eligibility, and December SSI amounts.
+    target frame with one JCT reform family (a reform system on the cut
+    dataset), the ACA source inputs, Medicaid and SNAP eligibility, and
+    December SSI amounts.
     """
     import functools
 
     from policyengine_us.data import USMultiYearDataset, USSingleYearDataset
 
     builder = _load_builder_module()
-    monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", ())
+    # One real family stands for the others: each neutralizes one deduction
+    # on the same reform path.
+    (salt,) = (
+        reform
+        for reform in builder.US_JCT_TAX_EXPENDITURE_REFORMS
+        if reform.neutralized_variable == "salt_deduction"
+    )
+    monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", (salt,))
     frame = _real_engine_frame()
     cut = builder._dataset_from_frame(frame, assert_no_formula_owned_columns=False)
     projected = builder._dataset_from_frame(
@@ -306,12 +315,16 @@ def test_in_build_datasets_hold_period_alone_and_match_the_projection(
         _spec("ca_state_income_tax", "state_income_tax", {"state_fips": "06"}),
         _spec("md_state_income_tax", "state_income_tax", {"state_fips": "24"}),
         _spec("eitc", "fixture"),
+        _spec("jct_salt", "jct", measure=salt.measure),
     )
 
     def run() -> dict[str, object]:
-        target_frame, _, _ = builder._materialize_target_frame(frame, targets)
+        target_frame, _, compilation = builder._materialize_target_frame(frame, targets)
+        batching = compilation["target_materialization_batching"]
+        assert batching["jct_reform_families_simulated"] == 1
         return {
             "targets": target_frame.table("household"),
+            "aca": builder._aca_source_tax_unit_table(frame, {}),
             "medicaid": builder._medicaid_person_eligibility(frame),
             "snap": builder._snap_spm_unit_eligibility(frame),
             "ssi": builder._ssi_person_uncapped_amount(frame),
@@ -326,9 +339,11 @@ def test_in_build_datasets_hold_period_alone_and_match_the_projection(
     with_projection = run()
 
     assert with_cut["targets"]["income_tax"].to_numpy().any()
-    pd.testing.assert_frame_equal(
-        with_cut["targets"], with_projection["targets"], check_exact=True
-    )
+    assert salt.measure in with_cut["targets"].columns
+    for name in ("targets", "aca"):
+        pd.testing.assert_frame_equal(
+            with_cut[name], with_projection[name], check_exact=True, obj=name
+        )
     for name in ("medicaid", "snap", "ssi"):
         np.testing.assert_array_equal(
             with_cut[name], with_projection[name], err_msg=name
