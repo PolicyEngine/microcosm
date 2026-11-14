@@ -627,3 +627,185 @@ def test_compose_refuses_a_receipt_scored_under_another_register(
     path.write_text(json.dumps(receipt), encoding="utf-8")
     certification = compose_uk_release_certification(**green_certification_inputs)
     assert certification["score_receipt"]["evaluation"]["n_pruned"] == 1
+
+
+# ---------------------------------------------------------------------------
+# The certifier's half of the geography binding check (microcosm#931)
+# ---------------------------------------------------------------------------
+
+_GEOGRAPHY_LEAD = (
+    "a national release certifies only a spine of one geographic clone whose "
+    "geography binding is a release's (microcosm#931); "
+)
+
+
+def _geography_refusal(inputs) -> str:
+    """Compose ``inputs``, which the geography check must refuse, and return
+    the refusal past its lead; no certification is written."""
+    with pytest.raises(UKReleaseCertificationError) as refused:
+        compose_uk_release_certification(**inputs)
+    assert not inputs["certification_path"].exists()
+    message = str(refused.value)
+    assert message.startswith(_GEOGRAPHY_LEAD), message
+    return message[len(_GEOGRAPHY_LEAD) :]
+
+
+def _pins(geography: dict, index: int) -> dict:
+    from microcosm.build.uk_runtime.atomic_area_support import SYSTEMS
+
+    return geography["support_pins"][SYSTEMS[index]]
+
+
+def _system(index: int) -> str:
+    from microcosm.build.uk_runtime.atomic_area_support import SYSTEMS
+
+    return SYSTEMS[index]
+
+
+_CONDITIONED = "is not the registered conditioned support"
+
+
+@pytest.mark.parametrize(
+    ("mutate", "failure"),
+    [
+        pytest.param(
+            lambda g: g.update(assignment="uniform"),
+            "assignment is not 'atomic'",
+            id="assignment",
+        ),
+        pytest.param(
+            lambda g: g.update(identity="household_id"),
+            "identity is not 'geography_household_key'",
+            id="identity",
+        ),
+        pytest.param(
+            lambda g: g.update(definition_sha256="f" * 63),
+            "definition_sha256 is not a SHA-256 hex digest",
+            id="definition",
+        ),
+        pytest.param(
+            lambda g: _pins(g, 0).update(sha256="0" * 64),
+            f"support_pins.{_system(0)} {_CONDITIONED}",
+            id="pin-digest",
+        ),
+        pytest.param(
+            lambda g: _pins(g, 1).update(size_bytes=float(_pins(g, 1)["size_bytes"])),
+            f"support_pins.{_system(1)} {_CONDITIONED}",
+            id="pin-size-type",
+        ),
+        pytest.param(
+            lambda g: g["support_pins"].pop(_system(2)),
+            f"support_pins.{_system(2)} {_CONDITIONED}",
+            id="pin-missing",
+        ),
+        pytest.param(
+            lambda g: g["support_pins"].update(extra=dict(_pins(g, 0))),
+            "support_pins names a system the register does not",
+            id="pin-extra-system",
+        ),
+        pytest.param(
+            lambda g: g.update(stream=[*g["stream"][:3], g["stream"][3] + 1]),
+            "stream is not the spine's area stream at its declared seed",
+            id="stream-seed",
+        ),
+        pytest.param(
+            lambda g: g.update(stream=[*g["stream"][:3], float(g["stream"][3])]),
+            "stream is not the spine's area stream at its declared seed",
+            id="stream-type",
+        ),
+        pytest.param(
+            lambda g: g.update(register="synthetic"),
+            "register is not 'sources.yaml'",
+            id="register",
+        ),
+    ],
+)
+def test_compose_refuses_a_spine_binding_a_release_cannot_carry(
+    green_certification_inputs, mutate, failure
+):
+    """The certifier's half of the binding check (microcosm#931): the spine
+    sidecar's geography block is held, at K = 1, to the helper the dense
+    release pre-flight holds a candidate's binding to
+    (country_adapter.uk_spine_geography_binding_failures). One case per
+    failure class of the block's fields; each refusal names the field and
+    never its value, and no certification is written."""
+    mutate(green_certification_inputs["spine_sidecar"]["geography"])
+    assert _geography_refusal(green_certification_inputs) == (
+        f"the spine sidecar's binding fails: {failure}."
+    )
+
+
+@pytest.mark.parametrize("clones", [0, 3, 15, True, 1.0, "1", None])
+def test_compose_refuses_a_spine_of_another_clone_count(
+    green_certification_inputs, clones
+):
+    """The national line certifies a spine of one geographic clone, its count
+    the int one: the binding check's clone-count class (microcosm#931)."""
+    green_certification_inputs["spine_sidecar"]["geographic_clone_count"] = clones
+    assert _geography_refusal(green_certification_inputs) == (
+        "the spine sidecar's binding fails: geographic_clone_count is not K = 1."
+    )
+
+
+def test_compose_reads_a_sidecar_without_a_clone_count_as_one_clone(
+    green_certification_inputs,
+):
+    """A sidecar that records no clone count describes a spine of one clone,
+    as the bound checkpoint reads it (microcosm#931)."""
+    del green_certification_inputs["spine_sidecar"]["geographic_clone_count"]
+    certification = compose_uk_release_certification(**green_certification_inputs)
+    assert certification["shippable"] is True
+
+
+@pytest.mark.parametrize("clones", [1, 15])
+@pytest.mark.parametrize("geography", ["absent", None, {}, "atomic"])
+def test_compose_refuses_a_spine_that_records_no_geography_binding(
+    green_certification_inputs, geography, clones
+):
+    """A spine that runs no area draw writes no geography block, and the
+    certifier refuses it as recording none, naming K too where it is not one
+    (microcosm#931)."""
+    sidecar = green_certification_inputs["spine_sidecar"]
+    sidecar["geographic_clone_count"] = clones
+    if geography == "absent":
+        del sidecar["geography"]
+    else:
+        sidecar["geography"] = geography
+    expected = (
+        "the spine sidecar records no geography binding (a spine that runs no "
+        "area draw writes none)"
+    )
+    if clones != 1:
+        expected += ", and its geographic_clone_count is not K = 1"
+    assert _geography_refusal(green_certification_inputs) == expected + "."
+
+
+def test_compose_refuses_a_binding_off_the_register(
+    green_certification_inputs, monkeypatch
+):
+    """The block's support pins are held to sources.yaml's conditioned
+    register, whatever the sidecar holds: a register whose supports are not
+    the ones the spine's areas were drawn on refuses every system's pin
+    (microcosm#931)."""
+    from test_support.microcosm_build.uk_full_build_cli import (
+        SYNTHETIC_SUPPORT_PINS,
+        patch_support_register,
+    )
+
+    patch_support_register(
+        monkeypatch,
+        pins={
+            system: {
+                "sha256": hashlib.sha256(system.encode()).hexdigest(),
+                "size_bytes": pin["size_bytes"],
+            }
+            for system, pin in SYNTHETIC_SUPPORT_PINS.items()
+        },
+    )
+    assert _geography_refusal(green_certification_inputs) == (
+        "the spine sidecar's binding fails: "
+        + "; ".join(
+            f"support_pins.{system} {_CONDITIONED}" for system in SYNTHETIC_SUPPORT_PINS
+        )
+        + "."
+    )

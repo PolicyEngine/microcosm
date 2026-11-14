@@ -153,7 +153,7 @@ def test_export_writes_area_codes_under_consumer_names_and_refuses_ladder_names(
     stale = ladder.assign(constituency_code_oa=["stale", "stale"])
     with pytest.raises(ValueError, match="already carries consumer area-code"):
         export_area_code_columns(stale)
-    # A table without geography passes unchanged (the national line).
+    # A table without geography passes unchanged.
     plain = pd.DataFrame({"household_id": [1], "region": ["LONDON"]})
     assert export_area_code_columns(plain) is plain
 
@@ -331,17 +331,11 @@ def test_graph_export_continuation_reuses_numerics_and_validates_recreated_file(
 
 @pytest.mark.parametrize("households", [None, 2])
 def test_full_gate_nodes_precede_dense_and_bind_final_problem_axis(households):
-    from microcosm.build.uk_runtime.atomic_area_support import (
-        uk_atomic_assignment_definition,
-    )
     from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
     from microcosm.build.uk_runtime.graph_build import UKFullBuildConfig, uk_full_graph
     from microcosm.build.uk_runtime.graph_calibration import UKGraphCalibrationConfig
     from microcosm.build.uk_runtime.graph_terminal import append_uk_full_gate_nodes
     from microcosm.graph import compile_graph
-    from test_support.microcosm_build.uk_atomic_support_fixtures import (
-        toy_support_payloads,
-    )
 
     raw = uk_spine_graph(source_mode="split")
     config = UKFullBuildConfig(
@@ -351,9 +345,6 @@ def test_full_gate_nodes_precede_dense_and_bind_final_problem_axis(households):
     full = uk_full_graph(
         config,
         spine=raw,
-        atomic_geography_definition=uk_atomic_assignment_definition(
-            toy_support_payloads(), seed=config.seed
-        ),
     )
     graph = append_uk_full_gate_nodes(
         full.graph,
@@ -399,6 +390,9 @@ def test_full_preflight_persists_real_source_failures_without_matrix_diagnostics
 
     from microcosm.build.gate_battery import _gates_manifest_payload
     from microcosm.build.uk_runtime import full_gates
+    from microcosm.build.uk_runtime.gate_phase_codes import (
+        uk_preflight_only_code_hash,
+    )
     from microcosm.build.uk_runtime.graph_terminal import (
         UKFullPreflightGateKernel,
         decode_full_gate_report,
@@ -430,6 +424,7 @@ def test_full_preflight_persists_real_source_failures_without_matrix_diagnostics
             "review_date": "2026-09-10",
             "sample_fraction": 1.0,
             "release_candidate": True,
+            "preflight_code": uk_preflight_only_code_hash(),
         },
         artifacts={
             "selection": artifact({"receipt": selection}),
@@ -822,24 +817,15 @@ def test_holdout_kernel_records_an_unrequested_holdout(monkeypatch):
 
 
 def test_full_gate_nodes_skip_the_holdout_unless_requested():
-    from microcosm.build.uk_runtime.atomic_area_support import (
-        uk_atomic_assignment_definition,
-    )
     from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
     from microcosm.build.uk_runtime.graph_build import UKFullBuildConfig, uk_full_graph
     from microcosm.build.uk_runtime.graph_terminal import append_uk_full_gate_nodes
-    from test_support.microcosm_build.uk_atomic_support_fixtures import (
-        toy_support_payloads,
-    )
 
     raw = uk_spine_graph(source_mode="split")
     config = UKFullBuildConfig(calibration_year=2025)
     full = uk_full_graph(
         config,
         spine=raw,
-        atomic_geography_definition=uk_atomic_assignment_definition(
-            toy_support_payloads(), seed=config.seed
-        ),
     )
     common = {
         "calibration": full.calibration,
@@ -857,15 +843,9 @@ def test_full_gate_nodes_skip_the_holdout_unless_requested():
 
 
 def _gate_nodes(**extra):
-    from microcosm.build.uk_runtime.atomic_area_support import (
-        uk_atomic_assignment_definition,
-    )
     from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
     from microcosm.build.uk_runtime.graph_build import UKFullBuildConfig, uk_full_graph
     from microcosm.build.uk_runtime.graph_terminal import append_uk_full_gate_nodes
-    from test_support.microcosm_build.uk_atomic_support_fixtures import (
-        toy_support_payloads,
-    )
 
     raw = uk_spine_graph(source_mode="split")
     config = UKFullBuildConfig(calibration_year=2025)
@@ -873,9 +853,6 @@ def _gate_nodes(**extra):
         config,
         spine=raw,
         review_date="2026-09-10",
-        atomic_geography_definition=uk_atomic_assignment_definition(
-            toy_support_payloads(), seed=config.seed
-        ),
     )
     return append_uk_full_gate_nodes(
         full.graph,
@@ -968,11 +945,9 @@ def _run_final_gate_kernel(monkeypatch, *, brma_row: bool = False, solved=None):
 
     from microcosm.build.gate_battery import _gates_manifest_payload
     from microcosm.build.uk_runtime import full_gates, geography_ladder
+    from microcosm.build.uk_runtime.gate_phase_codes import uk_terminal_only_code_hash
     from microcosm.build.uk_runtime.graph_targets import registry_payload
-    from microcosm.build.uk_runtime.graph_terminal import (
-        UKFullGateKernel,
-        uk_terminal_only_code_hash,
-    )
+    from microcosm.build.uk_runtime.graph_terminal import UKFullGateKernel
     from microcosm.calibrate import (
         TargetRegistry,
         TargetSet,
@@ -1469,10 +1444,13 @@ def test_the_gate_kernel_keys_the_solve_without_the_high_value_homes_code(
     monkeypatch,
 ):
     # The dense solve keys on the source preflight, which runs this kernel, so
-    # the report-only high-value homes code keys the calibrated node through
-    # its parameters and stays out of the kernel's hash (microcosm#1306
-    # review).
+    # the report-only high-value homes evidence code keys the calibrated node
+    # through its parameters and stays out of the kernel's hash (microcosm#1306
+    # review). high_value_homes' metric names, which the preflight's target
+    # surface reads, are in the kernel's hash, and the target kernels hash it
+    # too (microcosm#931 ruling 6).
     from microcosm.build.uk_runtime import (
+        gate_phase_codes,
         graph_terminal,
         high_value_home_gates,
         high_value_homes,
@@ -1486,7 +1464,7 @@ def test_the_gate_kernel_keys_the_solve_without_the_high_value_homes_code(
         return real(*objects, **kwargs)
 
     monkeypatch.setattr(graph_terminal, "source_hash", recording)
-    high_value = {high_value_home_gates.__name__, high_value_homes.__name__}
+    monkeypatch.setattr(gate_phase_codes, "source_hash", recording)
     # The preflight kernel inherits the calibrated kernel's code hash.
     for kernel in (
         graph_terminal.UKFullGateKernel,
@@ -1495,15 +1473,17 @@ def test_the_gate_kernel_keys_the_solve_without_the_high_value_homes_code(
         kernel(
             coverage_engine=object(), engine_identity="fixture"
         ).implementation_hash()
-        assert not hashed[-1] & high_value, kernel.__name__
-    # The hash is memoised per process; its undecorated body hashes the two
-    # high-value homes modules (and the diagnostics publication code, next
-    # test).
-    graph_terminal.uk_terminal_only_code_hash.__wrapped__()
-    assert high_value <= hashed[-1]
-    first = graph_terminal.uk_terminal_only_code_hash()
+        assert high_value_home_gates.__name__ not in hashed[-1], kernel.__name__
+        assert high_value_homes.__name__ in hashed[-1], kernel.__name__
+    # The hash is memoised per process; its undecorated body hashes the
+    # high-value homes evidence (and the diagnostics publication code, next
+    # test), and not what the kernel's hash holds.
+    gate_phase_codes.uk_terminal_only_code_hash.__wrapped__()
+    assert high_value_home_gates.__name__ in hashed[-1]
+    assert high_value_homes.__name__ not in hashed[-1]
+    first = gate_phase_codes.uk_terminal_only_code_hash()
     calls = len(hashed)
-    assert graph_terminal.uk_terminal_only_code_hash() == first
+    assert gate_phase_codes.uk_terminal_only_code_hash() == first
     assert len(hashed) == calls
 
 
@@ -1516,19 +1496,21 @@ def test_the_calibrated_node_keys_on_the_schema_9_publication_code_not_the_solve
     # dumped from CalibrationDiagnosticsV9. An edit to any of those modules
     # changes the output's bytes, so it must re-key the calibrated node (through
     # its terminal_code parameter); otherwise a store run with resume="auto"
-    # serves the old labels. Like the high-value homes code, it stays out of
-    # the two kernels' shared code hash. An edit to the catalogs, the schema
-    # or the label choices therefore never re-keys the preflight node or the
-    # solve; an edit to geography_constants still does, because the target
-    # kernels the preflight reads hash it too (microcosm#1492).
+    # serves the old labels. Like the high-value homes evidence code, it stays
+    # out of the two kernels' shared code hash. An edit to the catalogs, the
+    # schema or the label choices therefore never re-keys the preflight node
+    # or the solve. geography_constants is in the shared hash, since the
+    # preflight's ledger parity computes through it, and the target kernels
+    # the preflight reads hash it too (microcosm#1492; microcosm#931 ruling
+    # 6), so an edit to it re-keys both.
     import microcosm.calibrate.geography_constants as geography_constants_module
     import microcosm.calibrate.hierarchy_labels as hierarchy_labels_module
     import microcosm.diagnostics.catalogs as catalogs_module
     import microcosm.diagnostics.schema as diagnostics_schema_module
     from microcosm.build.uk_runtime import (
+        gate_phase_codes,
         graph_terminal,
         high_value_home_gates,
-        high_value_homes,
     )
 
     hashed_module_names: list[set[str]] = []
@@ -1539,11 +1521,11 @@ def test_the_calibrated_node_keys_on_the_schema_9_publication_code_not_the_solve
         return real_source_hash(*objects, **dependencies)
 
     monkeypatch.setattr(graph_terminal, "source_hash", record_hashed_modules)
+    monkeypatch.setattr(gate_phase_codes, "source_hash", record_hashed_modules)
     publication = {
         catalogs_module.__name__,
         diagnostics_schema_module.__name__,
         hierarchy_labels_module.__name__,
-        geography_constants_module.__name__,
     }
     for kernel in (
         graph_terminal.UKFullGateKernel,
@@ -1553,27 +1535,79 @@ def test_the_calibrated_node_keys_on_the_schema_9_publication_code_not_the_solve
             coverage_engine=object(), engine_identity="fixture"
         ).implementation_hash()
         assert not hashed_module_names[-1] & publication, kernel.__name__
-    graph_terminal.uk_terminal_only_code_hash.__wrapped__()
-    assert hashed_module_names[-1] == {
-        high_value_home_gates.__name__,
-        high_value_homes.__name__,
-        *publication,
-    }
+        assert geography_constants_module.__name__ in hashed_module_names[-1]
+    gate_phase_codes.uk_terminal_only_code_hash.__wrapped__()
+    assert {high_value_home_gates.__name__, *publication} <= hashed_module_names[-1]
+    assert geography_constants_module.__name__ not in hashed_module_names[-1]
 
 
-def test_the_calibrated_gates_refuse_a_stale_terminal_code() -> None:
+@pytest.mark.parametrize("phase", ["preflight", "terminal"])
+@pytest.mark.parametrize("code", ["0" * 64, None])
+def test_each_gate_phase_refuses_a_stale_or_missing_phase_code(phase, code) -> None:
+    """Each full gate phase's node carries its own code, which the kernel
+    checks before it evaluates anything (microcosm#931 ruling 6), through the
+    check the spine gates share (gate_phase_codes.require_current_phase_code;
+    microcosm#931, ruled 9 Nov (late))."""
     from types import SimpleNamespace
 
-    from microcosm.build.uk_runtime.graph_terminal import UKFullGateKernel
-
-    kernel = UKFullGateKernel(coverage_engine=object(), engine_identity="fixture")
-    context = SimpleNamespace(
-        params={
-            "engine_identity": "fixture",
-            "phase": "terminal",
-            "terminal_code": "0" * 64,
-        },
-        artifacts={},
+    from microcosm.build.uk_runtime.graph_terminal import (
+        UKFullGateKernel,
+        UKFullPreflightGateKernel,
     )
-    with pytest.raises(ValueError, match="terminal-only code"):
+
+    kernel = (UKFullPreflightGateKernel if phase == "preflight" else UKFullGateKernel)(
+        coverage_engine=object(), engine_identity="fixture"
+    )
+    params = {"engine_identity": "fixture", "phase": phase}
+    if code is not None:
+        params[f"{phase}_code"] = code
+    context = SimpleNamespace(params=params, artifacts={})
+    with pytest.raises(ValueError, match=f"UK full gate {phase}-only code"):
         kernel.run(context)
+
+
+def test_each_full_gate_node_carries_its_own_phase_code() -> None:
+    """The preflight and calibrated gate nodes each carry their phase's own
+    code, and only their own (microcosm#931 ruling 6)."""
+    from microcosm.build.uk_runtime.gate_phase_codes import UK_FULL_GATE_PHASE_CODE
+
+    graph = _gate_nodes()
+    for node, phase in (
+        ("uk.full.gates.preflight", "preflight"),
+        ("uk.full.gates.calibrated", "terminal"),
+    ):
+        params = graph.node(node).params
+        assert params["phase"] == phase
+        assert {key for key in params if key.endswith("_code")} == {f"{phase}_code"}
+        assert params[f"{phase}_code"] == UK_FULL_GATE_PHASE_CODE[phase]()
+
+
+@pytest.mark.parametrize("clones", [1, 3])
+def test_what_a_geography_first_spine_adds_to_the_export_is_allow_listed(clones):
+    """The dense line exports the bound spine as it stands (microcosm#931):
+    every column the spine's clones, keys and areas add to the surface the
+    export-surface gate reads is reviewed in UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
+    so the gate needs no list change (the dense allow-list pin)."""
+    from microcosm.build.uk_runtime.national_frame import uk_release_export_frame
+    from microcosm.build.uk_runtime.terminal_gates import (
+        UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
+        uk_export_candidate_columns,
+    )
+    from test_support.microcosm_build.uk_full_population_graph import (
+        source_frame,
+        spine_frame,
+    )
+
+    before = uk_export_candidate_columns(uk_release_export_frame(source_frame()))
+    after = uk_export_candidate_columns(uk_release_export_frame(spine_frame(clones)))
+    added = after - before
+    assert {
+        "household.household_clone_index",
+        "household.geography_household_key",
+        "household.atomic_area_code",
+        "household.local_authority",
+        "household.in_rural_fuel_duty_relief_area",
+    } <= added
+    assert added <= set(UK_ALLOWED_EXTRA_EXPORT_COLUMNS), sorted(
+        added - set(UK_ALLOWED_EXTRA_EXPORT_COLUMNS)
+    )

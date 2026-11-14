@@ -1,18 +1,15 @@
 """Controls for the import scan behind the compile kernels' hash checks.
 
 ``test_support.microcosm_build.first_party_imports`` reads a module's source
-for the first-party modules it imports, and walks a kernel's hashed modules
-through them. These tests pin each import form it resolves, that a
-submodule resolves the same way before and after it is imported, and how the
-walk treats a shared list's exclusions.
+for the first-party modules it imports. These tests pin each import form it
+resolves, and that a submodule resolves the same way before and after it is
+imported.
 """
 
 from __future__ import annotations
 
-import importlib
 import sys
 import uuid
-from types import SimpleNamespace
 
 import pytest
 
@@ -20,8 +17,6 @@ import microcosm.calibrate
 from test_support.microcosm_build.first_party_imports import (
     defining_module,
     first_party_imports,
-    recorded_import_mismatches,
-    unhashed_imports,
 )
 
 
@@ -96,61 +91,3 @@ def test_a_submodule_resolves_the_same_before_it_is_imported(monkeypatch):
     monkeypatch.delitem(sys.modules, name, raising=False)
     monkeypatch.delattr(microcosm.calibrate, "target_selection", raising=False)
     assert defining_module("microcosm.calibrate", "target_selection") == name
-
-
-def test_the_walk_follows_an_exclusion_but_not_its_imports(scratch_package):
-    """A list's exclusion covers only the listed module's import of it; the
-    excluded module's own imports must be hashed."""
-    leaf = scratch_package("leaf", "VALUE = 1\n")
-    middle = scratch_package("middle", f"from {leaf} import VALUE\n")
-    top = scratch_package("top", f"from {middle} import VALUE\n")
-    excluded = frozenset({middle})
-    assert unhashed_imports({top}, listed=(top,), excluded=excluded) == {
-        f"{middle} -> {leaf}"
-    }
-    # From a module outside the list, the exclusion does not apply.
-    assert unhashed_imports({top}, listed=(), excluded=excluded) == {
-        f"{top} -> {middle}"
-    }
-    assert unhashed_imports({top, middle, leaf}, listed=(), excluded=excluded) == set()
-
-
-class _RecordingKernel:
-    """A stand-in kernel whose hash names ``modules`` through ``owner``."""
-
-    def __init__(self, ref, owner, modules):
-        self.ref, self.owner, self.modules = ref, owner, modules
-
-    def implementation_hash(self):
-        return self.owner.source_hash(*self.modules)
-
-
-def test_a_group_record_does_not_cover_another_group(scratch_package):
-    """Removing a module from one group's hash fails the check even when
-    another group records the same edge (round 2 of #1493)."""
-    middle = scratch_package("group_middle", "VALUE = 1\n")
-    top = scratch_package("group_top", f"from {middle} import VALUE\n")
-    owner = SimpleNamespace(source_hash=lambda *objects, **dependencies: "x")
-    top_module, middle_module = (
-        importlib.import_module(name) for name in (top, middle)
-    )
-    hashes_both = _RecordingKernel("hashes.both@1", owner, (top_module, middle_module))
-    hashes_top = _RecordingKernel("hashes.top@1", owner, (top_module,))
-    recorded = {f"{top} -> {middle}": ("top only",)}
-
-    def mismatches(groups):
-        return recorded_import_mismatches(
-            groups, listed=(), excluded=frozenset(), hash_inputs={}, recorded=recorded
-        )
-
-    assert (
-        mismatches(
-            {"both": ((hashes_both, owner),), "top only": ((hashes_top, owner),)}
-        )
-        == {}
-    )
-    # The first group drops the middle module: the edge is recorded for the
-    # second group alone, so the first group's walk reports it.
-    assert mismatches(
-        {"both": ((hashes_top, owner),), "top only": ((hashes_top, owner),)}
-    ) == {"both: unhashed and not recorded": [f"{top} -> {middle}"]}

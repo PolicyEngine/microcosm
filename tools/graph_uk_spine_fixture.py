@@ -1,12 +1,23 @@
 #!/usr/bin/env python3
 """Regenerate the hermetic charter-H2 UK spine parity fixture.
 
-The oracle is the legacy :class:`microcosm.build.plan.StagePlan`: all 31
-stages are the current production transform classes.  Private source files
-are replaced only through their supported parsed-input seams.  The bundle's
-``fixture.json`` is deliberately data-only so the graph's unbound UK registry
-can reconstruct the same transforms; no recorded stage deltas are written or
-replayed.
+The oracle is the legacy :class:`microcosm.build.plan.StagePlan` over every
+stage of the packaged UK spine (``UK_FIXTURE_STAGE_COUNT``), each the current
+production transform class. The stages up to ``frs_annual_income_spells`` run
+on the survey households; ``geographic_expand`` then gives every household K
+geographic clones (K is ``geographic_clones`` in the fixture's config, one
+here), ``geographic_identity`` keys each clone, and every later stage runs on
+the clones (microcosm#931). The area stages draw each clone's area on three
+toy conditioned atomic-area supports: test support's invented table
+(``uk_conditioned_support_fixtures``), encoded through the canonical support
+adapter and written as fixture inputs, one per system, as
+``toy_<source id>.npz`` under the ids sources.yaml declares the conditioned
+supports by (``graph_kernels.FIXTURE_SUPPORT_INPUTS``); the oracle and the
+graph's registry read their bytes back as they read the donor tables. Private source
+files are replaced only through their supported parsed-input seams.  The
+bundle's ``fixture.json`` is deliberately data-only so the graph's unbound UK
+registry can reconstruct the same transforms; no recorded stage deltas are
+written or replayed.
 
 The oracle's identity is machine-specific, so it is never pinned:
 ``legacy_oracle_identity`` recomputes it in the acceptance test's own process.
@@ -17,6 +28,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 import tempfile
 from collections.abc import Iterable, Mapping
 from dataclasses import replace
@@ -71,7 +83,6 @@ from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
 from microcosm.build.uk_runtime.frs_annual_income import (
     UKFRSAnnualIncomeStageTransform,
 )
-from microcosm.build.uk_runtime.frs_brma import UKFRSBRMAStageTransform
 from microcosm.build.uk_runtime.frs_council_tax import UKFRSCouncilTaxStageTransform
 from microcosm.build.uk_runtime.frs_disability import UKFRSDisabilityStageTransform
 from microcosm.build.uk_runtime.frs_education import UKFRSEducationStageTransform
@@ -95,7 +106,14 @@ from microcosm.build.uk_runtime.frs_spine import (
     uk_frs_spine_seed_frame,
 )
 from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
+from microcosm.build.uk_runtime.geographic_expand import (
+    UKGeographicExpandStageTransform,
+)
+from microcosm.build.uk_runtime.geographic_identity import (
+    UKGeographicIdentityStageTransform,
+)
 from microcosm.build.uk_runtime.graph import uk_spine_graph
+from microcosm.build.uk_runtime.graph_kernels import FIXTURE_SUPPORT_INPUTS
 from microcosm.build.uk_runtime.high_value_home_support import (
     UKHighValueHomeSupportStageTransform,
 )
@@ -155,9 +173,6 @@ from microcosm.build.uk_runtime.property_purchases import (
     sdlt_region_mask,
     select_property_purchasers,
 )
-from microcosm.build.uk_runtime.regional_home_values import (
-    UKRegionalHomeValuesStageTransform,
-)
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
@@ -182,6 +197,17 @@ from microcosm.build.uk_runtime.spi_spine import (
     UKSPIIncomeSpineStageTransform,
     UKSPISupportChannelStageTransform,
 )
+from microcosm.build.uk_runtime.spine_council_tax import (
+    UKCouncilTaxLocaliseStageTransform,
+)
+from microcosm.build.uk_runtime.spine_geography import (
+    UKAreaBRMAStageTransform,
+    UKAtomicAreaAssignStageTransform,
+    UKLocalAuthorityStageTransform,
+    UKRFDRStageTransform,
+    UKSPICopyAreasStageTransform,
+)
+from microcosm.build.uk_runtime.spine_private_rent import UKPrivateRentStageTransform
 from microcosm.build.uk_runtime.student_loans import UKStudentLoansStageTransform
 from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
 from microcosm.build.uk_runtime.trading_allowance_receipts import (
@@ -218,12 +244,22 @@ _DONOR_ROWS = 64
 _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
-#: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 54
+#: certified-pair exclusions); moves whenever a spine stage is added. The
+#: area stages (atomic_area_assign, local_authority, rfdr, area_brma in
+#: frs_brma's place, spi_copy_areas) and private_rent made it 61, and
+#: regional_home_values' retirement 60: the WAS chain localises the home
+#: values; council_tax_localise, the council tax at each household's local
+#: authority just before the WAS chain, makes it 61 again (microcosm#931).
+UK_FIXTURE_STAGE_COUNT = 61
 _QRF_ESTIMATORS = 4
+#: The fixture spine's geographic clone count K (microcosm#931). The config
+#: records it, the oracle builds geographic_expand and its engine with it, as
+#: the graph registry's fixture transforms do from the config, and the
+#: committed graph carries it on geographic_expand's node.
+_GEOGRAPHIC_CLONES = 1
 
 # These are the complete object-string surface observed in the unchanged
-# legacy 40-stage output.  Graph storage uses pandas StringDtype/python.
+# legacy output.  Graph storage uses pandas StringDtype/python.
 _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "person": (
         "gender",
@@ -398,11 +434,26 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
         # region-stratified SPI prior allocation changes weighted person mass.
         has_child = household_id % 5 == 0
         region = (8, 11, 12, 1)[household_id % 4]
+        # GVTREGNO 8 (London) and 1 (North East) are in England, 11 is Wales
+        # and 12 Scotland; no fixture household is in Northern Ireland (IMDN).
+        imd_variable = ("IMDE", "IMDW", "IMDS", "IMDE")[household_id % 4]
         households.append(
             {
                 "SERNUM": household_id,
                 "GROSS4": 1.0 + household_id / 100.0,
                 "GVTREGNO": region,
+                # The address's IMD decile on its own nation's index
+                # (microcosm#931): deciles 1-10 in turn among each region's
+                # households, and blank, no decile, on every seventeenth
+                # household; the other nations' variables are blank.
+                **{
+                    variable: (
+                        1 + (household_id // 4) % 10
+                        if variable == imd_variable and household_id % 17
+                        else ""
+                    )
+                    for variable in ("IMDE", "IMDW", "IMDS", "IMDN")
+                },
                 "PTENTYP2": 5 + household_id % 2,
                 "TYPEACC": 1 + household_id % 4,
                 "BEDROOM6": 1 + household_id % 4,
@@ -874,6 +925,57 @@ def _write_frs_raw(root: Path) -> dict[str, dict[str, object]]:
         _write_tab(path, tables[table])
         artifacts[table] = _artifact(path, table=table)
     return artifacts
+
+
+def _toy_conditioned_supports() -> dict[str, bytes]:
+    """The three toy conditioned atomic-area supports' bytes, by system.
+
+    Test support's invented table through the canonical support adapter
+    (``uk_conditioned_support_fixtures.toy_conditioned_support_payloads``):
+    public area codes that the committed names roster, BRMA layer, lists of
+    rents and RFDR layer hold, with invented counts, deciles and band
+    weights, each region of Great Britain and Northern Ireland given
+    households. Every other output area the RFDR layer flags rides along as
+    a household-free filler, since the fuel-relief stage refuses a layer
+    that flags an area outside its system's support (microcosm#931).
+    """
+
+    # The table lives in the shared test_support package, which imports its
+    # siblings by package name, so the repository root must be importable.
+    if str(_REPOSITORY) not in sys.path:
+        sys.path.insert(0, str(_REPOSITORY))
+    from test_support.microcosm_build.uk_conditioned_support_fixtures import (
+        toy_conditioned_support_payloads,
+    )
+
+    return toy_conditioned_support_payloads()
+
+
+#: The prefix of the toy supports' file names. tools/build_uk_conditioned_area_supports.py
+#: writes the real-derived conditioned supports as ``<source id>.npz``, which
+#: the repository's licensed-output rule ignores; the toys are written as
+#: ``toy_<source id>.npz``, the only names the rule's exception admits, so a
+#: real support copied in beside them stays ignored (UKDS CD137 cl. 8).
+_TOY_SUPPORT_PREFIX = "toy_"
+
+
+def _write_supports(root: Path) -> dict[str, str]:
+    """Write the toy supports beneath ``root``, one ``toy_<source id>.npz``
+    each, and return the fixture inputs naming them, by source id: the
+    inputs keep the ids sources.yaml declares the conditioned supports by
+    (``graph_kernels.FIXTURE_SUPPORT_INPUTS``)."""
+
+    payloads = _toy_conditioned_supports()
+    if set(payloads) != set(FIXTURE_SUPPORT_INPUTS):
+        raise RuntimeError(
+            "The toy conditioned supports' systems drifted from the fixture inputs."
+        )
+    inputs: dict[str, str] = {}
+    for system, source_id in FIXTURE_SUPPORT_INPUTS.items():
+        name = f"{_TOY_SUPPORT_PREFIX}{source_id}.npz"
+        (root / name).write_bytes(payloads[system])
+        inputs[source_id] = name
+    return inputs
 
 
 def _was_person_donor() -> pd.DataFrame:
@@ -2259,11 +2361,15 @@ def _build_implementations(
     cgt_distribution: HMRCCapitalGainsJointDistribution,
     cgt_parameters: UKCGTPolicyParameters,
     cgt_badr_parameters: UKCGTBADRParameters,
+    geographic_clones: int,
+    supports: Mapping[str, bytes],
     cgt_asset_type_facts: HMRCCGTAssetTypeFacts | None = None,
     property_rental_facts: HMRCPropertyRentalFacts | None = None,
     property_purchase_targets: UKPropertyPurchaseTargets | None = None,
 ) -> tuple[dict[str, object], dict[str, Frame]]:
-    engine = PolicyEngineUKEngine()
+    # The engine refuses a frame carrying another clone count than the
+    # spine's, as the graph registry's fixture engine does (microcosm#931).
+    engine = PolicyEngineUKEngine(clones=geographic_clones)
     contract = load_uk_take_up_contract()
     root_capture: dict[str, Frame] = {}
     root_transform = UKFRSSpineStageTransform(raw_dir, stage=stages["frs_spine"])
@@ -2317,7 +2423,34 @@ def _build_implementations(
         "frs_household_draws": UKFRSHouseholdDrawsStageTransform(
             contract=contract, stage=stages["frs_household_draws"]
         ),
-        "frs_brma": UKFRSBRMAStageTransform(stage=stages["frs_brma"], engine=engine),
+        # Each clone's area, local authority and fuel-relief flag, drawn on
+        # the toy conditioned supports before the draws, its BRMA in
+        # frs_brma's place after them, and the SPI copies' own keys and areas
+        # (microcosm#931), built as the graph registry's fixture
+        # implementations build them.
+        "atomic_area_assign": UKAtomicAreaAssignStageTransform(
+            stage=stages["atomic_area_assign"], supports=supports
+        ),
+        "local_authority": UKLocalAuthorityStageTransform(
+            stage=stages["local_authority"]
+        ),
+        "rfdr": UKRFDRStageTransform(stage=stages["rfdr"], supports=supports),
+        "area_brma": UKAreaBRMAStageTransform(stage=stages["area_brma"], engine=engine),
+        "spi_copy_areas": UKSPICopyAreasStageTransform(
+            stage=stages["spi_copy_areas"], engine=engine, supports=supports
+        ),
+        # The fixture is a sampled rung, as its SPI stages are, so the
+        # private rents take the sampled rung's region rule (microcosm#931).
+        "private_rent": UKPrivateRentStageTransform(
+            stage=stages["private_rent"], sampled_rung=True
+        ),
+        # Each clone's council tax at its local authority's committed Band D
+        # over the expected Band D of its draw cell on the toy supports, just
+        # before the WAS chain (microcosm#931), built as the graph registry's
+        # fixture implementations build it.
+        "council_tax_localise": UKCouncilTaxLocaliseStageTransform(
+            stage=stages["council_tax_localise"], supports=supports
+        ),
         "was_wealth": UKWASWealthStageTransform(
             stage=stages["was_wealth"], engine=engine, donor=was
         ),
@@ -2359,9 +2492,6 @@ def _build_implementations(
             donor_table=spi_donor,
             facts=property_rental_facts,
         ),
-        "regional_home_values": UKRegionalHomeValuesStageTransform(
-            stage=stages["regional_home_values"]
-        ),
         "property_purchases": UKPropertyPurchasesStageTransform(
             stage=stages["property_purchases"],
             targets=property_purchase_targets,
@@ -2385,6 +2515,15 @@ def _build_implementations(
         ),
         "frs_annual_income_spells": UKFRSAnnualIncomeStageTransform(
             raw_dir, stage=stages["frs_annual_income_spells"]
+        ),
+        # Every stage that reads the raw FRS tabs runs before the clones
+        # exist: geographic_expand gives every household geographic_clones
+        # clones, and geographic_identity keys each one (microcosm#931).
+        "geographic_expand": UKGeographicExpandStageTransform(
+            stage=stages["geographic_expand"], clones=geographic_clones
+        ),
+        "geographic_identity": UKGeographicIdentityStageTransform(
+            stage=stages["geographic_identity"]
         ),
         "spi_support_channel": UKSPISupportChannelStageTransform(
             stage=stages["spi_support_channel"],
@@ -2499,7 +2638,7 @@ def _run_legacy_plan(
     stages: Iterable[SourceStageSpec],
     implementations: Mapping[str, object],
 ) -> Frame:
-    """Run the legacy 40-stage StagePlan oracle and return its final frame."""
+    """Run the legacy StagePlan oracle and return its final frame."""
 
     stages = tuple(stages)
     committed = load_country_spec("uk")
@@ -2532,7 +2671,7 @@ def _run_legacy_plan(
 def legacy_oracle_frame(fixture: Path) -> Frame:
     """The legacy oracle's final frame on the fixture, computed live.
 
-    Rebuilds the same 31 transforms the graph's UK registry reconstructs from
+    Rebuilds the same transforms the graph's UK registry reconstructs from
     ``fixture/sources``, runs them through the legacy StagePlan in this
     process, root included, and applies the one string normalization the
     fixture documents. The content identity is a byte-exact fingerprint of
@@ -2589,6 +2728,13 @@ def generate(output: Path) -> None:
     _write_csv(sources / "etb.csv", etb)
     _write_csv(sources / "aps.csv", aps)
     _write_csv(sources / "spi_donor.csv", spi_donor)
+    # The toy conditioned supports, read back as the graph registry's fixture
+    # implementations read them (microcosm#931).
+    support_inputs = _write_supports(sources)
+    supports = {
+        system: (sources / support_inputs[source_id]).read_bytes()
+        for system, source_id in FIXTURE_SUPPORT_INPUTS.items()
+    }
 
     income_targets = _hmrc_income_targets(Path("synthetic-hmrc.ods"))
     cgt_distribution = _cgt_distribution()
@@ -2622,6 +2768,8 @@ def generate(output: Path) -> None:
         cgt_distribution=cgt_distribution,
         cgt_parameters=cgt_parameters,
         cgt_badr_parameters=cgt_badr_parameters,
+        geographic_clones=_GEOGRAPHIC_CLONES,
+        supports=supports,
     )
     # The PRIS facts are sized to the frame property_components reads and the
     # asset-type facts to the frame the amounts redraw and the anchor leave,
@@ -2682,8 +2830,8 @@ def generate(output: Path) -> None:
     descriptor = {
         "schema_version": "uk-spine-parity-fixture.v1",
         "description": (
-            "Data-only inputs for reconstructing the same 31 current UK stage "
-            "transform classes used by the legacy StagePlan oracle."
+            "Data-only inputs for reconstructing the current UK stage "
+            "transforms used by the legacy StagePlan oracle."
         ),
         "stages": {stage.stage: _stage_payload(stage) for stage in stages},
         "config": {
@@ -2691,6 +2839,7 @@ def generate(output: Path) -> None:
             "spi_donor_sample_size": _SPI_DONOR_SAMPLE_SIZE,
             "qrf_estimators": _QRF_ESTIMATORS,
             "student_loans_calibration_year": 2025,
+            "geographic_clones": _GEOGRAPHIC_CLONES,
         },
         "inputs": {
             "frs_raw": "frs_raw",
@@ -2712,13 +2861,16 @@ def generate(output: Path) -> None:
             "cgt_asset_type_facts": "cgt_asset_type_facts.json",
             "property_rental_facts": "property_rental_facts.json",
             "property_purchase_targets": "property_purchase_targets.json",
+            # The toy conditioned supports, under the ids sources.yaml
+            # declares the conditioned supports by (microcosm#931).
+            **support_inputs,
         },
         "cgt_parameters": cgt_parameters.__dict__,
         "cgt_badr_parameters": cgt_badr_parameters.__dict__,
     }
     _write_json(sources / "fixture.json", descriptor)
 
-    graph = uk_spine_graph()
+    graph = uk_spine_graph(geographic_clones=_GEOGRAPHIC_CLONES)
     (output / "uk_spine.json").write_text(graph_to_json(graph) + "\n", encoding="utf-8")
     # Reported, never pinned: the identity is machine-specific (see
     # ``legacy_oracle_identity``), so the acceptance test computes it live.
@@ -2730,8 +2882,8 @@ def generate(output: Path) -> None:
         _normalization_markdown(), encoding="utf-8"
     )
     (output / "PRODUCED_BY.txt").write_text(
-        "tools/graph_uk_spine_fixture.py; current 31-transform legacy "
-        "StagePlan oracle with parsed private-source seams. The acceptance "
+        "tools/graph_uk_spine_fixture.py; current legacy StagePlan oracle "
+        "with parsed private-source seams. The acceptance "
         "test runs both sides from frs_raw in-process (root weights differ "
         "by one ulp between machines); the captured root tables serve the "
         "unbound registry's data-only CREATE path.\n",

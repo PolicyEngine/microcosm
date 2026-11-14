@@ -1953,6 +1953,39 @@
           "expected_row_count": 256
         }
       ]
+    },
+    {
+      "resource": "scotgov_band_d_council_tax_2024_25.json",
+      "purpose": "The Scottish Government's average Band D council tax for 2024-25 in each of the 32 council areas, from CTAS 2026 Council Tax Assumptions (the record set scotgov.ctas2026.band_d.fy2024; the local_authority level leaves out its Scotland row). Read through uk_runtime.council_tax_band_d, which merges it with England's and Wales's 2024-25 Band D (council_tax_band_d_england_wales_2024_25.json) over the Great Britain codes of local_authority_names.json for council-tax localisation (microcosm#931).",
+      "consumers": [
+        "uk_runtime.council_tax_band_d"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "ctas_2026_average_band_d_2024_25",
+          "selector": {
+            "source_name": "scotgov",
+            "source_concept": [
+              "scotgov.council_tax.average_band_d"
+            ],
+            "period_type": "fiscal_year",
+            "period_value": [
+              "2024"
+            ],
+            "geography_level": [
+              "local_authority"
+            ]
+          },
+          "expected_row_count": 32
+        }
+      ],
+      "licence": {
+        "licence": "Open Government Licence v3.0",
+        "attribution": [
+          "Contains public sector information licensed under the Open Government Licence v3.0 (Scottish Government, CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27)."
+        ]
+      }
     }
   ]
 }

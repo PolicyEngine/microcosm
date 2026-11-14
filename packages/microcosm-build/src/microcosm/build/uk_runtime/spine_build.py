@@ -9,7 +9,7 @@ import os
 import sys
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import metadata
@@ -19,10 +19,6 @@ from microcosm.build.artifact_files import file_artifact
 from microcosm.build.country_spec import (
     GatesManifest,
     load_country_spec,
-)
-from microcosm.build.frame_sampling import (
-    normalize_sampled_household_mass,
-    sample_frame_households,
 )
 from microcosm.build.gate_battery import (
     BlockingMode,
@@ -53,6 +49,12 @@ from microcosm.build.observation import (
 )
 from microcosm.build.plan import StageRecord
 from microcosm.build.run_outcome import classify_failure
+from microcosm.build.stage_profile import (
+    STAGE_PROFILE_FILENAME,
+    STAGE_PROFILE_SCHEMA_VERSION,
+    _load_profile_payload,
+    profile_stage,
+)
 from microcosm.build.staging_cli import (
     add_staging_arguments,
     validate_staging_arguments,
@@ -68,6 +70,7 @@ from microcosm.build.telemetry_emitter import (
 from microcosm.build.termination import BuildTerminatedError, raise_on_sigterm
 from microcosm.build.uk_runtime.age_tail import UKAgeTailStageTransform
 from microcosm.build.uk_runtime.aps_occupation import UKAPSOccupationStageTransform
+from microcosm.build.uk_runtime.atomic_area_support import CONDITIONED_SOURCES, SYSTEMS
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.calibration_run import (
     UK_SPINE_GATE_SCOPE,
@@ -98,13 +101,21 @@ from microcosm.build.uk_runtime.company_cars import (
     UKCompanyCarsStageTransform,
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
+from microcosm.build.uk_runtime.country_adapter import (
+    UK_SPINE_SUPPORT_REGISTER,
+    UK_SYNTHETIC_SUPPORT_REGISTER,
+    uk_atomic_support_register,
+    uk_spine_geography_binding,
+)
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
 from microcosm.build.uk_runtime.frs_annual_income import (
     UKFRSAnnualIncomeStageTransform,
 )
-from microcosm.build.uk_runtime.frs_brma import UKFRSBRMAStageTransform
-from microcosm.build.uk_runtime.frs_council_tax import UKFRSCouncilTaxStageTransform
+from microcosm.build.uk_runtime.frs_council_tax import (
+    FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN,
+    UKFRSCouncilTaxStageTransform,
+)
 from microcosm.build.uk_runtime.frs_disability import UKFRSDisabilityStageTransform
 from microcosm.build.uk_runtime.frs_education import UKFRSEducationStageTransform
 from microcosm.build.uk_runtime.frs_education_grants import (
@@ -123,10 +134,19 @@ from microcosm.build.uk_runtime.frs_relationships import (
 )
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.frs_spine import (
+    FRS_AREA_CONDITIONING_COLUMNS,
     UKFRSSpineStageTransform,
     uk_frs_spine_seed_frame,
 )
 from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
+from microcosm.build.uk_runtime.geographic_clones import geographic_clone_count
+from microcosm.build.uk_runtime.geographic_expand import (
+    GEOGRAPHIC_CLONE_LIMIT,
+    UKGeographicExpandStageTransform,
+)
+from microcosm.build.uk_runtime.geographic_identity import (
+    UKGeographicIdentityStageTransform,
+)
 from microcosm.build.uk_runtime.graph import (
     UK_SPINE_ASSEMBLED_FINAL_STAGE,
     uk_registry,
@@ -153,6 +173,7 @@ from microcosm.build.uk_runtime.lcfs_consumption import (
 from microcosm.build.uk_runtime.legacy_closure_take_up import (
     UKLegacyClosureTakeUpStageTransform,
 )
+from microcosm.build.uk_runtime.local_doctrine import UK_LOCAL_CLONE_COUNT
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     write_uk_national_frame,
@@ -160,6 +181,8 @@ from microcosm.build.uk_runtime.national_frame import (
 from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_RUNG_TOKENS,
     UK_SAMPLE_SEED_DEFAULT,
+    UKSampledSpineRootTransform,
+    sample_uk_spine_root,
 )
 from microcosm.build.uk_runtime.nts_bus_travel import UKNTSBusTravelStageTransform
 from microcosm.build.uk_runtime.orrery_contract import (
@@ -177,9 +200,6 @@ from microcosm.build.uk_runtime.property_components import (
 )
 from microcosm.build.uk_runtime.property_purchases import (
     UKPropertyPurchasesStageTransform,
-)
-from microcosm.build.uk_runtime.regional_home_values import (
-    UKRegionalHomeValuesStageTransform,
 )
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
@@ -207,6 +227,20 @@ from microcosm.build.uk_runtime.spi_spine import (
     UKSPIIncomeSpineStageTransform,
     UKSPISupportChannelStageTransform,
 )
+from microcosm.build.uk_runtime.spine_council_tax import (
+    COUNCIL_TAX_FRS_BILL_COLUMN,
+    UKCouncilTaxLocaliseStageTransform,
+)
+from microcosm.build.uk_runtime.spine_geography import (
+    ATOMIC_AREA_ASSIGN_STAGE_NAME,
+    UKAreaBRMAStageTransform,
+    UKAtomicAreaAssignStageTransform,
+    UKLocalAuthorityStageTransform,
+    UKRFDRStageTransform,
+    UKSPICopyAreasStageTransform,
+)
+from microcosm.build.uk_runtime.spine_posture import roster_failures, spec_roster
+from microcosm.build.uk_runtime.spine_private_rent import UKPrivateRentStageTransform
 from microcosm.build.uk_runtime.staging import UK_STAGING_REPOSITORY
 from microcosm.build.uk_runtime.student_loans import UKStudentLoansStageTransform
 from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
@@ -225,10 +259,13 @@ from microcosm.build.uk_runtime.uc_reporter_redraw import (
 from microcosm.build.uk_runtime.uc_take_up import UKUCTakeUpStageTransform
 from microcosm.build.uk_runtime.was_lisa import UKWASLISAStageTransform
 from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
-from microcosm.frame import Frame
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 from microcosm.graph import (
     ContentStore,
+    Kernel,
+    KernelContext,
+    KernelRegistry,
+    KernelResult,
     compile_graph,
     run_graph,
     save_run_evidence,
@@ -246,6 +283,95 @@ _REPOSITORY = next(
 )
 _RUNG_NAMED_EDGE_SIGNATURE = "The least populated classes in y have only 1 member"
 _RUNG_ABORT_EXIT_CODE = 3
+#: The spine's geographic clone count K by default (microcosm#931): one, unless
+#: ``--n-clones`` asks for another, from 1 to GEOGRAPHIC_CLONE_LIMIT. The
+#: graph's geographic_expand node, the transform it runs and the engine all
+#: take the count, and the node refuses a transform that makes another number
+#: of clones.
+_GEOGRAPHIC_CLONES = 1
+#: Why a release candidate takes one clone or, on a geography-first roster,
+#: the dense release's K (microcosm#931): the national line builds at one,
+#: and a dense release at the local doctrine's K
+#: (local_doctrine.UK_LOCAL_CLONE_COUNT).
+_RELEASE_CANDIDATE_CLONES_REFUSAL = (
+    "--release-candidate builds the spine at one geographic clone "
+    "(--n-clones 1) or, on a geography-first roster, at the dense release's "
+    f"{UK_LOCAL_CLONE_COUNT} (--n-clones {UK_LOCAL_CLONE_COUNT}; microcosm#931)."
+)
+
+
+def _release_candidate_clones_refusal(clones: int) -> str | None:
+    """Why a release-candidate spine cannot take ``clones`` geographic
+    clones, or ``None`` where it can (microcosm#931).
+
+    One clone always can. The dense release's K can only where the packaged
+    UK spec's roster is geography-first
+    (:func:`~microcosm.build.uk_runtime.spine_posture.roster_failures`, read
+    off the spec, with no sidecar block): a dense release's clones carry its
+    areas, and a spine whose stages assign none gives them no area to carry.
+    So it switches on by itself once the spec declares its area stages. Every
+    other count is refused. The refusal names the clone counts and what the
+    roster lacks, never a row count or a value.
+    """
+    if clones == 1:
+        return None
+    if clones != UK_LOCAL_CLONE_COUNT:
+        return _RELEASE_CANDIDATE_CLONES_REFUSAL
+    failures = roster_failures(
+        *spec_roster(load_country_spec("uk")), from_sidecar=False
+    )
+    if failures:
+        return (
+            "--release-candidate builds the spine at the dense release's "
+            f"{UK_LOCAL_CLONE_COUNT} geographic clones only on a geography-first "
+            "roster, one that assigns every geographic clone its area "
+            "(microcosm#931); the packaged UK spec's roster lacks: "
+            + "; ".join(failures)
+            + "."
+        )
+    return None
+
+
+#: The three conditioned atomic-area supports' flags, by system, in the
+#: systems' order (microcosm#931): the area stages read each one's bytes as
+#: the graph source sources.yaml declares the system's conditioned support
+#: by (atomic_area_support.CONDITIONED_SOURCES), held to the register.
+_ATOMIC_SUPPORT_FLAGS: Mapping[str, str] = {
+    "uk_ew_output_area_2021": "--atomic-support-ew",
+    "uk_scotland_output_area_2022": "--atomic-support-scotland",
+    "uk_ni_data_zone_2021": "--atomic-support-ni",
+}
+if tuple(_ATOMIC_SUPPORT_FLAGS) != SYSTEMS:
+    raise RuntimeError(
+        "the atomic-area support flags must name every system, in order."
+    )
+
+
+def _atomic_support_argument(flag: str) -> str:
+    """The parsed argument's attribute for a support flag."""
+
+    return flag.removeprefix("--").replace("-", "_")
+
+
+#: Declared outputs whose nonzero share no stage record reports: the root's
+#: area-conditioning carriers (frs_spine.FRS_AREA_CONDITIONING_COLUMNS), and
+#: the council-tax localisation's two carriers, each bill's provenance from
+#: frs_council_tax and the paid bill council_tax_localise keeps, which the
+#: release boundary drops with the root's (microcosm#931). They stay out of
+#: every receipt and of the sidecar's shares, whichever route built the
+#: records.
+_UNREPORTED_SHARE_COLUMNS = frozenset(
+    (
+        *FRS_AREA_CONDITIONING_COLUMNS,
+        FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN,
+        COUNCIL_TAX_FRS_BILL_COLUMN,
+    )
+)
+#: The library whose version the sidecar records beside ``engine_batches``:
+#: where the engine computes the frame clone by clone, private-school
+#: attendance stores its own restatement of the engine's percentile rank, by
+#: microdf's weighted percentile rank (microcosm#931).
+_BATCHED_RESTATEMENT_DEPENDENCY = "microdf-python"
 
 
 def _uk_spine_stage_names(spec) -> tuple[str, ...]:
@@ -278,6 +404,22 @@ def _rung_sample_fraction(value: str) -> float:
             "sample fraction must be one of 0.01, 0.10, or 1.0 (the #624 rungs)."
         )
     return fraction
+
+
+def _clone_count_argument(value: str) -> int:
+    """``--n-clones``: a whole number from 1 to the copy-id field's bound."""
+
+    refusal = (
+        "--n-clones must be a whole number from 1 to "
+        f"{GEOGRAPHIC_CLONE_LIMIT}, the geographic_support copy-id field's bound."
+    )
+    try:
+        clones = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(refusal) from error
+    if not 1 <= clones <= GEOGRAPHIC_CLONE_LIMIT:
+        raise argparse.ArgumentTypeError(refusal)
+    return clones
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -358,6 +500,31 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=f"Raw FRS spine sampling seed (default: {UK_SAMPLE_SEED_DEFAULT}).",
     )
     parser.add_argument(
+        "--n-clones",
+        type=_clone_count_argument,
+        default=_GEOGRAPHIC_CLONES,
+        help=(
+            "Geographic clones of every FRS household, from 1 to "
+            f"{GEOGRAPHIC_CLONE_LIMIT} (default: {_GEOGRAPHIC_CLONES}; "
+            "microcosm#931). The geographic_expand stage makes them after the "
+            "stages that read the raw FRS tables, each at an equal share of its "
+            "household's weight, and every later engine call runs clone by "
+            "clone. A release candidate takes one, or the dense release's "
+            f"{UK_LOCAL_CLONE_COUNT} on a geography-first roster."
+        ),
+    )
+    parser.add_argument(
+        "--stage-profile-dir",
+        type=Path,
+        help=(
+            f"Optional directory for {STAGE_PROFILE_FILENAME}: each graph "
+            "node's entry, peak and exit RSS and its wall time, the spine's "
+            "memory guard (microcosm#931). A node's record keeps the message of "
+            "a failure it raised, so keep the directory private, outside every "
+            "staged output; the build refuses one inside the repository."
+        ),
+    )
+    parser.add_argument(
         "--was-tab",
         type=Path,
         help="Caller-supplied private WAS round-8 household tab for was_wealth.",
@@ -426,6 +593,19 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "aps_occupation."
         ),
     )
+    for system, flag in _ATOMIC_SUPPORT_FLAGS.items():
+        parser.add_argument(
+            flag,
+            type=Path,
+            help=(
+                f"Local {system} conditioned atomic-area support "
+                f"({CONDITIONED_SOURCES[system]} in sources.yaml) for "
+                "atomic_area_assign, rfdr, spi_copy_areas and "
+                "council_tax_localise, required when "
+                "atomic_area_assign is scheduled: its SHA-256 and size must be "
+                "the ones sources.yaml registers (microcosm#931)."
+            ),
+        )
     parser.add_argument(
         "--emit-nonzero-shares",
         type=Path,
@@ -442,6 +622,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("sample seed must be a non-negative integer.")
     if args.smoke and args.release_candidate:
         parser.error("non-release smoke builds refuse --release-candidate.")
+    if args.release_candidate:
+        refusal = _release_candidate_clones_refusal(args.n_clones)
+        if refusal is not None:
+            parser.error(refusal)
     if _is_sampled(args) and args.checkpoint_dir is not None:
         parser.error(
             "sampled spine builds refuse --checkpoint-dir; sampled artifacts "
@@ -483,6 +667,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                 "--synthetic-fixture-dir cannot be combined with licensed input "
                 f"options: {', '.join(supplied)}."
             )
+        supports = [
+            flag
+            for flag in _ATOMIC_SUPPORT_FLAGS.values()
+            if getattr(args, _atomic_support_argument(flag)) is not None
+        ]
+        if supports:
+            parser.error(
+                "--synthetic-fixture-dir cannot be combined with "
+                f"{', '.join(supports)}: the fixture carries its own toy "
+                "conditioned supports (microcosm#931)."
+            )
         if not args.smoke:
             parser.error("--synthetic-fixture-dir requires --smoke.")
     validate_staging_arguments(parser, args)
@@ -498,6 +693,12 @@ def _sample_token(args: argparse.Namespace) -> str:
 
 
 def _validate_args(args: argparse.Namespace) -> None:
+    # The parser refuses the pair too; the full build sets release_candidate
+    # on a spine request it has already parsed, so the refusal holds here.
+    if args.release_candidate:
+        refusal = _release_candidate_clones_refusal(args.n_clones)
+        if refusal is not None:
+            raise ValueError(refusal)
     if args.synthetic_fixture_dir is not None:
         if not args.synthetic_fixture_dir.is_dir():
             raise ValueError(
@@ -531,6 +732,9 @@ def _validate_args(args: argparse.Namespace) -> None:
     }
     if args.emit_nonzero_shares is not None:
         paths["emit_nonzero_shares"] = args.emit_nonzero_shares
+    if args.stage_profile_dir is not None:
+        _validate_stage_profile_dir(args.stage_profile_dir)
+        paths["stage_profile"] = args.stage_profile_dir / STAGE_PROFILE_FILENAME
     resolved: dict[Path, str] = {}
     for label, path in paths.items():
         target = Path(path).expanduser().resolve()
@@ -538,6 +742,68 @@ def _validate_args(args: argparse.Namespace) -> None:
         if other is not None:
             raise ValueError(f"{label} path collides with {other}: {target}.")
         resolved[target] = label
+
+
+def _logbook_run_config(
+    args: argparse.Namespace,
+    *,
+    stage_names: Sequence[str],
+    artifact_pins_digest: str,
+    synthetic_fixture: Mapping[str, object] | None,
+) -> dict[str, object]:
+    """What the Logbook's identity digest is hashed from.
+
+    A spine of more than one geographic clone is another build, so its clone
+    count joins it (microcosm#931); a one-clone build's digest stays as it
+    was.
+    """
+
+    run_config: dict[str, object] = {
+        "pipeline": _PIPELINE,
+        "stages": list(stage_names),
+        "artifact_pins_digest": artifact_pins_digest,
+        "spine_h5": str(args.spine_h5),
+        "synthetic_fixture": synthetic_fixture,
+    }
+    if args.n_clones != 1:
+        run_config["geographic_clones"] = args.n_clones
+    return run_config
+
+
+def _validate_stage_profile_dir(directory: Path) -> None:
+    """Refuse a ``--stage-profile-dir`` before any node runs (microcosm#931).
+
+    The profiler merges a node's record into ``stage_profile.json`` only once
+    the node has run, so a path that is not a directory, or a profile there
+    of another schema, would fail the build after its first node and lose
+    that node's result. A record keeps the message of a failure its node
+    raised, so the directory must also lie outside the repository. Each
+    refusal is a fixed sentence.
+    """
+
+    target = Path(directory).expanduser().resolve()
+    if target.exists() and not target.is_dir():
+        raise ValueError("--stage-profile-dir must name a directory.")
+    repository = _REPOSITORY.resolve()
+    if (repository / "pyproject.toml").is_file() and (
+        target == repository or repository in target.parents
+    ):
+        raise ValueError(
+            "--stage-profile-dir must lie outside the repository: a stage "
+            "profile keeps the message of a failure its node raised, so it "
+            "stays private."
+        )
+    existing = target / STAGE_PROFILE_FILENAME
+    if existing.exists():
+        try:
+            _load_profile_payload(existing)
+        except (OSError, ValueError):
+            raise ValueError(
+                f"--stage-profile-dir holds a {STAGE_PROFILE_FILENAME} that is "
+                "not a stage profile of schema version "
+                f"{STAGE_PROFILE_SCHEMA_VERSION}, so no node's record could be "
+                "added to it."
+            ) from None
 
 
 def _synthetic_fixture_evidence(source: Path | None) -> dict[str, object] | None:
@@ -588,6 +854,16 @@ def _synthetic_graph_sources(source: Path) -> dict[str, Path]:
         "spi": "spi_donor",
         "hmrc_income": "hmrc_income_targets",
     }
+    # The toy conditioned supports, each the graph source of the id
+    # sources.yaml declares its system's support under (microcosm#931).
+    from microcosm.build.uk_runtime.graph_kernels import FIXTURE_SUPPORT_INPUTS
+
+    names.update(
+        {
+            CONDITIONED_SOURCES[system]: name
+            for system, name in FIXTURE_SUPPORT_INPUTS.items()
+        }
+    )
     resolved = {"frs": root}
     for role, name in names.items():
         relative = inputs.get(name)
@@ -737,7 +1013,11 @@ def _entity_row_counts(frame) -> dict[str, int]:
     return {entity: int(len(frame.table(entity))) for entity in frame.entities}
 
 
-def _rules_engine() -> PolicyEngineUKEngine:
+def _rules_engine(*, clones: int | None = None) -> PolicyEngineUKEngine:
+    """The pinned engine; ``clones``, the spine's clone count where the caller
+    knows it, makes the engine refuse a frame carrying another clone count,
+    and ``None`` refuses none (microcosm#931)."""
+
     try:
         import policyengine_uk  # noqa: F401
     except ImportError as exc:
@@ -750,7 +1030,37 @@ def _rules_engine() -> PolicyEngineUKEngine:
     )
 
     assert_installed_engine_is_pinned()
-    return PolicyEngineUKEngine()
+    # Whether a stage's call runs clone by clone is decided from its frame,
+    # never set here, and the clone count only refuses (microcosm#931), so
+    # nothing about batching enters the engine identity hashed from
+    # _rules_engine_provenance.
+    return PolicyEngineUKEngine(clones=clones)
+
+
+def _rules_engine_record(engine: object, frame) -> dict[str, object]:
+    """The sidecar's ``rules_engine``: the engine's provenance and, only when
+    the spine's final frame carries more than one clone, how the adapter
+    runs a call over it clone by clone (``engine_batches``, its
+    :meth:`batch_record`) and, beside it, the version of microdf-python
+    (``microdf_python``), whose weighted percentile rank private-school
+    attendance then stores in place of the engine's ("not-installed" when
+    absent, as the graph binds it; microcosm#931). Read from the final frame,
+    never from the calls this process ran: a resumed spine's stages that hit
+    their checkpoints run no call, and it records what a fresh run does. The
+    engine identity is hashed from the provenance alone, so it does not move
+    with batching."""
+
+    record = _rules_engine_provenance()
+    batch_record = getattr(engine, "batch_record", None)
+    batches = batch_record(frame) if callable(batch_record) else None
+    if batches is not None:
+        record["engine_batches"] = dict(batches)
+        try:
+            microdf = metadata.version(_BATCHED_RESTATEMENT_DEPENDENCY)
+        except metadata.PackageNotFoundError:
+            microdf = "not-installed"
+        record["microdf_python"] = microdf
+    return record
 
 
 def _rules_engine_provenance() -> dict[str, object]:
@@ -822,6 +1132,24 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
     for stage in stages:
         stage_seeds: dict[str, int] = {}
         for operation in stage.operations:
+            if operation.kind == "allocate_property_rental_income":
+                # The receipts walk keys its tie-break on person ids under its
+                # walk seed and the tie salt (microcosm#931).
+                walk_seed = operation.parameters.get("walk_seed")
+                if isinstance(walk_seed, int):
+                    stage_seeds[str(operation.parameters["tie_salt"])] = walk_seed
+                continue
+            if operation.kind == "assign_spi_copy_areas":
+                # The SPI copies' areas are drawn with the area draw's seed on
+                # its stream, and Northern Ireland's copies' BRMAs with the
+                # BRMA's seed under its benefit-unit salt (microcosm#931).
+                draw = operation.parameters.get("area_draw") or {}
+                if isinstance(draw.get("seed"), int):
+                    stage_seeds[str(draw["stream"])] = draw["seed"]
+                brma = operation.parameters.get("brma") or {}
+                if isinstance(brma.get("seed"), int):
+                    stage_seeds[str(brma["salts"]["benunit"])] = brma["seed"]
+                continue
             output = operation.parameters.get("output")
             seed = operation.parameters.get("seed")
             if seed is None:
@@ -870,11 +1198,26 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                 elif operation.kind == "assign_badr_qualifying_gains":
                     stage_seeds[operation.kind] = seed
                 elif operation.kind in (
+                    "assign_atomic_area",
+                    "localise_private_rents",
+                ):
+                    # The area draw and the private rents' tie-breaks are keyed
+                    # on each household's geography key on the stage's own
+                    # stream, whose seed is the stage's (microcosm#931).
+                    stage_seeds[str(operation.parameters["stream"])] = seed
+                elif operation.kind in (
                     "convert_donors_to_target_stock",
                     "convert_bonuses_to_bonus_sacrifice",
                 ):
                     stage_seeds[str(operation.parameters["salt"])] = seed
                 elif operation.kind == "top_up_to_stock":
+                    stage_seeds[str(operation.parameters["salt"])] = seed
+                elif operation.kind in (
+                    "split_top_wealth_support_households",
+                    "split_top_value_owner_households",
+                ):
+                    # The support splits' tie-breaks are keyed on household
+                    # ids under their salts (microcosm#931).
                     stage_seeds[str(operation.parameters["salt"])] = seed
                 elif operation.kind in (
                     "split_household_isa_balances",
@@ -910,9 +1253,18 @@ def _build_sidecar(
     synthetic_fixture: Mapping[str, object] | None = None,
     staging_delivery: Mapping[str, object] | None = None,
     spine_gate_report: dict[str, object] | None = None,
+    engine: object | None = None,
+    geography: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
+    """The spine's build sidecar.
+
+    ``geography`` is the spine's ``geography`` block where its area stages
+    ran (``country_adapter.uk_spine_geography_binding``, composed before any
+    stage runs from the supports they read, microcosm#931); a spine without
+    them records none.
+    """
     household_weight = frame.weights_for("household")
-    return {
+    sidecar: dict[str, object] = {
         "schema_version": 2,
         "pipeline": _PIPELINE,
         "uk_frame_content_identity": uk_frame_content_identity(frame),
@@ -920,6 +1272,14 @@ def _build_sidecar(
         "time_period": str(frame.metadata["time_period"]),
         "household_weight_kind": uk_household_weight_kind(frame).value,
         "household_weight_total": float(household_weight.values.sum()),
+        # The spine's geographic clone count K, read from the frame it
+        # describes: the --n-clones the build ran at, since the
+        # geographic_expand node refuses a transform that makes another
+        # count, and one where the frame carries no clone index
+        # (microcosm#931).
+        "geographic_clone_count": geographic_clone_count(
+            frame.table("household"), stage="The spine sidecar"
+        ),
         "entity_row_counts": _entity_row_counts(frame),
         "artifact_pins": artifact_pins,
         "resource_pins": resource_pins,
@@ -933,7 +1293,7 @@ def _build_sidecar(
                 "stage": record.stage,
                 "produced": list(record.produced),
                 "rewrote": list(record.rewrote),
-                "nonzero_share": dict(record.nonzero_share),
+                "nonzero_share": _reported_shares(record.nonzero_share),
                 "seconds": record.seconds,
             }
             for record in records
@@ -953,11 +1313,14 @@ def _build_sidecar(
         "staging_delivery": dict(staging_delivery or {}),
         "spine_gate_report": spine_gate_report,
         "stochastic_contract_sha256": stochastic_contract_sha256,
-        "rules_engine": _rules_engine_provenance(),
+        "rules_engine": _rules_engine_record(engine, frame),
         # Which stages read the SPI Public Use Tape, whose Special Conditions
         # reach every output built on them (microcosm#1095).
         UK_SPI_PUBLIC_USE_TAPE_KEY: uk_spi_public_use_tape_marker(stages),
     }
+    if geography is not None:
+        sidecar["geography"] = json.loads(json.dumps(dict(geography)))
+    return sidecar
 
 
 def _mark_non_release_h5(path: Path, *, build_id: str) -> None:
@@ -969,6 +1332,16 @@ def _mark_non_release_h5(path: Path, *, build_id: str) -> None:
         file.attrs["populace_non_release"] = True
         file.attrs["populace_release_posture"] = "smoke"
         file.attrs["populace_smoke_build_id"] = build_id
+
+
+def _reported_shares(shares: Mapping[str, float]) -> dict[str, float]:
+    """A stage record's nonzero shares without the unreported columns."""
+
+    return {
+        column: share
+        for column, share in shares.items()
+        if column not in _UNREPORTED_SHARE_COLUMNS
+    }
 
 
 def _nonzero_shares(frame, columns: list[str]) -> dict[str, float]:
@@ -1006,7 +1379,9 @@ def _graph_stage_records(
     so the root node exposes no artifact for them although ``frs_spine``
     declares them as outputs.  Their share is read from the final population
     instead, which is what the legacy plan recorded (identity columns are
-    never zero, so the value is 1.0 on every vintage).
+    never zero, so the value is 1.0 on every vintage). The root's
+    area-conditioning carriers and the council-tax localisation's two
+    carriers get no share (``_UNREPORTED_SHARE_COLUMNS``).
     """
 
     structural = _structural_columns(frame)
@@ -1022,6 +1397,8 @@ def _graph_stage_records(
         # A declared rewrite is an owned cell of its node, as an output is, so
         # its share reads the node's artifact too (microcosm#721).
         for column in (*stage.outputs, *stage.rewrites):
+            if column in _UNREPORTED_SHARE_COLUMNS:
+                continue
             matches = [
                 (coordinate, key)
                 for coordinate, key in output_receipt.artifacts.items()
@@ -1134,103 +1511,6 @@ def _record_attempt(
     )
 
 
-def _sample_spine_frame(
-    frame,
-    *,
-    fraction: float,
-    seed: int,
-) -> tuple[object, dict[str, object] | None]:
-    if fraction == 1.0:
-        return frame, None
-    household_weight = frame.weights_for("household")
-    pre_households = int(len(frame.table("household")))
-    sampled, receipt = sample_frame_households(
-        frame,
-        fraction=fraction,
-        seed=seed,
-        source_name="UK FRS spine",
-    )
-    normalized, factor = normalize_sampled_household_mass(
-        sampled,
-        target_mass=float(household_weight.total),
-        source_name="UK FRS spine",
-    )
-    return normalized, {
-        "fraction": float(fraction),
-        "seed": int(seed),
-        "rung_token": UK_SAMPLE_RUNG_TOKENS[fraction],
-        "pre_household_count": pre_households,
-        "post_household_count": int(len(normalized.table("household"))),
-        "normalization_factor": float(factor),
-        "receipt": dict(receipt),
-    }
-
-
-class _SampledGraphRootTransform:
-    """CREATE-stage adapter applying the declared sampling rung at ingest."""
-
-    def __init__(
-        self,
-        transform,
-        *,
-        fraction: float,
-        seed: int,
-    ) -> None:
-        self.transform = transform
-        self.fraction = fraction
-        self.seed = seed
-        self.sampling: dict[str, object] | None = None
-
-    def _sample(self, assembled):
-        sampled, self.sampling = _sample_spine_frame(
-            assembled,
-            fraction=self.fraction,
-            seed=self.seed,
-        )
-        # Graph populations use row positions as their internal alignment
-        # index. Frame sampling preserves source DataFrame indexes by design,
-        # so normalize those indexes at this adapter boundary.
-        tables = {
-            entity: sampled.table(entity).reset_index(drop=True)
-            for entity in sampled.entities
-        }
-        tables.update(
-            {name: sampled.link(name).reset_index(drop=True) for name in sampled.links}
-        )
-        return Frame(
-            tables,
-            sampled.schema,
-            {
-                entity: sampled.weights_for(entity)
-                for entity in sampled.weighted_entities
-            },
-            sampled.strata.reset_index(drop=True),
-            mass_log=sampled.mass_log,
-            metadata=sampled.metadata,
-        )
-
-    def effective_fraction(self) -> float:
-        """Return the configured input sampling fraction."""
-
-        return float(self.fraction)
-
-    def __call__(self, frame):
-        return self._sample(self.transform(frame))
-
-    def run_with_sources(self, frame, sources):
-        runner = getattr(self.transform, "run_with_sources", None)
-        assembled = (
-            runner(frame, sources) if callable(runner) else self.transform(frame)
-        )
-        return self._sample(assembled)
-
-    def checkpoint_metadata(self) -> dict[str, object]:
-        hook = getattr(self.transform, "checkpoint_metadata", None)
-        if not callable(hook):
-            raise RuntimeError("FRS root transform exposes no checkpoint metadata.")
-        return dict(hook())
-
-
 def _stage_observer(
     staging_bundle: StagingRunBundleWriterV2 | None,
     emitter: LocalTelemetryEmitter | None,
@@ -1315,6 +1595,46 @@ class _GraphSourceTransform:
         return getattr(transform, name)
 
 
+class _ProfiledKernel(Kernel):
+    """A spine kernel that computes each node inside
+    :func:`~microcosm.build.stage_profile.profile_stage`, under the node's id,
+    in ``--stage-profile-dir`` (the memory guard ruled on 6 Nov, microcosm#931).
+
+    It is the kernel it wraps to everything but ``run``: ``__getattr__``
+    forwards every other attribute, the kernel's reference and capabilities
+    among them, and ``implementation_hash`` is the wrapped kernel's own bound
+    method, so each node keys, hits and stores as it does unprofiled. It
+    declares the graph's kernel protocol for the registry's check but no
+    reference of its own, so it is no kernel class of the UK runtime and the
+    binding rule holds the kernel it wraps. A record keeps the message of a
+    failure the node raised, so the directory is private.
+    """
+
+    def __init__(self, kernel: Kernel, directory: Path) -> None:
+        self._kernel = kernel
+        self._directory = directory
+        self.implementation_hash = kernel.implementation_hash
+
+    def run(self, context: KernelContext) -> KernelResult:
+        with profile_stage(context.node.id, self._directory):
+            return self._kernel.run(context)
+
+    def __getattr__(self, name: str):
+        kernel = self.__dict__.get("_kernel")
+        if kernel is None:
+            raise AttributeError(name)
+        return getattr(kernel, name)
+
+
+def _profiled_kernels(kernels: KernelRegistry, directory: Path) -> KernelRegistry:
+    """``kernels``, each wrapped in :class:`_ProfiledKernel` under its ref."""
+
+    profiled = KernelRegistry()
+    for ref in kernels.refs():
+        profiled.register(_ProfiledKernel(kernels.get(ref), directory))
+    return profiled
+
+
 def _run_plan_with_spine_sampling(
     plan,
     *,
@@ -1333,7 +1653,7 @@ def _run_plan_with_spine_sampling(
     spine_frame, spine_records = StagePlan(plan.stages[:1]).run(
         uk_frs_spine_seed_frame()
     )
-    spine_frame, sampling = _sample_spine_frame(
+    spine_frame, sampling = sample_uk_spine_root(
         spine_frame,
         fraction=sample_fraction,
         seed=sample_seed,
@@ -1554,6 +1874,137 @@ class PreparedUKSpineExecution:
     frs_release: object
     implementations: Mapping[str, object]
     synthetic_fixture: Mapping[str, object] | None
+    #: The spine's ``geography`` block where its area stages are scheduled,
+    #: composed from the supports they read (microcosm#931), else ``None``.
+    geography: Mapping[str, object] | None = None
+
+
+def _support_path(args: argparse.Namespace, system: str) -> Path | None:
+    """The path a support flag names, or ``None`` where it is not given."""
+
+    return getattr(args, _atomic_support_argument(_ATOMIC_SUPPORT_FLAGS[system]), None)
+
+
+def _registered_atomic_supports(
+    args: argparse.Namespace, stage_names: Sequence[str]
+) -> dict[str, bytes] | None:
+    """The conditioned supports' bytes, by system, held to the register.
+
+    ``None`` where atomic_area_assign is not scheduled, or with
+    ``--synthetic-fixture-dir``, whose fixture carries its own toy supports.
+    Otherwise every ``--atomic-support-*`` flag is required, each must name a
+    file, and each file's SHA-256 and size must be those sources.yaml
+    registers for its system's conditioned support
+    (``country_adapter.uk_atomic_support_register`` with ``conditioned=True``,
+    C-22, microcosm#931), before any stage runs. A refusal names the flags and
+    what they must be, never a digest, a size or a path.
+    """
+
+    if (
+        args.synthetic_fixture_dir is not None
+        or ATOMIC_AREA_ASSIGN_STAGE_NAME not in stage_names
+    ):
+        return None
+    missing = [
+        flag
+        for system, flag in _ATOMIC_SUPPORT_FLAGS.items()
+        if _support_path(args, system) is None
+    ]
+    if missing:
+        raise ValueError(
+            f"{ATOMIC_AREA_ASSIGN_STAGE_NAME} draws every geographic clone's area "
+            "on the conditioned atomic-area supports, so it requires "
+            f"{', '.join(missing)} (microcosm#931)."
+        )
+    register = uk_atomic_support_register(conditioned=True)
+    supports: dict[str, bytes] = {}
+    for system, flag in _ATOMIC_SUPPORT_FLAGS.items():
+        path = _support_path(args, system)
+        if not path.is_file():
+            raise ValueError(f"{flag} must name an existing file.")
+        payload = path.read_bytes()
+        pin = register[system]
+        if (
+            hashlib.sha256(payload).hexdigest() != pin["sha256"]
+            or len(payload) != pin["size_bytes"]
+        ):
+            raise ValueError(
+                f"{flag} is not the conditioned support sources.yaml registers for "
+                f"{system}: its SHA-256 or size is not the register's "
+                "(microcosm#931)."
+            )
+        supports[system] = payload
+    return supports
+
+
+def _fixture_atomic_supports(source: Path) -> dict[str, bytes]:
+    """A synthetic fixture's toy conditioned supports' bytes, by system: its
+    inputs named by the ids sources.yaml declares the supports under
+    (``graph_kernels.FIXTURE_SUPPORT_INPUTS``, microcosm#931)."""
+
+    from microcosm.build.uk_runtime.graph_kernels import FIXTURE_SUPPORT_INPUTS
+
+    return {
+        system: _synthetic_fixture_input(source, name).read_bytes()
+        for system, name in FIXTURE_SUPPORT_INPUTS.items()
+    }
+
+
+def _spine_geography(
+    args: argparse.Namespace,
+    stage_names: Sequence[str],
+    atomic_supports: Mapping[str, bytes] | None,
+) -> dict[str, object] | None:
+    """The spine's ``geography`` block: how its areas are drawn, on the
+    supports its area stages read, held to sources.yaml's register, or a
+    synthetic fixture's toys (``country_adapter.uk_spine_geography_binding``,
+    microcosm#931); ``None`` where atomic_area_assign is not scheduled."""
+
+    if atomic_supports is not None:
+        return uk_spine_geography_binding(
+            atomic_supports, register=UK_SPINE_SUPPORT_REGISTER
+        )
+    if (
+        args.synthetic_fixture_dir is not None
+        and ATOMIC_AREA_ASSIGN_STAGE_NAME in stage_names
+    ):
+        return uk_spine_geography_binding(
+            _fixture_atomic_supports(args.synthetic_fixture_dir),
+            register=UK_SYNTHETIC_SUPPORT_REGISTER,
+        )
+    return None
+
+
+def _source_supports(
+    sources: Mapping[str, Path],
+    pins: Mapping[str, Mapping[str, object]] | None,
+) -> dict[str, bytes]:
+    """The conditioned supports' bytes, by system, from a node's declared
+    graph sources (microcosm#931).
+
+    The executor refuses a source that changes while the graph runs; with
+    ``pins``, the spine's ``geography`` block's ``support_pins``, each file
+    must also still be the support the block records, so a file replaced
+    after the spine was prepared is refused, naming its system and graph
+    source only, never a digest, a size or a path.
+    """
+
+    supports: dict[str, bytes] = {}
+    for system in SYSTEMS:
+        payload = Path(sources[CONDITIONED_SOURCES[system]]).read_bytes()
+        pin = None if pins is None else pins[system]
+        if pin is not None and (
+            hashlib.sha256(payload).hexdigest() != pin["sha256"]
+            or len(payload) != pin["size_bytes"]
+        ):
+            raise ValueError(
+                f"The {system} conditioned support the area stages read (graph "
+                f"source {CONDITIONED_SOURCES[system]}) is not the one the "
+                "spine's geography block pins: it changed after the spine was "
+                "prepared (microcosm#931)."
+            )
+        supports[system] = payload
+    return supports
 
 
 def parse_uk_spine_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -1570,11 +2021,15 @@ def prepare_uk_spine_execution(
     """Bind source paths and lazy transforms without fitting models or writing files.
 
     Everything ``main`` decides before the graph runs lives here: the stage
-    roster, the private-input checks, the stage implementations (licensed or
-    synthetic fixture), the sampling root, the optional observation wrap, the
-    declared graph sources, and the gate nodes bound to the rules engine.
-    ``observer`` is the staging run bundle's stage observer when that bundle is
-    enabled; ``main`` supplies it, and a caller without telemetry passes none.
+    roster, the private-input checks, the conditioned atomic-area supports
+    held to their register, the geographic clone count, the stage
+    implementations (licensed or synthetic fixture), the sampling root, the
+    optional observation wrap, the declared graph sources, the spine's
+    ``geography`` block (microcosm#931), the gate nodes bound to the rules
+    engine and, with ``--stage-profile-dir``, the profiled kernels.
+    ``observer`` is the staging run bundle's stage observer when that bundle
+    is enabled; ``main`` supplies it, and a caller without telemetry passes
+    none.
     """
 
     _validate_args(args)
@@ -1583,11 +2038,16 @@ def prepare_uk_spine_execution(
     if spec.sources is None:
         raise ValueError("UK country spec has no source stages.")
     stages_by_name = spec.sources.stage_map()
+    # The clone count K enters the graph on the geographic_expand node, the
+    # transform that makes the clones and the engine, which refuses a frame
+    # carrying another count; never the engine's identity (microcosm#931).
+    clones = args.n_clones
     graph = uk_spine_graph(
         spec,
         source_mode="split",
         sample_fraction=args.sample_fraction,
         sample_seed=args.sample_seed,
+        geographic_clones=clones,
     )
     stage_names = _uk_spine_stage_names(spec)
     if (
@@ -1664,9 +2124,15 @@ def prepare_uk_spine_execution(
         and args.aps_tab is None
     ):
         raise ValueError("--aps-tab is required when aps_occupation is scheduled.")
+    # The area stages' supports, held to the register before any stage runs
+    # (C-22, microcosm#931), and the spine's geography block, whose pins the
+    # stages hold the files they read to.
+    atomic_supports = _registered_atomic_supports(args, stage_names)
+    geography = _spine_geography(args, stage_names, atomic_supports)
+    support_pins = None if geography is None else geography["support_pins"]
     stages = [stages_by_name[name] for name in stage_names]
     synthetic_fixture = _synthetic_fixture_evidence(args.synthetic_fixture_dir)
-    engine = _rules_engine()
+    engine = _rules_engine(clones=clones)
     stochastic_contract = load_uk_take_up_contract()
     frs_release = load_uk_frs_release()
     hmrc_spine_transform = _GraphSourceTransform(
@@ -1736,11 +2202,13 @@ def prepare_uk_spine_execution(
             contract=stochastic_contract,
             stage=stages_by_name["frs_household_draws"],
         ),
-        "frs_brma": UKFRSBRMAStageTransform(
-            stage=stages_by_name["frs_brma"],
-            engine=engine,
-        ),
     }
+    # The BRMA, in frs_brma's place, after the draws (microcosm#931).
+    if "area_brma" in stage_names:
+        implementations["area_brma"] = UKAreaBRMAStageTransform(
+            stage=stages_by_name["area_brma"],
+            engine=engine,
+        )
     if "was_wealth" in stage_names:
         implementations["was_wealth"] = _GraphSourceTransform(
             lambda sources: UKWASWealthStageTransform(
@@ -1800,10 +2268,6 @@ def prepare_uk_spine_execution(
                 spi_tab_path=sources["spi"],
             )
         )
-    if "regional_home_values" in stage_names:
-        implementations["regional_home_values"] = UKRegionalHomeValuesStageTransform(
-            stage=stages_by_name["regional_home_values"],
-        )
     if "property_purchases" in stage_names:
         implementations["property_purchases"] = UKPropertyPurchasesStageTransform(
             stage=stages_by_name["property_purchases"],
@@ -1849,6 +2313,36 @@ def prepare_uk_spine_execution(
                 stage=stages_by_name["frs_annual_income_spells"],
             )
         )
+    if "geographic_expand" in stage_names:
+        implementations["geographic_expand"] = UKGeographicExpandStageTransform(
+            stage=stages_by_name["geographic_expand"],
+            clones=clones,
+        )
+    if "geographic_identity" in stage_names:
+        implementations["geographic_identity"] = UKGeographicIdentityStageTransform(
+            stage=stages_by_name["geographic_identity"]
+        )
+    # Each clone's area, local authority and fuel-relief flag, the area draw
+    # and the flag's roster read from the supports' graph sources
+    # (microcosm#931).
+    if "atomic_area_assign" in stage_names:
+        implementations["atomic_area_assign"] = _GraphSourceTransform(
+            lambda sources: UKAtomicAreaAssignStageTransform(
+                stage=stages_by_name["atomic_area_assign"],
+                supports=_source_supports(sources, support_pins),
+            )
+        )
+    if "local_authority" in stage_names:
+        implementations["local_authority"] = UKLocalAuthorityStageTransform(
+            stage=stages_by_name["local_authority"]
+        )
+    if "rfdr" in stage_names:
+        implementations["rfdr"] = _GraphSourceTransform(
+            lambda sources: UKRFDRStageTransform(
+                stage=stages_by_name["rfdr"],
+                supports=_source_supports(sources, support_pins),
+            )
+        )
     implementations["spi_support_channel"] = UKSPISupportChannelStageTransform(
         stage=stages_by_name["spi_support_channel"],
         sample_fraction=args.sample_fraction,
@@ -1859,6 +2353,15 @@ def prepare_uk_spine_execution(
                 sources["spi"],
                 stage=stages_by_name["spi_income_band_donors"],
                 sample_fraction=args.sample_fraction,
+            )
+        )
+    # The SPI copies' own keys and areas (microcosm#931).
+    if "spi_copy_areas" in stage_names:
+        implementations["spi_copy_areas"] = _GraphSourceTransform(
+            lambda sources: UKSPICopyAreasStageTransform(
+                stage=stages_by_name["spi_copy_areas"],
+                engine=engine,
+                supports=_source_supports(sources, support_pins),
             )
         )
     implementations["hmrc_spi_income_spine"] = hmrc_spine_transform
@@ -1876,6 +2379,24 @@ def prepare_uk_spine_execution(
     if "spi_housing_shell" in stage_names:
         implementations["spi_housing_shell"] = UKSPIHousingShellStageTransform(
             stage=stages_by_name["spi_housing_shell"]
+        )
+    # Great Britain private renters' rents off their BRMA's list; a sampled
+    # rung takes the thin-region rule (microcosm#931).
+    if "private_rent" in stage_names:
+        implementations["private_rent"] = UKPrivateRentStageTransform(
+            stage=stages_by_name["private_rent"],
+            sampled_rung=_is_sampled(args),
+        )
+    # Great Britain council tax at each household's drawn local authority,
+    # just before the WAS chain, on the supports' graph sources; the supports
+    # are held to the geography block's pins before the stage is built
+    # (microcosm#931).
+    if "council_tax_localise" in stage_names:
+        implementations["council_tax_localise"] = _GraphSourceTransform(
+            lambda sources: UKCouncilTaxLocaliseStageTransform(
+                stage=stages_by_name["council_tax_localise"],
+                supports=_source_supports(sources, support_pins),
+            )
         )
     if "uc_reporter_redraw" in stage_names:
         implementations["uc_reporter_redraw"] = UKUCReporterRedrawStageTransform(
@@ -2004,13 +2525,24 @@ def prepare_uk_spine_execution(
                 f"fixture={fixture_stage_names!r}, current={tuple(stage_names)!r}."
             )
         implementations = dict(fixture_implementations)
+        # The fixture's transforms and engine clone at its own
+        # config.geographic_clones (microcosm#931), so the request must ask for
+        # that count; the geographic_expand node would refuse another, only
+        # after the source stages had run.
+        fixture_expand = implementations.get("geographic_expand")
+        if fixture_expand is not None and fixture_expand.clones != clones:
+            raise ValueError(
+                "--n-clones differs from the synthetic fixture's "
+                "config.geographic_clones, the count its transforms and engine "
+                "clone at (microcosm#931)."
+            )
         fixture_by_name = {stage.stage: stage for stage in fixture_stages}
         implementations["frs_hmrc_spine_leaves"] = UKFRSHMRCSpineLeavesStageTransform(
             _synthetic_fixture_input(args.synthetic_fixture_dir, "frs_raw"),
             stage=fixture_by_name["frs_hmrc_spine_leaves"],
             sampled_rung=True,
         )
-    sampled_root = _SampledGraphRootTransform(
+    sampled_root = UKSampledSpineRootTransform(
         implementations["frs_spine"],
         fraction=args.sample_fraction,
         seed=args.sample_seed,
@@ -2062,6 +2594,9 @@ def prepare_uk_spine_execution(
         if "hmrc_spi_income_spine" in stage_names:
             graph_sources["spi"] = args.spi_tab
             graph_sources["hmrc_income"] = args.hmrc_ods
+        if atomic_supports is not None:
+            for system in SYSTEMS:
+                graph_sources[CONDITIONED_SOURCES[system]] = _support_path(args, system)
     engine_identity = hashlib.sha256(
         canonical_json_bytes(_rules_engine_provenance())
     ).hexdigest()
@@ -2079,6 +2614,10 @@ def prepare_uk_spine_execution(
     register_spine_gate_kernel(
         kernels, spec=spec, engine=engine, engine_identity=engine_identity
     )
+    if args.stage_profile_dir is not None:
+        # Each node's RSS and wall time, under its node id; the keys are the
+        # unprofiled kernels' (microcosm#931).
+        kernels = _profiled_kernels(kernels, args.stage_profile_dir.expanduser())
     return PreparedUKSpineExecution(
         graph=graph,
         kernels=kernels,
@@ -2092,6 +2631,7 @@ def prepare_uk_spine_execution(
         frs_release=frs_release,
         implementations=implementations,
         synthetic_fixture=synthetic_fixture,
+        geography=geography,
     )
 
 
@@ -2185,13 +2725,12 @@ def _main(argv: list[str] | None = None) -> int:
             _role_pins({**artifact_pins, **input_artifact_pins})
         )
         synthetic_fixture = prepared.synthetic_fixture
-        run_config = {
-            "pipeline": _PIPELINE,
-            "stages": list(stage_names),
-            "artifact_pins_digest": state.input_pins_digest,
-            "spine_h5": str(args.spine_h5),
-            "synthetic_fixture": synthetic_fixture,
-        }
+        run_config = _logbook_run_config(
+            args,
+            stage_names=stage_names,
+            artifact_pins_digest=state.input_pins_digest,
+            synthetic_fixture=synthetic_fixture,
+        )
         state.identity_digest = hashlib.sha256(
             canonical_json_bytes(run_config)
         ).hexdigest()
@@ -2402,6 +2941,8 @@ def _main(argv: list[str] | None = None) -> int:
                 if spine_gate_path.is_file()
                 else None
             ),
+            engine=prepared.engine,
+            geography=prepared.geography,
         )
         sidecar["operation_inventory"] = list(uk_spine_operation_inventory(graph, spec))
 
@@ -2451,13 +2992,15 @@ def _main(argv: list[str] | None = None) -> int:
                     column
                     for record in records
                     for column in (*record.produced, *record.rewrote)
+                    if column not in _UNREPORTED_SHARE_COLUMNS
                 )
             )
             atomic_write_json(
                 args.emit_nonzero_shares,
                 {
                     "stages": {
-                        record.stage: dict(record.nonzero_share) for record in records
+                        record.stage: _reported_shares(record.nonzero_share)
+                        for record in records
                     },
                     "final": _nonzero_shares(frame, final_columns),
                 },

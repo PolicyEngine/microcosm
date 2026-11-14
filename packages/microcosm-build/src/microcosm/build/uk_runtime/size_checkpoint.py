@@ -27,9 +27,6 @@ from typing import Any
 
 import numpy as np
 
-from microcosm.build.uk_runtime.atomic_area_support import (
-    SOURCES as ATOMIC_SUPPORT_SOURCES,
-)
 from microcosm.build.uk_runtime.dataset_size import (
     UKSizeSelection,
     uk_size_l2,
@@ -78,7 +75,9 @@ def uk_size_checkpoint_identity(
     deliberately absent: re-drawing at another threshold is the point. Both
     UK drivers write and resume with this one mapping (moved here from
     ``tools/build_uk_rowwise_candidate.py``), so a checkpoint cut by either
-    resumes on the other.
+    resumes on the other. The pool is the bound spine whole, its clone count
+    and sampling recorded in the run's arguments, and its areas are the
+    spine's, which the dataset pin binds (microcosm#931).
     """
     posture = posture_of(args)
     identity: dict[str, object] = {
@@ -98,7 +97,6 @@ def uk_size_checkpoint_identity(
         "sample_fraction": float(args.sample_fraction),
         "sample_seed": int(args.sample_seed),
         "source_year": int(source_year),
-        "source_lineage_modulus": args.source_lineage_modulus,
         "calibration_year": getattr(args, "_calibration_year", None),
         "target_weight_rule": args.target_weight_rule,
         "engine_blocks": int(args.engine_blocks),
@@ -122,57 +120,6 @@ def uk_size_checkpoint_identity(
     )
     if selection_l2 is not None:
         identity["selection_l2"] = selection_l2.as_dict()
-    # microcosm#932: an identity-keyed atomic run also binds the assignment
-    # and the three support pins (flat pin roles named by graph source); a
-    # legacy run adds nothing, so its checkpoints keep their identity.
-    if getattr(args, "geography_assignment", "legacy") == "atomic":
-        identity["geography"] = {
-            "assignment": "atomic",
-            "support_pins": {
-                system: dict(pins[source])
-                for system, source in ATOMIC_SUPPORT_SOURCES.items()
-            },
-        }
-    # microcosm#1240: a localised run also binds the two property resources.
-    mode = getattr(args, "property_localisation", "none")
-    if mode == "price_paid":
-        from .property_localisation import BAND_MIX_SOURCE, QUANTILES_SOURCE
-
-        identity["property_localisation"] = {
-            "mode": mode,
-            "resource_pins": {
-                name: dict(pins[name]) for name in (QUANTILES_SOURCE, BAND_MIX_SOURCE)
-            },
-        }
-    # microcosm#1262: an area-BRMA run also binds the layer.
-    if getattr(args, "brma_localisation", "none") == "area":
-        from .brma_area_layer import BRMA_AREA_LAYER_SOURCE
-
-        identity["brma_localisation"] = {
-            "mode": "area",
-            "resource_pins": {
-                BRMA_AREA_LAYER_SOURCE: dict(pins[BRMA_AREA_LAYER_SOURCE])
-            },
-        }
-    # microcosm#1418: an area-RFDR run also binds its layer.
-    if getattr(args, "rfdr_localisation", "none") == "area":
-        from .rfdr_area_layer import RFDR_AREA_LAYER_SOURCE
-
-        identity["rfdr_localisation"] = {
-            "mode": "area",
-            "resource_pins": {
-                RFDR_AREA_LAYER_SOURCE: dict(pins[RFDR_AREA_LAYER_SOURCE])
-            },
-        }
-    if getattr(args, "private_rent_localisation", "none") == "brma_list":
-        from .private_rent_localisation import COUNTS_SOURCE, QUANTILES_SOURCE
-
-        identity["private_rent_localisation"] = {
-            "mode": "brma_list",
-            "resource_pins": {
-                name: dict(pins[name]) for name in (QUANTILES_SOURCE, COUNTS_SOURCE)
-            },
-        }
     return identity
 
 

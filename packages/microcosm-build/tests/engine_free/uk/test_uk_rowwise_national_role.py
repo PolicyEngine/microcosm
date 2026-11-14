@@ -16,6 +16,7 @@ import argparse
 import hashlib
 import json
 import shutil
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -40,6 +41,7 @@ from microcosm.build.uk_runtime.chronicle_feed import (
     require_committed_uk_chronicle_feed_pin,
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
+from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
 from microcosm.build.uk_runtime.national_calibration import (
     CalibrationFrameAdapter,
     national_calibration_mass_reason,
@@ -67,6 +69,19 @@ from test_support.microcosm_build.uk_calibration_run import (  # noqa: F401
     _cgt_projection,
     _signing_key,
 )
+from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
+from test_support.microcosm_build.uk_full_build_cli import (
+    committed_registers_review_date,
+    geography_first_sidecar_fields,
+    stand_in_signed_national_exclusion,
+    use_national_exclusion_register,
+    write_national_exclusion_register,
+)
+
+#: The review date the national graph's targets and gates evaluate the
+#: committed registers on: the latest approval across them, so every entry
+#: is in force and no test reads the wall clock (microcosm#931).
+_REVIEW_DATE = committed_registers_review_date()
 
 
 def _sha(path: Path) -> str:
@@ -74,7 +89,11 @@ def _sha(path: Path) -> str:
 
 
 def _bound_spine(tmp_path: Path, frame) -> Path:
-    """The seam fixture frame as a bound checkpoint: H5, sidecar, gate report."""
+    """The seam fixture frame as a bound checkpoint: H5, sidecar, gate report.
+
+    The sidecar records the stand-in geography-first roster and block at one
+    clone, as a spine the national line builds on does (microcosm#931).
+    """
     input_h5 = tmp_path / "spine.h5"
     write_uk_national_frame(frame, input_h5)
     report = {
@@ -118,6 +137,8 @@ def _bound_spine(tmp_path: Path, frame) -> Path:
         "uk_frame_content_identity": uk_frame_content_identity(frame),
         "spine_gate_report": {"sha256": _sha(report_path)},
         "fit_weight_records": {},
+        **geography_first_sidecar_fields("frs_spine", "was_wealth"),
+        "geographic_clone_count": 1,
     }
     input_h5.with_suffix(".build.json").write_text(
         json.dumps(sidecar, indent=2, sort_keys=True) + "\n"
@@ -125,10 +146,11 @@ def _bound_spine(tmp_path: Path, frame) -> Path:
     return input_h5
 
 
-def _national_inputs(monkeypatch, tmp_path: Path, *, registry=None):
-    """The synthetic national build: bound frame, stood-in Chronicle artifact,
-    no engine (the register materialises from the frame's own columns)."""
-    frame = seam._frame()
+def _national_inputs(monkeypatch, tmp_path: Path, *, registry=None, frame=None):
+    """The synthetic national build: bound frame (``frame``, the seam's by
+    default), stood-in Chronicle artifact, no engine (the register
+    materialises from the frame's own columns)."""
+    frame = seam._frame() if frame is None else frame
     input_h5 = _bound_spine(tmp_path, frame)
     registry = seam._registry() if registry is None else registry
     ledger_dir = tmp_path / "ledger"
@@ -201,6 +223,11 @@ def _national_inputs(monkeypatch, tmp_path: Path, *, registry=None):
         lambda frame, manifest: (seam._admin_anchor_values(), []),
     )
     monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", seam.SIGNING_KEY)
+    # The build as it runs once the area-basis exclusion is signed for the
+    # national line (microcosm#931); the check's refusals are tested on test
+    # registers at explicit dates (test_uk_spine_posture, test_uk_full_build_cli,
+    # and the refused build and dry run below).
+    stand_in_signed_national_exclusion(monkeypatch)
     return input_h5, registry, artifact, pin
 
 
@@ -220,6 +247,8 @@ def _argv(input_h5: Path, out: Path, *extra: str) -> list[str]:
         "2" * 64,
         "--out",
         str(out),
+        "--review-date",
+        _REVIEW_DATE,
         *extra,
     ]
 
@@ -370,7 +399,13 @@ def test_uk_national_role_builds_through_the_graph_and_stages_locally(
     assert provenance["spine_gate_report"]["sha256"] == _sha(
         input_h5.with_suffix(".spine_gates.json")
     )
-    assert provenance["stages"] == ["frs_spine", "was_wealth"]
+    # The bound spine's own roster, the geography-first one the national line
+    # builds on (microcosm#931).
+    assert (
+        provenance["stages"]
+        == json.loads(input_h5.with_suffix(".build.json").read_text())["stages"]
+    )
+    assert provenance["stages"][:2] == ["frs_spine", "was_wealth"]
     assert provenance["artifact_pins"] == {"person": "a" * 64}
     calibration = record["calibration"]
     assert calibration["solve"]["n_targets"] == 1
@@ -562,6 +597,59 @@ def test_uk_national_role_solve_is_the_seam_solve(monkeypatch, tmp_path):
     np.testing.assert_allclose(
         at_solve_year.weights_for("household").values, expected, rtol=1e-15, atol=0
     )
+
+
+def _one_clone_spine_frame():
+    """The seam's frame as a clone-first spine of one geographic clone, with
+    each entity's clone index at zero, as geographic_expand writes them
+    (microcosm#931); ``clone_first_frame`` writes the household's alone."""
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_national_frame,
+        uk_time_period,
+    )
+
+    frame = clone_first_frame(seam._frame(), 1)
+    tables = {}
+    for entity in ("person", "benunit", "household"):
+        table = frame.table(entity).copy()
+        table[ladder_clone_index_column(entity)] = np.zeros(len(table), dtype=np.int64)
+        tables[entity] = table
+    weights = frame.weights_for("household")
+    return uk_national_frame(
+        **tables,
+        household_weights=np.asarray(weights.values, dtype=float),
+        weight_kind=weights.kind,
+        time_period=uk_time_period(frame),
+    )
+
+
+def test_uk_national_role_writes_a_one_clone_spine_without_its_clone_indices(
+    monkeypatch, tmp_path
+):
+    """The national line end to end on a one-clone clone-first spine
+    (microcosm#931): every entity of the bound frame carries its geographic
+    clone index, constant at zero. The build solves, the national writer
+    writes its release without the three indices (the national line's
+    export), and the graph's readback of the written H5, which expects that
+    export, passes."""
+    pytest.importorskip("tables")
+    builder = candidate._load_builder_module()
+    input_h5, _registry, _artifact, _pin = _national_inputs(
+        monkeypatch, tmp_path, frame=_one_clone_spine_frame()
+    )
+    entities = ("person", "benunit", "household")
+    bound, _ = load_uk_national_frame(input_h5)
+    for entity in entities:
+        assert set(bound.table(entity)[ladder_clone_index_column(entity)]) == {0}
+    out = tmp_path / "national"
+
+    assert builder.main(_argv(input_h5, out, "--no-staging", "--epochs", "5")) == 0
+
+    written, _ = load_uk_national_frame(out / "microcosm_uk_2024_25.h5")
+    for entity in entities:
+        assert ladder_clone_index_column(entity) not in written.table(entity).columns
+    record = json.loads((out / "build_record.json").read_text())
+    assert record["graph"]["readback"]["passed"] is True
 
 
 def test_uk_national_role_records_doctrine_overrides(monkeypatch, tmp_path):
@@ -1116,6 +1204,62 @@ def test_uk_national_role_marks_the_staging_run_failed_on_a_refusal(
     assert len(rows) == 1
     assert rows[0].disposition == "failed"
     assert rows[0].pipeline == "uk-frs-calibration"
+
+
+def test_uk_national_role_refuses_every_build_until_the_exclusion_is_signed(
+    monkeypatch, tmp_path
+):
+    """Until the degenerate-surface register's area-basis exclusion is signed
+    for the national line, a national build is refused before it reads its
+    input (microcosm#931): on a test register whose entry lists the local
+    line alone, as the committed entry does, the driver records the failure
+    sidecar with the refusal as its message, the failed row and the failed
+    run, and writes no build record."""
+    pytest.importorskip("tables")
+    builder = candidate._load_builder_module()
+    input_h5, _registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
+    evaluated = use_national_exclusion_register(
+        monkeypatch,
+        write_national_exclusion_register(
+            tmp_path / "register.json", release_lines=("local",)
+        ),
+    )
+    out = tmp_path / "national"
+    assert builder.main(_argv(input_h5, out, "--staging-local-only")) == 1
+    assert evaluated == [date.fromisoformat(_REVIEW_DATE)]
+    failure = json.loads((out / "failure.json").read_text())
+    assert "does not list the national line" in failure["message"]
+    runs = sorted(path.name for path in (out / "staging" / "runs").iterdir())
+    assert len(runs) == 1
+    bundle = validate_v2_bundle(out / "staging", runs[0])
+    assert bundle["progress"]["status"] == "failed"
+    assert not (out / "build_record.json").exists()
+    rows = load_spool_rows(out / "logbook-spool")
+    assert [row.disposition for row in rows] == ["failed"]
+
+
+def test_uk_national_dry_run_is_refused_until_the_exclusion_is_signed(
+    monkeypatch, tmp_path, capsys
+):
+    """A dry run takes its graph inventory from the national preparation, so
+    an exclusion not signed for the national line refuses it there, after the
+    dry run's own reads of the input and the targets, and no plan is printed
+    (microcosm#931)."""
+    pytest.importorskip("tables")
+    builder = candidate._load_builder_module()
+    input_h5, _registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
+    evaluated = use_national_exclusion_register(
+        monkeypatch,
+        write_national_exclusion_register(
+            tmp_path / "register.json", release_lines=("local",)
+        ),
+    )
+    out = tmp_path / "national"
+    with pytest.raises(ValueError, match="does not list the national line"):
+        builder.main(_argv(input_h5, out, "--dry-run"))
+    assert evaluated == [date.fromisoformat(_REVIEW_DATE)]
+    assert capsys.readouterr().out == ""
+    assert not out.exists()
 
 
 def test_uk_national_role_refuses_an_occupied_output_directory(monkeypatch, tmp_path):

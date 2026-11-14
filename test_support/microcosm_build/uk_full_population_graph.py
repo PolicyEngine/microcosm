@@ -1,24 +1,57 @@
-"""Synthetic full-build population graph: the seam-frame source kernel and
-the graph/registry pair (legacy ladder draw or identity-keyed atomic-area
-assignment) the UK full-graph tests build on."""
+"""Synthetic bound-spine stand-ins for the UK full-graph tests (microcosm#931).
+
+The dense line builds on a geography-first spine as that spine stands, so the
+full-graph tests build on a stand-in for one. :func:`spine_frame` gives the toy
+households ``K`` geographic clones as the spine's ``geographic_expand`` stage
+does (each id minted in the copy-id table's ``geographic_support`` field,
+every entity's clone index, each household's source columns, an equal share of
+its weight and one mass record), keys each clone as ``geographic_identity``
+does, and places it on the toy atomic-area supports with the shared atomic
+operators: the assignment, the ladder layers derived from it, the engine's
+``local_authority`` member name, a BRMA and a fuel-relief flag, the columns the
+spine's geography stages give it. :class:`Source` serves the stand-in as a
+CREATE node and :func:`spine_graph` is the one-node spine the full graph is
+appended to; a bound checkpoint of it takes the stand-in sidecar fields of
+``uk_full_build_cli.geography_first_sidecar_fields``, whose geography block
+(:func:`toy_geography_binding`) is under the leaf's keys and read off the
+definition and supports the stand-in's areas are drawn with.
+:func:`source_frame` is the toy spine before the expansion, the row-wise
+lane's input. Invented data only.
+"""
 
 # ruff: noqa: F401
 
+import copy
+import functools
 import hashlib
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from microcosm.build.uk_runtime.graph_kernels import UKClaimKernel
-from microcosm.build.uk_runtime.graph_population import (
-    append_uk_population_nodes,
-    register_uk_population_kernels,
+from microcosm.build import atomic_geography as geo
+from microcosm.build.uk_runtime.atomic_area_conditioning import (
+    UK_SPINE_ATOMIC_AREA_DRAW_STREAM,
 )
-from microcosm.build.uk_runtime.rowwise_dataset import (
-    clone_uk_dataset_with_ladder_geography,
+from microcosm.build.uk_runtime.atomic_area_support import (
+    IDENTITY_COLUMN,
+    SYSTEMS,
+    uk_atomic_assignment_definition,
 )
-from microcosm.frame import Frame
+from microcosm.build.uk_runtime.atomic_household_identity import household_draw_key
+from microcosm.build.uk_runtime.country_adapter import UK_SPINE_SUPPORT_REGISTER
+from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
+from microcosm.build.uk_runtime.geographic_expand import (
+    GEOGRAPHIC_EXPAND_MASS_CHANGE_REASON,
+)
+from microcosm.build.uk_runtime.household_lineage import uk_household_clone_paths
+from microcosm.build.uk_runtime.local_authority_input import (
+    UK_LOCAL_AUTHORITY_CODE_COLUMN,
+    UK_LOCAL_AUTHORITY_INPUT_COLUMN,
+    resolve_local_authority_engine_keys,
+)
+from microcosm.build.uk_runtime.national_frame import uk_national_frame, uk_time_period
+from microcosm.frame import Frame, MassChangeRecord
 from microcosm.graph import (
     Capabilities,
     ContentStore,
@@ -34,12 +67,26 @@ from microcosm.graph import (
     compile_graph,
     run_graph,
 )
+from microcosm.graph.canonical import canonical_json
+from test_support.microcosm_build.uk_atomic_support_fixtures import (
+    toy_support_payloads,
+)
+from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
 from test_support.microcosm_build.uk_ladder_rowwise_clone import _seam_frame
 from test_support.microcosm_build.uk_ladder_rowwise_clone import (
     toy_ladder as toy_ladder,
 )
 
 SOURCE_VINTAGE = "toy_2023_24"
+#: The seed the stand-in's areas are drawn at, the toy builds' seed.
+TOY_AREA_SEED = 7
+_IDENTIFIERS = {
+    "person_id",
+    "person_household_id",
+    "person_benunit_id",
+    "household_id",
+    "benunit_id",
+}
 
 
 def source_frame():
@@ -61,9 +108,9 @@ def source_frame():
     household["cgt_support_copy_index"] = np.zeros(len(household), dtype="int64")
     household["household_is_cgt_residential_clone"] = False
     household["cgt_residential_clone_index"] = np.zeros(len(household), dtype="int64")
-    # microcosm#1240: the housing columns the post-geography property nodes
-    # read and rewrite; one owner per region with a positive value, the
-    # Scottish household a renter, the Northern Irish one an owner at zero.
+    # The spine's housing columns: one owner per region with a positive
+    # value, the Scottish household a renter, the Northern Irish one an owner
+    # at zero.
     household["tenure_type"] = pd.array(
         ["OWNED_OUTRIGHT", "OWNED_WITH_MORTGAGE", "RENT_PRIVATELY", "OWNED_OUTRIGHT"][
             : len(household)
@@ -79,14 +126,12 @@ def source_frame():
     household["council_tax_band"] = pd.array(
         ["D", "C", "B", "D"][: len(household)], dtype="string"
     )
-    # microcosm#1262: the spine's regional BRMA draw, which the area-BRMA node
-    # replaces outside Northern Ireland.
+    # The spine's BRMA draw.
     household["brma"] = pd.array(
         ["MAIDSTONE", "MAIDSTONE", "MAIDSTONE", "BELFAST"][: len(household)],
         dtype="string",
     )
-    # The Scottish household is the toy's one private renter; the private-rent
-    # node re-draws its rent from its area's toy list.
+    # The Scottish household is the toy's one private renter.
     household["rent"] = np.asarray(
         [0.0, 0.0, 9_000.0, 0.0][: len(household)], dtype="float64"
     )
@@ -103,7 +148,157 @@ def source_frame():
     )
 
 
+def toy_area_definition() -> dict:
+    """The assignment definition the stand-in's areas are drawn with: the toy
+    supports' at the toy builds' seed."""
+    return uk_atomic_assignment_definition(toy_support_payloads(), seed=TOY_AREA_SEED)
+
+
+@functools.cache
+def _toy_geography_binding() -> dict:
+    payloads = toy_support_payloads()
+    definition = toy_area_definition()
+    return {
+        "assignment": "atomic",
+        "identity": IDENTITY_COLUMN,
+        "definition_sha256": hashlib.sha256(canonical_json(definition)).hexdigest(),
+        # In the register's order, the systems'.
+        "support_pins": {
+            system: {
+                "sha256": hashlib.sha256(payloads[system]).hexdigest(),
+                "size_bytes": len(payloads[system]),
+            }
+            for system in SYSTEMS
+        },
+        # A release's stream and register, which the binding check holds by
+        # value (microcosm#931): the spine's area stream at its declared seed,
+        # and sources.yaml's register, which patch_support_register stands
+        # the toy supports' pins in for.
+        "stream": list(UK_SPINE_ATOMIC_AREA_DRAW_STREAM),
+        "register": UK_SPINE_SUPPORT_REGISTER,
+    }
+
+
+def toy_geography_binding() -> dict:
+    """The stand-in spine's ``geography`` block, as a spine's build sidecar
+    records one (microcosm#931): the atomic law keyed on the geography key,
+    the digest of the definition its areas are drawn with
+    (:func:`toy_area_definition`, as the shared operator digests a
+    definition) and the toy supports' pins, with a release's stream and
+    register: the spine's area stream at its declared seed, and
+    ``sources.yaml``'s register, whose conditioned pins tests replace with the
+    toy supports' (``uk_full_build_cli.patch_support_register``). The binding
+    check reads every field by value and recomputes no definition, so the
+    stand-in passes it where tests patch the register. A fresh copy each call.
+    """
+    return copy.deepcopy(_toy_geography_binding())
+
+
+def _toy_areas(household: pd.DataFrame) -> pd.DataFrame:
+    """Each keyed household's areas, as the spine's geography stages give them.
+
+    The shared atomic operators draw each household's atomic area on the toy
+    supports from its geography key and derive the ladder layers from it; the
+    engine's ``local_authority`` member is resolved from the derived code.
+    """
+    payloads = toy_support_payloads()
+    definition = toy_area_definition()
+    supports = {
+        system: geo.decode_atomic_support(payload)
+        for system, payload in payloads.items()
+    }
+    table = household[["household_id", "region", IDENTITY_COLUMN]]
+    assigned = geo.assign_atomic(table, definition, supports)
+    derived = geo.derive_geography(
+        pd.concat([table, assigned], axis=1), definition, supports
+    )
+    areas = pd.concat([assigned, derived], axis=1)
+    areas[UK_LOCAL_AUTHORITY_INPUT_COLUMN] = resolve_local_authority_engine_keys(
+        areas[UK_LOCAL_AUTHORITY_CODE_COLUMN]
+    )
+    return areas.astype("string")
+
+
+def spine_frame(clones: int = 1) -> Frame:
+    """The toy spine as a geography-first spine of ``clones`` geographic clones.
+
+    Rows, ids and weights are :func:`clone_first_frame`'s; every entity
+    carries its clone index, every household its source year and key and its
+    geography key, and the frame's mass log the expansion's one conserving
+    record after the source's. Its areas are drawn on the toy supports
+    (:func:`_toy_areas`); the BRMA is the source's, and the Scottish household
+    is the toy's one in a fuel-relief area.
+    """
+    base = source_frame()
+    cloned = clone_first_frame(base, clones)
+    person = cloned.table("person").copy()
+    benunit = cloned.table("benunit").copy()
+    household = cloned.table("household").copy()
+    clone_of = dict(
+        zip(household["household_id"], household["household_clone_index"], strict=True)
+    )
+    person[ladder_clone_index_column("person")] = (
+        person["person_household_id"].map(clone_of).astype("int64")
+    )
+    unit_clone = dict(
+        zip(
+            person["person_benunit_id"],
+            person[ladder_clone_index_column("person")],
+            strict=False,
+        )
+    )
+    benunit[ladder_clone_index_column("benunit")] = (
+        benunit["benunit_id"].map(unit_clone).astype("int64")
+    )
+    year = int(uk_time_period(base))
+    household["source_year"] = np.full(len(household), year, dtype="int64")
+    household["source_household_key"] = pd.array(
+        [f"{year}:{source}" for source in household["source_household_id"]],
+        dtype="string",
+    )
+    sources, paths = uk_household_clone_paths(household)
+    household[IDENTITY_COLUMN] = pd.array(
+        [
+            household_draw_key(
+                source="frs",
+                source_vintage=SOURCE_VINTAGE,
+                source_household_id=source,
+                clone_path=path,
+            )
+            for source, path in zip(sources, paths, strict=True)
+        ],
+        dtype="string",
+    )
+    areas = _toy_areas(household)
+    for column in areas.columns:
+        household[column] = areas[column].to_numpy()
+        household[column] = household[column].astype("string")
+    household["in_rural_fuel_duty_relief_area"] = (
+        household["region"].astype(str).to_numpy() == "SCOTLAND"
+    )
+    weights = cloned.weights_for("household")
+    total = float(weights.total)
+    record = MassChangeRecord(
+        entity="household",
+        old_total=total,
+        new_total=total,
+        declared_factor=1.0,
+        reason=GEOGRAPHIC_EXPAND_MASS_CHANGE_REASON,
+    )
+    return uk_national_frame(
+        person=person,
+        benunit=benunit,
+        household=household,
+        household_weights=weights.values,
+        weight_kind=weights.kind,
+        time_period=uk_time_period(base),
+        mass_log=(*base.mass_log, record),
+    )
+
+
 class Source(KernelBase):
+    """Serve the bound-spine stand-in at its ``clones`` parameter."""
+
     ref = "uk.test.full-source@1"
     capabilities = Capabilities(
         Determinism.DETERMINISTIC, structural=StructuralDelta.CREATE
@@ -113,74 +308,41 @@ class Source(KernelBase):
         return hashlib.sha256(self.ref.encode()).hexdigest()
 
     def run(self, context):
-        return KernelResult(frame=source_frame())
+        return KernelResult(frame=spine_frame(int(context.params["clones"])))
 
 
-def source_node(frame):
+def source_node(frame, *, clones: int = 1):
     return Node(
         "source",
         Source.ref,
         structural=StructuralDelta.CREATE,
         sources=("fixture",),
+        params={"clones": int(clones)},
         outputs=tuple(
             Owned(
                 entity,
                 col,
-                "string" if table[col].dtype.kind in "OUS" else str(table[col].dtype),
+                "string"
+                if isinstance(table[col].dtype, pd.StringDtype)
+                or table[col].dtype.kind in "OUS"
+                else str(table[col].dtype),
             )
             for entity in frame.entities
             for table in [frame.table(entity)]
             for col in table.columns
-            if col
-            not in {
-                "person_id",
-                "person_household_id",
-                "person_benunit_id",
-                "household_id",
-                "benunit_id",
-            }
+            if col not in _IDENTIFIERS
         ),
     )
 
 
-def graph_and_registry(
-    k,
-    *,
-    geography_assignment="legacy",
-    definition=None,
-    seed=7,
-    property_localisation_mode="none",
-    brma_localisation_mode="none",
-    private_rent_localisation_mode="none",
-    rfdr_localisation_mode="none",
-    full_scale=True,
-):
-    graph = append_uk_population_nodes(
-        Graph(
-            "uk",
-            (SourceRef("fixture", "raw-bytes-v1"),),
-            (source_node(source_frame()),),
-        ),
-        population="source",
-        time_period="2023",
-        weight_kind="importance",
-        n_clones=k,
-        seed=seed,
-        source_year=2023,
-        geography_assignment=geography_assignment,
-        atomic_geography_definition=definition,
-        source_vintage=SOURCE_VINTAGE if geography_assignment == "atomic" else None,
-        property_localisation_mode=property_localisation_mode,
-        brma_localisation_mode=brma_localisation_mode,
-        private_rent_localisation_mode=private_rent_localisation_mode,
-        rfdr_localisation_mode=rfdr_localisation_mode,
-        full_scale=full_scale,
+def spine_graph(clones: int = 1) -> Graph:
+    """The one-node spine graph the full graph is appended to: the stand-in at
+    ``clones`` geographic clones, whose version is ``source``."""
+    return Graph(
+        "uk",
+        (SourceRef("fixture", "raw-bytes-v1"),),
+        (source_node(spine_frame(clones), clones=clones),),
     )
-    registry = KernelRegistry()
-    registry.register(Source())
-    registry.register(UKClaimKernel())
-    register_uk_population_kernels(registry)
-    return graph, registry
 
 
 __all__ = [name for name in globals() if not name.startswith("__")]

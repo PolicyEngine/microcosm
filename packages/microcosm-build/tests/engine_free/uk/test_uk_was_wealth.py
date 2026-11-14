@@ -6,7 +6,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.country_spec import load_country_spec
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.uk_runtime.household_income import (
+    UK_HBAI_NET_INCOME_PREDICTOR,
+    UK_HBAI_NET_INCOME_VARIABLE,
+)
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.tenure_constants import UK_TENURE_CATEGORIES
 from microcosm.build.uk_runtime.was_wealth import (
@@ -17,6 +22,7 @@ from microcosm.build.uk_runtime.was_wealth import (
     UK_WAS_DIRECT_SHARE_FRACTION_COLUMN,
     UK_WAS_DRAWN_ONLY_COLUMNS,
     UK_WAS_ENGINE_PREDICTOR_ENTITIES,
+    UK_WAS_ENGINE_PREDICTOR_NAMES,
     UK_WAS_ENGINE_PREDICTORS,
     UK_WAS_HOLDER_STRATA,
     UK_WAS_NET_FINANCIAL_LIABILITIES,
@@ -28,6 +34,7 @@ from microcosm.build.uk_runtime.was_wealth import (
     UK_WAS_UNDRAWN_DIRECT_SHARE_FRACTION,
     UK_WAS_WEALTH_OUTPUT_COLUMNS,
     UK_WAS_WEALTH_PREDICTORS,
+    UK_WAS_WEALTH_STAGE_NAME,
     UK_WAS_WEALTH_STAGE_OUTPUT_COLUMNS,
     UKWASWealthStageTransform,
     allocate_student_loan_balance_to_people,
@@ -228,7 +235,13 @@ def _frame() -> object:
             "num_bedrooms": [3, 4],
             "council_tax": [1000.0, 1200.0],
             "council_tax_rebate": [250.0, 0.0],
-            "household_net_income": [50000.0, 60000.0],
+            # The paid bill council_tax_localise keeps from before it
+            # localises, max(council_tax - council_tax_rebate, 0) on the FRS
+            # bill (microcosm#931).
+            "council_tax_frs_bill": [750.0, 1200.0],
+            UK_HBAI_NET_INCOME_VARIABLE: [50000.0, 60000.0],
+            # The engine's other net income, which the stage must never read.
+            "household_net_income": [1_000_000.0, 2_000_000.0],
             "tenure_type": ["OWNED_WITH_MORTGAGE", "OWNED_OUTRIGHT"],
         }
     )
@@ -433,9 +446,10 @@ def test_recipient_predictors_sum_person_and_benunit_variables_to_household() ->
     assert predictors["num_adults"].tolist() == [2.0, 1.0]
     assert predictors["num_children"].tolist() == [0.0, 1.0]
     assert predictors["rental_income"].tolist() == [100.0, 50.0]
-    assert predictors["household_net_income"].tolist() == [50000.0, 60000.0]
+    assert predictors[UK_HBAI_NET_INCOME_PREDICTOR].tolist() == [50000.0, 60000.0]
     # The donor records the bill paid, so the reduction comes off the
-    # liability before council tax reduction (microcosm#1095).
+    # liability before council tax reduction (microcosm#1095): the paid bill
+    # council_tax_localise keeps (microcosm#931).
     assert predictors["council_tax"].tolist() == [750.0, 1200.0]
     assert predictors[UK_WAS_TENURE_CATEGORY_COLUMN].tolist() == [
         "owned_with_mortgage",
@@ -449,6 +463,42 @@ def test_recipient_predictors_sum_person_and_benunit_variables_to_household() ->
     assert "is_renting" not in UK_WAS_ENGINE_PREDICTOR_ENTITIES
 
 
+def test_the_bill_predictor_is_the_paid_bill_kept_before_the_localisation() -> None:
+    """The council-tax predictor is the paid bill council_tax_localise keeps
+    from before it localises the bill (microcosm#931), so a localised bill,
+    rebate or reduction does not move it, bit for bit; a frame without the
+    kept bill is refused, naming it."""
+    frame = _frame()
+    household = frame.table("household").copy()
+    # Bills and rebates as a localisation might leave them.
+    household["council_tax"] = [4_000.0, 0.1 + 0.2]
+    household["council_tax_rebate"] = [0.0, 0.3]
+
+    def with_household(table: pd.DataFrame):
+        return uk_national_frame(
+            person=frame.table("person"),
+            benunit=frame.table("benunit"),
+            household=table,
+            time_period="2023",
+            household_weights=frame.weights_for("household").values,
+        )
+
+    predictors = recipient_predictors(with_household(household), _FakeEngine())
+
+    kept = household["council_tax_frs_bill"].to_numpy(dtype=float)
+    assert predictors["council_tax"].to_numpy().view(np.uint64).tolist() == (
+        kept.view(np.uint64).tolist()
+    )
+    assert predictors["council_tax"].tolist() == [750.0, 1200.0]
+    # The predictor frame keeps its columns and their order.
+    assert list(predictors.columns) == list(
+        recipient_predictors(_frame(), _FakeEngine()).columns
+    )
+    without = household.drop(columns="council_tax_frs_bill")
+    with pytest.raises(KeyError, match="council_tax_frs_bill"):
+        recipient_predictors(with_household(without), _FakeEngine())
+
+
 def test_recipient_predictors_fail_loud_on_entity_mismatch() -> None:
     class _WrongEntityEngine(_FakeEngine):
         def variable_metadata(self, name):
@@ -458,6 +508,58 @@ def test_recipient_predictors_fail_loud_on_entity_mismatch() -> None:
 
     with pytest.raises(ValueError, match="employment_income"):
         recipient_predictors(_frame(), _WrongEntityEngine())
+
+
+def test_household_income_is_the_engine_hbai_income_under_one_name() -> None:
+    """The recipient reads the engine's closest concept to the donor's income.
+
+    The donor's ``DVTotinc_bhcR8`` (net income before housing costs, less
+    council tax) and the recipient's HBAI net income before the reset to zero
+    both carry the predictor name ``household_income`` gives that income, the
+    name the LCFS and ETB services stages give it; NTS reads the same engine
+    variable to build gross income (microcosm#1164). The engine's
+    ``household_net_income``, which also takes off taxes the survey's income
+    leaves out and adds the imputed value of NHS, education and transport
+    spending, is never read (microcosm#931).
+    """
+
+    import microcosm.build.uk_runtime.was_wealth as module
+
+    assert UK_WAS_WEALTH_PREDICTORS[0] == UK_HBAI_NET_INCOME_PREDICTOR
+    assert UK_WAS_ENGINE_PREDICTORS[0] == UK_HBAI_NET_INCOME_VARIABLE
+    assert dict(UK_WAS_ENGINE_PREDICTOR_NAMES) == {
+        UK_HBAI_NET_INCOME_VARIABLE: UK_HBAI_NET_INCOME_PREDICTOR
+    }
+    assert UK_WAS_ENGINE_PREDICTOR_ENTITIES[UK_HBAI_NET_INCOME_VARIABLE] == "household"
+    for names in (
+        UK_WAS_WEALTH_PREDICTORS,
+        UK_WAS_ENGINE_PREDICTORS,
+        UK_WAS_ENGINE_PREDICTOR_ENTITIES,
+    ):
+        assert "household_net_income" not in names
+
+    # The recipient's predictor is the engine's HBAI income; the frame's
+    # household_net_income decoy holds other values and is never read.
+    predictors = recipient_predictors(_frame(), _FakeEngine())
+    assert predictors[UK_HBAI_NET_INCOME_PREDICTOR].tolist() == [50000.0, 60000.0]
+    assert "household_net_income" not in predictors
+
+    # The donor's DVTotinc_bhcR8 under the same name.
+    assert module._RAW_TO_CLEAN["DVTotinc_bhcR8"] == UK_HBAI_NET_INCOME_PREDICTOR
+    donor = clean_was_household_table(_raw_was())
+    assert donor[UK_HBAI_NET_INCOME_PREDICTOR].tolist() == [50000.0, 60000.0]
+    assert "household_net_income" not in donor
+
+    # The packaged declaration names both sides, and the stage accepts it.
+    stage = load_country_spec("uk").sources.stage_map()["was_wealth"]
+    declared = {operation.kind: operation.parameters for operation in stage.operations}
+    direct_maps = declared["derive"]["direct_maps"]
+    assert direct_maps[UK_HBAI_NET_INCOME_PREDICTOR] == "DVTotinc_bhcR8"
+    engine_reads = declared["materialize_rules_engine_predictors"]["predictors"]
+    assert tuple(engine_reads) == UK_WAS_ENGINE_PREDICTORS
+    chain_predictors = declared["fit_weighted_qrf_chain"]["predictors"]
+    assert tuple(chain_predictors) == UK_WAS_WEALTH_PREDICTORS
+    module._assert_chain_declaration(stage)
 
 
 def test_student_loan_waterfall_uses_household_ids_not_positions() -> None:
@@ -492,6 +594,44 @@ def test_student_loan_waterfall_exercises_equal_split_tiers() -> None:
     )
 
     assert allocated.tolist() == [100.0, 0.0, 80.0, 0.0, 30.0, 30.0]
+
+
+def test_the_support_clip_receipt_gives_the_frames_clone_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every geographic clone's draws are clipped, so the clip receipt gives
+    the frame's clone count from two clones up, for the support-clip check to
+    multiply its row allowances by; a one-clone receipt keeps its form
+    (microcosm#931)."""
+
+    import microcosm.build.uk_runtime.was_wealth as module
+    from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
+
+    donor = clean_was_household_table(_raw_was())
+
+    def fake_impute(*args, **kwargs):
+        rows = np.arange(len(kwargs["record_ids"])) % len(donor)
+        draws = donor.loc[:, _DRAW_COLUMNS].iloc[rows].reset_index(drop=True)
+        return module.UKWASWealthImputationResult(draws=draws, fit_weight_records=())
+
+    monkeypatch.setattr(module, "impute_was_wealth", fake_impute)
+
+    def clip(frame) -> dict:
+        transform = UKWASWealthStageTransform(
+            stage=_stage(), engine=_FakeEngine(), donor=_raw_was()
+        )
+        transform(frame)
+        return transform.checkpoint_metadata()["evidence"]["support_clip"]
+
+    one = clip(_frame())
+    assert set(one) == {"columns"}
+    cloned = clip(clone_first_frame(_frame(), 3))
+    assert cloned["clone_count"] == 3
+    assert set(cloned) == {"columns", "clone_count"}
+    assert all(
+        receipt["rows_considered"] == 3 * one["columns"][column]["rows_considered"]
+        for column, receipt in cloned["columns"].items()
+    )
 
 
 def test_support_clip_and_integer_vehicle_output(
@@ -894,6 +1034,49 @@ def test_chain_declaration_drift_is_refused() -> None:
     with pytest.raises(ValueError, match="predictors drifted"):
         module._assert_chain_declaration(stage)
 
+    def stage_with(*operations: dict[str, object]) -> SourceStageSpec:
+        return SourceStageSpec.from_mapping(
+            {
+                "stage": "was_wealth",
+                "survey": "test",
+                "source": "test",
+                "grain": "household",
+                "artifacts": [],
+                "operations": list(operations),
+                "outputs": list(UK_WAS_WEALTH_OUTPUT_COLUMNS),
+            }
+        )
+
+    # The engine's household_net_income in place of the HBAI income.
+    materialize = _materialize_operation()
+    materialize["predictors"] = [
+        "household_net_income",
+        *UK_WAS_ENGINE_PREDICTORS[1:],
+    ]
+    with pytest.raises(ValueError, match="engine predictors drifted"):
+        module._assert_chain_declaration(stage_with(materialize, _chain_operation()))
+    # A declared donor column the cleaning does not read under that name: the
+    # donor's income under the engine's household_net_income, and the right
+    # name read from another column.
+    for direct_maps in (
+        {"household_net_income": "DVTotinc_bhcR8"},
+        {UK_HBAI_NET_INCOME_PREDICTOR: "DVGIEMPR8_AGGR"},
+    ):
+        derive = {"kind": "derive", "scope": "test", "direct_maps": direct_maps}
+        with pytest.raises(ValueError, match="direct_maps drifted"):
+            module._assert_chain_declaration(
+                stage_with(derive, _materialize_operation(), _chain_operation())
+            )
+    # Matched in lower case, as the cleaning matches the donor's columns.
+    derive = {
+        "kind": "derive",
+        "scope": "test",
+        "direct_maps": {UK_HBAI_NET_INCOME_PREDICTOR: "dvtotinc_bhcr8"},
+    }
+    module._assert_chain_declaration(
+        stage_with(derive, _materialize_operation(), _chain_operation())
+    )
+
 
 def test_private_pension_wealth_split_preserves_the_old_corporate_wealth_identity() -> (
     None
@@ -961,7 +1144,7 @@ def _synthetic_recipients(n: int = 80, seed: int = 1063) -> pd.DataFrame:
     category = np.resize(np.asarray(UK_TENURE_CATEGORIES), n)
     recipient = pd.DataFrame(
         {
-            "household_net_income": rng.uniform(5_000, 90_000, n),
+            UK_HBAI_NET_INCOME_PREDICTOR: rng.uniform(5_000, 90_000, n),
             "num_adults": rng.integers(1, 4, n),
             "num_children": rng.integers(0, 3, n),
             "private_pension_income": rng.uniform(0, 20_000, n),
@@ -1188,7 +1371,8 @@ def test_total_cap_takes_the_excess_from_the_remainder_first() -> None:
 
     capped, fired = cap_derived_totals_to_donor_range(draws, donor)
 
-    assert fired["property_wealth_capped_rows"] == 1
+    # One row capped: the count prints as its extreme-count band (C-40).
+    assert fired["property_wealth_capped_rows"] == "<3"
     assert capped.loc[0, "property_wealth"] == 104_100.0
     assert capped.loc[0, "other_property_value"] == 0.0
     assert capped.loc[0, "non_residential_property_value"] == 3_090.0
@@ -1215,6 +1399,842 @@ def test_was_draws_move_only_for_the_households_whose_inputs_move() -> None:
         draw,
         recipient,
         _ids(recipient),
-        perturbed_column="household_net_income",
+        perturbed_column=UK_HBAI_NET_INCOME_PREDICTOR,
         perturbed_value=12_345.0,
     )
+
+
+# --- The area home values inside the chain (microcosm#931) ------------------------
+
+
+def _doubling_localiser(calls: list, *, rows: np.ndarray | None = None):
+    """A stand-in localiser: doubles the positive draws of ``rows`` (every
+    row by default) and records each draw it is called with."""
+
+    from microcosm.build.uk_runtime.area_home_values import UKAreaHomeValues
+
+    def localise(value: np.ndarray) -> UKAreaHomeValues:
+        calls.append(np.array(value, copy=True))
+        chosen = np.ones(len(value), dtype=bool) if rows is None else rows
+        rewritten = chosen & (value > 0)
+        return UKAreaHomeValues(
+            value=np.where(rewritten, value * 2.0, value),
+            rank_basis=np.array(value, copy=True),
+            rewritten=rewritten,
+            clone_count=1,
+            sources_rewritten_by_region={},
+            sources_at_cap=0,
+            ranking="weighted_midpoint_within_frs_region",
+            knots_basis_year=2024,
+            knots_sha256="0" * 64,
+            regional_reference_sha256="0" * 64,
+        )
+
+    return localise
+
+
+def _bits(values) -> list[int]:
+    return np.asarray(values, dtype=np.float64).view(np.int64).tolist()
+
+
+def test_segments_one_and_two_draw_bit_for_bit_with_a_localiser() -> None:
+    """Segment seeds are prefix-stable and the localiser runs after segment
+    2, so the land and the main residence draw as without it; the draw is
+    kept as the rank basis and the main residence is the localiser's."""
+
+    from microcosm.build.uk_runtime.property_localisation import RANK_BASIS_COLUMN
+
+    donor = _fixture_donor()
+    recipient = _synthetic_recipients(48, seed=685)
+    plain = impute_was_wealth(
+        donor, recipient, seed=0, n_estimators=2, record_ids=_ids(recipient), segments=2
+    )
+    calls: list = []
+    localised = impute_was_wealth(
+        donor,
+        recipient,
+        seed=0,
+        n_estimators=2,
+        record_ids=_ids(recipient),
+        segments=2,
+        main_residence_localiser=_doubling_localiser(calls),
+    )
+
+    assert RANK_BASIS_COLUMN not in plain.draws
+    assert plain.main_residence_localisation is None
+    assert _bits(localised.draws["owned_land"]) == _bits(plain.draws["owned_land"])
+    drawn = plain.draws["main_residence_value"].to_numpy()
+    assert len(calls) == 1 and _bits(calls[0]) == _bits(drawn)
+    assert _bits(localised.draws[RANK_BASIS_COLUMN]) == _bits(drawn)
+    assert _bits(localised.draws["main_residence_value"]) == _bits(
+        np.where(drawn > 0, drawn * 2.0, drawn)
+    )
+    assert localised.fit_weight_records == plain.fit_weight_records
+    assert localised.segment_seeds == plain.segment_seeds
+    assert localised.main_residence_localisation is not None
+
+
+def test_every_segment_from_three_on_conditions_on_the_localised_home(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Segments 3 to 11 read the localiser's main residence: segment 3 and
+    segments 6 to 11 as a predictor, segments 4 and 5 through the property
+    total, which sums it."""
+
+    import microcosm.build.uk_runtime.was_wealth as module
+    import microcosm.fit
+
+    seen: dict[tuple[str, ...], pd.DataFrame] = {}
+
+    class RecordingQRF:
+        def __init__(self, *, n_estimators, seed, gate_calibration):
+            pass
+
+        def start_chain(self, donor, predictors, targets, *, weights):
+            return SimpleNamespace(
+                targets=tuple(targets), position=0, weight_kind="explicit"
+            )
+
+        def fit_draw_next(
+            self,
+            donor,
+            recipient_predictors,
+            raw_prior_draws,
+            *,
+            state,
+            weights,
+            quantiles,
+            sign_uniforms,
+        ):
+            seen.setdefault(state.targets, recipient_predictors.copy())
+            return SimpleNamespace(
+                raw_draw=np.full(len(recipient_predictors), 100.0),
+                weight_kind="explicit",
+                state=SimpleNamespace(
+                    targets=state.targets,
+                    position=state.position + 1,
+                    weight_kind="explicit",
+                ),
+            )
+
+    monkeypatch.setattr(microcosm.fit, "RegimeGatedQRF", RecordingQRF)
+    donor = clean_was_household_table(_raw_was())
+    recipient = recipient_predictors(_frame(), _FakeEngine())
+    calls: list = []
+    module.impute_was_wealth(
+        donor,
+        recipient,
+        seed=0,
+        n_estimators=2,
+        record_ids=_ids(recipient),
+        main_residence_localiser=_doubling_localiser(calls),
+    )
+
+    # Both recipients own: segment 2 drew 100 each, the localiser doubled it,
+    # and segment 3 read the doubled value.
+    assert _bits(calls[0]) == _bits([100.0, 100.0])
+    segment_three = seen[
+        (
+            "other_residential_property_value",
+            "non_residential_property_value",
+            "other_property_value",
+        )
+    ]
+    assert segment_three["main_residence_value"].tolist() == [200.0, 200.0]
+    assert "main_residence_value" not in seen[("main_residence_value",)]
+    # Segment 3 and segments 6 to 11 read the main residence (the mortgage
+    # segments the mortgaged stratum's one row), each the localised value.
+    reading = {
+        targets: predictors
+        for targets, predictors in seen.items()
+        if "main_residence_value" in predictors
+    }
+    assert len(reading) == 7, sorted(reading)
+    for targets, predictors in reading.items():
+        assert set(predictors["main_residence_value"].tolist()) == {200.0}, targets
+    # Every drawn component is 100 and the localiser doubled the home, so the
+    # property total every later segment reads is four components and 200.
+    totals = [
+        predictors for predictors in seen.values() if "property_wealth" in predictors
+    ]
+    assert totals
+    for predictors in totals:
+        assert set(predictors["property_wealth"].tolist()) == {600.0}
+
+
+def test_rows_the_localiser_leaves_draw_bit_for_bit_through_the_chain() -> None:
+    """Every draw is keyed on its household and the forests are fitted on the
+    donors, so a row whose main residence the localiser keeps (Scotland and
+    Northern Ireland, here every row outside the localised regions) draws
+    every segment bit for bit as without it."""
+
+    from microcosm.build.uk_runtime.property_localisation import RANK_BASIS_COLUMN
+
+    donor = _fixture_donor()
+    recipient = _synthetic_recipients(40, seed=931)
+    localised_rows = recipient["region"].isin(["LONDON", "WALES"]).to_numpy()
+    plain = impute_was_wealth(
+        donor, recipient, seed=0, n_estimators=2, record_ids=_ids(recipient)
+    )
+    localised = impute_was_wealth(
+        donor,
+        recipient,
+        seed=0,
+        n_estimators=2,
+        record_ids=_ids(recipient),
+        main_residence_localiser=_doubling_localiser([], rows=localised_rows),
+    )
+
+    kept = ~localised_rows
+    assert list(localised.draws.columns) == [*_DRAW_COLUMNS, RANK_BASIS_COLUMN]
+    for column in _DRAW_COLUMNS:
+        assert _bits(localised.draws.loc[kept, column]) == _bits(
+            plain.draws.loc[kept, column]
+        ), column
+    owners = localised_rows & (plain.draws["main_residence_value"].to_numpy() > 0)
+    assert owners.any()
+    assert (
+        localised.draws.loc[owners, "main_residence_value"].to_numpy()
+        == 2.0 * plain.draws.loc[owners, "main_residence_value"].to_numpy()
+    ).all()
+    # The localised owners' totals follow their main residence: the chain's
+    # own totals are the sums of their drawn components.
+    identities = wealth_identity_violations(localised.draws)
+    assert {key: identities[key] for key in _TOTAL_IDENTITY_KEYS} == dict.fromkeys(
+        _TOTAL_IDENTITY_KEYS, 0
+    )
+
+
+def test_the_support_clip_leaves_the_declared_exempt_columns() -> None:
+    from microcosm.build.uk_runtime.area_home_values import (
+        AREA_HOME_VALUES_EXEMPT_COLUMNS,
+    )
+
+    donor = clean_was_household_table(_raw_was())
+    draws = donor.loc[[0], _DRAW_COLUMNS].reset_index(drop=True)
+    draws.loc[0, "main_residence_value"] = 300_000.0
+    draws.loc[0, "property_wealth"] = 304_100.0
+    draws.loc[0, "owned_land"] = 1_000.0
+
+    exempt = support_clip_to_donor(
+        draws, donor, exempt=frozenset(AREA_HOME_VALUES_EXEMPT_COLUMNS)
+    )
+    plain = support_clip_to_donor(draws, donor)
+
+    assert exempt.clipped.loc[0, "main_residence_value"] == 300_000.0
+    assert exempt.clipped.loc[0, "property_wealth"] == 304_100.0
+    columns = exempt.receipt.evidence()["columns"]
+    for column in AREA_HOME_VALUES_EXEMPT_COLUMNS:
+        assert columns[column] == {"exempt": True, "rows_considered": 1}
+    # Every other column is clipped as before; without the exemption the two
+    # are clipped too.
+    assert exempt.clipped.loc[0, "owned_land"] == plain.clipped.loc[0, "owned_land"]
+    assert plain.clipped.loc[0, "main_residence_value"] == 100_000.0
+
+
+def test_the_cap_keeps_other_property_beside_a_localised_home() -> None:
+    """A localised main residence above the donor's largest raises its row's
+    largest property total by the excess, so the excess is never taken out of
+    the household's other property: beside a home above the donor's largest,
+    the other property keeps the room the donor's largest total leaves beside
+    the donor's largest home, as beside a drawn home at the donor's largest
+    (C-18). Only the rows the localiser rewrote get the room; without them
+    the cap is as before."""
+
+    donor = clean_was_household_table(_raw_was())
+    draws = donor.loc[[0], _DRAW_COLUMNS].reset_index(drop=True)
+    # The owner donor's own components, with its main residence lifted
+    # 200,000 past the donor's largest by the localiser.
+    draws.loc[0, "main_residence_value"] = 300_000.0
+    before = draws.copy()
+    other_property = (
+        "owned_land",
+        "other_residential_property_value",
+        "non_residential_property_value",
+        "other_property_value",
+    )
+
+    capped, fired = cap_derived_totals_to_donor_range(
+        draws, donor, localised=np.array([True])
+    )
+
+    for column in (*other_property, "main_residence_value"):
+        assert capped.loc[0, column] == before.loc[0, column], column
+    assert capped.loc[0, "property_wealth"] == 304_100.0
+    assert fired["property_wealth_capped_rows"] == 0
+    assert set(wealth_identity_violations(capped).values()) == {0}
+    # Without the localised flag the largest total is the donor's, as before
+    # the area home values: the other property pays for the lifted home, and
+    # the home itself is never reduced.
+    unflagged, unflagged_fired = cap_derived_totals_to_donor_range(draws, donor)
+    assert unflagged_fired["property_wealth_capped_rows"] == "<3"
+    for column in other_property:
+        assert unflagged.loc[0, column] == 0.0, column
+    assert unflagged.loc[0, "main_residence_value"] == 300_000.0
+    # Beside the lifted home, other property past the donor's room is still
+    # capped, from the remainder first.
+    draws.loc[0, "non_residential_property_value"] += 500.0
+    capped, fired = cap_derived_totals_to_donor_range(
+        draws, donor, localised=np.array([True])
+    )
+    assert fired["property_wealth_capped_rows"] == "<3"
+    assert capped.loc[0, "property_wealth"] == 304_100.0
+    assert capped.loc[0, "other_property_value"] == 0.0
+    assert capped.loc[0, "main_residence_value"] == 300_000.0
+    with pytest.raises(ValueError, match="one localised flag"):
+        cap_derived_totals_to_donor_range(
+            draws, donor, localised=np.array([True, False])
+        )
+
+
+def test_beside_a_lifted_home_other_property_keeps_only_the_donors_room() -> None:
+    """The other property beside a home above the donor's largest keeps the
+    room the donor's largest total leaves beside the donor's largest home, and
+    no more, even where it is a donor's own other property (C-18)."""
+
+    donor = clean_was_household_table(_raw_was())
+    other_property = [
+        column
+        for column in UK_WAS_DERIVED_TOTALS["property_wealth"]
+        if column != "main_residence_value"
+    ]
+    draws = donor.loc[[0], _DRAW_COLUMNS].reset_index(drop=True)
+    draws.loc[0, "main_residence_value"] = 300_000.0
+    # The renter donor's other property, 6,500 in all, beside the lifted home.
+    draws.loc[0, other_property] = donor.loc[1, other_property].to_numpy()
+    room = float(donor["property_wealth"].max() - donor["main_residence_value"].max())
+
+    capped, fired = cap_derived_totals_to_donor_range(
+        draws, donor, localised=np.array([True])
+    )
+
+    assert float(draws.loc[0, other_property].sum()) > room
+    assert float(capped.loc[0, other_property].sum()) == pytest.approx(room)
+    assert capped.loc[0, "main_residence_value"] == 300_000.0
+    assert fired["property_wealth_capped_rows"] == "<3"
+
+
+def test_the_cap_gives_room_to_the_localised_rows_alone() -> None:
+    """Two rows lifted past the donor's largest main residence: the one the
+    localiser rewrote keeps its other property, the other pays as before."""
+
+    donor = clean_was_household_table(_raw_was())
+    draws = donor.loc[[0, 0], _DRAW_COLUMNS].reset_index(drop=True)
+    draws["main_residence_value"] = 300_000.0
+
+    capped, fired = cap_derived_totals_to_donor_range(
+        draws, donor, localised=np.array([True, False])
+    )
+
+    other_property = [
+        column
+        for column in UK_WAS_DERIVED_TOTALS["property_wealth"]
+        if column != "main_residence_value"
+    ]
+    assert capped.loc[0, "property_wealth"] == 304_100.0
+    assert (
+        capped.loc[0, other_property].tolist() == draws.loc[0, other_property].tolist()
+    )
+    assert capped.loc[1, "property_wealth"] == 300_000.0
+    assert set(capped.loc[1, other_property].tolist()) == {0.0}
+    assert (capped["main_residence_value"] == 300_000.0).all()
+    assert fired["property_wealth_capped_rows"] == "<3"
+    assert set(wealth_identity_violations(capped).values()) == {0}
+
+
+def test_the_capped_counts_band_distinct_sources_among_the_counted_rows() -> None:
+    from microcosm.build.uk_runtime.receipt_counts import extreme_count
+
+    donor = clean_was_household_table(_raw_was())
+    rows = 24
+    draws = donor.loc[[0] * rows, _DRAW_COLUMNS].reset_index(drop=True)
+    draws["non_residential_property_value"] += 500.0
+    # Twelve sources in two clones each; clone 0's rows are the even ones.
+    sources = np.repeat(np.arange(1, 13), 2)
+    counted = np.tile([True, False], 12)
+
+    _, by_rows = cap_derived_totals_to_donor_range(draws, donor)
+    _, by_sources = cap_derived_totals_to_donor_range(
+        draws, donor, sources=sources, counted=counted
+    )
+
+    assert by_rows["property_wealth_capped_rows"] == extreme_count(24) == "10-49"
+    assert by_sources["property_wealth_capped_rows"] == extreme_count(12)
+    assert by_sources["corporate_wealth_capped_rows"] == 0
+    _, few = cap_derived_totals_to_donor_range(
+        draws, donor, sources=np.repeat([1, 2], 12), counted=np.ones(rows, bool)
+    )
+    assert few["property_wealth_capped_rows"] == "<3"
+    with pytest.raises(ValueError, match="one source and one counted flag"):
+        cap_derived_totals_to_donor_range(draws, donor, sources=sources[:3])
+
+
+def test_the_cap_counts_sources_in_clone_zero_not_the_union_over_clones() -> None:
+    """Source 3 is capped in clone 1 only, as a per-clone draw can make it:
+    clone 0 holds two capped sources ("<3"), where the union over clones
+    would read three ("3-9", C-44)."""
+
+    from microcosm.build.uk_runtime.receipt_counts import extreme_count
+
+    donor = clean_was_household_table(_raw_was())
+    draws = donor.loc[[0] * 6, _DRAW_COLUMNS].reset_index(drop=True)
+    sources = np.array([1, 1, 2, 2, 3, 3])
+    clone = np.array([0, 1, 0, 1, 0, 1])
+    pushed = np.array([True, True, True, True, False, True])
+    draws.loc[pushed, "non_residential_property_value"] += 500.0
+
+    _, fired = cap_derived_totals_to_donor_range(
+        draws, donor, sources=sources, counted=clone == 0
+    )
+    _, over_clones = cap_derived_totals_to_donor_range(draws, donor, sources=sources)
+
+    assert fired["property_wealth_capped_rows"] == extreme_count(2) == "<3"
+    assert over_clones["property_wealth_capped_rows"] == "3-9"
+
+
+def _area_frame() -> object:
+    """``_frame``'s two owners placed in a London and a Welsh constituency of
+    the committed knots, each its own source household."""
+
+    from microcosm.build.uk_runtime.area_home_values import (
+        load_committed_area_home_values_resources,
+    )
+
+    seats = sorted(load_committed_area_home_values_resources().knots.quantiles)
+    english = next(code for code in seats if code.startswith("E"))
+    welsh = next(code for code in seats if code.startswith("W"))
+    frame = _frame()
+    household = frame.table("household").copy()
+    household["region"] = ["LONDON", "WALES"]
+    household["constituency_code"] = pd.array([english, welsh], dtype="string")
+    household["source_household_id"] = household["household_id"].to_numpy()
+    household["household_support_channel"] = ["frs", "frs"]
+    return uk_national_frame(
+        person=frame.table("person"),
+        benunit=frame.table("benunit"),
+        household=household,
+        time_period="2023",
+        household_weights=frame.weights_for("household").values,
+    )
+
+
+def _area_stage() -> SourceStageSpec:
+    """``_stage`` declaring the area home values in full."""
+
+    from microcosm.build.source_manifest import SourceOperationSpec
+    from microcosm.build.uk_runtime import area_home_values as ahv
+    from microcosm.build.uk_runtime.property_localisation import RANK_BASIS_COLUMN
+    from microcosm.build.uk_runtime.regional_uprating import (
+        UK_REGIONAL_LAND_VALUES_RESOURCE,
+    )
+
+    stage = _stage()
+    return SourceStageSpec(
+        stage=stage.stage,
+        survey=stage.survey,
+        source=stage.source,
+        grain=stage.grain,
+        artifacts=tuple(
+            {
+                "role": role,
+                "kind": "public_aggregate_reference",
+                "resource": resource,
+                "format": "json",
+                "runtime_sha256_required": True,
+            }
+            for role, resource in (
+                (ahv.KNOTS_ARTIFACT_ROLE, ahv.KNOTS_RESOURCE),
+                (
+                    ahv.REGIONAL_REFERENCE_ARTIFACT_ROLE,
+                    UK_REGIONAL_LAND_VALUES_RESOURCE,
+                ),
+            )
+        ),
+        operations=(
+            *stage.operations,
+            SourceOperationSpec(
+                kind="support_clip",
+                parameters={
+                    "range": "donor_realized",
+                    "exempt": list(ahv.AREA_HOME_VALUES_EXEMPT_COLUMNS),
+                },
+            ),
+            SourceOperationSpec(
+                kind=ahv.AREA_HOME_VALUES_OPERATION_KIND,
+                parameters=ahv.area_home_values_operation_parameters(),
+            ),
+        ),
+        outputs=(*stage.outputs, RANK_BASIS_COLUMN),
+        nonnegative_outputs=stage.nonnegative_outputs,
+    )
+
+
+def test_the_stage_builds_the_localiser_only_where_it_is_declared(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import microcosm.build.uk_runtime.was_wealth as module
+    from microcosm.build.uk_runtime.property_localisation import RANK_BASIS_COLUMN
+
+    donor = clean_was_household_table(_raw_was())
+    localisers = []
+
+    def fake_impute(*args, **kwargs):
+        localisers.append(kwargs["main_residence_localiser"])
+        draws = donor.loc[:, _DRAW_COLUMNS].reset_index(drop=True)
+        return module.UKWASWealthImputationResult(draws=draws, fit_weight_records=())
+
+    monkeypatch.setattr(module, "impute_was_wealth", fake_impute)
+    transform = UKWASWealthStageTransform(
+        stage=_stage(), engine=_FakeEngine(), donor=_raw_was()
+    )
+    household = transform(_area_frame()).table("household")
+
+    assert localisers == [None]
+    assert RANK_BASIS_COLUMN not in household
+    evidence = transform.checkpoint_metadata()["evidence"]
+    assert "area_home_values" not in evidence
+    assert not any(
+        receipt.get("exempt")
+        for receipt in evidence["support_clip"]["columns"].values()
+    )
+
+
+def test_a_declared_stage_localises_its_owners_and_the_uprating_lands_them() -> None:
+    """End to end on two invented owners: the WAS stage reads their homes off
+    their constituencies' committed knots inside the chain, keeps the draw,
+    leaves the two exempt columns to the support clip and records the
+    evidence block; the regional uprating, dividing by the kept draw, lands
+    each home on its knot value to one rounding."""
+
+    from microcosm.build.uk_runtime import area_home_values as ahv
+    from microcosm.build.uk_runtime.property_localisation import (
+        RANK_BASIS_COLUMN,
+        localise_main_residence_values,
+        owner_uniforms,
+    )
+    from microcosm.build.uk_runtime.regional_uprating import (
+        UKRegionalPropertyUpratingStageTransform,
+    )
+
+    frame = _area_frame()
+    transform = UKWASWealthStageTransform(
+        stage=_area_stage(), engine=_FakeEngine(), donor=_raw_was()
+    )
+    result = transform(frame)
+    household = result.table("household")
+    # The stage writes its columns in the order it declares them, the kept
+    # draw beside the main residence it is the draw of, as the graph writes
+    # the stage's cells, so the legacy plan and the graph give one column
+    # order (microcosm#931).
+    declared = transform.output_columns()
+    assert [column for column in household.columns if column in declared] == [
+        column for column in declared if column in household.columns
+    ]
+
+    drawn = household[RANK_BASIS_COLUMN].to_numpy()
+    resources = ahv.load_committed_area_home_values_resources()
+    expected = ahv.localise_area_home_values(
+        frame.table("household"),
+        frame.weights_for("household").values,
+        drawn,
+        resources=resources,
+    )
+    assert expected.rewritten.all()
+    assert _bits(household["main_residence_value"]) == _bits(expected.value)
+    evidence = transform.checkpoint_metadata()["evidence"]
+    assert evidence["area_home_values"] == expected.evidence()
+    assert sorted(evidence["area_home_values"]["sources_rewritten_by_region"]) == [
+        "E12000007",
+        "W92000004",
+    ]
+    for column in ahv.AREA_HOME_VALUES_EXEMPT_COLUMNS:
+        assert evidence["support_clip"]["columns"][column]["exempt"] is True
+    assert set(
+        value for key, value in evidence["identities"].items() if "violation" in key
+    ) == {0}
+
+    def uprating_stage(*denominator: str) -> SourceStageSpec:
+        operation = {"kind": "uprate_to_regional_reference"}
+        if denominator:
+            operation["denominator"] = denominator[0]
+        return SourceStageSpec.from_mapping(
+            {
+                "stage": "regional_property_uprating",
+                "survey": "test",
+                "source": "test",
+                "grain": "household",
+                "artifacts": [],
+                "operations": [operation],
+                "outputs": [],
+                "rewrites": ["main_residence_value", "property_wealth"],
+            }
+        )
+
+    uprating = UKRegionalPropertyUpratingStageTransform(
+        stage=uprating_stage(RANK_BASIS_COLUMN)
+    )
+    landed = uprating(result).table("household")["main_residence_value"].to_numpy()
+    rank, _ = owner_uniforms(
+        spine_key=household["household_id"].astype(str).to_numpy(dtype=object),
+        region=household["region"].to_numpy(),
+        tenure_type=household["tenure_type"].to_numpy(),
+        value=drawn,
+        weight=frame.weights_for("household").values,
+        stream=ahv.AREA_HOME_VALUES_STREAM,
+    )
+    knot, _ = localise_main_residence_values(
+        u=rank,
+        constituency_code=household["constituency_code"].to_numpy(dtype=object),
+        tenure_type=household["tenure_type"].to_numpy(),
+        value=drawn,
+        knots=resources.knots,
+    )
+    assert np.all(np.abs(landed - knot) <= np.spacing(knot))
+    # Form F's two halves come together: an uprating that divides by the
+    # main residence refuses the localised households (C-15).
+    with pytest.raises(ValueError, match="denominator") as caught:
+        UKRegionalPropertyUpratingStageTransform(stage=uprating_stage())(result)
+    assert not any(
+        character.isdigit()
+        for character in str(caught.value).replace("microcosm#931", "")
+    )
+
+
+def test_the_graph_writes_the_packaged_stage_s_cells_in_its_declared_order() -> None:
+    """The graph writes the packaged WAS stage's household cells in the order
+    the stage declares its outputs, the kept draw beside the main residence,
+    the order its transform writes them in: H2 parity holds the two to one
+    column order (microcosm#931)."""
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.graph import _declared_stage_cells
+
+    stage = load_country_spec("uk").sources.stage_map()[UK_WAS_WEALTH_STAGE_NAME]
+    household = [
+        cell.column
+        for cell in _declared_stage_cells(stage)
+        if cell.entity == "household"
+    ]
+    assert household == [column for column in stage.outputs if column in household]
+    transform = UKWASWealthStageTransform(
+        stage=stage, engine=_FakeEngine(), donor=_raw_was()
+    )
+    assert transform.output_columns() == tuple(stage.outputs)
+
+
+def test_the_stage_hands_the_cap_the_rows_its_localiser_rewrote(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Toy knots lift both localised homes far past the donor's largest: the
+    transform hands the cap the rows the localiser rewrote, so the cap leaves
+    the other property beside each lifted home its room (C-18)."""
+
+    import json
+    from importlib.resources import files
+
+    import microcosm.build.uk_runtime.was_wealth as module
+    from microcosm.build.uk_runtime import area_home_values as ahv
+
+    committed = ahv.load_committed_area_home_values_resources()
+    seats = sorted(committed.knots.quantiles)
+    english = next(code for code in seats if code.startswith("E"))
+    welsh = next(code for code in seats if code.startswith("W"))
+    knots = {
+        "schema_version": 1,
+        "kind": "uk_high_value_home_value_knots",
+        "grid": [0.0, 0.5, 1.0],
+        "cap": 20_000_000.0,
+        "basis_year": 2024,
+        "inputs_sha256": "toy",
+        "method": "toy",
+        "levels": {
+            "constituency": {
+                code: {"quantiles": [4_000_000.0, 5_000_000.0, 6_000_000.0]}
+                for code in (english, welsh)
+            }
+        },
+    }
+    toy = ahv.load_area_home_values_resources(
+        knots=json.dumps(knots).encode(),
+        regional_reference=files("microcosm.build.uk")
+        .joinpath("regional_land_values.json")
+        .read_bytes(),
+    )
+    monkeypatch.setattr(
+        module, "load_committed_area_home_values_resources", lambda: toy
+    )
+    recorded: dict[str, object] = {}
+    cap = module.cap_derived_totals_to_donor_range
+
+    def recording_cap(draws, donor, **kwargs):
+        capped, fired = cap(draws, donor, **kwargs)
+        recorded.update(kwargs, capped=capped)
+        return capped, fired
+
+    monkeypatch.setattr(module, "cap_derived_totals_to_donor_range", recording_cap)
+    donor = clean_was_household_table(_raw_was())
+    largest_home = float(donor["main_residence_value"].max())
+    room = float(donor["property_wealth"].max()) - largest_home
+    other_property = [
+        column
+        for column in UK_WAS_DERIVED_TOTALS["property_wealth"]
+        if column != "main_residence_value"
+    ]
+
+    transform = UKWASWealthStageTransform(
+        stage=_area_stage(), engine=_FakeEngine(), donor=_raw_was()
+    )
+    household = transform(_area_frame()).table("household")
+
+    assert (household["main_residence_value"] > largest_home).all()
+    assert np.asarray(recorded["localised"], dtype=bool).tolist() == [True, True]
+    left = recorded["capped"].loc[:, other_property].sum(axis=1).to_numpy()
+    assert left == pytest.approx([room, room])
+
+
+def _cloned_was_frame() -> object:
+    """``_frame``'s two households, a third like the second (its own ids and
+    source) and an SPI copy of the first (its own id in the support field,
+    the first's true source), each in two clones, ids minted through the
+    copy-id table. Households in id order: 1, 2 and 3 in clone 0, the same in
+    clone 1, then the copy of 1 in clone 0 and in clone 1."""
+
+    from microcosm.build.uk_runtime import copy_id_table
+
+    frame = _frame()
+    person = frame.table("person")
+    benunit = frame.table("benunit")
+    household = frame.table("household").copy()
+    household["source_household_id"] = household["household_id"].to_numpy()
+    third_household = household.iloc[[1]].copy()
+    third_household["household_id"] = 3
+    third_household["source_household_id"] = 3
+    third_person = person.loc[person["person_household_id"] == 2].copy()
+    third_person["person_id"] = third_person["person_id"] + 100
+    third_person["person_household_id"] = 3
+    third_person["person_benunit_id"] = 30
+    third_benunit = benunit.loc[benunit["benunit_id"] == 20].copy()
+    third_benunit["benunit_id"] = 30
+    copy_household = household.iloc[[0]].copy()
+    copy_person = person.loc[person["person_household_id"] == 1].copy()
+    copy_benunit = benunit.loc[benunit["benunit_id"] == 10].copy()
+    for table, column in (
+        (copy_household, "household_id"),
+        (copy_person, "person_id"),
+        (copy_person, "person_household_id"),
+        (copy_person, "person_benunit_id"),
+        (copy_benunit, "benunit_id"),
+    ):
+        table[column] = copy_id_table.mint(
+            table[column].to_numpy(np.int64), "spi_support_channel", 1
+        )
+    tables = {
+        "household": pd.concat(
+            [household, third_household, copy_household], ignore_index=True
+        ),
+        "person": pd.concat([person, third_person, copy_person], ignore_index=True),
+        "benunit": pd.concat([benunit, third_benunit, copy_benunit], ignore_index=True),
+    }
+    ids = {
+        "household": ("household_id",),
+        "person": ("person_id", "person_household_id", "person_benunit_id"),
+        "benunit": ("benunit_id",),
+    }
+    order = {
+        "household": "household_id",
+        "person": "person_id",
+        "benunit": "benunit_id",
+    }
+    cloned = {}
+    for entity, table in tables.items():
+        copies = []
+        for clone in (0, 1):
+            copy = table.copy()
+            if clone:
+                for column in ids[entity]:
+                    copy[column] = copy_id_table.mint(
+                        copy[column].to_numpy(np.int64), "geographic_support", clone
+                    )
+            if entity == "household":
+                copy["household_clone_index"] = np.int64(clone)
+            copies.append(copy)
+        cloned[entity] = (
+            pd.concat(copies, ignore_index=True)
+            .sort_values(order[entity], kind="stable")
+            .reset_index(drop=True)
+        )
+    return uk_national_frame(
+        person=cloned["person"],
+        benunit=cloned["benunit"],
+        household=cloned["household"],
+        time_period="2023",
+        household_weights=np.ones(8),
+    )
+
+
+def _transform_capped(monkeypatch: pytest.MonkeyPatch, pushed) -> dict:
+    """The capped-row fields the stage records when the chain's draws push
+    the ``pushed`` households' property past the donor's largest."""
+
+    import microcosm.build.uk_runtime.was_wealth as module
+
+    donor = clean_was_household_table(_raw_was())
+
+    def fake_impute(*args, **kwargs):
+        draws = donor.loc[[0] * 8, _DRAW_COLUMNS].reset_index(drop=True)
+        draws.loc[np.asarray(pushed), "non_residential_property_value"] += 500.0
+        return module.UKWASWealthImputationResult(draws=draws, fit_weight_records=())
+
+    monkeypatch.setattr(module, "impute_was_wealth", fake_impute)
+    transform = UKWASWealthStageTransform(
+        stage=_stage(), engine=_FakeEngine(), donor=_raw_was()
+    )
+    transform(_cloned_was_frame())
+    return transform.checkpoint_metadata()["evidence"]["identities"]
+
+
+def test_the_cloned_frame_carries_the_lineage_the_stage_counts_by() -> None:
+    household = _cloned_was_frame().table("household")
+
+    assert household["household_clone_index"].tolist() == [0, 0, 0, 1, 1, 1, 0, 1]
+    assert household["source_household_id"].tolist() == [1, 2, 3, 1, 2, 3, 1, 1]
+
+
+def test_the_stage_bands_true_sources_not_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Clone 0 caps households 1 and 2 and the copy of household 1: two true
+    sources ("<3"), where counting rows would read three ("3-9", C-40)."""
+
+    identities = _transform_capped(
+        monkeypatch, [True, True, False, False, False, False, True, False]
+    )
+
+    assert identities["property_wealth_capped_rows"] == "<3"
+
+
+def test_the_stage_bands_clone_zero_not_the_union(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Clone 0 caps households 1 and 2 ("<3"); clone 1 also caps household 3,
+    which the union over clones would add ("3-9", C-44)."""
+
+    identities = _transform_capped(
+        monkeypatch, [True, True, False, True, True, True, False, False]
+    )
+
+    assert identities["property_wealth_capped_rows"] == "<3"
+
+
+def test_a_declared_stage_on_a_frame_without_areas_refuses_before_drawing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import microcosm.build.uk_runtime.was_wealth as module
+
+    def never(*args, **kwargs):
+        raise AssertionError("the chain ran")
+
+    monkeypatch.setattr(module, "impute_was_wealth", never)
+    transform = UKWASWealthStageTransform(
+        stage=_area_stage(), engine=_FakeEngine(), donor=_raw_was()
+    )
+    with pytest.raises(ValueError, match="constituency_code"):
+        transform(_frame())

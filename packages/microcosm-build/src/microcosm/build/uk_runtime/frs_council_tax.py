@@ -22,10 +22,15 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.receipt_counts import (
+    distinct_count,
+    record_source_households,
+    rounded_count,
+)
 from microcosm.frame import Frame
 
-FRS_COUNCIL_TAX_OUTPUT_COLUMNS = ("council_tax",)
 SCOTLAND_GVTREGNO = 12
+NORTHERN_IRELAND_GVTREGNO = 13
 #: Raw household cells the derivation reads; the pinned tab carries them all.
 FRS_COUNCIL_TAX_RAW_COLUMNS = (
     "ctannual",
@@ -53,6 +58,34 @@ FRS_CTPAID_PAYS = 1
 SCOTTISH_CHARGES_IN_RECIPIENT_BILL = SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE
 FRS_COUNCIL_TAX_STAGE_NAME = "frs_council_tax"
 FRS_COUNCIL_TAX_IMPUTATION_KIND = "impute_cell_means"
+#: The household column naming the branch each stage-5 bill takes, or
+#: ``not_levied`` in Northern Ireland (``derive_council_tax_provenance``):
+#: one of the four values below.
+FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN = "council_tax_bill_provenance"
+#: The bill is the observed CTANNUAL, netted of Scotland's water and sewerage
+#: charges, with any reported reduction added back: an observed gross bill. A
+#: household without a reported reduction whose CTANNUAL is zero and whose
+#: CTPAID is not 1 (2, 3 or blank) keeps its zero bill under this value too.
+FRS_COUNCIL_TAX_BILL_OBSERVED_GROSS = "observed_gross"
+#: CTANNUAL is negative or blank, or zero where someone pays and no reduction
+#: is reported: the bill is the cell mean.
+FRS_COUNCIL_TAX_BILL_MISSING = "missing"
+#: A reduction is reported (CTREB 1) without a positive CTREBAMT: the bill is
+#: the larger of the netted CTANNUAL and the cell mean.
+FRS_COUNCIL_TAX_BILL_UNKNOWN_REDUCTION = "unknown_reduction"
+#: Northern Ireland, which pays domestic rates, not council tax.
+FRS_COUNCIL_TAX_BILL_NOT_LEVIED = "not_levied"
+FRS_COUNCIL_TAX_BILL_PROVENANCE_VALUES = (
+    FRS_COUNCIL_TAX_BILL_OBSERVED_GROSS,
+    FRS_COUNCIL_TAX_BILL_MISSING,
+    FRS_COUNCIL_TAX_BILL_UNKNOWN_REDUCTION,
+    FRS_COUNCIL_TAX_BILL_NOT_LEVIED,
+)
+#: The graph's string dtype, which the provenance column is stored in.
+_PROVENANCE_DTYPE = pd.StringDtype(storage="python")
+#: The household columns the stage writes: the bill, then its provenance,
+#: which the release boundary drops and council_tax_localise alone reads.
+FRS_COUNCIL_TAX_OUTPUT_COLUMNS = ("council_tax", FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN)
 
 
 def frs_council_tax_operation_parameters() -> dict[str, Any]:
@@ -76,31 +109,63 @@ def frs_council_tax_operation_parameters() -> dict[str, Any]:
     }
 
 
+def frs_council_tax_provenance_operation_parameters() -> dict[str, Any]:
+    """The ``derive`` declaration ``derive_council_tax_provenance`` implements."""
+
+    return {
+        "kind": "derive",
+        "output": FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN,
+        "formula": (
+            "first match: not_levied where raw gvtregno == 13 (Northern "
+            "Ireland, which pays domestic rates), whatever branch its bill "
+            "takes; else the branch derive_council_tax takes: missing where "
+            "the bill is missing (raw ctannual < 0 or NaN, or ctannual == 0 "
+            "with ctpaid == 1 and ctreb != 1); observed_gross where ctreb == 1 "
+            "and ctrebamt > 0 (the reported reduction added back); "
+            "unknown_reduction where ctreb == 1 (the larger of the netted "
+            "ctannual and the cell mean); else observed_gross (the netted "
+            "ctannual, kept at zero where ctannual == 0 and ctpaid != 1, as "
+            "with ctpaid 2 and 3)"
+        ),
+    }
+
+
 def assert_frs_council_tax_stage_parameters(stage: SourceStageSpec) -> None:
-    """Closed-world drift assert: the manifest declares the implemented rule."""
+    """Closed-world drift assert: the manifest declares the implemented rules.
+
+    The stage reads its table, imputes the bill
+    (:func:`frs_council_tax_operation_parameters`) and derives the bill's
+    provenance (:func:`frs_council_tax_provenance_operation_parameters`), in
+    that order, each declaration exactly as those functions state it.
+    """
 
     if stage.stage != FRS_COUNCIL_TAX_STAGE_NAME:
         raise ValueError(f"frs_council_tax transform received stage {stage.stage!r}.")
     operations = list(stage.operations)
-    kinds = [operation.kind for operation in operations]
-    if kinds != ["read_tables", FRS_COUNCIL_TAX_IMPUTATION_KIND]:
-        raise ValueError(
-            "frs_council_tax stage must declare read_tables followed by "
-            f"{FRS_COUNCIL_TAX_IMPUTATION_KIND}, got {kinds}."
-        )
-    declared = {"kind": operations[1].kind, **dict(operations[1].parameters)}
-    expected = frs_council_tax_operation_parameters()
-    drifted = sorted(
-        key
-        for key in {*declared, *expected}
-        if _plain(declared.get(key)) != _plain(expected.get(key))
+    expected_operations = (
+        frs_council_tax_operation_parameters(),
+        frs_council_tax_provenance_operation_parameters(),
     )
-    if drifted:
+    kinds = [operation.kind for operation in operations]
+    expected_kinds = ["read_tables", *(op["kind"] for op in expected_operations)]
+    if kinds != expected_kinds:
         raise ValueError(
-            "frs_council_tax impute_cell_means declaration drifted from the "
-            f"rule the runtime implements on parameter(s) {drifted} "
-            "(uk-data#496/#499, microcosm#1095)."
+            f"frs_council_tax stage must declare {', '.join(expected_kinds)}, in "
+            f"that order, got {kinds}."
         )
+    for operation, expected in zip(operations[1:], expected_operations, strict=True):
+        declared = {"kind": operation.kind, **dict(operation.parameters)}
+        drifted = sorted(
+            key
+            for key in {*declared, *expected}
+            if _plain(declared.get(key)) != _plain(expected.get(key))
+        )
+        if drifted:
+            raise ValueError(
+                f"frs_council_tax {operation.kind} declaration drifted from the "
+                f"rule the runtime implements on parameter(s) {drifted} "
+                "(uk-data#496/#499, microcosm#1095, microcosm#931)."
+            )
 
 
 def _plain(value: object) -> object:
@@ -112,23 +177,48 @@ def _plain(value: object) -> object:
 
 
 class UKFRSCouncilTaxStageTransform:
-    """Whole-stage callable for FRS council-tax imputation."""
+    """Whole-stage callable for FRS council-tax imputation.
+
+    Running it writes each household's bill and the bill's provenance
+    (:func:`add_frs_council_tax`), then keeps the stage's receipt of the
+    provenance (:func:`council_tax_provenance_evidence`), counted on the frame
+    it wrote, for :meth:`checkpoint_metadata`.
+    """
 
     def __init__(self, raw_dir: str | Path, *, stage: SourceStageSpec) -> None:
         self.raw_dir = Path(raw_dir)
         self.stage = stage
+        self.last_evidence: dict[str, Any] | None = None
 
     def __call__(self, frame: Frame) -> Frame:
-        return add_frs_council_tax(frame, self.raw_dir, stage=self.stage)
+        result = add_frs_council_tax(frame, self.raw_dir, stage=self.stage)
+        self.last_evidence = council_tax_provenance_evidence(
+            result,
+            result.table("household")[FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN],
+        )
+        return result
 
     @staticmethod
     def output_columns() -> tuple[str, ...]:
         return FRS_COUNCIL_TAX_OUTPUT_COLUMNS
 
+    def checkpoint_metadata(self) -> dict[str, object]:
+        if self.last_evidence is None:
+            raise RuntimeError("checkpoint metadata requires a completed stage run.")
+        return {"evidence": self.last_evidence}
+
 
 def add_frs_council_tax(
     frame: Frame, raw_dir: str | Path, *, stage: SourceStageSpec
 ) -> Frame:
+    """Each household's bill and the branch the bill takes, on the frame.
+
+    ``council_tax`` is :func:`derive_council_tax`'s bill and
+    ``FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN`` is
+    :func:`derive_council_tax_provenance`'s flag, both from one set of masks;
+    the flag is in the graph's string dtype (``StringDtype("python")``).
+    """
+
     assert_frs_council_tax_stage_parameters(stage)
     artifacts = _artifact_by_table(stage)
     household_raw = normalize_ids(
@@ -138,8 +228,14 @@ def add_frs_council_tax(
         )
     )
     household = frame.table("household").copy()
-    derived = derive_council_tax(household, household_raw)
-    household["council_tax"] = derived.reindex(household["household_id"]).to_numpy()
+    bill, provenance = _council_tax_branches(household, household_raw)
+    household_ids = household["household_id"]
+    household["council_tax"] = bill.reindex(household_ids).to_numpy()
+    household[FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN] = pd.Series(
+        provenance.reindex(household_ids).to_numpy(dtype=object),
+        index=household.index,
+        dtype=_PROVENANCE_DTYPE,
+    )
     result = uk_national_frame(
         person=frame.table("person"),
         benunit=frame.table("benunit"),
@@ -190,6 +286,19 @@ def derive_council_tax(
     derivation embeds (uk-data#499); a household with no gross water cell
     nets its recorded ``CWATAMTD``. The charge a household pays is a separate
     quantity, ``frs_spine.scottish_water_and_sewerage_weekly``.
+    """
+
+    return _council_tax_branches(household, household_raw)[0]
+
+
+def _council_tax_branches(
+    household: pd.DataFrame, household_raw: pd.DataFrame
+) -> tuple[pd.Series, pd.Series]:
+    """``derive_council_tax``'s bill, and the branch each bill takes.
+
+    One set of masks chooses both, so the provenance names the branch the
+    bill took on every row outside Northern Ireland, where it reads
+    ``not_levied`` whatever the branch.
     """
 
     missing_columns = sorted(set(FRS_COUNCIL_TAX_RAW_COLUMNS) - set(household_raw))
@@ -243,7 +352,88 @@ def derive_council_tax(
             np.where(recipient, np.maximum(tax_only, imputed), tax_only),
         ),
     )
-    return pd.Series(gross, index=aligned.index).fillna(0.0).clip(lower=0)
+    # The bill's own branches in the bill's order, after Northern Ireland: the
+    # first condition that holds names the row.
+    provenance = np.select(
+        [
+            (gvtregno == NORTHERN_IRELAND_GVTREGNO).to_numpy(dtype=bool),
+            missing.to_numpy(dtype=bool),
+            known_reduction.to_numpy(dtype=bool),
+            recipient.to_numpy(dtype=bool),
+        ],
+        [
+            FRS_COUNCIL_TAX_BILL_NOT_LEVIED,
+            FRS_COUNCIL_TAX_BILL_MISSING,
+            FRS_COUNCIL_TAX_BILL_OBSERVED_GROSS,
+            FRS_COUNCIL_TAX_BILL_UNKNOWN_REDUCTION,
+        ],
+        default=FRS_COUNCIL_TAX_BILL_OBSERVED_GROSS,
+    )
+    return (
+        pd.Series(gross, index=aligned.index).fillna(0.0).clip(lower=0),
+        pd.Series(provenance, index=aligned.index, dtype=_PROVENANCE_DTYPE),
+    )
+
+
+def derive_council_tax_provenance(
+    household: pd.DataFrame, household_raw: pd.DataFrame
+) -> pd.Series:
+    """The branch each household's ``derive_council_tax`` bill takes.
+
+    One of ``FRS_COUNCIL_TAX_BILL_PROVENANCE_VALUES`` per household, on the
+    bill's index, in the graph's string dtype (``StringDtype("python")``).
+    The first that holds: ``not_levied`` in Northern Ireland (raw GVTREGNO
+    ``NORTHERN_IRELAND_GVTREGNO``); ``missing`` where the bill takes the cell
+    mean as a missing one; ``observed_gross`` where a reported reduction is
+    added back; ``unknown_reduction`` for any other household reporting a
+    reduction; else ``observed_gross``. The masks are the bill's own, so
+    outside Northern Ireland the value is the branch the bill took.
+    """
+
+    return _council_tax_branches(household, household_raw)[1]
+
+
+def council_tax_provenance_evidence(
+    frame: Frame | Mapping[str, pd.DataFrame], provenance: Any
+) -> dict[str, Any]:
+    """Stage 5's receipt of its bill provenance, by distinct true sources.
+
+    ``provenance`` holds one of ``FRS_COUNCIL_TAX_BILL_PROVENANCE_VALUES`` for
+    each household row of ``frame`` (a frame, or its tables by entity), in
+    row order. Each value's carriers are counted in distinct true source
+    households through ``receipt_counts.record_source_households`` (before
+    the first copying step each household is its own source; a copy or clone
+    counts as its source), UK-wide, and recorded as
+    ``receipt_counts.rounded_count`` gives them, every value present, zero
+    included. Refusals name the column (and the four values), never a value
+    read or a count.
+    """
+
+    sources = record_source_households(
+        frame, "household", stage=FRS_COUNCIL_TAX_STAGE_NAME, before_copies=True
+    )
+    values = np.asarray(provenance, dtype=object)
+    if values.ndim != 1 or len(values) != len(sources):
+        raise ValueError(
+            f"{FRS_COUNCIL_TAX_STAGE_NAME}'s bill provenance receipt needs one "
+            f"{FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN} value per household row."
+        )
+    flags = pd.Series(values)
+    if not flags.isin(FRS_COUNCIL_TAX_BILL_PROVENANCE_VALUES).all():
+        raise ValueError(
+            f"{FRS_COUNCIL_TAX_STAGE_NAME}'s "
+            f"{FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN} holds a value outside "
+            f"{list(FRS_COUNCIL_TAX_BILL_PROVENANCE_VALUES)}."
+        )
+    return {
+        "stage": FRS_COUNCIL_TAX_STAGE_NAME,
+        "bill_provenance_sources": {
+            value: rounded_count(
+                distinct_count(sources, (flags == value).to_numpy(dtype=bool))
+            )
+            for value in FRS_COUNCIL_TAX_BILL_PROVENANCE_VALUES
+        },
+    }
 
 
 def _artifact_by_table(stage: SourceStageSpec) -> dict[str, Mapping[str, Any]]:

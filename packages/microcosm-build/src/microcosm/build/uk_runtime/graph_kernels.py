@@ -26,11 +26,20 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
+from microcosm.calibrate import geography_constants
 from microcosm.fit import categorical as fit_categorical
 from microcosm.fit import donors as fit_donors
 from microcosm.fit import held_out as fit_held_out
+from microcosm.fit import model as fit_model
+from microcosm.fit import qrf as fit_qrf
 from microcosm.frame import Frame, MassChangeRecord, WeightKind
+from microcosm.frame import materialize as frame_materialize
+from microcosm.frame import rules as frame_rules
+from microcosm.frame.adapters import engine_identifiers, engine_population
 from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
+from microcosm.frame.adapters import (
+    policyengine_uk_population as uk_engine_population_declaration,
+)
 from microcosm.graph import (
     Capabilities,
     Determinism,
@@ -45,45 +54,114 @@ from microcosm.graph import (
     load_source,
     source_hash,
 )
+from microcosm.graph import canonical as graph_canonical
+from microcosm.graph import randomness as graph_randomness
 from microcosm.graph.population import dtype_for_token
 
-from .. import source_lineage, stage_evidence, stochastic_assignment
+from .. import (
+    atomic_geography,
+    atomic_support_conditioning,
+    atomic_support_expectations,
+    bounded_amounts,
+    chronicle_epoch,
+    clone_expansion,
+    gates,
+    ledger_targets,
+    raking,
+    source_lineage,
+    stage_evidence,
+    stochastic_assignment,
+    target_materialization,
+    trace,
+)
 from . import (
+    advani_summers,
+    annuity_trust_column,
+    area_home_values,
+    atomic_area_conditioning,
+    atomic_area_support,
+    atomic_household_identity,
+    birth_month,
+    brma_area_layer,
+    bus_fare_pricing,
+    bus_support_pricing,
     bus_use_incidence,
+    cgt_asset_type,
     cgt_imputation,
+    cgt_structure,
+    cgt_support,
+    chronicle_feed,
+    copy_id_table,
+    council_tax_band_d,
+    council_tax_constants,
+    dfe_spring_term,
+    donor_uprating,
+    employer_pension_contributions,
     energy_pricing,
+    etb_vat,
+    frs_annual_income,
+    frs_brma,
+    frs_council_tax,
     frs_disability,
     frs_education,
     frs_hmrc_source,
+    frs_release,
     frs_spine,
     frs_take_up,
+    gambling_participation,
+    geographic_clones,
+    geographic_identity,
+    geography_first_roster,
+    geography_sources,
+    graph_frames,
+    hmrc_capital_gains,
     hmrc_company_car_statistics,
     hmrc_income,
     hmrc_isa_statistics,
     hmrc_property_rental,
+    hmrc_replay,
+    hmrc_source_contract,
     hmrc_uprating,
+    household_income,
     household_lineage,
     ledger_fact_vendoring,
     legacy_closure_take_up,
+    local_authority_input,
+    national_frame,
+    nts_car_attributes,
     occupation_constants,
+    pension_coherence,
+    private_rent_localisation,
     property_localisation,
+    qrf_gates,
     receipt_counts,
+    regional_uprating,
+    release_input_coverage,
+    rfdr_area_layer,
     rowwise_geography,
+    spi_band_donors,
     spi_income,
     spi_rank_transport,
     spi_support,
+    stage_health,
+    support_clip,
+    take_up_contract,
+    tenure_constants,
+    terminal_gates,
     uc_capital_coherence,
     uc_deduction_attributes,
     uc_relationships,
     was_wealth,
 )
+from .graph import UK_SPINE_STRUCTURAL_STAGES
+from .graph_frames import cast_owned, normalize_create_frame
 from .national_frame import UK_NATIONAL_SCHEMA
-from .rowwise_geography import id_multiplier_for_values
 
 if TYPE_CHECKING:
     from microcosm.build.source_manifest import SourceStageSpec
 
 __all__ = [
+    "FIXTURE_SUPPORT_INPUTS",
     "UKClaimKernel",
     "UKCreateKernel",
     "UKExpandStageKernel",
@@ -93,6 +171,12 @@ __all__ = [
     "fixture_stage_plan_inputs",
 ]
 
+
+#: The H2 fixture's inputs that hold its toy conditioned atomic-area supports,
+#: by system: each is named by the id sources.yaml declares the system's
+#: conditioned support under, as the production graph's raw-byte source is
+#: (microcosm#931).
+FIXTURE_SUPPORT_INPUTS = MappingProxyType(dict(atomic_area_support.CONDITIONED_SOURCES))
 
 _STAGE_MODULES = {
     "frs_spine": "frs_spine",
@@ -106,7 +190,16 @@ _STAGE_MODULES = {
     "frs_take_up": "frs_take_up",
     "frs_person_draws": "frs_person_draws",
     "frs_household_draws": "frs_household_draws",
-    "frs_brma": "frs_brma",
+    # The area stages' transforms live in spine_geography, the private rents'
+    # in spine_private_rent and the council-tax localisation's in
+    # spine_council_tax (microcosm#931).
+    "atomic_area_assign": "spine_geography",
+    "local_authority": "spine_geography",
+    "rfdr": "spine_geography",
+    "area_brma": "spine_geography",
+    "spi_copy_areas": "spine_geography",
+    "private_rent": "spine_private_rent",
+    "council_tax_localise": "spine_council_tax",
     "was_wealth": "was_wealth",
     "was_lisa": "was_lisa",
     "nts_bus_travel": "nts_bus_travel",
@@ -118,6 +211,8 @@ _STAGE_MODULES = {
     "etb_services": "etb_services",
     "frs_hmrc_spine_leaves": "spi_spine",
     "frs_annual_income_spells": "frs_annual_income",
+    "geographic_expand": "geographic_expand",
+    "geographic_identity": "geographic_identity",
     "spi_support_channel": "spi_spine",
     "spi_income_band_donors": "spi_band_donors",
     "hmrc_spi_income_spine": "spi_spine",
@@ -134,7 +229,6 @@ _STAGE_MODULES = {
     "carers_allowance_take_up": "carers_allowance_take_up",
     "uc_deduction_attributes": "uc_deduction_attributes",
     "high_value_home_support": "high_value_home_support",
-    "regional_home_values": "regional_home_values",
     "cgt_support_split": "cgt_support",
     "cgt_incidence_clone": "cgt_structure",
     "cgt_incidence_anchor": "cgt_structure",
@@ -151,103 +245,702 @@ _STAGE_MODULES = {
     "age_tail": "age_tail",
 }
 
-# Imported modules are not traversed by ``source_hash``. Bind relationship
-# helpers and the adapter's input-retention checks into every consuming stage.
+# What every stage that calls the engine computes through: the adapter, which
+# runs a call whose frame carries several clones one clone at a time, and the
+# shared engine-block machinery with the UK declaration it judges each batch
+# against (microcosm#931). An edit to any of them moves the hash of every such
+# stage; test_uk_graph derives the stages from their engine calls and from
+# their transforms' engine parameter. Every stage also hashes the adapter
+# beside national_frame (_implementation_hash).
+_ENGINE_MODULES = (
+    uk_engine_adapter,
+    engine_population,
+    uk_engine_population_declaration,
+)
+# What else the injected engine computes through when those stages call it:
+# the adapter builds each simulation's dataset through frame.materialize's
+# engine_tables, and the ids that simulation holds through engine_identifiers.
+# test_uk_graph derives the group from a second walk, rooted at the
+# PolicyEngineUKEngine the builds inject and followed from the methods the
+# engine stages call on it (microcosm#931). It is kept apart from
+# _ENGINE_MODULES, which no other stage binds, because another stage may bind
+# one of its modules for its own tables, which test_uk_graph allows only where
+# the stage's own transform computes through it: the SPI spine's three stages
+# and the band donors bind frame.materialize. No stage reaches
+# engine_identifiers except through the engine.
+_ENGINE_COMPUTE_MODULES = (frame_materialize, engine_identifiers)
+# What every stage that calls the engine binds.
+_ENGINE_STAGE_MODULES = (*_ENGINE_MODULES, *_ENGINE_COMPUTE_MODULES)
+
+# Imported modules are not traversed by ``source_hash``, so each stage binds
+# every first-party module holding code its transform computes through,
+# beyond its own module (microcosm#931). test_uk_graph derives that set: it
+# follows what the transform names into the module defining it, in any
+# workspace package, to a fixed point, and for a stage that calls the engine,
+# what the methods the stage calls on the injected engine name. It needs no
+# binding for a listed refusal-only check, nor for the core modules every node
+# runs through (the Frame, the graph executor and the modules that compute
+# node keys), which it lists with their reasons. Where it stops at a single
+# string, a column-name function or a record, the module is hashed by the
+# stage or a stage upstream of it, or the name is listed with its reason; a
+# collection of strings, like a number, is a value.
+# Every stage whose module or bound helpers import the shared keyed-draw
+# helpers (``microcosm.build.stochastic_assignment``), or import another
+# module's function that draws through them, binds them as well, so an edit
+# to how a uniform is keyed or a binary is placed re-keys every stage it
+# moves; test_uk_graph derives that set from the imports and names.
+
+# A vendored ledger fact is read through ledger_fact_vendoring, which checks
+# it against the pinned chronicle feed and the feed's accepted schema epochs.
+_FEED_FACT_MODULES = (ledger_fact_vendoring, chronicle_feed, chronicle_epoch)
+# A pinned source tab is read through frs_spine's tab reader, which checks the
+# tab's digest through trace.
+_PINNED_TAB_MODULES = (frs_spine, trace)
+# The QRF donor stages fit and draw through microcosm.fit's regime-gated QRF,
+# which resolves its fit columns and weights through fit.model. The
+# categorical fitters resolve theirs through fit.model too, and their held-out
+# scores and folds use the QRF's gate calibration and folds (microcosm#931).
+_QRF_MODULES = (fit_qrf, fit_model)
+
 _STAGE_HELPER_MODULES = {
     # The three FRS draw stages' receipts measure their take-up flags through
     # frs_take_up's signal measurement and count support by the shared
-    # disclosure rules (microcosm#1095).
-    "frs_take_up": (receipt_counts,),
-    "frs_person_draws": (frs_take_up, receipt_counts),
-    "frs_household_draws": (frs_take_up, receipt_counts),
-    "frs_hmrc_spine_leaves": (frs_hmrc_source,),
+    # disclosure rules (microcosm#1095). The flags draw on the take-up
+    # contract's rates and age children by the DfE's spring-term rule
+    # (microcosm#931).
+    "frs_take_up": (
+        dfe_spring_term,
+        receipt_counts,
+        take_up_contract,
+        stochastic_assignment,
+    ),
+    "frs_person_draws": (
+        dfe_spring_term,
+        frs_take_up,
+        receipt_counts,
+        take_up_contract,
+        stochastic_assignment,
+    ),
+    "frs_household_draws": (
+        dfe_spring_term,
+        frs_take_up,
+        receipt_counts,
+        take_up_contract,
+        stochastic_assignment,
+    ),
+    # The FRS stages that read raw tabs and normalise their ids through
+    # frs_spine; the employment stage maps occupations to the shared codes, and
+    # the disability flags resolve the benefit year's rules from the FRS
+    # release and annualise on frs_spine's week count (microcosm#931).
+    "frs_relationships": (*_PINNED_TAB_MODULES, stochastic_assignment),
+    "frs_employment": (
+        *_PINNED_TAB_MODULES,
+        occupation_constants,
+        stochastic_assignment,
+    ),
+    "frs_council_tax": (*_PINNED_TAB_MODULES, stochastic_assignment),
+    "frs_disability": (frs_release, frs_spine, stochastic_assignment),
+    "frs_education": (*_PINNED_TAB_MODULES, stochastic_assignment),
+    # The leaves' employer pension contributions are drawn on keyed uniforms
+    # through employer_pension_contributions, from the ASHE rates it reads as
+    # vendored facts; the weekly leaves annualise on frs_spine's week count
+    # (microcosm#931). Their module, spi_spine, also mints the support
+    # channel's copies, so the leaves and the SPI income stage bind the copy-id
+    # table as the support channel does. Its three stages, like the band
+    # donors, copy their frames' tables through microcosm.frame's
+    # engine_tables (microcosm#931).
+    "frs_hmrc_spine_leaves": (
+        frs_hmrc_source,
+        copy_id_table,
+        employer_pension_contributions,
+        *_FEED_FACT_MODULES,
+        frs_spine,
+        frame_materialize,
+        stochastic_assignment,
+    ),
     # The annual income descriptors' receipt follows the shared disclosure rules
-    # (microcosm#1164).
-    "frs_annual_income_spells": (receipt_counts,),
+    # (microcosm#1164); the spells read their tabs and interview dates through
+    # frs_spine (microcosm#931).
+    "frs_annual_income_spells": (
+        receipt_counts,
+        *_PINNED_TAB_MODULES,
+        stochastic_assignment,
+    ),
+    # The geographic clones are the shared clone expansion core's, under the
+    # UK's declaration, whose ids are minted in the copy-id table's
+    # geographic_support field (microcosm#931).
+    # Every geography-first stage's transform reads its stage's name from the
+    # names-only roster leaf (microcosm#931).
+    "geographic_expand": (clone_expansion, copy_id_table, geography_first_roster),
+    # The geography key is household_draw_key, encoded canonically, over the
+    # FRS vintage the release pins for each source year (microcosm#931).
+    "geographic_identity": (
+        atomic_household_identity,
+        frs_release,
+        graph_canonical,
+        geography_first_roster,
+    ),
+    # The area draw runs the shared atomic-area operator and the shared
+    # fallback-level chooser on the conditioned supports, through
+    # atomic_area_conditioning's definition and draw inputs, which read the
+    # support profile, the band order and the FRS region map; the operator
+    # encodes its definition canonically and keys its draws through
+    # microcosm.graph's uniforms. The fuel-relief flag decodes the same
+    # supports for its roster and reads the RFDR layer; the local authority
+    # reads the names roster (microcosm#931). Their module, spine_geography,
+    # imports the BRMA stages' Northern Ireland draw, which draws through the
+    # keyed-draw helpers, so every stage it holds binds them.
+    "atomic_area_assign": (
+        atomic_geography,
+        atomic_support_conditioning,
+        atomic_area_conditioning,
+        atomic_area_support,
+        council_tax_constants,
+        rowwise_geography,
+        geography_first_roster,
+        graph_canonical,
+        graph_randomness,
+        stochastic_assignment,
+    ),
+    "local_authority": (
+        local_authority_input,
+        geography_sources,
+        geography_first_roster,
+        stochastic_assignment,
+    ),
+    "rfdr": (
+        atomic_geography,
+        atomic_support_conditioning,
+        atomic_area_conditioning,
+        atomic_area_support,
+        rfdr_area_layer,
+        rowwise_geography,
+        geography_first_roster,
+        graph_canonical,
+        stochastic_assignment,
+    ),
+    # The SPI copies' areas re-key each copy as the geography identity does,
+    # draw its area with the area draw's definition, and re-run the local
+    # authority, the BRMA (Northern Ireland's on the copies' own benefit units
+    # after one engine call) and the fuel-relief flag (microcosm#931).
+    "spi_copy_areas": (
+        *_ENGINE_STAGE_MODULES,
+        atomic_geography,
+        atomic_support_conditioning,
+        atomic_area_conditioning,
+        atomic_area_support,
+        atomic_household_identity,
+        brma_area_layer,
+        council_tax_constants,
+        frs_brma,
+        frs_release,
+        geographic_identity,
+        local_authority_input,
+        geography_sources,
+        rfdr_area_layer,
+        rowwise_geography,
+        geography_first_roster,
+        graph_canonical,
+        graph_randomness,
+        stochastic_assignment,
+    ),
+    # The private rents read the BRMA lists through the localiser and key their
+    # tie-breaks through microcosm.graph's uniforms, which encode each draw's
+    # coordinates as canonical JSON (microcosm#931).
+    "private_rent": (
+        private_rent_localisation,
+        geography_first_roster,
+        graph_canonical,
+        graph_randomness,
+    ),
+    # The council-tax localisation recomputes each household's draw cell as
+    # the area draw does, through atomic_area_conditioning's definition, draw
+    # inputs and levels on the decoded supports, which read the support
+    # profile, the band order and the FRS region map; the definition is
+    # encoded canonically and names microcosm.graph's stream. It takes each
+    # cell's expected Band D through the shared draw-cell expectation, reads
+    # the Band D and prices the statute through council_tax_band_d,
+    # Scotland's Band D a vendored fact checked against the pinned feed, reads
+    # stage 5's bill provenance, the authority code column and the nations of
+    # the regions, and holds the reductions within their bills through the
+    # shared bounded amounts. Like every geography-first stage, it reads its
+    # name from the roster leaf (microcosm#931).
+    "council_tax_localise": (
+        atomic_geography,
+        atomic_support_conditioning,
+        atomic_support_expectations,
+        atomic_area_conditioning,
+        atomic_area_support,
+        bounded_amounts,
+        council_tax_band_d,
+        council_tax_constants,
+        frs_council_tax,
+        local_authority_input,
+        rowwise_geography,
+        geography_constants,
+        *_FEED_FACT_MODULES,
+        geography_first_roster,
+        graph_canonical,
+        graph_randomness,
+    ),
     # The SPI income stage's imputation, band-donor resample and receipt live
     # in spi_income, so an edit there moves the stage's hash (microcosm#1278),
-    # and its twin transport in spi_rank_transport (microcosm#840).
-    "hmrc_spi_income_spine": (spi_income, spi_rank_transport),
-    "frs_spine": (uc_relationships,),
-    "frs_legacy_proxies": (uk_engine_adapter,),
-    "frs_education_grant_split": (uk_engine_adapter,),
-    "frs_brma": (uk_engine_adapter,),
-    "was_wealth": (uk_engine_adapter,),
+    # and its twin transport in spi_rank_transport (microcosm#840). The
+    # imputation refreshes the disability flags, coheres the pension
+    # contributions on the ASHE rate bands, uprates savings income, floors pay
+    # on frs_spine's week count and reads its age model and band targets as
+    # vendored facts and HMRC tables; the stage's parameters bound the band
+    # donors and the coverage floor, and its result carries the fits' weight
+    # kinds, gate outcomes and the HMRC replay report (microcosm#931). It
+    # binds the copy-id table as the leaves do. The imputation refreshes the
+    # annual income descriptors on frs_annual_income's share columns, and the
+    # evidence shares iterate HMRC's distributional inputs. It zeros a drawn
+    # row's annuity and trust descriptor, whose name it reads from
+    # annuity_trust_column, as the root does (microcosm#931, ruled 9 Nov
+    # (late)).
+    "hmrc_spi_income_spine": (
+        spi_income,
+        spi_rank_transport,
+        annuity_trust_column,
+        copy_id_table,
+        employer_pension_contributions,
+        *_FEED_FACT_MODULES,
+        frs_annual_income,
+        frs_disability,
+        frs_release,
+        frs_spine,
+        frs_take_up,
+        gates,
+        hmrc_income,
+        hmrc_replay,
+        hmrc_source_contract,
+        hmrc_uprating,
+        pension_coherence,
+        qrf_gates,
+        release_input_coverage,
+        spi_band_donors,
+        spi_support,
+        target_materialization,
+        frame_materialize,
+        stochastic_assignment,
+    ),
+    # The spine's raw ids sit below the copy-id table's first field, and every
+    # copy layer mints its ids in its own field of the table; the two SPI
+    # support stages mint through the support channel's clone helper, and the
+    # high-value split weighs its copies through the CGT split's exact-total
+    # correction (microcosm#931). The executor reads each id-offset stage's
+    # declared radix from the table too. The root reads its tabs through
+    # trace's digest, ages people by birth month, caps pension contributions
+    # with their receipt, and codes council tax bands in the shared band order
+    # (microcosm#931). It writes the annuity and trust descriptor under the
+    # name annuity_trust_column holds (microcosm#931, ruled 9 Nov (late)). It
+    # reads each household's nation, for its IMD decile and its band flag,
+    # from the region tier through council_tax_constants (microcosm#931).
+    "frs_spine": (
+        uc_relationships,
+        annuity_trust_column,
+        copy_id_table,
+        birth_month,
+        council_tax_constants,
+        geography_constants,
+        pension_coherence,
+        receipt_counts,
+        trace,
+        stochastic_assignment,
+    ),
+    # The support channel draws its keyed share and bounds its zero-weight
+    # gate through the keyed-draw helpers, reads the take-up population's ages
+    # and gates its zero-weight strata (microcosm#931).
+    "spi_support_channel": (
+        spi_support,
+        copy_id_table,
+        frs_take_up,
+        gates,
+        terminal_gates,
+        frame_materialize,
+        stochastic_assignment,
+    ),
+    # The band donors read HMRC's ITL band taxpayers as vendored facts and the
+    # donors' age model through spi_income (microcosm#931).
+    "spi_income_band_donors": (
+        spi_support,
+        copy_id_table,
+        *_FEED_FACT_MODULES,
+        frs_take_up,
+        spi_income,
+        frame_materialize,
+        stochastic_assignment,
+    ),
+    # The exact-total correction the CGT split hands the high-value split is
+    # spi_support's, and the support stratum is property_localisation's, whose
+    # owners are the tenure map's (microcosm#931). spi_support draws the SPI
+    # share through the keyed-draw helpers, so the stages that bind it bind
+    # them too.
+    "high_value_home_support": (
+        cgt_support,
+        copy_id_table,
+        property_localisation,
+        spi_support,
+        tenure_constants,
+        stochastic_assignment,
+    ),
+    # The CGT stages read HMRC's CGT tables as vendored facts and the
+    # Advani-Summers tail from advani_summers, take the CGT policy parameters
+    # and income proxy from cgt_imputation (whose loss relief evaluates a named
+    # term), and weigh their copies through spi_support's exact-total
+    # correction; the support split also takes the adult age and oldest-adult
+    # rule from cgt_structure and reads the frame's geographic clone count
+    # through geographic_clones, and the residential split takes its logistic
+    # from cgt_asset_type; the incidence clone sums cgt_imputation's income proxy
+    # components into the income behind its propensity; the gains spine names
+    # HMRC's regional conditioning rows by microcosm.calibrate's UK region tier,
+    # and it and the asset types key each walk's offset on its label through
+    # the shared keyed draws (microcosm#931).
+    "cgt_support_split": (
+        copy_id_table,
+        *_FEED_FACT_MODULES,
+        cgt_imputation,
+        cgt_structure,
+        geographic_clones,
+        hmrc_capital_gains,
+        hmrc_income,
+        spi_support,
+        target_materialization,
+        stochastic_assignment,
+    ),
+    "cgt_incidence_clone": (
+        rowwise_geography,
+        copy_id_table,
+        advani_summers,
+        cgt_imputation,
+        spi_support,
+        stochastic_assignment,
+    ),
+    "cgt_incidence_anchor": (
+        rowwise_geography,
+        copy_id_table,
+        advani_summers,
+        cgt_imputation,
+        hmrc_capital_gains,
+        stochastic_assignment,
+    ),
+    "cgt_residential_split": (
+        copy_id_table,
+        *_FEED_FACT_MODULES,
+        cgt_asset_type,
+        cgt_imputation,
+        hmrc_capital_gains,
+        spi_support,
+        stochastic_assignment,
+    ),
+    "hmrc_cgt_gains_spine": (
+        *_FEED_FACT_MODULES,
+        advani_summers,
+        geography_constants,
+        hmrc_capital_gains,
+        hmrc_income,
+        target_materialization,
+        stochastic_assignment,
+    ),
+    "hmrc_cgt_asset_type_spine": (
+        *_FEED_FACT_MODULES,
+        cgt_imputation,
+        hmrc_capital_gains,
+        stochastic_assignment,
+    ),
+    # The legacy proxies read raw tabs, and the grant split resolves its
+    # year's rules from the FRS release (microcosm#931).
+    "frs_legacy_proxies": (
+        *_ENGINE_STAGE_MODULES,
+        *_PINNED_TAB_MODULES,
+        stochastic_assignment,
+    ),
+    "frs_education_grant_split": (*_ENGINE_STAGE_MODULES, frs_release),
+    # The BRMA takes frs_brma's engine binding: one engine call materialises
+    # LHA_category, and Northern Ireland's benefit units draw on frs_brma's
+    # keyed uniforms; Great Britain's read the area-to-BRMA layer, by the
+    # systems atomic_area_support names (microcosm#931).
+    "area_brma": (
+        *_ENGINE_STAGE_MODULES,
+        atomic_area_support,
+        brma_area_layer,
+        frs_brma,
+        geography_first_roster,
+        stochastic_assignment,
+    ),
+    # The donor stages read their donor tabs through frs_spine, record each
+    # fit's weight kind, gate the fits and clip donor support to the donor's
+    # range (microcosm#931); the WAS recipients' predictors map benefit units to
+    # households, count family roles, group tenure by the shared tenure map and
+    # name the HBAI income predictor. The WAS stage, and the LISA, bus, LCFS,
+    # ETB, landlord, reporter and housing stages below, fit through the QRF
+    # modules (microcosm#931). The WAS stage reads its main residences off each
+    # owner's constituency where its declaration asks (area_home_values): it
+    # ranks owners and reads the knots through property_localisation, whose
+    # owners are the tenure map's and whose keyed uniforms are
+    # microcosm.graph's, which encodes each draw's coordinates as canonical
+    # JSON; it divides by the regional uprating's factor, reads the knots'
+    # regions from the FRS region map, and counts its evidence in true source
+    # households, as its donor-range cap counts the sources it adjusts; so it
+    # and the LISA stage, which binds it, are counting stages (microcosm#931).
+    "was_wealth": (
+        *_ENGINE_STAGE_MODULES,
+        *_PINNED_TAB_MODULES,
+        *_QRF_MODULES,
+        area_home_values,
+        frs_brma,
+        gates,
+        household_income,
+        property_localisation,
+        qrf_gates,
+        regional_uprating,
+        rowwise_geography,
+        support_clip,
+        tenure_constants,
+        uc_relationships,
+        graph_randomness,
+        graph_canonical,
+        stochastic_assignment,
+    ),
     # The LISA stage reads its household donor through the WAS cleaning and its
     # household predictors through the WAS recipient surface; the anchor counts
     # HMRC's payers through the typed ISA facts (microcosm#1415).
-    "was_lisa": (uk_engine_adapter, was_wealth, hmrc_isa_statistics),
+    "was_lisa": (
+        *_ENGINE_STAGE_MODULES,
+        was_wealth,
+        hmrc_isa_statistics,
+        *_PINNED_TAB_MODULES,
+        *_FEED_FACT_MODULES,
+        *_QRF_MODULES,
+        frs_brma,
+        gates,
+        household_income,
+        support_clip,
+        tenure_constants,
+        uc_relationships,
+        stochastic_assignment,
+    ),
     # Landlords' receipts read the vendored PRIS rows through their typed
     # loader, the tape through the income stage's preparation and uprating,
-    # and the support channel's names (microcosm#1106).
-    "property_components": (hmrc_property_rental, spi_income, spi_support),
-    # The regional values rank as the dense node does and read its knots
-    # (microcosm#1112).
-    "regional_home_values": (property_localisation, rowwise_geography),
+    # and the support channel's names (microcosm#1106); the loader checks the
+    # feed, the preparation reads the donors' age model over the take-up
+    # population and uprates savings income, and the fits record their weight
+    # kinds (microcosm#931).
+    "property_components": (
+        hmrc_property_rental,
+        spi_income,
+        spi_support,
+        *_FEED_FACT_MODULES,
+        *_QRF_MODULES,
+        frs_take_up,
+        gates,
+        hmrc_uprating,
+        stochastic_assignment,
+    ),
     # The purchases read the vendored HMRC Stamp Tax rows through the feed-pinned
     # reader and mark SDLT's regions from the FRS region map (microcosm#1095).
-    "property_purchases": (ledger_fact_vendoring, rowwise_geography),
-    "nts_bus_travel": (uk_engine_adapter, bus_use_incidence),
+    "property_purchases": (
+        *_FEED_FACT_MODULES,
+        rowwise_geography,
+        stochastic_assignment,
+    ),
+    # The bus travel donors also read published car availability as vendored
+    # facts, and the recipients' HBAI gross income (microcosm#931).
+    "nts_bus_travel": (
+        *_ENGINE_STAGE_MODULES,
+        bus_use_incidence,
+        *_PINNED_TAB_MODULES,
+        *_FEED_FACT_MODULES,
+        *_QRF_MODULES,
+        gates,
+        household_income,
+        qrf_gates,
+        support_clip,
+        stochastic_assignment,
+    ),
     # The energy level and prices are energy_pricing's (microcosm#1418): a
     # code-only change to them must re-key the stage (the independent review
-    # of microcosm#1420, finding 5).
-    "lcfs_consumption": (uk_engine_adapter, energy_pricing),
-    "etb_vat": (uk_engine_adapter,),
-    "etb_services": (uk_engine_adapter,),
-    "uc_reporter_redraw": (uc_relationships, uk_engine_adapter),
+    # of microcosm#1420, finding 5). The LCFS and ETB donors are uprated
+    # through donor_uprating on vendored indices, the recipients' household
+    # income and family roles are predictors, and bus fares are priced over
+    # calendar and fiscal-year windows; the LCFS stage also rakes its energy,
+    # assigns car attributes, tops up gambling and reads the DfT boardings of
+    # each recipient's region through the FRS region map (microcosm#931).
+    "lcfs_consumption": (
+        *_ENGINE_STAGE_MODULES,
+        energy_pricing,
+        *_PINNED_TAB_MODULES,
+        *_FEED_FACT_MODULES,
+        *_QRF_MODULES,
+        bus_fare_pricing,
+        donor_uprating,
+        gambling_participation,
+        gates,
+        household_income,
+        ledger_targets,
+        nts_car_attributes,
+        qrf_gates,
+        raking,
+        rowwise_geography,
+        support_clip,
+        stochastic_assignment,
+    ),
+    "etb_vat": (
+        *_ENGINE_STAGE_MODULES,
+        *_PINNED_TAB_MODULES,
+        *_FEED_FACT_MODULES,
+        *_QRF_MODULES,
+        donor_uprating,
+        gates,
+        household_income,
+        support_clip,
+        uc_relationships,
+        stochastic_assignment,
+    ),
+    # The services stage counts its recipients' family roles as the VAT stage
+    # does, from etb_vat's role table (microcosm#931).
+    "etb_services": (
+        *_ENGINE_STAGE_MODULES,
+        *_PINNED_TAB_MODULES,
+        *_FEED_FACT_MODULES,
+        *_QRF_MODULES,
+        bus_fare_pricing,
+        bus_support_pricing,
+        donor_uprating,
+        energy_pricing,
+        etb_vat,
+        gates,
+        ledger_targets,
+        qrf_gates,
+        support_clip,
+        uc_relationships,
+        stochastic_assignment,
+    ),
+    # The reporter redraw gates its fits and maps household weights to benefit
+    # units as the UC capital stage does (microcosm#931).
+    "uc_reporter_redraw": (
+        uc_relationships,
+        *_ENGINE_STAGE_MODULES,
+        *_QRF_MODULES,
+        qrf_gates,
+        uc_capital_coherence,
+        stochastic_assignment,
+    ),
     # The SPI benefit pass restores from the FRS twin through the support
     # channel's lineage, re-derives the disability flags and the own-right
     # rule, draws over the take-up population and maps household weights to
-    # benefit units as the UC capital stage does (microcosm#1095).
+    # benefit units as the UC capital stage does (microcosm#1095); the flags
+    # resolve their year's rules and week count, and the draws read the
+    # take-up contract (microcosm#931).
     "spi_benefit_coherence": (
         spi_support,
         frs_disability,
         frs_education,
         frs_take_up,
         uc_capital_coherence,
+        frs_release,
+        frs_spine,
+        take_up_contract,
+        stochastic_assignment,
     ),
-    "uc_capital_coherence": (uc_relationships,),
+    # Unavailable capital is frs_spine's sentinel (microcosm#931).
+    "uc_capital_coherence": (uc_relationships, frs_spine, stochastic_assignment),
     # The Universal Credit redraw reads the award through the adapter, the
     # vendored DWP counts, the closure stage's rule and rates, the deduction
     # attributes, the take-up population and the family-type roles, and counts
-    # its pools and receipt on the source lineage (microcosm#1334).
+    # its pools and receipt on the source lineage (microcosm#1334); the
+    # attributes map benefit units to households and judge their realisation
+    # by the shared tolerance, and the year's rules come from the FRS release;
+    # it types its engine as the adapter's ProjectingRulesEngine, a protocol
+    # that extends microcosm.frame.rules' RulesEngine (microcosm#931).
     "uc_take_up": (
-        uk_engine_adapter,
-        ledger_fact_vendoring,
+        *_ENGINE_STAGE_MODULES,
+        frame_rules,
+        *_FEED_FACT_MODULES,
         legacy_closure_take_up,
         uc_deduction_attributes,
         frs_take_up,
         uc_relationships,
         uc_capital_coherence,
         receipt_counts,
+        frs_brma,
+        frs_release,
+        stage_health,
+        stochastic_assignment,
     ),
     # The Move to UC claim draw reuses the UC stage's household-to-benefit-unit
     # weight mapping and reads the vendored DWP rows (microcosm#1095).
-    "uc_legacy_closure_take_up": (uc_capital_coherence, ledger_fact_vendoring),
+    "uc_legacy_closure_take_up": (
+        uc_capital_coherence,
+        *_FEED_FACT_MODULES,
+        stochastic_assignment,
+    ),
     # The Pension Credit redraw reuses the UC stage's household-to-benefit-unit
-    # weight mapping and the adapter's engine materialization.
-    "pension_credit_take_up": (uc_capital_coherence, uk_engine_adapter),
-    # The Child Benefit redraw shares the weight mapping and the adapter.
-    "child_benefit_take_up": (uc_capital_coherence, uk_engine_adapter),
+    # weight mapping and the adapter's engine materialization; it reads the
+    # take-up contract and the year's rules, and types its engine by the same
+    # protocol as the UC redraw (microcosm#931).
+    "pension_credit_take_up": (
+        uc_capital_coherence,
+        *_ENGINE_STAGE_MODULES,
+        frame_rules,
+        frs_release,
+        take_up_contract,
+        stochastic_assignment,
+    ),
+    # The Child Benefit redraw shares the weight mapping and the adapter, and
+    # reads the vendored Child Benefit statistics (microcosm#931).
+    "child_benefit_take_up": (
+        uc_capital_coherence,
+        *_ENGINE_STAGE_MODULES,
+        *_FEED_FACT_MODULES,
+        stochastic_assignment,
+    ),
     # The Carer's Allowance draw reads the earnings test through the adapter's
     # engine materialization and counts its receipt's support on the source
     # lineage (microcosm#1319), and balances its draws through the shared
-    # placement helper (microcosm#1418).
+    # placement helper (microcosm#1418); it reads the take-up contract and the
+    # year's rules (microcosm#931).
     "carers_allowance_take_up": (
-        uk_engine_adapter,
+        *_ENGINE_STAGE_MODULES,
         receipt_counts,
+        frs_release,
+        take_up_contract,
         stochastic_assignment,
     ),
-    # The stored attendance is one engine materialization (microcosm#1095).
-    "private_school_attendance": (uk_engine_adapter,),
+    # The stored attendance is one engine materialization (microcosm#1095),
+    # whose year's rules come from the FRS release (microcosm#931).
+    "private_school_attendance": (*_ENGINE_STAGE_MODULES, frs_release),
+    # The housing shell keeps council tax bands within the nation, whose
+    # regions are microcosm.calibrate's UK region tier, and gates its fits;
+    # the deduction attributes map benefit units to households and
+    # judge their realisation by the shared tolerance; the salary sacrifice
+    # reads its bonus anchor as vendored facts and gates its fits; the
+    # student loans resolve their year's rules (microcosm#931).
+    "spi_housing_shell": (
+        council_tax_constants,
+        geography_constants,
+        *_QRF_MODULES,
+        qrf_gates,
+        stochastic_assignment,
+    ),
+    "uc_deduction_attributes": (frs_brma, stage_health, stochastic_assignment),
+    "salary_sacrifice": (*_FEED_FACT_MODULES, qrf_gates, stochastic_assignment),
+    "student_loans": (frs_release, stochastic_assignment),
     # The subscriptions walk the CGT bands on its income proxy (with the
     # proxy's loss relief), read HMRC's ISA tables through their typed loader
-    # and round their receipts' support (microcosm#1415).
+    # and round their receipts' support (microcosm#1415); the loss relief
+    # evaluates its named term, the donor tabs are pinned, and the regions are
+    # microcosm.calibrate's UK region tier (microcosm#931).
     "isa_subscriptions": (
         cgt_imputation,
+        geography_constants,
         hmrc_income,
         hmrc_isa_statistics,
         receipt_counts,
+        *_PINNED_TAB_MODULES,
+        *_FEED_FACT_MODULES,
+        target_materialization,
+        stochastic_assignment,
     ),
     # The claimant draw is keyed on identity and its receipt rounds its
     # support (microcosm#1428).
@@ -257,7 +950,8 @@ _STAGE_HELPER_MODULES = {
     # index and contribution cap, the SPI channel's EPB and tape-row flag, and
     # price the cars twice through the engine adapter; their draws are keyed on
     # identity, and their receipts' support is rounded
-    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316). The loader checks the
+    # feed, and the donor tab is pinned (microcosm#931).
     "company_cars": (
         frs_spine,
         hmrc_company_car_statistics,
@@ -265,21 +959,35 @@ _STAGE_HELPER_MODULES = {
         receipt_counts,
         spi_income,
         spi_support,
+        trace,
+        *_FEED_FACT_MODULES,
         stochastic_assignment,
-        uk_engine_adapter,
+        *_ENGINE_STAGE_MODULES,
     ),
     # The copies' childcare re-draw draws through frs_take_up's childcare
     # helper, reads each household's clone path, and measures its flags for
-    # the stage-time signal gate by the shared disclosure rules (microcosm#1095).
-    "childcare_copy_take_up": (frs_take_up, household_lineage, receipt_counts),
+    # the stage-time signal gate by the shared disclosure rules (microcosm#1095);
+    # it maps benefit units to households, ages children by the DfE's rule and
+    # reads the take-up contract (microcosm#931).
+    "childcare_copy_take_up": (
+        frs_take_up,
+        household_lineage,
+        receipt_counts,
+        dfe_spring_term,
+        frs_brma,
+        take_up_contract,
+        stochastic_assignment,
+    ),
     # The employment shell fits, scores and draws through microcosm.fit's
     # categorical classifier, held-out scores and keyed donors, reads the
     # shared occupation codes, and counts its receipt's support by the shared
-    # disclosure rules (microcosm#1490).
+    # disclosure rules (microcosm#1490); the classifier and held-out scores
+    # compute through the QRF modules (microcosm#931).
     "spi_employment_shell": (
         fit_categorical,
         fit_donors,
         fit_held_out,
+        *_QRF_MODULES,
         occupation_constants,
         receipt_counts,
         stochastic_assignment,
@@ -287,12 +995,17 @@ _STAGE_HELPER_MODULES = {
     # The sub-major draw fits and scores through microcosm.fit's categorical
     # classifier and held-out scores, reads the shared occupation codes, and
     # counts its receipt's support by the shared disclosure rules
-    # (microcosm#1490).
+    # (microcosm#1490); it reads its donor tab through trace's digest and
+    # records its fit's weight kind, and its classifier and held-out scores
+    # compute through the QRF modules (microcosm#931).
     "aps_occupation": (
         fit_categorical,
         fit_held_out,
+        *_QRF_MODULES,
         occupation_constants,
         receipt_counts,
+        gates,
+        trace,
         stochastic_assignment,
     ),
 }
@@ -300,26 +1013,62 @@ _STAGE_HELPER_MODULES = {
 # The receipts' counting rules and the shared lineage readers: every floor
 # counts true source households through receipt_counts, and the FRS-trained
 # fits fold geographic clones through household_lineage, both reading
-# source_lineage on household_lineage's declaration (microcosm#931). An edit
-# to any of the three moves the hash of every stage whose module or helpers
-# import one of them; test_uk_graph derives this set from the imports.
-_COUNTING_MODULES = (receipt_counts, household_lineage, source_lineage)
+# source_lineage on household_lineage's declaration, which names the
+# geographic clone index through geographic_clones (microcosm#931). An edit
+# to any of the four moves the hash of every stage whose module or helpers
+# import one of the first three; test_uk_graph derives this set from the
+# imports.
+_COUNTING_MODULES = (
+    receipt_counts,
+    household_lineage,
+    source_lineage,
+    geographic_clones,
+)
 _COUNTING_STAGES = frozenset(
     {
+        "frs_spine",
         "frs_take_up",
         "frs_person_draws",
         "frs_household_draws",
+        # The council-tax stage's module counts its bill provenance's receipt
+        # in true source households (microcosm#931).
+        "frs_council_tax",
+        # spi_spine, stage 14's module, rounds the support channel's receipt
+        # (microcosm#931).
+        "frs_hmrc_spine_leaves",
         "frs_annual_income_spells",
+        # The geographic clones and their keys count their evidence in true
+        # source households, and the keys read each clone path through the
+        # shared lineage reader (microcosm#931).
+        "geographic_expand",
+        "geographic_identity",
+        # So do the area stages, the private rents and the council-tax
+        # localisation; the SPI copies' areas and the localisation read each
+        # copy's path through the shared reader too (microcosm#931).
+        "atomic_area_assign",
+        "local_authority",
+        "rfdr",
+        "area_brma",
+        "spi_copy_areas",
+        "private_rent",
+        "council_tax_localise",
         "hmrc_spi_income_spine",
+        "spi_support_channel",
+        "spi_income_band_donors",
         "company_cars",
         "spi_housing_shell",
+        # The WAS stage counts its area home values' evidence and the sources
+        # its donor-range cap adjusts in true source households, and the LISA
+        # stage binds it (microcosm#931).
+        "was_wealth",
+        "was_lisa",
         "high_value_home_support",
-        "regional_home_values",
         "property_components",
         "property_purchases",
         "nts_bus_travel",
         "lcfs_consumption",
         "etb_vat",
+        "etb_services",
         "uc_reporter_redraw",
         "spi_benefit_coherence",
         "uc_capital_coherence",
@@ -330,6 +1079,7 @@ _COUNTING_STAGES = frozenset(
         "salary_sacrifice",
         "carers_allowance_take_up",
         "childcare_copy_take_up",
+        "uc_deduction_attributes",
         "isa_subscriptions",
         "trading_allowance_receipts",
         "spi_employment_shell",
@@ -380,12 +1130,21 @@ def _implementation_hash(kernel: object, stage: str, transform: object | None) -
     # hermetic registries unhashable and, more importantly, would fail to bind
     # production edits made elsewhere in that stage's module. A transform may
     # still declare extra behavior-bearing sources through
-    # ``graph_implementation_dependencies``.
+    # ``graph_implementation_dependencies``. Every kernel rebuilds its frame
+    # on national_frame's schema, and the transforms build, validate and read
+    # the time period of their frames through it (microcosm#931). It stamps
+    # each frame it builds with the engine adapter's ISA income contract and
+    # savings income projection, so every kernel hashes the adapter with it.
+    # Every kernel casts the cells it owns, and the root normalises the frame
+    # it creates, through graph_frames.
     dependencies = getattr(transform, "graph_implementation_dependencies", None)
     return source_hash(
         type(kernel),
         stage_evidence,
         graph_evidence,
+        national_frame,
+        uk_engine_adapter,
+        graph_frames,
         _stage_artifacts,
         _mass_log_payload,
         _stage_module(stage),
@@ -633,7 +1392,7 @@ def _fixture_descriptor(
         missing = sorted(set(_STAGE_MODULES) - set(stages))
         extra = sorted(set(stages) - set(_STAGE_MODULES))
         raise ValueError(
-            "UK parity fixture must describe the current 39-stage spine "
+            "UK parity fixture must describe every stage of the current spine "
             f"(missing={missing}, extra={extra})."
         )
     return descriptor, stages
@@ -661,7 +1420,6 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .etb_services import UKETBServicesStageTransform
     from .etb_vat import UKETBVATStageTransform
     from .frs_annual_income import UKFRSAnnualIncomeStageTransform
-    from .frs_brma import UKFRSBRMAStageTransform
     from .frs_council_tax import UKFRSCouncilTaxStageTransform
     from .frs_disability import UKFRSDisabilityStageTransform
     from .frs_education import UKFRSEducationStageTransform
@@ -672,6 +1430,8 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .frs_person_draws import UKFRSPersonDrawsStageTransform
     from .frs_relationships import UKFRSRelationshipsStageTransform
     from .frs_take_up import UKFRSTakeUpStageTransform
+    from .geographic_expand import UKGeographicExpandStageTransform
+    from .geographic_identity import UKGeographicIdentityStageTransform
     from .high_value_home_support import UKHighValueHomeSupportStageTransform
     from .isa_subscriptions import UKISASubscriptionsStageTransform
     from .lcfs_consumption import UKLCFSConsumptionStageTransform
@@ -684,7 +1444,6 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
         UKPropertyPurchasesStageTransform,
         UKPropertyPurchaseTargets,
     )
-    from .regional_home_values import UKRegionalHomeValuesStageTransform
     from .regional_uprating import UKRegionalPropertyUpratingStageTransform
     from .salary_sacrifice import UKSalarySacrificeStageTransform
     from .spi_band_donors import UKSPIIncomeBandDonorStageTransform
@@ -696,6 +1455,15 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
         UKSPIIncomeSpineStageTransform,
         UKSPISupportChannelStageTransform,
     )
+    from .spine_council_tax import UKCouncilTaxLocaliseStageTransform
+    from .spine_geography import (
+        UKAreaBRMAStageTransform,
+        UKAtomicAreaAssignStageTransform,
+        UKLocalAuthorityStageTransform,
+        UKRFDRStageTransform,
+        UKSPICopyAreasStageTransform,
+    )
+    from .spine_private_rent import UKPrivateRentStageTransform
     from .student_loans import UKStudentLoansStageTransform
     from .take_up_contract import load_uk_take_up_contract
     from .trading_allowance_receipts import UKTradingAllowanceReceiptsStageTransform
@@ -776,8 +1544,22 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             _mapping(descriptor.get("cgt_badr_parameters"), label="CGT BADR parameters")
         )
     )
+    # The fixture's toy conditioned atomic-area supports, one input each under
+    # the id sources.yaml declares the system's support by, read as the donor
+    # tables are (microcosm#931).
+    supports = {
+        system: _fixture_input(source, inputs, source_id).read_bytes()
+        for system, source_id in FIXTURE_SUPPORT_INPUTS.items()
+    }
 
-    engine = PolicyEngineUKEngine()
+    # The fixture's spine clones every household geographic_clones times, and
+    # its engine refuses a frame of any other clone count (microcosm#931).
+    geographic_clones = config.get("geographic_clones")
+    if isinstance(geographic_clones, bool) or not isinstance(geographic_clones, int):
+        raise ValueError(
+            "UK parity fixture config.geographic_clones must be an integer clone count."
+        )
+    engine = PolicyEngineUKEngine(clones=geographic_clones)
     contract = load_uk_take_up_contract()
     qrf_estimators = int(config["qrf_estimators"])
     donor_sample_size = int(config["spi_donor_sample_size"])
@@ -817,8 +1599,29 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             "frs_household_draws": UKFRSHouseholdDrawsStageTransform(
                 contract=contract, stage=stages["frs_household_draws"]
             ),
-            "frs_brma": UKFRSBRMAStageTransform(
-                stage=stages["frs_brma"], engine=engine
+            "atomic_area_assign": UKAtomicAreaAssignStageTransform(
+                stage=stages["atomic_area_assign"], supports=supports
+            ),
+            "local_authority": UKLocalAuthorityStageTransform(
+                stage=stages["local_authority"]
+            ),
+            "rfdr": UKRFDRStageTransform(stage=stages["rfdr"], supports=supports),
+            "area_brma": UKAreaBRMAStageTransform(
+                stage=stages["area_brma"], engine=engine
+            ),
+            "spi_copy_areas": UKSPICopyAreasStageTransform(
+                stage=stages["spi_copy_areas"], engine=engine, supports=supports
+            ),
+            # The fixture is a sampled rung, as its SPI stages are, so the
+            # private rents take the sampled rung's region rule (microcosm#931).
+            "private_rent": UKPrivateRentStageTransform(
+                stage=stages["private_rent"], sampled_rung=True
+            ),
+            # Each clone's council tax at its local authority's committed
+            # Band D over the expected Band D of its draw cell on the toy
+            # supports, just before the WAS chain (microcosm#931).
+            "council_tax_localise": UKCouncilTaxLocaliseStageTransform(
+                stage=stages["council_tax_localise"], supports=supports
             ),
             "was_wealth": UKWASWealthStageTransform(
                 stage=stages["was_wealth"], engine=engine, donor=was
@@ -851,9 +1654,6 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 stage=stages["property_purchases"],
                 targets=property_purchase_targets,
             ),
-            "regional_home_values": UKRegionalHomeValuesStageTransform(
-                stage=stages["regional_home_values"]
-            ),
             "lcfs_consumption": UKLCFSConsumptionStageTransform(
                 stage=stages["lcfs_consumption"],
                 engine=engine,
@@ -873,6 +1673,12 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "frs_annual_income_spells": UKFRSAnnualIncomeStageTransform(
                 raw_dir, stage=stages["frs_annual_income_spells"]
+            ),
+            "geographic_expand": UKGeographicExpandStageTransform(
+                stage=stages["geographic_expand"], clones=geographic_clones
+            ),
+            "geographic_identity": UKGeographicIdentityStageTransform(
+                stage=stages["geographic_identity"]
             ),
             "spi_support_channel": UKSPISupportChannelStageTransform(
                 stage=stages["spi_support_channel"],
@@ -1001,11 +1807,13 @@ def fixture_stage_plan_inputs(
 ) -> tuple[tuple[SourceStageSpec, ...], Mapping[str, object]]:
     """The H2 bundle as legacy StagePlan inputs: ordered specs, every transform.
 
-    The graph's CREATE node loads the captured root frame, so the kernel
-    mapping carries no ``frs_spine`` transform; the legacy oracle applies one
-    built from the same ``frs_raw`` tables, added here. The descriptor keys
-    stages by name, so the committed UK manifest supplies the order the
-    legacy plan runs them in.
+    The hermetic registry's transforms (``_fixture_implementations``) carry
+    no ``frs_spine`` transform, so its CREATE node, with no root transform
+    bound, loads the captured root frame. This mapping adds one built from
+    the same ``frs_raw`` tables: the legacy oracle applies it, and H2 parity
+    binds the graph's CREATE kernel to it, the root's production path. The
+    descriptor keys stages by name, so the committed UK manifest supplies the
+    order the legacy plan runs them in.
     """
 
     from microcosm.build.country_spec import load_country_spec
@@ -1114,37 +1922,11 @@ def _id_index(frame: Frame, entity: str) -> pd.Index:
     return pd.Index(frame.table(entity)[id_column].to_numpy(copy=True), name=id_column)
 
 
-def _cast_owned(series: pd.Series, dtype: str) -> pd.Series:
-    target = dtype_for_token(dtype)
-    if series.dtype != target:
-        series = series.astype(target)
-    return series
-
-
 def _owned_series(frame: Frame, entity: str, column: str, dtype: str) -> pd.Series:
-    values = _cast_owned(frame.table(entity)[column].copy(deep=True), dtype)
+    values = cast_owned(frame.table(entity)[column].copy(deep=True), dtype)
     values.index = _id_index(frame, entity)
     values.name = column
     return values
-
-
-def _normalize_create_frame(frame: Frame, context: KernelContext) -> Frame:
-    tables = {entity: frame.table(entity).copy(deep=True) for entity in frame.entities}
-    for owned in context.node.outputs:
-        tables[owned.entity][owned.column] = _cast_owned(
-            tables[owned.entity][owned.column], owned.dtype
-        ).array
-    return Frame(
-        tables,
-        frame.schema,
-        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
-        frame.strata,
-        mass_log=frame.mass_log,
-        metadata={
-            **frame.metadata,
-            "time_period": str(context.params.get("time_period", "2024")),
-        },
-    )
 
 
 class UKCreateKernel(KernelBase):
@@ -1180,7 +1962,7 @@ class UKCreateKernel(KernelBase):
                 f"The UK root transform returned {type(frame).__name__}, not Frame."
             )
         return KernelResult(
-            frame=_normalize_create_frame(frame, context),
+            frame=normalize_create_frame(frame, context),
             artifacts=_stage_artifacts(
                 "frs_spine",
                 self.transform,
@@ -1197,6 +1979,13 @@ class UKIdentityKernel(KernelBase):
     ref = "uk.identity@1"
     capabilities = _FILTER
 
+    def implementation_hash(self) -> str:
+        # The person ids it keeps are read on national_frame's schema
+        # (microcosm#931).
+        return source_hash(
+            type(self), national_frame, dependencies=self.capabilities.dependencies
+        )
+
     def run(self, context: KernelContext) -> KernelResult:
         person = context.tables[UK_NATIONAL_SCHEMA.person_entity]
         id_column = UK_NATIONAL_SCHEMA.person_id_column
@@ -1210,10 +1999,20 @@ class UKClaimKernel(KernelBase):
     ref = "uk.claim@1"
     capabilities = _COMPUTE
 
+    def implementation_hash(self) -> str:
+        # The claimed cells are indexed by national_frame's schema's id
+        # columns and cast through graph_frames (microcosm#931).
+        return source_hash(
+            type(self),
+            national_frame,
+            graph_frames,
+            dependencies=self.capabilities.dependencies,
+        )
+
     def run(self, context: KernelContext) -> KernelResult:
         columns = {
             (owned.entity, owned.column): pd.Series(
-                _cast_owned(
+                cast_owned(
                     context.tables[owned.entity][owned.column].copy(deep=True),
                     owned.dtype,
                 ).array,
@@ -1300,6 +2099,57 @@ def _expand_cells(context: KernelContext) -> tuple[tuple[str, str, str], ...]:
     return tuple(tuple(str(part) for part in item) for item in raw)  # type: ignore[arg-type]
 
 
+#: The copy-id field each id-offset structural stage mints (microcosm#931):
+#: copy ``k`` takes ``source + k x radix(field)`` on every id column, and
+#: every incumbent id lies below the field's radix, so the copy index is the
+#: integer quotient. The SPI support stages name each copy's source in
+#: ``{entity}_source_id`` instead.
+_COPY_ID_FIELDS = MappingProxyType(
+    {
+        "geographic_expand": "geographic_support",
+        "high_value_home_support": "high_value_support",
+        "cgt_support_split": "cgt_support_split",
+        "cgt_incidence_clone": "cgt_incidence_clone",
+        "cgt_residential_split": "cgt_residential_split",
+    }
+)
+
+
+def _declared_copy_radix(stage: str, before: Frame) -> int | None:
+    """The declared radix an id-offset stage mints at, or None for the others.
+
+    Every incumbent id and membership must sit below it, or the quotient
+    would name the wrong parent; the refusal prints counts only.
+    """
+
+    field = _COPY_ID_FIELDS.get(stage)
+    if field is None:
+        return None
+    person = before.table(before.schema.person_entity)
+    columns = [
+        (before.table(entity), before.schema.entity_id_column(entity))
+        for entity in before.entities
+    ] + [
+        (person, before.schema.membership_column(group))
+        for group in before.schema.group_entities
+    ]
+    for table, column in columns:
+        copy_id_table.require_below(
+            table[column],
+            field,
+            what=f"UK stage {stage!r} incumbent {column} values",
+        )
+    return copy_id_table.radix(field)
+
+
+def _exact_ids(values: pd.Series, *, label: str) -> np.ndarray:
+    """An id column as exact int64: ids reach 2**53 and above (microcosm#931)."""
+
+    if not pd.api.types.is_integer_dtype(values.dtype):
+        raise TypeError(f"{label} must be an integer id column, not {values.dtype}.")
+    return values.to_numpy(dtype=np.int64)
+
+
 def _source_lineage(
     before: Frame,
     after: Frame,
@@ -1307,62 +2157,66 @@ def _source_lineage(
     *,
     id_offset: int | None,
 ) -> pd.Series:
-    """Derive new target-to-immediate-source ids from a structural result."""
+    """Derive new target-to-immediate-source ids from a structural result.
+
+    Vectorised on exact int64 ids, so it is exact on any frame. A row-by-row
+    walk reads a row whose columns hold only integers and floats as float64,
+    which is inexact above 2**53 (an all-integer row stays int64, and a row
+    with a string or boolean column comes back as objects). The refusals
+    print counts, never an id.
+    """
 
     id_column = before.schema.entity_id_column(entity)
     before_table = before.table(entity)
     after_table = after.table(entity)
+    dtype = before_table[id_column].dtype
     before_ids = pd.Index(before_table[id_column])
+    after_ids = _exact_ids(after_table[id_column], label=f"{entity}.{id_column}")
+    new = ~pd.Index(after_ids).isin(before_ids)
     # A weights-only structural stage (the #970 incidence anchor) adds no
-    # row: every target is an incumbent, so the lineage is empty without
-    # walking the table row by row.
-    if pd.Index(after_table[id_column]).isin(before_ids).all():
+    # row: every target is an incumbent, so the lineage is empty.
+    if not new.any():
         return pd.Series(
             [],
-            index=pd.Index([], name=id_column, dtype=before_table[id_column].dtype),
-            dtype=before_table[id_column].dtype,
+            index=pd.Index([], name=id_column, dtype=dtype),
+            dtype=dtype,
             name=id_column,
         )
-    targets: list[object] = []
-    values: list[object] = []
+    targets = after_ids[new]
     source_column = f"{entity}_source_id"
-    for _, row in after_table.iterrows():
-        target = row[id_column]
-        if target in before_ids:
-            continue
-
-        # CGT stages retain long-lived source-id provenance from the SPI
-        # support stage, so their immediate clone lineage is the stage's
-        # reviewed ID offset, not that older provenance column.  Copy ``k``
-        # of a CGT structural stage takes ``source + k * offset`` (the clone
-        # stage mints one copy, the support split up to ``ceil(w / cap)``,
-        # microcosm#1045), and every incumbent id lies below the offset, so
-        # the copy index is the integer quotient.
-        if id_offset is not None:
-            copy_index = int(target) // int(id_offset)
-            candidate = target - copy_index * id_offset
-            if copy_index >= 1 and candidate in before_ids:
-                targets.append(target)
-                values.append(candidate)
-                continue
+    if id_offset is not None:
+        # CGT and high-value stages retain long-lived source-id provenance
+        # from the SPI support stage, so their immediate lineage is the
+        # stage's declared copy-id radix, not that older provenance column.
+        copy_index = targets // int(id_offset)
+        sources = targets - copy_index * int(id_offset)
+        unmatched = int(((copy_index < 1) | ~pd.Index(sources).isin(before_ids)).sum())
+        if unmatched:
             raise ValueError(
-                f"UK stage produced {entity!r} target id {target!r} whose "
-                f"offset lineage {candidate!r} is not an incumbent id."
+                f"UK stage produced {unmatched} new {entity!r} row(s) whose id "
+                "less its copy ordinal times the stage's declared copy-id radix "
+                "is not an incumbent id."
             )
-
-        if source_column in after_table and row[source_column] in before_ids:
-            targets.append(target)
-            values.append(row[source_column])
-            continue
-
+    elif source_column in after_table:
+        # Only the new rows' sources are read, as the row walk read them.
+        sources = _exact_ids(
+            after_table[source_column][new], label=f"{entity}.{source_column}"
+        )
+        unmatched = int((~pd.Index(sources).isin(before_ids)).sum())
+        if unmatched:
+            raise ValueError(
+                f"UK stage produced {unmatched} new {entity!r} row(s) whose "
+                f"{source_column!r} is not an incumbent id."
+            )
+    else:
         raise ValueError(
-            f"UK stage produced {entity!r} target id {target!r} without an "
-            f"explicit {source_column!r} or a declared ID-offset lineage rule."
+            f"UK stage produced {int(new.sum())} new {entity!r} row(s) without an "
+            f"explicit {source_column!r} or a declared copy-id lineage rule."
         )
     return pd.Series(
-        values,
-        index=pd.Index(targets, name=id_column, dtype=before_table[id_column].dtype),
-        dtype=before_table[id_column].dtype,
+        sources,
+        index=pd.Index(targets, name=id_column, dtype=dtype),
+        dtype=dtype,
         name=id_column,
     )
 
@@ -1401,6 +2255,16 @@ class UKExpandStageKernel(KernelBase):
                 f"UK stage {self.stage!r} has no bound production transform; "
                 "recorded fixture deltas are not accepted as parity evidence."
             )
+        # The geographic clone count is a parameter of the node that makes the
+        # clones, so it is in that node's key, and the transform must make
+        # exactly that many (microcosm#931); no other stage has either.
+        declared_clones = context.params.get("geographic_clones")
+        transform_clones = getattr(transform, "clones", None)
+        if transform_clones != declared_clones:
+            raise ValueError(
+                f"UK stage {self.stage!r} declares {declared_clones!r} geographic "
+                f"clone(s) on its node, but its transform makes {transform_clones!r}."
+            )
         before = _minimal_frame(context)
         after = _invoke_transform(transform, before, context)
         if not isinstance(after, Frame):
@@ -1408,25 +2272,7 @@ class UKExpandStageKernel(KernelBase):
                 f"UK stage {self.stage!r} returned {type(after).__name__}, not Frame."
             )
         cells = _expand_cells(context)
-        id_offset = None
-        if self.stage in {
-            "high_value_home_support",
-            "cgt_support_split",
-            "cgt_incidence_clone",
-            "cgt_residential_split",
-        }:
-            id_offset = id_multiplier_for_values(
-                *(
-                    before.table(entity)[before.schema.entity_id_column(entity)]
-                    for entity in before.entities
-                ),
-                *(
-                    before.table(before.schema.person_entity)[
-                        before.schema.membership_column(group)
-                    ]
-                    for group in before.schema.group_entities
-                ),
-            )
+        id_offset = _declared_copy_radix(self.stage, before)
         expand: dict[str, pd.Series] = {}
         for entity in before.entities:
             expand[entity] = _source_lineage(
@@ -1556,15 +2402,7 @@ def build_uk_registry(
     fixture_resolver = _FixtureTransformResolver()
     for stage in sorted(stage_names):
         transform = implementations.get(stage)
-        if stage in {
-            "spi_support_channel",
-            "spi_income_band_donors",
-            "high_value_home_support",
-            "cgt_support_split",
-            "cgt_incidence_clone",
-            "cgt_incidence_anchor",
-            "cgt_residential_split",
-        }:
+        if stage in UK_SPINE_STRUCTURAL_STAGES:
             registry.register(
                 UKExpandStageKernel(
                     stage,

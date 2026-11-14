@@ -77,6 +77,25 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "classify_cgt_band_facts_with_reviewed_fence",
         "classify_hmrc_income_facts_with_reviewed_fences",
         "clone_records",
+        # microcosm#931: a frame's geographic clones, and each household's
+        # geography key from its source and clone path.
+        "expand_geographic_clones",
+        "key_households_by_clone_path",
+        # microcosm#931: each clone's atomic area, its local authority, BRMA
+        # and fuel-relief flag, the SPI copies' own areas, and private rents
+        # read off the drawn area's BRMA.
+        "assign_atomic_area",
+        "resolve_local_authority",
+        "assign_area_brma",
+        "assign_rfdr_flags",
+        "assign_spi_copy_areas",
+        "localise_private_rents",
+        # microcosm#931: England and Wales main residences read off each
+        # owner's constituency inside the WAS chain.
+        "localise_main_residence_value",
+        # microcosm#931: Great Britain council tax priced at each household's
+        # drawn local authority, just before the WAS chain.
+        "localise_council_tax",
         "clean_nts_travel_tables",
         "clean_was_lisa_donor",
         "clean_aps_occupation_table",
@@ -152,7 +171,6 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "gate_zero_weight_strata",
         "head_carry",
         "impute_annual_property_purchases",
-        "assign_regional_home_values",
         "draw_uc_claim_at_legacy_closure",
         "impute_bus_use_band",
         "impute_frs_property_finance_costs",

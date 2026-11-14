@@ -754,6 +754,12 @@ _PACKAGED_EXCLUSION_CENSUS = {
     "obr.spirits_duties": 1,
     "obr.tobacco_duties": 1,
     "obr.betting_and_gaming_duties": 1,
+    # The #931 move (2026-11-06, microcosm#1521 workstream 2): the corporate
+    # column meets the engine's own aggregate at any weights, so bound it pins
+    # corporate-wealth mass, not land, and the total-economy row also counts
+    # sectors neither the household nor the corporate row covers. Both are
+    # measured diagnostics; the household row stays bound.
+    "ons.land.": 2,
 }
 
 # The carer and childcare rows were retired on 2026-09-16 with the repairs
@@ -803,8 +809,10 @@ def test_packaged_exclusions_load():
     # only binds). The savings follow-up holds the SPI £1m-and-over interest
     # amount row on its measured distortion (microcosm#1428, María's ruling of
     # 2026-10-30). microcosm#1426 holds HMRC's High Income Child Benefit Charge count
-    # and revenue as measured diagnostics (María's ruling of 2026-11-03).
-    assert len(names) == len(set(names)) == 47
+    # and revenue as measured diagnostics (María's ruling of 2026-11-03). The
+    # #931 move holds the corporate and total-economy ONS land rows as measured
+    # diagnostics (María's ruling of 2026-11-06, microcosm#1521 workstream 2).
+    assert len(names) == len(set(names)) == 49
     (gas,) = [
         entry
         for entry in exclusions
@@ -1150,6 +1158,290 @@ def test_employer_nics_are_a_measured_diagnostic():
     assert "policyengine-uk#2459" in entry["adjudication"]
     assert "obr.ni_employee" not in exclusions
     assert "obr.ni_self_employed" not in exclusions
+
+
+def test_the_corporate_and_total_land_rows_are_measured_diagnostics():
+    """The #931 move holds two ONS land rows out of the solve (María's ruling
+    of 2026-11-06, microcosm#1521 workstream 2).
+
+    policyengine-uk's corporate_land_value hands out its aggregate by each
+    household's share of the weighted corporate-sector wealth, so a released
+    file meets it at any weights and, bound, the row pins only that wealth's
+    mass. The total-economy row also counts sectors neither the household nor
+    the corporate row covers, and the engine's land_value is the sum of the two
+    columns those rows read, so the three land rows cannot all be met. The
+    household row stays bound, and its note names the one sector its series
+    covers; the two held rows' notes record the hold.
+    """
+
+    from importlib import resources as importlib_resources
+
+    def resource(name: str) -> dict:
+        return json.loads(
+            importlib_resources.files("microcosm.build.uk")
+            .joinpath(name)
+            .read_text(encoding="utf-8")
+        )
+
+    exclusions = {e["name"]: e for e in load_uk_calibration_measure_exclusions()}
+    corporate = exclusions["ons.land.corporate_land_value"]
+    total = exclusions["ons.land.land_value"]
+    for entry in (corporate, total):
+        assert entry["tracking"] == "microcosm#1521", entry["name"]
+        assert entry["approved_by"] == "juaristi22", entry["name"]
+        # Three months, as the OBR council tax nation rows' window.
+        assert (entry["approved_on"], entry["expires_on"]) == (
+            "2026-11-06",
+            "2027-02-06",
+        ), entry["name"]
+        assert entry["reason"].startswith("Diagnostic by design"), entry["name"]
+        assert "Measured on every evaluation" in entry["reason"], entry["name"]
+        assert "2026-11-06" in entry["adjudication"], entry["name"]
+        assert "workstream 2 of microcosm#1521" in entry["adjudication"]
+    assert "ons.land.household_land_value" not in exclusions
+    assert "corporate_sector_wealth" in corporate["reason"]
+    assert "was_wealth" in corporate["reason"]
+
+    # The reasons quote the registry's published ONS series and their gap.
+    candidates = resource("target_reference_membership.json")["targets"]
+
+    def published_millions(name: str) -> int:
+        (candidate,) = candidates[name]["candidates"]
+        return round(candidate["resolved_value"] / 1e6)
+
+    series = {
+        "E44R": published_millions("ons.land.land_value"),
+        "E44N": published_millions("ons.land.household_land_value"),
+        "E43B": published_millions("ons.land.corporate_land_value"),
+    }
+    assert series == {"E44R": 6_872_455, "E44N": 4_485_171, "E43B": 2_063_534}
+    gap = series["E44R"] - series["E44N"] - series["E43B"]
+    assert gap == 323_750
+    assert f"£{gap:,}m" in total["reason"]
+    assert f"{100 * gap / series['E44R']:.1f} percent of the total" in total["reason"]
+    for code, millions in series.items():
+        assert code in total["reason"], code
+        assert f"£{millions:,}m" in total["reason"], code
+    assert "E43B" in corporate["reason"]
+    assert f"£{series['E43B']:,}m" in corporate["reason"]
+
+    # The household row binds E44N, the households sector alone, and its note
+    # says so (it said households_and_npish).
+    contract = {
+        target["target_id"]: target
+        for target in resource("uk_population_targets.json")["targets"]
+    }
+    household = contract["ons.land.household_land_value"]
+    assert household["ledger_selector"]["source_concept"] == "ons.e44n"
+    note = household["bindings"]["policyengine"]["notes"]
+    assert "households sector (ONS E44N, households alone" in note
+    assert "households_and_npish" not in note
+    assert "Held as a measured diagnostic" not in note
+    # The two held rows' notes record the hold, as the other held rows' do.
+    for name in ("ons.land.corporate_land_value", "ons.land.land_value"):
+        held = contract[name]["bindings"]["policyengine"]["notes"]
+        assert (
+            "Held as a measured diagnostic (calibration_measure_exclusions.json, "
+            "María's ruling of 2026-11-06, microcosm#1521 workstream 2)"
+        ) in held, name
+
+
+def test_the_two_land_diagnostics_leave_the_solve_but_stay_on_the_compiled_register():
+    """The packaged register's two land entries take their rows out of the
+    national solve and keep them on the compiled register (the #931 move,
+    María's ruling of 2026-11-06). No build step reports a held row's
+    estimate; a tool that scores the un-excluded register, such as
+    tools/evaluate_uk_incumbent_surface.py, measures them.
+
+    The test applies the register's land entries to the compiled rows as both
+    target loaders (load_uk_national_target_inputs and
+    load_uk_full_target_inputs) apply the register to the reconciled register,
+    without calling either: the solve surface loses the corporate and
+    total-economy rows, the run's exclusion receipt carries their review, and
+    the compiled register kept beside the solve surface (the band-edge
+    register; a national run writes it as national_contract_registry.json)
+    still holds all three. So the national problem binds the household row as
+    the ons_land family's only row, with the family's whole share of the
+    objective, while the compiled register materializes and scores the other
+    two on the same frame. A bound row of another family (obr.tv_licence_fee)
+    stands beside them and keeps its share. Synthetic weights and values.
+    """
+
+    from datetime import date
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.graph_national import encode_uk_national_problem
+    from microcosm.build.uk_runtime.ledger_surface import (
+        _validate_band_edge_registry,
+    )
+    from microcosm.build.uk_runtime.ledger_targets import (
+        materialize_uk_ledger_targets,
+    )
+    from microcosm.build.uk_runtime.national_calibration import (
+        CalibrationFrameAdapter,
+    )
+    from microcosm.build.uk_runtime.national_doctrine import (
+        uk_national_target_loss_weights,
+    )
+    from microcosm.build.uk_runtime.national_frame import uk_national_frame
+    from microcosm.calibrate import score_targets
+    from microcosm.calibrate.artifacts import decode_problem
+    from microcosm.frame import WeightKind
+
+    land = (
+        "ons.land.corporate_land_value",
+        "ons.land.household_land_value",
+        "ons.land.land_value",
+    )
+    other = "obr.tv_licence_fee"
+    references = {
+        reference.name: reference
+        for reference in load_country_spec("uk").target_references
+    }
+    # The three committed land references and one bound row of another
+    # family, compiled with stand-in values.
+    compiled = TargetRegistry(
+        [
+            TargetSpec(
+                name=name,
+                entity=references[name].entity,
+                measure=references[name].measure,
+                value=1_000.0,
+                source="test",
+                family=references[name].family,
+                period=references[name].period,
+                metadata=dict(references[name].metadata),
+            )
+            for name in (*land, other)
+        ],
+        country="uk",
+    )
+    entries = tuple(
+        entry
+        for entry in load_uk_calibration_measure_exclusions()
+        if entry["name"] in land
+    )
+    evaluated_on = max(date.fromisoformat(entry["approved_on"]) for entry in entries)
+    approved, receipt = apply_uk_calibration_measure_exclusions(
+        compiled, entries, now=evaluated_on
+    )
+    assert [spec.name for spec in approved.specs] == [
+        "ons.land.household_land_value",
+        other,
+    ]
+    assert receipt == {
+        entry["name"]: {
+            **{field: value for field, value in entry.items() if field != "name"},
+            "evaluated_on": evaluated_on.isoformat(),
+        }
+        for entry in entries
+    }
+    assert sorted(receipt) == ["ons.land.corporate_land_value", "ons.land.land_value"]
+    # The compiled register is the solve surface plus the receipt, as both
+    # loaders require before the solve.
+    _validate_band_edge_registry(
+        register_registry=approved,
+        band_edge_registry=compiled,
+        exclusion_receipt=receipt,
+    )
+
+    ids = np.arange(4, dtype="int64")
+    weights = np.array([10.0, 20.0, 30.0, 40.0])
+    household_land = np.array([100.0, 200.0, 0.0, 50.0])
+    corporate_land = np.array([5.0, 0.0, 15.0, 30.0])
+    tv_licence = np.array([170.0, 170.0, 0.0, 170.0])
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": ids,
+                "person_benunit_id": ids,
+                "person_household_id": ids,
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": ids}),
+        household=pd.DataFrame(
+            {
+                "household_id": ids,
+                "source_household_id": ids,
+                "region": "LONDON",
+                "household_weight": weights,
+                "household_land_value": household_land,
+                "corporate_land_value": corporate_land,
+                "land_value": household_land + corporate_land,
+                "tv_licence": tv_licence,
+            }
+        ),
+        time_period="2025",
+        weight_kind=WeightKind.DESIGN,
+    )
+
+    # Not fitted: the national problem holds the household row as the only
+    # land row and binds the receipt and the compiled register beside it.
+    problem = decode_problem(
+        encode_uk_national_problem(
+            frame,
+            national_registry=approved,
+            band_edge_registry=compiled,
+            period=2025,
+            doctrine={
+                "target_weight_rule": "family_equal",
+                "target_loss_cap": 10.0,
+                "max_weight_ratio": 10.0,
+                "l0_lambda": 0.0,
+                "mass_rule": "free",
+                "scale_rule": "default_target_loss_scales",
+            },
+            measure_exclusions=receipt,
+            resolver_factory=None,
+        )
+    )
+    assert problem.problem.names == (
+        "ons.land.household_land_value@2025",
+        f"{other}@2025",
+    )
+    np.testing.assert_array_equal(
+        problem.problem.matrix.toarray(), [household_land, tv_licence]
+    )
+    assert problem.bindings["measure_exclusions"] == receipt
+    assert problem.bindings["register_sha256"] == approved.version
+    assert problem.bindings["band_edge_register_sha256"] == compiled.version
+    # family_equal splits each family's equal share over its bound rows, so the
+    # household row, now the ons_land family's only one, carries the whole
+    # share: three times its weight beside the other two land rows. The other
+    # family's row keeps its weight.
+    beside = dict(
+        zip(
+            [spec.name for spec in compiled.specs],
+            uk_national_target_loss_weights(
+                [spec.family for spec in compiled.specs], rule="family_equal"
+            ),
+            strict=True,
+        )
+    )
+    assert problem.bindings["target_loss_weights"] == pytest.approx(
+        [3 * beside["ons.land.household_land_value"], beside[other]]
+    )
+    assert problem.bindings["target_loss_weights"] == pytest.approx([0.5, 0.5])
+
+    # Scoreable: the compiled register materializes on the same frame, and
+    # scoring it, as a tool that scores the un-excluded register does, gives
+    # every row, the two held land rows included, its weighted estimate.
+    adapter = CalibrationFrameAdapter(frame)
+    materialized = materialize_uk_ledger_targets(
+        adapter, compiled, period=2025, band_edge_registry=compiled
+    )
+    assert materialized.skipped == ()
+    scored = score_targets(adapter.prepared_frame(), compiled.to_target_set())
+    assert {row.name: row.final_estimate for row in scored.diagnostics} == (
+        pytest.approx(
+            {
+                "ons.land.corporate_land_value@2025": weights @ corporate_land,
+                "ons.land.household_land_value@2025": weights @ household_land,
+                "ons.land.land_value@2025": weights @ (household_land + corporate_land),
+                f"{other}@2025": weights @ tv_licence,
+            }
+        )
+    )
 
 
 def test_measure_resolver_direct_and_scratch_receipts(monkeypatch, tmp_path: Path):
@@ -1831,6 +2123,220 @@ def test_resolver_writes_the_scaled_engine_frame_and_records_the_scale(
         )
 
 
+def _block_pool_shares(scale=4.0, **overrides):
+    from microcosm.frame.adapters.engine_population import PoolShare
+    from microcosm.frame.adapters.policyengine_uk_population import (
+        UK_ENGINE_POPULATION,
+    )
+
+    shares = {
+        formula: PoolShare(
+            formula=formula,
+            key_variable=key,
+            block_key_sum=1.0e6,
+            pool_key_sum=4.2e6,
+            weight_scale=scale,
+        )
+        for formula, key in UK_ENGINE_POPULATION.corrected.items()
+    }
+    shares.update(overrides)
+    return shares
+
+
+def _fake_engine_resolver(monkeypatch, tmp_path, *, year=2025, **kwargs):
+    class FakeMicrosimulation:
+        def __init__(self, *, dataset):
+            self.tax_benefit_system = SimpleNamespace(variables={})
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=FakeMicrosimulation),
+    )
+    monkeypatch.setattr(
+        measure_simulation, "write_uk_national_frame", lambda frame, path: path
+    )
+    monkeypatch.setattr(
+        measure_simulation, "validate_uc_claimant_input", lambda *args, **kw: None
+    )
+    return UKMeasureResolver(
+        simulation_source=None,
+        scratch_dir=tmp_path,
+        year=year,
+        frame=_tiny_national_frame([250.0, 125.0]),
+        **kwargs,
+    )
+
+
+def test_pool_shares_need_scratch_mode_and_one_blocks_shares(monkeypatch, tmp_path):
+    """An engine block's pool shares cover exactly the declared share formulas
+    over their keys, at the block's own weight scale, and need a scratch
+    export: a direct H5 is no block of a pool (microcosm#931)."""
+    from microcosm.frame.adapters.engine_population import PoolShare
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=lambda *, dataset: None),
+    )
+    with pytest.raises(ValueError, match="pool shares need scratch-mode"):
+        UKMeasureResolver(
+            simulation_source=tmp_path / "input.h5",
+            scratch_dir=tmp_path,
+            year=2025,
+            frame=FrameStub(),
+            engine_pool_shares=_block_pool_shares(scale=1.0),
+        )
+    shares = _block_pool_shares()
+    shares.pop("consumption_shareholding")
+    with pytest.raises(ValueError, match="must cover exactly"):
+        _fake_engine_resolver(
+            monkeypatch, tmp_path, engine_weight_scale=4.0, engine_pool_shares=shares
+        )
+    with pytest.raises(ValueError, match="engine weight scale"):
+        _fake_engine_resolver(
+            monkeypatch,
+            tmp_path,
+            engine_weight_scale=2.0,
+            engine_pool_shares=_block_pool_shares(),
+        )
+    misdeclared = _block_pool_shares(
+        shareholding=PoolShare(
+            formula="shareholding",
+            key_variable="consumption",
+            block_key_sum=1.0,
+            pool_key_sum=2.0,
+            weight_scale=4.0,
+        )
+    )
+    with pytest.raises(ValueError, match="not over corporate_sector_wealth"):
+        _fake_engine_resolver(
+            monkeypatch,
+            tmp_path,
+            engine_weight_scale=4.0,
+            engine_pool_shares=misdeclared,
+        )
+
+
+def test_an_engine_the_declaration_no_longer_matches_is_recorded_not_corrected(
+    monkeypatch, tmp_path
+):
+    """The measure pass records (María's ruling of 2026-11-06): an engine the
+    UK declaration does not validate against leaves the block uncorrected and
+    unjudged, says why, and raises nothing."""
+    resolver = _fake_engine_resolver(
+        monkeypatch,
+        tmp_path,
+        engine_weight_scale=4.0,
+        engine_pool_shares=_block_pool_shares(),
+    )
+    resolver.close_engine_block()
+    receipt = resolver.receipt()
+    shares = receipt["engine_pool_shares"]
+    assert shares["declaration_valid"] is False
+    assert shares["applied"] is False
+    assert shares["key_sums_verified"] is False
+    assert shares["siblings_match"] is None
+    assert shares["periods"] == ["2024", "2025"]
+    assert shares["corrections"] == {
+        formula: pytest.approx(4.0 * 1.0e6 / 4.2e6) for formula in shares["formulas"]
+    }
+    assert len(shares["refusals"]) == 1
+    assert "no longer matches the installed engine" in shares["refusals"][0]
+    assert "engine_population_reach" not in receipt
+
+
+@pytest.mark.parametrize("year", [2025, 2026])
+def test_only_an_engine_block_records_its_correction(monkeypatch, tmp_path, year):
+    """A resolver that is no engine block (the national line, scoring, tools)
+    keeps its receipt's keys, and the position window does not apply to it,
+    in a rebalancing year too (microcosm#931)."""
+    resolver = _fake_engine_resolver(
+        monkeypatch, tmp_path, year=year, engine_weight_scale=4.0
+    )
+    resolver.close_engine_block()
+    receipt = resolver.receipt()
+    assert "engine_pool_shares" not in receipt
+    assert "engine_population_reach" not in receipt
+    resolver._note_engine_request("household_income_decile")
+    assert resolver._engine_pool_block is None
+
+
+def test_an_engine_block_refuses_a_sibling_that_moves_what_its_correction_reads(
+    monkeypatch, tmp_path
+):
+    resolver = _fake_engine_resolver(
+        monkeypatch,
+        tmp_path,
+        engine_weight_scale=4.0,
+        engine_pool_shares=_block_pool_shares(),
+    )
+    for zeroed, folded in (
+        ("corporate_wealth", None),
+        ("salary_sacrifice", "household_weight"),
+        ("transport_consumption", None),
+    ):
+        with pytest.raises(ValueError, match="pool-share correction reads"):
+            resolver._counterfactual_simulation(zeroed, folded)
+    monkeypatch.setattr(
+        measure_simulation,
+        "_ANNUAL_INCOME_HELD_VARIABLES",
+        (*measure_simulation._ANNUAL_INCOME_HELD_VARIABLES, "private_pension_wealth"),
+    )
+    with pytest.raises(ValueError, match="annual-income simulation would set"):
+        resolver._annual_income_simulation()
+    # Outside an engine block nothing is refused for it.
+    plain = _fake_engine_resolver(monkeypatch, tmp_path, engine_weight_scale=4.0)
+    plain._refuse_pool_share_substitution(["corporate_wealth"], "a counterfactual")
+
+
+def test_the_other_spells_factor_is_the_engines_growth_parameters(
+    monkeypatch, tmp_path
+):
+    """The factor the other spells grow by is the product of the engine's own
+    rates in the input's growth series over the years after the dataset's,
+    not a statistic of whichever block ran (microcosm#931); the engine's rows
+    must agree with it."""
+
+    rates = {2023: 0.06, 2024: 0.04, 2025: 0.03}
+    then = np.array([100.0, 0.0, 50.0])
+    factor = (1 + rates[2023]) * (1 + rates[2024]) * (1 + rates[2025])
+    arrays = {2022: then, 2025: then * factor * (1 + 4e-6)}
+    resolver = UKMeasureResolver.__new__(UKMeasureResolver)
+    resolver.year = 2025
+    resolver.frame = SimpleNamespace(metadata={"time_period": "2022"})
+    resolver._annual_income_factors = {}
+    read = []
+
+    def get_child(path):
+        read.append(path)
+        return lambda year: rates[int(year)]
+
+    resolver.simulation = SimpleNamespace(
+        tax_benefit_system=SimpleNamespace(
+            parameters=SimpleNamespace(get_child=get_child)
+        ),
+        calculate=lambda name, year: arrays[int(year)],
+    )
+    # Every carrier is off the parameter by 4e-6, inside the tolerance: the
+    # factor is the parameter, which a median of the rows would not be.
+    assert resolver._engine_projection_factor("employment_income_before_lsr") == (
+        pytest.approx(factor, rel=1e-15)
+    )
+    assert read == ["gov.economic_assumptions.yoy_growth.obr.average_earnings"]
+    assert resolver._annual_income_factors == {
+        "employment_income_before_lsr": pytest.approx(factor, rel=1e-15)
+    }
+    arrays[2025] = then * factor * (1 + 2e-5)
+    with pytest.raises(ValueError, match="by one factor"):
+        resolver._engine_projection_factor("self_employment_income")
+    with pytest.raises(ValueError, match="No engine growth series"):
+        resolver._engine_projection_factor("private_pension_income")
+    resolver.year = 2021
+    with pytest.raises(ValueError, match="cannot be carried back"):
+        resolver._engine_projection_factor("employment_income_before_lsr")
+
+
 def _bus_frame() -> FrameStub:
     """Three households: North East, London and Wales, with NTS trips."""
 
@@ -2353,6 +2859,21 @@ class _AnnualFrameStub(FrameStub):
             self._tables["person"][column] = values
 
 
+class _AnnualGrowthParameters:
+    """The stub engine's parameters: only the growth series its projection
+    carries pay and profit by (no dated tree, so no bus pricing)."""
+
+    def __init__(self, engine):
+        self._engine = engine
+
+    def get_child(self, path):
+        variable = self._engine.growth_series[path]
+        return lambda year: self._engine.uprating[variable] - 1.0
+
+    def __call__(self, period):
+        raise AttributeError("the stub engine carries no dated parameters")
+
+
 class _AnnualSimulation:
     """A stub engine that uprates stored inputs and taxes total income."""
 
@@ -2364,6 +2885,17 @@ class _AnnualSimulation:
         "jsa_contrib_reported": 1.02,
         "esa_contrib_reported": 1.02,
         "incapacity_benefit_reported": 1.02,
+    }
+    #: The growth series the stub's projection carries pay and profit by, as
+    #: policyengine-uk's parameters hold them: the other spells grow by the
+    #: series' rate (microcosm#931).
+    growth_series = {
+        "gov.economic_assumptions.yoy_growth.obr.average_earnings": (
+            "employment_income_before_lsr"
+        ),
+        "gov.economic_assumptions.yoy_growth.obr.per_capita.mixed_income": (
+            "self_employment_income"
+        ),
     }
     extra_inputs: dict = {}
 
@@ -2407,7 +2939,9 @@ class _AnnualSimulation:
         variables["tax_band"] = SimpleNamespace(
             entity=SimpleNamespace(key="person"), value_type=str
         )
-        self.tax_benefit_system = SimpleNamespace(variables=variables)
+        self.tax_benefit_system = SimpleNamespace(
+            variables=variables, parameters=_AnnualGrowthParameters(type(self))
+        )
 
     def set_input(self, variable, year, values):
         self.stored[(variable, int(year))] = np.asarray(values, dtype=float)

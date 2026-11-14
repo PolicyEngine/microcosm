@@ -800,6 +800,55 @@ def test_published_facts_read_the_vendored_rows() -> None:
         )
 
 
+def test_the_support_clip_receipt_gives_the_frames_clone_count() -> None:
+    """Every geographic clone's draws are clipped, so the clip receipt gives
+    the frame's clone count from two clones up, for the support-clip check to
+    multiply its row allowances by; a one-clone receipt keeps its form
+    (microcosm#931)."""
+
+    from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
+
+    committed = _committed_stage()
+    stage = dataclasses.replace(
+        committed,
+        operations=tuple(
+            SourceOperationSpec(
+                kind=op.kind, parameters={**op.parameters, "n_estimators": 4}
+            )
+            if op.kind == IMPUTE_BUS_USE_BAND_KIND
+            else op
+            for op in committed.operations
+        ),
+    )
+
+    def clip(clones: int) -> dict:
+        household, individual, trip, nts_stage, nts_ticket = (
+            _synthetic_nts_with_tickets()
+        )
+        frame, rng = _recipient_frame(n=60)
+        transform = UKNTSBusTravelStageTransform(
+            stage=stage,
+            engine=_Engine(rng),
+            nts_household=household,
+            nts_individual=individual,
+            nts_trip=trip,
+            nts_stage=nts_stage,
+            nts_ticket=nts_ticket,
+        )
+        transform(frame if clones == 1 else clone_first_frame(frame, clones))
+        return transform.checkpoint_metadata()["evidence"]["support_clip"]
+
+    one = clip(1)
+    assert set(one) == {"columns"}
+    cloned = clip(3)
+    assert cloned["clone_count"] == 3
+    assert set(cloned) == {"columns", "clone_count"}
+    assert all(
+        receipt["rows_considered"] == 3 * one["columns"][column]["rows_considered"]
+        for column, receipt in cloned["columns"].items()
+    )
+
+
 def test_stage_transform_end_to_end_on_synthetic_inputs() -> None:
     committed = _committed_stage()
     operations = tuple(

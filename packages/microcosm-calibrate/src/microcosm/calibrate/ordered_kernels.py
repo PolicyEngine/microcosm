@@ -52,7 +52,12 @@ from zipfile import BadZipFile
 import numpy as np
 
 import microcosm.calibrate.artifacts as artifacts_module
+import microcosm.calibrate.exact_k as exact_k_module
+import microcosm.calibrate.gates as l0_gates_module
+import microcosm.calibrate.hierarchy as hierarchy_module
+import microcosm.calibrate.initialization as initialization_module
 import microcosm.calibrate.kernels as adam_kernels_module
+import microcosm.calibrate.monetary_binding as monetary_binding_module
 from microcosm.calibrate import calibrate
 from microcosm.calibrate.artifacts import (
     PROBLEM_TYPE,
@@ -154,7 +159,10 @@ class CalibrateOrderedAdamKernel(KernelBase):
         diagnostics, the matrix compiler, the target model and the frame
         modules; this kernel runs the same solve, so any edit there re-keys
         both. The adapter half covers this module and the artifact codec it
-        decodes and encodes through.
+        decodes and encodes through, and what the solve computes through
+        beyond the modules adam@1 binds (microcosm#931). Those go here, not in
+        adam@1's own hash, which the UK graph kernels and the parity pins
+        embed.
         """
 
         return hashlib.sha256(
@@ -165,6 +173,18 @@ class CalibrateOrderedAdamKernel(KernelBase):
                         type(self),
                         artifacts_module,
                         adam_kernels_module,
+                        # What the solve computes through beyond adam@1's
+                        # modules: the exact-k feasibility check, the L0
+                        # gates and their initialization record, the
+                        # targets' hierarchy and the matrix's monetary binding
+                        # check; the codec packs the artifacts as canonical
+                        # JSON (microcosm#931).
+                        exact_k_module,
+                        l0_gates_module,
+                        initialization_module,
+                        hierarchy_module,
+                        monetary_binding_module,
+                        canonical_json,
                         dependencies=self.capabilities.dependencies,
                     ),
                 }

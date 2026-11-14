@@ -1,4 +1,12 @@
-"""Shared support-clip receipts for UK donor imputation stages."""
+"""Shared support-clip receipts for UK donor imputation stages.
+
+A receipt gives each clipped column's donor range and the rows the clip
+raised or lowered into it. On a frame of ``K`` geographic clones
+(microcosm#931) every clone's rows are clipped, so the receipt also gives
+``clone_count``, only when ``K`` is more than one, and the support-clip
+check allows ``K`` times each declared row allowance; a one-clone receipt
+keeps its form.
+"""
 
 from __future__ import annotations
 
@@ -13,13 +21,19 @@ import pandas as pd
 class UKSupportClipReceipt:
     stage: str
     columns: Mapping[str, Mapping[str, object]]
+    #: The frame's geographic clone count ``K``; the evidence gives it only
+    #: when it is more than one.
+    clone_count: int = 1
 
     def evidence(self) -> dict[str, object]:
-        return {
+        evidence: dict[str, object] = {
             "columns": {
                 column: dict(receipt) for column, receipt in self.columns.items()
             }
         }
+        if self.clone_count > 1:
+            evidence["clone_count"] = self.clone_count
+        return evidence
 
 
 @dataclass(frozen=True)
@@ -35,9 +49,23 @@ def support_clip_to_donor_with_receipt(
     columns: Sequence[str],
     stage: str,
     exempt: set[str] | None = None,
+    clone_count: int = 1,
 ) -> UKSupportClipResult:
-    """Clip draws to donor support and return a structured receipt."""
+    """Clip draws to donor support and return a structured receipt.
 
+    ``clone_count`` is the frame's geographic clone count
+    (``geographic_clones.geographic_clone_count``), which the receipt carries
+    for the support-clip check's row allowances.
+    """
+
+    if (
+        isinstance(clone_count, bool)
+        or not isinstance(clone_count, int | np.integer)
+        or clone_count < 1
+    ):
+        raise ValueError(
+            f"{stage}: the support clip's clone_count must be a positive integer."
+        )
     clipped = draws.copy()
     exempt = exempt or set()
     receipts: dict[str, dict[str, object]] = {}
@@ -68,5 +96,7 @@ def support_clip_to_donor_with_receipt(
         clipped[column] = clipped[column].clip(lower=lower, upper=upper)
     return UKSupportClipResult(
         clipped=clipped,
-        receipt=UKSupportClipReceipt(stage=stage, columns=receipts),
+        receipt=UKSupportClipReceipt(
+            stage=stage, columns=receipts, clone_count=int(clone_count)
+        ),
     )

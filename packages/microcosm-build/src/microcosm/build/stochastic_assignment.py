@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -12,9 +13,13 @@ from scipy.stats import norm
 __all__ = [
     "assign_binary_from_rate",
     "assign_binary_with_anchored_residual",
+    "binomial_share_tolerance",
     "clipped_normal_from_uniforms",
     "integer_record_keys",
+    "keyed_tie_order",
+    "keyed_tie_uniforms",
     "sample_categorical_from_counts",
+    "stable_identity_uniform",
     "stable_identity_uniforms",
     "weight_balanced_uniforms",
 ]
@@ -44,6 +49,23 @@ def stable_identity_uniforms(
         ],
         dtype=np.float64,
     )
+
+
+def stable_identity_uniform(key: object, *, seed: int, salt: str) -> float:
+    """One U[0,1) draw keyed by ``seed:salt:key``, for a label, not a record.
+
+    The draw ``stable_identity_uniforms([key], seed=seed, salt=salt)`` gives,
+    for a scalar a stage keys on a label of its own (a walk's cell, a band's
+    bounds) rather than on a record id: it is the same whichever other draws
+    the stage makes, and in whatever order, where the n-th draw of a shared
+    Generator belongs to whichever call happens to come n-th (microcosm#931).
+    ``key`` is one value; a sequence would be formatted whole into the key
+    string, so it is refused.
+    """
+
+    if np.ndim(key) != 0:
+        raise TypeError("key must be a single value, not a sequence.")
+    return float(stable_identity_uniforms([key], seed=seed, salt=salt)[0])
 
 
 def weight_balanced_uniforms(
@@ -114,15 +136,98 @@ def integer_record_keys(
     The key string formats each id, so the integer ``1001`` and the float
     ``1001.0`` draw differently, and a merge that turned an id column into
     floats would silently redraw every record. A repeated id would give two
-    records the same uniforms.
+    records the same uniforms. Repeats are found on a sorted copy, where
+    equal ids sit side by side, without building the unique ids.
     """
 
     keys = np.asarray(ids)
-    if keys.ndim != 1 or not np.issubdtype(keys.dtype, np.integer):
+    # Timedeltas subclass numpy's integers but are not ids, and repeated NaT
+    # never compare equal, so the kind is checked, not the subtype.
+    if keys.ndim != 1 or keys.dtype.kind not in "iu":
         raise TypeError(f"{label} must be a one-dimensional array of integer ids.")
-    if np.unique(keys).size != keys.size:
+    ordered = np.sort(keys)
+    if (ordered[1:] == ordered[:-1]).any():
         raise ValueError(f"{label} must name each record once.")
     return keys
+
+
+def keyed_tie_uniforms(
+    ids: Sequence[object] | np.ndarray, *, seed: int, salt: str
+) -> np.ndarray:
+    """The uniforms :func:`keyed_tie_order` breaks exact ties on, one per id.
+
+    ``stable_identity_uniforms`` of ``ids`` checked by
+    :func:`integer_record_keys`, so each record's uniform depends on its own
+    id alone, in whichever pool it is walked. A stage that orders the same
+    records in several walks draws them once here and sorts on them, as
+    :func:`keyed_tie_order` does (microcosm#931).
+    """
+
+    keys = integer_record_keys(ids, label=salt)
+    return stable_identity_uniforms(keys, seed=seed, salt=salt)
+
+
+def keyed_tie_order(
+    primary: Sequence[float] | np.ndarray,
+    ids: Sequence[object] | np.ndarray,
+    *,
+    seed: int,
+    salt: str,
+) -> np.ndarray:
+    """Positions that sort ``primary`` ascending, exact ties in keyed order.
+
+    The order is ``np.lexsort((ids, u, primary))``, ``u`` the records'
+    :func:`keyed_tie_uniforms`. Records whose ``primary`` values differ keep
+    the order those values give them, so on distinct values it is
+    ``np.lexsort((ids, primary))`` bit for bit; records tied exactly on
+    ``primary`` take the order of their uniforms, then of their ids. Ties
+    broken on ids alone put the lowest id first every time, so where the
+    copies or geographic clones of one household tie, the lowest copy
+    ordinal always came first (microcosm#931). Each uniform is a function
+    of its record's id, so the order does not depend on the order of the
+    rows. Pass a negated key to walk it descending.
+
+    Only the records that share their ``primary`` value with another are
+    drawn, since no other record's uniform can move it; NaNs tie with each
+    other, as the sort puts them together.
+    """
+
+    values = np.asarray(primary, dtype=np.float64)
+    keys = integer_record_keys(ids, label=salt)
+    if values.shape != keys.shape:
+        raise ValueError("primary and ids must be aligned 1-D arrays.")
+    order = np.lexsort((keys, values))
+    ordered = values[order]
+    same = (ordered[1:] == ordered[:-1]) | (
+        np.isnan(ordered[1:]) & np.isnan(ordered[:-1])
+    )
+    if not same.any():
+        return order
+    tied = np.zeros(order.size, dtype=bool)
+    tied[1:] |= same
+    tied[:-1] |= same
+    rows = order[tied]
+    uniforms = np.zeros(order.size, dtype=np.float64)
+    uniforms[rows] = stable_identity_uniforms(keys[rows], seed=seed, salt=salt)
+    return np.lexsort((keys, uniforms, values))
+
+
+def binomial_share_tolerance(*, target: float, rows: int, sigma: float) -> float:
+    """Binomial band for a share realized over ``rows`` identity-keyed draws.
+
+    ``sigma`` standard errors of a share whose rows are each drawn at
+    ``target``, ``sigma x sqrt(target x (1 - target) / rows)``, floored at one
+    row's worth and capped at one; one when there are no rows. Moved here
+    from the UK stage-health gates, which keep their four-sigma band under
+    their own name (microcosm#931).
+    """
+
+    if rows <= 0:
+        return 1.0
+    return min(
+        1.0,
+        max(1.0 / rows, sigma * math.sqrt(target * (1.0 - target) / rows)),
+    )
 
 
 def assign_binary_from_rate(
@@ -140,6 +245,8 @@ def assign_binary_with_anchored_residual(
     rate: float,
     anchor: Sequence[bool] | np.ndarray | None = None,
     population: Sequence[bool] | np.ndarray | None = None,
+    *,
+    strata: Sequence[int] | np.ndarray | None = None,
 ) -> np.ndarray:
     """Assign a flag while forcing reported-recipient anchors to true.
 
@@ -150,6 +257,22 @@ def assign_binary_with_anchored_residual(
     rows and rows outside it are never drawn. Anchored overshoot is accepted,
     an anchor outside the population stays true (reported receipt is a fact),
     and the residual fills only non-anchored rows inside the population.
+
+    ``strata``, one integer per row, takes the count within each stratum
+    rather than over every row: each stratum runs the arithmetic above on its
+    own rows alone, with its own target, the need its own anchors leave and
+    the threshold its own non-anchored rows fill, so their order does not
+    matter. A stratum's flags are then the flags its rows take on their own,
+    whatever the other strata hold, and with every row in one stratum they
+    are the flags without strata. A caller whose strata are copies of one
+    population, as geographic clones are (microcosm#931), counts each copy as
+    the population alone is counted, where one count over every copy rounds
+    ``int(rate * n_units)`` once over all of them. Without an anchor there is
+    no count, so strata change nothing, though they are still checked: they
+    must align with ``draws`` and have an integer dtype, which holds no
+    missing value. Unlike :func:`weight_balanced_uniforms`' strata, the
+    labels must be integers: a label a merge left missing would match no
+    stratum, and its rows would keep their anchors alone.
     """
 
     draws = np.asarray(draws, dtype=np.float64)
@@ -160,11 +283,21 @@ def assign_binary_with_anchored_residual(
         population = np.asarray(population, dtype=bool)
         if population.shape != draws.shape:
             raise ValueError("population and draws must align")
+    if strata is not None:
+        strata = _stratum_labels(strata, draws.shape)
     if anchor is None:
         return population & (draws < rate)
     anchor = np.asarray(anchor, dtype=bool)
     if anchor.shape != draws.shape:
         raise ValueError("anchor and draws must align")
+    if strata is not None:
+        result = anchor.copy()
+        for stratum in np.unique(strata):
+            rows = strata == stratum
+            result[rows] = assign_binary_with_anchored_residual(
+                draws[rows], rate, anchor[rows], population[rows]
+            )
+        return result
     result = anchor.copy()
     target = int(rate * int(population.sum()))
     remaining_needed = max(0, target - int((anchor & population).sum()))
@@ -225,3 +358,23 @@ def _validate_rate(rate: Any) -> float:
     if not 0.0 <= value <= 1.0:
         raise ValueError(f"rate must be in [0, 1], got {value}.")
     return value
+
+
+def _stratum_labels(
+    strata: Sequence[int] | np.ndarray, shape: tuple[int, ...]
+) -> np.ndarray:
+    """``strata`` as one integer label per row, or a refusal.
+
+    The labels must align with the draws and have an integer dtype, which
+    holds no missing value: a float holding whole numbers is refused, as
+    :func:`integer_record_keys` refuses float ids, and so is a float, object
+    or nullable column holding a missing value. The refusals name no count,
+    label or row.
+    """
+
+    labels = np.asarray(strata)
+    if labels.shape != shape:
+        raise ValueError("strata and draws must align")
+    if labels.dtype.kind not in "iu":
+        raise TypeError("strata must be integers, one per row, none missing")
+    return labels

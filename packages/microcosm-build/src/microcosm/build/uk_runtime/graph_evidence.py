@@ -41,10 +41,10 @@ from ..stage_evidence import (
     decode_stage_evidence,
     encode_stage_evidence,
 )
-from . import battery_bindings, energy_pricing, stage_health
-from .calibration_run import UK_SPINE_GATE_SCOPE, uk_scoped_gate_manifest
+from . import battery_bindings, stage_health
 from .cgt_asset_type import CGT_ASSET_TYPE_DOMAIN
 from .frs_relationships import CHRONICLE_ONS_HOUSEHOLD_TYPE_VALUE_IDS
+from .gate_scopes import UK_SPINE_GATE_SCOPE, uk_scoped_gate_manifest
 from .graph import UK_SPINE_ASSEMBLED_FINAL_STAGE
 
 #: The spine checkpoint's build state the terminal gates read as the spine
@@ -227,6 +227,7 @@ def add_uk_spine_gate_nodes(
     data-only fixture is not the population its facts describe, so
     population-fact gates never block such a run.
     """
+    from .gate_phase_codes import UK_SPINE_GATE_PHASE_CODE
     from .graph import uk_spine_endpoint
 
     gates = uk_spine_gate_manifest(spec)
@@ -260,6 +261,7 @@ def add_uk_spine_gate_nodes(
     for phase, population, inputs, phase_stages in checkpoints:
         if phase == "transferred" and end == len(stages):
             continue
+        code = UK_SPINE_GATE_PHASE_CODE.get(phase)
         nodes.append(
             Node(
                 id=f"spine.gates.{phase}",
@@ -294,11 +296,7 @@ def add_uk_spine_gate_nodes(
                     "phase": phase,
                     "time_period": "2024",
                     "stage_names": phase_stages,
-                    **(
-                        {"energy_pricing_code": source_hash(energy_pricing)}
-                        if phase == "transferred"
-                        else {}
-                    ),
+                    **({f"{phase}_code": code()} if code is not None else {}),
                     "gate_manifest": json.dumps(
                         gate_battery._gates_manifest_payload(gates), sort_keys=True
                     ),
@@ -350,9 +348,22 @@ class UKSpineGateKernel(KernelBase):
     the persisted verdict binds the policy it was judged under:
     ``synthetic_smoke`` mirrors ``GateBatteryRun(synthetic_smoke=...)`` — on a
     data-only fixture the population-fact gates are recorded but never block.
-    The transferred phase also carries ``energy_pricing_code``, the hash of
-    the module that sets the energy level its rake gate recomputes, so only
-    that phase re-keys when the level's code changes.
+    Each phase also carries ``<phase>_code``, the hash of the code only its
+    own gates compute through
+    (:data:`.gate_phase_codes.UK_SPINE_GATE_PHASE_CODE`), so the assembled
+    gate's key, on which every later spine stage's chains, carries none of the
+    transferred phase's (the re-review of microcosm#1420, E; microcosm#931
+    ruling 6). An edit to a module only the transferred phase computes through
+    still re-keys the assembled gate where a stage before it hashes the
+    module, as for ``stochastic_assignment`` and ``take_up_contract``. The
+    kernel refuses a stale or missing ``<phase>_code`` before it evaluates
+    anything, as the full gates do
+    (:func:`.gate_phase_codes.require_current_phase_code`; microcosm#931,
+    ruled 9 Nov (late)), so a spine gate node whose ``<phase>_code`` is stale
+    or missing is refused whenever it runs, and no spine gate evaluates its
+    phase under a key that names other phase code. A record stored under the
+    node's key is reused without running the kernel, so the check does not
+    guard a cache hit.
     """
 
     ref = "uk.spine-gates@1"
@@ -369,24 +380,58 @@ class UKSpineGateKernel(KernelBase):
         self.engine_identity = engine_identity
 
     def implementation_hash(self) -> str:
+        import microcosm.calibrate.geography_constants as geography_constants
+        from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
         from microcosm.graph.canonical import canonical_json
 
+        from .. import gates, stage_evidence
+        from . import (
+            council_tax_constants,
+            graph_kernels,
+            national_frame,
+            receipt_counts,
+        )
         from .solve_scope import uk_solve_fingerprint
 
         # The spine stages after a gate wait on its verdict, so its key is
         # part of theirs. No spine gate reads a gate-only register, so it keys
         # on the solve fingerprint and a sign-off between two release builds
-        # leaves an in-graph spine a cache hit (microcosm#1301). The stage
-        # checks live in stage_health, so it keys the gate too (the independent
-        # review of microcosm#1420, finding 5). Only the transferred phase reads
-        # the energy level, through energy_pricing, so that phase alone carries
-        # its hash, as a node param: an energy change re-keys it, not the
-        # assembled gate every later spine stage waits on (the re-review, E).
+        # leaves an in-graph spine a cache hit (microcosm#1301). The code is
+        # what both phases compute through (microcosm#931 ruling 6): this
+        # kernel's run, the frame it rebuilds (graph_kernels' _minimal_frame,
+        # national_frame) and the evidence it decodes (stage_evidence); the
+        # battery and the gate registry (gate_battery, battery_bindings,
+        # gates); the stage-health checks (stage_health, the independent
+        # review of microcosm#1420, finding 5), with the receipt bands of the
+        # take-up checks both phases declare (receipt_counts); the enum
+        # gate's nation partition (council_tax_constants, the region tier);
+        # and the engine the kernel is built with, through which each phase's
+        # enum gates resolve a domain no artifact supplies (the engine
+        # adapter's PolicyEngineUKEngine.enum_domain). What only one phase's
+        # gates compute through is that phase's own code, a node param that
+        # run checks (UK_SPINE_GATE_PHASE_CODE, in gate_phase_codes, which this
+        # hash leaves out): the energy level, for one, re-keys the transferred
+        # gate and not the assembled gate every later spine stage waits on,
+        # since no stage before that gate hashes energy_pricing (the
+        # re-review, E). A phase-only module a stage before the assembled gate
+        # hashes still re-keys it by chaining
+        # (gate_phase_codes.uk_spine_transferred_only_code_hash).
         return hashlib.sha256(
             canonical_json(
                 {
                     "code": source_hash(
-                        type(self), gate_battery, battery_bindings, stage_health
+                        type(self),
+                        gate_battery,
+                        battery_bindings,
+                        stage_health,
+                        gates,
+                        stage_evidence,
+                        graph_kernels,
+                        national_frame,
+                        receipt_counts,
+                        council_tax_constants,
+                        geography_constants,
+                        uk_engine_adapter,
                     ),
                     "country_resources": uk_solve_fingerprint(),
                 }
@@ -396,8 +441,10 @@ class UKSpineGateKernel(KernelBase):
     def run(self, context: KernelContext) -> KernelResult:
         from microcosm.frame import Frame, MassChangeRecord
 
+        from .gate_phase_codes import require_current_phase_code
         from .graph_kernels import _minimal_frame
 
+        phase = str(context.params["phase"])
         expected = json.dumps(
             gate_battery._gates_manifest_payload(self.gates), sort_keys=True
         )
@@ -408,6 +455,11 @@ class UKSpineGateKernel(KernelBase):
             raise ValueError(
                 "Spine gate binding differs from its declared manifest or engine."
             )
+        # The phase's own code keys the node through its parameter, not this
+        # kernel's hash, so a node whose parameter is stale or missing is
+        # refused before anything is read or evaluated (microcosm#931, ruled
+        # 9 Nov (late)), as the full gates refuse theirs.
+        require_current_phase_code(context.params, phase, battery="spine")
         release_candidate = bool(context.params["release_candidate"])
         synthetic_smoke = bool(context.params["synthetic_smoke"])
         previous = context.artifacts.get("previous_gate")
@@ -420,7 +472,7 @@ class UKSpineGateKernel(KernelBase):
                 synthetic_smoke=synthetic_smoke,
             ):
                 report = gate_battery.GatePhaseReport(
-                    phase=str(context.params["phase"]),
+                    phase=phase,
                     outcomes=tuple(
                         gate_battery.GateOutcome(
                             entry=entry,
@@ -428,7 +480,7 @@ class UKSpineGateKernel(KernelBase):
                             reason="The assembled spine gate blocked this phase.",
                         )
                         for entry in self.gates.gates
-                        if entry.phase == context.params["phase"]
+                        if entry.phase == phase
                     ),
                 )
                 return KernelResult(
@@ -464,7 +516,7 @@ class UKSpineGateKernel(KernelBase):
         )
         report = evaluate_phase(
             self.gates,
-            str(context.params["phase"]),
+            phase,
             EvidenceContext(
                 frame=frame,
                 artifacts={**evidence, **uk_spine_gate_artifacts(self.engine)},

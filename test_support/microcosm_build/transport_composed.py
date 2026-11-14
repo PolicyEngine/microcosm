@@ -915,6 +915,21 @@ def write_rulespec_tree(root: Path) -> list[dict]:
     return rows
 
 
+def toy_rules_bindings(rows: list[dict]) -> dict:
+    """The toy package's ``axiom_rules_bindings`` document over the binding
+    ``rows`` ``write_rulespec_tree`` returns, with format-valid synthetic
+    pins."""
+    return {
+        "engine": {"commit": "a" * 40, "wheel_sha256": "b" * 64},
+        "rulespec": {"commit": "c" * 40},
+        "entity_names": {entity: entity.capitalize() for entity in ENTITIES},
+        "periods": {
+            PERIOD: {"kind": "tax_year", "start": "2026-04-01", "end": "2027-03-31"}
+        },
+        "bindings": rows,
+    }
+
+
 @dataclass(frozen=True)
 class ComposedFixture:
     """A written toy package, its inputs and one prepared registry."""
@@ -989,15 +1004,7 @@ def make_composed_fixture(root: Path) -> ComposedFixture:
     mapping = _concept_mapping()
     rules_root = root / "rulespec"
     rows = write_rulespec_tree(rules_root)
-    bindings = {
-        "engine": {"commit": "a" * 40, "wheel_sha256": "b" * 64},
-        "rulespec": {"commit": "c" * 40},
-        "entity_names": {entity: entity.capitalize() for entity in ENTITIES},
-        "periods": {
-            PERIOD: {"kind": "tax_year", "start": "2026-04-01", "end": "2027-03-31"}
-        },
-        "bindings": rows,
-    }
+    bindings = toy_rules_bindings(rows)
     closure = InputClosure(
         country=COUNTRY,
         content_basis=ContentBasis.TRANSPORT,

@@ -1,14 +1,15 @@
 """The ordered clone path of every post-clone UK household, from its lineage columns.
 
-The geography identity kernel keys each pool household on its source id and
-its explicit clone path (microcosm#931); the post-geography property node
-(microcosm#1240) needs the same path without the geographic clone branch, so
-that every pool clone of one spine household shares one key. Both read the
-path through this module, which validates the lineage columns once and never
-infers a branch from ids, weights or values. The UK's copy lineage is declared
-here (:data:`UK_COPY_LINEAGE`) for the shared readers in
-``microcosm.build.source_lineage``: the receipts' true sources and the
-FRS-trained fits' collapse of geographic clones read it too.
+The spine's ``geographic_identity`` stage keys each household on its source id
+and its explicit clone path, and the dense line keys no household of its own
+(microcosm#931). The copy take-up stages read the same path through
+:func:`uk_household_clone_paths`, which validates the lineage columns once and
+never infers a branch from ids, weights or values. The UK's copy lineage is
+declared here (:data:`UK_COPY_LINEAGE`) for the shared readers in
+``microcosm.build.source_lineage``: the geography identity, the receipts' true
+sources and the FRS-trained fits' collapse of geographic clones read it, and
+:func:`geographic_fold_receipt` records how a fit's fold met its survey
+records.
 """
 
 from __future__ import annotations
@@ -21,28 +22,38 @@ import pandas as pd
 from microcosm.build.source_lineage import (
     CopyBranch,
     CopyLineage,
-    collapse_replicas,
+    ReplicaFold,
     copy_paths,
+    fold_replicas,
     replica_keys,
 )
+from microcosm.build.uk_runtime.geographic_clones import (
+    geographic_clone_count,
+    ladder_clone_index_column,
+)
 from microcosm.build.uk_runtime.national_frame import UK_NATIONAL_SCHEMA
-from microcosm.build.uk_runtime.rowwise_dataset import ladder_clone_index_column
 
 __all__ = [
+    "GEOGRAPHIC_FOLD_EVIDENCE",
     "GEOGRAPHIC_SUPPORT_BRANCH",
     "HIGH_VALUE_SUPPORT_COPY_COLUMN",
     "HIGH_VALUE_SUPPORT_INDEX_COLUMN",
     "UK_COPY_LINEAGE",
     "UK_HOUSEHOLD_LINEAGE_COLUMNS",
     "collapse_geographic_clones",
+    "fold_geographic_clones",
+    "geographic_fold_receipt",
     "uk_household_clone_paths",
 ]
 
-#: Lineage columns the post-clone household identity is keyed on. The support
-#: channel, the CGT support split's copy flag and index (microcosm#1045), the
-#: high-value home support copy flag and index (microcosm#1240) and the clone
-#: flags come from the spine stages; the geographic clone index from
-#: ``uk.full.expand``. Calibration K, weights and remapped ids are not inputs.
+#: Lineage columns a post-clone household's clone path is read from. The
+#: support channel, the CGT support split's copy flag and index
+#: (microcosm#1045), the high-value home support copy flag and index
+#: (microcosm#1240) and the clone flags come from the spine stages. So do the
+#: source id and the geographic clone index, which the spine's
+#: ``geographic_expand`` stage writes (microcosm#931); a spine built before
+#: that stage carries no index. Calibration K, weights and remapped ids are
+#: not inputs.
 HIGH_VALUE_SUPPORT_COPY_COLUMN = "household_is_high_value_support_copy"
 HIGH_VALUE_SUPPORT_INDEX_COLUMN = "high_value_support_copy_index"
 UK_HOUSEHOLD_LINEAGE_COLUMNS: tuple[str, ...] = (
@@ -56,13 +67,11 @@ UK_HOUSEHOLD_LINEAGE_COLUMNS: tuple[str, ...] = (
     "cgt_residential_clone_index",
     ladder_clone_index_column("household"),
 )
-#: The two optional columns the high-value support stage adds (microcosm#1240);
-#: a spine built before that stage carries neither and keys as before.
-UK_OPTIONAL_LINEAGE_COLUMNS: tuple[str, ...] = (
-    HIGH_VALUE_SUPPORT_COPY_COLUMN,
-    HIGH_VALUE_SUPPORT_INDEX_COLUMN,
-)
 GEOGRAPHIC_SUPPORT_BRANCH = "geographic_support"
+#: The evidence key under which a stage whose fit folds geographic clones
+#: records the fold (:func:`geographic_fold_receipt`), on a frame of more
+#: than one clone only.
+GEOGRAPHIC_FOLD_EVIDENCE = "geographic_fold"
 _BASE_SUPPORT_CHANNEL = "frs"
 _SPI_SUPPORT_CHANNEL = "spi"
 #: The UK's copy lineage for the shared readers in
@@ -104,8 +113,8 @@ UK_COPY_LINEAGE = CopyLineage(
 
 #: The branches every post-clone household carries: the SPI support channel
 #: and the CGT steps. High-value support (a spine built before that stage has
-#: neither of its columns) and the geographic clone index (a spine frame has
-#: none yet) are read where present.
+#: neither of its columns) and the geographic clone index (a spine built
+#: before ``geographic_expand`` has none) are read where present.
 _REQUIRED_BRANCHES = (
     "spi_support_channel",
     "cgt_support_split",
@@ -139,19 +148,66 @@ def uk_household_clone_paths(
     required = [c for c in UK_HOUSEHOLD_LINEAGE_COLUMNS if c != clone_column]
     missing = [c for c in required if c not in household]
     if missing:
-        raise ValueError(f"Geography identity lacks lineage column(s) {missing}.")
+        raise ValueError(
+            f"The household table lacks lineage column(s) {missing} that "
+            "its clone paths are read from."
+        )
     present = [
         column
         for column in (UK_COPY_LINEAGE.source, *UK_COPY_LINEAGE.copy_columns)
         if column in household
     ]
     if household.loc[:, present].isna().any().any():
-        raise ValueError("Geography identity refuses null lineage values.")
+        raise ValueError("Household clone paths refuse null lineage values.")
     for column in _INT64_LINEAGE_COLUMNS:
         if column in household and household[column].dtype != np.dtype("int64"):
-            raise ValueError(f"Geography identity requires an int64 {column}.")
+            raise ValueError(f"Household clone paths require an int64 {column}.")
     sources, paths = copy_paths(household, UK_COPY_LINEAGE, require=_REQUIRED_BRANCHES)
     return [int(source) for source in sources], paths
+
+
+def fold_geographic_clones(
+    tables: Mapping[str, pd.DataFrame],
+    entity: str,
+    rows: np.ndarray,
+    weights: np.ndarray,
+    *,
+    inputs: pd.DataFrame,
+) -> ReplicaFold:
+    """A fit's training rows with each record's geographic clones folded in.
+
+    A survey record a fit trains on keeps one row, its clone with the lowest
+    id among ``rows``, with the weight of all its geographic clones; every
+    other copy (SPI support, high-value support and the CGT steps) stays a
+    row of its own (microcosm#931). The record's key is its true source and
+    its clone path without the geographic branch, through the shared reader
+    (``microcosm.build.source_lineage``); a frame of one clone, with or
+    without the clone index, keeps ``rows`` and ``weights`` value for value.
+
+    The fold orders a key's clones by ``entity``'s id column. Their ids
+    differ only by each clone's offset (the copy-id table's
+    ``geographic_support`` digits on a clone-first spine), so each variant
+    trains on its lowest clone among ``rows``: clone 0 whenever clone 0 is
+    selected and agrees with it, whatever the row order.
+
+    ``inputs`` is what the fit reads, one row per row of ``entity``. Clones
+    fold only where they agree on it. Clones that differ, through a draw
+    keyed on their own ids or a stage run per area, stay rows of their own,
+    each variant on its lowest-id clone with its clones' summed weight, so
+    the fit sees each clone's value at its share. Returns the shared
+    :class:`~microcosm.build.source_lineage.ReplicaFold` over every row of
+    ``entity``.
+    """
+
+    keys = replica_keys(
+        tables,
+        UK_NATIONAL_SCHEMA,
+        entity,
+        UK_COPY_LINEAGE,
+        merge=(GEOGRAPHIC_SUPPORT_BRANCH,),
+    )
+    ids = tables[entity][UK_NATIONAL_SCHEMA.entity_id_column(entity)].to_numpy()
+    return fold_replicas(keys, rows, weights, inputs=inputs, order=ids)
 
 
 def collapse_geographic_clones(
@@ -162,32 +218,81 @@ def collapse_geographic_clones(
     *,
     inputs: pd.DataFrame,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """A fit's training rows with each record's geographic clones folded in.
+    """The kept rows and weights of :func:`fold_geographic_clones`.
 
-    A survey record a fit trains on keeps one row, its first among ``rows``,
-    with the weight of all its geographic clones; every other copy (SPI
-    support, high-value support and the CGT steps) stays a row of its own
-    (microcosm#931). The record's key is its true source and its clone path
-    without the geographic branch, through the shared reader
-    (``microcosm.build.source_lineage``); a frame without geographic clones,
-    as every spine is today, keeps ``rows`` and ``weights`` value for value.
-
-    ``inputs`` is what the fit reads, one row per row of ``entity``. Clones
-    fold only where they agree on it. Clones that differ, through a draw
-    keyed on their own ids or a stage run per area, stay rows of their own,
-    each variant with its clones' summed weight, so the fit sees each
-    clone's value at its share. Returns the kept rows and the weights over
-    every row of ``entity``.
+    Each survey record trains on its lowest-id clone among ``rows``, with
+    the weight of the clones that agree with it on ``inputs``; clones that
+    differ stay rows of their own. Returns the kept rows and the weights
+    over every row of ``entity``.
     """
 
-    keys = replica_keys(
-        tables,
-        UK_NATIONAL_SCHEMA,
-        entity,
-        UK_COPY_LINEAGE,
-        merge=(GEOGRAPHIC_SUPPORT_BRANCH,),
+    fold = fold_geographic_clones(tables, entity, rows, weights, inputs=inputs)
+    return fold.kept, fold.weights
+
+
+def geographic_fold_receipt(
+    tables: Mapping[str, pd.DataFrame],
+    entity: str,
+    fold: ReplicaFold,
+    *,
+    stage: str,
+) -> dict[str, object] | None:
+    """How a fit's geographic fold met its survey records, or None at one clone.
+
+    ``fold`` is :func:`fold_geographic_clones`' fold of ``entity``'s rows
+    over ``tables``. On a frame of more than one geographic clone
+    (:func:`~microcosm.build.uk_runtime.geographic_clones.geographic_clone_count`)
+    the receipt holds:
+
+    - ``clone_count``: the frame's clone count ``K``;
+    - ``records``: the true source households of the records the fit
+      selected;
+    - ``varied_records``: the source households of the selected records
+      whose clones did not all fold into one row, since they differ on what
+      the fit reads;
+    - ``varied_share``: the share of the selected source households that
+      vary, floored to the hundredth, where both the households that vary
+      and those that do not read as rounded numbers rather than bands;
+      otherwise it repeats ``varied_records``. A share to the hundredth of a
+      few dozen sources would give back where in its band either count
+      lies.
+
+    Both counts are of distinct true sources on rows of positive weight,
+    rounded as every receipt count is (``receipt_counts.rounded_count``), so
+    a household's clones and copies count once. A frame of one clone returns
+    None and its evidence is left as it was. Variety is recorded, never
+    refused: clones that differ stay rows of their own in the fit.
+    """
+
+    clone_count = geographic_clone_count(tables["household"], stage=stage)
+    if clone_count == 1:
+        return None
+    # receipt_counts reads this module's lineage, so it is imported here.
+    from microcosm.build.uk_runtime import receipt_counts
+
+    sources = receipt_counts.record_source_households(tables, entity, stage=stage)
+    selected = fold.representative >= 0
+    records = receipt_counts.distinct_count(sources, selected, fold.weights)
+    varied = receipt_counts.distinct_count(sources, fold.varied, fold.weights)
+    varied_band = receipt_counts.rounded_count(varied)
+    # A varied record is a selected one, so the rest are the selected sources
+    # none of whose records varied.
+    steady_band = receipt_counts.rounded_count(records - varied)
+    share_given = (
+        varied > 0
+        and not isinstance(varied_band, str)
+        and not isinstance(steady_band, str)
     )
-    return collapse_replicas(keys, rows, weights, inputs=inputs)
+    return {
+        "clone_count": clone_count,
+        "records": receipt_counts.rounded_count(records),
+        "varied_records": varied_band,
+        "varied_share": (
+            receipt_counts.floored_share(varied / records)
+            if share_given
+            else varied_band
+        ),
+    }
 
 
 def without_geographic_branch(

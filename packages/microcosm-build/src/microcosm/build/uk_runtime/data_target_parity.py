@@ -340,7 +340,7 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "concern_id": "national_ons_land_values",
         "status": "ported_national",
         "classification": "red_line_national_family",
-        "evidence": "uk-data targets/sources/ons_land_values.py and _land.py; Microcosm target ids ons.land.{land_value,household_land_value,corporate_land_value}.",
+        "evidence": "uk-data targets/sources/ons_land_values.py and _land.py; Microcosm target ids ons.land.{land_value,household_land_value,corporate_land_value}, of which ons.land.land_value and ons.land.corporate_land_value are measure exclusions tracking microcosm#1521 since the #931 move.",
     },
     {
         "concern_id": "regional_household_land_values",

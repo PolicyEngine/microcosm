@@ -24,7 +24,11 @@ import pandas as pd
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.frs_spine import UC_CAPITAL_UNAVAILABLE
-from microcosm.build.uk_runtime.household_lineage import collapse_geographic_clones
+from microcosm.build.uk_runtime.household_lineage import (
+    GEOGRAPHIC_FOLD_EVIDENCE,
+    fold_geographic_clones,
+    geographic_fold_receipt,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -44,6 +48,7 @@ from microcosm.build.uk_runtime.uc_relationships import (
 )
 from microcosm.frame import Frame
 
+UC_CAPITAL_COHERENCE_STAGE_NAME = "uc_capital_coherence"
 UC_CAPITAL_REDRAW_OUTPUT = "frs_benunit_capital"
 UC_CAPITAL_REDRAW_SEED = 0
 UC_CAPITAL_REDRAW_SALT = UC_CAPITAL_REDRAW_OUTPUT
@@ -65,12 +70,13 @@ UC_CAPITAL_INVESTMENT_INCOME = (
 #: GBP 6,000, 16,000, 50,000 and 200,000 of capital yield at 4%, then above.
 UC_CAPITAL_INCOME_BAND_EDGES = (0.0, 240.0, 640.0, 2_000.0, 8_000.0)
 UC_CAPITAL_IMPLIED_YIELD = 0.04
-#: The donors a cell needs before it stops widening. It counts the cell's
-#: donor benefit-unit rows after the geographic fold, so a high-value
-#: support copy counts as a donor of its own. It is a row threshold, not a
-#: disclosure floor. Whether it should count true sources is for the
-#: geography-first move's audit of K-sensitive constants (microcosm#931),
-#: since switching it can move outputs.
+#: The donors a cell needs before it stops widening, counted in survey
+#: records (María's ruling of 2026-11-10, microcosm#931): a benefit unit's
+#: geographic clones count once, whether they fold into one row or differ and
+#: donate apart, and every other copy, a high-value support copy say, counts
+#: as a record of its own. A frame without geographic clones holds one
+#: record per row, so there the count is the cell's donor rows, as before.
+#: It is a donor threshold, not a disclosure floor.
 UC_CAPITAL_MINIMUM_CELL_DONORS = 20
 #: The declared order in which a cell short of donors widens; reporter status
 #: is never coarsened.
@@ -222,12 +228,15 @@ class UKUCCapitalCoherenceResult:
         default_factory=dict
     )
     property_shares: Mapping[str, object] = field(default_factory=dict)
+    #: How the capital redraw's donor fold met its survey records, on a frame
+    #: of more than one geographic clone only (microcosm#931).
+    geographic_fold: Mapping[str, object] | None = None
 
     def evidence(self) -> dict[str, object]:
         """Return JSON-safe stage evidence."""
 
-        return {
-            "stage": "uc_capital_coherence",
+        evidence: dict[str, object] = {
+            "stage": UC_CAPITAL_COHERENCE_STAGE_NAME,
             "post_fill_reporter_count": self.post_fill_reporter_count,
             "redrawn_spi_reporter_count": self.redrawn_spi_reporter_count,
             "redrawn_spi_benefit_units": self.redrawn_spi_benefit_units,
@@ -241,6 +250,9 @@ class UKUCCapitalCoherenceResult:
             ),
             "property_shares": dict(self.property_shares),
         }
+        if self.geographic_fold is not None:
+            evidence[GEOGRAPHIC_FOLD_EVIDENCE] = dict(self.geographic_fold)
+        return evidence
 
 
 @dataclass(frozen=True)
@@ -348,8 +360,9 @@ def cohere_uc_capital(
     )
     redraw = spi
     levels: dict[str, int] = dict.fromkeys(_UC_CAPITAL_LEVELS, 0)
+    geographic_fold: dict[str, object] | None = None
     if redraw.any():
-        levels = _redraw_spi_capital(
+        levels, geographic_fold = _redraw_spi_capital(
             benunit,
             person=person,
             household=household,
@@ -442,6 +455,7 @@ def cohere_uc_capital(
             "after": receipt_after,
         },
         property_shares=property_receipt,
+        geographic_fold=geographic_fold,
     )
 
 
@@ -644,18 +658,23 @@ def _redraw_spi_capital(
     capital: np.ndarray,
     investment: np.ndarray,
     minimum_cell_donors: int = UC_CAPITAL_MINIMUM_CELL_DONORS,
-) -> dict[str, int]:
+) -> tuple[dict[str, int], dict[str, object] | None]:
     """Redraw ``redraw`` units' capital from base donors in their cell.
 
     A cell is reporter status x investment-income band x couple x
     dependent-children band. A cell with fewer than ``minimum_cell_donors``
     donors widens in the declared ``UC_CAPITAL_COARSENING`` order; reporter
     status is never coarsened, and an empty reporter-status pool refuses.
-    Each survey benefit unit donates once, its geographic clones that agree
-    on its cell and capital folded into its first row with their weight, so
-    a cell's donor count does not grow with identical clones
-    (``household_lineage.collapse_geographic_clones``, microcosm#931).
-    Returns the number of redrawn units drawn at each level.
+    Each survey benefit unit donates once: its geographic clones that agree
+    on its cell and capital fold into its lowest-id clone with their weight,
+    and clones that differ donate apart, each variant on its lowest-id clone
+    with its clones' weight (``household_lineage.fold_geographic_clones``,
+    microcosm#931). A cell's donors are counted in survey records, the
+    distinct replica keys among its rows, so neither identical nor differing
+    clones grow the count, while every other copy counts as a record of its
+    own. Returns the number of redrawn units drawn at each level, and the
+    fold's receipt on a frame of more than one geographic clone
+    (``household_lineage.geographic_fold_receipt``; None on one clone).
     """
 
     if not isinstance(minimum_cell_donors, int) or minimum_cell_donors <= 0:
@@ -665,9 +684,10 @@ def _redraw_spi_capital(
     income_band = _investment_income_band(investment)
     last_band = len(UC_CAPITAL_INCOME_BAND_EDGES)
     # Domain-validated upstream: every non-sentinel value is >= 0. A donor's
-    # clones fold where they agree on its cell and the capital it donates;
-    # clones that differ donate apart, each with its clones' weight.
-    donor, donor_weight = collapse_geographic_clones(
+    # clones fold onto its lowest-id clone where they agree on its cell and
+    # the capital it donates; clones that differ donate apart, each variant
+    # with its clones' weight. Every clone of a donor shares its key group.
+    fold = fold_geographic_clones(
         {"person": person, "benunit": benunit, "household": household},
         "benunit",
         base & (capital >= 0.0) & (weights > 0.0),
@@ -682,6 +702,13 @@ def _redraw_spi_capital(
             }
         ),
     )
+    geographic_fold = geographic_fold_receipt(
+        {"person": person, "benunit": benunit, "household": household},
+        "benunit",
+        fold,
+        stage=UC_CAPITAL_COHERENCE_STAGE_NAME,
+    )
+    donor, donor_weight = fold.kept, fold.weights
     target_ids = benunit["benunit_id"].to_numpy()
     draws = stable_identity_uniforms(
         target_ids,
@@ -736,7 +763,7 @@ def _redraw_spi_capital(
             (
                 (name, pool)
                 for name, pool in candidates
-                if int(pool.sum()) >= minimum_cell_donors
+                if _survey_records(fold.key_group, pool) >= minimum_cell_donors
             ),
             candidates[-1],
         )
@@ -758,7 +785,18 @@ def _redraw_spi_capital(
         selected = np.searchsorted(cdf, draws[target_cell], side="right")
         capital[target_cell] = donor_values[np.minimum(selected, len(cdf) - 1)]
         levels[level] += int(target_cell.sum())
-    return levels
+    return levels, geographic_fold
+
+
+def _survey_records(key_group: np.ndarray, pool: np.ndarray) -> int:
+    """The survey records among a donor pool's rows: its distinct key groups.
+
+    ``key_group`` is the geographic fold's code of each row's replica key, so
+    a record's clones count once whether they fold into one row or donate
+    apart; a frame without geographic clones holds one record per row.
+    """
+
+    return int(np.unique(key_group[pool]).size)
 
 
 def _investment_income_band(investment: np.ndarray) -> np.ndarray:

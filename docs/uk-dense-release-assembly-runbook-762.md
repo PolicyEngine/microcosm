@@ -98,13 +98,26 @@ manifest, and refuses the national role's flags. `--release-candidate` pins
 the doctrine (bound 10, `nation_grain_family_equal_sqrt_count`, K=15, 2000
 epochs). The rotated holdout runs only with `--rotated-holdout` (an opt-in,
 report-only diagnostic; `--skip-holdout` no longer exists, and the national
-role refuses `--rotated-holdout`). The engine may resolve in a single block or per clone
-(`--engine-blocks K`): each block's engine weights are scaled to the pool so
-weight-share formulas see the pool's denominator, and the measures receipt
-records whether the blocks were identical copies (an exact representation);
-a per-block run is releasable only when it was. Best-effort staging
-telemetry uploads every 300 s by default on this driver (the Hub allows about
-128 commits per hour per repository).
+role refuses `--rotated-holdout`). The engine may resolve in a single block or
+per clone (`--engine-blocks K`). Per clone, each block's engine weights are
+scaled to the pool's mass, and in every simulation the block builds,
+policyengine-uk's share formulas (`shareholding`, `corporate_land_value`,
+`consumption_shareholding`) are corrected to the pool's denominator. A guard
+judges every whole-population formula the block ran against the UK
+declaration. Nothing a block computes may fall in the Universal Credit
+rebalancing years (2026 on), where policyengine-uk draws new-claimant status
+by benefit-unit position (microcosm#931). The measures receipt records the
+representation exact only when every block applied the correction, its checks
+of the engine's key totals and growth held, and its guard verdict was clean;
+`exact_basis` (`pool_share_injection_with_population_guard`) names that basis.
+Exact then means equal to one engine over the pool to float32 rounding, not
+bitwise. A receipt without `exact_basis` predates the correction, when exact
+meant identical copies. A per-block run is releasable only when it is exact.
+While policyengine-uk draws new-claimant status by position, a calibration
+year, or a dated measure's year, of 2026 or later therefore leaves every
+per-clone run inexact, and so not releasable, and refuses every batched spine
+call. Best-effort staging telemetry uploads every 300 s by default on this
+driver (the Hub allows about 128 commits per hour per repository).
 For scale: at K=25 with `--engine-blocks 25` the graph driver's dense solve took
 about 3 hours (2,000 epochs over 1.6 million households, M1 Max), each of three
 size-search probes about as long, and the build peaked at 24.7 GiB (the
@@ -421,14 +434,18 @@ uv run --no-sync python tools/preflight_uk_local_release_candidate.py --candidat
 
 The pre-flight checks the manifest and the signed gate report for everything
 the contract will demand: release posture attested, shippable, every
-release-blocking gate passed, an exact engine population (single block, or
-per-block with identical copies scaled to the pool), the doctrine values (for
-a sized run, the size doctrine, a realized count equal to the request and the
-size search's L0 bracket), the
-A15 census household uprating and A17 tenure application, the measure
-exclusions and their windows, the holdout (recorded as not requested, or, when
-`--rotated-holdout` asked for it, measured with five folds and a finite mean,
-and in agreement with the request), the Logbook row, the artifact digest.
+release-blocking gate passed, an exact engine population (a single block, or
+one block per clone that the build recorded exact), the doctrine values (for a
+sized run, the size doctrine, a realized count equal to the request and the
+size search's L0 bracket), the A15 census household uprating and A17 tenure
+application, the measure exclusions and their windows, the holdout (recorded
+as not requested, or, when `--rotated-holdout` asked for it, measured with
+five folds and a finite mean, and in agreement with the request), the Logbook
+row, the artifact digest. A build now records one block per clone exact only
+when every block was corrected to the pool's share denominator with a clean
+guard. The pre-flight does not require `exact_basis`, so a receipt from before
+the correction, when exact meant identical copies, passes too; whether it
+should is open for Max's review.
 
 `--incumbent-manifest <incumbent-dir>/incumbent_local_surface_manifest.json`
 checks that the extraction manifest you will attach exists. The pre-flight no
@@ -479,15 +496,18 @@ uv run --no-sync python tools/evaluate_uk_incumbent_surface.py \
 with `--incumbent-diagnostic` (or when `--steps` names them).
 
 The build's release-blocking fit gates read the measures it resolved, per
-clone when `--engine-blocks K`; the build records that representation as exact
-only for the weight-share scaling
-(`engine_population_representation.exact_scope`), and engine draws that depend
-on a record's position can differ between per-clone and single-block runs. The
-release states this in its `engine_measurement` limitation; nothing re-measures
-the released file on one engine unless this evaluation is run. Its assessment
-marks any national or local row more than 25% from its target, or any family
-of five or more rows with fewer than half within 25%. Signed deferrals and
-measure exclusions do not exempt a row.
+clone when `--engine-blocks K`. `engine_population_representation.exact_scope`
+says what the representation's `exact` covers. When `exact` holds, the blocks
+were corrected to the pool's share denominator with a clean guard, and nothing
+they computed fell in the Universal Credit rebalancing years (2026 on), where
+policyengine-uk draws new-claimant status by benefit-unit position. The
+measures then equal one engine over the pool to float32 rounding, at the
+measure step's starting weights. The release states this in its
+`engine_measurement` limitation; nothing re-measures the released file on one
+engine unless this evaluation is run. Its assessment marks any national or
+local row more than 25% from its target, or any family of five or more rows
+with fewer than half within 25%. Signed deferrals and measure exclusions do
+not exempt a row.
 
 Use the actual metrics and weights filenames from the extraction manifest.
 Only one engine block is accepted. The evaluation records the pinned row

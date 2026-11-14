@@ -67,6 +67,18 @@ def test_manifest_operations_match_the_stage_implementation() -> None:
     draws = operations["within_band_draws"]
     assert draws["seed_base"] == UK_CGT_IMPUTATION_SEED
     assert draws["deterministic"] is True
+    # Ties on a rank take one uniform per person under the seed, salted with
+    # the period, the remainder's in reverse (microcosm#931).
+    ordering = operations["rank_preserving_allocation"]["ordering"]
+    assert ordering.startswith(
+        "a rank key descending, then the rank-tie uniform ascending, then "
+        "person_id ascending:"
+    )
+    assert "salted hmrc_cgt_gains_spine:rank_tie:<period>" in ordering
+    assert operations["sub_aea_remainder"]["ordering"].startswith(
+        "existing gains ascending, then the rank-tie uniform descending, then "
+        "person_id descending"
+    )
     verify = operations["verify_vendored_fact_resource"]
     assert verify["require_before_source_read"] is True
     assert verify["fail_on_mismatch"] is True

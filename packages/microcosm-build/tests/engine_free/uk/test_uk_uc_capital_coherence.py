@@ -1,7 +1,8 @@
 """Tests split from packages/microcosm-build/tests/test_uk_uc_capital_coherence.py."""
 
 # ruff: noqa: F403, F405
-from microcosm.build.uk_runtime.rowwise_dataset import ladder_clone_index_column
+from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
+from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
 from test_support.microcosm_build.uk_geographic_clones import with_geographic_clones
 from test_support.microcosm_build.uk_uc_capital_coherence import *
 
@@ -146,6 +147,9 @@ def test_graph_scoped_capital_redraw_receives_claimant_roles() -> None:
     person = frame.table("person")
     benunit = frame.table("benunit")
     frame.table("household")["region"] = "LONDON"
+    # The node reads the household's clone index, since the stage folds
+    # geographic clones (microcosm#931); this frame is one clone.
+    frame.table("household")[ladder_clone_index_column("household")] = 0
     person["age"] = np.where(person["is_benunit_head"] | person["is_parent"], 40, 5)
     person[support_channel_column("person")] = person["person_benunit_id"].map(
         benunit.set_index("benunit_id")[support_channel_column("benunit")]
@@ -634,9 +638,9 @@ def test_stage_refuses_a_drifted_property_share_declaration() -> None:
 
 def test_geographic_clones_donate_once_at_their_whole_weight() -> None:
     """Two geographic clones of every unit at half its weight donate as the
-    units donate alone: every SPI unit's first clone draws the capital it
-    draws without clones, and a cell's donor count reads units, not clones,
-    so each clone draws at its unit's coarsening level (microcosm#931)."""
+    units donate alone: every SPI unit's clone 0 draws the capital it draws
+    without clones, and a cell's donor count reads units, not clones, so
+    each clone draws at its unit's coarsening level (microcosm#931)."""
 
     alone = cohere_uc_capital(_frame(), minimum_cell_donors=2)
     cloned = cohere_uc_capital(with_geographic_clones(_frame()), minimum_cell_donors=2)
@@ -648,4 +652,151 @@ def test_geographic_clones_donate_once_at_their_whole_weight() -> None:
     )
     assert cloned.coarsening_levels == {
         level: 2 * count for level, count in alone.coarsening_levels.items()
+    }
+
+
+def _rebuilt(
+    frame, *, person=None, benunit=None, household=None, household_weights=None
+):
+    """``frame`` with the given tables or weights replaced, at its weight kind."""
+
+    weights = frame.weights_for("household")
+    return uk_national_frame(
+        person=frame.table("person") if person is None else person,
+        benunit=frame.table("benunit") if benunit is None else benunit,
+        household=frame.table("household") if household is None else household,
+        household_weights=(
+            weights.values if household_weights is None else household_weights
+        ),
+        weight_kind=weights.kind,
+        time_period="2024",
+    )
+
+
+def _variant_clones(frame, n_clones: int):
+    """``frame`` as ``n_clones`` geographic clones whose base units differ.
+
+    Each base unit's capital rises by one pound a clone, so no donor's clones
+    agree on what it donates, and every clone donates as a variant of its own.
+    """
+
+    cloned = clone_first_frame(frame, n_clones)
+    person = cloned.table("person")
+    unit_households = person.drop_duplicates("person_benunit_id").set_index(
+        "person_benunit_id"
+    )["person_household_id"]
+    household_clones = cloned.table("household").set_index("household_id")[
+        ladder_clone_index_column("household")
+    ]
+    benunit = cloned.table("benunit").copy()
+    clone = benunit["benunit_id"].map(unit_households).map(household_clones)
+    base = benunit[support_channel_column("benunit")].eq("frs")
+    benunit["frs_benunit_capital"] += np.where(base, clone, 0)
+    return _rebuilt(cloned, benunit=benunit)
+
+
+def _with_a_high_value_copy(frame, household_id: int, *, offset: int):
+    """``frame`` with a high-value support copy of one household.
+
+    The copy keeps its root's source household and every value, with each
+    id up ``offset`` and the high-value copy flag and index set.
+    """
+
+    person = frame.table("person")
+    benunit = frame.table("benunit")
+    household = frame.table("household")
+    root = household["household_id"].eq(household_id).to_numpy()
+    members = person.loc[person["person_household_id"].eq(household_id)].copy()
+    units = benunit.loc[benunit["benunit_id"].isin(members["person_benunit_id"])]
+    units = units.copy()
+    copy = household.loc[root].copy()
+    for column in ("person_id", "person_benunit_id", "person_household_id"):
+        members[column] += offset
+    units["benunit_id"] += offset
+    copy["household_id"] += offset
+    copy["household_is_high_value_support_copy"] = True
+    copy["high_value_support_copy_index"] = 1
+    weights = frame.weights_for("household").values
+    return _rebuilt(
+        frame,
+        person=pd.concat([person, members], ignore_index=True),
+        benunit=pd.concat([benunit, units], ignore_index=True),
+        household=pd.concat([household, copy], ignore_index=True),
+        household_weights=np.concatenate([weights, weights[root]]),
+    )
+
+
+def test_a_one_clone_index_redraws_as_a_frame_without_clones() -> None:
+    """At one clone every donor row is a survey record of its own, so each
+    cell counts its donor rows, as before (microcosm#931)."""
+
+    for minimum in (1, 2, 3):
+        alone = cohere_uc_capital(_frame(), minimum_cell_donors=minimum)
+        indexed = cohere_uc_capital(
+            clone_first_frame(_frame(), 1), minimum_cell_donors=minimum
+        )
+        for entity in ("person", "benunit"):
+            pd.testing.assert_frame_equal(
+                indexed.frame.table(entity), alone.frame.table(entity), check_exact=True
+            )
+        assert indexed.evidence() == alone.evidence()
+
+
+def test_variant_clones_count_once_toward_a_cells_donors() -> None:
+    """A unit's geographic clones that differ donate apart, yet count as one
+    survey record toward the donors a cell needs, so at three clones every
+    SPI unit's clones draw at its one-clone coarsening level (María's ruling
+    of 2026-11-10, microcosm#931). Counted in rows, the couple reporter cell's
+    one donor would count three and stop widening there."""
+
+    alone = cohere_uc_capital(_frame(), minimum_cell_donors=2)
+    cloned = cohere_uc_capital(_variant_clones(_frame(), 3), minimum_cell_donors=2)
+    # The couple reporter unit's exact cell holds one donor, so it widens.
+    assert alone.coarsening_levels[UC_CAPITAL_COARSENING[1]] == 1
+    assert cloned.coarsening_levels == {
+        level: 3 * count for level, count in alone.coarsening_levels.items()
+    }
+
+
+def test_a_high_value_copy_counts_as_a_donor_of_its_own() -> None:
+    """A copy other than a geographic clone is a survey record of its own,
+    though it keeps its root's source household (María's ruling of
+    2026-11-10, microcosm#931): a high-value copy of the couple reporter
+    donor gives that cell the two donors it needs."""
+
+    alone = cohere_uc_capital(_frame(), minimum_cell_donors=2)
+    copied = cohere_uc_capital(
+        _with_a_high_value_copy(_frame(), 3, offset=10_000), minimum_cell_donors=2
+    )
+    assert alone.coarsening_levels["exact_cell"] == 2
+    assert copied.coarsening_levels["exact_cell"] == 3
+
+
+def test_the_capital_fold_receipt_is_absent_at_one_clone_and_rounded_at_three() -> None:
+    """The stage records how its donor fold met its survey records only on a
+    frame of more than one geographic clone: the clone count, the selected
+    donors' and the varied donors' distinct source households, rounded, and
+    the varied share only from ten varied households up (microcosm#931)."""
+
+    from microcosm.build.uk_runtime.household_lineage import GEOGRAPHIC_FOLD_EVIDENCE
+
+    for frame in (_frame(), clone_first_frame(_frame(), 1)):
+        result = cohere_uc_capital(frame, minimum_cell_donors=2)
+        assert result.geographic_fold is None
+        assert GEOGRAPHIC_FOLD_EVIDENCE not in result.evidence()
+    # Five base units donate, and no unit's clones differ.
+    alike = cohere_uc_capital(clone_first_frame(_frame(), 3), minimum_cell_donors=2)
+    assert alike.evidence()[GEOGRAPHIC_FOLD_EVIDENCE] == {
+        "clone_count": 3,
+        "records": "3-9",
+        "varied_records": 0,
+        "varied_share": 0,
+    }
+    # Every base unit's clones differ on the capital it donates.
+    varied = cohere_uc_capital(_variant_clones(_frame(), 3), minimum_cell_donors=2)
+    assert varied.evidence()[GEOGRAPHIC_FOLD_EVIDENCE] == {
+        "clone_count": 3,
+        "records": "3-9",
+        "varied_records": "3-9",
+        "varied_share": "3-9",
     }

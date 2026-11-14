@@ -129,6 +129,7 @@ from . import (
     binding_identity,
     evidence_contract,
     graph_inputs,
+    takeup_kernels,
     target_kernels,
 )
 from .artifact_types import (
@@ -766,6 +767,11 @@ class GateBatteryKernel(KernelBase):
             calibrate_artifacts_module,
             frame_bundle_module,
             frame_schema_module,
+            # The evidence decoders: decode_target_surface checks a surface's
+            # factor evidence through reference_factors, and
+            # decode_cell_diagnostics is takeup_kernels' (microcosm#931).
+            target_kernels.reference_factors_module,
+            takeup_kernels,
             dependencies=self.capabilities.dependencies,
         )
         return hashlib.sha256(

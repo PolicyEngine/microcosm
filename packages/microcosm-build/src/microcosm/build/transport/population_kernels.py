@@ -61,6 +61,7 @@ from microcosm.graph import (
     StructuralDelta,
     source_hash,
 )
+from microcosm.graph.canonical import canonical_json
 from microcosm.graph.population import dtype_for_token
 
 from . import graph_inputs, target_kernels, unit_declarations
@@ -375,6 +376,9 @@ class TransportCurrencyKernel(KernelBase):
             transport_module,
             concepts_module,
             scaling_module,
+            # canonical_document_param checks the currency document's
+            # spelling through the encoder (microcosm#931).
+            canonical_json,
             dependencies=self.capabilities.dependencies,
         )
 

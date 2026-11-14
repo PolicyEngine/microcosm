@@ -514,8 +514,9 @@ def uk_weight_summary(
 
 #: Lineage columns that identify a support-split family: every copy the split
 #: created shares its root's source household, support channel, support clone
-#: index and clone flag. These are the geography identity kernel's inputs
-#: (microcosm#932) less the copy flag and index, so on the national spine only
+#: index and clone flag. These are the first six lineage columns a household's
+#: clone path is read from (``household_lineage.UK_HOUSEHOLD_LINEAGE_COLUMNS``)
+#: less the support split's copy flag and index, so on the national spine only
 #: the split creates rows that agree on all four; on a K-expanded frame the
 #: geographic clone index (:func:`uk_support_family_geographic_clone_column`)
 #: joins the key, so each geographic clone folds only its own copies
@@ -533,7 +534,8 @@ UK_RESIDENTIAL_ARM_FLAG_COLUMN = "household_is_cgt_residential_clone"
 
 
 def uk_support_family_geographic_clone_column() -> str:
-    """The household geographic clone-index column ``uk.full.expand`` writes."""
+    """The household geographic clone-index column, which the spine's
+    ``geographic_expand`` stage writes (microcosm#931)."""
 
     from microcosm.build.uk_runtime.rowwise_dataset import ladder_clone_index_column
 

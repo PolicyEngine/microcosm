@@ -6,7 +6,12 @@ inputs the seam solved, now bound as a spine checkpoint and solved through
 ``uk.full.national_targets`` → ``uk.full.national_problem`` →
 ``uk.full.dense`` → ``uk.full.calibrated`` → ``uk.full.gates.calibrated``.
 The register materialises from the frame's own columns (no engine), the
-seam's ``measure_resolver=None`` route.
+seam's ``measure_resolver=None`` route. The national line builds only on a
+geography-first spine of one geographic clone (microcosm#931), so the bound
+sidecar records the stand-in geography-first roster and block
+(``uk_full_build_cli.geography_first_sidecar_fields``) at the frame's clone
+count; the frame itself carries no area column, since the problem's refusal
+reads the sidecar alone.
 """
 
 from __future__ import annotations
@@ -22,6 +27,10 @@ from microcosm.build.uk_runtime.calibration_run import (
     UK_CALIBRATION_GATE_SCOPE,
     UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS,
 )
+from microcosm.build.uk_runtime.geographic_clones import geographic_clone_count
+from microcosm.build.uk_runtime.geography_first_roster import (
+    GEOGRAPHY_FIRST_STAGES,
+)
 from microcosm.build.uk_runtime.graph_build import (
     UKBoundSpineKernel,
     bound_spine_graph,
@@ -31,12 +40,10 @@ from microcosm.build.uk_runtime.graph_national import (
     NATIONAL_GATES_NODE,
     NATIONAL_PROBLEM_NODE,
     NATIONAL_TARGETS_NODE,
+    SPINE_SIDECAR_SOURCE,
     UKNationalBuildConfig,
     register_uk_national_kernels,
     uk_national_graph,
-)
-from microcosm.build.uk_runtime.measure_simulation import (
-    load_uk_calibration_measure_exclusions,
 )
 from microcosm.build.uk_runtime.national_calibration import (
     CalibrationFrameAdapter,
@@ -48,16 +55,6 @@ from microcosm.build.uk_runtime.national_doctrine import (
     uk_national_target_loss_weights,
 )
 from microcosm.build.uk_runtime.national_frame import write_uk_national_frame
-from microcosm.build.uk_runtime.support_floor import (
-    load_uk_support_floor_declaration,
-)
-from microcosm.build.uk_runtime.terminal_gates import (
-    uk_default_degenerate_reviewed_exclusions,
-    uk_default_target_fit_reviewed_exclusions,
-)
-from microcosm.build.uk_runtime.weighted_integrity import (
-    uk_default_input_mass_reviewed_exclusions,
-)
 from microcosm.calibrate import calibrate
 from microcosm.calibrate.artifacts import decode_problem
 from microcosm.frame import WeightKind
@@ -66,6 +63,11 @@ from test_support.microcosm_build import uk_calibration_run as seam
 from test_support.microcosm_build.uk_calibration_run import (  # noqa: F401
     _cgt_projection,
     _signing_key,
+)
+from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
+from test_support.microcosm_build.uk_full_build_cli import (
+    committed_registers_review_date,
+    geography_first_sidecar_fields,
 )
 
 
@@ -132,10 +134,21 @@ def _patch_target_inputs(monkeypatch, registry):
     return artifact
 
 
-def _bound_inputs(tmp_path, frame):
+def _bound_inputs(tmp_path, frame, **sidecar_fields):
+    """The bound checkpoint's sources for ``frame``: its H5, a build sidecar
+    and gate report that authenticate it, and a stand-in ledger.
+
+    The sidecar records a geography-first roster and block and the frame's
+    geographic clone count, as a spine the national line builds on does
+    (microcosm#931); ``sidecar_fields`` replace any of its fields.
+    """
     input_h5 = tmp_path / "spine.h5"
     write_uk_national_frame(frame, input_h5)
-    sidecar_path, report_path, _sidecar = seam._bound_checkpoint(tmp_path, frame)
+    sidecar_path, report_path, sidecar = seam._bound_checkpoint(tmp_path, frame)
+    sidecar.update(geography_first_sidecar_fields("frs_spine"))
+    sidecar["geographic_clone_count"] = geographic_clone_count(frame.table("household"))
+    sidecar.update(sidecar_fields)
+    sidecar_path.write_text(json.dumps(sidecar))
     ledger = tmp_path / "ledger"
     ledger.mkdir()
     (ledger / "consumer_facts.jsonl").write_text("{}\n")
@@ -166,52 +179,10 @@ def _registry_for_run():
     return kernels
 
 
-def _review_date() -> str:
-    """The latest approval across the committed exclusion registers.
-
-    The seam battery evaluates the real registers on the graph's review
-    date, and a reviewed entry approved after that date is refused as not
-    yet in force (the South East target-fit deferral, approved 2026-10-02,
-    failed a review at 2026-09-29; microcosm#1063). Reviewing at the latest
-    approval keeps every entry in force without pinning a calendar date
-    that the next approval would break; an expired entry still fails, as
-    the real build's review would, which is the register's discipline.
-    """
-
-    def records(value):
-        if hasattr(value, "approved_on"):
-            yield value
-        elif isinstance(value, dict) and "approved_on" in value:
-            yield value
-        elif hasattr(value, "values"):
-            for item in value.values():
-                yield from records(item)
-        elif isinstance(value, (list, tuple)):
-            for item in value:
-                yield from records(item)
-
-    def field(record, name):
-        return record[name] if isinstance(record, dict) else getattr(record, name)
-
-    entries = [
-        record
-        for register in (
-            uk_default_target_fit_reviewed_exclusions(),
-            uk_default_degenerate_reviewed_exclusions(),
-            uk_default_input_mass_reviewed_exclusions(),
-            load_uk_calibration_measure_exclusions(),
-            # The sparse-band support floor's signature (microcosm#1095 U3).
-            [load_uk_support_floor_declaration() or {}],
-        )
-        for record in records(register)
-    ]
-    latest_approval = max(str(field(record, "approved_on")) for record in entries)
-    earliest_expiry = min(str(field(record, "expires_on")) for record in entries)
-    assert latest_approval < earliest_expiry, (latest_approval, earliest_expiry)
-    return latest_approval
-
-
-REVIEW_DATE = _review_date()
+#: The latest approval across the committed exclusion registers, the graph's
+#: review date (``committed_registers_review_date``): every entry in force,
+#: and no read of the wall clock.
+REVIEW_DATE = committed_registers_review_date()
 
 
 def _run(tmp_path, monkeypatch, config=None, *, endpoint=None):
@@ -654,3 +625,237 @@ def test_national_run_config_refuses_an_empty_register():
             registry_document={"national_registry": {}},
             driver_parameters={},
         )
+
+
+def test_the_national_problem_is_the_first_national_node_to_read_the_frame():
+    """The early refusal sits in the first node of the national line that is
+    given the bound frame's slices: the targets read only their sources, so it
+    is the problem (microcosm#931)."""
+
+    national = uk_national_graph(
+        _config(),
+        spine=bound_spine_graph(seam._frame()),
+        spine_population="uk.full.spine_checkpoint",
+        review_date=REVIEW_DATE,
+    )
+    compiled = compile_graph(national.graph)
+    readers = [node for node in compiled.order if national.graph.node(node).inputs]
+    assert readers[0] == NATIONAL_PROBLEM_NODE
+    assert not national.graph.node(NATIONAL_TARGETS_NODE).inputs
+
+
+def test_the_national_problem_reads_the_bound_spines_build_sidecar():
+    """The problem's refusal reads the bound spine's build sidecar, the source
+    the bound checkpoint authenticates against its frame (microcosm#931), so
+    the problem node declares it; the targets read only their own sources. A
+    spine population that does not read its sidecar is refused when the line
+    is composed."""
+    from dataclasses import replace
+
+    spine = bound_spine_graph(seam._frame())
+    national = uk_national_graph(
+        _config(),
+        spine=spine,
+        spine_population="uk.full.spine_checkpoint",
+        review_date=REVIEW_DATE,
+    )
+    assert national.graph.node(NATIONAL_PROBLEM_NODE).sources == (SPINE_SIDECAR_SOURCE,)
+    assert SPINE_SIDECAR_SOURCE in spine.node("uk.full.spine_checkpoint").sources
+    assert (
+        SPINE_SIDECAR_SOURCE not in national.graph.node(NATIONAL_TARGETS_NODE).sources
+    )
+    unread = replace(
+        spine,
+        nodes=tuple(
+            replace(
+                node,
+                sources=tuple(
+                    name for name in node.sources if name != SPINE_SIDECAR_SOURCE
+                ),
+            )
+            for node in spine.nodes
+        ),
+    )
+    with pytest.raises(ValueError, match="reads its build sidecar"):
+        uk_national_graph(
+            _config(),
+            spine=unread,
+            spine_population="uk.full.spine_checkpoint",
+            review_date=REVIEW_DATE,
+        )
+
+
+def _national_run_refusal(tmp_path, monkeypatch, frame, **sidecar_fields) -> str:
+    """Run the national line on ``frame``, bound with a sidecar whose fields
+    ``sidecar_fields`` replace, and return its refusal's text, which the
+    national problem must raise: the checkpoint authenticated the spine, and
+    no node after the problem ran."""
+    pytest.importorskip("tables")
+    _patch_target_inputs(monkeypatch, seam._registry())
+    sources = _bound_inputs(tmp_path, frame, **sidecar_fields)
+    national = uk_national_graph(
+        _config(),
+        spine=bound_spine_graph(frame),
+        spine_population="uk.full.spine_checkpoint",
+        review_date=REVIEW_DATE,
+    )
+    store = ContentStore(tmp_path / "store")
+    with pytest.raises(Exception) as refused:
+        run_graph(
+            compile_graph(national.graph),
+            sources=sources,
+            store=store,
+            kernels=_registry_for_run(),
+        )
+    message = str(refused.value)
+    assert message.startswith(f"Node {NATIONAL_PROBLEM_NODE!r} kernel"), message
+    return message.split(" failed: ", 1)[1]
+
+
+def test_the_national_problem_refuses_a_spine_of_another_clone_count(
+    tmp_path, monkeypatch
+):
+    """The national line builds at one geographic clone (microcosm#931): a
+    bound spine of three, whose sidecar records its K as the checkpoint
+    requires, is refused by the problem before anything is resolved or
+    solved, naming K and nothing else."""
+
+    message = _national_run_refusal(
+        tmp_path, monkeypatch, clone_first_frame(seam._frame(), 3)
+    )
+    assert message == (
+        "The national line builds only on a geography-first spine of one "
+        "geographic clone, one that assigns every household its area "
+        "(microcosm#931); the bound spine's geographic clone count is K = 3."
+    )
+
+
+def test_the_national_problem_refuses_a_spine_from_before_its_area_stages(
+    tmp_path, monkeypatch
+):
+    """A one-clone spine built before the area stages (the roster group (b)
+    left: the clones and their keys, and the WAS chain without the
+    main-residence localiser, and no geography block) is refused by the
+    problem, naming what its roster lacks (microcosm#931)."""
+
+    pre_areas = ["frs_spine", "geographic_expand", "geographic_identity", "was_wealth"]
+    message = _national_run_refusal(
+        tmp_path,
+        monkeypatch,
+        clone_first_frame(seam._frame(), 1),
+        stages=pre_areas,
+        operations={name: [] for name in pre_areas},
+        geography=None,
+    )
+    lacking = [
+        *(f"stage {stage}" for stage in GEOGRAPHY_FIRST_STAGES[2:]),
+        "operation localise_main_residence_value in was_wealth",
+        "geography block",
+    ]
+    assert message == (
+        "The national line builds only on a geography-first spine of one "
+        "geographic clone, one that assigns every household its area "
+        "(microcosm#931); the bound spine's build sidecar lacks: "
+        + "; ".join(lacking)
+        + "."
+    )
+
+
+def test_the_national_problem_builds_on_a_one_clone_geography_first_spine(
+    tmp_path, monkeypatch
+):
+    """A geography-first spine of one clone, which carries the geographic
+    clone index as every clone-first spine does, passes the problem's refusal,
+    and the problem is encoded on its households (microcosm#931). What its
+    export and degenerate gate do with the clone indices is the national
+    frame's and battery's to test."""
+
+    pytest.importorskip("tables")
+    frame = clone_first_frame(seam._frame(), 1)
+    assert "household_clone_index" in frame.table("household").columns
+    _patch_target_inputs(monkeypatch, seam._registry())
+    sources = _bound_inputs(tmp_path, frame)
+    assert (
+        json.loads(sources["uk_spine_evidence"].read_text())["geographic_clone_count"]
+        == 1
+    )
+    national = uk_national_graph(
+        _config(),
+        spine=bound_spine_graph(frame),
+        spine_population="uk.full.spine_checkpoint",
+        review_date=REVIEW_DATE,
+    )
+    compiled = compile_graph(national.graph)
+    needed, pending = {NATIONAL_PROBLEM_NODE}, [NATIONAL_PROBLEM_NODE]
+    while pending:
+        for parent in compiled.predecessors[pending.pop()]:
+            if parent not in needed:
+                needed.add(parent)
+                pending.append(parent)
+    from dataclasses import replace
+
+    store = ContentStore(tmp_path / "store")
+    manifest = run_graph(
+        compile_graph(
+            replace(
+                national.graph,
+                nodes=tuple(node for node in national.graph.nodes if node.id in needed),
+            )
+        ),
+        sources=sources,
+        store=store,
+        kernels=_registry_for_run(),
+    )
+    problem = decode_problem(
+        _payload(manifest, store, NATIONAL_PROBLEM_NODE, "problem")
+    )
+    assert problem.entity_ids == tuple(frame.table("household")["household_id"])
+
+
+def test_the_national_refusal_reads_the_sidecar_and_returns_nothing(tmp_path):
+    """The problem's refusal reads only the sidecar file it is handed, which
+    the checkpoint authenticated: it passes a geography-first one-clone
+    sidecar, a sidecar that records no clone count among them (one clone, as
+    the checkpoint reads it), and refuses any other K (microcosm#931)."""
+
+    path = tmp_path / "spine.build.json"
+    fields = geography_first_sidecar_fields("frs_spine")
+    for sidecar in (fields, {**fields, "geographic_clone_count": 1}):
+        path.write_text(json.dumps(sidecar))
+        assert graph_national.require_national_bound_spine(path) is None
+        assert graph_national.require_national_bound_spine(str(path)) is None
+    for clones in (0, 2, 15, True, "1", 1.0):
+        path.write_text(json.dumps({**fields, "geographic_clone_count": clones}))
+        with pytest.raises(ValueError, match=r"geographic clone count is K = "):
+            graph_national.require_national_bound_spine(path)
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        pytest.param(b'{"stages": ["frs_spine"], 4321: 1}', id="invalid-json"),
+        pytest.param(b"\xff\xfe\x00not json", id="not-utf8"),
+        pytest.param(b"[1, 2, 3]", id="not-an-object"),
+    ],
+)
+def test_the_national_refusal_names_no_position_of_a_sidecar_it_cannot_read(
+    tmp_path, written
+):
+    """A sidecar that is not a JSON object, unparseable bytes among them, is
+    refused in one fixed sentence: no line, column or character position of
+    the parser's own message, and no figure but the issue's number
+    (microcosm#931). In a composed graph the bound checkpoint refuses such a
+    sidecar first; the helper refuses it alike when called directly."""
+
+    path = tmp_path / "spine.build.json"
+    path.write_bytes(written)
+    with pytest.raises(ValueError) as refused:
+        graph_national.require_national_bound_spine(path)
+    message = str(refused.value)
+    assert message == (
+        "The national line builds only on a bound spine whose build sidecar is "
+        "a JSON object (microcosm#931)."
+    )
+    # The parser's own error, whose text gives positions, is not chained on.
+    assert refused.value.__cause__ is None
+    assert refused.value.__suppress_context__ or refused.value.__context__ is None

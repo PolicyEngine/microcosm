@@ -138,8 +138,11 @@ def test_households_take_their_area_flag_and_northern_ireland_none() -> None:
         "uk_ni_data_zone_2021": 1,
         "flagged": 2,
     }
-    with pytest.raises(ValueError, match="no support system"):
+    with pytest.raises(ValueError, match="holds another value") as refused:
         area_flags(layer=layer, area_system=["legacy"], area_code=["X"])
+    # The accepted systems are named; the frame's own value is not.
+    assert "uk_ni_data_zone_2021" in str(refused.value)
+    assert "legacy" not in str(refused.value)
 
 
 @pytest.mark.parametrize(
@@ -244,6 +247,71 @@ def test_a_sampled_rung_may_flag_none_but_still_refuses_malformed_codes() -> Non
             area_code=["e00000003"],
             require_flagged=False,
         )
+
+
+_EW = "uk_ew_output_area_2021"
+_SCOTLAND = "uk_scotland_output_area_2022"
+_ROSTER = {_EW: ["E00000001", "E00000002"], _SCOTLAND: ["S00135400", "S00135401"]}
+
+
+def test_a_roster_holds_the_layer_to_its_supports_areas() -> None:
+    """microcosm#931, C-6: the clone-first spine holds the layer to its
+    supports' areas, so a layer of another code vintage refuses whatever the
+    households drew, and a system none of whose households is flagged does
+    not."""
+
+    layer = load_rfdr_area_layer(_layer())
+    households = {
+        "area_system": [_EW, _SCOTLAND, "uk_ni_data_zone_2021"],
+        "area_code": ["E00000001", "S00135401", "N20000001"],
+    }
+    flags, counts = area_flags(
+        layer=layer, **households, require_flagged=False, roster=_ROSTER
+    )
+    assert flags.tolist() == [False, False, False]
+    assert counts["flagged"] == 0
+    # The roster's codes in any iterable, NI's absent: the check reads the
+    # Great Britain systems alone.
+    flags, _ = area_flags(
+        layer=layer,
+        area_system=[_EW],
+        area_code=["E00000002"],
+        require_flagged=False,
+        roster={system: tuple(codes) for system, codes in _ROSTER.items()},
+    )
+    assert flags.tolist() == [True]
+    off_roster = {**_ROSTER, _SCOTLAND: ["S00135401"]}
+    with pytest.raises(ValueError, match="support does not hold") as refused:
+        area_flags(layer=layer, **households, require_flagged=False, roster=off_roster)
+    # It names the system, never the layer's code or a household's.
+    assert "S00135400" not in str(refused.value)
+    assert "S00135401" not in str(refused.value)
+    with pytest.raises(ValueError, match="roster of support areas"):
+        area_flags(
+            layer=layer, **households, require_flagged=False, roster={_EW: _ROSTER[_EW]}
+        )
+    with pytest.raises(ValueError, match="roster of support areas"):
+        area_flags(
+            layer=layer, **households, require_flagged=False, roster=[("x", "y")]
+        )
+    # Without a roster the flags are what they were.
+    unrostered, _ = area_flags(layer=layer, **households, require_flagged=False)
+    assert unrostered.tolist() == [False, False, False]
+
+
+def test_the_malformed_code_refusal_names_no_code_and_counts_nothing() -> None:
+    layer = load_rfdr_area_layer(_layer())
+    with pytest.raises(ValueError, match="well-formed") as refused:
+        area_flags(
+            layer=layer,
+            area_system=[_EW] * 3,
+            area_code=["E00000002", "e00000002", "E0000002"],
+            roster=_ROSTER,
+            require_flagged=False,
+        )
+    text = str(refused.value)
+    assert "e00000002" not in text and "E0000002" not in text
+    assert not any(character.isdigit() for character in text.replace(_EW, ""))
 
 
 def test_the_committed_layer_was_built_from_the_registered_nspl_zip() -> None:

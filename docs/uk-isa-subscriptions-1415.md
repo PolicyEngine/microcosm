@@ -82,7 +82,10 @@ How the tables relate, on HMRC's own figures:
    (`shortfall_weight_unmet`); no holder is invented.
 3. **How much.** Within each income band and class, amounts follow Table 9.7's
    subscription bands: uniform inside a band, exactly £20,000 at the top. The
-   rank blends the person's balance rank with a keyed uniform.
+   rank blends the person's rank on the class's balance (cash for cash only,
+   stocks and shares for stocks and shares only, the two together for both)
+   with a keyed uniform, half each (`balance_rank_weight`). Holders tied on a
+   balance share its rank, so the keyed uniform alone orders them.
 4. **The both class.** Each person's amount is split by their balance shares,
    shifted on the logit scale so the class's stocks-and-shares total equals
    Table 9.4's 2023-24 stocks-and-shares amount less the stocks-and-shares-only
@@ -90,19 +93,27 @@ How the tables relate, on HMRC's own figures:
 5. **Growth to 2024-25.** Each class's people grow by Table 9.4's account
    growth (cash accounts for cash only, stocks-and-shares accounts for stocks and
    shares only, both together for both), added from eligible holders not yet
-   subscribing. Amounts then scale, one factor per type, to Table 9.4's 2024-25
-   amounts (£95.6bn of cash and £37.2bn of stocks and shares). Subscribers
-   already at the £20,000 overall limit stay there. A person whose combined
-   amount lies between £18,000 (Table 9.7's last band floor below the limit) and
-   the limit moves on a line from their scaled £18,000 up to it, so the range just
-   below the limit stays filled; the rest are capped at it.
+   subscribing. The added people are selected, and their amounts drawn as in
+   step 3, in walks of their own, apart from the 2023-24 subscribers; those
+   added to the both class split at the shift step 4 found. Amounts then
+   scale, one factor per type, to Table 9.4's 2024-25 amounts (£95.6bn of cash
+   and £37.2bn of stocks and shares). Subscribers already at the £20,000
+   overall limit stay there. A person whose combined amount lies between
+   £18,000 (Table 9.7's last band floor below the limit) and the limit moves on
+   a line from their scaled £18,000 up to it, so the range just below the limit
+   stays filled; the rest are capped at it.
 6. **Lifetime ISA payments.** Every holder aged 18 to 47 with room under the
-   overall limit pays in; a holder with none pays nothing. 18 to 47 are the ages
-   that can hold one in 2024-25, since accounts opened at 18 to 39 from April
-   2017. Amounts lie in (0, £4,000], drawn by a truncated-exponential tilt so
-   the total equals Table 9.4's 2024-25 Lifetime ISA amount (£2,818m from
-   1,136,000 accounts), so the baseline leaves nothing above the overall limit.
-   The rank blends the balance and income ranks with a keyed uniform.
+   overall limit pays in; a holder with none pays nothing, and so does a holder
+   over 47. 18 to 47 are the ages that can hold one in 2024-25, since accounts
+   opened at 18 to 39 from April 2017. Amounts lie in (0, £4,000]: each is a
+   truncated-exponential draw capped at the holder's room under the overall
+   limit, with the tilt set so the total equals Table 9.4's 2024-25 Lifetime
+   ISA amount (£2,818m from 1,136,000 accounts). The cap, not the tilt, is what
+   leaves nothing above the overall limit in the baseline. The rank blends the
+   person's Lifetime ISA balance rank with a keyed uniform, as in step 3 and
+   with step 3's `balance_rank_weight`, since the Lifetime ISA operation
+   declares none of its own, but over every holder aged 18 to 47, not by
+   income band.
 
 ## Decisions (28 October 2026)
 

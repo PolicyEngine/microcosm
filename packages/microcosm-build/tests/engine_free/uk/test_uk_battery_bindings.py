@@ -1079,11 +1079,13 @@ class TestBatteryRegressions:
         # Plus the #970 projection fence, armed here with the pinned growth
         # path over distinct sub-exempt gains that never cross the exempt
         # amount, and the release-frame council-tax band check (#1278).
-        # Plus uk_local_brma_enum_domain, the terminal recheck of the area-BRMA
-        # rewrite (microcosm#1262; its enum_domain binding is stubbed here), and
-        # the SOC 2020 major and sub-major groups' enum checks (microcosm#1490).
-        assert len(passed) == 24
-        assert "uk_local_brma_enum_domain" in passed
+        # Plus the SOC 2020 major and sub-major groups' enum checks
+        # (microcosm#1490). uk_local_brma_enum_domain, the terminal recheck of
+        # the dense line's area-BRMA rewrite (microcosm#1262), retired when the
+        # dense line took its areas from the spine, whose transferred gate
+        # checks the column (microcosm#931).
+        assert len(passed) == 23
+        assert "uk_local_brma_enum_domain" not in by_id
         assert "uk_soc2020_major_group_enum_domain" in passed
         assert "uk_soc2020_sub_major_group_enum_domain" in passed
 
@@ -2207,21 +2209,23 @@ class TestEnumDomainResolution:
         )
         assert result.passed
 
-    def test_an_off_domain_brma_fails_the_local_recheck_as_a_structural_stop(
+    def test_an_off_domain_brma_fails_the_spines_transferred_gate_as_a_stop(
         self,
     ) -> None:
-        """microcosm#1305 review: the unstubbed binding, then the classification.
+        """microcosm#1305 review: the unstubbed binding, then the blocking.
 
-        The area-BRMA rewrite is rechecked by ``uk_local_brma_enum_domain``;
-        a value outside the engine's enum fails it, and the failure stops even
-        a development build (no candidate is exported).
+        ``area_brma`` and ``spi_copy_areas`` write the column, so the spine
+        checks it at its transferred boundary (``uk_brma_enum_domain``,
+        microcosm#931), in place of the local battery's retired recheck; a
+        value outside the engine's enum fails it, and the failure stops even a
+        development or synthetic smoke build, before any line reads the spine.
         """
 
         import enum
 
         from microcosm.build.gate_battery import GateOutcome, GatePhaseReport
-        from microcosm.build.uk_runtime import full_gates
         from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
+        from microcosm.build.uk_runtime.gate_scopes import UK_SPINE_GATE_SCOPE
 
         person, benunit, household = _tables()
         household["brma"] = ["LOTHIAN", "NOT_A_BRMA", "CARDIFF", "LOTHIAN"][
@@ -2243,13 +2247,18 @@ class TestEnumDomainResolution:
         entry = next(
             gate
             for gate in load_country_spec("uk").gates.gates
-            if gate.id == "uk_local_brma_enum_domain"
+            if gate.id == "uk_brma_enum_domain"
         )
+        assert entry.phase == "transferred"
+        assert entry.id in UK_SPINE_GATE_SCOPE
         result = _evaluate_enum_domain(
             EvidenceContext(frame=frame, artifacts={"rules_engine": Accessor()}),
             entry.parameters,
         )
         assert not result.passed
+        assert result.failures == (
+            "brma: a value lies outside the engine's enum domain.",
+        )
         report = GatePhaseReport(
             entry.phase,
             (
@@ -2258,12 +2267,61 @@ class TestEnumDomainResolution:
                 ),
             ),
         )
-        for fraction in (0.1, 1.0):
-            outcome = full_gates.classify_full_gate_outcomes(
-                report, sample_fraction=fraction, release_candidate=False
-            )
-            assert outcome["artifact_permitted"] is False
-            assert outcome["structural_failures"] == ["uk_local_brma_enum_domain"]
+        for posture in (
+            {"release_candidate": False},
+            {"release_candidate": True},
+            {"release_candidate": False, "synthetic_smoke": True},
+        ):
+            assert [
+                outcome.entry.id for outcome in report.blocking_outcomes(**posture)
+            ] == ["uk_brma_enum_domain"]
+
+    def test_the_verdict_carries_no_count_or_example_of_the_values(self) -> None:
+        """The UK wrapper rebuilds the shared gate's verdict without the count
+        of values outside the domain or examples of them (C-32,
+        microcosm#931): a pass keeps the columns checked and the allowed
+        values, and a failure names the column and its domain."""
+
+        import enum
+
+        from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
+
+        frame, domain = self._frame_with_plans()
+
+        class Accessor:
+            def enum_domain(self, column):
+                return domain
+
+        context = EvidenceContext(frame=frame, artifacts={"rules_engine": Accessor()})
+        passed = _evaluate_enum_domain(context, {"columns": ["student_loan_plan"]})
+        assert passed.passed
+        assert dict(passed.details) == {
+            "columns_checked": 1,
+            "allowed_values": {"student_loan_plan": ["NONE", "PLAN_2"]},
+            "columns_outside_domain": [],
+        }
+
+        class Narrow(enum.Enum):
+            NONE = "NONE"
+
+        class NarrowAccessor:
+            def enum_domain(self, column):
+                return Narrow
+
+        failed = _evaluate_enum_domain(
+            EvidenceContext(frame=frame, artifacts={"rules_engine": NarrowAccessor()}),
+            {"columns": ["student_loan_plan"]},
+        )
+        assert not failed.passed
+        assert failed.failures == (
+            "student_loan_plan: a value lies outside the engine's enum domain.",
+        )
+        assert dict(failed.details) == {
+            "columns_checked": 1,
+            "allowed_values": {"student_loan_plan": ["NONE"]},
+            "columns_outside_domain": ["student_loan_plan"],
+        }
+        assert "PLAN_2" not in repr(failed)
 
     def test_an_engine_with_neither_names_itself(self) -> None:
         from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
@@ -2375,6 +2433,13 @@ class TestCouncilTaxBandDomain:
             self._context(["H", "I", "H", "D"]), self._parameters()
         )
         assert result.passed, result.failures
+        # The UK wrapper keeps each nation's domain in its details (C-32).
+        assert set(result.details["partition_allowed_values"]["council_tax_band"]) == {
+            "ENGLAND",
+            "NORTHERN_IRELAND",
+            "SCOTLAND",
+            "WALES",
+        }
 
     @pytest.mark.parametrize(
         ("bands", "invalid"),
@@ -2389,7 +2454,21 @@ class TestCouncilTaxBandDomain:
 
         result = _evaluate_enum_domain(self._context(bands), self._parameters())
         assert not result.passed
-        assert result.details["invalid_examples"] == {"council_tax_band": invalid}
+        # The UK wrapper rebuilds the shared verdict without a count or an
+        # example of the values outside the domain (C-32, microcosm#931).
+        assert result.details["columns_outside_domain"] == ["council_tax_band"]
+        assert "invalid_examples" not in result.details
+        assert "invalid_counts" not in result.details
+        assert result.failures == (
+            "council_tax_band: a value lies outside its nation's domain.",
+        )
+        assert not any(value in str(result.details) for value in invalid)
+        assert set(result.details["partition_allowed_values"]["council_tax_band"]) == {
+            "ENGLAND",
+            "NORTHERN_IRELAND",
+            "SCOTLAND",
+            "WALES",
+        }
 
     def test_a_declaration_other_than_the_constant_is_refused(self) -> None:
         from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
@@ -2405,7 +2484,7 @@ class TestCouncilTaxBandDomain:
     def test_a_region_without_a_nation_is_refused(self) -> None:
         from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
 
-        with pytest.raises(ValueError, match="regions with no nation"):
+        with pytest.raises(ValueError, match="regions with no nation") as caught:
             _evaluate_enum_domain(
                 self._context(
                     ["H", "I", "H", "D"],
@@ -2413,6 +2492,9 @@ class TestCouncilTaxBandDomain:
                 ),
                 self._parameters(),
             )
+        # The battery prints a raised refusal as the gate's failure, so it
+        # names the column, never a row's value (C-32, microcosm#931).
+        assert "UNKNOWN" not in str(caught.value)
 
 
 def test_weight_gate_bindings_fold_support_families_before_evaluating() -> None:
@@ -2821,3 +2903,590 @@ class TestGateOnlyAreaSupport:
             "bound_despite_support_floor/census_households"
         ]
         assert result.details["out_of_line_exclusions"] == ["local_authority/LA_B"]
+
+
+# The band donor check reads the phase's frame (microcosm#931). A capped
+# seating's receipt gives no exact count, so the check recomputes the seats
+# from the transferred phase's frame, which the stage-health binding hands it
+# for that check alone. Every frame below is synthetic.
+
+_BAND_DONOR_CHECK = "spi_income_band_donor_support"
+_BAND_DONOR_BOUNDS = (200_000, 500_000, 1_000_000, 2_000_000)
+
+
+def _band_donor_entry(uk_gates):
+    (entry,) = [
+        entry
+        for entry in uk_gates.gates
+        if entry.gate == "stage_health"
+        and entry.parameters["check"] == _BAND_DONOR_CHECK
+    ]
+    return entry
+
+
+def _band_donor_frame(*, carrier_on_first_seat: bool = True):
+    """Two seats per declared band, each with one carrier and one other
+    member, beside two incumbent households; ids in the band donors'
+    copy-id ordinal, one clone."""
+
+    seats = [
+        (2 * 10**11 + 100 * position + seat + 21, float(band))
+        for position, band in enumerate(_BAND_DONOR_BOUNDS)
+        for seat in range(2)
+    ]
+    ids = [11, 12, *(seat for seat, _ in seats)]
+    bands = [0.0, 0.0, *(band for _, band in seats)]
+    donor = [False, False, *([True] * len(seats))]
+    household = pd.DataFrame(
+        {
+            "household_id": np.asarray(ids, dtype=np.int64),
+            "household_weight": np.full(len(ids), 10.0),
+            "household_is_spi_income_band_donor": donor,
+            "spi_income_band_donor_lower_bound": bands,
+            "household_clone_index": np.zeros(len(ids), dtype=np.int64),
+        }
+    )
+    carriers = [
+        flag and (carrier_on_first_seat or household_id != seats[0][0])
+        for household_id, flag in zip(ids, donor, strict=True)
+    ]
+    person = pd.DataFrame(
+        {
+            "person_id": np.r_[
+                np.asarray(ids, dtype=np.int64) * 10,
+                np.asarray(ids, dtype=np.int64) * 10 + 1,
+            ],
+            "person_household_id": np.r_[ids, ids].astype(np.int64),
+            "person_benunit_id": np.r_[ids, ids].astype(np.int64),
+            "person_is_spi_income_band_carrier": [*carriers, *([False] * len(ids))],
+        }
+    )
+    benunit = pd.DataFrame({"benunit_id": np.asarray(ids, dtype=np.int64)})
+    return uk_national_frame(
+        person=person, benunit=benunit, household=household, time_period="2024"
+    )
+
+
+def _capped_band_donor_receipt() -> dict[str, object]:
+    return {
+        "stage": "spi_income_band_donors",
+        "minimum_donors_per_band": 120,
+        "maximum_donor_weight": 250.0,
+        "maximum_reallocation_share": 0.5,
+        "clone_count": 1,
+        "seating_scale": "capped",
+        "mass_scale": 1.0,
+        "sample_fraction": 0.01,
+        "donor_count": 10,
+        "reallocated_mass": "<3",
+        "funding_within_share": True,
+        "funding_matches_bands": True,
+        "mass": {"old_total": 1_000.0, "new_total": 1_000.0},
+        "bands": [
+            {"lower_bound": band, "donor_weight": 50.0, "donor_households": "<3"}
+            for band in _BAND_DONOR_BOUNDS
+        ],
+        "funding": [{"stratum": "LONDON", "donor_households": 10}],
+    }
+
+
+def test_the_stage_health_binding_reads_the_frame_for_its_two_frame_checks_only(
+    uk_gates,
+) -> None:
+    """Of the packaged stage-health gates, only the band donor check and the
+    copy area check (uk_copy_area_agreement, microcosm#931) read the phase's
+    frame."""
+
+    binding = UK_GATE_REGISTRY["stage_health"]
+    entries = [entry for entry in uk_gates.gates if entry.gate == "stage_health"]
+    frame_checks = {_BAND_DONOR_CHECK, "copy_area_agreement"}
+    assert any(entry.parameters["check"] not in frame_checks for entry in entries)
+    for entry in entries:
+        assert binding.requires_frame(entry.parameters) is (
+            entry.parameters["check"] in frame_checks
+        ), entry.id
+    assert sorted(
+        entry.id for entry in entries if binding.requires_frame(entry.parameters)
+    ) == ["uk_copy_area_agreement", "uk_stage_spi_income_band_donors_support"]
+    # Both run at the spine's transferred boundary, whose battery hands every
+    # gate the phase's frame.
+    assert _band_donor_entry(uk_gates).phase == "transferred"
+    assert {
+        entry.phase
+        for entry in entries
+        if entry.parameters["check"] == "copy_area_agreement"
+    } == {"transferred"}
+
+
+def test_the_copy_area_check_reads_the_phase_frame_and_the_new_keys_route() -> None:
+    """The copy area check compares each copy with its parent on the phase's
+    frame, so the stage-health binding hands it the frame; the spine
+    geography checks' parameter keys route through the binding
+    (microcosm#931)."""
+
+    binding = UK_GATE_REGISTRY["stage_health"]
+    assert binding.requires_frame({"check": "copy_area_agreement"}) is True
+    for check in ("atomic_mapping_integrity", "area_home_values"):
+        assert binding.requires_frame({"check": check}) is False
+    assert {
+        "knots_level",
+        "accepted_outcomes",
+        "validation_scope",
+        "support_systems",
+        "columns_by_copy_layer",
+        "regions",
+        "maximum_sources_at_cap",
+        "knots_basis_year",
+        "rank_basis",
+    } <= binding.parameter_keys
+
+
+def test_the_band_donor_check_recomputes_a_capped_seating_from_the_phase_frame(
+    uk_gates,
+) -> None:
+    entry = _band_donor_entry(uk_gates)
+    gates = GatesManifest(
+        country=uk_gates.country,
+        version=uk_gates.version,
+        policy=f"{uk_gates.policy}; band donor binding test",
+        phases=uk_gates.phases,
+        gates=(entry,),
+    )
+    artifacts = {
+        "stage_evidence": {"spi_income_band_donors": _capped_band_donor_receipt()}
+    }
+
+    def outcome(frame):
+        report = evaluate_phase(
+            gates,
+            "transferred",
+            EvidenceContext(frame=frame, artifacts=artifacts),
+            registry=UK_GATE_REGISTRY,
+        )
+        (only,) = report.outcomes
+        return only
+
+    # Without the phase's frame the check is evidence_absent, never a verdict
+    # on the receipt alone.
+    absent = outcome(None)
+    assert absent.status is GateStatus.EVIDENCE_ABSENT
+    assert absent.reason == "missing evidence: frame"
+    # Handed the frame, it recomputes the seats there.
+    passed = outcome(_band_donor_frame())
+    assert passed.status is GateStatus.PASSED, passed.result.failures
+    assert passed.result.details["seating_scale"] == "capped"
+    failed = outcome(_band_donor_frame(carrier_on_first_seat=False))
+    assert failed.status is GateStatus.FAILED
+    assert failed.result.failures == (
+        "spi_income_band_donors: band from 200000's seats do not each hold one "
+        "carrier.",
+    )
+
+
+# The council-tax reduction check (microcosm#931) holds each household's
+# reductions within its bill on the phase's frame. No packaged gate declares
+# it yet, so these tests declare their own entry; every frame is synthetic.
+
+_COUNCIL_TAX_CHECK = "council_tax_reduction_within_bill"
+_COUNCIL_TAX_STAGE = "council_tax_localise"
+#: The check's own keys; its tolerance is the routed absolute_tolerance.
+_COUNCIL_TAX_KEYS = (
+    "bill_column",
+    "household_reduction_columns",
+    "person_reduction_columns",
+    "excluded_regions",
+)
+
+
+def _council_tax_parameters(**overrides) -> dict[str, object]:
+    return {
+        "stage": _COUNCIL_TAX_STAGE,
+        "check": _COUNCIL_TAX_CHECK,
+        "bill_column": "council_tax",
+        "household_reduction_columns": ["council_tax_rebate"],
+        "person_reduction_columns": ["council_tax_benefit_reported"],
+        "excluded_regions": ["NORTHERN_IRELAND"],
+        "absolute_tolerance": 1e-9,
+        **overrides,
+    }
+
+
+def _council_tax_gates(parameters: dict[str, object]) -> GatesManifest:
+    """One transferred-phase stage-health gate declaring ``parameters``."""
+
+    return GatesManifest.from_mapping(
+        {
+            "version": 1,
+            "country": "uk",
+            "policy": "council-tax check binding test",
+            "phases": ["transferred"],
+            "gates": [
+                {
+                    "id": "uk_council_tax_check_binding_test",
+                    "gate": "stage_health",
+                    "phase": "transferred",
+                    "criticality": "release_blocking",
+                    "parameters": parameters,
+                }
+            ],
+        }
+    )
+
+
+def _council_tax_frame(*, second_reduction: float = 0.0):
+    """A London, a Scottish and a Northern Ireland household, each a benefit
+    unit. The Scottish household's rebate and its person's reported
+    reduction are ``second_reduction``; the Northern Ireland household pays
+    no council tax, and its person reports a reduction."""
+
+    household = pd.DataFrame(
+        {
+            "household_id": np.asarray([1, 2, 3], dtype=np.int64),
+            "region": ["LONDON", "SCOTLAND", "NORTHERN_IRELAND"],
+            "council_tax": [1500.0, 1100.0, 0.0],
+            "council_tax_rebate": [300.0, second_reduction, 0.0],
+        }
+    )
+    person = pd.DataFrame(
+        {
+            "person_id": np.asarray([101, 102, 201, 301], dtype=np.int64),
+            "person_household_id": np.asarray([1, 1, 2, 3], dtype=np.int64),
+            "person_benunit_id": np.asarray([1, 1, 2, 3], dtype=np.int64),
+            "council_tax_benefit_reported": [300.0, 0.0, second_reduction, 75.0],
+        }
+    )
+    benunit = pd.DataFrame({"benunit_id": np.asarray([1, 2, 3], dtype=np.int64)})
+    return uk_national_frame(
+        person=person,
+        benunit=benunit,
+        household=household,
+        time_period="2024",
+        household_weights=[1.0, 1.0, 1.0],
+    )
+
+
+def _council_tax_outcome(parameters: dict[str, object], frame):
+    report = evaluate_phase(
+        _council_tax_gates(parameters),
+        "transferred",
+        EvidenceContext(
+            frame=frame,
+            artifacts={
+                "stage_evidence": {_COUNCIL_TAX_STAGE: {"stage": _COUNCIL_TAX_STAGE}}
+            },
+        ),
+        registry=UK_GATE_REGISTRY,
+    )
+    (only,) = report.outcomes
+    return only
+
+
+def test_the_council_tax_check_reads_the_phase_frame_and_its_keys_route() -> None:
+    """The stage-health binding hands the council-tax check the phase's
+    frame and routes its four keys beside absolute_tolerance, each of which
+    governs the verdict; a misspelt key is refused before any gate runs
+    (microcosm#931)."""
+
+    binding = UK_GATE_REGISTRY["stage_health"]
+    assert binding.requires_frame({"check": _COUNCIL_TAX_CHECK}) is True
+    assert {*_COUNCIL_TAX_KEYS, "absolute_tolerance"} <= binding.parameter_keys
+    validate_gate_parameters(
+        _council_tax_gates(_council_tax_parameters()), UK_GATE_REGISTRY
+    )
+    for key in _COUNCIL_TAX_KEYS:
+        parameters = _council_tax_parameters()
+        parameters[key[:-1]] = parameters.pop(key)
+        with pytest.raises(
+            ValueError,
+            match=rf"'uk_council_tax_check_binding_test'.*'{key[:-1]}'",
+        ):
+            validate_gate_parameters(_council_tax_gates(parameters), UK_GATE_REGISTRY)
+
+    # Without the phase's frame the check is evidence_absent, never a verdict.
+    absent = _council_tax_outcome(_council_tax_parameters(), None)
+    assert absent.status is GateStatus.EVIDENCE_ABSENT
+    assert absent.reason == "missing evidence: frame"
+    # Handed the frame, it holds the reductions within the bill there.
+    passed = _council_tax_outcome(_council_tax_parameters(), _council_tax_frame())
+    assert passed.status is GateStatus.PASSED, passed.result.failures
+    assert passed.result.details == {
+        "stage": _COUNCIL_TAX_STAGE,
+        "check": _COUNCIL_TAX_CHECK,
+        "households_checked": True,
+        "columns": {"council_tax_rebate": True, "council_tax_benefit_reported": True},
+        "finite_nonnegative": True,
+    }
+    above = _council_tax_frame(second_reduction=1100.5)
+    prefix = f"{_COUNCIL_TAX_STAGE}: {_COUNCIL_TAX_CHECK}: a household's "
+    rebate = f"{prefix}council_tax_rebate is not within its council_tax."
+    reported = (
+        f"{prefix}council_tax_benefit_reported, summed over its persons, is not "
+        "within its council_tax."
+    )
+    failed = _council_tax_outcome(_council_tax_parameters(), above)
+    assert failed.status is GateStatus.FAILED
+    assert failed.result.failures == (rebate, reported)
+    # Each key governs the verdict: the declared reduction columns are the
+    # ones held, the excluded regions' households leave, and the bill is the
+    # declared column.
+    for overrides, failures in (
+        ({"household_reduction_columns": []}, (reported,)),
+        ({"person_reduction_columns": []}, (rebate,)),
+    ):
+        outcome = _council_tax_outcome(_council_tax_parameters(**overrides), above)
+        assert outcome.result.failures == failures, overrides
+    held_in = _council_tax_outcome(
+        _council_tax_parameters(excluded_regions=[]), _council_tax_frame()
+    )
+    assert held_in.result.failures == (reported,)
+    other_bill = _council_tax_outcome(
+        _council_tax_parameters(bill_column="council_tax_paid"), _council_tax_frame()
+    )
+    assert other_bill.result.failures == (
+        f"{_COUNCIL_TAX_STAGE}: {_COUNCIL_TAX_CHECK}: Bounded amounts: the "
+        "household table has no council_tax_paid column",
+    )
+
+
+# ---------------------------------------------------------------------------
+# The national line's export in the battery (microcosm#931)
+# ---------------------------------------------------------------------------
+
+#: Each entity's geographic clone index, as the clone-first spine names it.
+_CLONE_INDICES = {
+    "person": "person_clone_index",
+    "benunit": "benunit_clone_index",
+    "household": "household_clone_index",
+}
+_DEGENERATE_PARAMETERS = {
+    "reviewed_exclusions_resource": "degenerate_reviewed_exclusions.json"
+}
+
+
+def _one_clone_national_frame(*, indices: bool = True):
+    """An invented national frame of one geographic clone: every column but
+    the clone indices carries signal, and every clone index is zero, as on
+    any spine of one clone (microcosm#931). ``indices=False`` is the frame the
+    national release writes, without them."""
+    tables = {
+        "person": pd.DataFrame(
+            {
+                "person_id": np.asarray([101, 102, 103], dtype=np.int64),
+                "person_household_id": np.asarray([1, 2, 3], dtype=np.int64),
+                "person_benunit_id": np.asarray([201, 202, 203], dtype=np.int64),
+                "age": [30, 45, 70],
+            }
+        ),
+        "benunit": pd.DataFrame(
+            {
+                "benunit_id": np.asarray([201, 202, 203], dtype=np.int64),
+                "would_claim_uc": [True, False, True],
+            }
+        ),
+        "household": pd.DataFrame(
+            {
+                "household_id": np.asarray([1, 2, 3], dtype=np.int64),
+                "household_weight": [1.0, 2.0, 3.0],
+                "source_household_id": np.asarray([1, 2, 3], dtype=np.int64),
+                "source_year": np.asarray([2023, 2022, 2023], dtype=np.int64),
+            }
+        ),
+    }
+    if indices:
+        for entity, column in _CLONE_INDICES.items():
+            tables[entity][column] = np.zeros(len(tables[entity]), dtype=np.int64)
+    return uk_national_frame(**tables, time_period="2023")
+
+
+class TestNationalLineExport:
+    """The national line exports a one-clone spine without its clone indices
+    (microcosm#931), and the gates that read what the release ships follow
+    the context's line: the degenerate surface, the spine's answer for the
+    columns the export drops, and the coverage and input-mass reads."""
+
+    @staticmethod
+    def _degenerate(frame, line):
+        artifacts = {
+            "exclusions_evaluated_on": CLOCK,
+            # No reviewed exclusion, so only the clone indices can fail.
+            "reviewed_degenerate_exclusions": {},
+        }
+        if line is not None:
+            artifacts["release_line"] = line
+        return UK_GATE_REGISTRY["degenerate_release_surface"].evaluate(
+            EvidenceContext(frame=frame, artifacts=artifacts),
+            _DEGENERATE_PARAMETERS,
+        )
+
+    def test_the_degenerate_gate_drops_the_clone_indices_on_the_national_line(
+        self, monkeypatch
+    ) -> None:
+        """Fed the national frame before export, clone indices present, the
+        gate passes with both the line-aware drop and the national line, and
+        fails without either: the shared list alone fails all three indices
+        at one clone, as it did before the national line had a list."""
+        from microcosm.build.uk_runtime import battery_bindings
+        from microcosm.build.uk_runtime.national_frame import (
+            UK_RELEASE_EXPORT_DROPPED_COLUMNS,
+        )
+
+        frame = _one_clone_national_frame()
+        indices = sorted(
+            f"{entity}.{column}" for entity, column in _CLONE_INDICES.items()
+        )
+        national = self._degenerate(frame, "national")
+        assert national.passed, national.failures
+        assert set(indices) <= set(national.details["dropped_at_export"])
+        assert national.details["all_zero_columns"] == []
+        for line in ("local", None):
+            off_line = self._degenerate(frame, line)
+            assert off_line.passed is False
+            assert off_line.details["all_zero_columns"] == indices
+            assert not set(indices) & set(off_line.details["dropped_at_export"])
+        monkeypatch.setattr(
+            battery_bindings,
+            "uk_release_export_dropped_columns",
+            lambda line=None: UK_RELEASE_EXPORT_DROPPED_COLUMNS,
+        )
+        shared_only = self._degenerate(frame, "national")
+        assert shared_only.passed is False
+        assert shared_only.details["all_zero_columns"] == indices
+        # Each failure names its column and the kind, never a value.
+        assert sorted(shared_only.failures) == [
+            f"{name}: persisted release column is all-zero; populate it with "
+            "signal, drop it, or record a reviewed exclusion."
+            for name in indices
+        ]
+
+    def test_the_spine_answers_the_clone_indices_on_the_national_line_only(
+        self,
+    ) -> None:
+        """The national release carries no clone index, so a gate that checks
+        a declared stage output reads them off the certifier's spine frame on
+        the national line; on any other line the export keeps them, and the
+        spine is not asked."""
+        from microcosm.build.uk_runtime.battery_bindings import (
+            _export_dropped_columns_from_spine,
+        )
+
+        release = _one_clone_national_frame(indices=False)
+        spine = _one_clone_national_frame()
+        requested = list(_CLONE_INDICES.values())
+
+        def found(line):
+            artifacts = {"spine_frame": spine}
+            if line is not None:
+                artifacts["release_line"] = line
+            return _export_dropped_columns_from_spine(
+                EvidenceContext(frame=release, artifacts=artifacts), requested
+            )
+
+        national = found("national")
+        assert set(national) == set(requested)
+        assert all(national[column].tolist() == [0, 0, 0] for column in requested)
+        assert found("local") == {}
+        assert found(None) == {}
+
+    def test_the_nonnegative_gate_checks_a_national_releases_clone_indices(
+        self,
+    ) -> None:
+        """The geographic expansion declares the clone indices non-negative,
+        so the release cut's nonnegative gate, on a national candidate that
+        does not carry them, checks them on the spine frame, and fails them
+        as missing without the national line or the spine."""
+        binding = UK_GATE_REGISTRY["nonnegative_columns"]
+        release = _one_clone_national_frame(indices=False)
+        spine = _one_clone_national_frame()
+
+        def evaluate(line, *, spine_frame=spine):
+            artifacts = {"build_stage_names": ("geographic_expand",)}
+            if spine_frame is not None:
+                artifacts["spine_frame"] = spine_frame
+            if line is not None:
+                artifacts["release_line"] = line
+            return binding.evaluate(
+                EvidenceContext(frame=release, artifacts=artifacts), {}
+            )
+
+        missing = sorted(
+            f"{column}: required non-negative column missing."
+            for column in _CLONE_INDICES.values()
+        )
+        assert evaluate("national").passed is True
+        for result in (
+            evaluate("local"),
+            evaluate(None),
+            evaluate("national", spine_frame=None),
+        ):
+            assert result.passed is False
+            assert sorted(result.failures) == missing
+
+    @pytest.mark.parametrize("line", ["national", "local", None])
+    def test_the_coverage_and_input_mass_gates_read_the_lines_export(
+        self, monkeypatch, uk_gates, line
+    ) -> None:
+        """The two terminal gates that compare the surface the release ships
+        read the export of the context's line: on the national line without
+        the clone indices, on any other with them."""
+        from microcosm.build.uk_runtime import battery_bindings
+
+        frame = _one_clone_national_frame()
+        seen: dict[str, dict[str, set[str]]] = {}
+
+        def coverage(surface, engine, **kwargs):
+            seen["coverage"] = {
+                entity: set(getattr(surface, entity).columns)
+                for entity in _CLONE_INDICES
+            }
+            return GateResult(name="release_input_coverage", passed=True)
+
+        def totals(export):
+            seen["input_mass"] = {
+                entity: set(export.table(entity).columns) for entity in _CLONE_INDICES
+            }
+            return {}
+
+        monkeypatch.setattr(
+            battery_bindings, "uk_release_input_coverage_gate", coverage
+        )
+        monkeypatch.setattr(battery_bindings, "uk_input_mass_totals", totals)
+        monkeypatch.setattr(
+            battery_bindings,
+            "uk_input_mass_parity_gate",
+            lambda *args, **kwargs: GateResult(name="input_mass_parity", passed=True),
+        )
+        artifacts = {
+            "coverage_engine": object(),
+            "spine_frame": frame,
+            "exclusions_evaluated_on": CLOCK,
+            "input_mass_reference": object(),
+        }
+        if line is not None:
+            artifacts["release_line"] = line
+        context = EvidenceContext(frame=frame, artifacts=artifacts)
+        entries = {entry.id: entry for entry in uk_gates.gates}
+        for gate, entry in (
+            ("release_input_coverage", "uk_release_input_coverage"),
+            ("input_mass_parity", "uk_input_mass_parity"),
+        ):
+            result = UK_GATE_REGISTRY[gate].evaluate(context, entries[entry].parameters)
+            assert result.passed is True
+        for read in ("coverage", "input_mass"):
+            for entity, column in _CLONE_INDICES.items():
+                assert (column in seen[read][entity]) is (line != "national")
+
+    def test_the_coverage_gate_refuses_a_line_the_gates_do_not_know(self) -> None:
+        """The coverage gate reads the line as declared, since it also runs
+        the preflight's manifest check, and the export refuses a line the
+        gate contexts do not declare, as the other gates' line check does."""
+        frame = _one_clone_national_frame()
+        context = EvidenceContext(
+            frame=frame,
+            artifacts={
+                "coverage_engine": object(),
+                "spine_frame": frame,
+                "release_line": "regional",
+            },
+        )
+        with pytest.raises(ValueError, match="line must be one of"):
+            UK_GATE_REGISTRY["release_input_coverage"].evaluate(context, {})

@@ -10,15 +10,17 @@ created mass: within each Table 3 taxable-income band it walks households in
 descending investable wealth until their weight covers the band's support
 mass (the published count of gainers at or above GBP 250,000 in that income
 column, doubled for the clone split and scaled by the declared headroom of
-1.25) and divides every selected household into ``ceil(weight / 60)``
-identical copies at equal weight, each carrying its index ``k`` in
+1.25) and divides every selected household into ``ceil(K x weight / 60)``
+identical copies at equal weight, ``K`` the frame's geographic clone count
+(1 on a national spine; microcosm#931), each carrying its index ``k`` in
 ``cgt_support_copy_index`` (0 on roots and unsplit households), the explicit
-lineage the geography identity kernel keys on. No value moves, no draw is
-made, and every household's mass and the total household mass are conserved
-exactly; the clone stage then
-gives each copy's clone its own identity-keyed prior, and the redraw's
-wealth-ranked walk places the light rows where it was already placing heavy
-ones.
+lineage the geography identity kernel keys on. No value moves, and every
+household's mass and the total household mass are conserved exactly; the
+one draw is the walk's tie-break, a uniform keyed on each household's own id
+that orders households tied on wealth (microcosm#931). The incidence clone
+stage (``cgt_incidence_clone``) then gives each copy's clone its own
+identity-keyed prior, and the redraw's wealth-ranked walk places the light
+rows where it was already placing heavy ones.
 
 The support masses are read from the vendored ``hmrc_cgt_conditioning_facts.json``
 (HMRC Table 3, individuals by size of gain and taxable income) through
@@ -27,7 +29,7 @@ The support masses are read from the vendored ``hmrc_cgt_conditioning_facts.json
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -35,6 +37,8 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.stochastic_assignment import keyed_tie_order
+from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_INVESTABLE_WEALTH_COLUMNS,
     UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
@@ -48,6 +52,11 @@ from microcosm.build.uk_runtime.cgt_structure import (
     _assert_closed_world_operations,
     _oldest_adult_indices,
 )
+
+# Moved to geographic_clones, beside the clone index columns' names; this
+# stage's node hashes that module (microcosm#931). Kept importable from here
+# for this module's other callers.
+from microcosm.build.uk_runtime.geographic_clones import geographic_clone_count
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_CONDITIONING_RESOURCE,
     HMRC_CGT_INCOME_BAND_LOWER_BOUNDS,
@@ -61,7 +70,6 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
-from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
 from microcosm.build.uk_runtime.spi_support import (
     _exact_total_correction,
     _importance_weights_with_exact_total,
@@ -80,16 +88,36 @@ CGT_SUPPORT_COPIES_COLUMN = "cgt_support_copies"
 #: roots and unsplit households: the explicit lineage the geography identity
 #: kernel keys on (microcosm#932), so no consumer recovers ``k`` from ids.
 CGT_SUPPORT_COPY_INDEX_COLUMN = "cgt_support_copy_index"
-#: The clone stage halves every household and only the clone twin gains.
+#: The incidence clone stage (``cgt_incidence_clone``) halves every household
+#: and only the clone twin gains.
 CGT_SUPPORT_CLONE_SPLIT_FACTOR = 2
 #: Covers clones whose prior draws at or below zero and the quarter of the
 #: redraw's rank key the prior carries.
 CGT_SUPPORT_HEADROOM = 1.25
-#: A copy weighs at most this before the clone (half of it after), so the
-#: GBP 5m+ band seats at least a hundred rows.
+#: A copy weighs at most this divided by the geographic clone count before
+#: the incidence clone (half of that after): at most 60 on a national spine,
+#: so the GBP 5m+ band seats at least a hundred rows.
 CGT_SUPPORT_MAXIMUM_COPY_WEIGHT = 60.0
+#: The copy-id field copy ``k`` takes ``k`` in: ordinals 1 to 9,999, so a
+#: household is divided into at most 10,000 rows, root included
+#: (microcosm#931).
+CGT_SUPPORT_COPY_ID_FIELD = "cgt_support_split"
+#: The refusal when a household needs more copies than the field holds. It is
+#: fixed: it never names the household, its weight or its copy count.
+CGT_SUPPORT_COPY_BOUND_REFUSAL = (
+    "The CGT support split would divide a household into more copies than the "
+    "copy-id table's cgt_support_split field holds (ordinals up to 9,999; "
+    "microcosm#931). The field is declared, never sized to the frame: a "
+    "household this heavy needs a reviewed wider field."
+)
 #: The Table 3 bands of gains the support is sized on.
 CGT_SUPPORT_MINIMUM_GAIN_BAND_LOWER = 250_000
+#: The seed and salt of the selection walk's tie-break: households tied on
+#: investable wealth take the order of a uniform keyed on their own
+#: household_id, then of their ids, not of their ids alone, which always put
+#: a household's lowest copy or clone ordinal first (microcosm#931).
+CGT_SUPPORT_TIE_SEED = 0
+CGT_SUPPORT_TIE_SALT = "cgt_support_split:wealth_tie"
 #: The redraw's income bands, so classification matches its walk.
 CGT_SUPPORT_INCOME_BAND_LOWER_BOUNDS: tuple[int, ...] = (
     HMRC_CGT_INCOME_BAND_LOWER_BOUNDS
@@ -107,7 +135,56 @@ CGT_SUPPORT_MASS_CHANGE_REASON = (
     "HMRC Table 3 income band into light copies at equal weight; every "
     "household's mass and the total household mass are conserved."
 )
+#: The exact-total correction is tried on at most this many of the households
+#: a support split left whole, heaviest first, before spi_support's shared
+#: fallback (microcosm#931; :func:`_exact_support_weights`, which the
+#: high-value home support split shares). Each candidate that cannot carry the
+#: correction costs a few dozen sums of the frame's weights. At the CGT split
+#: a selected household left at one copy that can carry it also costs a rerun
+#: of the selection walk (``keeps_the_split``), so 64 such candidates that the
+#: check passes over would cost 64 walks, about 30 to 45 s at the 0.5 to 0.7 s
+#: one walk takes on a synthetic vector the size of a ``K = 15`` spine, the
+#: more of it tied on wealth the slower, since the walk's tie-break draws the
+#: tied households' uniforms and checks the ids it keys them on. A national
+#: frame does not reach that, since its 64 heaviest whole households are
+#: unselected ones, far heavier than ``60 / K``, so the cap bounds the search
+#: there to the sums.
+CGT_SUPPORT_CORRECTION_CANDIDATES = 64
+#: The one exception to "every copy carries weight / copies" that the
+#: ``copy_rule`` of both support splits declares, built on the cap so the
+#: declarations restate it, with the order the candidates are tried in
+#: (:func:`_exact_support_weights`; microcosm#931). The CGT split's adds
+#: :data:`CGT_SUPPORT_ONE_COPY_CHECK` after it.
+CGT_SUPPORT_EXACT_TOTAL_EXCEPTION = (
+    f"except where none of the {CGT_SUPPORT_CORRECTION_CANDIDATES} heaviest "
+    "households left whole, tried heaviest first, tied weights in row order, "
+    "can carry the exact-total correction, when the shared fallback can put it "
+    "on a root or copy, off weight / copies by about one ulp of the total weight"
+)
+#: The clause the CGT split's ``copy_rule`` adds after that exception, built
+#: on the cap too. Of those candidates, a selected household left at one copy
+#: can carry the correction only where its corrected weight keeps its one
+#: copy and the walk's selection (``keeps_the_split`` in
+#: :func:`split_cgt_support_households`, kept as a reading of the
+#: whole-households-first rule). The shared fallback does not make that
+#: check, so it can still put the correction on a one-copy household the
+#: check passed over (María's rulings of 2026-11-09; microcosm#931). The
+#: high-value home support split makes no such check, so its ``copy_rule``
+#: ends at the exception.
+CGT_SUPPORT_ONE_COPY_CHECK = (
+    f"of those {CGT_SUPPORT_CORRECTION_CANDIDATES}, a selected household left "
+    "at one copy can carry the correction only where its corrected weight "
+    "keeps its one copy and the walk's selection, a check the fallback does "
+    "not make"
+)
 _HOUSEHOLD_SUPPORT_CHANNEL_COLUMN = "household_support_channel"
+#: The geographic clone index the clone-first spine gives every household
+#: (``geographic_clones.ladder_clone_index_column("household")``, the
+#: ``geographic_support`` branch of the UK copy lineage; microcosm#931). This
+#: stage reads ``K`` through ``geographic_clones.geographic_clone_count``,
+#: which reads that module's name, and its node hashes that module, so no code
+#: here reads this spelling any more; a test holds it equal to the others.
+_GEOGRAPHIC_CLONE_INDEX_COLUMN = "household_clone_index"
 _PERSON_ID_COLUMNS = ("person_id", "person_household_id", "person_benunit_id")
 _POLICY_PARAMETER_NAMES = (
     "gov.hmrc.income_tax.allowances.personal_allowance.amount",
@@ -122,8 +199,9 @@ class UKCGTSupportSplitResult:
 
     ``band_rows`` carry one mapping per Table 3 income band, in the order of
     :data:`CGT_SUPPORT_INCOME_BAND_LOWER_BOUNDS`; the totals, the mass pair,
-    the three parameters and the support-channel split of the selected
-    households make up the rest of :meth:`evidence`.
+    the four parameters (the geographic clone count the copies were counted
+    on among them) and the support-channel split of the selected households
+    make up the rest of :meth:`evidence`.
     """
 
     frame: Frame
@@ -141,6 +219,7 @@ class UKCGTSupportSplitResult:
     new_total: float
     frs_selected: int
     spi_selected: int
+    clone_count: int
     clone_split_factor: int = CGT_SUPPORT_CLONE_SPLIT_FACTOR
     headroom: float = CGT_SUPPORT_HEADROOM
     maximum_copy_weight: float = CGT_SUPPORT_MAXIMUM_COPY_WEIGHT
@@ -170,6 +249,7 @@ class UKCGTSupportSplitResult:
                 "clone_split_factor": int(self.clone_split_factor),
                 "headroom": float(self.headroom),
                 "maximum_copy_weight": float(self.maximum_copy_weight),
+                "clone_count": int(self.clone_count),
             },
             "support_channel_split": {
                 "frs": int(self.frs_selected),
@@ -185,8 +265,10 @@ class UKCGTSupportSplitStageTransform:
     ``distribution`` defaults to the vendored Table 3 joint; ``parameters``
     default to the policyengine-uk allowance parameters at the frame's build
     period, read at apply time so the base package never imports the engine
-    at import time. Constructing the transform binds the manifest to the
-    reviewed operation dictionary and the vendored pins.
+    at import time. The geographic clone count the copies are counted on is
+    read from the frame (:func:`geographic_clone_count`). Constructing the
+    transform binds the manifest to the reviewed operation dictionary and the
+    vendored pins.
     """
 
     stage: SourceStageSpec
@@ -206,7 +288,12 @@ class UKCGTSupportSplitStageTransform:
         if parameters is None:
             parameters = uk_cgt_policy_parameters(uk_time_period(frame))
         result = split_cgt_support_households(
-            frame, distribution=distribution, parameters=parameters
+            frame,
+            distribution=distribution,
+            parameters=parameters,
+            clone_count=geographic_clone_count(
+                frame.table("household"), stage=CGT_SUPPORT_SPLIT_STAGE_NAME
+            ),
         )
         object.__setattr__(self, "last_result", result)
         return result.frame
@@ -336,17 +423,24 @@ def select_cgt_support_households(
     income_band: Sequence[int] | np.ndarray,
     wealth: Sequence[float] | np.ndarray,
     support_mass_by_band: Mapping[int, float],
+    *,
+    seed: int,
+    salt: str,
 ) -> tuple[np.ndarray, tuple[dict[str, object], ...]]:
     """Select the wealthiest households of each income band, whole.
 
     Within each band of ``support_mass_by_band`` (income band lower bound to
     support mass, walked in mapping order) the positive-weight households of
-    that band are ordered by wealth descending then household id ascending,
+    that band are ordered by wealth descending, households tied on wealth by
+    a uniform keyed on their own household id under ``seed`` and ``salt``,
+    then by id (:func:`microcosm.build.stochastic_assignment.keyed_tie_order`),
     and taken whole until the cumulative weight reaches the support mass; the
     household that crosses it is taken. A pool whose mass falls short is
     taken entirely and recorded as exhausted, never refused; zero-weight
     rows are outside every pool. Returns the selection mask aligned to the
-    inputs and one receipt row per band.
+    inputs and one receipt row per band. ``seed`` and ``salt`` have no
+    default: the stage, its rerun of the walk and the identity tool's
+    recompute each pass the declared pair (:func:`cgt_support_tie_break`).
     """
 
     ids = np.asarray(household_ids)
@@ -377,7 +471,9 @@ def select_cgt_support_households(
             )
         pool = np.flatnonzero((bands == income_lower) & (values > 0.0))
         pool_mass = float(values[pool].sum())
-        order = pool[np.lexsort((ids[pool], -wealth_values[pool]))]
+        order = pool[
+            keyed_tie_order(-wealth_values[pool], ids[pool], seed=seed, salt=salt)
+        ]
         cumulative = np.cumsum(values[order])
         if target <= 0.0:
             take = 0
@@ -406,12 +502,48 @@ def select_cgt_support_households(
     return selected, tuple(rows)
 
 
+def _require_clone_count(clone_count: object) -> int:
+    """``clone_count`` as an int, refused unless it is a positive integer."""
+
+    if (
+        isinstance(clone_count, bool)
+        or not isinstance(clone_count, int | np.integer)
+        or clone_count < 1
+    ):
+        raise ValueError(
+            "The CGT support split needs a positive integer geographic clone "
+            f"count, got {clone_count!r}."
+        )
+    return int(clone_count)
+
+
 def cgt_support_copy_counts(
     weights: Sequence[float] | np.ndarray,
     maximum_copy_weight: float = CGT_SUPPORT_MAXIMUM_COPY_WEIGHT,
+    *,
+    clone_count: int,
 ) -> np.ndarray:
-    """``ceil(weight / maximum_copy_weight)`` per household, at least one."""
+    """``max(1, ceil(clone_count x weight / maximum_copy_weight))`` per household.
 
+    ``clone_count`` is the frame's geographic clone count ``K``
+    (:func:`geographic_clone_count`; 1 on a national spine). A geographic
+    clone carries ``1 / K`` of its source household's weight, so ``K x w`` is
+    its weight scaled back to the source: a clone at exactly ``1 / K`` of its
+    source's weight gets the count its source gets at ``K = 1``, and each of
+    its copies weighs at most ``maximum_copy_weight / K`` (microcosm#931).
+
+    For ``K > 1`` the quotient is snapped to the nearest integer when it lies
+    within ``K`` ulps of it. A clone's weight ``W / K`` is rounded, so when
+    ``W`` is an exact multiple of ``maximum_copy_weight`` the product
+    ``K x (W / K)`` can land an ulp above the multiple, and ``ceil`` would add
+    a copy that ``K = 1`` does not make (at ``K = 7``, for one). The snap
+    gives up the converse case: a quotient within ``K`` ulps above an integer,
+    which ``K = 1`` rounds up, counts one copy fewer. At ``K = 1`` no weight
+    was divided, so nothing is snapped and the count is ``ceil(w /
+    maximum_copy_weight)`` bit for bit.
+    """
+
+    clone_count = _require_clone_count(clone_count)
     if not np.isfinite(maximum_copy_weight) or maximum_copy_weight <= 0.0:
         raise ValueError(
             f"CGT support maximum copy weight must be positive, got "
@@ -420,8 +552,31 @@ def cgt_support_copy_counts(
     values = np.asarray(weights, dtype=float)
     if not np.isfinite(values).all() or (values < 0.0).any():
         raise ValueError("CGT support copy counts need finite, non-negative weights.")
-    counts = np.ceil(values / float(maximum_copy_weight)).astype("int64")
+    if clone_count == 1:
+        quotient = values / float(maximum_copy_weight)
+    else:
+        quotient = (clone_count * values) / float(maximum_copy_weight)
+        nearest = np.rint(quotient)
+        quotient = np.where(
+            np.abs(quotient - nearest) <= clone_count * np.spacing(nearest),
+            nearest,
+            quotient,
+        )
+    counts = np.ceil(quotient).astype("int64")
     return np.maximum(counts, 1)
+
+
+def _refuse_copies_beyond_the_copy_id_field(copies: np.ndarray) -> None:
+    """Refuse a household divided into more rows than its copy-id field holds.
+
+    ``copies`` counts each household's rows, root included, so a household
+    of ``bound`` rows takes ordinals up to ``bound - 1`` and fits; one more
+    row does not. The refusal is the fixed :data:`CGT_SUPPORT_COPY_BOUND_REFUSAL`.
+    """
+
+    bound = copy_id_table.ordinal_bound(CGT_SUPPORT_COPY_ID_FIELD)
+    if len(copies) and int(np.max(copies)) > bound:
+        raise ValueError(CGT_SUPPORT_COPY_BOUND_REFUSAL)
 
 
 def split_cgt_support_households(
@@ -429,22 +584,50 @@ def split_cgt_support_households(
     *,
     distribution: HMRCCapitalGainsJointDistribution,
     parameters: UKCGTPolicyParameters,
+    clone_count: int,
     headroom: float = CGT_SUPPORT_HEADROOM,
 ) -> UKCGTSupportSplitResult:
     """Split the wealthiest households of each income band into light copies.
 
-    Deterministic and mass-conserving: no draw, no seed, no salt. Each
-    selected household of weight ``w`` becomes ``n = ceil(w / 60)`` copies at
-    ``w / n``; the root keeps its ids, copy ``k`` takes every entity id plus
-    ``k`` times the frame's id multiplier, records ``k`` in
-    ``cgt_support_copy_index`` and carries a full copy of the household's
-    person and benefit-unit rows. The exact-total correction lands on the
-    heaviest unselected incumbent so every copy weight stays bitwise
-    ``w / n``. Refuses a frame the clone stage has already seen or one this
-    stage has already split.
+    Deterministic and mass-conserving. Its one draw is the selection walk's
+    tie-break: households tied on wealth take the order of a uniform keyed
+    on their own household id under the declared seed and salt
+    (:func:`cgt_support_tie_break`), then of their ids, and the walk's rerun
+    below passes the same pair. Each
+    selected household of weight ``w`` becomes ``n = ceil(K x w / 60)``
+    copies at ``w / n``, ``K`` the frame's geographic clone count
+    (``clone_count``, which the stage transform reads from the frame), so a
+    household at exactly ``1 / K`` of its source's weight gets the ``n`` its
+    source gets on a one-clone spine, and every copy weighs at most
+    ``60 / K`` (:func:`cgt_support_copy_counts`). The selection walk still
+    accumulates each row's own weight, so selection nests only
+    approximately: the household at which a band's walk reaches its support
+    mass, and households tied on wealth, can be selected in some clones and
+    not others, in their keyed order rather than lowest household id first,
+    so no clone index is favoured. The root keeps its ids, copy
+    ``k`` takes every entity id plus ``k`` times the declared radix of the
+    copy-id table's ``cgt_support_split`` field (so every incoming id must
+    sit below it, and ``n`` is at most the field's bound of 10,000), records
+    ``k`` in ``cgt_support_copy_index`` and carries a full copy of the
+    household's person and benefit-unit rows. The exact-total correction
+    lands on a household the split left whole (an unselected one, or a
+    selected one left at one copy): the first of the
+    :data:`CGT_SUPPORT_CORRECTION_CANDIDATES` heaviest that can carry it, so
+    every root and copy weighs bitwise ``w / n``. A selected one carries it
+    only where its corrected weight leaves the walk's selection and its one
+    copy as they were, so wherever one of those candidates carries it, the
+    rule rerun on the output divides the same households. Only where none of
+    them can does spi_support's shared fallback place it, unchanged and
+    without that check. Its row can then be a root or copy, off ``w / n`` by
+    about one ulp of the total, or a whole household, among them a one-copy
+    one the check passed over, after which the rule rerun on the output can
+    divide a different set (:func:`_exact_support_weights`). Refuses a frame
+    the incidence clone stage (``cgt_incidence_clone``) has already seen or
+    one this stage has already split.
     """
 
     validate_uk_national_frame(frame)
+    clone_count = _require_clone_count(clone_count)
     person = frame.table("person").copy()
     benunit = frame.table("benunit").copy()
     household = frame.table("household").copy()
@@ -479,20 +662,32 @@ def split_cgt_support_households(
     support_by_band = {
         int(row["income_lower_bound"]): float(row["support_mass"]) for row in mass_rows
     }
+    tie_seed, tie_salt = cgt_support_tie_break()
     selected, selection_rows = select_cgt_support_households(
-        household_ids, weights, income_band, wealth, support_by_band
+        household_ids,
+        weights,
+        income_band,
+        wealth,
+        support_by_band,
+        seed=tie_seed,
+        salt=tie_salt,
     )
     copies = np.ones(len(household), dtype="int64")
     copies[selected] = cgt_support_copy_counts(
-        weights[selected], CGT_SUPPORT_MAXIMUM_COPY_WEIGHT
+        weights[selected], CGT_SUPPORT_MAXIMUM_COPY_WEIGHT, clone_count=clone_count
     )
-    multiplier = id_multiplier_for_values(
-        person["person_id"],
-        person["person_household_id"],
-        person["person_benunit_id"],
-        benunit["benunit_id"],
-        household["household_id"],
-    )
+    _refuse_copies_beyond_the_copy_id_field(copies)
+    for table, columns in (
+        (person, _PERSON_ID_COLUMNS),
+        (benunit, ("benunit_id",)),
+        (household, ("household_id",)),
+    ):
+        for column in columns:
+            copy_id_table.require_below(
+                table[column],
+                CGT_SUPPORT_COPY_ID_FIELD,
+                what=f"incoming {column} values",
+            )
     household[HOUSEHOLD_IS_CGT_SUPPORT_COPY] = False
     household[CGT_SUPPORT_COPIES_COLUMN] = copies
     household[CGT_SUPPORT_COPY_INDEX_COLUMN] = np.zeros(len(household), dtype="int64")
@@ -510,14 +705,15 @@ def split_cgt_support_households(
             benunit["benunit_id"].isin(set(family_person["person_benunit_id"]))
         ].copy()
         family_household = household.loc[family].copy()
-        offset = k * multiplier
         for column in _PERSON_ID_COLUMNS:
-            family_person[column] = family_person[column].astype("int64") + offset
-        family_benunit["benunit_id"] = (
-            family_benunit["benunit_id"].astype("int64") + offset
+            family_person[column] = copy_id_table.mint(
+                family_person[column], CGT_SUPPORT_COPY_ID_FIELD, k
+            )
+        family_benunit["benunit_id"] = copy_id_table.mint(
+            family_benunit["benunit_id"], CGT_SUPPORT_COPY_ID_FIELD, k
         )
-        family_household["household_id"] = (
-            family_household["household_id"].astype("int64") + offset
+        family_household["household_id"] = copy_id_table.mint(
+            family_household["household_id"], CGT_SUPPORT_COPY_ID_FIELD, k
         )
         family_household[HOUSEHOLD_IS_CGT_SUPPORT_COPY] = True
         family_household[CGT_SUPPORT_COPY_INDEX_COLUMN] = np.full(
@@ -531,10 +727,45 @@ def split_cgt_support_households(
     final_benunit = pd.concat([benunit, *copy_benunit], ignore_index=True)
     final_household = pd.concat([household, *copy_household], ignore_index=True)
     final_weights = np.concatenate([incumbent_weights, *copy_weights])
+
+    def keeps_the_split(row: int, weight: float) -> bool:
+        """Whether whole household ``row`` at ``weight`` leaves the split as it was.
+
+        An unselected household sits past its band's crossing, or in no
+        walked band, so its weight moves neither the walk nor its count of
+        one. A selected household left at one copy can move both, so it
+        carries the correction only where the walk rerun on its corrected
+        weight, under the stage's declared tie-break, selects the same
+        households and that weight still counts one copy: the rule rerun on
+        the stage's output then divides the same households the same way, as
+        the identity tool's recompute does.
+        """
+
+        if not selected[row]:
+            return True
+        counted = cgt_support_copy_counts(
+            [weight], CGT_SUPPORT_MAXIMUM_COPY_WEIGHT, clone_count=clone_count
+        )
+        if int(counted[0]) != 1:
+            return False
+        moved = weights.copy()
+        moved[row] = weight
+        reselected, _ = select_cgt_support_households(
+            household_ids,
+            moved,
+            income_band,
+            wealth,
+            support_by_band,
+            seed=tie_seed,
+            salt=tie_salt,
+        )
+        return bool(np.array_equal(reselected, selected))
+
     exact = _exact_support_weights(
         final_weights,
         target=old_total,
-        unselected=np.flatnonzero(~selected & (incumbent_weights > 0.0)),
+        whole=np.flatnonzero((copies == 1) & (incumbent_weights > 0.0)),
+        keeps_the_split=keeps_the_split,
     )
     receipt = MassChangeRecord(
         entity="household",
@@ -604,25 +835,56 @@ def split_cgt_support_households(
         new_total=float(exact.total),
         frs_selected=frs_selected,
         spi_selected=spi_selected,
+        clone_count=clone_count,
     )
 
 
 def _exact_support_weights(
-    values: np.ndarray, *, target: float, unselected: np.ndarray
+    values: np.ndarray,
+    *,
+    target: float,
+    whole: np.ndarray,
+    keeps_the_split: Callable[[int, float], bool] | None = None,
 ) -> Weights:
     """Importance weights summing bitwise to ``target``.
 
-    The correction lands on the heaviest unselected incumbent so every split
-    weight stays exactly ``w / n``; a frame with no unselected positive
-    incumbent falls back to the shared multi-candidate correction.
+    ``whole`` gives the positions of the households a support split left
+    whole: the positive-weight rows it did not divide, whose weights it left
+    as they were (the unselected households, and at the CGT split the
+    selected ones left at one copy). The correction is tried on the
+    :data:`CGT_SUPPORT_CORRECTION_CANDIDATES` heaviest of them, heaviest
+    first and tied weights in row order, and lands on the first that can
+    carry it, so every root and copy of a divided household keeps bitwise
+    ``w / n`` (microcosm#931). A candidate carries it where the correction
+    is representable on it and ``keeps_the_split``, where given, accepts its
+    corrected weight: the CGT split refuses a selected household left at one
+    copy whose corrected weight would move the walk's selection or count a
+    second copy. The first candidate is the heaviest unselected household,
+    the one corrected before, wherever no selected household left at one
+    copy outweighs it or ties it from an earlier row; a total already exact
+    comes back unchanged.
+
+    Only where none of them can carry it, or there is none, does
+    spi_support's shared multi-candidate correction place it, unchanged: its
+    candidates (the heaviest, last, first, lightest and middle positive rows)
+    can be a root or copy of a divided household, which is then off ``w / n``
+    by about one ulp of the total, or a whole household, a one-copy household
+    that check refused among them, since it does not consult
+    ``keeps_the_split``. On the CGT nesting scenario at 7 and 13 clones, for
+    one, every whole household sits in the half of NumPy's pairwise sum whose
+    other half carries exactly half an ulp of the total, so no change to its
+    weight rounds the total onto the target.
     """
 
-    if unselected.size:
-        heaviest = int(unselected[np.argmax(values[unselected])])
+    rows = np.asarray(whole, dtype=np.int64)
+    heaviest_first = rows[np.lexsort((rows, -values[rows]))]
+    for index in heaviest_first[:CGT_SUPPORT_CORRECTION_CANDIDATES].tolist():
         corrected = _exact_total_correction(
-            values, target=target, correction_index=heaviest
+            values, target=target, correction_index=index
         )
-        if corrected is not None:
+        if corrected is not None and (
+            keeps_the_split is None or keeps_the_split(index, float(corrected[index]))
+        ):
             return Weights(corrected, WeightKind.IMPORTANCE)
     return _importance_weights_with_exact_total(values, target)
 
@@ -673,24 +935,36 @@ def cgt_support_split_operation_parameters() -> tuple[
                 "investable_wealth_columns": list(UK_CGT_INVESTABLE_WEALTH_COLUMNS),
                 "selection": (
                     "within each income band walk households in investable wealth "
-                    "descending, household_id ascending, accumulating positive "
-                    "household weight until the cumulative weight reaches the "
-                    "band's support mass; whole households; an exhausted pool is "
-                    "recorded, not refused"
+                    "descending, households tied on it in ascending order of a "
+                    "uniform keyed on their own household_id under seed and salt, "
+                    "then household_id ascending, accumulating positive household "
+                    "weight until the cumulative weight reaches the band's support "
+                    "mass; whole households; an exhausted pool is recorded, not "
+                    "refused"
                 ),
+                "seed": CGT_SUPPORT_TIE_SEED,
+                "salt": CGT_SUPPORT_TIE_SALT,
                 "maximum_copy_weight": CGT_SUPPORT_MAXIMUM_COPY_WEIGHT,
                 "copy_rule": (
-                    "copies = ceil(household weight / maximum_copy_weight); every "
-                    "copy carries weight / copies"
+                    "copies = ceil(geographic clone count x household weight / "
+                    "maximum_copy_weight), the quotient snapped to the nearest "
+                    "integer within clone-count ulps when the clone count "
+                    "exceeds one; every copy carries weight / copies, "
+                    f"{CGT_SUPPORT_EXACT_TOTAL_EXCEPTION}; "
+                    f"{CGT_SUPPORT_ONE_COPY_CHECK}"
                 ),
                 "id_remapping": (
-                    "id_multiplier_for_values; copy k takes every entity id + k x "
-                    "multiplier"
+                    "copy-id table field cgt_support_split; copy k takes every "
+                    "entity id + k x the field's radix (10**13), k up to 9,999, "
+                    "and a household needing more copies is refused"
                 ),
                 "flag_column": HOUSEHOLD_IS_CGT_SUPPORT_COPY,
                 "copies_column": CGT_SUPPORT_COPIES_COLUMN,
                 "copy_index_column": CGT_SUPPORT_COPY_INDEX_COLUMN,
-                "values": "every column copied unchanged; no draw, no seed, no salt",
+                "values": (
+                    "every column copied unchanged; the selection's tie-break is "
+                    "the stage's only draw"
+                ),
                 "weight_kind_out": WeightKind.IMPORTANCE.value,
                 "conservation": "exact_total",
                 "declared_factor": 1.0,
@@ -698,6 +972,19 @@ def cgt_support_split_operation_parameters() -> tuple[
             },
         ),
     )
+
+
+def cgt_support_tie_break() -> tuple[int, str]:
+    """The declared seed and salt of the selection walk's tie-break.
+
+    Read from the reviewed operation the manifests restate verbatim
+    (:func:`cgt_support_split_operation_parameters`), so the stage's walk, its
+    rerun of the walk in ``keeps_the_split`` and the identity tool's
+    recompute all key their ties on the declared pair (microcosm#931).
+    """
+
+    ((_, operation),) = cgt_support_split_operation_parameters()
+    return int(operation["seed"]), str(operation["salt"])
 
 
 def _assert_cgt_support_split_stage_parameters(stage: SourceStageSpec) -> None:

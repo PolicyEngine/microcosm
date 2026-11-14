@@ -28,12 +28,13 @@ reads the frame directly and skips it.
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from importlib.resources import files
-from types import MappingProxyType
+from types import MappingProxyType, ModuleType
 from typing import Any
 
 import numpy as np
@@ -83,8 +84,8 @@ from microcosm.build.uk_runtime.local_targets import (
     metric_names,
 )
 from microcosm.build.uk_runtime.national_frame import (
-    UK_RELEASE_EXPORT_DROPPED_COLUMNS,
     _uk_gate_surface,
+    uk_release_export_dropped_columns,
     uk_release_export_frame,
 )
 from microcosm.build.uk_runtime.release_input_coverage import (
@@ -132,7 +133,9 @@ from microcosm.frame import Frame
 
 __all__ = [
     "UK_GATE_REGISTRY",
+    "UK_GATE_REGISTRY_MODULES",
     "UKGateBinding",
+    "uk_gate_registry_modules",
 ]
 
 
@@ -257,8 +260,17 @@ def _evaluate_release_input_coverage(
         build_state = _uk_gate_surface(spine_frame)
     else:
         build_state = spine_frame
+    # The export of the context's line: on the national line the geographic
+    # clone indices leave too (microcosm#931). The line is read raw and the
+    # export refuses one it does not know: this binding also runs the
+    # preflight's manifest check, and _release_line would bring
+    # weighted_integrity into that phase's reach.
     return uk_release_input_coverage_gate(
-        _uk_gate_surface(uk_release_export_frame(context.frame)),
+        _uk_gate_surface(
+            uk_release_export_frame(
+                context.frame, line=context.artifacts.get("release_line")
+            )
+        ),
         engine,
         manifest=manifest,
         build_state_frame=build_state,
@@ -315,6 +327,25 @@ def _evaluate_calibration_reference_coverage(
     )
 
 
+#: The stage-health checks that read the phase's frame beside their stage's
+#: receipt: the band donors' check recomputes a capped seating's seats from
+#: the transferred phase's frame, the copy area check compares each copy with
+#: its parent there, and the council-tax check holds each household's
+#: reductions within its bill there (microcosm#931). Every other check reads
+#: its receipt alone and runs without a frame.
+_STAGE_HEALTH_FRAME_CHECKS = frozenset(
+    {
+        "spi_income_band_donor_support",
+        "copy_area_agreement",
+        "council_tax_reduction_within_bill",
+    }
+)
+
+
+def _stage_health_requires_frame(parameters: Mapping[str, Any]) -> bool:
+    return parameters.get("check") in _STAGE_HEALTH_FRAME_CHECKS
+
+
 def _evaluate_stage_health(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
@@ -330,6 +361,7 @@ def _evaluate_stage_health(
         stage=stage,
         check=str(parameters["check"]),
         parameters=parameters,
+        frame=context.frame if _stage_health_requires_frame(parameters) else None,
     )
 
 
@@ -388,26 +420,27 @@ def _export_dropped_columns_from_spine(
 ) -> dict[str, Any]:
     """Columns the release export drops, read from the certifier's spine frame.
 
-    ``UK_RELEASE_EXPORT_DROPPED_COLUMNS`` leave at the release boundary
-    (microcosm#1063 c9 and the salary-sacrifice pre-conversion pay carrier),
-    so a gate that checks every declared stage output cannot find them on
-    the release candidate. The certifier passes the spine frame as the
-    ``spine_frame`` artifact; this returns each requested column that is an
-    export-dropped column present on that frame, keyed by column name. Any
-    other requested column, or any column when no spine frame is supplied,
-    is left to the caller's missing-column path.
+    The columns ``national_frame.uk_release_export_dropped_columns`` lists
+    for the context's release line leave at the release boundary
+    (microcosm#1063 c9 and the salary-sacrifice pre-conversion pay carrier
+    on every line, and on the national line the geographic clone indices of
+    its one-clone spine, microcosm#931), so a gate that checks every declared
+    stage output cannot find them on the release candidate. The certifier
+    passes the spine frame as the ``spine_frame`` artifact; this returns each
+    requested column that the context's line drops at export and that is
+    present on that frame, keyed by column name. Any other requested column,
+    or any column when no spine frame is supplied, is left to the caller's
+    missing-column path.
     """
-
-    from microcosm.build.uk_runtime.national_frame import (
-        UK_RELEASE_EXPORT_DROPPED_COLUMNS,
-    )
 
     spine_frame = context.artifacts.get("spine_frame")
     if spine_frame is None:
         return {}
     dropped = {
         column: entity
-        for entity, names in UK_RELEASE_EXPORT_DROPPED_COLUMNS.items()
+        for entity, names in uk_release_export_dropped_columns(
+            _release_line(context)
+        ).items()
         for column in names
     }
     found: dict[str, Any] = {}
@@ -794,7 +827,10 @@ def _evaluate_enum_domain(
     (table,) = tables
     by_nation = _nation_partitioned_domains(column, parameters)
     if by_nation is None:
-        return enum_domain_gate({column: table[column]}, {column: domain})
+        return _count_free_enum_domain_result(
+            enum_domain_gate({column: table[column]}, {column: domain}),
+            partitioned=False,
+        )
 
     from microcosm.build.uk_runtime.council_tax_constants import UK_NATION_BY_REGION
 
@@ -802,13 +838,54 @@ def _evaluate_enum_domain(
         raise ValueError(f"{column} is partitioned by region, which its table lacks.")
     nations = table["region"].astype(str).map(UK_NATION_BY_REGION)
     if nations.isna().any():
-        unknown = sorted(set(table.loc[nations.isna(), "region"].astype(str)))
-        raise ValueError(f"{column} rows carry regions with no nation: {unknown}.")
-    return enum_domain_gate(
-        {column: table[column]},
-        {column: domain},
-        partitions={column: nations},
-        partition_domains={column: by_nation},
+        # The battery prints a raised refusal as the gate's failure, so it
+        # names the column, never the rows' values (C-32, microcosm#931).
+        raise ValueError(f"{column} rows carry regions with no nation.")
+    return _count_free_enum_domain_result(
+        enum_domain_gate(
+            {column: table[column]},
+            {column: domain},
+            partitions={column: nations},
+            partition_domains={column: by_nation},
+        ),
+        partitioned=True,
+    )
+
+
+def _count_free_enum_domain_result(
+    result: GateResult, *, partitioned: bool
+) -> GateResult:
+    """The shared enum gate's verdict, rebuilt without counts or examples (C-32).
+
+    The UK's enum gates run on frames whose rows are SPI copies and geographic
+    clones of survey households (microcosm#931), so the shared gate's count of
+    values outside the domain and its examples of them could say something of
+    a few records. The verdict is the shared gate's: each failure names the
+    column and its domain, and the details keep the columns checked, the
+    allowed values (and each partition's), and the columns with a value
+    outside the domain. ``microcosm.build.gates`` is untouched.
+    """
+
+    details = dict(result.details)
+    outside = sorted(str(column) for column in dict(details.get("invalid_counts", {})))
+    domain = "its nation's domain" if partitioned else "the engine's enum domain"
+    rebuilt: dict[str, object] = {
+        "columns_checked": details.get("columns_checked", 0),
+        "allowed_values": details.get("allowed_values", {}),
+    }
+    if "partition_allowed_values" in details:
+        rebuilt["partition_allowed_values"] = details["partition_allowed_values"]
+    rebuilt["columns_outside_domain"] = outside
+    failures: tuple[str, ...] = ()
+    if not result.passed:
+        failures = tuple(
+            f"{column}: a value lies outside {domain}." for column in outside
+        ) or (f"A value lies outside {domain}.",)
+    return GateResult(
+        name=result.name,
+        passed=result.passed,
+        failures=failures,
+        details=rebuilt,
     )
 
 
@@ -1205,8 +1282,11 @@ def _evaluate_degenerate_release_surface(
         now=_exclusion_clock(context),
         # The release boundary drops these before writing; the certifier never
         # sees them on the exported H5, so a gate fed the pre-export frame
-        # must not report them (found by the first graph dense build).
-        dropped_at_export=UK_RELEASE_EXPORT_DROPPED_COLUMNS,
+        # must not report them (found by the first graph dense build). What
+        # it drops is the context's line's: on the national line, the
+        # geographic clone indices too, constant on its one-clone spine
+        # (microcosm#931).
+        dropped_at_export=uk_release_export_dropped_columns(_release_line(context)),
         **kwargs,
     )
     return _with_out_of_line(result, context, out_of_line)
@@ -1795,13 +1875,16 @@ def _evaluate_input_mass_parity(
         reviewed_exclusions=exclusions,
     )
     # The reference is compared against the surface the release ships: the
-    # export frame, with the reviewed export exclusions dropped. The release
+    # export frame, with the reviewed export exclusions dropped (and on the
+    # national line the geographic clone indices, microcosm#931). The release
     # cut already loads that frame; at the national seam the raw frame still
     # carries the spine's WAS property_wealth, which the reference also
     # stores, so comparing it there would call the signed exclusion stale
     # (microcosm#1106).
     result = uk_input_mass_parity_gate(
-        uk_input_mass_totals(uk_release_export_frame(context.frame)),
+        uk_input_mass_totals(
+            uk_release_export_frame(context.frame, line=_release_line(context))
+        ),
         context.artifacts["input_mass_reference"],
         descriptor=coerced_registry[reference_name],
         policy=policy,
@@ -2098,9 +2181,12 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "zeroed_columns",
                 "restored_columns",
                 "restored_within_earnings_limit_columns",
-                # microcosm#1063 child_benefit_take_up stage-health check.
+                # microcosm#1063 child_benefit_take_up stage-health check; its
+                # per-age standard errors from María's ruling of 2026-11-10
+                # (microcosm#931).
                 "maximum_claim_rate_deviation",
                 "maximum_age_claim_rate_deviation",
+                "maximum_age_claim_rate_standard_errors",
                 "minimum_age_child_rows",
                 "maximum_opt_out_share_deviation",
                 "minimum_eligible_family_units",
@@ -2239,10 +2325,31 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # uk-data#629 spi_hourly_pay check: the drawn employees' share
                 # below the minimum wage may exceed the FRS rows' by this much.
                 "maximum_share_above_frs",
+                # The spine geography checks (microcosm#931): the area home
+                # values' knots level, beside the ranking check's keys above;
+                # the mapping-integrity check's accepted outcomes, validation
+                # scope and support systems; and each copy layer's columns the
+                # copy area check holds to the copy's parent.
+                "knots_level",
+                "accepted_outcomes",
+                "validation_scope",
+                "support_systems",
+                "columns_by_copy_layer",
+                # The council_tax_reduction_within_bill check (microcosm#931):
+                # the bill, the household and person reduction columns it
+                # holds within the bill, and the regions whose households it
+                # leaves out; its tolerance is absolute_tolerance above.
+                "bill_column",
+                "household_reduction_columns",
+                "person_reduction_columns",
+                "excluded_regions",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),
         needs_frame=False,
+        # The band donors', the copy area and the council-tax checks read the
+        # phase's frame (microcosm#931).
+        frame_predicate=_stage_health_requires_frame,
         evidence=_stage_health_evidence,
     ),
     "nonnegative_columns": UKGateBinding(
@@ -2428,3 +2535,74 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         evidence=_ledger_compile_parity_evidence,
     ),
 }
+
+#: Every first-party module the registry's bindings compute through: each
+#: binding's evaluator and hooks, what they call, to a fixed point, this module
+#: among them. A kernel that evaluates whichever gates its node names through
+#: the registry keys on them all: the national gates, whose node's gate scope
+#: names their gates (microcosm#931 ruling 6). The gate batteries, whose
+#: phases declare their gates, key each phase on its own gates' share of
+#: these instead. test_uk_graph derives the set from the registry and holds
+#: this list to it exactly.
+UK_GATE_REGISTRY_MODULES: tuple[str, ...] = (
+    "microcosm.build.bounded_amounts",
+    "microcosm.build.chronicle_epoch",
+    "microcosm.build.copy_agreement",
+    "microcosm.build.gate_battery",
+    "microcosm.build.gates",
+    "microcosm.build.input_mass",
+    "microcosm.build.ledger_targets",
+    "microcosm.build.stochastic_assignment",
+    "microcosm.build.uk_runtime.battery_bindings",
+    "microcosm.build.uk_runtime.bus_fare_pricing",
+    "microcosm.build.uk_runtime.bus_support_pricing",
+    "microcosm.build.uk_runtime.bus_use_incidence",
+    "microcosm.build.uk_runtime.cgt_projection",
+    "microcosm.build.uk_runtime.chronicle_feed",
+    "microcosm.build.uk_runtime.copy_id_table",
+    "microcosm.build.uk_runtime.council_tax_constants",
+    "microcosm.build.uk_runtime.dfe_spring_term",
+    "microcosm.build.uk_runtime.diagnostics",
+    "microcosm.build.uk_runtime.donor_uprating",
+    "microcosm.build.uk_runtime.energy_pricing",
+    "microcosm.build.uk_runtime.etb_services",
+    "microcosm.build.uk_runtime.frs_annual_income",
+    "microcosm.build.uk_runtime.frs_take_up",
+    "microcosm.build.uk_runtime.gambling_participation",
+    "microcosm.build.uk_runtime.geography_ladder",
+    "microcosm.build.uk_runtime.high_value_home_gates",
+    "microcosm.build.uk_runtime.high_value_homes",
+    "microcosm.build.uk_runtime.hmrc_capital_gains",
+    "microcosm.build.uk_runtime.lcfs_consumption",
+    "microcosm.build.uk_runtime.ledger_fact_vendoring",
+    "microcosm.build.uk_runtime.ledger_targets",
+    "microcosm.build.uk_runtime.local_authority_input",
+    "microcosm.build.uk_runtime.local_targets",
+    "microcosm.build.uk_runtime.national_frame",
+    "microcosm.build.uk_runtime.nts_bus_travel",
+    "microcosm.build.uk_runtime.parity_reference",
+    "microcosm.build.uk_runtime.receipt_counts",
+    "microcosm.build.uk_runtime.release_identity",
+    "microcosm.build.uk_runtime.release_input_coverage",
+    "microcosm.build.uk_runtime.rowwise_geography",
+    "microcosm.build.uk_runtime.source_runtime",
+    "microcosm.build.uk_runtime.stage_health",
+    "microcosm.build.uk_runtime.take_up_contract",
+    "microcosm.build.uk_runtime.terminal_gates",
+    "microcosm.build.uk_runtime.uc_capital_coherence",
+    "microcosm.build.uk_runtime.weighted_integrity",
+    "microcosm.calibrate.geography_constants",
+    "microcosm.calibrate.hierarchy",
+    "microcosm.calibrate.registry",
+    "microcosm.calibrate.solve",
+    "microcosm.calibrate.target",
+    "microcosm.frame.adapters.policyengine_uk",
+    "microcosm.frame.materialize",
+)
+
+
+def uk_gate_registry_modules() -> tuple[ModuleType, ...]:
+    """The modules :data:`UK_GATE_REGISTRY_MODULES` names, imported, for a
+    kernel's implementation hash."""
+
+    return tuple(importlib.import_module(name) for name in UK_GATE_REGISTRY_MODULES)

@@ -14,16 +14,17 @@ def test_explicit_country_filter_runs_same_full_graph_without_local_constraints(
     assert manifest.population(full.population).n("household") == 4
     assert len(problem.bindings["target_selection"]["excluded"]) > 0
     assert "uk.full.dense" in manifest.nodes
-    assert "uk.full.locations" not in manifest.nodes
-    assert {
+    # The dense line draws no area of its own: its pool is the bound spine's
+    # version whole, areas included (microcosm#931).
+    assert not {
+        "uk.full.sample",
+        "uk.full.expand",
         "uk.full.identity",
+        "uk.full.locations",
         "uk.full.geography.assign",
         "uk.full.geography_gate",
-    } <= set(manifest.nodes)
-    assert manifest.nodes["uk.full.geography_gate"].receipt["outcome"] == "pass"
-    assert (
-        manifest.nodes["uk.full.pool"].receipt["atomic_validation"]["outcome"] == "pass"
-    )
+    } & set(manifest.nodes)
+    assert "atomic_validation" not in manifest.nodes["uk.full.pool"].receipt
     surface = json.loads(
         ContentStore(tmp_path / "store").load_bytes(
             manifest.nodes["uk.full.target_compilation"].opaque_artifacts["surface"]
@@ -46,23 +47,19 @@ def test_default_all_has_direct_matrix_and_solver_parity_and_replays(
         prepare_uk_full_solve,
         solve_uk_dense_reference,
     )
-    from microcosm.build.uk_runtime.rowwise_dataset import (
-        clone_uk_dataset_with_ladder_geography,
-    )
-    from test_support.microcosm_build.uk_full_population_graph import source_frame
 
     ladder, path = toy_ladder
-    # The pre-graph numerical helpers below draw geography with the legacy
-    # sequential ladder; the graph is built the same way for this parity proof.
+    # The graph's pool is the bound spine's version as it stands
+    # (microcosm#931), here the stand-in spine at ten clones; the pre-graph
+    # numerical helpers below run on that same frame for this parity proof.
     default, default_run, default_problem = build(
-        tmp_path / "default", path, None, n_clones=10, geography_assignment="legacy"
+        tmp_path / "default", path, None, n_clones=10
     )
     explicit, explicit_run, explicit_problem = build(
         tmp_path / "explicit",
         path,
         ("country", "region", "constituency", "la"),
         n_clones=10,
-        geography_assignment="legacy",
     )
     assert {row["geography_level"] for row in default_problem.target_metadata} == {
         "country",
@@ -105,18 +102,23 @@ def test_default_all_has_direct_matrix_and_solver_parity_and_replays(
     assert explicit_problem.bindings["target_selection"]["selector"]["explicit"] is True
 
     # Independently execute the maintained pre-graph numerical helpers on the
-    # same original spine, legacy location draw, target rows and solver options.
-    assignment = clone_uk_dataset_with_ladder_geography(
-        source_frame(),
-        ladder,
-        n_clones=10,
-        seed=7,
-        source_year=2023,
-        expected_constituency_vintage="2024_pcon",
-    )
-    prepared_frame = target_inputs["prepared"](assignment.frame)
+    # same spine, its clones and areas included, the same target rows and the
+    # same solver options.
+    spine = spine_frame(10)
+    pool = default_run.population("uk.full.pool").table("household")
+    for column in (
+        "household_id",
+        "region",
+        "constituency_code",
+        "local_authority_code",
+    ):
+        assert (
+            pool[column].astype(str).tolist()
+            == spine.table("household")[column].astype(str).tolist()
+        ), column
+    prepared_frame = target_inputs["prepared"](spine)
     _, national_rows, metrics, _ = target_inputs["measures"](
-        assignment.frame, target_inputs["national"], local_grains=("constituency", "la")
+        spine, target_inputs["national"], local_grains=("constituency", "la")
     )
     surface, cross = target_inputs["surface"]()
     _, local, _, families, _ = build_uk_full_local_problem(
@@ -153,7 +155,6 @@ def test_default_all_has_direct_matrix_and_solver_parity_and_replays(
         n_clones=10,
         resume="require",
         forbid_execution=True,
-        geography_assignment="legacy",
     )
     assert all(receipt.hit for receipt in replay.nodes.values())
     np.testing.assert_array_equal(

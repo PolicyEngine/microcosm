@@ -867,6 +867,16 @@ def build_manifest(
         },
         "effective_mass_coverage": EFFECTIVE_MASS_COVERAGE,
         "family_coverage": {
+            # The geographic expansion gives every household K clones that
+            # split its design weight equally (microcosm#931). Its one mass
+            # record keeps the household total to the split's rounding at any
+            # K, one clone included. The record's reason names no K, and the
+            # stage's transform refuses a declared reason other than it, so
+            # the terminal gate demands that receipt like any other stage's.
+            "geographic_expand": _source_stage_family_coverage_contract(
+                stage_name="geographic_expand",
+                candidate_source=candidate_source,
+            ),
             "cgt_incidence_clone": _source_stage_family_coverage_contract(
                 stage_name="cgt_incidence_clone",
                 candidate_source=candidate_source,
@@ -920,6 +930,26 @@ def build_manifest(
             "hmrc_spi_income": _hmrc_family_coverage_contract(
                 candidate_source=candidate_source
             ),
+            # Great Britain private renters' rents are read off their BRMA's
+            # list in the spine (microcosm#931); the stage rewrites rent only
+            # and records its own conservation receipt.
+            "private_rent": _source_stage_family_coverage_contract(
+                stage_name="private_rent",
+                candidate_source=candidate_source,
+            ),
+            # Great Britain council tax is priced at each household's drawn
+            # local authority just before the WAS chain (microcosm#931); the
+            # stage rewrites the bill, the rebate and the reported reduction
+            # in place, keeps the paid bill from before, and records its own
+            # conservation receipt.
+            "council_tax_localise": _source_stage_family_coverage_contract(
+                stage_name="council_tax_localise",
+                candidate_source=candidate_source,
+            ),
+            # The WAS chain reads England and Wales home values off each
+            # owner's constituency inside the stage (microcosm#931), so the
+            # family carries the draw it keeps beside them; the retired
+            # regional_home_values family went with that stage.
             "was_wealth": _source_stage_family_coverage_contract(
                 stage_name="was_wealth",
                 candidate_source=candidate_source,
@@ -952,10 +982,6 @@ def build_manifest(
             ),
             "property_components": _source_stage_family_coverage_contract(
                 stage_name="property_components",
-                candidate_source=candidate_source,
-            ),
-            "regional_home_values": _source_stage_family_coverage_contract(
-                stage_name="regional_home_values",
                 candidate_source=candidate_source,
             ),
             "property_purchases": _source_stage_family_coverage_contract(

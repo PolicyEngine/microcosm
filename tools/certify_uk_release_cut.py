@@ -8,8 +8,12 @@ calibration seam's battery report, and the fresh release-cut report. The
 parts must union to the full declared gate-entry set with no gap and no
 overlap beyond the declared shared ids, each signed by its producer, over
 one closed identity join (spine report -> sidecar -> build record ->
-diagnostics -> candidate bytes). A candidate's shippability verdict comes
-only from the certification this driver writes.
+diagnostics -> candidate bytes). The spine's build sidecar must be the one
+the build record's digest names, and its geography binding a release's: one
+geographic clone, the areas drawn on the conditioned supports sources.yaml
+registers, checked before any gate runs; the candidate must carry no
+geographic clone index (microcosm#931). A candidate's shippability verdict
+comes only from the certification this driver writes.
 
 The battery always runs at release-candidate strictness: evidence_absent
 gaps block. The rule-1 score receipt is cross-pinned into the certification
@@ -56,9 +60,14 @@ from microcosm.build.uk_runtime.measure_simulation import (
     apply_uk_calibration_measure_exclusions,
     load_uk_calibration_measure_exclusions,
 )
-from microcosm.build.uk_runtime.national_frame import load_uk_national_frame
+from microcosm.build.uk_runtime.national_frame import (
+    UK_NATIONAL_EXPORT_DROPPED_COLUMNS,
+    load_uk_national_frame,
+)
 from microcosm.build.uk_runtime.parity_reference import load_efrs_parity_reference
 from microcosm.build.uk_runtime.release_certification import (
+    UKReleaseCertificationError,
+    _verify_spine_geography,
     compose_uk_release_certification,
     rehydrate_uk_fit_weight_records,
     run_uk_release_cut_battery,
@@ -195,6 +204,30 @@ def _nested(payload: object, *keys: str) -> object:
     return current
 
 
+def _refuse_clone_indexed_candidate(frame) -> None:
+    """Refuse a national candidate that carries a geographic clone index.
+
+    The national line's release boundary drops each entity's clone index,
+    constant on the one-clone spine the line builds on (microcosm#931), and
+    the release cut's degenerate-surface gate, which skips what the national
+    line drops at export, would let a kept one through. So the certifier
+    refuses such a candidate itself; the refusal names the columns, never a
+    value.
+    """
+
+    carried = [
+        column
+        for entity, columns in UK_NATIONAL_EXPORT_DROPPED_COLUMNS.items()
+        for column in columns
+        if column in frame.table(entity).columns
+    ]
+    if carried:
+        raise SystemExit(
+            "error: a national release carries no geographic clone index "
+            f"(microcosm#931); the candidate carries {', '.join(carried)}."
+        )
+
+
 def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
     measured = hashlib.sha256(args.candidate_h5.read_bytes()).hexdigest()
     if measured != args.candidate_sha256:
@@ -211,7 +244,8 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
     sidecar_path = args.spine_h5.with_suffix(".build.json")
     if not sidecar_path.is_file():
         raise SystemExit(f"error: spine build sidecar absent: {sidecar_path}")
-    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    sidecar_bytes = sidecar_path.read_bytes()
+    sidecar = json.loads(sidecar_bytes.decode("utf-8"))
     spine_report_path = args.spine_h5.with_suffix(".spine_gates.json")
 
     diagnostics_bytes = args.diagnostics_json.read_bytes()
@@ -254,6 +288,27 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
             f"{args.spine_sha256}; the family build-state evidence must come "
             "from the spine this candidate was calibrated from."
         )
+    # The spine's build sidecar is evidence too: its stage names and
+    # fit-weight records feed the release-cut battery, and the certification
+    # holds its geography binding to a release's (microcosm#931). So it must
+    # be the sidecar the calibration bound, whose digest the build record
+    # carries; one written beside the spine since would lend the candidate
+    # another build's binding.
+    recorded_sidecar = _nested(build_record, "spine_provenance", "sidecar", "sha256")
+    if recorded_sidecar != hashlib.sha256(sidecar_bytes).hexdigest():
+        raise SystemExit(
+            "error: the spine build sidecar beside --spine-h5 is not the one the "
+            "calibration recorded (build_record.spine_provenance.sidecar.sha256); "
+            "its stage names, fit-weight records and geography binding must be "
+            "the ones this candidate was calibrated on."
+        )
+    # The geography binding, before any gate runs: the composer holds the
+    # sidecar to it again, but a spine it refuses should not cost the
+    # release-cut battery and its signed report first (microcosm#931).
+    try:
+        _verify_spine_geography(sidecar)
+    except UKReleaseCertificationError as refused:
+        raise SystemExit(f"error: {refused}") from refused
     append_phase(state, "inputs_bound")
 
     artifact = load_ledger_consumer_artifact(
@@ -322,6 +377,7 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
     append_phase(state, "registries_compiled")
 
     frame, _provenance = load_uk_national_frame(args.candidate_h5)
+    _refuse_clone_indexed_candidate(frame)
     # A release carries its weights at the dataset's year (microcosm#796 A19).
     # The gates stand on the solved weights, which policyengine-uk's own
     # projection to the calibration year gives back.

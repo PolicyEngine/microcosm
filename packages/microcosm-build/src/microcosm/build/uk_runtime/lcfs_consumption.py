@@ -67,6 +67,7 @@ from microcosm.build.uk_runtime.gambling_participation import (
     gambling_participation_operation,
     top_up_gambling_participation,
 )
+from microcosm.build.uk_runtime.geographic_clones import geographic_clone_count
 from microcosm.build.uk_runtime.household_income import (
     UK_HBAI_GROSS_INCOME_DEDUCTIONS,
     UK_HBAI_NET_INCOME_PREDICTOR,
@@ -1104,7 +1105,12 @@ class UKLCFSConsumptionStageTransform:
             gate_calibration=_qrf_gate_calibration(self.stage),
         )
         clip_result = support_clip_to_donor(
-            imputation.draws, donor, exempt=support_clip_exempt(self.stage)
+            imputation.draws,
+            donor,
+            exempt=support_clip_exempt(self.stage),
+            clone_count=geographic_clone_count(
+                frame.table("household"), stage=UK_LCFS_CONSUMPTION_STAGE_NAME
+            ),
         )
         household_draws, shares_outside = clip_excise_shares(
             clip_result.clipped, shares
@@ -5496,6 +5502,7 @@ def support_clip_to_donor(
     donor: pd.DataFrame,
     *,
     exempt: set[str] | None = None,
+    clone_count: int = 1,
 ) -> UKSupportClipResult:
     return support_clip_to_donor_with_receipt(
         draws,
@@ -5503,6 +5510,7 @@ def support_clip_to_donor(
         columns=UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
         stage=UK_LCFS_CONSUMPTION_STAGE_NAME,
         exempt=exempt,
+        clone_count=clone_count,
     )
 
 

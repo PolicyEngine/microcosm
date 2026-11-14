@@ -55,6 +55,7 @@ __all__ = [
     "UK_EXPORTED_WEIGHT_COLUMNS",
     "UK_HOUSEHOLD_WEIGHT_KIND_ATTR",
     "UK_MASS_LOG_ATTR",
+    "UK_NATIONAL_EXPORT_DROPPED_COLUMNS",
     "UK_NATIONAL_H5_TABLES",
     "UK_NATIONAL_SCHEMA",
     "UK_TIME_PERIOD_METADATA_KEY",
@@ -74,6 +75,7 @@ __all__ = [
     "uk_household_mass_conservation_receipt",
     "uk_time_period",
     "validate_uk_national_frame",
+    "uk_release_export_dropped_columns",
     "uk_release_export_frame",
     "write_uk_national_frame",
 ]
@@ -748,8 +750,10 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
     ),
     "household": (
         "property_wealth",
-        # The value the spine's regional home values replaced (microcosm#1112):
-        # the dense node ranks on it, and it is no engine input.
+        # The WAS chain's own draw of the main residence (microcosm#1112,
+        # microcosm#931): was_wealth ranks England and Wales owners on it to
+        # localise their homes and keeps it beside the localised value, and
+        # regional_property_uprating divides by it. It is no engine input.
         "main_residence_value_rank_basis",
         # Since policyengine-uk 2.164.0 these add the person cash_isa_balance
         # and stocks_and_shares_isa_balance, which the isa_subscriptions stage
@@ -759,8 +763,79 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # and the split reads them); the engine sums the person balances.
         "cash_isa",
         "stocks_and_shares_isa",
+        # The root's two area-conditioning carriers
+        # (frs_spine.FRS_AREA_CONDITIONING_COLUMNS, microcosm#931): each
+        # household's IMD decile within its nation and whether its council
+        # tax band is a band the FRS gives it that its region uses. The
+        # clone-first spine's area assignment reads them; they are no engine
+        # inputs.
+        "imd_decile",
+        "council_tax_band_observed",
+        # The council-tax localisation's two carriers (microcosm#931): each
+        # bill's provenance from frs_council_tax
+        # (frs_council_tax.FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN), which
+        # council_tax_localise reads to choose a household's path, and the
+        # paid bill council_tax_localise keeps from before it localises
+        # (spine_council_tax.COUNCIL_TAX_FRS_BILL_COLUMN), which was_wealth's
+        # council-tax predictor reads. They are no engine inputs.
+        "council_tax_bill_provenance",
+        "council_tax_frs_bill",
     ),
 }
+
+#: What the national line's release boundary drops beside
+#: :data:`UK_RELEASE_EXPORT_DROPPED_COLUMNS` (microcosm#931): each entity's
+#: geographic clone index, spelled as
+#: ``geographic_clones.ladder_clone_index_column`` spells it (here, so that
+#: this module imports nothing more; a test holds the spellings equal). The
+#: national line builds on a spine of one geographic clone, so every index is
+#: zero there: a constant column the degenerate-surface gate would fail, which
+#: tells a consumer nothing. The dense line's export keeps them, as the
+#: lineage of its clones.
+UK_NATIONAL_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "person": ("person_clone_index",),
+        "benunit": ("benunit_clone_index",),
+        "household": ("household_clone_index",),
+    }
+)
+
+#: The release lines an export can be cut for, as a gate context declares its
+#: ``release_line`` (``weighted_integrity.UK_RELEASE_LINES``, spelled here so
+#: that this module imports nothing more; a test holds the two equal).
+_UK_EXPORT_LINES = frozenset({"national", "local"})
+
+
+def uk_release_export_dropped_columns(
+    line: str | None = None,
+) -> Mapping[str, tuple[str, ...]]:
+    """What the release boundary drops on ``line``, by entity (microcosm#931).
+
+    On every line the reviewed export exclusions
+    (:data:`UK_RELEASE_EXPORT_DROPPED_COLUMNS`); on the national line each
+    entity's geographic clone index as well
+    (:data:`UK_NATIONAL_EXPORT_DROPPED_COLUMNS`), after them. ``line`` is a
+    gate context's ``release_line``: ``"national"``, ``"local"`` (the dense
+    line's K-clone pool) or ``None``, a caller that declares no line, which
+    the boundary treats as the local line. Any other is refused.
+    """
+
+    if line is not None and line not in _UK_EXPORT_LINES:
+        raise ValueError(
+            f"A release export's line must be one of {sorted(_UK_EXPORT_LINES)} "
+            f"or None, got {line!r}."
+        )
+    if line != "national":
+        return UK_RELEASE_EXPORT_DROPPED_COLUMNS
+    return MappingProxyType(
+        {
+            entity: (
+                *UK_RELEASE_EXPORT_DROPPED_COLUMNS.get(entity, ()),
+                *UK_NATIONAL_EXPORT_DROPPED_COLUMNS.get(entity, ()),
+            )
+            for entity in ("person", "benunit", "household")
+        }
+    )
 
 
 #: The largest identifier policyengine-uk stores. Its five identifier
@@ -992,36 +1067,40 @@ def uk_build_identifier_frame(frame: Frame) -> Frame:
     )
 
 
-def uk_release_export_frame(frame: Frame) -> Frame:
+def uk_release_export_frame(frame: Frame, *, line: str | None = None) -> Frame:
     """The frame the release boundary writes: reviewed export exclusions dropped.
 
-    The three area codes leave under the consumers' names (microcosm#1114,
-    ``geography_ladder.UK_EXPORT_AREA_CODE_COLUMNS``); a national frame
-    carries none. The identifiers leave inside the 32-bit range the engine
-    stores, with the build identifiers beside them (microcosm#1194,
-    :func:`uk_release_identifier_tables`). A frame that already left passes
-    unchanged.
+    ``line`` is a gate context's ``release_line``; the boundary drops what
+    :func:`uk_release_export_dropped_columns` lists for it, on the national
+    line each entity's geographic clone index too (microcosm#931). The three
+    area codes leave under the consumers' names on every line (microcosm#1114,
+    ``geography_ladder.UK_EXPORT_AREA_CODE_COLUMNS``). The identifiers leave
+    inside the 32-bit range the engine stores, with the build identifiers
+    beside them (microcosm#1194, :func:`uk_release_identifier_tables`). A
+    frame that already left on ``line`` passes unchanged: a household table
+    with a consumer name and no ladder name is not renamed again, since the
+    release cut's gates re-export the candidate they load (microcosm#931),
+    and one with both is refused.
     """
 
-    from .geography_ladder import export_area_code_columns
+    from .geography_ladder import UK_EXPORT_AREA_CODE_COLUMNS, export_area_code_columns
 
+    drops = uk_release_export_dropped_columns(line)
     tables: dict[str, pd.DataFrame] = {}
     changed = False
     for entity in ("person", "benunit", "household"):
         table = frame.table(entity)
         dropped = [
-            column
-            for column in UK_RELEASE_EXPORT_DROPPED_COLUMNS.get(entity, ())
-            if column in table.columns
+            column for column in drops.get(entity, ()) if column in table.columns
         ]
         if dropped:
             table = table.drop(columns=dropped)
             changed = True
-        if entity == "household":
-            renamed = export_area_code_columns(table)
-            if renamed is not table:
-                table = renamed
-                changed = True
+        if entity == "household" and any(
+            ladder in table.columns for ladder in UK_EXPORT_AREA_CODE_COLUMNS
+        ):
+            table = export_area_code_columns(table)
+            changed = True
         tables[entity] = table
     if not _uk_build_identifier_state(tables):
         tables = uk_release_identifier_tables(tables)

@@ -3,7 +3,15 @@
 # ruff: noqa: F403, F405
 from dataclasses import replace as _replace
 
+from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime.national_frame import uk_national_frame as _uk_frame
+from microcosm.build.uk_runtime.spi_rank_transport import (
+    cell_fold_ids,
+    cross_fit_transport,
+    identity_uniforms,
+)
+from microcosm.build.uk_runtime.spi_support import support_source_id_column
+from test_support.microcosm_build.uk_clone_first_frames import GEOGRAPHIC_RADIX
 from test_support.microcosm_build.uk_geographic_clones import with_geographic_clones
 from test_support.microcosm_build.uk_spi_income import *
 
@@ -1446,6 +1454,50 @@ def _geographic_clones_of(support):
     )
 
 
+#: The id columns a geographic clone mints, with each copy's source id: the
+#: support channel runs after the geographic expansion on the clone-first
+#: spine, so each clone's copies copy that clone's own FRS rows.
+_CLONE_MINTED_COLUMNS = {
+    "person": ("person_id", "person_household_id", "person_benunit_id"),
+    "benunit": ("benunit_id",),
+    "household": ("household_id",),
+}
+
+
+def _clone_first_support(support, n_clones: int):
+    """The support as the clone-first spine makes it, at ``n_clones`` clones.
+
+    Clone ``k`` repeats every row, SPI copies included, with its ids and its
+    copy's source id minted at ``k`` in the copy-id table's
+    ``geographic_support`` field, its household's ``household_clone_index``
+    ``k``, the same ``source_household_id`` and its household's weight over
+    ``n_clones``. Each table is in id order, as the spine stacks the support
+    channel's copies after every clone's FRS rows.
+    """
+
+    tables = {}
+    for entity, columns in _CLONE_MINTED_COLUMNS.items():
+        table = getattr(support, entity)
+        clones = []
+        for k in range(n_clones):
+            clone = table.copy()
+            for column in (*columns, support_source_id_column(entity)):
+                if k:
+                    clone[column] = copy_id_table.mint(
+                        clone[column], "geographic_support", k
+                    )
+            if entity == "household":
+                clone["household_clone_index"] = np.full(len(clone), k, np.int64)
+                clone["household_weight"] = clone["household_weight"] / n_clones
+            clones.append(clone)
+        tables[entity] = (
+            pd.concat(clones, ignore_index=True)
+            .sort_values(columns[0], kind="stable")
+            .reset_index(drop=True)
+        )
+    return _replace(support, **tables)
+
+
 def test_a_household_table_carrying_the_artifact_clone_index_is_refused(
     monkeypatch, tmp_path
 ) -> None:
@@ -1523,3 +1575,141 @@ def test_geographic_clones_train_the_frs_forests_as_their_survey_records(
         assert (cloned_kind, cloned_gate) == (kind, gate)
         np.testing.assert_array_equal(cloned_groups, groups)
         np.testing.assert_array_equal(cloned_weights, weights)
+
+
+def _impute_recording_transport(monkeypatch, frame, donor_path, *, translate=True):
+    """Run the stage on ``frame``, recording what it hands the transport.
+
+    Returns the stage's result, the transport call's keyword arguments and
+    the transport's result. ``translate=False`` drops the twin identities
+    the stage passes, so the twin check reads each copy's own identity, as
+    it did before the stage translated it through its fold.
+    """
+
+    calls = []
+
+    def recording(*args, **kwargs):
+        kwargs = {**kwargs, "allow_in_sample": True}
+        if not translate:
+            kwargs.pop("twin_identities")
+        transport = cross_fit_transport(*args, **kwargs)
+        calls.append((kwargs, transport))
+        return transport
+
+    monkeypatch.setattr(spi_income, "cross_fit_transport", recording)
+    result = impute_uk_spi_income_support(
+        frame,
+        donor_path,
+        seed=9,
+        n_estimators=3,
+        donor_sample_size=None,
+        state_pension_age=66,
+        allow_in_sample_reference=True,
+        stage1_gate_calibration="cross_fitted",
+    )
+    ((kwargs, transport),) = calls
+    return result, kwargs, transport
+
+
+def _same_transport(first, second) -> bool:
+    return first.receipt == second.receipt and all(
+        first.quantiles[target].tobytes() == second.quantiles[target].tobytes()
+        and first.sign_uniforms[target].tobytes()
+        == second.sign_uniforms[target].tobytes()
+        for target in SPI_INCOME_QRF_OUTPUT_COLUMNS
+    )
+
+
+def test_the_forests_fold_receipt_is_absent_at_one_clone_and_rounded_at_three(
+    monkeypatch, tmp_path
+) -> None:
+    """The stage records how its forests' geographic fold met their survey
+    records only on more than one clone, counted in true source households
+    and rounded (microcosm#931)."""
+
+    support = _dead_support()
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+    alone, _, _ = _impute_recording_transport(monkeypatch, support, donor_path)
+    assert alone.geographic_fold is None
+    one, _, _ = _impute_recording_transport(
+        monkeypatch, _clone_first_support(support, 1), donor_path
+    )
+    assert one.geographic_fold is None
+    three, _, _ = _impute_recording_transport(
+        monkeypatch, _clone_first_support(support, 3), donor_path
+    )
+    # Four FRS households train the forests; no clone differs from another.
+    assert three.geographic_fold == {
+        "clone_count": 3,
+        "records": "3-9",
+        "varied_records": 0,
+        "varied_share": 0,
+    }
+
+
+def test_the_twin_check_reaches_every_clones_copies(monkeypatch, tmp_path) -> None:
+    """On the clone-first spine each clone's SPI copies copy that clone's own
+    FRS rows, and the forests train on clone 0's rows, which the other
+    clones fold into. The stage translates each copy's twin through the fold
+    for the twin check alone: clone 1's copies are checked against their
+    twin's fold too, and a fold-key cell moved on one of them is refused,
+    while every copy's uniforms stay keyed on its own twin, so clone 1 draws
+    apart from clone 0. On one clone the two keys are the same and the
+    transport is the one the untranslated check gives (microcosm#931)."""
+
+    support = _dead_support()
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+
+    alone, kwargs, transport = _impute_recording_transport(
+        monkeypatch, support, donor_path
+    )
+    assert kwargs["twin_identities"].tobytes() == kwargs["identities"].tobytes()
+    untranslated, _, before = _impute_recording_transport(
+        monkeypatch, support, donor_path, translate=False
+    )
+    assert _same_transport(transport, before)
+    pd.testing.assert_frame_equal(alone.person, untranslated.person, check_exact=True)
+
+    two = _clone_first_support(support, 2)
+    _, kwargs, transport = _impute_recording_transport(monkeypatch, two, donor_path)
+    identities, twins = kwargs["identities"], kwargs["twin_identities"]
+    clone_one = identities >= GEOGRAPHIC_RADIX
+    assert int(clone_one.sum()) == int((~clone_one).sum()) == 4
+    # Each copy keeps its own twin's id; the check reads clone 1's twins on
+    # the clone-0 rows they folded into, which the forests train on.
+    assert twins[~clone_one].tolist() == identities[~clone_one].tolist()
+    assert (
+        twins[clone_one].tolist() == (identities[clone_one] - GEOGRAPHIC_RADIX).tolist()
+    )
+    assert set(twins.tolist()) <= set(kwargs["training_identities"].tolist())
+    for target in SPI_INCOME_QRF_OUTPUT_COLUMNS:
+        placed = identity_uniforms(identities, target=target, part="quantile", seed=9)
+        np.testing.assert_array_equal(transport.quantiles[target], placed)
+        assert not np.isin(placed[clone_one], placed[~clone_one]).any()
+
+    # A gender flip that moves a clone-1 copy off its twin's fold.
+    predictors = kwargs["recipient_predictors"]
+    fold_call = {
+        "folds": kwargs["folds"],
+        "seed": kwargs["seed"],
+        "used": kwargs["used"],
+    }
+    flipped = predictors["gender"].map({"MALE": "FEMALE", "FEMALE": "MALE"})
+    folds, _ = cell_fold_ids(predictors, **fold_call)
+    moved, _ = cell_fold_ids(predictors.assign(gender=flipped), **fold_call)
+    candidates = np.flatnonzero(clone_one & (moved != folds))
+    assert candidates.size
+    label = predictors.index[candidates[0]]
+    person = two.person.copy()
+    person.loc[label, "gender"] = flipped.loc[label]
+    mutated = _replace(two, person=person)
+    # Before the translation the check could not see clone 1's twins.
+    _impute_recording_transport(monkeypatch, mutated, donor_path, translate=False)
+    with pytest.raises(ValueError, match="differs from its twin's"):
+        _impute_recording_transport(monkeypatch, mutated, donor_path)

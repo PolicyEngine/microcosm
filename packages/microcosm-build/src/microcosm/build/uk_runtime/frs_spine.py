@@ -13,13 +13,19 @@ import pandas as pd
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.trace import sha256_file
+from microcosm.build.uk_runtime import copy_id_table
+from microcosm.build.uk_runtime.annuity_trust_column import (
+    ANNUITY_AND_TRUST_INCOME_COLUMN,
+)
 from microcosm.build.uk_runtime.birth_month import (
     UK_BIRTH_MONTH_COLUMN,
     uk_months_since_last_birthday,
 )
 from microcosm.build.uk_runtime.council_tax_constants import (
     UK_COUNCIL_TAX_BANDS,
+    UK_COUNCIL_TAX_BANDS_BY_REGION,
     UK_COUNCIL_TAX_PLACEHOLDER_BAND,
+    UK_NATION_BY_REGION,
 )
 from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
@@ -33,6 +39,9 @@ from microcosm.build.uk_runtime.uc_relationships import frs_uc_claimant_mask
 from microcosm.frame import Frame, WeightKind
 
 __all__ = [
+    "FRS_AREA_CONDITIONING_COLUMNS",
+    "FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN",
+    "FRS_IMD_DECILE_COLUMN",
     "FRS_SPINE_TABLES",
     "OUTPUT_COLUMNS",
     "REGION_MAP",
@@ -138,6 +147,41 @@ COUNCIL_TAX_BAND_MAP = {
     code: band for code, band in enumerate(UK_COUNCIL_TAX_BANDS, start=1)
 }
 
+#: The two household carriers the clone-first spine's area assignment
+#: conditions on (microcosm#931): each household's IMD decile within its own
+#: nation, and whether its council_tax_band is a band the FRS gives it that
+#: its region uses. The root writes them typed (an int64 decile, 0 where none
+#: is observed, since the root refuses NaN; a bool flag); neither is an engine
+#: input, so they leave at the release boundary
+#: (``national_frame.UK_RELEASE_EXPORT_DROPPED_COLUMNS``), and they stay out
+#: of every receipt and of the spine sidecar's nonzero shares. The decile's
+#: name is spelled here, not imported from ``atomic_area_support``, whose
+#: conditioned supports carry the areas' deciles under the same name, so an
+#: edit to that module does not re-key the root; a test holds the spellings
+#: equal.
+FRS_IMD_DECILE_COLUMN = "imd_decile"
+FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN = "council_tax_band_observed"
+FRS_AREA_CONDITIONING_COLUMNS = (
+    FRS_IMD_DECILE_COLUMN,
+    FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
+)
+#: Each nation's FRS household IMD decile variable (HOUSEHOL IMDE, IMDW, IMDS
+#: and IMDN), by the nation names of ``council_tax_constants``: the
+#: deprivation tenth of the address within that nation's own index, 1 the
+#: most deprived. A household reads its own nation's variable only.
+FRS_IMD_DECILE_COLUMN_BY_NATION: Mapping[str, str] = MappingProxyType(
+    {
+        "ENGLAND": "imde",
+        "WALES": "imdw",
+        "SCOTLAND": "imds",
+        "NORTHERN_IRELAND": "imdn",
+    }
+)
+#: The decile codes; anything else, a blank included, is no observed decile.
+FRS_IMD_DECILES = tuple(range(1, 11))
+#: The decile a household with no observed decile carries.
+FRS_IMD_DECILE_UNOBSERVED = 0
+
 MARITAL_MAP = {
     1: "MARRIED",
     2: "SINGLE",
@@ -231,11 +275,11 @@ OWNER_MANAGER_COLUMNS = (
 #: (ITTOIA 2005 s. 717). SPI Table 3.7 counts both as other income (note 6),
 #: so the part they make of private_pension_income is stored apart, in
 #: ANNUITY_AND_TRUST_INCOME_COLUMN, a calibration-only descriptor that the
-#: Table 3.7 other-income measure adds (microcosm#1428 review, finding 1).
+#: Table 3.7 other-income measure adds (microcosm#1428 review, finding 1). The
+#: descriptor's name lives in annuity_trust_column, which holds nothing else,
+#: so the dense measures and the national problem, which read it, key on it
+#: without keying on this module (microcosm#931, ruled 9 Nov (late)).
 FRS_ANNUITY_AND_TRUST_PENSION_TYPES = (4, 5)
-#: The descriptor: each person's annual annuity and trust payments, already
-#: inside private_pension_income. No engine input reads it.
-ANNUITY_AND_TRUST_INCOME_COLUMN = "annuity_and_trust_income"
 #: Each person's company car from the FRS job tab, the four carriers the
 #: company_cars stage reads to set policyengine-uk's company car inputs
 #: (PolicyEngine/uk-autumn-budget-dashboard-2026#316); see
@@ -346,11 +390,13 @@ OUTPUT_COLUMNS = (
     "liable_for_share_of_household_rent",
     "household_id",
     "region",
+    FRS_IMD_DECILE_COLUMN,
     "tenure_type",
     "accommodation_type",
     "num_bedrooms",
     "council_tax_reported",
     "council_tax_band",
+    FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
     "council_tax_rebate",
     "council_tax_single_adult_raw",
     "water_and_sewerage_charges",
@@ -457,7 +503,30 @@ def build_uk_frs_spine_frame(
     normalized = {name: _normalize_ids(table) for name, table in tables.items()}
     frame = _assemble_frame(normalized, evidence=evidence)
     validate_uk_national_frame(frame)
+    _require_raw_ids_below_copy_fields(frame)
     return frame
+
+
+def _require_raw_ids_below_copy_fields(frame: Frame) -> None:
+    """Refuse raw ids that reach the first copy-id field (microcosm#931).
+
+    Every copy layer adds its ordinal times a declared radix to its copies'
+    ids, the lowest radix being the reserved ``vintage`` field's, so a raw
+    id (person_id is sernum x 1000 + p) must sit below it.
+    """
+
+    person = frame.table("person")
+    for entity, column in (
+        ("person", "person_id"),
+        ("person", "person_household_id"),
+        ("person", "person_benunit_id"),
+        ("benunit", "benunit_id"),
+        ("household", "household_id"),
+    ):
+        table = person if entity == "person" else frame.table(entity)
+        copy_id_table.require_below(
+            table[column], "vintage", what=f"raw FRS {column} values"
+        )
 
 
 def _artifact_by_table(stage: SourceStageSpec) -> dict[str, Mapping[str, Any]]:
@@ -1586,6 +1655,7 @@ def _add_household_columns(
     pe_household["region"] = _map_dictionary_codes(
         household, "gvtregno", REGION_MAP, blank="UNKNOWN"
     )
+    pe_household[FRS_IMD_DECILE_COLUMN] = frs_imd_decile(household)
     pe_household["tenure_type"] = _map_dictionary_codes(
         household, "ptentyp2", TENURE_MAP, blank="RENT_PRIVATELY"
     )
@@ -1597,6 +1667,9 @@ def _add_household_columns(
     pe_household["num_bedrooms"] = _number(household, "bedroom6")
     pe_household["council_tax_reported"] = _positive(household, "ctannual")
     pe_household["council_tax_band"] = frs_council_tax_band(household)
+    pe_household[FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN] = frs_council_tax_band_observed(
+        household
+    )
     pe_household["council_tax_rebate"] = (
         _positive(household, "ctrebamt") * WEEKS_IN_YEAR
     )
@@ -1694,6 +1767,70 @@ def frs_council_tax_band(household: pd.DataFrame) -> pd.Series:
     )
     region = _map_dictionary_codes(household, "gvtregno", REGION_MAP, blank="UNKNOWN")
     return band.mask(region == "NORTHERN_IRELAND", UK_COUNCIL_TAX_PLACEHOLDER_BAND)
+
+
+def frs_council_tax_band_observed(household: pd.DataFrame) -> pd.Series:
+    """Whether each household's ``council_tax_band`` is a band the FRS gives it
+    that its region uses.
+
+    True where ``ctband`` codes a band, as ``frs_council_tax_band`` maps the
+    codes 1-9, that the household's region uses
+    (``UK_COUNCIL_TAX_BANDS_BY_REGION``: A-H in England and Scotland, A-I in
+    Wales). False in Northern Ireland, which pays domestic rates, for any
+    other code, which takes the placeholder band, for a band the region does
+    not use (band I outside Wales), and for a household of no known region
+    (microcosm#931). The band itself is unchanged; the flag tells the
+    survey's band from the placeholder and from a band its region does not
+    hold.
+    """
+
+    # The band each code maps to, by the band's own mapping; an unmapped code
+    # takes the empty string, which no region uses.
+    bands = _map_codes(household, "ctband", COUNCIL_TAX_BAND_MAP, "")
+    region = _map_dictionary_codes(household, "gvtregno", REGION_MAP, blank="UNKNOWN")
+    region_bands = region.map(lambda name: UK_COUNCIL_TAX_BANDS_BY_REGION.get(name, ()))
+    in_region = np.fromiter(
+        (
+            band in allowed
+            for band, allowed in zip(bands.tolist(), region_bands.tolist(), strict=True)
+        ),
+        dtype=bool,
+        count=len(household),
+    )
+    observed = in_region & (region != "NORTHERN_IRELAND").to_numpy(dtype=bool)
+    return pd.Series(observed, index=household.index, dtype=bool)
+
+
+def frs_imd_decile(household: pd.DataFrame) -> pd.Series:
+    """Each household's IMD decile within its own nation: 1-10, else 0.
+
+    The FRS gives the decile of each address on its own nation's index, one
+    variable per nation (``FRS_IMD_DECILE_COLUMN_BY_NATION``); a household
+    reads its own nation's variable, its nation coming from its region. A
+    code outside 1-10, a blank, and a household of no known region carry 0,
+    no observed decile, since the root refuses NaN (microcosm#931). A tab
+    without any of the four variables refuses, naming them, rather than read
+    an absent variable as zeros and so give nobody a decile.
+    """
+
+    missing = [
+        column.upper()
+        for column in FRS_IMD_DECILE_COLUMN_BY_NATION.values()
+        if column not in household.columns
+    ]
+    if missing:
+        raise KeyError(
+            f"The FRS household tab has no {missing} column(s), so the IMD "
+            "decile cannot be set."
+        )
+    region = _map_dictionary_codes(household, "gvtregno", REGION_MAP, blank="UNKNOWN")
+    nation = region.map(UK_NATION_BY_REGION)
+    decile = np.full(len(household), FRS_IMD_DECILE_UNOBSERVED, dtype=np.int64)
+    for name, column in FRS_IMD_DECILE_COLUMN_BY_NATION.items():
+        codes = _raw_number(household, column)
+        rows = ((nation == name) & codes.isin(FRS_IMD_DECILES)).to_numpy(dtype=bool)
+        decile[rows] = codes.to_numpy(dtype=np.float64)[rows].astype(np.int64)
+    return pd.Series(decile, index=household.index, dtype="int64")
 
 
 def _map_codes(

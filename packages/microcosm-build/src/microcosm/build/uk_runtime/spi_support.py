@@ -9,6 +9,7 @@ row-wise local geography.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
@@ -16,10 +17,18 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.stochastic_assignment import (
+    binomial_share_tolerance,
+    integer_record_keys,
+    stable_identity_uniforms,
+)
+from microcosm.build.uk_runtime import copy_id_table
+from microcosm.build.uk_runtime.geographic_clones import (
+    UK_GEOGRAPHIC_SOURCE_COLUMNS,
+)
 from microcosm.build.uk_runtime.hmrc_income import (
     HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
 )
-from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
 from microcosm.build.uk_runtime.terminal_gates import (
     UKZeroWeightStratumDeclaration,
     uk_zero_weight_strata_gate,
@@ -33,7 +42,36 @@ from microcosm.frame import (
 BASE_FRS_SUPPORT_CHANNEL = "frs"
 SPI_SYNTHETIC_SUPPORT_CHANNEL = "spi"
 UK_SPI_SUPPORT_STAGE_NAME = "spi_support_channel"
+#: The copy-id field the SPI copies (ordinal 1) and the income band donors
+#: (ordinal 2) take (microcosm#931).
+SPI_SUPPORT_COPY_ID_FIELD = "spi_support_channel"
+#: The id rule the stage manifest restates.
+SPI_SUPPORT_ID_REMAPPING = (
+    "copy-id table field spi_support_channel; the SPI copy takes every entity "
+    "id + 1 x the field's radix (10**11)"
+)
+#: The SPI share's numerator: the channel copies each household with
+#: probability min(1, this x the rung's sample fraction / the distinct source
+#: households entering the stage), so it holds about this many copies at full
+#: scale (microcosm#931).
 DEFAULT_SPI_SUPPORT_HOUSEHOLDS = 10_000
+#: The salt the share's inclusion uniforms are keyed under, with the stage's
+#: declared seed, on each household's own id (microcosm#931).
+SPI_SUPPORT_INCLUSION_SALT = "spi_support_channel:inclusion"
+#: The rule the share's zero-weight gate is bounded by: the share plus the
+#: repo's binomial band at the declared sigma
+#: (:func:`~microcosm.build.stochastic_assignment.binomial_share_tolerance`).
+SPI_SHARE_GATE_RULE = "binomial_share_band"
+#: The geographic clone index the clone-first spine gives every household
+#: (``geographic_clones.ladder_clone_index_column("household")``, the
+#: ``geographic_support`` branch of the UK copy lineage; microcosm#931). Where
+#: the frame carries it, the prior allocation's strata split by it, so each
+#: clone keeps its own mass. It is spelled here, not imported, so a change to
+#: it re-keys the stage; a test holds the spellings equal.
+SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN = "household_clone_index"
+#: The allocation stratum derived from it, for the allocation only and never
+#: written to the frame.
+SPI_GEOGRAPHIC_CLONE_STRATUM_COLUMN = "household_geographic_clone_stratum"
 DEFAULT_SPI_PRIOR_MASS_SHARE = 0.5
 HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN = "household_is_spi_synthetic"
 SPI_REPLACEMENT_STRATA_COLUMNS = (
@@ -243,6 +281,17 @@ class UKSPISupportResult:
     pension_age_spi_prior_mass_share: float | None = None
     state_pension_age: int | None = None
     pension_age_allocation: Mapping[str, float] | None = None
+    #: The share's draw (microcosm#931): the expected copy count it was given,
+    #: the distinct source households it counted and the probability it drew
+    #: at. Copying every household draws at one and counts nothing; named
+    #: copies (the tests-only replace path) record none of the three.
+    expected_spi_households: float | None = None
+    spi_source_households: int | None = None
+    spi_inclusion_probability: float | None = None
+    #: The frame's geographic clone count ``K``, which the prior allocation
+    #: reads from ``household_clone_index``: one more than the largest index,
+    #: one on a household table without the column (microcosm#931).
+    clone_count: int = 1
 
     @property
     def n_spi_households(self) -> int:
@@ -254,10 +303,9 @@ def create_uk_spi_support_tables(
     person: pd.DataFrame,
     benunit: pd.DataFrame,
     household: pd.DataFrame,
-    spi_household_count: int | None = DEFAULT_SPI_SUPPORT_HOUSEHOLDS,
+    expected_spi_households: float | None = DEFAULT_SPI_SUPPORT_HOUSEHOLDS,
     seed: int = 42,
     source_year: int | None = None,
-    id_multiplier: int | None = None,
     selected_household_ids: Sequence[Any] | None = None,
 ) -> UKSPISupportResult:
     """Create a zero-weight SPI support copy from UK single-year tables.
@@ -268,6 +316,21 @@ def create_uk_spi_support_tables(
     columns that deliberately point back to the original FRS household. Keeping
     that lineage stable prevents long local-geography support summaries from
     counting the SPI copy as additional independent FRS support.
+
+    The copies are a keyed Bernoulli share (microcosm#931): with ``pi = min(1,
+    expected_spi_households / N)``, where ``N`` counts the distinct
+    ``source_household_id`` values of the incoming households (their true
+    sources, so geographic clones count once), each household is copied when
+    ``pi`` is one or its uniform, keyed on its own ``household_id`` under
+    ``seed`` and :data:`SPI_SUPPORT_INCLUSION_SALT`, falls below ``pi``
+    (:func:`spi_share_inclusion`). The copy count is binomial around
+    ``expected_spi_households`` per clone, and the copies keep frame order.
+    ``None`` copies every household; ``selected_household_ids`` names them
+    instead (the tests-only replace path).
+
+    Each copy's five id columns take ``id + radix``, the declared radix of the
+    copy-id table's ``spi_support_channel`` field (:data:`SPI_SUPPORT_ID_REMAPPING`),
+    so every incoming id must sit below it (microcosm#931).
     """
 
     person_frame = person.copy()
@@ -279,27 +342,34 @@ def create_uk_spi_support_tables(
     _validate_uk_support_inputs(person_frame, benunit_frame, household_frame)
     _reject_metadata_collisions(person_frame, benunit_frame, household_frame)
 
-    if id_multiplier is None:
-        id_multiplier = id_multiplier_for_values(
-            household_frame["household_id"],
-            person_frame["person_id"],
-            person_frame["person_household_id"],
-            person_frame["person_benunit_id"],
-            benunit_frame["benunit_id"],
+    for column, values in (
+        ("household_id", household_frame["household_id"]),
+        ("person_id", person_frame["person_id"]),
+        ("person_household_id", person_frame["person_household_id"]),
+        ("person_benunit_id", person_frame["person_benunit_id"]),
+        ("benunit_id", benunit_frame["benunit_id"]),
+    ):
+        copy_id_table.require_below(
+            values, SPI_SUPPORT_COPY_ID_FIELD, what=f"incoming {column} values"
         )
-    elif id_multiplier <= 0:
-        raise ValueError("id_multiplier must be positive.")
 
-    if selected_household_ids is None:
-        selected_household_ids = _sample_spi_household_ids(
-            household_frame,
-            spi_household_count=spi_household_count,
-            seed=seed,
-        )
-    else:
+    expected = source_households = inclusion_probability = None
+    if selected_household_ids is not None:
         selected_household_ids = _validate_selected_household_ids(
             household_frame,
             selected_household_ids,
+        )
+    elif expected_spi_households is None:
+        selected_household_ids = tuple(household_frame["household_id"].tolist())
+        inclusion_probability = 1.0
+    else:
+        expected = _expected_spi_households(expected_spi_households)
+        source_households = _distinct_source_households(household_frame)
+        inclusion_probability = min(1.0, expected / source_households)
+        selected_household_ids = _sample_spi_household_ids(
+            household_frame,
+            inclusion_probability=inclusion_probability,
+            seed=seed,
         )
     selected_household_set = set(selected_household_ids)
     selected_person = person_frame[
@@ -316,7 +386,6 @@ def create_uk_spi_support_tables(
         id_columns=_HOUSEHOLD_ID_COLUMNS,
         channel=BASE_FRS_SUPPORT_CHANNEL,
         clone_index=0,
-        id_multiplier=id_multiplier,
     )
     base_household[HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN] = False
 
@@ -326,7 +395,6 @@ def create_uk_spi_support_tables(
         id_columns=_HOUSEHOLD_ID_COLUMNS,
         channel=SPI_SYNTHETIC_SUPPORT_CHANNEL,
         clone_index=1,
-        id_multiplier=id_multiplier,
     )
     spi_household["household_weight"] = 0.0
     spi_household[HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN] = True
@@ -337,7 +405,6 @@ def create_uk_spi_support_tables(
         id_columns=_PERSON_ID_COLUMNS,
         channel=BASE_FRS_SUPPORT_CHANNEL,
         clone_index=0,
-        id_multiplier=id_multiplier,
     )
     spi_person = _clone_support_frame(
         selected_person,
@@ -345,7 +412,6 @@ def create_uk_spi_support_tables(
         id_columns=_PERSON_ID_COLUMNS,
         channel=SPI_SYNTHETIC_SUPPORT_CHANNEL,
         clone_index=1,
-        id_multiplier=id_multiplier,
     )
 
     base_benunit = _clone_support_frame(
@@ -354,7 +420,6 @@ def create_uk_spi_support_tables(
         id_columns=_BENUNIT_ID_COLUMNS,
         channel=BASE_FRS_SUPPORT_CHANNEL,
         clone_index=0,
-        id_multiplier=id_multiplier,
     )
     spi_benunit = _clone_support_frame(
         selected_benunit,
@@ -362,15 +427,17 @@ def create_uk_spi_support_tables(
         id_columns=_BENUNIT_ID_COLUMNS,
         channel=SPI_SYNTHETIC_SUPPORT_CHANNEL,
         clone_index=1,
-        id_multiplier=id_multiplier,
     )
 
     result = UKSPISupportResult(
         person=pd.concat([base_person, spi_person], ignore_index=True),
         benunit=pd.concat([base_benunit, spi_benunit], ignore_index=True),
         household=pd.concat([base_household, spi_household], ignore_index=True),
-        id_multiplier=id_multiplier,
+        id_multiplier=copy_id_table.radix(SPI_SUPPORT_COPY_ID_FIELD),
         spi_household_ids=selected_household_ids,
+        expected_spi_households=expected,
+        spi_source_households=source_households,
+        spi_inclusion_probability=inclusion_probability,
     )
     _validate_uk_support_outputs(result.person, result.benunit, result.household)
     return result
@@ -401,6 +468,13 @@ def replace_uk_spi_support_tables(
     weights to ``IMPORTANCE`` and records a deliberate, factor-one
     :class:`MassChangeRecord`; national and stratum mass never double or
     disappear.
+
+    The rebuilt copies mint their ids in the copy-id table's
+    ``spi_support_channel`` field, as the spine stage does, so a base whose
+    surviving ids already reach that field (a compact whose ids carry other
+    copy or clone offsets) is refused by count rather than given colliding
+    ids (microcosm#931). No build calls this path; its tests run on
+    synthetic bases.
     """
 
     if not isinstance(input_weight_kind, WeightKind):
@@ -471,7 +545,7 @@ def replace_uk_spi_support_tables(
         person=surviving_people,
         benunit=surviving_benunits,
         household=surviving_households,
-        spi_household_count=None,
+        expected_spi_households=None,
         seed=seed,
         source_year=source_year,
         selected_household_ids=replacement_source_ids,
@@ -493,6 +567,7 @@ def replace_uk_spi_support_tables(
         mass_log=allocated.mass_log,
         replaced_spi_households=int(synthetic.sum()),
         spi_prior_mass_share=share,
+        clone_count=allocated.clone_count,
     )
 
 
@@ -501,7 +576,7 @@ def build_uk_spi_support_channel(
     benunit: pd.DataFrame,
     household: pd.DataFrame,
     *,
-    spi_household_count: int = DEFAULT_SPI_SUPPORT_HOUSEHOLDS,
+    expected_spi_households: float | None = DEFAULT_SPI_SUPPORT_HOUSEHOLDS,
     seed: int = 42,
     source_year: int | None = None,
     spi_prior_mass_share: float = DEFAULT_SPI_PRIOR_MASS_SHARE,
@@ -516,13 +591,24 @@ def build_uk_spi_support_channel(
 ) -> UKSPISupportResult:
     """Stack the E7 SPI support channel and allocate prior mass by stratum.
 
+    The channel is the keyed Bernoulli share of
+    :func:`create_uk_spi_support_tables`. A zero-weight declaration given as
+    a mapping may bound its stratum by ``maximum_zero_weight_rows_rule``
+    instead of a fixed maximum; the rule is resolved after the draw, over the
+    ``n`` household rows entering the stage, to ``min(n, ceil(n x (pi +
+    band)))`` (:func:`spi_share_gate_maximum`), and the gate then runs as for
+    any declaration.
+
     With ``pension_age_share`` the strata also split households with a member
     at or over ``state_pension_age`` from the rest, and the SPI channel takes
     that share of the pension-age strata's mass (``spi_prior_mass_share`` of
     the others). Every adult in an SPI household carries a taxpayer's income,
     and the channel's households are drawn unweighted with one weight per
     region, so without the split the channel holds more pension-age mass than
-    the FRS design gives pension-age households (microcosm#1069).
+    the FRS design gives pension-age households (microcosm#1069). Where the
+    frame carries geographic clones, the strata split by clone as well, and a
+    clone's stratum that the share left without a copy refuses the stage
+    (:func:`_allocate_spi_prior_mass`).
     """
 
     if not isinstance(input_weight_kind, WeightKind):
@@ -552,16 +638,23 @@ def build_uk_spi_support_channel(
                 f"{SPI_PENSION_AGE_STRATUM_COLUMN} is derived by the allocation; "
                 "do not pass it as a stratum column."
             )
+    # The clone strata are checked on the incoming households, so a refusal
+    # counts them rather than them and their copies.
+    _geographic_clone_strata(household)
 
     stacked = create_uk_spi_support_tables(
         person=person,
         benunit=benunit,
         household=household,
-        spi_household_count=spi_household_count,
+        expected_spi_households=expected_spi_households,
         seed=seed,
         source_year=source_year,
     )
-    declarations = _coerce_zero_weight_declarations(zero_weight_declarations)
+    declarations = _coerce_zero_weight_declarations(
+        zero_weight_declarations,
+        inclusion_probability=stacked.spi_inclusion_probability,
+        household_rows=len(household),
+    )
     if declarations:
         gate = uk_zero_weight_strata_gate(
             stacked.household,
@@ -569,8 +662,7 @@ def build_uk_spi_support_channel(
         )
         if not gate.passed:
             raise ValueError(
-                "UK SPI support pre-clone zero-weight gate failed: "
-                f"{list(gate.failures)}."
+                f"UK SPI support zero-weight gate failed: {list(gate.failures)}."
             )
     if pension_age_share is None:
         return _allocate_spi_prior_mass(
@@ -652,11 +744,11 @@ def fill_support_channel_from_source(
         raise ValueError(f"donor is missing column(s): {missing_donor}.")
     if donor[donor_id_column].isna().any():
         raise ValueError(f"donor.{donor_id_column} contains missing values.")
-    if donor[donor_id_column].duplicated().any():
-        duplicates = donor.loc[donor[donor_id_column].duplicated(), donor_id_column]
+    repeated = int(donor[donor_id_column].duplicated().sum())
+    if repeated:
         raise ValueError(
-            f"donor.{donor_id_column} must be unique; duplicate value(s): "
-            f"{list(map(str, duplicates.unique()[:5]))}."
+            f"donor.{donor_id_column} must be unique; {repeated} row(s) repeat "
+            "an earlier row's id."
         )
 
     channel_column = support_channel_column(entity)
@@ -678,11 +770,11 @@ def fill_support_channel_from_source(
 
     donor_indexed = donor.set_index(donor_id_column, drop=False)
     source_ids = out.loc[mask, source_id_column]
-    missing_ids = source_ids[~source_ids.isin(donor_indexed.index)].unique()
-    if len(missing_ids):
+    unmatched = int((~source_ids.isin(donor_indexed.index)).sum())
+    if unmatched:
         raise ValueError(
             "donor is missing source ID value(s) required by the support "
-            f"channel: {list(map(str, missing_ids[:5]))}."
+            f"channel: {unmatched} channel row(s) name a source it lacks."
         )
 
     aligned = donor_indexed.loc[source_ids.to_numpy()]
@@ -694,19 +786,111 @@ def fill_support_channel_from_source(
 def _coerce_zero_weight_declarations(
     declarations: Sequence[UKZeroWeightStratumDeclaration]
     | Sequence[Mapping[str, Any]],
+    *,
+    inclusion_probability: float | None,
+    household_rows: int,
 ) -> tuple[UKZeroWeightStratumDeclaration, ...]:
+    """The declarations as the gate takes them, each rule resolved to a maximum."""
+
     materialized: list[UKZeroWeightStratumDeclaration] = []
     for declaration in declarations:
         if isinstance(declaration, UKZeroWeightStratumDeclaration):
             materialized.append(declaration)
         elif isinstance(declaration, Mapping):
-            materialized.append(UKZeroWeightStratumDeclaration(**dict(declaration)))
+            fields = dict(declaration)
+            rule = fields.pop("maximum_zero_weight_rows_rule", None)
+            if rule is not None:
+                if "maximum_zero_weight_rows" in fields:
+                    raise ValueError(
+                        f"UK zero-weight stratum {fields.get('name')!r} declares "
+                        "both a maximum and a maximum rule."
+                    )
+                fields["maximum_zero_weight_rows"] = spi_share_gate_maximum(
+                    rule,
+                    inclusion_probability=inclusion_probability,
+                    household_rows=household_rows,
+                )
+            materialized.append(UKZeroWeightStratumDeclaration(**fields))
         else:
             raise TypeError(
                 "zero_weight_declarations must contain "
                 "UKZeroWeightStratumDeclaration instances or mappings."
             )
     return tuple(materialized)
+
+
+def spi_share_gate_maximum(
+    rule: Mapping[str, Any],
+    *,
+    inclusion_probability: float | None,
+    household_rows: int,
+) -> int:
+    """The SPI share gate's maximum: ``min(n, ceil(n x (pi + band(pi, n))))``.
+
+    ``n`` is the household rows entering the stage and ``pi`` the share's
+    inclusion probability. ``rule`` is ``{"rule": "binomial_share_band",
+    "sigma": s}``: the band is the repo's binomial band at ``s`` standard
+    errors (:func:`~microcosm.build.stochastic_assignment.
+    binomial_share_tolerance`), so a share drawn at ``pi`` passes unless its
+    count lies more than ``s`` standard errors above ``n x pi`` (microcosm#931).
+    """
+
+    if (
+        not isinstance(rule, Mapping)
+        or set(rule) != {"rule", "sigma"}
+        or rule["rule"] != SPI_SHARE_GATE_RULE
+    ):
+        raise ValueError(
+            "A zero-weight maximum rule must be {'rule': "
+            f"{SPI_SHARE_GATE_RULE!r}, 'sigma': <positive number>}}."
+        )
+    sigma = rule["sigma"]
+    if (
+        isinstance(sigma, bool)
+        or not isinstance(sigma, int | float)
+        or not math.isfinite(sigma)
+        or sigma <= 0
+    ):
+        raise ValueError("A zero-weight maximum rule's sigma must be positive.")
+    if inclusion_probability is None:
+        raise ValueError(
+            "A zero-weight maximum rule needs the SPI share's inclusion "
+            "probability; named copies are not a share."
+        )
+    rows = int(household_rows)
+    probability = float(inclusion_probability)
+    band = binomial_share_tolerance(target=probability, rows=rows, sigma=float(sigma))
+    return min(rows, math.ceil(rows * (probability + band)))
+
+
+def spi_share_inclusion(
+    household_ids: Sequence[object] | np.ndarray,
+    *,
+    inclusion_probability: float,
+    seed: int,
+) -> np.ndarray:
+    """Which households the SPI share copies: ``True`` where one is drawn.
+
+    A household is drawn when ``inclusion_probability`` is one, or when its
+    uniform, keyed on its own integer id under ``seed`` and
+    :data:`SPI_SUPPORT_INCLUSION_SALT`, falls below it. Each household's draw
+    reads its id, the seed, the salt and the probability alone, so permuting
+    the rows, or adding other households at the same probability, leaves it
+    unchanged; a geographic clone's id carries its clone, so each clone draws
+    on its own (microcosm#931). At one no uniform is read, since an integer
+    over ``2**64`` can round up to one.
+    """
+
+    keys = integer_record_keys(household_ids, label=UK_SPI_SUPPORT_STAGE_NAME)
+    probability = float(inclusion_probability)
+    if not math.isfinite(probability) or not 0.0 < probability <= 1.0:
+        raise ValueError("The SPI share's inclusion probability must lie in (0, 1].")
+    if probability >= 1.0:
+        return np.ones(keys.size, dtype=bool)
+    uniforms = stable_identity_uniforms(
+        keys, seed=seed, salt=SPI_SUPPORT_INCLUSION_SALT
+    )
+    return uniforms < probability
 
 
 def support_channel_column(entity: str) -> str:
@@ -734,19 +918,22 @@ def _clone_support_frame(
     id_columns: tuple[str, ...],
     channel: str,
     clone_index: int,
-    id_multiplier: int,
 ) -> pd.DataFrame:
+    """Copy rows into a support channel; clone ``k >= 1`` mints its ids.
+
+    The copy's id columns take ``id + k x radix`` in the copy-id table's
+    ``spi_support_channel`` field (the SPI copy at 1, the income band donor at
+    2), which refuses an ordinal outside the field, an id already carrying
+    one and an int64 overflow; ``{entity}_source_id`` keeps the row's own id.
+    """
+
     clone = frame.copy()
     source_id = support_source_id_column(entity)
     clone[source_id] = clone[_entity_id_column(entity)].to_numpy()
     clone[support_channel_column(entity)] = channel
     clone[support_clone_index_column(entity)] = clone_index
     for column in id_columns:
-        clone[column] = _remap_ids(
-            clone[column].to_numpy(),
-            clone_index=clone_index,
-            id_multiplier=id_multiplier,
-        )
+        clone[column] = _remap_ids(clone[column].to_numpy(), clone_index=clone_index)
     return clone
 
 
@@ -755,7 +942,33 @@ def _prepare_household_lineage(
     *,
     source_year: int | None,
 ) -> pd.DataFrame:
+    """The households with their source columns.
+
+    On the clone-first spine, geographic_expand writes every household's
+    source columns before this stage runs, and a clone's own ids are not its
+    source, so a household table carrying the geographic clone index must
+    carry all three and is refused, by column name alone, if it lacks any
+    (microcosm#931). A table without the clone index (the replacement path's
+    certified bases and unit fixtures) defaults the missing ones from its own
+    ids, as before: each household its own source.
+    """
+
     frame = household.copy()
+    if SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN in frame.columns:
+        missing = [
+            column
+            for column in UK_GEOGRAPHIC_SOURCE_COLUMNS
+            if column not in frame.columns
+        ]
+        if missing:
+            raise ValueError(
+                "The SPI support channel's households carry "
+                f"{SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN!r} but not {missing}: on the "
+                "clone-first spine geographic_expand writes every household's "
+                "source columns, and the stage never takes a clone's own ids "
+                "for its source (microcosm#931)."
+            )
+        return frame
     if "source_household_id" not in frame.columns:
         frame["source_household_id"] = frame["household_id"]
     if "source_year" not in frame.columns and source_year is not None:
@@ -770,31 +983,49 @@ def _prepare_household_lineage(
     return frame
 
 
+def _expected_spi_households(value: object) -> float:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float | np.integer | np.floating)
+        or not math.isfinite(float(value))
+        or float(value) <= 0.0
+    ):
+        raise ValueError("expected_spi_households must be a positive number or None.")
+    return float(value)
+
+
+def _distinct_source_households(household: pd.DataFrame) -> int:
+    """The share's denominator: the distinct true sources of the households."""
+
+    sources = household["source_household_id"]
+    unsourced = int(sources.isna().sum())
+    if unsourced:
+        raise ValueError(
+            f"{unsourced} household row(s) carry no source_household_id; the SPI "
+            "share counts distinct source households."
+        )
+    count = int(sources.nunique())
+    if count == 0:
+        raise ValueError("The SPI share needs at least one source household.")
+    return count
+
+
 def _sample_spi_household_ids(
     household: pd.DataFrame,
     *,
-    spi_household_count: int | None,
+    inclusion_probability: float,
     seed: int,
 ) -> tuple[Any, ...]:
-    if spi_household_count is None:
-        return tuple(household["household_id"].tolist())
-    if not isinstance(spi_household_count, int) or spi_household_count <= 0:
-        raise ValueError("spi_household_count must be a positive integer or None.")
-    if spi_household_count > len(household):
-        raise ValueError(
-            "spi_household_count cannot exceed the number of household rows."
-        )
+    """The households the share copies, in frame order."""
+
     if not isinstance(seed, int):
         raise ValueError("seed must be an integer.")
-
-    rng = np.random.default_rng(seed)
-    selected_positions = set(
-        rng.choice(len(household), size=spi_household_count, replace=False).tolist()
+    selected = spi_share_inclusion(
+        household["household_id"].to_numpy(),
+        inclusion_probability=inclusion_probability,
+        seed=seed,
     )
-    selected = household.iloc[
-        [index for index in range(len(household)) if index in selected_positions]
-    ]
-    return tuple(selected["household_id"].tolist())
+    return tuple(household.loc[selected, "household_id"].tolist())
 
 
 def _validate_selected_household_ids(
@@ -809,11 +1040,10 @@ def _validate_selected_household_ids(
     if len(set(selected)) != len(selected):
         raise ValueError("selected_household_ids must be unique.")
     available = set(household["household_id"])
-    missing = [value for value in selected if value not in available]
+    missing = sum(1 for value in selected if value not in available)
     if missing:
         raise ValueError(
-            "selected_household_ids contains value(s) absent from household: "
-            f"{list(map(str, missing[:5]))}."
+            f"selected_household_ids contains {missing} value(s) absent from household."
         )
     selected_set = set(selected)
     return tuple(
@@ -895,6 +1125,24 @@ def _allocate_spi_prior_mass(
     strata_columns: tuple[str, ...],
     pension_age_share: float | None = None,
 ) -> UKSPISupportResult:
+    """Give the SPI channel its share of every stratum's base mass.
+
+    Where the household table carries ``household_clone_index`` (the
+    clone-first spine's geographic clones, which its ``geographic_expand``
+    stage writes, microcosm#931), each clone is its own stratum within
+    ``strata_columns``, so every clone keeps its own mass and a clone's SPI
+    weights depend on its own base households and copies alone; the stratum
+    is derived for the allocation only and never written to the frame. A
+    household table without the column allocates exactly as before, and so
+    does a one-clone spine, whose clone stratum is the same for every
+    household. A positive-mass stratum with no SPI copy is refused, by count,
+    at every clone count: a clone's stratum that the share left without a
+    copy is not given its base mass back, which would leave that clone short
+    of its SPI share (microcosm#931). The f010, K = 15 arm drew a copy in
+    every clone stratum, and a fuller rung draws more in each, since the share
+    copies each household with about the same probability at every rung.
+    """
+
     household = result.household.copy()
     channels = household[support_channel_column("household")]
     base_mask = channels.eq(BASE_FRS_SUPPORT_CHANNEL).to_numpy()
@@ -909,11 +1157,21 @@ def _allocate_spi_prior_mass(
     ).to_numpy(dtype=float, na_value=np.nan)
     old_total = float(pre_weights.sum())
     _require_columns(household, strata_columns, label="rebuilt household")
+    if SPI_GEOGRAPHIC_CLONE_STRATUM_COLUMN in strata_columns:
+        raise ValueError(
+            f"{SPI_GEOGRAPHIC_CLONE_STRATUM_COLUMN} is derived by the allocation; "
+            "do not pass it as a stratum column."
+        )
     allocation = household[list(strata_columns)].copy()
+    group_columns = list(strata_columns)
+    clone_strata = _geographic_clone_strata(household)
+    if clone_strata is not None:
+        allocation[SPI_GEOGRAPHIC_CLONE_STRATUM_COLUMN] = clone_strata
+        group_columns.append(SPI_GEOGRAPHIC_CLONE_STRATUM_COLUMN)
     allocation["_base_mass"] = np.where(base_mask, pre_weights, 0.0)
     allocation["_spi_count"] = spi_mask.astype(np.int64)
     grouped = allocation.groupby(
-        list(strata_columns),
+        group_columns,
         sort=False,
         dropna=False,
     )
@@ -923,15 +1181,13 @@ def _allocate_spi_prior_mass(
         base_mask & (stratum_base_mass > 0.0) & (stratum_spi_count == 0)
     )
     if unrepresented_base.any():
-        examples = (
-            household.loc[unrepresented_base, list(strata_columns)]
-            .drop_duplicates()
-            .head(5)
-            .to_dict(orient="records")
-        )
+        stratum = grouped.ngroup().to_numpy()
+        positive = base_mask & (stratum_base_mass > 0.0)
         raise ValueError(
             "Every positive-mass UK base stratum must have rebuilt SPI support; "
-            f"missing stratum example(s): {examples}."
+            f"{np.unique(stratum[unrepresented_base]).size} of the "
+            f"{np.unique(stratum[positive]).size} positive-mass strata have no "
+            "SPI copy."
         )
     invalid_spi = spi_mask & (
         ~np.isfinite(stratum_base_mass)
@@ -991,9 +1247,27 @@ def _allocate_spi_prior_mass(
     pension_age_allocation = None
     if pension_age_share is not None:
         final = allocated_weights.values
+        # The two counts are of survey households: the base households' true
+        # sources, which every geographic clone shares, and those of clone 0's
+        # SPI copies, which a one-clone spine copies alike (the share draws
+        # each clone on its own ids, so the copies of every clone together
+        # grow with the clone count). Both are the same at every clone count;
+        # the stage's receipt rounds them (microcosm#931). Each counts the
+        # carriers of the mass printed beside it, as every receipt counts
+        # them: a source on a row of positive weight.
+        sources = household["source_household_id"].to_numpy()
+        clone_zero = (
+            np.ones(len(household), dtype=bool)
+            if clone_strata is None
+            else clone_strata == 0
+        )
         pension_age_allocation = {
-            "pension_age_households": int((pension_age & base_mask).sum()),
-            "pension_age_spi_households": int((pension_age & spi_mask).sum()),
+            "pension_age_households": _distinct_sources(
+                sources, pension_age & base_mask, pre_weights
+            ),
+            "pension_age_spi_households": _distinct_sources(
+                sources, pension_age & spi_mask & clone_zero, final
+            ),
             "pension_age_prior_mass": float(pre_weights[pension_age].sum()),
             "pension_age_spi_mass": float(final[pension_age & spi_mask].sum()),
             "other_prior_mass": float(pre_weights[~pension_age].sum()),
@@ -1010,7 +1284,63 @@ def _allocate_spi_prior_mass(
         spi_prior_mass_share=spi_prior_mass_share,
         pension_age_spi_prior_mass_share=pension_age_share,
         pension_age_allocation=pension_age_allocation,
+        expected_spi_households=result.expected_spi_households,
+        spi_source_households=result.spi_source_households,
+        spi_inclusion_probability=result.spi_inclusion_probability,
+        clone_count=(
+            1
+            if clone_strata is None or not clone_strata.size
+            else int(clone_strata.max()) + 1
+        ),
     )
+
+
+def _distinct_sources(
+    sources: np.ndarray, mask: np.ndarray, weights: np.ndarray
+) -> int:
+    """The distinct source households carrying the rows ``mask`` selects.
+
+    A carrier is the receipts' (``receipt_counts.distinct_carriers``): a
+    source household that is not missing, on a row of positive weight, so a
+    row of zero weight adds nothing to the count.
+    """
+
+    selected = np.asarray(mask, dtype=bool) & (np.asarray(weights, dtype=float) > 0.0)
+    return int(pd.Series(sources[selected]).dropna().nunique())
+
+
+def _geographic_clone_strata(household: pd.DataFrame) -> np.ndarray | None:
+    """Each household's geographic clone, or None without the index column.
+
+    Refuses a non-integer column, a household without an index and a
+    negative index, each by count or dtype, never by id or value.
+    """
+
+    column = SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN
+    if column not in household.columns:
+        return None
+    values = household[column]
+    if pd.api.types.is_bool_dtype(values.dtype) or not (
+        pd.api.types.is_integer_dtype(values.dtype)
+    ):
+        raise ValueError(
+            "The SPI prior allocation stratifies geographic clones on an integer "
+            f"{column!r} column; it has dtype {values.dtype}."
+        )
+    unindexed = int(values.isna().sum())
+    if unindexed:
+        raise ValueError(
+            f"{unindexed} household row(s) carry no {column!r}; the SPI prior "
+            "allocation stratifies each geographic clone."
+        )
+    indices = values.to_numpy(dtype=np.int64)
+    negative = int((indices < 0).sum())
+    if negative:
+        raise ValueError(
+            f"{negative} household row(s) carry a negative {column!r}; the SPI "
+            "prior allocation stratifies each geographic clone."
+        )
+    return indices
 
 
 def _importance_weights_with_exact_total(
@@ -1176,21 +1506,16 @@ def _validate_uk_support_inputs(
     if not np.isfinite(weights).all() or (weights < 0).any():
         raise ValueError("household.household_weight must be finite and non-negative.")
 
-    household_ids = set(household["household_id"])
-    missing_households = sorted(set(person["person_household_id"]) - household_ids)
-    if missing_households:
-        raise ValueError(
-            "person.person_household_id contains value(s) absent from household: "
-            f"{missing_households[:5]}."
-        )
-
-    benunit_ids = set(benunit["benunit_id"])
-    missing_benunits = sorted(set(person["person_benunit_id"]) - benunit_ids)
-    if missing_benunits:
-        raise ValueError(
-            "person.person_benunit_id contains value(s) absent from benunit: "
-            f"{missing_benunits[:5]}."
-        )
+    for column, table, id_column, label in (
+        ("person_household_id", household, "household_id", "household"),
+        ("person_benunit_id", benunit, "benunit_id", "benunit"),
+    ):
+        unlinked = int((~person[column].isin(table[id_column])).sum())
+        if unlinked:
+            raise ValueError(
+                f"person.{column} names a {label} absent from {label} on "
+                f"{unlinked} person row(s)."
+            )
 
 
 def _validate_uk_support_outputs(
@@ -1250,11 +1575,11 @@ def _require_columns(
 def _require_unique(frame: pd.DataFrame, column: str, *, label: str) -> None:
     if frame[column].isna().any():
         raise ValueError(f"{label}.{column} contains missing values.")
-    if frame[column].duplicated().any():
-        duplicates = frame.loc[frame[column].duplicated(), column].unique()
+    repeated = int(frame[column].duplicated().sum())
+    if repeated:
         raise ValueError(
-            f"{label}.{column} must be unique; duplicate value(s): "
-            f"{list(map(str, duplicates[:5]))}."
+            f"{label}.{column} must be unique; {repeated} row(s) repeat an "
+            "earlier row's value."
         )
 
 
@@ -1274,16 +1599,11 @@ def _source_household_keys(
     return keys
 
 
-def _remap_ids(
-    ids: Sequence[Any],
-    *,
-    clone_index: int,
-    id_multiplier: int,
-) -> np.ndarray:
+def _remap_ids(ids: Sequence[Any], *, clone_index: int) -> np.ndarray:
     values = pd.to_numeric(pd.Series(ids), errors="raise").astype("int64").to_numpy()
     if clone_index == 0:
         return values.copy()
-    return values + clone_index * id_multiplier
+    return copy_id_table.mint(values, SPI_SUPPORT_COPY_ID_FIELD, clone_index)
 
 
 def _entity_id_column(entity: str) -> str:
@@ -1328,6 +1648,8 @@ __all__ = [
     "SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN",
     "SPI_INCOME_IMPUTATION_COLUMNS",
     "SPI_INCOME_QRF_OUTPUT_COLUMNS",
+    "SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN",
+    "SPI_GEOGRAPHIC_CLONE_STRATUM_COLUMN",
     "SPI_LOSSES_BROUGHT_FORWARD_DRAW_COLUMN",
     "SPI_LOSS_DRAW_COLUMNS",
     "SPI_PENSION_AGE_STRATUM_COLUMN",
@@ -1335,12 +1657,18 @@ __all__ = [
     "SPI_PROFIT_BEFORE_LOSSES_DRAW_COLUMN",
     "SPI_PROPERTY_FINANCE_COSTS_COLUMN",
     "SPI_REPLACEMENT_STRATA_COLUMNS",
+    "SPI_SHARE_GATE_RULE",
+    "SPI_SUPPORT_COPY_ID_FIELD",
+    "SPI_SUPPORT_ID_REMAPPING",
+    "SPI_SUPPORT_INCLUSION_SALT",
     "UKSPISupportResult",
     "UK_SPI_SUPPORT_STAGE_NAME",
     "build_uk_spi_support_channel",
     "create_uk_spi_support_tables",
     "fill_support_channel_from_source",
     "replace_uk_spi_support_tables",
+    "spi_share_gate_maximum",
+    "spi_share_inclusion",
     "support_channel_column",
     "support_clone_index_column",
     "support_source_id_column",

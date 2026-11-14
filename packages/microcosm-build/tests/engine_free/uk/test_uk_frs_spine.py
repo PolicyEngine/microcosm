@@ -36,7 +36,9 @@ from microcosm.build.uk_runtime.birth_month import (
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.frs_council_tax import (
+    FRS_COUNCIL_TAX_OUTPUT_COLUMNS,
     frs_council_tax_operation_parameters,
+    frs_council_tax_provenance_operation_parameters,
 )
 from microcosm.build.uk_runtime.frs_relationships import (
     FRS_RELATIONSHIPS_OUTPUT_COLUMNS,
@@ -45,6 +47,7 @@ from microcosm.build.uk_runtime.frs_relationships import (
 from microcosm.build.uk_runtime.frs_spine import (
     BENEFIT_CODES,
     BSP_MONTHLY_RATES,
+    FRS_AREA_CONDITIONING_COLUMNS,
     FRS_COMPANY_CAR_CARRIER_COLUMNS,
     FRS_COMPANY_CAR_FUEL_CODES,
     FRS_COMPANY_CAR_FUEL_ELECTRIC,
@@ -52,7 +55,13 @@ from microcosm.build.uk_runtime.frs_spine import (
     FRS_COMPANY_CAR_PRICE_BAND_BOUNDS,
     FRS_COMPANY_CAR_PRICE_BAND_OPEN,
     FRS_COMPANY_CAR_PRICE_BANDS,
+    FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
+    FRS_IMD_DECILE_COLUMN,
+    FRS_IMD_DECILE_COLUMN_BY_NATION,
+    FRS_IMD_DECILE_UNOBSERVED,
+    FRS_IMD_DECILES,
     FRS_SPINE_TABLES,
+    OUTPUT_COLUMNS,
     OWNER_MANAGER_COLUMNS,
     REGION_MAP,
     SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE,
@@ -66,6 +75,8 @@ from microcosm.build.uk_runtime.frs_spine import (
     completed_months,
     frs_claimant_or_partner,
     frs_council_tax_band,
+    frs_council_tax_band_observed,
+    frs_imd_decile,
     parse_frs_uc_claim_start,
     scottish_water_and_sewerage_weekly,
     uc_gainful_self_employment,
@@ -238,6 +249,12 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "INTDATE": float(_FIXTURE_INTERVIEW_SAS_DATE),
         # A conventional household (HHSTAT 1), not a shared one.
         "HHSTAT": 1,
+        # Each nation's IMD decile variable; a household has its own nation's
+        # (England here) and the others blank (microcosm#931).
+        "IMDE": 3,
+        "IMDW": "",
+        "IMDS": "",
+        "IMDN": "",
     }
     household_1 = {
         **household_2,
@@ -248,6 +265,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "PTENTYP2": 6,
         "TYPEACC": 4,
         "BEDROOM6": 2,
+        "IMDE": "",
+        "IMDS": 7,
         "CTANNUAL": -1.0,
         "CTBAND": 2,
         "CTDISC": 1,
@@ -668,7 +687,18 @@ def _manifest_stage() -> SourceStageSpec:
     return spec.sources.stage_map()["frs_spine"]
 
 
-def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
+def _synthetic_spec(
+    stage: SourceStageSpec, *, assembled_boundary: bool = False
+) -> SimpleNamespace:
+    """A synthetic roster over the fixture's tabs. ``assembled_boundary`` adds
+    the packaged area_brma stage, the assembled checkpoint's last, after the
+    draws, for a test that arms the spine battery without running a stage:
+    the stage reads the areas the synthetic roster draws none of
+    (microcosm#931)."""
+    packaged = load_country_spec("uk")
+    assert packaged.sources is not None
+    packaged_stages = packaged.sources.stage_map()
+
     def source_stage(
         name: str,
         *,
@@ -731,14 +761,17 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                     ),
                     nonnegative_outputs=("sic_industry_division",),
                 ),
+                # The bill and its provenance, as the runtime's drift check
+                # requires them (microcosm#931).
                 source_stage(
                     "frs_council_tax",
                     tables=("househol",),
                     operations=[
                         {"kind": "read_tables"},
                         frs_council_tax_operation_parameters(),
+                        frs_council_tax_provenance_operation_parameters(),
                     ],
-                    outputs=("council_tax",),
+                    outputs=FRS_COUNCIL_TAX_OUTPUT_COLUMNS,
                     nonnegative_outputs=("council_tax",),
                 ),
                 source_stage(
@@ -840,6 +873,31 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         "disabled_students_allowance_eligible_expenses",
                     ),
                 ),
+                # microcosm#931: the HMRC leaves read the raw tabs, so they
+                # run before the geographic clones, which the draws follow, as
+                # in the packaged roster; the clones and their keys run under
+                # their packaged declarations.
+                source_stage(
+                    "frs_hmrc_spine_leaves",
+                    tables=("adult", "benefits"),
+                    operations=[
+                        {"kind": "retain_adjudicated_frs_hmrc_leaves"},
+                        {
+                            "kind": "derive",
+                            "output": "employer_pension_contributions",
+                        },
+                    ],
+                    outputs=(
+                        "hmrc_spi_pay",
+                        "hmrc_spi_unemployment_benefit_income",
+                        "hmrc_spi_incapacity_benefit_income",
+                        "ossben_identifiable_subset",
+                        "srp_regular_code5",
+                        "employer_pension_contributions",
+                    ),
+                ),
+                packaged_stages["geographic_expand"],
+                packaged_stages["geographic_identity"],
                 source_stage(
                     "frs_take_up",
                     grain="benunit",
@@ -991,21 +1049,10 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         "main_residential_property_purchased_is_first_home",
                         "property_purchased",
                     ),
-                ),
-                source_stage(
-                    "frs_brma",
-                    grain="household",
-                    operations=[
-                        {"kind": "materialize_rules_engine_predictors"},
-                        {
-                            "kind": "sample_categorical_from_count_table",
-                            "output": "brma",
-                            "seed": 0,
-                        },
-                    ],
-                    outputs=("brma",),
-                    # Mirrors the real manifest's non-tab resource artifact so
-                    # the driver's pin split is exercised without licensed data.
+                    # A non-tab resource artifact, as the real manifest's
+                    # area stages declare one, so the driver's pin split is
+                    # exercised without licensed data; the synthetic roster
+                    # runs no area stage (microcosm#931).
                     extra_artifacts=(
                         {
                             "role": "count_resource",
@@ -1015,25 +1062,7 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         },
                     ),
                 ),
-                source_stage(
-                    "frs_hmrc_spine_leaves",
-                    tables=("adult", "benefits"),
-                    operations=[
-                        {"kind": "retain_adjudicated_frs_hmrc_leaves"},
-                        {
-                            "kind": "derive",
-                            "output": "employer_pension_contributions",
-                        },
-                    ],
-                    outputs=(
-                        "hmrc_spi_pay",
-                        "hmrc_spi_unemployment_benefit_income",
-                        "hmrc_spi_incapacity_benefit_income",
-                        "ossben_identifiable_subset",
-                        "srp_regular_code5",
-                        "employer_pension_contributions",
-                    ),
-                ),
+                *((packaged_stages["area_brma"],) if assembled_boundary else ()),
                 source_stage(
                     "spi_support_channel",
                     grain="household",
@@ -1042,15 +1071,19 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                             "kind": "stack_zero_weight_donors",
                             "count": 10000,
                             "seed": 42,
-                            "draw": "uniform_without_replacement",
+                            "salt": "spi_support_channel:inclusion",
+                            "draw": "keyed_bernoulli_share",
                         },
                         {
                             "kind": "gate_zero_weight_strata",
                             "declarations": [
                                 {
-                                    "name": "e7_spi_synthetic_preclone",
+                                    "name": "e7_spi_synthetic_share",
                                     "selector": {"household_is_spi_synthetic": True},
-                                    "maximum_zero_weight_rows": 10000,
+                                    "maximum_zero_weight_rows_rule": {
+                                        "rule": "binomial_share_band",
+                                        "sigma": 4,
+                                    },
                                     "reason": "synthetic driver fixture",
                                 }
                             ],
@@ -1072,9 +1105,6 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         "household_support_channel",
                         "household_support_clone_index",
                         "household_source_id",
-                        "source_household_id",
-                        "source_year",
-                        "source_household_key",
                     ),
                 ),
                 source_stage(
@@ -1113,7 +1143,13 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
             ),
         ),
         geography_spine=None,
-        resource_hashes={"brma_private_rented_households.json": "f" * 64},
+        resource_hashes={
+            "brma_private_rented_households.json": "f" * 64,
+            # The geography keys' FRS release, the packaged bytes'.
+            "frs_release.json": packaged.resource_hashes["frs_release.json"],
+            # The BRMA layer, which the packaged area_brma stage declares.
+            "brma_area_layer.json": packaged.resource_hashes["brma_area_layer.json"],
+        },
     )
 
 
@@ -1131,6 +1167,13 @@ class _FakeUKEngine:
             else:
                 values[variable] = np.zeros(person_count)
         return values
+
+
+def _fake_rules_engine(*, clones: int | None = None) -> _FakeUKEngine:
+    """The driver's engine, as the spine build asks for it: with the spine's
+    clone count, which the stand-in does not check (microcosm#931)."""
+
+    return _FakeUKEngine()
 
 
 def test_manifest_stage_and_runtime_agree_on_artifacts_and_operations() -> None:
@@ -1634,6 +1677,29 @@ def test_frs_spine_refuses_an_adult_tab_without_sppadj(tmp_path: Path) -> None:
         build_uk_frs_spine_frame(tmp_path, stage=stage)
 
 
+def test_frs_spine_refuses_raw_ids_that_reach_the_first_copy_id_field(
+    tmp_path: Path,
+) -> None:
+    """A synthetic sernum of 100,000 puts its person ids (sernum x 1000 + p)
+    at the copy-id table's first radix, 10**8, which the copy layers' fields
+    sit above; the spine refuses it by count, never naming the id
+    (microcosm#931)."""
+
+    tables = _fixture_tables()
+    for rows in tables.values():
+        for row in rows:
+            if row.get("SERNUM") == 2:
+                row["SERNUM"] = 100_000
+    stage = _write_fixture(tmp_path, tables)
+
+    with pytest.raises(
+        ValueError,
+        match=r"^1 of the raw FRS person_id values reach the 'vintage' copy-id field",
+    ) as caught:
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+    assert "100000001" not in str(caught.value)
+
+
 @pytest.mark.parametrize(
     ("job", "sic", "expected"),
     [
@@ -1828,7 +1894,7 @@ def test_birth_months_are_spread_at_the_frs_weights_and_kept_by_copies(
         person=tables_with_weights["person"],
         benunit=tables_with_weights["benunit"],
         household=tables_with_weights["household"],
-        spi_household_count=None,
+        expected_spi_households=None,
     )
     copies = support.person[
         support.person[support_channel_column("person")]
@@ -2586,6 +2652,169 @@ def test_northern_ireland_households_take_the_placeholder_band() -> None:
     assert frs_council_tax_band(household).tolist() == ["D", "D", "E", "I", "D"]
 
 
+def test_the_root_writes_each_households_imd_decile_and_band_flag_typed(
+    tmp_path: Path,
+) -> None:
+    """The root's two area-conditioning carriers (microcosm#931): the decile
+    int64, the band flag bool, both declared outputs of the stage. The
+    Scottish fixture household reads IMDS and the English one IMDE."""
+
+    stage = _write_fixture(tmp_path)
+
+    household = (
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+        .table("household")
+        .set_index("household_id")
+    )
+
+    assert household[FRS_IMD_DECILE_COLUMN].dtype == np.dtype("int64")
+    assert household[FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN].dtype == np.dtype(bool)
+    assert household[FRS_IMD_DECILE_COLUMN].to_dict() == {1: 7, 2: 3}
+    assert household[FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN].to_dict() == {
+        1: True,
+        2: True,
+    }
+    assert FRS_AREA_CONDITIONING_COLUMNS == (
+        FRS_IMD_DECILE_COLUMN,
+        FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
+    )
+    assert set(FRS_AREA_CONDITIONING_COLUMNS) <= set(OUTPUT_COLUMNS)
+    assert set(FRS_AREA_CONDITIONING_COLUMNS) <= set(_manifest_stage().outputs)
+
+
+def test_the_root_names_the_conditioned_supports_decile_and_every_nation() -> None:
+    """The decile's name is spelled in frs_spine, so a change to the
+    conditioned supports' module never re-keys the root; the two spellings,
+    the decile codes and the nations stay equal (microcosm#931)."""
+
+    from microcosm.build.uk_runtime.atomic_area_support import (
+        IMD_DECILE_COLUMN,
+        IMD_DECILES,
+    )
+    from microcosm.build.uk_runtime.council_tax_constants import UK_NATION_BY_REGION
+
+    assert FRS_IMD_DECILE_COLUMN == IMD_DECILE_COLUMN
+    assert tuple(str(decile) for decile in FRS_IMD_DECILES) == IMD_DECILES
+    assert FRS_IMD_DECILE_UNOBSERVED not in FRS_IMD_DECILES
+    assert set(FRS_IMD_DECILE_COLUMN_BY_NATION) == set(UK_NATION_BY_REGION.values())
+    assert sorted(FRS_IMD_DECILE_COLUMN_BY_NATION.values()) == [
+        "imde",
+        "imdn",
+        "imds",
+        "imdw",
+    ]
+
+
+def test_imd_decile_reads_the_households_own_nation_and_codes_one_to_ten() -> None:
+    # England, Wales, Scotland and Northern Ireland read their own variables.
+    # Then 0 for: a blank region code, codes 0 and 11, a non-integral code, a
+    # blank own variable beside another nation's code, and a negative code.
+    household = pd.DataFrame(
+        {
+            "gvtregno": [1, 11, 12, 13, np.nan, 8, 9, 10, 5, 4],
+            "imde": [1, 9, 9, 9, 5, 0, 11, 5.5, np.nan, -1],
+            "imdw": [9, 10, 9, 9, 5, 9, 9, 9, 9, 9],
+            "imds": [9, 9, 2, 9, 5, 9, 9, 9, 9, 9],
+            "imdn": [9, 9, 9, 3, 5, 9, 9, 9, 9, 9],
+        },
+        index=range(101, 111),
+    )
+
+    decile = frs_imd_decile(household)
+
+    assert decile.dtype == np.dtype("int64")
+    assert decile.index.equals(household.index)
+    assert decile.tolist() == [1, 10, 2, 3, 0, 0, 0, 0, 0, 0]
+
+
+def test_the_band_flag_is_false_unless_the_frs_gives_a_band_its_region_uses() -> None:
+    # Northern Ireland pays domestic rates; codes outside 1-9 and blanks take
+    # the placeholder; band I is Welsh only; a household of no known region
+    # holds no band of its region. council_tax_band itself is unchanged.
+    household = pd.DataFrame(
+        {
+            "gvtregno": [13, 13, 6, 11, 6, 12, 1, np.nan, 12, 8],
+            "ctband": [5, 0, 5, 9, 0, 9, 9, 4, 8, np.nan],
+        },
+        index=range(201, 211),
+    )
+
+    observed = frs_council_tax_band_observed(household)
+
+    assert frs_council_tax_band(household).tolist() == [
+        *("D", "D", "E", "I", "D"),
+        *("I", "I", "D", "H", "D"),
+    ]
+    assert observed.dtype == np.dtype(bool)
+    assert observed.index.equals(household.index)
+    assert observed.tolist() == [
+        *(False, False, True, True, False),
+        *(False, False, False, True, False),
+    ]
+
+
+@pytest.mark.parametrize("column", ["IMDE", "IMDW", "IMDS", "IMDN"])
+def test_frs_spine_refuses_a_household_tab_without_an_imd_variable(
+    tmp_path: Path, column: str
+) -> None:
+    """A vintage without one of the four IMD variables refuses, naming it and
+    no count; it never reads the absent variable as zeros (microcosm#931)."""
+
+    tables = _fixture_tables()
+    tables["househol"] = [
+        {key: value for key, value in row.items() if key != column}
+        for row in tables["househol"]
+    ]
+    stage = _write_fixture(tmp_path, tables)
+
+    with pytest.raises(KeyError) as caught:
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+    assert caught.value.args == (
+        f"The FRS household tab has no {[column]} column(s), so the IMD decile "
+        "cannot be set.",
+    )
+
+
+def test_the_imd_and_band_codes_move_only_the_two_carriers(tmp_path: Path) -> None:
+    """Every other column of the root is the same whatever the IMD codes say,
+    and a code outside 1-9 moves only the band flag beside the placeholder
+    band it already took (microcosm#931)."""
+
+    tables = _fixture_tables()
+    before = build_uk_frs_spine_frame(
+        tmp_path / "before", stage=_write_fixture(tmp_path / "before", tables)
+    )
+    for row in tables["househol"]:
+        row.update({"IMDE": 10, "IMDW": 10, "IMDS": 10, "IMDN": 10})
+        if row["SERNUM"] == 2:
+            # Band D either way: code 4 is band D, code 0 the placeholder.
+            row["CTBAND"] = 0
+    after = build_uk_frs_spine_frame(
+        tmp_path / "after", stage=_write_fixture(tmp_path / "after", tables)
+    )
+
+    moved = {
+        entity: [
+            column
+            for column in before.table(entity).columns
+            if not before.table(entity)[column].equals(after.table(entity)[column])
+        ]
+        for entity in before.entities
+    }
+    assert moved == {
+        "person": [],
+        "benunit": [],
+        "household": [FRS_IMD_DECILE_COLUMN, FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN],
+    }
+    household = after.table("household").set_index("household_id")
+    assert household[FRS_IMD_DECILE_COLUMN].to_dict() == {1: 10, 2: 10}
+    assert household[FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN].to_dict() == {
+        1: True,
+        2: False,
+    }
+    assert household["council_tax_band"].to_dict() == {1: "B", 2: "D"}
+
+
 def test_household_and_benunit_mapping_values_are_ported(tmp_path: Path) -> None:
     stage = _write_fixture(tmp_path)
 
@@ -2857,7 +3086,14 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     monkeypatch.setattr(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
-    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    # The engine the build asks for, by the clone count it asks with.
+    asked: list[int | None] = []
+
+    def recording_rules_engine(*, clones: int | None = None) -> _FakeUKEngine:
+        asked.append(clones)
+        return _fake_rules_engine(clones=clones)
+
+    monkeypatch.setattr(tool, "_rules_engine", recording_rules_engine)
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
     monkeypatch.delenv("POPULACE_LEDGER_URL", raising=False)
@@ -2917,10 +3153,22 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
         "would_evade_tv_licence_fee",
         "main_residential_property_purchased_is_first_home",
         "property_purchased",
-        "brma",
     } <= set(frame.table("household"))
+    # The spine build clones every household once (microcosm#931): it asks
+    # for its engine at that one clone, so the adapter refuses a frame of any
+    # other clone count; every clone index is zero, each household is its own
+    # source, and each has a geography key of its own.
+    assert asked == [1]
+    household = frame.table("household")
+    for entity in ("person", "benunit", "household"):
+        assert set(frame.table(entity)[f"{entity}_clone_index"].tolist()) == {0}
+    assert household["source_household_id"].tolist() == (
+        household["household_id"].tolist()
+    )
+    assert household["geography_household_key"].is_unique
     sidecar = json.loads(output.with_suffix(".build.json").read_text())
     assert sidecar["pipeline"] == "uk-frs-spine"
+    assert sidecar["geographic_clone_count"] == 1
     # The build record says which of its stages read the SPI Public Use Tape
     # (microcosm#1095), from the artifacts the run's spec declares. This
     # synthetic spec's SPI stage reads a fabricated tab, not the tape.
@@ -2967,7 +3215,10 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     assert sidecar["household_weight_total"] == 30.0
     assert set(sidecar["artifact_pins"]) == set(FRS_SPINE_TABLES)
     assert sidecar["declared_seeds"]["frs_take_up"]["would_claim_child_benefit"] == 0
-    assert sidecar["declared_seeds"]["frs_brma"] == {"brma": 0}
+    # The synthetic roster runs no area stage, so the sidecar records no
+    # geography block (microcosm#931).
+    assert "frs_brma" not in sidecar["declared_seeds"]
+    assert "geography" not in sidecar
     assert sidecar["declared_seeds"]["spi_support_channel"] == {
         "stack_zero_weight_donors": 42
     }
@@ -2990,7 +3241,11 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
         "sha256": hashlib.sha256(replay_bytes).hexdigest(),
     }
     assert len(sidecar["stochastic_contract_sha256"]) == 64
-    assert sidecar["resource_pins"] == {"brma_private_rented_households.json": "f" * 64}
+    # The geography keys' stage declares the FRS release (microcosm#931).
+    assert sidecar["resource_pins"] == {
+        "brma_private_rented_households.json": "f" * 64,
+        "frs_release.json": load_country_spec("uk").resource_hashes["frs_release.json"],
+    }
     # Resolve the expected version the way the driver does, so the assertion
     # holds in the engine-hermetic lane too: the real version where
     # policyengine-uk is installed, the documented fallback where it is not.
@@ -3031,7 +3286,7 @@ def test_driver_kernels_free_each_stage_result_once_its_evidence_is_captured(
     monkeypatch.setattr(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
-    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
 
@@ -3092,7 +3347,7 @@ def test_driver_writes_payload_identical_h5s(
     monkeypatch.setattr(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
-    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
     monkeypatch.delenv("POPULACE_LEDGER_URL", raising=False)
@@ -3157,7 +3412,7 @@ def test_driver_keeps_only_the_final_graph_version(
     monkeypatch.setattr(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
-    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
     runs = []
@@ -3192,6 +3447,430 @@ def test_driver_keeps_only_the_final_graph_version(
     assert retained == (final,)
     assert set(manifest.populations) == set(manifest.mass_ledgers) == {final}
     assert len(set(compiled.versions.values())) > 1
+
+
+def _driver_arguments(raw_dir: Path, output: Path, spi_tab: Path, hmrc_ods: Path):
+    return [
+        "--frs-raw-dir",
+        str(raw_dir),
+        "--spine-h5",
+        str(output),
+        "--spi-tab",
+        str(spi_tab),
+        "--hmrc-ods",
+        str(hmrc_ods),
+        "--no-staging",
+    ]
+
+
+def test_driver_builds_the_geographic_clone_count_it_is_asked_for(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--n-clones K`` (microcosm#931) is the geographic_expand node's
+    parameter, the clone count of the transform that makes the clones and of
+    the engine the spine build asks for, which refuses a frame carrying
+    another count. It never reaches the engine identity: the gates' engine
+    identity and the provenance in the sidecar's rules engine are the same at
+    every K, and the rules engine adds the adapter's batch record only at
+    K > 1. The sidecar records K, and every household comes out K times."""
+
+    from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
+
+    pytest.importorskip("tables")
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    tool = _load_tool()
+    monkeypatch.setattr(
+        tool, "load_country_spec", lambda country: _synthetic_spec(stage)
+    )
+    asked: list[int | None] = []
+
+    class _BatchRecordingEngine(_FakeUKEngine):
+        """The stand-in, with the real adapter's batch record at its clone
+        count (read from the frame alone; no engine is built)."""
+
+        def __init__(self, clones: int | None) -> None:
+            self._adapter = PolicyEngineUKEngine(clones=clones)
+
+        def batch_record(self, frame):
+            return self._adapter.batch_record(frame)
+
+    def recording_rules_engine(*, clones: int | None = None) -> _FakeUKEngine:
+        asked.append(clones)
+        return _BatchRecordingEngine(clones)
+
+    monkeypatch.setattr(tool, "_rules_engine", recording_rules_engine)
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+    identities: dict[int, str] = {}
+    sidecars: dict[int, dict] = {}
+    households: dict[int, pd.DataFrame] = {}
+    for clones in (1, 2):
+        output = tmp_path / f"k{clones}" / "spine.h5"
+        output.parent.mkdir()
+        argv = [
+            *_driver_arguments(raw_dir, output, spi_tab, hmrc_ods),
+            "--n-clones",
+            str(clones),
+        ]
+        prepared = tool.prepare_uk_spine_execution(tool.parse_uk_spine_args(argv))
+        expand = prepared.graph.node("geographic_expand")
+        assert expand.params["geographic_clones"] == clones
+        assert prepared.implementations["geographic_expand"].clones == clones
+        identities[clones] = prepared.engine_identity
+        assert tool.main(argv) == 0
+        frame, _ = load_uk_national_frame(output)
+        households[clones] = frame.table("household")
+        sidecars[clones] = json.loads(output.with_suffix(".build.json").read_text())
+    # The preparation and the build each ask for their engine at K.
+    assert asked == [1, 1, 2, 2]
+    assert identities[1] == identities[2]
+    batched = ("engine_batches", "microdf_python")
+    provenance = {
+        clones: {
+            key: value
+            for key, value in sidecar["rules_engine"].items()
+            if key not in batched
+        }
+        for clones, sidecar in sidecars.items()
+    }
+    assert provenance[1] == provenance[2]
+    assert not set(batched) & set(sidecars[1]["rules_engine"])
+    assert sidecars[2]["rules_engine"]["engine_batches"]["batches"] == 2
+    for clones, sidecar in sidecars.items():
+        assert sidecar["geographic_clone_count"] == clones
+        household = households[clones]
+        assert sorted(set(household["household_clone_index"])) == list(range(clones))
+        assert len(household) == clones * len(households[1])
+        assert set(household["source_household_id"]) == set(
+            households[1]["household_id"]
+        )
+
+
+@pytest.mark.parametrize("value", ["0", "101", "-1", "2.5", "two"])
+def test_driver_refuses_a_clone_count_outside_the_copy_id_fields_bound(
+    tmp_path: Path, value: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tool = _load_tool()
+    base = _driver_arguments(
+        tmp_path, tmp_path / "spine.h5", tmp_path / "put2223uk.tab", tmp_path / "x"
+    )
+    with pytest.raises(SystemExit):
+        tool._parse_args([*base, "--n-clones", value])
+    # The refusal names the bound the copy-id field declares.
+    message = capsys.readouterr().err
+    assert "--n-clones must be a whole number from 1 to 100" in message
+    assert tool._parse_args(base).n_clones == 1
+    assert tool._parse_args([*base, "--n-clones", "100"]).n_clones == 100
+
+
+@pytest.mark.parametrize("clones", ["2", "7", "16"])
+def test_a_release_candidate_spine_takes_one_clone_or_the_dense_releases_k(
+    tmp_path: Path, clones: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A release candidate builds the spine at one geographic clone, as the
+    national line does, or, on a geography-first roster, at the dense
+    release's 15 (microcosm#931); any other count is refused, by the parser
+    and by the preparation the full build hands a spine request it has marked
+    a release candidate after parsing it."""
+
+    tool = _load_tool()
+    refusal = (
+        "--release-candidate builds the spine at one geographic clone "
+        "(--n-clones 1) or, on a geography-first roster, at the dense release's "
+        "15 (--n-clones 15; microcosm#931)."
+    )
+    base = _driver_arguments(
+        tmp_path, tmp_path / "spine.h5", tmp_path / "put2223uk.tab", tmp_path / "x"
+    )
+    with pytest.raises(SystemExit):
+        tool._parse_args([*base, "--release-candidate", "--n-clones", clones])
+    assert refusal in capsys.readouterr().err
+    assert tool._parse_args([*base, "--release-candidate"]).n_clones == 1
+    requested = tool._parse_args([*base, "--n-clones", clones])
+    requested.release_candidate = True
+    with pytest.raises(ValueError) as refused:
+        tool.prepare_uk_spine_execution(requested)
+    assert str(refused.value) == refusal
+
+
+def _geography_first_roster():
+    """A roster that runs every geography-first stage and operation."""
+    from microcosm.build.uk_runtime.geography_first_roster import (
+        GEOGRAPHY_FIRST_OPERATIONS,
+        GEOGRAPHY_FIRST_STAGES,
+    )
+
+    stages = ("frs_spine", *GEOGRAPHY_FIRST_STAGES, *GEOGRAPHY_FIRST_OPERATIONS)
+    return stages, {
+        stage: GEOGRAPHY_FIRST_OPERATIONS.get(stage, ()) for stage in stages
+    }
+
+
+def test_a_release_candidate_spine_takes_the_dense_k_only_on_a_geography_first_roster(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """At the dense release's 15 clones a release-candidate spine needs a
+    geography-first roster, one whose stages give every clone its area
+    (microcosm#931, C-38): the parser and the preparation refuse 15 on a
+    roster that lacks them, naming what it lacks and nothing else, and accept
+    it on a geography-first one. The check reads the packaged spec's roster,
+    so it switches on by itself once the spec declares its area stages."""
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.spine_posture import roster_failures, spec_roster
+
+    tool = _load_tool()
+    base = _driver_arguments(
+        tmp_path, tmp_path / "spine.h5", tmp_path / "put2223uk.tab", tmp_path / "x"
+    )
+    release = [*base, "--release-candidate", "--n-clones", "15"]
+    # A roster before the area stages: the clone-first stages and the WAS
+    # chain without its localiser.
+    pre_geography = (
+        ("frs_spine", "geographic_expand", "geographic_identity", "was_wealth"),
+        {"was_wealth": ("assign_was_wealth",)},
+    )
+    monkeypatch.setattr(tool, "spec_roster", lambda spec: pre_geography)
+    expected = (
+        "--release-candidate builds the spine at the dense release's 15 "
+        "geographic clones only on a geography-first roster, one that assigns "
+        "every geographic clone its area (microcosm#931); the packaged UK "
+        "spec's roster lacks: stage atomic_area_assign; stage local_authority; "
+        "stage rfdr; stage area_brma; stage spi_copy_areas; stage private_rent; "
+        "stage council_tax_localise; "
+        "operation localise_main_residence_value in was_wealth."
+    )
+    with pytest.raises(SystemExit):
+        tool._parse_args(release)
+    assert expected in capsys.readouterr().err
+    requested = tool._parse_args([*base, "--n-clones", "15"])
+    requested.release_candidate = True
+    with pytest.raises(ValueError) as refused:
+        tool.prepare_uk_spine_execution(requested)
+    assert str(refused.value) == expected
+    monkeypatch.setattr(tool, "spec_roster", lambda spec: _geography_first_roster())
+    assert tool._parse_args(release).n_clones == 15
+    assert tool._release_candidate_clones_refusal(15) is None
+    assert tool._release_candidate_clones_refusal(7) is not None
+    # The packaged spec's roster is geography-first, the WAS chain's
+    # main-residence localiser included, so it takes 15 (microcosm#931).
+    monkeypatch.setattr(tool, "spec_roster", spec_roster)
+    packaged = roster_failures(
+        *spec_roster(load_country_spec("uk")), from_sidecar=False
+    )
+    assert packaged == ()
+    assert tool._release_candidate_clones_refusal(15) is None
+    assert tool._parse_args(release).n_clones == 15
+
+
+def test_driver_refuses_a_clone_count_its_synthetic_fixture_does_not_make(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A synthetic fixture's transforms and engine clone at its own
+    config.geographic_clones, so a request for another count is refused while
+    the spine is prepared, before any stage runs (microcosm#931)."""
+
+    from microcosm.build.uk_runtime import graph_kernels
+
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    (fixture / "fixture.json").write_text("{}", encoding="utf-8")
+    tool = _load_tool()
+    spec = _synthetic_spec(stage)
+    monkeypatch.setattr(tool, "load_country_spec", lambda country: spec)
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
+    _stub_policy_readers(monkeypatch)
+    _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+    names = tool._uk_spine_stage_names(spec)
+    monkeypatch.setattr(
+        graph_kernels,
+        "fixture_stage_plan_inputs",
+        lambda source: (
+            tuple(SimpleNamespace(stage=name) for name in names),
+            {"geographic_expand": SimpleNamespace(clones=1)},
+        ),
+    )
+    args = tool.parse_uk_spine_args(
+        [
+            "--synthetic-fixture-dir",
+            str(fixture),
+            "--spine-h5",
+            str(tmp_path / "spine.h5"),
+            "--smoke",
+            "--no-staging",
+            "--n-clones",
+            "2",
+        ]
+    )
+    with pytest.raises(ValueError, match="config.geographic_clones"):
+        tool.prepare_uk_spine_execution(args)
+
+
+def test_driver_profiles_every_node_under_its_id_without_moving_a_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--stage-profile-dir`` (the memory guard, microcosm#931) runs every
+    kernel through spine_build's profile proxy, which records each node's RSS
+    and wall time under the node's id. The proxy keys as the kernel it wraps,
+    so a profiled run computes every node under the unprofiled run's key, and
+    a profiled run over the unprofiled run's store finds every node there and
+    runs, and records, none."""
+
+    from microcosm.graph import ContentStore, compile_graph, run_graph
+
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    tool = _load_tool()
+    monkeypatch.setattr(
+        tool, "load_country_spec", lambda country: _synthetic_spec(stage)
+    )
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+    base = _driver_arguments(raw_dir, tmp_path / "spine.h5", spi_tab, hmrc_ods)
+
+    def prepared(*extra: str):
+        return tool.prepare_uk_spine_execution(
+            tool.parse_uk_spine_args([*base, *extra])
+        )
+
+    def run(execution, store: Path, resume: str):
+        return run_graph(
+            compile_graph(execution.graph),
+            sources=execution.sources,
+            store=ContentStore(store),
+            kernels=execution.kernels,
+            resume=resume,
+            decisions=(),
+        )
+
+    plain = prepared()
+    profile = tmp_path / "profile"
+    profiled = prepared("--stage-profile-dir", str(profile))
+    assert profiled.kernels.refs() == plain.kernels.refs()
+    assert {type(kernel) for kernel in profiled.kernels.as_mapping().values()} == {
+        tool._ProfiledKernel
+    }
+    assert tool._ProfiledKernel not in {
+        type(kernel) for kernel in plain.kernels.as_mapping().values()
+    }
+    unprofiled = run(plain, tmp_path / "plain", "forbid")
+    measured = run(profiled, tmp_path / "profiled", "forbid")
+    keys = {node: receipt.key for node, receipt in unprofiled.nodes.items()}
+    assert {node: receipt.key for node, receipt in measured.nodes.items()} == keys
+    records = json.loads((profile / "stage_profile.json").read_text())["stages"]
+    assert set(records) == set(compile_graph(profiled.graph).order) == set(keys)
+    assert {record["status"] for record in records.values()} == {"succeeded"}
+    assert all(record["peak_rss_bytes"] > 0 for record in records.values())
+    again = tmp_path / "again"
+    served = run(
+        prepared("--stage-profile-dir", str(again)), tmp_path / "plain", "require"
+    )
+    assert all(receipt.hit for receipt in served.nodes.values())
+    assert {node: receipt.key for node, receipt in served.nodes.items()} == keys
+    assert not (again / "stage_profile.json").exists()
+
+
+def _validation_arguments(tmp_path: Path) -> list[str]:
+    """Driver arguments whose inputs exist, for the argument checks alone."""
+
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir(exist_ok=True)
+    spi_tab = tmp_path / "put2223uk.tab"
+    spi_tab.write_text("", encoding="utf-8")
+    hmrc_ods = tmp_path / "hmrc.ods"
+    hmrc_ods.write_bytes(b"")
+    return _driver_arguments(raw_dir, tmp_path / "spine.h5", spi_tab, hmrc_ods)
+
+
+def test_driver_refuses_a_stage_profile_dir_before_any_node_runs(
+    tmp_path: Path,
+) -> None:
+    """The profiler adds a node's record only once the node has run, so a
+    ``--stage-profile-dir`` it could not add to is refused with the
+    arguments, before any node runs, in a fixed sentence; so is one inside
+    the repository, since a record keeps the message of a failure its node
+    raised (microcosm#931)."""
+
+    from microcosm.build.stage_profile import STAGE_PROFILE_SCHEMA_VERSION
+
+    tool = _load_tool()
+    base = _validation_arguments(tmp_path)
+
+    def validated(directory: Path) -> None:
+        tool._validate_args(
+            tool._parse_args([*base, "--stage-profile-dir", str(directory)])
+        )
+
+    # A new directory, and one holding a profile of this schema, are taken.
+    validated(tmp_path / "new")
+    kept = tmp_path / "kept"
+    kept.mkdir()
+    (kept / "stage_profile.json").write_text(
+        json.dumps({"schema_version": STAGE_PROFILE_SCHEMA_VERSION, "stages": {}}),
+        encoding="utf-8",
+    )
+    validated(kept)
+
+    a_file = tmp_path / "a-file"
+    a_file.write_text("", encoding="utf-8")
+    with pytest.raises(ValueError) as refused:
+        validated(a_file)
+    assert str(refused.value) == "--stage-profile-dir must name a directory."
+    for name, text in (
+        ("unparsed", "{not json"),
+        ("other-schema", json.dumps({"schema_version": 0, "stages": {}})),
+    ):
+        other = tmp_path / name
+        other.mkdir()
+        (other / "stage_profile.json").write_text(text, encoding="utf-8")
+        with pytest.raises(ValueError) as refused:
+            validated(other)
+        assert str(refused.value) == (
+            "--stage-profile-dir holds a stage_profile.json that is not a stage "
+            f"profile of schema version {STAGE_PROFILE_SCHEMA_VERSION}, so no "
+            "node's record could be added to it."
+        )
+    # Named only: nothing is written there.
+    inside = tool._REPOSITORY / "stage-profile-inside-the-repository"
+    with pytest.raises(ValueError, match="must lie outside the repository"):
+        validated(inside)
+    assert not inside.exists()
+
+
+def test_the_logbook_identity_takes_a_clone_count_other_than_one(
+    tmp_path: Path,
+) -> None:
+    """A spine of more geographic clones is another build, so its clone count
+    joins the Logbook identity digest; a one-clone build's digest is hashed
+    from what it always was (microcosm#931)."""
+
+    tool = _load_tool()
+    base = _driver_arguments(
+        tmp_path, tmp_path / "spine.h5", tmp_path / "put2223uk.tab", tmp_path / "x"
+    )
+    configs = {
+        clones: tool._logbook_run_config(
+            tool._parse_args([*base, "--n-clones", str(clones)]),
+            stage_names=("frs_spine", "geographic_expand"),
+            artifact_pins_digest="f" * 64,
+            synthetic_fixture=None,
+        )
+        for clones in (1, 2)
+    }
+    assert set(configs[1]) == {
+        "pipeline",
+        "stages",
+        "artifact_pins_digest",
+        "spine_h5",
+        "synthetic_fixture",
+    }
+    assert configs[2] == {**configs[1], "geographic_clones": 2}
 
 
 def test_driver_refuses_missing_spi_tab(tmp_path: Path) -> None:
@@ -3563,11 +4242,14 @@ def test_driver_records_sampled_spine_sidecar(
     monkeypatch.setattr(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
-    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+    # The root's rung sampler lives in national_sampling (microcosm#931).
+    from microcosm.build.uk_runtime import national_sampling
+
     monkeypatch.setattr(
-        tool,
+        national_sampling,
         "sample_frame_households",
         lambda frame, **kwargs: (
             frame,
@@ -3575,7 +4257,7 @@ def test_driver_records_sampled_spine_sidecar(
         ),
     )
     monkeypatch.setattr(
-        tool,
+        national_sampling,
         "normalize_sampled_household_mass",
         lambda frame, **kwargs: (frame, 1.0),
     )
@@ -3627,7 +4309,7 @@ def test_driver_marks_full_fixture_smoke_outputs_non_release(
     monkeypatch.setattr(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
-    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
     assert (
@@ -3704,7 +4386,7 @@ def test_driver_records_sanitized_failed_staging_lifecycle(
     monkeypatch.setattr(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
-    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
     secret = "operator-secret-value"
@@ -3769,7 +4451,7 @@ def test_driver_records_an_operator_stop_as_a_discarded_attempt(
     monkeypatch.setattr(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
-    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
 
@@ -3841,12 +4523,14 @@ def test_driver_materializes_a_blocked_assembled_gate_report_before_failing(
     stage = _write_fixture(raw_dir)
     output = tmp_path / "blocked.h5"
     tool = _load_tool()
-    spec = _synthetic_spec(stage)
+    # The assembled checkpoint ends at area_brma, which the roster carries; no
+    # stage runs here (microcosm#931).
+    spec = _synthetic_spec(stage, assembled_boundary=True)
     # The synthetic roster carries the real gate declarations, so the driver
     # arms the spine battery and the graph gains its gate nodes.
     spec.gates = load_country_spec("uk").gates
     monkeypatch.setattr(tool, "load_country_spec", lambda country: spec)
-    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
 
@@ -3944,14 +4628,17 @@ def test_driver_sampled_named_edge_aborts_with_receipt(
     monkeypatch.setattr(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
-    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
 
     def _raise_named_edge(*args, **kwargs):
         raise ValueError(tool._RUNG_NAMED_EDGE_SIGNATURE)
 
-    monkeypatch.setattr(tool, "sample_frame_households", _raise_named_edge)
+    # The root's rung sampler lives in national_sampling (microcosm#931).
+    from microcosm.build.uk_runtime import national_sampling
+
+    monkeypatch.setattr(national_sampling, "sample_frame_households", _raise_named_edge)
 
     assert (
         tool.main(
@@ -4174,7 +4861,13 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
         "uc_deduction_random_draw": 0,
         "uc_deduction_type_random_draw": 0,
     }
-    assert "cgt_support_split" not in declared
+    # The support splits' and the receipts walk's tie-breaks, under their
+    # salts (microcosm#931).
+    assert declared["cgt_support_split"] == {"cgt_support_split:wealth_tie": 0}
+    assert declared["high_value_home_support"] == {
+        "high_value_home_support:value_tie": 0
+    }
+    assert declared["property_components"] == {"allocate_property_rental_income:tie": 0}
     assert declared["spi_income_band_donors"] == {"spi_income_band_donor_draw": 3}
     assert declared["hmrc_spi_income_spine"]["spi_income_band_donor_leaf_draw"] == 44
     assert declared["hmrc_cgt_gains_spine"] == {"within_band_draws": 552}
@@ -4293,6 +4986,192 @@ def test_spine_sidecar_collects_stage_evidence_by_duck_type() -> None:
     assert "frs_spine" not in evidence
 
 
+def test_the_sidecar_reports_no_share_of_the_root_area_carriers() -> None:
+    """The root's area-conditioning carriers stay out of every stage record's
+    nonzero shares in the sidecar, whichever route built the records, and the
+    graph route's projection asks no artifact for them (microcosm#931)."""
+
+    from microcosm.build.plan import StageRecord
+
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2],
+                "person_benunit_id": [1, 2],
+                "person_household_id": [1, 2],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1, 2]}),
+        household=pd.DataFrame(
+            {
+                "household_id": [1, 2],
+                "region": ["LONDON", "WALES"],
+                FRS_IMD_DECILE_COLUMN: [0, 4],
+                FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN: [False, True],
+            }
+        ),
+        time_period="2024",
+        household_weights=np.asarray([1.0, 2.0]),
+    )
+    produced = ("household_id", "region", *FRS_AREA_CONDITIONING_COLUMNS)
+    # A record whose shares name the carriers, as a plan-built one does.
+    record = StageRecord(
+        stage="frs_spine",
+        produced=produced,
+        donor_survey=None,
+        nonzero_share={
+            "household_id": 1.0,
+            "region": 1.0,
+            FRS_IMD_DECILE_COLUMN: 0.5,
+            FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN: 0.5,
+        },
+    )
+
+    sidecar = spine_build._build_sidecar(
+        frame=frame,
+        stages=[],
+        records=[record],
+        artifact_pins={},
+        resource_pins={},
+        input_artifact_pins={},
+        hmrc_replay={},
+        stochastic_contract_sha256="0" * 64,
+        frs_vintage="synthetic",
+        sampling=None,
+    )
+
+    (written,) = sidecar["stage_records"]
+    assert written["nonzero_share"] == {"household_id": 1.0, "region": 1.0}
+    assert written["produced"] == list(produced)
+
+    # The graph route: the root's node exposes the region's artifact alone.
+    manifest = SimpleNamespace(
+        nodes={
+            "frs_spine": SimpleNamespace(artifacts={("household", "region"): "k"}),
+            "create_uk_frs": SimpleNamespace(wall_time=1.5),
+        }
+    )
+    store = SimpleNamespace(load_column=lambda key: pd.Series(["LONDON", "WALES"]))
+    stage = SimpleNamespace(
+        stage="frs_spine", outputs=produced, rewrites=(), survey="Synthetic FRS"
+    )
+    (projected,) = spine_build._graph_stage_records(
+        manifest=manifest, store=store, stages=[stage], frame=frame
+    )
+    assert projected.nonzero_share == {"household_id": 1.0, "region": 1.0}
+    assert projected.produced == produced
+
+
+def test_the_sidecar_reports_no_share_of_the_council_tax_carriers() -> None:
+    """Each bill's provenance from frs_council_tax and the paid bill
+    council_tax_localise keeps stay out of every stage record's nonzero
+    shares in the sidecar, as the root's area carriers do, whichever route
+    built the records, and the graph route asks no artifact for them
+    (microcosm#931). The localised bill's share stays."""
+
+    from microcosm.build.plan import StageRecord
+    from microcosm.build.uk_runtime.frs_council_tax import (
+        FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN,
+        FRS_COUNCIL_TAX_OUTPUT_COLUMNS,
+    )
+    from microcosm.build.uk_runtime.spine_council_tax import (
+        COUNCIL_TAX_FRS_BILL_COLUMN,
+        UK_COUNCIL_TAX_LOCALISE_OUTPUT_COLUMNS,
+        UK_COUNCIL_TAX_LOCALISE_REWRITES,
+    )
+
+    carriers = {FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN, COUNCIL_TAX_FRS_BILL_COLUMN}
+    assert carriers <= spine_build._UNREPORTED_SHARE_COLUMNS
+    assert set(FRS_AREA_CONDITIONING_COLUMNS) <= spine_build._UNREPORTED_SHARE_COLUMNS
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2],
+                "person_benunit_id": [1, 2],
+                "person_household_id": [1, 2],
+                "council_tax_benefit_reported": [0.0, 120.0],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1, 2]}),
+        household=pd.DataFrame(
+            {
+                "household_id": [1, 2],
+                "region": ["LONDON", "WALES"],
+                "council_tax": [1_500.0, 1_000.0],
+                "council_tax_rebate": [0.0, 120.0],
+                FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN: pd.Series(
+                    ["observed_gross", "missing"], dtype=pd.StringDtype("python")
+                ),
+                COUNCIL_TAX_FRS_BILL_COLUMN: [1_400.0, 900.0],
+            }
+        ),
+        time_period="2024",
+        household_weights=np.asarray([1.0, 2.0]),
+    )
+    stage_five = StageRecord(
+        stage="frs_council_tax",
+        produced=FRS_COUNCIL_TAX_OUTPUT_COLUMNS,
+        donor_survey=None,
+        nonzero_share={"council_tax": 1.0, FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN: 1.0},
+    )
+    localisation = StageRecord(
+        stage="council_tax_localise",
+        produced=(
+            *UK_COUNCIL_TAX_LOCALISE_OUTPUT_COLUMNS,
+            *UK_COUNCIL_TAX_LOCALISE_REWRITES,
+        ),
+        donor_survey=None,
+        nonzero_share={
+            COUNCIL_TAX_FRS_BILL_COLUMN: 1.0,
+            "council_tax": 1.0,
+            "council_tax_rebate": 0.5,
+            "council_tax_benefit_reported": 0.5,
+        },
+    )
+
+    sidecar = spine_build._build_sidecar(
+        frame=frame,
+        stages=[],
+        records=[stage_five, localisation],
+        artifact_pins={},
+        resource_pins={},
+        input_artifact_pins={},
+        hmrc_replay={},
+        stochastic_contract_sha256="0" * 64,
+        frs_vintage="synthetic",
+        sampling=None,
+    )
+
+    written_five, written_localisation = sidecar["stage_records"]
+    assert written_five["nonzero_share"] == {"council_tax": 1.0}
+    assert written_localisation["nonzero_share"] == {
+        "council_tax": 1.0,
+        "council_tax_rebate": 0.5,
+        "council_tax_benefit_reported": 0.5,
+    }
+
+    # The graph route: stage 5's node exposes the bill's artifact alone.
+    manifest = SimpleNamespace(
+        nodes={
+            "frs_council_tax": SimpleNamespace(
+                artifacts={("household", "council_tax"): "k"}, wall_time=0.5
+            ),
+        }
+    )
+    store = SimpleNamespace(load_column=lambda key: pd.Series([1_500.0, 0.0]))
+    stage = SimpleNamespace(
+        stage="frs_council_tax",
+        outputs=FRS_COUNCIL_TAX_OUTPUT_COLUMNS,
+        rewrites=(),
+        survey="Synthetic FRS",
+    )
+    (projected,) = spine_build._graph_stage_records(
+        manifest=manifest, store=store, stages=[stage], frame=frame
+    )
+    assert projected.nonzero_share == {"council_tax": 0.5}
+    assert projected.produced == FRS_COUNCIL_TAX_OUTPUT_COLUMNS
+
+
 def test_collect_fit_weight_records_is_duck_typed_and_fail_visible():
     class _Record:
         def __init__(self, fit_name, weight_kind):
@@ -4339,7 +5218,7 @@ def test_spine_completion_waits_for_attempt_record(
     monkeypatch.setattr(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
-    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
     if late_error:
@@ -4988,3 +5867,332 @@ def test_a_spine_build_that_must_send_telemetry_stops_before_any_input_without_a
 
     assert raised.value.reason == "command_not_found"
     assert sorted(path.name for path in tmp_path.iterdir()) == ["raw"]
+
+
+#: The geography stages whose seeds the driver records (microcosm#931).
+_GEOGRAPHY_STAGES = (
+    "atomic_area_assign",
+    "local_authority",
+    "rfdr",
+    "area_brma",
+    "spi_copy_areas",
+    "private_rent",
+)
+
+
+def test_the_geography_stages_declare_their_seeds_to_the_sidecar() -> None:
+    """The area draw and the private rents declare seed 0 on their own
+    streams, recorded under each stream; the SPI copies' areas record the
+    area draw's seed on its stream and the BRMA's under its benefit-unit salt;
+    and the BRMA records its seed through its output, as frs_brma's did
+    (C-43, microcosm#931). The local authority and the fuel-relief flag draw
+    nothing, so record none."""
+
+    tool = _load_tool()
+    stages = load_country_spec("uk").sources.stage_map()
+    assert "frs_brma" not in stages
+    assert tool._declared_seeds([stages[name] for name in _GEOGRAPHY_STAGES]) == {
+        "atomic_area_assign": {"uk-spine-atomic-area-v1": 0},
+        "area_brma": {"brma": 0},
+        "spi_copy_areas": {"uk-spine-atomic-area-v1": 0, "brma": 0},
+        "private_rent": {"uk-spine-private-rent-v1": 0},
+    }
+
+
+def _support_arguments(**paths: Path | None) -> SimpleNamespace:
+    """The support flags as the parser leaves them, without a fixture."""
+
+    return SimpleNamespace(
+        synthetic_fixture_dir=None,
+        atomic_support_ew=paths.get("ew"),
+        atomic_support_scotland=paths.get("scotland"),
+        atomic_support_ni=paths.get("ni"),
+    )
+
+
+def test_the_area_draw_requires_every_conditioned_support() -> None:
+    """Where atomic_area_assign is scheduled, every --atomic-support-* flag is
+    required, and the refusal names the missing flags only; a roster without
+    the area draw, or a synthetic fixture with its own toy supports, reads
+    none (microcosm#931)."""
+
+    tool = _load_tool()
+    roster = ("frs_spine", "geographic_identity", "atomic_area_assign")
+    with pytest.raises(ValueError) as refused:
+        tool._registered_atomic_supports(_support_arguments(), roster)
+    assert str(refused.value) == (
+        "atomic_area_assign draws every geographic clone's area on the "
+        "conditioned atomic-area supports, so it requires --atomic-support-ew, "
+        "--atomic-support-scotland, --atomic-support-ni (microcosm#931)."
+    )
+    assert (
+        tool._registered_atomic_supports(_support_arguments(), ("frs_spine",)) is None
+    )
+    synthetic = _support_arguments()
+    synthetic.synthetic_fixture_dir = Path("fixture")
+    assert tool._registered_atomic_supports(synthetic, roster) is None
+
+
+def test_a_support_off_the_register_is_refused_by_its_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each support is held to the conditioned register before any stage runs
+    (C-22, microcosm#931): files whose SHA-256 and size are the register's are
+    read, and one byte more, or a path that is not a file, is refused by the
+    flag and the system it names, never a digest, a size or a path. The
+    toy supports stand in for the register's."""
+
+    from test_support.microcosm_build.uk_conditioned_support_fixtures import (
+        toy_conditioned_support_payloads,
+    )
+
+    tool = _load_tool()
+    payloads = toy_conditioned_support_payloads()
+    register = {
+        system: {
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "size_bytes": len(payload),
+        }
+        for system, payload in payloads.items()
+    }
+    asked: list[bool] = []
+
+    def toy_register(spec=None, *, conditioned=False):
+        asked.append(conditioned)
+        return {system: dict(pin) for system, pin in register.items()}
+
+    monkeypatch.setattr(tool, "uk_atomic_support_register", toy_register)
+    paths = {}
+    for label, payload in zip(("ew", "scotland", "ni"), payloads.values(), strict=True):
+        paths[label] = tmp_path / f"{label}.bin"
+        paths[label].write_bytes(payload)
+    roster = ("frs_spine", "atomic_area_assign")
+    assert tool._registered_atomic_supports(_support_arguments(**paths), roster) == (
+        payloads
+    )
+    assert asked == [True]
+    with pytest.raises(ValueError) as absent:
+        tool._registered_atomic_supports(
+            _support_arguments(**{**paths, "ni": tmp_path}), roster
+        )
+    assert str(absent.value) == "--atomic-support-ni must name an existing file."
+    paths["scotland"].write_bytes(payloads["uk_scotland_output_area_2022"] + b" ")
+    with pytest.raises(ValueError) as refused:
+        tool._registered_atomic_supports(_support_arguments(**paths), roster)
+    message = str(refused.value)
+    assert message == (
+        "--atomic-support-scotland is not the conditioned support sources.yaml "
+        "registers for uk_scotland_output_area_2022: its SHA-256 or size is not "
+        "the register's (microcosm#931)."
+    )
+    assert str(tmp_path) not in message
+    assert not any(pin["sha256"][:8] in message for pin in register.values())
+
+
+def test_the_parser_refuses_supports_beside_a_synthetic_fixture(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A synthetic fixture carries its own toy conditioned supports, so the
+    parser refuses a support flag beside it (microcosm#931)."""
+
+    tool = _load_tool()
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    with pytest.raises(SystemExit):
+        tool._parse_args(
+            [
+                "--spine-h5",
+                str(tmp_path / "spine.h5"),
+                "--synthetic-fixture-dir",
+                str(fixture),
+                "--smoke",
+                "--atomic-support-ni",
+                str(tmp_path / "ni.bin"),
+            ]
+        )
+    assert (
+        "--synthetic-fixture-dir cannot be combined with --atomic-support-ni: the "
+        "fixture carries its own toy conditioned supports (microcosm#931)."
+    ) in capsys.readouterr().err
+
+
+#: The packaged roster's private inputs besides the FRS, SPI and HMRC ones,
+#: which the spine CLI requires by name before it reads the supports.
+_PACKAGED_PRIVATE_TAB_FLAGS = (
+    "--was-tab",
+    "--was-person-tab",
+    "--nts-household-tab",
+    "--nts-individual-tab",
+    "--nts-trip-tab",
+    "--nts-stage-tab",
+    "--nts-ticket-tab",
+    "--nts-vehicle-tab",
+    "--lcfs-hh-tab",
+    "--lcfs-person-tab",
+    "--etb-tab",
+    "--aps-tab",
+)
+
+
+def test_the_spine_cli_holds_each_support_to_the_register_before_its_engine(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The spine CLI, parsing and preparing the packaged roster as main does,
+    holds each --atomic-support-* file to the conditioned register before it
+    builds its engine (C-22, microcosm#931). Supports whose SHA-256 and size
+    are the register's reach the engine. A file of the register's size whose
+    SHA-256 is not the register's, for each of the three systems, is refused
+    by its flag and system alone, and no engine is built. Against
+    sources.yaml's own register the toy supports are refused too. With the
+    engine built, the preparation composes the sidecar's geography block from
+    those supports under sources.yaml's register, hands the area stages and
+    the council-tax localisation the three files as graph sources, which they
+    hold to the block's pins, and gives a full-scale spine's private rents the
+    strict rule. The toy supports stand in for the register's; the other
+    private inputs are named and never read."""
+
+    from test_support.microcosm_build.uk_conditioned_support_fixtures import (
+        toy_conditioned_support_payloads,
+    )
+
+    tool = _load_tool()
+    payloads = toy_conditioned_support_payloads()
+    toy_register = {
+        system: {
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "size_bytes": len(payload),
+        }
+        for system, payload in payloads.items()
+    }
+    packaged_register = tool.uk_atomic_support_register
+
+    def conditioned_toys(spec=None, *, conditioned=False):
+        assert conditioned, "the spine CLI reads the conditioned register"
+        return {system: dict(pin) for system, pin in toy_register.items()}
+
+    class _EngineBuiltError(Exception):
+        """The preparation reached its engine."""
+
+    built: list[int | None] = []
+
+    def rules_engine(*, clones: int | None = None):
+        built.append(clones)
+        raise _EngineBuiltError
+
+    monkeypatch.setattr(tool, "uk_atomic_support_register", conditioned_toys)
+    monkeypatch.setattr(tool, "_rules_engine", rules_engine)
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    spi_tab, hmrc_ods = tmp_path / "put2223uk.tab", tmp_path / "hmrc.ods"
+    spi_tab.write_bytes(b"")
+    hmrc_ods.write_bytes(b"")
+    private = [
+        argument
+        for flag in _PACKAGED_PRIVATE_TAB_FLAGS
+        for argument in (flag, str(tmp_path / f"{flag.removeprefix('--')}.tab"))
+    ]
+    supports: dict[str, Path] = {}
+    for flag, (system, payload) in zip(
+        ("--atomic-support-ew", "--atomic-support-scotland", "--atomic-support-ni"),
+        payloads.items(),
+        strict=True,
+    ):
+        supports[flag] = tmp_path / f"{system}.npz"
+        supports[flag].write_bytes(payload)
+
+    def prepare():
+        argv = [
+            *_driver_arguments(raw_dir, tmp_path / "spine.h5", spi_tab, hmrc_ods),
+            *private,
+            *(argument for flag, path in supports.items() for argument in (flag, path)),
+        ]
+        return tool.prepare_uk_spine_execution(
+            tool.parse_uk_spine_args([str(argument) for argument in argv])
+        )
+
+    with pytest.raises(_EngineBuiltError):
+        prepare()
+    assert built == [1]
+
+    def flipped(payload: bytes) -> bytes:
+        """``payload`` with its last byte flipped: its size, another SHA-256."""
+
+        tampered = bytearray(payload)
+        tampered[-1] ^= 0xFF
+        return bytes(tampered)
+
+    for flag, system in zip(supports, payloads, strict=True):
+        tampered = flipped(payloads[system])
+        assert len(tampered) == toy_register[system]["size_bytes"]
+        supports[flag].write_bytes(tampered)
+        with pytest.raises(ValueError) as refused:
+            prepare()
+        # The refusal names the flag and the system, never a digest, a size
+        # or a path.
+        assert str(refused.value) == (
+            f"{flag} is not the conditioned support sources.yaml registers for "
+            f"{system}: its SHA-256 or size is not the register's (microcosm#931)."
+        )
+        assert str(tmp_path) not in str(refused.value)
+        assert built == [1]
+        supports[flag].write_bytes(payloads[system])
+    # sources.yaml's own conditioned register: the toys are not its supports,
+    # so the first system's flag is refused.
+    monkeypatch.setattr(tool, "uk_atomic_support_register", packaged_register)
+    with pytest.raises(ValueError) as refused:
+        prepare()
+    assert str(refused.value) == (
+        "--atomic-support-ew is not the conditioned support sources.yaml "
+        "registers for uk_ew_output_area_2021: its SHA-256 or size is not "
+        "the register's (microcosm#931)."
+    )
+    assert built == [1]
+
+    # The register's supports and an engine: the preparation completes.
+    monkeypatch.setattr(tool, "uk_atomic_support_register", conditioned_toys)
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
+    monkeypatch.setattr(
+        tool,
+        "_rules_engine_provenance",
+        lambda: {"package": "policyengine-uk", "version": "stand-in"},
+    )
+    prepared = prepare()
+    assert prepared.geography == tool.uk_spine_geography_binding(
+        payloads, register=tool.UK_SPINE_SUPPORT_REGISTER
+    )
+    assert prepared.geography["register"] == "sources.yaml"
+    for flag, system in zip(supports, payloads, strict=True):
+        assert prepared.sources[tool.CONDITIONED_SOURCES[system]] == supports[flag]
+    assert prepared.implementations["private_rent"].sampled_rung is False
+    # The area stages and the council-tax localisation hold the files they
+    # read to the block's pins: a support replaced after the spine was
+    # prepared is refused by its system and graph source alone, before the
+    # localisation builds anything (microcosm#931).
+    area_draw = prepared.implementations["atomic_area_assign"]
+    area_draw.factory(prepared.sources)
+    from microcosm.build.uk_runtime.spine_council_tax import (
+        UKCouncilTaxLocaliseStageTransform,
+    )
+
+    localiser = prepared.implementations["council_tax_localise"].factory(
+        prepared.sources
+    )
+    assert isinstance(localiser, UKCouncilTaxLocaliseStageTransform)
+    assert localiser.stage.stage == "council_tax_localise"
+    supports["--atomic-support-ni"].write_bytes(
+        flipped(payloads["uk_ni_data_zone_2021"])
+    )
+    for stage in (
+        "atomic_area_assign",
+        "rfdr",
+        "spi_copy_areas",
+        "council_tax_localise",
+    ):
+        with pytest.raises(ValueError) as refused:
+            prepared.implementations[stage].factory(prepared.sources)
+        assert str(refused.value) == (
+            "The uk_ni_data_zone_2021 conditioned support the area stages read "
+            "(graph source uk_ni_data_zone_2021_conditioned_support) is not the "
+            "one the spine's geography block pins: it changed after the spine "
+            "was prepared (microcosm#931)."
+        )

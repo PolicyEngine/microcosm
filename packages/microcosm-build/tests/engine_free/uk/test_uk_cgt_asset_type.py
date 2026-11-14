@@ -10,6 +10,10 @@ import pandas as pd
 import pytest
 
 from microcosm.build.country_spec import load_country_spec
+from microcosm.build.stochastic_assignment import (
+    stable_identity_uniform,
+    stable_identity_uniforms,
+)
 from microcosm.build.uk_runtime import cgt_asset_type
 from microcosm.build.uk_runtime.cgt_asset_type import (
     CGT_ASSET_TYPE_COLUMN,
@@ -621,6 +625,115 @@ class TestBADRClaims:
             other[CGT_RESIDENTIAL_GAINS_COLUMN]
         )
 
+    def test_an_inserted_band_moves_no_other_bands_offset_or_claims(self) -> None:
+        """Each band's walk offset is an identity-keyed uniform on its bounds
+        (microcosm#931), where it was the band's position in one draw of every
+        band's offset, so a facts revision that adds a band moved the offset
+        of every band after it."""
+
+        gains = _synthetic_gains()
+        weights = np.full(gains.size, 60.0)
+        pool = np.flatnonzero(gains > PARAMETERS.annual_exempt_amount)
+        facts = _synthetic_facts(gains, weights)
+        # The GBP 50,000 to 99,999 band split in two, each half claiming a
+        # tenth of its pool's mass at the pool's mean gain, as the rest do.
+        halves = []
+        for lower, upper in ((50_000, 75_000), (75_000, 100_000)):
+            in_band = (gains[pool] >= lower) & (gains[pool] < upper)
+            mass = float(weights[pool][in_band].sum())
+            mean = float((weights * gains)[pool][in_band].sum()) / mass
+            halves.append(
+                HMRCCGTBADRBand(lower, upper, 0.1 * mass, 0.1 * mass * mean, None)
+            )
+        split = dataclasses.replace(
+            facts,
+            table4_bands=tuple(
+                band
+                for original in facts.table4_bands
+                for band in (halves if original.lower_bound == 50_000 else [original])
+            ),
+        )
+
+        def claims(facts) -> tuple[np.ndarray, dict[tuple, float]]:
+            offsets: list[float] = []
+            walk = cgt_asset_type._weighted_systematic_flags
+
+            def recording(probabilities, band_weights, order, offset):
+                offsets.append(offset)
+                return walk(probabilities, band_weights, order, offset)
+
+            with pytest.MonkeyPatch.context() as patch:
+                patch.setattr(cgt_asset_type, "_weighted_systematic_flags", recording)
+                qualifying, receipts = cgt_asset_type._assign_badr_claims(
+                    gains=gains,
+                    person_weight=weights,
+                    person_id=np.arange(gains.size),
+                    pool_index=pool,
+                    facts=facts,
+                    badr_parameters=BADR_PARAMETERS,
+                    annual_exempt_amount=PARAMETERS.annual_exempt_amount,
+                    time_period=2024,
+                    seed=555,
+                )
+            walked = [receipt for receipt in receipts if not receipt["skipped"]]
+            assert len(walked) == len(offsets) == len(facts.table4_bands)
+            bounds = [(row["lower_bound"], row["upper_bound"]) for row in walked]
+            return qualifying, dict(zip(bounds, offsets, strict=True))
+
+        before, offsets = claims(facts)
+        after, split_offsets = claims(split)
+
+        kept = set(offsets) - {(50_000, 100_000)}
+        assert set(split_offsets) == kept | {(50_000, 75_000), (75_000, 100_000)}
+        for bounds in kept:
+            assert split_offsets[bounds] == offsets[bounds], bounds
+        for (lower, upper), offset in split_offsets.items():
+            key = f"{lower}|{'open' if upper is None else upper}"
+            salt = "assign_badr_qualifying_gains:offset:2024"
+            assert offset == stable_identity_uniform(key, seed=555, salt=salt)
+        # The other bands' claimants and qualifying gains are as they were.
+        outside = (gains < 50_000) | (gains >= 100_000)
+        np.testing.assert_array_equal(after[outside], before[outside])
+        assert (before[outside] > 0.0).any()
+
+    def test_a_band_edge_that_is_not_an_integer_is_refused(self) -> None:
+        """A band's offset key formats its edges, so a roster whose edges
+        arrived as floats (50000.0) would key every band's offset anew, and
+        the roster check, which compares edges by value, accepts it; the key
+        refuses it instead (microcosm#931)."""
+
+        gains = _synthetic_gains()
+        weights = np.full(gains.size, 60.0)
+        facts = _synthetic_facts(gains, weights)
+        floats = dataclasses.replace(
+            facts,
+            table4_bands=tuple(
+                dataclasses.replace(
+                    band,
+                    lower_bound=float(band.lower_bound),
+                    upper_bound=(
+                        None if band.upper_bound is None else float(band.upper_bound)
+                    ),
+                )
+                for band in facts.table4_bands
+            ),
+        )
+        cgt_asset_type._validate_table4(floats)
+        with pytest.raises(TypeError, match="edges must be integers"):
+            self._run(gains, weights, facts=floats)
+        # A NumPy integer edge keys as the Python integer does.
+        for band in facts.table4_bands:
+            as_numpy = dataclasses.replace(
+                band,
+                lower_bound=np.int64(band.lower_bound),
+                upper_bound=(
+                    None if band.upper_bound is None else np.int64(band.upper_bound)
+                ),
+            )
+            assert cgt_asset_type._badr_band_offset(
+                as_numpy, seed=555, time_period=2024
+            ) == cgt_asset_type._badr_band_offset(band, seed=555, time_period=2024)
+
     def test_refuses_claims_the_eligible_types_cannot_hold(self) -> None:
         tiny = tuple(
             (
@@ -961,6 +1074,130 @@ class TestAssignment:
         # Without the split's arms the stage has nothing to type residential.
         with pytest.raises(ValueError, match="run cgt_residential_split"):
             assign_uk_cgt_asset_types(frame, facts, PARAMETERS, BADR_PARAMETERS)
+
+
+class TestKeyedTies:
+    """The BADR walk and the main asset type walk order persons tied on gain
+    by a uniform keyed on their own person_id, then by id, each under its own
+    salt and the BADR seed (microcosm#931). Gains are plan amounts, so ties
+    are not expected on the spine; these frames force them."""
+
+    @staticmethod
+    def _tied_frame() -> tuple[Frame, HMRCCGTAssetTypeFacts]:
+        gains = _synthetic_gains()
+        tied = np.flatnonzero((gains > 12_000.0) & (gains < 20_000.0))[:30]
+        gains[tied] = 15_000.0
+        weights = np.full(gains.size, 60.0)
+        return _frame(gains, weights=weights), _synthetic_facts(gains, weights)
+
+    @staticmethod
+    def _recorded(monkeypatch, frame, facts, **kwargs):
+        calls: list[tuple[str, int, np.ndarray, np.ndarray, np.ndarray]] = []
+        order = cgt_asset_type.keyed_tie_order
+
+        def recording(primary, ids, *, seed, salt):
+            result = order(primary, ids, seed=seed, salt=salt)
+            calls.append((salt, seed, np.asarray(primary), np.asarray(ids), result))
+            return result
+
+        with monkeypatch.context() as patch:
+            patch.setattr(cgt_asset_type, "keyed_tie_order", recording)
+            result, _ = _assign(frame, facts, PARAMETERS, BADR_PARAMETERS, **kwargs)
+        return result, calls
+
+    def test_both_walks_break_gain_ties_on_their_own_keyed_uniforms(
+        self, monkeypatch
+    ) -> None:
+        frame, facts = self._tied_frame()
+        _, calls = self._recorded(monkeypatch, frame, facts)
+
+        salts = {salt for salt, *_ in calls}
+        assert salts == {
+            "assign_badr_qualifying_gains:tie:2024",
+            "assign_main_asset_type:tie:2024",
+        }
+        reordered = set()
+        for salt, seed, primary, ids, result in calls:
+            assert seed == 555
+            uniforms = stable_identity_uniforms(ids, seed=seed, salt=salt)
+            np.testing.assert_array_equal(result, np.lexsort((ids, uniforms, primary)))
+            if not np.array_equal(result, np.lexsort((ids, primary))):
+                reordered.add(salt)
+        # Both walks met the forced tie and ordered it otherwise than by id.
+        assert reordered == salts
+        # And each walks the order it drew: handing one of them the id order
+        # moves the tied persons' outcome, which a walk that drew the keyed
+        # order and walked another would leave as it is.
+        keyed = _assign(frame, facts, PARAMETERS, BADR_PARAMETERS)[0].table("person")
+        tied = keyed["capital_gains"].to_numpy() == 15_000.0
+        order = cgt_asset_type.keyed_tie_order
+        for walked, column in (
+            ("assign_badr_qualifying_gains:tie", CGT_BADR_GAINS_COLUMN),
+            ("assign_main_asset_type:tie", CGT_ASSET_TYPE_COLUMN),
+        ):
+
+            def by_id_here(primary, ids, *, seed, salt, walked=walked):
+                if salt.startswith(walked):
+                    return np.lexsort((np.asarray(ids), np.asarray(primary, float)))
+                return order(primary, ids, seed=seed, salt=salt)
+
+            with monkeypatch.context() as patch:
+                patch.setattr(cgt_asset_type, "keyed_tie_order", by_id_here)
+                result, _ = _assign(frame, facts, PARAMETERS, BADR_PARAMETERS)
+            by_id = result.table("person")
+            np.testing.assert_array_equal(by_id["person_id"], keyed["person_id"])
+            moved = by_id[column].to_numpy() != keyed[column].to_numpy()
+            assert moved[tied].any(), walked
+        _, reseeded = self._recorded(monkeypatch, frame, facts, badr_seed=999)
+        assert {seed for _, seed, *_ in reseeded} == {999}
+        declared = cgt_asset_type_operation_parameters()
+        assert (
+            "assign_badr_qualifying_gains:tie:<period>"
+            in (declared["assign_badr_qualifying_gains"]["realization"])
+        )
+        main = declared["assign_main_asset_type"]["realization"]
+        assert "assign_main_asset_type:tie:<period>" in main
+        assert "no seed" not in main
+
+    def test_distinct_gains_assign_as_the_id_order_did(self, monkeypatch) -> None:
+        # The tie-break only reorders exact ties: on distinct gains both walks
+        # run in the id order's sequence and the stage's output and evidence
+        # are the same bit for bit.
+        gains = _synthetic_gains()
+        weights = np.full(gains.size, 60.0)
+        facts = _synthetic_facts(gains, weights)
+        frame = _frame(gains, weights=weights)
+        keyed, keyed_summary = _assign(frame, facts, PARAMETERS, BADR_PARAMETERS)
+        monkeypatch.setattr(
+            cgt_asset_type,
+            "keyed_tie_order",
+            lambda primary, ids, **_: np.lexsort((np.asarray(ids), primary)),
+        )
+        by_id, by_id_summary = _assign(frame, facts, PARAMETERS, BADR_PARAMETERS)
+
+        pd.testing.assert_frame_equal(keyed.table("person"), by_id.table("person"))
+        assert keyed_summary.evidence() == by_id_summary.evidence()
+
+    def test_tied_gains_do_not_depend_on_the_row_order(self) -> None:
+        frame, facts = self._tied_frame()
+        person = frame.table("person")
+        order = np.random.default_rng(3).permutation(len(person))
+        shuffled = uk_national_frame(
+            person=person.iloc[order].reset_index(drop=True),
+            benunit=frame.table("benunit"),
+            household=frame.table("household"),
+            time_period="2024",
+            household_weights=frame.weights_for("household").values,
+        )
+
+        first, _ = _assign(frame, facts, PARAMETERS, BADR_PARAMETERS)
+        second, _ = _assign(shuffled, facts, PARAMETERS, BADR_PARAMETERS)
+
+        columns = [CGT_ASSET_TYPE_COLUMN, CGT_BADR_GAINS_COLUMN]
+        pd.testing.assert_frame_equal(
+            first.table("person").set_index("person_id").sort_index()[columns],
+            second.table("person").set_index("person_id").sort_index()[columns],
+        )
 
 
 class TestStageContract:

@@ -107,6 +107,7 @@ __all__ = [
     "record_candidate_error",
     "refuse_dense_role_arguments",
     "refuse_national_role_arguments",
+    "refuse_spine_bound_arguments",
     "release_verdict",
     "resolve_role_arguments",
     "size_doctrine_drift",
@@ -265,7 +266,12 @@ def _size_l2_parameters(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def rowwise_parameters(args: argparse.Namespace, *, source_year: int) -> dict[str, Any]:
-    """The run parameters a rowwise manifest, plan and identity digest record."""
+    """The run parameters a rowwise manifest, plan and identity digest record.
+
+    On the dense line ``n_clones``, ``sample_fraction`` and ``sample_seed``
+    are the bound spine's: the build's preparation sets them from the spine
+    before anything records them (microcosm#931).
+    """
 
     posture = posture_of(args)
     return {
@@ -295,7 +301,6 @@ def rowwise_parameters(args: argparse.Namespace, *, source_year: int) -> dict[st
         if args.resume_size_checkpoint is None
         else str(args.resume_size_checkpoint.expanduser().resolve()),
         "source_year": source_year,
-        "source_lineage_modulus": args.source_lineage_modulus,
         "sample_fraction": float(args.sample_fraction),
         "sample_seed": int(args.sample_seed),
         "engine_blocks": int(args.engine_blocks),
@@ -304,11 +309,6 @@ def rowwise_parameters(args: argparse.Namespace, *, source_year: int) -> dict[st
         "skip_holdout": bool(getattr(args, "skip_holdout", False)),
         "epochs": int(args.epochs),
         "learning_rate": float(args.learning_rate),
-        "expected_constituency_vintage": (
-            None
-            if args.expected_constituency_vintage is None
-            else str(args.expected_constituency_vintage)
-        ),
         "doctrine": doctrine_bounds(posture),
         "solve_options": {
             "conserve_mass": CONSERVE_MASS,
@@ -429,31 +429,6 @@ _record_candidate_error = record_candidate_error
 #: Solve arguments whose argparse default is ``None`` so an explicit value can
 #: be told from the role's default: the other role's refusal table keys on
 #: what was actually given.
-#: CLI labels of the three UK atomic-area supports (microcosm#932), in
-#: ``atomic_area_support.SYSTEMS`` order; ``full_build_cli`` declares the
-#: ``--atomic-support-<label>`` and ``--atomic-support-sha256-<label>`` flags.
-ATOMIC_SUPPORT_LABELS = ("ew", "scotland", "ni")
-
-
-def _geography_assignment(args: argparse.Namespace) -> str | None:
-    """The requested assignment, or None for a namespace without the flag."""
-    return getattr(args, "geography_assignment", None)
-
-
-def _atomic_support_arguments(
-    args: argparse.Namespace,
-) -> tuple[dict[str, object], dict[str, object]]:
-    supports = {
-        label: getattr(args, f"atomic_support_{label}", None)
-        for label in ATOMIC_SUPPORT_LABELS
-    }
-    digests = {
-        label: getattr(args, f"atomic_support_sha256_{label}", None)
-        for label in ATOMIC_SUPPORT_LABELS
-    }
-    return supports, digests
-
-
 ROLE_DEFAULTED_ARGUMENTS = (
     "n_clones",
     "seed",
@@ -461,20 +436,24 @@ ROLE_DEFAULTED_ARGUMENTS = (
     "epochs",
     "learning_rate",
     "target_weight_rule",
-    "expected_constituency_vintage",
 )
 _ROLE_DEFAULTED_ARGUMENTS = ROLE_DEFAULTED_ARGUMENTS
 
 
 def resolve_role_arguments(args: argparse.Namespace) -> UKRowwisePosture:
-    """Bind the declared role's posture and fill its defaults into unset arguments."""
+    """Bind the declared role's posture and fill its defaults into unset arguments.
+
+    ``n_clones`` is never filled: the national line takes no clone count, and
+    the dense line's is its bound spine's, which the build's preparation sets
+    once it has read the spine (an explicit ``--n-clones`` is only an
+    assertion of it; microcosm#931). The posture's doctrine clone count stays
+    in the recorded doctrine bounds.
+    """
 
     posture = uk_rowwise_posture(args.release_role)
     args._explicit_arguments = frozenset(
         name for name in ROLE_DEFAULTED_ARGUMENTS if getattr(args, name) is not None
     )
-    if args.n_clones is None:
-        args.n_clones = posture.clone_count
     if args.seed is None:
         args.seed = posture.seed
     if args.sample_seed is None:
@@ -485,8 +464,6 @@ def resolve_role_arguments(args: argparse.Namespace) -> UKRowwisePosture:
         args.learning_rate = posture.learning_rate
     if args.target_weight_rule is None:
         args.target_weight_rule = posture.target_weight_rule
-    if args.expected_constituency_vintage is None:
-        args.expected_constituency_vintage = posture.expected_constituency_vintage
     _resolve_size_defaults(args, posture)
     # The rotated holdout is an opt-in, report-only diagnostic (microcosm#1301):
     # a dense build skips it unless --rotated-holdout asks for it, and the
@@ -925,6 +902,7 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         refuse_dense_role_arguments(args, posture)
     else:
         refuse_national_role_arguments(args, posture)
+        refuse_spine_bound_arguments(args)
     check_solve_reuse_arguments(args)
     if args.selection_seed is not None and args.dataset_households is None:
         raise ValueError("--selection-seed requires --dataset-households.")
@@ -1006,36 +984,6 @@ def validate_cli_args(args: argparse.Namespace) -> None:
             raise ValueError(
                 "the joint registry path requires --input-sha256 and --ladder-sha256."
             )
-        # Geography is assigned inside the graph (microcosm#932): atomic (the
-        # default) reads the three UK support artifacts; legacy takes none.
-        assignment = _geography_assignment(args)
-        supports, digests = _atomic_support_arguments(args)
-        if assignment == "atomic":
-            missing = [
-                f"--atomic-support-{label}"
-                for label, path in supports.items()
-                if path is None
-            ]
-            if missing:
-                raise ValueError(
-                    "--geography-assignment atomic requires the three atomic-area "
-                    "supports: " + ", ".join(missing)
-                )
-        elif assignment == "legacy":
-            given = [
-                f"--atomic-support-{label}"
-                for label, path in supports.items()
-                if path is not None
-            ] + [
-                f"--atomic-support-sha256-{label}"
-                for label, digest in digests.items()
-                if digest is not None
-            ]
-            if given:
-                raise ValueError(
-                    "--geography-assignment legacy takes no atomic-area supports: "
-                    + ", ".join(given)
-                )
     elif input_pin_required:
         raise ValueError("--release-role national requires --input-sha256.")
     if args.release_candidate:
@@ -1047,14 +995,6 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         }
         if args.input_h5 is not None:
             required_release = {"--input-sha256": args.input_sha256, **required_release}
-        if _geography_assignment(args) == "atomic":
-            _, digests = _atomic_support_arguments(args)
-            required_release.update(
-                {
-                    f"--atomic-support-sha256-{label}": digest
-                    for label, digest in digests.items()
-                }
-            )
         missing_release = [
             name for name, value in required_release.items() if value is None
         ]
@@ -1068,27 +1008,16 @@ def validate_cli_args(args: argparse.Namespace) -> None:
             refused.append("--target-weight-rule")
         if args.epochs != posture.epochs:
             refused.append(f"--epochs != doctrine {posture.epochs}")
-        if args.n_clones != posture.clone_count:
-            refused.append(f"--n-clones != doctrine {posture.clone_count}")
         if args.measure_exclusions is not None:
             refused.append("--measure-exclusions")
-        if args.sample_fraction != 1.0:
-            refused.append("--sample-fraction != 1.0")
-        if _geography_assignment(args) == "legacy":
-            # The release line is the identity-keyed atomic assignment.
-            refused.append("--geography-assignment legacy")
-        if getattr(args, "property_localisation", "price_paid") == "none":
-            # The release line localises home values and bands (microcosm#1240).
-            refused.append("--property-localisation none")
-        if getattr(args, "brma_localisation", "area") == "none":
-            # The release line reads BRMAs off the assigned area (microcosm#1262).
-            refused.append("--brma-localisation none")
-        if getattr(args, "private_rent_localisation", "brma_list") == "none":
-            # The release line re-draws private rents from the area's list.
-            refused.append("--private-rent-localisation none")
-        if getattr(args, "rfdr_localisation", "area") == "none":
-            # The release line flags its Rural Fuel Duty Relief areas (#1418).
-            refused.append("--rfdr-localisation none")
+        # A dense build takes its geographic clones, its sampling, its areas
+        # and the home values, BRMAs, private rents and fuel-relief flags they
+        # set from the spine, and spine_posture requires the spine stages that
+        # set them before the build pins or reads any other input
+        # (microcosm#931), so no flag turns them off or draws them again.
+        # Preparation, where the spine is read, refuses a sampled spine and
+        # holds the spine to the doctrine's K, to a release candidate's
+        # posture and to a release's geography binding.
         target_levels = getattr(args, "target_geographies", None)
         if target_levels is not None and not set(target_levels) & {
             "constituency",
@@ -1122,7 +1051,14 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         raise ValueError("--sample-seed must be non-negative.")
     if args.engine_blocks <= 0:
         raise ValueError("--engine-blocks must be positive.")
-    if args.engine_blocks > 1 and args.engine_blocks != args.n_clones:
+    # The dense line's K is its spine's, read at preparation, which holds the
+    # engine blocks to one or K; here only an asserted --n-clones can be
+    # compared (microcosm#931).
+    if (
+        args.engine_blocks > 1
+        and args.n_clones is not None
+        and args.engine_blocks != args.n_clones
+    ):
         raise ValueError("--engine-blocks greater than one must equal --n-clones.")
     if args.source_year is not None and args.source_year <= 0:
         raise ValueError("--source-year must be positive.")
@@ -1134,11 +1070,6 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         not np.isfinite(args.target_loss_cap) or args.target_loss_cap <= 0
     ):
         raise ValueError("--target-loss-cap must be positive and finite.")
-    if (
-        args.expected_constituency_vintage is not None
-        and not str(args.expected_constituency_vintage).strip()
-    ):
-        raise ValueError("--expected-constituency-vintage must be non-empty.")
 
 
 _validate_cli_args = validate_cli_args
@@ -1168,20 +1099,8 @@ def refuse_dense_role_arguments(
         refused.append("--ladder")
     if args.ladder_sha256 is not None:
         refused.append("--ladder-sha256")
-    # The atomic-area supports (microcosm#932) are graph inputs of the dense
-    # role; the seam assigns no geography.
-    supports, digests = _atomic_support_arguments(args)
-    for label in ATOMIC_SUPPORT_LABELS:
-        if supports[label] is not None:
-            refused.append(f"--atomic-support-{label}")
-        if digests[label] is not None:
-            refused.append(f"--atomic-support-sha256-{label}")
-    if "expected_constituency_vintage" in explicit:
-        refused.append("--expected-constituency-vintage")
     if args.source_year is not None:
         refused.append("--source-year")
-    if args.source_lineage_modulus is not None:
-        refused.append("--source-lineage-modulus")
     if "n_clones" in explicit:
         refused.append("--n-clones")
     if args.candidate_clone_counts is not None:
@@ -1261,6 +1180,41 @@ def refuse_national_role_arguments(
 
 
 _refuse_national_role_arguments = refuse_national_role_arguments
+
+
+def refuse_spine_bound_arguments(args: argparse.Namespace) -> None:
+    """The dense role's refusals of what its spine binds (microcosm#931).
+
+    The dense line takes its geographic clones and its sampling from the spine
+    it binds: a spine is sampled at its own build, so a dense
+    ``--sample-fraction`` other than 1.0 and any ``--sample-seed`` are
+    refused. ``--candidate-clone-counts`` plans one spine request per clone
+    count, so it is refused with ``--input-h5``, whose spine's K is fixed, and
+    with ``--n-clones``, which every candidate but one would contradict.
+    ``--n-clones`` is only an assertion of the spine's K, which preparation
+    checks once it has read the spine. The refusal names flags only.
+    """
+
+    refused: list[str] = []
+    if args.sample_fraction != 1.0:
+        refused.append("--sample-fraction other than 1.0")
+    if "sample_seed" in args._explicit_arguments:
+        refused.append("--sample-seed")
+    if args.candidate_clone_counts is not None and args.input_h5 is not None:
+        refused.append("--candidate-clone-counts with --input-h5")
+    if (
+        args.candidate_clone_counts is not None
+        and "n_clones" in args._explicit_arguments
+    ):
+        refused.append("--n-clones with --candidate-clone-counts")
+    if refused:
+        raise ValueError(
+            "--release-role dense takes its geographic clones and sampling from "
+            "the spine it binds (microcosm#931) and refuses: " + ", ".join(refused)
+        )
+
+
+_refuse_spine_bound_arguments = refuse_spine_bound_arguments
 
 
 def output_paths(
@@ -1363,13 +1317,18 @@ def release_verdict(
     normalised formulas (a national total allocated by weighted share) saw one
     block's denominator and each block reproduced the whole aggregate, the
     ``K`` times land-value artefact behind the #736 erratum. The measures loop
-    now scales every block's engine weights to the pool and records whether the
-    blocks are identical copies with identical allocation keys for the named
-    weight-share formulas (``engine_population_representation.exact``; the
-    formulas and their inputs are ``UK_WEIGHT_SHARE_FORMULA_INPUTS``); a single
-    block is exact by construction. ``engine_population_exact`` is that
-    record; left unset, a multi-block run is treated as inexact. The posture is
-    written beside the verdict so a reader sees which leg failed.
+    now scales every block's engine weights to the pool, sets each block's
+    share formulas to the pool's value in every simulation it builds, and
+    judges every whole-population formula the block ran against the UK
+    declaration (``engine_population_representation.exact``, with
+    ``exact_basis`` ``pool_share_injection_with_population_guard``: corrected
+    blocks with their checks holding and a clean guard, equal to one engine
+    over the pool to float32 rounding; microcosm#931). A receipt without
+    ``exact_basis`` predates the correction, when exact meant blocks that were
+    identical copies with identical allocation keys. A single block is exact
+    by construction. ``engine_population_exact`` is that record; left unset, a
+    multi-block run is treated as inexact. The posture is written beside the
+    verdict so a reader sees which leg failed.
     """
 
     single_block = int(engine_blocks) == 1

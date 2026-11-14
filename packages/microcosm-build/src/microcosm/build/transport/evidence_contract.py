@@ -168,6 +168,12 @@ EVIDENCE_KERNEL_MODULES: Mapping[str, tuple[str, ...]] = MappingProxyType(
             "microcosm.frame.adapters.axiom_input_surface",
             "microcosm.frame.adapters.axiom",
             "microcosm.frame.schema",
+            # The kernel types its engines by frame.rules' RulesEngine, and
+            # reads an AxiomEngine's compiled programs (engine_root_inputs),
+            # whose class builds its tables through frame.materialize
+            # (microcosm#931).
+            "microcosm.frame.rules",
+            "microcosm.frame.materialize",
             _CANONICAL,
             _LEAF,
         ),
@@ -179,6 +185,9 @@ EVIDENCE_KERNEL_MODULES: Mapping[str, tuple[str, ...]] = MappingProxyType(
             "microcosm.calibrate.registry",
             "microcosm.calibrate.solve",
             "microcosm.calibrate.target",
+            # The decoded problem's targets carry their hierarchy
+            # (microcosm#931).
+            "microcosm.calibrate.hierarchy",
             "microcosm.frame.schema",
             "microcosm.frame.weights",
             _CANONICAL,

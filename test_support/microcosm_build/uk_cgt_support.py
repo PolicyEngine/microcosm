@@ -61,6 +61,32 @@ BAND_INCOMES: dict[int, float] = {
     200_000: 250_000.0,
 }
 
+#: The clone-first nesting scenario (microcosm#931), which
+#: test_uk_cgt_support.py and test_uk_clone_first_nesting.py split at several
+#: clone counts: nine one-person households, their weights, investable
+#: wealth and Table 3 incomes (seven in band 0, one in band 37,700, then the
+#: zero-weight one in band 0), and a joint that asks band 0 for far more than
+#: its pool and band 37,700 for nothing. test_uk_cgt_support.py says where
+#: rule B's correction lands at each clone count, and why.
+NESTING_WEIGHTS: tuple[float, ...] = (
+    900.0,
+    1_800.0,
+    4_020.0,
+    7_620.0,
+    float(np.nextafter(300.0, 0.0)),
+    40.0,
+    1_234.5,
+    9_000.0,
+    0.0,
+)
+NESTING_WEALTH: tuple[float, ...] = (7e3, 6e3, 5e3, 4e3, 3e3, 2e3, 1e3, 1.0, 1e6)
+NESTING_INCOMES: tuple[float, ...] = (
+    *[BAND_INCOMES[0]] * 7,
+    BAND_INCOMES[37_700],
+    BAND_INCOMES[0],
+)
+NESTING_TOP_CELLS: Mapping[int, Mapping[int, float]] = {0: {250_000: 1_000_000.0}}
+
 
 def support_distribution(
     top_cells: Mapping[int, Mapping[int, float | None]] | None = None,

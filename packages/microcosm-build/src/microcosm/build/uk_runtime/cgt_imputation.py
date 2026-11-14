@@ -99,6 +99,10 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.stochastic_assignment import (
+    keyed_tie_uniforms,
+    stable_identity_uniform,
+)
 from microcosm.build.uk_runtime.advani_summers import (
     ADVANI_SUMMERS_RESOURCE,
     ADVANI_SUMMERS_VINTAGE,
@@ -168,13 +172,15 @@ __all__ = [
 #: the certified June H5) is retired; its family left the release contract.
 UK_CGT_SPINE_STAGE_NAME = "hmrc_cgt_gains_spine"
 
-#: Base seed for the stage's draws. Combined with the build period so two
-#: periods draw differently while each build is reproducible.
+#: Base seed for the stage's draws. Combined with the build period, which
+#: salts every walk offset, plan jitter and rank-tie uniform, so two periods
+#: draw differently while each build is reproducible.
 UK_CGT_IMPUTATION_SEED = 552
 
 #: How the sub-AEA remainder takes its amounts (microcosm#970): the
 #: Advani-Summers within-band quantile function restricted to the exempt
-#: range, rank-preserving within each total-income band, no seeded draw.
+#: range, rank-preserving within each total-income band, no seeded draw of
+#: its own (ties on the prior gain take the allocation's rank-tie uniforms).
 UK_CGT_REMAINDER_POLICY = "advani_summers_within_band_exempt_range"
 
 #: The reviewed mass-conservation receipt the spine stage records. The
@@ -1224,12 +1230,30 @@ def _rake_allocation_targets(
     return targets, report
 
 
+class _KeyedOffset:
+    """One identity-keyed uniform in the shape the walks read (``random()``).
+
+    ``_walk_bands`` reads its rounding offset, and ``_draw_plan_amounts`` its
+    quantile jitter, through one ``rng.random()`` call each. The redraw
+    passes each call one of these, holding a ``stable_identity_uniform``
+    keyed on that walk's or plan's own label, in place of a shared
+    Generator, whose n-th draw belonged to whichever call came n-th
+    (microcosm#931). The ISA subscriptions walk their bands with it too.
+    """
+
+    def __init__(self, value: float) -> None:
+        self._value = float(value)
+
+    def random(self) -> float:
+        return self._value
+
+
 def _walk_bands(
     *,
     ranked: np.ndarray,
     weights: np.ndarray,
     boundaries: Sequence[tuple[int, float]],
-    rng: np.random.Generator,
+    rng: np.random.Generator | _KeyedOffset,
     members: dict[int, list[np.ndarray]],
 ) -> tuple[np.ndarray, dict[int, float]]:
     """Assign ranked gainers to bands, highest first, and draw their amounts.
@@ -1272,8 +1296,9 @@ def _draw_plan_amounts(
     person_id: np.ndarray,
     existing: np.ndarray,
     weights: np.ndarray,
-    rng: np.random.Generator,
+    rng: np.random.Generator | _KeyedOffset,
     new_gains: np.ndarray,
+    tie: np.ndarray | None = None,
 ) -> None:
     """Draw one plan's amounts on weight-proportional quantile strata.
 
@@ -1287,12 +1312,13 @@ def _draw_plan_amounts(
     third of whose weight sat in the bottom strata). The open band takes each
     stratum's conditional mean, so its weighted mean is the published mean
     exactly; a bounded band takes the quantile inside each stratum, which
-    reproduces the mean to the width of the widest stratum.
+    reproduces the mean to the width of the widest stratum. ``tie`` orders
+    members tied on the key as :func:`_ranked` does, reversed.
     """
 
     if members.size == 0:
         return
-    ordered = _ranked(members, person_id=person_id, existing=existing)[::-1]
+    ordered = _ranked(members, person_id=person_id, existing=existing, tie=tie)[::-1]
     cumulative = np.cumsum(weights[ordered])
     total = float(cumulative[-1])
     if not total > 0.0:
@@ -1316,12 +1342,27 @@ def _draw_plan_amounts(
 
 
 def _ranked(
-    indices: np.ndarray, *, person_id: np.ndarray, existing: np.ndarray
+    indices: np.ndarray,
+    *,
+    person_id: np.ndarray,
+    existing: np.ndarray,
+    tie: np.ndarray | None = None,
 ) -> np.ndarray:
-    # Rank by the given key, largest first: the allocation's wealth-blended
-    # rank key, or the prior gain for the sub-AEA remainder. person_id breaks
-    # ties so the ordering, and with it every draw, is deterministic.
-    order = np.lexsort((person_id[indices], -existing[indices]))
+    """``indices`` by the given key, largest first.
+
+    The key is the allocation's wealth-blended rank key, or the prior gain
+    for the sub-AEA remainder. Persons tied on it take the order of ``tie``
+    ascending, one identity-keyed uniform per person
+    (:func:`microcosm.build.stochastic_assignment.keyed_tie_uniforms`, the
+    uniforms its ``keyed_tie_order`` sorts on), then of person_id, so no id
+    range, the copies or clones of one household among them, wins every tie
+    (microcosm#931). With no ``tie``, person_id alone breaks ties.
+    """
+
+    if tie is None:
+        order = np.lexsort((person_id[indices], -existing[indices]))
+    else:
+        order = np.lexsort((person_id[indices], tie[indices], -existing[indices]))
     return indices[order]
 
 
@@ -1335,6 +1376,7 @@ def _map_remainder_amounts(
     rows: Sequence[Mapping[str, object]],
     annual_exempt_amount: float,
     new_gains: np.ndarray,
+    tie: np.ndarray | None = None,
 ) -> dict[str, object]:
     """Place the sub-AEA remainder on the A&S within-band surface (microcosm#970).
 
@@ -1347,14 +1389,17 @@ def _map_remainder_amounts(
     its crossing of the annual exempt amount, so the band's weighted
     remainder reproduces the published conditional shape on (0, AEA]. The
     mapping is a monotone transform of the existing gains inside each band,
-    consumes no seeded draw, and fails closed if any amount leaves the
-    range. Returns the receipt for the allocation report.
+    makes no draw of its own (``tie``, the allocation's rank-tie uniforms,
+    orders persons tied on their prior gain, as :func:`_ranked` reversed),
+    and fails closed if any amount leaves the range. Returns the receipt for
+    the allocation report.
     """
 
     band_rows: list[dict[str, object]] = []
     for band in np.unique(band_index[remainder]):
         members = remainder[band_index[remainder] == band]
-        ordered = _ranked(members, person_id=person_id, existing=existing)[::-1]
+        ranked = _ranked(members, person_id=person_id, existing=existing, tie=tie)
+        ordered = ranked[::-1]
         knots = advani_summers_knots(rows[int(band)])
         lower_quantile, upper_quantile = exempt_range_quantiles(
             knots, annual_exempt_amount
@@ -1526,7 +1571,7 @@ def _placement_receipts(
 
     Receipts only: every input is what the two passes, the plan draws and
     the remainder mapping already produced, and nothing here touches
-    ``new_gains`` or the seeded stream. Placed rows are the gainers a pass
+    ``new_gains`` or draws. Placed rows are the gainers a pass
     assigned to a plan; demoted rows are the gainers left to the sub-exempt
     remainder. The initial band is the Table 2.1a band of the prior gain; the
     redrawn band is the band of the new amount, which for a placed row is the
@@ -1766,8 +1811,8 @@ def impute_uk_capital_gains_with_report(
     )
     if missing_households:
         raise ValueError(
-            "Person rows reference households with no weight: "
-            f"{sorted(missing_households)[:5]}."
+            f"Person rows reference {len(missing_households)} household(s) with "
+            "no weight."
         )
     person_weight = (
         person["person_household_id"].map(weights_by_household).to_numpy(dtype=float)
@@ -1784,10 +1829,29 @@ def impute_uk_capital_gains_with_report(
     _, age_group, _, region_group = _person_conditioning_cells(person, household)
 
     rank_key, investable_wealth = _allocation_rank_key(person, household, existing)
+    # Persons tied on a rank take the order of a uniform keyed on their own
+    # person_id, salted with the build period, then of their ids: one draw per
+    # person for every walk, plan and the remainder, so the same person wins
+    # a tie throughout and no id range, the copies or clones of one household
+    # among them, wins every tie (microcosm#931).
+    rank_tie = keyed_tie_uniforms(
+        person_id,
+        seed=seed,
+        salt=f"{UK_CGT_SPINE_STAGE_NAME}:rank_tie:{int(time_period)}",
+    )
     # Receipts only (microcosm#1045): the walk never reads the row type.
     support_family, support_column_present = _support_family_rows(person, household)
 
-    rng = np.random.default_rng((seed, int(time_period)))
+    # Each walk's rounding offset and each plan's quantile jitter is an
+    # identity-keyed uniform on its own label, salted with the build period,
+    # so none depends on which other walks run or skip, or in what order
+    # (microcosm#931).
+    offset_salt = f"{UK_CGT_SPINE_STAGE_NAME}:offset:{int(time_period)}"
+    jitter_salt = f"{UK_CGT_SPINE_STAGE_NAME}:jitter:{int(time_period)}"
+
+    def keyed(salt: str, key: str) -> _KeyedOffset:
+        return _KeyedOffset(stable_identity_uniform(key, seed=seed, salt=salt))
+
     new_gains = existing.copy()
     is_gainer = existing > 0
     assigned = np.zeros(len(person), dtype=bool)
@@ -1846,7 +1910,10 @@ def impute_uk_capital_gains_with_report(
                     carry = -deferred
                     continue
                 ranked = _ranked(
-                    np.flatnonzero(in_cell), person_id=person_id, existing=rank_key
+                    np.flatnonzero(in_cell),
+                    person_id=person_id,
+                    existing=rank_key,
+                    tie=rank_tie,
                 )
                 weights = person_weight[ranked]
                 # When the cell holds less gainer mass than its target,
@@ -1863,7 +1930,11 @@ def impute_uk_capital_gains_with_report(
                     ranked=ranked,
                     weights=weights,
                     boundaries=boundaries,
-                    rng=rng,
+                    rng=keyed(
+                        offset_salt,
+                        f"cell:{income_lower}:{UK_CGT_AGE_GROUP_LOWER_BOUNDS[a]}:"
+                        f"{UK_CGT_REGION_GROUP_LABELS[r]}",
+                    ),
                     members=cell_members,
                 )
                 for gain_lower, chunks in cell_members.items():
@@ -1902,7 +1973,9 @@ def impute_uk_capital_gains_with_report(
             gain_lower: value * net_shortfall / positive_total
             for gain_lower, value in positive.items()
         }
-        ranked = _ranked(np.flatnonzero(pool), person_id=person_id, existing=rank_key)
+        ranked = _ranked(
+            np.flatnonzero(pool), person_id=person_id, existing=rank_key, tie=rank_tie
+        )
         weights = person_weight[ranked]
         scale = min(1.0, float(weights.sum()) / net_shortfall)
         boundaries = [
@@ -1914,7 +1987,7 @@ def impute_uk_capital_gains_with_report(
             ranked=ranked,
             weights=weights,
             boundaries=boundaries,
-            rng=rng,
+            rng=keyed(offset_salt, f"pool:{income_lower}"),
             members=pool_members,
         )
         for gain_lower, chunks in pool_members.items():
@@ -1937,14 +2010,15 @@ def impute_uk_capital_gains_with_report(
                 person_id=person_id,
                 existing=rank_key,
                 weights=person_weight,
-                rng=rng,
+                rng=keyed(jitter_salt, f"plan:{gain_lower}:{income_lower}"),
                 new_gains=new_gains,
+                tie=rank_tie,
             )
 
     # Below the published taxpayer mass: sub-AEA gainers take Advani-Summers
     # within-band amounts restricted to (0, AEA], rank-preserving within each
-    # A&S total-income band (microcosm#970). Nothing here touches rng, so the
-    # walk and plan draw order above is unchanged.
+    # A&S total-income band (microcosm#970). Nothing here draws; ties on the
+    # prior gain take the rank-tie uniforms.
     remainder_receipt = _map_remainder_amounts(
         remainder=np.flatnonzero(is_gainer & ~assigned),
         existing=existing,
@@ -1956,6 +2030,7 @@ def impute_uk_capital_gains_with_report(
         rows=remainder_rows,
         annual_exempt_amount=parameters.annual_exempt_amount,
         new_gains=new_gains,
+        tie=rank_tie,
     )
 
     if not np.isfinite(new_gains).all():
@@ -2434,10 +2509,14 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
                 "band's pooled unassigned gainers"
             ),
             "ordering": (
-                "a rank key descending, person_id ascending on ties: among "
-                "gainers, the household investable-wealth rank times the wealth "
-                "rank weight plus the prior-gain rank times its complement, "
-                "both as average ranks over the gainers"
+                "a rank key descending, then the rank-tie uniform ascending, then "
+                "person_id ascending: among gainers, the household "
+                "investable-wealth rank times the wealth rank weight plus the "
+                "prior-gain rank times its complement, both as average ranks "
+                "over the gainers; the rank-tie uniform is one identity-keyed "
+                "uniform per person, keyed on person_id under seed_base and "
+                "salted hmrc_cgt_gains_spine:rank_tie:<period>, which every "
+                "walk, plan and the remainder read"
             ),
             "wealth_rank_weight": UK_CGT_WEALTH_RANK_WEIGHT,
             "investable_wealth_columns": list(UK_CGT_INVESTABLE_WEALTH_COLUMNS),
@@ -2512,10 +2591,16 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
             "bottom_band_floor": "annual exempt amount plus one pound",
             "seed_base": UK_CGT_IMPUTATION_SEED,
             "seed_mixing": (
-                "seed combined with the build period; each walk draws its "
-                "rounding offset in cell order then pooled-fallback order, then "
-                "each plan draws its quantile jitter, income bands ascending and "
-                "gain bands highest first"
+                "seed combined with the build period, which salts every draw; "
+                "each walk's rounding offset and each plan's quantile jitter is "
+                "an identity-keyed uniform on its own label, with no stream "
+                "order, so none depends on which other walks run or skip: a cell "
+                "walk keys on cell:<income band>:<age group>:<region group> and "
+                "an income band's pooled walk on pool:<income band>, salted "
+                "hmrc_cgt_gains_spine:offset:<period>, and a plan on "
+                "plan:<gain band>:<income band>, salted "
+                "hmrc_cgt_gains_spine:jitter:<period>, bands and age groups by "
+                "their lower bounds and region groups by their labels"
             ),
             "deterministic": True,
             "cell_means": (
@@ -2561,14 +2646,14 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
                 "remainder gainers take the midpoints of the weight-proportional "
                 "quantile strata that partition the range, evaluated on the "
                 "band's spline; zero-weight persons take a nominal stratum of "
-                "the band's smallest positive weight and carry no mass; no "
-                "seeded draw is consumed, so the walk and plan draw order is "
-                "unchanged"
+                "the band's smallest positive weight and carry no mass; the "
+                "mapping makes no draw of its own"
             ),
             "ordering": (
-                "existing gains ascending, person_id descending on ties (the "
-                "prior-gain ranking reversed; the allocation and the within-band "
-                "draws rank on the wealth-blended key)"
+                "existing gains ascending, then the rank-tie uniform descending, "
+                "then person_id descending (the prior-gain ranking reversed; the "
+                "allocation and the within-band draws rank on the wealth-blended "
+                "key)"
             ),
             "quantile_points": list(CGT_QUANTILE_POINTS),
             "spline_degree": 1,

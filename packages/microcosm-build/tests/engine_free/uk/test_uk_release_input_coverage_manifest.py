@@ -93,6 +93,83 @@ def test_committed_manifest_matches_regeneration() -> None:
     assert generator.build_manifest() == committed
 
 
+def test_the_private_rent_family_rewrites_the_rent_and_conserves_mass() -> None:
+    """The spine's private_rent stage reads Great Britain private renters'
+    rents off their BRMA's list (microcosm#931), so the release requires it
+    at build as a family of its own: it writes no column, rewrites the rent
+    alone and records the stage's own mass-conservation reason, at
+    importance weights."""
+    from microcosm.build.uk_runtime.spine_private_rent import (
+        PRIVATE_RENT_STAGE_NAME,
+        UK_PRIVATE_RENT_MASS_CONSERVATION_REASON,
+        UK_PRIVATE_RENT_REWRITES,
+    )
+
+    families = _resource("release_input_coverage_manifest.json")["family_coverage"]
+    family = families[PRIVATE_RENT_STAGE_NAME]
+    assert family["stage"] == PRIVATE_RENT_STAGE_NAME
+    assert family["status"] == "required_at_build"
+    assert family["outputs"] == []
+    assert family["rewrites"] == list(UK_PRIVATE_RENT_REWRITES)
+    assert family["mass_change_semantics"] == "mass_conserving"
+    assert family["required_mass_change_reason"] == (
+        UK_PRIVATE_RENT_MASS_CONSERVATION_REASON
+    )
+    assert family["output_weight_kind"] == "importance"
+    assert family["source_manifest"] == "source_stages.json"
+    shared = families["was_wealth"]["source_manifest_sha256"]
+    assert family["source_manifest_sha256"] == shared
+
+
+def test_the_council_tax_family_keeps_the_paid_bill_and_conserves_mass() -> None:
+    """The spine's council_tax_localise stage prices Great Britain council tax
+    at each household's drawn local authority just before the WAS chain
+    (microcosm#931), so the release requires it at build as a family of its
+    own: it writes the paid bill it keeps from before, rewrites the bill, the
+    rebate and the reported reduction, and records the stage's own
+    mass-conservation reason, at importance weights."""
+    from microcosm.build.uk_runtime.spine_council_tax import (
+        COUNCIL_TAX_LOCALISE_STAGE_NAME,
+        UK_COUNCIL_TAX_LOCALISE_MASS_CONSERVATION_REASON,
+        UK_COUNCIL_TAX_LOCALISE_OUTPUT_COLUMNS,
+        UK_COUNCIL_TAX_LOCALISE_REWRITES,
+    )
+
+    families = _resource("release_input_coverage_manifest.json")["family_coverage"]
+    family = families[COUNCIL_TAX_LOCALISE_STAGE_NAME]
+    assert family["stage"] == COUNCIL_TAX_LOCALISE_STAGE_NAME
+    assert family["status"] == "required_at_build"
+    assert family["outputs"] == list(UK_COUNCIL_TAX_LOCALISE_OUTPUT_COLUMNS)
+    assert family["rewrites"] == list(UK_COUNCIL_TAX_LOCALISE_REWRITES)
+    assert family["mass_change_semantics"] == "mass_conserving"
+    assert family["required_mass_change_reason"] == (
+        UK_COUNCIL_TAX_LOCALISE_MASS_CONSERVATION_REASON
+    )
+    assert family["output_weight_kind"] == "importance"
+    assert family["source_manifest"] == "source_stages.json"
+    shared = families["was_wealth"]["source_manifest_sha256"]
+    assert family["source_manifest_sha256"] == shared
+
+
+def test_the_wealth_family_carries_the_area_home_values_kept_draw() -> None:
+    """The WAS chain reads England and Wales home values off each owner's
+    constituency inside was_wealth (microcosm#931), so its family requires
+    the draw the step keeps beside them, in the stage's own order, and
+    regional_home_values' family retires with that stage."""
+    from microcosm.build.uk_runtime.property_localisation import RANK_BASIS_COLUMN
+    from microcosm.build.uk_runtime.was_wealth import (
+        UK_WAS_WEALTH_LOCALISED_OUTPUT_COLUMNS,
+    )
+
+    families = _resource("release_input_coverage_manifest.json")["family_coverage"]
+    assert "regional_home_values" not in families
+    family = families["was_wealth"]
+    assert family["outputs"] == list(UK_WAS_WEALTH_LOCALISED_OUTPUT_COLUMNS)
+    assert RANK_BASIS_COLUMN in family["outputs"]
+    assert family["rewrites"] == []
+    assert family["mass_change_semantics"] == "mass_conserving"
+
+
 def test_frozen_candidate_retains_its_original_engine_provenance() -> None:
     evidence = _resource("efrs_parity_known_gaps.json")["candidate_evidence"]
     assert evidence["engine"]["version"] == "2.89.0"

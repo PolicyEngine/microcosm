@@ -65,7 +65,6 @@ from .full_problem import build_uk_full_local_problem
 from .full_targets import CHRONICLE_SOURCE_CODEC, load_chronicle_source_bytes
 from .geography_ladder import load_uk_oa_ladder, uk_area_region_codes
 from .graph_population import (
-    GEOGRAPHY_GATE_TYPE,
     context_frame,
     population_columns,
     population_slices,
@@ -255,6 +254,11 @@ class _TargetKernel(KernelBase):
             # the validation checks read, which no listed module may.
             weighted_integrity,
             *uk_target_compile_modules(),
+            # The canonical encoding of the artifacts all four kernels store
+            # and read (microcosm#931). What only one of them computes
+            # through, it hashes in its own implementation hash below;
+            # test_uk_graph derives each kernel's set from what its code names.
+            canonical_json,
         )
         # The solve fingerprint: every packaged resource but the gate-only
         # registers, which no compile module reads (microcosm#1301), so a
@@ -271,6 +275,26 @@ class _TargetKernel(KernelBase):
 
 class UKFullTargetCompilationKernel(_TargetKernel):
     ref = "uk.full.target_compilation@1"
+
+    def implementation_hash(self) -> str:
+        from microcosm.build import chronicle_epoch
+
+        # The compilation also computes through the Chronicle schema versions
+        # and fact-key epochs ledger_artifact checks the facts against and
+        # records in their provenance (chronicle_epoch) (microcosm#931). It
+        # does not compute through the ONS household type domain
+        # (frs_relationships): ledger_targets checks the household-type
+        # bindings against it before it compiles, and that check only
+        # refuses, so test_uk_graph lists it refusal-only (microcosm#931,
+        # ruled 9 Nov (late)).
+        return hashlib.sha256(
+            canonical_json(
+                {
+                    "targets": super().implementation_hash(),
+                    "compilation": source_hash(chronicle_epoch),
+                }
+            )
+        ).hexdigest()
 
     def run(self, context: KernelContext) -> KernelResult:
         from .full_targets import load_uk_full_target_inputs
@@ -428,16 +452,6 @@ class UKFullTargetSelectionKernel(_TargetKernel):
                     or f"{spec.family}/{target_geography(spec)}" in families
                 )
             )
-        brma_left_out = 0
-        if context.params.get("brma_rows", True) is False:
-            # Without area BRMAs the BRMA rows would bind on the spine's
-            # regional draw, unrelated to placement (microcosm#1305 review).
-            brma_left_out = sum(
-                target_geography(spec) == "brma" for spec in registry.specs
-            )
-            registry = registry.select(
-                predicate=lambda spec: target_geography(spec) != "brma"
-            )
         selected = select_targets(
             registry, geography_levels=levels, geography_resolver=target_geography
         )
@@ -447,19 +461,6 @@ class UKFullTargetSelectionKernel(_TargetKernel):
             "registry": registry_payload(selected.registry),
             "receipt": selected.receipt,
             "target_families": None if families is None else list(families),
-            **(
-                {}
-                if context.params.get("brma_rows", True)
-                else {
-                    "brma_rows_left_out": {
-                        "rows": brma_left_out,
-                        "reason": (
-                            "no area BRMAs (--brma-localisation none): the rows "
-                            "would bind on the spine's regional BRMA draw"
-                        ),
-                    }
-                }
-            ),
         }
         return KernelResult(artifacts={"selection": canonical_json(payload)})
 
@@ -467,12 +468,78 @@ class UKFullTargetSelectionKernel(_TargetKernel):
 class UKFullMeasureKernel(_TargetKernel):
     ref = "uk.full.measures@1"
 
-    def run(self, context: KernelContext) -> KernelResult:
-        gate = json.loads(context.artifacts["geography_gate"].payload)
-        if not gate["passed"]:
-            raise ValueError(
-                "Geography integrity gate failed: " + "; ".join(gate["failures"])
+    def implementation_hash(self) -> str:
+        import microcosm.calibrate.monetary_binding as monetary_binding
+        from microcosm.build import chronicle_epoch
+        from microcosm.frame import materialize as frame_materialize
+        from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
+
+        from . import (
+            annuity_trust_column,
+            atomic_area_support,
+            dfe_spring_term,
+            frs_annual_income,
+            graph_population,
+            hmrc_income,
+            income_tax_rate_classes,
+            lcfs_consumption,
+            national_calibration,
+            national_frame,
+            uc_target_measurements,
+        )
+
+        # The measures also compute through what the measure resolver and the
+        # engine blocks run (microcosm#931): the frame they rebuild on
+        # national_frame's schema (graph_population, national_frame), the
+        # engine's scratch frame (atomic_area_support, frame_materialize and
+        # the engine adapter's contracts), the resolver's inputs and measures
+        # (dfe_spring_term, frs_annual_income, hmrc_income,
+        # income_tax_rate_classes, lcfs_consumption and
+        # uc_target_measurements), the vendored facts' schema checks
+        # (chronicle_epoch), the measure inputs the calibration frame adapter
+        # injects (national_calibration), the national rows (local_rowwise)
+        # and the constraint matrix's monetary check (monetary_binding). The
+        # resolver reads the annuity and trust column where the frame carries
+        # it and zeros where it does not, so the measures bind its name too.
+        # It lives in annuity_trust_column, which holds nothing else, not in
+        # frs_spine, which writes the column, so this hash leaves frs_spine
+        # out, and on a bound spine an edit there leaves the measures' key
+        # alone (microcosm#931, ruled 9 Nov (late)).
+        return hashlib.sha256(
+            canonical_json(
+                {
+                    "targets": super().implementation_hash(),
+                    "measures": source_hash(
+                        annuity_trust_column,
+                        atomic_area_support,
+                        chronicle_epoch,
+                        dfe_spring_term,
+                        frs_annual_income,
+                        graph_population,
+                        hmrc_income,
+                        income_tax_rate_classes,
+                        lcfs_consumption,
+                        local_rowwise,
+                        national_calibration,
+                        national_frame,
+                        uc_target_measurements,
+                        monetary_binding,
+                        frame_materialize,
+                        uk_engine_adapter,
+                    ),
+                }
             )
+        ).hexdigest()
+
+    def run(self, context: KernelContext) -> KernelResult:
+        from .graph_evidence import require_uk_spine_gate_admission
+
+        # The spine's transferred gates admit the measures before they read
+        # the spine's version, where the composed spine declares them
+        # (microcosm#931). The dense line's own geography gate retired with
+        # its area draw; the spine's geography gates, registered later in
+        # #931, check the areas.
+        require_uk_spine_gate_admission(context)
         frame = context_frame(context)
         full = json.loads(context.artifacts["surface"].payload)
         selected = registry_from_payload(
@@ -497,7 +564,9 @@ class UKFullMeasureKernel(_TargetKernel):
         ) as scratch:
             # The national problem is compiled per engine block and stitched
             # in the pool's household order; the whole pool is never
-            # materialized (microcosm#932 follow-up, 2026-10-05).
+            # materialized (microcosm#932 follow-up, 2026-10-05). The frame
+            # must hold the spine's K geographic clones at every block count
+            # (microcosm#931).
             national_problem, rows, metrics, evidence = (
                 resolve_uk_full_national_problem(
                     frame,
@@ -508,6 +577,7 @@ class UKFullMeasureKernel(_TargetKernel):
                         full["band_edge_registry"]
                     ),
                     blocks=int(context.params["engine_blocks"]),
+                    clones=int(context.params["geographic_clones"]),
                     local_grains=grains,
                 )
             )
@@ -664,6 +734,10 @@ class UKFullProblemKernel(_TargetKernel):
     ref = "uk.full.problem@1"
 
     def implementation_hash(self) -> str:
+        import microcosm.calibrate.monetary_binding as monetary_binding
+
+        from . import graph_population, local_geography, national_frame
+
         # The loss weights the problem binds are built by
         # ``local_rowwise.prepare_uk_full_solve`` from the rules in
         # ``target_weights`` and ``national_doctrine`` (microcosm#1124), so an
@@ -673,7 +747,11 @@ class UKFullProblemKernel(_TargetKernel):
         # ``calibrate.solve.default_target_loss_scales`` (microcosm#1492). All
         # of ``calibrate.solve`` is hashed: ``calibrate.adam@1``, whose hash
         # every UK solve kernel embeds, already hashes it, so an edit there
-        # re-solves anyway and re-keys only this node besides.
+        # re-solves anyway and re-keys only this node besides. The problem
+        # also computes through the frame it rebuilds on national_frame's
+        # schema (graph_population, national_frame), the area columns of the
+        # local surface matrix local_rowwise builds (local_geography) and the
+        # constraint matrix's monetary check (monetary_binding) (microcosm#931).
         return hashlib.sha256(
             canonical_json(
                 {
@@ -684,6 +762,12 @@ class UKFullProblemKernel(_TargetKernel):
                         target_weights,
                         geography_constants,
                         calibrate_solve,
+                    ),
+                    "problem": source_hash(
+                        graph_population,
+                        national_frame,
+                        local_geography,
+                        monetary_binding,
                     ),
                 }
             )
@@ -787,33 +871,63 @@ class UKFullProblemKernel(_TargetKernel):
 def append_uk_target_nodes(
     graph: Graph,
     *,
-    population: str = "uk.full.expand",
+    population: str,
     calibration_year: int,
     time_period: str,
     geography_levels: tuple[str, ...] | None = None,
     target_families: tuple[str, ...] | None = None,
     engine_blocks: int = 1,
+    geographic_clones: int = 1,
     sample_fraction: float = 1.0,
     target_weight_rule: str = "uniform",
     optional_sources: tuple[str, ...] = (),
     review_date: str | None = None,
-    brma_rows: bool = True,
 ) -> Graph:
     """Default all geographies. Scope is independent of K, k and solver outcomes.
 
-    ``brma_rows=False`` (no area BRMAs) leaves the BRMA-grain rows out of the
-    selection: they bind on each placed household's own BRMA, and the spine's
-    regional draw is unrelated to placement (microcosm#1305 review).
+    ``population`` is the spine's version the targets read, the full build's
+    pool (microcosm#931). Where the graph declares the spine's transferred
+    gates, the measures take their admission: they refuse to read the version
+    unless that stored report admits it. ``geographic_clones`` is the spine's
+    clone count K: the measures refuse a frame that does not hold K clones,
+    at every block count, and ``engine_blocks`` must be one or K.
     """
 
     if geography_levels is not None and not geography_levels:
         raise ValueError("An explicit geography selector must contain levels.")
     if target_families is not None and not target_families:
         raise ValueError("An explicit family selector must contain families.")
+    if (
+        isinstance(geographic_clones, bool)
+        or not isinstance(geographic_clones, int)
+        or geographic_clones < 1
+    ):
+        raise ValueError(
+            "The spine's geographic clone count K must be a positive integer."
+        )
+    if engine_blocks not in {1, geographic_clones}:
+        raise ValueError(
+            "Engine blocks must be one or one per geographic clone, "
+            f"K = {geographic_clones} (microcosm#931)."
+        )
     cells = population_columns(graph, population)
     slices = population_slices(cells)
     compile_sources = ("uk_ladder", "uk_ledger_facts", *optional_sources)
     common = {"time_period": time_period}
+    spine_gate_inputs: tuple[ArtifactInput, ...] = ()
+    spine_gate_params: dict[str, object] = {}
+    if any(node.id == "spine.gates.transferred" for node in graph.nodes):
+        from .graph_evidence import SPINE_GATE_REPORT_TYPE
+
+        gate = graph.node("spine.gates.transferred")
+        spine_gate_inputs = (
+            ArtifactInput("spine_gate", gate.id, "gate_report", SPINE_GATE_REPORT_TYPE),
+        )
+        spine_gate_params = {
+            "spine_gate_phase": "transferred",
+            "spine_gate_release_candidate": bool(gate.params["release_candidate"]),
+            "spine_gate_synthetic_smoke": bool(gate.params["synthetic_smoke"]),
+        }
     review_date = date.today().isoformat() if review_date is None else review_date
     date.fromisoformat(review_date)
     # The solve fingerprint, as the target kernels hash it (microcosm#1301).
@@ -845,7 +959,6 @@ def append_uk_target_nodes(
             params={
                 "geography_levels": geography_levels,
                 "target_families": target_families,
-                **({} if brma_rows else {"brma_rows": False}),
             },
             artifact_inputs=(surface,),
             artifact_outputs=(ArtifactOutput("selection", TARGET_SELECTION_TYPE),),
@@ -856,17 +969,13 @@ def append_uk_target_nodes(
             UKFullMeasureKernel.ref,
             population=population,
             inputs=slices,
-            params={**common, "engine_blocks": engine_blocks},
-            artifact_inputs=(
-                surface,
-                selection,
-                ArtifactInput(
-                    "geography_gate",
-                    "uk.full.geography_gate",
-                    "gate",
-                    GEOGRAPHY_GATE_TYPE,
-                ),
-            ),
+            params={
+                **common,
+                "engine_blocks": engine_blocks,
+                "geographic_clones": geographic_clones,
+                **spine_gate_params,
+            },
+            artifact_inputs=(surface, selection, *spine_gate_inputs),
             artifact_outputs=(ArtifactOutput("measures", MEASURE_TYPE),),
             description="Evaluate selected measures and compile temporary national contributions.",
         ),

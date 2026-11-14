@@ -6,14 +6,12 @@ from dataclasses import replace
 import pytest
 
 from microcosm.build.uk_runtime import graph_calibration
-from microcosm.build.uk_runtime.atomic_area_support import (
-    uk_atomic_assignment_definition,
-)
 from microcosm.build.uk_runtime.full_build_cli import _through
 from microcosm.build.uk_runtime.full_certification import (
     append_uk_full_certification_node,
     register_uk_full_certification_kernel,
 )
+from microcosm.build.uk_runtime.gate_phase_codes import uk_terminal_only_code_hash
 from microcosm.build.uk_runtime.graph_build import (
     SPINE_PROVENANCE_TYPE,
     UKFullBuildConfig,
@@ -29,7 +27,6 @@ from microcosm.build.uk_runtime.graph_terminal import (
     decode_full_gate_report,
     register_uk_full_gate_kernels,
     register_uk_terminal_kernels,
-    uk_terminal_only_code_hash,
 )
 from microcosm.graph import (
     ArtifactInput,
@@ -43,18 +40,9 @@ from microcosm.graph import (
     run_graph,
 )
 from microcosm.graph.canonical import canonical_json
-from test_support.microcosm_build.uk_atomic_support_fixtures import (
-    toy_support_sources,
-    write_toy_brma_area_layer,
-    write_toy_private_rent_resources,
-    write_toy_property_resources,
-    write_toy_rfdr_area_layer,
-    write_toy_supports,
-)
 from test_support.microcosm_build.uk_full_population_graph import (
-    SOURCE_VINTAGE,
     Source,
-    graph_and_registry,
+    spine_graph,
 )
 from test_support.microcosm_build.uk_full_target_graph import (
     target_inputs as target_inputs,
@@ -130,7 +118,7 @@ def test_real_full_graph_preflight_replays_and_blocks_dense_export_and_certifica
     read none.
     """
     _, ladder_path = toy_ladder
-    primitive, _ = graph_and_registry(1)
+    primitive = spine_graph(15)
     source = replace(
         primitive.node("source"),
         kernel=IncompleteSource.ref,
@@ -141,22 +129,22 @@ def test_real_full_graph_preflight_replays_and_blocks_dense_export_and_certifica
         tuple(item for item in primitive.sources if item.name == "fixture"),
         (source,),
     )
-    payloads, support_paths = write_toy_supports(tmp_path / "supports")
     full = uk_full_graph(
         UKFullBuildConfig(
             calibration_year=2026,
             time_period="2023",
             source_year=2023,
+            n_clones=15,
             seed=7,
-            source_vintage=SOURCE_VINTAGE,
             calibration=UKGraphCalibrationConfig(epochs=2, seed=7),
         ),
         spine=base,
         spine_population="source",
-        atomic_geography_definition=uk_atomic_assignment_definition(payloads, seed=7),
     )
-    # Keep maintained K so the tiny fixture can reach every selected area;
-    # zero-support targets still refuse before gates at deliberately smaller K.
+    # The stand-in spine at the maintained K, so the tiny fixture can reach
+    # every selected area; the dense line takes K and the areas from the spine
+    # (microcosm#931), and zero-support targets still refuse before gates at
+    # deliberately smaller K.
     provenance = ArtifactInput(
         "spine_provenance", "source", "provenance", SPINE_PROVENANCE_TYPE
     )
@@ -215,15 +203,10 @@ def test_real_full_graph_preflight_replays_and_blocks_dense_export_and_certifica
         "fixture": ladder_path,
         "uk_ladder": ladder_path,
         "uk_ledger_facts": ladder_path,
-        **toy_support_sources(support_paths),
-        **write_toy_property_resources(tmp_path / "property"),
-        **write_toy_brma_area_layer(tmp_path / "brma"),
-        **write_toy_private_rent_resources(tmp_path / "rent"),
-        **write_toy_rfdr_area_layer(tmp_path / "rfdr"),
     }
     store = ContentStore(tmp_path / "store")
     checkpoint = compile_graph(_through(graph, "uk.full.gates.preflight"))
-    assert "uk.full.geography.gate" in checkpoint.order
+    assert "uk.full.geography.gate" not in checkpoint.order
     cold = run_graph(checkpoint, sources=sources, store=store, kernels=registry())
     key = cold.nodes["uk.full.gates.preflight"].opaque_artifacts["gate_report"]
     payload = store.load_bytes(key)

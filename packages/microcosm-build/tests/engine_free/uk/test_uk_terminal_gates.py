@@ -454,14 +454,21 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     # disability carriers, the salary-sacrifice pre-conversion pay carrier,
     # the landlord carrier, the FRS bonus carrier (microcosm#1340), the
     # in-household care hours carrier (microcosm#1418), the company car
-    # carriers (PolicyEngine/uk-autumn-budget-dashboard-2026#316), the value
-    # the regional home values replaced (microcosm#1112) and the household ISA
-    # totals policyengine-uk sums from the person balances (microcosm#1415),
-    # and nothing else.
+    # carriers (PolicyEngine/uk-autumn-budget-dashboard-2026#316), the WAS
+    # chain's kept draw of the main residence (microcosm#1112, microcosm#931),
+    # the household ISA totals policyengine-uk sums from the person balances
+    # (microcosm#1415), the root's area-conditioning carriers (microcosm#931)
+    # and the council-tax localisation's two carriers, each bill's provenance
+    # and the paid bill kept from before the localisation (microcosm#931), and
+    # nothing else.
+    from microcosm.build.uk_runtime.frs_council_tax import (
+        FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN,
+    )
     from microcosm.build.uk_runtime.frs_disability import (
         UK_INTERNAL_DISABILITY_REPORTED_COLUMNS,
     )
     from microcosm.build.uk_runtime.frs_spine import (
+        FRS_AREA_CONDITIONING_COLUMNS,
         FRS_BONUS_CARRIER_COLUMN,
         FRS_COMPANY_CAR_CARRIER_COLUMNS,
         FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN,
@@ -470,6 +477,9 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     from microcosm.build.uk_runtime.property_localisation import RANK_BASIS_COLUMN
     from microcosm.build.uk_runtime.salary_sacrifice import (
         SALSAC_PRE_CONVERSION_PAY_COLUMN,
+    )
+    from microcosm.build.uk_runtime.spine_council_tax import (
+        COUNCIL_TAX_FRS_BILL_COLUMN,
     )
 
     dropped = {
@@ -491,9 +501,222 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         | {f"person.{column}" for column in FRS_COMPANY_CAR_CARRIER_COLUMNS}
         | {f"household.{RANK_BASIS_COLUMN}"}
         | {"household.cash_isa", "household.stocks_and_shares_isa"}
+        | {f"household.{column}" for column in FRS_AREA_CONDITIONING_COLUMNS}
+        | {
+            f"household.{FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN}",
+            f"household.{COUNCIL_TAX_FRS_BILL_COLUMN}",
+        }
     )
     # A frame without the column passes through untouched.
     assert uk_release_export_frame(exported) is exported
+
+
+def test_the_release_boundary_drops_the_root_area_conditioning_carriers() -> None:
+    """The root's IMD decile and band flag leave at the release boundary
+    (microcosm#931): they are no engine inputs, and the clone-first spine's
+    area assignment is their only reader. Every other column stays."""
+    import numpy as np
+    import pandas as pd
+
+    from microcosm.build.uk_runtime.frs_spine import (
+        FRS_AREA_CONDITIONING_COLUMNS,
+        FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
+        FRS_IMD_DECILE_COLUMN,
+    )
+    from microcosm.build.uk_runtime.national_frame import (
+        UK_RELEASE_EXPORT_DROPPED_COLUMNS,
+        uk_national_frame,
+        uk_release_export_frame,
+    )
+    from microcosm.build.uk_runtime.terminal_gates import uk_export_candidate_columns
+
+    assert set(FRS_AREA_CONDITIONING_COLUMNS) <= set(
+        UK_RELEASE_EXPORT_DROPPED_COLUMNS["household"]
+    )
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2],
+                "person_benunit_id": [1, 2],
+                "person_household_id": [1, 2],
+                "age": [30, 40],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1, 2]}),
+        household=pd.DataFrame(
+            {
+                "household_id": [1, 2],
+                "region": ["LONDON", "WALES"],
+                "council_tax_band": ["D", "I"],
+                FRS_IMD_DECILE_COLUMN: np.asarray([0, 4], dtype="int64"),
+                FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN: [False, True],
+            }
+        ),
+        time_period="2024",
+        household_weights=np.asarray([1.0, 2.0]),
+    )
+
+    exported = uk_release_export_frame(frame)
+
+    household = exported.table("household")
+    assert set(FRS_AREA_CONDITIONING_COLUMNS).isdisjoint(household.columns)
+    assert household["council_tax_band"].tolist() == ["D", "I"]
+    assert {
+        f"household.{column}" for column in FRS_AREA_CONDITIONING_COLUMNS
+    }.isdisjoint(uk_export_candidate_columns(exported))
+    # The spine keeps them: the boundary drops them from the export alone.
+    assert set(FRS_AREA_CONDITIONING_COLUMNS) <= set(frame.table("household").columns)
+
+
+def test_the_release_boundary_drops_the_council_tax_localisations_carriers() -> None:
+    """Each bill's provenance from frs_council_tax and the paid bill
+    council_tax_localise keeps from before it localises leave at the release
+    boundary on the dense and the national lines (microcosm#931): they are no
+    engine inputs, the localisation and the WAS chain's bill predictor their
+    only readers, and neither is a reviewed extra of the export surface. The
+    localised bill, rebate and reduction stay."""
+    import numpy as np
+    import pandas as pd
+
+    from microcosm.build.uk_runtime.frs_council_tax import (
+        FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN,
+        FRS_COUNCIL_TAX_BILL_PROVENANCE_VALUES,
+    )
+    from microcosm.build.uk_runtime.national_frame import (
+        UK_RELEASE_EXPORT_DROPPED_COLUMNS,
+        uk_national_frame,
+        uk_release_export_frame,
+    )
+    from microcosm.build.uk_runtime.spine_council_tax import (
+        COUNCIL_TAX_FRS_BILL_COLUMN,
+    )
+    from microcosm.build.uk_runtime.terminal_gates import (
+        UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
+        uk_export_candidate_columns,
+    )
+
+    carriers = (FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN, COUNCIL_TAX_FRS_BILL_COLUMN)
+    assert set(carriers) <= set(UK_RELEASE_EXPORT_DROPPED_COLUMNS["household"])
+    assert not {f"household.{column}" for column in carriers} & set(
+        UK_ALLOWED_EXTRA_EXPORT_COLUMNS
+    )
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2],
+                "person_benunit_id": [1, 2],
+                "person_household_id": [1, 2],
+                "age": [30, 40],
+                "council_tax_benefit_reported": [0.0, 120.0],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1, 2]}),
+        household=pd.DataFrame(
+            {
+                "household_id": [1, 2],
+                "region": ["LONDON", "WALES"],
+                "council_tax": [1_500.0, 1_000.0],
+                "council_tax_rebate": [0.0, 120.0],
+                FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN: pd.Series(
+                    list(FRS_COUNCIL_TAX_BILL_PROVENANCE_VALUES[:2]),
+                    dtype=pd.StringDtype("python"),
+                ),
+                COUNCIL_TAX_FRS_BILL_COLUMN: [1_400.0, 900.0],
+            }
+        ),
+        time_period="2024",
+        household_weights=np.asarray([1.0, 2.0]),
+    )
+
+    for line in ("local", "national", None):
+        exported = uk_release_export_frame(frame, line=line)
+        household = exported.table("household")
+        assert set(carriers).isdisjoint(household.columns), line
+        assert {f"household.{column}" for column in carriers}.isdisjoint(
+            uk_export_candidate_columns(exported)
+        ), line
+        assert household["council_tax"].tolist() == [1_500.0, 1_000.0], line
+        assert household["council_tax_rebate"].tolist() == [0.0, 120.0], line
+        assert exported.table("person")["council_tax_benefit_reported"].tolist() == [
+            0.0,
+            120.0,
+        ], line
+    # The spine keeps them: the boundary drops them from the export alone.
+    assert set(carriers) <= set(frame.table("household").columns)
+
+
+def test_what_a_national_release_of_a_one_clone_spine_exports_is_allow_listed() -> None:
+    """The national allow-list pin (microcosm#931). A national release of a
+    geography-first spine of one clone keeps every lineage column but the
+    geographic clone indices, and every column the spine's clone, key and
+    area stages write, the three area codes under the consumers' names; each
+    is reviewed in UK_ALLOWED_EXTRA_EXPORT_COLUMNS, as is every other column
+    the export-surface gate reads beyond the spine's own before the clones,
+    so the national line needs no list change. The clone indices stay in the
+    list, as the dense line's lineage."""
+    from microcosm.build.uk_runtime.atomic_area_conditioning import (
+        UK_SPINE_AREA_COLUMNS,
+    )
+    from microcosm.build.uk_runtime.geographic_clones import (
+        GEOGRAPHY_HOUSEHOLD_KEY_COLUMN,
+        UK_GEOGRAPHIC_SOURCE_COLUMNS,
+        ladder_clone_index_column,
+    )
+    from microcosm.build.uk_runtime.geography_ladder import (
+        UK_EXPORT_AREA_CODE_COLUMNS,
+    )
+    from microcosm.build.uk_runtime.household_lineage import (
+        UK_HOUSEHOLD_LINEAGE_COLUMNS,
+    )
+    from microcosm.build.uk_runtime.national_frame import (
+        UK_BUILD_IDENTIFIER_COLUMNS,
+        uk_release_export_frame,
+    )
+    from microcosm.build.uk_runtime.terminal_gates import (
+        UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
+        uk_export_candidate_columns,
+    )
+    from test_support.microcosm_build.uk_full_population_graph import (
+        source_frame,
+        spine_frame,
+    )
+
+    allowed = set(UK_ALLOWED_EXTRA_EXPORT_COLUMNS)
+    clone_indices = {
+        f"{entity}.{ladder_clone_index_column(entity)}"
+        for entity in ("person", "benunit", "household")
+    }
+    before = uk_export_candidate_columns(
+        uk_release_export_frame(source_frame(), line="national")
+    )
+    after = uk_export_candidate_columns(
+        uk_release_export_frame(spine_frame(1), line="national")
+    )
+    lineage = {
+        f"household.{column}"
+        for column in (
+            *UK_HOUSEHOLD_LINEAGE_COLUMNS,
+            *UK_GEOGRAPHIC_SOURCE_COLUMNS,
+            GEOGRAPHY_HOUSEHOLD_KEY_COLUMN,
+        )
+    } - clone_indices
+    lineage |= {
+        f"{entity}.{column}" for entity, column in UK_BUILD_IDENTIFIER_COLUMNS.items()
+    }
+    areas = {
+        f"household.{UK_EXPORT_AREA_CODE_COLUMNS.get(column, column)}"
+        for column in (
+            *UK_SPINE_AREA_COLUMNS,
+            "local_authority",
+            "in_rural_fuel_duty_relief_area",
+        )
+    }
+    assert lineage | areas <= after
+    assert lineage | areas <= allowed
+    assert not clone_indices & after
+    assert clone_indices <= allowed
+    added = after - before
+    assert added <= allowed, sorted(added - allowed)
 
 
 def test_no_spine_column_writes_an_input_signed_at_the_engine_default() -> None:

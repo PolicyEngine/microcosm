@@ -374,6 +374,56 @@ def test_clone_entity_frame_rejects_too_small_multiplier() -> None:
         )
 
 
+def test_clone_refusals_print_counts_and_no_id() -> None:
+    """The clone helpers' refusals print counts, never an id or the multiplier
+    (microcosm#931); every id here is synthetic."""
+
+    households = pd.DataFrame(
+        {
+            "household_id": [700_001, 700_002],
+            "household_weight": [10.0, 20.0],
+            "region": ["LONDON", "LONDON"],
+        }
+    )
+    with pytest.raises(ValueError, match="household_id.*id_multiplier") as caught:
+        assign_household_geography(
+            households, crosswalk_rows(), n_clones=2, id_multiplier=1
+        )
+    assert str(caught.value).endswith(
+        "too small for household cloning: 1 row(s) repeat an earlier row's id."
+    )
+    assert "700002" not in str(caught.value)
+
+    repeated = households.assign(household_id=[700_001, 700_001])
+    with pytest.raises(ValueError, match="unique before cloning") as caught:
+        assign_household_geography(repeated, crosswalk_rows(), n_clones=1)
+    assert "1 row(s) repeat" in str(caught.value)
+    assert "700001" not in str(caught.value)
+
+    people = pd.DataFrame({"person_id": [700_001_001, 700_002_001]})
+    with pytest.raises(ValueError, match="id_multiplier") as caught:
+        clone_entity_frame(
+            people, id_columns=["person_id"], n_clones=2, id_multiplier=1_000
+        )
+    assert "1 row(s) repeat" in str(caught.value)
+    assert "700002001" not in str(caught.value)
+
+    largest = np.iinfo(np.int64).max
+    near = pd.DataFrame({"person_id": [5, largest - 10]})
+    for multiplier in (100, 10**19):
+        with pytest.raises(ValueError, match="overflow int64") as caught:
+            clone_entity_frame(
+                near, id_columns=["person_id"], n_clones=2, id_multiplier=multiplier
+            )
+        overflowing = 1 if multiplier == 100 else 2
+        assert str(caught.value) == (
+            f"clone ID remapping would overflow int64 on {overflowing} of 2 id(s) "
+            "at clone index 1."
+        )
+        assert str(largest - 10) not in str(caught.value)
+        assert str(multiplier) not in str(caught.value)
+
+
 def test_id_multiplier_can_cover_all_linked_entity_ids() -> None:
     households = pd.DataFrame({"household_id": [101, 102]})
     people = pd.DataFrame(

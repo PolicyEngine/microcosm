@@ -7,58 +7,197 @@ import os
 import shutil
 import signal
 import weakref
+from datetime import date
 from types import SimpleNamespace
 
 import test_support.microcosm_build.uk_full_build_cli as support  # noqa: E402
 from microcosm.build import staging_dataset
 from test_support.microcosm_build.uk_full_build_cli import *
 
+#: The dense line's own geography and lineage flags, retired with its area
+#: draw and expansion: the spine assigns the areas (microcosm#931).
+_RETIRED_DENSE_FLAGS = (
+    ("--geography-assignment", "atomic"),
+    ("--atomic-support-ew", "supports/ew.npz"),
+    ("--atomic-support-scotland", "supports/scotland.npz"),
+    ("--atomic-support-ni", "supports/ni.npz"),
+    ("--atomic-support-sha256-ew", "c" * 64),
+    ("--atomic-support-sha256-scotland", "d" * 64),
+    ("--atomic-support-sha256-ni", "e" * 64),
+    ("--source-lineage-modulus", "1000"),
+)
 
-def test_geography_assignment_arguments_are_closed(tmp_path, monkeypatch):
-    """Atomic is the default; the cross-flag rules live in the validator."""
-    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
-    assert arguments(tmp_path).geography_assignment == "atomic"
-    cli.validate_cli_args(arguments(tmp_path))
-    legacy = arguments(tmp_path, "--geography-assignment", "legacy", supports=())
-    assert legacy.geography_assignment == "legacy"
-    cli.validate_cli_args(legacy)
-    with pytest.raises(SystemExit):
-        arguments(tmp_path, "--geography-assignment", "keyed", supports=())
-    with pytest.raises(SystemExit):
-        arguments(tmp_path, "--atomic-support-sha256-ew", "zz")
-    with pytest.raises(ValueError, match="requires the three atomic-area supports"):
-        cli.validate_cli_args(arguments(tmp_path, supports=()))
-    with pytest.raises(ValueError, match="--atomic-support-ni"):
-        cli.validate_cli_args(arguments(tmp_path, supports=SUPPORT_ARGUMENTS[:4]))
-    with pytest.raises(ValueError, match="legacy takes no atomic-area supports"):
-        cli.validate_cli_args(arguments(tmp_path, "--geography-assignment", "legacy"))
-    with pytest.raises(ValueError, match="--geography-assignment legacy"):
-        cli.validate_cli_args(
-            arguments(
-                tmp_path,
-                "--release-candidate",
-                "--geography-assignment",
-                "legacy",
-                supports=(),
-                release_pins=(),
-            )
-        )
-    with pytest.raises(ValueError, match="--atomic-support-sha256-ew"):
-        cli.validate_cli_args(
-            arguments(tmp_path, "--release-candidate", release_pins=())
-        )
-    release = arguments(tmp_path, "--release-candidate")
-    assert release.release_candidate and release.geography_assignment == "atomic"
-    cli.validate_cli_args(release)
-    # The national role builds on the bound checkpoint with no geography
-    # assignment: the supports are refused by name with the other dense-only
-    # flags, and its default needs none.
-    cli.validate_cli_args(cli.parse_args(_national_argv(tmp_path)))
-    national = cli.parse_args(
-        _national_argv(tmp_path, "--atomic-support-sha256-ni", "e" * 64)
+
+@pytest.mark.parametrize(("flag", "value"), _RETIRED_DENSE_FLAGS)
+def test_the_dense_geography_flags_are_gone(tmp_path, capsys, flag, value):
+    """The dense line takes its areas, clones and lineage from the spine, so
+    no flag chooses an assignment, binds a support or converts a lineage
+    (microcosm#931); either role's parser refuses each one by name."""
+    for role in ("dense", "national"):
+        with pytest.raises(SystemExit):
+            if role == "dense":
+                arguments(tmp_path, flag, value)
+            else:
+                cli.parse_args(_national_argv(tmp_path, flag, value))
+        assert flag in capsys.readouterr().err
+
+
+def test_the_constituency_vintage_flag_is_gone(tmp_path, capsys):
+    """María's ruling of 13 Nov: the dense line takes its areas from the
+    spine (microcosm#931), and no dense node read the ladder's vintage
+    against --expected-constituency-vintage, so the flag is retired. Either
+    role's parser refuses it by name, the posture keeps no vintage and the
+    run's parameters record none."""
+    from microcosm.build.uk_runtime.rowwise_cli import rowwise_parameters
+
+    flag = ("--expected-constituency-vintage", "2024_pcon")
+    for role in ("dense", "national"):
+        with pytest.raises(SystemExit):
+            if role == "dense":
+                arguments(tmp_path, *flag)
+            else:
+                cli.parse_args(_national_argv(tmp_path, *flag))
+        assert f"unrecognized arguments: {' '.join(flag)}" in capsys.readouterr().err
+    args = arguments(tmp_path)
+    assert not hasattr(args, "expected_constituency_vintage")
+    assert not hasattr(cli.UK_ROWWISE_DENSE_POSTURE, "expected_constituency_vintage")
+    assert "expected_constituency_vintage" not in rowwise_parameters(
+        args, source_year=2024
     )
-    with pytest.raises(ValueError, match="--atomic-support-sha256-ni"):
-        cli.validate_cli_args(national)
+
+
+#: The two routes to the spine the dense line binds, by their request builder.
+_ROUTES = ("input_h5", "spine_request")
+
+
+def _route_arguments(route, tmp_path, *extra):
+    """A dense request on ``route``: over a bound stand-in checkpoint, or over
+    a spine request (:func:`_request_arguments`)."""
+    builder = arguments if route == "input_h5" else _request_arguments
+    return builder(tmp_path, *extra)
+
+
+_SPINE_BOUND_REFUSALS = (
+    (("--sample-fraction", "0.1"), "--sample-fraction other than 1.0", _ROUTES),
+    (("--sample-seed", "5"), "--sample-seed", _ROUTES),
+    (
+        ("--candidate-clone-counts", "1,15"),
+        "--candidate-clone-counts with --input-h5",
+        ("input_h5",),
+    ),
+    (
+        ("--candidate-clone-counts", "1,15", "--n-clones", "2"),
+        "--n-clones with --candidate-clone-counts",
+        _ROUTES,
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    ("route", "extra", "needle"),
+    [
+        (route, extra, needle)
+        for extra, needle, routes in _SPINE_BOUND_REFUSALS
+        for route in routes
+    ],
+)
+def test_the_dense_role_refuses_what_its_spine_binds(tmp_path, route, extra, needle):
+    """The dense line takes its clones and its sampling from the spine it
+    binds (microcosm#931): a dense sample and a sampling seed are refused by
+    name on either route, before any input is read, as are candidate clone
+    counts on a bound spine and beside an asserted --n-clones."""
+    with pytest.raises(ValueError) as refused:
+        cli.validate_cli_args(_route_arguments(route, tmp_path, *extra))
+    message = str(refused.value)
+    assert message.startswith(
+        "--release-role dense takes its geographic clones and sampling from the "
+        "spine it binds (microcosm#931) and refuses: "
+    )
+    assert needle in message
+    # The spine is sampled at its own build; a dense 1.0 is the default.
+    cli.validate_cli_args(_route_arguments(route, tmp_path, "--sample-fraction", "1.0"))
+    if route == "spine_request":
+        # Candidate clone counts plan a spine request once per count.
+        cli.validate_cli_args(
+            _route_arguments(route, tmp_path, "--candidate-clone-counts", "1,15")
+        )
+
+
+@pytest.mark.parametrize("route", _ROUTES)
+def test_a_release_candidate_takes_its_clone_count_and_areas_from_the_spine(
+    tmp_path, monkeypatch, route
+):
+    """A release candidate pins no atomic-area support and asserts no clone
+    count at validation, on either route: the spine's geography binding and K
+    are its, read at preparation (microcosm#931); its other release refusals
+    are unchanged."""
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
+    release = _route_arguments(route, tmp_path, "--release-candidate")
+    assert release.n_clones is None
+    cli.validate_cli_args(release)
+    cli.validate_cli_args(
+        _route_arguments(route, tmp_path, "--release-candidate", "--n-clones", "7")
+    )
+    with pytest.raises(ValueError, match="--epochs != doctrine 2000"):
+        cli.validate_cli_args(
+            _route_arguments(route, tmp_path, "--release-candidate", "--epochs", "8")
+        )
+
+
+def test_a_seven_clone_spine_writes_its_clone_count(tmp_path, monkeypatch):
+    """The run's K is its spine's (microcosm#931): on a stand-in spine of seven
+    clones, with no --n-clones asserted, the manifest records seven, in its
+    parameters and beside its geography binding, not the doctrine's 15."""
+    pytest.importorskip("tables")
+    arguments(tmp_path)  # writes the stand-ins the prepared build pins
+    status, out = run_dense_main(
+        tmp_path, monkeypatch, build=prepared(tmp_path, clones=7)
+    )
+    assert status == 0
+    manifest = json.loads((out / cli.MANIFEST_FILENAME).read_text())
+    assert manifest["parameters"]["n_clones"] == 7
+    assert manifest["geography"]["assignment"]["geographic_clone_count"] == 7
+
+
+def test_the_build_id_rung_is_read_ahead_off_the_spine(tmp_path, capsys):
+    """A dense attempt's build id is minted before preparation reads the
+    spine, so its rung is read ahead, unauthenticated: off the bound spine's
+    sidecar (beside the spine, or named), or the spine request's
+    --sample-fraction, through the spine's own parser; f100 where neither can
+    be read, quietly, and where the sidecar's fraction is off the ladder,
+    which preparation then refuses (microcosm#931)."""
+    sidecar = tmp_path / "spine.build.json"
+    bound = arguments(tmp_path)
+    assert cli._spine_rung_token(bound) == "f100"  # no sidecar
+    for text, rung in (
+        (json.dumps({"sampling": {"fraction": 0.1, "seed": 7}}), "f010"),
+        (json.dumps({"sampling": {"fraction": 0.01, "seed": 7}}), "f001"),
+        (json.dumps({"sampling": None}), "f100"),
+        (json.dumps({"sampling": {"fraction": 0.37}}), "f100"),
+        (json.dumps({"sampling": "f010"}), "f100"),
+        ("{", "f100"),
+    ):
+        sidecar.write_text(text)
+        assert cli._spine_rung_token(bound) == rung, text
+    named = tmp_path / "named.build.json"
+    named.write_text(json.dumps({"sampling": {"fraction": 0.1, "seed": 7}}))
+    sidecar.write_text(json.dumps({"sampling": None}))
+    assert (
+        cli._spine_rung_token(arguments(tmp_path, "--input-sidecar", str(named)))
+        == "f010"
+    )
+    fixture = ("--smoke", "--synthetic-fixture-dir", str(tmp_path))
+    for request, rung in (
+        ((*fixture, "--sample-fraction", "0.10"), "f010"),
+        ((*fixture, "--sample-fraction=0.01"), "f001"),
+        (fixture, "f100"),
+        # The spine's parser refuses these; preparation reports its refusal.
+        ((*fixture, "--sample-fraction", "0.5"), "f100"),
+        (("--sample-fraction", "0.10"), "f100"),
+    ):
+        args = _request_arguments(tmp_path, request_arguments=request)
+        assert cli._spine_rung_token(args) == rung, request
+    assert capsys.readouterr().err == ""
 
 
 def test_every_scope_and_size_control_keeps_default_all(tmp_path):
@@ -83,15 +222,16 @@ def test_release_role_is_required_and_supplies_the_dense_posture(tmp_path):
     args = arguments(tmp_path)
     posture = cli.UK_ROWWISE_DENSE_POSTURE
     assert args._posture is posture
-    assert (args.n_clones, args.seed, args.epochs, args.learning_rate) == (
-        posture.clone_count,
+    assert (args.seed, args.epochs, args.learning_rate) == (
         posture.seed,
         posture.epochs,
         posture.learning_rate,
     )
-    assert (args.n_clones, args.epochs, args.learning_rate) == (15, 2000, 0.15)
+    assert (posture.clone_count, args.epochs, args.learning_rate) == (15, 2000, 0.15)
+    # The dense line's K is its spine's, set at preparation (microcosm#931);
+    # the doctrine's clone count stays in the recorded doctrine bounds.
+    assert args.n_clones is None
     assert args.target_weight_rule == "nation_grain_family_equal_sqrt_count"
-    assert args.expected_constituency_vintage == "2024_pcon"
     assert args.sample_seed == 578
     assert args.staging_upload_interval_seconds == 300.0
     assert args._explicit_arguments == frozenset()
@@ -226,7 +366,6 @@ def test_dense_role_requires_the_ladder_and_the_pins(tmp_path):
         PIN,
         "--ledger-manifest-sha256",
         PIN,
-        *SUPPORT_ARGUMENTS,
     ]
     with pytest.raises(ValueError, match="requires --ladder"):
         cli.validate_cli_args(cli.parse_args(argv))
@@ -252,7 +391,6 @@ def test_dense_role_requires_the_ladder_and_the_pins(tmp_path):
         PIN,
         "--ledger-manifest-sha256",
         PIN,
-        *SUPPORT_ARGUMENTS,
     ]
     cli.validate_cli_args(cli.parse_args(request))
 
@@ -379,42 +517,753 @@ def test_national_role_refuses_a_spine_request(tmp_path, monkeypatch):
     assert not (tmp_path / "out").exists()
 
 
+#: A fixed review date inside the test registers' window
+#: (``NATIONAL_EXCLUSION_WINDOW``); no national preparation test reads the
+#: wall clock (microcosm#931).
+_NATIONAL_REVIEW = "2027-01-15"
+_NATIONAL_SPINE_LEAD = (
+    "The national line builds only on a geography-first spine of one "
+    "geographic clone, one that assigns every household its area "
+    "(microcosm#931); "
+)
+
+
+def _national_request(tmp_path, monkeypatch, *extra, frame=None, sidecar=None):
+    """A national request over a bound checkpoint of ``frame`` (the seam's
+    stand-in by default) at ``--review-date`` 2027-01-15, with ``extra``
+    arguments.
+
+    The checkpoint's sidecar records the stand-in geography-first roster and
+    block at the frame's clone count, with ``sidecar``'s fields replacing any
+    of them (microcosm#931). The engine freeze stands in, and any later engine
+    work fails the test; ``--input-sha256`` is the stand-in pin, not the
+    file's, so a refusal raised before the input is pinned is the only one
+    the request can meet. Returns the parsed arguments and the H5's digest.
+    """
+    from microcosm.build.uk_runtime import hmrc_uprating, spine_build
+    from microcosm.build.uk_runtime.geographic_clones import geographic_clone_count
+    from microcosm.build.uk_runtime.national_frame import (
+        load_uk_national_frame,
+        write_uk_national_frame,
+    )
+    from test_support.microcosm_build import uk_calibration_run as seam
+
+    pytest.importorskip("tables")
+    path = write_uk_national_frame(
+        seam._frame() if frame is None else frame, tmp_path / "spine.h5"
+    )
+    loaded, _ = load_uk_national_frame(path)
+    sidecar_path, _gates, recorded = seam._bound_checkpoint(tmp_path, loaded)
+    recorded.update(geography_first_sidecar_fields("frs_spine"))
+    recorded["geographic_clone_count"] = geographic_clone_count(
+        loaded.table("household")
+    )
+    recorded.update(sidecar or {})
+    sidecar_path.write_text(json.dumps(recorded))
+    ledger = tmp_path / "ledger"
+    ledger.mkdir()
+    (ledger / "consumer_facts.jsonl").write_text("{}\n")
+    monkeypatch.setattr(
+        hmrc_uprating, "assert_installed_engine_is_pinned", lambda: "fixture"
+    )
+    monkeypatch.setattr(
+        spine_build,
+        "_rules_engine",
+        lambda: pytest.fail("the national preparation reached the engine"),
+    )
+    args = cli.parse_args(
+        _national_argv(tmp_path, "--review-date", _NATIONAL_REVIEW, *extra)
+    )
+    return args, hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_national_preparation_refuses_an_unsigned_exclusion_before_reading_input(
+    tmp_path, monkeypatch
+):
+    """The national line builds only once the degenerate-surface register's
+    area-basis exclusion is signed for the national line (microcosm#931): an
+    entry on the local line alone is refused on ``--review-date`` before any
+    input is read, here before the H5 even exists, and the refusal names the
+    exclusion, the line and the window alone."""
+    from microcosm.build.uk_runtime import hmrc_uprating
+
+    register = write_national_exclusion_register(
+        tmp_path / "register.json", release_lines=("local",)
+    )
+    evaluated = use_national_exclusion_register(monkeypatch, register)
+    monkeypatch.setattr(
+        hmrc_uprating, "assert_installed_engine_is_pinned", lambda: "fixture"
+    )
+    monkeypatch.setattr(
+        cli,
+        "load_uk_national_frame",
+        lambda *args, **kwargs: pytest.fail("the refusal must precede the input"),
+    )
+    args = cli.parse_args(_national_argv(tmp_path, "--review-date", _NATIONAL_REVIEW))
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_national_build(args)
+    assert str(refused.value) == (
+        "The national line builds only once the degenerate-surface exclusion "
+        "household.atomic_area_basis is signed for the national line and in "
+        "force on the build's review date (microcosm#931); its entry, in force "
+        "from 2026-12-01 through 2027-06-01, does not list the national line."
+    )
+    assert evaluated == [date(2027, 1, 15)]
+    assert not (tmp_path / "spine.h5").exists()
+
+
+@pytest.mark.parametrize(
+    ("review", "needle"),
+    [
+        ("2026-11-30", "its entry is not yet in force"),
+        ("2027-06-02", "its entry has expired"),
+    ],
+)
+def test_national_preparation_refuses_an_exclusion_out_of_its_window(
+    tmp_path, monkeypatch, review, needle
+):
+    """An entry signed for the national line is refused on a review date
+    outside its window, the day before it takes force or the day after it
+    expires (microcosm#931)."""
+    from microcosm.build.uk_runtime import hmrc_uprating
+
+    register = write_national_exclusion_register(tmp_path / "register.json")
+    evaluated = use_national_exclusion_register(monkeypatch, register)
+    monkeypatch.setattr(
+        hmrc_uprating, "assert_installed_engine_is_pinned", lambda: "fixture"
+    )
+    args = cli.parse_args(_national_argv(tmp_path, "--review-date", review))
+    with pytest.raises(ValueError, match=needle):
+        cli.prepare_national_build(args)
+    assert evaluated == [date.fromisoformat(review)]
+
+
+def test_national_preparation_refuses_a_spine_of_another_clone_count(
+    tmp_path, monkeypatch
+):
+    """With the exclusion signed, a bound spine of three clones, whose sidecar
+    records its K as the checkpoint requires, is refused before its input is
+    pinned or any engine work, naming K (microcosm#931)."""
+    from test_support.microcosm_build import uk_calibration_run as seam
+    from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
+
+    use_national_exclusion_register(
+        monkeypatch, write_national_exclusion_register(tmp_path / "register.json")
+    )
+    args, _digest = _national_request(
+        tmp_path, monkeypatch, frame=clone_first_frame(seam._frame(), 3)
+    )
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_national_build(args)
+    assert str(refused.value) == (
+        _NATIONAL_SPINE_LEAD + "the bound spine's geographic clone count is K = 3."
+    )
+
+
+def test_national_preparation_refuses_a_spine_from_before_its_area_stages(
+    tmp_path, monkeypatch
+):
+    """A one-clone spine whose roster is group (b)'s, with no area stage, no
+    main-residence localiser and no geography block, is refused before its
+    input is pinned, naming what its roster lacks (microcosm#931)."""
+    from microcosm.build.uk_runtime.geography_first_roster import (
+        GEOGRAPHY_FIRST_STAGES,
+    )
+    from test_support.microcosm_build import uk_calibration_run as seam
+    from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
+
+    use_national_exclusion_register(
+        monkeypatch, write_national_exclusion_register(tmp_path / "register.json")
+    )
+    pre_areas = ["frs_spine", "geographic_expand", "geographic_identity", "was_wealth"]
+    args, _digest = _national_request(
+        tmp_path,
+        monkeypatch,
+        frame=clone_first_frame(seam._frame(), 1),
+        sidecar={
+            "stages": pre_areas,
+            "operations": {name: [] for name in pre_areas},
+            "geography": None,
+        },
+    )
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_national_build(args)
+    lacking = "; ".join(
+        (
+            *(f"stage {stage}" for stage in GEOGRAPHY_FIRST_STAGES[2:]),
+            "operation localise_main_residence_value in was_wealth",
+            "geography block",
+        )
+    )
+    assert str(refused.value) == (
+        _NATIONAL_SPINE_LEAD + f"the bound spine's build sidecar lacks: {lacking}."
+    )
+
+
+def test_national_preparation_checks_the_authenticated_sidecar_again(
+    tmp_path, monkeypatch
+):
+    """The sidecar the checkpoint authentication returns is the one the build
+    binds, so it is checked again: one that no longer holds one clone is
+    refused there, before any engine work (microcosm#931)."""
+    use_national_exclusion_register(
+        monkeypatch, write_national_exclusion_register(tmp_path / "register.json")
+    )
+    args, digest = _national_request(tmp_path, monkeypatch)
+    args.input_sha256 = digest
+    authenticated = cli.load_bound_spine_checkpoint
+    monkeypatch.setattr(
+        cli,
+        "load_bound_spine_checkpoint",
+        lambda *a, **k: {**authenticated(*a, **k), "geographic_clone_count": 2},
+    )
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_national_build(args)
+    assert str(refused.value) == (
+        _NATIONAL_SPINE_LEAD + "the bound spine's geographic clone count is K = 2."
+    )
+
+
+@pytest.mark.parametrize("review", ["2026-12-01", _NATIONAL_REVIEW, "2027-06-01"])
+def test_national_preparation_binds_a_one_clone_geography_first_spine(
+    tmp_path, monkeypatch, review
+):
+    """With the exclusion signed for the national line and in force on the
+    review date, its window's first and last days among them, a geography-first
+    spine of one clone prepares: the check is evaluated on --review-date, the
+    build's own review date, which the national gate node takes too, and the
+    national problem reads the bound spine's build sidecar for its own refusal
+    (microcosm#931)."""
+    from microcosm.build.uk_runtime import spine_build
+    from microcosm.build.uk_runtime.graph_national import (
+        NATIONAL_GATES_NODE,
+        NATIONAL_PROBLEM_NODE,
+        SPINE_SIDECAR_SOURCE,
+    )
+    from test_support.microcosm_build import uk_calibration_run as seam
+    from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
+
+    evaluated = use_national_exclusion_register(
+        monkeypatch, write_national_exclusion_register(tmp_path / "register.json")
+    )
+    args, digest = _national_request(
+        tmp_path, monkeypatch, frame=clone_first_frame(seam._frame(), 1)
+    )
+    args.review_date = date.fromisoformat(review)
+    args.input_sha256 = digest
+    monkeypatch.setattr(spine_build, "_rules_engine", lambda: object())
+    monkeypatch.setattr(
+        spine_build, "_rules_engine_provenance", lambda: {"version": "fixture"}
+    )
+    prepared = cli.prepare_national_build(args)
+    assert evaluated == [date.fromisoformat(review)]
+    assert prepared.bindings["review_date"] == review
+    graph = prepared.national.graph
+    assert graph.node(NATIONAL_GATES_NODE).params["review_date"] == review
+    assert graph.node(NATIONAL_PROBLEM_NODE).sources == (SPINE_SIDECAR_SOURCE,)
+    assert prepared.sources[SPINE_SIDECAR_SOURCE] == tmp_path / "spine.build.json"
+
+
 def test_candidate_clone_counts_are_dry_run_only(tmp_path):
+    """Candidate clone counts plan a spine request per count, in a dry run only;
+    on a bound spine, whose K is fixed, they are refused first (microcosm#931)."""
+    request = tmp_path / "request.json"
+    request.write_text(json.dumps(["--smoke"]))
+    common = [
+        "--release-role",
+        "dense",
+        "--ladder",
+        str(tmp_path / "missing.npz"),
+        "--ladder-sha256",
+        PIN,
+        "--ledger-facts",
+        str(tmp_path / "ledger"),
+        "--ledger-facts-sha256",
+        PIN,
+        "--ledger-manifest-sha256",
+        PIN,
+        "--out",
+        str(tmp_path / "out"),
+        "--candidate-clone-counts",
+        "1,2,4",
+        "--no-staging",
+    ]
     with pytest.raises(ValueError, match="only with --dry-run"):
+        cli.main(["--spine-request", str(request), *common])
+    with pytest.raises(ValueError, match="--candidate-clone-counts with --input-h5"):
         cli.main(
             [
-                "--release-role",
-                "dense",
                 "--input-h5",
                 str(tmp_path / "missing.h5"),
                 "--input-sha256",
                 PIN,
-                "--ladder",
-                str(tmp_path / "missing.npz"),
-                "--ladder-sha256",
-                PIN,
-                "--ledger-facts",
-                str(tmp_path / "ledger"),
-                "--ledger-facts-sha256",
-                PIN,
-                "--ledger-manifest-sha256",
-                PIN,
-                "--out",
-                str(tmp_path / "out"),
-                "--candidate-clone-counts",
-                "1,2,4",
-                "--no-staging",
-                *SUPPORT_ARGUMENTS,
+                *common,
             ]
         )
 
 
-def test_source_sampling_cannot_be_reapplied_as_pool_sampling():
+# ---------------------------------------------------------------------------
+# microcosm#931: the dense line builds only on a geography-first spine
+# ---------------------------------------------------------------------------
+
+
+class _StandInStopError(Exception):
+    """A recording stand-in's stop: the preparation got past the posture check."""
+
+
+def _record_preparation(monkeypatch) -> list[str]:
+    """Recording stand-ins for every preparation step after the posture check
+    that reads an input or composes a graph. Each records its name and stops
+    the preparation, so the record holds the first step the check let through,
+    or nothing. The engine freeze, which runs before the check, stands in."""
+    from microcosm.build.uk_runtime import calibration_run, hmrc_uprating, spine_build
+    from microcosm.build.uk_runtime import graph as uk_graph
+
+    calls: list[str] = []
+
+    def stand_in(name):
+        def record(*args, **kwargs):
+            calls.append(name)
+            raise _StandInStopError(name)
+
+        return record
+
+    monkeypatch.setattr(
+        hmrc_uprating, "assert_installed_engine_is_pinned", lambda: "fixture"
+    )
+    for owner, name in (
+        (cli, "_pin"),
+        (cli, "load_uk_national_frame"),
+        (cli, "bound_spine_graph"),
+        (cli, "uk_full_graph"),
+        (cli, "append_uk_full_gate_nodes"),
+        (cli, "compile_graph"),
+        (calibration_run, "load_bound_spine_checkpoint"),
+        (spine_build, "parse_uk_spine_args"),
+        (spine_build, "prepare_uk_spine_execution"),
+        (spine_build, "uk_spine_graph"),
+        # A reader that imports the spine graph's composer late meets it here.
+        (uk_graph, "uk_spine_graph"),
+    ):
+        monkeypatch.setattr(owner, name, stand_in(name))
+    return calls
+
+
+def _write_sidecar(tmp_path, roster) -> None:
+    """A stand-in build sidecar beside ``arguments``' stand-in spine."""
+    (tmp_path / "spine.build.json").write_text(json.dumps(roster))
+
+
+def _packaged_sidecar_roster() -> dict:
+    """The packaged spec's stages and kinds as sidecar fields (lists), with no
+    geography block: the names a spine built on this code records, without the
+    block its writer adds where the spine drew its areas."""
+    stages, operations = cli._spine_request_roster()
+    return {
+        "stages": list(stages),
+        "operations": {stage: list(kinds) for stage, kinds in operations.items()},
+    }
+
+
+#: A spine built before the area stages, cut to what the posture check reads:
+#: it makes and keys its clones, frs_brma draws the BRMAs, and was_wealth runs
+#: without the main-residence localiser.
+_PRE_GEOGRAPHY_ROSTER = {
+    "stages": [
+        "frs_spine",
+        "geographic_expand",
+        "geographic_identity",
+        "frs_brma",
+        "was_wealth",
+    ],
+    "operations": {
+        "frs_spine": ["read_tables"],
+        "geographic_expand": ["expand_geographic_clones"],
+        "geographic_identity": ["key_households_by_clone_path"],
+        "frs_brma": [
+            "materialize_rules_engine_predictors",
+            "sample_categorical_from_count_table",
+        ],
+        "was_wealth": ["derive", "fit_weighted_qrf_chain"],
+    },
+}
+
+
+def _posture_refusal(roster, *, from_sidecar=True) -> str:
+    """The posture check's own refusal of ``roster``."""
+    from microcosm.build.uk_runtime.spine_posture import require_geography_first_spine
+
+    with pytest.raises(ValueError) as refused:
+        require_geography_first_spine(
+            roster["stages"],
+            roster["operations"],
+            roster.get("geography"),
+            from_sidecar=from_sidecar,
+        )
+    return str(refused.value)
+
+
+def _request_arguments(tmp_path, *extra, request_arguments=("--smoke",)):
+    """A dense request over a spine request, with staging disabled."""
+    request = tmp_path / "request.json"
+    request.write_text(json.dumps(list(request_arguments)))
+    ladder = tmp_path / "ladder.npz"
+    return cli.parse_args(
+        [
+            "--release-role",
+            "dense",
+            "--spine-request",
+            str(request),
+            "--ladder",
+            str(ladder),
+            "--ladder-sha256",
+            _placeholder(ladder, b"ladder stand-in"),
+            "--ledger-facts",
+            str(tmp_path / "ledger"),
+            "--ledger-facts-sha256",
+            PIN,
+            "--ledger-manifest-sha256",
+            PIN,
+            "--out",
+            str(tmp_path / "out"),
+            "--no-staging",
+            *extra,
+        ]
+    )
+
+
+def _without_geography(roster) -> dict:
+    return {key: value for key, value in roster.items() if key != "geography"}
+
+
+@pytest.mark.parametrize(
+    "roster",
+    [
+        pytest.param(
+            _packaged_sidecar_roster, id="the packaged roster but no geography block"
+        ),
+        pytest.param(lambda: _PRE_GEOGRAPHY_ROSTER, id="a pre-geography roster"),
+        pytest.param(
+            lambda: _without_geography(geography_first_sidecar_fields("frs_spine")),
+            id="every stage but no geography block",
+        ),
+    ],
+)
+def test_a_bound_spine_that_does_not_assign_areas_is_refused_before_any_input_is_pinned(
+    tmp_path, monkeypatch, roster
+):
+    """``--input-h5``: the sidecar's roster is checked before the ladder or the
+    spine is pinned, the frame read, the checkpoint authenticated or any graph
+    composed (microcosm#931), and the refusal is the posture check's own,
+    naming every missing name and nothing else."""
+    fields = roster()
+    _write_sidecar(tmp_path, fields)
+    calls = _record_preparation(monkeypatch)
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_full_build(arguments(tmp_path))
+    message = str(refused.value)
+    assert message == _posture_refusal(fields)
+    assert "the bound spine's build sidecar lacks:" in message
+    assert message.endswith("geography block.")
+    assert calls == []
+
+
+@pytest.mark.parametrize("missing", SIDECAR_GEOGRAPHY_KEYS)
+def test_a_bound_spine_whose_geography_block_lacks_a_key_is_refused(
+    tmp_path, monkeypatch, missing
+):
+    """A sidecar that records every geography-first stage and operation but
+    whose block lacks one key is refused through the preparation, naming that
+    key alone, before anything is pinned."""
+    roster = geography_first_sidecar_fields("frs_spine")
+    del roster["geography"][missing]
+    _write_sidecar(tmp_path, roster)
+    calls = _record_preparation(monkeypatch)
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_full_build(arguments(tmp_path))
+    assert str(refused.value) == _posture_refusal(roster)
+    assert str(refused.value).endswith(f"lacks: geography key {missing}.")
+    assert calls == []
+
+
+def test_a_bound_spine_whose_sidecar_cannot_be_read_is_refused_before_anything_is_pinned(
+    tmp_path, monkeypatch
+):
+    """An absent, malformed or non-object sidecar is refused before anything
+    is pinned, word for word as the bound loader refuses it, which it does
+    before it reads the frame."""
+    from microcosm.build.uk_runtime import calibration_run
+
+    load_bound_spine_checkpoint = calibration_run.load_bound_spine_checkpoint
+    calls = _record_preparation(monkeypatch)
+    args = arguments(tmp_path)
+    sidecar = tmp_path / "spine.build.json"
+    for text, needle in (
+        (None, "absent"),
+        ("{", "is invalid JSON"),
+        ("[]", "must be a JSON object"),
+    ):
+        if text is not None:
+            sidecar.write_text(text)
+        expected = f"input H5 build sidecar {needle}"
+        with pytest.raises(ValueError, match=expected) as refused:
+            cli.prepare_full_build(args)
+        with pytest.raises(ValueError) as loaded:
+            load_bound_spine_checkpoint(sidecar, None)
+        assert str(refused.value) == str(loaded.value)
+    assert calls == []
+
+
+def test_a_bound_spine_on_the_packaged_roster_goes_on_once_it_records_its_block(
+    tmp_path, monkeypatch
+):
+    """The packaged spec's roster is geography-first (microcosm#931): a bound
+    spine whose sidecar records its stages and kinds and a geography block
+    passes the posture check, and the preparation goes on to pin its first
+    input, the ladder."""
+    roster = {**_packaged_sidecar_roster(), "geography": synthetic_spine_geography()}
+    _write_sidecar(tmp_path, roster)
+    calls = _record_preparation(monkeypatch)
+    with pytest.raises(_StandInStopError):
+        cli.prepare_full_build(arguments(tmp_path))
+    assert calls == ["_pin"]
+
+
+def test_a_bound_spine_read_through_its_named_sidecar_goes_on_once_geography_first(
+    tmp_path, monkeypatch
+):
+    """A geography-first sidecar passes, read from ``--input-sidecar`` where
+    one is named (no sidecar lies beside the stand-in spine then) and from
+    beside the spine otherwise, and the preparation goes on to pin its first
+    input, the ladder."""
+    calls = _record_preparation(monkeypatch)
+    named = tmp_path / "named.build.json"
+    named.write_text(json.dumps(geography_first_sidecar_fields("frs_spine")))
+    args = arguments(tmp_path, "--input-sidecar", str(named))
+    with pytest.raises(_StandInStopError):
+        cli.prepare_full_build(args)
+    assert calls == ["_pin"]
+    # The same roster beside the spine, where no sidecar is named, passes too.
+    calls.clear()
+    _write_sidecar(tmp_path, geography_first_sidecar_fields("frs_spine"))
+    with pytest.raises(_StandInStopError):
+        cli.prepare_full_build(arguments(tmp_path))
+    assert calls == ["_pin"]
+
+
+def test_a_bound_spine_is_checked_again_on_the_sidecar_it_authenticates(
+    tmp_path, monkeypatch
+):
+    """The sidecar the bound loader authenticates is the one the build binds,
+    so its roster is checked again: a spine whose sidecar passed the early read
+    but whose authenticated sidecar does not assign areas is refused before
+    its graph is made."""
+    from microcosm.build.uk_runtime import calibration_run
+
+    pin = cli._pin
+    calls = _record_preparation(monkeypatch)
+    _write_sidecar(tmp_path, geography_first_sidecar_fields("frs_spine"))
+    # Past the early check the inputs are pinned for real and the frame stands
+    # in; the loader authenticates a sidecar changed since the early read.
+    monkeypatch.setattr(cli, "_pin", pin)
+    monkeypatch.setattr(cli, "load_uk_national_frame", lambda path: (object(), None))
+    monkeypatch.setattr(
+        cli, "require_uk_producer_isa_income_contract", lambda frame, *, label: None
+    )
+    monkeypatch.setattr(
+        calibration_run,
+        "load_bound_spine_checkpoint",
+        lambda *args, **kwargs: json.loads(json.dumps(_PRE_GEOGRAPHY_ROSTER)),
+    )
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_full_build(arguments(tmp_path))
+    assert str(refused.value) == _posture_refusal(_PRE_GEOGRAPHY_ROSTER)
+    assert calls == []
+
+
+def test_a_spine_request_that_does_not_assign_areas_is_refused_before_it_is_read(
+    tmp_path, monkeypatch
+):
+    """``--spine-request``: the roster the request runs is checked, its stage
+    names and operation kinds only, before the request is parsed or its spine
+    composed; the request's spine has no sidecar block to read
+    (microcosm#931)."""
+    calls = _record_preparation(monkeypatch)
+    pre = _PRE_GEOGRAPHY_ROSTER
+    monkeypatch.setattr(
+        cli,
+        "_spine_request_roster",
+        lambda: (tuple(pre["stages"]), dict(pre["operations"])),
+    )
+    args = _request_arguments(tmp_path)
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_full_build(args)
+    message = str(refused.value)
+    assert message == _posture_refusal(pre, from_sidecar=False)
+    assert "the spine request's stage roster lacks:" in message
+    assert "geography block" not in message and "geography key" not in message
+    assert calls == []
+    # A geography-first roster passes; the preparation goes on to pin the
+    # ladder, its first input, and has parsed no request.
+    first = _without_geography(geography_first_sidecar_fields("frs_spine"))
+    monkeypatch.setattr(
+        cli,
+        "_spine_request_roster",
+        lambda: (tuple(first["stages"]), dict(first["operations"])),
+    )
+    with pytest.raises(_StandInStopError):
+        cli.prepare_full_build(args)
+    assert calls == ["_pin"]
+
+
+def test_a_spine_request_reads_its_roster_without_composing_a_graph(
+    tmp_path, monkeypatch
+):
+    """The real request-roster reader runs under the recording stand-ins, so a
+    reader that composed the spine graph to read its roster would be caught.
+    The packaged roster has every geography-first name (microcosm#931), so
+    the dense line accepts it and the preparation goes on to pin the ladder
+    before anything is read or composed."""
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.spine_posture import roster_failures, spec_roster
+
+    stages, operations = spec_roster(load_country_spec("uk"))
+    assert roster_failures(stages, operations, from_sidecar=False) == ()
+    calls = _record_preparation(monkeypatch)
+    with pytest.raises(_StandInStopError):
+        cli.prepare_full_build(_request_arguments(tmp_path))
+    assert calls == ["_pin"]
+
+
+def test_a_spine_request_is_checked_again_on_the_spine_it_composes(
+    tmp_path, monkeypatch
+):
+    """The spine a request composes is the one the build runs, so its own
+    roster is checked again: a composed spine that lacks the area stages is
+    refused before the build reads it, though the roster read early passed."""
+    from microcosm.build.uk_runtime import graph as uk_graph
+    from microcosm.build.uk_runtime import spine_build
+
+    pin = cli._pin
+    calls = _record_preparation(monkeypatch)
+    first = _without_geography(geography_first_sidecar_fields("frs_spine"))
+    monkeypatch.setattr(
+        cli,
+        "_spine_request_roster",
+        lambda: (tuple(first["stages"]), dict(first["operations"])),
+    )
+    pre = _PRE_GEOGRAPHY_ROSTER
+    composed = SimpleNamespace(
+        graph=None,
+        kernels=None,
+        sources={},
+        stages=tuple(
+            SimpleNamespace(
+                stage=name,
+                operations=tuple(
+                    SimpleNamespace(kind=kind) for kind in pre["operations"][name]
+                ),
+            )
+            for name in pre["stages"]
+        ),
+    )
+    # Past the early check the ladder is pinned for real, and the request
+    # composes the stand-in spine.
+    monkeypatch.setattr(cli, "_pin", pin)
+    monkeypatch.setattr(
+        spine_build,
+        "parse_uk_spine_args",
+        lambda argv: SimpleNamespace(release_candidate=False),
+    )
+    monkeypatch.setattr(spine_build, "prepare_uk_spine_execution", lambda raw: composed)
+    monkeypatch.setattr(
+        uk_graph,
+        "uk_spine_endpoint",
+        lambda graph: pytest.fail("the build read a spine its roster check missed"),
+    )
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_full_build(_request_arguments(tmp_path))
+    assert str(refused.value) == _posture_refusal(pre, from_sidecar=False)
+    assert calls == []
+
+
+def test_a_spine_request_is_checked_on_the_packaged_roster_it_runs():
+    """No spine argument selects stages: a request runs the packaged UK spec's
+    whole roster, the one the spine build derives and composes, so the check
+    reads that spec's stage names and each stage's operation kinds."""
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.spine_build import _uk_spine_stage_names
+
+    spec = load_country_spec("uk")
+    stages, operations = cli._spine_request_roster()
+    assert stages == tuple(stage.stage for stage in spec.sources.stages)
+    assert set(stages) == set(_uk_spine_stage_names(spec))
+    assert operations == {
+        stage.stage: tuple(operation.kind for operation in stage.operations)
+        for stage in spec.sources.stages
+    }
+
+
+def test_a_dense_build_on_a_spine_without_areas_fails_before_any_graph_runs(
+    tmp_path, monkeypatch, capsys
+):
+    """Through ``main``, the refusal closes the attempt failed, with the
+    refusal as its message and no graph composed or run; a dry run raises
+    it."""
+    from microcosm.build.logbook import load_spool_rows
+    from microcosm.build.uk_runtime import hmrc_uprating
+
+    monkeypatch.delenv("POPULACE_LOGBOOK_PREV_ROW_DIGEST", raising=False)
+    monkeypatch.setattr(
+        hmrc_uprating, "assert_installed_engine_is_pinned", lambda: "fixture"
+    )
+    for name in (
+        "run_graph",
+        "compile_graph",
+        "uk_full_graph",
+        "load_uk_national_frame",
+    ):
+        monkeypatch.setattr(
+            cli,
+            name,
+            lambda *a, _name=name, **k: pytest.fail(f"{_name} ran before the refusal"),
+        )
+    _write_sidecar(tmp_path, _packaged_sidecar_roster())
+    refusal = _posture_refusal(_packaged_sidecar_roster())
+    args = arguments(tmp_path)
+    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
+    assert cli.main([]) == 1
+    assert refusal in capsys.readouterr().err
+    failure = json.loads((args.out / "failure.json").read_text())
+    assert (failure["error_type"], failure["message"]) == ("ValueError", refusal)
+    rows = load_spool_rows(args.out / "logbook-spool")
+    assert len(rows) == 1 and rows[0].disposition == "failed"
+    dry = arguments(tmp_path, "--dry-run", "--out", str(tmp_path / "dry"))
+    monkeypatch.setattr(cli, "parse_args", lambda argv: dry)
+    with pytest.raises(ValueError) as refused:
+        cli.main([])
+    assert str(refused.value) == refusal
+    assert not (tmp_path / "dry").exists()
+
+
+def test_the_full_build_samples_nothing_of_its_own():
+    """The config's rung is the spine's: no field samples the pool again, and
+    none chooses an assignment, a vintage or a lineage conversion
+    (microcosm#931)."""
+    import dataclasses
+
     config = UKFullBuildConfig(calibration_year=2025, source_sample_fraction=0.1)
-    assert config.sample_fraction == 1.0
     assert config.effective_sample_fraction == 0.1
-    with pytest.raises(ValueError, match="second time"):
-        replace(config, sample_fraction=0.1)
+    assert {field.name for field in dataclasses.fields(config)}.isdisjoint(
+        {
+            "sample_fraction",
+            "sample_seed",
+            "geography_assignment",
+            "source_vintage",
+            "constituency_vintage",
+            "source_lineage_modulus",
+        }
+    )
 
 
 def test_households_only_binds_the_census_family_on_the_selection_node():
@@ -479,7 +1328,7 @@ def test_cli_cold_and_required_replay_recreate_dataset_and_sidecars(
             "Required replay repeated a completed numerical/evidence node"
         )
 
-    for kernel in (Fixture, Evidence, Holdout, Targets, Population):
+    for kernel in (Fixture, Evidence, Holdout, Targets):
         monkeypatch.setattr(kernel, "run", forbidden)
     args.resume = "require"
     assert cli.execute_full_build(prepared(tmp_path), args) == 0
@@ -593,7 +1442,6 @@ def test_the_kept_pool_is_the_version_the_declared_size_search_reads(tmp_path):
     full = uk_full_graph(
         UKFullBuildConfig(
             calibration_year=2025,
-            geography_assignment="legacy",
             calibration=UKGraphCalibrationConfig(dataset_households=100),
         ),
         spine=spine,
@@ -616,7 +1464,7 @@ def test_the_kept_pool_is_the_version_the_declared_size_search_reads(tmp_path):
 def test_the_dense_gate_replay_signs_a_bound_attempt_the_contract_accepts(
     tmp_path, monkeypatch
 ):
-    """The seven local outcomes of the graph's terminal document become a signed
+    """The six local outcomes of the graph's terminal document become a signed
     battery report bound to the attempt, which the dense contract verifies."""
     from microcosm.build.uk_runtime.graph_national import replay_uk_dense_gate_battery
     from microcosm.data.contract import _check_uk_dense_gate_report
@@ -759,7 +1607,9 @@ def test_a_thin_brma_row_projects_with_its_figures(tmp_path, monkeypatch):
 def test_dense_run_projects_the_rowwise_candidate_manifest(tmp_path):
     pytest.importorskip("tables")
     args = arguments(tmp_path, "--release-candidate")
-    assert cli.execute_full_build(prepared(tmp_path, release_candidate=True), args) == 0
+    build = prepared(tmp_path, release_candidate=True)
+    bind_synthetic_spine(args, build)
+    assert cli.execute_full_build(build, args) == 0
     out = args.out
     manifest = json.loads((out / "rowwise_candidate_manifest.json").read_text())
     assert manifest["schema_version"] == 4
@@ -783,6 +1633,20 @@ def test_dense_run_projects_the_rowwise_candidate_manifest(tmp_path):
     assert (manifest["parameters"]["n_clones"], manifest["parameters"]["epochs"]) == (
         15,
         2000,
+    )
+    # The pool's clone count, sampling and areas are the spine's
+    # (microcosm#931): the manifest reads them from the request's spine
+    # binding, and its ladder gate from the export descriptor.
+    spine = build.bindings["spine"]
+    assert manifest["sampling"] == spine["sampling"]
+    assert manifest["identity"]["sampling"] == spine["sampling"]
+    assert manifest["geography"]["assignment"] == synthetic_geography_binding(15)
+    assert manifest["geography"]["ladder_gate"]["phase"] == "post_calibration"
+    assert manifest["geography"]["ladder_gate"]["passed"] is True
+    assert manifest["gate"] == manifest["geography"]["ladder_gate"]
+    assert "uk.full.export.prepare" in manifest["graph"]["artifacts"]
+    assert not {"uk.full.sample", "uk.full.geography_gate"} & set(
+        manifest["graph"]["artifacts"]
     )
     for key in (
         "solve",
@@ -1115,7 +1979,7 @@ def test_main_runs_the_logbook_envelope_around_a_dense_build(tmp_path, monkeypat
     assert row.disposition == "iterating"
     assert row.artifact_location.endswith(f"{STEM}.h5")
     assert "published" in row.phases_reached
-    # The seven local gates resolve in the signed local report; every other
+    # The six local gates resolve in the signed local report; every other
     # gate in the graph's full document, by its outcome position.
     assert row.gate_verdicts and all(
         item["verdict"] == "passed" for item in row.gate_verdicts.values()
@@ -1336,34 +2200,58 @@ def test_main_stages_the_bundle_locally_with_staging_local_only(
     assert "staged_manifest" not in manifest["outputs"]
 
 
+def test_an_attempt_refused_before_its_spine_is_bound_records_the_spines_rung(
+    tmp_path, monkeypatch
+):
+    """A failed attempt's Logbook row carries its build id's rung, the
+    spine's, read ahead of preparation, even where preparation refused before
+    it bound the spine (microcosm#931)."""
+    pytest.importorskip("tables")
+    monkeypatch.delenv("POPULACE_LOGBOOK_PREV_ROW_DIGEST", raising=False)
+    args = arguments(tmp_path)
+    (tmp_path / "spine.build.json").write_text(
+        json.dumps({"sampling": {"fraction": 0.1, "seed": 7}})
+    )
+
+    def refuse(args, **kwargs):
+        raise ValueError("the stand-in spine is refused")
+
+    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
+    monkeypatch.setattr(cli, "prepare_full_build", refuse)
+    assert cli.main([]) == 1
+    (row,) = spool_rows(args.out)
+    assert row.disposition == "failed"
+    assert row.build_id.startswith("uk-local-candidate-f010-")
+    assert row.rung == "f010"
+    # The run itself bound nothing of the spine.
+    assert (args.n_clones, args.sample_fraction) == (None, 1.0)
+
+
 def test_sampled_run_stages_a_null_sample_block(tmp_path, monkeypatch):
     """A rung below f100 stages ``sample: null``, as the candidate tool did.
 
-    The contract's only sampling statement is ``{"mode": "full"}``. The driver
-    judges the rung on the effective fraction (pool times source spine), read
-    from the prepared build's configuration, so a ``--sample-fraction 0.1``
-    pool over a full spine stages no sample block while its Logbook row
-    carries the f010 rung.
+    The contract's only sampling statement is ``{"mode": "full"}``. The dense
+    line samples nothing of its own: its rung is its spine's (microcosm#931),
+    read from the prepared build's configuration, so a build on an f010 spine
+    stages no sample block, while its build id, its Logbook row, its recorded
+    parameters and its manifest carry the f010 rung.
     """
 
     pytest.importorskip("tables")
     from microcosm.build.staging_v2 import validate_v2_bundle
 
     arguments(tmp_path)  # writes the stand-ins the prepared build pins
-    build = prepared(tmp_path)
-    sampled = replace(
-        build,
-        full=replace(
-            build.full, config=replace(build.full.config, sample_fraction=0.1)
-        ),
+    # The stand-in spine's sidecar, which the build id's rung is read off
+    # before preparation (microcosm#931).
+    (tmp_path / "spine.build.json").write_text(
+        json.dumps({"sampling": {"fraction": 0.1, "seed": 578}})
     )
+    sampled = prepared(tmp_path, spine_fraction=0.1)
     assert sampled.full.config.effective_sample_fraction == 0.1
     staging_dir = tmp_path / "staging-bundle"
     status, out = run_dense_main(
         tmp_path,
         monkeypatch,
-        "--sample-fraction",
-        "0.1",
         "--staging-dir",
         str(staging_dir),
         staging="--staging-local-only",
@@ -1376,7 +2264,20 @@ def test_sampled_run_stages_a_null_sample_block(tmp_path, monkeypatch):
     assert bundle["progress"]["status"] == "completed"
     assert bundle["run_manifest"]["sample"] is None
     assert bundle["progress"]["sample"] is None
-    assert spool_rows(out)[0].rung == "f010"
+    (row,) = spool_rows(out)
+    assert row.rung == "f010"
+    # The build id, the staging run's id with it, carries the spine's rung.
+    assert row.build_id.startswith("uk-local-candidate-f010-")
+    assert runs == [row.build_id]
+    manifest = json.loads((out / cli.MANIFEST_FILENAME).read_text())
+    assert manifest["parameters"]["sample_fraction"] == 0.1
+    assert manifest["sampling"]["rung_token"] == "f010"
+    assert (manifest["rung_surface"]["rung"], manifest["rung_surface"]["fraction"]) == (
+        "f010",
+        0.1,
+    )
+    assert manifest["release_posture"]["full_rung"] is False
+    assert manifest["releasable"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -2319,7 +3220,7 @@ def test_blocked_gates_partition_failures_by_criticality(tmp_path, monkeypatch, 
     report = json.loads(
         Path(manifest["outputs"]["local_gate_report"]["path"]).read_text()
     )
-    # The local battery report carries the graph's outcomes for its seven
+    # The local battery report carries the graph's outcomes for its six
     # gates, blocked ones included, and is never shippable.
     assert set(report["gates"]) == set(UK_LOCAL_GATE_SCOPE)
     for gate_id in ("uk_local_area_support", "uk_local_weight_ratio"):
@@ -3538,7 +4439,7 @@ def test_required_solve_reuse_reruns_only_the_calibrated_gates(tmp_path, monkeyp
     def forbidden(*args):
         raise AssertionError("A required solve replay recomputed a solve node")
 
-    for kernel in (Fixture, Holdout, Targets, Population, SizeReceipt):
+    for kernel in (Fixture, Holdout, Targets, SizeReceipt):
         monkeypatch.setattr(kernel, "run", forbidden)
     evaluated = []
     original = Evidence.run
@@ -3587,7 +4488,7 @@ def test_required_solve_reuse_fails_before_the_gates_on_a_store_miss(
     def forbidden(*args):
         raise AssertionError("A required solve replay computed a node")
 
-    for kernel in (Fixture, Evidence, Holdout, Targets, Population):
+    for kernel in (Fixture, Evidence, Holdout, Targets):
         monkeypatch.setattr(kernel, "run", forbidden)
     status, out = run_dense_main(
         tmp_path,
@@ -3612,7 +4513,7 @@ def test_required_solve_reuse_on_an_empty_store_fails_at_the_preflight(
     def forbidden(*args):
         raise AssertionError("A required solve replay computed a node")
 
-    for kernel in (Fixture, Evidence, Holdout, Targets, Population):
+    for kernel in (Fixture, Evidence, Holdout, Targets):
         monkeypatch.setattr(kernel, "run", forbidden)
     status, out = run_dense_main(
         tmp_path,
@@ -3668,7 +4569,7 @@ def test_solve_reuse_refuses_a_retry_into_a_failed_attempts_out(
     def forbidden(*args):
         raise AssertionError("A required solve replay computed a node")
 
-    for kernel in (Fixture, Evidence, Holdout, Targets, Population):
+    for kernel in (Fixture, Evidence, Holdout, Targets):
         monkeypatch.setattr(kernel, "run", forbidden)
     reuse = ("--require-solve-reuse", "--graph-store", str(_build_1_store(tmp_path)))
     status, out = run_dense_main(tmp_path, monkeypatch, *reuse)
@@ -3713,94 +4614,6 @@ def test_solve_reuse_refuses_an_out_that_holds_a_bundle(
     assert _files(out) == before
 
 
-def test_a_release_candidate_refuses_the_brma_and_rent_measurement_modes(
-    tmp_path, monkeypatch
-):
-    """microcosm#1305 review: both none modes are for measurement builds only."""
-    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
-    with pytest.raises(ValueError, match="--brma-localisation none"):
-        cli.validate_cli_args(
-            arguments(tmp_path, "--release-candidate", "--brma-localisation", "none")
-        )
-    with pytest.raises(ValueError, match="--private-rent-localisation none"):
-        cli.validate_cli_args(
-            arguments(
-                tmp_path, "--release-candidate", "--private-rent-localisation", "none"
-            )
-        )
-
-
-def test_a_release_candidate_refuses_the_rfdr_measurement_mode(tmp_path, monkeypatch):
-    """Anthony's review of microcosm#1420: the release line flags its Rural
-    Fuel Duty Relief areas; none is for measurement builds only."""
-    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
-    with pytest.raises(ValueError, match="--rfdr-localisation none"):
-        cli.validate_cli_args(
-            arguments(tmp_path, "--release-candidate", "--rfdr-localisation", "none")
-        )
-
-
-def test_the_rfdr_layer_needs_area_mode_and_a_release_the_committed_layer(tmp_path):
-    """Anthony's review of microcosm#1420: an override nothing reads is refused,
-    and a release candidate builds on the committed layer only."""
-    other = tmp_path / "other.json"
-    other.write_text("{}")
-    with pytest.raises(ValueError, match="need --rfdr-localisation area"):
-        cli._prepare_rfdr_localisation(
-            SimpleNamespace(
-                rfdr_localisation="none",
-                rfdr_area_layer=other,
-                rfdr_area_layer_sha256=None,
-            ),
-            {},
-            {},
-        )
-    with pytest.raises(ValueError, match="requires the committed RFDR area layer"):
-        cli._prepare_rfdr_localisation(
-            SimpleNamespace(
-                rfdr_localisation="area",
-                rfdr_area_layer=other,
-                rfdr_area_layer_sha256=None,
-                release_candidate=True,
-            ),
-            {},
-            {},
-        )
-    pins: dict = {}
-    sources: dict = {}
-    binding = cli._prepare_rfdr_localisation(
-        SimpleNamespace(
-            rfdr_localisation="area",
-            rfdr_area_layer=None,
-            rfdr_area_layer_sha256=None,
-            release_candidate=True,
-        ),
-        pins,
-        sources,
-    )
-    assert binding["mode"] == "area"
-    assert set(pins) == set(sources) == {"uk_rfdr_area_layer"}
-    assert sources["uk_rfdr_area_layer"].name == "rfdr_area_layer.json"
-    assert binding["resource_pins"]["uk_rfdr_area_layer"] == pins["uk_rfdr_area_layer"]
-
-
-@pytest.mark.parametrize(
-    ("assignment", "mode"), [("atomic", "area"), ("legacy", "none")]
-)
-def test_an_unset_rfdr_mode_follows_the_geography_assignment(
-    tmp_path, assignment, mode
-):
-    """The independent review of microcosm#1420: a legacy-assignment build
-    through the CLI need not pass --rfdr-localisation none, as the build config
-    resolves it the same way."""
-    args = arguments(tmp_path, "--geography-assignment", assignment)
-    assert args.rfdr_localisation is None
-    pins: dict = {}
-    binding = cli._prepare_rfdr_localisation(args, pins, {})
-    assert binding["mode"] == args.rfdr_localisation == mode
-    assert bool(pins) is (mode == "area")
-
-
 def test_target_geographies_can_name_the_brma_rows(tmp_path):
     assert arguments(
         tmp_path, "--target-geographies", "la,brma"
@@ -3812,65 +4625,46 @@ def test_target_geographies_can_name_the_brma_rows(tmp_path):
         arguments(tmp_path, "--target-geographies", "la,ward")
 
 
-def test_the_brma_and_rent_resource_flags_need_their_modes(tmp_path):
-    """microcosm#1305 review: an override nothing reads is refused, not ignored."""
-    other = tmp_path / "other.json"
-    other.write_text("{}")
-    with pytest.raises(ValueError, match="need --brma-localisation area"):
-        cli._prepare_brma_localisation(
-            SimpleNamespace(
-                brma_localisation="none",
-                brma_area_layer=other,
-                brma_area_layer_sha256=None,
-            ),
-            {},
-            {},
-        )
-    with pytest.raises(ValueError, match="need --private-rent-localisation brma_list"):
-        cli._prepare_private_rent_localisation(
-            SimpleNamespace(
-                brma_localisation="none",
-                private_rent_localisation="none",
-                brma_rent_quantiles=None,
-                brma_rent_quantiles_sha256="0" * 64,
-            ),
-            {},
-            {},
-        )
-    # A release candidate builds on the committed bytes only.
-    with pytest.raises(ValueError, match="requires the committed BRMA area layer"):
-        cli._prepare_brma_localisation(
-            SimpleNamespace(
-                brma_localisation="area",
-                brma_area_layer=other,
-                brma_area_layer_sha256=None,
-                release_candidate=True,
-            ),
-            {},
-            {},
-        )
-    with pytest.raises(
-        ValueError, match="requires the committed 'uk_brma_rent_quantiles' resource"
-    ):
-        cli._prepare_private_rent_localisation(
-            SimpleNamespace(
-                brma_localisation="area",
-                private_rent_localisation="brma_list",
-                brma_rent_quantiles=other,
-                brma_rent_quantiles_sha256=None,
-                release_candidate=True,
-            ),
-            {},
-            {},
-        )
-
-
 def test_the_thin_rows_only_switch_is_gone(tmp_path):
     """María's ruling of 2026-10-26 dropped the withholding, and with it
     --withhold-thin-rows-only; a script that still passes it is refused."""
 
     with pytest.raises(SystemExit):
         arguments(tmp_path, "--withhold-thin-rows-only")
+
+
+#: The dense line's localisation flags and their resource overrides, retired
+#: with the property, BRMA, private-rent and fuel-relief nodes (#931).
+_RETIRED_LOCALISATION_FLAGS = (
+    "--property-localisation",
+    "--price-paid-quantiles",
+    "--price-paid-quantiles-sha256",
+    "--voa-band-mix",
+    "--voa-band-mix-sha256",
+    "--scotgov-band-mix",
+    "--scotgov-band-mix-sha256",
+    "--brma-localisation",
+    "--brma-area-layer",
+    "--brma-area-layer-sha256",
+    "--private-rent-localisation",
+    "--brma-rent-quantiles",
+    "--brma-rent-quantiles-sha256",
+    "--rfdr-localisation",
+    "--rfdr-area-layer",
+    "--rfdr-area-layer-sha256",
+)
+
+
+@pytest.mark.parametrize("flag", _RETIRED_LOCALISATION_FLAGS)
+def test_the_dense_localisation_flags_are_gone(tmp_path, capsys, flag):
+    """The dense line takes its home values, BRMAs, private rents and
+    fuel-relief flags from the spine (#931), so a script that still passes a
+    retired localisation flag is refused, neither ignored nor read as an
+    abbreviation of a live flag."""
+
+    with pytest.raises(SystemExit):
+        arguments(tmp_path, flag, "none")
+    assert f"unrecognized arguments: {flag} none" in capsys.readouterr().err
 
 
 def test_the_orrery_publication_is_off_unless_asked(tmp_path):

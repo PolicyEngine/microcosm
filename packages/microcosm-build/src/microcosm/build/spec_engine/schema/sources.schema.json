@@ -7955,6 +7955,8 @@
       "count",
       "draw",
       "flag_column",
+      "id_remapping",
+      "salt",
       "seed"
      ],
      "properties": {
@@ -7967,7 +7969,13 @@
       "draw": {
        "type": "string"
       },
+      "id_remapping": {
+       "type": "string"
+      },
       "flag_column": {
+       "type": "string"
+      },
+      "salt": {
        "type": "string"
       },
       "seed": {
@@ -8015,8 +8023,19 @@
         "required": [
          "name",
          "selector",
-         "maximum_zero_weight_rows",
          "reason"
+        ],
+        "oneOf": [
+         {
+          "required": [
+           "maximum_zero_weight_rows"
+          ]
+         },
+         {
+          "required": [
+           "maximum_zero_weight_rows_rule"
+          ]
+         }
         ],
         "properties": {
          "name": {
@@ -8027,6 +8046,23 @@
          },
          "maximum_zero_weight_rows": {
           "type": "integer"
+         },
+         "maximum_zero_weight_rows_rule": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "rule",
+           "sigma"
+          ],
+          "properties": {
+           "rule": {
+            "const": "binomial_share_band"
+           },
+           "sigma": {
+            "type": "number",
+            "exclusiveMinimum": 0
+           }
+          }
          },
          "selector": {
           "type": "object",
@@ -8059,6 +8095,9 @@
        "const": "allocate_zero_weight_prior_mass"
       },
       "conservation": {
+       "type": "string"
+      },
+      "geographic_clone_stratum": {
        "type": "string"
       },
       "pension_age_share": {
@@ -9660,6 +9699,9 @@
       "factor": {
        "type": "string"
       },
+      "denominator": {
+       "type": "string"
+      },
       "owner_rows": {
        "type": "string"
       },
@@ -9719,6 +9761,904 @@
        "type": "number"
       },
       "reason": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "entity",
+      "clone_index_columns",
+      "ordinal_bound",
+      "id_remapping",
+      "order",
+      "weight_split",
+      "weight_kind_out",
+      "source_columns",
+      "conservation",
+      "declared_factor",
+      "reason"
+     ],
+     "properties": {
+      "kind": {
+       "const": "expand_geographic_clones"
+      },
+      "entity": {
+       "type": "string"
+      },
+      "clone_index_columns": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "ordinal_bound": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "id_remapping": {
+       "type": "string"
+      },
+      "order": {
+       "type": "string"
+      },
+      "weight_split": {
+       "type": "string"
+      },
+      "weight_kind_out": {
+       "type": "string"
+      },
+      "source_columns": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "conservation": {
+       "type": "string"
+      },
+      "declared_factor": {
+       "type": "number"
+      },
+      "reason": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "source",
+      "vintage_resource"
+     ],
+     "properties": {
+      "kind": {
+       "const": "key_households_by_clone_path"
+      },
+      "source": {
+       "type": "string"
+      },
+      "vintage_resource": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "identity",
+      "sources",
+      "constraints",
+      "weight_by",
+      "draw_inputs",
+      "fallback_levels",
+      "layers",
+      "outputs",
+      "stream",
+      "seed"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_atomic_area"
+      },
+      "identity": {
+       "type": "string"
+      },
+      "sources": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "constraints": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "input",
+         "support",
+         "required"
+        ],
+        "properties": {
+         "input": {
+          "type": "string"
+         },
+         "support": {
+          "type": "string"
+         },
+         "required": {
+          "type": "boolean"
+         }
+        }
+       }
+      },
+      "weight_by": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "input",
+        "default",
+        "bands"
+       ],
+       "properties": {
+        "input": {
+         "type": "string"
+        },
+        "default": {
+         "type": "string"
+        },
+        "bands": {
+         "type": "object",
+         "minProperties": 1,
+         "additionalProperties": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      },
+      "draw_inputs": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "oneOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+           "type": [
+            "string",
+            "integer"
+           ]
+          }
+         }
+        ]
+       }
+      },
+      "fallback_levels": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "name",
+         "constraints",
+         "weight_by"
+        ],
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "constraints": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+           "type": "string"
+          }
+         },
+         "weight_by": {
+          "type": "boolean"
+         }
+        }
+       }
+      },
+      "layers": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "outputs": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "stream": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer",
+       "minimum": 0
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "code_column",
+      "output",
+      "names_resource",
+      "vintage"
+     ],
+     "properties": {
+      "kind": {
+       "const": "resolve_local_authority"
+      },
+      "code_column": {
+       "type": "string"
+      },
+      "output": {
+       "type": "string"
+      },
+      "names_resource": {
+       "type": "string"
+      },
+      "vintage": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "area_system",
+      "layer_resource",
+      "method",
+      "area_codes",
+      "count_resource",
+      "count_table_systems",
+      "cell_columns",
+      "assignment_grain",
+      "collapse_to",
+      "collapse_method",
+      "seed",
+      "salts"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_area_brma"
+      },
+      "output": {
+       "type": "string"
+      },
+      "area_system": {
+       "type": "string"
+      },
+      "layer_resource": {
+       "type": "string"
+      },
+      "method": {
+       "type": "string"
+      },
+      "area_codes": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "count_resource": {
+       "type": "string"
+      },
+      "count_table_systems": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "cell_columns": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "assignment_grain": {
+       "type": "string"
+      },
+      "collapse_to": {
+       "type": "string"
+      },
+      "collapse_method": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "salts": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "layer_resource",
+      "method",
+      "area_system",
+      "area_code",
+      "roster_sources",
+      "require_flagged"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_rfdr_flags"
+      },
+      "layer_resource": {
+       "type": "string"
+      },
+      "method": {
+       "type": "string"
+      },
+      "area_system": {
+       "type": "string"
+      },
+      "area_code": {
+       "type": "string"
+      },
+      "roster_sources": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "require_flagged": {
+       "type": "boolean"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "copies",
+      "key",
+      "area_draw",
+      "local_authority",
+      "brma",
+      "rfdr",
+      "rewrites"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_spi_copy_areas"
+      },
+      "copies": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "branch",
+        "paths_require",
+        "kinds"
+       ],
+       "properties": {
+        "branch": {
+         "type": "string"
+        },
+        "paths_require": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string"
+         }
+        },
+        "kinds": {
+         "type": "object",
+         "minProperties": 1,
+         "additionalProperties": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "key": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "column",
+        "source",
+        "vintage_resource"
+       ],
+       "properties": {
+        "column": {
+         "type": "string"
+        },
+        "source": {
+         "type": "string"
+        },
+        "vintage_resource": {
+         "type": "string"
+        }
+       }
+      },
+      "area_draw": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "definition_of",
+        "level",
+        "stream",
+        "seed"
+       ],
+       "properties": {
+        "definition_of": {
+         "type": "string"
+        },
+        "level": {
+         "type": "string"
+        },
+        "stream": {
+         "type": "string"
+        },
+        "seed": {
+         "type": "integer",
+         "minimum": 0
+        }
+       }
+      },
+      "local_authority": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "as_stage"
+       ],
+       "properties": {
+        "as_stage": {
+         "type": "string"
+        }
+       }
+      },
+      "brma": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "as_stage",
+        "engine_households",
+        "engine_simulations",
+        "count_resource",
+        "count_table_systems",
+        "cell_columns",
+        "assignment_grain",
+        "collapse_to",
+        "collapse_method",
+        "seed",
+        "salts"
+       ],
+       "properties": {
+        "as_stage": {
+         "type": "string"
+        },
+        "engine_households": {
+         "type": "string"
+        },
+        "engine_simulations": {
+         "type": "string"
+        },
+        "count_resource": {
+         "type": "string"
+        },
+        "count_table_systems": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string"
+         }
+        },
+        "cell_columns": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string"
+         }
+        },
+        "assignment_grain": {
+         "type": "string"
+        },
+        "collapse_to": {
+         "type": "string"
+        },
+        "collapse_method": {
+         "type": "string"
+        },
+        "seed": {
+         "type": "integer",
+         "minimum": 0
+        },
+        "salts": {
+         "type": "object",
+         "minProperties": 1,
+         "additionalProperties": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "rfdr": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "as_stage",
+        "require_flagged"
+       ],
+       "properties": {
+        "as_stage": {
+         "type": "string"
+        },
+        "require_flagged": {
+         "type": "boolean"
+        }
+       }
+      },
+      "rewrites": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "tenure_type",
+      "excluded_regions",
+      "identity",
+      "process",
+      "stream",
+      "seed",
+      "categories",
+      "reference_channel",
+      "quantiles_resource",
+      "quantiles_method",
+      "counts_resource",
+      "weeks_in_year",
+      "scale_band",
+      "sampled_region_renters",
+      "method"
+     ],
+     "properties": {
+      "kind": {
+       "const": "localise_private_rents"
+      },
+      "tenure_type": {
+       "type": "string"
+      },
+      "excluded_regions": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "identity": {
+       "type": "string"
+      },
+      "process": {
+       "type": "string"
+      },
+      "stream": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "categories": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "reference_channel": {
+       "type": "string"
+      },
+      "quantiles_resource": {
+       "type": "string"
+      },
+      "quantiles_method": {
+       "type": "string"
+      },
+      "counts_resource": {
+       "type": "string"
+      },
+      "weeks_in_year": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "scale_band": {
+       "type": "array",
+       "minItems": 2,
+       "maxItems": 2,
+       "items": {
+        "type": "number"
+       }
+      },
+      "sampled_region_renters": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "method": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "value_column",
+      "after_segment",
+      "rows",
+      "rank",
+      "stream",
+      "knots",
+      "knots_level",
+      "constituency_column",
+      "regional_reference",
+      "value",
+      "factor",
+      "region_map",
+      "rank_basis_column",
+      "kept",
+      "method"
+     ],
+     "properties": {
+      "kind": {
+       "const": "localise_main_residence_value"
+      },
+      "value_column": {
+       "type": "string"
+      },
+      "after_segment": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "rows": {
+       "type": "string"
+      },
+      "rank": {
+       "type": "string"
+      },
+      "stream": {
+       "type": "array",
+       "minItems": 4,
+       "maxItems": 4,
+       "items": {
+        "type": [
+         "string",
+         "integer"
+        ]
+       }
+      },
+      "knots": {
+       "type": "string"
+      },
+      "knots_level": {
+       "type": "string"
+      },
+      "constituency_column": {
+       "type": "string"
+      },
+      "regional_reference": {
+       "type": "string"
+      },
+      "value": {
+       "type": "string"
+      },
+      "factor": {
+       "type": "string"
+      },
+      "region_map": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "rank_basis_column": {
+       "type": "string"
+      },
+      "kept": {
+       "type": "string"
+      },
+      "method": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "method",
+      "band_d_resources",
+      "band_d_year",
+      "authority_column",
+      "reference",
+      "draw_stage",
+      "copy_draw_stage",
+      "support_sources",
+      "provenance_column",
+      "ratio_classes",
+      "formula_classes",
+      "formula_needs",
+      "band_ratios",
+      "single_adult_column",
+      "single_adult_discount",
+      "scaled_columns",
+      "cap",
+      "excluded_regions",
+      "support_channel_rows"
+     ],
+     "properties": {
+      "kind": {
+       "const": "localise_council_tax"
+      },
+      "method": {
+       "type": "string"
+      },
+      "band_d_resources": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "england_wales",
+        "scotland"
+       ],
+       "properties": {
+        "england_wales": {
+         "type": "string"
+        },
+        "scotland": {
+         "type": "string"
+        }
+       }
+      },
+      "band_d_year": {
+       "type": "string"
+      },
+      "authority_column": {
+       "type": "string"
+      },
+      "reference": {
+       "type": "string"
+      },
+      "draw_stage": {
+       "type": "string"
+      },
+      "copy_draw_stage": {
+       "type": "string"
+      },
+      "support_sources": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "provenance_column": {
+       "type": "string"
+      },
+      "ratio_classes": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "formula_classes": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "formula_needs": {
+       "type": "string"
+      },
+      "band_ratios": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "object",
+        "minProperties": 1,
+        "additionalProperties": {
+         "type": "string"
+        }
+       }
+      },
+      "single_adult_column": {
+       "type": "string"
+      },
+      "single_adult_discount": {
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
+      },
+      "scaled_columns": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "household",
+        "person"
+       ],
+       "properties": {
+        "household": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string"
+         }
+        },
+        "person": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "cap": {
+       "type": "string"
+      },
+      "excluded_regions": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "support_channel_rows": {
        "type": "string"
       }
      }
@@ -9964,6 +10904,8 @@
       "wealth_measure",
       "investable_wealth_columns",
       "selection",
+      "seed",
+      "salt",
       "maximum_copy_weight",
       "copy_rule",
       "id_remapping",
@@ -10055,6 +10997,13 @@
       "selection": {
        "type": "string"
       },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string",
+       "minLength": 1
+      },
       "maximum_copy_weight": {
        "type": "number"
       },
@@ -10098,6 +11047,8 @@
       "stratum_lower",
       "copies",
       "stratum_rule",
+      "seed",
+      "salt",
       "copy_rule",
       "id_remapping",
       "flag_column",
@@ -10124,6 +11075,13 @@
       },
       "stratum_rule": {
        "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string",
+       "minLength": 1
       },
       "copy_rule": {
        "type": "string"
@@ -10280,6 +11238,7 @@
       "seed",
       "salt",
       "clone_index",
+      "id_remapping",
       "flag_column",
       "band_column",
       "carrier_column",
@@ -10358,6 +11317,9 @@
       },
       "clone_index": {
        "type": "integer"
+      },
+      "id_remapping": {
+       "type": "string"
       },
       "flag_column": {
        "type": "string"
@@ -11066,67 +12028,6 @@
        ]
       },
       "weights": {
-       "type": "string"
-      }
-     }
-    },
-    {
-     "type": "object",
-     "additionalProperties": false,
-     "required": [
-      "kind",
-      "knots",
-      "knots_level",
-      "region_map",
-      "rows",
-      "rank",
-      "support_stratum_lower",
-      "stream",
-      "value",
-      "property_wealth",
-      "rank_basis_column"
-     ],
-     "properties": {
-      "kind": {
-       "const": "assign_regional_home_values"
-      },
-      "knots": {
-       "type": "string"
-      },
-      "knots_level": {
-       "type": "string"
-      },
-      "region_map": {
-       "type": "object",
-       "additionalProperties": {
-        "type": "string"
-       }
-      },
-      "rows": {
-       "type": "string"
-      },
-      "rank": {
-       "type": "string"
-      },
-      "support_stratum_lower": {
-       "type": "number"
-      },
-      "stream": {
-       "type": "array",
-       "items": {
-        "type": [
-         "string",
-         "integer"
-        ]
-       }
-      },
-      "value": {
-       "type": "string"
-      },
-      "property_wealth": {
-       "type": "string"
-      },
-      "rank_basis_column": {
        "type": "string"
       }
      }
@@ -12624,6 +13525,7 @@
       "order",
       "walk",
       "walk_seed",
+      "tie_salt",
       "within_band",
       "top_band",
       "maximum_top_band_multiplier",
@@ -12660,6 +13562,10 @@
       },
       "walk_seed": {
        "type": "integer"
+      },
+      "tie_salt": {
+       "type": "string",
+       "minLength": 1
       },
       "within_band": {
        "type": "string"

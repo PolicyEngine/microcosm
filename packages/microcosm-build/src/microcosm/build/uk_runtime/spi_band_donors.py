@@ -22,6 +22,21 @@ from, in proportion, exactly as the SPI support channel takes its copies' mass
 from the households of their region. Total household mass and every funding
 stratum's mass are conserved; the seats are drawn from identity-keyed uniforms,
 so the draw can be reconstructed from the ids.
+
+On a clone-first spine every household carries its geographic clone
+(``household_clone_index``, microcosm#931). Each clone then seats its own
+donors by the same walk over its own candidates, with the same seats per band,
+sized on the eligible households counted in distinct source households, so
+clone 0 seats exactly what a one-clone spine seats, at any clone count. Every
+donor weighs its band's weight over the clone count, and each clone's regions
+fund their own donors at one mass scale common to every clone, the smallest
+any clone's region allows. Clone 0's weights and funding factors are a
+one-clone spine's (its weights over the clone count) only while that scale is
+the one a one-clone spine takes: one at both, or bound by a region of clone 0.
+Where another clone's region binds, every clone's donors, clone 0's included,
+take the lower scale. The spine's ``geographic_expand`` stage writes the column
+before this stage runs, 0 on every household of a one-clone spine; a household
+table without it is one clone.
 """
 
 from __future__ import annotations
@@ -42,7 +57,13 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
-from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
+from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
+    distinct_count,
+    rounded_count,
+    source_household_ids,
+)
 from microcosm.build.uk_runtime.spi_income import (
     SPI_MINIMUM_RECIPIENT_AGE,
     SPI_RECIPIENT_ROLE_COLUMN,
@@ -58,10 +79,12 @@ from microcosm.build.uk_runtime.spi_support import (
     _PERSON_ID_COLUMNS,
     BASE_FRS_SUPPORT_CHANNEL,
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
+    SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
     _clone_support_frame,
     _exact_total_correction,
     support_channel_column,
+    support_source_id_column,
 )
 from microcosm.frame import Frame, MassChangeRecord, WeightKind, engine_tables
 
@@ -74,20 +97,24 @@ SPI_INCOME_BAND_DONOR_LOWER_BOUNDS: tuple[int, ...] = (
     1_000_000,
     2_000_000,
 )
-#: Every band seats at least this many donor households, and enough of them
-#: that no donor starts above the maximum weight: the count is
-#: ``max(minimum, ceil(published taxpayers / maximum weight))`` and the weight
-#: the published taxpayers over the count, equal within the band.
+#: Every band seats at least this many donor households in each geographic
+#: clone, and enough of them that no donor starts above the maximum weight:
+#: the count is ``max(minimum, ceil(published taxpayers / maximum weight))``,
+#: and every donor of the band weighs the published taxpayers over the clone
+#: count times the count.
 SPI_INCOME_BAND_MINIMUM_DONORS = 120
 SPI_INCOME_BAND_MAXIMUM_DONOR_WEIGHT = 250.0
 #: Small frames: donors may take at most this share of the eligible base
-#: households (the seating scale), and of any funding stratum's mass (the mass
-#: scale). Both scales are one on the full frame, where the published band
-#: masses are met exactly.
+#: households, counted in distinct source households so the share does not
+#: depend on the clone count (the seating scale), and of any funding stratum's
+#: mass (the mass scale). Both scales are one on the full frame, where the
+#: published band masses are met exactly.
 SPI_INCOME_BAND_MAXIMUM_DONOR_HOUSEHOLD_SHARE = 0.15
 SPI_INCOME_BAND_MAXIMUM_REALLOCATION_SHARE = 0.5
 #: The stratum a donor's mass is taken from: the households of its source
-#: household's region, base and synthetic channel alike.
+#: household's region, base and synthetic channel alike. Where the frame
+#: carries geographic clones the stratum is the region within the donor's
+#: clone, a derived stratum this declaration does not list (microcosm#931).
 SPI_INCOME_BAND_FUNDING_STRATA: tuple[str, ...] = ("region",)
 SPI_INCOME_BAND_DONOR_SEED = 3
 #: The tape is prepared exactly as ``hmrc_spi_income_spine`` prepares it (its
@@ -101,8 +128,15 @@ SPI_INCOME_BAND_DONOR_TAPE_PREPARATION = (
     "draw_spi_donor_ages_by_population"
 )
 SPI_INCOME_BAND_DONOR_DRAW_SALT = "spi_income_band_donor_draw"
-#: The support channel copies at clone index 1; the reserved copies sit at 2.
+#: The support channel copies at clone index 1; the reserved copies sit at 2,
+#: the ordinal they take in the copy-id table's spi_support_channel field.
 SPI_INCOME_BAND_DONOR_CLONE_INDEX = 2
+#: The id rule the stage manifest restates (microcosm#931).
+SPI_INCOME_BAND_DONOR_ID_REMAPPING = (
+    "copy-id table field spi_support_channel; a donor takes every entity id + "
+    "2 x the field's radix (10**11), and its source is read from its source-id "
+    "columns, never from the id"
+)
 HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR = "household_is_spi_income_band_donor"
 SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN = "spi_income_band_donor_lower_bound"
 PERSON_IS_SPI_INCOME_BAND_CARRIER = "person_is_spi_income_band_carrier"
@@ -122,26 +156,35 @@ SPI_INCOME_BAND_DONOR_COUNT_RULE = (
     "maximum_donor_weight))"
 )
 SPI_INCOME_BAND_DONOR_WEIGHT_RULE = (
-    "published band taxpayers / band donor count, equal within a band"
+    "published band taxpayers / (geographic clone count x one clone's band donor "
+    "count), equal within a band"
 )
 SPI_INCOME_BAND_DONOR_DRAW = (
-    "weighted_without_replacement_identity_keyed: Efraimidis-Spirakis keys "
-    "log(u) / (household weight x propensity) on stable_identity_uniforms("
-    "person_id, seed, salt:band); the largest keys are seated, one carrier per "
-    "household, the highest band first"
+    "weighted_without_replacement_identity_keyed within each geographic clone "
+    "(a spine without household_clone_index is one clone): Efraimidis-Spirakis "
+    "keys log(u) / (household weight x propensity) on "
+    "stable_identity_uniforms(person_id, seed, salt:band); the largest keys are "
+    "seated, one carrier per household, the highest band first"
 )
 SPI_INCOME_BAND_DONOR_FUNDING = (
-    "stratum reallocation: every incumbent household of the stratum a donor's "
-    "source household belongs to is scaled by 1 - donor mass / stratum mass"
+    "stratum reallocation per geographic clone: every incumbent household of "
+    "the stratum a donor's source household belongs to, in the donor's clone, "
+    "is scaled by 1 - donor mass / stratum mass"
 )
 SPI_INCOME_BAND_DONOR_SEATING_SCALE = (
-    "min(1, maximum_donor_household_share x eligible base households / expected "
-    "donor count); band counts floored, at least one per band"
+    "min(1, maximum_donor_household_share x eligible base source households / "
+    "expected donor count of one geographic clone); band counts floored, at "
+    "least one per band"
 )
 SPI_INCOME_BAND_DONOR_MASS_SCALE = (
-    "min(1, min over funding strata of maximum_reallocation_share x stratum "
-    "mass / seated donor mass); every band's weight scaled alike"
+    "min(1, min over the funding strata of every geographic clone of "
+    "maximum_reallocation_share x stratum mass / seated donor mass); one scale "
+    "for every band and clone"
 )
+#: The mass-change record's reason. It is hashed into the frame's content
+#: identity and restated by the release input coverage manifest, so it stays
+#: byte for byte as it was before the stage seated per clone: every clone's
+#: regions conserve their mass, so every region does.
 SPI_INCOME_BAND_DONOR_MASS_CHANGE_REASON = (
     "Reallocate the published HMRC Table 2.5 taxpayer mass of each total-income "
     "band from GBP 200,000 from the households of each donor's region to its "
@@ -164,58 +207,166 @@ UK_SPI_INCOME_BAND_DONOR_OUTPUT_COLUMNS = (
     SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN,
     PERSON_IS_SPI_INCOME_BAND_CARRIER,
 )
+#: How the receipt records the seating scale: an exact scale below one gives
+#: back the eligible count, so the receipt says only whether the household
+#: share's cap bound (UKDS disclosure control).
+SPI_INCOME_BAND_FULL_SEATING = "full"
+SPI_INCOME_BAND_CAPPED_SEATING = "capped"
+#: The relative tolerance ``funding_within_share`` holds every funding factor
+#: to: the stage gate's float tolerance, eight units in the last place
+#: (``stage_health._FLOAT_RELATIVE_TOLERANCE``; a test holds the two equal).
+SPI_INCOME_BAND_FUNDING_RELATIVE_TOLERANCE = 8.0 * float(np.finfo(np.float64).eps)
+#: How far, relative to the reallocated mass, ``funding_matches_bands`` lets
+#: the funding strata's and the bands' donor mass each sit from it: the stage
+#: gate's declared ``maximum_relative_mass_deviation`` (a test holds the two
+#: equal), or the float tolerance where the declared deviation is finer than
+#: it.
+SPI_INCOME_BAND_FUNDING_MASS_TOLERANCE = max(
+    1e-9, SPI_INCOME_BAND_FUNDING_RELATIVE_TOLERANCE
+)
+#: Each band's donors and carriers in distinct source households: a full
+#: seating's receipt leaves them out, and a capped seating's gives them,
+#: rounded, as ``donor_households`` and ``carriers``.
+_BAND_SOURCE_COUNT_KEYS = ("donor_source_households", "carrier_source_households")
 
 
 @dataclass(frozen=True)
 class UKSPIIncomeBandDonorResult:
-    """Frame with the reserved band rows and the receipt the gate reads."""
+    """Frame with the reserved band rows and the receipt the gate reads.
 
-    frame: Frame
-    band_rows: tuple[Mapping[str, object], ...]
-    funding_rows: tuple[Mapping[str, object], ...]
+    The result keeps the stage's exact figures, and :meth:`evidence` writes
+    the receipt from them (microcosm#931). The exact figures stay out of the
+    repr, and the receipt gives each in its seating's form: ``seating_scale``
+    as full or capped; the band rows' counts in source households
+    (``donor_source_households``, ``carrier_source_households``) only through
+    the capped form; each funding row's incumbent mass, donor mass and factor
+    never. The repr leaves out the frame as well. ``expected_donor_count`` is
+    the plan's.
+
+    Every receipt counts these in distinct source households and rounds them
+    (``receipt_counts``): ``eligible_households``, each band row's
+    ``eligible_households`` (clone 0's, which a one-clone spine counts
+    alike), the funding rows' ``donor_households`` and
+    ``carrier_region_counts``. A full seating seats every band's plan, so the
+    receipt gives the band rows' ``donor_households`` and ``carriers``,
+    ``donor_count`` and ``reallocated_mass`` exact, and a band row's
+    ``carrier_mean_age`` is withheld below three carrier source households or
+    three seats per clone. A capped seating's receipt gives each band's donors
+    and carriers, and ``donor_count``, in rounded distinct source households,
+    withholds each band's ``weighted_taxpayers`` and ``carrier_mean_age`` and
+    the ``reallocated_mass``, and leaves each band's ``carrier_regions`` out.
+    At every seating the funding rows keep each stratum and its rounded
+    donors and withhold its masses and factor, and two booleans give the
+    funding: ``funding_within_share``, every factor at least one less the
+    declared reallocation share, to the gate's relative tolerance
+    (:data:`SPI_INCOME_BAND_FUNDING_RELATIVE_TOLERANCE`); and
+    ``funding_matches_bands``, the funding strata and the bands each carrying
+    the reallocated mass (:data:`SPI_INCOME_BAND_FUNDING_MASS_TOLERANCE`).
+    """
+
+    frame: Frame = field(repr=False)
+    band_rows: tuple[Mapping[str, object], ...] = field(repr=False)
+    funding_rows: tuple[Mapping[str, object], ...] = field(repr=False)
     minimum_donors_per_band: int
     maximum_donor_weight: float
     maximum_donor_household_share: float
     maximum_reallocation_share: float
-    seating_scale: float
+    seating_scale: float = field(repr=False)
     mass_scale: float
-    eligible_households: int
+    eligible_households: int | str
     expected_donor_count: int
-    donor_count: int
-    reallocated_mass: float
+    donor_count: int = field(repr=False)
+    donor_source_households: int = field(repr=False)
+    reallocated_mass: float = field(repr=False)
+    funding_within_share: bool
+    funding_matches_bands: bool
     old_total: float
     new_total: float
     seed: int
     sample_fraction: float
     taxpayer_period: int
-    carrier_region_counts: Mapping[str, int]
+    carrier_region_counts: Mapping[str, int | str]
     propensity_cells: int
+    clone_count: int
+    funding_strata: tuple[str, ...]
 
     def evidence(self) -> dict[str, object]:
+        full = self.seating_scale >= 1.0
         return {
             "stage": UK_SPI_INCOME_BAND_DONORS_STAGE_NAME,
             "minimum_donors_per_band": self.minimum_donors_per_band,
             "maximum_donor_weight": self.maximum_donor_weight,
             "maximum_donor_household_share": self.maximum_donor_household_share,
             "maximum_reallocation_share": self.maximum_reallocation_share,
-            "funding_strata": list(SPI_INCOME_BAND_FUNDING_STRATA),
-            "seating_scale": self.seating_scale,
+            "clone_count": self.clone_count,
+            "funding_strata": list(self.funding_strata),
+            "seating_scale": (
+                SPI_INCOME_BAND_FULL_SEATING if full else SPI_INCOME_BAND_CAPPED_SEATING
+            ),
             "mass_scale": self.mass_scale,
             "sample_fraction": self.sample_fraction,
             "eligible_households": self.eligible_households,
             "expected_donor_count": self.expected_donor_count,
-            "donor_count": self.donor_count,
-            "reallocated_mass": self.reallocated_mass,
+            "donor_count": (
+                self.donor_count
+                if full
+                else rounded_count(self.donor_source_households)
+            ),
+            "reallocated_mass": self.reallocated_mass if full else UK_WITHHELD,
+            "funding_within_share": self.funding_within_share,
+            "funding_matches_bands": self.funding_matches_bands,
             "mass": {"old_total": self.old_total, "new_total": self.new_total},
             "draw": {"seed": self.seed, "salt": SPI_INCOME_BAND_DONOR_DRAW_SALT},
             "taxpayer_count_resource": SPI_INCOME_BAND_TAXPAYER_RESOURCE,
             "taxpayer_count_period": self.taxpayer_period,
             "propensity": SPI_INCOME_BAND_DONOR_PROPENSITY,
             "propensity_cells": self.propensity_cells,
-            "bands": [dict(row) for row in self.band_rows],
-            "funding": [dict(row) for row in self.funding_rows],
+            "bands": [_band_receipt(row, full=full) for row in self.band_rows],
+            "funding": [_funding_receipt(row) for row in self.funding_rows],
             "carrier_region_counts": dict(self.carrier_region_counts),
         }
+
+
+def _band_receipt(row: Mapping[str, object], *, full: bool) -> dict[str, object]:
+    """A band row as the receipt gives it, at full or capped seating.
+
+    At full seating, the row as the stage counted it, without its counts in
+    source households. At capped seating, its donors and carriers in rounded
+    distinct source households; its weighted taxpayers and its carriers' mean
+    age withheld; its carriers' regions left out.
+    """
+
+    if full:
+        return {
+            key: value
+            for key, value in row.items()
+            if key not in _BAND_SOURCE_COUNT_KEYS
+        }
+    return {
+        "lower_bound": row["lower_bound"],
+        "expected_donor_households": row["expected_donor_households"],
+        "donor_households": rounded_count(int(row["donor_source_households"])),
+        "carriers": rounded_count(int(row["carrier_source_households"])),
+        "eligible_households": row["eligible_households"],
+        "planned_donor_weight": row["planned_donor_weight"],
+        "donor_weight": row["donor_weight"],
+        "weighted_taxpayers": UK_WITHHELD,
+        "published_taxpayers": row["published_taxpayers"],
+        "carrier_mean_age": UK_WITHHELD,
+    }
+
+
+def _funding_receipt(row: Mapping[str, object]) -> dict[str, object]:
+    """A funding row as the receipt gives it at every seating: the stratum and
+    its rounded donor households, its masses and factor withheld."""
+
+    return {
+        "stratum": row["stratum"],
+        "donor_households": row["donor_households"],
+        "incumbent_mass": UK_WITHHELD,
+        "donor_mass": UK_WITHHELD,
+        "factor": UK_WITHHELD,
+    }
 
 
 def spi_income_band_donor_plan(
@@ -267,7 +418,9 @@ def spi_income_band_donor_seats(
     The scale is one while the planned donors fit inside the declared share of
     the eligible base households; below that every band's count is scaled
     alike and floored, never below one, so a small frame keeps every band
-    without copying most of its households.
+    without copying most of its households. The stage counts the eligible
+    households in distinct source households, so a frame's geographic clones
+    count once and every clone takes these seats (microcosm#931).
     """
 
     expected = sum(count for count, _ in plan.values())
@@ -477,6 +630,15 @@ def stack_spi_income_band_donors(
     and starts at its band's equal weight. The mass the donors carry leaves the
     incumbent households of each donor's funding stratum in proportion, so the
     total and every stratum's mass are unchanged.
+
+    Where the households carry ``household_clone_index`` (microcosm#931), the
+    walk runs once in each geographic clone, over that clone's candidates,
+    with the same seats and the same person-keyed uniforms; the seats come
+    from the eligible households counted in distinct source households, so
+    they do not depend on the clone count. Each donor weighs its band's
+    weight over the clone count, each clone's regions fund their own donors,
+    and one mass scale, the smallest any clone's region allows, serves every
+    clone, so each band keeps one donor weight.
     """
 
     validate_uk_national_frame(frame)
@@ -521,8 +683,22 @@ def stack_spi_income_band_donors(
     bands = sorted(plan)
     incoming = frame.weights_for("household")
     incoming_weights = np.asarray(incoming.values, dtype=float)
-    weight_by_household = pd.Series(
-        incoming_weights, index=household["household_id"].to_numpy()
+    household_ids = household["household_id"].to_numpy()
+    weight_by_household = pd.Series(incoming_weights, index=household_ids)
+    # The geographic clone each household belongs to (one clone without the
+    # index) and the survey household it was made from: the walk runs in each
+    # clone, and the receipt's counts and the seats count true sources.
+    clone_indices = _geographic_clone_indices(household)
+    clone_count = _geographic_clone_count(clone_indices)
+    clone_by_household = pd.Series(
+        np.zeros(len(household), dtype=np.int64)
+        if clone_indices is None
+        else clone_indices,
+        index=household_ids,
+    )
+    source_by_household = pd.Series(
+        source_household_ids(household, stage=UK_SPI_INCOME_BAND_DONORS_STAGE_NAME),
+        index=household_ids,
     )
 
     base_households = household.loc[
@@ -546,11 +722,22 @@ def stack_spi_income_band_donors(
     )
     candidate_ids = candidates["person_id"].to_numpy()
     candidate_households = candidates["person_household_id"].to_numpy()
+    candidate_sources = (
+        candidates["person_household_id"].map(source_by_household).to_numpy()
+    )
     candidate_weights = (
         candidates["person_household_id"].map(weight_by_household).to_numpy(float)
     )
     if not np.isfinite(candidate_weights).all() or (candidate_weights < 0.0).any():
         raise ValueError("SPI income band donor candidates need finite weights.")
+    # Each clone's candidate positions, in the person-id order above: with one
+    # clone, every candidate.
+    candidate_clones = (
+        candidates["person_household_id"].map(clone_by_household).to_numpy(np.int64)
+    )
+    clone_positions = [
+        np.flatnonzero(candidate_clones == clone) for clone in range(clone_count)
+    ]
 
     # Rate of seating by weight x propensity for each band; a candidate with a
     # zero rate for every band can never be seated and is not eligible.
@@ -563,13 +750,17 @@ def stack_spi_income_band_donors(
     any_rate = np.zeros(len(candidates), dtype=bool)
     for band in bands:
         any_rate |= rates[band] > 0.0
-    eligible_households = int(pd.unique(candidate_households[any_rate]).size)
+    # Counted in distinct source households, so the seats and the household
+    # share's cap read the survey households, however many clones carry them.
+    eligible_households = distinct_count(candidate_sources, any_rate)
     seating_scale, seats = spi_income_band_donor_seats(
         plan,
         eligible_households=eligible_households,
         maximum_donor_household_share=maximum_donor_household_share,
     )
 
+    # The households and carriers seated, by id; ids differ across clones, so
+    # one map serves every clone.
     selected_household: dict[int, int] = {}
     carrier_person: dict[int, int] = {}
     band_eligible: dict[int, int] = {}
@@ -581,59 +772,78 @@ def stack_spi_income_band_donors(
             count=len(candidates),
         )
         eligible = (rate > 0.0) & ~taken_before
-        band_eligible[band] = int(pd.unique(candidate_households[eligible]).size)
-        if band_eligible[band] < seats[band]:
+        found = [
+            int(pd.unique(candidate_households[positions[eligible[positions]]]).size)
+            for positions in clone_positions
+        ]
+        # The refusal names the band and, on a cloned spine, that a clone fell
+        # short; it gives no count (microcosm#931).
+        if any(count < seats[band] for count in found):
             raise ValueError(
-                f"SPI income band donors need {seats[band]} candidate households "
-                f"with positive weight and propensity for the band from {band}; "
-                f"found {band_eligible[band]}."
+                "SPI income band donors found fewer candidate households with "
+                "positive weight and propensity for the band from "
+                f"{band} than the band seats"
+                + ("." if clone_count == 1 else " in a geographic clone.")
             )
+        # The receipt's count for the band is clone 0's, in distinct source
+        # households: clone 0 walks exactly what one clone walks, so the count
+        # does not depend on the clone count. The refusal above reads every
+        # clone's.
+        first_clone = clone_positions[0]
+        band_eligible[band] = distinct_count(
+            candidate_sources[first_clone], eligible[first_clone]
+        )
         uniforms = stable_identity_uniforms(
             candidate_ids,
             seed=seed,
             salt=f"{SPI_INCOME_BAND_DONOR_DRAW_SALT}:{band}",
         )
-        # Efraimidis-Spirakis: the largest u ** (1 / rate) are a weighted draw
-        # without replacement; log(u) / rate orders them identically.
-        keys = np.full(len(candidates), -np.inf)
-        keys[eligible] = (
-            np.log(np.maximum(uniforms[eligible], np.finfo(float).tiny))
-            / rate[eligible]
-        )
-        order = np.lexsort((candidate_ids, -keys))
-        taken: set[int] = set()
-        for position in order:
-            if not eligible[position]:
-                break
-            household_id = int(candidate_households[position])
-            if household_id in taken:
-                continue
-            taken.add(household_id)
-            selected_household[household_id] = band
-            carrier_person[int(candidate_ids[position])] = band
-            if len(taken) == seats[band]:
-                break
-        if len(taken) != seats[band]:
-            raise ValueError(
-                f"SPI income band donors could not seat {seats[band]} households "
-                f"for the band from {band}."
+        # The walk, once in each clone over its own candidates.
+        for positions in clone_positions:
+            clone_ids = candidate_ids[positions]
+            clone_households = candidate_households[positions]
+            clone_eligible = eligible[positions]
+            # Efraimidis-Spirakis: the largest u ** (1 / rate) are a weighted
+            # draw without replacement; log(u) / rate orders them identically.
+            keys = np.full(positions.size, -np.inf)
+            keys[clone_eligible] = (
+                np.log(
+                    np.maximum(
+                        uniforms[positions][clone_eligible], np.finfo(float).tiny
+                    )
+                )
+                / rate[positions][clone_eligible]
             )
+            order = np.lexsort((clone_ids, -keys))
+            taken: set[int] = set()
+            for position in order:
+                if not clone_eligible[position]:
+                    break
+                household_id = int(clone_households[position])
+                if household_id in taken:
+                    continue
+                taken.add(household_id)
+                selected_household[household_id] = band
+                carrier_person[int(clone_ids[position])] = band
+                if len(taken) == seats[band]:
+                    break
+            if len(taken) != seats[band]:
+                raise ValueError(
+                    "SPI income band donors could not seat every seat of the band "
+                    f"from {band}"
+                    + ("." if clone_count == 1 else " in a geographic clone.")
+                )
 
     selected_ids = set(selected_household)
-    multiplier = id_multiplier_for_values(
-        person["person_id"],
-        person["person_household_id"],
-        person["person_benunit_id"],
-        benunit["benunit_id"],
-        household["household_id"],
-    )
+    # The donors are copies of base households, minted at ordinal 2 of the
+    # copy-id table's spi_support_channel field; each donor's source is the
+    # {entity}_source_id the copy carries (microcosm#931).
     donor_household = _clone_support_frame(
         household.loc[household["household_id"].isin(selected_ids)],
         entity="household",
         id_columns=_HOUSEHOLD_ID_COLUMNS,
         channel=SPI_SYNTHETIC_SUPPORT_CHANNEL,
         clone_index=SPI_INCOME_BAND_DONOR_CLONE_INDEX,
-        id_multiplier=multiplier,
     )
     donor_person = _clone_support_frame(
         person.loc[person["person_household_id"].isin(selected_ids)],
@@ -641,7 +851,6 @@ def stack_spi_income_band_donors(
         id_columns=_PERSON_ID_COLUMNS,
         channel=SPI_SYNTHETIC_SUPPORT_CHANNEL,
         clone_index=SPI_INCOME_BAND_DONOR_CLONE_INDEX,
-        id_multiplier=multiplier,
     )
     selected_benunits = set(
         person.loc[
@@ -654,10 +863,9 @@ def stack_spi_income_band_donors(
         id_columns=_BENUNIT_ID_COLUMNS,
         channel=SPI_SYNTHETIC_SUPPORT_CHANNEL,
         clone_index=SPI_INCOME_BAND_DONOR_CLONE_INDEX,
-        id_multiplier=multiplier,
     )
-    source_household = donor_household["household_id"].to_numpy() - (
-        SPI_INCOME_BAND_DONOR_CLONE_INDEX * multiplier
+    source_household = donor_household[support_source_id_column("household")].to_numpy(
+        dtype="int64"
     )
     donor_band = np.asarray(
         [selected_household[int(value)] for value in source_household], dtype=float
@@ -668,8 +876,8 @@ def stack_spi_income_band_donors(
     donor_household[HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR] = True
     donor_household[SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN] = donor_band
     person[PERSON_IS_SPI_INCOME_BAND_CARRIER] = False
-    source_person = donor_person["person_id"].to_numpy() - (
-        SPI_INCOME_BAND_DONOR_CLONE_INDEX * multiplier
+    source_person = donor_person[support_source_id_column("person")].to_numpy(
+        dtype="int64"
     )
     donor_person[PERSON_IS_SPI_INCOME_BAND_CARRIER] = np.isin(
         source_person, np.asarray(list(carrier_person), dtype="int64")
@@ -681,9 +889,14 @@ def stack_spi_income_band_donors(
 
     # Funding: the donors' mass leaves the incumbent households of each donor's
     # stratum in proportion (the SPI support channel's own rule), so no mass is
-    # created and every stratum keeps its mass.
+    # created and every stratum keeps its mass. A clone's donors share the
+    # band's mass with every other clone's, and a stratum is a region within a
+    # clone, so every clone keeps its own regions' mass; the mass scale is the
+    # smallest any stratum allows, one for every clone, so each band keeps one
+    # donor weight.
+    clone_weight = {band: plan[band][1] / clone_count for band in bands}
     planned_weights = np.asarray(
-        [plan[int(value)][1] for value in donor_band], dtype=float
+        [clone_weight[int(value)] for value in donor_band], dtype=float
     )
     incumbent_strata = _funding_strata(household)
     donor_strata = _funding_strata(donor_household)
@@ -740,50 +953,73 @@ def stack_spi_income_band_donors(
     )
     validate_uk_national_frame(result)
 
+    # The receipt rounds its counts of survey households, counted in distinct
+    # source households, since a clone's copy of a household is the same
+    # survey household (UKDS disclosure control, receipt_counts): the eligible
+    # counts, the funding rows' donors and the carriers per region. A band's
+    # mean age is withheld below three carrier source households or three
+    # seats per clone. The band rows keep their exact row counts and their
+    # counts in source households beside them, and the receipt gives each in
+    # the form its seating takes (UKSPIIncomeBandDonorResult.evidence).
+    donor_sources = source_household_ids(
+        donor_household, stage=UK_SPI_INCOME_BAND_DONORS_STAGE_NAME
+    )
+    by_donor = donor_household.set_index("household_id")
     carrier_rows = donor_person.loc[donor_person[PERSON_IS_SPI_INCOME_BAND_CARRIER]]
     carrier_region = (
+        carrier_rows["person_household_id"].map(by_donor["region"]).astype(str)
+    )
+    carrier_sources = (
         carrier_rows["person_household_id"]
-        .map(donor_household.set_index("household_id")["region"])
-        .astype(str)
+        .map(pd.Series(donor_sources, index=by_donor.index))
+        .to_numpy()
     )
     carrier_ages = pd.to_numeric(carrier_rows["age"], errors="coerce")
     band_of_carrier = carrier_rows["person_household_id"].map(
-        donor_household.set_index("household_id")[
-            SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN
-        ]
+        by_donor[SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN]
     )
     band_rows: list[dict[str, object]] = []
     for band in bands:
         mask = donor_band == band
         carriers = band_of_carrier == band
+        carrier_support = distinct_count(carrier_sources, carriers.to_numpy())
         band_rows.append(
             {
                 "lower_bound": band,
-                "expected_donor_households": int(plan[band][0]),
+                "expected_donor_households": int(plan[band][0]) * clone_count,
                 "donor_households": int(mask.sum()),
                 "carriers": int(carriers.sum()),
-                "eligible_households": band_eligible[band],
-                "planned_donor_weight": float(plan[band][1]),
-                "donor_weight": float(plan[band][1] * mass_scale),
+                "donor_source_households": distinct_count(donor_sources, mask),
+                "carrier_source_households": carrier_support,
+                "eligible_households": rounded_count(band_eligible[band]),
+                "planned_donor_weight": float(clone_weight[band]),
+                "donor_weight": float(clone_weight[band] * mass_scale),
                 "weighted_taxpayers": float(donor_weights[mask].sum()),
                 "published_taxpayers": float(band_taxpayers[band]),
-                "carrier_mean_age": float(carrier_ages[carriers].mean()),
+                "carrier_mean_age": (
+                    float(carrier_ages[carriers].mean())
+                    if carrier_support >= UK_DISCLOSURE_FLOOR
+                    and seats[band] >= UK_DISCLOSURE_FLOOR
+                    else UK_WITHHELD
+                ),
                 "carrier_regions": int(carrier_region[carriers].nunique()),
             }
         )
-    donor_rows_by_stratum = (
-        pd.Series(1, index=donor_strata.to_numpy()).groupby(level=0).sum()
-    )
+    donor_stratum_labels = donor_strata.to_numpy()
     funding_rows = [
         {
             "stratum": str(stratum),
-            "donor_households": int(donor_rows_by_stratum.get(stratum, 0)),
+            "donor_households": rounded_count(
+                distinct_count(donor_sources, donor_stratum_labels == stratum)
+            ),
             "incumbent_mass": float(incumbent_mass[stratum]),
             "donor_mass": float(donor_mass.get(stratum, 0.0) * mass_scale),
             "factor": float(factor_by_stratum[stratum]),
         }
         for stratum in sorted(incumbent_mass.index, key=str)
     ]
+    reallocated_mass = float(donor_weights.sum())
+    carrier_region_labels = carrier_region.to_numpy()
     return UKSPIIncomeBandDonorResult(
         frame=result,
         band_rows=tuple(band_rows),
@@ -794,25 +1030,94 @@ def stack_spi_income_band_donors(
         maximum_reallocation_share=float(maximum_reallocation_share),
         seating_scale=float(seating_scale),
         mass_scale=mass_scale,
-        eligible_households=eligible_households,
-        expected_donor_count=int(sum(count for count, _ in plan.values())),
+        eligible_households=rounded_count(eligible_households),
+        expected_donor_count=int(sum(count for count, _ in plan.values()))
+        * clone_count,
         donor_count=len(selected_household),
-        reallocated_mass=float(donor_weights.sum()),
+        donor_source_households=distinct_count(
+            donor_sources, np.ones(len(donor_sources), dtype=bool)
+        ),
+        reallocated_mass=reallocated_mass,
+        funding_within_share=_funding_within_share(
+            funding_rows, maximum_reallocation_share=maximum_reallocation_share
+        ),
+        funding_matches_bands=_funding_matches_bands(
+            band_rows, funding_rows, reallocated_mass=reallocated_mass
+        ),
         old_total=old_total,
         new_total=new_total,
         seed=seed,
         sample_fraction=float(sample_fraction),
         taxpayer_period=int(taxpayer_period),
         carrier_region_counts={
-            str(key): int(value)
-            for key, value in carrier_region.value_counts().sort_index().items()
+            region: rounded_count(
+                distinct_count(carrier_sources, carrier_region_labels == region)
+            )
+            for region in sorted(set(carrier_region_labels))
         },
         propensity_cells=int(len(propensity)),
+        clone_count=clone_count,
+        funding_strata=(
+            *SPI_INCOME_BAND_FUNDING_STRATA,
+            *(() if clone_indices is None else (SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN,)),
+        ),
     )
 
 
+def _funding_within_share(
+    funding_rows: Sequence[Mapping[str, object]],
+    *,
+    maximum_reallocation_share: float,
+) -> bool:
+    """Whether every funding stratum kept at least one less the declared share.
+
+    Each stratum's factor, the share of its incumbents' mass they keep, must
+    lie in ``[1 - share, 1]``, the lower end to the stage gate's relative
+    tolerance (:data:`SPI_INCOME_BAND_FUNDING_RELATIVE_TOLERANCE`). The gate
+    reads the boolean, and holds ``1 - share`` to its declared minimum funding
+    factor (microcosm#931).
+    """
+
+    floor = 1.0 - float(maximum_reallocation_share)
+    return all(
+        floor * (1.0 - SPI_INCOME_BAND_FUNDING_RELATIVE_TOLERANCE)
+        <= float(row["factor"])
+        <= 1.0
+        for row in funding_rows
+    )
+
+
+def _funding_matches_bands(
+    band_rows: Sequence[Mapping[str, object]],
+    funding_rows: Sequence[Mapping[str, object]],
+    *,
+    reallocated_mass: float,
+) -> bool:
+    """Whether the bands and the funding strata each carry the reallocated mass.
+
+    The bands carry each band's donor weight times its donors, the funding
+    strata their donor mass; each sum must lie within
+    :data:`SPI_INCOME_BAND_FUNDING_MASS_TOLERANCE` of the reallocated mass,
+    relative to it, as the stage gate held them (microcosm#931).
+    """
+
+    banded = 0.0
+    for row in band_rows:
+        banded += float(row["donor_weight"]) * int(row["donor_households"])
+    funded = 0.0
+    for row in funding_rows:
+        funded += float(row["donor_mass"])
+    allowed = SPI_INCOME_BAND_FUNDING_MASS_TOLERANCE * max(abs(reallocated_mass), 1.0)
+    return all(abs(value - reallocated_mass) <= allowed for value in (banded, funded))
+
+
 def _funding_strata(household: pd.DataFrame) -> pd.Series:
-    """Each household's funding stratum label."""
+    """Each household's funding stratum label.
+
+    The declared strata joined by ``|``; where the table carries the
+    geographic clone index, the household's clone is appended, so every clone
+    funds its own donors from its own regions (microcosm#931).
+    """
 
     missing = sorted(set(SPI_INCOME_BAND_FUNDING_STRATA) - set(household.columns))
     if missing:
@@ -820,10 +1125,70 @@ def _funding_strata(household: pd.DataFrame) -> pd.Series:
     columns = [
         household[column].astype(str) for column in SPI_INCOME_BAND_FUNDING_STRATA
     ]
+    if _geographic_clone_indices(household) is not None:
+        columns.append(household[SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN].astype(str))
     label = columns[0]
     for column in columns[1:]:
         label = label + "|" + column
     return label.reset_index(drop=True)
+
+
+def _geographic_clone_indices(household: pd.DataFrame) -> np.ndarray | None:
+    """Each household's geographic clone index, or None without the column.
+
+    The clone-first spine's ``geographic_expand`` stage (microcosm#931) gives
+    every household the index of its geographic clone in
+    ``household_clone_index``, and its copies keep their root's; a household
+    table without the column is one clone. Refuses a non-integer column,
+    a household without an index and a negative index, each in a fixed
+    sentence naming the column (and, for a column that is not integer, its
+    dtype): never a count, an id or a value.
+    """
+
+    column = SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN
+    if column not in household.columns:
+        return None
+    values = household[column]
+    if pd.api.types.is_bool_dtype(values.dtype) or not (
+        pd.api.types.is_integer_dtype(values.dtype)
+    ):
+        raise ValueError(
+            "SPI income band donors seat each geographic clone on an integer "
+            f"{column!r} column; it has dtype {values.dtype}."
+        )
+    if bool(values.isna().any()):
+        raise ValueError(
+            f"A household row carries no {column!r}; SPI income band donors seat "
+            "each geographic clone."
+        )
+    indices = values.to_numpy(dtype=np.int64)
+    if bool((indices < 0).any()):
+        raise ValueError(
+            f"A household row carries a negative {column!r}; SPI income band "
+            "donors seat each geographic clone."
+        )
+    return indices
+
+
+def _geographic_clone_count(indices: np.ndarray | None) -> int:
+    """``K``, one more than the largest clone index, refused with a gap below it.
+
+    Every clone from 0 to ``K - 1`` must carry a household: each one seats
+    the band's seats, so a missing clone would leave its share of the
+    published mass unseated. The refusal is a fixed sentence naming the
+    column, with no count.
+    """
+
+    if indices is None or not indices.size:
+        return 1
+    clone_count = int(indices.max()) + 1
+    if int(np.unique(indices).size) != clone_count:
+        raise ValueError(
+            f"A {SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN!r} value from 0 to the largest is "
+            "carried by no household; SPI income band donors seat clones 0 to "
+            "K - 1."
+        )
+    return clone_count
 
 
 #: Rows tried for the exact-total correction before the stage refuses.
@@ -994,6 +1359,7 @@ def spi_income_band_donor_operation_parameters(
             "seed": seed,
             "salt": SPI_INCOME_BAND_DONOR_DRAW_SALT,
             "clone_index": SPI_INCOME_BAND_DONOR_CLONE_INDEX,
+            "id_remapping": SPI_INCOME_BAND_DONOR_ID_REMAPPING,
             "flag_column": HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR,
             "band_column": SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN,
             "carrier_column": PERSON_IS_SPI_INCOME_BAND_CARRIER,
@@ -1045,13 +1411,16 @@ def _assert_band_donor_stage_parameters(stage: SourceStageSpec, *, seed: int) ->
 __all__ = [
     "HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR",
     "PERSON_IS_SPI_INCOME_BAND_CARRIER",
+    "SPI_INCOME_BAND_CAPPED_SEATING",
     "SPI_INCOME_BAND_DONOR_CLONE_INDEX",
     "SPI_INCOME_BAND_DONOR_DRAW_SALT",
+    "SPI_INCOME_BAND_DONOR_ID_REMAPPING",
     "SPI_INCOME_BAND_DONOR_LOWER_BOUNDS",
     "SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN",
     "SPI_INCOME_BAND_DONOR_MASS_CHANGE_REASON",
     "SPI_INCOME_BAND_DONOR_SEED",
     "SPI_INCOME_BAND_DONOR_TAPE_SEED",
+    "SPI_INCOME_BAND_FULL_SEATING",
     "SPI_INCOME_BAND_FUNDING_STRATA",
     "SPI_INCOME_BAND_MAXIMUM_DONOR_HOUSEHOLD_SHARE",
     "SPI_INCOME_BAND_MAXIMUM_DONOR_WEIGHT",

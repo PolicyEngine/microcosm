@@ -1,6 +1,15 @@
 """Tests split from packages/microcosm-build/tests/test_uk_cgt_imputation.py."""
 
 # ruff: noqa: F403, F405
+from microcosm.build.stochastic_assignment import (
+    binomial_share_tolerance,
+    keyed_tie_order,
+    keyed_tie_uniforms,
+    stable_identity_uniform,
+    stable_identity_uniforms,
+)
+from microcosm.build.uk_runtime import copy_id_table
+from microcosm.build.uk_runtime.cgt_imputation import UK_CGT_IMPUTATION_SEED
 from test_support.microcosm_build.uk_cgt_imputation import *
 
 
@@ -429,6 +438,28 @@ class TestImputation:
         )
         evidence = summary.evidence()
         assert {"rows", "age_rows", "region_rows", "age_by_band_rows"} <= set(evidence)
+
+    def test_a_person_in_a_household_with_no_weight_is_refused_by_count(
+        self, monkeypatch
+    ) -> None:
+        frame = _frame(2, gains=[1_000.0, 2_000.0], incomes=[20_000.0, 30_000.0])
+        # A frame cannot be built with a person naming no household, so the
+        # stored table is edited in place and the seam's revalidation skipped.
+        frame.table("person").loc[1, "person_household_id"] = 434_343
+        monkeypatch.setattr(
+            cgt_imputation, "validate_uk_national_frame", lambda frame: None
+        )
+        with pytest.raises(ValueError) as caught:
+            impute_uk_capital_gains_with_report(
+                frame,
+                _distribution(cell_people=10.0),
+                PARAMETERS,
+                conditioning=load_hmrc_cgt_conditioning_facts(),
+            )
+        # The refusal counts the households and names none (microcosm#931).
+        assert str(caught.value) == (
+            "Person rows reference 1 household(s) with no weight."
+        )
 
 
 class TestWealthRanking:
@@ -1460,3 +1491,509 @@ class TestPlacementReceipts:
         )
         with pytest.raises(ValueError, match="copy count"):
             impute_uk_capital_gains(broken, _distribution(), PARAMETERS)
+
+
+#: (employment income, age, region, gainers) per cell, gainers weighing 100
+#: each against a synthetic joint of 300 people per (gain band, income band)
+#: cell: three cells in the lowest income band, whose 65-74 cell is short of
+#: its raked target so the band's pooled walk runs, and one cell in each of
+#: two higher bands. One cell per band leaves the rake's final scaling, which
+#: holds the joint, nothing to split there, so those bands' targets do not
+#: move with the lowest band's cells.
+_KEYED_CELLS = (
+    (20_000.0, 30, "NORTH_EAST", 20),
+    (20_000.0, 45, "LONDON", 60),
+    (20_000.0, 70, "LONDON", 5),
+    (55_000.0, 50, "SOUTH_EAST", 40),
+    (70_000.0, 60, "WALES", 40),
+)
+#: The cells' labels: income band and age group by their lower bounds, then
+#: the region group by its label.
+_KEYED_CELL_LABELS = (
+    "cell:0:25:rest_of_england",
+    "cell:0:45:london",
+    "cell:0:65:london",
+    "cell:37700:45:south_east_and_east_of_england",
+    "cell:50000:55:wales_scotland_northern_ireland",
+)
+#: A cell that walks before every other one in the lowest income band.
+_KEYED_EARLY_CELL = (20_000.0, 20, "WALES", 15)
+#: A second cell in the 37,700 income band, short of its raked target, so
+#: that band's pooled walk runs too: above band 0 a band's position and its
+#: lower bound differ, so the label test sees which one the key names.
+_KEYED_SHORT_HIGHER_CELL = (55_000.0, 70, "LONDON", 5)
+
+
+def _cells_frame(cells, *, zeroed=()) -> Frame:
+    """One gainer per household for each ``(income, age, region, count)`` cell.
+
+    Each cell draws its gains from its own seeded stream and keeps its rows'
+    person ids, so appending a cell or zeroing one (``zeroed`` names cells by
+    position; their rows hold no gains) leaves every other row as it was.
+    """
+
+    gains, incomes, ages, regions = [], [], [], []
+    for index, (income, age, region, count) in enumerate(cells):
+        drawn = np.random.default_rng((7, index)).lognormal(10.0, 1.2, count)
+        gains.extend(np.zeros(count) if index in zeroed else drawn)
+        incomes.extend([income] * count)
+        ages.extend([age] * count)
+        regions.extend([region] * count)
+    rows = len(gains)
+    return _frame(
+        rows,
+        gains=gains,
+        incomes=incomes,
+        ages=ages,
+        regions=regions,
+        weights=np.full(rows, 100.0),
+    )
+
+
+class _Peek:
+    """Hands a call its rng and records each uniform the call reads from it."""
+
+    def __init__(self, inner) -> None:
+        self.inner = inner
+        self.values: list[float] = []
+
+    def random(self) -> float:
+        value = float(self.inner.random())
+        self.values.append(value)
+        return value
+
+
+def _labelled_draws(frame: Frame):
+    """Run the redraw, recording each walk's and plan's uniforms by label.
+
+    A label comes from the call's own arguments, never from the uniform it
+    is handed: a walk over the whole gainer set of a cell no walk has covered
+    is that cell's walk, every later walk is its income band's pooled walk,
+    and a plan is its gain band and its members' income band. Returns the new
+    gains by person id and ``{label: (uniforms read, member person ids)}``.
+    """
+
+    person = frame.table("person")
+    regions = frame.table("household").set_index("household_id")["region"]
+    region = person["person_household_id"].map(regions).to_numpy()
+    proxy = uk_cgt_taxable_income_proxy(person, PARAMETERS)
+    income = np.asarray(HMRC_CGT_INCOME_BAND_LOWER_BOUNDS)[
+        np.digitize(proxy, HMRC_CGT_INCOME_BAND_LOWER_BOUNDS[1:])
+    ]
+    age = np.asarray(UK_CGT_AGE_GROUP_LOWER_BOUNDS)[
+        np.digitize(person["age"].to_numpy(), UK_CGT_AGE_GROUP_LOWER_BOUNDS[1:])
+    ]
+    cell = np.asarray(
+        [
+            f"{band}:{group}:{UK_CGT_REGION_GROUPS[name]}"
+            for band, group, name in zip(income, age, region, strict=True)
+        ]
+    )
+    gainer = person["capital_gains"].to_numpy() > 0.0
+    person_id = person["person_id"].to_numpy()
+    walk = cgt_imputation._walk_bands
+    plan = cgt_imputation._draw_plan_amounts
+    draws: dict[str, tuple[list[float], np.ndarray]] = {}
+    pooled = False
+
+    def band_of(members: np.ndarray) -> str:
+        (band,) = {label.split(":")[0] for label in cell[members]}
+        return band
+
+    def record(label: str, peek: _Peek, members: np.ndarray) -> None:
+        assert label not in draws, label
+        draws[label] = (peek.values, np.sort(person_id[members]))
+
+    def recording_walk(**kwargs):
+        nonlocal pooled
+        peek = _Peek(kwargs["rng"])
+        result = walk(**{**kwargs, "rng": peek})
+        members = np.asarray(kwargs["ranked"])
+        first = cell[members[0]]
+        whole = np.flatnonzero(gainer & (cell == first))
+        if (
+            not pooled
+            and f"cell:{first}" not in draws
+            and np.array_equal(np.sort(members), whole)
+        ):
+            record(f"cell:{first}", peek, members)
+        else:
+            pooled = True
+            record(f"pool:{band_of(members)}", peek, members)
+        return result
+
+    def recording_plan(plan_cell, members, **kwargs):
+        peek = _Peek(kwargs["rng"])
+        plan(plan_cell, members, **{**kwargs, "rng": peek})
+        members = np.asarray(members)
+        record(f"plan:{plan_cell.gain_lower_bound}:{band_of(members)}", peek, members)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(cgt_imputation, "_walk_bands", recording_walk)
+        patch.setattr(cgt_imputation, "_draw_plan_amounts", recording_plan)
+        result, _ = impute_uk_capital_gains_with_report(
+            frame,
+            _distribution(cell_people=300.0),
+            PARAMETERS,
+            conditioning=load_hmrc_cgt_conditioning_facts(),
+        )
+    drawn = result.table("person")
+    gains = pd.Series(
+        drawn["capital_gains"].to_numpy(), index=drawn["person_id"].to_numpy()
+    ).sort_index()
+    return gains, draws
+
+
+def _label_band(label: str) -> str:
+    """The income band a walk's or plan's label names."""
+
+    kind, *parts = label.split(":")
+    return parts[1] if kind == "plan" else parts[0]
+
+
+class TestKeyedWalkOffsets:
+    """Each walk's offset and each plan's jitter is an identity-keyed uniform
+    on its own label, not the next draw of one shared stream (microcosm#931).
+
+    The keying fixes the uniforms and nothing more. The rounding carry runs
+    through an income band's cells, the pooled walk takes the band's net
+    shortfall over its unassigned gainers, and a plan stratifies members
+    pooled from every cell, so a change in one cell can still move the
+    assignments and amounts of other cells in its income band, and a plan's
+    amounts whenever its members change. These tests assert the uniforms the
+    keying fixes, and members and amounts only in income bands whose targets
+    the change leaves alone.
+    """
+
+    @pytest.mark.parametrize(
+        ("cells", "added", "pools"),
+        [
+            (_KEYED_CELLS, set(), {"pool:0"}),
+            (
+                (*_KEYED_CELLS, _KEYED_SHORT_HIGHER_CELL),
+                {"cell:37700:65:london"},
+                {"pool:0", "pool:37700"},
+            ),
+        ],
+        ids=["lowest_band_pools", "a_higher_band_pools_too"],
+    )
+    def test_each_walk_and_plan_reads_one_uniform_keyed_on_its_label(
+        self, cells, added: set[str], pools: set[str]
+    ) -> None:
+        """A pooled walk is keyed on its income band's lower bound. In band 0
+        that is also the band's position, so the second frame makes the
+        37,700 band pool as well, where a key on the position (pool:1) or on
+        the lowest band (pool:0) reads another label's uniform."""
+
+        _, draws = _labelled_draws(_cells_frame(cells))
+
+        walked = {label for label in draws if label.startswith("cell:")}
+        assert walked == set(_KEYED_CELL_LABELS) | added
+        assert {label for label in draws if label.startswith("pool:")} == pools
+        plans = {label for label in draws if label.startswith("plan:")}
+        assert {_label_band(label) for label in plans} == {"0", "37700", "50000"}
+        for label, (uniforms, _) in draws.items():
+            kind = "jitter" if label.startswith("plan:") else "offset"
+            salt = f"hmrc_cgt_gains_spine:{kind}:2023"
+            assert uniforms == [
+                stable_identity_uniform(label, seed=UK_CGT_IMPUTATION_SEED, salt=salt)
+            ], label
+
+    def test_the_build_period_salts_every_offset_and_jitter(self, monkeypatch) -> None:
+        frame = _cells_frame(_KEYED_CELLS)
+        _, before = _labelled_draws(frame)
+        monkeypatch.setattr(cgt_imputation, "uk_time_period", lambda frame: 2024)
+        _, after = _labelled_draws(frame)
+
+        shared = set(before) & set(after)
+        assert set(_KEYED_CELL_LABELS) <= shared
+        for label in shared:
+            kind = "jitter" if label.startswith("plan:") else "offset"
+            salt = f"hmrc_cgt_gains_spine:{kind}:2024"
+            assert after[label][0] == [
+                stable_identity_uniform(label, seed=UK_CGT_IMPUTATION_SEED, salt=salt)
+            ], label
+            assert after[label][0] != before[label][0], label
+
+    @pytest.mark.parametrize(
+        "change", ["an earlier cell gains members", "a cell skips"]
+    )
+    def test_a_uniform_holds_when_other_cells_skip_or_gain_members(
+        self, change: str
+    ) -> None:
+        """Either change adds or drops a walk before the others in the lowest
+        income band, which moved every later draw of the shared stream; a
+        keyed uniform stays with its label. The higher income bands' cells
+        and plans then take the same members and amounts, since the rake
+        leaves those one-cell bands' targets where they were."""
+
+        base_gains, base = _labelled_draws(_cells_frame(_KEYED_CELLS))
+        if change == "an earlier cell gains members":
+            frame = _cells_frame((*_KEYED_CELLS, _KEYED_EARLY_CELL))
+            added, dropped = {"cell:0:16:wales_scotland_northern_ireland"}, set()
+        else:
+            frame = _cells_frame(_KEYED_CELLS, zeroed=(0,))
+            added, dropped = set(), {"cell:0:25:rest_of_england"}
+        gains, draws = _labelled_draws(frame)
+
+        cells = {label for label in draws if label.startswith("cell:")}
+        assert cells == (set(_KEYED_CELL_LABELS) | added) - dropped
+        shared = set(draws) & set(base)
+        # The walks after the change, the pooled walk among them, still read.
+        assert set(_KEYED_CELL_LABELS[1:]) - dropped <= shared
+        assert "pool:0" in shared
+        for label in shared:
+            assert draws[label][0] == base[label][0], label
+        # Nothing in the higher income bands moves.
+        higher = {label for label in base if _label_band(label) != "0"}
+        assert {label for label in draws if _label_band(label) != "0"} == higher
+        for label in higher:
+            members = base[label][1]
+            np.testing.assert_array_equal(draws[label][1], members, err_msg=label)
+            np.testing.assert_array_equal(
+                gains[members].to_numpy(), base_gains[members].to_numpy(), err_msg=label
+            )
+
+    def test_the_redraw_does_not_depend_on_the_row_order(self) -> None:
+        frame = _cells_frame((*_KEYED_CELLS, _KEYED_EARLY_CELL))
+        person = frame.table("person")
+        order = np.random.default_rng(5).permutation(len(person))
+        shuffled = uk_national_frame(
+            person=person.iloc[order].reset_index(drop=True),
+            benunit=frame.table("benunit"),
+            household=frame.table("household"),
+            time_period="2023",
+            household_weights=frame.weights_for("household").values,
+        )
+
+        gains, draws = _labelled_draws(frame)
+        shuffled_gains, shuffled_draws = _labelled_draws(shuffled)
+
+        pd.testing.assert_series_equal(shuffled_gains, gains, check_exact=True)
+        assert set(shuffled_draws) == set(draws)
+        for label, (uniforms, members) in draws.items():
+            assert shuffled_draws[label][0] == uniforms, label
+            np.testing.assert_array_equal(shuffled_draws[label][1], members)
+
+
+#: The rank ties' salt on the helper frames, built for 2023.
+_RANK_TIE = {
+    "seed": UK_CGT_IMPUTATION_SEED,
+    "salt": "hmrc_cgt_gains_spine:rank_tie:2023",
+}
+
+
+def _redrawn(frame: Frame) -> pd.Series:
+    result, _ = impute_uk_capital_gains_with_report(
+        frame,
+        _distribution(cell_people=300.0),
+        PARAMETERS,
+        conditioning=load_hmrc_cgt_conditioning_facts(),
+    )
+    person = result.table("person")
+    return pd.Series(
+        person["capital_gains"].to_numpy(), index=person["person_id"].to_numpy()
+    ).sort_index()
+
+
+class TestRankTies:
+    """Gainers tied on a rank take the order of one identity-keyed uniform
+    each, then of their person ids, not of their ids alone, which handed
+    every tie to the lowest id range: the first copy or clone of a household
+    (microcosm#931)."""
+
+    def test_ranked_orders_ties_by_the_keyed_uniform_then_person_id(self) -> None:
+        person_id = np.asarray([40, 41, 42, 43, 44, 45, 46], dtype=np.int64)
+        key = np.asarray([0.9, 0.5, 0.5, 0.5, 0.5, 0.2, 0.7])
+        tie = keyed_tie_uniforms(person_id, **_RANK_TIE)
+        indices = np.arange(len(key))
+
+        ranked = cgt_imputation._ranked(
+            indices, person_id=person_id, existing=key, tie=tie
+        )
+
+        # The shared helper's order on the negated key.
+        np.testing.assert_array_equal(
+            ranked, keyed_tie_order(-key, person_id, **_RANK_TIE)
+        )
+        tied = person_id[ranked[2:6]]
+        assert tied.tolist() == person_id[1:5][np.argsort(tie[1:5])].tolist()
+        assert tied.tolist() != [41, 42, 43, 44]
+        # Without the uniforms, person_id alone breaks ties, as before.
+        np.testing.assert_array_equal(
+            cgt_imputation._ranked(indices, person_id=person_id, existing=key),
+            np.lexsort((person_id, -key)),
+        )
+        # On distinct keys the uniforms move nothing.
+        distinct = np.asarray([0.9, 0.6, 0.5, 0.4, 0.3, 0.2, 0.7])
+        np.testing.assert_array_equal(
+            cgt_imputation._ranked(
+                indices, person_id=person_id, existing=distinct, tie=tie
+            ),
+            np.lexsort((person_id, -distinct)),
+        )
+
+    def test_a_plan_and_the_remainder_give_ties_the_keyed_order_reversed(
+        self,
+    ) -> None:
+        # Both walk the rank ascending, so the member of a tie with the
+        # higher uniform takes the lower stratum, where the id order gave it
+        # to the higher person id.
+        person_id = np.arange(10, 16, dtype=np.int64)
+        existing = np.asarray([1.0, 2.0, 2.0, 2.0, 3.0, 4.0])
+        weights = np.full(6, 100.0)
+        tie = keyed_tie_uniforms(person_id, **_RANK_TIE)
+        tied = np.asarray([1, 2, 3])
+        keyed_low_first = tied[np.argsort(-tie[tied])]
+        assert keyed_low_first.tolist() != tied[::-1].tolist()
+        plan = _CellPlan(
+            1_000_000, 2_000_000.0, 1_000_000.0, 9_000.0, 1_420_000.0, False, False
+        )
+
+        def strata(gains: np.ndarray) -> list[int]:
+            return tied[np.argsort(gains[tied])].tolist()
+
+        for tie_argument, expected in ((tie, keyed_low_first), (None, tied[::-1])):
+            gains = np.zeros(6)
+            _draw_plan_amounts(
+                plan,
+                np.arange(6),
+                person_id=person_id,
+                existing=existing,
+                weights=weights,
+                rng=cgt_imputation._KeyedOffset(0.5),
+                new_gains=gains,
+                tie=tie_argument,
+            )
+            assert strata(gains) == expected.tolist()
+
+        surface = advani_summers_rows(load_advani_summers_distribution())
+        band_index = advani_summers_band_index(surface, np.full(6, 30_000.0))
+        for tie_argument, expected in ((tie, keyed_low_first), (None, tied[::-1])):
+            gains = existing.copy()
+            _map_remainder_amounts(
+                remainder=np.arange(6),
+                existing=existing,
+                person_id=person_id,
+                person_weight=weights,
+                band_index=band_index,
+                rows=surface,
+                annual_exempt_amount=3_000.0,
+                new_gains=gains,
+                tie=tie_argument,
+            )
+            assert strata(gains) == expected.tolist()
+
+    def test_clone_zero_ranks_first_among_tied_clones_at_its_share(self) -> None:
+        # Sixty source gainers, each as three geographic clones tied on the
+        # rank key: by person id, clone 0 ranked first in every family; keyed
+        # on each clone's own id, in about a third of them, inside the
+        # four-sigma binomial band (design verifier P10).
+        families, clone_count = 60, 3
+        sources = np.arange(1, families + 1, dtype=np.int64) * 1_000 + 1
+        person_id = np.concatenate(
+            [
+                sources,
+                *(
+                    copy_id_table.mint(sources, "geographic_support", k)
+                    for k in range(1, clone_count)
+                ),
+            ]
+        )
+        clone = np.repeat(np.arange(clone_count), families)
+        key = np.tile(np.linspace(0.1, 0.9, families), clone_count)
+        indices = np.arange(len(key))
+
+        def firsts(tie) -> np.ndarray:
+            ranked = cgt_imputation._ranked(
+                indices, person_id=person_id, existing=key, tie=tie
+            )
+            blocks = ranked.reshape(families, clone_count)
+            assert (np.ptp(key[blocks], axis=1) == 0.0).all()
+            return clone[blocks[:, 0]]
+
+        share = float((firsts(keyed_tie_uniforms(person_id, **_RANK_TIE)) == 0).mean())
+        band = binomial_share_tolerance(
+            target=1 / clone_count, rows=families, sigma=4.0
+        )
+        assert abs(share - 1 / clone_count) <= band
+        assert float((firsts(None) == 0).mean()) == 1.0
+
+    def test_every_walk_plan_and_the_remainder_rank_on_one_keyed_draw(
+        self, monkeypatch
+    ) -> None:
+        # One uniform per person, keyed on person_id under the stage's seed
+        # and salted with the build period, reaches every _ranked call.
+        frame = _cells_frame((*_KEYED_CELLS, _KEYED_EARLY_CELL))
+        calls: list[np.ndarray | None] = []
+        ranked = cgt_imputation._ranked
+
+        def recording(indices, **kwargs):
+            calls.append(kwargs["tie"])
+            return ranked(indices, **kwargs)
+
+        monkeypatch.setattr(cgt_imputation, "_ranked", recording)
+        _redrawn(frame)
+
+        person_id = frame.table("person")["person_id"].to_numpy()
+        expected = stable_identity_uniforms(person_id, **_RANK_TIE)
+        # Six cell walks, the pooled walk, the plans and the remainder's bands.
+        assert len(calls) > 7
+        for tie in calls:
+            np.testing.assert_array_equal(tie, expected)
+
+    def test_tied_rank_keys_redraw_whatever_the_row_order(self) -> None:
+        # Wealth in six-row families, as the high-value copies carry it, ties
+        # the blended rank key; the redraw is still the same, gainer by
+        # gainer, under a row permutation.
+        rng = np.random.default_rng(44)
+        rows = 1_200
+        wealth = np.repeat(rng.lognormal(11.0, 1.5, rows // 6), 6)
+        frame = _frame(
+            rows,
+            gains=np.where(rng.random(rows) < 0.6, rng.lognormal(10, 1.4, rows), 0.0),
+            incomes=rng.lognormal(10.6, 0.7, rows),
+            wealth=wealth,
+            weights=rng.uniform(50.0, 400.0, rows),
+        )
+        person = frame.table("person")
+        gainer = person["capital_gains"].to_numpy() > 0.0
+        key, _ = cgt_imputation._allocation_rank_key(
+            person, frame.table("household"), person["capital_gains"].to_numpy()
+        )
+        assert pd.Series(key[gainer]).duplicated().any()
+        order = np.random.default_rng(5).permutation(rows)
+        shuffled = uk_national_frame(
+            person=person.iloc[order].reset_index(drop=True),
+            benunit=frame.table("benunit"),
+            household=frame.table("household"),
+            time_period="2023",
+            household_weights=frame.weights_for("household").values,
+        )
+
+        def redrawn(frame: Frame) -> pd.Series:
+            result, _ = impute_uk_capital_gains_with_report(
+                frame,
+                _real_distribution(),
+                PARAMETERS,
+                conditioning=load_hmrc_cgt_conditioning_facts(),
+            )
+            drawn = result.table("person")
+            return pd.Series(
+                drawn["capital_gains"].to_numpy(), index=drawn["person_id"].to_numpy()
+            ).sort_index()
+
+        pd.testing.assert_series_equal(
+            redrawn(shuffled), redrawn(frame), check_exact=True
+        )
+
+    def test_untied_rank_keys_redraw_as_the_id_order_did(self, monkeypatch) -> None:
+        # Equal wealth leaves the prior ranking in charge, and distinct priors
+        # tie no key, so the redraw is the id order's bit for bit; the
+        # uniforms reorder exact ties alone.
+        frame = _cells_frame((*_KEYED_CELLS, _KEYED_EARLY_CELL))
+        keyed = _redrawn(frame)
+        monkeypatch.setattr(
+            cgt_imputation, "keyed_tie_uniforms", lambda *args, **kwargs: None
+        )
+        pd.testing.assert_series_equal(_redrawn(frame), keyed, check_exact=True)

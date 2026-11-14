@@ -8,6 +8,12 @@ seam. The driver clones the entity tables, assigns each household a finest
 available geography row (the ratified OA ladder, or the crosswalk sampler as
 the coverage-check path), and writes diagnostics that prove coverage, weight
 preservation, and per-area support.
+
+It serves spines without geographic clone indices. A clone-first spine
+carries its clones already and is refused here, at any clone count; the dense
+graph (``microcosm-build-uk --release-role dense``) builds on a
+geography-first spine as it stands, its clones and areas included
+(microcosm#931).
 """
 
 from __future__ import annotations
@@ -73,6 +79,9 @@ from microcosm.build.uk_runtime import (
 from microcosm.build.uk_runtime.rowwise_dataset import (
     UK_SPINE_LINEAGE_COLUMNS,
     _refuse_preassigned_geography,
+    _require_person_links,
+    _require_unique,
+    refuse_dense_clone_id_overflow,
 )
 from microcosm.frame import engine_tables
 
@@ -214,10 +223,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Pool inputs only: derive pool_source_household_id before cloning "
             "from household_id = tier * 10**8 + base, leaving the immediate "
-            "source_household_id untouched. Spine inputs instead use sernum + "
-            "1{spi} * 10**d + 1{cgt_clone} * 10**(d+1) + 1{band_donor} * "
-            "10**(d+2) and carry authoritative explicit lineage columns, so "
-            "the modulus is refused for them. Also refused when the pool "
+            "source_household_id untouched. Spine inputs instead carry copy "
+            "ids in the copy-id table's fixed fields (microcosm#931) and "
+            "authoritative explicit lineage columns, so the modulus is "
+            "refused for them. Also refused when the pool "
             "column exists or the mapping would be an identity."
         ),
     )
@@ -829,6 +838,16 @@ def _dry_run_plan(
         person_ids["person_benunit_id"],
         benunit_ids["benunit_id"],
     )
+    # A plan must refuse what the build would (microcosm#931).
+    refuse_dense_clone_id_overflow(
+        n_clones=max((args.n_clones, *(args.candidate_clone_counts or ()))),
+        id_multiplier=id_multiplier,
+        ids=(
+            household["household_id"],
+            *(person_ids[column] for column in PERSON_ID_COLUMNS),
+            benunit_ids["benunit_id"],
+        ),
+    )
     if args.source_lineage_modulus is not None:
         household = apply_uk_source_lineage_modulus(
             household,
@@ -1186,6 +1205,16 @@ def _ladder_dry_run_plan(
         person_ids["person_benunit_id"],
         benunit_ids["benunit_id"],
     )
+    # A plan must refuse what the build would (microcosm#931).
+    refuse_dense_clone_id_overflow(
+        n_clones=max((args.n_clones, *(args.candidate_clone_counts or ()))),
+        id_multiplier=id_multiplier,
+        ids=(
+            household["household_id"],
+            *(person_ids[column] for column in PERSON_ID_COLUMNS),
+            benunit_ids["benunit_id"],
+        ),
+    )
     if args.source_lineage_modulus is not None:
         household = apply_uk_source_lineage_modulus(
             household,
@@ -1441,38 +1470,18 @@ def _validate_dry_run_input(
     benunit_ids: pd.DataFrame,
 ) -> None:
     """Mirror the real build's input refusals so a plan cannot bless an
-    input the build would reject."""
+    input the build would reject.
+
+    The build's own checks run here, so the plan's refusals are the build's:
+    they print counts, never an id (microcosm#931).
+    """
 
     if input_h5.suffix != ".h5":
         raise ValueError("UK single-year dataset path must end with '.h5'.")
-    for frame, column, label in (
-        (household, "household_id", "household"),
-        (person_ids, "person_id", "person"),
-        (benunit_ids, "benunit_id", "benunit"),
-    ):
-        if frame[column].isna().any():
-            raise ValueError(f"{label}.{column} contains missing values.")
-        if frame[column].duplicated().any():
-            duplicates = frame.loc[frame[column].duplicated(), column].unique()
-            raise ValueError(
-                f"{label}.{column} must be unique; duplicate value(s): "
-                f"{list(map(str, duplicates[:5]))}."
-            )
-    household_ids = set(household["household_id"])
-    missing_households = sorted(set(person_ids["person_household_id"]) - household_ids)
-    if missing_households:
-        raise ValueError(
-            "person.person_household_id contains value(s) absent from "
-            f"household: {missing_households[:5]}."
-        )
-    missing_benunits = sorted(
-        set(person_ids["person_benunit_id"]) - set(benunit_ids["benunit_id"])
-    )
-    if missing_benunits:
-        raise ValueError(
-            "person.person_benunit_id contains value(s) absent from benunit: "
-            f"{missing_benunits[:5]}."
-        )
+    _require_unique(household, "household_id", label="household")
+    _require_unique(person_ids, "person_id", label="person")
+    _require_unique(benunit_ids, "benunit_id", label="benunit")
+    _require_person_links(person_ids, benunit_ids, household)
 
 
 def _realized_area_support(

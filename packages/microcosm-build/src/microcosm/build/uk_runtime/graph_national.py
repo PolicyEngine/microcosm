@@ -9,10 +9,11 @@ line share one executor, one content store and one evidence discipline:
 * ``uk.full.national_targets`` compiles the national register from the
   pinned Chronicle artifact (measure exclusions, band edges, the optional
   frozen scoring register); no ladder and no local surface.
-* ``uk.full.national_problem`` resolves the engine measures on the bound
-  frame, materialises the register and encodes one ordered problem whose
-  bindings carry the national doctrine's loss weights, mass reason and
-  bounds.
+* ``uk.full.national_problem`` refuses a bound spine the national line cannot
+  build on (one that is not geography-first, or not of one geographic clone;
+  microcosm#931), then resolves the engine measures on the bound frame,
+  materialises the register and encodes one ordered problem whose bindings
+  carry the national doctrine's loss weights, mass reason and bounds.
 * ``uk.full.dense`` / ``uk.full.calibrated`` are the existing calibration
   nodes; the dense node's admission is the bound spine's provenance
   artifact rather than a source preflight battery, because the national
@@ -93,16 +94,16 @@ from . import (
     national_doctrine,
 )
 from . import support_floor as support_floor_rules
-from .battery_bindings import UK_GATE_REGISTRY
+from .battery_bindings import UK_GATE_REGISTRY, uk_gate_registry_modules
 from .calibration_run import (
     UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS,
     uk_local_gate_scope_exclusions,
-    uk_scoped_gate_manifest,
 )
 from .cgt_projection import UK_CGT_PROJECTION_ARTIFACT_KEY
 from .content_identity import uk_frame_content_identity
 from .diagnostics import uk_target_geography_levels
 from .full_targets import CHRONICLE_SOURCE_CODEC, load_uk_national_target_inputs
+from .gate_scopes import uk_scoped_gate_manifest
 from .graph_build import SPINE_PROVENANCE_TYPE
 from .graph_calibration import (
     UKCalibrationNodes,
@@ -134,6 +135,7 @@ from .rowwise_posture import (
     UK_ROWWISE_NATIONAL_POSTURE,
     UKRowwisePosture,
 )
+from .spine_posture import require_national_spine
 from .weight_year import uk_dataset_year_frame, uk_weight_projection_factor
 
 NATIONAL_TARGET_TYPE = ArtifactType("microcosm.uk.national-target-registry", 1)
@@ -259,6 +261,10 @@ NATIONAL_TARGETS_NODE = "uk.full.national_targets"
 NATIONAL_PROBLEM_NODE = "uk.full.national_problem"
 NATIONAL_GATES_NODE = "uk.full.gates.calibrated"
 NATIONAL_READBACK_NODE = "uk.full.national.readback"
+#: The bound spine's build sidecar, the source the bound checkpoint
+#: authenticates against its frame; the national problem reads it for the
+#: spine's roster and clone count (microcosm#931).
+SPINE_SIDECAR_SOURCE = "uk_spine_evidence"
 
 
 def uk_national_gate_manifest(posture: UKRowwisePosture = UK_ROWWISE_NATIONAL_POSTURE):
@@ -284,20 +290,26 @@ def uk_national_graph(
     """Append the national line to a bound spine checkpoint graph.
 
     ``spine`` must end in a node that emits the bound spine's provenance
-    artifact (:class:`~.graph_build.UKBoundSpineKernel`): the national line
-    solves the checkpoint as bound, never a sampled or cloned pool.
+    artifact and reads its build sidecar
+    (:class:`~.graph_build.UKBoundSpineKernel`): the national line solves the
+    checkpoint as bound, never a sampled or cloned pool, and its problem reads
+    the same sidecar to refuse a spine it cannot build on (microcosm#931).
     """
 
     if posture.role != "national":
         raise ValueError("uk_national_graph composes the national posture only.")
     holder = spine.node(spine_population)
-    if not any(
-        output.name == "spine_provenance" and output.type == SPINE_PROVENANCE_TYPE
-        for output in holder.artifact_outputs
+    if (
+        not any(
+            output.name == "spine_provenance" and output.type == SPINE_PROVENANCE_TYPE
+            for output in holder.artifact_outputs
+        )
+        or SPINE_SIDECAR_SOURCE not in holder.sources
     ):
         raise ValueError(
             "The national line requires a bound spine checkpoint population "
-            "that emits its spine_provenance artifact."
+            "that emits its spine_provenance artifact and reads its build "
+            f"sidecar ({SPINE_SIDECAR_SOURCE})."
         )
     review_date = date.today().isoformat() if review_date is None else review_date
     date.fromisoformat(review_date)
@@ -337,6 +349,9 @@ def uk_national_graph(
             UKNationalProblemKernel.ref,
             population=spine_population,
             inputs=slices,
+            # The bound spine's build sidecar, for the refusal that runs
+            # before anything is resolved (microcosm#931).
+            sources=(SPINE_SIDECAR_SOURCE,),
             params={
                 "time_period": str(config.time_period),
                 "target_weight_rule": doctrine.target_weight_rule,
@@ -474,8 +489,9 @@ class _NationalKernel(KernelBase):
     def implementation_hash(self) -> str:
         import microcosm.calibrate.artifacts as calibrate_artifacts
         import microcosm.calibrate.matrix as calibrate_matrix
+        from microcosm.build import chronicle_epoch
 
-        from . import weighted_integrity
+        from . import graph_targets, weighted_integrity
         from .target_compile_modules import uk_target_compile_modules
 
         implementation = source_hash(
@@ -505,6 +521,17 @@ class _NationalKernel(KernelBase):
             # directly, as the dense target kernels do.
             weighted_integrity,
             *uk_target_compile_modules(),
+            # What both kernels also compute through (microcosm#931): the
+            # Chronicle schema versions and fact-key epochs the facts are
+            # checked against (chronicle_epoch), the register codec
+            # (graph_targets) and the canonical encoding of their artifacts.
+            # What only the problem computes through, it hashes in its own
+            # implementation hash below, and the targets compute through
+            # nothing else; test_uk_graph derives each kernel's set from what
+            # its code names.
+            chronicle_epoch,
+            graph_targets,
+            canonical_json,
         )
         return hashlib.sha256(
             canonical_json(
@@ -517,6 +544,12 @@ class _NationalKernel(KernelBase):
 
 
 class UKNationalTargetKernel(_NationalKernel):
+    # The national register is compiled through ledger_targets, which checks
+    # the household-type bindings against the ONS household type domain
+    # (frs_relationships) before it compiles. That check only refuses, so
+    # test_uk_graph lists it refusal-only, and this kernel computes through
+    # nothing its shared hash leaves out: it needs no hash of its own
+    # (microcosm#931, ruled 9 Nov (late)).
     ref = "uk.full.national_targets@1"
 
     def run(self, context: KernelContext) -> KernelResult:
@@ -614,9 +647,11 @@ def materialize_uk_national_rows(
 
     With a resolver factory the engine route of
     :func:`~.full_measure.resolve_uk_full_measures` runs (one block, no local
-    grains). Without one (``None``) the register materialises from the
-    frame's own columns, the seam's ``measure_resolver=None`` route: the
-    hermetic tests' path, and a data-only environment's.
+    grains), on a frame that must hold one geographic clone: the national
+    line builds at K = 1 (microcosm#931). Without one (``None``) the register
+    materialises from the frame's own columns, the seam's
+    ``measure_resolver=None`` route: the hermetic tests' path, and a
+    data-only environment's.
     """
 
     if resolver_factory is None:
@@ -650,9 +685,36 @@ def materialize_uk_national_rows(
         band_edge_registry=band_edge_registry,
         resolver_factory=resolver_factory,
         blocks=1,
+        clones=1,
         local_grains=(),
     )
     return prepared, restore, rows, dict(evidence)
+
+
+def require_national_bound_spine(sidecar_path: str | Path) -> None:
+    """Refuse a bound spine the national line cannot build on (microcosm#931).
+
+    The national line builds on a geography-first spine of one geographic
+    clone. ``sidecar_path`` is the bound spine's build sidecar, which the
+    bound checkpoint authenticated against its frame (its clone count among
+    what it holds to the frame's); this reads only the sidecar's roster and
+    clone count and refuses the spine through
+    :func:`~microcosm.build.uk_runtime.spine_posture.require_national_spine`,
+    whose sentence names K and what the roster lacks, never a row count, an
+    id or a value; a sidecar that is not JSON is refused in the sentence that
+    refuses one that is not a JSON object. The national problem, the first
+    national node that reads the bound frame, calls it before it reads the
+    frame or resolves anything.
+    """
+
+    try:
+        sidecar = json.loads(Path(sidecar_path).read_bytes())
+    except (json.JSONDecodeError, UnicodeError):
+        raise ValueError(
+            "The national line builds only on a bound spine whose build "
+            "sidecar is a JSON object (microcosm#931)."
+        ) from None
+    require_national_spine(sidecar)
 
 
 class UKNationalProblemKernel(_NationalKernel):
@@ -661,7 +723,11 @@ class UKNationalProblemKernel(_NationalKernel):
     ``resolver_factory`` is instance state like the gate kernels' coverage
     engine: the engine identity the run stands on is provenance recorded by
     the driver, and the dependency declaration on the capabilities binds the
-    installed engine version into the node key.
+    installed engine version into the node key. The first national node that
+    reads the bound frame, it refuses, before anything else, a bound spine
+    that is not geography-first or not of one geographic clone, by the
+    spine's build sidecar (:func:`require_national_bound_spine`,
+    microcosm#931).
     """
 
     ref = "uk.full.national_problem@1"
@@ -669,7 +735,71 @@ class UKNationalProblemKernel(_NationalKernel):
     def __init__(self, *, resolver_factory=UKMeasureResolver) -> None:
         self.resolver_factory = resolver_factory
 
+    def implementation_hash(self) -> str:
+        import microcosm.calibrate.monetary_binding as monetary_binding
+        from microcosm.frame import materialize as frame_materialize
+        from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
+
+        from .. import gate_battery
+        from . import (
+            annuity_trust_column,
+            atomic_area_support,
+            dfe_spring_term,
+            diagnostics,
+            frs_annual_income,
+            graph_population,
+            hmrc_income,
+            income_tax_rate_classes,
+            lcfs_consumption,
+            local_rowwise,
+            national_frame,
+            uc_target_measurements,
+        )
+
+        # The problem also computes through what the measure resolver and the
+        # engine run on the bound frame (microcosm#931), as the dense line's
+        # measures do: the frame it rebuilds on national_frame's schema
+        # (graph_population, national_frame), the engine's scratch frame
+        # (atomic_area_support, frame_materialize and the engine adapter's
+        # contracts), the resolver's inputs and measures (dfe_spring_term,
+        # frs_annual_income, hmrc_income, income_tax_rate_classes,
+        # lcfs_consumption and uc_target_measurements), the national rows
+        # (local_rowwise), the constraint matrix's monetary check
+        # (monetary_binding), and the target geography levels (diagnostics)
+        # and JSON-safe values (gate_battery) its payload records. As the
+        # dense measures do, it binds the annuity and trust column's name,
+        # since the resolver reads zeros where a frame lacks the column. The
+        # name lives in annuity_trust_column, which holds nothing else, so
+        # this hash leaves frs_spine out, and an edit there does not re-solve
+        # the national line (microcosm#931, ruled 9 Nov (late)).
+        return hashlib.sha256(
+            canonical_json(
+                {
+                    "national": super().implementation_hash(),
+                    "problem": source_hash(
+                        annuity_trust_column,
+                        atomic_area_support,
+                        dfe_spring_term,
+                        diagnostics,
+                        frs_annual_income,
+                        graph_population,
+                        hmrc_income,
+                        income_tax_rate_classes,
+                        lcfs_consumption,
+                        local_rowwise,
+                        national_frame,
+                        uc_target_measurements,
+                        gate_battery,
+                        monetary_binding,
+                        frame_materialize,
+                        uk_engine_adapter,
+                    ),
+                }
+            )
+        ).hexdigest()
+
     def run(self, context: KernelContext) -> KernelResult:
+        require_national_bound_spine(context.sources[SPINE_SIDECAR_SOURCE])
         frame = context_frame(context)
         registry_document = _registry_artifact(context)
         with tempfile.TemporaryDirectory(
@@ -1002,9 +1132,43 @@ class UKNationalGateKernel(_NationalKernel):
     )
 
     def implementation_hash(self) -> str:
-        from .. import gate_battery
-        from . import battery_bindings, diagnostics, weighted_integrity
+        import microcosm.calibrate.artifacts as calibrate_artifacts
+        import microcosm.calibrate.hierarchy as calibrate_hierarchy
+        import microcosm.calibrate.matrix as calibrate_matrix
+        import microcosm.calibrate.monetary_binding as monetary_binding
+        import microcosm.calibrate.registry as calibrate_registry
+        import microcosm.calibrate.solve as calibrate_solve
+        import microcosm.calibrate.target as calibrate_target
 
+        from .. import gate_battery, gates
+        from . import (
+            battery_bindings,
+            cgt_projection,
+            diagnostics,
+            donor_uprating,
+            etb_services,
+            gate_scopes,
+            geographic_clones,
+            graph_population,
+            graph_targets,
+            national_frame,
+            weighted_integrity,
+        )
+
+        # The battery evaluates whichever gates its node's gate scope names,
+        # so it keys on everything the gate registry's bindings compute
+        # through (uk_gate_registry_modules; microcosm#931 ruling 6). Its own
+        # code also computes through the shared gates' evaluators (gates),
+        # the solved result and registry it decodes (microcosm.calibrate's
+        # artifacts, matrix, registry, target and hierarchy, graph_targets),
+        # the frame it rebuilds (graph_population, national_frame), the
+        # manifest's effective sample size (calibrate.solve), the admin
+        # totals' derived anchors (etb_services), the CGT projection
+        # (cgt_projection, donor_uprating) and the canonical encoding of its
+        # artifacts (microcosm#931). Its support-family fold reads the
+        # geographic clone index columns the national frame carries from a
+        # clone-first spine, by the names geographic_clones gives them
+        # (diagnostics.uk_support_family_geographic_clone_column).
         return hashlib.sha256(
             canonical_json(
                 {
@@ -1014,9 +1178,27 @@ class UKNationalGateKernel(_NationalKernel):
                         gate_battery,
                         battery_bindings,
                         calibration_run,
+                        gate_scopes,
                         weighted_integrity,
                         diagnostics,
+                        geographic_clones,
                         support_floor_rules,
+                        gates,
+                        calibrate_artifacts,
+                        calibrate_matrix,
+                        calibrate_registry,
+                        calibrate_target,
+                        calibrate_hierarchy,
+                        monetary_binding,
+                        calibrate_solve,
+                        graph_targets,
+                        graph_population,
+                        national_frame,
+                        etb_services,
+                        cgt_projection,
+                        donor_uprating,
+                        canonical_json,
+                        *uk_gate_registry_modules(),
                     ),
                     "country_resources": load_country_spec("uk").fingerprint,
                 }
@@ -1121,9 +1303,40 @@ class UKNationalReadbackKernel(KernelBase):
     capabilities = Capabilities(Determinism.DETERMINISTIC, role=KernelRole.GATE)
 
     def implementation_hash(self) -> str:
-        from . import content_identity, national_frame, weight_year
+        from microcosm.frame import materialize as frame_materialize
+        from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
 
-        return source_hash(type(self), content_identity, national_frame, weight_year)
+        from .. import artifact_files, trace
+        from . import (
+            content_identity,
+            geography_ladder,
+            graph_population,
+            hmrc_uprating,
+            national_frame,
+            weight_year,
+        )
+
+        # The readback also computes through the file record it takes
+        # (artifact_files, trace's file digest), the H5 it reads back
+        # (frame_materialize, the engine adapter's contracts), the export
+        # frame's area codes (geography_ladder), the frame it rebuilds
+        # (graph_population), the engine's weight projection factor
+        # (hmrc_uprating's pins) and the canonical encoding of its report
+        # (microcosm#931).
+        return source_hash(
+            type(self),
+            content_identity,
+            national_frame,
+            weight_year,
+            artifact_files,
+            trace,
+            frame_materialize,
+            uk_engine_adapter,
+            geography_ladder,
+            graph_population,
+            hmrc_uprating,
+            canonical_json,
+        )
 
     def run(self, context: KernelContext) -> KernelResult:
         from ..artifact_files import file_artifact
@@ -1134,11 +1347,13 @@ class UKNationalReadbackKernel(KernelBase):
         written, _provenance = load_uk_national_frame(path)
         failures = []
         # The writer drops the reviewed export exclusions (microcosm#1063 c9)
-        # and writes the weights at the dataset's year (microcosm#796 A19), so
-        # the expectation is that export frame, not the raw population.
+        # and, on the national line, the geographic clone indices of its
+        # one-clone spine (microcosm#931), and writes the weights at the
+        # dataset's year (microcosm#796 A19), so the expectation is that
+        # export frame, not the raw population.
         solve_year = int(context.params["solve_year"])
         release = uk_dataset_year_frame(
-            uk_release_export_frame(frame), solve_year=solve_year
+            uk_release_export_frame(frame, line="national"), solve_year=solve_year
         )
         expected = uk_frame_content_identity(release)
         actual = uk_frame_content_identity(written)
@@ -1367,7 +1582,7 @@ def replay_uk_dense_gate_battery(
     """Write the local gate report the dense release contract verifies.
 
     The graph evaluated every UK gate once (``uk.full.gates.calibrated``);
-    the dense line ships the seven-gate local battery, signed and bound to its
+    the dense line ships the six-gate local battery, signed and bound to its
     Logbook attempt. The stored terminal outcomes are projected onto the
     local scope in the scoped manifest's order — nothing is re-evaluated:
     both manifests hold the same frozen declarations, and the projection

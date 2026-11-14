@@ -5,11 +5,13 @@ its gate battery) retired when the national release role moved onto the
 shared executable graph (:mod:`.graph_national`, the driver's national path
 in :mod:`.full_build_cli`). What stays here is what both lines and the
 release-cut certifier still consume: the Logbook pipeline and attempt-id
-prefix, the four gate scopes and their closed-world exclusions, the bound
-spine sidecar and checkpoint authentication, the spine provenance blocks,
-the scoped gate manifest, the CGT projection and admin-anchor artifacts,
-the Ledger and runtime provenance blocks, the register census and doctrine
-payloads, and the scoped-report signing.
+prefix, the gate scopes and their closed-world exclusions, the bound spine
+sidecar and checkpoint authentication, the spine provenance blocks, the CGT
+projection and admin-anchor artifacts, the Ledger and runtime provenance
+blocks, the register census and doctrine payloads, and the scoped-report
+signing. The spine and local gate scopes and the scoped gate manifest live
+in :mod:`.gate_scopes`, which the full build's gate battery hashes for them
+in place of this module, and are re-exported here.
 """
 
 from __future__ import annotations
@@ -46,6 +48,20 @@ from microcosm.build.uk_runtime.cgt_projection import (
 from microcosm.build.uk_runtime.etb_services import (
     UK_NHS_SPENDING_COMPONENT_COLUMNS,
 )
+
+# Moved to gate_scopes, which the full build's gate battery hashes, so the
+# full gate kernels' own hashes and the preflight's own code leave this
+# module out (microcosm#931, as microcosm#1492 moved the two functions
+# below): in the in-graph build an edit elsewhere in it re-keys only the
+# calibrated gates and what follows them. On a bound spine the checkpoint,
+# whose kernel hashes this module, still re-keys the preflight and the solve.
+# Kept importable from here for this module's other callers.
+from microcosm.build.uk_runtime.gate_scopes import (
+    UK_LOCAL_GATE_SCOPE,
+    UK_SPINE_GATE_SCOPE,
+    uk_scoped_gate_manifest,
+)
+from microcosm.build.uk_runtime.geographic_clones import geographic_clone_count
 
 # Moved to ledger_surface, which the UK target kernels hash, so an edit
 # elsewhere in this module no longer re-keys them (microcosm#1492). Kept
@@ -86,94 +102,11 @@ UK_CALIBRATION_GATE_SCOPE = (
     "uk_calibration_reference_coverage",
 )
 
-UK_LOCAL_GATE_SCOPE = (
-    "uk_local_geography_ladder_post_calibration",
-    "uk_local_brma_enum_domain",
-    "uk_local_area_support",
-    "uk_local_target_fit",
-    "uk_local_per_family_fit",
-    "uk_local_weight_ratio",
-    "uk_local_weight_ess",
-)
-
 #: Report-only gates the dense battery evaluates on the calibrated pool beside
 #: the local battery; they are excluded from certification like the local scope.
 UK_LOCAL_DIAGNOSTIC_GATE_SCOPE = (
     "uk_high_value_homes_benchmarks",
     "uk_high_value_homes_support",
-)
-
-UK_SPINE_GATE_SCOPE = (
-    "uk_stage_was_wealth_support",
-    "uk_stage_was_wealth_coherence",
-    "uk_stage_was_lisa_support",
-    "uk_stage_was_lisa_anchor",
-    "uk_stage_high_value_home_support_mass",
-    "uk_stage_property_components",
-    "uk_stage_nts_bus_travel_support",
-    "uk_stage_nts_bus_travel_facts",
-    "uk_stage_uc_deduction_attributes",
-    "uk_stage_lcfs_consumption_support",
-    "uk_stage_lcfs_consumption_energy_rake",
-    "uk_stage_lcfs_consumption_bus_pricing",
-    "uk_stage_lcfs_consumption_road_fuel_incidence",
-    "uk_stage_lcfs_consumption_road_fuel_level",
-    "uk_stage_lcfs_consumption_recomposed_totals",
-    "uk_stage_lcfs_consumption_excise_quantities",
-    "uk_stage_lcfs_consumption_gambling_participation",
-    "uk_stage_lcfs_consumption_basis",
-    "uk_stage_etb_vat_support",
-    "uk_stage_etb_services_support",
-    "uk_stage_etb_services_support_pricing",
-    "uk_stage_frs_hmrc_spine_leaves_signal",
-    "uk_stage_frs_annual_income_spells",
-    "uk_stage_spi_support_channel_mass",
-    "uk_stage_hmrc_spi_income_spine_identity",
-    "uk_stage_hmrc_spi_income_spine_hourly_pay",
-    "uk_stage_spi_benefit_coherence",
-    "uk_stage_uc_take_up",
-    "uk_stage_pension_credit_take_up",
-    "uk_stage_child_benefit_take_up",
-    "uk_stage_cgt_incidence_clone_mass",
-    "uk_stage_cgt_support_split_mass",
-    "uk_stage_cgt_residential_split_mass",
-    "uk_stage_spi_income_band_donors_support",
-    "uk_stage_hmrc_cgt_gains_spine_summary",
-    "uk_stage_hmrc_cgt_asset_type_spine_summary",
-    "uk_stage_cgt_incidence_anchor_composition",
-    "uk_stage_salary_sacrifice_realization",
-    "uk_stage_student_loans_realization",
-    "uk_stage_age_tail_targets",
-    "uk_stage_frs_relationships_composition",
-    "uk_stage_regional_home_values_ranking",
-    "uk_stage_property_purchases_fit",
-    "uk_stage_uc_legacy_closure_take_up_contract",
-    "uk_stage_frs_person_draws_apprentices",
-    # The take-up flags at their drawing stages, before calibration (María's
-    # ruling of 2026-10-29, microcosm#1095).
-    "uk_stage_frs_take_up_signal",
-    "uk_stage_frs_person_draws_take_up_signal",
-    "uk_stage_frs_household_draws_take_up_signal",
-    "uk_stage_childcare_copy_take_up_signal",
-    "uk_stage_isa_subscriptions_invariants",
-    "uk_stage_isa_subscriptions",
-    "uk_stage_company_cars_invariants",
-    "uk_stage_spi_employment_shell_fit",
-    "uk_stage_aps_occupation_fit",
-    # Weight-independent like the BRMA enum below, and its column exists from
-    # frs_relationships onward (#791).
-    "uk_ons_household_type_enum_domain",
-    # Weight-independent; the column exists only from hmrc_cgt_asset_type_spine
-    # onward, so it is checked at the transferred boundary, and its domain is
-    # declared by the stage module (microcosm#725).
-    "uk_capital_gains_asset_type_enum_domain",
-    # Weight-independent; spi_housing_shell is the last spine stage that writes
-    # the band, so the transferred boundary checks every row's nation
-    # (microcosm#1278).
-    "uk_council_tax_band_domain",
-    # Weight-independent, and its column exists from frs_brma onward, so the
-    # spine checks it at the assembled boundary instead of the release end.
-    "uk_brma_enum_domain",
 )
 
 UK_NATIONAL_GATE_SCOPE = (
@@ -297,7 +230,7 @@ def uk_local_gate_scope_exclusions() -> dict[str, str]:
         elif gate_id in UK_LOCAL_DIAGNOSTIC_GATE_SCOPE:
             reason = (
                 "local diagnostic gate; evaluated by the dense battery but outside "
-                "the seven-gate local release contract (microcosm#1240, #1262)."
+                "the six-gate local release contract (microcosm#1240, #1262, #931)."
             )
         else:  # pragma: no cover - _scope_exclusions enforces closed-world ownership
             raise RuntimeError(f"UK gate {gate_id!r} belongs to no declared scope.")
@@ -493,6 +426,14 @@ def _assert_spine_sidecar_binds_frame(
     sidecar: Mapping[str, object],
     frame: Frame,
 ) -> None:
+    """Refuse a sidecar that describes another frame than the one bound.
+
+    The row counts, the household weight kind and total, and the geographic
+    clone count K (microcosm#931): a sidecar written before the spine recorded
+    its K describes a spine of one clone, and the frame's K is counted from
+    its clone index (``geographic_clone_count``). The refusals print counts,
+    the weight kind and total and K, never an id or a value of a row.
+    """
     expected_counts = sidecar.get("entity_row_counts")
     actual_counts = {entity: int(len(frame.table(entity))) for entity in frame.entities}
     if expected_counts != actual_counts:
@@ -515,6 +456,15 @@ def _assert_spine_sidecar_binds_frame(
         raise ValueError(
             "input H5 build sidecar household_weight_total mismatch: "
             f"sidecar {expected_total!r}, frame {actual_total!r}"
+        )
+    expected_clones = sidecar.get("geographic_clone_count", 1)
+    actual_clones = geographic_clone_count(
+        frame.table("household"), stage="The bound spine"
+    )
+    if type(expected_clones) is not int or expected_clones != actual_clones:
+        raise ValueError(
+            "input H5 build sidecar geographic_clone_count mismatch: "
+            f"sidecar {expected_clones!r}, frame {actual_clones!r}"
         )
 
 
@@ -606,6 +556,16 @@ def spine_provenance_from_sidecar(
         # Empty for a spine built before the marker; the release assemblers
         # rederive it from the stages either way (microcosm#1095).
         "spi_public_use_tape": dict(sidecar.get("spi_public_use_tape") or {}),
+        # What the dense line takes from the spine it binds (microcosm#931):
+        # its clone count K (one where a sidecar predates the record), its
+        # geography binding (empty before the spine assigned areas), its
+        # sampling receipt (none at f100) and its release posture.
+        "geographic_clone_count": sidecar.get("geographic_clone_count", 1),
+        "geography": dict(sidecar.get("geography") or {}),
+        "sampling": (
+            None if sidecar.get("sampling") is None else dict(sidecar["sampling"])
+        ),
+        "release_posture": sidecar.get("release_posture"),
     }
 
 
@@ -614,36 +574,6 @@ def _calibration_gate_manifest() -> GatesManifest:
         UK_CALIBRATION_GATE_SCOPE,
         phases=("terminal",),
         policy_suffix="calibration_seam_scope",
-    )
-
-
-def uk_scoped_gate_manifest(
-    scope: tuple[str, ...] | frozenset[str],
-    *,
-    phases: tuple[str, ...],
-    policy_suffix: str,
-    source: GatesManifest | None = None,
-) -> GatesManifest:
-    """Filter the declared UK gate spec to one battery's scope.
-
-    The one scope-filtering implementation every scoped producer shares
-    (spine build, calibration seam, release cut). ``source`` lets a caller
-    that already holds a loaded spec — or a hermetic test that stubs one —
-    supply it; the default is the committed package spec.
-    """
-
-    if source is None:
-        source = load_country_spec("uk").gates
-    entries = tuple(entry for entry in source.gates if entry.id in scope)
-    missing = sorted(set(scope) - {entry.id for entry in entries})
-    if missing:
-        raise RuntimeError(f"UK gate scope names undeclared gate id(s): {missing}.")
-    return GatesManifest(
-        country=source.country,
-        version=source.version,
-        policy=f"{source.policy}; {policy_suffix}",
-        phases=phases,
-        gates=entries,
     )
 
 

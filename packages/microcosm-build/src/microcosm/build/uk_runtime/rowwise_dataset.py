@@ -17,6 +17,18 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import GateResult
+
+# Moved to geographic_clones (microcosm#931): the spine stages that count by
+# lineage read the clone index columns' names through household_lineage and
+# hash that small module, not this one, and the full build's export kernels
+# hash it beside this one. Kept importable from here for this module's other
+# callers. The households' source columns, which the clone-first spine's
+# geographic_expand writes, are named there too.
+from microcosm.build.uk_runtime.geographic_clones import (
+    ARTIFACT_CLONE_INDEX_COLUMN,
+    UK_GEOGRAPHIC_SOURCE_COLUMNS,
+    ladder_clone_index_column,
+)
 from microcosm.build.uk_runtime.geography_ladder import (
     UK_GEOGRAPHY_LADDER_COLUMNS,
     UkOaLadder,
@@ -84,20 +96,51 @@ BENUNIT_ID_COLUMNS = ("benunit_id",)
 HOUSEHOLD_ID_COLUMNS = ("household_id",)
 UK_SINGLE_YEAR_TABLES = ("person", "benunit", "household", "time_period")
 
-#: Clone-index column name in the written artifact (one name per table —
-#: the legacy single-year schema, unchanged by the Frame carrier).
-ARTIFACT_CLONE_INDEX_COLUMN = "clone_index"
+_INT64_MAX = int(np.iinfo(np.int64).max)
 
 
-def ladder_clone_index_column(entity: str) -> str:
-    """The in-memory, per-entity clone-index column on the ladder frame.
+def refuse_dense_clone_id_overflow(
+    *,
+    n_clones: int,
+    id_multiplier: int,
+    ids: tuple[object, ...],
+) -> None:
+    """Refuse row-wise clones whose ids int64 cannot hold, in one clear message.
 
-    Frame enforces globally unique column names across entity tables, so the
-    artifact's shared ``clone_index`` name cannot appear on all three tables
-    in memory; the writer renames these back at the export boundary.
+    The row-wise lane's clone ``c`` offsets every id by ``c`` times a
+    multiplier above the spine's largest id. Since microcosm#931 the spine
+    mints its copies' ids in fixed fields of the copy-id table, the CGT
+    incidence twins at 10**17 and the residential arms at multiples of
+    10**18, so a spine carrying arms, as a production national spine does,
+    leaves no int64 room for a second clone. This refuses wherever the
+    offset would overflow int64; one clone, and any spine whose ids leave
+    room (one without copy rows, say), expand as before, as long as the
+    spine carries no geographic clone index. A dataset of more than one clone
+    of such a spine is the dense graph's, on the geography-first spine,
+    which mints the geographic clones at its start; the lane's expansion
+    refuses a spine carrying geographic_expand's clone index, at any clone
+    count, before it reaches this check. The message names no id.
     """
 
-    return f"{entity}_{ARTIFACT_CLONE_INDEX_COLUMN}"
+    if type(n_clones) is not int or n_clones <= 1:
+        return
+    largest = 0
+    for values in ids:
+        array = np.asarray(values)
+        if array.size:
+            largest = max(largest, int(np.abs(array.astype(np.int64)).max()))
+    if (n_clones - 1) * int(id_multiplier) + largest > _INT64_MAX:
+        raise ValueError(
+            f"Row-wise geographic clones of this spine at n_clones={n_clones} "
+            "would overflow int64: since microcosm#931 the spine mints its copy "
+            "ids in the copy-id table's fixed fields, with residential arms at "
+            "multiples of 10**18, and every row-wise clone is offset above the "
+            "spine's largest id. A dataset of more than one clone of such a "
+            "spine is built by the dense graph on the geography-first, "
+            "clone-first spine of microcosm#931, which mints the geographic "
+            "clones at its start; n_clones=1 still expands a spine that "
+            "carries no geographic clone index."
+        )
 
 
 def _refuse_preassigned_geography(
@@ -226,6 +269,15 @@ def clone_uk_dataset_tables_with_rowwise_geography(
             person_frame["person_benunit_id"],
             benunit_frame["benunit_id"],
         )
+    refuse_dense_clone_id_overflow(
+        n_clones=n_clones,
+        id_multiplier=id_multiplier,
+        ids=(
+            household_frame[household_id_column],
+            *(person_frame[column] for column in PERSON_ID_COLUMNS),
+            benunit_frame["benunit_id"],
+        ),
+    )
     assignment = assign_household_geography(
         household_frame,
         crosswalk,
@@ -368,8 +420,11 @@ def expand_uk_geographic_pool(
     # lineage) is replaced, exactly as the pre-Frame clone overwrote the
     # column in place — dropped here so the per-entity in-memory names
     # cannot collide with it at the writer's rename. The reserved
-    # {entity}_clone_index names have no legitimate producer and fail
-    # closed rather than being silently overwritten.
+    # {entity}_clone_index names fail closed rather than being silently
+    # overwritten: their one other producer is the clone-first spine's
+    # geographic_expand (microcosm#931), whose spine carries its geographic
+    # clones already; the dense graph builds on such a spine as it stands, and
+    # this expansion, which clones a spine itself, refuses it.
     tables = {
         "person": person_frame,
         "benunit": benunit_frame,
@@ -380,7 +435,11 @@ def expand_uk_geographic_pool(
         if reserved in table.columns:
             raise ValueError(
                 f"input {entity} table already carries the reserved in-memory "
-                f"clone column {reserved!r}; the ladder clone owns that name."
+                f"clone column {reserved!r}; the ladder clone owns that name. A "
+                "clone-first spine, whose geographic_expand stage writes it, "
+                "carries its geographic clones already: the dense graph builds "
+                "on a geography-first spine as it stands (microcosm#931), and "
+                "this clone refuses one at any n_clones."
             )
         if ARTIFACT_CLONE_INDEX_COLUMN in table.columns:
             table.drop(columns=[ARTIFACT_CLONE_INDEX_COLUMN], inplace=True)
@@ -415,6 +474,15 @@ def expand_uk_geographic_pool(
             person_frame["person_benunit_id"],
             benunit_frame["benunit_id"],
         )
+    refuse_dense_clone_id_overflow(
+        n_clones=n_clones,
+        id_multiplier=id_multiplier,
+        ids=(
+            household_frame["household_id"],
+            *(person_frame[column] for column in PERSON_ID_COLUMNS),
+            benunit_frame["benunit_id"],
+        ),
+    )
     cloned_household = clone_entity_frame(
         household_frame,
         id_columns=HOUSEHOLD_ID_COLUMNS,
@@ -668,21 +736,24 @@ def validate_uk_ladder_rowwise_dataset_tables(
     _require_unique(person, "person_id", label="person")
     _require_unique(benunit, "benunit_id", label="benunit")
     _require_unique(household, "household_id", label="household")
+    _require_person_links(person, benunit, household)
 
-    household_ids = set(household["household_id"])
-    missing_households = sorted(set(person["person_household_id"]) - household_ids)
-    if missing_households:
-        raise ValueError(
-            "person.person_household_id contains value(s) absent from household: "
-            f"{missing_households[:5]}."
-        )
-    benunit_ids = set(benunit["benunit_id"])
-    missing_benunits = sorted(set(person["person_benunit_id"]) - benunit_ids)
-    if missing_benunits:
-        raise ValueError(
-            "person.person_benunit_id contains value(s) absent from benunit: "
-            f"{missing_benunits[:5]}."
-        )
+
+def _require_person_links(
+    person: pd.DataFrame, benunit: pd.DataFrame, household: pd.DataFrame
+) -> None:
+    """Refuse a person whose household or benefit unit is absent, by count."""
+
+    for column, table, id_column, label in (
+        ("person_household_id", household, "household_id", "household"),
+        ("person_benunit_id", benunit, "benunit_id", "benunit"),
+    ):
+        unlinked = int((~person[column].isin(table[id_column])).sum())
+        if unlinked:
+            raise ValueError(
+                f"person.{column} names a {label} absent from {label} on "
+                f"{unlinked} person row(s)."
+            )
 
 
 def _assert_clone_link_alignment(
@@ -715,9 +786,32 @@ def _attach_source_lineage(
     *,
     source_year: int | None,
 ) -> pd.DataFrame:
-    """Default the immediate-layer lineage columns the crosswalk route adds."""
+    """Default the immediate-layer lineage columns the crosswalk route adds.
+
+    Only on a household table without the geographic clone index: on the
+    clone-first spine, geographic_expand writes every household's source
+    columns and a clone's own ids are not its source, so a table carrying
+    the index must carry all three and is refused, by column name alone, if
+    it lacks any (microcosm#931). The reserved-column refusal before it
+    already refuses every such table, so this refusal is a second guard.
+    """
 
     frame = household
+    clone_index = ladder_clone_index_column("household")
+    if clone_index in frame.columns:
+        missing = [
+            column
+            for column in UK_GEOGRAPHIC_SOURCE_COLUMNS
+            if column not in frame.columns
+        ]
+        if missing:
+            raise ValueError(
+                f"The household table carries {clone_index!r} but not {missing}: "
+                "on the clone-first spine geographic_expand writes every "
+                "household's source columns, and a clone's own ids are never "
+                "taken for its source (microcosm#931)."
+            )
+        return frame
     if "source_household_id" not in frame.columns:
         frame["source_household_id"] = frame["household_id"]
     if "source_year" not in frame.columns and source_year is not None:
@@ -962,22 +1056,7 @@ def validate_uk_rowwise_dataset_tables(
     _require_unique(person, "person_id", label="person")
     _require_unique(benunit, "benunit_id", label="benunit")
     _require_unique(household, "household_id", label="household")
-
-    household_ids = set(household["household_id"])
-    missing_households = sorted(set(person["person_household_id"]) - household_ids)
-    if missing_households:
-        raise ValueError(
-            "person.person_household_id contains value(s) absent from household: "
-            f"{missing_households[:5]}."
-        )
-
-    benunit_ids = set(benunit["benunit_id"])
-    missing_benunits = sorted(set(person["person_benunit_id"]) - benunit_ids)
-    if missing_benunits:
-        raise ValueError(
-            "person.person_benunit_id contains value(s) absent from benunit: "
-            f"{missing_benunits[:5]}."
-        )
+    _require_person_links(person, benunit, household)
 
 
 def read_uk_single_year_weight_metadata(
@@ -1125,10 +1204,12 @@ def apply_uk_source_lineage_modulus(
     layer*, leaving any immediate-layer ``source_household_id`` or
     ``source_household_key`` untouched.
 
-    Spine inputs use a different scheme: ``household_id = sernum +
-    1{spi} * 10**d + k{support_copy} * 10**(d+1) + 1{cgt_clone} * 10**(d+2)``.
-    Their explicit spine lineage columns are the source of truth, so applying
-    the pool modulus would mint a false second lineage layer and is refused.
+    Spine inputs use a different scheme, the copy-id table's fixed fields
+    (microcosm#931): ``household_id = sernum + ordinal{spi} * 10**11 +
+    k{high_value_copy} * 10**12 + k{support_copy} * 10**13 +
+    1{cgt_clone} * 10**17 + j{residential_arm} * 10**18``. Their explicit spine
+    lineage columns are the source of truth, so applying the pool modulus
+    would mint a false second lineage layer and is refused.
 
     The mapping is refused when it would be ambiguous (the pool column
     already exists) or vacuous (no id reaches the modulus, making it the
@@ -1220,11 +1301,11 @@ def _require_columns(
 def _require_unique(frame: pd.DataFrame, column: str, *, label: str) -> None:
     if frame[column].isna().any():
         raise ValueError(f"{label}.{column} contains missing values.")
-    if frame[column].duplicated().any():
-        duplicates = frame.loc[frame[column].duplicated(), column].unique()
+    repeated = int(frame[column].duplicated().sum())
+    if repeated:
         raise ValueError(
-            f"{label}.{column} must be unique; duplicate value(s): "
-            f"{list(map(str, duplicates[:5]))}."
+            f"{label}.{column} must be unique; {repeated} row(s) repeat an "
+            "earlier row's value."
         )
 
 

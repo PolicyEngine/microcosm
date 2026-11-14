@@ -7,7 +7,7 @@ from test_support.paths import paths_for
 _TEST_PATHS = paths_for("microcosm-graph")
 
 
-def test_h2_uk_spine_parity(tmp_path: Path) -> None:
+def test_h2_uk_spine_parity(tmp_path: Path, monkeypatch) -> None:
     """The UK spine as a graph reproduces ``uk_frame_content_identity``.
 
     The spine's stages read the UK engine's parameters, so this runs in the
@@ -21,14 +21,36 @@ def test_h2_uk_spine_parity(tmp_path: Path) -> None:
     topological order is derived, so the hand-maintained ``_STAGE_NAMES`` tuple
     in ``tools/build_uk_frs_spine.py`` — the 30 names intersected with a
     34-stage packaged manifest, kept in step by hand — can be deleted.
+
+    Every simulation the UK adapter builds on either side, all at one clone,
+    must pass the frame's ids through (microcosm#931): no entity's ids may
+    repeat once policyengine-core stores them as int32, so each simulation
+    receives the tables it received before the adapter's rank rule, and no
+    value here moves with it. The run records that as booleans only.
     """
     _require(UK_SPINE_PARITY, "the UK migration lane (charter H2, María reviews)")
 
     from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
     from microcosm.build.uk_runtime.graph import uk_registry, uk_spine_graph
     from microcosm.build.uk_runtime.graph_kernels import fixture_stage_plan_inputs
+    from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
     from microcosm.graph import ContentStore, compile_graph, graph_from_json, run_graph
     from tools.graph_uk_spine_fixture import legacy_oracle_frame
+
+    # Whether the adapter's rank rule ran, and whether any simulation on
+    # either side renumbered an entity: two booleans, never an id or a count.
+    ids_seen = {"ranked": False, "renumbered": False}
+    rank_rule = uk_engine_adapter.engine_identifier_tables
+
+    def recorded_rank_rule(schema, tables, identifiers):
+        given = rank_rule(schema, tables, identifiers)
+        ids_seen["ranked"] = True
+        ids_seen["renumbered"] = ids_seen["renumbered"] or bool(given.renumbered)
+        return given
+
+    monkeypatch.setattr(
+        uk_engine_adapter, "engine_identifier_tables", recorded_rank_rule
+    )
 
     # The identity is a byte-exact fingerprint of every cell, and the FRS root
     # transform's weights differ at the last bit between machines, so both
@@ -58,6 +80,9 @@ def test_h2_uk_spine_parity(tmp_path: Path) -> None:
         resume="forbid",
         decisions=(),
     )
+    # Both sides have run: read the record before the failure branch below
+    # runs the oracle again.
+    ranked, renumbered = ids_seen["ranked"], ids_seen["renumbered"]
     final_version = compiled.versions[compiled.order[-1]]
     final = manifest.population(final_version)
     actual = uk_frame_content_identity(final)
@@ -73,6 +98,14 @@ def test_h2_uk_spine_parity(tmp_path: Path) -> None:
         )
         print(f"H2 graph {actual} != legacy {expected}\n{stability}\n{differences}")
         pytest.fail(f"graph != legacy oracle; {stability}\n{differences}")
+
+    # microcosm#931: every simulation must have passed its ids through, so
+    # that the rank rule moved no value here.
+    assert ranked, "no simulation reached the adapter's rank rule"
+    assert not renumbered, (
+        "a simulation at one clone renumbered an entity whose ids repeat once "
+        "stored as int32"
+    )
 
     # Charter F12: stage order is derived from declared inputs, so the
     # hand-maintained tuple in the UK driver is gone.

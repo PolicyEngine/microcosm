@@ -360,7 +360,6 @@ def test_existing_local_statistical_failure_can_export_but_blocks_full_release()
     "gate_id",
     [
         "uk_local_geography_ladder_post_calibration",
-        "uk_local_brma_enum_domain",
         "uk_nonnegative_columns",
         "uk_input_mass_parity",
         "uk_target_fit",
@@ -374,6 +373,25 @@ def test_geography_and_migrated_national_gates_keep_artifact_enforcement(gate_id
         )
         assert result["artifact_permitted"] is False
         assert result["structural_failures"] == [gate_id]
+
+
+def test_the_local_structural_stop_is_the_ladder_gate_alone():
+    """The local battery's BRMA domain recheck retired with the dense line's
+    own BRMA rewrite; the spine's transferred gate checks the column
+    (microcosm#931). The ladder gate is the one local check whose failure
+    stops the export; the other five's failures are exported at full scale
+    and recorded without enforcement below it."""
+    from microcosm.build.uk_runtime.gate_scopes import UK_LOCAL_GATE_SCOPE
+
+    assert "uk_local_brma_enum_domain" not in UK_LOCAL_GATE_SCOPE
+    stops = [
+        gate_id
+        for gate_id in UK_LOCAL_GATE_SCOPE
+        if runtime.classify_full_gate_outcomes(
+            _phase_failure(gate_id), sample_fraction=0.1, release_candidate=False
+        )["structural_failures"]
+    ]
+    assert stops == ["uk_local_geography_ladder_post_calibration"]
 
 
 def test_missing_evidence_uses_declared_development_policy():

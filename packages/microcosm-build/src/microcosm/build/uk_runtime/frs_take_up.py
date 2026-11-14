@@ -19,13 +19,16 @@ from microcosm.build.stochastic_assignment import (
     stable_identity_uniforms,
 )
 from microcosm.build.uk_runtime.dfe_spring_term import dfe_age_at_31_december
+from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
 from microcosm.build.uk_runtime.national_frame import (
+    UK_NATIONAL_SCHEMA,
     uk_household_weight_kind,
     uk_national_frame,
     uk_time_period,
     validate_uk_national_frame,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
     distinct_count,
     extreme_count,
     record_source_households,
@@ -401,7 +404,13 @@ def add_frs_take_up(
     anchors = aggregate_person_reported_to_benunit(person, benunit)
     uc_age_eligible = uc_age_eligible_benunits(person, benunit, population_policy)
     derived = derive_frs_take_up(
-        benunit, anchors=anchors, contract=contract, uc_age_eligible=uc_age_eligible
+        benunit,
+        anchors=anchors,
+        contract=contract,
+        uc_age_eligible=uc_age_eligible,
+        # Each unit's household's clone, read through the person table's
+        # memberships; None on a frame without household_clone_index.
+        clone_index=geographic_clone_indices(frame, "benunit"),
     )
     for column in FRS_TAKE_UP_OUTPUT_COLUMNS:
         benunit[column] = derived[column].to_numpy()
@@ -475,16 +484,34 @@ def derive_frs_take_up(
     anchors: pd.DataFrame,
     contract: UKTakeUpContract,
     uc_age_eligible: np.ndarray,
+    clone_index: np.ndarray | None = None,
 ) -> pd.DataFrame:
+    """The stage's benefit-unit outputs, each drawn on ``benunit_id`` under
+    the output's own salt.
+
+    The Child Benefit, Pension Credit and Universal Credit flags fill their
+    anchored residuals within each geographic clone (microcosm#931):
+    ``clone_index``, aligned with ``benunit``, gives each unit's clone and is
+    the anchored draws' ``strata``. Clone 0's units have a one-clone spine's
+    ids, anchors and population, so they take its flags exactly at any clone
+    count; one count over every clone would round the target once over all
+    of them and move clone 0's threshold. ``None``, for a frame without the
+    clone index, counts over every unit, as clone indices that are all 0 do.
+    """
+
     ids = benunit["benunit_id"].to_numpy()
     values = pd.DataFrame(index=benunit.index)
     population = np.asarray(uc_age_eligible, dtype=bool)
     if population.shape != ids.shape:
         raise ValueError("uc_age_eligible must align with the benefit-unit table")
+    strata = None if clone_index is None else np.asarray(clone_index)
+    if strata is not None and strata.shape != ids.shape:
+        raise ValueError("clone_index must align with the benefit-unit table")
     values["would_claim_child_benefit"] = assign_binary_with_anchored_residual(
         _draws(ids, "would_claim_child_benefit"),
         contract.rate("child_benefit"),
         anchors["child_benefit_reported_anchor"].to_numpy(dtype=bool),
+        strata=strata,
     )
     values["child_benefit_opts_out"] = assign_binary_from_rate(
         _draws(ids, "child_benefit_opts_out"),
@@ -494,12 +521,14 @@ def derive_frs_take_up(
         _draws(ids, "would_claim_pc"),
         contract.rate("pension_credit"),
         anchors["pension_credit_reported_anchor"].to_numpy(dtype=bool),
+        strata=strata,
     )
     values["would_claim_uc"] = assign_binary_with_anchored_residual(
         _draws(ids, "would_claim_uc"),
         contract.rate("universal_credit"),
         anchors["universal_credit_reported_anchor"].to_numpy(dtype=bool),
         population=population,
+        strata=strata,
     )
     childcare = derive_childcare_take_up(ids, contract=contract)
     for output, _ in UK_CHILDCARE_TAKE_UP_FLAGS:
@@ -728,6 +757,84 @@ def uk_take_up_signal_gate(
     )
 
 
+def geographic_clone_zero_rows(frame: Frame, entity: str) -> np.ndarray:
+    """Whether each ``entity`` row belongs to geographic clone 0 (microcosm#931).
+
+    A row's clone is its household's ``household_clone_index``: a person's
+    household, or the household a benefit unit's members share. A frame
+    without the index is one clone, every row clone 0's. A count a receipt
+    takes in clone 0's rows does not grow with the clone count, and on a
+    one-clone spine it is the count over every row.
+    """
+
+    household = frame.table("household")
+    column = ladder_clone_index_column("household")
+    if column not in household.columns:
+        return np.ones(len(frame.table(entity)), dtype=bool)
+    return np.asarray(
+        _household_values_on_rows(frame, entity, household[column].to_numpy() == 0),
+        dtype=bool,
+    )
+
+
+def geographic_clone_indices(frame: Frame, entity: str) -> np.ndarray | None:
+    """Each ``entity`` row's geographic clone, or ``None`` (microcosm#931).
+
+    A row's clone is its household's ``household_clone_index``, as
+    :func:`geographic_clone_zero_rows` reads it: a person's household's, or
+    that of the household a benefit unit's members share, through the person
+    table's memberships, which a stage's frame always carries.
+    ``frs_take_up`` and ``frs_person_draws`` consume the household column
+    alone, so their draws count within each clone without reading another
+    table's index. A frame without the column (a unit fixture) is one clone
+    and gives ``None``.
+    """
+
+    household = frame.table("household")
+    column = ladder_clone_index_column("household")
+    if column not in household.columns:
+        return None
+    return _household_values_on_rows(frame, entity, household[column].to_numpy())
+
+
+def _household_values_on_rows(
+    frame: Frame, entity: str, values: np.ndarray
+) -> np.ndarray:
+    """``values``, one per household row, on each ``entity`` row: a person's
+    household's, or that of the household a benefit unit's members share.
+    The refusals name no id, count or value."""
+
+    household = frame.table("household")
+    by_household = pd.Series(
+        values, index=household[UK_NATIONAL_SCHEMA.id_column("household")].to_numpy()
+    )
+    if entity == "household":
+        return by_household.to_numpy()
+    person = frame.table(UK_NATIONAL_SCHEMA.person_entity)
+    on_person = person[UK_NATIONAL_SCHEMA.membership_column("household")].map(
+        by_household
+    )
+    if on_person.isna().any():
+        raise ValueError(
+            "Every person needs a household on the frame to read its geographic clone."
+        )
+    if entity == UK_NATIONAL_SCHEMA.person_entity:
+        return on_person.to_numpy()
+    by_unit = (
+        pd.Series(
+            on_person.to_numpy(),
+            index=person[UK_NATIONAL_SCHEMA.membership_column(entity)].to_numpy(),
+        )
+        .groupby(level=0)
+        .first()
+    )
+    table = frame.table(entity)
+    on_unit = table[UK_NATIONAL_SCHEMA.id_column(entity)].map(by_unit)
+    if on_unit.isna().any():
+        raise ValueError(f"A {entity} without members has no geographic clone to read.")
+    return on_unit.to_numpy()
+
+
 @dataclass(frozen=True)
 class _TakeUpSignal:
     """One flag's weighted share over its draw's population."""
@@ -746,14 +853,21 @@ def _measure_take_up_signal(
     output: str,
     key: str,
     contract: UKTakeUpContract,
+    clone_zero: np.ndarray | None = None,
 ) -> _TakeUpSignal | str:
-    """One flag's share at the frame's weights, or why it cannot be measured."""
+    """One flag's share at the frame's weights, or why it cannot be measured.
+
+    The flag's distinct values are counted in geographic clone 0's rows,
+    ``clone_zero``, as one clone counts them (microcosm#931); without it, in
+    every row, as the terminal gate counts them.
+    """
 
     table = frame.table(entity)
     if output not in table.columns:
         return "missing stochastic column."
     values = np.asarray(table[output], dtype=bool)
-    unique_count = int(pd.Series(values).nunique(dropna=False))
+    counted = values if clone_zero is None else values[clone_zero]
+    unique_count = int(pd.Series(counted).nunique(dropna=False))
     weights = np.asarray(frame.resolve_weights(entity).values, dtype=np.float64)
     population = np.ones(values.shape, dtype=bool)
     if key == UK_UNDER_TWO_USAGE_SIGNAL_KEY:
@@ -816,29 +930,55 @@ def uk_take_up_signal_receipt(
     2026-10-29, microcosm#1095). The receipt is aggregate-only (UKDS disclosure
     control): a share or a target is given only where three or more source
     households carry the flag's population, whose support is a band.
+
+    The population's support and the flag's distinct values are counted in
+    geographic clone 0's rows (:func:`geographic_clone_zero_rows`;
+    microcosm#931): each clone draws its own flags, and the under-2 usage
+    population with them, so a count over every clone would grow with the
+    clone count. The share and the target are measured over every clone, so
+    each is withheld where one or two source households carry the population
+    in clone 0's rows or over every clone: clone 0 can carry none of a
+    population that one or two households carry in the other clones.
     """
 
     sources: dict[str, np.ndarray] = {}
+    clone_zero: dict[str, np.ndarray] = {}
     flags: list[dict[str, object]] = []
     for entity, output, key in outputs:
         row: dict[str, object] = {"output": f"{entity}.{output}", "rate_key": key}
         if key == UK_UNDER_TWO_USAGE_SIGNAL_KEY:
             row["under_two_usage"] = True
-        measured = _measure_take_up_signal(frame, entity, output, key, contract)
+        if entity not in clone_zero:
+            clone_zero[entity] = geographic_clone_zero_rows(frame, entity)
+        measured = _measure_take_up_signal(
+            frame, entity, output, key, contract, clone_zero[entity]
+        )
         if isinstance(measured, str):
             row["unmeasured"] = measured
             flags.append(row)
             continue
         if entity not in sources:
-            # Before the SPI support channel each household is its own source,
-            # so its id serves until ``source_household_id`` exists.
+            # On the clone-first spine geographic_expand writes
+            # source_household_id before this stage runs, so the shared reader
+            # counts a household's geographic clones once; a frame without the
+            # column or copy lineage (unit fixtures) counts each household as
+            # its own source (microcosm#931).
             sources[entity] = record_source_households(
                 frame, entity, stage="The take-up signal receipt", before_copies=True
             )
-        support = distinct_count(sources[entity], measured.population, measured.weights)
+        support = distinct_count(
+            sources[entity],
+            measured.population & clone_zero[entity],
+            measured.weights,
+        )
+        carriers = distinct_count(
+            sources[entity], measured.population, measured.weights
+        )
+        # The figures are measured over every clone: withheld on either count.
+        withheld_on = carriers if 0 < carriers < UK_DISCLOSURE_FLOOR else support
         row["population_support"] = support_band(support)
-        row["target"] = small_cell_share(measured.target, support)
-        row["weighted_share"] = small_cell_share(measured.share, support)
+        row["target"] = small_cell_share(measured.target, withheld_on)
+        row["weighted_share"] = small_cell_share(measured.share, withheld_on)
         row["distinct_values"] = measured.unique_count
         if measured.nested_violations is not None:
             row["extended_without_universal_units"] = extreme_count(

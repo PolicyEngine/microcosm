@@ -84,10 +84,13 @@ def record_source_households(
     (``microcosm.build.source_lineage.record_sources``) on the UK's copy
     lineage. A frame without the column is refused, and so is a null source:
     it drops out of a distinct count, so a cell would read fewer sources than
-    it rests on. A stage that runs before the SPI support channel, the first
-    copying step, says so with ``before_copies``: no row is a copy yet, so
-    each household is its own source and its id serves, unless the frame
-    already carries copy lineage.
+    it rests on. A stage that can run before the first copying step says so
+    with ``before_copies``: on a frame without the column and without copy
+    lineage, no row is a copy yet, so each household is its own source and its
+    id serves. On the clone-first spine the first copying step is
+    ``geographic_expand``, which writes the column, so a stage after it that
+    says so, ``frs_take_up`` for one, reads it and counts a household's
+    geographic clones once (microcosm#931).
     """
 
     if not isinstance(tables, Mapping):
@@ -110,8 +113,9 @@ def own_source_households(person: pd.DataFrame) -> np.ndarray:
     """Each person's own household as its true source: the rule before copies.
 
     For a caller that holds a person table without the frame's lineage, as
-    every household is its own source before the SPI support channel copies
-    any; a frame with copies counts through :func:`record_source_households`.
+    every household is its own source before the first copying step,
+    ``geographic_expand`` on the clone-first spine (microcosm#931); a frame
+    with clones or copies counts through :func:`record_source_households`.
     """
 
     return person[UK_NATIONAL_SCHEMA.membership_column("household")].to_numpy()

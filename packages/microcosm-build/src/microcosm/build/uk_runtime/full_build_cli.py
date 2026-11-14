@@ -14,7 +14,21 @@ the diagnostics, the frozen registries, the schema-4 national manifest;
 :mod:`microcosm.build.uk_runtime.national_role`) materialised from the
 graph's stored artifacts. Both lines are built here through the graph. The
 role supplies every unset solve default and refuses the other role's flags
-through :mod:`microcosm.build.uk_runtime.rowwise_cli`.
+through :mod:`microcosm.build.uk_runtime.rowwise_cli`. The dense line builds
+only on a geography-first spine: :func:`prepare_full_build` refuses any other
+before it pins an input or composes a graph
+(:mod:`microcosm.build.uk_runtime.spine_posture`, microcosm#931), and takes the
+spine's geographic clone count, sampling and areas as its own: its targets,
+measures and pool run on the spine's version as it stands, and the run's
+recorded clone count and rung are the spine's. Its engine blocks are one or
+the spine's K, and a release candidate needs an unsampled spine of the
+doctrine's K, built as a release candidate, whose geography binding is a
+release's (:func:`~microcosm.build.uk_runtime.country_adapter.uk_spine_geography_binding_failures`).
+The national line builds only on a geography-first spine of one geographic
+clone, and only once the degenerate-surface register's area-basis exclusion
+is signed for the national line and in force on the build's review date:
+:func:`prepare_national_build` refuses otherwise before it pins the input or
+does any engine work (microcosm#931).
 ``tools/build_uk_rowwise_candidate.py`` and ``tools/build_uk_full.py`` are
 stubs over :func:`main`, so every UK line is built by this one command.
 
@@ -35,7 +49,9 @@ read a rowwise-tool build.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
+import io
 import json
 import sys
 import tempfile
@@ -44,7 +60,6 @@ import uuid
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, date, datetime
-from importlib.resources import files
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
@@ -73,7 +88,6 @@ from microcosm.graph import (
     run_graph,
 )
 from microcosm.graph.canonical import canonical_json
-from microcosm.graph.codecs import load_raw_bytes
 
 from ..logbook_adoption import (
     AttemptState,
@@ -100,19 +114,7 @@ from ..staging_dataset import (
     handover_record,
     refresh_sha256sums_entry,
 )
-from . import country_adapter, national_role
-from .atomic_area_support import (
-    IDENTITY_COLUMN,
-    uk_atomic_assignment_definition,
-)
-from .atomic_area_support import (
-    SOURCES as ATOMIC_SUPPORT_SOURCES,
-)
-from .atomic_area_support import (
-    SYSTEMS as ATOMIC_SUPPORT_SYSTEMS,
-)
-from .brma_area_layer import BRMA_AREA_LAYER_SOURCE
-from .brma_area_layer import METHOD_VERSION as BRMA_AREA_LAYER_METHOD
+from . import national_role
 from .calibration_run import (
     _write_json,
     load_bound_spine_checkpoint,
@@ -121,6 +123,7 @@ from .calibration_run import (
     spine_provenance_from_sidecar,
 )
 from .chronicle_feed import load_uk_chronicle_feed
+from .country_adapter import uk_spine_geography_binding_failures
 from .dataset_size import (
     UK_SIZE_L2_ANCHORS,
     UK_SIZE_L2_BASES,
@@ -158,13 +161,6 @@ from .graph_national import (
     solved_national_registry,
     uk_national_graph,
 )
-from .graph_population import (
-    BRMA_LOCALISATION_MODES,
-    GEOGRAPHY_ASSIGNMENTS,
-    PRIVATE_RENT_LOCALISATION_MODES,
-    PROPERTY_LOCALISATION_MODES,
-    RFDR_LOCALISATION_MODES,
-)
 from .graph_targets import TARGET_SELECTION_TYPE, registry_from_payload
 from .graph_terminal import (
     FULL_DIAGNOSTICS_CSV_TYPE,
@@ -196,21 +192,6 @@ from .national_frame import (
 )
 from .national_sampling import UK_SAMPLE_RUNG_TOKENS
 from .orrery_contract import persist_uk_run_evidence, save_uk_graph_schema
-from .private_rent_localisation import COUNTS_SOURCE as PRIVATE_RENTER_COUNTS_SOURCE
-from .private_rent_localisation import METHOD_VERSION as PRIVATE_RENT_METHOD
-from .private_rent_localisation import QUANTILES_SOURCE as RENT_QUANTILES_SOURCE
-from .property_localisation import (
-    BAND_MIX_SOURCE,
-    QUANTILES_SOURCE,
-    SCOTLAND_BAND_MIX_RESOURCE,
-    SCOTLAND_BAND_MIX_SOURCE,
-    SUPPORT_STRATUM_LOWER,
-)
-from .property_localisation import (
-    METHOD_VERSION as PROPERTY_LOCALISATION_METHOD,
-)
-from .rfdr_area_layer import METHOD_VERSION as RFDR_AREA_LAYER_METHOD
-from .rfdr_area_layer import RFDR_AREA_LAYER_SOURCE
 from .rowwise_cli import (
     MANIFEST_FILENAME,
     REPOSITORY,
@@ -257,6 +238,13 @@ from .rowwise_staging import (
 )
 from .size_checkpoint import uk_size_checkpoint_identity
 from .solve_scope import UK_GATE_ONLY_RESOURCES
+from .spine_posture import (
+    require_geography_first_spine,
+    require_national_exclusion_signed,
+    require_national_spine,
+    spec_roster,
+    stage_roster,
+)
 from .staging import UK_STAGED_DATASET_REPOSITORY, UK_STAGING_REPOSITORY
 from .weight_year import uk_dataset_year_frame
 
@@ -284,11 +272,6 @@ __all__ = [
 #: evidence materialization names it. The package binds its bytes; the signed
 #: local battery report takes the posture's ``*.local_gates.json`` name.
 FULL_GATE_REPORT_FILENAME = "uk.full.gates.calibrated.gate_report.json"
-
-#: CLI labels for the three UK atomic-area support systems, in SYSTEMS order.
-_SUPPORT_ARGUMENTS = dict(
-    zip(ATOMIC_SUPPORT_SYSTEMS, ("ew", "scotland", "ni"), strict=True)
-)
 
 
 def _run_graph_with_progress(compiled, *, retain_populations, execution=None, **kwargs):
@@ -486,120 +469,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--ladder-sha256", type=sha256_argument)
     parser.add_argument(
-        "--geography-assignment",
-        choices=GEOGRAPHY_ASSIGNMENTS,
-        default="atomic",
-        help=(
-            "Dense role: atomic (default) is the identity-keyed single-stage "
-            "draw on the three UK atomic-area supports; legacy is the sequential "
-            "ladder draw, for measurement builds only."
-        ),
-    )
-    for system, label in _SUPPORT_ARGUMENTS.items():
-        parser.add_argument(
-            f"--atomic-support-{label}",
-            type=Path,
-            dest=f"atomic_support_{label}",
-            help=f"Atomic-area support NPZ for {system} (dense role, required with atomic).",
-        )
-        parser.add_argument(
-            f"--atomic-support-sha256-{label}",
-            type=sha256_argument,
-            dest=f"atomic_support_sha256_{label}",
-        )
-    parser.add_argument(
-        "--property-localisation",
-        choices=PROPERTY_LOCALISATION_MODES,
-        default="price_paid",
-        help=(
-            "Dense role: price_paid (default) reads each owner clone's home value "
-            "off its assigned constituency's uprated Land Registry sale distribution "
-            "and its council-tax band off its LSOA's VOA mix (microcosm#1240), or a "
-            "Scottish owner clone's off its council area's CTAXBASE mix "
-            "(microcosm#1095 B12); none "
-            "keeps the spine's values and bands on every clone, for measurement "
-            "builds only."
-        ),
-    )
-    for name, label in _PROPERTY_RESOURCE_ARGUMENTS.items():
-        parser.add_argument(
-            f"--{label}",
-            type=Path,
-            dest=label.replace("-", "_"),
-            default=None,
-            help=(
-                f"Resource bytes for the graph source {name!r} (default: the "
-                "committed UK package resource)."
-            ),
-        )
-        parser.add_argument(
-            f"--{label}-sha256",
-            type=sha256_argument,
-            dest=f"{label.replace('-', '_')}_sha256",
-        )
-    parser.add_argument(
-        "--brma-localisation",
-        choices=BRMA_LOCALISATION_MODES,
-        default="area",
-        help=(
-            "Dense role: area (default) reads each placed Great Britain clone's BRMA "
-            "off its assigned LSOA or output area (microcosm#1262); none keeps the "
-            "spine's regional draw on every clone, for measurement builds only."
-        ),
-    )
-    parser.add_argument(
-        "--brma-area-layer",
-        type=Path,
-        default=None,
-        help=(
-            "Resource bytes for the graph source 'uk_brma_area_layer' (default: the "
-            "committed UK package resource)."
-        ),
-    )
-    parser.add_argument("--brma-area-layer-sha256", type=sha256_argument)
-    parser.add_argument(
-        "--rfdr-localisation",
-        choices=RFDR_LOCALISATION_MODES,
-        default=None,
-        help=(
-            "Dense role: area (the default with the atomic assignment) sets each "
-            "placed household's Rural Fuel Duty Relief flag off its assigned output "
-            "area (microcosm#1418); none (the default with the legacy assignment) "
-            "leaves the engine's default, for measurement builds only."
-        ),
-    )
-    parser.add_argument(
-        "--rfdr-area-layer",
-        type=Path,
-        default=None,
-        help=(
-            "Resource bytes for the graph source 'uk_rfdr_area_layer' (default: the "
-            "committed UK package resource)."
-        ),
-    )
-    parser.add_argument("--rfdr-area-layer-sha256", type=sha256_argument)
-    parser.add_argument(
-        "--private-rent-localisation",
-        choices=PRIVATE_RENT_LOCALISATION_MODES,
-        default=None,
-        help=(
-            "Dense role: brma_list (the default with area BRMAs) re-draws each Great "
-            "Britain private renter's rent from its assigned BRMA's list of rents at "
-            "its FRS rank and region level (microcosm#1262); none (the default "
-            "without them) keeps the spine's rents, for measurement builds only."
-        ),
-    )
-    parser.add_argument(
-        "--brma-rent-quantiles",
-        type=Path,
-        default=None,
-        help=(
-            "Resource bytes for the graph source 'uk_brma_rent_quantiles' (default: "
-            "the committed UK package resource)."
-        ),
-    )
-    parser.add_argument("--brma-rent-quantiles-sha256", type=sha256_argument)
-    parser.add_argument(
         "--ledger-facts",
         type=Path,
         help="Complete Chronicle artifact directory matching the committed feed pins.",
@@ -630,7 +499,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=_target_geographies,
         default=None,
         metavar="all|country,...",
-        help="Default all: calibrate all applicable geographies together. country is an explicit filter in this same build; brma (Scotland's BRMA rent rows) needs area BRMAs.",
+        help="Default all: calibrate all applicable geographies together. country is an explicit filter in this same build; brma (Scotland's BRMA rent rows) binds on the BRMAs the spine reads off its areas.",
     )
     parser.add_argument(
         "--households-only",
@@ -640,12 +509,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--n-clones",
         type=int,
-        help="Geographic pool copies K; defaults to the role's doctrine clone count.",
+        help=(
+            "Dense role: an assertion of the bound spine's geographic clone "
+            "count K, which the build takes from the spine; refused where it "
+            "differs from the spine's, and with --candidate-clone-counts."
+        ),
     )
     parser.add_argument(
         "--candidate-clone-counts",
         type=candidate_clone_counts_argument,
-        help="Dry-run only comma-separated candidate clone counts.",
+        help=(
+            "Dry-run only, with --spine-request: comma-separated candidate "
+            "clone counts, each planned as the spine request's --n-clones."
+        ),
     )
     parser.add_argument(
         "--dataset-households",
@@ -656,10 +532,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--sample-fraction",
         type=float,
         default=1.0,
-        help="Optional pool sampling before cloning. Cannot resample an already sampled source spine.",
+        help=(
+            "Refused other than 1.0: the dense line takes its sampling from "
+            "the spine it binds; sample the spine at its own build."
+        ),
     )
     parser.add_argument(
-        "--sample-seed", type=int, help="Dense role only; defaults to the spine seed."
+        "--sample-seed",
+        type=int,
+        help="Refused: the dense line takes its sampling seed from its spine.",
     )
     parser.add_argument("--seed", type=int, help="Defaults to the role's seed.")
     parser.add_argument("--selection-seed", type=int)
@@ -759,14 +640,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
         help="Defaults to the role's doctrine; any other admitted rule is a receipted override.",
     )
-    parser.add_argument("--engine-blocks", type=int, default=1)
+    parser.add_argument(
+        "--engine-blocks",
+        type=int,
+        default=1,
+        help=(
+            "Dense role: engine resolution blocks, 1 (the default) or one per "
+            "geographic clone, the spine's K; any other count is refused."
+        ),
+    )
     parser.add_argument("--source-year", type=int)
     parser.add_argument("--calibration-year", type=int)
-    parser.add_argument("--source-lineage-modulus", type=int)
-    parser.add_argument(
-        "--expected-constituency-vintage",
-        help="Dense role only: constituency vintage required from the ladder.",
-    )
     parser.add_argument(
         "--rotated-holdout",
         action="store_true",
@@ -788,7 +672,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "block. Refused with --release-candidate."
         ),
     )
-    parser.add_argument("--release-candidate", action="store_true")
+    parser.add_argument(
+        "--release-candidate",
+        action="store_true",
+        help=(
+            "Dense role: certify a release candidate. The spine must be "
+            "unsampled, at the doctrine's "
+            f"{UK_ROWWISE_DENSE_POSTURE.clone_count} geographic clones, built "
+            "as a release candidate, with a release's geography binding "
+            "(microcosm#931)."
+        ),
+    )
     parser.add_argument(
         "--review-date",
         type=date.fromisoformat,
@@ -954,274 +848,6 @@ def _input_record(path: Path, pin: dict, *, pinned: bool) -> dict:
     }
 
 
-#: Graph source name to command-line label of the property-localisation
-#: resources (microcosm#1240; the Scottish band mix, microcosm#1095 B12). Each
-#: defaults to the committed package file.
-_PROPERTY_RESOURCE_ARGUMENTS = {
-    QUANTILES_SOURCE: "price-paid-quantiles",
-    BAND_MIX_SOURCE: "voa-band-mix",
-    SCOTLAND_BAND_MIX_SOURCE: "scotgov-band-mix",
-}
-_PROPERTY_RESOURCE_FILES = {
-    QUANTILES_SOURCE: "high_value_home_value_knots.json",
-    BAND_MIX_SOURCE: "voa_council_tax_band_mix_lsoa.json",
-    SCOTLAND_BAND_MIX_SOURCE: SCOTLAND_BAND_MIX_RESOURCE,
-}
-
-
-def _packaged_property_resource(name: str) -> Path:
-    return Path(
-        str(files("microcosm.build.uk").joinpath(_PROPERTY_RESOURCE_FILES[name]))
-    )
-
-
-def _prepare_property_localisation(
-    args: argparse.Namespace, pins: dict, sources: dict[str, Path]
-) -> dict:
-    """Pin the knots and band-mix resources and record the localisation binding.
-
-    Each resource enters ``pins`` under its graph source name, so the Logbook
-    input-pins digest, the candidate identity digest and the size-checkpoint
-    identity all bind it. A release candidate must build on the committed
-    package resources, whatever path the operator named: the committed bytes
-    are the reviewed ones. ``none`` binds nothing here.
-    """
-    mode = getattr(args, "property_localisation", "none")
-    if mode == "none":
-        return {"mode": "none"}
-    resource_pins = {}
-    for name, label in _PROPERTY_RESOURCE_ARGUMENTS.items():
-        attribute = label.replace("-", "_")
-        path = getattr(args, attribute, None) or _packaged_property_resource(name)
-        pin = _pin(path, getattr(args, f"{attribute}_sha256", None))
-        if getattr(args, "release_candidate", False):
-            committed = _pin(_packaged_property_resource(name))
-            if pin != committed:
-                raise ValueError(
-                    f"--release-candidate requires the committed {name!r} resource: "
-                    f"sha256 {pin['sha256']} is not the package's {committed['sha256']}."
-                )
-        pins[name] = pin
-        resource_pins[name] = pin
-        sources[name] = path
-    return {
-        "mode": mode,
-        "method": PROPERTY_LOCALISATION_METHOD,
-        "support_stratum_lower": SUPPORT_STRATUM_LOWER,
-        "resource_pins": resource_pins,
-    }
-
-
-def _prepare_brma_localisation(
-    args: argparse.Namespace, pins: dict, sources: dict[str, Path]
-) -> dict:
-    """Pin the area-to-BRMA layer and record the BRMA binding (microcosm#1262).
-
-    The layer enters ``pins`` under its graph source name, as the property
-    resources do, and a release candidate must build on the committed bytes.
-    ``none`` binds nothing here.
-    """
-    mode = getattr(args, "brma_localisation", "none")
-    if mode == "none":
-        if getattr(args, "brma_area_layer", None) or getattr(
-            args, "brma_area_layer_sha256", None
-        ):
-            raise ValueError(
-                "--brma-area-layer and --brma-area-layer-sha256 need "
-                "--brma-localisation area: without it nothing reads the layer."
-            )
-        return {"mode": "none"}
-    committed_path = Path(
-        str(files("microcosm.build.uk").joinpath("brma_area_layer.json"))
-    )
-    path = getattr(args, "brma_area_layer", None) or committed_path
-    pin = _pin(path, getattr(args, "brma_area_layer_sha256", None))
-    if getattr(args, "release_candidate", False):
-        committed = _pin(committed_path)
-        if pin != committed:
-            raise ValueError(
-                "--release-candidate requires the committed BRMA area layer: "
-                f"sha256 {pin['sha256']} is not the package's {committed['sha256']}."
-            )
-    pins[BRMA_AREA_LAYER_SOURCE] = pin
-    sources[BRMA_AREA_LAYER_SOURCE] = path
-    return {
-        "mode": mode,
-        "method": BRMA_AREA_LAYER_METHOD,
-        "resource_pins": {BRMA_AREA_LAYER_SOURCE: pin},
-    }
-
-
-def _prepare_rfdr_localisation(
-    args: argparse.Namespace, pins: dict, sources: dict[str, Path]
-) -> dict:
-    """Pin the Rural Fuel Duty Relief area layer and record its binding.
-
-    As with the BRMA layer, the layer enters ``pins`` under its graph source
-    name and a release candidate must build on the committed bytes
-    (microcosm#1418). ``none`` binds nothing here.
-    """
-    mode = getattr(args, "rfdr_localisation", None)
-    if mode is None:
-        # Unset, the mode follows the geography assignment, as the build config
-        # resolves it (the independent review of microcosm#1420).
-        mode = (
-            "area"
-            if getattr(args, "geography_assignment", "atomic") == "atomic"
-            else "none"
-        )
-        args.rfdr_localisation = mode
-    if mode == "none":
-        if getattr(args, "rfdr_area_layer", None) or getattr(
-            args, "rfdr_area_layer_sha256", None
-        ):
-            raise ValueError(
-                "--rfdr-area-layer and --rfdr-area-layer-sha256 need "
-                "--rfdr-localisation area: without it nothing reads the layer."
-            )
-        return {"mode": "none"}
-    committed_path = Path(
-        str(files("microcosm.build.uk").joinpath("rfdr_area_layer.json"))
-    )
-    path = getattr(args, "rfdr_area_layer", None) or committed_path
-    pin = _pin(path, getattr(args, "rfdr_area_layer_sha256", None))
-    if getattr(args, "release_candidate", False):
-        committed = _pin(committed_path)
-        if pin != committed:
-            raise ValueError(
-                "--release-candidate requires the committed RFDR area layer: "
-                f"sha256 {pin['sha256']} is not the package's {committed['sha256']}."
-            )
-    pins[RFDR_AREA_LAYER_SOURCE] = pin
-    sources[RFDR_AREA_LAYER_SOURCE] = path
-    return {
-        "mode": mode,
-        "method": RFDR_AREA_LAYER_METHOD,
-        "resource_pins": {RFDR_AREA_LAYER_SOURCE: pin},
-    }
-
-
-#: Graph source name to committed package file of the private-rent node's
-#: resources (microcosm#1262). Only the quantiles take an override.
-_PRIVATE_RENT_RESOURCE_FILES = {
-    RENT_QUANTILES_SOURCE: "brma_rent_quantiles.json",
-    PRIVATE_RENTER_COUNTS_SOURCE: "brma_private_rented_households.json",
-}
-
-
-def _prepare_private_rent_localisation(
-    args: argparse.Namespace, pins: dict, sources: dict[str, Path]
-) -> dict:
-    """Pin the rent quantiles and census counts and record the rent binding.
-
-    As with the property resources, each enters ``pins`` under its graph source
-    name and a release candidate must build on the committed bytes. ``none``
-    binds nothing here.
-    """
-    mode = getattr(args, "private_rent_localisation", None)
-    if mode is None:
-        # Unset, the mode follows the BRMA mode, as the build config resolves it.
-        mode = (
-            "brma_list"
-            if getattr(args, "brma_localisation", "none") == "area"
-            else "none"
-        )
-        args.private_rent_localisation = mode
-    if mode == "none":
-        if getattr(args, "brma_rent_quantiles", None) or getattr(
-            args, "brma_rent_quantiles_sha256", None
-        ):
-            raise ValueError(
-                "--brma-rent-quantiles and --brma-rent-quantiles-sha256 need "
-                "--private-rent-localisation brma_list: without it nothing "
-                "reads the quantiles."
-            )
-        return {"mode": "none"}
-    resource_pins = {}
-    for name, filename in _PRIVATE_RENT_RESOURCE_FILES.items():
-        committed_path = Path(str(files("microcosm.build.uk").joinpath(filename)))
-        override = (
-            getattr(args, "brma_rent_quantiles", None)
-            if name == RENT_QUANTILES_SOURCE
-            else None
-        )
-        expected = (
-            getattr(args, "brma_rent_quantiles_sha256", None)
-            if name == RENT_QUANTILES_SOURCE
-            else None
-        )
-        path = override or committed_path
-        pin = _pin(path, expected)
-        if getattr(args, "release_candidate", False):
-            committed = _pin(committed_path)
-            if pin != committed:
-                raise ValueError(
-                    f"--release-candidate requires the committed {name!r} resource: "
-                    f"sha256 {pin['sha256']} is not the package's {committed['sha256']}."
-                )
-        pins[name] = pin
-        resource_pins[name] = pin
-        sources[name] = path
-    return {
-        "mode": mode,
-        "method": PRIVATE_RENT_METHOD,
-        "resource_pins": resource_pins,
-    }
-
-
-def _prepare_geography(
-    args: argparse.Namespace, pins: dict, sources: dict[str, Path]
-) -> tuple[dict | None, dict]:
-    """Pin the three supports and declare the identity-keyed assignment.
-
-    The definition is the UK adapter's declaration over the admitted support
-    bytes at the build seed; its sha256 (and every keyed draw) moves iff a
-    support artifact or the seed moves. Each support enters ``pins`` as a
-    flat pin role named by its graph source, so the Logbook input-pins
-    digest, the candidate identity digest and the size-checkpoint identity
-    all bind it. Legacy builds bind nothing here.
-    """
-    if args.geography_assignment != "atomic":
-        return None, {"assignment": "legacy"}
-    # A release candidate builds on the registered supports (sources.yaml,
-    # the provenance register): the operator's pin proves the bytes are the
-    # ones requested, the register proves they are the ones reviewed.
-    register = (
-        country_adapter.uk_atomic_support_register()
-        if getattr(args, "release_candidate", False)
-        else None
-    )
-    support_pins = {}
-    payloads = {}
-    for system, label in _SUPPORT_ARGUMENTS.items():
-        path = getattr(args, f"atomic_support_{label}")
-        if path is None:
-            raise ValueError(
-                "Atomic geography assignment requires --atomic-support-ew, "
-                "--atomic-support-scotland and --atomic-support-ni."
-            )
-        pin = _pin(path, getattr(args, f"atomic_support_sha256_{label}"))
-        if register is not None and pin != register[system]:
-            raise ValueError(
-                f"--release-candidate requires the registered atomic-area support "
-                f"for --atomic-support-{label}: sha256 {pin['sha256']} "
-                f"({pin['size_bytes']} bytes) is not the sources.yaml row "
-                f"{register[system]['sha256']} ({register[system]['size_bytes']} bytes)."
-            )
-        pins[ATOMIC_SUPPORT_SOURCES[system]] = pin
-        support_pins[system] = pin
-        payloads[system] = load_raw_bytes(path)
-        sources[ATOMIC_SUPPORT_SOURCES[system]] = path
-    definition = uk_atomic_assignment_definition(payloads, seed=args.seed)
-    return definition, {
-        "assignment": "atomic",
-        "definition_sha256": hashlib.sha256(canonical_json(definition)).hexdigest(),
-        "support_pins": support_pins,
-        "identity": IDENTITY_COLUMN,
-        "stream": list(definition["stream"]),
-    }
-
-
 @dataclass(frozen=True)
 class PreparedUKFullBuild:
     full: UKFullGraph
@@ -1286,6 +912,291 @@ def _require_gate_kernel_completed(manifest, node_id: str) -> None:
             )
 
 
+def _read_spine_sidecar(path: Path) -> dict:
+    """A bound spine's build sidecar as a JSON object.
+
+    The refusals are ``load_bound_spine_checkpoint``'s, word for word, so a
+    sidecar that cannot be read is refused alike whichever reader meets it
+    first.
+    """
+    if not path.is_file():
+        raise ValueError(f"input H5 build sidecar absent: {path}")
+    try:
+        sidecar = json.loads(path.read_bytes())
+    except (json.JSONDecodeError, UnicodeError) as exc:
+        raise ValueError(f"input H5 build sidecar is invalid JSON: {path}") from exc
+    if not isinstance(sidecar, dict):
+        raise ValueError(f"input H5 build sidecar must be a JSON object: {path}")
+    return sidecar
+
+
+def _spine_request_roster() -> tuple[tuple[str, ...], dict[str, tuple[str, ...]]]:
+    """The stage names and operation kinds a spine request runs.
+
+    Every request runs the packaged UK spec's whole roster: no spine argument
+    selects stages, and the spine build derives its roster from that spec,
+    refusing a spine graph that disagrees with it. So the roster is read off
+    the spec, without parsing the request or composing its spine.
+    """
+    from microcosm.build.country_spec import load_country_spec
+
+    return spec_roster(load_country_spec("uk"))
+
+
+def _require_geography_first_spine(args: argparse.Namespace) -> None:
+    """Refuse a spine that does not assign areas, before any input is pinned.
+
+    The dense line builds only on a geography-first spine (microcosm#931;
+    :mod:`~microcosm.build.uk_runtime.spine_posture`). A bound spine
+    (``--input-h5``) is read off its build sidecar: the stages it ran, their
+    operation kinds and its ``geography`` block. A spine request's stage names
+    and operation kinds are read off the packaged spec it runs
+    (:func:`_spine_request_roster`); its spine runs inside the dense build's
+    own graph, so it has no block to read. The check only refuses: it reads
+    the sidecar before the spine is pinned, the bound checkpoint is still
+    authenticated after it, and :func:`prepare_full_build` checks the roster
+    it then binds again, the authenticated sidecar's or the composed spine's.
+    """
+    if args.input_h5 is not None:
+        sidecar = _read_spine_sidecar(
+            Path(args.input_sidecar or args.input_h5.with_suffix(".build.json"))
+        )
+        require_geography_first_spine(
+            sidecar.get("stages"), sidecar.get("operations"), sidecar.get("geography")
+        )
+    else:
+        stages, operations = _spine_request_roster()
+        require_geography_first_spine(stages, operations, from_sidecar=False)
+
+
+def _spine_request_arguments(args: argparse.Namespace) -> list[str]:
+    """The spine request's command arguments, as the spine build parses them.
+
+    ``--spine-h5`` is an output control of the checkpoint command: where the
+    request names none, one under ``--out`` is added. Preparation uses it only
+    for path configuration; the full graph writes its own H5.
+    """
+    raw_arguments = json.loads(args.spine_request.read_text())
+    if not isinstance(raw_arguments, list) or not all(
+        isinstance(x, str) for x in raw_arguments
+    ):
+        raise ValueError("The spine request must be a JSON array of command arguments.")
+    if "--spine-h5" not in raw_arguments and not any(
+        x.startswith("--spine-h5=") for x in raw_arguments
+    ):
+        raw_arguments += ["--spine-h5", str(args.out / "spine.h5")]
+    return raw_arguments
+
+
+def _spine_rung_token(args: argparse.Namespace) -> str:
+    """The rung token a dense attempt's build id carries: its spine's.
+
+    The id is minted before preparation reads the spine, so the rung is read
+    ahead, unauthenticated and for the label only: off the bound spine's build
+    sidecar (``--input-h5``) or the spine request's ``--sample-fraction``.
+    Where this early read cannot place the spine, the label is f100, and
+    preparation then reports the real error; it also refuses an attempt whose
+    label is not its bound spine's rung (microcosm#931).
+    """
+    fraction: object = 1.0
+    try:
+        if args.input_h5 is not None:
+            sidecar = _read_spine_sidecar(
+                Path(args.input_sidecar or args.input_h5.with_suffix(".build.json"))
+            )
+            sampling = sidecar.get("sampling") or {}
+            if isinstance(sampling, Mapping):
+                fraction = float(sampling.get("fraction", 1.0))
+        elif args.spine_request is not None:
+            from .spine_build import parse_uk_spine_args
+
+            # The spine's own parser, quietly: a request it refuses exits
+            # through argparse, and preparation reports that refusal.
+            with contextlib.redirect_stderr(io.StringIO()):
+                fraction = float(
+                    parse_uk_spine_args(_spine_request_arguments(args)).sample_fraction
+                )
+    except (OSError, TypeError, ValueError, SystemExit):
+        fraction = 1.0
+    return UK_SAMPLE_RUNG_TOKENS.get(fraction, UK_SAMPLE_RUNG_TOKENS[1.0])
+
+
+def _spine_sampling(fraction: float, seed: object) -> dict[str, object]:
+    """A spine's sampling as the dense build binds it: its rung, and the seed
+    it drew with (none at f100, where the root draws nothing).
+
+    A fraction that is not a scale-ladder rung is refused here, before the
+    run records it, naming the rungs only (microcosm#931).
+    """
+    fraction = float(fraction)
+    if fraction not in UK_SAMPLE_RUNG_TOKENS:
+        raise ValueError(
+            "The spine's sampling fraction is not a scale-ladder rung (one of "
+            + ", ".join(sorted(UK_SAMPLE_RUNG_TOKENS.values()))
+            + "): the dense line's rung is its spine's (microcosm#931)."
+        )
+    sampled = fraction != 1.0
+    return {
+        "fraction": fraction,
+        "seed": int(seed) if sampled and seed is not None else None,
+        "sampled": sampled,
+        "rung_token": UK_SAMPLE_RUNG_TOKENS[fraction],
+    }
+
+
+def _bound_spine_binding(sidecar: Mapping[str, object]) -> dict[str, object]:
+    """What a bound spine's authenticated sidecar binds the dense build to.
+
+    Its geographic clone count K (one where a sidecar predates the record, and
+    held to the frame's by the checkpoint authentication), its sampling (its
+    root's receipt, none at f100), its release posture and its geography block
+    with K beside it (microcosm#931).
+    """
+    clones = int(sidecar.get("geographic_clone_count", 1))
+    sampling = sidecar.get("sampling") or {}
+    return {
+        "geographic_clone_count": clones,
+        "sampling": _spine_sampling(
+            sampling.get("fraction", 1.0), sampling.get("seed")
+        ),
+        "release_posture": sidecar.get("release_posture"),
+        "geography": {
+            **dict(sidecar.get("geography") or {}),
+            "geographic_clone_count": clones,
+        },
+    }
+
+
+def _requested_spine_binding(
+    raw: argparse.Namespace, geography: Mapping[str, object] | None
+) -> dict[str, object]:
+    """What a spine request binds the dense build to: the request's
+    ``--n-clones``, ``--sample-fraction`` and ``--sample-seed``, the release
+    posture the spine build's sidecar writer gives the same request, and the
+    ``geography`` block its preparation composed, through the helper the
+    sidecar writer calls (``country_adapter.uk_spine_geography_binding``),
+    with K beside it (microcosm#931). The in-graph spine writes no sidecar,
+    so its preparation's block stands in for one: a spine whose roster runs
+    no area draw composes none, and its binding carries K alone."""
+    clones = int(raw.n_clones)
+    return {
+        "geographic_clone_count": clones,
+        "sampling": _spine_sampling(raw.sample_fraction, raw.sample_seed),
+        "release_posture": (
+            "non_release_smoke"
+            if raw.smoke
+            else "release_candidate"
+            if raw.release_candidate
+            else "development"
+        ),
+        "geography": {**dict(geography or {}), "geographic_clone_count": clones},
+    }
+
+
+def _without_spine_option(arguments: list[str], flag: str) -> list[str]:
+    """A spine request's arguments without ``flag`` and its value."""
+    kept: list[str] = []
+    skip = False
+    for item in arguments:
+        if skip:
+            skip = False
+        elif item == flag:
+            skip = True
+        elif not item.startswith(f"{flag}="):
+            kept.append(item)
+    return kept
+
+
+def _bind_spine_arguments(
+    args: argparse.Namespace,
+    binding: Mapping[str, object],
+    *,
+    requested: bool = False,
+) -> None:
+    """Make the run's clone count and sampling the bound spine's (microcosm#931).
+
+    The dense line takes K, the sampling rung and its seed from the spine it
+    binds, so the recorded run parameters, the identity digest, the size
+    checkpoint's identity and the Logbook rung are the spine's. An explicit
+    ``--n-clones`` is an assertion of the spine's K: one that differs is
+    refused, naming both K, and on a spine request (``requested``) pointing
+    at the request's own ``--n-clones``. ``--engine-blocks`` must be one or
+    the spine's K, and is refused otherwise, naming K.
+    """
+    clones = int(binding["geographic_clone_count"])
+    explicit = getattr(args, "_explicit_arguments", frozenset())
+    if "n_clones" in explicit and args.n_clones != clones:
+        if requested:
+            raise ValueError(
+                f"--n-clones {args.n_clones} differs from the spine request's "
+                f"--n-clones K = {clones}: the dense line takes K from its "
+                "spine; set the clone count in the spine request (microcosm#931)."
+            )
+        raise ValueError(
+            f"--n-clones {args.n_clones} differs from the bound spine's "
+            f"geographic clone count K = {clones}: the dense line takes K "
+            "from its spine (microcosm#931)."
+        )
+    if args.engine_blocks not in {1, clones}:
+        raise ValueError(
+            "--engine-blocks is neither one nor the spine's geographic clone "
+            f"count K = {clones}: the engine resolves the pool in one block or "
+            "one block per clone (microcosm#931)."
+        )
+    sampling = binding["sampling"]
+    args.n_clones = clones
+    args.sample_fraction = float(sampling["fraction"])
+    if sampling["seed"] is not None:
+        args.sample_seed = int(sampling["seed"])
+
+
+def _require_release_candidate_spine(
+    binding: Mapping[str, object], *, clone_count: int
+) -> None:
+    """Refuse a release candidate on a spine a release cannot build on.
+
+    A dense release builds on a spine of the doctrine's ``clone_count``
+    geographic clones, which the spine build made as a release candidate (its
+    ``release_posture``), whose areas are the release line's: its geography
+    binding passes
+    :func:`~microcosm.build.uk_runtime.country_adapter.uk_spine_geography_binding_failures`
+    (microcosm#931). A sampled spine is refused before this, where its rung is
+    read. A spine request's binding carries the block its preparation
+    composed, through the helper the sidecar writer calls, so both routes are
+    held to the same check; a spine that runs no area draw, a bound spine
+    built before its area stages among them, records no block, and a release
+    candidate on one is refused here, as recording no geography binding. The
+    refusal names every failure, with K, never a value.
+    """
+    clones = int(binding["geographic_clone_count"])
+    failures: list[str] = []
+    if clones != clone_count:
+        failures.append(
+            f"its geographic clone count is K = {clones}, not the doctrine's "
+            f"K = {clone_count}"
+        )
+    if binding.get("release_posture") != "release_candidate":
+        failures.append("it was not built as a release candidate")
+    geography = binding.get("geography") or {}
+    if set(geography) <= {"geographic_clone_count"}:
+        failures.append(
+            "it records no geography binding (a spine that runs no area draw "
+            "writes none)"
+        )
+    else:
+        failures.extend(
+            f"its geography binding's {failure}"
+            for failure in uk_spine_geography_binding_failures(
+                geography, clone_count=clones
+            )
+        )
+    if failures:
+        raise ValueError(
+            "--release-candidate builds only on a release-candidate spine "
+            "(microcosm#931): " + "; ".join(failures) + "."
+        )
+
+
 def prepare_full_build(
     args: argparse.Namespace, *, telemetry=None, attempt: dict | None = None
 ) -> PreparedUKFullBuild:
@@ -1301,6 +1212,9 @@ def prepare_full_build(
 
     # The engine freeze, before any input is read (microcosm#1095).
     assert_installed_engine_is_pinned()
+    # The spine's posture, before any input is pinned or any graph composed:
+    # the dense line builds only on a spine that assigns areas (microcosm#931).
+    _require_geography_first_spine(args)
     posture = posture_of(args)
     release = load_uk_frs_release()
     pins = {"ladder": _pin(args.ladder, args.ladder_sha256)}
@@ -1328,11 +1242,17 @@ def prepare_full_build(
             gate_report_path=gates_path,
             input_sha256=pins["dataset"]["sha256"],
         )
+        # The authenticated sidecar is the one the build binds, so its roster
+        # is checked again: one changed since the early read is refused too.
+        require_geography_first_spine(
+            sidecar.get("stages"), sidecar.get("operations"), sidecar.get("geography")
+        )
         spine = bound_spine_graph(frame)
         endpoint = "uk.full.spine_checkpoint"
-        weight_kind = frame.weights_for("household").kind.value
         time_period = str(frame.metadata["time_period"])
-        source_fraction = float((sidecar.get("sampling") or {}).get("fraction", 1.0))
+        # The checkpoint authentication held the sidecar's clone count to the
+        # frame's, so either is the spine's K.
+        spine_binding = _bound_spine_binding(sidecar)
         stages = tuple(sidecar["stages"])
         _rules_engine()  # the uk extra must be installed; the identity is provenance
         engine_identity = hashlib.sha256(
@@ -1348,29 +1268,30 @@ def prepare_full_build(
             "spine_provenance", endpoint, "spine_provenance", SPINE_PROVENANCE_TYPE
         )
     else:
-        raw_arguments = json.loads(args.spine_request.read_text())
-        if not isinstance(raw_arguments, list) or not all(
-            isinstance(x, str) for x in raw_arguments
-        ):
-            raise ValueError(
-                "The spine request must be a JSON array of command arguments."
-            )
-        # --spine-h5 is an output control of the checkpoint command. Preparation
-        # uses it only for path configuration; the full graph writes its own H5.
-        if "--spine-h5" not in raw_arguments and not any(
-            x.startswith("--spine-h5=") for x in raw_arguments
-        ):
-            raw_arguments += ["--spine-h5", str(args.out / "spine.h5")]
+        raw_arguments = _spine_request_arguments(args)
+        # A dry run over candidate clone counts plans each one as the spine
+        # request's own K (microcosm#931).
+        candidate = getattr(args, "_candidate_clone_count", None)
+        if candidate is not None:
+            raw_arguments = [
+                *_without_spine_option(raw_arguments, "--n-clones"),
+                "--n-clones",
+                str(int(candidate)),
+            ]
         raw = parse_uk_spine_args(raw_arguments)
         if args.release_candidate:
             raw.release_candidate = True
         prepared = prepare_uk_spine_execution(raw)
+        # The composed spine is the one the build runs, so its own roster is
+        # checked again: the early check read the packaged spec's.
+        require_geography_first_spine(
+            *stage_roster(prepared.stages), from_sidecar=False
+        )
         spine, kernels = prepared.graph, prepared.kernels
         sources.update(prepared.sources)
         endpoint = uk_spine_endpoint(spine).population
-        weight_kind = "importance"
         time_period = prepared.frs_release.time_period
-        source_fraction = raw.sample_fraction
+        spine_binding = _requested_spine_binding(raw, prepared.geography)
         stages = prepared.stage_names
         engine_identity = prepared.engine_identity
         inputs["dataset"] = {
@@ -1380,13 +1301,21 @@ def prepare_full_build(
             "pin_verified": False,
             "spine_request": str(args.spine_request.resolve()),
         }
-    # The atomic-area supports are admitted after the spine so a spine
-    # refusal (sidecar, digest) is reported before a support one.
-    definition, geography_binding = _prepare_geography(args, pins, sources)
-    property_binding = _prepare_property_localisation(args, pins, sources)
-    brma_binding = _prepare_brma_localisation(args, pins, sources)
-    private_rent_binding = _prepare_private_rent_localisation(args, pins, sources)
-    rfdr_binding = _prepare_rfdr_localisation(args, pins, sources)
+    # The attempt's build id was minted with the spine's rung, read ahead of
+    # this; one that is not the bound spine's is refused, naming both rung
+    # tokens (microcosm#931).
+    labelled = getattr(args, "_build_id_rung", None)
+    rung = spine_binding["sampling"]["rung_token"]
+    if labelled is not None and labelled != rung:
+        raise ValueError(
+            f"The attempt's build id carries rung {labelled}, but the spine it "
+            f"binds is at rung {rung}: a dense build id takes its spine's rung "
+            "(microcosm#931)."
+        )
+    # The spine's clone count, sampling and geography binding are the build's
+    # (microcosm#931): they enter the recorded run parameters, and so the
+    # identity digest, before anything records them.
+    _bind_spine_arguments(args, spine_binding, requested=args.input_h5 is None)
     stage(
         telemetry,
         "input_pinning",
@@ -1404,20 +1333,10 @@ def prepare_full_build(
         target_families=("census_households/constituency",)
         if args.households_only
         else None,
-        n_clones=args.n_clones,
-        sample_fraction=args.sample_fraction,
-        source_sample_fraction=source_fraction,
-        sample_seed=args.sample_seed,
+        n_clones=int(spine_binding["geographic_clone_count"]),
+        source_sample_fraction=float(spine_binding["sampling"]["fraction"]),
         seed=args.seed,
         engine_blocks=args.engine_blocks,
-        constituency_vintage=args.expected_constituency_vintage,
-        source_lineage_modulus=args.source_lineage_modulus,
-        geography_assignment=args.geography_assignment,
-        source_vintage=release.vintage,
-        property_localisation=args.property_localisation,
-        brma_localisation=args.brma_localisation,
-        private_rent_localisation=args.private_rent_localisation,
-        rfdr_localisation=args.rfdr_localisation,
         calibration=UKGraphCalibrationConfig(
             epochs=args.epochs,
             learning_rate=args.learning_rate,
@@ -1445,9 +1364,18 @@ def prepare_full_build(
         state.identity_digest = candidate_identity_digest(
             pins=pins, args=args, source_year=config.source_year
         )
+    # The spine's rung (its sidecar's sampling, or the request's
+    # --sample-fraction): the dense line samples nothing more (microcosm#931).
     if args.release_candidate and config.effective_sample_fraction != 1.0:
         raise ValueError(
             "Sampled builds cannot request release-candidate certification."
+        )
+    # The release candidate's K pin, posture and geography binding: the
+    # doctrine's K, a release-candidate spine and the release line's areas
+    # (microcosm#931).
+    if args.release_candidate:
+        _require_release_candidate_spine(
+            spine_binding, clone_count=int(posture.clone_count)
         )
     feed = load_uk_chronicle_feed()
     for supplied, committed in (
@@ -1486,11 +1414,9 @@ def prepare_full_build(
         config,
         spine=spine,
         spine_population=endpoint,
-        spine_weight_kind=weight_kind,
         optional_target_sources=tuple(optional),
         review_date=args.review_date.isoformat(),
         checkpoint_identity=checkpoint_identity,
-        atomic_geography_definition=definition,
     )
     if args.resume_size_checkpoint:
         from .size_checkpoint import (
@@ -1544,11 +1470,13 @@ def prepare_full_build(
             },
             "paired_ladder_sha256": pins["ladder"]["sha256"],
         },
-        "geography": geography_binding,
-        "property_localisation": property_binding,
-        "brma_localisation": brma_binding,
-        "private_rent_localisation": private_rent_binding,
-        "rfdr_localisation": rfdr_binding,
+        # The spine the build binds and its geography binding (microcosm#931):
+        # the rowwise manifest reads its sampling and areas from here.
+        "spine": {
+            key: spine_binding[key]
+            for key in ("geographic_clone_count", "sampling", "release_posture")
+        },
+        "geography": dict(spine_binding["geography"]),
     }
     graph = add_uk_export_preparation(
         graph,
@@ -1816,10 +1744,6 @@ def _argument_sources(args: argparse.Namespace) -> dict[str, Path]:
             ("native_scorecard", args.native_scorecard),
             ("matched_size_scorecard", args.matched_size_scorecard),
             ("resume_size_checkpoint", args.resume_size_checkpoint),
-            *(
-                (f"atomic_support_{label}", getattr(args, f"atomic_support_{label}"))
-                for label in _SUPPORT_ARGUMENTS.values()
-            ),
         )
         if path is not None
     }
@@ -2182,6 +2106,8 @@ def _close_attempt(
         disposition=classified.disposition,
         predecessor=attempt["predecessor"],
         spool_dir=output / "logbook-spool",
+        # The spine's rung: preparation set the run's fraction to the spine's
+        # (microcosm#931).
         rung=UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
     )
     print(f"Wrote Logbook row: {spool_path}", file=sys.stderr)
@@ -2911,7 +2837,20 @@ def refuse_occupied_national_output(args: argparse.Namespace) -> None:
 def prepare_national_build(
     args: argparse.Namespace, *, telemetry=None, attempt: dict | None = None
 ) -> PreparedUKNationalBuild:
-    """Bind the national request to its graph: the checkpoint, the doctrine, the register."""
+    """Bind the national request to its graph: the checkpoint, the doctrine, the register.
+
+    The national line builds only once the degenerate-surface register's
+    area-basis exclusion is signed for it and in force on ``--review-date``,
+    the build's own review date (the release cut reads the register again on
+    the day it certifies), and only on a geography-first spine of one
+    geographic clone (microcosm#931). Both are
+    refused before the input is pinned or any engine work: the exclusion
+    before any input is read, and the spine by its build sidecar, read ahead
+    of the checkpoint's authentication and checked again on the sidecar the
+    authentication returns. The register decides: an entry signed for the
+    national line, in force on the review date, lifts the first refusal with
+    no code change.
+    """
     from .hmrc_uprating import assert_installed_engine_is_pinned
     from .spine_build import _rules_engine, _rules_engine_provenance
 
@@ -2919,20 +2858,28 @@ def prepare_national_build(
     assert_installed_engine_is_pinned()
     posture = posture_of(args)
     national_role.require_bound_input(args)
+    require_national_exclusion_signed(args.review_date)
     release = load_uk_frs_release()
     input_h5 = national_role.require_file(args.input_h5, label="--input-h5")
+    sidecar_path = args.input_sidecar or input_h5.with_suffix(".build.json")
+    gates_path = args.input_spine_gates or input_h5.with_suffix(".spine_gates.json")
+    # The spine's clone count and roster, read off its build sidecar before
+    # the input is pinned (_read_spine_sidecar refuses an absent, unreadable
+    # or non-object sidecar as the authentication does).
+    require_national_spine(_read_spine_sidecar(Path(sidecar_path)))
     pins = {"dataset": _pin(input_h5, args.input_sha256)}
     inputs = {"dataset": _input_record(input_h5, pins["dataset"], pinned=True)}
     frame, _ = load_uk_national_frame(input_h5)
     require_uk_producer_isa_income_contract(frame, label="--input-h5")
-    sidecar_path = args.input_sidecar or input_h5.with_suffix(".build.json")
-    gates_path = args.input_spine_gates or input_h5.with_suffix(".spine_gates.json")
-    load_bound_spine_checkpoint(
+    sidecar = load_bound_spine_checkpoint(
         sidecar_path,
         frame,
         gate_report_path=gates_path,
         input_sha256=pins["dataset"]["sha256"],
     )
+    # The authenticated sidecar is the one the build binds, so it is checked
+    # again: one changed since the early read is refused too.
+    require_national_spine(sidecar)
     spine = bound_spine_graph(frame)
     _rules_engine()  # the uk extra must be installed; the identity is provenance
     engine_identity = hashlib.sha256(
@@ -3419,13 +3366,16 @@ def _execute_national_build(
     # 7. The H5, then the graph's readback of it.
     stage(telemetry, "candidate_h5_creation", "started")
     # The release boundary (microcosm#1063 c9): the reviewed export exclusions
-    # leave the candidate here, and the graph readback expects the same. The
+    # leave the candidate here, with the national line's geographic clone
+    # indices (microcosm#931), and the graph readback expects the same. The
     # weights are written at the dataset's year, so policyengine-uk's own
     # projection returns the solved weights at the solve year (microcosm#796
     # A19); the solve, its gates and its evidence keep the solved weights.
     solve_year = int(registry_document["calibration_year"])
     write_uk_national_frame(
-        uk_dataset_year_frame(uk_release_export_frame(frame), solve_year=solve_year),
+        uk_dataset_year_frame(
+            uk_release_export_frame(frame, line="national"), solve_year=solve_year
+        ),
         paths["dataset"],
     )
     if state is not None:
@@ -3872,24 +3822,33 @@ def _record_failure(
             predecessor=attempt["predecessor"],
             base_dir=args.out.resolve(),
             spool_dir=args.out.resolve() / "logbook-spool",
-            rung=UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
+            # The attempt's rung, its build id's: the spine's, read ahead of
+            # preparation and held there to the bound spine's, so a refusal
+            # before the spine is bound records it too (microcosm#931).
+            rung=getattr(args, "_build_id_rung", None)
+            or UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
             pipeline=pipeline,
             disposition=disposition,
         )
 
 
 def _dry_run(args: argparse.Namespace) -> int:
-    """Plan without solving or writing; loop over candidate clone counts."""
+    """Plan without solving or writing.
+
+    With ``--candidate-clone-counts`` (a spine request only), the spine
+    request is planned once per candidate, each as its own ``--n-clones``:
+    the dense line's K is its spine's (microcosm#931).
+    """
     counts = args.candidate_clone_counts
     if counts is None:
         return execute_full_build(prepare_full_build(args), args)
     inventories = []
     for count in counts:
         planned = argparse.Namespace(**vars(args))
-        planned.n_clones = int(count)
+        planned._candidate_clone_count = int(count)
         prepared = prepare_full_build(planned)
         inventories.append(
-            {"n_clones": int(count), **prepared.full.operation_inventory()}
+            {"n_clones": int(planned.n_clones), **prepared.full.operation_inventory()}
         )
     print(json.dumps(inventories, indent=2))
     return 0
@@ -3916,10 +3875,11 @@ def _main(argv: list[str] | None = None) -> int:
         raise ValueError("--candidate-clone-counts is valid only with --dry-run.")
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
+    # The id carries the spine's rung, read ahead of preparation, which
+    # refuses an attempt whose label is not its bound spine's (microcosm#931).
+    args._build_id_rung = _spine_rung_token(args)
     build_id = new_candidate_build_id(
-        seed=args.seed,
-        timestamp=started_ts,
-        rung=UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
+        seed=args.seed, timestamp=started_ts, rung=args._build_id_rung
     )
     return _run_with_telemetry(
         args,

@@ -9,25 +9,12 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime import property_localisation as pl
-from microcosm.build.uk_runtime.atomic_area_support import (
-    uk_atomic_assignment_definition,
-)
 from microcosm.build.uk_runtime.household_lineage import (
     uk_household_clone_paths,
     without_geographic_branch,
 )
-from microcosm.graph import ContentStore, compile_graph, run_graph
 from test_support.microcosm_build.uk_atomic_support_fixtures import (
     toy_property_resources,
-    toy_support_sources,
-    write_toy_property_resources,
-    write_toy_supports,
-)
-from test_support.microcosm_build.uk_full_population_graph import (
-    graph_and_registry,
-)
-from test_support.microcosm_build.uk_ladder_rowwise_clone import (
-    toy_ladder as toy_ladder,
 )
 
 STREAM = ("sha256-u53-v1", pl.PROPERTY_STREAM_EXPERIMENT, 0, 7)
@@ -151,6 +138,7 @@ def test_support_copies_keep_the_stratum_mass_at_the_selected_share() -> None:
     # top five per cent and copies each six ways; the pool's uniforms must
     # leave exactly that share of the owner mass at or above the stratum.
     from microcosm.build.uk_runtime.high_value_home_support import (
+        high_value_support_tie_break,
         select_high_value_support_households,
     )
 
@@ -167,6 +155,7 @@ def test_support_copies_keep_the_stratum_mass_at_the_selected_share() -> None:
         tenure_type=tenure,
         value=values,
         stratum_lower=0.95,
+        **dict(zip(("seed", "salt"), high_value_support_tie_break(), strict=True)),
     )
     assert selected.sum() == pytest.approx(0.05 * n, abs=2)
     copies = 6
@@ -261,6 +250,59 @@ def test_localise_values_interpolates_caps_and_leaves_others_untouched() -> None
             property_wealth=values[:1],
             knots=knots,
         )
+
+
+def test_the_value_half_is_localise_values_values_bit_for_bit() -> None:
+    """The WAS chain reads its home values through the value half of
+    localise_values (microcosm#931): the same values, bit for bit, and the
+    rows it rewrote."""
+
+    knots = _knots()
+    seats = sorted(knots.quantiles)
+    rng = np.random.default_rng(931)
+    n = 64
+    codes = np.asarray(
+        [seats[i % len(seats)] for i in range(n - 8)]
+        + ["S14000001"] * 4
+        + ["N05000001"] * 4,
+        dtype=object,
+    )
+    tenure = np.resize(
+        np.asarray(["OWNED_OUTRIGHT", "OWNED_WITH_MORTGAGE", "RENT_PRIVATELY"]), n
+    )
+    values = np.where(rng.uniform(size=n) < 0.2, 0.0, rng.uniform(50_000, 900_000, n))
+    u = rng.uniform(size=n)
+
+    new_value, target = pl.localise_main_residence_values(
+        u=u, constituency_code=codes, tenure_type=tenure, value=values, knots=knots
+    )
+    whole, _, receipt = pl.localise_values(
+        u=u,
+        constituency_code=codes,
+        tenure_type=tenure,
+        value=values,
+        property_wealth=values + 5.0,
+        knots=knots,
+    )
+
+    assert new_value.view(np.int64).tolist() == whole.view(np.int64).tolist()
+    assert int(target.sum()) == receipt["rows_rewritten"]
+    assert not target[codes == "S14000001"].any()
+    assert (new_value[~target] == values[~target]).all()
+
+
+def test_the_value_half_refuses_a_seat_without_knots_by_a_count_free_text() -> None:
+    with pytest.raises(ValueError, match="No value knots") as caught:
+        pl.localise_main_residence_values(
+            u=np.array([0.5]),
+            constituency_code=np.array(["E14999999"]),
+            tenure_type=np.array(["OWNED_OUTRIGHT"]),
+            value=np.array([1.0]),
+            knots=_knots(),
+        )
+    # The text names no constituency: a row's constituency is its place.
+    assert "E14999999" not in str(caught.value)
+    assert not any(character.isdigit() for character in str(caught.value))
 
 
 def test_localise_bands_is_monotone_in_the_uniform_and_skips_scotland() -> None:
@@ -404,79 +446,3 @@ def test_spine_keys_drop_the_geographic_branch_only() -> None:
     assert spine[0] == spine[1] == ()
     keys = pl.spine_household_keys(household, source="frs", source_vintage="v")
     assert keys[0] == keys[1] != keys[2]
-
-
-# ----------------------------------------------------------------------------
-# Graph
-
-
-@pytest.mark.parametrize("k", [1, 3])
-def test_property_nodes_rewrite_values_and_bands_per_clone_and_replay(
-    k, toy_ladder, tmp_path
-) -> None:
-    _, ladder_path = toy_ladder
-    payloads, paths = write_toy_supports(tmp_path / "supports")
-    resource_paths = write_toy_property_resources(tmp_path / "property")
-    definition = uk_atomic_assignment_definition(payloads, seed=7)
-    graph, registry = graph_and_registry(
-        k,
-        geography_assignment="atomic",
-        definition=definition,
-        property_localisation_mode="price_paid",
-    )
-    compiled = compile_graph(graph)
-    order = compiled.order
-    assert order.index("uk.full.geography.derive") < order.index(
-        "uk.full.property.value"
-    )
-    assert order.index("uk.full.property.value") < order.index("uk.full.property.band")
-    assert order.index("uk.full.property.band") < order.index("uk.full.geography_gate")
-    sources = {
-        "uk_ladder": ladder_path,
-        "fixture": ladder_path,
-        **toy_support_sources(paths),
-        **resource_paths,
-    }
-    store = ContentStore(tmp_path / "store")
-    first = run_graph(compiled, sources=sources, store=store, kernels=registry)
-    household = first.population("uk.full.expand").table("household")
-    value_receipt = first.nodes["uk.full.property.value"].receipt
-    band_receipt = first.nodes["uk.full.property.band"].receipt
-    england_wales = household["constituency_code"].astype(str).str[0].isin(["E", "W"])
-    owners = household["tenure_type"].isin(
-        ["OWNED_OUTRIGHT", "OWNED_WITH_MORTGAGE"]
-    ) & (household["main_residence_value"] > 0)
-    # Every England-and-Wales owner clone reads its value off the toy knots.
-    rewritten = household[england_wales & owners]
-    assert len(rewritten) == 2 * k and value_receipt["rows_rewritten"] == 2 * k
-    assert (rewritten["main_residence_value"] >= 100_000).all()
-    assert (rewritten["main_residence_value"] <= 2_000_000).all()
-    # Clones of one spine household share one uniform, so one value.
-    per_source = rewritten.groupby("source_household_id")[
-        "main_residence_value"
-    ].nunique()
-    assert (per_source == 1).all()
-    # Scotland and Northern Ireland keep the spine's values and bands.
-    untouched = household[~england_wales]
-    assert set(untouched["main_residence_value"]) <= {0.0}
-    assert band_receipt["rows_untouched_outside_england_wales"] == len(untouched)
-    assert band_receipt["monotone_violations"] == 0
-    assert set(household.loc[england_wales, "council_tax_band"]) <= set("ABCDEFGH")
-    assert value_receipt["weights"] == "unchanged"
-    _, fresh = graph_and_registry(
-        k,
-        geography_assignment="atomic",
-        definition=definition,
-        property_localisation_mode="price_paid",
-    )
-    replay = run_graph(
-        compiled, sources=sources, store=store, kernels=fresh, resume="require"
-    )
-    assert all(receipt.hit for receipt in replay.nodes.values())
-
-
-def test_property_localisation_needs_the_atomic_assignment() -> None:
-    with pytest.raises(ValueError, match="atomic geography assignment"):
-        graph_and_registry(
-            1, geography_assignment="legacy", property_localisation_mode="price_paid"
-        )

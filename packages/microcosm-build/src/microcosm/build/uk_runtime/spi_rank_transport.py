@@ -285,6 +285,7 @@ def cross_fit_transport(
     folds: int,
     allow_in_sample: bool = False,
     outputs: Sequence[str] = SPI_INCOME_QRF_OUTPUT_COLUMNS,
+    twin_identities: np.ndarray | None = None,
 ) -> SPITransportResult:
     """Locate every recipient on a reference forest that never saw its cell.
 
@@ -295,6 +296,14 @@ def cross_fit_transport(
     forest that locates a copy was fitted without its twin. Each fold's
     recipients are located by :func:`transport_uniforms`; the receipt is
     assembled over every recipient and names the folds.
+
+    ``identities`` keys every recipient's uniforms. ``twin_identities``, one
+    per recipient and ``identities`` by default, names the training row that
+    holds each recipient's twin, and is read only to check that a recipient
+    takes its twin's fold. The two differ where the training rows fold a
+    twin's geographic clones into another clone's row: the twin is then
+    held by that row, while the copy keeps the uniforms keyed on its own
+    twin (microcosm#931).
     """
 
     assert_analogue_map_covers(outputs)
@@ -302,6 +311,13 @@ def cross_fit_transport(
     identities = np.asarray(identities)
     if identities.shape != (n,):
         raise ValueError("SPI transport identities must have one entry per recipient.")
+    twin_identities = (
+        identities if twin_identities is None else np.asarray(twin_identities)
+    )
+    if twin_identities.shape != (n,):
+        raise ValueError(
+            "SPI transport twin identities must have one entry per recipient."
+        )
     if len(observed) != n or not observed.index.equals(encoded_recipients.index):
         raise ValueError("SPI transport observed analogues must align to recipients.")
     if len(training_folds) != len(encoded_training):
@@ -317,14 +333,15 @@ def cross_fit_transport(
     # over the same cells at the same fold count, so a recipient's fold is its
     # twin's fold; the twins the training rows hold are checked, so a cell
     # value that moved between twin and copy cannot put a twin's forest on
-    # its copy.
+    # its copy. A twin is found by its twin identity, so the check reaches
+    # the copies of every geographic clone, folded or not.
     recipient_folds, _ = cell_fold_ids(
         recipient_predictors, folds=folds, seed=seed, used=used
     )
     twin_folds = pd.Series(training_folds, index=training_identities)
     if not twin_folds.index.is_unique:
         raise ValueError("training identities must be unique (one row per twin).")
-    twins = twin_folds.reindex(identities)
+    twins = twin_folds.reindex(twin_identities)
     known = twins.notna().to_numpy()
     if known.any() and not np.array_equal(
         twins.to_numpy()[known].astype(np.int64), recipient_folds[known]

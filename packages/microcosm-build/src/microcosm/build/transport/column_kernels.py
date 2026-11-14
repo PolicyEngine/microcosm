@@ -50,6 +50,7 @@ from microcosm.frame import concept_mapping as mapping_module
 from microcosm.frame import concepts as concepts_module
 from microcosm.frame import input_closure as closure_module
 from microcosm.frame import unit_construction as units_module
+from microcosm.frame.adapters import axiom_input_surface as input_surface_module
 from microcosm.frame.concept_mapping import ConceptMapping
 from microcosm.frame.concepts import derive_take_up_draws
 from microcosm.frame.input_closure import (
@@ -78,9 +79,10 @@ from microcosm.graph import (
     SeedSource,
     source_hash,
 )
+from microcosm.graph.canonical import canonical_json
 from microcosm.graph.population import dtype_for_token
 
-from . import graph_inputs
+from . import artifact_types, graph_inputs
 from . import receipt_contract as receipt_contract_module
 from .artifact_types import TARGET_SURFACE_TYPE
 from .graph_inputs import (
@@ -330,6 +332,9 @@ class _ColumnKernel(KernelBase):
         return source_hash(
             type(self),
             graph_inputs,
+            # canonical_document_param checks a document parameter's spelling
+            # through the encoder (microcosm#931).
+            canonical_json,
             *self._modules,
             dependencies=self.capabilities.dependencies,
         )
@@ -417,7 +422,9 @@ class ConceptsEncodeKernel(_ColumnKernel):
     """Encode person and household bindings plus declared closure defaults."""
 
     ref = "concepts.encode@1"
-    _modules = (mapping_module, concepts_module, closure_module)
+    # InputClosure computes through the Axiom input surface's records
+    # (microcosm#931).
+    _modules = (mapping_module, concepts_module, closure_module, input_surface_module)
 
     def run(self, context: KernelContext) -> KernelResult:
         _refuse_take_up(context, self.ref)
@@ -516,7 +523,15 @@ class ConceptsEncodeGroupsKernel(_ColumnKernel):
     """Group bindings execute through G4's encoder and built memberships."""
 
     ref = "concepts.encode_groups@1"
-    _modules = (mapping_module, units_module, concepts_module, closure_module)
+    # InputClosure computes through the Axiom input surface's records
+    # (microcosm#931).
+    _modules = (
+        mapping_module,
+        units_module,
+        concepts_module,
+        closure_module,
+        input_surface_module,
+    )
 
     def run(self, context: KernelContext) -> KernelResult:
         _refuse_take_up(context, self.ref)
@@ -774,6 +789,17 @@ class TakeupAssignKernel(_ColumnKernel):
             hierarchy_module,
             calibration_predicates_module,
             receipt_contract_module,
+            # The kernel checks the surface's type (artifact_types), and
+            # decode_target_surface checks its factor evidence and Chronicle
+            # feed identity through the next three, rebuilds its registry's
+            # targets through calibrate.target and decodes its canonical JSON
+            # (microcosm#931).
+            artifact_types,
+            target_kernels.reference_factors_module,
+            target_kernels.ledger_artifact_module,
+            target_kernels.chronicle_epoch_module,
+            target_kernels.target_module,
+            canonical_json,
             dependencies=self.capabilities.dependencies,
         )
 

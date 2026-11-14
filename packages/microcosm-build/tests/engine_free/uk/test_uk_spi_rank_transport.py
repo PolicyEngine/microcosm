@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime import spi_rank_transport as transport
 from microcosm.build.uk_runtime.receipt_counts import rounded_count
 from microcosm.build.uk_runtime.spi_rank_transport import (
@@ -13,6 +14,8 @@ from microcosm.build.uk_runtime.spi_rank_transport import (
     analogue_source_columns,
     analogue_targets,
     assert_analogue_map_covers,
+    cell_fold_ids,
+    cross_fit_transport,
     identity_uniforms,
     observed_analogues,
     transport_uniforms,
@@ -551,3 +554,128 @@ def test_cross_fit_refuses_folds_that_disagree_on_sign_classes() -> None:
             seed=42,
             folds=5,
         )
+
+
+def _two_clone_call() -> tuple[dict[str, object], np.ndarray]:
+    """A cross-fit call over the copies of two geographic clones.
+
+    The training rows are clone 0's FRS rows, since the stage folds each
+    record's clone 1 onto its clone 0 where they agree. The first forty
+    rows have a copy in each clone; each copy's identity is its own twin's
+    id, clone 1's minted in the copy-id table's ``geographic_support``
+    field, so clone 1's twins are not among the training rows. Returns the
+    call and each copy's twin identity: the training row that holds its twin.
+    """
+
+    rng = np.random.default_rng(13)
+    n = 300
+    regions = np.array(["LONDON", "WALES", "SCOTLAND", "NORTH_EAST", "SOUTH_WEST"])
+    raw = pd.DataFrame(
+        {
+            "gender": np.where(rng.random(n) < 0.5, "MALE", "FEMALE"),
+            "region": regions[rng.integers(0, len(regions), n)],
+            "spi_age_band": rng.integers(2, 6, n).astype(float),
+            "main_source": "pay",
+            "has_pay": 1.0,
+            "has_trade": 0.0,
+            "at_or_over_spa": 0.0,
+        }
+    )
+    encoded = pd.DataFrame({"spi_age_band": raw["spi_age_band"]})
+    observed = pd.DataFrame(index=encoded.index)
+    for target in analogue_targets():
+        observed[target] = 1_000.0
+    training_folds, used = cell_fold_ids(raw, folds=5, seed=42)
+    assert used == 5
+    twins = np.arange(10_000, 10_000 + n, dtype=np.int64)
+    copied = np.r_[np.arange(40), np.arange(40)]
+    call = {
+        "training_predictors": raw,
+        "encoded_training": encoded,
+        "training_observed": observed,
+        "training_folds": training_folds,
+        "training_identities": twins,
+        "used": used,
+        "recipient_predictors": raw.iloc[copied].reset_index(drop=True),
+        "encoded_recipients": encoded.iloc[copied].reset_index(drop=True),
+        "observed": observed.iloc[copied].reset_index(drop=True),
+        "identities": np.r_[
+            twins[:40], copy_id_table.mint(twins[:40], "geographic_support", 1)
+        ],
+        "groups": None,
+        "seed": 42,
+        "folds": 5,
+    }
+    return call, twins[copied]
+
+
+def _placing_reference():
+    """A reference forest that locates nothing: it hands the placements back."""
+
+    reference = _ClassReference([(0, 1)], analogue_targets())
+
+    def fit_reference(encoded_train, observed_train):
+        reference._fits += 1
+        return reference
+
+    return fit_reference
+
+
+def _same_result(first, second) -> bool:
+    return (
+        all(
+            first.quantiles[target].tobytes() == second.quantiles[target].tobytes()
+            and first.sign_uniforms[target].tobytes()
+            == second.sign_uniforms[target].tobytes()
+            for target in SPI_INCOME_QRF_OUTPUT_COLUMNS
+        )
+        and first.receipt == second.receipt
+    )
+
+
+def test_twin_identities_reach_every_clones_copies_and_key_no_uniform() -> None:
+    """The twin check finds each copy's twin by its twin identity, which the
+    SPI income stage translates through its geographic fold, so the copies
+    of clone 1, whose twins folded into clone 0's rows, are checked too.
+    Every copy's uniforms stay keyed on its own identity, so clone 1's copies
+    draw apart from clone 0's (microcosm#931)."""
+
+    call, twin_identities = _two_clone_call()
+    identities = call["identities"]
+    fit_reference = _placing_reference()
+    default = cross_fit_transport(fit_reference, **call)
+    # Without folded twins the two arrays are equal, and nothing changes.
+    same = cross_fit_transport(fit_reference, **call, twin_identities=identities)
+    assert _same_result(same, default)
+    translated = cross_fit_transport(
+        fit_reference, **call, twin_identities=twin_identities
+    )
+    assert _same_result(translated, default)
+    for target in translated.receipt["identity_targets"]:
+        np.testing.assert_array_equal(
+            translated.quantiles[target],
+            identity_uniforms(identities, target=target, part="quantile", seed=42),
+        )
+        assert (
+            translated.quantiles[target][40:] != translated.quantiles[target][:40]
+        ).all()
+    # A fold-key cell of a clone-1 copy that moves the copy off its twin's
+    # fold: the check misses it without the translation, which leaves the
+    # copy's twin unknown, and refuses it with the translation.
+    folds, _ = cell_fold_ids(
+        call["recipient_predictors"], folds=5, seed=42, used=call["used"]
+    )
+    moved = call["recipient_predictors"].copy()
+    row = 40
+    for region in ("EAST_MIDLANDS", "WEST_MIDLANDS", "YORKSHIRE", "EAST_OF_ENGLAND"):
+        moved.loc[row, "region"] = region
+        shifted, _ = cell_fold_ids(moved, folds=5, seed=42, used=call["used"])
+        if shifted[row] != folds[row]:
+            break
+    assert shifted[row] != folds[row]
+    mutated = {**call, "recipient_predictors": moved}
+    cross_fit_transport(fit_reference, **mutated)
+    with pytest.raises(ValueError, match="differs from its twin's"):
+        cross_fit_transport(fit_reference, **mutated, twin_identities=twin_identities)
+    with pytest.raises(ValueError, match="twin identities must have one entry"):
+        cross_fit_transport(fit_reference, **call, twin_identities=twin_identities[:-1])
