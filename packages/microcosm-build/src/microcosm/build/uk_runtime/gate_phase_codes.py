@@ -70,15 +70,17 @@ def uk_spine_transferred_only_code_hash() -> str:
     (``take_up_contract``); the latent-attribute checks' binomial band
     (``stochastic_assignment``); the band donor check's copy-id fields,
     through which it reads a capped seating's seats from the frame
-    (``copy_id_table``; microcosm#931); and the copy area check's agreement
-    of each copy with its parent (``copy_agreement``; microcosm#931). Its
-    enum gate also checks the CGT asset type domain (``cgt_asset_type``), and
-    its geography ladder gate (``uk_geography_ladder``, microcosm#931)
-    computes through the ladder's evaluator (``geography_ladder``), the
-    local-authority resolution it checks each row against
-    (``local_authority_input``), the FRS region codes (``rowwise_geography``),
-    the household weights it reads (``terminal_gates``) and the engine tables
-    of the gate surface it is handed (``microcosm.frame.materialize``).
+    (``copy_id_table``; microcosm#931); the copy area check's agreement of
+    each copy with its parent (``copy_agreement``; microcosm#931); and the
+    council-tax check's reductions held within each household's bill
+    (``bounded_amounts``; microcosm#931). Its enum gate also checks the CGT
+    asset type domain (``cgt_asset_type``), and its geography ladder gate
+    (``uk_geography_ladder``, microcosm#931) computes through the ladder's
+    evaluator (``geography_ladder``), the local-authority resolution it
+    checks each row against (``local_authority_input``), the FRS region codes
+    (``rowwise_geography``), the household weights it reads
+    (``terminal_gates``) and the engine tables of the gate surface it is
+    handed (``microcosm.frame.materialize``).
 
     The assembled gate's own key, on which every later spine stage's chains,
     therefore carries none of them (the re-review of microcosm#1420, E;
@@ -95,14 +97,19 @@ def uk_spine_transferred_only_code_hash() -> str:
     bind (``atomic_area_assign`` and ``local_authority``; microcosm#931).
     So an edit to any of the ten re-keys every spine node from the first
     stage that hashes it onwards, the assembled gate included. No stage
-    before that gate hashes the other fourteen, so an edit to one of those
+    before that gate hashes the other fifteen, so an edit to one of those
     re-keys the stages that hash it, those after them and the transferred
     gate, never the assembled gate. Hashed once per process, as the assembled
     phase's own code is.
     """
     import microcosm.frame.materialize as frame_materialize
 
-    from .. import chronicle_epoch, copy_agreement, stochastic_assignment
+    from .. import (
+        bounded_amounts,
+        chronicle_epoch,
+        copy_agreement,
+        stochastic_assignment,
+    )
     from .. import ledger_targets as shared_ledger_targets
     from . import (
         bus_fare_pricing,
@@ -146,6 +153,7 @@ def uk_spine_transferred_only_code_hash() -> str:
         shared_ledger_targets,
         copy_id_table,
         copy_agreement,
+        bounded_amounts,
         geography_ladder,
         local_authority_input,
         rowwise_geography,

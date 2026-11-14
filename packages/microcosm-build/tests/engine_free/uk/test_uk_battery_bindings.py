@@ -3057,16 +3057,17 @@ def _capped_band_donor_receipt() -> dict[str, object]:
     }
 
 
-def test_the_stage_health_binding_reads_the_frame_for_its_two_frame_checks_only(
+def test_the_stage_health_binding_reads_the_frame_for_its_three_frame_checks_only(
     uk_gates,
 ) -> None:
-    """Of the packaged stage-health gates, only the band donor check and the
-    copy area check (uk_copy_area_agreement, microcosm#931) read the phase's
-    frame."""
+    """Of the packaged stage-health gates, only the band donor check, the
+    copy area check (uk_copy_area_agreement) and the council-tax check
+    (uk_council_tax_reduction_within_bill) read the phase's frame
+    (microcosm#931)."""
 
     binding = UK_GATE_REGISTRY["stage_health"]
     entries = [entry for entry in uk_gates.gates if entry.gate == "stage_health"]
-    frame_checks = {_BAND_DONOR_CHECK, "copy_area_agreement"}
+    frame_checks = {_BAND_DONOR_CHECK, "copy_area_agreement", _COUNCIL_TAX_CHECK}
     assert any(entry.parameters["check"] not in frame_checks for entry in entries)
     for entry in entries:
         assert binding.requires_frame(entry.parameters) is (
@@ -3074,14 +3075,15 @@ def test_the_stage_health_binding_reads_the_frame_for_its_two_frame_checks_only(
         ), entry.id
     assert sorted(
         entry.id for entry in entries if binding.requires_frame(entry.parameters)
-    ) == ["uk_copy_area_agreement", "uk_stage_spi_income_band_donors_support"]
-    # Both run at the spine's transferred boundary, whose battery hands every
-    # gate the phase's frame.
-    assert _band_donor_entry(uk_gates).phase == "transferred"
+    ) == [
+        "uk_copy_area_agreement",
+        "uk_council_tax_reduction_within_bill",
+        "uk_stage_spi_income_band_donors_support",
+    ]
+    # All three run at the spine's transferred boundary, whose battery hands
+    # every gate the phase's frame.
     assert {
-        entry.phase
-        for entry in entries
-        if entry.parameters["check"] == "copy_area_agreement"
+        entry.phase for entry in entries if entry.parameters["check"] in frame_checks
     } == {"transferred"}
 
 
@@ -3151,8 +3153,10 @@ def test_the_band_donor_check_recomputes_a_capped_seating_from_the_phase_frame(
 
 
 # The council-tax reduction check (microcosm#931) holds each household's
-# reductions within its bill on the phase's frame. No packaged gate declares
-# it yet, so these tests declare their own entry; every frame is synthetic.
+# reductions within its bill on the phase's frame. The packaged gate
+# uk_council_tax_reduction_within_bill declares it at the transferred
+# boundary; these tests declare their own entry, so that they can vary its
+# parameters. Every frame is synthetic.
 
 _COUNCIL_TAX_CHECK = "council_tax_reduction_within_bill"
 _COUNCIL_TAX_STAGE = "council_tax_localise"
