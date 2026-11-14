@@ -2504,7 +2504,8 @@ def test_uk_national_release_requires_policyengine_uk_model_pin(
     [
         (UK_NATIONAL_RELEASE_ID, True),
         ("microcosm-uk-2024-25-dense", True),
-        ("microcosm-uk-2024-25-local-k55000", True),
+        # No registry entry names a UK local-area release (microcosm#1586).
+        ("microcosm-uk-2024-25-local-k55000", False),
         (US_NATIONAL_RELEASE, True),
         (US_LOCAL_RELEASE, True),
         (US_RECEIPT_DONOR_RELEASE, True),

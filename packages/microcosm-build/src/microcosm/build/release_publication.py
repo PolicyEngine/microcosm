@@ -1,7 +1,8 @@
 """Publish a release build into its own folder through the emitter.
 
-A release whose builds can publish into their own folders (the UK
-national, dense and local-area releases and the US releases, which
+A release whose builds can publish into their own folders (the UK national
+and dense releases, each UK local-area release that the dataset registry
+names, and the US releases, which
 ``microcosm.data.contract.publishes_to_build_folder`` names) is handed to the
 separately installed emitter with the interface's ``publish_release`` call.
 Microcosm decides what the build contains and checks it with the release
@@ -91,6 +92,7 @@ from microcosm.data.release import (
     TAGGED_RELEASE_ADVICE,
     BuildFolderRelease,
     build_folder_identity,
+    not_a_build_folder_release_reason,
     prepare_build_folder_release,
 )
 from microcosm.data.releases_record import RELEASES_RECORD_PATH
@@ -200,12 +202,14 @@ def collector_provenance(release: str, build: str) -> CollectorProvenance | None
 
     It names the publication's own release and build, as the interface
     requires, since the collector refuses a build folder whose provenance
-    names another. A UK build (the national, dense and local-area releases)
-    used licensed microdata, so the collector keeps its Orrery outputs
-    private; a US build is published in the public US repository, so it used
-    none whose licence keeps its outputs private. None for a release whose
-    builds do not publish into their own folders. The interface raises
-    ``ValueError`` for a build ID it does not accept.
+    names another. A UK build (the national and dense releases, and each
+    local-area release that the dataset registry names) used licensed
+    microdata, so the collector keeps its Orrery outputs private; a US build
+    is published in the public US repository, so it used none whose licence
+    keeps its outputs private. None for a release whose builds do not publish
+    into their own folders, a UK local-area release that the registry does
+    not name among them. The interface raises ``ValueError`` for a build ID
+    it does not accept.
     """
     if not publishes_to_build_folder(release):
         return None
@@ -610,9 +614,9 @@ def _parser() -> argparse.ArgumentParser:
         prog="microcosm-publish-release-build",
         description=(
             "Publish a build of a release whose builds publish into their own "
-            "folders (the UK national, dense and local-area releases and the US "
-            "releases) through the emitter, or make a published build current. "
-            + TAGGED_RELEASE_ADVICE
+            "folders (the UK national and dense releases, each UK local-area "
+            "release the dataset registry names, and the US releases) through "
+            "the emitter, or make a published build current. " + TAGGED_RELEASE_ADVICE
         ),
     )
     parser.add_argument("release_dir", type=Path, help="The local release directory.")
@@ -707,10 +711,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     release_dir: Path = args.release_dir
     if not publishes_to_build_folder(release_dir.name):
-        parser.error(
-            f"release {release_dir.name!r} does not publish into build folders. "
-            + TAGGED_RELEASE_ADVICE
-        )
+        parser.error(not_a_build_folder_release_reason(release_dir.name))
     try:
         return _run(args)
     except (ValueError, FileNotFoundError) as error:

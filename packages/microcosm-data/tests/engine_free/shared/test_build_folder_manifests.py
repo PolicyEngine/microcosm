@@ -180,6 +180,21 @@ def test_rewriting_a_directory_named_for_no_release_is_refused(tmp_path) -> None
         build_folder_manifests.rewrite_release_dir(renamed, build=BUILD)
 
 
+def test_rewriting_an_unregistered_uk_local_area_release_is_refused(tmp_path) -> None:
+    """The registry names no UK local-area release, so the directory takes no
+    build-folder layout, and the refusal says who registers one."""
+    directory = write_tagged_release(tmp_path)
+    renamed = directory.with_name("microcosm-uk-2024-25-local-k55000")
+    directory.rename(renamed)
+
+    with pytest.raises(
+        ReleaseContractError, match="the dataset registry .* does not name"
+    ) as refusal:
+        build_folder_manifests.rewrite_release_dir(renamed, build=BUILD)
+
+    assert "adds its registry entry" in str(refusal.value)
+
+
 def test_the_publication_commands_publish_then_make_current(tmp_path) -> None:
     directory = write_tagged_release(tmp_path)
     artifact_root = tmp_path / "artifacts"
