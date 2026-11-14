@@ -255,7 +255,7 @@ from .rowwise_staging import (
     thinned_epochs,
 )
 from .size_checkpoint import uk_size_checkpoint_identity
-from .solve_scope import UK_GATE_ONLY_RESOURCES
+from .solve_scope import UK_GATE_ONLY_RESOURCES, UK_POST_SOLVE_RESOURCES
 from .staging import UK_STAGED_DATASET_REPOSITORY, UK_STAGING_REPOSITORY
 from .weight_year import uk_dataset_year_frame
 
@@ -1669,7 +1669,8 @@ def _solve_reuse_failure(miss: StoreMiss) -> SolveReuseError:
         "commit; --review-date, --release-candidate, the size, seed, epoch "
         "and --selection-initial-lambda arguments and --engine-blocks; every "
         "packaged UK resource but the gate-only registers "
-        f"({', '.join(sorted(UK_GATE_ONLY_RESOURCES))}); the virtual "
+        f"({', '.join(sorted(UK_GATE_ONLY_RESOURCES))}) and the stock "
+        f"cells' land side ({', '.join(sorted(UK_POST_SOLVE_RESOURCES))}); the virtual "
         "environment and platform; and --graph-store."
     )
 

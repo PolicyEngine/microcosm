@@ -192,8 +192,10 @@ register(
 # microcosm#898 reserves the local-area line as variant "local", with pointer
 # latest-local-k<N>.json and artifact microcosm_uk_2024_25_local_k<N>.h5, and
 # the release microcosm-uk-2024-25-local-k<N> once its repository records
-# builds in releases.json. Add its registry entry only once a certified
-# artifact exists.
+# builds in releases.json. The pull request that authorizes a k's first
+# publication adds its registry entry (docs/release-contract.md, C5).
+# microcosm.data.contract.publishes_to_build_folder admits the release only
+# once an entry here names it, and both publishers refuse it before then.
 
 register(
     DatasetSpec(

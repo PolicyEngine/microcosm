@@ -349,14 +349,17 @@ validator, the publication commands and the loaders enforce today, and what
 version 1 (ARCH-1, cos d1160) asks of every country's releases. Change it, its
 golden fixtures (`tools/generate_release_contract_fixtures.py`) and the code
 that enforces it in the same pull request. The US national golden freezes the
-manifests that the US fiscal-refresh tool's `_build_manifests` writes when it
-gets only its required arguments and a staging block: an empty `timing`, a null
-`ledger_artifact` and only the four gate entries that the function always
-writes. A real build adds its own timing, its ledger provenance and the
-optional gate blocks its run produces, and the golden freezes none of them. A
-pull request that changes what `_build_manifests` always writes, such as
-`US_RELEASE_GATE_EVIDENCE_FILES` or `US_DOCUMENTED_ABSENT_INPUTS`, or the
-layout that `rewrite_release_dir` gives it, regenerates the fixtures too.
+manifests that the US fiscal-refresh tool's `_build_manifests` writes when the
+generator replaces four of the builder's globals and passes only the required
+arguments and a staging block: an empty `timing`, a null `ledger_artifact` and
+only the four gate entries that the function always writes. A real build adds
+its own timing, its ledger provenance, the optional gate blocks and the other
+optional blocks its run passes (`base_pool` and `post_export_scoring`, for
+example), and the blocks that its gate-evidence files bind, and the golden
+freezes none of them. A pull request that changes what
+`_build_manifests` always writes, such as `US_RELEASE_GATE_EVIDENCE_FILES` or
+`US_DOCUMENTED_ABSENT_INPUTS`, or the layout that `rewrite_release_dir` gives
+it, regenerates the fixtures too.
 
 PR CI never receives external writer credentials or touches restricted
 microdata. Same-repository runs may receive the optional read-only
@@ -365,8 +368,9 @@ no secret. Green PR checks mean the code contracts hold — they do **not**
 certify data artifacts.
 Builds, calibrations, and releases run outside PR CI, need gated Hugging Face
 data and credentials, and cannot run from forks. Release publication is a
-deliberate human step. The UK national, dense and local-area releases and the
-US releases (`microcosm-us-2024-national`, the US default, `-local`,
+deliberate human step. The UK national and dense releases, each UK local-area
+release that the dataset registry names, and the US releases
+(`microcosm-us-2024-national`, the US default, `-local`,
 `-receipt-donor`, `-evidence` and `-annual`) publish each build into its own folder
 through the emitter (`microcosm-publish-release-build`, from
 `microcosm.build.release_publication`), which records it in the repository's

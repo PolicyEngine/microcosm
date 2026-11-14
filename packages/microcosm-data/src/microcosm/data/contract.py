@@ -51,6 +51,7 @@ from pydantic import ValidationError
 
 from microcosm.data.denied_pools import denied_pool_publication_for
 from microcosm.data.gate_signing_keys import unregistered_gate_signing_key_problem
+from microcosm.data.registry import REGISTRY
 from microcosm.data.stored_inputs import is_model_named
 from microcosm.data.us_critical_targets import (
     US_CRITICAL_TARGET_FIT_REQUIREMENTS as _US_CRITICAL_TARGET_FIT_REQUIREMENTS,
@@ -119,6 +120,7 @@ __all__ = [
     "release_dataset_role",
     "required_release_files",
     "stored_input_evidence_manifest_block",
+    "unregistered_uk_local_release",
     "us_engine_scopes_spm_universe",
     "validate_evidence_release_dir",
     "validate_release_dir",
@@ -282,16 +284,64 @@ def publishes_to_build_folder(release_id: str) -> bool:
     """Whether builds of ``release_id`` publish into their own build folders.
 
     This is the one place that says which releases use the build-folder
-    layout: the UK national, dense and local-area releases, and the US
-    releases (:data:`US_RELEASES`). A US build's own release in the tagged
-    layout (``populace-us-…``) keeps tags, for the builds that have only
-    their tag.
+    layout: the UK national and dense releases, each UK local-area release
+    that the dataset registry names, and the US releases
+    (:data:`US_RELEASES`). A US build's own release in the tagged layout
+    (``populace-us-…``) keeps tags, for the builds that have only their tag.
+
+    A UK local-area release is ``microcosm-uk-2024-25-local-k<N>``, and it
+    publishes once a UK entry of :data:`microcosm.data.registry.REGISTRY`
+    names it as its ``release``. The registry is read on each call.
     """
     return (
         release_id in {_UK_NATIONAL_RELEASE_ID, _UK_DENSE_RELEASE_ID}
-        or _UK_LOCAL_LINE_RELEASE_ID_RE.fullmatch(release_id) is not None
+        or (
+            _is_uk_local_release_name(release_id)
+            and _uk_registry_entry_names(release_id)
+        )
         or release_id in US_RELEASES
     )
+
+
+def unregistered_uk_local_release(release_id: str) -> bool:
+    """Whether ``release_id`` is a UK local-area name that no registry entry names.
+
+    No layout of such a release validates and neither publisher takes it: the
+    pull request that authorizes a ``k``'s first publication adds its registry
+    entry, and its builds then publish into build folders.
+    """
+    return _is_uk_local_release_name(release_id) and not _uk_registry_entry_names(
+        release_id
+    )
+
+
+def _is_uk_local_release_name(release_id: str) -> bool:
+    return _UK_LOCAL_LINE_RELEASE_ID_RE.fullmatch(release_id) is not None
+
+
+def _uk_registry_entry_names(release_id: str) -> bool:
+    return any(
+        spec.country == "uk" and spec.release == release_id
+        for spec in REGISTRY.values()
+    )
+
+
+def _refuse_unregistered_uk_local_release(release_dir: Path, release_id: str) -> None:
+    """Refuse a UK local-area release that the registry does not name.
+
+    Its name decides its layout only once an entry names it, so until then
+    neither the build-folder layout nor the tagged one is its contract.
+    """
+    if unregistered_uk_local_release(release_id):
+        raise ReleaseContractError(
+            release_dir,
+            [
+                f"{release_id!r} is a UK local-area release that the dataset "
+                "registry (microcosm.data.registry.REGISTRY) does not name, so "
+                "no layout of it validates; the pull request that authorizes a "
+                "k's first publication adds its registry entry."
+            ],
+        )
 
 
 def release_artifact_role(key: str, kind: object) -> str:
@@ -7404,6 +7454,7 @@ def validate_release_dir(
 
     if not release_dir.is_dir():
         raise ReleaseContractError(release_dir, [f"{release_dir} is not a directory."])
+    _refuse_unregistered_uk_local_release(release_dir, release_id)
 
     # Role dispatch is strict about a PRESENT dataset_role: only an absent
     # field gets the legacy national semantics; an explicit null, boolean,
@@ -7958,6 +8009,7 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
 
     if not release_dir.is_dir():
         raise ReleaseContractError(release_dir, [f"{release_dir} is not a directory."])
+    _refuse_unregistered_uk_local_release(release_dir, release_id)
 
     build_folder = publishes_to_build_folder(release_id)
 
