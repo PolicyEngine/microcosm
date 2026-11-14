@@ -21,6 +21,14 @@ it, that the file appeared after the switch and should be removed. The
 tagged publisher refuses these releases, and any repository that has
 ``releases.json``.
 
+``microcosm-withdraw-release-build`` (:func:`withdraw_release_build`) names a
+published build by its repository, release and build and hands its
+withdrawal to the same writer, which sets the build's ``withdrawn`` flag in
+``releases.json`` and leaves its folder as published. The writer refuses the
+current build (make another build current first) and a build the record does
+not list, and never makes a withdrawn build current. The loader loads a
+withdrawn build only when ``build=`` pins it, with a warning.
+
 A build is current only when the emitter's receipt says so: ``status`` is
 ``published`` and ``current`` is the build. A publication with
 ``make_current`` can land without making its build current, when a change to
@@ -60,13 +68,14 @@ import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from microcosm_emitter_interface import (
     CollectorProvenance,
     PromoteBuild,
     PublishRelease,
     ReleaseFile,
+    WithdrawBuild,
 )
 from microcosm_emitter_interface.publication import (
     ReleaseChange,
@@ -110,6 +119,8 @@ __all__ = [
     "promote_release_build",
     "publication_request",
     "publish_release_build",
+    "withdraw_main",
+    "withdraw_release_build",
 ]
 
 #: How long the command waits for a publication to land or be refused. The
@@ -123,6 +134,11 @@ PUBLICATION_WAIT_SECONDS = 3 * 3600.0
 #: How long the command waits for a promotion, which changes only
 #: ``releases.json``.
 PROMOTION_WAIT_SECONDS = 300.0
+#: How long the withdraw command waits; a withdrawal also changes only
+#: ``releases.json``.
+WITHDRAWAL_WAIT_SECONDS = PROMOTION_WAIT_SECONDS
+#: The three release changes a command hands to the emitter.
+type ReleaseChangeKind = Literal["publish", "promote", "withdraw"]
 #: What the emitter's refusal codes mean for the operator, where its own
 #: message does not say what to do next.
 _REFUSAL_ADVICE = {
@@ -142,9 +158,30 @@ _REFUSAL_ADVICE = {
         "landed first; run the command again if this build should still be "
         "current."
     ),
+    "WITHDRAWING_CURRENT_BUILD": (
+        "A release's current build cannot be withdrawn: make another build "
+        "current first (microcosm-publish-release-build <that build's release "
+        "directory> --promote), then withdraw this one."
+    ),
+    "CURRENT_WITHDRAWN": (
+        "The build has been withdrawn, so it cannot be made current."
+    ),
     "REQUEST_EXPIRED": (
         "The change was still waiting an hour after it was handed over, so "
         "the emitter dropped it; run the command again."
+    ),
+}
+#: Advice that depends on the change as well as the code.
+_CHANGE_ADVICE: dict[tuple[str, str], str] = {
+    ("withdraw", "BUILD_NOT_LISTED"): (
+        "The repository's releases.json does not list that build of that "
+        "release; check the names, which are its folder releases/<release>/"
+        "<build>/."
+    ),
+    ("promote", "BUILD_NOT_LISTED"): (
+        "The repository's releases.json does not list this build: it has not "
+        "been published, or its publication has not landed yet. Publish it "
+        "first, or run the publish command again to see whether it landed."
     ),
 }
 #: Why the command refuses with ``HF_HUB_OFFLINE`` or ``TRANSFORMERS_OFFLINE``
@@ -180,6 +217,10 @@ class ReleaseEmitter(CollectorReceipts, Protocol):
 
     def promote_build(
         self, request: PromoteBuild, *, wait_seconds: float = 60.0
+    ) -> ReleaseReceipt: ...
+
+    def withdraw_build(
+        self, request: WithdrawBuild, *, wait_seconds: float = 60.0
     ) -> ReleaseReceipt: ...
 
     def close(self) -> None: ...
@@ -225,12 +266,13 @@ class ReleasePublication:
     """What became of one release change: the emitter's receipt, read.
 
     ``wanted_current`` says whether the change asked for the build to become
-    current: a promotion, or a publication with ``make_current``.
-    ``problem`` says why nothing was handed over, when the emitter could not
-    take the change or its write-access check refused it.
+    current: a promotion, or a publication with ``make_current``. ``change``
+    is ``publish``, ``promote`` or ``withdraw``. ``problem`` says why nothing
+    was handed over, when the emitter could not take the change or its
+    write-access check refused it.
     ``collector_receipt`` is the emitter's last collector receipt of a
-    publication, or None for a promotion, a change handed nothing, or a
-    publication the emitter has no collector row for.
+    publication, or None for a promotion, a withdrawal, a change handed
+    nothing, or a publication the emitter has no collector row for.
     """
 
     repository: str
@@ -239,7 +281,17 @@ class ReleasePublication:
     wanted_current: bool
     receipt: ReleaseReceipt
     problem: str | None = None
+    change: ReleaseChangeKind = "publish"
     collector_receipt: CollectorSubmissionReceipt | None = None
+
+    @property
+    def withdrawn(self) -> bool:
+        """Whether this change was a withdrawal that landed.
+
+        A publication or promotion says nothing about whether the build was
+        withdrawn since; :meth:`as_json` reports that as unknown.
+        """
+        return self.change == "withdraw" and self.published
 
     @property
     def published(self) -> bool:
@@ -270,10 +322,18 @@ class ReleasePublication:
                 "again later to see whether it landed."
             )
         if status == "refused":
-            advice = _REFUSAL_ADVICE.get(str(code))
+            advice = _CHANGE_ADVICE.get(
+                (self.change, str(code)), _REFUSAL_ADVICE.get(str(code))
+            )
             reason = self.receipt.get("message") or code
             return f"The emitter refused it ({code}): {reason}" + (
                 f" {advice}" if advice else ""
+            )
+        if self.withdrawn:
+            return (
+                f"Build {self.build} of {self.release} is withdrawn: its folder "
+                "stays, it can no longer be made current, and it loads only "
+                "when build= pins it."
             )
         if self.wanted_current and not self.current:
             current = self.receipt.get("current")
@@ -289,10 +349,12 @@ class ReleasePublication:
     def as_json(self) -> dict[str, Any]:
         """The outcome as the command prints it."""
         return {
+            "change": self.change,
             "repository": self.repository,
             "release": self.release,
             "build": self.build,
             "status": self.receipt["status"],
+            "withdrawn": self.withdrawn if self.change == "withdraw" else None,
             "current": self.current,
             "current_build": self.receipt.get("current"),
             "error_code": self.receipt.get("error_code"),
@@ -331,6 +393,13 @@ def _hand_over(
             emitter_task="the emitter, which commits it",
             proof="the change itself",
         )
+        kind: ReleaseChangeKind
+        if isinstance(change, PublishRelease):
+            kind = "publish"
+        elif isinstance(change, WithdrawBuild):
+            kind = "withdraw"
+        else:
+            kind = "promote"
         if problem is not None:
             receipt = unavailable_release_receipt(change)
         elif isinstance(change, PublishRelease):
@@ -352,6 +421,8 @@ def _hand_over(
                     clock=_clock,
                     sleep=_sleep,
                 )
+        elif isinstance(change, WithdrawBuild):
+            receipt = emitter.withdraw_build(change, wait_seconds=wait_seconds)
         else:
             receipt = emitter.promote_build(change, wait_seconds=wait_seconds)
     finally:
@@ -364,6 +435,7 @@ def _hand_over(
         wanted_current=wanted_current,
         receipt=receipt,
         problem=problem,
+        change=kind,
         collector_receipt=collector_receipt,
     )
 
@@ -603,6 +675,82 @@ def promote_release_build(
         wait_seconds=wait_seconds,
         wanted_current=True,
     )
+
+
+def withdraw_release_build(
+    repository: str,
+    release: str,
+    build: str,
+    *,
+    client: ReleaseEmitter | None = None,
+    wait_seconds: float = WITHDRAWAL_WAIT_SECONDS,
+) -> ReleasePublication:
+    """Withdraw a published build: set its ``withdrawn`` flag in ``releases.json``.
+
+    The emitter's release writer makes the change and runs its checks: it
+    refuses the release's current build (``WITHDRAWING_CURRENT_BUILD``) and a
+    build the record does not list (``BUILD_NOT_LISTED``). The build's folder
+    and files stay as published. It refuses (``ValueError``) offline and while
+    the repository has ``latest*.json`` pointer files, before any emitter
+    starts, and hands nothing over unless the emitter's write-access check
+    passes, as :func:`publish_release_build` does.
+    """
+    request = WithdrawBuild(repository=repository, release=release, build=build)
+    if client is None:
+        _refuse_offline()
+    _refuse_pointer_files(repository)
+    return _hand_over(
+        request, client=client, wait_seconds=wait_seconds, wanted_current=False
+    )
+
+
+def _withdraw_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="microcosm-withdraw-release-build",
+        description=(
+            "Withdraw a published build of a release through the emitter: set "
+            "its withdrawn flag in the repository's releases.json. Its folder "
+            "stays; it can no longer be made current, and the loader loads it "
+            "only when build= pins it. The current build cannot be withdrawn: "
+            "make another build current first."
+        ),
+    )
+    parser.add_argument("repository", help="The Hugging Face dataset repository.")
+    parser.add_argument("release", help="The release, as releases.json names it.")
+    parser.add_argument("build", help="The build to withdraw: its folder's name.")
+    parser.add_argument(
+        "--wait-seconds",
+        type=float,
+        default=WITHDRAWAL_WAIT_SECONDS,
+        help=(
+            "How long to wait for the change to land or be refused (default "
+            f"{WITHDRAWAL_WAIT_SECONDS:.0f})."
+        ),
+    )
+    return parser
+
+
+def withdraw_main(argv: list[str] | None = None) -> int:
+    """``microcosm-withdraw-release-build``: 0 when the build is withdrawn.
+
+    A withdrawal refused before any emitter starts (offline, pointer files,
+    a name the interface refuses) prints the reason and returns 1, as does
+    one the write-access check or the release writer refuses.
+    """
+    args = _withdraw_parser().parse_args(argv)
+    try:
+        outcome = withdraw_release_build(
+            args.repository,
+            args.release,
+            args.build,
+            wait_seconds=args.wait_seconds,
+        )
+    except (ValueError, FileNotFoundError) as error:
+        print(f"refusing to withdraw: {error}", file=sys.stderr)
+        return 1
+    print(json.dumps(outcome.as_json(), indent=2))
+    print(outcome.explanation(), file=sys.stderr)
+    return 0 if outcome.withdrawn else 1
 
 
 def _parser() -> argparse.ArgumentParser:

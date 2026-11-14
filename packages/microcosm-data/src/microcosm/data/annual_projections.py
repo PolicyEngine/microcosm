@@ -655,11 +655,15 @@ def require_base_publication(
     be the folder's base-year H5, with the same file name and SHA-256; and
     every other file it declares, apart from the manifests and the checksum
     ledger the emitter writes for each build, must be in the annual build's
-    manifest with the same path and SHA-256. An absent manifest refuses; any
+    manifest with the same path and SHA-256; and ``releases.json`` must list
+    it and not have withdrawn it. An absent manifest refuses; any
     other Hub failure, including one where the Hub could not be asked,
     propagates. ``api`` needs ``hf_hub_download``.
     """
-    from microcosm.data.build_folder_manifests import referenced_build
+    from microcosm.data.build_folder_manifests import (
+        referenced_build,
+        require_offered_build,
+    )
     from microcosm.data.release import (
         _is_absent_entry_error,
         _is_absent_revision_error,
@@ -758,3 +762,12 @@ def require_base_publication(
             "SHA-256 values); an annual build carries every file of its base "
             "build as published"
         )
+    # A base build its repository has withdrawn, or no longer lists, is not
+    # one to project.
+    require_offered_build(
+        api,
+        repo_id=repo_id,
+        release=str(reference.get("release")),
+        build=str(base_build),
+        label="the annual build's base build",
+    )

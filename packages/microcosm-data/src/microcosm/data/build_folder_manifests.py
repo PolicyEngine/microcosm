@@ -44,6 +44,7 @@ __all__ = [
     "build_folder_release_manifest",
     "publication_commands",
     "referenced_build",
+    "require_offered_build",
     "rewrite_release_dir",
 ]
 
@@ -251,3 +252,41 @@ def referenced_build(reference: Mapping[str, Any]) -> ReferencedBuild:
     return ReferencedBuild(
         repo_id=repo_id, revision=revision, folder=f"releases/{build_id}"
     )
+
+
+def require_offered_build(
+    api: Any, *, repo_id: str, release: str, build: str, label: str
+) -> None:
+    """Refuse a build-folder build that ``releases.json`` at ``main`` does not offer.
+
+    ``releases.json`` must list the build and not have withdrawn it
+    (:func:`microcosm.data.releases_record.build_refusal`). ``label`` names
+    the build in the refusal, for example "the parent build". An absent
+    ``releases.json`` refuses; any other Hub failure, including one where the
+    Hub could not be asked, propagates. ``api`` needs ``hf_hub_download``.
+    """
+    from microcosm.data.release import _is_absent_entry_error
+    from microcosm.data.releases_record import (
+        RELEASES_RECORD_PATH,
+        build_refusal,
+        parse_releases_record,
+    )
+
+    try:
+        downloaded = api.hf_hub_download(
+            repo_id=repo_id,
+            filename=RELEASES_RECORD_PATH,
+            repo_type="dataset",
+            revision="main",
+        )
+    except Exception as exc:
+        if not _is_absent_entry_error(exc):
+            raise
+        raise ValueError(
+            f"{repo_id} has no {RELEASES_RECORD_PATH}, so {label} {build!r} of "
+            f"{release!r} is not a published build ({exc})"
+        ) from exc
+    record = parse_releases_record(Path(downloaded).read_bytes())
+    problem = build_refusal(record, release=release, build=build)
+    if problem is not None:
+        raise ValueError(f"{label} {build!r} of {release!r} is refused: {problem}")
