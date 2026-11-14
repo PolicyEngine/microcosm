@@ -280,6 +280,36 @@ class TestMirrorConstants:
         }
         assert all(entry.not_applicable is None for entry in spec.gates.gates)
 
+    def test_evidence_ids_are_the_entries_whose_binding_attests_evidence(
+        self,
+    ) -> None:
+        # The verifier accepts an evidence_sha256 only under these ids: every
+        # entry whose binding has an evidence hook, except uk_target_surface,
+        # whose hook attests nothing for its empty parameters. Every
+        # stage-health entry is among them: that binding's hook attests its
+        # stage's receipt for every entry.
+        spec = load_country_spec("uk")
+        entries = {entry.id: entry for entry in spec.gates.gates}
+        hooked = {
+            entry_id
+            for entry_id, entry in entries.items()
+            if UK_GATE_REGISTRY[entry.gate].evidence is not None
+        }
+        silent = entries["uk_target_surface"]
+        assert silent.id in hooked
+        assert (
+            UK_GATE_REGISTRY[silent.gate].evidence_payload(
+                EvidenceContext(), silent.parameters
+            )
+            is None
+        )
+        assert data_contract._UK_GATE_BATTERY_EVIDENCE_IDS == hooked - {silent.id}
+        assert {
+            entry_id
+            for entry_id, entry in entries.items()
+            if entry.gate == "stage_health"
+        } <= data_contract._UK_GATE_BATTERY_EVIDENCE_IDS
+
     def test_outcome_envelope_mirrors_the_producer_construction_invariants(
         self,
     ) -> None:

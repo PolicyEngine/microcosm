@@ -80,6 +80,13 @@ UK_SPINE_GATE_SCOPE = (
     "uk_atomic_area_mapping_integrity",
     "uk_spi_copy_area_mapping_integrity",
     "uk_copy_area_agreement",
+    # Each household's council-tax reductions within its bill at the
+    # transferred boundary, outside Northern Ireland (microcosm#931):
+    # council_tax_localise is the last spine stage that writes the bill and
+    # the reductions, and the copies made after it inherit them; the copy
+    # area check above also holds those copies to their parents on the bill
+    # and the rebate.
+    "uk_council_tax_reduction_within_bill",
     "uk_stage_property_purchases_fit",
     "uk_stage_uc_legacy_closure_take_up_contract",
     "uk_stage_frs_person_draws_apprentices",

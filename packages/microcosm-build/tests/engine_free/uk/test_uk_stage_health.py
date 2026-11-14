@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import json
 import re
 
@@ -4896,13 +4897,19 @@ def test_the_packaged_copy_gate_holds_each_later_layer_on_the_copy_stages_column
     None
 ):
     """Every copy layer after spi_copy_areas is held on the columns that stage
+    rewrites and on the household columns the council-tax localisation
     rewrites, beside region and the clone index, and the support channel's
     copies on region and the clone index alone. The layers are the copy-id
     fields from the support channel's on, and the gate's stage is the last of
-    them (C-11, C-20, microcosm#931)."""
+    them (C-11, C-20, microcosm#931). The later layers' copies are made after
+    council_tax_localise, so each inherits its parent's council tax; the
+    support channel's are made before it, and it localises their own."""
 
     from microcosm.build.uk_runtime import copy_id_table
     from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
+    from microcosm.build.uk_runtime.spine_council_tax import (
+        UK_COUNCIL_TAX_LOCALISE_HOUSEHOLD_REWRITES,
+    )
     from microcosm.build.uk_runtime.spine_geography import (
         UK_SPI_COPY_AREAS_REWRITE_COLUMNS,
     )
@@ -4915,7 +4922,11 @@ def test_the_packaged_copy_gate_holds_each_later_layer_on_the_copy_stages_column
     assert list(layers) == ["spi_support_channel", *later]
     assert layers["spi_support_channel"] == held
     for layer in later:
-        assert layers[layer] == [*held, *UK_SPI_COPY_AREAS_REWRITE_COLUMNS], layer
+        assert layers[layer] == [
+            *held,
+            *UK_SPI_COPY_AREAS_REWRITE_COLUMNS,
+            *UK_COUNCIL_TAX_LOCALISE_HOUSEHOLD_REWRITES,
+        ], layer
     assert parameters["stage"] == later[-1] == "cgt_residential_split"
 
 
@@ -5196,8 +5207,10 @@ def test_each_later_copy_layer_is_held_to_its_parent_in_its_clone(
 
 # The council-tax reduction check (microcosm#931) holds each household's
 # council-tax reductions within its bill on the phase's frame, with the
-# households of the regions it is told to leave out taken out first. No gate
-# declares it yet. Every table below is invented.
+# households of the regions it is told to leave out taken out first. The
+# packaged gate uk_council_tax_reduction_within_bill declares it at the
+# transferred boundary (its tests close this file). Every table below is
+# invented.
 
 _COUNCIL_TAX_STAGE = "council_tax_localise"
 _COUNCIL_TAX_CHECK = "council_tax_reduction_within_bill"
@@ -5631,3 +5644,455 @@ def test_the_council_tax_check_keeps_the_stage_match() -> None:
     assert result.failures == (
         f"{_COUNCIL_TAX_STAGE}: receipt stage 'private_rent' does not match.",
     )
+
+
+# --- The packaged council-tax gate (microcosm#931) -----------------------------------
+#
+# uk_council_tax_reduction_within_bill declares the council-tax check on
+# council_tax_localise (G6) at the spine's transferred boundary. These tests run
+# the packaged entry through the battery's own registry on what G6 itself
+# writes: the frame and the receipt its packaged stage's transform leaves on
+# test_support's invented council-tax cases (uk_council_tax_fixtures), on the toy
+# conditioned supports. Every amount is invented.
+
+_COUNCIL_TAX_GATE_ID = "uk_council_tax_reduction_within_bill"
+
+
+def _packaged_council_tax_entry(**parameters):
+    """The packaged gate entry, with ``parameters`` replacing its own."""
+
+    from dataclasses import replace
+
+    from microcosm.build import load_country_spec
+
+    (entry,) = [
+        entry
+        for entry in load_country_spec("uk").gates.gates
+        if entry.id == _COUNCIL_TAX_GATE_ID
+    ]
+    if parameters:
+        entry = replace(entry, parameters={**entry.parameters, **parameters})
+    return entry
+
+
+def _one_gate(entry):
+    """``entry`` alone, in a manifest of the packaged spec's phases."""
+
+    from microcosm.build import load_country_spec
+    from microcosm.build.country_spec import GatesManifest
+
+    gates = load_country_spec("uk").gates
+    return GatesManifest(
+        country=gates.country,
+        version=gates.version,
+        policy="council-tax gate test",
+        phases=gates.phases,
+        gates=(entry,),
+    )
+
+
+@functools.cache
+def _localised_by_g6(clones: int):
+    """The frame and the receipt G6's packaged stage writes on the invented
+    cases at ``clones`` clones, at their invented Band D."""
+
+    from microcosm.build import load_country_spec
+    from microcosm.build.uk_runtime.spine_council_tax import (
+        COUNCIL_TAX_LOCALISE_STAGE_NAME,
+        UKCouncilTaxLocaliseStageTransform,
+    )
+    from test_support.microcosm_build.uk_conditioned_support_fixtures import (
+        toy_conditioned_support_payloads,
+    )
+    from test_support.microcosm_build.uk_council_tax_fixtures import (
+        council_tax_spine_frame,
+        invented_band_d,
+    )
+
+    sources = load_country_spec("uk").sources
+    transform = UKCouncilTaxLocaliseStageTransform(
+        stage=sources.stage_map()[COUNCIL_TAX_LOCALISE_STAGE_NAME],
+        supports=toy_conditioned_support_payloads(),
+        band_d=invented_band_d(),
+    )
+    frame = transform(council_tax_spine_frame(clones=clones))
+    return frame, transform.checkpoint_metadata()["evidence"]
+
+
+def _council_tax_gate_outcome(frame, evidence, **parameters):
+    """The packaged gate's outcome through the battery's registry at the
+    transferred boundary, on ``frame`` and the receipt ``evidence``."""
+
+    from microcosm.build.gate_battery import EvidenceContext, evaluate_phase
+    from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
+
+    entry = _packaged_council_tax_entry(**parameters)
+    report = evaluate_phase(
+        _one_gate(entry),
+        "transferred",
+        EvidenceContext(
+            frame=frame,
+            artifacts={"stage_evidence": {entry.parameters["stage"]: evidence}},
+        ),
+        registry=UK_GATE_REGISTRY,
+    )
+    (outcome,) = report.outcomes
+    return outcome
+
+
+def _with_tables(frame, *, household=None, person=None):
+    """``frame`` with its household or person table replaced."""
+
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_household_weight_kind,
+        uk_national_frame,
+        uk_time_period,
+    )
+
+    return uk_national_frame(
+        person=frame.table("person") if person is None else person,
+        benunit=frame.table("benunit"),
+        household=frame.table("household") if household is None else household,
+        time_period=uk_time_period(frame),
+        weight_kind=uk_household_weight_kind(frame),
+        household_weights=frame.weights_for("household").values,
+        mass_log=frame.mass_log,
+    )
+
+
+def test_the_packaged_council_tax_gate_holds_what_g6_rewrites() -> None:
+    """The gate holds the bill and the reductions council_tax_localise
+    rewrites, with Northern Ireland, which G6 leaves as it is, left out. It
+    sits at the transferred boundary and blocks a release, and absent
+    evidence blocks it in every posture. The stage-health binding routes each
+    of its keys and refuses each one misspelt (microcosm#931)."""
+
+    from dataclasses import replace
+
+    from microcosm.build.gate_battery import validate_gate_parameters
+    from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
+    from microcosm.build.uk_runtime.spine_council_tax import (
+        COUNCIL_TAX_LOCALISE_STAGE_NAME,
+        UK_COUNCIL_TAX_LOCALISE_EXCLUDED_REGIONS,
+        UK_COUNCIL_TAX_LOCALISE_HOUSEHOLD_REWRITES,
+        UK_COUNCIL_TAX_LOCALISE_PERSON_REWRITES,
+    )
+
+    entry = _packaged_council_tax_entry()
+    assert (entry.gate, entry.phase, entry.criticality) == (
+        "stage_health",
+        "transferred",
+        "release_blocking",
+    )
+    assert entry.evidence_absent_blocks is True
+    assert entry.population_fact_check is False
+    parameters = entry.parameters
+    assert set(parameters) == {
+        "stage",
+        "check",
+        "bill_column",
+        "household_reduction_columns",
+        "person_reduction_columns",
+        "excluded_regions",
+        "absolute_tolerance",
+    }
+    assert parameters["stage"] == COUNCIL_TAX_LOCALISE_STAGE_NAME
+    assert parameters["check"] == _COUNCIL_TAX_CHECK
+    # The bill, then the household reductions: G6's household rewrites.
+    assert (
+        parameters["bill_column"],
+        *parameters["household_reduction_columns"],
+    ) == UK_COUNCIL_TAX_LOCALISE_HOUSEHOLD_REWRITES
+    assert parameters["person_reduction_columns"] == (
+        UK_COUNCIL_TAX_LOCALISE_PERSON_REWRITES
+    )
+    assert parameters["excluded_regions"] == UK_COUNCIL_TAX_LOCALISE_EXCLUDED_REGIONS
+    assert parameters["absolute_tolerance"] == 1e-9
+
+    validate_gate_parameters(_one_gate(entry), UK_GATE_REGISTRY)
+    for key in parameters:
+        misspelt = {
+            (name[:-1] if name == key else name): value
+            for name, value in parameters.items()
+        }
+        with pytest.raises(
+            ValueError, match=rf"'{_COUNCIL_TAX_GATE_ID}'.*\['{key[:-1]}'\]"
+        ):
+            validate_gate_parameters(
+                _one_gate(replace(entry, parameters=misspelt)), UK_GATE_REGISTRY
+            )
+
+
+def test_the_council_tax_gate_reads_the_columns_after_their_last_spine_writer() -> None:
+    """council_tax_localise is the last packaged stage that writes the bill or a
+    reduction, so the transferred boundary reads them as it leaves them. The
+    support channel copies its households before it, and it localises those
+    copies' own; the copy stages of the copy area gate's later layers run
+    after it, so their copies inherit their parents' (microcosm#931)."""
+
+    from microcosm.build import load_country_spec
+    from microcosm.build.uk_runtime.spine_council_tax import (
+        COUNCIL_TAX_LOCALISE_STAGE_NAME,
+        UK_COUNCIL_TAX_LOCALISE_REWRITES,
+    )
+
+    stages = list(load_country_spec("uk").sources.stages)
+    order = [stage.stage for stage in stages]
+    writers = [
+        stage.stage
+        for stage in stages
+        if set(UK_COUNCIL_TAX_LOCALISE_REWRITES) & {*stage.outputs, *stage.rewrites}
+    ]
+    assert writers[-1] == COUNCIL_TAX_LOCALISE_STAGE_NAME
+    position = order.index(COUNCIL_TAX_LOCALISE_STAGE_NAME)
+    assert order.index("spi_support_channel") < position
+    for copy_stage in (
+        "high_value_home_support",
+        "cgt_support_split",
+        "cgt_incidence_clone",
+        "cgt_residential_split",
+    ):
+        assert order.index(copy_stage) > position, copy_stage
+
+
+@pytest.mark.parametrize("clones", [1, 3])
+def test_the_registered_council_tax_gate_passes_on_what_g6_writes(clones) -> None:
+    """On the receipt and the frame G6's packaged stage writes, the registered
+    gate passes: G6 caps every Great Britain reduction and rebate at the new
+    bill. One invented Northern Ireland household carries a reduction above
+    its zero bill, which G6 leaves as it is and its receipt records. The gate
+    leaves that household out; held in, it would fail on both columns."""
+
+    from microcosm.build.gate_battery import GateStatus
+
+    frame, evidence = _localised_by_g6(clones)
+    assert evidence["stage"] == _COUNCIL_TAX_STAGE
+    assert evidence["checks"]["reduction_within_bill"] is True
+    assert evidence["checks"]["rebate_within_bill"] is True
+    assert evidence["checks"]["northern_ireland_reductions_within_bill"] is False
+
+    outcome = _council_tax_gate_outcome(frame, evidence)
+
+    assert outcome.status is GateStatus.PASSED, outcome.result.failures
+    assert outcome.result.details == {
+        "stage": _COUNCIL_TAX_STAGE,
+        "check": _COUNCIL_TAX_CHECK,
+        "households_checked": True,
+        "columns": {"council_tax_rebate": True, "council_tax_benefit_reported": True},
+        "finite_nonnegative": True,
+    }
+    held_in = _council_tax_gate_outcome(frame, evidence, excluded_regions=[])
+    assert held_in.status is GateStatus.FAILED
+    assert held_in.result.failures == (
+        _council_tax_failure("council_tax_rebate"),
+        _council_tax_failure("council_tax_benefit_reported", persons=True),
+    )
+
+
+@pytest.mark.parametrize(
+    ("great_britain", "table", "failed"),
+    [
+        (True, "household", "council_tax_rebate"),
+        (True, "person", "council_tax_benefit_reported"),
+        (False, "household", None),
+        (False, "person", None),
+    ],
+)
+def test_the_registered_council_tax_gate_fails_a_frame_above_the_bill(
+    great_britain, table, failed
+) -> None:
+    """G6's frame with one household's rebate, or its first person's reported
+    reduction, set above its bill: a Great Britain household fails the gate
+    on that column, and a Northern Ireland household does not."""
+
+    from microcosm.build.gate_battery import GateStatus
+
+    frame, evidence = _localised_by_g6(1)
+    household = frame.table("household").copy()
+    person = frame.table("person").copy()
+    region = household["region"].to_numpy(dtype=object)
+    bill = household["council_tax"].to_numpy(dtype=float)
+    in_great_britain = region != "NORTHERN_IRELAND"
+    candidates = np.flatnonzero(
+        (in_great_britain if great_britain else ~in_great_britain) & (bill > 0.0)
+    )
+    row = int(candidates[0])
+    above = float(bill[row]) + 1.0
+    if table == "household":
+        household.loc[household.index[row], "council_tax_rebate"] = above
+    else:
+        members = np.flatnonzero(
+            person["person_household_id"].to_numpy()
+            == household["household_id"].to_numpy()[row]
+        )
+        person.loc[person.index[members[0]], "council_tax_benefit_reported"] = above
+
+    outcome = _council_tax_gate_outcome(
+        _with_tables(frame, household=household, person=person), evidence
+    )
+
+    if failed is None:
+        assert outcome.status is GateStatus.PASSED, outcome.result.failures
+        return
+    assert outcome.status is GateStatus.FAILED
+    assert outcome.result.failures == (
+        _council_tax_failure(failed, persons=table == "person"),
+    )
+    assert outcome.result.details["columns"][failed] is False
+    assert _booleans_only(outcome.result.details)
+
+
+def test_the_registered_council_tax_gate_fails_closed_without_g6s_receipt() -> None:
+    """Stage evidence without council_tax_localise's receipt fails the gate
+    closed, and the failure blocks the build. Absent evidence, no stage
+    evidence or no frame, blocks it in a development build too, since it
+    declares evidence_absent_blocks (microcosm#931)."""
+
+    from microcosm.build.gate_battery import (
+        EvidenceContext,
+        GateStatus,
+        evaluate_phase,
+    )
+    from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
+
+    frame, evidence = _localised_by_g6(1)
+    manifest = _one_gate(_packaged_council_tax_entry())
+
+    def evaluated(context):
+        report = evaluate_phase(
+            manifest, "transferred", context, registry=UK_GATE_REGISTRY
+        )
+        (outcome,) = report.outcomes
+        return outcome, report.blocking_outcomes(release_candidate=False)
+
+    outcome, blocking = evaluated(
+        EvidenceContext(frame=frame, artifacts={"stage_evidence": {}})
+    )
+    assert outcome.status is GateStatus.FAILED
+    (failure,) = outcome.result.failures
+    assert repr(_COUNCIL_TAX_STAGE) in failure
+    assert blocking == (outcome,)
+
+    for context, missing in (
+        (EvidenceContext(frame=frame, artifacts={}), "stage_evidence"),
+        (
+            EvidenceContext(
+                frame=None,
+                artifacts={"stage_evidence": {_COUNCIL_TAX_STAGE: evidence}},
+            ),
+            "frame",
+        ),
+    ):
+        outcome, blocking = evaluated(context)
+        assert outcome.status is GateStatus.EVIDENCE_ABSENT
+        assert outcome.reason == f"missing evidence: {missing}"
+        assert blocking == (outcome,)
+
+
+def _households_for_the_packaged_copy_gate(layer: str) -> pd.DataFrame:
+    """An FRS household, its support channel copy and a copy minted in
+    ``layer`` from the household, on every column the packaged copy area
+    gate holds. The support channel copy carries an area and a council tax
+    of its own, as the localisation prices it at its own cell; the layer's
+    copy carries its parent's. Every value is invented."""
+
+    from microcosm.build import load_country_spec
+    from microcosm.build.uk_runtime import copy_id_table
+
+    (entry,) = [
+        entry
+        for entry in load_country_spec("uk").gates.gates
+        if entry.id == "uk_copy_area_agreement"
+    ]
+    held = dict.fromkeys(
+        column
+        for columns in entry.parameters["columns_by_copy_layer"].values()
+        for column in columns
+    )
+    root = np.array([101], dtype=np.int64)
+    household = pd.DataFrame(
+        {
+            "household_id": np.concatenate(
+                [
+                    root,
+                    copy_id_table.mint(root, "spi_support_channel", 1),
+                    copy_id_table.mint(root, layer, 1),
+                ]
+            )
+        }
+    )
+    for column in held:
+        household[column] = [f"{column}-parent", f"{column}-own", f"{column}-parent"]
+    household["region"] = "LONDON"
+    household["household_clone_index"] = np.zeros(3, dtype=np.int64)
+    household["in_rural_fuel_duty_relief_area"] = [False, True, False]
+    household["council_tax"] = [1000.0, 1300.0, 1000.0]
+    household["council_tax_rebate"] = [250.0, 0.0, 250.0]
+    return household
+
+
+@pytest.mark.parametrize("column", ["council_tax", "council_tax_rebate"])
+@pytest.mark.parametrize(
+    "layer",
+    [
+        "high_value_support",
+        "cgt_support_split",
+        "cgt_incidence_clone",
+        "cgt_residential_split",
+    ],
+)
+def test_the_packaged_copy_gate_holds_later_copies_to_their_parents_council_tax(
+    layer, column
+) -> None:
+    """Through the battery's registry, the packaged copy area gate passes a
+    copy of a later layer that carries its parent's council tax, and fails
+    one moved on the bill or the rebate, on that layer and column alone. A
+    support channel copy moved on either passes: its layer holds region and
+    the clone index alone (microcosm#931)."""
+
+    from microcosm.build import load_country_spec
+    from microcosm.build.gate_battery import (
+        EvidenceContext,
+        GateStatus,
+        evaluate_phase,
+    )
+    from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
+
+    (entry,) = [
+        entry
+        for entry in load_country_spec("uk").gates.gates
+        if entry.id == "uk_copy_area_agreement"
+    ]
+    stage = entry.parameters["stage"]
+
+    def outcome(household):
+        report = evaluate_phase(
+            _one_gate(entry),
+            "transferred",
+            EvidenceContext(
+                frame=_FrameStandIn(household),
+                artifacts={"stage_evidence": {stage: {"stage": stage}}},
+            ),
+            registry=UK_GATE_REGISTRY,
+        )
+        (result,) = report.outcomes
+        return result
+
+    household = _households_for_the_packaged_copy_gate(layer)
+    passed = outcome(household)
+    assert passed.status is GateStatus.PASSED, passed.result.failures
+    assert passed.result.details["layers"][layer]["copies_checked"] is True
+
+    moved = household.copy()
+    moved.loc[2, column] += 1.0
+    failed = outcome(moved)
+    assert failed.status is GateStatus.FAILED
+    assert failed.result.failures == (
+        f"{stage}: copy_area_agreement: {layer}: {column}: a copy row differs "
+        "from its parent.",
+    )
+    assert failed.result.details["layers"][layer]["columns"][column] is False
+
+    own = household.copy()
+    own.loc[1, column] += 1.0
+    assert outcome(own).status is GateStatus.PASSED

@@ -30,13 +30,15 @@ SEED = 42
 RUN_ID = "ci-uk-smoke-full-s42"
 #: The spine gates microcosm#931 registers or moves: the area draw's and the
 #: SPI-copy area stage's mapping integrity, each later copy's agreement with
-#: its parent on the areas, the local-authority and BRMA engine domains, the
-#: geography ladder, the area home values ranking and the WAS support clip
-#: with its exemptions.
+#: its parent on the areas and the council tax, each household's council-tax
+#: reductions within its bill once the council tax is localised, the
+#: local-authority and BRMA engine domains, the geography ladder, the area
+#: home values ranking and the WAS support clip with its exemptions.
 _SPINE_GEOGRAPHY_GATES = (
     "uk_atomic_area_mapping_integrity",
     "uk_spi_copy_area_mapping_integrity",
     "uk_copy_area_agreement",
+    "uk_council_tax_reduction_within_bill",
     "uk_local_authority_enum_domain",
     "uk_brma_enum_domain",
     "uk_geography_ladder",

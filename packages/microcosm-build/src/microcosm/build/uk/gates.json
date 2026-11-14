@@ -130,7 +130,7 @@
           "student_loan_balance": 0
         }
       },
-      "notes": "Stage-time support-clip health gate over the WAS wealth receipt; raw FRS mapping stages have no imputation semantics and intentionally have no empty health gate. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison. private_pension_wealth joined the gated columns with microcosm#1063 (it had been an output without an allowance); the derived totals are clipped like every other column, and a clipped total would also break its identity in the wealth_coherence gate."
+      "notes": "Support-clip check on the was_wealth receipt. was_wealth clips each column in columns, except those in exempt_columns, to the donors' realized support. The gate holds each clipped column's clipped_low_rows and clipped_high_rows to its allowances in max_clipped_low_rows_by_column and max_clipped_high_rows_by_column, each multiplied by the receipt's clone_count where it gives one. main_residence_value and property_wealth are exempt through exempt_columns, since localised home values can pass the donor range; their receipt entries must be marked exempt."
     },
     {
       "id": "uk_stage_was_wealth_coherence",
@@ -1002,7 +1002,9 @@
             "itl1_code",
             "local_authority",
             "brma",
-            "in_rural_fuel_duty_relief_area"
+            "in_rural_fuel_duty_relief_area",
+            "council_tax",
+            "council_tax_rebate"
           ],
           "cgt_support_split": [
             "region",
@@ -1023,7 +1025,9 @@
             "itl1_code",
             "local_authority",
             "brma",
-            "in_rural_fuel_duty_relief_area"
+            "in_rural_fuel_duty_relief_area",
+            "council_tax",
+            "council_tax_rebate"
           ],
           "cgt_incidence_clone": [
             "region",
@@ -1044,7 +1048,9 @@
             "itl1_code",
             "local_authority",
             "brma",
-            "in_rural_fuel_duty_relief_area"
+            "in_rural_fuel_duty_relief_area",
+            "council_tax",
+            "council_tax_rebate"
           ],
           "cgt_residential_split": [
             "region",
@@ -1065,11 +1071,36 @@
             "itl1_code",
             "local_authority",
             "brma",
-            "in_rural_fuel_duty_relief_area"
+            "in_rural_fuel_duty_relief_area",
+            "council_tax",
+            "council_tax_rebate"
           ]
         }
       },
       "notes": "Every copy the spine makes after spi_copy_areas equals its immediate parent, the household its id names with the copy layer's copy-id field cleared (copy_id_table.parent), on the columns spi_copy_areas rewrites (the geography key, the area and ladder, local_authority, brma and the Rural Fuel Duty Relief flag) and on region and household_clone_index (C-11, C-20, microcosm#931): the high-value support, CGT support split, CGT incidence clone and CGT residential split copies. The SPI support channel's copies and income band donors draw areas of their own, so they are held on region and household_clone_index alone. The check reads the transferred frame; it is declared on cgt_residential_split, the last copy layer, whose receipt the gate requires. Its details are booleans by layer and column, and its texts name the layer and column, never an id, a count or a value."
+    },
+    {
+      "id": "uk_council_tax_reduction_within_bill",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "council_tax_localise",
+        "check": "council_tax_reduction_within_bill",
+        "bill_column": "council_tax",
+        "household_reduction_columns": [
+          "council_tax_rebate"
+        ],
+        "person_reduction_columns": [
+          "council_tax_benefit_reported"
+        ],
+        "excluded_regions": [
+          "NORTHERN_IRELAND"
+        ],
+        "absolute_tolerance": 1e-09
+      },
+      "notes": "Outside excluded_regions, each household's council_tax_rebate, and its persons' council_tax_benefit_reported summed, must be at most its council_tax plus absolute_tolerance, with every value read finite and non-negative. council_tax_localise is the last spine stage that writes these columns."
     },
     {
       "id": "uk_stage_property_purchases_fit",

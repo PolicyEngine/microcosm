@@ -1728,10 +1728,12 @@ class TestUKGatesManifest:
             "uk_stage_age_tail_targets",
             "uk_stage_frs_relationships_composition",
             "uk_stage_area_home_values_ranking",
-            # microcosm#931: the spine geography gates.
+            # microcosm#931: the spine geography gates, then each household's
+            # council-tax reductions within its bill once they are localised.
             "uk_atomic_area_mapping_integrity",
             "uk_spi_copy_area_mapping_integrity",
             "uk_copy_area_agreement",
+            "uk_council_tax_reduction_within_bill",
             "uk_stage_property_purchases_fit",
             "uk_stage_uc_legacy_closure_take_up_contract",
             "uk_stage_frs_person_draws_apprentices",
@@ -1882,6 +1884,7 @@ class TestUKGatesManifest:
             "uk_atomic_area_mapping_integrity",
             "uk_spi_copy_area_mapping_integrity",
             "uk_copy_area_agreement",
+            "uk_council_tax_reduction_within_bill",
             "uk_stage_property_purchases_fit",
             "uk_stage_uc_legacy_closure_take_up_contract",
             "uk_stage_frs_person_draws_apprentices",

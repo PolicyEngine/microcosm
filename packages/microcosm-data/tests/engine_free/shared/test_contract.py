@@ -213,13 +213,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "ab2a907b57302c11dd4eea2c7155e48497c48e6f853c0cbd2ea44aa1d2e6be01"
+    "adcfd7406da884ec8f6957bcb0efb8812355ede4b0ce53a451740b4c57c2caa1"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "f8005cfaaba9e318d2ed5928b6c7cbb13a13535133c787329788facb43fc0d7a"
+    "ac92e985ddd6ab9a75091de8e45dcf16e0df6f5459e1fb9dc233bc118fd3eeec"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "02a58ed2d6dcd3307f579c6bc8325e59b1cf41c1c8eedcc8ddde7452337127fa"
+    "ece134cbf67788ff0deb32a8ab9b02fd5b95e60a7db4fac0c5a7f23a4ae242bc"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "7906286f9ca7eacea56276d2f63f37746031866c6edd8e5c29adbd3749e90e52"
@@ -376,6 +376,7 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_atomic_area_mapping_integrity": ("stage_health", "assembled", None),
     "uk_spi_copy_area_mapping_integrity": ("stage_health", "transferred", None),
     "uk_copy_area_agreement": ("stage_health", "transferred", None),
+    "uk_council_tax_reduction_within_bill": ("stage_health", "transferred", None),
     "uk_stage_frs_take_up_signal": (
         "stage_health",
         "assembled",
@@ -1497,6 +1498,7 @@ def _gate_battery_payload(
         "uk_atomic_area_mapping_integrity": "atomic_area_assign",
         "uk_spi_copy_area_mapping_integrity": "spi_copy_areas",
         "uk_copy_area_agreement": "cgt_residential_split",
+        "uk_council_tax_reduction_within_bill": "council_tax_localise",
         "uk_stage_frs_take_up_signal": "frs_take_up",
         "uk_stage_frs_person_draws_take_up_signal": "frs_person_draws",
         "uk_stage_frs_household_draws_take_up_signal": "frs_household_draws",

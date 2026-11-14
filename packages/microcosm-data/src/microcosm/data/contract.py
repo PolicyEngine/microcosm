@@ -737,13 +737,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "ab2a907b57302c11dd4eea2c7155e48497c48e6f853c0cbd2ea44aa1d2e6be01"
+    "adcfd7406da884ec8f6957bcb0efb8812355ede4b0ce53a451740b4c57c2caa1"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "f8005cfaaba9e318d2ed5928b6c7cbb13a13535133c787329788facb43fc0d7a"
+    "ac92e985ddd6ab9a75091de8e45dcf16e0df6f5459e1fb9dc233bc118fd3eeec"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "02a58ed2d6dcd3307f579c6bc8325e59b1cf41c1c8eedcc8ddde7452337127fa"
+    "ece134cbf67788ff0deb32a8ab9b02fd5b95e60a7db4fac0c5a7f23a4ae242bc"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -858,6 +858,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_atomic_area_mapping_integrity": ("stage_health", "assembled"),
     "uk_spi_copy_area_mapping_integrity": ("stage_health", "transferred"),
     "uk_copy_area_agreement": ("stage_health", "transferred"),
+    "uk_council_tax_reduction_within_bill": ("stage_health", "transferred"),
     "uk_stage_frs_take_up_signal": ("stage_health", "assembled"),
     "uk_stage_frs_person_draws_take_up_signal": ("stage_health", "assembled"),
     "uk_stage_frs_household_draws_take_up_signal": ("stage_health", "assembled"),
@@ -986,6 +987,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_atomic_area_mapping_integrity",
         "uk_spi_copy_area_mapping_integrity",
         "uk_copy_area_agreement",
+        "uk_council_tax_reduction_within_bill",
         "uk_stage_frs_take_up_signal",
         "uk_stage_frs_person_draws_take_up_signal",
         "uk_stage_frs_household_draws_take_up_signal",
@@ -1309,6 +1311,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_capital_gains_asset_type_enum_domain",
             "uk_copy_area_agreement",
             "uk_council_tax_band_domain",
+            "uk_council_tax_reduction_within_bill",
             "uk_geography_ladder",
             "uk_local_authority_enum_domain",
             "uk_ons_household_type_enum_domain",
@@ -1410,10 +1413,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "633f96c49e8cac648219a752f1beba9ef6d2f629762b3b49c8905f00e57a7629"
+            "1f117567bd1b9f6b5f6dd47a15808ed2c7437c316a969f3b2a5438d74917859e"
         ),
         "policy_sha256": (
-            "ff8342fab0d51219429d6d38c6df058b9683b4b2d5389aad931dc8f663faab01"
+            "403950ac0fd76eec76d0335fc4b75ee1719600a2981f9ef4e73f8271f9f62614"
         ),
     },
     "calibration_seam": {
