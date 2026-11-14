@@ -31,6 +31,10 @@ and for the deeper ones below float64's range.
    ``_capped_log_shift`` states: 1,588,854 weights the size a solve's are,
    the same count 690 nats below the total and still in float64's normal
    range, and a million subnormal weights whose sum is still normal.
+8. A remainder below float64's normal range: where the caps leave the other
+   records a room between 2**-1074 and 2**-1022, the projection matches a
+   decimal bisection on the shift, on the review's two inputs, on a table of
+   rooms across that range and on drawn ones.
 """
 
 from __future__ import annotations
@@ -650,6 +654,242 @@ def test_a_million_subnormal_weights_cost_the_total_digits_by_either_path() -> N
     )
     assert sorted_taken == 1
     assert abs(_total_error(log_w, log_upper, sorted_shift, total)) <= 1e-9
+
+
+# --- 8: a remainder below float64's normal range -------------------------------
+
+#: The smallest normal float64, 2**-1022, and the smallest subnormal, 2**-1074.
+_TINY = float(torch.finfo(torch.float64).tiny)
+_SMALLEST_SUBNORMAL = math.ldexp(1.0, -1074)
+#: Significant digits of the decimal bisection; it stops at a bracket of 1e-40.
+_BISECTION_DIGITS = 50
+#: Agreement with the bisection: 1e-9 of each weight plus 1e-11 of the total.
+#: These totals sit between 1e-308 and 1e-300, so every log-weight here is
+#: within 2,048 of zero, where float64s are at most 2**-42 (2.3e-13) apart. An
+#: uncapped record's log-weight passes through at most n + 4 operations that
+#: each err by an ulp or two (the normalization, the sort's running log-space
+#: sum over its n records, the log of the remainder, the shift's subtraction
+#: and its addition), so its weight is good to 5e-12 of itself for the six
+#: such records drawn here: 1e-9 leaves a factor of 200. The other term covers
+#: what is not proportional to the weight. Each held cap is float64's ``exp``
+#: of its log, an ulp or two of the total from the exact cap, and the
+#: subtractions that form the remainder round at an ulp of the total. Where
+#: the remainder is within a few steps of a log near -700 (1.1e-13 of the
+#: total), rounding decides whether a held record reaches its cap, which moves
+#: it by that much. All of that is below 5e-13 of the total; 1e-11 leaves a
+#: factor of 20. Each figure is a worst case for float64 arithmetic with an
+#: ``exp`` and a ``log`` good to a couple of ulps that keep subnormals, which
+#: CPython's ``math`` and torch's CPU kernels do on Linux and macOS (torch
+#: keeps subnormals unless ``torch.set_flush_denormal(True)``); the decimal
+#: side is correctly rounded on every platform and Python. The flooring this
+#: replaced missed by ``2**-1022 - room`` in all: 0.1 and 1.2e-8 of the total
+#: on the review's two inputs.
+_SUBNORMAL_ROOM_RTOL = Decimal("1e-9")
+_SUBNORMAL_ROOM_MASS = Decimal("1e-11")
+
+
+def _bisected_weights(
+    log_weights: np.ndarray, log_caps: np.ndarray, total: float
+) -> list[Decimal]:
+    """The projected weights from the definition, by bisection on the shift.
+
+    Independent of the solver and of the water-fill above. With
+    ``v = exp(log_weights)`` and ``u = exp(log_caps)`` to 50 digits, the
+    answer is ``min(exp(s) * v, u)`` at the ``s`` where
+    ``sum(min(exp(s) * v, u))``, continuous and nondecreasing in ``s``, meets
+    the total. Bisect ``s`` between ``log(total / sum(v))``, where that sum is
+    at most the total, and the largest ``log(u / v)``, where every record that
+    carries weight is at its cap.
+    """
+    with localcontext() as context:
+        context.prec = _BISECTION_DIGITS
+        weights = [
+            Decimal(float(x)).exp() if math.isfinite(x) else Decimal(0)
+            for x in log_weights
+        ]
+        caps = [
+            Decimal(float(x)).exp() if math.isfinite(x) else Decimal(0)
+            for x in log_caps
+        ]
+        target = Decimal(float(total))
+        live = [
+            i for i, (v, u) in enumerate(zip(weights, caps, strict=True)) if v and u
+        ]
+
+        def filled(shift: Decimal) -> list[Decimal]:
+            scale = shift.exp()
+            return [min(scale * v, u) for v, u in zip(weights, caps, strict=True)]
+
+        if sum((caps[i] for i in live), Decimal(0)) <= target:
+            return [caps[i] if weights[i] else Decimal(0) for i in range(len(caps))]
+        low = (target / sum(weights, Decimal(0))).ln()
+        high = max((caps[i] / weights[i]).ln() for i in live)
+        while high - low > Decimal("1e-40"):
+            middle = (low + high) / 2
+            if sum(filled(middle), Decimal(0)) < target:
+                low = middle
+            else:
+                high = middle
+        return filled(high)
+
+
+def _assert_matches_the_bisection(
+    projected: np.ndarray, log_weights: np.ndarray, log_caps: np.ndarray, total: float
+) -> None:
+    """Each projected weight, read exactly from its log, against the bisection."""
+    expected = _bisected_weights(log_weights, log_caps, total)
+    with localcontext() as context:
+        context.prec = _BISECTION_DIGITS
+        target = Decimal(float(total))
+        for i, (log_w, want) in enumerate(zip(projected, expected, strict=True)):
+            got = Decimal(float(log_w)).exp() if math.isfinite(log_w) else Decimal(0)
+            bound = _SUBNORMAL_ROOM_RTOL * want + _SUBNORMAL_ROOM_MASS * target
+            assert abs(got - want) <= bound, (
+                f"record {i}: {float(got)!r} against {float(want)!r} at a total "
+                f"of {total!r}, {float(abs(got - want) / target):.3g} of it"
+            )
+
+
+def _subnormal_room_problem(
+    total: float, room: float, held_shares, offsets
+) -> tuple[np.ndarray, np.ndarray, float, float]:
+    """Held caps that leave the other records a remainder of about ``room``.
+
+    The held records start 3 nats above caps that split ``total - room`` in
+    ``held_shares``. The others start ``offsets`` nats below the total under
+    caps of the total itself. Each starts at most ``e**-40`` of the total, so
+    the exact answer holds the held records at their caps and the others fill
+    the room. The total is rebuilt as float64's sum of the held caps as the
+    solver's ``exp`` rounds them, plus ``room``. Returns the log-weights, the
+    log caps, that total and the remainder the solver computes from them;
+    below 2**-1021 every one of those sums is exact, so the remainder is
+    ``room`` itself. Logs of subnormals go through ``math.log``.
+    """
+    held_log_caps = np.array(
+        [math.log(share / sum(held_shares) * (total - room)) for share in held_shares]
+    )
+    held_caps = float(torch.exp(torch.tensor(held_log_caps, dtype=torch.float64)).sum())
+    total = held_caps + room
+    log_caps = np.concatenate((held_log_caps, np.full(len(offsets), math.log(total))))
+    log_weights = np.concatenate(
+        (held_log_caps + 3.0, math.log(total) + np.asarray(offsets, dtype=np.float64))
+    )
+    return log_weights, log_caps, total, total - held_caps
+
+
+@pytest.mark.parametrize(
+    ("total", "held_share"),
+    [(1e-308, 0.6), (1e-300, 1.0 - 1e-8)],
+    ids=["total-1e-308", "total-1e-300"],
+)
+def test_a_remainder_below_float64s_normal_range_keeps_its_value(
+    total: float, held_share: float
+) -> None:
+    """The first record's cap leaves a remainder below float64's normal range.
+
+    The second record sits 1,000 nats lower under a cap of half the total, so
+    its float64 weight is zero and the sort finishes the shift; it must fill
+    the remainder exactly: 4e-309 at a total of 1e-308 (itself subnormal), and
+    1e-308 at a total of 1e-300. The sort took the logarithm of that remainder
+    floored at float64's smallest normal value, 2.2e-308, which put the
+    projected total 10% over at 1e-308 and 1.2e-8 of itself over at 1e-300
+    (microcosm#1096 review, round 1). Both entry points, with and without the
+    active-set rounds, must match the bisection.
+    """
+    log_caps = np.array([math.log(held_share * total), math.log(0.5 * total)])
+    log_weights = np.array([math.log(total), math.log(total) - 1000.0])
+    held_cap = float(torch.exp(torch.tensor(log_caps[0], dtype=torch.float64)))
+    assert 0.0 < total - held_cap < _TINY
+    _assert_matches_the_bisection(
+        _project(log_weights, log_caps, total), log_weights, log_caps, total
+    )
+    log_w, log_upper = _normalized(log_weights, log_caps, total)
+    for rounds in (solve_module._SOFTMAX_CAP_ACTIVE_SET_ROUNDS, 0):
+        shift, taken = solve_module._capped_log_shift(
+            log_w, log_upper, total, active_set_rounds=rounds
+        )
+        assert taken == rounds + 1  # the sort finished it
+        _assert_matches_the_bisection(
+            torch.minimum(log_w + shift, log_upper).numpy(),
+            log_weights,
+            log_caps,
+            total,
+        )
+
+
+#: Rooms across the subnormal range for three totals: 1e-300, whose float64
+#: spacing (1.7e-316) bounds the rooms from below; 4e-308, the smallest normal
+#: binade, where any subnormal room is exact; and 1e-308, itself subnormal.
+_SUBNORMAL_ROOMS = {
+    1e-300: (1e-315, 1e-310, 2e-308),
+    4e-308: (
+        3 * _SMALLEST_SUBNORMAL,
+        1e-320,
+        1e-315,
+        1e-310,
+        math.nextafter(_TINY, 0.0),
+    ),
+    1e-308: (3 * _SMALLEST_SUBNORMAL, 1e-320, 1e-315, 1e-310, 4e-309),
+}
+
+
+@pytest.mark.parametrize(
+    "total", list(_SUBNORMAL_ROOMS), ids=lambda total: f"{total:g}"
+)
+@pytest.mark.parametrize(
+    "held_shares", [(1.0,), (0.7, 0.3)], ids=["one-held", "two-held"]
+)
+@pytest.mark.parametrize(
+    "offsets",
+    [(-40.0,), (-40.0, -40.5, -47.0, -300.0, -1100.0)],
+    ids=["one-uncapped", "five-uncapped"],
+)
+def test_subnormal_remainders_match_the_bisection(total, held_shares, offsets) -> None:
+    """Every room in the table, with one or two held records and one or five others.
+
+    The five uncapped records spread from 40 to 1,100 nats below the total:
+    the two deepest stay below float64's range after the shift, and at a total
+    of 1e-300 the three shallowest start with float64 weights that are
+    subnormal but not zero.
+    """
+    for room in _SUBNORMAL_ROOMS[total]:
+        log_weights, log_caps, problem_total, remainder = _subnormal_room_problem(
+            total, room, held_shares, offsets
+        )
+        assert 0.0 < remainder < _TINY
+        _assert_matches_the_bisection(
+            _project(log_weights, log_caps, problem_total),
+            log_weights,
+            log_caps,
+            problem_total,
+        )
+
+
+@st.composite
+def subnormal_room_problems(draw):
+    """A total near float64's smallest normal value and a subnormal room under it.
+
+    Totals from 1e-308 (subnormal) to 4e-308 (the smallest normal binade);
+    the room any multiple of 2**-1074 below both 2**-1022 and 0.9 of the
+    total; one to three held records and one to six others, 40 to 1,100 nats
+    below the total.
+    """
+    total = draw(st.floats(1e-308, 4e-308))
+    most = min(int(0.9 * total / _SMALLEST_SUBNORMAL), 2**52 - 1)
+    room = math.ldexp(draw(st.integers(1, most)), -1074)
+    held_shares = draw(st.lists(st.floats(0.05, 1.0), min_size=1, max_size=3))
+    offsets = draw(st.lists(st.floats(-1100.0, -40.0), min_size=1, max_size=6))
+    return (room, *_subnormal_room_problem(total, room, held_shares, offsets))
+
+
+@_SETTINGS
+@given(subnormal_room_problems())
+def test_drawn_subnormal_remainders_match_the_bisection(problem) -> None:
+    room, log_weights, log_caps, total, remainder = problem
+    assert remainder == room
+    _assert_matches_the_bisection(
+        _project(log_weights, log_caps, total), log_weights, log_caps, total
+    )
 
 
 def test_max_cap_ratio_reads_zero_caps() -> None:

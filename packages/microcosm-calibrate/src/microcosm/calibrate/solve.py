@@ -1027,10 +1027,12 @@ def _sorted_capped_log_shift(
     ``log(room_k) - log(free_k)``, ``room_k`` being the total less every
     capped record's cap and ``free_k`` the weight of the records from the
     ``k``-th on, summed in log space so that a weight below float64's range
-    still counts. The answer is that shift at the smallest ``k`` where it
-    does not pass the ``k``-th record's own cap shift: the ``k`` records
-    before it reach their caps at a smaller shift, so they are capped, and
-    every record from the ``k``-th on is not. A ``room_k`` that is not
+    still counts. A positive ``room_k`` enters the logarithm as it is, so a
+    remainder below float64's normal range still sets the shift. The answer
+    is that shift at the smallest ``k`` where it does not pass the ``k``-th
+    record's own cap shift: the ``k`` records before it reach their caps at a
+    smaller shift, so they are capped, and every record from the ``k``-th on
+    is not. A ``room_k`` that is not
     positive means the caps of those ``k`` records already hold the total;
     the lower-bound argument in :func:`_capped_log_shift` rules that out
     beyond rounding, so the answer caps exactly those ``k`` and the rest keep
@@ -1055,9 +1057,12 @@ def _sorted_capped_log_shift(
     log_free = torch.flip(
         torch.logcumsumexp(torch.flip(log_weights[rest][order], (0,)), dim=0), (0,)
     )
+    # Mask only a room that is not positive before the logarithm (its
+    # candidate is -inf either way); a positive room, subnormal included,
+    # keeps its value.
     candidate = torch.where(
         room > 0.0,
-        torch.log(room.clamp_min(torch.finfo(torch.float64).tiny)) - log_free,
+        torch.log(torch.where(room > 0.0, room, 1.0)) - log_free,
         -math.inf,
     )
     meets = candidate <= rest_shift
@@ -1099,8 +1104,11 @@ def _capped_log_shift(
     they keep that share. When the uncapped mass sums below float64's normal
     range, that sum is subnormal or zero and cannot carry the shift, so the
     rounds hand over to :func:`_sorted_capped_log_shift`, which sums in log
-    space. So do ``active_set_rounds`` rounds that end without the bound
-    attained; the sort finishes from the current capped set and bound.
+    space. By the same bound, a remainder ``total - sum(caps[C])`` below
+    float64's normal range comes only with such a sum, so it reaches the
+    sort too, which takes its logarithm as it is. So do ``active_set_rounds``
+    rounds that end without the bound attained; the sort finishes from the
+    current capped set and bound.
     Records with a zero cap are capped at every shift; records with zero
     weight (a log-weight of ``-inf``) never reach a positive cap and
     contribute nothing. A record whose finite log-weight underflows float64
