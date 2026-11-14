@@ -24,18 +24,32 @@ donor-spine immigration values and any stored ACS value are kept unchanged.
   fields cover any time last year. Both gaps can only leave the ACS residual
   (likely undocumented) pool the same size or larger than the ASEC method
   would find for the same people.
+- **Labor-force status is measured.** The kernel's worker test is CPS
+  ``A_LFSR`` (employed or unemployed) at age 16 or older, the universe of
+  Pew's unauthorized labor force. ACS ``ESR`` carries the same current
+  status (:data:`ACS_TO_CPS_INDICATOR_MAPPING`). The donor's delivered
+  workers are measured the same way when the donor carries ``A_LFSR``; the
+  support base drops that column after its immigration stage, so such a
+  donor falls back to the earnings pair, and the receipt names the test it
+  used (microcosm#1554).
 - **The ACS rows target the donor residual.** The Pew worker and Higher Ed
-  student controls are national counts. The donor spine was labelled against
-  the full controls on its own mass and then pooled at rescaled household
-  weights, so it already delivers part of each count, and not necessarily
-  the share its person weight suggests. The stage measures that part on the
-  frame it sees (donor rows labelled ``NONE`` who work or attend college, on
-  their pooled weights) and targets the ACS rows at
-  ``max(0, control - donor delivered)``. Donor plus ACS then pools to the
-  control whenever the ACS rows have the capacity (microcosm#1052 review,
-  following the #1060 residual targets). The receipt records, per status,
-  the control, the donor delivered count, the residual, the ACS capacity and
-  assigned count, and the pooled total.
+  student controls are national counts, and so is every cited humanitarian
+  stock (microcosm#767). The donor spine was labelled against the full
+  controls on its own mass and then pooled at rescaled household weights, so
+  it already delivers part of each count, and not necessarily the share its
+  person weight suggests. The stage measures that part on the frame it sees
+  and targets the ACS rows at ``max(0, control - donor delivered)``. The
+  worker and student controls bind Pew's broad unauthorized universe
+  (residual ``NONE`` rows, DACA, the temporary protections Pew retains and
+  EAD Cuban/Haitian entrants), so their delivered counts are the donor rows
+  in that universe who work or attend college; a humanitarian draw's
+  delivered count is the donor rows already carrying its status inside its
+  origin, arrival and SSN cohort. Donor plus ACS then pools to each control
+  whenever the ACS rows have the capacity (microcosm#1052 review, following
+  the #1060 residual targets). The receipt records, per control and per
+  humanitarian draw, the national count, the donor delivered count, the
+  residual, the ACS assigned count and the pooled total, plus the ACS
+  capacity for the worker and student controls.
 - **Draws** are the kernel's seeded blake2b draws, keyed on
   ``acs_2024_1yr:SERIALNO:SPORDER``. ``SPORDER`` alone (the ACS
   ``source_person_id``) repeats in every household.
@@ -84,6 +98,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import GateResult
+from microcosm.build.source_runtime import SourceRuntimeError
 from microcosm.build.us_runtime.acs_pums import (
     ACS_2024_1YR_SPINE,
     ACS_SOURCE_COLUMN_RENAMES,
@@ -92,16 +107,23 @@ from microcosm.build.us_runtime.acs_transfer import ASEC_PUF_DONOR_SPINE
 from microcosm.build.us_runtime.base_pool import spine_column
 from microcosm.build.us_runtime.immigration import (
     _ARRIVAL_YEAR_MIDPOINTS,
+    _CPS_LABOR_FORCE_STATUS_CODES,
     _NON_CITIZEN_SHARE_BAND,
+    _PEW_INCLUDED_HUMANITARIAN_STATUS_VALUES,
     _SSN_CODE_TO_NAME,
     IMMIGRATION_STATUS_VALUES,
     SSN_CARD_TYPE_VALUES,
     US_IMMIGRATION_OUTPUT_COLUMNS,
+    HumanitarianDraw,
+    ImmigrationControls,
     _asec_arrival_year,
     _assign_ssn_card_codes,
     _derive_immigration_status,
-    _packaged_controls,
+    _humanitarian_emitted_mask,
+    _pew_unauthorized_rows,
+    _source_aware_immigration_profile,
     us_immigration_composition_gate,
+    us_immigration_controls,
 )
 from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
@@ -130,16 +152,24 @@ ACS_LOCAL_IMMIGRATION_ISSUE = "microcosm#1020"
 #: arrival-based status-duration proxy (years since measured arrival), which
 #: can clear the bar early for people who gained qualified status later.
 YEARS_SINCE_US_ENTRY_COLUMN = "years_since_us_entry"
-#: How the ACS worker and student targets are set (microcosm#1052 review):
-#: the national control minus the donor rows' pooled delivered count, floored
-#: at zero. A staging receipt without it predates the review and is refused.
-ACS_LOCAL_IMMIGRATION_CONTROLS_METHOD = "national_control_minus_donor_pooled_delivered"
+#: How the ACS targets are set: each national control minus the donor rows'
+#: pooled delivered count, floored at zero. The microcosm#1052 review set the
+#: rule for the worker and student controls; v2 (microcosm#767) measures their
+#: delivered counts in Pew's broad unauthorized universe and gives every
+#: humanitarian stock draw its own residual. A staging receipt with another
+#: method predates one of the two and is refused.
+ACS_LOCAL_IMMIGRATION_CONTROLS_METHOD = (
+    "national_control_minus_donor_pooled_delivered_v2"
+)
 #: Statuses the engine's five-year bar applies to: policyengine-us 2.2.1
 #: ``gov.hhs.medicaid.eligibility.eligible_immigration_statuses`` (the
 #: 2018-01-01 list) less ``CITIZEN`` and less
 #: ``bar_exempt_immigration_statuses`` (8 U.S.C. 1613(b)). In 2.2.1 Medicaid
 #: and Washington TANF read the clock against this bar, and Washington RCA
-#: reads it as a closing window; the federal SNAP status test does not. Of these, the stage assigns only ``LEGAL_PERMANENT_RESIDENT``.
+#: reads it as a closing window; the federal SNAP status test does not. Of
+#: these, the stage assigns ``LEGAL_PERMANENT_RESIDENT`` and, through the
+#: humanitarian parole draw, ``PAROLED_ONE_YEAR`` (microcosm#767); the kernel
+#: never emits ``CONDITIONAL_ENTRANT``.
 FIVE_YEAR_BAR_STATUSES: tuple[str, ...] = (
     "LEGAL_PERMANENT_RESIDENT",
     "CONDITIONAL_ENTRANT",
@@ -195,15 +225,27 @@ ACS_IMMIGRATION_SOURCE_COLUMNS: tuple[str, ...] = (
 #: Donor person columns the entry clock reads: the ASEC citizenship and
 #: entry-year codes.
 _ASEC_ENTRY_SOURCE_COLUMNS: tuple[str, ...] = ("PRCITSHP", "PEINUSYR")
-#: The two counts the kernel forces: residual-pool (``NONE``) non-citizens
-#: who work, and who attend college.
+#: The two counts the kernel forces: non-citizens in Pew's broad
+#: unauthorized universe (residual ``NONE``, DACA, the temporary protections
+#: Pew retains and EAD Cuban/Haitian entrants) who work, and who attend
+#: college.
 _CONTROLLED_STATUSES: tuple[str, ...] = (
     "undocumented_workers",
     "undocumented_students",
 )
-#: Donor columns for the kernel's worker test (positive wages or
-#: self-employment), most faithful first: the raw ASEC fields the donor's own
-#: immigration stage read, then harmonized inputs with the same sign.
+#: The kernel's worker test: ASEC ``A_LFSR`` in the labor force at 16 or
+#: older. The ASEC-by-PUF support base attaches ``A_LFSR`` only while its own
+#: immigration stage runs and drops it afterwards
+#: (``tools/build_us_puf_support_base.py``), so a donor built there carries
+#: none and falls back to :data:`_DONOR_WORKER_COLUMNS`.
+_DONOR_LABOR_FORCE_COLUMN = "A_LFSR"
+_LABOR_FORCE_MIN_AGE = 16
+#: Earnings-proxy donor columns for the worker test (positive wages or
+#: self-employment), used when the donor carries no ``A_LFSR``: the raw ASEC
+#: fields first, then harmonized inputs with the same sign. Prior-year
+#: earnings and current labor-force status differ at the margins (a worker
+#: laid off this year, a new entrant without last year's earnings), so the
+#: worker residual is then approximate; the receipt names the test used.
 _DONOR_WORKER_COLUMNS: tuple[tuple[str, str], ...] = (
     ("WSAL_VAL", "SEMP_VAL"),
     ("employment_income_before_lsr", "self_employment_income_before_lsr"),
@@ -228,6 +270,13 @@ _ARMED_FORCES = (4, 5)
 _ACTIVE_DUTY = (1, 2)
 #: ACS COW government codes -> CPS PEIO1COW government codes.
 _COW_TO_PEIO1COW: Mapping[int, int] = MappingProxyType({5: 1, 4: 2, 3: 3})
+#: ACS ESR -> CPS A_LFSR. ESR 1/2 (civilian employed, at work / with a job
+#: but not at work) and 3 (unemployed) keep their codes; 4/5 (Armed Forces)
+#: are CPS code 0, outside the civilian universe; 6 (not in the labor force)
+#: is CPS 7. A blank ESR (under 16) is CPS 0.
+_ESR_TO_A_LFSR: Mapping[int, int] = MappingProxyType(
+    {1: 1, 2: 2, 3: 3, 4: 0, 5: 0, 6: 7}
+)
 _CPS_ARMED_FORCES_OCCUPATION = 11
 _CPS_COLLEGE = 2
 _CPS_YES, _CPS_NO = 1, 2
@@ -248,6 +297,11 @@ ACS_TO_CPS_INDICATOR_MAPPING: Mapping[str, str] = MappingProxyType(
             "RELSHIPP spouse pairing)"
         ),
         "A_HSCOL": "2 (college) when SCHG is 15 or 16",
+        "A_LFSR": (
+            "ESR 1/2/3 (employed at work, with a job not at work, unemployed) "
+            "keep their codes; ESR 4/5 (Armed Forces) and a blank ESR (under "
+            "16) are 0; ESR 6 (not in the labor force) is 7"
+        ),
         "WSAL_VAL": "WAGP (sign only; blank = under 15, no wages)",
         "SEMP_VAL": "SEMP (sign only; blank = under 15)",
         "MCARE": "1 when HINS3 == 1 (Medicare at interview)",
@@ -281,10 +335,13 @@ ACS_UNMAPPED_INDICATORS: Mapping[str, str] = MappingProxyType(
 )
 _DRAW_KEY_FORMAT = f"{ACS_2024_1YR_SPINE}:SERIALNO:SPORDER"
 _CONTROLS_DECISION = (
-    "each national control minus the donor rows' pooled delivered count of "
-    "that status (donor rows labelled NONE who work or attend college, on the "
-    "frame's pooled weights), floored at 0; donor plus ACS pools to the "
-    "control whenever the ACS rows have the capacity"
+    "each national control minus the donor rows' pooled delivered count, "
+    "floored at 0: for the worker and student controls, donor rows in Pew's "
+    "broad unauthorized universe who work or attend college; for each "
+    "humanitarian stock draw, donor rows carrying its status inside its "
+    "origin, arrival and SSN cohort; all on the frame's pooled weights. "
+    "Donor plus ACS pools to each control whenever the ACS rows have the "
+    "capacity"
 )
 _ENTRY_CLOCK = {
     "label": "arrival-based status-duration proxy",
@@ -326,12 +383,13 @@ _ENTRY_CLOCK = {
 
 @dataclass(frozen=True)
 class _ResidualTargets:
-    """The two counts the kernel forces, as ACS residual targets.
+    """The worker and student counts the kernel forces, as ACS residuals.
 
     :class:`~microcosm.build.us_runtime.immigration.UndocumentedControls`
     holds positive national counts; a residual can be zero (the donor already
     delivers the control), which the kernel reads as "spill every ACS
-    candidate". The kernel reads only these two attributes.
+    candidate". The kernel's SSN assignment reads only these two attributes
+    of ``ImmigrationControls.undocumented``.
     """
 
     workers: float
@@ -354,6 +412,29 @@ def _positive(values: pd.Series) -> np.ndarray:
 
 def _cps_yes_no(values: pd.Series) -> np.ndarray:
     return np.where(_is_any(values, _YES), _CPS_YES, _CPS_NO).astype(np.int64)
+
+
+def _cps_labor_force_status(esr: pd.Series) -> np.ndarray:
+    """CPS ``A_LFSR`` from ACS ``ESR``; a blank (under 16) is code 0.
+
+    Raises:
+        ValueError: If any non-blank ``ESR`` (an infinity included) is outside
+            the ACS codebook.
+    """
+
+    codes = _numeric(esr)
+    outside = ~np.isnan(codes) & ~np.isin(
+        codes, np.asarray(list(_ESR_TO_A_LFSR), dtype=np.float64)
+    )
+    if outside.any():
+        raise ValueError(
+            f"ACS ESR must be one of {sorted(_ESR_TO_A_LFSR)} or blank; "
+            f"{int(outside.sum())} row(s) are outside the domain."
+        )
+    status = np.zeros(len(codes), dtype=np.int64)
+    for esr_code, cps_code in _ESR_TO_A_LFSR.items():
+        status[codes == esr_code] = cps_code
+    return status
 
 
 def _require_codes(values: pd.Series, *, name: str, where: str) -> np.ndarray:
@@ -414,6 +495,7 @@ def _acs_cps_view(
             "A_HSCOL": np.where(
                 _is_any(person["SCHG"], _COLLEGE_GRADES), _CPS_COLLEGE, 0
             ).astype(np.int64),
+            "A_LFSR": _cps_labor_force_status(person["ESR"]),
             "WSAL_VAL": np.nan_to_num(_numeric(person["WAGP"]), nan=0.0),
             "SEMP_VAL": np.nan_to_num(_numeric(person["SEMP"]), nan=0.0),
             "MCARE": _cps_yes_no(person["HINS3"]),
@@ -472,25 +554,44 @@ def _donor_status_masks(
 ) -> tuple[np.ndarray, np.ndarray, dict[str, object]]:
     """The kernel's worker and student tests on donor rows, and their columns.
 
+    The worker test is the kernel's own (``A_LFSR`` in the labor force at 16
+    or older) when the donor carries ``A_LFSR``, else the earnings proxy of
+    :data:`_DONOR_WORKER_COLUMNS`.
+
     Raises:
-        ValueError: If no worker or no student column of
-            :data:`_DONOR_WORKER_COLUMNS` / :data:`_DONOR_STUDENT_COLUMNS` is
-            present: the donor's delivered counts could not be measured.
+        ValueError: If neither ``A_LFSR`` nor a worker pair of
+            :data:`_DONOR_WORKER_COLUMNS`, or no student column of
+            :data:`_DONOR_STUDENT_COLUMNS`, is present: the donor's delivered
+            counts could not be measured.
     """
 
+    labor_force = _DONOR_LABOR_FORCE_COLUMN in person
     worker_columns = next(
         (pair for pair in _DONOR_WORKER_COLUMNS if all(c in person for c in pair)),
         None,
     )
     student_column = next((c for c in _DONOR_STUDENT_COLUMNS if c in person), None)
-    if worker_columns is None or student_column is None:
+    if (not labor_force and worker_columns is None) or student_column is None:
         raise ValueError(
-            "The donor spine needs a worker pair from "
-            f"{[list(pair) for pair in _DONOR_WORKER_COLUMNS]} and a student "
-            f"column from {list(_DONOR_STUDENT_COLUMNS)} to measure the "
+            f"The donor spine needs {_DONOR_LABOR_FORCE_COLUMN} or a worker pair "
+            f"from {[list(pair) for pair in _DONOR_WORKER_COLUMNS]} and a "
+            f"student column from {list(_DONOR_STUDENT_COLUMNS)} to measure the "
             "undocumented worker and student counts it already delivers."
         )
-    worker = _positive(person[worker_columns[0]]) | _positive(person[worker_columns[1]])
+    if labor_force:
+        worker = _is_any(
+            person[_DONOR_LABOR_FORCE_COLUMN], _CPS_LABOR_FORCE_STATUS_CODES
+        ) & (_numeric(person[_AGE]) >= _LABOR_FORCE_MIN_AGE)
+        worker_test = (
+            f"{_DONOR_LABOR_FORCE_COLUMN} in "
+            f"{list(_CPS_LABOR_FORCE_STATUS_CODES)} and {_AGE} >= "
+            f"{_LABOR_FORCE_MIN_AGE}"
+        )
+    else:
+        worker = _positive(person[worker_columns[0]]) | _positive(
+            person[worker_columns[1]]
+        )
+        worker_test = f"{worker_columns[0]} > 0 or {worker_columns[1]} > 0"
     if student_column == "A_HSCOL":
         student = _is_any(person["A_HSCOL"], (_CPS_COLLEGE,))
         student_test = "A_HSCOL == 2"
@@ -502,14 +603,7 @@ def _donor_status_masks(
             f"{student_column} (full time only: narrower than A_HSCOL == 2, so "
             "the donor student count can only be understated)"
         )
-    return (
-        worker,
-        student,
-        {
-            "worker": f"{worker_columns[0]} > 0 or {worker_columns[1]} > 0",
-            "student": student_test,
-        },
-    )
+    return worker, student, {"worker": worker_test, "student": student_test}
 
 
 def _donor_delivered(
@@ -518,22 +612,84 @@ def _donor_delivered(
     """Pooled weight of donor rows in each controlled status, and the columns.
 
     The donor rows' stored labels on the frame's (pooled) weights: what the
-    donor already delivers toward each national control.
+    donor already delivers toward each national control. The controls bind
+    Pew's broad unauthorized universe, so a donor DACA, TPS or parole worker
+    counts as well as a ``NONE`` one.
     """
 
     if not donor.any():
         return dict.fromkeys(_CONTROLLED_STATUSES, 0.0), None
     rows = person.loc[donor]
     worker, student, columns = _donor_status_masks(rows)
-    undocumented = rows["ssn_card_type"].astype(object).eq("NONE").to_numpy()
+    unauthorized = _pew_unauthorized_rows(rows)
     donor_weights = weights[donor]
     return (
         {
-            "undocumented_workers": float(donor_weights[undocumented & worker].sum()),
-            "undocumented_students": float(donor_weights[undocumented & student].sum()),
+            "undocumented_workers": float(donor_weights[unauthorized & worker].sum()),
+            "undocumented_students": float(donor_weights[unauthorized & student].sum()),
         },
         columns,
     )
+
+
+def _evidence_profile(person: pd.DataFrame, *, time_period: int, where: str):
+    """The kernel's source-aware evidence for ``person``, refusals as ValueError."""
+
+    try:
+        return _source_aware_immigration_profile(person, time_period=time_period)
+    except SourceRuntimeError as exc:
+        raise ValueError(f"{where} immigration evidence is unusable: {exc}") from exc
+
+
+def _humanitarian_delivered(
+    person: pd.DataFrame,
+    weights: np.ndarray,
+    rows: np.ndarray,
+    draws: Sequence[HumanitarianDraw],
+    *,
+    time_period: int,
+    where: str,
+) -> dict[str, float]:
+    """Pooled weight of ``rows`` emitted as each draw within its cohort.
+
+    The same contract the whole-file composition gate grades: the draw's
+    status on a row whose origin, arrival and SSN evidence support it.
+    """
+
+    if not draws or not rows.any():
+        return {draw.label: 0.0 for draw in draws}
+    subset = person.loc[rows]
+    profile = _evidence_profile(subset, time_period=time_period, where=where)
+    selected = weights[rows]
+    return {
+        draw.label: float(
+            selected[
+                _humanitarian_emitted_mask(subset, draw=draw, profile=profile)
+            ].sum()
+        )
+        for draw in draws
+    }
+
+
+def _humanitarian_reconciliation(
+    draw: HumanitarianDraw, donor: float, assigned: float
+) -> dict[str, object]:
+    """One humanitarian draw: target, donor, residual, ACS and pooled mass."""
+
+    pooled = donor + assigned
+    return {
+        "category": draw.category,
+        "origin": draw.origin,
+        "status": draw.status,
+        "target": draw.target,
+        "donor_delivered": donor,
+        "residual": max(0.0, draw.target - donor),
+        "acs_assigned": assigned,
+        "pooled_total": pooled,
+        "pooled_relative": (pooled / draw.target) if draw.target > 0 else None,
+        "donor_excess": max(0.0, donor - draw.target),
+        "source": draw.source,
+    }
 
 
 def _status_reconciliation(
@@ -627,12 +783,14 @@ def _adjustment_lag_sensitivity(
 def acs_local_immigration_receipt_failures(
     receipt: Mapping[str, object],
 ) -> list[str]:
-    """Why a staging receipt's worker and student targets are not the residual.
+    """Why a staging receipt's ACS targets are not the donor residuals.
 
     Empty when the receipt carries
-    :data:`ACS_LOCAL_IMMIGRATION_CONTROLS_METHOD` and, for each controlled
-    status, ``residual == max(0, control - donor_delivered)`` and
-    ``pooled_total == donor_delivered + acs_assigned``.
+    :data:`ACS_LOCAL_IMMIGRATION_CONTROLS_METHOD`; for each controlled status,
+    ``residual == max(0, control - donor_delivered)`` and
+    ``pooled_total == donor_delivered + acs_assigned``; and the same two
+    identities (``target`` for ``control``) for exactly the packaged
+    humanitarian draws.
     """
 
     controls = receipt.get("controls") if isinstance(receipt, Mapping) else None
@@ -642,7 +800,7 @@ def acs_local_immigration_receipt_failures(
     ):
         return [
             f"controls.method is not {ACS_LOCAL_IMMIGRATION_CONTROLS_METHOD!r} "
-            "(a staging run from before the donor-residual targets)"
+            "(a staging run from before the current donor-residual targets)"
         ]
     statuses = controls.get("statuses")
     if not isinstance(statuses, Mapping):
@@ -676,6 +834,46 @@ def acs_local_immigration_receipt_failures(
         if not np.isclose(pooled, donor + assigned, rtol=1e-9, atol=1e-6):
             failures.append(
                 f"{status}: pooled total {pooled:,.1f} is not donor delivered + "
+                f"ACS assigned = {donor + assigned:,.1f}"
+            )
+    humanitarian = controls.get("humanitarian")
+    if not isinstance(humanitarian, Mapping):
+        return [*failures, "controls.humanitarian is missing"]
+    expected_labels = {draw.label for draw in us_immigration_controls().humanitarian}
+    if set(humanitarian) != expected_labels:
+        failures.append(
+            "controls.humanitarian draws differ from the packaged draws: "
+            f"missing {sorted(expected_labels - set(humanitarian))}, "
+            f"unexpected {sorted(set(humanitarian) - expected_labels)}"
+        )
+    for label in sorted(set(humanitarian) & expected_labels):
+        entry = humanitarian[label]
+        try:
+            target, donor, residual, assigned, pooled = (
+                float(entry[key])
+                for key in (
+                    "target",
+                    "donor_delivered",
+                    "residual",
+                    "acs_assigned",
+                    "pooled_total",
+                )
+            )
+        except (KeyError, TypeError, ValueError):
+            failures.append(
+                f"controls.humanitarian.{label} lacks a numeric target, "
+                "donor_delivered, residual, acs_assigned or pooled_total"
+            )
+            continue
+        expected = max(0.0, target - donor)
+        if not np.isclose(residual, expected, rtol=1e-9, atol=1e-6):
+            failures.append(
+                f"{label}: residual {residual:,.1f} is not max(0, target - "
+                f"donor delivered) = {expected:,.1f}"
+            )
+        if not np.isclose(pooled, donor + assigned, rtol=1e-9, atol=1e-6):
+            failures.append(
+                f"{label}: pooled total {pooled:,.1f} is not donor delivered + "
                 f"ACS assigned = {donor + assigned:,.1f}"
             )
     return failures
@@ -790,8 +988,9 @@ def require_acs_local_immigration_donor(base: Frame, *, time_period: int) -> Non
 
     The stage runs after hours of transfer fitting; its donor-side inputs are
     checked here first: a complete immigration surface, the ASEC citizenship
-    and entry-year codes, age, and the worker and student columns that
-    measure the controlled counts the donor already delivers.
+    and entry-year codes, age, the birth-country evidence the humanitarian
+    cohorts read, and the worker and student columns that measure the
+    controlled counts the donor already delivers.
     """
 
     person = base.table("person")
@@ -818,6 +1017,7 @@ def require_acs_local_immigration_donor(base: Frame, *, time_period: int) -> Non
     _years_since_entry(
         citizenship, entry_year, _numeric(person[_AGE]), time_period=time_period
     )
+    _evidence_profile(person, time_period=time_period, where="The donor's")
     _donor_status_masks(person)
 
 
@@ -830,11 +1030,11 @@ def with_acs_local_immigration_inputs(
         frame: The local lane's multispine US frame. Its person table must
             carry complete origin tags, the donor's two immigration columns,
             the raw ACS fields of :data:`ACS_IMMIGRATION_SOURCE_COLUMNS` on ACS
-            rows, the ASEC ``PRCITSHP``/``PEINUSYR`` codes and a worker and a
-            student column (:data:`_DONOR_WORKER_COLUMNS`,
+            rows, the ASEC ``PRCITSHP``/``PENATVTY``/``PEINUSYR`` codes and a
+            worker and a student column (:data:`_DONOR_WORKER_COLUMNS`,
             :data:`_DONOR_STUDENT_COLUMNS`) on donor rows, and ``age``; the
             household table carries ``SERIALNO``.
-        seed: The build seed for the EAD draws.
+        seed: The build seed for the humanitarian and EAD draws.
         time_period: The dataset year, against which entry years are read.
 
     Returns:
@@ -886,7 +1086,7 @@ def with_acs_local_immigration_inputs(
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
     acs_person = person.loc[acs]
     view, entry_year = _acs_cps_view(acs_person, time_period=time_period)
-    national = _packaged_controls()
+    national = us_immigration_controls()
     total_weight = float(weights.sum())
     acs_weight = float(weights[acs].sum())
     if not (total_weight > 0 and acs_weight > 0):
@@ -894,24 +1094,53 @@ def with_acs_local_immigration_inputs(
     share = acs_weight / total_weight
     # The donor was labelled against the full controls on its own mass and
     # pooled at rescaled weights; measure what it delivers on this frame and
-    # target the ACS rows at the nonnegative residual (#1052 review).
+    # target the ACS rows at the nonnegative residual (#1052 review), for the
+    # worker and student controls and for every humanitarian stock (#767).
     donor_delivered, donor_columns = _donor_delivered(person, weights, ~acs)
-    targets = _ResidualTargets(
-        workers=max(0.0, national.workers - donor_delivered["undocumented_workers"]),
-        students=max(0.0, national.students - donor_delivered["undocumented_students"]),
-    )
-    codes = _assign_ssn_card_codes(
-        view,
-        weights[acs],
-        seed=int(seed),
-        controls=targets,
-        arrival_year=entry_year,
+    donor_humanitarian = _humanitarian_delivered(
+        person,
+        weights,
+        ~acs,
+        national.humanitarian,
         time_period=time_period,
-        draw_keys=_acs_draw_keys(frame.table("household"), acs_person),
+        where="The donor's",
     )
+    undocumented = national.undocumented
+    targets = ImmigrationControls(
+        undocumented=_ResidualTargets(
+            workers=max(
+                0.0, undocumented.workers - donor_delivered["undocumented_workers"]
+            ),
+            students=max(
+                0.0, undocumented.students - donor_delivered["undocumented_students"]
+            ),
+        ),
+        humanitarian=tuple(
+            HumanitarianDraw(
+                category=draw.category,
+                origin=draw.origin,
+                status=draw.status,
+                target=max(0.0, draw.target - donor_humanitarian[draw.label]),
+                source=draw.source,
+            )
+            for draw in national.humanitarian
+        ),
+    )
+    try:
+        codes, marks = _assign_ssn_card_codes(
+            view,
+            weights[acs],
+            seed=int(seed),
+            controls=targets,
+            arrival_year=entry_year,
+            time_period=time_period,
+            draw_keys=_acs_draw_keys(frame.table("household"), acs_person),
+        )
+    except SourceRuntimeError as exc:
+        raise ValueError(f"ACS local immigration evidence is unusable: {exc}") from exc
     derived_status = np.full(len(person), None, dtype=object)
     derived_status[acs] = _derive_immigration_status(
-        view, codes, time_period=time_period, arrival_year=entry_year
+        view, codes, marks, time_period=time_period, arrival_year=entry_year
     )
     derived_ssn = np.full(len(person), None, dtype=object)
     derived_ssn[acs] = np.asarray(
@@ -972,22 +1201,41 @@ def with_acs_local_immigration_inputs(
     acs_weights = weights[acs]
     noncitizen = view["PRCITSHP"].to_numpy() == 5
     acs_status = {
-        "undocumented_workers": (view["WSAL_VAL"].to_numpy() > 0)
-        | (view["SEMP_VAL"].to_numpy() > 0),
+        "undocumented_workers": (view["A_AGE"].to_numpy() >= _LABOR_FORCE_MIN_AGE)
+        & np.isin(view["A_LFSR"].to_numpy(), _CPS_LABOR_FORCE_STATUS_CODES),
         "undocumented_students": view["A_HSCOL"].to_numpy() == _CPS_COLLEGE,
     }
-    # Capacity: ACS residual-pool non-citizens (NONE, or EAD by a spill)
-    # before the spills; assigned: final NONE labels, stored ones included.
-    residual_pool = noncitizen & np.isin(codes, (0, 2))
-    acs_undocumented = final.loc[acs, "ssn_card_type"].astype(object).eq("NONE")
+    # Capacity: ACS non-citizens inside Pew's broad universe before the EAD
+    # spills (the residual pool, NONE or EAD, and the Pew-retained
+    # humanitarian marks); assigned: final labels inside that universe,
+    # stored ones included.
+    in_universe_before_spill = noncitizen & (
+        np.isin(codes, (0, 2))
+        | np.isin(marks, _PEW_INCLUDED_HUMANITARIAN_STATUS_VALUES)
+    )
+    acs_unauthorized = _pew_unauthorized_rows(final.loc[acs])
     statuses = {
         status: _status_reconciliation(
-            getattr(national, status.removeprefix("undocumented_")),
+            getattr(undocumented, status.removeprefix("undocumented_")),
             donor_delivered[status],
-            float(acs_weights[residual_pool & in_status].sum()),
-            float(acs_weights[acs_undocumented.to_numpy() & in_status].sum()),
+            float(acs_weights[in_universe_before_spill & in_status].sum()),
+            float(acs_weights[acs_unauthorized & in_status].sum()),
         )
         for status, in_status in acs_status.items()
+    }
+    acs_humanitarian = _humanitarian_delivered(
+        final,
+        weights,
+        acs,
+        national.humanitarian,
+        time_period=time_period,
+        where="The ACS rows'",
+    )
+    humanitarian = {
+        draw.label: _humanitarian_reconciliation(
+            draw, donor_humanitarian[draw.label], acs_humanitarian[draw.label]
+        )
+        for draw in national.humanitarian
     }
     receipt: dict[str, object] = {
         "issue": ACS_LOCAL_IMMIGRATION_ISSUE,
@@ -1009,12 +1257,13 @@ def with_acs_local_immigration_inputs(
             "donor_status_columns": donor_columns,
             "acs_person_weight_share": share,
             "national": {
-                "undocumented_workers": national.workers,
-                "undocumented_students": national.students,
-                "undocumented_population_anchor": national.population_anchor,
+                "undocumented_workers": undocumented.workers,
+                "undocumented_students": undocumented.students,
+                "undocumented_population_anchor": undocumented.population_anchor,
             },
             "statuses": statuses,
-            "sources": dict(national.sources),
+            "humanitarian": humanitarian,
+            "sources": dict(undocumented.sources),
         },
         "indicator_mapping": dict(ACS_TO_CPS_INDICATOR_MAPPING),
         "unmapped_indicators": dict(ACS_UNMAPPED_INDICATORS),
@@ -1158,7 +1407,12 @@ def _measured_citizenship_failures(
     return failures
 
 
-def acs_local_immigration_signal_gate(frame: Frame) -> GateResult:
+def acs_local_immigration_signal_gate(
+    frame: Frame,
+    *,
+    time_period: int,
+    controls: ImmigrationControls | None = None,
+) -> GateResult:
     """Require complete, measured, plausible immigration inputs per origin.
 
     For each spine, fails when a label or the entry clock is missing or has
@@ -1170,7 +1424,9 @@ def acs_local_immigration_signal_gate(frame: Frame) -> GateResult:
     stage's band. Donor-spine composition is reported but not graded; the
     donor release graded it. The whole file must pass
     :func:`~microcosm.build.us_runtime.immigration.us_immigration_composition_gate`
-    (agreement, non-citizen band and the undocumented anchor band).
+    at ``time_period`` against ``controls`` (default: the packaged controls):
+    label agreement, the source-aware cohort contracts, the non-citizen band,
+    the undocumented anchor band and every humanitarian stock band.
     """
 
     person = frame.table("person")
@@ -1226,7 +1482,11 @@ def acs_local_immigration_signal_gate(frame: Frame) -> GateResult:
         for column in US_IMMIGRATION_OUTPUT_COLUMNS
     )
     if complete:
-        whole = us_immigration_composition_gate(frame)
+        whole = us_immigration_composition_gate(
+            frame,
+            time_period=int(time_period),
+            controls=us_immigration_controls() if controls is None else controls,
+        )
         details["file"] = {
             "passed": whole.passed,
             "failures": list(whole.failures),

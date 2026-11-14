@@ -101,7 +101,9 @@ _PERSON_REQUIRED = (
 # Preserve source hours and their universe/allocation evidence when supplied,
 # the citizenship, entry-year, birthplace, coverage, class-of-worker, school
 # and military-service fields the ACS local lane's immigration stage reads
-# (microcosm#1020, acs_local_immigration), the six disability-difficulty items
+# (microcosm#1020, acs_local_immigration; the ACS transfer's immigration
+# evidence reads the same CIT, POBP and YOEP and refuses a row without a
+# citizenship source, microcosm#767), the six disability-difficulty items
 # the local lane maps natively (microcosm#1021, acs_local_work_disability),
 # all other income (OIP), the local income pass's child-support predictor
 # (microcosm#1022, acs_local_income), and the public assistance income the

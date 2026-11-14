@@ -447,6 +447,73 @@ class TestAsecReportedReceiptInputGuarantee:
         assert failing.details["degenerate_required"] == sorted(names)
 
 
+_HR1_MEDICAID_PROBE = "hr1_medicaid_humanitarian_eligibility_restoration"
+
+
+@pytest.fixture(scope="module")
+def live_engine():
+    from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
+
+    return PolicyEngineUSEngine()
+
+
+def _with_probe_change(probe_id: str, **changes) -> ReleaseInputCoverageManifest:
+    manifest = load_release_input_coverage_manifest()
+    return ReleaseInputCoverageManifest(
+        reference=manifest.reference,
+        columns=manifest.columns,
+        probes=tuple(
+            dataclasses.replace(probe, **changes) if probe.id == probe_id else probe
+            for probe in manifest.probes
+        ),
+        schema_version=manifest.schema_version,
+    )
+
+
+class TestProbeMeasureUnits:
+    """The engine half checks each probe's measure against its declared unit."""
+
+    def test_shipped_probes_match_their_measures(self, live_engine) -> None:
+        assert_release_input_coverage_manifest_current(engine=live_engine)
+
+    def test_people_count_declared_as_dollars_is_refused(self, live_engine) -> None:
+        with pytest.raises(
+            ValueError,
+            match=(
+                "measure_unit 'usd' needs a dollar budget_measure; "
+                "'medicaid_enrolled' declares unit None"
+            ),
+        ):
+            assert_release_input_coverage_manifest_current(
+                engine=live_engine,
+                manifest=_with_probe_change(_HR1_MEDICAID_PROBE, measure_unit="usd"),
+            )
+
+    def test_dollars_declared_as_people_are_refused(self, live_engine) -> None:
+        with pytest.raises(
+            ValueError,
+            match="must be a person-level boolean; 'medicaid' is a float on person",
+        ):
+            assert_release_input_coverage_manifest_current(
+                engine=live_engine,
+                manifest=_with_probe_change(
+                    _HR1_MEDICAID_PROBE, budget_measure="medicaid"
+                ),
+            )
+
+    def test_unknown_measure_is_refused(self, live_engine) -> None:
+        with pytest.raises(
+            ValueError,
+            match="budget_measure 'not_a_variable' is not a PolicyEngine-US variable",
+        ):
+            assert_release_input_coverage_manifest_current(
+                engine=live_engine,
+                manifest=_with_probe_change(
+                    _HR1_MEDICAID_PROBE, budget_measure="not_a_variable"
+                ),
+            )
+
+
 def _manifest_with_list_edit(probe_id: str, **changes) -> ReleaseInputCoverageManifest:
     """The shipped manifest with one probe's list edit changed by ``changes``."""
     manifest = load_release_input_coverage_manifest()

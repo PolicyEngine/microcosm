@@ -804,7 +804,7 @@ def _with_local_immigration(
         raise SystemExit(
             f"ACS local immigration stage failed ({ACS_LOCAL_IMMIGRATION_ISSUE}): {exc}"
         ) from exc
-    gate = acs_local_immigration_signal_gate(frame)
+    gate = acs_local_immigration_signal_gate(frame, time_period=period)
     if not gate.passed:
         raise SystemExit(
             "Local staging immigration gate failed: " + "; ".join(gate.failures)

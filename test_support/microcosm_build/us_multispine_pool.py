@@ -726,6 +726,7 @@ def _producer_dtype_source_frame() -> Frame:
     person["PRCITSHP"] = [1, 5, 1, 5]
     person["PEINUSYR"] = [0, 24, 0, 24]
     person["PENATVTY"] = [57, 303, 57, 303]
+    person["A_LFSR"] = [1, 0, 1, 0]
     person["A_SPOUSE"] = 0
     person["CAID"] = 2
     person["IHSFLG"] = 2
@@ -762,6 +763,9 @@ def _producer_dtype_acs_source_frame() -> Frame:
     person["acs_social_security_income"] = [0.0, 12_000.0]
     person["acs_retirement_income"] = [0.0, 8_000.0]
     person["acs_interest_dividend_rental_income"] = [100.0, 2_000.0]
+    person["CIT"] = [1, 5]
+    person["POBP"] = [6, 373]
+    person["YOEP"] = [np.nan, 2022]
     household = tables["household"]
     household["state_fips"] = [6, 36]
     household["tenure_type"] = ["RENTED", "OWNED_WITH_MORTGAGE"]

@@ -75,7 +75,7 @@ def test_batched_engines_partition_release_and_order_their_work(
     validation = consumers["reform_validation"].record()
     demographics = consumers["demographics"].record()
     probes = len(us_release_reform_coverage_probes())
-    assert smoke["reform_systems"] == smoke["reform_passes"] == probes == 43
+    assert smoke["reform_systems"] == smoke["reform_passes"] == probes == 47
     assert validation["reform_systems"] == validation["reform_passes"] > 0
     assert demographics["reform_systems"] == demographics["reform_passes"] == 0
     assert all(engine.reform is None for engine in constructions)
@@ -1550,7 +1550,7 @@ def test_guard_sweep_records_and_scores_shipped_reform_passes(
 ) -> None:
     sweep = _load_sweep_module()
     plans, requests, counts = sweep._record_requests(builder)
-    assert counts["smoke_probes"] == len(us_release_reform_coverage_probes()) == 43
+    assert counts["smoke_probes"] == len(us_release_reform_coverage_probes()) == 47
     specs = reform_validation_module.load_default_reform_specs(period=builder.PERIOD)
     assert counts["validation_specs"] == sum(not spec.in_sample for spec in specs) == 52
     assert (
@@ -1558,8 +1558,11 @@ def test_guard_sweep_records_and_scores_shipped_reform_passes(
         == sum(spec.in_sample for spec in specs)
         == 12
     )
+    # The microcosm#767 H.R.1 probes add aca_ptc 2026 and 2027 and
+    # medicaid_enrolled 2027; their snap 2026 key is shared with the Texas
+    # vehicle probe.
     assert counts["baseline_keys"] == {
-        "reform_coverage_smoke": 20,
+        "reform_coverage_smoke": 23,
         "reform_validation": 75,
         "demographics": 1,
     }
@@ -1594,7 +1597,7 @@ def test_guard_sweep_records_and_scores_shipped_reform_passes(
     assert (
         len(requests)
         == counts["smoke_probes"] + counts["validation_reform_passes"]
-        == 109
+        == 113
     )
 
     frame, log = _nested_frame(), _EngineLog()

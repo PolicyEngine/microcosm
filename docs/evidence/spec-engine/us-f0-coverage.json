@@ -4,9 +4,9 @@
     "version": 1
   },
   "country": "us",
-  "documentation_sha256": "fda6ec0dd925077f4d84d30a1c206dd81d82c5e16bd94506e81fe1b9f7e2f466",
+  "documentation_sha256": "8b9068a9bf9887d7f383ff08851bddac05e4c5771332c71819ff3a180e748823",
   "field_usage": {
-    "authored_normative_field_count": 32609,
+    "authored_normative_field_count": 32749,
     "claim_count": 48,
     "claims": [
       {
@@ -16,8 +16,8 @@
         "legacy_sinks": [],
         "mode": "front_end_validation",
         "pointer_class": "all",
-        "pointer_count": 104,
-        "pointer_sha256": "8a186065f5b8ffc59bc3f62fe927975e6f36bc1e913aa61761652c9a8aa67988",
+        "pointer_count": 107,
+        "pointer_sha256": "2c2099d3d5ef3d664f74a2e732870391022a852cf49d5cf96810c9a984d2b20b",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/country_package.json",
@@ -206,8 +206,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 110,
-        "pointer_sha256": "4e1cdee017270e10a123df1e37be3d7c3a88056684c09eace90bd102c7d9ec83",
+        "pointer_count": 128,
+        "pointer_sha256": "072e12dcb7b0ec4af2d954c3280cca7ebad3496826b20de3bbc713ec1e9344e9",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1imputation.yaml/transfer_execution",
@@ -260,8 +260,8 @@
         ],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 24511,
-        "pointer_sha256": "5869ddc4afa6eb0c09f290b709e75467decc6929e7f79c98341878928e6169fc",
+        "pointer_count": 24577,
+        "pointer_sha256": "cd6f3f0bb0cca334bec3c133060352b1b99a4e7be118924de8741a9da748325c",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1imputation.yaml/producer_graph",
@@ -500,8 +500,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 1926,
-        "pointer_sha256": "8bd6122267288e2df25b2880a43191865707a240892bec484cb830ee72404964",
+        "pointer_count": 1939,
+        "pointer_sha256": "0e43f91c8617181bdceeef7570dd5a7e871f77e1acd3961f9b7203f825f20882",
         "rationale": null,
         "relative_sink_prefix": "/source_manifest/stages",
         "source_prefix": "/authored/spec~1sources.yaml/stages",
@@ -516,8 +516,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 88,
-        "pointer_sha256": "ae011455154bae0df3913ca9a056058a909d913439b292cb46c11f63c7d0d9a3",
+        "pointer_count": 89,
+        "pointer_sha256": "8d281f8f1e2f9914684150b0424ff816d0ec09ed0d9053ea5a64e877a86cc35b",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1spine.yaml/pipeline_contract",
@@ -530,8 +530,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 277,
-        "pointer_sha256": "dfa7ae701f62f7b1f06954798d29cfba3fc53a0be21e1751646d1f5bafd6071f",
+        "pointer_count": 316,
+        "pointer_sha256": "bb848f38e068858ac23e964a4ffbbf5542253da50515c72fe7753d8c56912486",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1spine.yaml/seed_site_bindings",
@@ -722,8 +722,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 827,
-        "pointer_sha256": "525ed8621baa2c6e0c0970a6cec85b3b250f8aadfe93750a08deb0d9f240f15e",
+        "pointer_count": 1035,
+        "pointer_sha256": "0da36c3d74127193e82c128071fb687028d4e6cf096f045c8d96d3c52391bc41",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/resolved/seed_protocol",
@@ -736,8 +736,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 277,
-        "pointer_sha256": "368fc19a8f07c4abf38ebcf2fbc4414d33c403c0f1f9881c2d2e3f5d6160feb6",
+        "pointer_count": 316,
+        "pointer_sha256": "199ec98045871070860164b522892327ab840b48c0c6a53972ebc0ff0d7d091f",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/resolved/seed_site_bindings",
@@ -758,21 +758,21 @@
         "verifier": "vintages"
       }
     ],
-    "configuration_field_count": 42394,
-    "consumed_field_count": 42394,
+    "configuration_field_count": 42781,
+    "consumed_field_count": 42781,
     "generation0_effect_counts": {
-      "legacy_behavior": 38780,
-      "no_generation0_effect": 3614
+      "legacy_behavior": 38878,
+      "no_generation0_effect": 3903
     },
     "mode_counts": {
-      "compiler_semantic": 27673,
-      "front_end_validation": 349,
+      "compiler_semantic": 28025,
+      "front_end_validation": 352,
       "identity_only": 103,
-      "legacy_behavior": 14269
+      "legacy_behavior": 14301
     },
     "multiple_primary_use_field_count": 0,
-    "pointer_inventory_sha256": "f6832e8d2892af22e41afd0b0bea0cba354bbff8b84bebcc652e765a3ae7df92",
-    "resolved_binding_field_count": 9785,
+    "pointer_inventory_sha256": "439d805c20da730deaa1aec21b94b635d2667075dda4aec542815d4a84e8a5b3",
+    "resolved_binding_field_count": 10032,
     "unused_field_count": 0
   },
   "inventory_coverage": {
@@ -796,14 +796,14 @@
       "primary_targets": 66,
       "producer_authored_outputs": 92,
       "producer_compiled_outputs": 230,
-      "producer_inputs": 2747,
+      "producer_inputs": 2753,
       "producer_nodes": 38,
       "producer_virtual_resources": 75,
       "release_rungs": 5,
       "resolved_references": 337,
-      "seed_owner_bindings": 112,
+      "seed_owner_bindings": 125,
       "seed_owner_rows": 54,
-      "seed_sites": 53,
+      "seed_sites": 66,
       "seed_streams": 14,
       "source_operators": 16,
       "source_stages": 38,
@@ -1060,11 +1060,11 @@
           "legacy_adapter.stacked_checkpoint_static_components"
         ],
         "expected": {
-          "schedule_sha256": "f1fb754e6ade602be394837bc0d7d091f2fba4b4b83fb00f59a0258fe56eb5da"
+          "schedule_sha256": "46cea046d2fb8223d32772bd6a7807c52791640943949154982dcc52d93fa9eb"
         },
         "failures": [],
         "observed": {
-          "schedule_sha256": "f1fb754e6ade602be394837bc0d7d091f2fba4b4b83fb00f59a0258fe56eb5da"
+          "schedule_sha256": "46cea046d2fb8223d32772bd6a7807c52791640943949154982dcc52d93fa9eb"
         },
         "status": "covered"
       },
@@ -1236,14 +1236,14 @@
         "expected": {
           "edges": 71,
           "nodes": 38,
-          "schedule_sha256": "f1fb754e6ade602be394837bc0d7d091f2fba4b4b83fb00f59a0258fe56eb5da",
+          "schedule_sha256": "46cea046d2fb8223d32772bd6a7807c52791640943949154982dcc52d93fa9eb",
           "waves": 6
         },
         "failures": [],
         "observed": {
           "edges": 71,
           "nodes": 38,
-          "schedule_sha256": "f1fb754e6ade602be394837bc0d7d091f2fba4b4b83fb00f59a0258fe56eb5da",
+          "schedule_sha256": "46cea046d2fb8223d32772bd6a7807c52791640943949154982dcc52d93fa9eb",
           "waves": 6
         },
         "status": "covered"
@@ -1261,11 +1261,11 @@
         ],
         "expected": {
           "relation": "source rows preserved exactly",
-          "rows": 2747
+          "rows": 2753
         },
         "failures": [],
         "observed": {
-          "rows": 2747
+          "rows": 2753
         },
         "status": "covered"
       },
@@ -1307,7 +1307,7 @@
         "expected": "complete execution-row and transition-authority object",
         "failures": [],
         "observed": {
-          "sha256": "9a09b49855b3dc4c37ac86c3b91293b6944a50f4448354701b18db8f659ae121"
+          "sha256": "e7f16e205ae8c7604d5b021f046724441533222c89f42ab7765620e9b8a36091"
         },
         "status": "covered"
       },
@@ -1324,12 +1324,12 @@
         ],
         "expected": {
           "nodes": 38,
-          "sha256": "1b208fff4f6d878c522147fee617177544bda8963c940f98a4bfc37507cb955f"
+          "sha256": "2606b852c3ecdc7ae0f7ff5b30c24a5ce6834b218db0898b44b18b906daa9558"
         },
         "failures": [],
         "observed": {
           "nodes": 38,
-          "sha256": "1b208fff4f6d878c522147fee617177544bda8963c940f98a4bfc37507cb955f"
+          "sha256": "2606b852c3ecdc7ae0f7ff5b30c24a5ce6834b218db0898b44b18b906daa9558"
         },
         "status": "covered"
       },
@@ -1347,12 +1347,12 @@
         ],
         "expected": {
           "producer_count": 38,
-          "sha256": "4464b646c45dff39a500e07bf60a8505d45725712fc27dcfc6de1e839fd6b0c3"
+          "sha256": "5653131d24487b1779e7c0a60deaed10d3a2a0b5a876c65dda40a6df0ef4e436"
         },
         "failures": [],
         "observed": {
           "producer_count": 38,
-          "sha256": "4464b646c45dff39a500e07bf60a8505d45725712fc27dcfc6de1e839fd6b0c3"
+          "sha256": "5653131d24487b1779e7c0a60deaed10d3a2a0b5a876c65dda40a6df0ef4e436"
         },
         "status": "covered"
       },
@@ -1519,7 +1519,7 @@
         "expected": {
           "groups": 12,
           "partition": "disjoint and exhaustive",
-          "sites": 53
+          "sites": 66
         },
         "failures": [],
         "observed": {
@@ -1536,6 +1536,19 @@
               "pregnancy_assignment",
               "wic_claim_assignment",
               "snap_discretionary_exemption_assignment",
+              "immigration_humanitarian_paroled_one_year_afghanistan_assignment",
+              "immigration_humanitarian_paroled_one_year_ukraine_assignment",
+              "immigration_humanitarian_paroled_one_year_nicaragua_assignment",
+              "immigration_humanitarian_paroled_one_year_venezuela_assignment",
+              "immigration_humanitarian_refugee_assignment",
+              "immigration_humanitarian_asylee_assignment",
+              "immigration_humanitarian_deportation_withheld_assignment",
+              "immigration_humanitarian_tps_venezuela_assignment",
+              "immigration_humanitarian_tps_el_salvador_assignment",
+              "immigration_humanitarian_tps_honduras_assignment",
+              "immigration_humanitarian_tps_nicaragua_assignment",
+              "immigration_humanitarian_tps_nepal_assignment",
+              "immigration_humanitarian_tps_other_designated_assignment",
               "immigration_ead_workers_assignment",
               "immigration_ead_students_assignment",
               "ssi_take_up_assignment",
@@ -1602,7 +1615,7 @@
               "sipp_tip_training_cap"
             ]
           },
-          "sites": 53
+          "sites": 66
         },
         "status": "covered"
       },
@@ -1642,13 +1655,13 @@
           "compiler_ir.node_slices"
         ],
         "expected": {
-          "map_sha256": "0c19b903a43b997886be6222045485954c96d6a624ce2ae3f83cadb4b22a7883",
-          "protocol_sha256": "15e6cad1f1b0082ffd5980095b4060827ed18786fae3076c97cf431c93a50e16"
+          "map_sha256": "635d852b76cc727616d9c6982f6f391165c9ba66d47dabe66aa3ef8db423a69a",
+          "protocol_sha256": "540e44ea16ed38d923e9a1d5163a3f58a358277f9830c7960ee2857cf2871d7a"
         },
         "failures": [],
         "observed": {
-          "map_sha256": "0c19b903a43b997886be6222045485954c96d6a624ce2ae3f83cadb4b22a7883",
-          "protocol_sha256": "15e6cad1f1b0082ffd5980095b4060827ed18786fae3076c97cf431c93a50e16"
+          "map_sha256": "635d852b76cc727616d9c6982f6f391165c9ba66d47dabe66aa3ef8db423a69a",
+          "protocol_sha256": "540e44ea16ed38d923e9a1d5163a3f58a358277f9830c7960ee2857cf2871d7a"
         },
         "status": "covered"
       },
@@ -1663,7 +1676,7 @@
           "compiler_ir.seed_stream_map"
         ],
         "expected": {
-          "implementation_sha256": "15e6cad1f1b0082ffd5980095b4060827ed18786fae3076c97cf431c93a50e16",
+          "implementation_sha256": "540e44ea16ed38d923e9a1d5163a3f58a358277f9830c7960ee2857cf2871d7a",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1684,7 +1697,7 @@
         },
         "failures": [],
         "observed": {
-          "implementation_sha256": "15e6cad1f1b0082ffd5980095b4060827ed18786fae3076c97cf431c93a50e16",
+          "implementation_sha256": "540e44ea16ed38d923e9a1d5163a3f58a358277f9830c7960ee2857cf2871d7a",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1718,12 +1731,12 @@
         ],
         "expected": {
           "relation": "all site fields preserved exactly",
-          "sites": 53
+          "sites": 66
         },
         "failures": [],
         "observed": {
-          "sha256": "a0366cd518f42a240b589af3ef6580aac44ad7ed70969bcc669b365d315146ab",
-          "sites": 53
+          "sha256": "5c22dfb6f3cd7c23c527e054ba6f5040ca2eb4235df8659e3f7c61ebe2ae6c4f",
+          "sites": 66
         },
         "status": "covered"
       },
@@ -1738,12 +1751,12 @@
           "compiler_ir.seed_stream_map.sites.owners"
         ],
         "expected": {
-          "bindings": 112,
-          "coverage": "all 53 sites"
+          "bindings": 125,
+          "coverage": "all 66 sites"
         },
         "failures": [],
         "observed": {
-          "bindings": 112
+          "bindings": 125
         },
         "status": "covered"
       },
@@ -1761,12 +1774,12 @@
           "legacy_adapter.imputation.late_producer_resource_semantics"
         ],
         "expected": {
-          "sha256": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
+          "sha256": "e9a70a60c3db9250066ee607d5e1fb07cd9d6a54424ab9eb9405f5e65b5a59b8",
           "stages": 38
         },
         "failures": [],
         "observed": {
-          "sha256": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
+          "sha256": "e9a70a60c3db9250066ee607d5e1fb07cd9d6a54424ab9eb9405f5e65b5a59b8",
           "stages": 38
         },
         "status": "covered"
@@ -1826,11 +1839,11 @@
           "legacy_adapter.stacked_checkpoint_static_components"
         ],
         "expected": {
-          "sha256": "bf681aedc859fd6398ef72da68f584069b7d25b3085c549bf99f82e8324c4eef"
+          "sha256": "7cdedd5bf056f1407910eddcd40ad0660bd7ef2d6defe224612c02b3476cbf15"
         },
         "failures": [],
         "observed": {
-          "sha256": "bf681aedc859fd6398ef72da68f584069b7d25b3085c549bf99f82e8324c4eef"
+          "sha256": "7cdedd5bf056f1407910eddcd40ad0660bd7ef2d6defe224612c02b3476cbf15"
         },
         "status": "covered"
       },
@@ -1873,7 +1886,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "ecf64f2bfbb59ffaaa717d8a09d38e56a38d6d43c1aa0a209d57492b038fb19a"
+          "sha256": "6aefc9bd351e4ca81998012de0eceacab9c802334d1ae2582f29cde4a6cd5036"
         },
         "failures": [],
         "observed": {
@@ -1897,7 +1910,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "ecf64f2bfbb59ffaaa717d8a09d38e56a38d6d43c1aa0a209d57492b038fb19a"
+          "sha256": "6aefc9bd351e4ca81998012de0eceacab9c802334d1ae2582f29cde4a6cd5036"
         },
         "status": "covered"
       },
@@ -1961,7 +1974,7 @@
             "take_up_contract",
             "us_qbi_reconciliation_contract"
           ],
-          "sha256": "731c8c33dc511dfc35bc4b37bed9864ee75446e45555b999a01ec9b6ad1289cf"
+          "sha256": "6e015f560238e801f4ef3263c05069ce4981078b620d260a2d37170e621e3beb"
         },
         "status": "covered"
       },
@@ -2585,7 +2598,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "98d583653d37fe58edcace1cf3e21a139b69ebe7d1c3dac6a58f08b2b5aab8cf"
+      "spec_sha256": "b296b865b2bdd5434f605b4bceedc44abbb1a828db523c4e487f67b97352dacd"
     }
   },
   "report_schema_version": 3,
@@ -2595,7 +2608,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "98d583653d37fe58edcace1cf3e21a139b69ebe7d1c3dac6a58f08b2b5aab8cf"
+    "spec_sha256": "b296b865b2bdd5434f605b4bceedc44abbb1a828db523c4e487f67b97352dacd"
   },
   "status": "pass"
 }

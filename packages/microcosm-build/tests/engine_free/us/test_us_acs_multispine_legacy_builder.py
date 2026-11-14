@@ -371,8 +371,10 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         order.append("immigration")
         return labelled, immigration_receipt
 
-    def fake_immigration_gate(frame):
+    def fake_immigration_gate(frame, *, time_period):
         assert frame is labelled
+        # The gate re-derives the cohort evidence at the stage's own period.
+        assert time_period == captured["immigration"][1]
         return GateResult(
             name="acs_local_immigration_signal",
             passed=True,
@@ -776,7 +778,7 @@ def test_immigration_stage_failures_abort_staging(monkeypatch) -> None:
     monkeypatch.setattr(
         builder,
         "acs_local_immigration_signal_gate",
-        lambda frame: GateResult(
+        lambda frame, *, time_period: GateResult(
             name="acs_local_immigration_signal",
             passed=False,
             failures=("acs_2024_1yr: ssn_card_type is constant 'CITIZEN'",),
@@ -790,7 +792,7 @@ def test_immigration_stage_failures_abort_staging(monkeypatch) -> None:
     monkeypatch.setattr(
         builder,
         "acs_local_immigration_signal_gate",
-        lambda frame: GateResult(
+        lambda frame, *, time_period: GateResult(
             name="acs_local_immigration_signal", passed=True, failures=()
         ),
     )

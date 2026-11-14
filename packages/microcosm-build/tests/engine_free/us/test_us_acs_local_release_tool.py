@@ -1632,7 +1632,13 @@ def test_reviewed_null_fill_refuses_to_default_fill_immigration(tmp_path) -> Non
 
 
 def _residual_controls(**worker_overrides) -> dict:
-    """A donor-residual controls block (microcosm#1052 review)."""
+    """A donor-residual controls block (microcosm#1052 review, microcosm#767).
+
+    The humanitarian block carries one entry per packaged stock draw, each
+    targeted at its donor residual.
+    """
+
+    from microcosm.build.us_runtime.immigration import us_immigration_controls
 
     def status(control: float, donor: float, assigned: float) -> dict:
         return {
@@ -1643,15 +1649,21 @@ def _residual_controls(**worker_overrides) -> dict:
             "pooled_total": donor + assigned,
         }
 
+    humanitarian = {}
+    for draw in us_immigration_controls().humanitarian:
+        entry = status(draw.target, 0.4 * draw.target, 0.6 * draw.target)
+        entry["target"] = entry.pop("control")
+        humanitarian[draw.label] = entry
     return {
-        "method": "national_control_minus_donor_pooled_delivered",
+        "method": "national_control_minus_donor_pooled_delivered_v2",
         "statuses": {
             "undocumented_workers": {
-                **status(8.3e6, 3.0e6, 5.3e6),
+                **status(9.7e6, 3.0e6, 6.7e6),
                 **worker_overrides,
             },
             "undocumented_students": status(4.08e5, 1.0e5, 3.08e5),
         },
+        "humanitarian": humanitarian,
     }
 
 
@@ -1699,7 +1711,28 @@ def _staging_immigration_summary(**overrides) -> dict:
             acs_local_immigration={
                 "issue": "microcosm#1020",
                 "assigned_sha256": "b" * 64,
-                "controls": _residual_controls(residual=8.3e6 * 2 / 3),
+                "controls": _residual_controls(residual=9.7e6 * 2 / 3),
+            }
+        ),
+        _staging_immigration_summary(
+            acs_local_immigration={
+                "issue": "microcosm#1020",
+                "assigned_sha256": "b" * 64,
+                "controls": {
+                    **_residual_controls(),
+                    "method": "national_control_minus_donor_pooled_delivered",
+                },
+            }
+        ),
+        _staging_immigration_summary(
+            acs_local_immigration={
+                "issue": "microcosm#1020",
+                "assigned_sha256": "b" * 64,
+                "controls": {
+                    key: value
+                    for key, value in _residual_controls().items()
+                    if key != "humanitarian"
+                },
             }
         ),
     ],
@@ -1713,6 +1746,8 @@ def _staging_immigration_summary(**overrides) -> dict:
         "no-digest",
         "pre-1052-review-share-scaled",
         "targets-not-the-donor-residual",
+        "pre-767-no-humanitarian-residuals",
+        "no-humanitarian-block",
     ],
 )
 def test_immigration_consumers_refuse_a_staging_run_without_the_stage(summary):
@@ -3817,18 +3852,19 @@ def _stub_local_immigration_gate(module, monkeypatch, *, passed=True) -> None:
 
     from microcosm.build.gates import GateResult
 
-    monkeypatch.setattr(
-        module,
-        "acs_local_immigration_signal_gate",
-        lambda frame: GateResult(
+    def gate(frame, *, time_period):
+        # The release grades the cohort evidence at its own period.
+        assert time_period == module.PERIOD
+        return GateResult(
             name="acs_local_immigration_signal",
             passed=passed,
             failures=()
             if passed
             else ("acs_2024_1yr: ssn_card_type is constant 'CITIZEN'",),
             details={},
-        ),
-    )
+        )
+
+    monkeypatch.setattr(module, "acs_local_immigration_signal_gate", gate)
 
 
 def _stub_local_work_disability_gate(

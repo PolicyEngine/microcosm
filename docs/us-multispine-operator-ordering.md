@@ -247,13 +247,14 @@ by_origin_battery
    manifest uses schema version 2 and binds its support contract and receipt.
    The canonical stacked authority is version 12, the outer stacked checkpoint
    materializer uses version 13, and the stacked pool stage checkpoint
-   materializer uses version 7.
+   materializer uses version 8 (the source-aware humanitarian status surface).
    The outer base identity binds primary-QRF version 6, the ACS universe and
    QBI reconciliation contracts, the tail schema and support contract, and
    late-producer registry schema version 17, including execution-receipt
-   contract 4, transition authority 2, and resource-semantics receipt 2. The
-   primary execution config is version 6 (it binds the recipient-share bound,
-   #1259), its portable worker identity is
+   contract 4, transition authority 2, resource-semantics receipt 2, and the
+   signed static and derivation-mode semantics of every virtual DAG resource.
+   The primary execution config is version 6 (it binds the recipient-share
+   bound, #1259), its portable worker identity is
    version 1, and its checkpoint input sidecar is version 2. The companion pool
    manifest uses schema version 10.
    Older outer authority or materializer payloads are stale; primary-QRF
@@ -312,7 +313,7 @@ by_origin_battery
    final publication reject a missing, stale, or reissued authority;
    NON-CANONICAL test receipts cannot ship.
 
-   Outer materializer v10 also embeds one signed resource-semantics row for
+   Outer materializer v13 also embeds one signed resource-semantics row for
    every DAG producer. Static configs are exact; donor tables are bound by the
    declared canonical scalar-content codec; primary and transfer banks name
    their outer/stage identity derivations; and source receipts name their
@@ -593,6 +594,49 @@ worker. The attestation's `plan_signature` is an exact plan-defined
 authorization tuple (`gate`, `plan_sha256`, `prompt_sha256`,
 `checklist_sha256`, and `evidence_sha256`) checked as data; this boundary does
 not claim public-key or cryptographic signature verification.
+
+Attested legacy scoring checks a schema-9 pool against reconstructions that
+follow today's late-producer registry, as main does, except for the two
+producer contracts microcosm #767 changed. The frozen resource
+`us/legacy_schema16_late_producer_schedule.json`, which loads only if its
+recomputed payload SHA-256 equals
+`02e618cc656eb39990ed99dca2b30a52794e01e2b06a3c2df87ca4a7d85ab086`, supplies two
+things: the schema-16 execution receipt contract (registry schema 16, receipt
+contract v3, transition authority v1, and the top binding from before the
+constrained immigration reconciliation), and the input inventories of the two
+producers #767 changed, the immigration source stage
+`with_us_immigration_inputs` and its transfer group
+`transfer:person/source_operator_immigration`. The legacy contracts derive
+those two producers from their schema-16 inventories (57 and 93 inputs, where
+today's contracts have 56 and 100), and legacy scoring refuses unless each
+hashes to the digest the schema-16 registry derived. Every other legacy
+contract is today's. The pool's late-producer schedule, its execution rows and
+its stacked authority (the v11 authority, rebuilt from today's anchors and that
+schedule) must match these reconstructions. They keep main's own changes since
+schema 16: microcosm #1239 and #1258 moved the primary-PUF S-corporation outputs
+and the itemization transfer batches, so the legacy schedule and authority no
+longer hash to the sealed payload
+`02e618cc656eb39990ed99dca2b30a52794e01e2b06a3c2df87ca4a7d85ab086` and authority
+`e660a8ce42b69a39d29c5f0ec37264bc69d61b03f27adc386336ec8889531bb2`. Late-transfer
+execution rows also bind today's `acs_transfer_execution_contract_identity` on
+this path, as on main, so #767's schema-3 transfer contract reaches it there;
+main's own post-transfer changes since `7c4a5ac0` already moved that identity
+for all nineteen transfer groups. Post-clone source execution rows likewise
+bind today's source-stage binding, which hashes the whole packaged
+`us/source_stages.json` and carries each bound stage's resolved spec. #767
+rewrote the `immigration_status` stage, so its change reaches the fifteen
+source rows that bind a stage spec (direct housing assistance binds none).
+Main has changed `source_stages.json` in fourteen commits since `7c4a5ac0`, so
+on main too this binding refuses a pool whose rows bound an older file.
+Restoring all of these to sealed history is separate work. The pool's operator order must be the
+literal eleven-step order ending at `by_origin_battery`, from before
+`us_immigration_composition_gate` existed, and the loader replays its
+immigration transfer targets as ordinary transfer receipts, without the paired
+reconciliation and QRF pattern evidence current pools must carry. None of these
+relaxations applies without `legacy_worker_authentication`, and the loader
+refuses a current-contract artifact whose version numbers were merely lowered
+(at the operator order, and at the legacy schedule if the artifact borrows the
+historical order).
 
 Current manifests, diagnostics, `release_manifest.json`, and scoring receipts
 surface `worker_execution_authentication`: manifest, execution-config, and
@@ -943,9 +987,9 @@ Registry schema version 17 and execution-receipt contract version 4 bind the
 canonical input declarations, outputs, edges, waves, exact kind-specific
 virtual-resource bindings, content-hashed execution-row schema, and immutable
 transition authority version 2. The schedule SHA-256 is
-`f1fb754e6ade602be394837bc0d7d091f2fba4b4b83fb00f59a0258fe56eb5da`;
+`46cea046d2fb8223d32772bd6a7807c52791640943949154982dcc52d93fa9eb`;
 the full payload SHA-256 is
-`76a79c9d05cfde1ec1c812de530b5080e6bc212f9c9e693eba628711d6f553e1`.
+`3f1daff0b5840d70d818e256515b2cf5d0a28bf4ad9f932deece3a56964047e0`.
 Reversing registry iteration produces those same bytes.
 
 The virtual-resource payload ledger is independently versioned: ACS-universe
@@ -971,7 +1015,7 @@ and valid. Neither receipt authorizes an upstream null.
 | PUF raw predictor sources | Every filing-status, count, and income component is observed in its declared source universe. Raw WAGP/SEMP authority is present and agrees with mapped leaves; a cross-grain source collision is rejected. A null on any eligible member fails before coercion. | Structure supplies status/count; ACS-native or ASEC-carried earnings supply earnings; early transfer supplies interest, dividends, and gains. | No. ACS under-15 WAGP/SEMP blanks are an exact source-universe state, not transfer starvation; all other source nulls fail. |
 | PUF tax-unit features | Every clone-1 recipient has a finite feature vector. Post-aggregation NaN, `+inf`, and `-inf` are counted by named predictor and rejected before fitting; none is coerced or snapped to zero. | Universe-aware person sums plus tax-unit structural inputs. | No. Eligible member values must be complete; the only special case is an all-child unit whose numeric-zero predictor is explicitly owned and counted by the named universe-zero rule. |
 | Primary QRF banks and chain | Donor/recipient banks are immutable; target order and RNG prefix are contiguous; all targets complete; live recipient identity, source-universe receipt, and feature digest match before finalization. | The processed full PUF donor and strict recipient checkpoint initialized above. | No. Mutation or missing receipt invalidates the bank; it cannot resume under legacy semantics. |
-| Outer pool checkpoint identity and resume | Primary-QRF schema v6, primary execution config v5, portable worker identity v1, tail-manifest schema v2, late-registry schema v17/receipt contract v4, outer stacked materializer v13/authority v12, stacked pool-stage materializer v7, pool manifest schema v10, and the ACS-universe, QBI-mutation, tail-support, late-DAG, and signed virtual-resource-semantics identities must match exactly before any cached stage is discovered. The retiring legacy envelope remains manifest schema v4/materializer v3. | Fresh input pins, live stack receipt, scale controls, code identity, and all semantic contract identities. | No. An older stacked materializer or authority payload is stale; a self-consistent old receipt cannot reopen a checkpoint. Primary-QRF v6 remains current. |
+| Outer pool checkpoint identity and resume | Primary-QRF schema v6, primary execution config v5, portable worker identity v1, tail-manifest schema v2, late-registry schema v17/receipt contract v4, outer stacked materializer v13/authority v12, stacked pool-stage materializer v8, pool manifest schema v10, and the ACS-universe, QBI-mutation, tail-support, late-DAG, and signed virtual-resource-semantics identities must match exactly before any cached stage is discovered. The retiring legacy envelope remains manifest schema v4/materializer v3. | Fresh input pins, live stack receipt, scale controls, code identity, and all semantic contract identities. | No. An older stacked materializer or authority payload is stale; a self-consistent old receipt cannot reopen a checkpoint. Primary-QRF v6 remains current. |
 | Clone-2 capital-gains tail | Each filing status requires as many eligible recipient households as selected q99.5 donors. Eligibility requires unique single-tax-unit PUF-detail lineage and half-weight capacity for the global maximum assigned donor weight. An adequate status assigns every selected donor once; a thin status skips as a whole with a named, counted `insufficient_support` receipt. | Completed clone-1 QRF output and full PUF tail donors. At 1%, `SINGLE` and `HEAD_OF_HOUSEHOLD` attach, `JOINT` and `SEPARATE` skip, and zero-requirement `SURVIVING_SPOUSE` is `not_applicable`. | No widening or partial attachment is permitted. All 22 AGI bands provide nearest-first fallback only inside a status. Universe-aware PUF recipients remain eligible, including explicitly receipted empty-universe tax units. |
 | Late producer DAG | Before any callback, all declared inputs are filled on their required scopes or carry an input-specific counted absence receipt; numeric inputs are finite. The exact derived order, readiness rows, once-only source finalizer, and bounded transfer receipts must validate. | ACS earnings-universe materialization, primary PUF/tail, 16 source producers, and 19 bounded transfer groups execute in six derived waves. | No. The refusing producer names the unfilled input and its declared producing stage. A cycle fails at import with its path. |
 | Late transfer completion | Every declared PUF-clone or ASEC source-producer cell is nonnull; all complementary recipients are filled; the allowed count for both unmodeled and residual rows is zero. | Forty-five PUF and 29 source targets, with two overlaps, supply the 72-target late surface. | No. A missing producer or recipient value is terminal at this boundary. |

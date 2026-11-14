@@ -5083,9 +5083,9 @@ def _require_local_immigration(staging_summary: dict) -> dict:
     the H5. A summary without both is a pre-#1020 staging run, whose ACS
     persons would all be default-filled citizens with a valid SSN and whose
     entry clocks would all be the engine default of 5 years. A receipt whose
-    worker and student targets are not the donor residual
+    targets are not the donor residuals
     (:func:`acs_local_immigration_receipt_failures`) predates the #1052
-    review and is refused too.
+    review or the microcosm#767 humanitarian residuals and is refused too.
     """
 
     receipt = staging_summary.get("acs_local_immigration")
@@ -5108,7 +5108,7 @@ def _require_local_immigration(staging_summary: dict) -> dict:
     if failures:
         raise SystemExit(
             "The staging summary's ACS local immigration receipt does not "
-            "target the donor residual (microcosm#1052 review): "
+            "target the donor residuals (microcosm#1052 review, microcosm#767): "
             + "; ".join(failures)
             + ". Re-run staging (tools/build_us_acs_multispine_base.py) with "
             "the current builder."
@@ -5508,8 +5508,9 @@ def do_finalize(args) -> None:
     # microcosm#1020: refuse immigration labels or entry clocks that are
     # missing, all-CITIZEN or all at the engine default on either spine,
     # labels that contradict measured ACS CIT citizenship, and a file outside
-    # the non-citizen and undocumented-anchor bands.
-    immigration_gate = acs_local_immigration_signal_gate(frame)
+    # the non-citizen, undocumented-anchor and humanitarian-stock bands
+    # (microcosm#767).
+    immigration_gate = acs_local_immigration_signal_gate(frame, time_period=PERIOD)
     # microcosm#1021: refuse ACS disability flags that are missing, constant,
     # or not the native ACS difficulty items on the packaged bytes, or a
     # staging receipt that shows them imputed. weeks_worked is graded at

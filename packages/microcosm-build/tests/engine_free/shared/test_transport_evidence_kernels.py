@@ -171,6 +171,9 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         "microcosm.data.source_enrichment",
         "microcosm.data.stored_inputs",
         "microcosm.data.us_critical_targets",
+        # microcosm#767: us_runtime.acs_transfer reads its immigration
+        # evidence at us_runtime.acs_pums's ACS_2024_1YR_VINTAGE.
+        "microcosm.build.us_runtime.acs_pums",
     ]
 )
 BATTERY = "toy.gates.terminal"

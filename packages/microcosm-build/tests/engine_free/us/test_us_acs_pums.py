@@ -8,12 +8,17 @@ import pandas as pd
 import pytest
 
 from microcosm.build.serialization_dtypes import CANONICAL_STRING_DTYPE
+from microcosm.build.source_runtime import SourceRuntimeError
 from microcosm.build.us_runtime.acs_inputs import map_acs_native_inputs
 from microcosm.build.us_runtime.acs_pums import (
     ACS_2024_1YR_SPINE,
     AcsPumsSource,
     build_acs_pums_unit_frame,
     load_acs_pums_tables,
+)
+from microcosm.build.us_runtime.immigration import (
+    _source_aware_immigration_profile,
+    us_immigration_evidence_features,
 )
 from microcosm.build.us_runtime.operator_boundary import (
     assert_operator_free_source_frame,
@@ -69,6 +74,9 @@ def _person(
         "SSIP": 0,
         "RETP": 0,
         "INTP": 0,
+        "CIT": 1,
+        "POBP": 6,
+        "YOEP": None,
         "PWGTP": 10,
     }
     row.update(overrides)
@@ -83,7 +91,16 @@ def _person(
     return row
 
 
-def _source(tmp_path: Path) -> AcsPumsSource:
+_ACS_IMMIGRATION_EVIDENCE = ("CIT", "POBP", "YOEP")
+
+
+def _source(tmp_path: Path, *, immigration_evidence: bool = True) -> AcsPumsSource:
+    """The shared fixture; ``immigration_evidence=False`` drops CIT/POBP/YOEP.
+
+    The loader keeps those three optional (microcosm#1020): an absent column
+    stays absent, and the immigration consumers refuse rows without them.
+    """
+
     household_zip = tmp_path / "csv_hus.zip"
     person_zip = tmp_path / "csv_pus.zip"
     _write_csv_zip(
@@ -102,39 +119,54 @@ def _source(tmp_path: Path) -> AcsPumsSource:
             "psam_husb.csv": [_household("2024HU0000001", NP=3)],
         },
     )
-    _write_csv_zip(
-        person_zip,
-        {
-            "psam_pusa.csv": [
-                _person("2024HU0000002", 1, 20, MAR=4, WAGP=30_000),
-                _person(
-                    "2024HU0000001",
-                    1,
-                    20,
-                    AGEP=42,
-                    WAGP=60_000,
-                ),
-            ],
-            "psam_pusb.csv": [
-                _person(
-                    "2024HU0000001",
-                    2,
-                    21,
-                    AGEP=40,
-                    SEX=2,
-                    WAGP=45_000,
-                ),
-                _person(
-                    "2024HU0000001",
-                    3,
-                    25,
-                    AGEP=10,
-                    MAR=5,
-                    WAGP=None,
-                ),
-            ],
-        },
-    )
+    members = {
+        "psam_pusa.csv": [
+            _person(
+                "2024HU0000002",
+                1,
+                20,
+                MAR=4,
+                WAGP=30_000,
+                CIT=5,
+                POBP=164,
+                YOEP=2021,
+            ),
+            _person(
+                "2024HU0000001",
+                1,
+                20,
+                AGEP=42,
+                WAGP=60_000,
+            ),
+        ],
+        "psam_pusb.csv": [
+            _person(
+                "2024HU0000001",
+                2,
+                21,
+                AGEP=40,
+                SEX=2,
+                WAGP=45_000,
+            ),
+            _person(
+                "2024HU0000001",
+                3,
+                25,
+                AGEP=10,
+                MAR=5,
+                WAGP=None,
+            ),
+        ],
+    }
+    if not immigration_evidence:
+        members = {
+            name: [
+                {k: v for k, v in row.items() if k not in _ACS_IMMIGRATION_EVIDENCE}
+                for row in rows
+            ]
+            for name, rows in members.items()
+        }
+    _write_csv_zip(person_zip, members)
     return AcsPumsSource(household_zip=household_zip, person_zip=person_zip)
 
 
@@ -229,12 +261,67 @@ def test_acs_loader_keeps_immigration_sources_and_renames_military_service(
 
 
 def test_acs_loader_leaves_absent_immigration_sources_absent(tmp_path: Path) -> None:
-    tables, _ = load_acs_pums_tables(_source(tmp_path))
+    tables, _ = load_acs_pums_tables(_source(tmp_path, immigration_evidence=False))
     # ESR is also a required work-experience column, so it is always loaded.
     optional = [column for column in _IMMIGRATION_SOURCES if column != "ESR"]
     assert "ESR" in tables["person"]
     for column in (*optional, "ACS_MIL"):
         assert column not in tables["person"]
+
+
+def test_acs_rows_without_immigration_evidence_cannot_feed_the_kernel(
+    tmp_path: Path,
+) -> None:
+    """The loader keeps CIT/POBP/YOEP optional (microcosm#1020), so the
+    refusal sits with the consumers: the kernel's evidence profile, which the
+    ACS transfer reads (microcosm#767), refuses a row with no citizenship
+    source instead of reading the blank as a code."""
+
+    def person_view(source: AcsPumsSource) -> pd.DataFrame:
+        # The unit frame derives the kernel's A_AGE from AGEP
+        # (_with_structural_columns); the loader's raw table carries only AGEP.
+        person = load_acs_pums_tables(source)[0]["person"]
+        return person.assign(A_AGE=person["AGEP"])
+
+    without = person_view(_source(tmp_path, immigration_evidence=False))
+    with pytest.raises(SourceRuntimeError, match="exactly one row-level citizenship"):
+        _source_aware_immigration_profile(without, time_period=2024)
+    # The same archive with the three columns feeds it: one row-level source
+    # per person, read from CIT (5 = not a citizen).
+    person = person_view(_source(tmp_path))
+    profile = _source_aware_immigration_profile(person, time_period=2024)
+    keys = list(
+        zip(
+            person["SERIALNO"].astype(str),
+            person["SPORDER"].astype(int),
+            strict=True,
+        )
+    )
+    assert dict(zip(keys, profile.is_citizen.tolist(), strict=True)) == {
+        ("2024HU0000001", 1): True,
+        ("2024HU0000001", 2): True,
+        ("2024HU0000001", 3): True,
+        ("2024HU0000002", 1): False,
+    }
+
+
+def test_acs_frame_without_immigration_evidence_refuses_transfer_predictors(
+    tmp_path: Path,
+) -> None:
+    """The ACS transfer reads its immigration predictors through
+    us_immigration_evidence_features on the built unit frame (microcosm#767);
+    a frame from an archive without CIT/POBP/YOEP refuses there."""
+
+    pytest.importorskip("microunit")  # sanctioned tax-unit constructor (us extra)
+    frame, _metadata = build_acs_pums_unit_frame(
+        _source(tmp_path, immigration_evidence=False)
+    )
+    with pytest.raises(SourceRuntimeError, match="exactly one row-level citizenship"):
+        us_immigration_evidence_features(frame, time_period=2024)
+    frame, _metadata = build_acs_pums_unit_frame(_source(tmp_path))
+    features = us_immigration_evidence_features(frame, time_period=2024)
+    assert np.isfinite(features.to_numpy()).all()
+    assert sorted(features["is_us_citizen"].tolist()) == [0.0, 1.0, 1.0, 1.0]
 
 
 _WORK_DISABILITY_SOURCES = {
@@ -589,6 +676,14 @@ def test_load_acs_pums_tables_streams_all_csv_members_and_keeps_native_blanks(
         "2024HU0000002",
     ]
     assert pd.isna(tables["person"].loc[2, "WAGP"])
+    foreign_born = (
+        tables["person"].loc[tables["person"]["SERIALNO"].eq("2024HU0000002")].iloc[0]
+    )
+    assert (foreign_born["CIT"], foreign_born["POBP"], foreign_born["YOEP"]) == (
+        5,
+        164,
+        2021,
+    )
     assert metadata["vacant_household_rows_dropped"] == 1
     assert metadata["household_csv_members"] == ["psam_husa.csv", "psam_husb.csv"]
     assert metadata["person_csv_members"] == ["psam_pusa.csv", "psam_pusb.csv"]
@@ -622,6 +717,9 @@ def test_build_acs_pums_unit_frame_preserves_lineage_geography_and_weights(
     assert person["source_household_id"].dtype == np.dtype(np.int64)
     assert pd.api.types.is_string_dtype(person["source_person_id"].dtype)
     assert person["source_row_id"].dtype == np.dtype(np.int64)
+    assert person.loc[person["source_household_id"].eq(2), "CIT"].item() == 5
+    assert person.loc[person["source_household_id"].eq(2), "POBP"].item() == 164
+    assert person.loc[person["source_household_id"].eq(2), "YOEP"].item() == 2021
     assert metadata["weighted_household_population"] == pytest.approx(30.0)
 
 

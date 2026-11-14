@@ -142,11 +142,11 @@ def test_constant_derived_domain_counts_are_complete(
     assert len(compiled_schedule["waves"]) == 6
     assert (
         compiled_schedule["schedule_sha256"]
-        == "f1fb754e6ade602be394837bc0d7d091f2fba4b4b83fb00f59a0258fe56eb5da"
+        == "46cea046d2fb8223d32772bd6a7807c52791640943949154982dcc52d93fa9eb"
     )
     assert (
         compiled_schedule["payload_sha256"]
-        == "76a79c9d05cfde1ec1c812de530b5080e6bc212f9c9e693eba628711d6f553e1"
+        == "3f1daff0b5840d70d818e256515b2cf5d0a28bf4ad9f932deece3a56964047e0"
     )
 
     assert len(take_up["programs"]) == 17
@@ -258,7 +258,7 @@ def test_legacy_seed_vintage_and_publication_grammars_are_pinned(
         "identity_generation": 1,
         "seed_protocol": LEGACY_V1_PROTOCOL.id,
     }
-    assert len(LEGACY_V1_PROTOCOL.sites) == 53
+    assert len(LEGACY_V1_PROTOCOL.sites) == 66
     assert len(LEGACY_V1_PROTOCOL.streams) == 14
     assert LEGACY_V1_PROTOCOL.site("survey_sample_asec").default == 578
     assert LEGACY_V1_PROTOCOL.site("puf_live_aggregate_disaggregation").default == 0

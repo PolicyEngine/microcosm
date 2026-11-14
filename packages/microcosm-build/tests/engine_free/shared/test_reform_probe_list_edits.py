@@ -8,8 +8,8 @@ TANF and the probes scored wrong-signed. A probe now declares only the items it
 removes from or adds to a list (:class:`ListParameterEdit`), and the edit is
 resolved against the installed engine's baseline when the reform is built.
 
-These properties pin that resolution for every input, not only for the ten
-shipped list-edit probes:
+These properties pin that resolution for every input, not only for the
+thirteen shipped list-edit probes:
 
 - resolution is the baseline minus ``remove`` plus ``add``: kept items stay in
   baseline order with their multiplicity, added items follow once each in

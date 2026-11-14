@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import dataclasses
+import functools
+
 import numpy as np
 import pandas as pd
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from microcosm.build.us_runtime import acs_local_immigration
 from microcosm.build.us_runtime.acs_local_immigration import (
@@ -17,6 +22,9 @@ from microcosm.build.us_runtime.acs_local_immigration import (
     YEARS_SINCE_US_ENTRY_COLUMN,
     _acs_cps_view,
     _acs_draw_keys,
+    _cps_labor_force_status,
+    _humanitarian_reconciliation,
+    _status_reconciliation,
     acs_local_immigration_receipt_failures,
     acs_local_immigration_signal_gate,
     require_acs_local_immigration_donor,
@@ -26,11 +34,15 @@ from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
 from microcosm.build.us_runtime.acs_transfer import ASEC_PUF_DONOR_SPINE
 from microcosm.build.us_runtime.base_pool import spine_column
 from microcosm.build.us_runtime.immigration import (
+    _CPS_LABOR_FORCE_STATUS_CODES,
     US_IMMIGRATION_REQUIRED_SOURCE_COLUMNS,
+    HumanitarianDraw,
+    ImmigrationControls,
     UndocumentedControls,
     _assign_ssn_card_codes,
     _derive_immigration_status,
-    _packaged_controls,
+    _pew_unauthorized_rows,
+    us_immigration_controls,
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
@@ -66,6 +78,9 @@ _ACS_COLUMNS = (*_ACS_BASE, "SPORDER")
 _ASEC_BASE: dict[str, object] = {
     "PRCITSHP": 1,
     "PEINUSYR": 0,
+    # PENATVTY 57: born in the United States. The humanitarian cohorts and
+    # the whole-file gate read the birth country on every row (microcosm#767).
+    "PENATVTY": 57,
     "WSAL_VAL": 0.0,
     "SEMP_VAL": 0.0,
     "A_HSCOL": 0,
@@ -124,24 +139,28 @@ def _asec_population() -> list[dict[str, object]]:
         "ssn_card_type": "OTHER_NON_CITIZEN",
         "immigration_status_str": "LEGAL_PERMANENT_RESIDENT",
     }
+    mexico = {"PENATVTY": 303}
     return (
         [{} for _ in range(88)]
-        + [{"PRCITSHP": 4, "PEINUSYR": 20} for _ in range(5)]
-        + [{"PRCITSHP": 5, "PEINUSYR": 24, **lpr} for _ in range(3)]
+        + [{"PRCITSHP": 4, "PEINUSYR": 20, **mexico} for _ in range(5)]
+        + [{"PRCITSHP": 5, "PEINUSYR": 24, **mexico, **lpr} for _ in range(3)]
         + [
             {
+                # Code 28 is the 2024 ASEC's last bin (2022-2024).
                 "PRCITSHP": 5,
-                "PEINUSYR": 29,
+                "PEINUSYR": 28,
+                **mexico,
                 "ssn_card_type": "NON_CITIZEN_VALID_EAD",
                 "immigration_status_str": "LEGAL_PERMANENT_RESIDENT",
             }
         ]
         + [
             # Undocumented workers: the donor already delivers 3.3M of the
-            # 8.3M worker control on the pooled weights.
+            # packaged worker control on the pooled weights.
             {
                 "PRCITSHP": 5,
                 "PEINUSYR": 24,
+                **mexico,
                 "WSAL_VAL": 20_000.0,
                 "ssn_card_type": "NONE",
                 "immigration_status_str": "UNDOCUMENTED",
@@ -260,6 +279,42 @@ def _person_weights(frame: Frame) -> np.ndarray:
     return np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
 
 
+@functools.cache
+def _packaged() -> ImmigrationControls:
+    return us_immigration_controls()
+
+
+def _controls(
+    undocumented: UndocumentedControls | None = None,
+    humanitarian: tuple[HumanitarianDraw, ...] = (),
+) -> ImmigrationControls:
+    return ImmigrationControls(
+        undocumented=_packaged().undocumented if undocumented is None else undocumented,
+        humanitarian=humanitarian,
+    )
+
+
+@pytest.fixture(autouse=True)
+def _undocumented_controls_only(monkeypatch) -> None:
+    """Run the stage and its gate on the packaged undocumented controls alone.
+
+    The #1020/#1052 cases predate the microcosm#767 humanitarian draws, and
+    every foreign-born person in their populations was born in Mexico or
+    Cuba/Haiti, outside every draw's origins. The packaged draws would select
+    no one and the whole-file stock bands would fail, so these cases run with
+    no draws; the humanitarian cases install their own with
+    :func:`_install_controls`.
+    """
+
+    _install_controls(monkeypatch, _controls())
+
+
+def _install_controls(monkeypatch, controls: ImmigrationControls) -> None:
+    monkeypatch.setattr(
+        acs_local_immigration, "us_immigration_controls", lambda: controls
+    )
+
+
 def _filled(frame: Frame | None = None, *, seed: int = 0) -> Frame:
     return with_acs_local_immigration_inputs(
         _frame() if frame is None else frame, seed=seed, time_period=PERIOD
@@ -350,7 +405,6 @@ def test_acs_legal_status_indicators_mark_other_non_citizen(indicator) -> None:
         {"COW": 1},
         {"COW": 2},
         {"COW": 6},
-        {"ESR": 1},
         {"ESR": np.nan},
         {"SCHG": 14},
         {"YOEP": 1982},
@@ -363,6 +417,26 @@ def test_non_indicators_leave_a_non_worker_undocumented(non_indicator) -> None:
     person = result.table("person")
     assert person["ssn_card_type"].iloc[-2] == "NONE"
     assert person["immigration_status_str"].iloc[-2] == "UNDOCUMENTED"
+
+
+@pytest.mark.parametrize("esr", [1, 2, 3])
+def test_a_civilian_labor_force_esr_is_a_worker_not_an_indicator(esr) -> None:
+    """ESR 1-3 is not the Armed Forces indicator (4/5): the person stays in
+    the residual pool, where the kernel counts them as a worker."""
+
+    _, before = with_acs_local_immigration_inputs(_frame(), seed=0, time_period=PERIOD)
+    result, after = with_acs_local_immigration_inputs(
+        _with_extra_acs_person(ESR=esr), seed=0, time_period=PERIOD
+    )
+    assert result.table("person")["ssn_card_type"].iloc[-2] in {
+        "NONE",
+        "NON_CITIZEN_VALID_EAD",
+    }
+    capacity = [
+        receipt["controls"]["statuses"]["undocumented_workers"]["acs_capacity"]
+        for receipt in (before, after)
+    ]
+    assert capacity[1] - capacity[0] == pytest.approx(0.55e6)
 
 
 def test_cuban_haitian_class_uses_pobp_and_the_exact_entry_year() -> None:
@@ -396,10 +470,32 @@ def test_cps_view_covers_the_kernel_inputs_and_zeros_unmapped_indicators() -> No
     blank = view.iloc[-2]
     assert (blank["WSAL_VAL"], blank["SEMP_VAL"]) == (0.0, 0.0)
     assert (blank["PEIO1COW"], blank["A_HSCOL"], blank["A_MJOCC"]) == (0, 0, 0)
+    assert blank["A_LFSR"] == 0
     assert blank["PEAFEVER"] == 2
     # US-born rows have no entry year.
     assert np.isnan(entry_year[person["CIT"].to_numpy() == 1]).all()
     assert entry_year[-2] == 2015
+
+
+@pytest.mark.parametrize(
+    ("esr", "a_lfsr"),
+    [(1, 1), (2, 2), (3, 3), (4, 0), (5, 0), (6, 7), (np.nan, 0)],
+)
+def test_esr_is_the_cps_labor_force_status(esr, a_lfsr) -> None:
+    """The kernel's worker test reads A_LFSR; ACS ESR carries the same status."""
+
+    frame = _with_extra_acs_person(ESR=esr, AGEP=35)
+    person = frame.table("person").loc[_acs(frame)]
+    view, _ = _acs_cps_view(person, time_period=PERIOD)
+    assert view["A_LFSR"].iloc[-2] == a_lfsr
+    assert "A_LFSR" in acs_local_immigration.ACS_TO_CPS_INDICATOR_MAPPING
+
+
+def test_an_esr_outside_the_codebook_is_refused() -> None:
+    with pytest.raises(ValueError, match="ACS ESR"):
+        with_acs_local_immigration_inputs(
+            _with_extra_acs_person(ESR=9), seed=0, time_period=PERIOD
+        )
 
 
 def _cps_row(**overrides: object) -> dict[str, object]:
@@ -411,6 +507,8 @@ def _cps_row(**overrides: object) -> dict[str, object]:
         "A_MARITL": 7,
         "A_SPOUSE": 0,
         "A_HSCOL": 0,
+        # 7: not in the labor force. Workers set 1 (employed, at work).
+        "A_LFSR": 7,
         "WSAL_VAL": 0.0,
         "SEMP_VAL": 0.0,
         "MCARE": 2,
@@ -439,8 +537,10 @@ def test_exact_arrival_years_reproduce_the_peinusyr_bins() -> None:
     rows = [
         (_cps_row(PEINUSYR=5), 1972.0),  # IRCA cohort: documented
         (_cps_row(PEINUSYR=24), 2015.0),  # residual
-        (_cps_row(PEINUSYR=19, A_AGE=29, WSAL_VAL=20_000.0), 2005.0),  # DACA
-        (_cps_row(PEINUSYR=24, A_AGE=40, WSAL_VAL=20_000.0), 2015.0),  # EAD LPR
+        # DACA
+        (_cps_row(PEINUSYR=19, A_AGE=29, WSAL_VAL=20_000.0, A_LFSR=1), 2005.0),
+        # EAD LPR
+        (_cps_row(PEINUSYR=24, A_AGE=40, WSAL_VAL=20_000.0, A_LFSR=1), 2015.0),
         (_cps_row(PENATVTY=327, CAID=1), 2015.0),  # Cuban entrant
         (_cps_row(PENATVTY=332, PEINUSYR=5, MCARE=1), 1972.0),  # pre-1980 Haiti
         (_cps_row(PRCITSHP=4, PEINUSYR=20), 2007.0),  # naturalized
@@ -449,19 +549,23 @@ def test_exact_arrival_years_reproduce_the_peinusyr_bins() -> None:
     person = pd.DataFrame([row for row, _ in rows])
     person.insert(0, "person_id", np.arange(1, len(person) + 1))
     arrival = np.asarray([year for _, year in rows])
-    controls = UndocumentedControls(
-        workers=0.001,
-        students=0.001,
-        population_anchor=1.0,
-        sources={
-            "undocumented_workers": "https://example.com/w",
-            "undocumented_students": "https://example.com/s",
-            "undocumented_population_anchor": "https://example.com/p",
-        },
+    controls = _controls(
+        UndocumentedControls(
+            workers=0.001,
+            students=0.001,
+            population_anchor=1.0,
+            sources={
+                "undocumented_workers": "https://example.com/w",
+                "undocumented_students": "https://example.com/s",
+                "undocumented_population_anchor": "https://example.com/p",
+            },
+        )
     )
     weights = np.ones(len(person))
-    binned = _assign_ssn_card_codes(person, weights, seed=0, controls=controls)
-    exact = _assign_ssn_card_codes(
+    binned, binned_marks = _assign_ssn_card_codes(
+        person, weights, seed=0, controls=controls, time_period=PERIOD
+    )
+    exact, exact_marks = _assign_ssn_card_codes(
         person.drop(columns=["PEINUSYR"]),
         weights,
         seed=0,
@@ -470,11 +574,15 @@ def test_exact_arrival_years_reproduce_the_peinusyr_bins() -> None:
         time_period=PERIOD,
     )
     assert binned.tolist() == exact.tolist() == [3, 0, 2, 2, 3, 3, 1, 1]
+    assert binned_marks.tolist() == exact_marks.tolist() == [""] * len(rows)
     assert (
-        _derive_immigration_status(person, binned, time_period=PERIOD).tolist()
+        _derive_immigration_status(
+            person, binned, binned_marks, time_period=PERIOD
+        ).tolist()
         == _derive_immigration_status(
             person.drop(columns=["PEINUSYR"]),
             exact,
+            exact_marks,
             time_period=PERIOD,
             arrival_year=arrival,
         ).tolist()
@@ -515,7 +623,7 @@ def test_acs_rows_target_the_donor_residual() -> None:
     )
     weights = _person_weights(frame)
     acs = _acs(frame)
-    national = _packaged_controls()
+    national = _packaged().undocumented
     controls = receipt["controls"]
     assert controls["method"] == ACS_LOCAL_IMMIGRATION_CONTROLS_METHOD
     assert controls["acs_person_weight_share"] == pytest.approx(2 / 3)
@@ -529,8 +637,9 @@ def test_acs_rows_target_the_donor_residual() -> None:
     assert workers["residual"] == pytest.approx(national.workers - 3 * 1.1e6)
     assert workers["acs_capacity"] == pytest.approx(14 * 0.55e6)
     person = result.table("person")
-    worker = (person["WAGP"].fillna(0) > 0).to_numpy()
-    remaining = weights[acs & worker & person["ssn_card_type"].eq("NONE").to_numpy()]
+    # The kernel's worker test on ACS rows: ESR employed or unemployed, 16+.
+    worker = (person["ESR"].isin([1, 2, 3]) & (person["AGEP"] >= 16)).to_numpy()
+    remaining = weights[acs & worker & _pew_unauthorized_rows(person)]
     assert workers["acs_assigned"] == pytest.approx(remaining.sum())
     # The spill stops at the first record that reaches the residual.
     residual = workers["residual"]
@@ -540,19 +649,20 @@ def test_acs_rows_target_the_donor_residual() -> None:
     students = controls["statuses"]["undocumented_students"]
     assert students["donor_delivered"] == 0.0
     assert students["residual"] == national.students
+    assert controls["humanitarian"] == {}
     assert acs_local_immigration_receipt_failures(receipt) == []
     assert receipt["acs_composition"]["non_citizen_share"] == pytest.approx(0.07)
 
 
 def _custom_controls(monkeypatch, *, workers: float, students: float):
-    national = _packaged_controls()
+    national = _packaged().undocumented
     controls = UndocumentedControls(
         workers=workers,
         students=students,
         population_anchor=national.population_anchor,
         sources=national.sources,
     )
-    monkeypatch.setattr(acs_local_immigration, "_packaged_controls", lambda: controls)
+    _install_controls(monkeypatch, _controls(controls))
     return controls
 
 
@@ -585,11 +695,15 @@ def test_pooled_counts_meet_the_controls_not_f_plus_a_times_them(monkeypatch):
         frame, seed=3, time_period=PERIOD
     )
     person = result.table("person")
-    none = person["ssn_card_type"].eq("NONE").to_numpy()
-    worker = (person["WAGP"].fillna(0) > 0) | (person["WSAL_VAL"].fillna(0) > 0)
+    unauthorized = _pew_unauthorized_rows(person)
+    # ACS rows: ESR employed or unemployed at 16+; donor rows carry no A_LFSR,
+    # so the earnings proxy.
+    worker = (person["ESR"].isin([1, 2, 3]) & (person["AGEP"] >= 16)) | (
+        person["WSAL_VAL"].fillna(0) > 0
+    )
     student = person["SCHG"].isin([15, 16]) | person["A_HSCOL"].eq(2)
-    pooled_workers = weights[none & worker.to_numpy()].sum()
-    pooled_students = weights[none & student.to_numpy()].sum()
+    pooled_workers = weights[unauthorized & worker.to_numpy()].sum()
+    pooled_students = weights[unauthorized & student.to_numpy()].sum()
     assert pooled_workers == controls.workers
     assert pooled_students == controls.students
     statuses = receipt["controls"]["statuses"]
@@ -612,21 +726,24 @@ def test_pooled_counts_meet_the_controls_not_f_plus_a_times_them(monkeypatch):
     # The pre-review rule targeted the ACS rows at A x control.
     acs_person = frame.table("person").loc[acs]
     view, entry_year = _acs_cps_view(acs_person, time_period=PERIOD)
-    old = _assign_ssn_card_codes(
+    old, _ = _assign_ssn_card_codes(
         view,
         weights[acs],
         seed=3,
-        controls=UndocumentedControls(
-            workers=share * controls.workers,
-            students=share * controls.students,
-            population_anchor=controls.population_anchor,
-            sources=controls.sources,
+        controls=_controls(
+            UndocumentedControls(
+                workers=share * controls.workers,
+                students=share * controls.students,
+                population_anchor=controls.population_anchor,
+                sources=controls.sources,
+            )
         ),
         arrival_year=entry_year,
         time_period=PERIOD,
         draw_keys=_acs_draw_keys(frame.table("household"), acs_person),
     )
-    old_acs = weights[acs][(old == 0) & (view["WSAL_VAL"].to_numpy() > 0)].sum()
+    old_workers = np.isin(view["A_LFSR"].to_numpy(), (1, 2, 3, 4))
+    old_acs = weights[acs][(old == 0) & old_workers].sum()
     old_pooled = 6 * u + old_acs
     assert abs(old_pooled - (0.5 + share) * controls.workers) <= u
     assert old_pooled > controls.workers + u
@@ -644,8 +761,8 @@ def test_a_donor_over_the_control_leaves_no_acs_residual(monkeypatch) -> None:
     assert workers["acs_assigned"] == 0.0
     person = result.table("person")
     acs = _acs(result)
-    acs_workers = acs & (person["WAGP"].fillna(0) > 0).to_numpy()
-    assert not person.loc[acs_workers, "ssn_card_type"].eq("NONE").any()
+    acs_workers = acs & person["ESR"].isin([1, 2, 3]).to_numpy()
+    assert not _pew_unauthorized_rows(person)[acs_workers].any()
     assert acs_local_immigration_receipt_failures(receipt) == []
 
 
@@ -681,6 +798,32 @@ def test_donor_status_columns_fall_back_to_harmonized_inputs() -> None:
     )
     assert controls["donor_status_columns"]["student"].startswith(
         "is_full_time_college_student (full time only"
+    )
+    assert controls["statuses"]["undocumented_workers"][
+        "donor_delivered"
+    ] == pytest.approx(3 * 1.1e6)
+
+
+def test_a_donor_carrying_a_lfsr_is_measured_with_the_kernels_worker_test():
+    """A donor with ``A_LFSR`` is measured as the kernel labels: in the labor
+    force at 16+, not positive earnings last year."""
+
+    frame = _frame()
+    person = frame.table("person").copy()
+    asec = ~_acs(frame)
+    person["A_LFSR"] = np.where(asec, 7.0, np.nan)
+    workers = np.flatnonzero(asec & person["WSAL_VAL"].gt(0).to_numpy())
+    assert len(workers) == 3
+    # Two employed workers, and one unemployed with no earnings last year:
+    # the kernel counts all three; the earnings proxy would count two.
+    person.loc[person.index[workers[:2]], "A_LFSR"] = 1.0
+    person.loc[person.index[workers[2]], ["A_LFSR", "WSAL_VAL"]] = [3.0, 0.0]
+    _, receipt = with_acs_local_immigration_inputs(
+        _with_person(frame, person), seed=5, time_period=PERIOD
+    )
+    controls = receipt["controls"]
+    assert controls["donor_status_columns"]["worker"] == (
+        "A_LFSR in [1, 2, 3, 4] and age >= 16"
     )
     assert controls["statuses"]["undocumented_workers"][
         "donor_delivered"
@@ -768,6 +911,263 @@ def test_receipt_failures_name_a_target_that_is_not_the_residual(controls, match
     failures = acs_local_immigration_receipt_failures(receipt)
     assert failures
     assert any(match in failure for failure in failures), failures
+
+
+def _draw_entry(target: float, donor: float, assigned: float) -> dict[str, float]:
+    return {
+        "target": target,
+        "donor_delivered": donor,
+        "residual": max(0.0, target - donor),
+        "acs_assigned": assigned,
+        "pooled_total": donor + assigned,
+    }
+
+
+def _receipt_controls(humanitarian: object) -> dict[str, object]:
+    return {
+        "method": ACS_LOCAL_IMMIGRATION_CONTROLS_METHOD,
+        "statuses": {
+            "undocumented_workers": _status(9.7e6, 3e6, 6.7e6),
+            "undocumented_students": _status(4.08e5, 0.0, 4.08e5),
+        },
+        "humanitarian": humanitarian,
+    }
+
+
+@pytest.mark.parametrize(
+    ("humanitarian", "match"),
+    [
+        (None, "humanitarian is missing"),
+        ({"refugee": _draw_entry(2e5, 1e5, 1e5)}, "missing ['tps:venezuela']"),
+        (
+            {
+                "refugee": _draw_entry(2e5, 1e5, 1e5),
+                "tps:venezuela": _draw_entry(6e5, 2e5, 4e5),
+                "asylee": _draw_entry(1e5, 0.0, 1e5),
+            },
+            "unexpected ['asylee']",
+        ),
+        (
+            {
+                "refugee": {**_draw_entry(2e5, 1e5, 1e5), "residual": 2e5},
+                "tps:venezuela": _draw_entry(6e5, 2e5, 4e5),
+            },
+            "refugee: residual",
+        ),
+        (
+            {
+                "refugee": _draw_entry(2e5, 1e5, 1e5),
+                "tps:venezuela": {**_draw_entry(6e5, 2e5, 4e5), "pooled_total": 4e5},
+            },
+            "tps:venezuela: pooled total",
+        ),
+        (
+            {
+                "refugee": {"target": 2e5},
+                "tps:venezuela": _draw_entry(6e5, 2e5, 4e5),
+            },
+            "humanitarian.refugee lacks",
+        ),
+    ],
+    ids=[
+        "no-humanitarian",
+        "missing-draw",
+        "unexpected-draw",
+        "residual-not-residual",
+        "pooled-not-sum",
+        "non-numeric",
+    ],
+)
+def test_receipt_failures_name_a_humanitarian_target_that_is_not_the_residual(
+    monkeypatch, humanitarian, match
+):
+    _install_controls(monkeypatch, _controls(humanitarian=_DRAWS))
+    controls = _receipt_controls(humanitarian)
+    if humanitarian is None:
+        del controls["humanitarian"]
+    failures = acs_local_immigration_receipt_failures({"controls": controls})
+    assert failures
+    assert any(match in failure for failure in failures), failures
+    valid = _receipt_controls(
+        {
+            "refugee": _draw_entry(2e5, 1e5, 1e5),
+            "tps:venezuela": _draw_entry(6e5, 2e5, 4e5),
+        }
+    )
+    assert acs_local_immigration_receipt_failures({"controls": valid}) == []
+
+
+# --------------------------------------------------------------------------
+# Humanitarian stocks (microcosm#767)
+# --------------------------------------------------------------------------
+
+#: One ACS person's weight; a donor person weighs 2U.
+U = 0.55e6
+_DRAWS = (
+    HumanitarianDraw(
+        category="refugee",
+        origin=None,
+        status="REFUGEE",
+        target=2.5 * U,
+        source="https://example.com/refugee",
+    ),
+    HumanitarianDraw(
+        category="tps",
+        origin="venezuela",
+        status="TPS",
+        target=5 * U,
+        source="https://example.com/tps-venezuela",
+    ),
+)
+
+
+def _humanitarian_frame() -> Frame:
+    """The default frame plus humanitarian origins on both spines.
+
+    The donor already carries one Venezuelan TPS holder and one Congolese
+    refugee (2U each). The ACS rows add four Venezuelan-born 2022 arrivals
+    with no legal-status indicator (the residual pool, so TPS candidates)
+    and two Congolese-born 2023 arrivals on Medicaid (documented, so refugee
+    candidates), each with a US-born partner.
+    """
+
+    asec_rows = _asec_population() + [
+        {
+            "PRCITSHP": 5,
+            "PEINUSYR": 28,
+            "PENATVTY": 373,
+            "ssn_card_type": "NON_CITIZEN_VALID_EAD",
+            "immigration_status_str": "TPS",
+        },
+        {
+            "PRCITSHP": 5,
+            "PEINUSYR": 28,
+            "PENATVTY": 412,
+            "ssn_card_type": "OTHER_NON_CITIZEN",
+            "immigration_status_str": "REFUGEE",
+        },
+    ]
+    acs_rows = _acs_population()
+    for _ in range(4):
+        acs_rows += [_noncitizen(POBP=373, YOEP=2022), {}]
+    for _ in range(2):
+        acs_rows += [_noncitizen(POBP=412, YOEP=2023, HINS4=1), {}]
+    return _frame(asec_rows=asec_rows, acs_rows=acs_rows)
+
+
+def _added_acs_rows(person: pd.DataFrame, birth: int) -> pd.DataFrame:
+    acs = person[TAG].eq(ACS_2024_1YR_SPINE)
+    return person.loc[acs & person["POBP"].eq(birth)]
+
+
+def test_humanitarian_draws_target_the_donor_residual_per_draw(monkeypatch):
+    """Each cited stock: donor delivered plus ACS assigned pools to it.
+
+    TPS (Venezuela): target 5U, donor 2U, so the ACS rows draw 3U of their
+    four candidates. Refugee: target 2.5U, donor 2U, so the residual 0.5U
+    draws one ACS candidate (U), the first record to reach it.
+    """
+
+    _install_controls(monkeypatch, _controls(humanitarian=_DRAWS))
+    result, receipt = with_acs_local_immigration_inputs(
+        _humanitarian_frame(), seed=7, time_period=PERIOD
+    )
+    humanitarian = receipt["controls"]["humanitarian"]
+    assert set(humanitarian) == {"refugee", "tps:venezuela"}
+    assert humanitarian["tps:venezuela"] == {
+        "category": "tps",
+        "origin": "venezuela",
+        "status": "TPS",
+        "target": 5 * U,
+        "donor_delivered": 2 * U,
+        "residual": 3 * U,
+        "acs_assigned": 3 * U,
+        "pooled_total": 5 * U,
+        "pooled_relative": 1.0,
+        "donor_excess": 0.0,
+        "source": "https://example.com/tps-venezuela",
+    }
+    refugee = humanitarian["refugee"]
+    assert refugee["residual"] == pytest.approx(0.5 * U)
+    assert refugee["acs_assigned"] == pytest.approx(U)
+    assert refugee["pooled_total"] == pytest.approx(3 * U)
+    assert acs_local_immigration_receipt_failures(receipt) == []
+
+    person = result.table("person")
+    venezuelan = _added_acs_rows(person, 373)
+    tps = venezuelan["immigration_status_str"].eq("TPS")
+    assert int(tps.sum()) == 3
+    # Residual-pool selections hold an EAD; the one left is undocumented.
+    assert venezuelan.loc[tps, "ssn_card_type"].eq("NON_CITIZEN_VALID_EAD").all()
+    assert venezuelan.loc[~tps, list(LABELS)].values.tolist() == [
+        ["NONE", "UNDOCUMENTED"]
+    ]
+    congolese = _added_acs_rows(person, 412)
+    assert sorted(congolese["immigration_status_str"]) == [
+        "LEGAL_PERMANENT_RESIDENT",
+        "REFUGEE",
+    ]
+    assert congolese["ssn_card_type"].eq("OTHER_NON_CITIZEN").all()
+    # TPS holders stay inside Pew's universe; refugees do not.
+    unauthorized = _pew_unauthorized_rows(person)
+    assert unauthorized[person.index.get_indexer(venezuelan.index)].all()
+    assert not unauthorized[person.index.get_indexer(congolese.index)].any()
+
+    gate = acs_local_immigration_signal_gate(result, time_period=PERIOD)
+    assert gate.passed, gate.failures
+    achieved = gate.details["file"]["details"]["humanitarian_draw_achieved"]
+    assert achieved["tps:venezuela"]["population"] == pytest.approx(5 * U)
+    assert achieved["refugee"]["population"] == pytest.approx(3 * U)
+
+
+def test_a_donor_over_a_humanitarian_stock_leaves_no_acs_residual(monkeypatch):
+    """The ACS rows only add: a donor at 2x the stock fails the whole-file
+    band, and the receipt records the excess."""
+
+    over = (
+        HumanitarianDraw(
+            category="refugee",
+            origin=None,
+            status="REFUGEE",
+            target=U,
+            source="https://example.com/refugee",
+        ),
+        _DRAWS[1],
+    )
+    _install_controls(monkeypatch, _controls(humanitarian=over))
+    result, receipt = with_acs_local_immigration_inputs(
+        _humanitarian_frame(), seed=7, time_period=PERIOD
+    )
+    refugee = receipt["controls"]["humanitarian"]["refugee"]
+    assert refugee["residual"] == 0.0
+    assert refugee["acs_assigned"] == 0.0
+    assert refugee["donor_excess"] == pytest.approx(U)
+    assert refugee["pooled_relative"] == pytest.approx(2.0)
+    assert acs_local_immigration_receipt_failures(receipt) == []
+    person = result.table("person")
+    assert (
+        not _added_acs_rows(person, 412)["immigration_status_str"].eq("REFUGEE").any()
+    )
+    gate = acs_local_immigration_signal_gate(result, time_period=PERIOD)
+    assert not gate.passed
+    assert any(
+        failure.startswith("file: refugee: compatible emitted population")
+        for failure in gate.failures
+    ), gate.failures
+
+
+def test_the_gate_grades_the_controls_it_is_given(monkeypatch) -> None:
+    _install_controls(monkeypatch, _controls(humanitarian=_DRAWS))
+    result, _ = with_acs_local_immigration_inputs(
+        _humanitarian_frame(), seed=7, time_period=PERIOD
+    )
+    assert acs_local_immigration_signal_gate(result, time_period=PERIOD).passed
+    # Without the draws, every emitted humanitarian status is unexpected.
+    bare = acs_local_immigration_signal_gate(
+        result, time_period=PERIOD, controls=_controls()
+    )
+    assert not bare.passed
+    assert any("explicit zero target" in failure for failure in bare.failures)
 
 
 def test_entry_clock_is_an_arrival_proxy_with_a_lag_sensitivity() -> None:
@@ -914,8 +1314,17 @@ def test_years_since_us_entry_on_both_spines() -> None:
     asec_rows = _asec_population() + [
         {
             "PRCITSHP": 5,
-            "PEINUSYR": 29,
+            "PEINUSYR": 28,
+            "PENATVTY": 303,
             "age": 30.0,
+            "ssn_card_type": "OTHER_NON_CITIZEN",
+            "immigration_status_str": "LEGAL_PERMANENT_RESIDENT",
+        },
+        {
+            "PRCITSHP": 5,
+            "PEINUSYR": 29,
+            "PENATVTY": 303,
+            "age": 1.0,
             "ssn_card_type": "OTHER_NON_CITIZEN",
             "immigration_status_str": "LEGAL_PERMANENT_RESIDENT",
         },
@@ -940,7 +1349,11 @@ def test_years_since_us_entry_on_both_spines() -> None:
     assert (asec.loc[native, YEARS] == asec.loc[native, "age"]).all()
     assert (asec.loc[asec["PEINUSYR"].eq(24), YEARS] == PERIOD - 2015).all()
     assert (asec.loc[asec["PEINUSYR"].eq(20), YEARS] == PERIOD - 2007).all()
-    assert asec[YEARS].iloc[-2] == 0.0  # code 29: 2024 arrivals
+    # Code 28, the 2024 ASEC's last bin (2022-2024), reads as its 2023
+    # midpoint. Code 29, which only the 2026 ASEC uses (2024-2026), reads as
+    # the kernel's 2024: a pooled default-pool donor is never refused for it.
+    assert asec[YEARS].iloc[-3] == 1.0
+    assert asec[YEARS].iloc[-2] == 0.0
     assert asec[YEARS].iloc[-1] == 61.0  # born in Puerto Rico: age
     acs_native = acs["CIT"].isin([1, 2, 3])
     assert (acs.loc[acs_native, YEARS] == acs.loc[acs_native, "AGEP"]).all()
@@ -1074,6 +1487,7 @@ def test_donor_preflight_accepts_a_complete_donor() -> None:
             ),
             "PEINUSYR",
         ),
+        (lambda person: person.drop(columns="PENATVTY"), "PENATVTY"),
     ],
 )
 def test_donor_preflight_refuses_an_unusable_donor(change, match) -> None:
@@ -1091,7 +1505,7 @@ def test_donor_preflight_refuses_an_unusable_donor(change, match) -> None:
 
 
 def test_gate_passes_on_the_filled_surface() -> None:
-    gate = acs_local_immigration_signal_gate(_filled())
+    gate = acs_local_immigration_signal_gate(_filled(), time_period=PERIOD)
     assert gate.passed, gate.failures
     assert gate.name == ACS_LOCAL_IMMIGRATION_GATE_NAME
     acs = gate.details["per_spine"][ACS_2024_1YR_SPINE]
@@ -1112,7 +1526,9 @@ def test_gate_fails_on_the_default_filled_release_signature() -> None:
     for column in LABELS:
         person[column] = person[column].where(~acs, "CITIZEN")
     person[YEARS] = ENGINE_DEFAULT_YEARS_SINCE_US_ENTRY
-    gate = acs_local_immigration_signal_gate(_with_person(frame, person))
+    gate = acs_local_immigration_signal_gate(
+        _with_person(frame, person), time_period=PERIOD
+    )
     assert not gate.passed
     failures = " ".join(gate.failures)
     for column in LABELS:
@@ -1124,7 +1540,7 @@ def test_gate_fails_on_the_default_filled_release_signature() -> None:
 
 
 def test_gate_fails_on_missing_cells_and_columns() -> None:
-    gate = acs_local_immigration_signal_gate(_frame())
+    gate = acs_local_immigration_signal_gate(_frame(), time_period=PERIOD)
     assert not gate.passed
     failures = " ".join(gate.failures)
     assert f"{ACS_2024_1YR_SPINE}: ssn_card_type has 400 missing row(s)" in failures
@@ -1132,7 +1548,9 @@ def test_gate_fails_on_missing_cells_and_columns() -> None:
         assert f"{spine}: missing {YEARS}" in failures
     person = _filled().table("person").copy()
     person.loc[person.index[0], YEARS] = np.nan
-    missing = acs_local_immigration_signal_gate(_with_person(_filled(), person))
+    missing = acs_local_immigration_signal_gate(
+        _with_person(_filled(), person), time_period=PERIOD
+    )
     assert missing.failures == (
         f"{ASEC_PUF_DONOR_SPINE}: {YEARS} has 1 missing row(s).",
     )
@@ -1146,10 +1564,14 @@ def test_gate_fails_when_labels_contradict_cit_or_leave_the_band() -> None:
         "OTHER_NON_CITIZEN",
         "LEGAL_PERMANENT_RESIDENT",
     ]
-    contradicted = acs_local_immigration_signal_gate(_with_person(frame, person))
+    contradicted = acs_local_immigration_signal_gate(
+        _with_person(frame, person), time_period=PERIOD
+    )
     assert contradicted.failures == (
         f"{ACS_2024_1YR_SPINE}: 1 person(s) are labelled against their measured "
         "CIT citizenship.",
+        "file: 1 person(s) have emitted citizenship disagreeing with their source "
+        "PRCITSHP/CIT evidence.",
     )
     person = frame.table("person").copy()
     person["CIT"] = person["CIT"].where(~_acs(frame), 5)
@@ -1157,7 +1579,9 @@ def test_gate_fails_when_labels_contradict_cit_or_leave_the_band() -> None:
         "OTHER_NON_CITIZEN",
         "LEGAL_PERMANENT_RESIDENT",
     ]
-    out_of_band = acs_local_immigration_signal_gate(_with_person(frame, person))
+    out_of_band = acs_local_immigration_signal_gate(
+        _with_person(frame, person), time_period=PERIOD
+    )
     assert any(
         failure.startswith(f"{ACS_2024_1YR_SPINE}: non-citizen weighted share 1.0000")
         for failure in out_of_band.failures
@@ -1174,7 +1598,9 @@ def test_gate_reports_but_does_not_grade_donor_composition() -> None:
         "OTHER_NON_CITIZEN",
         "LEGAL_PERMANENT_RESIDENT",
     ]
-    gate = acs_local_immigration_signal_gate(_with_person(frame, person))
+    gate = acs_local_immigration_signal_gate(
+        _with_person(frame, person), time_period=PERIOD
+    )
     donor = gate.details["per_spine"][ASEC_PUF_DONOR_SPINE]
     assert donor["composition"]["non_citizen_share"] == pytest.approx(0.47)
     assert "non_citizen_share" not in donor
@@ -1194,7 +1620,7 @@ def test_gate_checks_the_whole_file_anchor() -> None:
             )
         },
     )
-    gate = acs_local_immigration_signal_gate(tenth)
+    gate = acs_local_immigration_signal_gate(tenth, time_period=PERIOD)
     assert not gate.passed
     assert all(failure.startswith("file: ") for failure in gate.failures)
     assert "published anchor" in " ".join(gate.failures)
@@ -1204,12 +1630,202 @@ def test_gate_fails_on_missing_tags_or_unknown_spines() -> None:
     frame = _filled()
     person = frame.table("person")
     untagged = acs_local_immigration_signal_gate(
-        _with_person(frame, person.assign(**{TAG: person[TAG].where(person.index > 0)}))
+        _with_person(
+            frame, person.assign(**{TAG: person[TAG].where(person.index > 0)})
+        ),
+        time_period=PERIOD,
     )
     assert untagged.failures == (f"Missing person origin tags: {TAG}.",)
     unknown = acs_local_immigration_signal_gate(
         _with_person(
             frame, person.assign(**{TAG: person[TAG].where(person.index > 0, "other")})
-        )
+        ),
+        time_period=PERIOD,
     )
     assert "unsupported spine" in " ".join(unknown.failures)
+
+
+# --------------------------------------------------------------------------
+# Properties (the microcosm#767 port of #1052)
+# --------------------------------------------------------------------------
+#
+# Each property restates a mechanism the module states; the *deduced* one
+# combines two of them.
+#
+# - ``_cps_labor_force_status``: every ACS ``ESR`` code maps onto the CPS
+#   ``A_LFSR`` codebook, and a blank is code 0 ("a blank (under 16) is code
+#   0"); any other value, an infinity included, is refused. Differential:
+#   the mapped codes pass the kernel's worker test
+#   (``_CPS_LABOR_FORCE_STATUS_CODES``) exactly for ESR 1-3, the civilian
+#   labor force.
+# - ``_status_reconciliation`` and ``_humanitarian_reconciliation`` against
+#   ``acs_local_immigration_receipt_failures`` (differential: producer
+#   versus checker): every receipt the producers can write passes the
+#   checker, and each humanitarian entry splits ``target - donor`` into a
+#   residual and a donor excess, at most one of them nonzero.
+# - The stage, for each humanitarian draw (the ACS rows draw toward
+#   ``max(0, target - donor-emitted mass)``): the receipt records exactly
+#   that residual; the donor's delivered mass does not depend on the
+#   target; the ACS rows emitted with the draw's status weigh exactly
+#   ``acs_assigned``; a covered stock assigns nothing; a feasible residual
+#   is reached and overshot by less than one ACS row (every ACS row weighs
+#   U and draw keys are unique, so each tie group is one row); an
+#   infeasible one takes every candidate; and (deduced: threshold
+#   selection) a larger stock selects a superset of a smaller stock's rows.
+#
+# Independence limits: the ESR table below transcribes the ACS and CPS
+# codebooks, written by the author of the mapping; the stage properties take
+# each draw's candidate mass from the stage itself (an exhausting stock),
+# and only the fixture test pins that mass to the rows the fixture adds.
+
+_UNIT = settings(max_examples=100, deadline=None, database=None)
+_STAGE = settings(max_examples=20, deadline=None, database=None)
+
+#: ACS ``ESR`` to CPS ``A_LFSR``, from the two codebooks: civilian employed
+#: at work and with a job keep 1 and 2; unemployed is 3 (looking); the Armed
+#: Forces fall outside the CPS labor-force universe (0); not in the labor
+#: force is 7.
+_CODEBOOK_ESR_TO_A_LFSR = {1: 1, 2: 2, 3: 3, 4: 0, 5: 0, 6: 7}
+_CIVILIAN_LABOR_FORCE_ESR = (1, 2, 3)
+_MASS = st.integers(0, 10**8).map(float)
+_CONTROL = st.integers(1, 10**8).map(float)
+#: A humanitarian stock in quarter-person steps of U, so every sum is exact.
+_STOCK = st.integers(0, 40).map(lambda quarters: quarters * U / 4)
+
+
+@_UNIT
+@given(
+    st.lists(st.sampled_from((*_CODEBOOK_ESR_TO_A_LFSR, None)), min_size=1, max_size=40)
+)
+def test_every_esr_maps_onto_the_cps_labor_force_codebook(codes) -> None:
+    esr = pd.Series([np.nan if code is None else float(code) for code in codes])
+    status = _cps_labor_force_status(esr)
+    assert status.tolist() == [
+        0 if code is None else _CODEBOOK_ESR_TO_A_LFSR[code] for code in codes
+    ]
+    worker = np.isin(status, _CPS_LABOR_FORCE_STATUS_CODES)
+    assert worker.tolist() == [code in _CIVILIAN_LABOR_FORCE_ESR for code in codes]
+
+
+@_UNIT
+@given(
+    st.one_of(
+        st.integers(-10_000, 10_000).map(float),
+        st.floats(allow_nan=False),
+    ).filter(lambda value: value not in _CODEBOOK_ESR_TO_A_LFSR)
+)
+def test_any_other_esr_is_refused(value) -> None:
+    with pytest.raises(ValueError, match="ACS ESR must be one of"):
+        _cps_labor_force_status(pd.Series([6.0, value]))
+
+
+@_UNIT
+@given(
+    workers=st.tuples(_CONTROL, _MASS, _MASS, _MASS),
+    students=st.tuples(_CONTROL, _MASS, _MASS, _MASS),
+    draws=st.tuples(*(st.tuples(_MASS, _MASS, _MASS) for _ in _DRAWS)),
+)
+def test_every_receipt_the_producers_write_passes_the_checker(
+    workers, students, draws
+) -> None:
+    humanitarian = {}
+    for draw, (target, donor, assigned) in zip(_DRAWS, draws, strict=True):
+        entry = _humanitarian_reconciliation(
+            dataclasses.replace(draw, target=target), donor, assigned
+        )
+        assert entry["residual"] - entry["donor_excess"] == target - donor
+        assert min(entry["residual"], entry["donor_excess"]) == 0.0
+        humanitarian[draw.label] = entry
+    receipt = {
+        "controls": {
+            "method": ACS_LOCAL_IMMIGRATION_CONTROLS_METHOD,
+            "statuses": {
+                "undocumented_workers": _status_reconciliation(*workers),
+                "undocumented_students": _status_reconciliation(*students),
+            },
+            "humanitarian": humanitarian,
+        }
+    }
+    with pytest.MonkeyPatch.context() as patch:
+        _install_controls(patch, _controls(humanitarian=_DRAWS))
+        assert acs_local_immigration_receipt_failures(receipt) == []
+
+
+def _stage_draws(refugee: float, tps: float) -> tuple[HumanitarianDraw, ...]:
+    return (
+        dataclasses.replace(_DRAWS[0], target=refugee),
+        dataclasses.replace(_DRAWS[1], target=tps),
+    )
+
+
+def _run_humanitarian(
+    draws: tuple[HumanitarianDraw, ...], *, seed: int
+) -> tuple[Frame, dict, list[str]]:
+    with pytest.MonkeyPatch.context() as patch:
+        _install_controls(patch, _controls(humanitarian=draws))
+        result, receipt = with_acs_local_immigration_inputs(
+            _humanitarian_frame(), seed=seed, time_period=PERIOD
+        )
+        failures = acs_local_immigration_receipt_failures(receipt)
+    return result, receipt, failures
+
+
+@functools.cache
+def _humanitarian_capacity() -> dict[str, float]:
+    """Each draw's ACS candidate mass: what an exhausting stock assigns."""
+
+    _, receipt, _ = _run_humanitarian(_stage_draws(100 * U, 100 * U), seed=0)
+    return {
+        label: entry["acs_assigned"]
+        for label, entry in receipt["controls"]["humanitarian"].items()
+    }
+
+
+def test_an_exhausting_stock_takes_every_added_acs_candidate() -> None:
+    """The four Venezuelan and two Congolese ACS rows are the only candidates."""
+
+    assert _humanitarian_capacity() == {
+        "refugee": pytest.approx(2 * U),
+        "tps:venezuela": pytest.approx(4 * U),
+    }
+
+
+@_STAGE
+@given(refugee=_STOCK, tps=_STOCK, seed=st.integers(0, 2**16))
+def test_each_humanitarian_draw_assigns_its_donor_residual(refugee, tps, seed) -> None:
+    draws = _stage_draws(refugee, tps)
+    result, receipt, failures = _run_humanitarian(draws, seed=seed)
+    assert failures == []
+    capacity = _humanitarian_capacity()
+    weights = _person_weights(result)
+    acs = _acs(result)
+    status = result.table("person")["immigration_status_str"].to_numpy()
+    for draw in draws:
+        entry = receipt["controls"]["humanitarian"][draw.label]
+        assert entry["target"] == draw.target
+        assert entry["donor_delivered"] == pytest.approx(2 * U)
+        residual = max(0.0, draw.target - entry["donor_delivered"])
+        assert entry["residual"] == residual
+        assigned = entry["acs_assigned"]
+        assert entry["pooled_total"] == entry["donor_delivered"] + assigned
+        emitted = float(weights[acs & (status == draw.status)].sum())
+        assert assigned == pytest.approx(emitted)
+        if residual == 0.0:
+            assert assigned == 0.0
+        elif residual <= capacity[draw.label]:
+            assert residual <= assigned < residual + U
+        else:
+            assert assigned == pytest.approx(capacity[draw.label])
+
+
+@_STAGE
+@given(low=_STOCK, high=_STOCK, seed=st.integers(0, 2**16))
+def test_a_larger_stock_selects_a_superset_of_acs_rows(low, high, seed) -> None:
+    low, high = sorted((low, high))
+    small, _, _ = _run_humanitarian(_stage_draws(low, low), seed=seed)
+    large, _, _ = _run_humanitarian(_stage_draws(high, high), seed=seed)
+    acs = _acs(small)
+    for draw in _DRAWS:
+        before = small.table("person")["immigration_status_str"].eq(draw.status)
+        after = large.table("person")["immigration_status_str"].eq(draw.status)
+        assert not (acs & before.to_numpy() & ~after.to_numpy()).any()

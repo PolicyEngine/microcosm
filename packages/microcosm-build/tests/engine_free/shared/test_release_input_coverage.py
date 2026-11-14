@@ -13,6 +13,7 @@ from microcosm.build.us_runtime.release_input_coverage import (
     ListParameterEdit,
     resolve_probe_parameter_changes,
 )
+from microcosm.frame import VariableMetadata
 from test_support.microcosm_build.release_input_coverage import *
 
 _TAX_YEAR_2024 = "2024-01-01.2024-12-31"
@@ -22,8 +23,38 @@ _QBI_INCOME_DEFINITION = "gov.irs.deductions.qbi.income_definition"
 _SNAP_UNEARNED_SOURCES = "gov.usda.snap.income.sources.unearned"
 _SNAP_ALLOWED_DEDUCTIONS = "gov.usda.snap.income.deductions.allowed"
 
+# The H.R.1 restoration probes (#767) restore an immigration-status list to its
+# pre-H.R.1 set, so each declares exactly the statuses it restores: added back
+# to the Medicaid and SNAP eligible lists, removed from the ACA ineligible list.
+_HUMANITARIAN_STATUSES = (
+    "REFUGEE",
+    "ASYLEE",
+    "DEPORTATION_WITHHELD",
+    "CONDITIONAL_ENTRANT",
+    "PAROLED_ONE_YEAR",
+)
+_HR1_RESTORATION_EDITS = {
+    "hr1_medicaid_humanitarian_eligibility_restoration": (
+        "gov.hhs.medicaid.eligibility.eligible_immigration_statuses",
+        (),
+        _HUMANITARIAN_STATUSES,
+    ),
+    "hr1_aca_lawful_presence_restoration": (
+        "gov.aca.ineligible_immigration_statuses",
+        ("TPS", "REFUGEE", "ASYLEE", "DEPORTATION_WITHHELD", "PAROLED_ONE_YEAR"),
+        (),
+    ),
+    "hr1_snap_humanitarian_eligibility_restoration": (
+        "gov.usda.snap.eligibility.eligible_immigration_statuses",
+        (),
+        _HUMANITARIAN_STATUSES,
+    ),
+}
+
 # The shipped probes that change a list-valued parameter. Each declares only
-# the item it removes or adds; the rest of the list is the installed engine's.
+# the items it removes or adds; the rest of the list is the installed engine's.
+# A source or deduction probe changes one item; an H.R.1 restoration probe
+# changes the statuses in _HR1_RESTORATION_EDITS.
 _SHIPPED_LIST_EDIT_PROBE_IDS = frozenset(
     {
         "qbi_farm_operations_income_exclusion",
@@ -36,6 +67,7 @@ _SHIPPED_LIST_EDIT_PROBE_IDS = frozenset(
         "educator_expense_ald_abolition",
         "alimony_expense_ald_abolition",
         "niit_passive_pass_through_exclusion",
+        *_HR1_RESTORATION_EDITS,
     }
 )
 
@@ -184,13 +216,35 @@ def _refusing_baseline(calls: list):
 
 
 class _GraphEngine:
-    """Only ``variables()`` — the engine-graph surface the manifest check reads."""
+    """The engine-graph surface the manifest check reads: ``variables()``, and
+    ``variable_metadata``/``variable_unit`` for the probes' budget measures.
 
-    def __init__(self, variables) -> None:
+    Each name in ``measures`` answers as the unit its probe declares (a
+    person-level boolean for ``persons``, a ``currency-USD`` unit for ``usd``),
+    so the measure-unit check (microcosm#767) finds nothing and only the
+    findings a test sets up remain.
+    """
+
+    def __init__(self, variables, measures: dict[str, str] | None = None) -> None:
         self._variables = frozenset(variables)
+        self._measures = dict(measures or {})
 
     def variables(self) -> list[str]:
         return sorted(self._variables)
+
+    def _measure_unit(self, name: str) -> str:
+        if name not in self._measures:
+            raise ValueError(f"{name!r} is not a variable of this engine.")
+        return self._measures[name]
+
+    def variable_metadata(self, name: str) -> VariableMetadata:
+        if self._measure_unit(name) == "persons":
+            return VariableMetadata(name, "person", "bool", "year")
+        # The usd check reads only the unit.
+        return VariableMetadata(name, "household", "float", "year")
+
+    def variable_unit(self, name: str) -> str | None:
+        return None if self._measure_unit(name) == "persons" else "currency-USD"
 
 
 class _GraphlessEngine:
@@ -201,13 +255,15 @@ class _GraphlessEngine:
 
 
 def _shipped_graph_engine(*, drop: str | None = None) -> _GraphEngine:
-    """Every declared column and probe binding input, as live input leaves."""
+    """Every declared column and probe binding input, as live input leaves,
+    and every probe's budget measure in the unit the probe declares."""
     manifest = _shipped_manifest()
     names = set(manifest.declared_columns)
     for probe in manifest.probes:
         names.update(probe.binding_inputs)
     names.discard(drop)
-    return _GraphEngine(names)
+    measures = {probe.budget_measure: probe.measure_unit for probe in manifest.probes}
+    return _GraphEngine(names, measures)
 
 
 def _check_shipped_manifest(**kwargs) -> None:
@@ -562,6 +618,75 @@ class TestReformCoverageSmokeGate:
         )
         assert not structural_zero.passed
         assert "an effect in either direction" in structural_zero.failures[0]
+
+    def test_dollar_probe_states_its_floor_in_dollars(self, monkeypatch) -> None:
+        monkeypatch.setattr(smoke_module, "_build_reform", lambda changes: "REFORM")
+        result = us_reform_coverage_smoke_gate(
+            simulate=lambda reform: _Sim(10.0e9), probes=[_probe()]
+        )
+        assert not result.passed
+        assert (
+            "scores +0 on ssi for 2024; expected a positive effect with "
+            "magnitude at least $1,000,000,000." in result.failures[0]
+        )
+        assert result.details["results"]["ssi_probe"]["measure_unit"] == "usd"
+
+    def test_people_count_probe_states_effect_and_floor_in_people(
+        self, monkeypatch
+    ) -> None:
+        # A person-level boolean measure (medicaid_enrolled) sums weighted
+        # people, so the gate must state the effect and floor as people, not
+        # print a dollar floor (microcosm#767).
+        monkeypatch.setattr(smoke_module, "_build_reform", lambda changes: "REFORM")
+        probe = ReformCoverageProbe(
+            id="enrollment_probe",
+            name="Status-list restoration",
+            parameter_changes={},
+            list_edits={
+                "gov.example.statuses": ListParameterEdit(
+                    "2027-01-01.2100-12-31", add=("REFUGEE",)
+                )
+            },
+            budget_measure="medicaid_enrolled",
+            binding_inputs=("immigration_status_str",),
+            min_abs_effect=10_000.0,
+            reason="The restoration binds through the status leaf.",
+            issue="PolicyEngine/microcosm#767",
+            period=2027,
+            measure_unit="persons",
+        )
+
+        undersized = us_reform_coverage_smoke_gate(
+            simulate=lambda reform: _Sim(2_000.0 if reform else 0.0),
+            probes=[probe],
+        )
+        assert not undersized.passed
+        failure = undersized.failures[0]
+        assert "scores +2,000 persons on medicaid_enrolled for 2027" in failure
+        assert "magnitude at least 10,000 persons." in failure
+        assert "$" not in failure
+        result = undersized.details["results"]["enrollment_probe"]
+        assert result["measure_unit"] == "persons"
+
+        passing = us_reform_coverage_smoke_gate(
+            simulate=lambda reform: _Sim(250_000.0 if reform else 0.0),
+            probes=[probe],
+        )
+        assert passing.passed
+
+    def test_probe_rejects_unknown_measure_unit(self) -> None:
+        with pytest.raises(ValueError, match="measure_unit must be one of"):
+            ReformCoverageProbe(
+                id="bad_unit",
+                name="Bad unit",
+                parameter_changes={"gov.example.switch": {"2026": 0}},
+                budget_measure="medicaid_enrolled",
+                binding_inputs=("x",),
+                min_abs_effect=1.0,
+                reason="r.",
+                issue="PolicyEngine/microcosm#1",
+                measure_unit="households",
+            )
 
     def test_probe_rejects_unknown_expected_sign(self) -> None:
         with pytest.raises(ValueError, match="expected_sign must be"):
@@ -1038,6 +1163,23 @@ class TestShippedManifest:
         assert probe.neutralized_variable == output
         assert probe.binding_inputs == (output,)
 
+    def test_only_the_hr1_medicaid_probe_counts_people(self) -> None:
+        # The household-batched post-export scorer refuses Medicaid dollars,
+        # which PolicyEngine-US prices through a file-wide state denominator
+        # (microcosm#956), so the H.R.1 Medicaid probe counts enrollees. Every
+        # other probe sums dollars, the loader's default unit.
+        counted = {
+            probe.id: (probe.budget_measure, probe.min_abs_effect)
+            for probe in us_release_reform_coverage_probes()
+            if probe.measure_unit != "usd"
+        }
+        assert counted == {
+            "hr1_medicaid_humanitarian_eligibility_restoration": (
+                "medicaid_enrolled",
+                10_000.0,
+            )
+        }
+
     def test_shipped_ssi_probe_binds_through_the_assets(self) -> None:
         probes = us_release_reform_coverage_probes()
         assert probes, "the shipped manifest must pin at least one reform probe"
@@ -1451,7 +1593,7 @@ class TestShippedManifest:
             "gov.hhs.tanf.non_cash.tx_additional_vehicle_exemption"
         }
 
-    def test_shipped_manifest_is_schema_two_with_exactly_ten_list_edit_probes(
+    def test_shipped_manifest_is_schema_two_with_exactly_thirteen_list_edit_probes(
         self,
     ) -> None:
         raw = _shipped_payload()
@@ -1459,6 +1601,7 @@ class TestShippedManifest:
 
         assert raw["schema_version"] == US_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION == 2
         assert manifest.schema_version == US_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION
+        assert len(_SHIPPED_LIST_EDIT_PROBE_IDS) == 13
         assert {
             probe["id"]
             for probe in raw["reform_coverage_probes"]
@@ -1467,12 +1610,19 @@ class TestShippedManifest:
         list_edit_probes = [probe for probe in manifest.probes if probe.list_edits]
         assert {probe.id for probe in list_edit_probes} == _SHIPPED_LIST_EDIT_PROBE_IDS
         for probe in list_edit_probes:
-            # Each probe edits one list by exactly one item, so the reform
+            # Each probe edits one list and pins nothing else, so the reform
             # changes nothing the probe does not bind through.
             assert probe.parameter_changes == {}, probe.id
             assert len(probe.list_edits) == 1, probe.id
-            (edit,) = probe.list_edits.values()
-            assert len(edit.remove) + len(edit.add) == 1, probe.id
+            ((path, edit),) = probe.list_edits.items()
+            if probe.id in _HR1_RESTORATION_EDITS:
+                # An H.R.1 restoration declares exactly the statuses it restores.
+                assert (path, edit.remove, edit.add) == _HR1_RESTORATION_EDITS[
+                    probe.id
+                ], probe.id
+            else:
+                # A source or deduction probe changes exactly one item.
+                assert len(edit.remove) + len(edit.add) == 1, probe.id
 
     def test_no_shipped_probe_pins_a_list_in_parameter_changes(self) -> None:
         # The 2026-09-28 failure mode: a pinned list silently reverts any later

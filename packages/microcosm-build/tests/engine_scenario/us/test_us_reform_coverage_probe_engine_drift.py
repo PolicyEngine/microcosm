@@ -21,8 +21,10 @@ inside the period) raises instead of scoring a different reform.
 
 These tests pin, against the installed engine:
 
-- each list-edit probe declares exactly the one item it means to change, and
-  resolves to the engine's baseline list with only that item changed;
+- each list-edit probe declares exactly the items it means to change (the
+  one item a source/deduction probe changes, or the pre-H.R.1 status set an
+  H.R.1 restoration probe restores), and resolves to the engine's baseline
+  list with only those items changed;
 - the reform ``_build_reform`` returns holds the resolved list inside its
   bounded period and the baseline outside it, survives the repeated application
   the engine's own constructors perform (``CountryTaxBenefitSystem`` and
@@ -71,6 +73,35 @@ _REMOVED_ITEM = {
     "niit_passive_pass_through_exclusion": "passive_partnership_s_corp_income",
 }
 _ADDED_ITEM = {"domestic_production_ald_reactivation": "domestic_production_ald"}
+# The H.R.1 restoration probes (microcosm#767) restore a pre-H.R.1 status list,
+# so each changes a declared set, not one item: SS71109 (Medicaid) and SS10108
+# (SNAP) dropped these humanitarian statuses from the eligible lists, and
+# SS71301 (ACA) added the humanitarian statuses to the ineligible list.
+_PRE_HR1_ELIGIBLE = frozenset(
+    {
+        "REFUGEE",
+        "ASYLEE",
+        "DEPORTATION_WITHHELD",
+        "PAROLED_ONE_YEAR",
+        "CONDITIONAL_ENTRANT",
+    }
+)
+_RESTORED_ITEMS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
+    "hr1_medicaid_humanitarian_eligibility_restoration": (
+        frozenset(),
+        _PRE_HR1_ELIGIBLE,
+    ),
+    "hr1_snap_humanitarian_eligibility_restoration": (
+        frozenset(),
+        _PRE_HR1_ELIGIBLE,
+    ),
+    "hr1_aca_lawful_presence_restoration": (
+        frozenset(
+            {"REFUGEE", "ASYLEE", "DEPORTATION_WITHHELD", "PAROLED_ONE_YEAR", "TPS"}
+        ),
+        frozenset(),
+    ),
+}
 
 _SNAP_UNEARNED = "gov.usda.snap.income.sources.unearned"
 _SNAP_SOURCE_PROBES = {
@@ -88,6 +119,9 @@ _LIST_PARAMETERS = (
     "gov.usda.snap.income.sources.unearned_spm_unit",
     "gov.usda.snap.income.deductions.allowed",
     "gov.irs.investment.income.sources",
+    "gov.hhs.medicaid.eligibility.eligible_immigration_statuses",
+    "gov.aca.ineligible_immigration_statuses",
+    "gov.usda.snap.eligibility.eligible_immigration_statuses",
 )
 _QBI = "gov.irs.deductions.qbi.income_definition"
 _ALD = "gov.irs.ald.deductions"
@@ -176,13 +210,20 @@ def test_every_list_edit_probe_declares_its_one_item() -> None:
     # and makes a new list-edit probe state the item it means to change.
     probes = _probes()
     list_edit_probes = {probe_id for probe_id, *_ in _list_edits()}
-    assert list_edit_probes == set(_REMOVED_ITEM) | set(_ADDED_ITEM)
+    assert list_edit_probes == (
+        set(_REMOVED_ITEM) | set(_ADDED_ITEM) | set(_RESTORED_ITEMS)
+    )
     assert set(_SNAP_SOURCE_PROBES) <= set(_REMOVED_ITEM)
     for probe_id in sorted(list_edit_probes):
         probe = probes[probe_id]
         # The declared item is the probe's whole reform.
         assert probe.parameter_changes == {}, probe_id
         ((path, edit),) = probe.list_edits.items()
+        if probe_id in _RESTORED_ITEMS:
+            # An H.R.1 restoration declares the whole status set it restores.
+            restored = tuple(set(items) for items in _RESTORED_ITEMS[probe_id])
+            assert (set(edit.remove), set(edit.add)) == restored, f"{probe_id}: {path}"
+            continue
         expected = (
             ((), (_ADDED_ITEM[probe_id],))
             if probe_id in _ADDED_ITEM
@@ -205,11 +246,12 @@ def test_list_edit_resolves_to_engine_baseline_with_only_its_item_changed(
     assert len(resolved) == len(set(resolved)), f"{probe_id}: duplicate items"
     removed = set(baseline) - set(resolved)
     added = set(resolved) - set(baseline)
-    expected = (
-        (set(), {_ADDED_ITEM[probe_id]})
-        if probe_id in _ADDED_ITEM
-        else ({_REMOVED_ITEM[probe_id]}, set())
-    )
+    if probe_id in _RESTORED_ITEMS:
+        expected = tuple(set(items) for items in _RESTORED_ITEMS[probe_id])
+    elif probe_id in _ADDED_ITEM:
+        expected = (set(), {_ADDED_ITEM[probe_id]})
+    else:
+        expected = ({_REMOVED_ITEM[probe_id]}, set())
     assert (removed, added) == expected, (
         f"{probe_id}: {path} must resolve to the installed engine's baseline "
         f"with only {expected} changed (removed, added); got removed "
