@@ -1,0 +1,1 @@
+Add an ACS SPM partition adapter using canonical assembly, with strict and explicit development policies, recorded relationship and role assumptions, minor-partner sensitivity, preserved group-quarters membership, and old/new membership and regrouping audits. Native data repair and release activation remain separate.
