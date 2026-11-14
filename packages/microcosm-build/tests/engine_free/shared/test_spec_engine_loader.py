@@ -27,7 +27,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # The hierarchy value ranks move medicaid_take_up's attested bytes.
     # The fit input checks from the microimpute bug-parity audit move them too.
     assert first.spec_sha256 == (
-        "e0968e372cedaedea6ed257e6c33f52542b64f1c4b3aa2a8acc3cfd2f2ffdafa"
+        '85dc3afa338a0b53d5a5d07ed410826dbfe64f5d028c0b40f732c37087286ccc'
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

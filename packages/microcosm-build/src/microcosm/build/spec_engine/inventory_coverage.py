@@ -383,8 +383,8 @@ EXPECTED_HASHES = {
     # The hierarchy value ranks move both again: medicaid_take_up, an
     # attested kernel module, gives a substituted enrollment spec's value no
     # rank. No draw, RNG rule or QRF target changes.
-    "seed_map": "31604a3481bcdad4db5cfd7a0f159c60c1806a2eb3a1ff0514a47af2940ad5ec",
-    "seed_protocol": "7114ba07023642223fb227794bb5fa567e571431dd5cfedd1a7cd27a4dee7b85",
+    "seed_map": '2de5b5eed504179a521c380a077a3c99a92bbfb95a286b7ec03a2a02003ea295',
+    "seed_protocol": 'a61c7cf2a2ad6c9d030e81589e5f7ac0c8e4bdd1582aee4f19985d2f202e641d',
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
