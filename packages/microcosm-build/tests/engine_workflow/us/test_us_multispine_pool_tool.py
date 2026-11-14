@@ -356,7 +356,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # The hierarchy value ranks move it through medicaid_take_up's
             # attested bytes. microcosm#1453's local-jurisdiction flags in
             # geography_ladder, puma_ladder and the pool move it.
-            "spec_sha256": "4cc1be3c48e86b549965c03164ab3dec22309384a2a0707b2810ccbd8524a22f",
+            "spec_sha256": "86a80ffb6c3d84236ba45761663fb31be319fca5aa9c88bfd145abd161288fe9",
         },
     }
 
