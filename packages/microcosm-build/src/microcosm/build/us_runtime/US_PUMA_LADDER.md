@@ -26,6 +26,11 @@ from its `seed`.
 The dense ACS-spine artifact is filtered to state / congressional district /
 county for local analysis because every record carries all three.
 
+The ladder also writes the county-rule local-jurisdiction flags (`in_denver`,
+`pa_philadelphia_wage_tax_resident`) from the drawn county. It has no place
+rung, so it never writes `in_yonkers` or `in_wilmington`, and its summary
+records them as unavailable ([US_LOCAL_JURISDICTIONS.md](US_LOCAL_JURISDICTIONS.md)).
+
 ## Why one block pass
 
 2020 tabulation blocks nest in 2020 census tracts, and 2020 tracts nest in 2020

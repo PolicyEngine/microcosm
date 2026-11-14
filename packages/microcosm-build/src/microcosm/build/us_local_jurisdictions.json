@@ -1,0 +1,190 @@
+{
+  "kind": "us_local_jurisdiction_registry",
+  "schema_version": 1,
+  "description": "policyengine-us input-only local-jurisdiction flags and the 2020 Census geography that decides each one. A county rule is true when county_fips equals county_fips; a place rule is true when the first two digits of county_fips equal state_fips and place_fips equals place_fips.",
+  "engine": {
+    "package": "policyengine-us",
+    "versions_checked": [
+      "2.2.1",
+      "2.60.4"
+    ],
+    "note": "Each flag is an input variable with no formula in both versions, so it defaults to False unless the dataset writes it."
+  },
+  "sources": {
+    "population": {
+      "table": "2020 Census P.L. 94-171 Redistricting Data, P1_001N (total population)",
+      "api": "https://api.census.gov/data/2020/dec/pl",
+      "national_total_2020": 331449281
+    },
+    "gazetteer_place": {
+      "url": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2020_Gazetteer/2020_Gaz_place_national.zip",
+      "sha256": "6e5745b3e1adf7a1e024a988301d484697e2a0f25b3cf10114eef676f09d5c18"
+    },
+    "gazetteer_county": {
+      "url": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2020_Gazetteer/2020_Gaz_counties_national.zip",
+      "sha256": "02ef546e4c4f9c032c19616eabb9526caa016f778f41ede3b8c9755dacce20ef"
+    }
+  },
+  "jurisdictions": [
+    {
+      "flag": "in_denver",
+      "entity": "household",
+      "jurisdiction": "City and County of Denver, Colorado",
+      "rule": "county",
+      "state_fips": "08",
+      "county_fips": "08031",
+      "place_fips": null,
+      "coextensive_place_fips": "20000",
+      "population_2020": 715522,
+      "engine_consumers": [
+        "co_denver_property_tax_relief_homeowner_eligible",
+        "co_denver_property_tax_relief_renter_eligible"
+      ],
+      "gazetteer": {
+        "county": {
+          "geoid": "08031",
+          "ansicode": "00198131",
+          "name": "Denver County",
+          "aland": 396463432,
+          "awater": 4275563
+        },
+        "place": {
+          "geoid": "0820000",
+          "ansicode": "02410324",
+          "name": "Denver city",
+          "aland": 396463432,
+          "awater": 4275563
+        }
+      }
+    },
+    {
+      "flag": "in_wilmington",
+      "entity": "household",
+      "jurisdiction": "City of Wilmington, Delaware",
+      "rule": "place",
+      "state_fips": "10",
+      "county_fips": null,
+      "place_fips": "77580",
+      "coextensive_place_fips": null,
+      "population_2020": 70898,
+      "engine_consumers": [
+        "de_wilmington_earned_income_tax"
+      ],
+      "gazetteer": {
+        "place": {
+          "geoid": "1077580",
+          "ansicode": "02390676",
+          "name": "Wilmington city",
+          "aland": 28218288,
+          "awater": 16303525
+        }
+      }
+    },
+    {
+      "flag": "in_yonkers",
+      "entity": "household",
+      "jurisdiction": "City of Yonkers, New York",
+      "rule": "place",
+      "state_fips": "36",
+      "county_fips": null,
+      "place_fips": "84000",
+      "coextensive_place_fips": null,
+      "population_2020": 211569,
+      "engine_consumers": [
+        "ny_yonkers_income_tax"
+      ],
+      "gazetteer": {
+        "place": {
+          "geoid": "3684000",
+          "ansicode": "00979660",
+          "name": "Yonkers city",
+          "aland": 46634438,
+          "awater": 5850607
+        }
+      }
+    },
+    {
+      "flag": "pa_philadelphia_wage_tax_resident",
+      "entity": "person",
+      "jurisdiction": "City and County of Philadelphia, Pennsylvania",
+      "rule": "county",
+      "state_fips": "42",
+      "county_fips": "42101",
+      "place_fips": null,
+      "coextensive_place_fips": "60000",
+      "population_2020": 1603797,
+      "engine_consumers": [
+        "pa_philadelphia_wage_tax"
+      ],
+      "residence_rule": "A person is a Philadelphia wage-tax resident exactly when the person's household lies in Philadelphia County, which is the same area as Philadelphia city. The flag records residence only; the tax also needs pa_philadelphia_wage_tax_taxable_wages, which this registry does not supply.",
+      "gazetteer": {
+        "county": {
+          "geoid": "42101",
+          "ansicode": "01209187",
+          "name": "Philadelphia County",
+          "aland": 347981634,
+          "awater": 21606282
+        },
+        "place": {
+          "geoid": "4260000",
+          "ansicode": "01215531",
+          "name": "Philadelphia city",
+          "aland": 347981634,
+          "awater": 21606282
+        }
+      }
+    }
+  ],
+  "block_ladder_checks": [
+    {
+      "block_ladder_sha256": "6840b990acdfa2003d7723da5595e3cfff7205a4fa3d8d6206ed835c85c3f233",
+      "blocks": 5769942,
+      "population": 331449281,
+      "jurisdictions": {
+        "in_denver": {
+          "blocks": 8394,
+          "population": 715522,
+          "coextensive_place_blocks": 8394
+        },
+        "in_wilmington": {
+          "blocks": 1071,
+          "population": 70898
+        },
+        "in_yonkers": {
+          "blocks": 1336,
+          "population": 211569
+        },
+        "pa_philadelphia_wage_tax_resident": {
+          "blocks": 14549,
+          "population": 1603797,
+          "coextensive_place_blocks": 14549
+        }
+      }
+    },
+    {
+      "block_ladder_sha256": "7ba39b959068181b56a7ce1dc8f2477b31af33f28d0a1803ff6cba84cdfab06b",
+      "blocks": 5769942,
+      "population": 331449281,
+      "jurisdictions": {
+        "in_denver": {
+          "blocks": 8394,
+          "population": 715522,
+          "coextensive_place_blocks": 8394
+        },
+        "in_wilmington": {
+          "blocks": 1071,
+          "population": 70898
+        },
+        "in_yonkers": {
+          "blocks": 1336,
+          "population": 211569
+        },
+        "pa_philadelphia_wage_tax_resident": {
+          "blocks": 14549,
+          "population": 1603797,
+          "coextensive_place_blocks": 14549
+        }
+      }
+    }
+  ]
+}

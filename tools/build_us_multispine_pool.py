@@ -158,6 +158,11 @@ from microcosm.build.us_runtime.housing_inputs import (
     ACS_2022_RENT_ARTIFACT_SHA256,
     load_acs_2022_rent_donor,
 )
+from microcosm.build.us_runtime.local_jurisdictions import (
+    BLOCK_GEOGRAPHY_RUNGS,
+    us_local_jurisdiction_flag_receipt,
+    us_local_jurisdiction_flag_values,
+)
 from microcosm.build.us_runtime.multispine_pool import (
     POOL_CHECKPOINT_STAGE_ORDER,
     POOL_DERIVE_OPERATOR_ORDER,
@@ -2414,7 +2419,7 @@ def _validate_stacked_geography_assignment_receipt(
     ):
         raise ValueError(f"{boundary}: PUMA-ladder gate receipt did not pass.")
     if require_exact_assembled_rows:
-        live_gate = GateReport(
+        live_report = GateReport(
             (
                 us_puma_ladder_gate(
                     household,
@@ -2422,10 +2427,18 @@ def _validate_stacked_geography_assignment_receipt(
                     assign_tract=False,
                 ),
             )
-        ).to_manifest()
-        if gate_receipt != live_gate:
+        )
+        if gate_receipt != live_report.to_manifest():
+            # Name what the live gate finds, so an operator holding an older
+            # checkpoint sees the repair it needs (a missing in_denver, say).
+            drift = (
+                "the live gate passes, but its details differ from the receipt's"
+                if live_report.passed
+                else "the live gate fails: " + "; ".join(live_report.failures)
+            )
             raise ValueError(
-                f"{boundary}: PUMA-ladder gate receipt changed from live output."
+                f"{boundary}: PUMA-ladder gate receipt changed from live output; "
+                f"{drift}."
             )
 
     provenance_columns = (
@@ -2580,6 +2593,8 @@ def _expected_block_location_contract_from(
 def _block_location_summary(
     household: pd.DataFrame,
     record: Mapping[str, object],
+    *,
+    weights: np.ndarray,
 ) -> dict[str, object]:
     return {
         "applied": True,
@@ -2598,6 +2613,14 @@ def _block_location_summary(
                 CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
             )
         },
+        # The drawn block fixes county and place, so the draw writes every
+        # registry flag (microcosm#1453); the legacy summary records the same
+        # key with the PUMA ladder's county rung only.
+        "local_jurisdiction_flags": us_local_jurisdiction_flag_receipt(
+            us_local_jurisdiction_flag_values(household, rungs=BLOCK_GEOGRAPHY_RUNGS),
+            rungs=BLOCK_GEOGRAPHY_RUNGS,
+            household_weights=weights,
+        ),
     }
 
 
@@ -3105,7 +3128,9 @@ def _assign_stacked_household_block_location(
             "positive_congressional_district_rows": len(values),
             "unique_congressional_district_values": int(len(np.unique(values))),
         },
-        "summary": _block_location_summary(located, record),
+        "summary": _block_location_summary(
+            located, record, weights=assigned.weights_for("household").values
+        ),
         "household_location": record,
         "gate": gate_report.to_manifest(),
     }

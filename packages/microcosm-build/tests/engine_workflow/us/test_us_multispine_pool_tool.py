@@ -354,8 +354,9 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#1073's scf_wealth education-debt declaration moves it
             # through the bundle's source stages.
             # The hierarchy value ranks move it through medicaid_take_up's
-            # attested bytes.
-            "spec_sha256": "98d583653d37fe58edcace1cf3e21a139b69ebe7d1c3dac6a58f08b2b5aab8cf",
+            # attested bytes. microcosm#1453's local-jurisdiction flags in
+            # geography_ladder, puma_ladder and the pool move it.
+            "spec_sha256": "1fe859c12c55070d3e3e07cf548f1f1ac0db277d76192e81ba1eb9fe9c483a28",
         },
     }
 

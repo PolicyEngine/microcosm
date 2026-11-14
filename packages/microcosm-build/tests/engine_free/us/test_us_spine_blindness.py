@@ -71,6 +71,18 @@ _TEST_PATHS = paths_for("microcosm-build")
 _REPOSITORY_ROOT = _TEST_PATHS.repository
 _US_RUNTIME = _TEST_PATHS.package / "src" / "microcosm" / "build" / "us_runtime"
 _US_RUNTIME_IMPORT_PREFIX = "microcosm.build.us_runtime"
+_BUILD_IMPORT_PREFIX = "microcosm.build"
+#: Reviewed implementations that sit outside ``us_runtime`` although the
+#: runtime runs them: the ``us_runtime`` module that re-exports each one, and
+#: the ``microcosm.build`` module that holds its code. The local-jurisdiction
+#: flags moved out so the annual static-aging lane can check its parent
+#: without importing ``us_runtime`` (microcosm#1453), yet the geography
+#: ladders and the pool still derive the flags through the re-export. Every
+#: scan of ``us_runtime`` below therefore reads each implementation too, and
+#: the pool tool's import graph follows each re-export into it.
+_OUT_OF_RUNTIME_IMPLEMENTATIONS = (
+    ("local_jurisdictions.py", "microcosm.build.us_local_jurisdictions"),
+)
 _SPINE_BLIND_BUILD_TOOLS = (_REPOSITORY_ROOT / "tools" / "build_us_multispine_pool.py",)
 _REQUIRED_POOL_RUNTIME_MODULES = frozenset(
     {
@@ -350,6 +362,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "input_mass.py",
         "l0_refit_export.py",
         "late_producer_dag.py",  # Pure contract/schedule derivation; no treatment.
+        # Re-exports microcosm.build.us_local_jurisdictions (local-jurisdiction
+        # flags as a pure function of county/place codes, kept outside
+        # us_runtime); no population treatment.
+        "local_jurisdictions.py",
         "medicaid_take_up.py",
         # Reviewed held-out Medicare IRMAA diagnostic; no population treatment.
         "medicare_irmaa_holdout.py",
@@ -3330,11 +3346,88 @@ def _imported_us_runtime_modules(source: str) -> tuple[str, ...]:
     return tuple(sorted(imported))
 
 
+def _out_of_runtime_implementation_path(module: str) -> Path:
+    """The source file of a ``microcosm.build`` module named in dotted form."""
+
+    relative = module.removeprefix("microcosm.").replace(".", "/")
+    return _TEST_PATHS.package / "src" / "microcosm" / f"{relative}.py"
+
+
+def _out_of_runtime_implementations(
+    runtime_names: set[str] | None = None,
+) -> tuple[Path, ...]:
+    """Implementation files behind the registered re-exports.
+
+    With ``runtime_names``, only those whose re-export is among them: the
+    implementations one import graph reaches.
+    """
+
+    return tuple(
+        _out_of_runtime_implementation_path(module)
+        for re_export, module in _OUT_OF_RUNTIME_IMPLEMENTATIONS
+        if runtime_names is None or re_export in runtime_names
+    )
+
+
+def _runtime_scan_paths() -> tuple[Path, ...]:
+    """Every ``us_runtime`` module and every out-of-runtime implementation."""
+
+    return (*sorted(_US_RUNTIME.glob("*.py")), *_out_of_runtime_implementations())
+
+
+def _re_exported_build_modules(source: str) -> tuple[str, ...]:
+    """``microcosm.build`` modules outside ``us_runtime`` that a module re-exports.
+
+    A module re-exports another when it imports a name from it and lists that
+    name in a literal ``__all__``: its callers then run code that lives in
+    the other file.
+    """
+
+    tree = ast.parse(source)
+    exported: set[str] = set()
+    for node in tree.body:
+        if (
+            isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "__all__"
+                for target in node.targets
+            )
+            and isinstance(node.value, (ast.List, ast.Tuple))
+        ):
+            exported.update(
+                element.value
+                for element in node.value.elts
+                if isinstance(element, ast.Constant) and isinstance(element.value, str)
+            )
+    modules: set[str] = set()
+    for node in tree.body:
+        if not isinstance(node, ast.ImportFrom) or node.module is None or node.level:
+            continue
+        module = node.module
+        if not module.startswith(f"{_BUILD_IMPORT_PREFIX}."):
+            continue
+        if module == _US_RUNTIME_IMPORT_PREFIX or module.startswith(
+            f"{_US_RUNTIME_IMPORT_PREFIX}."
+        ):
+            continue
+        if any((alias.asname or alias.name) in exported for alias in node.names):
+            modules.add(module)
+    return tuple(sorted(modules))
+
+
 def _us_runtime_import_graph(
     root: Path,
 ) -> tuple[tuple[Path, ...], tuple[str, ...]]:
-    """Resolve the runtime portion of one tool's static import graph."""
+    """Resolve the runtime portion of one tool's static import graph.
 
+    A registered re-export is followed into its out-of-runtime
+    implementation, so a ``us_runtime`` module that only the implementation
+    imports is reached too. The implementation itself is not a runtime
+    module and is not returned; :func:`_out_of_runtime_implementations`
+    names it for the scans.
+    """
+
+    implementations = dict(_OUT_OF_RUNTIME_IMPLEMENTATIONS)
     pending = list(_imported_us_runtime_modules(root.read_text()))
     visited: set[str] = set()
     missing: set[str] = set()
@@ -3347,9 +3440,17 @@ def _us_runtime_import_graph(
         if not path.is_file():
             missing.add(module_name)
             continue
+        sources = [path.read_text()]
+        if module_name in implementations:
+            sources.append(
+                _out_of_runtime_implementation_path(
+                    implementations[module_name]
+                ).read_text()
+            )
         pending.extend(
             imported
-            for imported in _imported_us_runtime_modules(path.read_text())
+            for source in sources
+            for imported in _imported_us_runtime_modules(source)
             if imported not in visited
         )
     return (
@@ -3431,12 +3532,65 @@ def test_runtime_classification_rejects_a_new_unreviewed_module() -> None:
     )
 
 
+def test_out_of_runtime_implementations_are_exactly_the_runtime_re_exports() -> None:
+    """Every implementation a runtime module re-exports is registered, so scanned.
+
+    Moving code out of ``us_runtime`` behind a re-export would otherwise take
+    it out of every scan below without a failure: the scans would read the
+    re-export, which holds no code. The registry must name each re-export's
+    target, each target must exist, and each must be among the scanned files.
+    """
+
+    found = {
+        (path.name, module)
+        for path in sorted(_US_RUNTIME.glob("*.py"))
+        for module in _re_exported_build_modules(path.read_text())
+    }
+    assert found == set(_OUT_OF_RUNTIME_IMPLEMENTATIONS), (
+        "us_runtime modules re-export microcosm.build code that the registry "
+        "of out-of-runtime implementations does not name (or it names one "
+        f"that is gone): found={sorted(found)}, "
+        f"registered={sorted(_OUT_OF_RUNTIME_IMPLEMENTATIONS)}"
+    )
+    scanned = set(_runtime_scan_paths())
+    for re_export, module in _OUT_OF_RUNTIME_IMPLEMENTATIONS:
+        implementation = _out_of_runtime_implementation_path(module)
+        assert implementation.is_file(), f"{module} has no source file"
+        assert _US_RUNTIME not in implementation.parents, module
+        assert implementation in scanned, (
+            f"{re_export} re-exports {module}, which no runtime scan reads"
+        )
+
+
+def test_re_export_detector_finds_a_new_out_of_runtime_implementation() -> None:
+    """Pin the detector: a re-export counts, a plain import does not."""
+
+    re_export = """
+from microcosm.build.us_moved_operator import moved_operator, helper as h
+from microcosm.build.us_runtime.puf_support import support_channel_column
+from microcosm.build.gates import GateResult
+
+__all__ = ["moved_operator", "local_operator"]
+
+
+def local_operator(frame):
+    return GateResult, h
+"""
+    assert _re_exported_build_modules(re_export) == (
+        "microcosm.build.us_moved_operator",
+    )
+    plain_import = re_export.replace('"moved_operator", ', "")
+    assert _re_exported_build_modules(plain_import) == ()
+    aliased = re_export.replace('"moved_operator"', '"h"')
+    assert _re_exported_build_modules(aliased) == ("microcosm.build.us_moved_operator",)
+
+
 def test_us_runtime_frame_rebuilds_preserve_immutable_metadata() -> None:
     """A transformation carrying mass history must also carry stage receipts."""
 
     offenders = {
         path.name: drops
-        for path in sorted(_US_RUNTIME.glob("*.py"))
+        for path in _runtime_scan_paths()
         if (drops := _frame_metadata_drops(path.read_text()))
     }
     assert not offenders, (
@@ -3467,7 +3621,7 @@ def test_runtime_population_operators_are_source_spine_blind() -> None:
     )
 
     offenders: dict[str, tuple[str, ...]] = {}
-    for path in sorted(_US_RUNTIME.glob("*.py")):
+    for path in _runtime_scan_paths():
         accesses = _non_owner_source_spine_accesses(path.name, path.read_text())
         if accesses:
             offenders[path.name] = accesses
@@ -3847,9 +4001,14 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
         # reached module. 81 adds puf_source_schedule_e.py, the PUF donor's
         # Schedule E line-32 and passive supplement (#1239). 83 adds
         # block_location.py and cps_source_geography.py, which the
-        # --location-rule block_v1 household location reaches (#696).
-        assert len(runtime_graph) == 83, (
-            f"{tool.name} must reach the pinned 83-module runtime graph; "
+        # --location-rule block_v1 household location reaches (#696). 84 adds
+        # local_jurisdictions.py, which the PUMA ladder calls to write the
+        # county-rule local-jurisdiction flags; it re-exports
+        # microcosm.build.us_local_jurisdictions, which sits outside
+        # us_runtime and so outside this count, but is scanned below with
+        # the modules of the graph (#1453).
+        assert len(runtime_graph) == 84, (
+            f"{tool.name} must reach the pinned 84-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (
@@ -3870,8 +4029,15 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
             f"{tool.name} reaches unclassified US runtime modules: {unclassified}"
         )
 
+        # A re-export in the graph holds no code: scan the implementation
+        # behind it as part of the build path.
+        implementations = _out_of_runtime_implementations(runtime_names)
+        assert implementations == _out_of_runtime_implementations(), (
+            f"{tool.name} no longer reaches a registered re-export; its "
+            f"implementation would go unscanned: reached={implementations}"
+        )
         offenders: dict[str, tuple[str, ...]] = {}
-        for path in (tool, *runtime_graph):
+        for path in (tool, *runtime_graph, *implementations):
             reads = _non_owner_source_spine_accesses(path.name, path.read_text())
             if reads:
                 offenders[str(path.relative_to(_REPOSITORY_ROOT))] = reads

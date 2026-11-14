@@ -22,6 +22,7 @@ import json
 import shlex
 from collections.abc import Mapping
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -35,6 +36,7 @@ from microcosm.build.us_runtime.base_pool import (
     ACS_POOL_DONOR_LOCATION_REFUSAL,
     ACS_POOL_LOCATION_CLONES_REFUSAL,
     DONOR_BLOCK_PRESERVED,
+    acs_pool_local_jurisdiction_rungs,
     preflight_pooled_ladder_geography,
     spine_column,
     with_optional_acs_spine,
@@ -50,8 +52,12 @@ from microcosm.build.us_runtime.block_location import (
     location_geography_columns,
     us_block_location_gate,
 )
+from microcosm.build.us_runtime.puma_ladder import UsPumaLadder
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from test_support.microcosm_build.us_block_location import (
+    assert_local_jurisdiction_flags_follow_geography,
+    expected_local_jurisdiction_flags,
+    local_jurisdiction_blocks,
     synthetic_blocks,
     write_location_ladder,
 )
@@ -77,6 +83,15 @@ def ladder(tmp_path_factory: pytest.TempPathFactory) -> UsLocationLadder:
 def ladder_without_puma(tmp_path_factory: pytest.TempPathFactory) -> UsLocationLadder:
     path = tmp_path_factory.mktemp("ladder") / "blocks_no_puma.npz"
     write_location_ladder(path, synthetic_blocks(3, states=STATES), with_puma=False)
+    return load_us_location_ladder(path)
+
+
+@pytest.fixture(scope="module")
+def jurisdiction_ladder(tmp_path_factory: pytest.TempPathFactory) -> UsLocationLadder:
+    """A ladder carrying every local-jurisdiction geography and its decoys."""
+
+    path = tmp_path_factory.mktemp("ladder") / "jurisdictions.npz"
+    write_location_ladder(path, local_jurisdiction_blocks(3))
     return load_us_location_ladder(path)
 
 
@@ -235,6 +250,96 @@ def test__block_v1__every_geography_derives_from_the_block_and_gate_passes(
         household["block_geoid"].str[:2].astype(int).to_numpy()
         == household["state_fips"].to_numpy()
     ).all()
+
+
+# One donor on a block of each registry jurisdiction's county (Denver 08031,
+# Philadelphia 42101, Yonkers' 36003, Wilmington's 10003), each place-code
+# decoy's county (36047, 10001) and two plain counties.
+_JURISDICTION_DONOR_COUNTIES = (8031, 8003, 42101, 42003, 36003, 36047, 10003, 10001)
+
+
+def _jurisdiction_donor_base(ladder: UsLocationLadder) -> Frame:
+    """Donors on known blocks, carrying flags from before this pool.
+
+    Every donor carries all four flags as ``True``, which is wrong for most
+    of them: the pool must derive the flags again from each row's final
+    block, never carry these.
+    """
+
+    geoids = []
+    for county in _JURISDICTION_DONOR_COUNTIES:
+        in_county = ladder.block_geoid[ladder.block_geoid // 10**10 == county]
+        geoids.append(f"{int(in_county[0]):015d}")
+    n = len(geoids)
+    household = pd.DataFrame(
+        {
+            "household_id": np.arange(1, n + 1, dtype=np.int64),
+            "state_fips": [county // 1000 for county in _JURISDICTION_DONOR_COUNTIES],
+            "block_geoid": geoids,
+            "in_denver": True,
+            "in_yonkers": True,
+            "in_wilmington": True,
+        }
+    )
+    household["puma"] = pd.Series([None] * n, dtype=object)
+    frame = _frame(household, weights=np.full(n, 50.0), spine="asec_puf")
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"]["pa_philadelphia_wage_tax_resident"] = True
+    return Frame(
+        tables, US_SCHEMA, {"household": frame.weights_for("household")}, frame.strata
+    )
+
+
+def test__block_v1__flags_follow_every_rows_final_block(
+    jurisdiction_ladder: UsLocationLadder,
+) -> None:
+    """The pool derives all four flags after the block assignment (#1453).
+
+    Under the legacy rule the pool derives the county-rule flags from the
+    PUMA ladder's county and removes the place-rule flags. A ``block_v1``
+    pool takes no PUMA ladder; every row has a block, which fixes county and
+    place, so every flag is decided for every row.
+    """
+
+    ladder = jurisdiction_ladder
+    pooled = _pool(ladder, _jurisdiction_donor_base(ladder), _acs(ladder, n=16))
+    household, person = pooled.table("household"), pooled.table("person")
+    assert us_block_location_gate(household, ladder).passed
+    assert_local_jurisdiction_flags_follow_geography(household, person)
+
+    # The donors kept their blocks, so their flags are known exactly.
+    donors = household[spine_column("household")].eq("asec_puf")
+    assert household.loc[donors, "county_fips"].tolist() == [
+        f"{county:05d}" for county in _JURISDICTION_DONOR_COUNTIES
+    ]
+    assert household.loc[donors, "in_denver"].tolist() == [True] + [False] * 7
+    assert household.loc[donors, "in_yonkers"].tolist() == (
+        [False] * 4 + [True] + [False] * 3
+    )
+    assert household.loc[donors, "in_wilmington"].tolist() == (
+        [False] * 6 + [True, False]
+    )
+    donor_people = person[spine_column("person")].eq("asec_puf")
+    assert person.loc[donor_people, "pa_philadelphia_wage_tax_resident"].tolist() == (
+        [False, False, True] + [False] * 5
+    )
+    # The ACS rows, which arrived with no flag, are decided too.
+    assert (~donors).sum() == 16
+    for flag in ("in_denver", "in_yonkers", "in_wilmington"):
+        assert household.loc[~donors, flag].notna().all()
+
+
+def test__flag_rungs__follow_the_location_rule() -> None:
+    puma_ladder = _legacy_puma_ladder()
+    # Legacy (the default): the PUMA ladder's county rung, or nothing.
+    assert acs_pool_local_jurisdiction_rungs(puma_ladder) == ("county",)
+    assert acs_pool_local_jurisdiction_rungs(None) == ()
+    assert acs_pool_local_jurisdiction_rungs(None, location_rule="legacy") == ()
+    # block_v1: the block rungs, whatever PUMA ladder the caller also holds.
+    for held in (None, puma_ladder):
+        assert acs_pool_local_jurisdiction_rungs(
+            held, location_rule=US_LOCATION_RULE_BLOCK_V1
+        ) == ("county", "place")
 
 
 @pytest.mark.parametrize("blocks", ["some", "none"])
@@ -582,6 +687,76 @@ def test__multispine__block_v1_threads_through_and_records_location(
         location_geography_columns(ladder)
     )
     assert us_block_location_gate(result.frame.table("household"), ladder).passed
+
+
+def test__multispine__block_v1_records_the_block_rungs_flag_receipt(
+    monkeypatch: pytest.MonkeyPatch, jurisdiction_ladder: UsLocationLadder
+) -> None:
+    """The receipt names the rungs the pool used, not the PUMA ladder's (#1453).
+
+    Staging hands ``build_optional_acs_multispine`` its PUMA ladder under
+    ``block_v1`` too, for the coverage summary. That ladder must not pick the
+    flag rungs: the pool derived all four flags from each row's block.
+    """
+
+    ladder = jurisdiction_ladder
+    acs = _acs(ladder, n=16)
+    monkeypatch.setattr(
+        acs_multispine,
+        "build_acs_pums_unit_frame",
+        lambda source, *, chunksize: (acs, {"spine": ACS_2024_1YR_SPINE}),
+    )
+    monkeypatch.setattr(
+        acs_multispine,
+        "map_acs_native_inputs",
+        lambda raw: type("Mapped", (), {"frame": raw, "native_inputs": {}})(),
+    )
+    monkeypatch.setattr(
+        acs_multispine,
+        "transfer_acs_inputs",
+        lambda recipient, donor, **kwargs: type(
+            "Transfer",
+            (),
+            {
+                "frame": recipient,
+                "imputed_inputs": (),
+                "fit_records": (),
+                "deferred_inputs": (),
+                "resolved_donor_channel": "asec",
+            },
+        )(),
+    )
+
+    result = acs_multispine.build_optional_acs_multispine(
+        _jurisdiction_donor_base(ladder),
+        object(),  # type: ignore[arg-type]
+        location_rule=US_LOCATION_RULE_BLOCK_V1,
+        block_ladder=ladder,
+        location_seed=9,
+        donor_location_rule=US_LOCATION_RULE_BLOCK_V1,
+        puma_ladder=_puma_ladder_stub(
+            SimpleNamespace(UsPumaLadder=UsPumaLadder), ladder
+        ),
+    )
+
+    household = result.frame.table("household")
+    assert_local_jurisdiction_flags_follow_geography(
+        household, result.frame.table("person")
+    )
+    receipt = result.provenance["local_jurisdiction_flags"]
+    assert receipt["rungs"] == ["county", "place"]
+    weights = result.frame.weights_for("household").values
+    for flag, values in expected_local_jurisdiction_flags(household).items():
+        # One donor sits in each jurisdiction, so no count is zero.
+        assert values.sum() > 0, flag
+        assert receipt["flags"][flag]["status"] == "derived", flag
+        assert receipt["flags"][flag]["households_in_jurisdiction"] == values.sum()
+        assert receipt["flags"][flag]["weighted_households_in_jurisdiction"] == (
+            pytest.approx(weights[values].sum())
+        )
+    # The geography record a staging summary keeps says the same.
+    assert result.provenance["geography_ladder"]["local_jurisdiction_flags"] == receipt
+    json.dumps(result.provenance, allow_nan=False)
 
 
 def test__multispine__refuses_invalid_location_options_before_loading(
@@ -1025,6 +1200,11 @@ def test__legacy_tool__block_v1_main_records_rule_seed_gate_and_attributes(
     assert geography["block_ladder"]["sha256"] == ladder.sha256
     assert geography["seed"] == 5
     assert geography["location_rule"] == "block_v1"
+    # The summary's flag receipt names the block rungs, though staging also
+    # holds a PUMA ladder (microcosm#1453).
+    flags = geography["assignment"]["local_jurisdiction_flags"]
+    assert flags["rungs"] == ["county", "place"]
+    assert {entry["status"] for entry in flags["flags"].values()} == {"derived"}
 
     limitation = summary["reviewed_limitations"][2]
     assert limitation["id"] == "sub_puma_geographic_precision"

@@ -31,6 +31,10 @@ from microcosm.build.us_runtime.congressional_district_vintage import (
     CURRENT_CONGRESSIONAL_DISTRICT_PREFIX,
 )
 from microcosm.build.us_runtime.cps_source_geography import cps_source_geography
+from microcosm.build.us_runtime.local_jurisdictions import (
+    BLOCK_GEOGRAPHY_RUNGS,
+    us_local_jurisdiction_flag_failures,
+)
 from microcosm.build.us_runtime.support_provenance import (
     support_channel_column,
     support_clone_index_column,
@@ -38,6 +42,9 @@ from microcosm.build.us_runtime.support_provenance import (
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from test_support.microcosm_build.us_block_location import (
+    assert_local_jurisdiction_flags_follow_geography,
+    expected_local_jurisdiction_flags,
+    local_jurisdiction_blocks,
     synthetic_blocks,
     write_location_ladder,
 )
@@ -105,10 +112,12 @@ _HOUSEHOLDS = (
 )
 
 
-def _stacked_frame(*, asec_source_year: int = _INCOME_YEAR) -> Frame:
-    n = len(_HOUSEHOLDS)
+def _stacked_frame(
+    *, asec_source_year: int = _INCOME_YEAR, households=_HOUSEHOLDS
+) -> Frame:
+    n = len(households)
     ids = np.arange(1, n + 1, dtype=np.int64)
-    channel = np.asarray([row[0] for row in _HOUSEHOLDS], dtype=object)
+    channel = np.asarray([row[0] for row in households], dtype=object)
     is_asec = channel == "asec"
     person = pd.DataFrame(
         {
@@ -125,8 +134,8 @@ def _stacked_frame(*, asec_source_year: int = _INCOME_YEAR) -> Frame:
     household = pd.DataFrame(
         {
             "household_id": ids,
-            "state_fips": np.asarray([row[1] for row in _HOUSEHOLDS], dtype=np.int64),
-            "puma": pd.array([row[2] for row in _HOUSEHOLDS], dtype="string"),
+            "state_fips": np.asarray([row[1] for row in households], dtype=np.int64),
+            "puma": pd.array([row[2] for row in households], dtype="string"),
             support_channel_column("household"): channel,
         }
     )
@@ -144,7 +153,7 @@ def _stacked_frame(*, asec_source_year: int = _INCOME_YEAR) -> Frame:
         US_SCHEMA,
         {
             "household": Weights(
-                np.asarray([row[4] for row in _HOUSEHOLDS], dtype=np.float64),
+                np.asarray([row[4] for row in households], dtype=np.float64),
                 WeightKind.IMPORTANCE,
             )
         },
@@ -152,10 +161,10 @@ def _stacked_frame(*, asec_source_year: int = _INCOME_YEAR) -> Frame:
     )
 
 
-def _cps_household_geography() -> pd.DataFrame:
+def _cps_household_geography(households=_HOUSEHOLDS) -> pd.DataFrame:
     rows = [
         (900 + index + 1, state, gtco)
-        for index, (channel, state, _puma, gtco, _weight) in enumerate(_HOUSEHOLDS)
+        for index, (channel, state, _puma, gtco, _weight) in enumerate(households)
         if channel == "asec"
     ]
     return pd.DataFrame(
@@ -179,12 +188,14 @@ def _contract(pool_tool: ModuleType, ladder, *, seed: int = 11) -> dict:
     )
 
 
-def _assign(pool_tool: ModuleType, ladder, *, seed: int = 11, frame=None):
+def _assign(
+    pool_tool: ModuleType, ladder, *, seed: int = 11, frame=None, households=_HOUSEHOLDS
+):
     return pool_tool._assign_stacked_household_block_location(
-        _stacked_frame() if frame is None else frame,
+        _stacked_frame(households=households) if frame is None else frame,
         ladder=ladder,
         crosswalk=_crosswalk(ladder),
-        cps_household_geography=_cps_household_geography(),
+        cps_household_geography=_cps_household_geography(households),
         contract=_contract(pool_tool, ladder, seed=seed),
     )
 
@@ -607,6 +618,109 @@ def test_block_draw_respects_each_households_source_geography(
     assert districts == tuple(
         sorted(set(ladder.blocks.congressional_district_geoid.tolist()))
     )
+
+
+def _jurisdiction_households(ladder) -> tuple[tuple, ...]:
+    """Stacked households over test_support's local_jurisdiction_blocks ladder.
+
+    ASEC rows identified in each registry jurisdiction's county (Denver
+    08031, Philadelphia 42101, Yonkers' 36003, Wilmington's 10003) and in
+    each place-code decoy's county (36047, 10001), unidentified ASEC rows in
+    Colorado and Pennsylvania, and one ACS row per observed PUMA outside New
+    York. The weights keep New York City (the 36047 row) inside the
+    PUMA-ladder gate's bounds: 4 of 10 in New York, under 6% of the total.
+    """
+
+    acs = tuple(
+        ("acs", int(puma) // 10**5, f"{int(puma):07d}", None, 12.0)
+        for puma in np.unique(ladder.puma).tolist()
+        if int(puma) // 10**5 != 36
+    )
+    return (
+        ("asec", 36, None, 47, 4.0),
+        ("asec", 36, None, 3, 6.0),
+        ("asec", 8, None, 31, 12.0),
+        ("asec", 8, None, 0, 12.0),
+        ("asec", 42, None, 101, 12.0),
+        ("asec", 42, None, 0, 12.0),
+        ("asec", 10, None, 3, 12.0),
+        ("asec", 10, None, 1, 12.0),
+        *acs,
+    )
+
+
+def test_block_draw_derives_the_flags_from_the_drawn_block(
+    pool_tool: ModuleType, tmp_path: Path
+) -> None:
+    """The flags follow the block this pool draws (microcosm#1453).
+
+    The legacy PUMA ladder writes the county-rule flags with its county. The
+    block draw replaces that stage and fixes a place too, so it must write
+    all four flags, after the draw, and its receipt must name the block rungs.
+    """
+
+    ladder = load_us_location_ladder(
+        write_location_ladder(tmp_path / "ladder.npz", local_jurisdiction_blocks(3))
+    )
+    households = _jurisdiction_households(ladder)
+    frame = _stacked_frame(households=households)
+    # Flags from before the draw, wrong for most households: the draw must
+    # replace them, never carry them.
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    for flag in ("in_denver", "in_yonkers", "in_wilmington"):
+        tables["household"][flag] = True
+    tables["person"]["pa_philadelphia_wage_tax_resident"] = True
+    frame = Frame(
+        tables, US_SCHEMA, {"household": frame.weights_for("household")}, frame.strata
+    )
+
+    assigned, receipt, _districts = _assign(
+        pool_tool, ladder, frame=frame, households=households
+    )
+
+    household, person = assigned.table("household"), assigned.table("person")
+    assert_local_jurisdiction_flags_follow_geography(household, person)
+    assert (
+        us_local_jurisdiction_flag_failures(
+            household, person=person, required_rungs=BLOCK_GEOGRAPHY_RUNGS
+        )
+        == []
+    )
+    # The identified rows sit in their counties, so each flag is true
+    # somewhere and false somewhere, and each decoy is false.
+    county = household["county_fips"].astype(str)
+    assert list(county.iloc[[0, 1, 2, 4, 6, 7]]) == [
+        "36047",
+        "36003",
+        "08031",
+        "42101",
+        "10003",
+        "10001",
+    ]
+    assert bool(household["in_denver"].iloc[2]) and not household["in_denver"].iloc[0]
+    assert bool(household["in_yonkers"].iloc[1]) and not household["in_yonkers"].iloc[7]
+    assert bool(household["in_wilmington"].iloc[6])
+    assert not household["in_wilmington"].iloc[0]
+    assert bool(person["pa_philadelphia_wage_tax_resident"].iloc[4])
+    assert not person["pa_philadelphia_wage_tax_resident"].iloc[2]
+
+    # Both gates pass with the flags present, and the PUMA-ladder gate (which
+    # requires in_denver) reports no flag failure.
+    assert receipt["gate"]["passed"] is True
+    assert receipt["gate"]["gates"]["us_puma_ladder"]["failures"] == []
+    # The receipt says the block rungs decided all four, with these counts.
+    flags = receipt["summary"]["local_jurisdiction_flags"]
+    assert flags["rungs"] == ["county", "place"]
+    expected = expected_local_jurisdiction_flags(household)
+    weights = assigned.weights_for("household").values
+    for flag, values in expected.items():
+        assert 0 < values.sum() < len(values), flag
+        assert flags["flags"][flag]["status"] == "derived", flag
+        assert flags["flags"][flag]["households_in_jurisdiction"] == values.sum()
+        assert flags["flags"][flag]["weighted_households_in_jurisdiction"] == (
+            pytest.approx(weights[values].sum())
+        )
+    json.dumps(receipt)
 
 
 def test_block_draw_is_deterministic_and_seeded(pool_tool: ModuleType, ladder) -> None:

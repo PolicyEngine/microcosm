@@ -350,7 +350,7 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "bf681aedc859fd6398ef72da68f584069b7d25b3085c549bf99f82e8324c4eef",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "ecf64f2bfbb59ffaaa717d8a09d38e56a38d6d43c1aa0a209d57492b038fb19a",
+    "full_checkpoint": "47d4474df59d47ad5e2fd9a4663002c1c34761862c679e3059bbb83687f17fba",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
     "graph_nodes": "1b208fff4f6d878c522147fee617177544bda8963c940f98a4bfc37507cb955f",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
@@ -382,9 +382,12 @@ EXPECTED_HASHES = {
     # S-corp line-32 shares as separate leaves.
     # The hierarchy value ranks move both again: medicaid_take_up, an
     # attested kernel module, gives a substituted enrollment spec's value no
-    # rank. No draw, RNG rule or QRF target changes.
-    "seed_map": "0c19b903a43b997886be6222045485954c96d6a624ce2ae3f83cadb4b22a7883",
-    "seed_protocol": "15e6cad1f1b0082ffd5980095b4060827ed18786fae3076c97cf431c93a50e16",
+    # rank. No draw, RNG rule or QRF target changes. microcosm#1444 moves both:
+    # housing_inputs puts each ACS rent draw on its own household's head.
+    # microcosm#1453 moves both again: geography_ladder and puma_ladder write
+    # the local-jurisdiction flags.
+    "seed_map": "adb7a1d916ab957b5fc70bb94974a6d6e144239335fb1c930e0d8762f6acd382",
+    "seed_protocol": "e3bd670e031fcbe454fd7d5e8d4f25b0a210b3f385a6aaa90af57921c4d531e4",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

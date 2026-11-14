@@ -1319,11 +1319,15 @@ def test_main_has_no_calibrated_target_frame_at_the_export_write(
     from microcosm.calibrate import calibrate_l0_refit
 
     target_frame, targets = _small_calibration_problem()
+    # The export statements derive the local-jurisdiction flags on the export
+    # support (microcosm#1453). Every household here has a county, half of
+    # them Denver's, so that derivation writes real columns on a new frame.
+    households = target_frame.table("household").drop(columns="x")
+    households["county_fips"] = np.where(
+        households["household_id"] % 2 == 0, "08031", "06037"
+    )
     base_frame = Frame(
-        {
-            "person": target_frame.table("person"),
-            "household": target_frame.table("household").drop(columns="x"),
-        },
+        {"person": target_frame.table("person"), "household": households},
         target_frame.schema,
         {"household": target_frame.weights_for("household")},
     )
@@ -1379,7 +1383,14 @@ def test_main_has_no_calibrated_target_frame_at_the_export_write(
 
     def check_write(frame, path, *, period):
         writes.append(frame)
-        assert "x" not in frame.table("household")
+        written = frame.table("household")
+        assert "x" not in written
+        # The written support carries the flags its own geography decides,
+        # and it is the frame the cleanup below keeps for an exact-K outcome.
+        assert (
+            written["in_denver"].tolist() == written["county_fips"].eq("08031").tolist()
+        )
+        assert not frame.table("person")["pa_philadelphia_wage_tax_resident"].any()
         cleaned = namespace["result"]
         if not full_pool:
             assert cleaned.selection.frame is None
@@ -1399,12 +1410,26 @@ def test_main_has_no_calibrated_target_frame_at_the_export_write(
         "full_pool_calibration": full_pool,
         "release_engine": SimpleNamespace(write_dataset=check_write),
         "dataset_path": Path("fixture.h5"),
+        # Bound earlier in _main: the receipts of the base and frozen-support
+        # derivations, and the build's progress reporter.
+        "local_jurisdiction_flags": {},
+        "telemetry": None,
     }
     module = ast.Module(
         body=[*statements[export_start : cleanup_end + 1], write], type_ignores=[]
     )
     exec(compile(module, "<main export statements>", "exec"), namespace)
     assert len(writes) == 1
+    receipts = namespace["local_jurisdiction_flags"]
+    assert list(receipts) == ["export"]
+    receipt = receipts["export"]
+    assert receipt["rungs"] == ["county"] and receipt["carried_flags"] == []
+    in_denver = receipt["flags"]["in_denver"]
+    assert in_denver["status"] == "derived"
+    assert in_denver["households_in_jurisdiction"] == int(
+        writes[0].table("household")["in_denver"].sum()
+    )
+    assert in_denver["households_in_jurisdiction"] > 0
 
 
 def test_scored_sha_is_bound_at_load_and_checked_by_the_manifest(

@@ -63,6 +63,7 @@ from microcosm.build.us_runtime.acs_transfer import (
 )
 from microcosm.build.us_runtime.base_pool import (
     ACS_POOL_BLOCK_LOCATION_METADATA_KEY,
+    acs_pool_local_jurisdiction_rungs,
     preflight_pooled_ladder_geography,
     validate_pool_location_options,
     with_optional_acs_spine,
@@ -76,6 +77,11 @@ from microcosm.build.us_runtime.block_location import (
 )
 from microcosm.build.us_runtime.congressional_district_vintage import (
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
+)
+from microcosm.build.us_runtime.local_jurisdictions import (
+    BLOCK_GEOGRAPHY_RUNGS,
+    us_local_jurisdiction_flag_receipt,
+    us_local_jurisdiction_flag_values,
 )
 from microcosm.build.us_runtime.puma_ladder import (
     UsPumaLadder,
@@ -100,6 +106,11 @@ class AcsMultispineResult:
     ``None`` when the base carries no role for the ACS spine to match.
     ``provenance["acs_group_quarters_children"]`` is the interim drop's
     receipt, or ``None`` when the caller kept those records.
+    ``provenance["local_jurisdiction_flags"]`` records which local-jurisdiction
+    flags the pool derived and which it left unavailable; without a PUMA
+    ladder that is every flag. A ``block_v1`` pool derives all four from each
+    row's block, and its ``provenance["geography_ladder"]`` carries the same
+    receipt.
     """
 
     frame: Frame
@@ -429,6 +440,20 @@ def build_optional_acs_multispine(
         )
     pooled = with_optional_acs_spine(base, transferred_frame, **pool_options)
     del transferred_frame
+    # The pool writes the flags its rungs decide and removes the rest; the
+    # receipt records both, with or without a PUMA ladder. The rungs are the
+    # pool's own: under block_v1 the block rungs, whatever PUMA ladder this
+    # function was also handed for its coverage summary.
+    jurisdiction_rungs = acs_pool_local_jurisdiction_rungs(
+        puma_ladder, location_rule=location_rule
+    )
+    local_jurisdiction_flags = us_local_jurisdiction_flag_receipt(
+        us_local_jurisdiction_flag_values(
+            pooled.table("household"), rungs=jurisdiction_rungs
+        ),
+        rungs=jurisdiction_rungs,
+        household_weights=pooled.weights_for("household").values,
+    )
 
     provenance = {
         "enabled": True,
@@ -451,6 +476,7 @@ def build_optional_acs_multispine(
             "n_estimators": n_estimators,
             "max_targets_per_fit": max_targets_per_fit,
         },
+        "local_jurisdiction_flags": _json_ready_mapping(local_jurisdiction_flags),
     }
     if hours_donor is not None or hours_donor_factory is not None:
         provenance["fit_configuration"]["hours_donor_channel"] = hours_donor_channel
@@ -539,7 +565,10 @@ def _block_geography_provenance(
     :func:`~microcosm.build.us_runtime.puma_ladder.us_puma_ladder_assignment_summary`
     when a PUMA ladder is supplied) and states the block rule: every
     geography column is resolved from the drawn or preserved block, so no
-    sub-PUMA input stays unresolved.
+    sub-PUMA input stays unresolved. Its ``local_jurisdiction_flags`` is the
+    block rungs' receipt, the one the pool's rungs give; it replaces the
+    PUMA-ladder summary's, which would record the place-rule flags as
+    unavailable although a ``block_v1`` pool writes them.
     """
 
     household = pooled.table("household")
@@ -570,6 +599,13 @@ def _block_geography_provenance(
             "donor_geography": donor_geography,
             "resolved_model_inputs": columns,
             "unresolved_sub_puma_inputs": [],
+            "local_jurisdiction_flags": us_local_jurisdiction_flag_receipt(
+                us_local_jurisdiction_flag_values(
+                    household, rungs=BLOCK_GEOGRAPHY_RUNGS
+                ),
+                rungs=BLOCK_GEOGRAPHY_RUNGS,
+                household_weights=pooled.weights_for("household").values,
+            ),
         }
     )
     return _json_ready_mapping(geography)

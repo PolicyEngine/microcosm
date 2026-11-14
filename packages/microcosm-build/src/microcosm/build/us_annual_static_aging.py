@@ -3,6 +3,10 @@
 Each projection starts from the same base frame. Only one projected year is
 held in memory at a time. The original H5 is copied byte for byte, and all later
 files retain its entity/column/row layout with an explicit ``_time_period``.
+No file adds a column, so the parent must already carry every local-jurisdiction
+flag its own geography decides; the lane refuses a parent that lacks one,
+carries one that disagrees with its geography, or carries one its geography
+cannot decide, before any model work.
 Each projected year's H5 is ``microcosm_us_<year>`` (key and file name); the
 base year, and the family, take the key of the base build's dataset
 (``base_dataset``, ``microcosm_us_<base year>`` unless given), so the
@@ -88,6 +92,34 @@ def _json(path: Path, value: Any) -> None:
 def _check_pin(path: Path, expected: str) -> None:
     if len(expected) != 64 or _sha256(path) != expected:
         raise ValueError(f"SHA256 mismatch for {path}")
+
+
+def _parent_local_jurisdiction_flags(frame: Frame) -> dict:
+    """Require the parent to carry its local-jurisdiction flags, with a receipt.
+
+    The lane copies the parent's base year byte for byte and keeps the
+    parent's columns in every projected year, so it cannot write a flag the
+    parent lacks: the engine would default it to ``False`` for every resident
+    in every year.
+    """
+
+    # From microcosm.build.us_local_jurisdictions, never through us_runtime:
+    # importing any us_runtime module asserts the engine ABI lock wherever
+    # policyengine-us is installed, so this check would refuse every parent
+    # under another engine version (test_us_annual_static_aging_gate_imports).
+    from microcosm.build.us_local_jurisdictions import (
+        us_local_jurisdiction_artifact_receipt,
+    )
+
+    try:
+        return us_local_jurisdiction_artifact_receipt(frame)
+    except ValueError as error:
+        raise ValueError(
+            "The annual lane keeps its parent's columns and base-year bytes, so "
+            "it needs a parent that already carries every local-jurisdiction "
+            "flag its own geography decides; rebuild the parent with the flags. "
+            f"{error}"
+        ) from error
 
 
 def _model_provenance(*, source: Path, commit: str, version: str) -> dict:
@@ -278,13 +310,8 @@ def build_annual_static_aging(
     ssa = Path(ssa_csv).expanduser().absolute()
     _check_pin(base, base_sha256)
     _check_pin(ssa, ssa_sha256)
-    model_kwargs = {
-        "source": Path(model_source),
-        "commit": model_commit,
-        "version": model_version,
-    }
-    model = _model_provenance(**model_kwargs)
-    runtime = _runtime_provenance()
+    # Read the parent before any model work, so a parent this lane cannot
+    # carry forward fails first.
     with pd.HDFStore(base, "r") as store:
         _period(store, base_year)
         tables = {
@@ -301,6 +328,14 @@ def build_annual_static_aging(
     frame = Frame(
         tables, US_SCHEMA, {"household": Weights(weights, WeightKind.CALIBRATED)}
     )
+    local_jurisdiction_flags = _parent_local_jurisdiction_flags(frame)
+    model_kwargs = {
+        "source": Path(model_source),
+        "commit": model_commit,
+        "version": model_version,
+    }
+    model = _model_provenance(**model_kwargs)
+    runtime = _runtime_provenance()
     base_tables = {
         entity: table.loc[:, columns[entity]]
         for entity, table in engine_tables(
@@ -337,6 +372,7 @@ def build_annual_static_aging(
             "parent_release": parent_release,
             "path": str(base),
             "sha256": base_sha256,
+            "local_jurisdiction_flags": local_jurisdiction_flags,
         },
         "inputs": {"ssa": {"path": str(ssa), "sha256": ssa_sha256}},
         "model": model,
