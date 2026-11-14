@@ -462,11 +462,10 @@ DIRECT_LEDGER_TARGETS: dict[
         "ssa",
         {"target_role": "ssa_dependents_total"},
     ),
-    ("ssa", "payment_amount", "ssi_payments"): (
-        "ssi",
-        "ssa",
-        {"target_role": "ssi_total"},
-    ),
+    # SSI's national total binds from Table 7.B7's federal column in
+    # _ssa_ssi_reference_from_fact (microcosm#1558). The OASDI table's
+    # ssi_payments row also counts federally administered state
+    # supplementation, so it maps to no target.
     ("usda_snap", "total_benefits", None): (
         "snap",
         "usda_snap",
@@ -3548,45 +3547,118 @@ def _population_age_reference_from_fact(
     )
 
 
-# SSA by-area record sets carry an eligibility category (total/aged/blind/
-# disabled) fused into ``layout.groupby_value_id`` (``all_areas_total``,
-# ``alabama_aged`` …). Only the all-category ``total`` has a PolicyEngine-US
-# counterpart: the model computes SSI receipt and amount but not the SSI
-# eligibility-category split, so aged/blind/disabled sub-rows are reviewed
-# exclusions in the target-parity manifest rather than silent drops.
+# SSA SSI targets bind federal-payment figures only (microcosm#1558). Engine
+# ``ssi`` is the federal SSI payment, so a target that also counts federally
+# administered state supplementation asks the model for more SSI than it pays.
+# Three SSA tables carry federal figures:
 #
-# Role-separation guard (microcosm#508 owner adjudication, 2026-07-23): the
-# by-area "aged" rows are the AGED ELIGIBILITY CATEGORY (Table 7.B1 national
-# aged row: 1,161,623 — people who qualified under the age-65+ pathway), NOT
-# the age-65+ population. The SSA by-age 65+ band (2,382,142) counts people
-# aged 65+ across ALL eligibility categories — mostly disabled-category
-# recipients who aged past 65. The category rows must never be "fixed" to the
-# age bands or vice versa: category rows never compile (below), and the age
-# bands bind only through the by-age record set's first-class age constraints
-# under the distinct role ``ssa_ssi_age_band_recipients``.
+# - Annual Statistical Supplement Table 7.B7: federal SSI payments in calendar
+#   2024, for the nation and by state (``ssi_federal_payments.by_area``).
+# - Annual Statistical Supplement Table 7.B3: federal SSI recipients in
+#   December 2024, for the nation and by state
+#   (``ssi_federal_payment_recipients.by_area``).
+# - SSI Monthly Statistics Table 1: federal SSI recipients in December 2024 by
+#   age (``ssi_federal_payment_recipients.by_age``).
+#
+# Table 7.B1's by-area rows count the federally administered universe instead:
+# recipients of a federal payment, a federally administered state supplement or
+# both (7,423,856 in December 2024, 134,013 more than Table 7.B3's federal
+# count), and calendar 2024 payments of both kinds. They stay non-binding
+# references, and so does the OASDI table's ``ssi_payments`` row, which equals
+# Table 7.B7's Total column.
+#
+# Role-separation guard (microcosm#508 owner adjudication, 2026-07-23): Table
+# 7.B1's "aged" rows are the AGED ELIGIBILITY CATEGORY (national aged row:
+# 1,190,660, people who qualified under the age-65+ pathway), NOT the age-65+
+# population. The SSA by-age 65+ band (2,382,142) counts people aged 65+
+# across ALL eligibility categories, mostly disabled-category recipients who
+# aged past 65. The category rows must never be "fixed" to the age bands or
+# vice versa: category rows never compile, and the age bands bind only
+# through the by-age record set's first-class age constraints under the
+# distinct role ``ssa_ssi_age_band_recipients``.
 _SSA_OASDI_SSI_PAYMENTS_RECORD_SET_TOKEN = "oasdi_ssi_payments"
-_SSA_SSI_CALIBRATABLE_AREA_CATEGORY = "total"
-#: Engine-computed SSI counterpart both by-area families bind through. Receipt
-#: is an indicator sum of person-level ``ssi`` (recipients); federal payments
-#: are its dollar sum — the same variable the national ``ssi_total`` payment
-#: target already materializes.
+#: The OASDI table's SSI row: federal SSI plus federally administered state
+#: supplementation (Table 7.B7's Total column). It never binds.
+_SSA_OASDI_SSI_PAYMENTS_ROW = "ssi_payments"
+#: Engine-computed SSI counterpart every SSI target binds through. Receipt is
+#: an indicator sum of person-level ``ssi`` (recipients); federal payments are
+#: its dollar sum.
 _SSA_SSI_BASE_VARIABLE = "ssi"
 _SSA_SSI_BY_AGE_RECORD_SET_TOKEN = ".ssi_federal_payment_recipients.by_age"
+#: Period-free record-set ids (:func:`_normalized_record_set_id`) of the federal
+#: columns of Tables 7.B7 and 7.B3.
+_SSA_SSI_FEDERAL_PAYMENTS_BY_AREA_RECORD_SET = (
+    "ssa_supplement.ssi_federal_payments.by_area"
+)
+_SSA_SSI_FEDERAL_RECIPIENTS_BY_AREA_RECORD_SET = (
+    "ssa_supplement.ssi_federal_payment_recipients.by_area"
+)
 SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE = "ssa_ssi_age_band_recipients"
 SSA_SSI_RECIPIENTS_TARGET_ROLE = "ssi_recipients"
 SSA_SSI_STATE_PAYMENTS_TARGET_ROLE = "ssi_state_payments"
+SSA_SSI_TOTAL_TARGET_ROLE = "ssi_total"
 
 
-def _ssa_area_category(fact: object) -> str:
-    """The SSA by-area eligibility category (``total``/``aged``/``blind``/...).
+def _ssa_ssi_federal_by_area_reference(
+    fact: object,
+    *,
+    target_period: int | str,
+    measure_mode: str,
+    national_role: str | None,
+    state_role: str,
+    category_id: str,
+    category_label: str,
+) -> LedgerTargetReference | None:
+    """Compile one row of Table 7.B7's or 7.B3's federal column.
 
-    Encoded as the suffix of ``layout.groupby_value_id``; empty when the fact is
-    not an area-category row (e.g. the national OASDI payment aggregates).
+    The All-areas row binds under ``national_role`` (none for recipients) and
+    each state row under ``state_role``. :func:`_state_fips` admits only the 50
+    states and DC, the model's universe, so the row of an outlying area such as
+    the Northern Mariana Islands (FIPS 69) never binds.
     """
-    groupby_value_id = _str_at(fact, "layout", "groupby_value_id")
-    if not groupby_value_id:
-        return ""
-    return groupby_value_id.rsplit("_", 1)[-1]
+    geography_level = _geography_level(fact)
+    state_fips: str | None = None
+    if geography_level == "country":
+        if national_role is None:
+            return None
+        target_role = national_role
+    elif geography_level == "state":
+        state_fips = _state_fips(fact)
+        if state_fips is None:
+            return None
+        target_role = state_role
+    else:
+        return None
+
+    source_record_id = _source_record_id(fact)
+    if not source_record_id:
+        return None
+
+    metadata = {
+        "materializer": "policyengine_variable",
+        "measure_mode": measure_mode,
+        "base_variable": _SSA_SSI_BASE_VARIABLE,
+        "target_role": target_role,
+        "source_measure_id": _measure_id(fact),
+        "source_period": str(_period_value(fact)),
+        "target_period": str(target_period),
+    }
+    if state_fips is not None:
+        metadata["state_fips"] = state_fips
+    return LedgerTargetReference(
+        name=source_record_id,
+        ledger_source_record_id=source_record_id,
+        entity="household",
+        measure=source_record_id,
+        period=target_period,
+        family="ssa",
+        metadata=metadata,
+        hierarchy=_us_hierarchy_seed(
+            _source_name(fact),
+            category_id,
+            category_label=category_label,
+        ),
+    )
 
 
 def _ssa_ssi_reference_from_fact(
@@ -3596,38 +3668,36 @@ def _ssa_ssi_reference_from_fact(
 ) -> LedgerTargetReference | None:
     """Compile an SSA (``source_name == "ssa"``) fact into a US target.
 
-    Three SSA record sets reach here:
+    Four SSA record sets bind:
 
-    - ``oasdi_ssi_payments`` — the six national OASDI benefit and SSI payment
-      aggregates. Delegated unchanged to :func:`_direct_reference_from_fact` so
-      the standing ``DIRECT_LEDGER_TARGETS`` ``ssa`` mappings (family ``ssa``:
-      ``social_security_total`` … ``ssi_total``) never regress.
-    - ``ssi_recipients.by_area_category`` — SSI recipients (a count) in the
-      *federally administered* universe, which includes ~115k people receiving
-      a state supplementary payment only (no federal SSI payment). The
-      all-category ``total`` maps to an indicator sum of engine ``ssi`` receipt
-      at STATE grain only (role ``ssi_recipients``). The national
-      ``all_areas_total`` (7,404,820 in December 2024) is a non-binding
-      witnessed reference per the microcosm#508 owner adjudication (2026-07-23):
-      engine ``ssi`` is the federal payment, so the national caseload binds
-      through the by-age *federal-payment* cells (Σ = 7,289,843) whose sum is
-      the national goal — the #430-era rescale to 7,404,820 mixed universes.
-      State rows keep binding as the only state-grain SSI caseload signal;
-      their ~115k aggregate universe gap is a documented residual pending a
-      state-level federal-payment source or a modeled state-supplement
-      concept.
-    - ``ssi_payments.by_area_category`` — SSI federal payments (a dollar sum).
-      The national ``all_areas_total`` equals the ``oasdi_ssi_payments``
-      ``ssi_payments`` figure already compiled as ``ssi_total``, so only the
-      state ``total`` rows the national OASDI table does not carry are compiled
-      here (role ``ssi_state_payments``).
+    - ``oasdi_ssi_payments``: the national OASDI benefit aggregates delegate
+      unchanged to :func:`_direct_reference_from_fact`, so the standing
+      ``DIRECT_LEDGER_TARGETS`` ``ssa`` mappings (``social_security_total`` …
+      ``ssa_dependents_total``) never regress. Its ``ssi_payments`` row
+      ($63.08 billion in 2024) adds federally administered state
+      supplementation to federal SSI, so it never binds.
+    - ``ssi_federal_payments.by_area`` (Table 7.B7): the All-areas row binds as
+      ``ssi_total`` and each state row as ``ssi_state_payments``, dollar sums
+      of engine ``ssi``. The All-areas row ($59.67 billion) includes the
+      Northern Mariana Islands' $9.9 million, so the state rows sum to 0.017%
+      less.
+    - ``ssi_federal_payment_recipients.by_area`` (Table 7.B3): each state row
+      binds as ``ssi_recipients``, an indicator sum of engine ``ssi``. The
+      All-areas row (7,289,843) equals the sum of the three by-age bands, which
+      carry the national caseload, so it never binds.
+    - ``ssi_federal_payment_recipients.by_age`` (SSI Monthly Statistics Table
+      1): the three age bands bind as ``ssa_ssi_age_band_recipients``
+      (microcosm#470); their sum is the national federal caseload
+      (microcosm#508).
 
-    Non-``total`` eligibility categories (aged/blind/disabled) return ``None``;
-    PolicyEngine-US does not model the SSI eligibility-category split, so those
-    sub-rows are reviewed exclusions in the target-parity manifest.
+    Every other SSA row is a non-binding reference: Table 7.B1's rows by area
+    and eligibility category, and the state supplementation and average
+    payment columns of Tables 7.B3 and 7.B7.
     """
     record_set_id = _normalized_record_set_id(_str_at(fact, "layout", "record_set_id"))
     if _SSA_OASDI_SSI_PAYMENTS_RECORD_SET_TOKEN in record_set_id:
+        if _str_at(fact, "layout", "groupby_value_id") == _SSA_OASDI_SSI_PAYMENTS_ROW:
+            return None
         return _direct_reference_from_fact(fact, target_period=target_period)
 
     if _SSA_SSI_BY_AGE_RECORD_SET_TOKEN in record_set_id:
@@ -3729,66 +3799,31 @@ def _ssa_ssi_reference_from_fact(
             },
         )
 
-    measure_id = _measure_id(fact)
-    if measure_id == "recipient_count":
-        target_role = SSA_SSI_RECIPIENTS_TARGET_ROLE
-        measure_mode = "indicator_sum"
-    elif measure_id == "payment_amount":
-        target_role = SSA_SSI_STATE_PAYMENTS_TARGET_ROLE
-        measure_mode = "sum"
-    else:
-        return None
-
-    if _ssa_area_category(fact) != _SSA_SSI_CALIBRATABLE_AREA_CATEGORY:
-        return None
-
-    geography_level = _geography_level(fact)
-    if geography_level == "state":
-        state_fips = _state_fips(fact)
-        if state_fips is None:
+    if record_set_id == _SSA_SSI_FEDERAL_PAYMENTS_BY_AREA_RECORD_SET:
+        if _measure_id(fact) != "payment_amount":
             return None
-    elif geography_level == "country":
-        # Neither national by-area row binds. The payment duplicates the
-        # OASDI-table ssi_total already compiled from oasdi_ssi_payments. The
-        # recipient count (all_areas_total, 7,404,820 in December 2024) is
-        # the *federally administered* universe — it includes ~115k
-        # state-supplement-only recipients with no federal SSI payment — and
-        # per the microcosm#508 owner adjudication (2026-07-23) it must not
-        # bind engine ``ssi`` (the federal payment): it stays a non-binding
-        # witnessed reference, and the national federal-payment caseload
-        # binds as the sum of the three by-age band targets (7,289,843,
-        # role ``ssa_ssi_age_band_recipients``). Only state rows compile.
-        return None
-    else:
-        return None
-
-    source_record_id = _source_record_id(fact)
-    if not source_record_id:
-        return None
-
-    metadata = {
-        "materializer": "policyengine_variable",
-        "measure_mode": measure_mode,
-        "base_variable": _SSA_SSI_BASE_VARIABLE,
-        "target_role": target_role,
-        "source_measure_id": measure_id,
-        "source_period": str(_period_value(fact)),
-        "target_period": str(target_period),
-        "state_fips": state_fips,
-    }
-    return LedgerTargetReference(
-        name=source_record_id,
-        ledger_source_record_id=source_record_id,
-        entity="household",
-        measure=source_record_id,
-        period=target_period,
-        family="ssa",
-        metadata=metadata,
-        hierarchy=_us_hierarchy_seed(
-            _source_name(fact),
-            ("ssi_recipients" if measure_id == "recipient_count" else "ssi_payments"),
-        ),
-    )
+        return _ssa_ssi_federal_by_area_reference(
+            fact,
+            target_period=target_period,
+            measure_mode="sum",
+            national_role=SSA_SSI_TOTAL_TARGET_ROLE,
+            state_role=SSA_SSI_STATE_PAYMENTS_TARGET_ROLE,
+            category_id="ssi_federal_payments",
+            category_label="Federal SSI payments",
+        )
+    if record_set_id == _SSA_SSI_FEDERAL_RECIPIENTS_BY_AREA_RECORD_SET:
+        if _measure_id(fact) != "recipient_count":
+            return None
+        return _ssa_ssi_federal_by_area_reference(
+            fact,
+            target_period=target_period,
+            measure_mode="indicator_sum",
+            national_role=None,
+            state_role=SSA_SSI_RECIPIENTS_TARGET_ROLE,
+            category_id="ssi_federal_payment_recipients",
+            category_label="Federal SSI payment recipients",
+        )
+    return None
 
 
 # BEA all-population (nonfiler-inclusive) income targets the retired us-data/
