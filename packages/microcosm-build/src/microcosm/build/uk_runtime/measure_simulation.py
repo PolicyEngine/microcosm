@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import warnings
 from collections.abc import Mapping
@@ -2122,6 +2123,18 @@ def _policyengine_uk_module() -> Any:
     return policyengine_uk
 
 
+@functools.lru_cache(maxsize=1)
+def _current_law_parameters() -> Any:
+    """policyengine-uk's current-law parameter tree, built once per process.
+
+    The scratch projection only reads it. A ``CountryTaxBenefitSystem`` built
+    for each resolver cost time, and memory the process never got back, so
+    one tree serves every resolver.
+    """
+
+    return _policyengine_uk_module().CountryTaxBenefitSystem().parameters
+
+
 def _project_scratch_engine_input(path: Path, end_year: int) -> None:
     """Rewrite the one-year scratch H5 at ``path`` through ``end_year``.
 
@@ -2136,8 +2149,7 @@ def _project_scratch_engine_input(path: Path, end_year: int) -> None:
     from policyengine_uk.data import UKSingleYearDataset
 
     one_year = UKSingleYearDataset(file_path=str(path))
-    parameters = _policyengine_uk_module().CountryTaxBenefitSystem().parameters
-    projected = uk_dataset_through(one_year, end_year, parameters)
+    projected = uk_dataset_through(one_year, end_year, _current_law_parameters())
     with warnings.catch_warnings():
         # PyTables warns once per table that a year ("2025") is no Python
         # identifier; policyengine-uk's multi-year layout names tables so.

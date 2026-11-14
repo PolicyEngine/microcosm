@@ -1282,6 +1282,52 @@ def test_a_scratch_resolver_refuses_a_measure_dated_after_its_year(
     assert route == "engine_period:2026:company_car_benefit:native"
 
 
+def test_scratch_projections_share_one_current_law_parameter_tree(
+    monkeypatch, tmp_path: Path
+):
+    """Each scratch resolver used to build a CountryTaxBenefitSystem only to
+    read its parameters. One tree now serves every projection in a process."""
+
+    systems = []
+
+    class CountryTaxBenefitSystem:
+        def __init__(self):
+            systems.append(self)
+            self.parameters = SimpleNamespace(system=len(systems))
+
+    projections = []
+
+    def through(dataset, end_year, parameters):
+        projections.append((dataset.file_path, end_year, parameters))
+        return SimpleNamespace(save=lambda path: None)
+
+    monkeypatch.setattr(
+        measure_simulation,
+        "_policyengine_uk_module",
+        lambda: SimpleNamespace(CountryTaxBenefitSystem=CountryTaxBenefitSystem),
+    )
+    monkeypatch.setattr(measure_simulation, "uk_dataset_through", through)
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk.data",
+        SimpleNamespace(
+            UKSingleYearDataset=lambda file_path: SimpleNamespace(file_path=file_path)
+        ),
+    )
+    measure_simulation._current_law_parameters.cache_clear()
+    try:
+        for name in ("first.h5", "second.h5"):
+            measure_simulation._project_scratch_engine_input(tmp_path / name, 2025)
+    finally:
+        measure_simulation._current_law_parameters.cache_clear()
+
+    assert len(systems) == 1
+    assert projections == [
+        (str(tmp_path / "first.h5"), 2025, systems[0].parameters),
+        (str(tmp_path / "second.h5"), 2025, systems[0].parameters),
+    ]
+
+
 def test_scratch_engine_input_leaves_property_wealth_to_the_engine(
     monkeypatch, tmp_path: Path
 ):
