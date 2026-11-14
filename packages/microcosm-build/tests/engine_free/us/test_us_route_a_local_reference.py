@@ -6,6 +6,7 @@ import dataclasses
 import hashlib
 import importlib.util
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -32,61 +33,81 @@ def helper(monkeypatch):
     return module
 
 
-@pytest.fixture(params=["us-puf-support-base", "us-puf-support-base-rerun"])
+#: The run-config keys of the inputs every pool's command names the same way.
+_FIXED_ROLES = {
+    "acs_2022_h5": "acs_h5",
+    "puf_2024_h5": "puf_h5",
+    "puf_2015_csv": "puf_source_year_csv",
+    "base_ledger_facts": "ledger_facts",
+    "block_ladder_npz": "block_ladder_artifact",
+}
+_POOLED_ROLE = re.compile(r"asec_(education_)?\d{4}_(h5|zip)")
+DEFAULT_POOL = plan_lib.US_PUF_SUPPORT_BASE_2023_2025.name
+
+
+@pytest.fixture(params=sorted(plan_lib.PUF_SUPPORT_BASE_POOLS))
 def evidence(tmp_path, monkeypatch, helper, request):
-    # Real temporary input/checkpoint bytes; only the archive home-cache
-    # registry pin is disabled so tiny synthetic source files can be used.
-    monkeypatch.setitem(
-        helper.stage_plan.TOOLS,
-        request.param,
-        dataclasses.replace(helper.stage_plan.TOOLS[request.param], home_seeds=()),
-    )
+    # Real temporary input/checkpoint bytes; only the registry pins of the
+    # home-cache seeds and the crosswalk move to them, so tiny synthetic
+    # source files can be used.
+    tool = helper.stage_plan.TOOLS[request.param]
+    pool = helper.stage_plan.PUF_SUPPORT_BASE_POOLS[request.param]
     monkeypatch.setattr(helper, "_committed_source_sha256", lambda *_args: "a" * 64)
-    data = base_plan_data()
-    data["tool"] = request.param
+    if request.param == DEFAULT_POOL:
+        data = json.loads(
+            (ROOT / "docs/us-modal-stage-route-a-rerun-base-plan.json").read_text()
+        )
+        data["source"]["commit"] = base_plan_data()["source"]["commit"]
+    else:
+        data = base_plan_data(tool=request.param)
     config = json.loads(
         (ROOT / "docs/us-modal-stage-route-a-base-local-reference.json").read_text()
     )["run_config"]
     config["builder_code_identity"]["source_sha256"] = "a" * 64
+    # A seeded input that no flag names is read from the tool's home cache.
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    seeds = {seed.input: seed for seed in tool.home_seeds}
+    paths, digests = {}, {}
     for role, ref in data["inputs"].items():
         filename = ref["uri"].rsplit("/", 1)[1]
-        source = tmp_path / "inputs" / role / filename
+        if _POOLED_ROLE.fullmatch(role) or role in _FIXED_ROLES:
+            source = tmp_path / "inputs" / role / filename
+        else:
+            source = home / seeds[role].path
         source.parent.mkdir(parents=True)
         source.write_bytes(f"synthetic {role}".encode())
         digest = hashlib.sha256(source.read_bytes()).hexdigest()
         ref.update(uri=f"volume://cas/sha256/{digest}/{filename}", sha256=digest)
-        if role.startswith("asec_education_"):
-            config["asec_education_source"][role.split("_")[2]] = str(source)
-        elif role.startswith("asec_"):
-            year = role.split("_")[1]
-            config["asec_h5_sha256"][year] = digest
-            config["asec_h5"] = [
-                f"{year}={source}" if item.startswith(year + "=") else item
-                for item in config["asec_h5"]
-            ]
-        else:
-            key = {
-                "acs_2022_h5": "acs_h5",
-                "puf_2024_h5": "puf_h5",
-                "puf_2015_csv": "puf_source_year_csv",
-                "base_ledger_facts": "ledger_facts",
-                "block_ladder_npz": "block_ladder_artifact",
-            }[role]
-            config[key] = str(source)
-            if role in {"puf_2024_h5", "puf_2015_csv"}:
-                config[key + "_sha256"] = digest
+        paths[role], digests[role] = str(source), digest
+    config["asec_h5"] = [
+        f"{year}={paths[f'asec_{year}_h5']}" for year in pool.asec_years
+    ]
+    config["asec_h5_sha256"] = {
+        str(year): digests[f"asec_{year}_h5"] for year in pool.asec_years
+    }
+    config["asec_education_source"] = {
+        str(year): paths[f"asec_education_{year}_zip"] for year in pool.education_years
+    }
+    for role, key in _FIXED_ROLES.items():
+        config[key] = paths[role]
+    config["puf_h5_sha256"] = digests["puf_2024_h5"]
+    config["puf_source_year_csv_sha256"] = digests["puf_2015_csv"]
     crosswalk = tmp_path / "congressional_district_vintage_crosswalk.csv"
     crosswalk.write_text("synthetic crosswalk\n")
     config["congressional_district_vintage_crosswalk"] = str(crosswalk)
-    selected_tool = helper.stage_plan.TOOLS[request.param]
     monkeypatch.setitem(
         helper.stage_plan.TOOLS,
         request.param,
         dataclasses.replace(
-            selected_tool,
+            tool,
+            home_seeds=tuple(
+                dataclasses.replace(seed, sha256=digests[seed.input])
+                for seed in tool.home_seeds
+            ),
             tree_files={
                 "cd_vintage_crosswalk": dataclasses.replace(
-                    selected_tool.tree_files["cd_vintage_crosswalk"],
+                    tool.tree_files["cd_vintage_crosswalk"],
                     sha256=hashlib.sha256(crosswalk.read_bytes()).hexdigest(),
                 )
             },
@@ -112,7 +133,7 @@ def evidence(tmp_path, monkeypatch, helper, request):
         "base_source": {
             "sources": [
                 {"year": year, "sha256": data["inputs"][f"asec_{year}_h5"]["sha256"]}
-                for year in helper.stage_plan.PUF_SUPPORT_BASE_ASEC_YEARS
+                for year in pool.asec_years
             ]
         }
     }
@@ -264,3 +285,27 @@ def test_committed_source_digest_ignores_dirty_checkout(helper, tmp_path):
         "changed",
     )
     assert helper._committed_source_sha256(repo, git("rev-parse", "HEAD")) != expected
+
+
+@pytest.mark.parametrize("evidence", [DEFAULT_POOL], indirect=True)
+@pytest.mark.parametrize("change", ["missing", "bytes"])
+def test_the_seeded_lkweeks_archive_is_hashed_in_the_home_cache(
+    helper, evidence, tmp_path, change
+):
+    # The 2023-2025 pool names no LKWEEKS archive on the command line: the
+    # local tool read it from its home cache, which the Modal runner seeds.
+    plan, checkpoints, _context, _context_path = evidence
+    (seed,) = helper.stage_plan.TOOLS[DEFAULT_POOL].home_seeds
+    cached = Path.home() / seed.path
+    reference = helper.make_reference(plan, checkpoints, tmp_path)
+    assert reference["inputs"][seed.input] == (
+        hashlib.sha256(cached.read_bytes()).hexdigest()
+    )
+    if change == "missing":
+        cached.unlink()
+        with pytest.raises(FileNotFoundError):
+            helper.make_reference(plan, checkpoints, tmp_path)
+    else:
+        cached.write_bytes(b"another archive")
+        with pytest.raises(ValueError, match=f"local {seed.input} sha256 differs"):
+            helper.make_reference(plan, checkpoints, tmp_path)

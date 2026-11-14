@@ -48,6 +48,8 @@ LOG=$RUN_ROOT/route_a.log
 
 # ---------------------------------------------------------------------------
 # Inputs, resolved and hashed on this machine on 2026-09-23 (see status.md).
+# The ASEC H5 and Census archive rows moved to the default pool on 2026-11-07;
+# their digests and byte counts are the registries' (d2603).
 # Format: role|path|sha256|bytes|where main pins it
 # ---------------------------------------------------------------------------
 # Preserve the published defaults; a rerun's settings must pin the feed and
@@ -71,13 +73,24 @@ BASE_LEDGER_FACTS_SHA=${BASE_LEDGER_FACTS_SHA:-$FEED_SHA}
 # on the export that ships. Set QRF_TAIL_EXCLUSIONS to pass one.
 TAIL=${QRF_TAIL_EXCLUSIONS-}
 SSI_SHA=25fe8af50a99d717f3408b2de7f0849d2307d4f05b1a7d55d2703999002fff0a
+# The pooled ASEC years are main's default pool, income years 2023-2025 (ASEC
+# 2024-2026; asec_sources.ASEC_DEFAULT_POOL_INCOME_YEARS), from d2603 (Max,
+# 2026-11-07). Builds up to the November 2026 certified build pooled 2022-2024
+# and keep the driver of their own commit. Each pin is copied from its registry
+# and written out here, not derived; test_route_a_asec_pool.py fails when the
+# years leave the default pool or a pin leaves its registry.
+ASEC_2025_SHA=4c5a32188b6acfbcfbeb9f5d719d3847873887b72ebdbb19bc402c16e0a64e58
 ASEC_2024_SHA=ec36604cb735a660b51b0b2f90be27d803b5878f3464fb30d0eacead59c1260d
 ASEC_2023_SHA=cb57817327799f42b741caed5f9be94d04021c2e6809c1ad7bd0686da5428d88
-ASEC_2022_SHA=7ccca976284bb47815d84460cc4f75a0a65d26d7754ab0a0f417de351b3d474e
+# The Census survey archive of each pooled income year (asecpubYY+1csv.zip).
+ASEC_EDU_2023_SHA=cdb39cdac34bef99dd0940ab28e306f692404c2eea44d85dfd634214872a0a09
+ASEC_EDU_2024_SHA=318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b
+ASEC_EDU_2025_SHA=fe819d0d2fc4470c282e76c247b8aa8b6054811619730307e9f2fe6186707d93
 CROSSWALK_REL=packages/microcosm-build/src/microcosm/build/us_runtime/data/congressional_district_vintage_crosswalk.csv
 : "${CROSSWALK_SHA:=c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec}"
 FEED_PIN_REL=packages/microcosm-build/src/microcosm/build/us/chronicle_feed.json
 ASEC_PIN_REL=packages/microcosm-build/src/microcosm/build/us_runtime/asec_sources.py
+EDU_PIN_REL=packages/microcosm-build/src/microcosm/build/us_runtime/education_assistance_source.py
 SPM_ROLE_REL=packages/microcosm-build/src/microcosm/build/us_runtime/spm_independence_role.py
 BASE_FLAGS="--stage --checkpoint-dir --asec-h5 --asec-h5-sha256 --puf-h5 --puf-source-year-csv --acs-h5 --asec-education-source --target-year --seed --n-estimators --ledger-facts --assign-congressional-districts --congressional-district-vintage-crosswalk --congressional-district-seed --block-ladder-artifact --out"
 RELEASE_FLAGS="--base-h5 --ledger-facts --ledger-facts-sha256 --qrf-tail-concentration-exclusions --ssi-take-up-prior-weight-basis --ssi-take-up-prior-weight-basis-sha256 --scf-summary-extract --out --release-id --checkpoint-root --seed"
@@ -89,15 +102,15 @@ PREFLIGHT_FLAGS="--base-h5 --ledger-facts --ledger-facts-sha256 --release-manife
 
 input_rows() {
   cat <<EOF
+asec_2025_h5|$STORAGE/census_cps_2025.h5|$ASEC_2025_SHA|304753967|us_runtime/asec_sources.py ASEC_SOURCE_ARTIFACTS
 asec_2024_h5|$STORAGE/census_cps_2024.h5|$ASEC_2024_SHA|323994739|us_runtime/asec_sources.py ASEC_SOURCE_ARTIFACTS
 asec_2023_h5|$STORAGE/census_cps_2023.h5|$ASEC_2023_SHA|299036610|us_runtime/asec_sources.py ASEC_SOURCE_ARTIFACTS
-asec_2022_h5|$STORAGE/census_cps_2022.h5|$ASEC_2022_SHA|301129278|us_runtime/asec_sources.py ASEC_SOURCE_ARTIFACTS
 puf_2024_h5|$STORAGE/puf_2024.h5|7669f5b5281f20080e77204f9bd4aabfad0aa101fa283e22caf9ba8d61d4d6df|316939164|us/spec/sources.yaml
 puf_2015_csv|$STORAGE/puf_2015.csv|0a7fd643edb1acc55c507db795914b41d232922be78c149b58d111f4672499df|126034649|us/spec/sources.yaml
 acs_2022_h5|$STORAGE/acs_2022.h5|0b319b496f19a6913066f9c5ea572edfda3d78a187be6f375846617d0b441bd4|472220686|us/source_stages.json, us_runtime/housing_inputs.py
-asec_education_2022_zip|$EDU/asecpub23csv.zip|d2e000250782adfbdd7f29c82b66d866591a30f0d330496698ec19f9c784ce11|150165063|us_runtime/education_assistance_source.py
-asec_education_2023_zip|$EDU/asecpub24csv.zip|cdb39cdac34bef99dd0940ab28e306f692404c2eea44d85dfd634214872a0a09|148664101|us_runtime/education_assistance_source.py
-asec_education_2024_zip|$EDU/asecpub25csv.zip|318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b|147271429|us_runtime/education_assistance_source.py
+asec_education_2023_zip|$EDU/asecpub24csv.zip|$ASEC_EDU_2023_SHA|148664101|us_runtime/education_assistance_source.py ASEC_EDUCATION_ASSISTANCE_ARCHIVES
+asec_education_2024_zip|$EDU/asecpub25csv.zip|$ASEC_EDU_2024_SHA|147271429|us_runtime/education_assistance_source.py ASEC_EDUCATION_ASSISTANCE_ARCHIVES
+asec_education_2025_zip|$EDU/asecpub26csv.zip|$ASEC_EDU_2025_SHA|139103894|us_runtime/education_assistance_source.py ASEC_EDUCATION_ASSISTANCE_ARCHIVES
 base_ledger_facts|$BASE_LEDGER_FACTS|$BASE_LEDGER_FACTS_SHA|-|us/chronicle_feed.json when it is the pinned feed
 block_ladder_npz|$LADDER|6840b990acdfa2003d7723da5595e3cfff7205a4fa3d8d6206ed835c85c3f233|18991218|d713: Connecticut-fixed ladder rebuilt at microcosm#1072 (af98853e); _build_artifacts/us-ct-cbsa/verify_vs_route_a.json
 release_ledger_facts|$FEED|$FEED_SHA|$FEED_BYTES|us/chronicle_feed.json facts_sha256
@@ -171,9 +184,13 @@ check_commit() {  # $1 = build ref, $2 = preflight ref; fills COMMIT_BLOCKERS/CO
     COMMIT_BLOCKERS+=("us/chronicle_feed.json at $full does not pin facts_sha256 $FEED_SHA (the release tool would refuse the feed)")
   fi
   local s
-  for s in $ASEC_2024_SHA $ASEC_2023_SHA $ASEC_2022_SHA; do
+  for s in $ASEC_2025_SHA $ASEC_2024_SHA $ASEC_2023_SHA; do
     git -C "$MAIN" show "$full:$ASEC_PIN_REL" 2>/dev/null | grep -q "$s" \
       || COMMIT_BLOCKERS+=("asec_sources.py at $full lacks canonical ASEC pin $s (the base would refuse the CLI pin)")
+  done
+  for s in $ASEC_EDU_2023_SHA $ASEC_EDU_2024_SHA $ASEC_EDU_2025_SHA; do
+    git -C "$MAIN" show "$full:$EDU_PIN_REL" 2>/dev/null | grep -q "$s" \
+      || COMMIT_BLOCKERS+=("education_assistance_source.py at $full lacks the Census archive pin $s (the base would refuse that year's archive)")
   done
   if [ "$(git -C "$MAIN" show "$full:$CROSSWALK_REL" 2>/dev/null | openssl dgst -sha256 -r | cut -c1-64)" = "$CROSSWALK_SHA" ]; then
     COMMIT_NOTES+=("packaged CD vintage crosswalk at $full = $CROSSWALK_SHA")
@@ -500,8 +517,9 @@ for fn in (fetch_asec_2023_weeks_unemployed_source, fetch_scf_2022_summary_extra
     print(fn.__name__, paths[fn.__name__], flush=True)
 print(json.dumps(paths, indent=1))
 '
-  # Non-fatal here: the base needs none of these, so a fetch problem should not
-  # hold it back. The release stage below requires the prefetch to pass.
+  # Non-fatal here. Of these, the base reads only the LKWEEKS archive, and it
+  # fetches that one itself, so a failure here recurs there. The release stage
+  # below requires the prefetch to pass.
   if ! ( run_stage prefetch 0 12 26 ); then
     rm -f "$RUN_ROOT/ROUTE_A_FAILED"
     log "prefetch failed (see $RUN/prefetch-sup/run.log); the base proceeds and the release retries the prefetch"
@@ -512,6 +530,12 @@ fi
 # policyengine-us 1.819.0: 2,787.90 s wall, 6,238 CPU-s, 72.47 GB (67.5 GiB)
 # peak, 44 GB of frame checkpoints + a 2.35 GB H5; under contention 5,058 s,
 # 8,560 CPU-s, 65.10 GB. Not re-measured on policyengine-us 2.2.1. ---
+# The base also reads the LKWEEKS sidecar, the income-2022 Census archive
+# asecpub23csv.zip, in every mode; it is not a pooled year. The driver passes
+# no --asec-2023-weeks-unemployed-source: the base fetches the archive into
+# ~/.cache/microcosm/cps/asec_2023/ (the prefetch above warms it) and checks
+# its pin, and the Modal registration seeds the same cache, so a local base
+# and a Modal base lock the same run config.
 BASE_CKPT=$RUN/base-checkpoints
 BASE_OUT=$RUN/base-out
 BASE_H5=$BASE_OUT/base_populace_us_2024_puf_support.h5
@@ -521,11 +545,11 @@ if ! stage_done base; then
   base_disk=$(( 20 + 50 - have_ckpt )); [ $base_disk -lt 26 ] && base_disk=26
   write_config base 100 80 "$base_disk" 21600 64800 "$W" "$BUILD_ENV" -- "$PY" -B tools/build_us_puf_support_base.py \
     --stage all --checkpoint-dir "$BASE_CKPT" \
-    --asec-h5 "2024=$STORAGE/census_cps_2024.h5" --asec-h5 "2023=$STORAGE/census_cps_2023.h5" --asec-h5 "2022=$STORAGE/census_cps_2022.h5" \
-    --asec-h5-sha256 "2024=$ASEC_2024_SHA" --asec-h5-sha256 "2023=$ASEC_2023_SHA" --asec-h5-sha256 "2022=$ASEC_2022_SHA" \
+    --asec-h5 "2025=$STORAGE/census_cps_2025.h5" --asec-h5 "2024=$STORAGE/census_cps_2024.h5" --asec-h5 "2023=$STORAGE/census_cps_2023.h5" \
+    --asec-h5-sha256 "2025=$ASEC_2025_SHA" --asec-h5-sha256 "2024=$ASEC_2024_SHA" --asec-h5-sha256 "2023=$ASEC_2023_SHA" \
     --puf-h5 "$STORAGE/puf_2024.h5" --puf-source-year-csv "$STORAGE/puf_2015.csv" --acs-h5 "$STORAGE/acs_2022.h5" \
-    --asec-education-source "2022=$EDU/asecpub23csv.zip" --asec-education-source "2023=$EDU/asecpub24csv.zip" \
-    --asec-education-source "2024=$EDU/asecpub25csv.zip" \
+    --asec-education-source "2023=$EDU/asecpub24csv.zip" --asec-education-source "2024=$EDU/asecpub25csv.zip" \
+    --asec-education-source "2025=$EDU/asecpub26csv.zip" \
     --target-year 2024 --seed 0 --n-estimators 32 \
     --ledger-facts "$BASE_LEDGER_FACTS" \
     --assign-congressional-districts --congressional-district-vintage-crosswalk "$W/$CROSSWALK_REL" \
