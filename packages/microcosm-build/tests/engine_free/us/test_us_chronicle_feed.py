@@ -34,8 +34,8 @@ from test_support.paths import paths_for
 _TEST_PATHS = paths_for("microcosm-build")
 
 _ROOT = _TEST_PATHS.repository
-_CHRONICLE_COMMIT = "41b2fb2b864a28c0eda03322b77a97ef147dfa3c"
-_FACTS_SHA256 = "1d45a89c28177a95371b4cc4068d3657c7bf12bd8edad7c82fe25bf453f9ea07"
+_CHRONICLE_COMMIT = "60266a3088319c909cf7fc89c9d00d3b055dc6e1"
+_FACTS_SHA256 = "dce5c32e7f0f386260638547438b1d2fafd08a890d09f3099c22b7fca2a95e2d"
 _SCHEMA_SHA256 = "bdb51e2a8115634633ba7448c4005930fd9c0bfbade5e1b079b6bc24da485d3d"
 
 
@@ -58,7 +58,7 @@ def test_pin_records_the_rebuilt_bare_feed() -> None:
     assert pin.source_repo == "PolicyEngine/chronicle"
     assert pin.source_commit == _CHRONICLE_COMMIT
     assert pin.scope == "us_fiscal_targets"
-    assert pin.fact_row_count == 40642
+    assert pin.fact_row_count == 43736
     assert pin.facts_sha256 == _FACTS_SHA256
     assert pin.consumer_fact_schema_versions == ("chronicle.consumer_fact.v3",)
     assert pin.consumer_fact_schema_sha256 == _SCHEMA_SHA256
@@ -212,7 +212,7 @@ def test_parity_resources_and_generator_restate_the_pin() -> None:
     assert feed_families["feed"] == generator.DEFAULT_FEED_NAME
     assert manifest["reference"]["feed"] == generator.DEFAULT_FEED_NAME
     assert generator.DEFAULT_FEED_PATH.name == generator.DEFAULT_FEED_NAME
-    assert manifest["reference"]["compiled_families"] == "32"
+    assert manifest["reference"]["compiled_families"] == "34"
     assert manifest["reference"]["reviewed_exclusions"] == "64"
 
 
@@ -252,10 +252,11 @@ def test_scope_names_every_pinned_pair_once() -> None:
     scope = builder.load_scope(scope_path)
     raw = scope["raw"]
     assert scope["commit"] == load_us_chronicle_feed().source_commit
-    assert len(scope["pairs"]) == 706 == raw["pair_count"]
+    assert len(scope["pairs"]) == 714 == raw["pair_count"]
     # 63 package runs, plus the B4923C package in its three years (#454),
-    # plus the six packages/ed_fsa packages at build year 2026 (#1074).
-    assert sum(len(p) for p in scope["runs"].values()) == 72
+    # plus the six packages/ed_fsa packages at build year 2026 (#1074),
+    # plus four ACS household-type packages and SOI Table 1.3 (#880).
+    assert sum(len(p) for p in scope["runs"].values()) == 77
     assert set(scope["runs"]) == {
         2020,
         2021,
@@ -282,6 +283,55 @@ def test_scope_names_every_pinned_pair_once() -> None:
         "tax_year",
     }
     assert raw["rule"].strip()
+
+
+def test_household_filing_scope_matches_the_publisher_periods() -> None:
+    scope = _load_tool("build_us_chronicle_feed").load_scope(
+        _load_tool("build_us_chronicle_feed").default_scope_path()
+    )
+    for table in ("b11001", "b11003"):
+        for geography in ("national", "state"):
+            pair = (
+                f"census_acs.acs1_2024.{table}.{geography}",
+                "calendar_year",
+                "2024",
+            )
+            assert scope["pairs"][pair] == (
+                f"packages/census/acs1_{table}_{geography}_2024",
+                2024,
+            )
+    for measure in ("returns", "agi", "ctc_returns", "ctc_amount"):
+        pair = (
+            f"irs_soi.ty2023.table_1_3.filing_status_{measure}",
+            "tax_year",
+            "2023",
+        )
+        assert scope["pairs"][pair] == ("packages/irs_soi/table_1_3", 2023)
+
+
+def test_household_filing_parity_accounts_for_every_new_cell() -> None:
+    families = _us_resource("target_parity_manifest.json")["families"]
+    for family, row_count, bound_count in (
+        ("census_acs.acs1_2024", 3074, 8),
+        ("irs_soi.table_1_3", 20, 16),
+    ):
+        entry = families[family]
+        assert entry["status"] == "compiled"
+        cells = entry["cell_review"]
+        assert len(cells) == row_count
+        assert len({cell["source_record_id"] for cell in cells}) == row_count
+        assert sum(cell["status"] == "compiled" for cell in cells) == bound_count
+        excluded = [cell for cell in cells if cell["status"] == "reviewed_exclusion"]
+        assert len(excluded) == row_count - bound_count
+        assert all(cell["reason"].strip() for cell in excluded)
+    assert families["census_acs.acs1_2023"]["status"] == "reviewed_exclusion"
+    older_ctc_cells = families["irs_soi.historic_table_2"]["cell_review"]
+    assert {cell["source_record_id"] for cell in older_ctc_cells} == {
+        "irs_soi.ty2022.historic_table_2.us.all.ctc_claims",
+        "irs_soi.ty2022.historic_table_2.us.all.ctc_amount",
+    }
+    assert all(cell["status"] == "reviewed_exclusion" for cell in older_ctc_cells)
+    assert all("superseded" in cell["reason"].lower() for cell in older_ctc_cells)
 
 
 @pytest.mark.parametrize(

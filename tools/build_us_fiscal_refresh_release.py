@@ -296,6 +296,10 @@ from microcosm.build.us_runtime.h5_io import (
     require_authenticated_us_multispine_pool_h5,
     us_multispine_pool_release_receipt,
 )
+from microcosm.build.us_runtime.household_type_targets import (
+    HOUSEHOLD_TYPE_MATERIALIZER,
+    household_type_household_values,
+)
 from microcosm.build.us_runtime.input_mass import (
     us_input_mass_parity_gate,
     us_input_mass_totals,
@@ -401,6 +405,7 @@ from microcosm.build.us_runtime.warm_start_selection import (
     select_frozen_support,
 )
 from microcosm.calibrate import (
+    FREE_MASS,
     CalibrationResult,
     L0RefitResult,
     TargetRegistry,
@@ -696,16 +701,21 @@ def _automatic_gc_suspended():
             gc.enable()
 
 
+# ACS B11001 001 binds housing-unit households, excluding group quarters.
+# Conserving a scalar household-table weight total cannot enforce that
+# universe when ACS group-quarters placeholders have positive person weights.
+US_FISCAL_CALIBRATION_MASS = FREE_MASS
+
 US_BASE_PERSON_POPULATION_BENCHMARK = float(sum(CENSUS_NATIONAL_AGE_BENCHMARK.values()))
 US_BASE_PERSON_POPULATION_MAX_ABS_RELATIVE_ERROR = 0.25
 US_BASE_PERSON_POPULATION_REPAIR_REASON = (
     "US fiscal refresh rescaled base household weights to the Census 2024 "
-    "national person-population benchmark before mass='conserve' calibration."
+    "national person-population benchmark before fiscal calibration."
 )
 US_SOCIAL_SECURITY_COMPONENT_REPAIR_REASON = (
     "US fiscal refresh rescaled Social Security component leaf inputs to SSA "
     "component payment targets from the active fiscal target registry before "
-    "mass='conserve' calibration."
+    "fiscal calibration."
 )
 US_SOCIAL_SECURITY_COMPONENT_TARGET_ROLES = {
     "ssa_retirement_total": "social_security_retirement",
@@ -6322,6 +6332,15 @@ def _restated_ledger_filter_refusal(
     """
 
     concept, side = _restated_ledger_filter_concept(key)
+    if concept in {"household_type", "own_children", "statistic"}:
+        if metadata.get("materializer") != HOUSEHOLD_TYPE_MATERIALIZER:
+            return key
+        compiled = metadata.get(concept)
+        if side is not None or compiled != value:
+            return f"{key}={value} disagrees with compiled {concept}={compiled}"
+        if concept == "statistic" and value != "estimate":
+            return f"{key}={value} is not an ACS estimate"
+        return None
     rule = RESTATED_LEDGER_FILTER_CONCEPTS.get(concept) if concept else None
     if rule is None:
         return key
@@ -6623,6 +6642,11 @@ def _base_simulation_household_columns(
         variable="state_income_tax",
         tax_unit_positions=tax_unit_positions,
     )
+    for spec in target_specs:
+        if spec.metadata.get("materializer") == HOUSEHOLD_TYPE_MATERIALIZER:
+            columns[spec.measure] = household_type_household_values(
+                frame, spec.metadata
+            )
     # Federal Student Aid portfolio targets (microcosm#1074) read the SCF
     # education-debt stage's stored person balances, not an engine variable:
     # the pinned engine does not define them yet, and a stored input is what
@@ -8958,7 +8982,7 @@ def _base_population_scale_gate(
         "benchmark": benchmark,
         "relative_error": relative_error,
         "max_abs_relative_error": max_abs,
-        "calibration_mass_policy": "conserve",
+        "calibration_mass_policy": US_FISCAL_CALIBRATION_MASS,
     }
     if mass_repair is not None:
         details["mass_repair"] = dict(mass_repair)
@@ -8974,8 +8998,7 @@ def _base_population_scale_gate(
         failure = (
             f"weighted person population {population:,.0f} differs from Census "
             f"benchmark {benchmark:,.0f} by {relative_error:.1%}; release "
-            "calibration uses mass='conserve', so the base H5 must already be "
-            "national scale."
+            "calibration must start from a national-scale base H5."
         )
     return GateResult(
         name="base_population_scale",
@@ -13968,7 +13991,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     if telemetry is not None:
         telemetry.stage(
             "base_population_repair",
-            message="Repaired base population mass for conserved calibration.",
+            message="Repaired base population mass before fiscal calibration.",
             applied=base_population_repair.get("applied"),
             factor=base_population_repair.get("factor"),
             initial_population=base_population_repair.get("initial_population"),
@@ -15798,7 +15821,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             refit_epochs=args.epochs,
             learning_rate=args.learning_rate,
             max_weight_ratio=args.max_weight_ratio,
-            mass="conserve",
+            mass=US_FISCAL_CALIBRATION_MASS,
             l0_lambda=ladder_l0_lambda,
             l2_lambda=args.l2_lambda,
             refit_l2_lambda=args.refit_l2_lambda,
@@ -15870,7 +15893,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             learning_rate=args.learning_rate,
             max_weight_ratio=args.max_weight_ratio,
             seed=args.seed,
-            mass="conserve",
+            mass=US_FISCAL_CALIBRATION_MASS,
             l2_lambda=args.l2_lambda,
             target_loss_weights=target_loss_weights,
             target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
@@ -15897,7 +15920,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             learning_rate=args.learning_rate,
             max_weight_ratio=args.max_weight_ratio,
             seed=args.seed,
-            mass="conserve",
+            mass=US_FISCAL_CALIBRATION_MASS,
             l0_lambda=float(l0_refit_lambda),
             l2_lambda=args.l2_lambda,
             refit_l2_lambda=args.refit_l2_lambda,

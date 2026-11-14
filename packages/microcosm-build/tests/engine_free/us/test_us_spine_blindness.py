@@ -130,6 +130,10 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # stage validators can inspect them; no graph kernel reads or mutates
         # them, and the stage kernels stay under the operator guard below.
         "graph.py",
+        # Reads source provenance only to require ACS TYPEHUGQ before
+        # excluding native group quarters from household target indicators.
+        # It measures the roster and never changes population inputs.
+        "household_type_targets.py",
         # Enumerates provenance columns only to reject preassembled source frames.
         "operator_boundary.py",
         "puf_qrf_chain.py",  # Carries provenance into resumable checkpoints.
@@ -343,6 +347,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # facts into target specs and sums the stored person balances for
         # them; no population treatment.
         "fsa_student_loan_targets.py",
+        # ACS household indicators (#880); reads carried roster fields and
+        # the declared source universe, with no population treatment.
+        "household_type_targets.py",
         "geography_ladder.py",
         "hours_worked.py",
         "h5_io.py",  # US artifact I/O; no population treatment.

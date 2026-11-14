@@ -39,6 +39,72 @@ ids (the 118th-Congress district, or the state row's value), not the derived
 row's. No code reads the field, so no label, value or refusal changes; v4's
 `geography.publisher_name` is copied the same way.
 
+## The 2026-11-12 re-pin: household type and filing status (microcosm#880)
+
+The pin moves from `41b2fb2b` to
+`60266a3088319c909cf7fc89c9d00d3b055dc6e1` (Chronicle branch
+`feed/us-41b2fb2-household-880`, tag `microcosm-us-feed-880-v1`). This
+commit retains the previous feed's tree and adds only the five source
+packages, publisher files and manifests from PolicyEngine/chronicle#430.
+It does not include the Census Vintage 2025 package from microcosm#1531.
+Whichever re-pin merges second must re-cut its feed on the other's commit.
+
+The scope adds eight pairs, verified against the committed package YAML:
+
+| Record sets | Period | Build year | Added rows |
+|---|---|---:|---:|
+| `census_acs.acs1_2024.b11001.{national,state}` | calendar year 2024 | 2024 | 954 |
+| `census_acs.acs1_2024.b11003.{national,state}` | calendar year 2024 | 2024 | 2,120 |
+| `irs_soi.ty2023.table_1_3.filing_status_{returns,agi,ctc_returns,ctc_amount}` | tax year 2023 | 2023 | 20 |
+
+The ACS packages retain estimates and margins of error for the United
+States and 52 state-level geographies (50 states, DC and Puerto Rico).
+The scope has 714 pairs and 77 package runs over the same ten build years.
+The row contract remains `chronicle.consumer_fact.v3`.
+
+Rebuild with a clean checkout of the pinned commit:
+
+```bash
+uv run python tools/build_us_chronicle_feed.py \
+  --chronicle-root /tmp/chronicle-us-feed-880 \
+  --out /tmp/us-feed-880 --skip-artifact
+```
+
+The local rebuild used a sparse shared clone containing Chronicle's code,
+the scoped packages and their publisher files. It left the source checkout
+unchanged and removed the temporary clone after checking the feed.
+
+Dropping exactly these eight pairs from the rebuilt feed reproduces all
+40,642 prior rows byte for byte and in their original order, with digest
+`1d45a89c28177a95371b4cc4068d3657c7bf12bd8edad7c82fe25bf453f9ea07`.
+The delta is exactly 3,094 rows: 3,074 ACS estimates and margins of error
+and Table 1.3's 20 cells. No pre-existing fact changes.
+The committed comparison and source listing in
+`experiments/us-feed-household-filing-status-880/` record every added key,
+its source and period, and the unchanged values and publisher hash of the
+three B4923C anchors. The ESI anchor test follows this receipt in the re-pin
+chain and checks each source's reviewed namespaces.
+
+The release compile binds eight national ACS estimates and 16 filing-status
+cells by default. The parity manifest declares the two new families
+`compiled` and records each new cell's disposition. It reviews state cells,
+Puerto Rico, margins of error, redundant partition cells and child-age
+splits as exclusions. Table 1.3's all-status return count and AGI repeat
+bound Table 1.2 totals; its all-status credit count and amount follow from
+the four bound statuses within publisher rounding. The CTC amount differs
+by one published $1,000 unit. Table 1.2 carries no CTC cells. The existing
+`census_acs.acs1_2023` exclusion remains
+separate. See [household-type targets](us-household-type-targets.md).
+With the packaged district crosswalk, target aging and Medicaid
+substitutions, the registry grows from 33,250 to 33,272 targets. Route A's
+`national_state` surface grows from 6,102 to 6,124. The 24 new cells replace
+two existing national TY2022 Historic Table 2 CTC aggregates, a net increase
+of 22. Those older count and amount cells constrain the same model vectors
+as the sums of Table 1.3's four filing-status targets, but carry a different
+vintage's totals. The compile reviews them as superseded rather than
+binding inconsistent aggregates and partitions. Every retained target keeps
+its name, value and metadata.
+
 ## The 2026-11-03 re-pin: Federal Student Aid loan portfolio tables (microcosm#1074)
 
 microcosm#1357 binds Federal Student Aid's loan portfolio tables as
@@ -295,14 +361,17 @@ the first labelled US export.
 
 | Field | Value |
 |---|---|
-| Chronicle commit | `41b2fb2b864a28c0eda03322b77a97ef147dfa3c` (`a9026cc` plus chronicle#347's `4448a7c96`; branch `feed/us-a9026cc-ed-fsa-1103`, tag `microcosm-us-feed-1074-v1`) |
-| Feed file | `consumer_facts_us_41b2fb2.jsonl`, 40,642 rows, 171,661,396 bytes |
-| `facts_sha256` | `1d45a89c28177a95371b4cc4068d3657c7bf12bd8edad7c82fe25bf453f9ea07` |
+| Chronicle commit | `60266a3088319c909cf7fc89c9d00d3b055dc6e1` (`41b2fb2b` plus chronicle#430's five packages; branch `feed/us-41b2fb2-household-880`, tag `microcosm-us-feed-880-v1`) |
+| Feed file | `consumer_facts_us_60266a3.jsonl`, 43,736 rows, 187,923,715 bytes |
+| `facts_sha256` | `dce5c32e7f0f386260638547438b1d2fafd08a890d09f3099c22b7fca2a95e2d` |
 | Consumer fact schema | `chronicle.consumer_fact.v3`, schema file sha256 `bdb51e2a…` (the same file at `a9026cc` and `41b2fb2b`) |
-| Scope | 706 (record set, period) pairs; 72 package runs over build years 2020 to 2029 |
+| Scope | 714 (record set, period) pairs; 77 package runs over build years 2020 to 2029 |
 | Consumer artifact | none: refused at this commit, see below |
 
-The previous pins were `a9026cc8f80307af0c4527fdb3779fab32ffad9f`
+The previous pins were `41b2fb2b864a28c0eda03322b77a97ef147dfa3c`
+(`consumer_facts_us_41b2fb2.jsonl`, 40,642 rows, 171,661,396 bytes,
+`facts_sha256` `1d45a89c…`, 706 pairs, 72 runs; tag
+`microcosm-us-feed-1074-v1`), `a9026cc8f80307af0c4527fdb3779fab32ffad9f`
 (`consumer_facts_us_a9026cc.jsonl`, 40,181 rows, 169,056,411 bytes,
 `facts_sha256` `4d89e4a4…`, 640 pairs, 66 runs; tag
 `microcosm-us-feed-1343-v1`), `cf9ece2e7be11158c21fdc4dd38b44d92db552f6`
@@ -317,7 +386,7 @@ The previous pins were `a9026cc8f80307af0c4527fdb3779fab32ffad9f`
 this document describes the 2026-09-18 rebuild unless it says otherwise.
 
 The feed is too large for the repository. Its home on the build machine is
-`~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_41b2fb2.jsonl`,
+`~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_60266a3.jsonl`,
 beside the previous pins; `tools/build_us_target_parity_manifest.py` reads it
 there by default. A holder of the Chronicle commit regenerates it byte for
 byte with the commands below.
