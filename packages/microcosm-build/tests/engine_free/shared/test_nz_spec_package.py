@@ -1071,6 +1071,13 @@ def resolve_json_pointer(file: str, pointer: str) -> object:
         for candidate in _repository_files()
         if candidate == relative or candidate.endswith("/" + relative)
     }
+    if len(candidates) > 1:
+        # Another country's package may hold a resource of the same name
+        # (Belgium's axiom_input_closure.json). A name in an NZ document
+        # cites NZ's own file when NZ's package has one at that path.
+        own = (NZ_ROOT / relative).resolve()
+        if own in candidates:
+            candidates = {own}
     if len(candidates) != 1:
         raise ValueError(f"JSON citation needs one checkout file: {file}: {candidates}")
     (path,) = candidates

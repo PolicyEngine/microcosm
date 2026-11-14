@@ -219,6 +219,8 @@ def test_be_generation_zero_views_still_come_from_the_country_spec_seam() -> Non
     assert not spec.release_contract.licence_restricted
     assert spec.release_contract.public_artifacts == ()
     assert {row.path for row in spec.resource_rows if row.kind == "legacy_json"} == {
+        "axiom_input_closure.json",
+        "axiom_rules_bindings.json",
         "chronicle_feed.json",
         "gates.json",
         "geography_spine.json",

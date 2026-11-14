@@ -1,11 +1,12 @@
 {
   "country": "be",
-  "fingerprint": "2a8d7b012245e62d3e906ebf70eb7952bb1f581185b0ef073c39a7bf139f4030",
+  "fingerprint": "8c7c8f9416daedc5dc30b532316587d979e96c01df26e7d2dcb051327ec37def",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_nuts1_admin_aggregates",
     "commune_fiscal_income_fit",
     "target_profile_coverage",
+    "release_input_coverage",
     "demographics_vs_statbel",
     "exported_nonzero",
     "formula_owned_export",
@@ -28,9 +29,11 @@
     "staging_repo": "policyengine/populace-be-staging"
   },
   "resource_hashes": {
+    "axiom_input_closure.json": "53188dfc831f2e607e74b79e60bac9a8f264aaf28d407e56d49972633af8e52b",
+    "axiom_rules_bindings.json": "21f133ce2875d6454c96eb00fb8560b9ad590e1614c481c72fae2405608ac916",
     "chronicle_feed.json": "71f3967cefa12d8ad6c4b955547bfc37e33183ee839b3edf3a43e0cb72559030",
-    "country_package.json": "b698d0a0cb99deb9071451f790915f054d02970aa8a544cac6865860cf60f386",
-    "gates.json": "85c07f713168058a081b40cf94da6a33035108ba7807e04818486032fb2ad580",
+    "country_package.json": "204c8c06934160c856d86a9d6c5305d40e9b3a85713c11c3ab031bebb27fbe89",
+    "gates.json": "6f5e7a633e965ce44ed074224003fa3a2197460089b774f7b6f0c43e04d5e5aa",
     "geography_spine.json": "090b83a4fa511e691b8f1486bc4188e4170cf9d4a1239e7418d33d5020ceca50",
     "holdout_references.json": "c9d32204b4c6364a95fcab066cbbc8b1b99dd49ef608e72c99009f01c7d1c942",
     "precal_references.json": "321bd4bd675b80c2e3241e19346fb191b72c8a0c101080dca27bae061c3edd89",
@@ -56,6 +59,8 @@
     "spec/sources.yaml",
     "spec/spine.yaml",
     "spec/vintages.yaml",
+    "axiom_input_closure.json",
+    "axiom_rules_bindings.json",
     "chronicle_feed.json",
     "gates.json",
     "geography_spine.json",

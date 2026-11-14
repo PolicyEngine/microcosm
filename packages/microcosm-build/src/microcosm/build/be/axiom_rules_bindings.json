@@ -1,0 +1,380 @@
+{
+  "version": 1,
+  "country": "be",
+  "description": "Axiom rules bindings for Belgium's family-benefit content. Each binding names one rulespec-be module by repository-relative rulespec_path and SHA-256 at the pinned commit, the frame entity it sits on, the period label it runs for, and the variables a graph may request. The twelve modules are the ones whose programs the committed input surface compiles on the engine entity Child. No frame entity maps to Child, so each binding sits on the person entity and declares one binding-local view (views_note). Belgium has no composed transport graph yet: no node selects a binding, and nothing here runs until the graph change adds the selector producers, the closure node and the rules nodes. axiom_input_closure.json closes every Child root of these modules.",
+  "rulespec": {
+    "repository": "TheAxiomFoundation/rulespec-be",
+    "commit": "632e1da1110ba881c68165e0cd3c2287b5b8ab08",
+    "branch": "main",
+    "verified_on": "2026-11-13",
+    "verification": "The commit is on origin/main of rulespec-be (git branch -r --contains). The committed input surface was generated at b105e2b3a3086ddd2de447d58a9b951346870dd1, an ancestor of the pin (git merge-base --is-ancestor). Each of the twelve bound modules has the same bytes at both commits, and its SHA-256 at the pin equals the surface's.",
+    "method_card_row": "BE-MC0"
+  },
+  "engine": {
+    "repository": "TheAxiomFoundation/axiom-rules-engine",
+    "commit": null,
+    "wheel_sha256": null,
+    "status": "Not pinned. Belgium's committed input surface records axiom-rules-engine 04315d94d04efd61e27665ab3aa300d64fdf3a66. A follow-up refreshes the surface at the engine commit New Zealand pins and then sets commit and wheel_sha256 here, as nz/axiom_rules_bindings.json does. build_transport_registry refuses a bindings document that lacks either pin, and it also needs the unit entity that entity_names_note describes, so no registry builds from this file before both land."
+  },
+  "entity_names": {
+    "person": "Person",
+    "household": "Household"
+  },
+  "entity_names_note": "entity_names holds the two frame entities the axiom:be mapping maps. build_transport_registry requires it to name exactly the transport schema's entities: person, household and each unit entity the benefit unit rule declares (transport/registry.py, build_transport_registry; frame/unit_construction.py, MultiUnitRule.entity_schema). Belgium has no benefit_unit_rule.json yet. The change that adds it also adds its entity here, under an engine name other than Child, since the registry refuses a view whose logical entity a frame entity maps to.",
+  "periods": {
+    "2026-01": {
+      "kind": "calendar_month",
+      "start": "2026-01-01",
+      "end": "2026-01-31"
+    }
+  },
+  "period_note": "Every variable these bindings request runs by Month, so the one period label names a month: January 2026, with explicit bounds, because the registry takes no period without them. The kind is calendar_month, the name rulespec-be's own tests give the custom monthly period they run these modules over (for example be-bru/statutes/family_benefits/eligibility.test.yaml). At the surface's engine commit 04315d94d04efd61e27665ab3aa300d64fdf3a66, the Python extension reads any kind other than month, benefit_week and tax_year as a custom period of that name (python-ext/src/lib.rs:583-590). No rule version in the twelve modules starts after 2026-01-01, so each month of 2026 reads the same versions. A graph that needs an annual amount multiplies the monthly output by twelve in a declared transform. No binding requests the modules' Year rules (the annual age supplements and the Flemish participation supplement) or any birth or adoption premium.",
+  "input_surface": {
+    "fixture": "packages/microcosm-frame/tests/fixtures/axiom_input_surfaces/be.json",
+    "notes": "The committed input surface was generated at rulespec-be b105e2b3a3086ddd2de447d58a9b951346870dd1. root_input_count is the size of each module's canonical input surface, all of it on Child."
+  },
+  "views_note": "Each view's selector is a bool person column that no node produces yet. The selectors block gives each column's meaning; the graph change that follows adds the producers and sets each cut-off, birth cohort included: none of the regional modules bound here reads a birth date, and rulespec-be sources other rules to a Flemish threshold for children born from 2019 onward, to a Brussels article 35 transition deduction and to Walloon pre-2020 and article 19 transition amounts (be/statutes/family_benefits/child_benefit_base_2025.yaml, which these bindings don't cover). A view's root inputs read the person columns of the same names (docs/transport-declared-units.md, Binding-local views), so the closure gives a name one default in every module that reads it. Each outside value is the output's value for a person outside the view: 0.0 for a Money output and 0 for a Count output. At the surface's engine commit 04315d94d04efd61e27665ab3aa300d64fdf3a66, formula lowering reads a rule's dtype through a match that has no Count arm and falls through to Decimal (src/formula.rs:1352-1362). An integer 0 casts without loss to a decimal output and to an integer one, so it holds whichever dtype the pinned engine gives a Count.",
+  "selectors": {
+    "brussels_family_benefits_child_candidate": "True for a person the Brussels scheme's modules run on as Child: a person domiciled in the Brussels-Capital Region whom the scheme's age and status rules could reach. The modules decide entitlement. The selector keeps other regions' residents out, and the closure's domicile default relies on that.",
+    "german_speaking_community_family_benefits_child_candidate": "True for a person the German-speaking Community scheme's modules run on as Child: a person domiciled in the German language region whom the scheme's age and status rules could reach. The modules decide entitlement. The selector keeps other regions' residents out, and the closure's domicile default relies on that.",
+    "flanders_family_benefits_child_candidate": "True for a person the Flemish scheme's modules run on as Child: a person domiciled in the Dutch language region whom the scheme's age and status rules could reach. The modules decide entitlement. The selector keeps other regions' residents out, and the closure's domicile default relies on that.",
+    "wallonia_family_benefits_child_candidate": "True for a person the Walloon scheme's modules run on as Child: a person domiciled in the French language region whom the scheme's age and status rules could reach. The modules decide entitlement. The selector keeps other regions' residents out, and the closure's domicile default relies on that.",
+    "belgium_lgaf_child_candidate": "True for a person the federal LGAF amount schedule runs on as Child. No bound module imports this schedule, and the routing bridge returns none of its outputs. Its one importer at the pin, be/statutes/family_benefits/guaranteed_family_benefits.yaml, describes a pre-2019 guarantee layer, and the committed surface marks that module dense_unsupported. The schedule holds no entitlement test, so a 2026 graph selects no one: its producer writes false for every person, or no node requests the binding.",
+    "belgium_family_benefits_child_candidate": "True for a person the regional routing bridge runs on as Child. The bridge picks a scheme from belgium_family_benefits_region, which the closure defaults to one code for every child, so no node should request this binding until a graph node supplies that code for each child. Until then the four regional eligibility bindings give the national amount under their own selectors."
+  },
+  "bindings": [
+    {
+      "id": "brussels_family_benefits_basic_amounts",
+      "rulespec_path": "be-bru/statutes/family_benefits/basic_amounts.yaml",
+      "sha256": "6dab96b7260c8a38d06eee900a8e2192d1ec8654a9f11011ba901f7f76cc27fa",
+      "entity": "person",
+      "engine_entity": "Person",
+      "period": "2026-01",
+      "role": "amount_component",
+      "variables": [
+        "brussels_family_benefits_article_7_base_monthly_amount"
+      ],
+      "relations_declared": false,
+      "imports_declared": false,
+      "root_input_count": 3,
+      "views": [
+        {
+          "logical_entity": "Child",
+          "selector": {
+            "column": "brussels_family_benefits_child_candidate"
+          },
+          "outside": {
+            "brussels_family_benefits_article_7_base_monthly_amount": 0.0
+          }
+        }
+      ],
+      "notes": "The article 7 base amount, with no entitlement gate. Request it only to split the eligible amount into base and supplement; never sum it as spending. brussels_family_benefits_eligibility reaches it through its imports."
+    },
+    {
+      "id": "brussels_family_benefits_eligibility",
+      "rulespec_path": "be-bru/statutes/family_benefits/eligibility.yaml",
+      "sha256": "71ce6d5c5f2a638b0ddc52c766ec8ffd1482725e82e45ba9f67048955bbc5649",
+      "entity": "person",
+      "engine_entity": "Person",
+      "period": "2026-01",
+      "role": "entitlement_and_payable_amount",
+      "variables": [
+        "brussels_family_benefits_eligible_monthly_amount",
+        "brussels_family_benefits_child_entitlement"
+      ],
+      "relations_declared": false,
+      "imports_declared": true,
+      "root_input_count": 19,
+      "views": [
+        {
+          "logical_entity": "Child",
+          "selector": {
+            "column": "brussels_family_benefits_child_candidate"
+          },
+          "outside": {
+            "brussels_family_benefits_eligible_monthly_amount": 0.0,
+            "brussels_family_benefits_child_entitlement": 0
+          }
+        }
+      ],
+      "notes": "The scheme's payable monthly amount (the article 4, 25 and 26 gate on the article 7 base plus the article 9 supplement) and the 0/1 entitlement it rests on. Both rules hold one version, from 2025-09-01."
+    },
+    {
+      "id": "brussels_family_benefits_selected_amount",
+      "rulespec_path": "be-bru/statutes/family_benefits/selected_amount.yaml",
+      "sha256": "1614c71f0a59f27ae5e9b354d9fed4905dc83dde4176647c63061d8909d10bb1",
+      "entity": "person",
+      "engine_entity": "Person",
+      "period": "2026-01",
+      "role": "amount_component",
+      "variables": [
+        "brussels_family_benefits_selected_monthly_amount"
+      ],
+      "relations_declared": false,
+      "imports_declared": true,
+      "root_input_count": 8,
+      "views": [
+        {
+          "logical_entity": "Child",
+          "selector": {
+            "column": "brussels_family_benefits_child_candidate"
+          },
+          "outside": {
+            "brussels_family_benefits_selected_monthly_amount": 0.0
+          }
+        }
+      ],
+      "notes": "The ungated sum of the article 7 base and the article 9 supplement. A graph that wants spending requests brussels_family_benefits_eligibility's eligible amount, which imports this output."
+    },
+    {
+      "id": "brussels_family_benefits_social_supplements",
+      "rulespec_path": "be-bru/statutes/family_benefits/social_supplements.yaml",
+      "sha256": "c77209b28ce08c572ec14645edb174ca99beab4fdff08c49be0814da0666f14f",
+      "entity": "person",
+      "engine_entity": "Person",
+      "period": "2026-01",
+      "role": "amount_component",
+      "variables": [
+        "brussels_family_benefits_article_9_social_supplement_monthly_amount"
+      ],
+      "relations_declared": false,
+      "imports_declared": false,
+      "root_input_count": 5,
+      "views": [
+        {
+          "logical_entity": "Child",
+          "selector": {
+            "column": "brussels_family_benefits_child_candidate"
+          },
+          "outside": {
+            "brussels_family_benefits_article_9_social_supplement_monthly_amount": 0.0
+          }
+        }
+      ],
+      "notes": "The article 9 social supplement, with no entitlement gate. Under the closure's income default it is 0 for every child, until a graph node supplies household income."
+    },
+    {
+      "id": "german_speaking_community_family_benefits_amounts",
+      "rulespec_path": "be-dg/statutes/family_benefits/amounts.yaml",
+      "sha256": "d121b02c1a0f4e2b871d1aa70b1b0d252a067b1b972629743bd61dab710385f5",
+      "entity": "person",
+      "engine_entity": "Person",
+      "period": "2026-01",
+      "role": "amount_component",
+      "variables": [
+        "german_speaking_community_family_benefits_selected_monthly_amount"
+      ],
+      "relations_declared": false,
+      "imports_declared": false,
+      "root_input_count": 12,
+      "views": [
+        {
+          "logical_entity": "Child",
+          "selector": {
+            "column": "german_speaking_community_family_benefits_child_candidate"
+          },
+          "outside": {
+            "german_speaking_community_family_benefits_selected_monthly_amount": 0.0
+          }
+        }
+      ],
+      "notes": "The ungated monthly total (the base amount plus the monthly supplements). A graph that wants spending requests german_speaking_community_family_benefits_eligibility's eligible amount, which imports this output. The module's Year rules and its birth and adoption premiums are not requested."
+    },
+    {
+      "id": "german_speaking_community_family_benefits_eligibility",
+      "rulespec_path": "be-dg/statutes/family_benefits/eligibility.yaml",
+      "sha256": "b19ec68c3c94d5c869512e12cd2e620a9bcdd3034ddaf12d2bce04858083d3b5",
+      "entity": "person",
+      "engine_entity": "Person",
+      "period": "2026-01",
+      "role": "entitlement_and_payable_amount",
+      "variables": [
+        "german_speaking_community_family_benefits_eligible_monthly_amount",
+        "german_speaking_community_family_benefits_statutory_base_entitlement"
+      ],
+      "relations_declared": false,
+      "imports_declared": true,
+      "root_input_count": 31,
+      "views": [
+        {
+          "logical_entity": "Child",
+          "selector": {
+            "column": "german_speaking_community_family_benefits_child_candidate"
+          },
+          "outside": {
+            "german_speaking_community_family_benefits_eligible_monthly_amount": 0.0,
+            "german_speaking_community_family_benefits_statutory_base_entitlement": 0
+          }
+        }
+      ],
+      "notes": "The scheme's payable monthly amount behind the articles 6 and 9 to 14 gate, and the 0/1 statutory base entitlement it rests on."
+    },
+    {
+      "id": "flanders_family_benefits_amounts",
+      "rulespec_path": "be-vlg/statutes/family_benefits/amounts.yaml",
+      "sha256": "bd8cd97a540cdf83ac71592f86e0c1dcd6edc3d01a169d000cf823a836496f32",
+      "entity": "person",
+      "engine_entity": "Person",
+      "period": "2026-01",
+      "role": "amount_component",
+      "variables": [
+        "flanders_family_benefits_selected_monthly_amount"
+      ],
+      "relations_declared": false,
+      "imports_declared": false,
+      "root_input_count": 7,
+      "views": [
+        {
+          "logical_entity": "Child",
+          "selector": {
+            "column": "flanders_family_benefits_child_candidate"
+          },
+          "outside": {
+            "flanders_family_benefits_selected_monthly_amount": 0.0
+          }
+        }
+      ],
+      "notes": "The ungated monthly total (the base amount plus the orphan, disability, foster-care and social supplements). A graph that wants spending requests flanders_family_benefits_eligibility's eligible amount, which imports this output. The annual participation supplement, a Year rule with no entitlement gate, is not requested."
+    },
+    {
+      "id": "flanders_family_benefits_eligibility",
+      "rulespec_path": "be-vlg/statutes/family_benefits/eligibility.yaml",
+      "sha256": "818ae27ec259e3f0bc7ba10119a356d62341ea6e09fd221dd98bcc2351419d09",
+      "entity": "person",
+      "engine_entity": "Person",
+      "period": "2026-01",
+      "role": "entitlement_and_payable_amount",
+      "variables": [
+        "flanders_family_benefits_eligible_monthly_amount",
+        "flanders_family_benefits_child_entitlement"
+      ],
+      "relations_declared": false,
+      "imports_declared": true,
+      "root_input_count": 23,
+      "views": [
+        {
+          "logical_entity": "Child",
+          "selector": {
+            "column": "flanders_family_benefits_child_candidate"
+          },
+          "outside": {
+            "flanders_family_benefits_eligible_monthly_amount": 0.0,
+            "flanders_family_benefits_child_entitlement": 0
+          }
+        }
+      ],
+      "notes": "The scheme's payable monthly amount behind the article 8 gate, and the 0/1 entitlement it rests on."
+    },
+    {
+      "id": "wallonia_family_benefits_amounts",
+      "rulespec_path": "be-wal/statutes/family_benefits/amounts.yaml",
+      "sha256": "0b1de350ca08f518f79c97b151e0055ba17a186837eeeeb9b38527d1fbfda2fa",
+      "entity": "person",
+      "engine_entity": "Person",
+      "period": "2026-01",
+      "role": "amount_component",
+      "variables": [
+        "wallonia_family_benefits_selected_monthly_amount"
+      ],
+      "relations_declared": false,
+      "imports_declared": false,
+      "root_input_count": 11,
+      "views": [
+        {
+          "logical_entity": "Child",
+          "selector": {
+            "column": "wallonia_family_benefits_child_candidate"
+          },
+          "outside": {
+            "wallonia_family_benefits_selected_monthly_amount": 0.0
+          }
+        }
+      ],
+      "notes": "The ungated monthly total (the base amount plus the monthly supplements). A graph that wants spending requests wallonia_family_benefits_eligibility's eligible amount, which imports this output. The article 17 annual age supplement, a Year rule with no entitlement gate, is not requested, so Walloon amounts leave it out."
+    },
+    {
+      "id": "wallonia_family_benefits_eligibility",
+      "rulespec_path": "be-wal/statutes/family_benefits/eligibility.yaml",
+      "sha256": "6bcd10fefa6e0ba3a54fbc51cfc8d4f2ed8d182ad81f3e1241b1aa01b7ce3734",
+      "entity": "person",
+      "engine_entity": "Person",
+      "period": "2026-01",
+      "role": "entitlement_and_payable_amount",
+      "variables": [
+        "wallonia_family_benefits_eligible_monthly_amount",
+        "wallonia_family_benefits_child_entitlement"
+      ],
+      "relations_declared": false,
+      "imports_declared": true,
+      "root_input_count": 33,
+      "views": [
+        {
+          "logical_entity": "Child",
+          "selector": {
+            "column": "wallonia_family_benefits_child_candidate"
+          },
+          "outside": {
+            "wallonia_family_benefits_eligible_monthly_amount": 0.0,
+            "wallonia_family_benefits_child_entitlement": 0
+          }
+        }
+      ],
+      "notes": "The scheme's payable monthly amount behind the articles 4 to 6 gate, and the 0/1 entitlement it rests on."
+    },
+    {
+      "id": "belgium_lgaf_amounts",
+      "rulespec_path": "be/statutes/family_benefits/lgaf_amounts.yaml",
+      "sha256": "fff8a556a84e6017b7fc878b58e5ed5c007974b849e5cdeed858f57e5020e7ce",
+      "entity": "person",
+      "engine_entity": "Person",
+      "period": "2026-01",
+      "role": "superseded_federal_schedule",
+      "variables": [
+        "belgium_lgaf_selected_monthly_indexed_amount"
+      ],
+      "relations_declared": false,
+      "imports_declared": false,
+      "root_input_count": 18,
+      "views": [
+        {
+          "logical_entity": "Child",
+          "selector": {
+            "column": "belgium_lgaf_child_candidate"
+          },
+          "outside": {
+            "belgium_lgaf_selected_monthly_indexed_amount": 0.0
+          }
+        }
+      ],
+      "notes": "The federal amount schedule of the Loi generale relative aux allocations familiales, which holds no entitlement rule, age limit or event test: each output pays every row the view admits. No bound module imports it and the routing bridge returns none of its outputs, so no 2026 node should request it; added to a regional amount it would count a child twice. The binding and its closure entries exist so that the module's 18 Child roots are closed. The one variable is the monthly total; the birth allowance and adoption premium read no birth or adoption event and are never requested."
+    },
+    {
+      "id": "belgium_family_benefits_regional_routing",
+      "rulespec_path": "be/statutes/family_benefits/regional_routing.yaml",
+      "sha256": "408e73587e60d91136f80a71612802cb8c111f7ea5baf5abaeecb772c43c2413",
+      "entity": "person",
+      "engine_entity": "Person",
+      "period": "2026-01",
+      "role": "regional_bridge",
+      "variables": [
+        "belgium_family_benefits_eligibility_gated_monthly_amount"
+      ],
+      "relations_declared": false,
+      "imports_declared": true,
+      "root_input_count": 107,
+      "views": [
+        {
+          "logical_entity": "Child",
+          "selector": {
+            "column": "belgium_family_benefits_child_candidate"
+          },
+          "outside": {
+            "belgium_family_benefits_eligibility_gated_monthly_amount": 0.0
+          }
+        }
+      ],
+      "notes": "The bridge over the four regional schemes: it returns the chosen scheme's eligible monthly amount by belgium_family_benefits_region (0 Flanders, 1 Brussels, 2 Wallonia, 3 German-speaking Community; any other code returns 0). Its ungated output skips the schemes' entitlement gates and is not requested. No graph may add the bridge's output to the four regional amounts."
+    }
+  ],
+  "keying_note": "Each Axiom-bound node is to carry its own binding entry, the rulespec and engine pin blocks, the entity names and its period, plus a digest of exactly those values, never this file's SHA-256. Otherwise an edit to one scheme's binding would re-key every other scheme's nodes. Which graph nodes consume which binding is the composer's business, not this resource's."
+}
