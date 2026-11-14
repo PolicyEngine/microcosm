@@ -994,6 +994,9 @@ _COUNTING_STAGES = frozenset(
         "frs_take_up",
         "frs_person_draws",
         "frs_household_draws",
+        # The council-tax stage's module counts its bill provenance's receipt
+        # in true source households (microcosm#931).
+        "frs_council_tax",
         # spi_spine, stage 14's module, rounds the support channel's receipt
         # (microcosm#931).
         "frs_hmrc_spine_leaves",

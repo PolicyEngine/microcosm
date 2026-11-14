@@ -353,7 +353,7 @@ def test_counting_module_changes_invalidate_every_stage_that_counts(monkeypatch)
         graph.node("create_uk_frs" if stage == "frs_spine" else stage).kernel
         for stage in sorted(graph_kernels._COUNTING_STAGES)
     ]
-    control = graph.node("frs_council_tax").kernel
+    control = graph.node("frs_employment").kernel
     for module in (receipt_counts, source_lineage, geographic_clones):
         before = {
             ref: registry.implementation_hash(ref) for ref in (*affected, control)

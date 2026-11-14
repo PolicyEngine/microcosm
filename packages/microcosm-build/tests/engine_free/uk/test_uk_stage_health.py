@@ -5100,3 +5100,442 @@ def test_each_later_copy_layer_is_held_to_its_parent_in_its_clone(
         f"cgt_residential_split: copy_area_agreement: {layer}: brma: a copy row "
         "differs from its parent.",
     )
+
+
+# The council-tax reduction check (microcosm#931) holds each household's
+# council-tax reductions within its bill on the phase's frame, with the
+# households of the regions it is told to leave out taken out first. No gate
+# declares it yet. Every table below is invented.
+
+_COUNCIL_TAX_STAGE = "council_tax_localise"
+_COUNCIL_TAX_CHECK = "council_tax_reduction_within_bill"
+
+
+class _HouseholdsAndPersons:
+    """The household and person tables the council-tax check reads."""
+
+    def __init__(self, household: pd.DataFrame, person: pd.DataFrame) -> None:
+        self._tables = {"household": household, "person": person}
+
+    def table(self, entity: str) -> pd.DataFrame:
+        return self._tables[entity]
+
+
+def _council_tax_households() -> pd.DataFrame:
+    """Three Great Britain households and one in Northern Ireland, every
+    reduction at most its bill: the first's rebate is its whole bill, the
+    second has none, the third has a zero bill and no reduction, and the
+    Northern Ireland household pays no council tax."""
+
+    return pd.DataFrame(
+        {
+            "household_id": np.asarray([11, 12, 13, 14], dtype=np.int64),
+            "region": ["LONDON", "WALES", "SCOTLAND", "NORTHERN_IRELAND"],
+            "council_tax": np.asarray([1200.0, 900.0, 0.0, 0.0]),
+            "council_tax_rebate": np.asarray([1200.0, 0.0, 0.0, 0.0]),
+        }
+    )
+
+
+def _council_tax_persons() -> pd.DataFrame:
+    """Two persons in the first household, whose reported reductions sum to
+    its bill, and one in each of the others."""
+
+    return pd.DataFrame(
+        {
+            "person_id": np.asarray([111, 112, 121, 131, 141], dtype=np.int64),
+            "person_household_id": np.asarray([11, 11, 12, 13, 14], dtype=np.int64),
+            "council_tax_benefit_reported": np.asarray([700.0, 500.0, 0.0, 0.0, 0.0]),
+        }
+    )
+
+
+def _council_tax_gate(household=None, person=None, *, frame=True, **parameters):
+    declared = {
+        "stage": _COUNCIL_TAX_STAGE,
+        "check": _COUNCIL_TAX_CHECK,
+        "bill_column": "council_tax",
+        "household_reduction_columns": ["council_tax_rebate"],
+        "person_reduction_columns": ["council_tax_benefit_reported"],
+        "excluded_regions": ["NORTHERN_IRELAND"],
+        "absolute_tolerance": 1e-9,
+        **parameters,
+    }
+    tables = _HouseholdsAndPersons(
+        _council_tax_households() if household is None else household,
+        _council_tax_persons() if person is None else person,
+    )
+    # The receipt holds the stage alone: the check reads no other key.
+    return uk_stage_health_gate(
+        evidence={"stage": _COUNCIL_TAX_STAGE},
+        stage=_COUNCIL_TAX_STAGE,
+        check=_COUNCIL_TAX_CHECK,
+        parameters=declared,
+        frame=tables if frame else None,
+    )
+
+
+def _council_tax_failure(column: str, *, persons: bool = False) -> str:
+    summed = ", summed over its persons," if persons else ""
+    return (
+        f"{_COUNCIL_TAX_STAGE}: {_COUNCIL_TAX_CHECK}: a household's {column}"
+        f"{summed} is not within its council_tax."
+    )
+
+
+_COUNCIL_TAX_NOT_FINITE = (
+    f"{_COUNCIL_TAX_STAGE}: {_COUNCIL_TAX_CHECK}: a value read of council_tax or "
+    "of a reduction column (council_tax_rebate, council_tax_benefit_reported) is "
+    "NaN, infinite or negative."
+)
+
+
+def _booleans_only(details: dict) -> bool:
+    """Every detail beyond the stage and the check is a boolean, nested or
+    not."""
+
+    def leaves(value):
+        if isinstance(value, dict):
+            for item in value.values():
+                yield from leaves(item)
+        else:
+            yield value
+
+    rest = {
+        key: value for key, value in details.items() if key not in {"stage", "check"}
+    }
+    return all(type(leaf) is bool for leaf in leaves(rest))
+
+
+def test_council_tax_reductions_within_the_bill_pass() -> None:
+    """Reductions at the bill pass: the first household's rebate and its two
+    persons' reported reductions, summed, each equal its bill."""
+
+    result = _council_tax_gate()
+
+    assert _passed(result), result.failures
+    assert result.details == {
+        "stage": _COUNCIL_TAX_STAGE,
+        "check": _COUNCIL_TAX_CHECK,
+        "households_checked": True,
+        "columns": {
+            "council_tax_rebate": True,
+            "council_tax_benefit_reported": True,
+        },
+        "finite_nonnegative": True,
+    }
+    assert _booleans_only(result.details)
+
+
+def test_council_tax_reductions_in_integer_columns_are_read() -> None:
+    household = _council_tax_households()
+    for column in ("council_tax", "council_tax_rebate"):
+        household[column] = household[column].astype(np.int64)
+
+    result = _council_tax_gate(household)
+
+    assert _passed(result), result.failures
+
+
+@pytest.mark.parametrize(
+    ("table", "row", "column", "value", "failed"),
+    [
+        # A rebate past its bill by more than the tolerance.
+        ("household", 1, "council_tax_rebate", 900.0 + 1e-6, "council_tax_rebate"),
+        ("household", 0, "council_tax_rebate", 1201.0, "council_tax_rebate"),
+        # A reported reduction past its household's bill, on one person.
+        (
+            "person",
+            2,
+            "council_tax_benefit_reported",
+            950.0,
+            "council_tax_benefit_reported",
+        ),
+        # Two persons each within the bill whose sum is past it.
+        (
+            "person",
+            1,
+            "council_tax_benefit_reported",
+            501.0,
+            "council_tax_benefit_reported",
+        ),
+        # A reduction on a household whose bill is zero.
+        (
+            "person",
+            3,
+            "council_tax_benefit_reported",
+            1.0,
+            "council_tax_benefit_reported",
+        ),
+    ],
+)
+def test_a_council_tax_reduction_above_its_bill_fails(
+    table, row, column, value, failed
+) -> None:
+    household = _council_tax_households()
+    person = _council_tax_persons()
+    edited = household if table == "household" else person
+    edited.loc[row, column] = value
+
+    result = _council_tax_gate(household, person)
+
+    assert not result.passed
+    assert result.failures == (_council_tax_failure(failed, persons=table == "person"),)
+    other = (
+        "council_tax_benefit_reported"
+        if failed == "council_tax_rebate"
+        else "council_tax_rebate"
+    )
+    assert result.details["columns"] == {failed: False, other: True}
+    assert result.details["finite_nonnegative"] is True
+    assert _booleans_only(result.details)
+
+
+def test_council_tax_reductions_within_the_tolerance_pass() -> None:
+    household = _council_tax_households()
+    household.loc[1, "council_tax_rebate"] = 900.0 + 5e-10
+    person = _council_tax_persons()
+    person.loc[1, "council_tax_benefit_reported"] = 500.0 + 5e-10
+
+    assert _passed(_council_tax_gate(household, person))
+    # Binary fractions show the edge exactly: a quarter over the bill passes
+    # at a tolerance of a quarter, and a half over it does not.
+    household.loc[1, "council_tax_rebate"] = 900.25
+    assert _passed(_council_tax_gate(household, absolute_tolerance=0.25))
+    household.loc[1, "council_tax_rebate"] = 900.5
+    assert not _council_tax_gate(household, absolute_tolerance=0.25).passed
+
+
+@pytest.mark.parametrize(
+    ("table", "column", "value", "failed_columns"),
+    [
+        ("household", "council_tax_rebate", np.nan, {"council_tax_rebate"}),
+        ("household", "council_tax_rebate", np.inf, {"council_tax_rebate"}),
+        ("household", "council_tax_rebate", -1.0, set()),
+        (
+            "person",
+            "council_tax_benefit_reported",
+            np.nan,
+            {"council_tax_benefit_reported"},
+        ),
+        ("person", "council_tax_benefit_reported", -0.5, set()),
+        # A bill that is not a number fails every reduction held within it.
+        (
+            "household",
+            "council_tax",
+            np.nan,
+            {"council_tax_rebate", "council_tax_benefit_reported"},
+        ),
+        # So does a negative bill, which even a zero reduction is above.
+        (
+            "household",
+            "council_tax",
+            -1.0,
+            {"council_tax_rebate", "council_tax_benefit_reported"},
+        ),
+    ],
+)
+def test_a_council_tax_value_that_is_not_finite_and_non_negative_fails(
+    table, column, value, failed_columns
+) -> None:
+    """NaN, infinite and negative values fail ``finite_nonnegative``; an
+    amount past its bill, NaN included, also fails its own column."""
+
+    household = _council_tax_households()
+    person = _council_tax_persons()
+    (household if table == "household" else person).loc[1, column] = value
+
+    result = _council_tax_gate(household, person)
+
+    assert not result.passed
+    expected = [
+        _council_tax_failure("council_tax_rebate"),
+        _council_tax_failure("council_tax_benefit_reported", persons=True),
+    ]
+    columns = ("council_tax_rebate", "council_tax_benefit_reported")
+    assert result.failures == (
+        *(
+            text
+            for text, name in zip(expected, columns, strict=True)
+            if name in failed_columns
+        ),
+        _COUNCIL_TAX_NOT_FINITE,
+    )
+    assert result.details["columns"] == {
+        name: name not in failed_columns for name in columns
+    }
+    assert result.details["finite_nonnegative"] is False
+    assert _booleans_only(result.details)
+
+
+def test_a_missing_council_tax_value_reads_as_nan() -> None:
+    household = _council_tax_households()
+    household["council_tax_rebate"] = pd.array(
+        [1200.0, None, 0.0, 0.0], dtype="Float64"
+    )
+
+    result = _council_tax_gate(household)
+
+    assert result.failures == (
+        _council_tax_failure("council_tax_rebate"),
+        _COUNCIL_TAX_NOT_FINITE,
+    )
+
+
+def test_an_excluded_region_household_above_its_council_tax_does_not_fail() -> None:
+    """Northern Ireland's household, which pays no council tax, carries a
+    rebate above its zero bill, and its person reports a reduction above it.
+    Left out with its person, it fails nothing, even once its bill is NaN;
+    held in, it fails every column."""
+
+    household = _council_tax_households()
+    household.loc[3, "council_tax_rebate"] = 75.0
+    person = _council_tax_persons()
+    person.loc[4, "council_tax_benefit_reported"] = 75.0
+
+    assert _passed(_council_tax_gate(household, person))
+    held_in = _council_tax_gate(household, person, excluded_regions=[])
+    assert held_in.failures == (
+        _council_tax_failure("council_tax_rebate"),
+        _council_tax_failure("council_tax_benefit_reported", persons=True),
+    )
+    household.loc[3, "council_tax"] = np.nan
+    assert _passed(_council_tax_gate(household, person))
+    assert not _council_tax_gate(household, person, excluded_regions=[]).passed
+
+
+def test_the_council_tax_check_drops_the_excluded_households_persons() -> None:
+    """Were the Northern Ireland household's person kept, its household id
+    would name no household the check reads and the check would refuse it.
+    Only the excluded households' persons leave: a person whose household
+    is in no table still fails the check by name."""
+
+    assert _passed(_council_tax_gate())
+    person = _council_tax_persons()
+    person.loc[2, "person_household_id"] = 99
+
+    result = _council_tax_gate(person=person)
+
+    assert not result.passed
+    assert result.failures == (
+        f"{_COUNCIL_TAX_STAGE}: {_COUNCIL_TAX_CHECK}: Bounded amounts: a person "
+        "row's person_household_id names no household row",
+    )
+
+
+def test_the_council_tax_check_passes_with_no_household_left_and_says_so() -> None:
+    household = _council_tax_households().iloc[[3]].reset_index(drop=True)
+    household.loc[0, "council_tax_rebate"] = 75.0
+    person = _council_tax_persons().iloc[[4]].reset_index(drop=True)
+
+    result = _council_tax_gate(household, person)
+
+    assert _passed(result), result.failures
+    assert result.details["households_checked"] is False
+    assert set(result.details["columns"].values()) == {True}
+
+
+def _council_tax_refusals():
+    """Declarations and tables the check refuses, each with a fragment of its
+    text."""
+
+    household = _council_tax_households()
+    shared_id = household.copy()
+    # A Great Britain household sharing the Northern Ireland household's id.
+    shared_id.loc[2, "household_id"] = 14
+    yield {}, {"frame": False}, "the check reads the phase's frame"
+    yield {}, {"bill_column": None}, "bill_column must name a column"
+    yield {}, {"bill_column": ""}, "bill_column must name a column"
+    for key in (
+        "household_reduction_columns",
+        "person_reduction_columns",
+        "excluded_regions",
+    ):
+        yield {}, {key: None}, f"{key} must list names"
+        yield {}, {key: "council_tax_rebate"}, f"{key} must list names"
+        yield {}, {key: [13]}, f"{key} must list names"
+    yield (
+        {},
+        {"household_reduction_columns": [], "person_reduction_columns": []},
+        "no amount column is named",
+    )
+    yield {}, {"absolute_tolerance": None}, "absolute_tolerance must be"
+    yield {}, {"absolute_tolerance": -1e-9}, "absolute_tolerance must be"
+    yield {}, {"absolute_tolerance": True}, "absolute_tolerance must be"
+    yield (
+        {"household": household.drop(columns=["council_tax"])},
+        {},
+        "the household table has no council_tax column",
+    )
+    yield (
+        {"household": household.drop(columns=["region"])},
+        {},
+        "the household table must hold one region column",
+    )
+    yield (
+        {"person": _council_tax_persons().drop(columns=["person_household_id"])},
+        {},
+        "the person table must hold one person_household_id column",
+    )
+    yield (
+        {"household": household.assign(council_tax="1200")},
+        {},
+        "household.council_tax is not a numeric column",
+    )
+    yield (
+        {"household": shared_id},
+        {},
+        "household_id must name each household once",
+    )
+    yield (
+        {"household": shared_id},
+        {"excluded_regions": []},
+        "household.household_id must name each row once",
+    )
+
+
+@pytest.mark.parametrize(
+    ("tables", "parameters", "fragment"), list(_council_tax_refusals())
+)
+def test_the_council_tax_check_fails_closed_by_name(
+    tables, parameters, fragment
+) -> None:
+    result = _council_tax_gate(**tables, **parameters)
+
+    assert not result.passed
+    assert len(result.failures) == 1
+    (failure,) = result.failures
+    assert failure.startswith(f"{_COUNCIL_TAX_STAGE}: {_COUNCIL_TAX_CHECK}: ")
+    assert fragment in failure, failure
+    assert _no_digit_beyond(failure), failure
+    assert set(result.details) == {"stage", "check"}
+
+
+def test_council_tax_failure_texts_carry_no_digit() -> None:
+    household = _council_tax_households()
+    household.loc[0, "council_tax_rebate"] = 1234.5
+    person = _council_tax_persons()
+    person.loc[2, "council_tax_benefit_reported"] = np.nan
+
+    result = _council_tax_gate(household, person)
+
+    assert len(result.failures) == 3
+    assert all(_no_digit_beyond(failure) for failure in result.failures)
+
+
+def test_the_council_tax_check_keeps_the_stage_match() -> None:
+    """The check reads no receipt key, but like every stage-health check it
+    refuses a receipt of another stage."""
+
+    result = uk_stage_health_gate(
+        evidence={"stage": "private_rent"},
+        stage=_COUNCIL_TAX_STAGE,
+        check=_COUNCIL_TAX_CHECK,
+        parameters={},
+        frame=_HouseholdsAndPersons(_council_tax_households(), _council_tax_persons()),
+    )
+
+    assert not result.passed
+    assert result.failures == (
+        f"{_COUNCIL_TAX_STAGE}: receipt stage 'private_rent' does not match.",
+    )

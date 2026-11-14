@@ -329,11 +329,16 @@ def _evaluate_calibration_reference_coverage(
 
 #: The stage-health checks that read the phase's frame beside their stage's
 #: receipt: the band donors' check recomputes a capped seating's seats from
-#: the transferred phase's frame, and the copy area check compares each copy
-#: with its parent there (microcosm#931). Every other check reads its receipt
-#: alone and runs without a frame.
+#: the transferred phase's frame, the copy area check compares each copy with
+#: its parent there, and the council-tax check holds each household's
+#: reductions within its bill there (microcosm#931). Every other check reads
+#: its receipt alone and runs without a frame.
 _STAGE_HEALTH_FRAME_CHECKS = frozenset(
-    {"spi_income_band_donor_support", "copy_area_agreement"}
+    {
+        "spi_income_band_donor_support",
+        "copy_area_agreement",
+        "council_tax_reduction_within_bill",
+    }
 )
 
 
@@ -2330,12 +2335,20 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "validation_scope",
                 "support_systems",
                 "columns_by_copy_layer",
+                # The council_tax_reduction_within_bill check (microcosm#931):
+                # the bill, the household and person reduction columns it
+                # holds within the bill, and the regions whose households it
+                # leaves out; its tolerance is absolute_tolerance above.
+                "bill_column",
+                "household_reduction_columns",
+                "person_reduction_columns",
+                "excluded_regions",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),
         needs_frame=False,
-        # The band donors' and the copy area checks read the phase's frame
-        # (microcosm#931).
+        # The band donors', the copy area and the council-tax checks read the
+        # phase's frame (microcosm#931).
         frame_predicate=_stage_health_requires_frame,
         evidence=_stage_health_evidence,
     ),
@@ -2532,6 +2545,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
 #: these instead. test_uk_graph derives the set from the registry and holds
 #: this list to it exactly.
 UK_GATE_REGISTRY_MODULES: tuple[str, ...] = (
+    "microcosm.build.bounded_amounts",
     "microcosm.build.chronicle_epoch",
     "microcosm.build.copy_agreement",
     "microcosm.build.gate_battery",

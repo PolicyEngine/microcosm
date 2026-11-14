@@ -7,7 +7,9 @@ import re
 from collections.abc import Mapping
 
 import numpy as np
+import pandas as pd
 
+from microcosm.build.bounded_amounts import FINITE_NONNEGATIVE, amounts_within_bound
 from microcosm.build.copy_agreement import rows_agree_with_parents
 from microcosm.build.gates import GateResult
 from microcosm.build.stochastic_assignment import binomial_share_tolerance
@@ -32,9 +34,11 @@ def uk_stage_health_gate(
 ) -> GateResult:
     """Evaluate one spine-stage receipt against spec-declared thresholds.
 
-    ``frame`` is the gate phase's frame, which two checks read: the band
-    donor check recomputes a capped seating's seats there, and the copy area
-    check compares each copy with its parent there (microcosm#931).
+    ``frame`` is the gate phase's frame, which three checks read: the band
+    donor check recomputes a capped seating's seats there, the copy area
+    check compares each copy with its parent there, and the council-tax
+    check holds each household's reductions within its bill there
+    (microcosm#931).
     """
 
     if evidence.get("stage") not in {stage, _legacy_receipt_stage(stage)}:
@@ -144,6 +148,8 @@ def uk_stage_health_gate(
         return _area_home_values_gate(stage, evidence, parameters)
     if check == "copy_area_agreement":
         return _copy_area_agreement_gate(stage, evidence, parameters, frame=frame)
+    if check == "council_tax_reduction_within_bill":
+        return _council_tax_reduction_within_bill_gate(stage, parameters, frame=frame)
     return GateResult(
         name="stage_health",
         passed=False,
@@ -5345,6 +5351,149 @@ def _copy_area_agreement_gate(
             f"{stage}: {check}: {layer}: {failure}" for failure in agreement.failures
         )
     details = {"layers": by_layer}
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)
+
+
+#: The council-tax check's parameters that each declare a list of names: the
+#: reduction columns on households and on persons, and the regions whose
+#: households the check leaves out.
+_COUNCIL_TAX_NAME_LISTS = (
+    "household_reduction_columns",
+    "person_reduction_columns",
+    "excluded_regions",
+)
+
+
+def _without_excluded_regions(
+    household: pd.DataFrame, person: pd.DataFrame, regions: tuple[str, ...]
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """The household and person tables without the households whose
+    ``region`` is one of ``regions``, and without those households' persons.
+
+    The household ids are read over the whole table first, so a household
+    left in cannot share an id with one taken out. Refusals name columns
+    only.
+    """
+
+    for entity, table, column in (
+        ("household", household, "household_id"),
+        ("household", household, "region"),
+        ("person", person, "person_household_id"),
+    ):
+        if list(table.columns).count(column) != 1:
+            raise ValueError(f"the {entity} table must hold one {column} column")
+    ids = household["household_id"]
+    if ids.isna().any() or ids.duplicated().any():
+        raise ValueError("household_id must name each household once")
+    excluded = household["region"].isin(list(regions)).to_numpy(dtype=bool)
+    leaves = person["person_household_id"].isin(ids[excluded]).to_numpy(dtype=bool)
+    return household.loc[~excluded], person.loc[~leaves]
+
+
+def _council_tax_reduction_within_bill_gate(
+    stage: str,
+    parameters: Mapping[str, object],
+    *,
+    frame: object | None,
+) -> GateResult:
+    """Each household's council-tax reductions stay within its bill
+    (microcosm#931).
+
+    The check reads the phase's frame, and no receipt key beyond the stage
+    match every stage-health check makes first. The households whose
+    ``region`` is one of ``excluded_regions`` leave first, with the persons
+    whose ``person_household_id`` names them. Then, through the shared
+    :func:`~microcosm.build.bounded_amounts.amounts_within_bound`, each of a
+    household's ``household_reduction_columns``, and each of its
+    ``person_reduction_columns`` summed over its persons, must be at most its
+    ``bill_column`` plus ``absolute_tolerance``, and every value read of the
+    bill and of those columns must be finite and non-negative. A frame with
+    no household left to check passes, and ``households_checked`` says so.
+
+    Its details are booleans: ``households_checked``, one per reduction
+    column under ``columns``, and ``finite_nonnegative``. A refusal's
+    details hold the stage and the check alone. Its texts name the stage,
+    the check and columns or parameters, never an id, a value or a count.
+    """
+
+    check = "council_tax_reduction_within_bill"
+    if frame is None or not hasattr(frame, "table"):
+        return _fail(
+            stage,
+            check,
+            [f"{stage}: {check}: the check reads the phase's frame, which is absent."],
+            {},
+        )
+    bill = parameters.get("bill_column")
+    if not isinstance(bill, str) or not bill:
+        return _fail(
+            stage, check, [f"{stage}: {check}: bill_column must name a column."], {}
+        )
+    names: dict[str, tuple[str, ...]] = {}
+    for key in _COUNCIL_TAX_NAME_LISTS:
+        value = parameters.get(key)
+        # Nonempty strings only: a number would otherwise be read as its digits.
+        if _declared_names(value) is None or not all(
+            isinstance(item, str) and item for item in value
+        ):
+            return _fail(
+                stage, check, [f"{stage}: {check}: {key} must list names."], {}
+            )
+        names[key] = tuple(value)
+    household_columns = names["household_reduction_columns"]
+    person_columns = names["person_reduction_columns"]
+    try:
+        household = frame.table("household")
+        person = frame.table("person")
+    except (KeyError, ValueError):
+        return _fail(
+            stage,
+            check,
+            [f"{stage}: {check}: the phase's frame lacks a household or person table."],
+            {},
+        )
+    try:
+        if names["excluded_regions"]:
+            household, person = _without_excluded_regions(
+                household, person, names["excluded_regions"]
+            )
+        verdicts = amounts_within_bound(
+            {"household": household, "person": person},
+            entity="household",
+            id_column="household_id",
+            bound_column=bill,
+            same_entity_columns=household_columns,
+            member_columns={"person": person_columns},
+            membership_columns={"person": "person_household_id"},
+            absolute_tolerance=parameters.get("absolute_tolerance"),
+        )
+    except ValueError as error:
+        # Both refuse by texts that name tables and columns only.
+        return _fail(stage, check, [f"{stage}: {check}: {error}"], {})
+    failures = [
+        f"{stage}: {check}: a household's {column} is not within its {bill}."
+        for column in household_columns
+        if not verdicts[column]
+    ]
+    failures.extend(
+        f"{stage}: {check}: a household's {column}, summed over its persons, is "
+        f"not within its {bill}."
+        for column in person_columns
+        if not verdicts[column]
+    )
+    columns = (*household_columns, *person_columns)
+    if not verdicts[FINITE_NONNEGATIVE]:
+        failures.append(
+            f"{stage}: {check}: a value read of {bill} or of a reduction column "
+            f"({', '.join(columns)}) is NaN, infinite or negative."
+        )
+    details = {
+        "households_checked": not household.empty,
+        "columns": {column: verdicts[column] for column in columns},
+        FINITE_NONNEGATIVE: verdicts[FINITE_NONNEGATIVE],
+    }
     if failures:
         return _fail(stage, check, failures, details)
     return _pass(stage, check, details)

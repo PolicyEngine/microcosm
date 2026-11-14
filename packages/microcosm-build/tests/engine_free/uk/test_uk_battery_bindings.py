@@ -3083,6 +3083,171 @@ def test_the_band_donor_check_recomputes_a_capped_seating_from_the_phase_frame(
     )
 
 
+# The council-tax reduction check (microcosm#931) holds each household's
+# reductions within its bill on the phase's frame. No packaged gate declares
+# it yet, so these tests declare their own entry; every frame is synthetic.
+
+_COUNCIL_TAX_CHECK = "council_tax_reduction_within_bill"
+_COUNCIL_TAX_STAGE = "council_tax_localise"
+#: The check's own keys; its tolerance is the routed absolute_tolerance.
+_COUNCIL_TAX_KEYS = (
+    "bill_column",
+    "household_reduction_columns",
+    "person_reduction_columns",
+    "excluded_regions",
+)
+
+
+def _council_tax_parameters(**overrides) -> dict[str, object]:
+    return {
+        "stage": _COUNCIL_TAX_STAGE,
+        "check": _COUNCIL_TAX_CHECK,
+        "bill_column": "council_tax",
+        "household_reduction_columns": ["council_tax_rebate"],
+        "person_reduction_columns": ["council_tax_benefit_reported"],
+        "excluded_regions": ["NORTHERN_IRELAND"],
+        "absolute_tolerance": 1e-9,
+        **overrides,
+    }
+
+
+def _council_tax_gates(parameters: dict[str, object]) -> GatesManifest:
+    """One transferred-phase stage-health gate declaring ``parameters``."""
+
+    return GatesManifest.from_mapping(
+        {
+            "version": 1,
+            "country": "uk",
+            "policy": "council-tax check binding test",
+            "phases": ["transferred"],
+            "gates": [
+                {
+                    "id": "uk_council_tax_check_binding_test",
+                    "gate": "stage_health",
+                    "phase": "transferred",
+                    "criticality": "release_blocking",
+                    "parameters": parameters,
+                }
+            ],
+        }
+    )
+
+
+def _council_tax_frame(*, second_reduction: float = 0.0):
+    """A London, a Scottish and a Northern Ireland household, each a benefit
+    unit. The Scottish household's rebate and its person's reported
+    reduction are ``second_reduction``; the Northern Ireland household pays
+    no council tax, and its person reports a reduction."""
+
+    household = pd.DataFrame(
+        {
+            "household_id": np.asarray([1, 2, 3], dtype=np.int64),
+            "region": ["LONDON", "SCOTLAND", "NORTHERN_IRELAND"],
+            "council_tax": [1500.0, 1100.0, 0.0],
+            "council_tax_rebate": [300.0, second_reduction, 0.0],
+        }
+    )
+    person = pd.DataFrame(
+        {
+            "person_id": np.asarray([101, 102, 201, 301], dtype=np.int64),
+            "person_household_id": np.asarray([1, 1, 2, 3], dtype=np.int64),
+            "person_benunit_id": np.asarray([1, 1, 2, 3], dtype=np.int64),
+            "council_tax_benefit_reported": [300.0, 0.0, second_reduction, 75.0],
+        }
+    )
+    benunit = pd.DataFrame({"benunit_id": np.asarray([1, 2, 3], dtype=np.int64)})
+    return uk_national_frame(
+        person=person,
+        benunit=benunit,
+        household=household,
+        time_period="2024",
+        household_weights=[1.0, 1.0, 1.0],
+    )
+
+
+def _council_tax_outcome(parameters: dict[str, object], frame):
+    report = evaluate_phase(
+        _council_tax_gates(parameters),
+        "transferred",
+        EvidenceContext(
+            frame=frame,
+            artifacts={
+                "stage_evidence": {_COUNCIL_TAX_STAGE: {"stage": _COUNCIL_TAX_STAGE}}
+            },
+        ),
+        registry=UK_GATE_REGISTRY,
+    )
+    (only,) = report.outcomes
+    return only
+
+
+def test_the_council_tax_check_reads_the_phase_frame_and_its_keys_route() -> None:
+    """The stage-health binding hands the council-tax check the phase's
+    frame and routes its four keys beside absolute_tolerance, each of which
+    governs the verdict; a misspelt key is refused before any gate runs
+    (microcosm#931)."""
+
+    binding = UK_GATE_REGISTRY["stage_health"]
+    assert binding.requires_frame({"check": _COUNCIL_TAX_CHECK}) is True
+    assert {*_COUNCIL_TAX_KEYS, "absolute_tolerance"} <= binding.parameter_keys
+    validate_gate_parameters(
+        _council_tax_gates(_council_tax_parameters()), UK_GATE_REGISTRY
+    )
+    for key in _COUNCIL_TAX_KEYS:
+        parameters = _council_tax_parameters()
+        parameters[key[:-1]] = parameters.pop(key)
+        with pytest.raises(
+            ValueError,
+            match=rf"'uk_council_tax_check_binding_test'.*'{key[:-1]}'",
+        ):
+            validate_gate_parameters(_council_tax_gates(parameters), UK_GATE_REGISTRY)
+
+    # Without the phase's frame the check is evidence_absent, never a verdict.
+    absent = _council_tax_outcome(_council_tax_parameters(), None)
+    assert absent.status is GateStatus.EVIDENCE_ABSENT
+    assert absent.reason == "missing evidence: frame"
+    # Handed the frame, it holds the reductions within the bill there.
+    passed = _council_tax_outcome(_council_tax_parameters(), _council_tax_frame())
+    assert passed.status is GateStatus.PASSED, passed.result.failures
+    assert passed.result.details == {
+        "stage": _COUNCIL_TAX_STAGE,
+        "check": _COUNCIL_TAX_CHECK,
+        "households_checked": True,
+        "columns": {"council_tax_rebate": True, "council_tax_benefit_reported": True},
+        "finite_nonnegative": True,
+    }
+    above = _council_tax_frame(second_reduction=1100.5)
+    prefix = f"{_COUNCIL_TAX_STAGE}: {_COUNCIL_TAX_CHECK}: a household's "
+    rebate = f"{prefix}council_tax_rebate is not within its council_tax."
+    reported = (
+        f"{prefix}council_tax_benefit_reported, summed over its persons, is not "
+        "within its council_tax."
+    )
+    failed = _council_tax_outcome(_council_tax_parameters(), above)
+    assert failed.status is GateStatus.FAILED
+    assert failed.result.failures == (rebate, reported)
+    # Each key governs the verdict: the declared reduction columns are the
+    # ones held, the excluded regions' households leave, and the bill is the
+    # declared column.
+    for overrides, failures in (
+        ({"household_reduction_columns": []}, (reported,)),
+        ({"person_reduction_columns": []}, (rebate,)),
+    ):
+        outcome = _council_tax_outcome(_council_tax_parameters(**overrides), above)
+        assert outcome.result.failures == failures, overrides
+    held_in = _council_tax_outcome(
+        _council_tax_parameters(excluded_regions=[]), _council_tax_frame()
+    )
+    assert held_in.result.failures == (reported,)
+    other_bill = _council_tax_outcome(
+        _council_tax_parameters(bill_column="council_tax_paid"), _council_tax_frame()
+    )
+    assert other_bill.result.failures == (
+        f"{_COUNCIL_TAX_STAGE}: {_COUNCIL_TAX_CHECK}: Bounded amounts: the "
+        "household table has no council_tax_paid column",
+    )
+
+
 # ---------------------------------------------------------------------------
 # The national line's export in the battery (microcosm#931)
 # ---------------------------------------------------------------------------
