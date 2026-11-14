@@ -238,7 +238,10 @@ def test_wrong_fact_count_refuses_before_either_compiler(prepared):
 def test_current_national_and_local_pins_share_one_reviewed_identity():
     # main (#904) reads one committed pin, ``uk/chronicle_feed.json``, for the
     # national feed and the local census; the full build checks they agree.
-    # The identity is 81caed7, Chronicle main after PolicyEngine/chronicle#436
+    # The identity is 4ce631f, the merge of PolicyEngine/chronicle#439 (ONS's
+    # dwellings by sector, its capital stocks of dwellings and Census 2021
+    # TS054 by MSOA, for microcosm#1524), on top of 81caed7, Chronicle main
+    # after PolicyEngine/chronicle#436
     # (the Scottish Government's second homes and empty properties for
     # microcosm#1095's PR3, B11, with PolicyEngine/chronicle#420's items 12
     # and 13), on top of 8045b13, Chronicle main after PolicyEngine/chronicle#423,
@@ -273,19 +276,19 @@ def test_current_national_and_local_pins_share_one_reviewed_identity():
     assert (
         national.facts_sha256
         == local["facts_sha256"]
-        == ("211d2dc3eaa7d0db607c911ffef63eb5039abcd0f952b9b4176c9a4c2eeb4363")
+        == ("c294ba2013d0ff61b150589640ec63add8563390057b769447c0241661ad5a1c")
     )
     assert (
         national.manifest_sha256
         == local["manifest_sha256"]
-        == ("205a2a4dcc79fba826c5b9fea17074abb01b0d4973634a4125a11a5f1bf21272")
+        == ("74e564fba1c4589e15e4bb19138414c46e4db316486b5c0d7ccbcccb211c52df")
     )
     assert (
         national.source_commit
         == local["source_commit"]
-        == "81caed7576b4235017b7b2dc1b4b3251b3a7418a"
+        == "4ce631f5ad690fb85007193273ee85a873b824d3"
     )
-    assert national.fact_row_count == local["fact_row_count"] == 2094003
+    assert national.fact_row_count == local["fact_row_count"] == 2160233
 
 
 def test_chronicle_source_codec_validates_directory_manifest(tmp_path):

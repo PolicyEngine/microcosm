@@ -13139,10 +13139,19 @@ def test_an_evidence_run_finishes_its_build_in_the_evidence_release(
         assert "--evidence" not in command
 
 
-def _gate_evidence_release_dir(builder, monkeypatch, tmp_path, *, coverage):
-    """A release dir with the contract files a manifest build hashes."""
+def _gate_evidence_release_dir(
+    builder, monkeypatch, tmp_path, *, coverage, release: str | None = None
+):
+    """A release dir with the contract files a manifest build hashes.
+
+    It is named after the build (the tagged layout), or after ``release``
+    when given, as a US build's directory is since microcosm#1570.
+    """
     release_id = "populace-us-2024-abcdef1-20260923"
-    release_dir = tmp_path / "release" / release_id
+    if release is None:
+        release_dir = tmp_path / "release" / release_id
+    else:
+        release_dir = tmp_path / "releases" / release
     release_dir.mkdir(parents=True)
     artifact_root = tmp_path / "artifacts"
     artifact_root.mkdir()
@@ -13366,6 +13375,109 @@ def test_build_manifests_lists_scf_education_debt_fits_only_with_the_flag(
     _check_release_manifest(manifest, release_id, failures)
     _check_local_artifact_hashes(release_dir, manifest, failures)
     assert failures == []
+
+
+def test_build_folder_publisher_publishes_scf_education_debt_fits(
+    monkeypatch, tmp_path
+) -> None:
+    """microcosm#1074: a --scf-education-debt build of the national release
+    keeps both fit tables through its last step, which rewrites the release
+    directory into the build-folder layout: each is still a diagnostics
+    artifact, with its key as its role and no revision. The publisher's
+    preflight then reads both from the release directory, and the request it
+    hands the emitter carries each with that role and its checksum, so both
+    land in the build's folder, releases/<release>/<build>/."""
+    from microcosm.build import release_publication
+    from microcosm.data import release as release_module
+    from microcosm.data.contract import (
+        US_NATIONAL_RELEASE_ID,
+        _check_local_artifact_hashes,
+        _check_release_manifest,
+    )
+
+    builder = _load_builder_module()
+    build, release_dir, artifact_root = _gate_evidence_release_dir(
+        builder, monkeypatch, tmp_path, coverage={}, release=US_NATIONAL_RELEASE_ID
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_scf_education_debt_fit_table",
+        lambda frame: {"households": {"share_with_federal_education_debt": 0.2}},
+    )
+    # The two tables differ, as _main's do, so a swap shows in the checksums.
+    for filename, weights in (
+        (
+            builder.US_SCF_EDUCATION_DEBT_FIT_FILENAME,
+            "pre_calibration_household_weights",
+        ),
+        (
+            builder.US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME,
+            "calibrated_household_weights",
+        ),
+    ):
+        builder._write_us_scf_education_debt_fit(
+            release_dir / filename, object(), weights=weights
+        )
+    sha256 = {
+        filename: hashlib.sha256((release_dir / filename).read_bytes()).hexdigest()
+        for filename in SCF_EDUCATION_DEBT_FIT_ARTIFACT_PATHS.values()
+    }
+    assert len(set(sha256.values())) == 2
+    builder._build_manifests(
+        **_minimal_manifest_kwargs(builder, build, release_dir, artifact_root),
+        scf_education_debt=True,
+    )
+    _, validated = _finish_with_recorded_contract(
+        builder, monkeypatch, release_dir, build=build, artifact_root=artifact_root
+    )
+    assert validated == []
+
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert (manifest["release"], manifest["build"]) == (US_NATIONAL_RELEASE_ID, build)
+    assert {
+        key: manifest["artifacts"].get(key)
+        for key in SCF_EDUCATION_DEBT_FIT_ARTIFACT_PATHS
+    } == {
+        key: {
+            "kind": "diagnostics",
+            "path": filename,
+            "repo_id": builder.REPO_ID,
+            "sha256": sha256[filename],
+            "role": key,
+        }
+        for key, filename in SCF_EDUCATION_DEBT_FIT_ARTIFACT_PATHS.items()
+    }
+    failures: list[str] = []
+    _check_release_manifest(manifest, US_NATIONAL_RELEASE_ID, failures)
+    _check_local_artifact_hashes(release_dir, manifest, failures)
+    assert failures == []
+
+    # The preflight's release contract also reads evidence a full run writes
+    # and this fixture lacks, so it is recorded here; the checks above are
+    # the contract's checks of the manifest and its hashes.
+    contracts: list[tuple[Path, Path | None]] = []
+
+    def certified(directory, *, artifact_root=None, **kwargs):
+        contracts.append((Path(directory), artifact_root))
+        return []
+
+    monkeypatch.setattr(release_module, "validate_release_dir", certified)
+    prepared = release_module.prepare_build_folder_release(
+        release_dir, artifact_root=artifact_root, repository=builder.REPO_ID
+    )
+    assert contracts == [(release_dir, artifact_root)]
+    request = release_publication.publication_request(prepared, make_current=False)
+    assert (request.release, request.build) == (US_NATIONAL_RELEASE_ID, build)
+    published = {
+        item.name: (item.role, item.local_path, item.sha256) for item in request.files
+    }
+    assert {
+        filename: published.get(filename)
+        for filename in SCF_EDUCATION_DEBT_FIT_ARTIFACT_PATHS.values()
+    } == {
+        filename: (key, release_dir / filename, sha256[filename])
+        for key, filename in SCF_EDUCATION_DEBT_FIT_ARTIFACT_PATHS.items()
+    }
 
 
 def test_build_manifests_refuses_a_scf_education_debt_build_missing_a_fit(

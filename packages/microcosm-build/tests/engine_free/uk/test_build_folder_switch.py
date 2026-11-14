@@ -37,6 +37,7 @@ from test_support.microcosm_build.build_folder_switch import (
     sha256,
     uk_repository,
 )
+from test_support.microcosm_data.build_folders import register_uk_local_release
 
 #: The stable release the June 2023 build moves into, when it moves.
 JUNE_2023_RELEASE = "populace-uk-2023"
@@ -1096,6 +1097,31 @@ def test_delete_old_layout_reports_a_deleted_folder_no_tag_names(hub, capsys):
     # The June 2023 build's own folder is named by its tag, and the national
     # release's folder held copies of tagged builds.
     assert report.get("untagged_folders") == [untagged]
+
+
+def test_delete_old_layout_reports_a_local_area_folder_the_registry_does_not_name(
+    hub, capsys, monkeypatch
+):
+    """A folder named by a UK local-area release held copies of tagged builds
+    only if the registry names the release. Until it does, no build of that
+    name has published, so the report lists a folder no tag names."""
+    switched(hub, capsys)
+    release = "microcosm-uk-2024-25-local-k55000"
+    folder = f"releases/{release}"
+    hub.seed({f"{folder}/release_manifest.json": b"{}"}, date=LATER)
+
+    exit_code, report, error_output = run_step(hub, capsys, DELETE_STEP)
+
+    assert exit_code == 0, error_output
+    assert f"{folder}/release_manifest.json" in report["delete"]
+    assert folder in report["untagged_folders"]
+
+    register_uk_local_release(monkeypatch, release)
+    exit_code, report, error_output = run_step(hub, capsys, DELETE_STEP)
+
+    assert exit_code == 0, error_output
+    assert f"{folder}/release_manifest.json" in report["delete"]
+    assert folder not in report["untagged_folders"]
 
 
 def test_delete_old_layout_refuses_an_invalid_releases_json(hub, capsys):

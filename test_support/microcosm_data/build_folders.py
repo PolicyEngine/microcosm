@@ -15,6 +15,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from microcosm.data.registry import REGISTRY, DatasetSpec
+
 #: A calibration attempt ID, the build every UK fixture names by default.
 UK_NATIONAL_BUILD = "uk-frs-calibration-attempt-20260920T120000Z-deadbeef"
 UK_DENSE_BUILD = "uk-local-candidate-f100-s42-20260920T120000Z-deadbeef"
@@ -22,6 +24,33 @@ UK_LOCAL_BUILD = "uk-local-candidate-k55000-20260920T120000Z-deadbeef"
 
 #: The fields that named the build before the build-folder layout.
 _RETIRED_BUILD_FIELDS = ("build_id", "attempt_id", "cut_tag")
+
+
+def uk_local_release_spec(release: str) -> DatasetSpec:
+    """A registry entry that names the UK local-area release ``release``.
+
+    The pull request that authorizes a ``k``'s first publication adds such an
+    entry, and ``publishes_to_build_folder`` admits the release from then on.
+    """
+    line = release.removeprefix("microcosm-uk-2024-25-")
+    return DatasetSpec(
+        country="uk",
+        year=2025,
+        variant=line,
+        hf_repo="policyengine/populace-uk-private",
+        filename=f"microcosm_uk_2024_25_{line.replace('-', '_')}.h5",
+        engine_module="policyengine_uk.data",
+        engine_class="UKSingleYearDataset",
+        engine_package="policyengine-uk",
+        release=release,
+    )
+
+
+def register_uk_local_release(monkeypatch: Any, release: str) -> DatasetSpec:
+    """Name ``release`` in the registry for one test, and return its entry."""
+    spec = uk_local_release_spec(release)
+    monkeypatch.setitem(REGISTRY, spec.key, spec)
+    return spec
 
 
 def artifact_role(key: str, kind: object) -> str:

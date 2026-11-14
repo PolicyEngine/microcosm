@@ -21,10 +21,14 @@ from microcosm.build.us_runtime.acs_transfer import (
     _pattern_name,
     _pattern_seed,
 )
+from microcosm.build.us_runtime.medicaid_take_up import US_MEDICAID_TAKE_UP_VARIABLE
 from microcosm.build.us_runtime.multispine_pool import POOL_RANDOM_SEED
 from microcosm.build.us_runtime.puf_source_agi import (
     PUF_AGGREGATE_DISAGGREGATION_SEED,
 )
+from microcosm.build.us_runtime.snap_take_up import US_SNAP_TAKE_UP_OUTPUT_COLUMN
+from microcosm.build.us_runtime.ssi_take_up import US_SSI_TAKE_UP_OUTPUT_COLUMNS
+from microcosm.build.us_runtime.take_up_contract import seeded_take_up_programs
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -268,6 +272,7 @@ def test_audited_source_manifest_is_independent_and_total() -> None:
         "manual_seed",
         "PCG64",
         "_stable_unit_draws",
+        "stable_identity_uniforms",
     )
     for site_id, relative in AUDITED_SOURCE_BY_SITE.items():
         source = (root / relative).read_text(encoding="utf-8")
@@ -276,7 +281,12 @@ def test_audited_source_manifest_is_independent_and_total() -> None:
             relative.split("/src/", maxsplit=1)[1].removesuffix(".py").replace("/", ".")
         )
         site = LEGACY_V1_PROTOCOL.site(site_id)
-        assert module in kernel_by_id[site.kernel].source_modules, site_id
+        source_modules = kernel_by_id[site.kernel].source_modules
+        assert module in source_modules, site_id
+        if "stable_identity_uniforms" in source:
+            # The shared helper computes the site's draw, so the kernel
+            # attests its source too (microcosm#1585).
+            assert "microcosm.build.stochastic_assignment" in source_modules, site_id
 
 
 def test_exact_blake2b_salts_keys_candidates_and_absence_conditions() -> None:
@@ -323,6 +333,26 @@ def test_exact_blake2b_salts_keys_candidates_and_absence_conditions() -> None:
             "big",
         )
         assert actual == expected
+
+
+def test_take_up_ledger_salts_are_the_variables_the_draws_use() -> None:
+    """Each take-up site's salt is the variable its draw is salted with; the
+    TANF site recorded ``takes_up_tanf`` (microcosm#1585). The generic
+    seeder's sites come from the take-up contract, one per seeded program."""
+    sites = {
+        program.variable.removeprefix("takes_up_").removesuffix("_if_eligible")
+        + "_take_up_assignment": program.variable
+        for program in seeded_take_up_programs()
+    }
+    sites |= {
+        "medicaid_take_up_assignment": US_MEDICAID_TAKE_UP_VARIABLE,
+        "snap_state_take_up_assignment": US_SNAP_TAKE_UP_OUTPUT_COLUMN,
+        "ssi_take_up_assignment": US_SSI_TAKE_UP_OUTPUT_COLUMNS[0],
+    }
+    assert {"tanf_take_up_assignment", "eitc_take_up_assignment"} <= set(sites)
+    for site_id, variable in sites.items():
+        material = LEGACY_V1_PROTOCOL.site(site_id).seed_material
+        assert f"literal_salt={variable}" in material, (site_id, variable)
 
 
 def test_adult_tail_and_live_puf_orders_are_literal() -> None:

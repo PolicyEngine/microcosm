@@ -28,13 +28,14 @@ rows; every physical row of one source household shares one unit key.
 
 from __future__ import annotations
 
-import hashlib
 import math
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 import numpy as np
+
+from microcosm.build.holdout import hash_holdout_uniform as hash_uniform
 
 __all__ = [
     "HOLDOUT_FRACTION",
@@ -66,25 +67,8 @@ TARGET_SPLIT_HOLDOUT_SALT = "microcosm.us.target_split.v1.holdout"
 SEALED_FRACTION = 0.05
 HOLDOUT_FRACTION = 0.10
 
-_HASH_UNIFORM_SCALE = float(2**64)
 _VINTAGE_TOKEN = re.compile(r"^(?:(?:ty|cy|fy|v|oep)\d{4}|month\d{4}_\d{1,2})$")
 _HEX16_TOKEN = re.compile(r"^[0-9a-f]{16}$")
-
-
-def hash_uniform(key: str, *, salt: str) -> float:
-    """A key's deterministic uniform draw on ``[0, 1)``.
-
-    ``sha256(salt + "\\x1f" + key)``, first 8 bytes big-endian, divided by
-    ``2**64`` — byte-identical to
-    ``microcosm.build.holdout.hash_holdout_uniform``. The draw depends only on
-    the key and the salt, never on which other keys exist or their order.
-    """
-    if not isinstance(key, str) or not key:
-        raise ValueError(f"hash key must be a non-empty string, got {key!r}.")
-    if not isinstance(salt, str) or not salt:
-        raise ValueError(f"hash salt must be a non-empty string, got {salt!r}.")
-    digest = hashlib.sha256(f"{salt}\x1f{key}".encode()).digest()
-    return int.from_bytes(digest[:8], "big") / _HASH_UNIFORM_SCALE
 
 
 def target_split_group_key(name: str, hierarchy_parent: str | None = None) -> str:
@@ -347,11 +331,10 @@ def arm_initial_weights(
 
 def kish_ess(weights: np.ndarray) -> float:
     """Kish effective sample size ``(sum w)^2 / sum w^2`` over rows."""
-    w = np.asarray(weights, dtype=np.float64)
-    if not np.isfinite(w).all() or (w < 0).any():
-        raise ValueError("weights must be finite and non-negative.")
-    denominator = float(np.square(w).sum())
-    return 0.0 if denominator == 0.0 else float(w.sum() ** 2 / denominator)
+    # Imported here: microcosm.calibrate.solve imports torch.
+    from microcosm.calibrate.solve import effective_sample_size
+
+    return effective_sample_size(weights)
 
 
 def distinct_unit_ess(weights: np.ndarray, unit_codes: Iterable) -> float:
