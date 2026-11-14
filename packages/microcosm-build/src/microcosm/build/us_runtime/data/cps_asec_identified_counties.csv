@@ -1,0 +1,1193 @@
+asec_year,state_fips,county_code,county_name,single_county_micropolitan,entire_county_guarantee,source_url,source_sha256
+2023,01,003,Baldwin,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,01,081,Lee,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,01,097,Mobile,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,04,013,Maricopa,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,04,019,Pima,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,04,021,Pinal,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,04,025,Yavapai,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,04,027,Yuma,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,06,001,Alameda,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,06,007,Butte,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,06,019,Fresno,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,06,029,Kern,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,06,031,Kings,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,06,037,Los Angeles,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,06,053,Monterey,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,06,059,Orange,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,06,067,Sacramento,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,06,073,San Diego,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,06,075,San Francisco,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,06,079,San Luis Obispo,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,06,081,San Mateo,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,06,083,Santa Barbara,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,06,087,Santa Cruz,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,06,089,Shasta,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,06,095,Solano,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,06,097,Sonoma,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,06,099,Stanislaus,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,06,107,Tulare,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,06,111,Ventura,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,08,013,Boulder,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,08,031,Denver,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,08,059,Jefferson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,08,069,Larimer,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,08,123,Weld,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,09,001,Fairfield,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,09,005,Litchfield,true,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,09,009,New Haven,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,09,011,New London,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,09,015,Windham,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,10,001,Kent,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,10,003,New Castle,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,10,005,Sussex,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,11,001,District of Columbia,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,12,005,Bay,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,12,009,Brevard,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,12,011,Broward,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,12,019,Clay,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,12,021,Collier,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,12,033,Escambia,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,12,053,Hernando,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,12,057,Hillsborough,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,12,069,Lake,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,12,071,Lee,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,12,083,Marion,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,12,085,Martin,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,12,086,Miami-Dade,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,12,095,Orange,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,12,099,Palm Beach,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,12,101,Pasco,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,12,103,Pinellas,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,12,105,Polk,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,12,109,St. Johns,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,12,111,St. Lucie,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,12,113,Santa Rosa,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,13,015,Bartow,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,13,045,Carroll,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,13,057,Cherokee,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,13,063,Clayton,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,13,077,Coweta,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,13,097,Douglas,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,13,113,Fayette,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,13,117,Forsythe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,13,135,Gwinnett,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,13,139,Hall,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,13,151,Henry,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,13,223,Paulding,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,15,003,Honolulu,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,17,097,Lake,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,17,111,McHenry,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,17,119,Madison,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,17,163,St. Clair,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,17,179,Tazewell,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,18,019,Clark,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,18,039,Elkhart,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,18,063,Hendricks,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,18,081,Johnson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,18,089,Lake,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,18,105,Monroe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,18,141,St. Joseph,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,18,157,Tippecanoe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,19,103,Johnson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,19,113,Linn,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,19,163,Scott,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,20,091,Johnson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,20,173,Sedgwick,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,21,015,Boone,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,21,067,Fayette,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,21,111,Jefferson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,21,117,Kenton,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,22,005,Ascension,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,22,033,East Baton Rouge,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,22,051,Jefferson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,22,063,Livingston,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,22,071,Orleans,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,22,073,Ouachita,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,22,103,St. Tammany,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,23,001,Androscoggin,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,23,005,Cumberland,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,23,011,Kennebec,true,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,23,019,Penobscot,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,24,003,Anne Arundel,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,24,013,Carroll,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,24,015,Cecil,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,24,017,Charles,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,24,025,Harford,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,24,031,Montgomery,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,24,033,Prince Georges,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,24,037,St. Mary’s,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,24,510,Baltimore City,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,25,001,Barnstable,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,25,005,Bristol,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,25,013,Hampden,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,25,015,Hampshire,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,25,017,Middlesex,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,25,023,Plymouth,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,25,025,Suffolk,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,25,027,Worcester,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,26,005,Allegan,true,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,26,021,Berrien,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,26,025,Calhoun,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,26,049,Genesee,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,26,075,Jackson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,26,081,Kent,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,26,093,Livingston,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,26,099,Macomb,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,26,115,Monroe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,26,121,Muskegon,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,26,125,Oakland,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,26,145,Saginaw,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,26,161,Washtenaw,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,26,163,Wayne,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,27,003,Anoka,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,27,123,Ramsey,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,27,139,Scott,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,27,163,Washington,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,27,171,Wright,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,29,071,Franklin,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,29,099,Jefferson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,29,189,St. Louis,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,30,111,Yellowstone,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,31,055,Douglas,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,32,003,Clark,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,33,011,Hillsborough,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,33,013,Merrimack,true,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,33,015,Rockingham,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,33,017,Strafford,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,34,003,Bergen,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,34,005,Burlington,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,34,007,Camden,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,34,011,Cumberland,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,34,013,Essex,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,34,017,Hudson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,34,019,Hunterdon,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,34,021,Mercer,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,34,023,Middlesex,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,34,027,Morris,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,34,031,Passaic,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,34,035,Somerset,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,34,037,Sussex,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,34,039,Union,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,35,001,Bernalillo,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,35,013,Dona Ana,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,35,045,San Juan,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,35,049,Santa Fe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,36,005,Bronx,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,36,045,Jefferson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,36,047,Kings,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,36,055,Monroe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,36,059,Nassau,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,36,061,New York,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,36,067,Onondaga,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,36,069,Ontario,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,36,071,Orange,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,36,081,Queens,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,36,085,Richmond,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,36,087,Rockland,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,36,091,Saratoga,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,36,103,Suffolk,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,36,119,Westchester,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,37,001,Alamance,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,37,021,Buncombe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,37,057,Davidson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,37,067,Forsyth,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,37,119,Mecklenburg,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,37,133,Onslow,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,37,147,Pitt,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,37,155,Robeson,true,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,37,159,Rowan,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,37,179,Union,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,37,191,Wayne,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,39,025,Clermont,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,39,057,Greene,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,39,085,Lake,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,39,089,Licking,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,39,095,Lucas,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,39,103,Medina,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,39,109,Miami,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,39,113,Montgomery,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,39,133,Portage,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,39,153,Summit,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,41,017,Deschutes,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,41,029,Jackson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,41,039,Lane,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,42,003,Allegheny,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,42,007,Beaver,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,42,011,Berks,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,42,017,Bucks,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,42,019,Butler,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,42,021,Cambria,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,42,029,Chester,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,42,043,Dauphin,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,42,045,Delaware,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,42,049,Erie,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,42,055,Franklin,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,42,071,Lancaster,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,42,081,Lycoming,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,42,085,Mercer,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,42,089,Monroe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,42,091,Montgomery,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,42,101,Philadelphia,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,42,107,Schuylkill,true,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,42,125,Washington,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,42,129,Westmoreland,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,42,133,York,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,45,041,Florence,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,45,051,Horry,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,45,083,Spartanburg,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,45,091,York,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,47,009,Blount,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,47,093,Knox,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,47,125,Montgomery,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,47,165,Sumner,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,47,189,Wilson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,48,041,Brazos,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,48,061,Cameron,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,48,135,Ector,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,48,139,Ellis,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,48,181,Grayson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,48,183,Gregg,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,48,215,Hidalgo,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,48,251,Johnson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,48,303,Lubbock,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,48,309,McLennan,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,48,423,Smith,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,48,441,Taylor,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,48,479,Webb,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,48,485,Wichita,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,49,053,Washington,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,51,013,Arlington,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,51,041,Chesterfield,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,51,087,Henrico,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,51,107,Loudoun,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,51,153,Prince William,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,51,177,Spotsylvania,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,51,179,Stafford,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,51,550,Chesapeake City,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,51,700,Newport News City,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,51,710,Norfolk City,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,51,760,Richmond City,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,51,810,Virginia Beach City,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,53,057,Skagit,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,54,039,Kanawha,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,55,059,Kenosha,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,55,073,Marathon,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,55,101,Racine,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,55,105,Rock,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2023,55,139,Winnebago,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf,54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d
+2024,01,003,Baldwin,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,01,081,Lee,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,01,097,Mobile,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,04,013,Maricopa,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,04,019,Pima,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,04,021,Pinal,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,04,025,Yavapai,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,04,027,Yuma,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,06,001,Alameda,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,06,007,Butte,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,06,019,Fresno,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,06,029,Kern,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,06,031,Kings,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,06,037,Los Angeles,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,06,053,Monterey,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,06,059,Orange,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,06,067,Sacramento,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,06,073,San Diego,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,06,075,San Francisco,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,06,079,San Luis Obispo,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,06,081,San Mateo,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,06,083,Santa Barbara,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,06,087,Santa Cruz,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,06,089,Shasta,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,06,095,Solano,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,06,097,Sonoma,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,06,099,Stanislaus,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,06,107,Tulare,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,06,111,Ventura,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,08,013,Boulder,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,08,031,Denver,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,08,059,Jefferson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,08,069,Larimer,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,08,123,Weld,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,09,001,Fairfield,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,09,005,Litchfield,true,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,09,009,New Haven,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,09,011,New London,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,09,015,Windham,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,10,001,Kent,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,10,003,New Castle,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,10,005,Sussex,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,11,001,District of Columbia,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,12,005,Bay,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,12,009,Brevard,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,12,011,Broward,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,12,019,Clay,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,12,021,Collier,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,12,033,Escambia,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,12,053,Hernando,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,12,057,Hillsborough,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,12,069,Lake,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,12,071,Lee,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,12,083,Marion,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,12,085,Martin,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,12,086,Miami-Dade,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,12,095,Orange,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,12,099,Palm Beach,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,12,101,Pasco,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,12,103,Pinellas,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,12,105,Polk,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,12,109,St. Johns,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,12,111,St. Lucie,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,12,113,Santa Rosa,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,13,015,Bartow,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,13,045,Carroll,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,13,057,Cherokee,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,13,063,Clayton,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,13,077,Coweta,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,13,097,Douglas,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,13,113,Fayette,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,13,117,Forsythe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,13,135,Gwinnett,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,13,139,Hall,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,13,151,Henry,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,13,223,Paulding,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,15,003,Honolulu,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,17,097,Lake,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,17,111,McHenry,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,17,119,Madison,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,17,163,St. Clair,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,17,179,Tazewell,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,18,019,Clark,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,18,039,Elkhart,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,18,063,Hendricks,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,18,081,Johnson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,18,089,Lake,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,18,105,Monroe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,18,141,St. Joseph,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,18,157,Tippecanoe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,19,103,Johnson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,19,113,Linn,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,19,163,Scott,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,20,091,Johnson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,20,173,Sedgwick,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,21,015,Boone,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,21,067,Fayette,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,21,111,Jefferson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,21,117,Kenton,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,22,005,Ascension,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,22,033,East Baton Rouge,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,22,051,Jefferson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,22,063,Livingston,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,22,071,Orleans,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,22,073,Ouachita,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,22,103,St. Tammany,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,23,001,Androscoggin,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,23,005,Cumberland,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,23,011,Kennebec,true,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,23,019,Penobscot,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,24,003,Anne Arundel,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,24,013,Carroll,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,24,015,Cecil,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,24,017,Charles,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,24,025,Harford,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,24,031,Montgomery,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,24,033,Prince Georges,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,24,037,St. Mary’s,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,24,510,Baltimore City,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,25,001,Barnstable,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,25,005,Bristol,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,25,013,Hampden,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,25,015,Hampshire,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,25,017,Middlesex,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,25,023,Plymouth,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,25,025,Suffolk,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,25,027,Worcester,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,26,005,Allegan,true,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,26,021,Berrien,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,26,025,Calhoun,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,26,049,Genesee,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,26,075,Jackson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,26,081,Kent,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,26,093,Livingston,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,26,099,Macomb,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,26,115,Monroe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,26,121,Muskegon,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,26,125,Oakland,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,26,145,Saginaw,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,26,161,Washtenaw,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,26,163,Wayne,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,27,003,Anoka,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,27,123,Ramsey,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,27,139,Scott,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,27,163,Washington,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,27,171,Wright,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,29,071,Franklin,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,29,099,Jefferson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,29,189,St. Louis,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,30,111,Yellowstone,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,31,055,Douglas,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,32,003,Clark,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,33,011,Hillsborough,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,33,013,Merrimack,true,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,33,015,Rockingham,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,33,017,Strafford,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,34,003,Bergen,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,34,005,Burlington,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,34,007,Camden,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,34,011,Cumberland,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,34,013,Essex,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,34,017,Hudson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,34,019,Hunterdon,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,34,021,Mercer,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,34,023,Middlesex,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,34,027,Morris,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,34,031,Passaic,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,34,035,Somerset,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,34,037,Sussex,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,34,039,Union,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,35,001,Bernalillo,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,35,013,Dona Ana,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,35,045,San Juan,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,35,049,Santa Fe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,36,005,Bronx,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,36,045,Jefferson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,36,047,Kings,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,36,055,Monroe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,36,059,Nassau,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,36,061,New York,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,36,067,Onondaga,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,36,069,Ontario,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,36,071,Orange,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,36,081,Queens,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,36,085,Richmond,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,36,087,Rockland,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,36,091,Saratoga,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,36,103,Suffolk,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,36,119,Westchester,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,37,001,Alamance,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,37,021,Buncombe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,37,057,Davidson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,37,067,Forsyth,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,37,119,Mecklenburg,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,37,133,Onslow,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,37,147,Pitt,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,37,155,Robeson,true,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,37,159,Rowan,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,37,179,Union,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,37,191,Wayne,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,39,025,Clermont,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,39,057,Greene,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,39,085,Lake,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,39,089,Licking,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,39,095,Lucas,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,39,103,Medina,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,39,109,Miami,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,39,113,Montgomery,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,39,133,Portage,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,39,153,Summit,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,41,017,Deschutes,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,41,029,Jackson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,41,039,Lane,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,42,003,Allegheny,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,42,007,Beaver,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,42,011,Berks,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,42,017,Bucks,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,42,019,Butler,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,42,021,Cambria,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,42,029,Chester,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,42,043,Dauphin,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,42,045,Delaware,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,42,049,Erie,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,42,055,Franklin,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,42,071,Lancaster,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,42,081,Lycoming,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,42,085,Mercer,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,42,089,Monroe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,42,091,Montgomery,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,42,101,Philadelphia,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,42,107,Schuylkill,true,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,42,125,Washington,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,42,129,Westmoreland,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,42,133,York,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,45,041,Florence,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,45,051,Horry,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,45,083,Spartanburg,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,45,091,York,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,47,009,Blount,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,47,093,Knox,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,47,125,Montgomery,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,47,165,Sumner,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,47,189,Wilson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,48,041,Brazos,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,48,061,Cameron,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,48,135,Ector,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,48,139,Ellis,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,48,181,Grayson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,48,183,Gregg,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,48,215,Hidalgo,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,48,251,Johnson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,48,303,Lubbock,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,48,309,McLennan,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,48,423,Smith,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,48,441,Taylor,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,48,479,Webb,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,48,485,Wichita,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,49,053,Washington,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,51,013,Arlington,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,51,041,Chesterfield,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,51,087,Henrico,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,51,107,Loudoun,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,51,153,Prince William,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,51,177,Spotsylvania,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,51,179,Stafford,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,51,550,Chesapeake City,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,51,700,Newport News City,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,51,710,Norfolk City,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,51,760,Richmond City,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,51,810,Virginia Beach City,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,53,057,Skagit,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,54,039,Kanawha,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,55,059,Kenosha,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,55,073,Marathon,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,55,101,Racine,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,55,105,Rock,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2024,55,139,Winnebago,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf,650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d
+2025,01,003,Baldwin,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,01,081,Lee,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,01,097,Mobile,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,04,013,Maricopa,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,04,019,Pima,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,04,021,Pinal,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,04,025,Yavapai,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,04,027,Yuma,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,06,001,Alameda,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,06,007,Butte,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,06,019,Fresno,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,06,029,Kern,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,06,031,Kings,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,06,037,Los Angeles,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,06,053,Monterey,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,06,059,Orange,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,06,067,Sacramento,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,06,073,San Diego,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,06,075,San Francisco,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,06,079,San Luis Obispo,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,06,081,San Mateo,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,06,083,Santa Barbara,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,06,087,Santa Cruz,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,06,089,Shasta,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,06,095,Solano,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,06,097,Sonoma,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,06,099,Stanislaus,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,06,107,Tulare,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,06,111,Ventura,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,08,013,Boulder,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,08,031,Denver,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,08,059,Jefferson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,08,069,Larimer,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,08,123,Weld,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,09,001,Fairfield,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,09,005,Litchfield,true,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,09,009,New Haven,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,09,011,New London,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,09,015,Windham,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,10,001,Kent,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,10,003,New Castle,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,10,005,Sussex,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,11,001,District of Columbia,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,12,005,Bay,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,12,009,Brevard,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,12,011,Broward,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,12,019,Clay,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,12,021,Collier,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,12,033,Escambia,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,12,053,Hernando,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,12,057,Hillsborough,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,12,069,Lake,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,12,071,Lee,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,12,083,Marion,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,12,085,Martin,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,12,086,Miami-Dade,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,12,095,Orange,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,12,099,Palm Beach,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,12,101,Pasco,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,12,103,Pinellas,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,12,105,Polk,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,12,109,St. Johns,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,12,111,St. Lucie,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,12,113,Santa Rosa,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,13,015,Bartow,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,13,045,Carroll,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,13,057,Cherokee,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,13,063,Clayton,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,13,077,Coweta,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,13,097,Douglas,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,13,113,Fayette,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,13,117,Forsythe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,13,135,Gwinnett,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,13,139,Hall,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,13,151,Henry,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,13,223,Paulding,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,15,003,Honolulu,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,17,097,Lake,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,17,111,McHenry,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,17,119,Madison,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,17,163,St. Clair,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,17,179,Tazewell,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,18,019,Clark,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,18,039,Elkhart,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,18,063,Hendricks,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,18,081,Johnson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,18,089,Lake,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,18,105,Monroe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,18,141,St. Joseph,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,18,157,Tippecanoe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,19,103,Johnson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,19,113,Linn,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,19,163,Scott,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,20,091,Johnson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,20,173,Sedgwick,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,21,015,Boone,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,21,067,Fayette,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,21,111,Jefferson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,21,117,Kenton,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,22,005,Ascension,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,22,033,East Baton Rouge,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,22,051,Jefferson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,22,063,Livingston,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,22,071,Orleans,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,22,073,Ouachita,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,22,103,St. Tammany,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,23,001,Androscoggin,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,23,005,Cumberland,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,23,011,Kennebec,true,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,23,019,Penobscot,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,24,003,Anne Arundel,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,24,013,Carroll,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,24,015,Cecil,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,24,017,Charles,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,24,025,Harford,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,24,031,Montgomery,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,24,033,Prince Georges,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,24,037,St. Mary’s,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,24,510,Baltimore City,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,25,001,Barnstable,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,25,005,Bristol,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,25,013,Hampden,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,25,015,Hampshire,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,25,017,Middlesex,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,25,023,Plymouth,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,25,025,Suffolk,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,25,027,Worcester,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,26,005,Allegan,true,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,26,021,Berrien,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,26,025,Calhoun,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,26,049,Genesee,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,26,075,Jackson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,26,081,Kent,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,26,093,Livingston,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,26,099,Macomb,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,26,115,Monroe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,26,121,Muskegon,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,26,125,Oakland,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,26,145,Saginaw,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,26,161,Washtenaw,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,26,163,Wayne,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,27,003,Anoka,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,27,123,Ramsey,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,27,139,Scott,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,27,163,Washington,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,27,171,Wright,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,29,071,Franklin,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,29,099,Jefferson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,29,189,St. Louis,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,30,111,Yellowstone,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,31,055,Douglas,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,32,003,Clark,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,33,011,Hillsborough,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,33,013,Merrimack,true,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,33,015,Rockingham,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,33,017,Strafford,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,34,003,Bergen,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,34,005,Burlington,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,34,007,Camden,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,34,011,Cumberland,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,34,013,Essex,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,34,017,Hudson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,34,019,Hunterdon,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,34,021,Mercer,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,34,023,Middlesex,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,34,027,Morris,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,34,031,Passaic,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,34,035,Somerset,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,34,037,Sussex,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,34,039,Union,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,35,001,Bernalillo,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,35,013,Dona Ana,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,35,045,San Juan,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,35,049,Santa Fe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,36,005,Bronx,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,36,045,Jefferson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,36,047,Kings,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,36,055,Monroe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,36,059,Nassau,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,36,061,New York,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,36,067,Onondaga,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,36,069,Ontario,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,36,071,Orange,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,36,081,Queens,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,36,085,Richmond,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,36,087,Rockland,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,36,091,Saratoga,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,36,103,Suffolk,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,36,119,Westchester,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,37,001,Alamance,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,37,021,Buncombe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,37,057,Davidson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,37,067,Forsyth,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,37,119,Mecklenburg,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,37,133,Onslow,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,37,147,Pitt,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,37,155,Robeson,true,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,37,159,Rowan,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,37,179,Union,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,37,191,Wayne,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,39,025,Clermont,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,39,057,Greene,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,39,085,Lake,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,39,089,Licking,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,39,095,Lucas,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,39,103,Medina,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,39,109,Miami,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,39,113,Montgomery,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,39,133,Portage,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,39,153,Summit,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,41,017,Deschutes,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,41,029,Jackson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,41,039,Lane,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,42,003,Allegheny,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,42,007,Beaver,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,42,011,Berks,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,42,017,Bucks,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,42,019,Butler,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,42,021,Cambria,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,42,029,Chester,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,42,043,Dauphin,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,42,045,Delaware,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,42,049,Erie,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,42,055,Franklin,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,42,071,Lancaster,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,42,081,Lycoming,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,42,085,Mercer,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,42,089,Monroe,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,42,091,Montgomery,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,42,101,Philadelphia,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,42,107,Schuylkill,true,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,42,125,Washington,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,42,129,Westmoreland,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,42,133,York,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,45,041,Florence,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,45,051,Horry,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,45,083,Spartanburg,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,45,091,York,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,47,009,Blount,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,47,093,Knox,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,47,125,Montgomery,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,47,165,Sumner,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,47,189,Wilson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,48,041,Brazos,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,48,061,Cameron,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,48,135,Ector,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,48,139,Ellis,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,48,181,Grayson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,48,183,Gregg,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,48,215,Hidalgo,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,48,251,Johnson,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,48,303,Lubbock,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,48,309,McLennan,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,48,423,Smith,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,48,441,Taylor,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,48,479,Webb,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,48,485,Wichita,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,49,053,Washington,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,51,013,Arlington,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,51,041,Chesterfield,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,51,087,Henrico,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,51,107,Loudoun,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,51,153,Prince William,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,51,177,Spotsylvania,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,51,179,Stafford,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,51,550,Chesapeake City,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,51,700,Newport News City,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,51,710,Norfolk City,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,51,760,Richmond City,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,51,810,Virginia Beach City,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,53,057,Skagit,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,54,039,Kanawha,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,55,059,Kenosha,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,55,073,Marathon,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,55,101,Racine,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,55,105,Rock,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2025,55,139,Winnebago,false,true,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf,7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4
+2026,01,003,Baldwin,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,01,015,Calhoun,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,01,073,Jefferson,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,01,081,Lee,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,01,097,Mobile,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,01,117,Shelby,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,04,003,Cochise,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,04,013,Maricopa,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,04,015,Mohave,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,04,019,Pima,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,04,021,Pinal,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,04,025,Yavapai,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,04,027,Yuma,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,05,119,Pulaski,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,001,Alameda,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,007,Butte,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,017,El Dorado,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,019,Fresno,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,025,Imperial,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,029,Kern,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,031,Kings,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,037,Los Angeles,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,039,Madera,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,047,Merced,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,053,Monterey,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,055,Napa,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,059,Orange,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,061,Placer,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,065,Riverside,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,067,Sacramento,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,073,San Diego,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,075,San Francisco,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,077,San Joaquin,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,079,San Luis Obispo,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,081,San Mateo,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,083,Santa Barbara,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,087,Santa Cruz,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,089,Shasta,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,095,Solano,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,097,Sonoma,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,099,Stanislaus,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,107,Tulare,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,111,Ventura,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,06,113,Yolo,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,08,013,Boulder,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,08,031,Denver,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,08,035,Douglas,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,08,059,Jefferson,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,08,069,Larimer,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,08,101,Pueblo,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,08,123,Weld,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,10,001,Kent,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,10,003,New Castle,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,10,005,Sussex,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,11,001,District of Columbia,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,001,Alachua,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,005,Bay,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,009,Brevard,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,011,Broward,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,015,Charlotte,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,019,Clay,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,021,Collier,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,033,Escambia,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,053,Hernando,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,057,Hillsborough,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,061,Indian River,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,069,Lake,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,071,Lee,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,083,Marion,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,085,Martin,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,086,Miami-Dade,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,091,Okaloosa,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,095,Orange,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,099,Palm Beach,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,101,Pasco,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,103,Pinellas,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,105,Polk,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,109,St. Johns,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,111,St. Lucie,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,113,Santa Rosa,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,117,Seminole,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,12,127,Volusia,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,13,015,Bartow,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,13,045,Carroll,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,13,057,Cherokee,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,13,063,Clayton,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,13,077,Coweta,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,13,097,Douglas,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,13,113,Fayette,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,13,117,Forsythe,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,13,135,Gwinnett,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,13,139,Hall,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,13,151,Henry,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,13,153,Houston,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,13,223,Paulding,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,15,001,Hawaii,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,15,003,Honolulu,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,16,055,Kootenai,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,17,091,Kankakee,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,17,097,Lake,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,17,099,LaSalle,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,17,111,McHenry,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,17,113,McLean,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,17,115,Macon,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,17,119,Madison,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,17,163,St. Clair,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,17,179,Tazewell,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,18,019,Clark,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,18,039,Elkhart,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,18,063,Hendricks,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,18,081,Johnson,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,18,089,Lake,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,18,091,LaPorte,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,18,095,Madison,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,18,105,Monroe,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,18,141,St. Joseph,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,18,157,Tippecanoe,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,19,103,Johnson,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,19,113,Linn,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,19,153,Polk,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,19,163,Scott,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,20,045,Douglas,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,20,091,Johnson,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,20,173,Sedgwick,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,21,015,Boone,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,21,067,Fayette,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,21,111,Jefferson,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,21,117,Kenton,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,22,005,Ascension,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,22,019,Calcasieu,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,22,033,East Baton Rouge,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,22,051,Jefferson,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,22,063,Livingston,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,22,071,Orleans,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,22,073,Ouachita,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,22,103,St. Tammany,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,23,001,Androscoggin,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,23,005,Cumberland,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,23,011,Kennebec,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,23,019,Penobscot,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,24,003,Anne Arundel,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,24,013,Carroll,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,24,015,Cecil,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,24,017,Charles,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,24,025,Harford,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,24,027,Howard,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,24,031,Montgomery,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,24,033,Prince Georges,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,24,037,St. Mary’s,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,24,043,Washington,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,24,510,Baltimore City,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,25,001,Barnstable,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,25,005,Bristol,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,25,009,Essex,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,25,013,Hampden,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,25,015,Hampshire,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,25,017,Middlesex,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,25,021,Norfolk,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,25,023,Plymouth,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,25,025,Suffolk,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,25,027,Worcester,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,26,005,Allegan,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,26,021,Berrien,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,26,025,Calhoun,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,26,049,Genesee,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,26,075,Jackson,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,26,081,Kent,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,26,093,Livingston,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,26,099,Macomb,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,26,115,Monroe,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,26,121,Muskegon,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,26,125,Oakland,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,26,139,Ottawa,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,26,145,Saginaw,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,26,147,St. Clair,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,26,161,Washtenaw,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,26,163,Wayne,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,27,003,Anoka,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,27,037,Dakota,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,27,123,Ramsey,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,27,137,St. Louis,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,27,139,Scott,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,27,163,Washington,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,27,171,Wright,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,29,019,Boone,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,29,071,Franklin,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,29,099,Jefferson,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,29,189,St. Louis,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,30,111,Yellowstone,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,31,055,Douglas,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,31,153,Sarpy,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,32,003,Clark,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,33,011,Hillsborough,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,33,013,Merrimack,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,33,015,Rockingham,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,33,017,Strafford,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,34,003,Bergen,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,34,005,Burlington,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,34,007,Camden,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,34,009,Cape May,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,34,011,Cumberland,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,34,013,Essex,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,34,017,Hudson,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,34,019,Hunterdon,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,34,021,Mercer,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,34,023,Middlesex,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,34,025,Monmouth,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,34,027,Morris,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,34,029,Ocean,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,34,031,Passaic,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,34,035,Somerset,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,34,037,Sussex,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,34,039,Union,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,34,041,Warren,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,35,001,Bernalillo,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,35,013,Dona Ana,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,35,045,San Juan,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,35,049,Santa Fe,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,36,005,Bronx,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,36,013,Chautauqua,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,36,027,Dutchess,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,36,047,Kings,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,36,055,Monroe,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,36,059,Nassau,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,36,061,New York,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,36,067,Onondaga,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,36,069,Ontario,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,36,071,Orange,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,36,081,Queens,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,36,085,Richmond,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,36,087,Rockland,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,36,091,Saratoga,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,36,103,Suffolk,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,36,111,Ulster,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,36,119,Westchester,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,37,001,Alamance,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,37,021,Buncombe,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,37,057,Davidson,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,37,067,Forsyth,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,37,097,Iredell,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,37,119,Mecklenburg,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,37,133,Onslow,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,37,147,Pitt,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,37,155,Robeson,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,37,159,Rowan,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,37,179,Union,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,37,183,Wake,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,37,191,Wayne,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,39,023,Clark,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,39,025,Clermont,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,39,029,Columbiana,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,39,035,Cuyahoga,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,39,041,Delaware,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,39,045,Fairfield,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,39,049,Franklin,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,39,057,Greene,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,39,085,Lake,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,39,089,Licking,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,39,095,Lucas,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,39,103,Medina,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,39,109,Miami,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,39,113,Montgomery,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,39,133,Portage,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,39,153,Summit,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,39,165,Warren,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,39,169,Wayne,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,40,031,Comanche,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,41,017,Deschutes,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,41,029,Jackson,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,41,039,Lane,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,41,041,Linn,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,42,003,Allegheny,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,42,007,Beaver,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,42,011,Berks,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,42,013,Blair,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,42,017,Bucks,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,42,019,Butler,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,42,021,Cambria,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,42,029,Chester,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,42,043,Dauphin,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,42,045,Delaware,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,42,049,Erie,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,42,055,Franklin,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,42,071,Lancaster,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,42,081,Lycoming,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,42,085,Mercer,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,42,089,Monroe,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,42,091,Montgomery,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,42,101,Philadelphia,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,42,107,Schuylkill,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,42,125,Washington,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,42,129,Westmoreland,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,42,133,York,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,45,007,Anderson,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,45,041,Florence,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,45,045,Greenville,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,45,051,Horry,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,45,063,Lexington,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,45,079,Richland,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,45,083,Spartanburg,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,45,091,York,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,47,009,Blount,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,47,093,Knox,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,47,125,Montgomery,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,47,165,Sumner,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,47,189,Wilson,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,48,029,Bexar,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,48,039,Brazoria,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,48,041,Brazos,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,48,061,Cameron,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,48,135,Ector,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,48,139,Ellis,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,48,141,El Paso,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,48,181,Grayson,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,48,183,Gregg,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,48,215,Hidalgo,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,48,251,Johnson,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,48,303,Lubbock,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,48,309,McLennan,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,48,329,Midland,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,48,375,Potter,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,48,381,Randall,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,48,423,Smith,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,48,439,Tarrant,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,48,441,Taylor,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,48,479,Webb,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,48,485,Wichita,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,49,049,Utah,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,49,053,Washington,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,51,013,Arlington,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,51,041,Chesterfield,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,51,059,Fairfax,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,51,087,Henrico,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,51,107,Loudoun,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,51,153,Prince William,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,51,177,Spotsylvania,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,51,179,Stafford,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,51,510,Alexandria City,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,51,550,Chesapeake City,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,51,650,Hampton City,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,51,700,Newport News City,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,51,710,Norfolk City,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,51,740,Portsmouth City,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,51,760,Richmond City,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,51,810,Virginia Beach City,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,53,033,King,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,53,035,Kitsap,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,53,053,Pierce,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,53,057,Skagit,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,53,061,Snohomish,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,53,063,Spokane,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,53,067,Thurston,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,53,073,Whatcom,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,53,077,Yakima,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,54,039,Kanawha,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,55,059,Kenosha,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,55,063,Lacrosse,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,55,073,Marathon,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,55,101,Racine,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,55,105,Rock,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107
+2026,55,139,Winnebago,false,false,https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf,8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107

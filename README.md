@@ -46,12 +46,11 @@ until you restart the kernel, load it by path with
 
 ## Build progress and staging run files
 
-UK build completion automatically exports Orrery execution graphs, attempts
-immutable publication before Hugging Face artifact staging when
-`--publish-orrery` asks for it, and preserves durable retry jobs and receipt
-snapshots. No upload is published today; see
-[the status of graph publication](docs/orrery-publication.md#status). See
-[graph publication](docs/orrery-publication.md) for configuration and retry.
+UK build completion automatically exports Orrery execution graphs for viewing
+offline and uploads none. Its staged dataset bundle hands the graph's inputs
+to the emitter for the collector, which builds the Orrery graph files; see
+[graph publication](docs/orrery-publication.md) and
+[its status](docs/orrery-publication.md#status).
 
 Supported US and UK build commands start the local emitter as the build's
 child process, with its telemetry, graph-publication and Hugging Face
@@ -71,7 +70,7 @@ The build finds the `microcosm-emitter` command through
 environment variables and user, so it uses the build's Hugging Face
 credential (`HF_TOKEN`, then `HUGGINGFACE_TOKEN`, then the `hf auth login`
 token). Without the command the build continues with no hosted telemetry and
-no remote staging, and queues no Orrery graph publication; a UK build given
+no remote staging, and measures no Orrery publication inventory; a UK build given
 `--staging-read-back` fails at the read-back, and a UK build asked to stage
 its dataset bundle remotely, as it is by default, is refused before it
 starts, since the emitter uploads the bundle. Before it starts the emitter,
@@ -645,8 +644,9 @@ into `microcosm-us-2024-annual`, carrying its base national build's files
 calibrated national build, not yet a source enrichment.
 
 **The switch.** `microcosm.build.build_folder_switch` moves a repository over,
-once, in two steps. Each step only reads the repository and prints, as JSON,
-what it would do, unless given `--write`:
+once, in two steps, and a third step later deletes what the old layout left
+on `main`. Each step only reads the repository and prints, as JSON, what it
+would do, unless given `--write`:
 
 ```bash
 # 1. Copy each tagged build into its folder, one commit per build; run it
@@ -659,6 +659,9 @@ uv run python -m microcosm.build.build_folder_switch switch <owner/repository> \
   [--include <tag>=<release>] [--exclude <tag>] \
   [--retire-pointer <latest file>] [--current <release>=<build>] \
   [--default <release>] [--finished-branch <release-staging/ branch>] [--write]
+# 3. Later, in one commit, delete the old layout's files from main.
+uv run python -m microcosm.build.build_folder_switch delete-old-layout \
+  <owner/repository> [--write]
 ```
 
 Run the switch step only while nobody publishes to the repository, and give
@@ -686,7 +689,30 @@ branch for a build that is already tagged, but one older than 2026-09-23
 runs (the US leftover branch is one), so name a branch only while nobody
 publishes. Each build keeps the date of its
 tagged commit as `published_at`, and each pointer file's build becomes its
-release's current build. The module's docstring describes both steps in full.
+release's current build.
+
+After the switch, `main` still holds the tagged layout's files: those each
+tagged build overwrote directly in `releases/<release>/`, each
+release-per-build tag's `releases/<tag>/` folder (every US build, the June
+2023 UK build and builds the switch did not move), and the dataset files
+(`.h5`, `.hdf5`, `.npz`) at the repository's root. The `delete-old-layout`
+step deletes all of them in one commit, so build folders and `releases.json`
+are the only layout. It keeps `releases.json`, every build folder it lists,
+the other root files (`.gitattributes`, `README.md`) and every directory
+outside `releases/`, such as the UK repository's `staged/`. It refuses a
+repository without `releases.json` or with a `latest*.json` file, and a build
+folder `releases.json` does not list, which it never deletes. It runs the
+emitter interface's repository check on what remains, and takes none of the
+other steps' options. Every tagged build stays readable at its tag, which is
+where Microcosm's tag references read it, and every deleted file stays in
+`main`'s history at the head the report names; the report lists any deleted
+release-per-build folder that no tag names (`untagged_folders`). Anything
+that reads those paths from `main` stops finding them, so run it only once
+nothing does (the example notebook reads the US dataset through
+`releases.json`).
+The commit removes the files from `main` only: their large (LFS) objects stay
+in the repository's history. A second run finds nothing to delete. The
+module's docstring describes all three steps in full.
 
 `microcosm-publish-release-build` publishes only the two manifests, the
 artifacts the release manifest declares and the checksum ledger. The US
@@ -697,7 +723,10 @@ writing the H5 as manifest artifacts: `input_coverage.json`,
 record the per-run QRF tail register (`qrf_tail_register`), the export-mass
 reference and the stored-input verdict (`stored_inputs`), so a waiver ships
 with the release it waives, and a `gate_evidence` block that says of each
-verdict whether it is bound, skipped by flag or never evaluated.
+verdict whether it is bound, skipped by flag or never evaluated. A
+`--scf-education-debt` build also lists its two SCF education-debt fit tables,
+`us_scf_education_debt_fit.json` and `us_scf_education_debt_calibrated_fit.json`,
+as manifest artifacts (microcosm#1074).
 
 The QRF tail gate checks a sparse QRF output only when it has 500 or more
 carriers, the records with positive weighted absolute mass, and reports one
