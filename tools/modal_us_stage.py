@@ -431,8 +431,11 @@ def _check_input(ref: plan_lib.InputRef, work: Path) -> dict[str, object]:
 
 _PARSE_SNIPPET = """
 import importlib.util, json, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]).resolve().parent))
 spec = importlib.util.spec_from_file_location("stage_tool", sys.argv[1])
 module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
 spec.loader.exec_module(module)
 parser = module
 for name in sys.argv[2].split("."):
@@ -690,7 +693,7 @@ def _load_json(path: Path) -> dict | None:
     volumes=VOLUMES,
     secrets=_secrets(),
     cpu=plan_lib.CHECK.modal_cpu,
-    memory=plan_lib.CHECK.memory_mib,
+    memory=plan_lib.CHECK.modal_memory,
     timeout=plan_lib.CHECK.timeout_s,
     retries=0,
 )
@@ -1175,7 +1178,7 @@ def _attempt_stage(
     volumes=VOLUMES,
     secrets=_secrets(),
     cpu=plan_lib.HEAVY.modal_cpu,
-    memory=plan_lib.HEAVY.memory_mib,
+    memory=plan_lib.HEAVY.modal_memory,
     timeout=plan_lib.HEAVY.timeout_s,
     retries=0,
 )
@@ -1188,7 +1191,7 @@ def run_stage_heavy(plan_data: dict) -> dict:
     volumes=VOLUMES,
     secrets=_secrets(),
     cpu=plan_lib.HEAVY.modal_cpu,
-    memory=plan_lib.HEAVY.memory_mib,
+    memory=plan_lib.HEAVY.modal_memory,
     timeout=plan_lib.HEAVY.timeout_s,
     retries=0,
     nonpreemptible=True,
@@ -1202,7 +1205,7 @@ def run_stage_heavy_nonpreemptible(plan_data: dict) -> dict:
     volumes=VOLUMES,
     secrets=_secrets(),
     cpu=plan_lib.LIGHT.modal_cpu,
-    memory=plan_lib.LIGHT.memory_mib,
+    memory=plan_lib.LIGHT.modal_memory,
     timeout=plan_lib.LIGHT.timeout_s,
     retries=0,
 )
@@ -1215,7 +1218,7 @@ def run_stage_light(plan_data: dict) -> dict:
     volumes=VOLUMES,
     secrets=_secrets(),
     cpu=plan_lib.LIGHT.modal_cpu,
-    memory=plan_lib.LIGHT.memory_mib,
+    memory=plan_lib.LIGHT.modal_memory,
     timeout=plan_lib.LIGHT.timeout_s,
     retries=0,
     nonpreemptible=True,
@@ -1229,7 +1232,7 @@ def run_stage_light_nonpreemptible(plan_data: dict) -> dict:
     volumes=VOLUMES,
     secrets=_secrets(),
     cpu=plan_lib.CHECK.modal_cpu,
-    memory=plan_lib.CHECK.memory_mib,
+    memory=plan_lib.CHECK.modal_memory,
     timeout=plan_lib.CHECK.timeout_s,
     retries=0,
 )
@@ -1250,7 +1253,7 @@ def run_stage_small(plan_data: dict) -> dict:
     volumes=VOLUMES,
     secrets=_secrets(),
     cpu=plan_lib.BASE.modal_cpu,
-    memory=plan_lib.BASE.memory_mib,
+    memory=plan_lib.BASE.modal_memory,
     timeout=plan_lib.BASE.timeout_s,
     retries=0,
 )
@@ -1263,12 +1266,39 @@ def run_stage_base(plan_data: dict) -> dict:
     volumes=VOLUMES,
     secrets=_secrets(),
     cpu=plan_lib.BASE.modal_cpu,
-    memory=plan_lib.BASE.memory_mib,
+    memory=plan_lib.BASE.modal_memory,
     timeout=plan_lib.BASE.timeout_s,
     retries=0,
     nonpreemptible=True,
 )
 def run_stage_base_nonpreemptible(plan_data: dict) -> dict:
+    return _run_stage(plan_data)
+
+
+@app.function(
+    image=image,
+    volumes=VOLUMES,
+    secrets=_secrets(),
+    cpu=plan_lib.HEAD_TO_HEAD.modal_cpu,
+    memory=plan_lib.HEAD_TO_HEAD.modal_memory,
+    timeout=plan_lib.HEAD_TO_HEAD.timeout_s,
+    retries=0,
+)
+def run_stage_head_to_head(plan_data: dict) -> dict:
+    return _run_stage(plan_data)
+
+
+@app.function(
+    image=image,
+    volumes=VOLUMES,
+    secrets=_secrets(),
+    cpu=plan_lib.HEAD_TO_HEAD.modal_cpu,
+    memory=plan_lib.HEAD_TO_HEAD.modal_memory,
+    timeout=plan_lib.HEAD_TO_HEAD.timeout_s,
+    retries=0,
+    nonpreemptible=True,
+)
+def run_stage_head_to_head_nonpreemptible(plan_data: dict) -> dict:
     return _run_stage(plan_data)
 
 
@@ -1309,6 +1339,8 @@ RUNNERS = {
     ("check", False): run_stage_small,
     ("base", False): run_stage_base,
     ("base", True): run_stage_base_nonpreemptible,
+    ("head-to-head", False): run_stage_head_to_head,
+    ("head-to-head", True): run_stage_head_to_head_nonpreemptible,
     ("acs-staging", False): run_stage_acs_staging,
     ("acs-staging", True): run_stage_acs_staging_nonpreemptible,
 }
