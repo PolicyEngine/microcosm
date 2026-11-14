@@ -4,8 +4,14 @@ Max ruled on 2026-10-19 (d1712) that a repeat of the 9/30 Linux-vs-Mac
 float-rounding difference may be accepted: every entity table has the same
 shape and index, totals are equal, and every differing value is within 1e-12
 relative. Anything else stops for Max. On 9/30 the only difference was
-person.pre_subsidy_rent (313 of 432,523 rows, max relative 6.08e-15), so a
-difference in any other column is reported as outside the class.
+person.pre_subsidy_rent (313 of 432,523 rows, max relative 6.08e-15).
+
+Max accepted the same class in person.employer_sponsored_insurance_premiums
+for the 2026-11 build (d2274) and for later builds (d2336). On the 2026-11
+base, 73,966 of its 432,523 rows differed by +1 unit in the last place (max
+relative 2.21e-16, matching float totals), which fits one scale factor
+rounding differently on the two platforms. The check reports a difference in
+any other column as outside the class.
 
 Usage (with the build worktree's interpreter):
     python lineage_class_check.py LOCAL_FRAME.h5 MODAL_FRAME.h5 OUT.json
@@ -16,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -25,7 +32,11 @@ import pandas as pd
 from microcosm.build.frame_checkpoint import _frame_tables, load_frame_checkpoint
 
 REL_TOL = 1e-12
-ACCEPTED_COLUMNS = {("person", "pre_subsidy_rent")}
+# d1712: the 9/30 column. d2274, d2336: the ESI premium column, new since d1386.
+ACCEPTED_COLUMNS = {
+    ("person", "pre_subsidy_rent"),
+    ("person", "employer_sponsored_insurance_premiums"),
+}
 
 
 def sha256(path: Path) -> str:
@@ -38,6 +49,32 @@ def sha256(path: Path) -> str:
 
 def tables(path: Path) -> dict[str, pd.DataFrame]:
     return dict(_frame_tables(load_frame_checkpoint(path).frame))
+
+
+def index_types(index: pd.Index) -> tuple[list, list[str]]:
+    """Names and dtypes, level by level; Index.equals compares values only."""
+
+    if isinstance(index, pd.MultiIndex):
+        return list(index.names), [str(level.dtype) for level in index.levels]
+    return list(index.names), [str(index.dtype)]
+
+
+def exact_total(values: np.ndarray) -> float | None:
+    """The non-NaN values' total, rounded once.
+
+    None for an infinite value or a partial sum past the float range.
+    np.nansum rounds every partial sum, so a large pair can absorb a small
+    move and leave both totals equal and wrong. math.fsum rounds once, so an
+    exact zero total stays 0.0 and any other total stays nonzero.
+    """
+
+    values = values[~np.isnan(values)]
+    if not bool(np.isfinite(values).all()):
+        return None
+    try:
+        return math.fsum(values.tolist())
+    except OverflowError:
+        return None
 
 
 def compare_column(name: str, column: str, a: pd.Series, b: pd.Series) -> dict | None:
@@ -73,8 +110,16 @@ def compare_column(name: str, column: str, a: pd.Series, b: pd.Series) -> dict |
     absdiff = np.abs(da - db)
     scale = np.maximum(np.abs(da), np.abs(db))
     rel = np.where(scale > 0, absdiff / np.where(scale > 0, scale, 1.0), np.inf)
-    sum_a, sum_b = float(np.nansum(av)), float(np.nansum(bv))
-    sum_rel = abs(sum_a - sum_b) / max(abs(sum_a), abs(sum_b), 1e-300)
+    sum_a, sum_b = exact_total(av), exact_total(bv)
+    # Relative to the larger total, with no floor: a total that leaves zero
+    # moves by 100%, however small it is. A total the check can't compute
+    # can't show whether the column moved, so it stops.
+    if sum_a is None or sum_b is None:
+        sum_rel = None
+    elif sum_a == sum_b:
+        sum_rel = 0.0
+    else:
+        sum_rel = abs(sum_a - sum_b) / max(abs(sum_a), abs(sum_b))
     entry.update(
         {
             "max_abs": float(absdiff.max()),
@@ -84,7 +129,11 @@ def compare_column(name: str, column: str, a: pd.Series, b: pd.Series) -> dict |
             "sum_rel_diff": sum_rel,
         }
     )
-    if not (rel.max() <= REL_TOL and sum_rel <= REL_TOL):
+    if not rel.max() <= REL_TOL:
+        entry["problem"] = f"difference above {REL_TOL} relative"
+    elif sum_rel is None:
+        entry["problem"] = "column total not finite"
+    elif not sum_rel <= REL_TOL:
         entry["problem"] = f"difference above {REL_TOL} relative"
     return entry
 
@@ -106,6 +155,9 @@ def main() -> int:
         if not a.index.equals(b.index):
             problems.append(f"{name}: index differs")
             continue
+        if index_types(a.index) != index_types(b.index):
+            problems.append(f"{name}: index names or dtypes differ")
+            continue
         if list(a.columns) != list(b.columns):
             problems.append(f"{name}: column names or order differ")
             continue
@@ -118,10 +170,10 @@ def main() -> int:
                 problems.append(f"{name}.{column}: {entry['problem']}")
             elif (name, column) not in ACCEPTED_COLUMNS:
                 problems.append(
-                    f"{name}.{column}: within tolerance but not the 9/30 column; stop for Max"
+                    f"{name}.{column}: within tolerance but not an accepted column; stop for Max"
                 )
     verdict = {
-        "ruling": "d1712 (Max 2026-10-19)",
+        "ruling": "d1712 (Max 2026-10-19); d2274 (Max 2026-11-02); d2336",
         "rel_tol": REL_TOL,
         "accepted_columns": sorted(f"{t}.{c}" for t, c in ACCEPTED_COLUMNS),
         "local": {"path": str(local_path), "sha256": sha256(local_path)},
