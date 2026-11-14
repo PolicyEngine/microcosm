@@ -27,7 +27,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # The hierarchy value ranks move medicaid_take_up's attested bytes.
     # microcosm#1096's exact softmax cap projection in solve moves it too.
     assert first.spec_sha256 == (
-        "b310bf3a7957c0312aaa1d5274034584be7c0a556ff07dd6826e02155812bcd9"
+        "e4557719035b9081c82a704f0f2d78162114e05c7301fe79f91f26ccabd35859"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

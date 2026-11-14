@@ -27,9 +27,10 @@ and for the deeper ones below float64's range.
 6. In float32, as the solver runs it, the clamp is exact in log space and the
    realized ``total * softmax(log_w)`` sits within the float64 caps up to the
    float32 error of the softmax.
-7. Float64 precision at scale, in the two regimes the precision note of
-   ``_capped_log_shift`` states: 1,588,854 weights in float64's normal range,
-   and a million subnormal weights whose sum is still normal.
+7. Float64 precision at scale, on the three inputs the precision note of
+   ``_capped_log_shift`` states: 1,588,854 weights the size a solve's are,
+   the same count 690 nats below the total and still in float64's normal
+   range, and a million subnormal weights whose sum is still normal.
 """
 
 from __future__ import annotations
@@ -555,14 +556,15 @@ def _total_error(
 
 
 def test_normal_weights_at_full_scale_keep_the_total_to_float64_rounding() -> None:
-    """The first regime of the precision note in ``_capped_log_shift``.
+    """The first input of the precision note in ``_capped_log_shift``.
 
     1,588,854 records, the full-scale measurement's size: design weights
     from 0.4 to 6,700, each log-weight moved by up to 3 nats, under a 5x cap
-    that ends up holding 53,544 of them. The rounds settle in three and
-    leave the total within 1e-13 of itself (7e-16 measured on arm64 macOS).
-    The sort from the start stays within 1e-11 (4e-13 measured): its running
-    log-space sum rounds once per record.
+    that ends up holding 53,544 of them. The log-weights sit 9 to 24 nats
+    below the total's. The rounds settle in three and leave the total within
+    1e-13 of itself (7e-16 measured on arm64 macOS). The sort from the start
+    stays within 1e-11 (4e-13 measured): its running log-space sum rounds
+    once per record.
     """
     rng = np.random.default_rng(20261113)
     n = 1_588_854
@@ -581,8 +583,39 @@ def test_normal_weights_at_full_scale_keep_the_total_to_float64_rounding() -> No
     assert abs(_total_error(log_w, log_upper, sorted_shift, total)) <= 1e-11
 
 
+def test_normal_weights_far_below_the_total_cost_the_sort_digits() -> None:
+    """The second input: digits follow the size of the log, not the range.
+
+    One record holds the total over a cap of half of it. 1,588,854 others
+    share a log-weight 690 nats lower: 2.2e-300 each, well inside float64's
+    normal range, so nothing here is subnormal and the rounds do not hand
+    over. They take one float64 sum and return a shift near 675, which a
+    float64 resolves to 1.1e-13; the total stays within 1e-12 of itself
+    (1.4e-14 measured on arm64 macOS). The sort from the start rounds its
+    running log-space sum once per record at that same 1.1e-13 and ends
+    2.9e-11 off, past the 1e-11 it keeps on weights the size a solve's are.
+    Its rounding walks at random, so the bound here leaves it a factor of
+    30.
+    """
+    n = 1_588_854
+    log_weights = np.concatenate(([0.0], np.full(n, -690.0)))
+    log_caps = np.concatenate(([math.log(0.5)], np.zeros(n)))
+    total = 1.0
+    log_w, log_upper = _normalized(log_weights, log_caps, total)
+    tiny = float(torch.finfo(torch.float64).tiny)
+    assert float(torch.exp(log_w[1:]).min()) > 1e6 * tiny
+    shift, taken = solve_module._capped_log_shift(log_w, log_upper, total)
+    assert taken == 1
+    assert abs(_total_error(log_w, log_upper, shift, total)) <= 1e-12
+    sorted_shift, sorted_taken = solve_module._capped_log_shift(
+        log_w, log_upper, total, active_set_rounds=0
+    )
+    assert sorted_taken == 1
+    assert abs(_total_error(log_w, log_upper, sorted_shift, total)) <= 1e-9
+
+
 def test_a_million_subnormal_weights_cost_the_total_digits_by_either_path() -> None:
-    """The second regime: the hand-off buys range, not digits (review R1).
+    """The third input: the hand-off buys range, not digits (review R1).
 
     One record holds the total over a cap of half of it. A million others
     share a log-weight 721.67 nats lower. Each is subnormal in float64, with

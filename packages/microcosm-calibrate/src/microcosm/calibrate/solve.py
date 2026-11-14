@@ -1107,24 +1107,32 @@ def _capped_log_shift(
     still carries weight.
 
     Precision. The shift is exact up to the float64 rounding of the sums it
-    is built from, and so is the projected total. Two regimes, each pinned in
-    ``test_softmax_cap_projection.py``:
+    is built from, and so is the projected total. A float64 near ``x`` sits
+    about ``2e-16 * abs(x)`` from its neighbours, so that rounding grows with
+    how far below the total the uncapped weights sit and, in the sort, with
+    their number. Three inputs are pinned in
+    ``test_softmax_cap_projection.py``; the measured figures are arm64
+    macOS's:
 
-    * Every uncapped weight in float64's normal range. On 1,588,854 records,
-      the full-scale measurement's size, the rounds leave the total within
-      1e-13 of itself and the sort within 1e-11: the sort's running log-space
+    * 1,588,854 records, the full-scale measurement's count, with weights
+      the size a solve's are: log-weights 9 to 24 nats below the total's.
+      The rounds leave the total within 1e-13 of itself (7e-16 measured) and
+      the sort within 1e-11 (4e-13 measured): the sort's running log-space
       sum rounds once per record.
+    * The same count of uncapped weights 690 nats below the total, each
+      still in float64's normal range. The rounds stay within 1e-12 (1e-14
+      measured). The sort rounds each step of its running sum at the spacing
+      of a float64 near -700, 1e-13, and ends 3e-11 off (pinned within 1e-9).
     * Uncapped weights below the normal range. The hand-off above tests
       their sum, not each record, and it buys range, not digits. A sum that
       is still normal has lost up to about ``2**-53`` of itself for each
-      subnormal term: in the pinned case, a million records that share one
-      subnormal weight leave the total 1.5e-11 off. The sort is no closer on
-      that input (1.0e-11 measured): each of its steps resolves a log-sum
-      near -700 only to 1e-13.
+      subnormal term: a million records that share one subnormal weight
+      leave the total 1.5e-11 off. The sort is no closer on that input
+      (1.0e-11 measured), for the second input's reason.
 
     ``_optimize`` then rounds ``log_w`` to float32, which moves a weight by
     up to 5e-7 of itself (half an ulp of a log-weight below 16), so no solve
-    resolves either.
+    resolves any of these.
 
     Returns the shift and the rounds taken (``active_set_rounds + 1`` when
     the sort finished it).
