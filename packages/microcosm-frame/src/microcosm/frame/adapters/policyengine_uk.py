@@ -189,6 +189,11 @@ def uk_dataset_through(dataset: Any, end_year: int | str, parameters: Any) -> An
     policyengine-uk builds each year only from earlier years, so the kept
     years are the ones the full projection holds. ``parameters`` is the
     parameter tree the uprating reads: current law in a build.
+
+    The dataset's own ``validate()`` runs first. policyengine-uk runs it only
+    on the years it projects, so a dataset read at its own year, which
+    projects nothing, would go unchecked: a NaN in a column the engine does
+    not read would pass, where the whole projection refuses it.
     """
 
     from policyengine_uk.data.economic_assumptions import extend_single_year_dataset
@@ -200,6 +205,7 @@ def uk_dataset_through(dataset: Any, end_year: int | str, parameters: Any) -> An
             f"end_year {end_year} is before the dataset's year {data_year}; "
             "policyengine-uk projects a dataset forward only."
         )
+    dataset.validate()
     return extend_single_year_dataset(dataset, parameters, end_year=end_year)
 
 

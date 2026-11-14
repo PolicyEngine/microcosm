@@ -399,6 +399,30 @@ def test_uk_dataset_through_builds_the_data_year_to_the_end_year() -> None:
     ]
 
 
+def test_a_nan_the_whole_projection_refuses_is_refused_at_the_data_year() -> None:
+    """policyengine-uk checks a dataset for NaN only on the years it projects.
+    A dataset read at its own year projects none, so the cut checks the year
+    itself: a NaN in a column the engine does not read, which its loader
+    ignores, raises as the whole projection raises it."""
+
+    from policyengine_uk import Microsimulation
+    from policyengine_uk.data.economic_assumptions import extend_single_year_dataset
+
+    engine = PolicyEngineUKEngine()
+    parameters = engine._tax_benefit_system().parameters
+    dataset = engine._build_dataset(_frame(2024), 2024)
+    dataset.person["unread_note"] = np.nan
+
+    with pytest.raises(ValueError, match="'unread_note' contains NaN"):
+        extend_single_year_dataset(dataset, parameters)
+    for end_year in (2024, 2025):
+        with pytest.raises(ValueError, match="'unread_note' contains NaN"):
+            uk_dataset_through(dataset, end_year, parameters)
+    # The spine adapter's route, at the data's own year.
+    with pytest.raises(ValueError, match="'unread_note' contains NaN"):
+        engine._read_year_simulation(Microsimulation, dataset, 2024)
+
+
 def test_the_rebalancing_years_are_still_a_range_to_the_projection_end() -> None:
     from policyengine_uk.data.economic_assumptions import PROJECTION_END_YEAR
     from policyengine_uk.scenarios import uc_reform

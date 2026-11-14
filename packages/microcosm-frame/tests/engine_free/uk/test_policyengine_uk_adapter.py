@@ -207,15 +207,47 @@ def test_uk_dataset_through_asks_policyengine_uk_for_the_years_to_end_year(
         "policyengine_uk.data.economic_assumptions",
         extend_single_year_dataset=extend_single_year_dataset,
     )
-    dataset = SimpleNamespace(time_period="2024")
+    dataset = SimpleNamespace(
+        time_period="2024", validate=lambda: calls.append("validate")
+    )
     parameters = object()
 
     assert uk_dataset_through(dataset, "2025", parameters) == [2024, 2025]
     assert uk_dataset_through(dataset, 2024, parameters) == [2024]
-    assert calls == [(dataset, parameters, 2025), (dataset, parameters, 2024)]
+    # The dataset is checked before every projection, even one of no year.
+    assert calls == [
+        "validate",
+        (dataset, parameters, 2025),
+        "validate",
+        (dataset, parameters, 2024),
+    ]
     with pytest.raises(ValueError, match="forward only"):
         uk_dataset_through(dataset, 2023, parameters)
-    assert len(calls) == 2
+    assert len(calls) == 4
+
+
+def test_uk_dataset_through_refuses_a_dataset_its_check_refuses(monkeypatch):
+    """policyengine-uk checks a dataset only on the years it projects, so a
+    dataset read at its own year is checked here; a refusal stops the
+    projection."""
+
+    from microcosm.frame.adapters.policyengine_uk import uk_dataset_through
+
+    projected = []
+    _stand_in_engine_modules(
+        monkeypatch,
+        "policyengine_uk.data.economic_assumptions",
+        extend_single_year_dataset=lambda *args, **kwargs: projected.append(args),
+    )
+
+    def validate():
+        raise ValueError("Column 'note' contains NaN values.")
+
+    dataset = SimpleNamespace(time_period="2024", validate=validate)
+    for end_year in (2024, 2025):
+        with pytest.raises(ValueError, match="'note' contains NaN"):
+            uk_dataset_through(dataset, end_year, object())
+    assert projected == []
 
 
 def _stand_in_rebalancing(monkeypatch, years, **constants):
