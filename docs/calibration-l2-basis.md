@@ -119,11 +119,12 @@ capped records' caps already hold `D`: the rounds stop at the current shift,
 and the other records keep a share below float64 rounding of `D`. When the
 uncapped weights sum below float64's normal range, the rounds hand over to
 the sort, which sums them in log space, so a weight that underflows float64
-still counts, and takes the logarithm of the remainder `D - sum(cap * d[C])`
-as it is: by the same bound, a remainder below that range comes only with
-such a sum. That hand-off buys range, not digits: the shift is exact up to
-the float64 rounding of its sums, which grows with how far below `D` the
-uncapped weights sit and, in the sort, with their number. On 1,588,854
+still counts. By the same bound, a remainder `D - sum(cap * d[C])` below
+that range comes, up to rounding, only with such a sum; the sort and the
+rounds both take its logarithm as it is, so it still sets the shift. The
+hand-off buys range, not digits: the shift is exact up to the float64
+rounding of its sums, which grows with how far below `D` the uncapped
+weights sit and, in the sort, with their number. On 1,588,854
 records with weights the size a solve's are (log-weights 9 to 24 nats below
 `D`'s), the rounds leave `D` within 1e-13 of itself and the sort within
 1e-11. With the same number of uncapped weights 690 nats below `D`, each
@@ -148,9 +149,9 @@ arithmetic, and gives the same answer by its active-set and sorted paths,
 including on an input built to need one round per record. Where the caps
 leave a remainder below float64's normal range, it matches a decimal
 bisection on the shift. Wherever the cap step that the full-scale
-measurement below ran settles in its active-set
-rounds, with every nonzero weight in float64's normal range, the test checks
-that the current step returns the same shift and round count, bit for bit.
+measurement below ran settles in its active-set rounds, with every nonzero
+weight in float64's normal range, the test checks that the current step
+returns the same shift and round count, bit for bit.
 
 **What the projection replaced.** Before, each step renormalized and clamped
 in a loop of at most 32 rounds. On the ACS local release the rounds ran out on

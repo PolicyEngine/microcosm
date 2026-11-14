@@ -1032,13 +1032,12 @@ def _sorted_capped_log_shift(
     is that shift at the smallest ``k`` where it does not pass the ``k``-th
     record's own cap shift: the ``k`` records before it reach their caps at a
     smaller shift, so they are capped, and every record from the ``k``-th on
-    is not. A ``room_k`` that is not
-    positive means the caps of those ``k`` records already hold the total;
-    the lower-bound argument in :func:`_capped_log_shift` rules that out
-    beyond rounding, so the answer caps exactly those ``k`` and the rest keep
-    their rounding-sized share. If no ``k`` qualifies, the caps of every
-    record that carries weight hold less than the total, and the answer caps
-    them all.
+    is not. A ``room_k`` that is not positive means the caps of those ``k``
+    records already hold the total; the lower-bound argument in
+    :func:`_capped_log_shift` rules that out beyond rounding, so the answer
+    caps exactly those ``k`` and the rest keep their rounding-sized share. If
+    no ``k`` qualifies, the caps of every record that carries weight hold
+    less than the total, and the answer caps them all.
 
     The logic is exact; its sums are float64. The running log-space sum
     rounds once per record, at the resolution of a log-sum that size
@@ -1105,10 +1104,11 @@ def _capped_log_shift(
     range, that sum is subnormal or zero and cannot carry the shift, so the
     rounds hand over to :func:`_sorted_capped_log_shift`, which sums in log
     space. By the same bound, a remainder ``total - sum(caps[C])`` below
-    float64's normal range comes only with such a sum, so it reaches the
-    sort too, which takes its logarithm as it is. So do ``active_set_rounds``
-    rounds that end without the bound attained; the sort finishes from the
-    current capped set and bound.
+    float64's normal range comes, up to rounding, only with such a sum, so
+    it reaches the sort too. The sort and the rounds both take the
+    remainder's logarithm as it is, subnormal or not. So do
+    ``active_set_rounds`` rounds that end without the bound attained; the
+    sort finishes from the current capped set and bound.
     Records with a zero cap are capped at every shift; records with zero
     weight (a log-weight of ``-inf``) never reach a positive cap and
     contribute nothing. A record whose finite log-weight underflows float64
