@@ -1,0 +1,1 @@
+The US seed protocol's ledger now records the TANF take-up draw's salt as `takes_up_tanf_if_eligible`, the program variable the draw has always been salted with, instead of `takes_up_tanf`; no draw changes, and the US seed-protocol digests move (microcosm#1585).

@@ -357,7 +357,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # attested bytes.
             # microcosm#922's county facts pin, two declared legacy resources,
             # moves it.
-            "spec_sha256": "fdf6e8f4e81a5b24b43c2665413b4f5a04e38ab8e35e781b232939835df79ed4",
+            "spec_sha256": "d3a3c6c6fbcf4bd7cae760215b909214e5593d606da74aa8f78e6c347e3b41b5",
         },
     }
 

@@ -37,8 +37,10 @@ from microcosm.build.uk_runtime.graph_terminal import (
 )
 from microcosm.build.uk_runtime.solve_scope import (
     UK_GATE_ONLY_RESOURCES,
+    UK_POST_SOLVE_RESOURCES,
     uk_solve_fingerprint,
 )
+from microcosm.build.uk_runtime.stock_cells import STOCK_CELL_RESOURCES
 from microcosm.build.uk_runtime.target_compile_modules import (
     UK_TARGET_COMPILE_MODULE_NAMES,
 )
@@ -167,8 +169,16 @@ def _docstrings(tree: ast.Module) -> set[int]:
     return found
 
 
-def _references(path: Path) -> set[str]:
-    """The qualified scopes of ``path`` that name a gate-only register."""
+def _references(
+    path: Path,
+    readers: frozenset[str] | None = None,
+    resources: frozenset[str] | None = None,
+) -> set[str]:
+    """The qualified scopes of ``path`` that name a gate-only register (or,
+    with ``readers`` and ``resources``, another excluded set)."""
+
+    readers = _GATE_ONLY_READERS if readers is None else readers
+    resources = UK_GATE_ONLY_RESOURCES if resources is None else resources
 
     tree = ast.parse(path.read_text(encoding="utf-8"))
     docstrings = _docstrings(tree)
@@ -182,7 +192,7 @@ def _references(path: Path) -> set[str]:
                     child.name if scope == "<module>" else f"{scope}.{child.name}",
                 )
                 continue
-            if _names_gate_only(child, docstrings):
+            if _names_gate_only(child, docstrings, readers, resources):
                 scopes.add(scope)
             visit(child, scope)
 
@@ -190,7 +200,12 @@ def _references(path: Path) -> set[str]:
     return scopes
 
 
-def _names_gate_only(node: ast.AST, docstrings: set[int]) -> bool:
+def _names_gate_only(
+    node: ast.AST,
+    docstrings: set[int],
+    readers: frozenset[str] = _GATE_ONLY_READERS,
+    resources: frozenset[str] = UK_GATE_ONLY_RESOURCES,
+) -> bool:
     """Whether ``node`` names a gate-only register as code would use it.
 
     A string is a use when it is a reader's name or a path-like literal
@@ -201,16 +216,14 @@ def _names_gate_only(node: ast.AST, docstrings: set[int]) -> bool:
         value = node.value
         if id(node) in docstrings or any(character.isspace() for character in value):
             return False
-        return value in _GATE_ONLY_READERS or any(
-            name in value for name in UK_GATE_ONLY_RESOURCES
-        )
+        return value in readers or any(name in value for name in resources)
     if isinstance(node, ast.Name):
-        return node.id in _GATE_ONLY_READERS
+        return node.id in readers
     if isinstance(node, ast.Attribute):
-        return node.attr in _GATE_ONLY_READERS
+        return node.attr in readers
     if isinstance(node, ast.alias):
-        return node.name in _GATE_ONLY_READERS or (
-            node.asname is not None and node.asname in _GATE_ONLY_READERS
+        return node.name in readers or (
+            node.asname is not None and node.asname in readers
         )
     return False
 
@@ -364,7 +377,7 @@ def test_only_a_gate_only_edit_leaves_the_solve_fingerprint(resource):
     edited = _perturbed(resource)
     assert edited.fingerprint != spec.fingerprint
     assert (uk_solve_fingerprint(edited) == uk_solve_fingerprint(spec)) is (
-        resource in UK_GATE_ONLY_RESOURCES
+        resource in UK_GATE_ONLY_RESOURCES | UK_POST_SOLVE_RESOURCES
     )
 
 
@@ -379,11 +392,11 @@ def test_fingerprint_excluding_refuses_what_it_cannot_honour():
     # The excluded names are bound: another set is another fingerprint, and
     # excluding nothing is not the full fingerprint.
     assert spec.fingerprint_excluding(()) != spec.fingerprint
-    assert spec.fingerprint_excluding(UK_GATE_ONLY_RESOURCES) == uk_solve_fingerprint()
+    excluded = UK_GATE_ONLY_RESOURCES | UK_POST_SOLVE_RESOURCES
+    assert spec.fingerprint_excluding(excluded) == uk_solve_fingerprint()
+    assert spec.fingerprint_excluding(UK_GATE_ONLY_RESOURCES) != uk_solve_fingerprint()
     assert (
-        spec.fingerprint_excluding(
-            UK_GATE_ONLY_RESOURCES | {"degenerate_reviewed_exclusions.json"}
-        )
+        spec.fingerprint_excluding(excluded | {"degenerate_reviewed_exclusions.json"})
         != uk_solve_fingerprint()
     )
 
@@ -514,3 +527,90 @@ def test_the_scan_sees_a_reader_that_prose_does_not_make(tmp_path):
         "Holder.literal",
         "Holder.path",
     }
+
+
+# ---------------------------------------------------------------------------
+# The stock cells' land side (microcosm#1524)
+# ---------------------------------------------------------------------------
+
+#: Names that reach a post-solve resource: its loaders.
+_POST_SOLVE_READERS = frozenset(
+    {
+        "load_uk_stock_cells_structure",
+        "load_uk_la_land_shares",
+        "load_uk_constituency_land_totals",
+        "load_uk_stock_cells_provenance",
+    }
+)
+
+#: Every module allowed to name a post-solve resource, with the reason.
+_REVIEWED_POST_SOLVE_READERS = {
+    "packages/microcosm-build/src/microcosm/build/uk_runtime/stock_cells.py": (
+        "defines the loaders and the resource names"
+    ),
+    "packages/microcosm-build/src/microcosm/build/uk_runtime/solve_scope.py": (
+        "declares the post-solve set"
+    ),
+    "tools/build_uk_stock_cells.py": "writes the resources, after no solve",
+}
+
+
+def test_the_post_solve_set_is_the_stock_cells_land_side():
+    spec = country_spec.load_country_spec("uk")
+    assert UK_POST_SOLVE_RESOURCES <= set(spec.resources)
+    assert not UK_POST_SOLVE_RESOURCES & UK_GATE_ONLY_RESOURCES
+    # The value block stays in the solve fingerprint: the frame's home values
+    # will be read from it (María's ruling, 12 November 2026).
+    assert UK_POST_SOLVE_RESOURCES == set(STOCK_CELL_RESOURCES.values()) - {
+        STOCK_CELL_RESOURCES["value"]
+    }
+    assert STOCK_CELL_RESOURCES["value"] in spec.resources
+    assert not any(
+        resource in UK_POST_SOLVE_RESOURCES
+        for stage in spec.sources.stages
+        for artifact in stage.artifacts
+        for resource in [artifact.get("resource")]
+    )
+
+
+@pytest.mark.parametrize("resource", sorted(UK_POST_SOLVE_RESOURCES))
+def test_a_post_solve_edit_rekeys_the_calibrated_gates_and_no_solve_kernel(
+    resource, monkeypatch, stand_in_dependency_versions
+):
+    solve, calibrated = _hashes(monkeypatch)
+    edited_solve, edited_calibrated = _hashes(monkeypatch, resource)
+    assert edited_solve == solve
+    assert edited_calibrated != calibrated
+
+
+def test_the_stock_cells_value_block_rekeys_every_solve_kernel(
+    monkeypatch, stand_in_dependency_versions
+):
+    solve, _ = _hashes(monkeypatch)
+    edited, _ = _hashes(monkeypatch, STOCK_CELL_RESOURCES["value"])
+    assert {name for name in solve if edited[name] == solve[name]} == set()
+
+
+def test_only_reviewed_modules_name_a_post_solve_resource():
+    paths = [
+        *sorted(_BUILD_SOURCE.rglob("*.py")),
+        *sorted(_REPOSITORY.glob("tools/*.py")),
+    ]
+    found = {
+        str(path.relative_to(_REPOSITORY))
+        for path in paths
+        if _references(path, _POST_SOLVE_READERS, UK_POST_SOLVE_RESOURCES)
+    }
+    present = {
+        path for path in _REVIEWED_POST_SOLVE_READERS if (_REPOSITORY / path).is_file()
+    }
+    assert found == present, {
+        "unreviewed": sorted(found - present),
+        "stale": sorted(present - found),
+    }
+    solve = {
+        _module_path(name)
+        for name in (*UK_TARGET_COMPILE_MODULE_NAMES, *_SOLVE_MODULES)
+    }
+    assert not solve & found
+    assert not set(_SOLVE_GENERATORS) & found
