@@ -1,0 +1,493 @@
+{
+  "format": "microcosm.nz.golden08_oracle_extract@1",
+  "description": "Golden-08's Accommodation Supplement request and outputs, and the inputs of two main-benefit requests on the same scenario household, read by pointer from two pinned axiom-oracles files. Built by tools/extract_nz_golden08_oracle.py; the golden-08 differential case compares against it.",
+  "oracle": {
+    "repository": "TheAxiomFoundation/axiom-oracles",
+    "commit": "6275afcdbe7590d0a56298c4916970a46ed936d0"
+  },
+  "sources": {
+    "requests": {
+      "file": "requests.json",
+      "schema": "axiom_oracles.nz_executable_requests.v1",
+      "sha256": "ed83b26c3221c253b13a9df307567e09948b2e9337ff5289729276b6b6ed6272"
+    },
+    "full_responses": {
+      "file": "full-responses.json",
+      "schema": "axiom_oracles.nz_executable_full_responses.v1",
+      "sha256": "085daf12c203e0d1431234deaf733cf02caed725e3fd609e77f9f9ca803960eb"
+    }
+  },
+  "golden_08": {
+    "request": {
+      "id": {
+        "source": "requests",
+        "pointer": "/requests/8/id",
+        "value": "golden-08"
+      },
+      "program": {
+        "source": "requests",
+        "pointer": "/requests/8/program",
+        "value": "nz/accommodation-supplement"
+      },
+      "mode": {
+        "source": "requests",
+        "pointer": "/requests/8/request/mode",
+        "value": "explain"
+      },
+      "entity": "Family",
+      "entity_id": {
+        "source": "requests",
+        "pointer": "/requests/8/request/queries/0/entity_id",
+        "value": "single_parent_three_children_area1_rent:as:statutory:0"
+      },
+      "period": {
+        "source": "requests",
+        "pointer": "/requests/8/request/queries/0/period",
+        "value": {
+          "end": "2027-03-31",
+          "period_kind": "tax_year",
+          "start": "2026-04-01"
+        }
+      },
+      "queried_outputs": {
+        "source": "requests",
+        "pointer": "/requests/8/request/queries/0/outputs",
+        "value": [
+          "nz:statutes/social_security/accommodation_supplement/core#accommodation_supplement_weekly_amount_before_rounding",
+          "nz:statutes/social_security/accommodation_supplement/core#accommodation_supplement_rounded_weekly_payment",
+          "nz:statutes/social_security/accommodation_supplement/core#accommodation_supplement_weekly_qualifying_accommodation_costs"
+        ]
+      },
+      "inputs": {
+        "accommodation_supplement_additional_resident_in_social_housing": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_additional_resident_in_social_housing",
+          "kind": "bool",
+          "value": false,
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/0/value/value"
+        },
+        "accommodation_supplement_area_let_to_nonresidents": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_area_let_to_nonresidents",
+          "kind": "decimal",
+          "value": "0",
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/1/value/value"
+        },
+        "accommodation_supplement_base_rate_weekly_amount": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_base_rate_weekly_amount",
+          "kind": "decimal",
+          "value": "673.8469230769230769230769230769230769231",
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/2/value/value"
+        },
+        "accommodation_supplement_boarder": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_boarder",
+          "kind": "bool",
+          "value": false,
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/3/value/value"
+        },
+        "accommodation_supplement_business_use_area": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_business_use_area",
+          "kind": "decimal",
+          "value": "0",
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/4/value/value"
+        },
+        "accommodation_supplement_costs_are_homeownership": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_costs_are_homeownership",
+          "kind": "bool",
+          "value": false,
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/5/value/value"
+        },
+        "accommodation_supplement_has_dependent_children": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_has_dependent_children",
+          "kind": "bool",
+          "value": true,
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/6/value/value"
+        },
+        "accommodation_supplement_has_two_or_more_dependent_children": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_has_two_or_more_dependent_children",
+          "kind": "bool",
+          "value": true,
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/7/value/value"
+        },
+        "accommodation_supplement_in_relationship": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_in_relationship",
+          "kind": "bool",
+          "value": false,
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/8/value/value"
+        },
+        "accommodation_supplement_joint_owner_with_resident": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_joint_owner_with_resident",
+          "kind": "bool",
+          "value": false,
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/9/value/value"
+        },
+        "accommodation_supplement_non_beneficiary": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_non_beneficiary",
+          "kind": "bool",
+          "value": false,
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/10/value/value"
+        },
+        "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_non_beneficiary_income_cutout_weekly_amount",
+          "kind": "decimal",
+          "value": "905.0285714285714285714285714285714285714",
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/11/value/value"
+        },
+        "accommodation_supplement_owner_weekly_payment_share": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_owner_weekly_payment_share",
+          "kind": "decimal",
+          "value": "0",
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/12/value/value"
+        },
+        "accommodation_supplement_owner_weekly_required_payments": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_owner_weekly_required_payments",
+          "kind": "decimal",
+          "value": "0",
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/13/value/value"
+        },
+        "accommodation_supplement_owns_premises_and_not_joint_owner_with_resident": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_owns_premises_and_not_joint_owner_with_resident",
+          "kind": "bool",
+          "value": false,
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/14/value/value"
+        },
+        "accommodation_supplement_relevant_weekly_income": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_relevant_weekly_income",
+          "kind": "decimal",
+          "value": "0",
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/15/value/value"
+        },
+        "accommodation_supplement_resides_in_area_1": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_resides_in_area_1",
+          "kind": "bool",
+          "value": true,
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/16/value/value"
+        },
+        "accommodation_supplement_resides_in_area_2": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_resides_in_area_2",
+          "kind": "bool",
+          "value": false,
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/17/value/value"
+        },
+        "accommodation_supplement_resides_in_area_3": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_resides_in_area_3",
+          "kind": "bool",
+          "value": false,
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/18/value/value"
+        },
+        "accommodation_supplement_self_contained_area_let_to_residents": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_self_contained_area_let_to_residents",
+          "kind": "decimal",
+          "value": "0",
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/19/value/value"
+        },
+        "accommodation_supplement_social_housing_weekly_contributions_paid": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_social_housing_weekly_contributions_paid",
+          "kind": "decimal",
+          "value": "0",
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/20/value/value"
+        },
+        "accommodation_supplement_sole_parent": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_sole_parent",
+          "kind": "bool",
+          "value": true,
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/21/value/value"
+        },
+        "accommodation_supplement_total_premises_area": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_total_premises_area",
+          "kind": "decimal",
+          "value": "0",
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/22/value/value"
+        },
+        "accommodation_supplement_weekly_board_and_lodgings_paid": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_weekly_board_and_lodgings_paid",
+          "kind": "decimal",
+          "value": "0",
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/23/value/value"
+        },
+        "accommodation_supplement_weekly_boarder_payments_received": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_weekly_boarder_payments_received",
+          "kind": "decimal",
+          "value": "0",
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/24/value/value"
+        },
+        "accommodation_supplement_weekly_contributions_received_from_additional_residents": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_weekly_contributions_received_from_additional_residents",
+          "kind": "decimal",
+          "value": "0",
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/25/value/value"
+        },
+        "accommodation_supplement_weekly_rent_paid": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_weekly_rent_paid",
+          "kind": "decimal",
+          "value": "600",
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/26/value/value"
+        },
+        "accommodation_supplement_weekly_rent_received_from_other_residents": {
+          "name": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_weekly_rent_received_from_other_residents",
+          "kind": "decimal",
+          "value": "0",
+          "source": "requests",
+          "pointer": "/requests/8/request/dataset/inputs/27/value/value"
+        }
+      }
+    },
+    "bridge_inputs": [
+      "accommodation_supplement_base_rate_weekly_amount",
+      "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount"
+    ],
+    "response": {
+      "id": {
+        "source": "full_responses",
+        "pointer": "/requests/8/id",
+        "value": "golden-08"
+      },
+      "request_sha256": {
+        "source": "full_responses",
+        "pointer": "/requests/8/request_sha256",
+        "value": "50636d0d291ed5cc33d26dc5d419cd87c252095aaae1d0e5b19397c1f5a5c2c1"
+      },
+      "response_sha256": {
+        "source": "full_responses",
+        "pointer": "/requests/8/response_sha256",
+        "value": "faf1bfb2eec7f0e611c115458ea0de865b62e1c13a88701b97b2487938776f1e"
+      },
+      "outputs": {
+        "accommodation_supplement_rounded_weekly_payment": {
+          "id": "nz:statutes/social_security/accommodation_supplement/core#accommodation_supplement_rounded_weekly_payment",
+          "kind": "decimal",
+          "unit": "NZD",
+          "value": "303",
+          "source": "full_responses",
+          "pointer": "/requests/8/response/results/0/outputs/nz:statutes~1social_security~1accommodation_supplement~1core#accommodation_supplement_rounded_weekly_payment/value/value"
+        },
+        "accommodation_supplement_weekly_amount_before_rounding": {
+          "id": "nz:statutes/social_security/accommodation_supplement/core#accommodation_supplement_weekly_amount_before_rounding",
+          "kind": "decimal",
+          "unit": "NZD",
+          "value": "302.07678846153846153846153846",
+          "source": "full_responses",
+          "pointer": "/requests/8/response/results/0/outputs/nz:statutes~1social_security~1accommodation_supplement~1core#accommodation_supplement_weekly_amount_before_rounding/value/value"
+        },
+        "accommodation_supplement_weekly_qualifying_accommodation_costs": {
+          "id": "nz:statutes/social_security/accommodation_supplement/core#accommodation_supplement_weekly_qualifying_accommodation_costs",
+          "kind": "decimal",
+          "unit": "NZD",
+          "value": "600",
+          "source": "full_responses",
+          "pointer": "/requests/8/response/results/0/outputs/nz:statutes~1social_security~1accommodation_supplement~1core#accommodation_supplement_weekly_qualifying_accommodation_costs/value/value"
+        }
+      }
+    }
+  },
+  "household_requests": {
+    "golden-00": {
+      "id": {
+        "source": "requests",
+        "pointer": "/requests/0/id",
+        "value": "golden-00"
+      },
+      "program": {
+        "source": "requests",
+        "pointer": "/requests/0/program",
+        "value": "nz/main-benefits"
+      },
+      "mode": {
+        "source": "requests",
+        "pointer": "/requests/0/request/mode",
+        "value": "explain"
+      },
+      "entity": "Person",
+      "entity_id": {
+        "source": "requests",
+        "pointer": "/requests/0/request/queries/0/entity_id",
+        "value": "single_parent_three_children_area1_rent:sole-parent:0"
+      },
+      "period": {
+        "source": "requests",
+        "pointer": "/requests/0/request/queries/0/period",
+        "value": {
+          "end": "2027-03-31",
+          "period_kind": "tax_year",
+          "start": "2026-04-01"
+        }
+      },
+      "queried_outputs": {
+        "source": "requests",
+        "pointer": "/requests/0/request/queries/0/outputs",
+        "value": [
+          "nz:statutes/social_security/main_benefits/rates#sole_parent_support_net_weekly_payment"
+        ]
+      },
+      "inputs": {
+        "sole_parent_support_personal_earnings_used_for_childcare": {
+          "name": "nz:statutes/social_security/main_benefits/rates#input.sole_parent_support_personal_earnings_used_for_childcare",
+          "kind": "decimal",
+          "value": "0",
+          "source": "requests",
+          "pointer": "/requests/0/request/dataset/inputs/0/value/value"
+        },
+        "sole_parent_support_total_income": {
+          "name": "nz:statutes/social_security/main_benefits/rates#input.sole_parent_support_total_income",
+          "kind": "decimal",
+          "value": "0",
+          "source": "requests",
+          "pointer": "/requests/0/request/dataset/inputs/1/value/value"
+        }
+      },
+      "request_sha256": {
+        "source": "full_responses",
+        "pointer": "/requests/0/request_sha256",
+        "value": "1ac639dd25ef790c315c1622ca064c20fad7d5f76e7ddbf13f9c5269dc6c5b08"
+      }
+    },
+    "golden-07": {
+      "id": {
+        "source": "requests",
+        "pointer": "/requests/7/id",
+        "value": "golden-07"
+      },
+      "program": {
+        "source": "requests",
+        "pointer": "/requests/7/program",
+        "value": "nz/main-benefits"
+      },
+      "mode": {
+        "source": "requests",
+        "pointer": "/requests/7/request/mode",
+        "value": "explain"
+      },
+      "entity": "Person",
+      "entity_id": {
+        "source": "requests",
+        "pointer": "/requests/7/request/queries/0/entity_id",
+        "value": "single_parent_three_children_area1_rent:jobseeker:0"
+      },
+      "period": {
+        "source": "requests",
+        "pointer": "/requests/7/request/queries/0/period",
+        "value": {
+          "end": "2027-03-31",
+          "period_kind": "tax_year",
+          "start": "2026-04-01"
+        }
+      },
+      "queried_outputs": {
+        "source": "requests",
+        "pointer": "/requests/7/request/queries/0/outputs",
+        "value": [
+          "nz:statutes/social_security/main_benefits/rates#jobseeker_support_net_weekly_payment"
+        ]
+      },
+      "inputs": {
+        "jobseeker_support_applicant_age": {
+          "name": "nz:statutes/social_security/main_benefits/rates#input.jobseeker_support_applicant_age",
+          "kind": "integer",
+          "value": 25,
+          "source": "requests",
+          "pointer": "/requests/7/request/dataset/inputs/0/value/value"
+        },
+        "jobseeker_support_benefit_commenced_on_or_after_1998_07_01": {
+          "name": "nz:statutes/social_security/main_benefits/rates#input.jobseeker_support_benefit_commenced_on_or_after_1998_07_01",
+          "kind": "bool",
+          "value": false,
+          "source": "requests",
+          "pointer": "/requests/7/request/dataset/inputs/1/value/value"
+        },
+        "jobseeker_support_dependent_children_count": {
+          "name": "nz:statutes/social_security/main_benefits/rates#input.jobseeker_support_dependent_children_count",
+          "kind": "integer",
+          "value": 3,
+          "source": "requests",
+          "pointer": "/requests/7/request/dataset/inputs/2/value/value"
+        },
+        "jobseeker_support_living_with_parent": {
+          "name": "nz:statutes/social_security/main_benefits/rates#input.jobseeker_support_living_with_parent",
+          "kind": "bool",
+          "value": false,
+          "source": "requests",
+          "pointer": "/requests/7/request/dataset/inputs/3/value/value"
+        },
+        "jobseeker_support_partner_ineligible_due_to_sanction_or_strike": {
+          "name": "nz:statutes/social_security/main_benefits/rates#input.jobseeker_support_partner_ineligible_due_to_sanction_or_strike",
+          "kind": "bool",
+          "value": false,
+          "source": "requests",
+          "pointer": "/requests/7/request/dataset/inputs/4/value/value"
+        },
+        "jobseeker_support_partner_receives_main_benefit": {
+          "name": "nz:statutes/social_security/main_benefits/rates#input.jobseeker_support_partner_receives_main_benefit",
+          "kind": "bool",
+          "value": false,
+          "source": "requests",
+          "pointer": "/requests/7/request/dataset/inputs/5/value/value"
+        },
+        "jobseeker_support_partner_receives_new_zealand_superannuation_or_veterans_pension": {
+          "name": "nz:statutes/social_security/main_benefits/rates#input.jobseeker_support_partner_receives_new_zealand_superannuation_or_veterans_pension",
+          "kind": "bool",
+          "value": false,
+          "source": "requests",
+          "pointer": "/requests/7/request/dataset/inputs/6/value/value"
+        },
+        "jobseeker_support_single": {
+          "name": "nz:statutes/social_security/main_benefits/rates#input.jobseeker_support_single",
+          "kind": "bool",
+          "value": true,
+          "source": "requests",
+          "pointer": "/requests/7/request/dataset/inputs/7/value/value"
+        },
+        "jobseeker_support_total_income": {
+          "name": "nz:statutes/social_security/main_benefits/rates#input.jobseeker_support_total_income",
+          "kind": "decimal",
+          "value": "0",
+          "source": "requests",
+          "pointer": "/requests/7/request/dataset/inputs/8/value/value"
+        },
+        "jobseeker_support_transferred_2013_no_dependent_children": {
+          "name": "nz:statutes/social_security/main_benefits/rates#input.jobseeker_support_transferred_2013_no_dependent_children",
+          "kind": "bool",
+          "value": false,
+          "source": "requests",
+          "pointer": "/requests/7/request/dataset/inputs/9/value/value"
+        },
+        "jobseeker_support_youngest_dependent_child_age": {
+          "name": "nz:statutes/social_security/main_benefits/rates#input.jobseeker_support_youngest_dependent_child_age",
+          "kind": "integer",
+          "value": 0,
+          "source": "requests",
+          "pointer": "/requests/7/request/dataset/inputs/10/value/value"
+        }
+      },
+      "request_sha256": {
+        "source": "full_responses",
+        "pointer": "/requests/7/request_sha256",
+        "value": "074a15620602b8de42f2bde008e8767b1db112d691bf072a8c7a723c9a4829b2"
+      }
+    }
+  }
+}
