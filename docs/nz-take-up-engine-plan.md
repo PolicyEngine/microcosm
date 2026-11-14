@@ -93,7 +93,7 @@ nz.create (CREATE) ── nz.open (FILTER keep-all: transport, geography, receip
 
 | Resource | Holds | Read by (planned nodes) | Method card |
 |---|---|---|---|
-| `source_stages.json`, `spec/sources.yaml` | the populace-us Build P donor pin (revision, SHA-256, byte size) | `nz.create` | MC4 |
+| `source_stages.json`, `spec/sources.yaml` | the Microcosm US Build P donor pin (revision, SHA-256, byte size) | `nz.create` | MC4 |
 | `benefit_unit_rule.json` | adult + partner + dependent children; other adults form their own unit; refusals | `nz.create` | MC7 |
 | `currency_bridge.json` | USD→NZD 1.654 (IRS 2024 yearly average), one multiplication, 2 dp | `nz.transport.currency` | MC4 |
 | `precal_references.json` | quantile-map destinations (IRD wage bands, MBIE rents, Stats NZ financial net worth), TA population, MSD M1 and O4 for take-up draws | `nz.facts.precal` | MC4, MC6, MC8–MC10 |

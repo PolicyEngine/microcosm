@@ -22,9 +22,9 @@ from microcosm.frame.schema import VariableMetadata
 class NonEngineConsumerClass(StrEnum):
     """Reviewed substantive consumers outside PolicyEngine-US."""
 
-    POPULACE_REGISTER = "populace_register"
-    POPULACE_GATE = "populace_gate"
-    POPULACE_DERIVATION = "populace_derivation"
+    MICROCOSM_REGISTER = "microcosm_register"
+    MICROCOSM_GATE = "microcosm_gate"
+    MICROCOSM_DERIVATION = "microcosm_derivation"
     CLIENT_SURFACE = "client_surface"
 
 
@@ -36,7 +36,7 @@ class _ReviewedNonEngineConsumer(TypedDict):
 
 NON_ENGINE_CONSUMER_ALLOWLIST: dict[str, _ReviewedNonEngineConsumer] = {
     "previous_year_income_available": {
-        "consumer_class": NonEngineConsumerClass.POPULACE_GATE,
+        "consumer_class": NonEngineConsumerClass.MICROCOSM_GATE,
         "consumer": (
             "microcosm.build.us_runtime.prior_year_income."
             "us_prior_year_income_signal_gate"
@@ -47,7 +47,7 @@ NON_ENGINE_CONSUMER_ALLOWLIST: dict[str, _ReviewedNonEngineConsumer] = {
         ),
     },
     "qualified_bdc_income": {
-        "consumer_class": NonEngineConsumerClass.POPULACE_GATE,
+        "consumer_class": NonEngineConsumerClass.MICROCOSM_GATE,
         "consumer": ("microcosm.build.us_runtime.qbi_inputs.us_qbi_inputs_signal_gate"),
         "justification": (
             "Consumed by QBI reconciliation and the qualified-BDC exposure invariant."
@@ -214,7 +214,7 @@ def _mutable_allowlist() -> dict[str, dict[str, object]]:
 
 def _review_fixture() -> dict[str, object]:
     return {
-        "consumer_class": NonEngineConsumerClass.POPULACE_GATE,
+        "consumer_class": NonEngineConsumerClass.MICROCOSM_GATE,
         "consumer": "tests.reviewed_consumer",
         "justification": "Mutation-authentication fixture.",
     }

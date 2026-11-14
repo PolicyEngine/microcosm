@@ -290,7 +290,7 @@ def _program_source_stages(
 
 def _program_ownership(
     *,
-    populace_treatment: str,
+    microcosm_treatment: str,
     stages: Sequence[Mapping[str, object]],
 ) -> str:
     operation_kinds = {
@@ -300,14 +300,14 @@ def _program_ownership(
         if isinstance(operation, Mapping)
     }
     if not stages:
-        if populace_treatment == "seed":
+        if microcosm_treatment == "seed":
             return "modeled"
-        if populace_treatment == "rate_unsourced":
+        if microcosm_treatment == "rate_unsourced":
             return "engine"
         raise RuntimeError(
             "A take-up program without a source stage must be either seeded by "
             "the generic authority or deliberately left at the engine default; "
-            f"got treatment {populace_treatment!r}."
+            f"got treatment {microcosm_treatment!r}."
         )
     if {
         "derive_housing_tenure_inputs",
@@ -918,7 +918,7 @@ def _build_take_up_contract_cached() -> dict[str, object]:
         stages = _program_source_stages(program.variable, all_source_stages)
         relevant_stage_names.update(str(stage["stage"]) for stage in stages)
         ownership = _program_ownership(
-            populace_treatment=program.populace_treatment,
+            microcosm_treatment=program.populace_treatment,
             stages=stages,
         )
         if stages:

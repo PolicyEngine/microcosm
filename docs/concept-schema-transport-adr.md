@@ -2,7 +2,7 @@
 
 **Status:** accepted for the concept schema, the per-engine mappings and their
 coverage reports. `microcosm.frame.transport` adds a reader for local
-populace-US donor files pinned by size and SHA-256, source-ID seeds, a
+Microcosm US donor files pinned by size and SHA-256, source-ID seeds, a
 currency bridge and weighted quantile mapping. The reader selects the donor's
 `is_household_head` as the reference person and repairs two-person parent
 cycles under the age rule below, following the NZ hub's 2026-10-07 defaults

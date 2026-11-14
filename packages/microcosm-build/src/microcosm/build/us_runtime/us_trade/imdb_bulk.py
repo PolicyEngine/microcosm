@@ -380,7 +380,7 @@ def _head_status(url: str, *, head: object | None) -> int:
     if head is not None:
         return int(head(url))  # type: ignore[operator]
     request = urllib.request.Request(
-        url, method="HEAD", headers={"User-Agent": "populace-us-trade-ingest"}
+        url, method="HEAD", headers={"User-Agent": "microcosm-us-trade-ingest"}
     )
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
@@ -906,7 +906,7 @@ def _download_archive(url: str, destination: Path, *, fetch: object | None) -> N
                 part_path.write_bytes(fetch(url))  # type: ignore[operator]
             else:
                 request = urllib.request.Request(
-                    url, headers={"User-Agent": "populace-us-trade-ingest"}
+                    url, headers={"User-Agent": "microcosm-us-trade-ingest"}
                 )
                 with (
                     urllib.request.urlopen(

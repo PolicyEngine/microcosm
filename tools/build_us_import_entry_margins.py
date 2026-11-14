@@ -1214,7 +1214,7 @@ def _archive_cbp_page(staging: Path) -> tuple[bytes, dict]:
         headers={
             "User-Agent": (
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "populace-us-trade-ingest"
+                "microcosm-us-trade-ingest"
             )
         },
     )
