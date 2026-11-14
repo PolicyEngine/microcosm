@@ -919,14 +919,14 @@ def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
         result[predictor] = household[predictor].to_numpy()
     # The donor records the bill the household pays and the spine's
     # council_tax is the liability before council tax reduction, so the
-    # predictor is the paid bill (uk-data#496/#499, microcosm#1095).
-    if "council_tax_rebate" not in household.columns:
-        raise KeyError("recipient household table is missing 'council_tax_rebate'.")
-    result["council_tax"] = np.maximum(
-        household["council_tax"].to_numpy(dtype=float)
-        - household["council_tax_rebate"].to_numpy(dtype=float),
-        0.0,
-    )
+    # predictor is the paid bill (uk-data#496/#499, microcosm#1095): the one
+    # council_tax_localise keeps from before it localises the bill,
+    # council_tax_frs_bill (max(council_tax - council_tax_rebate, 0) on the
+    # FRS bill), so the area the spine drew does not enter the predictor
+    # (microcosm#931).
+    if "council_tax_frs_bill" not in household.columns:
+        raise KeyError("recipient household table is missing 'council_tax_frs_bill'.")
+    result["council_tax"] = household["council_tax_frs_bill"].to_numpy(dtype=float)
     result["region"] = result["region"].map(_enum_name).replace(REGION_REMAP)
     if "tenure_type" not in household.columns:
         raise KeyError("recipient household table is missing 'tenure_type'.")

@@ -108,6 +108,11 @@ HOUSING_SHELL_STAGE_NAMES = [
 PRIVATE_RENT_STAGE_NAMES = [
     "private_rent",
 ]
+#: microcosm#931: Great Britain council tax at each household's drawn local
+#: authority, after the private rents and just before the WAS chain.
+COUNCIL_TAX_LOCALISE_STAGE_NAMES = [
+    "council_tax_localise",
+]
 UC_REPORTER_REDRAW_STAGE_NAMES = [
     "uc_reporter_redraw",
 ]
@@ -187,6 +192,7 @@ UK_SOURCE_STAGE_NAMES = [
     *E7_STAGE_NAMES,
     *HOUSING_SHELL_STAGE_NAMES,
     *PRIVATE_RENT_STAGE_NAMES,
+    *COUNCIL_TAX_LOCALISE_STAGE_NAMES,
     *E5_STAGE_NAMES,
     *E6_STAGE_NAMES,
     *UC_REPORTER_REDRAW_STAGE_NAMES,
@@ -249,6 +255,7 @@ class TestUKSourceStagesManifest:
             *E7_STAGE_NAMES,
             *HOUSING_SHELL_STAGE_NAMES,
             *PRIVATE_RENT_STAGE_NAMES,
+            *COUNCIL_TAX_LOCALISE_STAGE_NAMES,
         ]
         assert "frs_brma" not in names
 
@@ -282,6 +289,7 @@ class TestUKSourceStagesManifest:
         ] == [
             *HOUSING_SHELL_STAGE_NAMES,
             *PRIVATE_RENT_STAGE_NAMES,
+            *COUNCIL_TAX_LOCALISE_STAGE_NAMES,
             *E5_STAGE_NAMES,
             *E6_STAGE_NAMES,
             *UC_REPORTER_REDRAW_STAGE_NAMES,
@@ -294,6 +302,77 @@ class TestUKSourceStagesManifest:
             *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
             *E9_STAGE_NAMES,
         ]
+
+    def test_council_tax_localise_runs_after_private_rent_and_before_the_was_chain(
+        self,
+    ) -> None:
+        # microcosm#931 (María, 13 Nov): the council-tax localisation runs
+        # right after private_rent and just before was_wealth: after the SPI
+        # income fill and the housing shell, which keep reading the FRS bill,
+        # and before every stage that reads the localised bill.
+        canonical = _load_json(CANONICAL_SOURCE_STAGES)
+        names = [stage["stage"] for stage in canonical["stages"]]
+        position = names.index("council_tax_localise")
+
+        assert names[position - 1] == "private_rent"
+        assert names[position + 1] == "was_wealth"
+        for earlier in ("hmrc_spi_income_spine", "spi_housing_shell"):
+            assert names.index(earlier) < position, earlier
+        for later in (
+            "was_lisa",
+            "regional_property_uprating",
+            "high_value_home_support",
+            "nts_bus_travel",
+            "lcfs_consumption",
+            "etb_vat",
+            "etb_services",
+            "private_school_attendance",
+        ):
+            assert names.index(later) > position, later
+
+    def test_no_stage_from_the_area_draw_to_council_tax_localise_moves_a_draw_input(
+        self,
+    ) -> None:
+        # The localisation recomputes each household's draw cell from the
+        # inputs atomic_area_assign drew its area on, so no stage from the
+        # draw to the localisation writes them. The one exception is the
+        # housing shell's band, drawn for the rows the SPI support channel
+        # copied, whose cell is their region by households either way
+        # (microcosm#931).
+        manifest = SourceManifest.from_mapping(_load_json(CANONICAL_SOURCE_STAGES))
+        stages = list(manifest.stages)
+        names = [stage.stage for stage in stages]
+        between = stages[
+            names.index("atomic_area_assign") : names.index("council_tax_localise") + 1
+        ]
+
+        def writers(column: str) -> list[str]:
+            return [
+                stage.stage
+                for stage in between
+                if column in stage.outputs or column in stage.rewrites
+            ]
+
+        for column in ("region", "imd_decile", "council_tax_band_observed"):
+            assert writers(column) == [], column
+        assert writers("council_tax_band") == ["spi_housing_shell"]
+
+    def test_no_stage_after_council_tax_localise_writes_its_council_tax(self) -> None:
+        # The localisation is the spine's last writer of the bill, the rebate
+        # and the reported reduction, and the only writer of the paid bill it
+        # keeps for the WAS chain's predictor (microcosm#931).
+        manifest = SourceManifest.from_mapping(_load_json(CANONICAL_SOURCE_STAGES))
+        stages = list(manifest.stages)
+        names = [stage.stage for stage in stages]
+        for stage in stages[names.index("council_tax_localise") + 1 :]:
+            for column in (
+                "council_tax",
+                "council_tax_rebate",
+                "council_tax_benefit_reported",
+                "council_tax_frs_bill",
+            ):
+                assert column not in stage.outputs, (stage.stage, column)
+                assert column not in stage.rewrites, (stage.stage, column)
 
     def test_age_tail_runs_immediately_after_frs_spine(self) -> None:
         canonical = _load_json(CANONICAL_SOURCE_STAGES)
@@ -366,6 +445,7 @@ class TestUKSourceStagesManifest:
                     "area_brma": _identity,
                     "spi_copy_areas": _identity,
                     "private_rent": _identity,
+                    "council_tax_localise": _identity,
                     "was_wealth": _identity,
                     "was_lisa": _identity,
                     "nts_bus_travel": _identity,
@@ -465,6 +545,7 @@ class TestDeclaredOutputsAreWrittenColumns:
         )
         from microcosm.build.uk_runtime.frs_brma import FRS_BRMA_OUTPUT_COLUMNS
         from microcosm.build.uk_runtime.frs_council_tax import (
+            FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN,
             FRS_COUNCIL_TAX_OUTPUT_COLUMNS,
         )
         from microcosm.build.uk_runtime.frs_disability import (
@@ -523,6 +604,12 @@ class TestDeclaredOutputsAreWrittenColumns:
 
         assert stages["frs_employment"].outputs == FRS_EMPLOYMENT_OUTPUT_COLUMNS
         assert stages["frs_council_tax"].outputs == FRS_COUNCIL_TAX_OUTPUT_COLUMNS
+        # The bill and its provenance, which council_tax_localise reads
+        # (microcosm#931).
+        assert FRS_COUNCIL_TAX_OUTPUT_COLUMNS == (
+            "council_tax",
+            FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN,
+        )
         # The carer link (A3) writes after the categories and flags, which the
         # SPI refreshes re-derive row by row on their own.
         assert stages["frs_disability"].outputs == (
@@ -628,6 +715,25 @@ class TestDeclaredOutputsAreWrittenColumns:
         assert income.rewrites == UK_SPI_INCOME_SPINE_REWRITE_COLUMNS
         assert not (set(income.outputs) & set(income.rewrites))
 
+    def test_council_tax_localise_outputs_and_rewrites_are_runtime_constants(
+        self,
+    ) -> None:
+        # The kept paid bill is the stage's one output; it rewrites the bill,
+        # the rebate and the reported reduction (microcosm#931).
+        from microcosm.build.uk_runtime.spine_council_tax import (
+            COUNCIL_TAX_FRS_BILL_COLUMN,
+            UK_COUNCIL_TAX_LOCALISE_OUTPUT_COLUMNS,
+            UK_COUNCIL_TAX_LOCALISE_REWRITES,
+        )
+
+        stage = load_country_spec("uk").sources.stage_map()["council_tax_localise"]
+
+        assert stage.outputs == UK_COUNCIL_TAX_LOCALISE_OUTPUT_COLUMNS
+        assert stage.outputs == (COUNCIL_TAX_FRS_BILL_COLUMN,)
+        assert stage.nonnegative_outputs == (COUNCIL_TAX_FRS_BILL_COLUMN,)
+        assert stage.rewrites == UK_COUNCIL_TAX_LOCALISE_REWRITES
+        assert not (set(stage.outputs) & set(stage.rewrites))
+
     def test_e8_outputs_and_rewrites_are_backed_by_runtime_constants(self) -> None:
         from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
         from microcosm.build.uk_runtime.cgt_support import (
@@ -698,11 +804,13 @@ class TestE3ManifestLockstep:
             "read_tables",
             "map_coded_amounts",
         ]
+        # The bill, then its provenance (microcosm#931).
         assert [op.kind for op in stages["frs_council_tax"].operations] == [
             "read_tables",
             "impute_cell_means",
             "verify_vendored_fact_resource",
             "level_scottish_council_tax",
+            "derive",
         ]
         assert [op.kind for op in stages["frs_disability"].operations] == [
             "derive",
@@ -1369,6 +1477,9 @@ def test_every_column_writing_stage_declares_the_receipt_its_module_records() ->
     from microcosm.build.uk_runtime.regional_uprating import (
         UK_REGIONAL_PROPERTY_UPRATING_MASS_CONSERVATION_REASON,
     )
+    from microcosm.build.uk_runtime.spine_council_tax import (
+        UK_COUNCIL_TAX_LOCALISE_MASS_CONSERVATION_REASON,
+    )
     from microcosm.build.uk_runtime.was_lisa import (
         UK_WAS_LISA_MASS_CONSERVATION_REASON,
     )
@@ -1380,6 +1491,7 @@ def test_every_column_writing_stage_declares_the_receipt_its_module_records() ->
     assert spec.sources is not None
     stages = spec.sources.stage_map()
     expected = {
+        "council_tax_localise": UK_COUNCIL_TAX_LOCALISE_MASS_CONSERVATION_REASON,
         "was_wealth": UK_WAS_WEALTH_MASS_CONSERVATION_REASON,
         "was_lisa": UK_WAS_LISA_MASS_CONSERVATION_REASON,
         "regional_property_uprating": (

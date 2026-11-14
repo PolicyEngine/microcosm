@@ -235,6 +235,10 @@ def _frame() -> object:
             "num_bedrooms": [3, 4],
             "council_tax": [1000.0, 1200.0],
             "council_tax_rebate": [250.0, 0.0],
+            # The paid bill council_tax_localise keeps from before it
+            # localises, max(council_tax - council_tax_rebate, 0) on the FRS
+            # bill (microcosm#931).
+            "council_tax_frs_bill": [750.0, 1200.0],
             UK_HBAI_NET_INCOME_VARIABLE: [50000.0, 60000.0],
             # The engine's other net income, which the stage must never read.
             "household_net_income": [1_000_000.0, 2_000_000.0],
@@ -444,7 +448,8 @@ def test_recipient_predictors_sum_person_and_benunit_variables_to_household() ->
     assert predictors["rental_income"].tolist() == [100.0, 50.0]
     assert predictors[UK_HBAI_NET_INCOME_PREDICTOR].tolist() == [50000.0, 60000.0]
     # The donor records the bill paid, so the reduction comes off the
-    # liability before council tax reduction (microcosm#1095).
+    # liability before council tax reduction (microcosm#1095): the paid bill
+    # council_tax_localise keeps (microcosm#931).
     assert predictors["council_tax"].tolist() == [750.0, 1200.0]
     assert predictors[UK_WAS_TENURE_CATEGORY_COLUMN].tolist() == [
         "owned_with_mortgage",
@@ -456,6 +461,42 @@ def test_recipient_predictors_sum_person_and_benunit_variables_to_household() ->
     # The stage reads no engine tenure formula.
     assert "is_renting" not in predictors
     assert "is_renting" not in UK_WAS_ENGINE_PREDICTOR_ENTITIES
+
+
+def test_the_bill_predictor_is_the_paid_bill_kept_before_the_localisation() -> None:
+    """The council-tax predictor is the paid bill council_tax_localise keeps
+    from before it localises the bill (microcosm#931), so a localised bill,
+    rebate or reduction does not move it, bit for bit; a frame without the
+    kept bill is refused, naming it."""
+    frame = _frame()
+    household = frame.table("household").copy()
+    # Bills and rebates as a localisation might leave them.
+    household["council_tax"] = [4_000.0, 0.1 + 0.2]
+    household["council_tax_rebate"] = [0.0, 0.3]
+
+    def with_household(table: pd.DataFrame):
+        return uk_national_frame(
+            person=frame.table("person"),
+            benunit=frame.table("benunit"),
+            household=table,
+            time_period="2023",
+            household_weights=frame.weights_for("household").values,
+        )
+
+    predictors = recipient_predictors(with_household(household), _FakeEngine())
+
+    kept = household["council_tax_frs_bill"].to_numpy(dtype=float)
+    assert predictors["council_tax"].to_numpy().view(np.uint64).tolist() == (
+        kept.view(np.uint64).tolist()
+    )
+    assert predictors["council_tax"].tolist() == [750.0, 1200.0]
+    # The predictor frame keeps its columns and their order.
+    assert list(predictors.columns) == list(
+        recipient_predictors(_frame(), _FakeEngine()).columns
+    )
+    without = household.drop(columns="council_tax_frs_bill")
+    with pytest.raises(KeyError, match="council_tax_frs_bill"):
+        recipient_predictors(with_household(without), _FakeEngine())
 
 
 def test_recipient_predictors_fail_loud_on_entity_mismatch() -> None:

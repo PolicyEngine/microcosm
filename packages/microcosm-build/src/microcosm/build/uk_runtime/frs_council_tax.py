@@ -31,7 +31,6 @@ from microcosm.build.uk_runtime.receipt_counts import (
 )
 from microcosm.frame import Frame
 
-FRS_COUNCIL_TAX_OUTPUT_COLUMNS = ("council_tax",)
 SCOTLAND_GVTREGNO = 12
 NORTHERN_IRELAND_GVTREGNO = 13
 #: Raw household cells the derivation reads; the pinned tab carries them all.
@@ -86,6 +85,9 @@ FRS_COUNCIL_TAX_BILL_PROVENANCE_VALUES = (
 )
 #: The graph's string dtype, which the provenance column is stored in.
 _PROVENANCE_DTYPE = pd.StringDtype(storage="python")
+#: The household columns the stage writes: the bill, then its provenance,
+#: which the release boundary drops and council_tax_localise alone reads.
+FRS_COUNCIL_TAX_OUTPUT_COLUMNS = ("council_tax", FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN)
 FRS_COUNCIL_TAX_BUILD_PERIOD = 2024
 VERIFY_VENDORED_FACT_RESOURCE_KIND = "verify_vendored_fact_resource"
 #: S2(a) of the November event-data plan (microcosm#1095): the FRS's Scottish
@@ -236,6 +238,7 @@ def frs_council_tax_operations() -> tuple[dict[str, Any], ...]:
         frs_council_tax_operation_parameters(),
         frs_council_tax_resource_operation_parameters(),
         frs_council_tax_levelling_operation_parameters(),
+        frs_council_tax_provenance_operation_parameters(),
     )
 
 
@@ -252,7 +255,18 @@ def frs_council_tax_resource_artifact() -> dict[str, Any]:
 
 
 def assert_frs_council_tax_stage_parameters(stage: SourceStageSpec) -> None:
-    """Closed-world drift assert: the manifest declares the implemented rule."""
+    """Closed-world drift assert: the manifest declares the implemented rules.
+
+    The stage reads its table, imputes the bill
+    (:func:`frs_council_tax_operation_parameters`), checks the vendored
+    Scottish Band D facts and levels Scotland's bills to them
+    (:func:`frs_council_tax_resource_operation_parameters`,
+    :func:`frs_council_tax_levelling_operation_parameters`) and derives the
+    bill's provenance (:func:`frs_council_tax_provenance_operation_parameters`),
+    in that order (:func:`frs_council_tax_operations`), each declaration
+    exactly as those functions state it, and declares the Band D facts'
+    artifact once (:func:`frs_council_tax_resource_artifact`).
+    """
 
     if stage.stage != FRS_COUNCIL_TAX_STAGE_NAME:
         raise ValueError(f"frs_council_tax transform received stage {stage.stage!r}.")
@@ -262,7 +276,8 @@ def assert_frs_council_tax_stage_parameters(stage: SourceStageSpec) -> None:
     expected_kinds = ["read_tables", *(str(op["kind"]) for op in expected_operations)]
     if kinds != expected_kinds:
         raise ValueError(
-            f"frs_council_tax stage must declare {expected_kinds}, got {kinds}."
+            f"frs_council_tax stage must declare {', '.join(expected_kinds)}, in "
+            f"that order, got {kinds}."
         )
     for operation, expected in zip(operations[1:], expected_operations, strict=True):
         declared = {"kind": operation.kind, **dict(operation.parameters)}
@@ -275,7 +290,7 @@ def assert_frs_council_tax_stage_parameters(stage: SourceStageSpec) -> None:
             raise ValueError(
                 f"frs_council_tax {operation.kind} declaration drifted from the "
                 f"rule the runtime implements on parameter(s) {drifted} "
-                "(uk-data#496/#499, microcosm#1095)."
+                "(uk-data#496/#499, microcosm#1095, microcosm#931)."
             )
     expected_artifact = frs_council_tax_resource_artifact()
     resources = [
@@ -471,7 +486,14 @@ def level_scottish_council_tax(
 
 
 class UKFRSCouncilTaxStageTransform:
-    """Whole-stage callable for FRS council-tax imputation."""
+    """Whole-stage callable for FRS council-tax imputation.
+
+    Running it writes each household's bill, levelled in Scotland, and the
+    bill's provenance (:func:`frs_council_tax_with_receipt`), then keeps the
+    stage's two receipts for :meth:`checkpoint_metadata`: the Scottish
+    level's, and the provenance's (:func:`council_tax_provenance_evidence`),
+    counted on the frame it wrote.
+    """
 
     def __init__(
         self,
@@ -485,12 +507,17 @@ class UKFRSCouncilTaxStageTransform:
         #: The Scottish level; read from the vendored resource when not given.
         self.level = level
         self.last_receipt: dict[str, Any] | None = None
+        self.last_evidence: dict[str, Any] | None = None
 
     def __call__(self, frame: Frame) -> Frame:
         result, receipt = frs_council_tax_with_receipt(
             frame, self.raw_dir, stage=self.stage, level=self.level
         )
         self.last_receipt = receipt
+        self.last_evidence = council_tax_provenance_evidence(
+            result,
+            result.table("household")[FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN],
+        )
         return result
 
     @staticmethod
@@ -498,11 +525,11 @@ class UKFRSCouncilTaxStageTransform:
         return FRS_COUNCIL_TAX_OUTPUT_COLUMNS
 
     def checkpoint_metadata(self) -> dict[str, object]:
-        if self.last_receipt is None:
-            return {}
+        if self.last_receipt is None or self.last_evidence is None:
+            raise RuntimeError("checkpoint metadata requires a completed stage run.")
         return {
             "evidence": {
-                "stage": FRS_COUNCIL_TAX_STAGE_NAME,
+                **self.last_evidence,
                 "scottish_level": dict(self.last_receipt),
             }
         }
@@ -515,6 +542,15 @@ def add_frs_council_tax(
     stage: SourceStageSpec,
     level: ScottishCouncilTaxLevel | None = None,
 ) -> Frame:
+    """Each household's bill and the branch the bill takes, on the frame.
+
+    ``council_tax`` is :func:`derive_council_tax`'s bill, with Scotland's
+    bills levelled (:func:`level_scottish_council_tax`), and
+    ``FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN`` is
+    :func:`derive_council_tax_provenance`'s flag, both from one set of masks;
+    the flag is in the graph's string dtype (``StringDtype("python")``).
+    """
+
     return frs_council_tax_with_receipt(frame, raw_dir, stage=stage, level=level)[0]
 
 
@@ -539,8 +575,8 @@ def frs_council_tax_with_receipt(
         )
     )
     household = frame.table("household").copy()
-    derived = derive_council_tax(household, household_raw)
-    bills = derived.reindex(household["household_id"]).to_numpy(dtype=float)
+    bill, provenance = _council_tax_branches(household, household_raw)
+    bills = bill.reindex(household["household_id"]).to_numpy(dtype=float)
     gvtregno = pd.to_numeric(
         household_raw.set_index("household_id")["gvtregno"].reindex(
             household["household_id"]
@@ -554,6 +590,11 @@ def frs_council_tax_with_receipt(
         level=level,
     )
     household["council_tax"] = levelled
+    household[FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN] = pd.Series(
+        provenance.reindex(household["household_id"]).to_numpy(dtype=object),
+        index=household.index,
+        dtype=_PROVENANCE_DTYPE,
+    )
     result = uk_national_frame(
         person=frame.table("person"),
         benunit=frame.table("benunit"),

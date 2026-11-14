@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
+from dataclasses import replace
 from typing import NamedTuple
 
 import numpy as np
@@ -16,6 +18,7 @@ from microcosm.build.uk_runtime.frs_council_tax import (
     FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN,
     FRS_COUNCIL_TAX_BILL_PROVENANCE_VALUES,
     FRS_COUNCIL_TAX_BILL_UNKNOWN_REDUCTION,
+    FRS_COUNCIL_TAX_OUTPUT_COLUMNS,
     NORTHERN_IRELAND_GVTREGNO,
     SCOTLAND_GVTREGNO,
     SCOTTISH_BAND_D_EQUIVALENTS_CONCEPT,
@@ -31,10 +34,12 @@ from microcosm.build.uk_runtime.frs_council_tax import (
     SCOTTISH_SECOND_HOMES_CONCEPT,
     SCOTTISH_SECOND_HOMES_RECORD_SET,
     ScottishCouncilTaxLevel,
+    UKFRSCouncilTaxStageTransform,
     assert_frs_council_tax_stage_parameters,
     council_tax_provenance_evidence,
     derive_council_tax,
     derive_council_tax_provenance,
+    frs_council_tax_operation_parameters,
     frs_council_tax_provenance_operation_parameters,
     level_scottish_council_tax,
     load_scottish_council_tax_level,
@@ -840,3 +845,99 @@ def test_the_evidence_refuses_what_it_cannot_receipt(values) -> None:
     ) as refused:
         council_tax_provenance_evidence({"household": household}, values)
     assert not any(character.isdigit() for character in str(refused.value))
+
+
+# --- The stage, wired (microcosm#931) ------------------------------------------------
+
+
+def test_the_packaged_stage_declares_the_bill_and_then_its_provenance() -> None:
+    """The packaged stage is the reviewed one: the cell-mean imputation, the
+    Scottish level's resource check and level, and then the provenance's
+    derive, verbatim, writing the bill and the flag."""
+    stage = _committed_stage()
+
+    assert [operation.kind for operation in stage.operations] == [
+        "read_tables",
+        "impute_cell_means",
+        "verify_vendored_fact_resource",
+        "level_scottish_council_tax",
+        "derive",
+    ]
+    impute, derive = stage.operations[1], stage.operations[-1]
+    assert {"kind": impute.kind, **dict(impute.parameters)} == (
+        frs_council_tax_operation_parameters()
+    )
+    assert {"kind": derive.kind, **dict(derive.parameters)} == (
+        frs_council_tax_provenance_operation_parameters()
+    )
+    assert (
+        stage.outputs
+        == FRS_COUNCIL_TAX_OUTPUT_COLUMNS
+        == (
+            "council_tax",
+            FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN,
+        )
+    )
+    assert stage.nonnegative_outputs == ("council_tax",)
+
+
+def test_the_stage_writes_the_bill_and_the_flag_and_receipts_the_flag(
+    tmp_path,
+) -> None:
+    """The transform writes each household's bill and its provenance from one
+    set of masks, the flag a Python string column, and keeps its receipt of
+    the flag, counted on the frame it wrote, for its checkpoint. The raw tab
+    holds the invented cases, pinned as the stage pins its tab."""
+    raw = _case_rows()
+    path = tmp_path / "househol.tab"
+    raw.rename(columns={"household_id": "sernum"}).to_csv(path, sep="\t", index=False)
+    committed = _committed_stage()
+    stage = replace(
+        committed,
+        artifacts=tuple(
+            {
+                **artifact,
+                "locator": path.name,
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                "size_bytes": path.stat().st_size,
+            }
+            if artifact.get("table") == "househol"
+            else artifact
+            for artifact in committed.artifacts
+        ),
+    )
+    scottish = (raw["gvtregno"] == SCOTLAND_GVTREGNO).to_numpy()
+    bills = _derive(raw).to_numpy()
+    # Unit weights: this level doubles the Scottish bills' total.
+    stored = float(bills[scottish].sum())
+    level = ScottishCouncilTaxLevel(
+        total=2.0 * stored, receipt={"level_gbp": 2.0 * stored}
+    )
+    transform = UKFRSCouncilTaxStageTransform(tmp_path, stage=stage, level=level)
+    assert transform.output_columns() == FRS_COUNCIL_TAX_OUTPUT_COLUMNS
+    with pytest.raises(RuntimeError, match="completed stage run"):
+        transform.checkpoint_metadata()
+
+    result = transform(_frame(raw["household_id"].to_numpy()))
+
+    household = result.table("household")
+    council_tax = household["council_tax"].to_numpy()
+    np.testing.assert_allclose(council_tax[scottish], 2.0 * bills[scottish])
+    assert council_tax[~scottish].tolist() == bills[~scottish].tolist()
+    flag = household[FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN]
+    assert flag.dtype == pd.StringDtype(storage="python")
+    # The Scottish level scales the bills, never the branch each bill took.
+    assert flag.to_list() == [case.provenance for case in _CASES]
+    expected = council_tax_provenance_evidence(result, flag)
+    assert transform.last_receipt["levelled"] is True
+    assert transform.last_receipt["factor"] == pytest.approx(2.0)
+    assert transform.checkpoint_metadata() == {
+        "evidence": {**expected, "scottish_level": transform.last_receipt}
+    }
+    assert expected == {
+        "stage": "frs_council_tax",
+        "bill_provenance_sources": {
+            value: rounded_count(sum(case.provenance == value for case in _CASES))
+            for value in FRS_COUNCIL_TAX_BILL_PROVENANCE_VALUES
+        },
+    }
