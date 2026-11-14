@@ -218,13 +218,20 @@ def test_uk_dataset_through_asks_policyengine_uk_for_the_years_to_end_year(
     assert len(calls) == 2
 
 
-def _stand_in_rebalancing(monkeypatch, years):
+def _stand_in_rebalancing(monkeypatch, years, **constants):
     _stand_in_engine_modules(
-        monkeypatch, "policyengine_uk.scenarios.uc_reform", REBALANCING_YEARS=years
+        monkeypatch,
+        "policyengine_uk.scenarios.uc_reform",
+        REBALANCING_YEARS=years,
+        **constants,
     )
     import sys
 
     return sys.modules["policyengine_uk.scenarios.uc_reform"]
+
+
+#: The years policyengine-uk builds its ``REBALANCING_YEARS`` from.
+_ENGINE_YEARS = {"FIRST_REBALANCING_YEAR": 2026, "PROJECTION_END_YEAR": 2032}
 
 
 @pytest.mark.parametrize(
@@ -276,3 +283,189 @@ def test_rebalancing_years_refuse_a_changed_engine(monkeypatch, installed):
             pass
 
     assert uc_reform.REBALANCING_YEARS is installed
+
+
+def test_rebalancing_years_are_restored_when_blocks_exit_out_of_order(monkeypatch):
+    from microcosm.frame.adapters.policyengine_uk import uk_rebalancing_years_through
+
+    installed = range(2026, 2033)
+    uc_reform = _stand_in_rebalancing(monkeypatch, installed)
+
+    first = uk_rebalancing_years_through(2027)
+    second = uk_rebalancing_years_through(2027)
+    first.__enter__()
+    second.__enter__()
+    first.__exit__(None, None, None)
+    # The second block is still open, so its simulation still gets the cut.
+    assert uc_reform.REBALANCING_YEARS == range(2026, 2028)
+    second.__exit__(None, None, None)
+
+    assert uc_reform.REBALANCING_YEARS is installed
+
+
+def test_a_block_for_another_year_is_refused_inside_an_open_block(monkeypatch):
+    from microcosm.frame.adapters.policyengine_uk import uk_rebalancing_years_through
+
+    installed = range(2026, 2033)
+    uc_reform = _stand_in_rebalancing(monkeypatch, installed)
+
+    with uk_rebalancing_years_through(2027):
+        for other_year in (2025, 2030):
+            with pytest.raises(RuntimeError, match="cut at 2027"):
+                with uk_rebalancing_years_through(other_year):
+                    pass
+            # The refusal leaves the open block's cut in force.
+            assert uc_reform.REBALANCING_YEARS == range(2026, 2028)
+        with uk_rebalancing_years_through("2027") as years:
+            assert years == range(2026, 2028)
+        assert uc_reform.REBALANCING_YEARS == range(2026, 2028)
+
+    assert uc_reform.REBALANCING_YEARS is installed
+
+
+def test_a_block_on_another_thread_waits_for_the_open_block(monkeypatch):
+    import threading
+
+    from microcosm.frame.adapters.policyengine_uk import uk_rebalancing_years_through
+
+    installed = range(2026, 2033)
+    uc_reform = _stand_in_rebalancing(monkeypatch, installed)
+    entered = threading.Event()
+    seen = []
+
+    def other_thread():
+        with uk_rebalancing_years_through(2027) as years:
+            entered.set()
+            seen.append((years, uc_reform.REBALANCING_YEARS))
+
+    thread = threading.Thread(target=other_thread)
+    with uk_rebalancing_years_through(2025):
+        thread.start()
+        # The other thread cannot cut the range while this block is open.
+        assert not entered.wait(0.2)
+        assert uc_reform.REBALANCING_YEARS == range(2026, 2026)
+    thread.join(timeout=10)
+
+    assert not thread.is_alive()
+    # It cut the engine's own range, not this block's cut of it.
+    assert seen == [(range(2026, 2028), range(2026, 2028))]
+    assert uc_reform.REBALANCING_YEARS is installed
+
+
+def test_a_range_changed_inside_the_block_is_refused_and_restored(monkeypatch):
+    from microcosm.frame.adapters.policyengine_uk import uk_rebalancing_years_through
+
+    installed = range(2026, 2033)
+    uc_reform = _stand_in_rebalancing(monkeypatch, installed)
+
+    with pytest.raises(RuntimeError, match="changed inside"):
+        with uk_rebalancing_years_through(2025):
+            uc_reform.REBALANCING_YEARS = range(2026, 2030)
+
+    assert uc_reform.REBALANCING_YEARS is installed
+    with uk_rebalancing_years_through(2027) as years:
+        assert years == range(2026, 2028)
+    assert uc_reform.REBALANCING_YEARS is installed
+
+
+def test_the_whole_loop_block_accepts_the_engines_own_range(monkeypatch):
+    from microcosm.frame.adapters.policyengine_uk import uk_whole_rebalancing_years
+
+    installed = range(2026, 2033)
+    uc_reform = _stand_in_rebalancing(monkeypatch, installed, **_ENGINE_YEARS)
+
+    with uk_whole_rebalancing_years():
+        assert uc_reform.REBALANCING_YEARS is installed
+
+    assert uc_reform.REBALANCING_YEARS is installed
+
+
+def test_the_whole_loop_block_accepts_an_engine_that_was_never_imported(monkeypatch):
+    import sys
+
+    from microcosm.frame.adapters.policyengine_uk import uk_whole_rebalancing_years
+
+    monkeypatch.delitem(
+        sys.modules, "policyengine_uk.scenarios.uc_reform", raising=False
+    )
+
+    with uk_whole_rebalancing_years():
+        assert "policyengine_uk.scenarios.uc_reform" not in sys.modules
+
+
+@pytest.mark.parametrize("left", [range(2026, 2026), range(2026, 2028)])
+def test_the_whole_loop_block_refuses_a_range_left_cut(monkeypatch, left):
+    from microcosm.frame.adapters.policyengine_uk import uk_whole_rebalancing_years
+
+    uc_reform = _stand_in_rebalancing(monkeypatch, left, **_ENGINE_YEARS)
+
+    with pytest.raises(RuntimeError, match="a cut was left"):
+        with uk_whole_rebalancing_years():
+            pass
+
+    assert uc_reform.REBALANCING_YEARS is left
+
+
+def test_the_whole_loop_block_is_refused_inside_an_open_cut(monkeypatch):
+    from microcosm.frame.adapters.policyengine_uk import (
+        uk_rebalancing_years_through,
+        uk_whole_rebalancing_years,
+    )
+
+    installed = range(2026, 2033)
+    uc_reform = _stand_in_rebalancing(monkeypatch, installed, **_ENGINE_YEARS)
+
+    with uk_rebalancing_years_through(2025):
+        with pytest.raises(RuntimeError, match="needs the whole loop"):
+            with uk_whole_rebalancing_years():
+                pass
+        assert uc_reform.REBALANCING_YEARS == range(2026, 2026)
+    with uk_whole_rebalancing_years():
+        assert uc_reform.REBALANCING_YEARS is installed
+
+
+def test_the_whole_loop_block_waits_for_a_cut_on_another_thread(monkeypatch):
+    import threading
+
+    from microcosm.frame.adapters.policyengine_uk import (
+        uk_rebalancing_years_through,
+        uk_whole_rebalancing_years,
+    )
+
+    installed = range(2026, 2033)
+    uc_reform = _stand_in_rebalancing(monkeypatch, installed, **_ENGINE_YEARS)
+    entered = threading.Event()
+    seen = []
+
+    def other_thread():
+        with uk_whole_rebalancing_years():
+            entered.set()
+            seen.append(uc_reform.REBALANCING_YEARS)
+
+    thread = threading.Thread(target=other_thread)
+    with uk_rebalancing_years_through(2025):
+        thread.start()
+        # A simulation that needs the whole loop is not built during the cut.
+        assert not entered.wait(0.2)
+    thread.join(timeout=10)
+
+    assert not thread.is_alive()
+    assert seen == [installed]
+
+
+@pytest.mark.parametrize(
+    "constants",
+    [
+        {},
+        {"FIRST_REBALANCING_YEAR": 2026},
+        {"FIRST_REBALANCING_YEAR": 2026, "PROJECTION_END_YEAR": "2032"},
+    ],
+)
+def test_the_whole_loop_block_refuses_a_changed_engine(monkeypatch, constants):
+    from microcosm.frame.adapters.policyengine_uk import uk_whole_rebalancing_years
+
+    _stand_in_rebalancing(monkeypatch, range(2026, 2033), **constants)
+
+    with pytest.raises(TypeError, match="FIRST_REBALANCING_YEAR"):
+        with uk_whole_rebalancing_years():
+            pass

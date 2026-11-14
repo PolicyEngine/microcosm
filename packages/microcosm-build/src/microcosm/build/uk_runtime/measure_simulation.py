@@ -89,6 +89,7 @@ from microcosm.frame.adapters.policyengine_uk import (
     frame_isa_income_contract,
     uk_dataset_through,
     uk_rebalancing_years_through,
+    uk_whole_rebalancing_years,
     validate_uc_claimant_input,
 )
 
@@ -479,6 +480,15 @@ def _cgt_model_measure(variable: str, default_year: int) -> tuple[str, int] | No
     if match:
         return _CGT_CALIBRATION_VARIABLES[f"cgt_calibration_{match[2]}"], int(match[1])
     return None
+
+
+def _dated_measure_year(variable: str) -> int | None:
+    """The year a measure dated by its name is computed at, else None."""
+
+    match = UK_CGT_DATED_MEASURE.fullmatch(variable)
+    if match:
+        return int(match[1])
+    return company_car_dated_benefit_year(variable)
 
 
 def _uc_calibration_composition(
@@ -1349,7 +1359,34 @@ class UKMeasureResolver:
             return None
         return str(definition.entity.key)
 
+    def _refuse_dated_measure_after_window(self, variable: str) -> None:
+        """Refuse a measure dated after the last year a scratch engine holds.
+
+        A scratch engine stops at the resolver's year: its dataset is projected
+        no further, and policyengine-uk's Universal Credit rebalancing loop
+        did not run for a later year. policyengine-uk still answers a read
+        there, from the last year's inputs, with other values than a release
+        gives. A direct H5 keeps the whole projection and answers every year.
+        :meth:`knows` still answers for the measure, so the refusal reaches
+        the operator with its reason, not as an unknown variable.
+        """
+
+        end_year = getattr(self, "_simulation_end_year", None)
+        if end_year is None:
+            return
+        measure_year = _dated_measure_year(variable)
+        if measure_year is not None and measure_year > end_year:
+            raise ValueError(
+                f"{variable} is measured in {measure_year}, but this resolver's "
+                f"scratch engine holds no year after {end_year}: the engine's "
+                "projection and its Universal Credit rebalancing loop stop "
+                "there, so the values would not be the ones a release gives. "
+                "Measure it from a direct H5 source, or with a resolver whose "
+                f"year is {measure_year} or later."
+            )
+
     def compute(self, entity: str, variable: str) -> tuple[np.ndarray, str]:
+        self._refuse_dated_measure_after_window(variable)
         if variable in UK_ANNUAL_INCOME_MEASURES:
             return self._annual_income_measure(entity, variable)
         if variable in UK_HOUSEHOLD_ENERGY_MEASURES:
@@ -1398,6 +1435,7 @@ class UKMeasureResolver:
         folded = binding.get("folded_into")
         folded = None if folded is None else str(folded)
         output = str(binding["output_variable"])
+        self._refuse_dated_measure_after_window(output)
         entity = str(binding.get("from_entity") or "person")
         direction = str(binding.get("output_delta", "counterfactual_minus_baseline"))
         if direction not in (
@@ -1646,11 +1684,15 @@ class UKMeasureResolver:
         resolver's year (:func:`_project_scratch_engine_input`), and
         policyengine-uk's Universal Credit rebalancing loop stops at the
         resolver's year while the simulation is built: the measures read no
-        later year. A direct H5 keeps the engine's whole projection.
+        later year, and :meth:`_refuse_dated_measure_after_window` refuses one
+        that would. A direct H5 keeps the engine's whole projection, and is
+        built where no cut of that loop is in force
+        (:func:`~microcosm.frame.adapters.policyengine_uk.uk_whole_rebalancing_years`).
         """
 
         if self._simulation_end_year is None:
-            return self._factory(dataset=str(self._source_path))
+            with uk_whole_rebalancing_years():
+                return self._factory(dataset=str(self._source_path))
         with uk_rebalancing_years_through(self._simulation_end_year):
             return self._factory(dataset=str(self._source_path))
 

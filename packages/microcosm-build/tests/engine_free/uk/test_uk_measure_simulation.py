@@ -1213,6 +1213,75 @@ def test_measure_resolver_direct_and_scratch_receipts(monkeypatch, tmp_path: Pat
     assert projections == [("simulation-input.h5", 2025)]
 
 
+def test_a_scratch_resolver_refuses_a_measure_dated_after_its_year(
+    monkeypatch, tmp_path: Path
+):
+    """A scratch engine holds no year after the resolver's. policyengine-uk
+    would still answer a later year from the last year's inputs, so a measure
+    dated there is refused, not read. A direct H5 keeps every year."""
+
+    stub_scratch_engine_window(monkeypatch)
+    sim = SimulationStub(
+        {
+            "capital_gains": ("person", np.array([3000.0, 5000.0, 20000.0])),
+            "capital_gains_tax": ("person", np.array([0.0, 400.0, 3400.0])),
+            "company_car_benefit": ("person", np.array([0.0, 900.0, 3_000.0])),
+        }
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=lambda *, dataset: sim),
+    )
+    monkeypatch.setattr(
+        measure_simulation, "write_uk_national_frame", lambda frame, path: path
+    )
+    scratch = UKMeasureResolver(
+        simulation_source=None,
+        scratch_dir=tmp_path,
+        year=2025,
+        frame=ReleaseIdentifierFrameStub(),
+    )
+    direct = UKMeasureResolver(
+        simulation_source=tmp_path / "input.h5",
+        scratch_dir=tmp_path,
+        year=2025,
+        frame=ReleaseIdentifierFrameStub(),
+    )
+    sim.calls.clear()
+
+    for name in ("cgt_2026_gains", "cgt_2030_tax", "company_car_benefit_2026"):
+        assert scratch.knows("person", name)
+        with pytest.raises(ValueError, match="holds no year after 2025"):
+            scratch.compute("person", name)
+    with pytest.raises(ValueError, match="holds no year after 2025"):
+        scratch.counterfactual_delta(
+            {
+                "kind": "input_substitution_counterfactual",
+                "zeroed_input": "pension_contributions_via_salary_sacrifice",
+                "folded_into": "employment_income",
+                "output_variable": "cgt_2026_tax",
+            },
+            2025,
+        )
+    # A refused measure reads nothing from the engine.
+    assert sim.calls == []
+
+    # The years the scratch engine holds are measured as before.
+    for name, year in (
+        ("cgt_2024_gains", 2024),
+        ("cgt_2025_gains", 2025),
+        ("company_car_benefit_2025", 2025),
+    ):
+        _, route = scratch.compute("person", name)
+        assert route.startswith(f"engine_period:{year}:")
+    # A direct H5 keeps the whole projection, so it measures a later year.
+    _, route = direct.compute("person", "cgt_2026_gains")
+    assert route == "engine_period:2026:capital_gains:native"
+    _, route = direct.compute("person", "company_car_benefit_2026")
+    assert route == "engine_period:2026:company_car_benefit:native"
+
+
 def test_scratch_engine_input_leaves_property_wealth_to_the_engine(
     monkeypatch, tmp_path: Path
 ):

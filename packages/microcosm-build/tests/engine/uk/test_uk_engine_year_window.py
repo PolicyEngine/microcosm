@@ -10,6 +10,11 @@ These tests build each simulation both ways on a synthetic frame where the
 Universal Credit health element is paid, and compare every requested output
 and every array the simulation and its baseline hold for a period up to the
 year read. Release scoring (a direct H5) keeps the whole projection.
+
+Two guards go with the cut. A scratch resolver refuses a measure dated after
+its year, which policyengine-uk would answer from the last year's inputs. A
+direct H5 is built only where no cut of the loop is in force
+(``uk_whole_rebalancing_years``).
 """
 
 from __future__ import annotations
@@ -30,6 +35,7 @@ from microcosm.frame.adapters import policyengine_uk as adapter_module
 from microcosm.frame.adapters.policyengine_uk import (
     PolicyEngineUKEngine,
     uk_dataset_through,
+    uk_whole_rebalancing_years,
 )
 from test_support.microcosm_build.uk_engine_window import stub_scratch_engine_window
 
@@ -329,6 +335,53 @@ def test_a_direct_h5_keeps_the_whole_projection_and_loop(tmp_path) -> None:
     assert all(
         ("uc_LCWRA_element", str(year)) in held for year in uc_reform.REBALANCING_YEARS
     )
+    # It holds the years after the resolver's, so it measures them.
+    gains, route = resolver.compute("person", "cgt_2026_gains")
+    assert route.startswith("engine_period:2026:")
+    assert np.asarray(gains).sum() > 0
+
+
+def test_a_scratch_resolver_refuses_a_measure_dated_after_its_year(tmp_path) -> None:
+    """policyengine-uk answers a year the scratch engine does not hold from the
+    last year's inputs, with no error, so the resolver refuses the read."""
+
+    frame = _frame(2024)
+    resolver = UKMeasureResolver(
+        simulation_source=None, scratch_dir=tmp_path, year=2025, frame=frame
+    )
+
+    for name in ("cgt_2026_gains", "company_car_benefit_2026"):
+        with pytest.raises(ValueError, match="holds no year after 2025"):
+            resolver.compute("person", name)
+    # The frame's year and the resolver's are held, and measured.
+    people = len(frame.table("person"))
+    for name in ("cgt_2024_gains", "cgt_2025_gains", "company_car_benefit_2024"):
+        values, _route = resolver.compute("person", name)
+        assert np.asarray(values).shape == (people,), name
+    assert np.asarray(resolver.compute("person", "cgt_2024_gains")[0]).sum() > 0
+
+
+def test_a_direct_h5_is_refused_while_a_rebalancing_cut_is_left(
+    monkeypatch, tmp_path
+) -> None:
+    """A release is scored on the whole loop: a cut that anything left in the
+    process would shorten it with no error."""
+
+    from policyengine_uk.scenarios import uc_reform
+
+    frame = _frame(2024)
+    path = tmp_path / "release.h5"
+    measure_simulation.write_uk_national_frame(frame, path)
+    first = uc_reform.FIRST_REBALANCING_YEAR
+    monkeypatch.setattr(uc_reform, "REBALANCING_YEARS", range(first, first))
+
+    with pytest.raises(RuntimeError, match="a cut was left"):
+        UKMeasureResolver(
+            simulation_source=path,
+            scratch_dir=tmp_path / "scratch",
+            year=2025,
+            frame=frame,
+        )
 
 
 def test_uk_dataset_through_builds_the_data_year_to_the_end_year() -> None:
@@ -354,6 +407,10 @@ def test_the_rebalancing_years_are_still_a_range_to_the_projection_end() -> None
     assert uc_reform.REBALANCING_YEARS == range(
         uc_reform.FIRST_REBALANCING_YEAR, PROJECTION_END_YEAR + 1
     )
+    # The whole-loop block reads both years off the loop's own module.
+    assert uc_reform.PROJECTION_END_YEAR == PROJECTION_END_YEAR
+    with uk_whole_rebalancing_years():
+        pass
 
 
 @pytest.mark.parametrize("name", sorted(_REVIEWED_UC_REFORM_SOURCES))

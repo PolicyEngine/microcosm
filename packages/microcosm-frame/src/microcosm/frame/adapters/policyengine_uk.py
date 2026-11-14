@@ -8,6 +8,8 @@ without the UK extra.
 from __future__ import annotations
 
 import json
+import sys
+import threading
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from importlib import metadata
@@ -44,6 +46,7 @@ __all__ = [
     "uk_isa_income_contract_from",
     "uk_rebalancing_years_through",
     "uk_savings_income_projection_from",
+    "uk_whole_rebalancing_years",
     "validate_uc_claimant_input",
 ]
 
@@ -200,6 +203,15 @@ def uk_dataset_through(dataset: Any, end_year: int | str, parameters: Any) -> An
     return extend_single_year_dataset(dataset, parameters, end_year=end_year)
 
 
+#: One cut of policyengine-uk's rebalancing loop at a time. The cut patches the
+#: engine's module, which every thread reads, so a second thread waits here
+#: until the first has restored the installed range.
+_REBALANCING_LOCK = threading.RLock()
+#: The cut in force, empty when there is none: the range the engine had
+#: installed, the end year, the cut range, and how many open blocks share it.
+_REBALANCING_CUT: dict[str, Any] = {}
+
+
 @contextmanager
 def uk_rebalancing_years_through(end_year: int | str) -> Iterator[range]:
     """Run policyengine-uk's Universal Credit rebalancing loop only to ``end_year``.
@@ -212,26 +224,110 @@ def uk_rebalancing_years_through(end_year: int | str) -> Iterator[range]:
     2024 and 2025), and it never gains a year. On exit, on success or on error,
     the installed range is restored. The range is built from
     ``PROJECTION_END_YEAR`` when the module is imported, so a patch of that
-    constant would not reach the loop. The patch is process-wide and not
-    thread-safe: wrap only the construction of one simulation at a time.
+    constant would not reach the loop.
+
+    The patch is process-wide, so one cut is in force at a time. A block on
+    another thread waits until this one has restored the range. A block
+    opened inside this one on the same thread shares the cut when it names
+    the same year, and the range is restored when the last of them exits,
+    whatever the order; one that names another year is refused, since its
+    simulation would get this block's loop. A range that something else
+    changed inside the block is refused on exit, after the installed one is
+    restored: the simulation may not have run the loop it asked for.
     """
 
     from policyengine_uk.scenarios import uc_reform
 
-    installed = uc_reform.REBALANCING_YEARS
-    if not isinstance(installed, range) or installed.step != 1:
-        raise TypeError(
-            "policyengine-uk's uc_reform.REBALANCING_YEARS is no longer a range "
-            f"of consecutive years ({installed!r}); review the rebalancing cut "
-            "against the installed engine."
-        )
-    uc_reform.REBALANCING_YEARS = range(
-        installed.start, min(installed.stop, int(end_year) + 1)
-    )
-    try:
-        yield uc_reform.REBALANCING_YEARS
-    finally:
-        uc_reform.REBALANCING_YEARS = installed
+    end_year = int(end_year)
+    with _REBALANCING_LOCK:
+        cut = _REBALANCING_CUT
+        if not cut:
+            installed = uc_reform.REBALANCING_YEARS
+            if not isinstance(installed, range) or installed.step != 1:
+                raise TypeError(
+                    "policyengine-uk's uc_reform.REBALANCING_YEARS is no longer a "
+                    f"range of consecutive years ({installed!r}); review the "
+                    "rebalancing cut against the installed engine."
+                )
+            years = range(installed.start, min(installed.stop, end_year + 1))
+            uc_reform.REBALANCING_YEARS = years
+            cut.update(installed=installed, end_year=end_year, years=years, blocks=0)
+        elif cut["end_year"] != end_year:
+            raise RuntimeError(
+                "policyengine-uk's rebalancing loop is cut at "
+                f"{cut['end_year']} for a simulation that is being built; a "
+                f"simulation through {end_year} cannot be built inside that "
+                "block, because the cut is process-wide."
+            )
+        years = cut["years"]
+        cut["blocks"] += 1
+        found: Any = years
+        try:
+            yield years
+        finally:
+            cut["blocks"] -= 1
+            if not cut["blocks"]:
+                found = uc_reform.REBALANCING_YEARS
+                uc_reform.REBALANCING_YEARS = cut["installed"]
+                cut.clear()
+        if not (isinstance(found, range) and found == years):
+            raise RuntimeError(
+                "policyengine-uk's uc_reform.REBALANCING_YEARS changed inside the "
+                f"rebalancing cut at {end_year}: something else set it to "
+                f"{found!r}. The installed range is restored, but the simulation "
+                "built in the block may not have run the loop it asked for."
+            )
+
+
+@contextmanager
+def uk_whole_rebalancing_years() -> Iterator[None]:
+    """Build a simulation that needs policyengine-uk's whole rebalancing loop.
+
+    A simulation built outside :func:`uk_rebalancing_years_through` runs the
+    Universal Credit rebalancing loop over the range the engine's module holds
+    at that moment. A release is scored as users load it, on every year of
+    that range, so its simulation is built inside this block, where no cut is
+    in force: a cut on another thread is waited for and none starts before the
+    block exits, and a cut open on this thread is refused. A loaded engine
+    module whose range is not the one policyengine-uk builds from its own
+    ``FIRST_REBALANCING_YEAR`` and ``PROJECTION_END_YEAR`` is refused too, so
+    a cut that anything left in the process cannot shorten the loop without an
+    error. An engine module that was never imported still has its own range.
+    """
+
+    with _REBALANCING_LOCK:
+        if _REBALANCING_CUT:
+            raise RuntimeError(
+                "policyengine-uk's rebalancing loop is cut at "
+                f"{_REBALANCING_CUT['end_year']} for a simulation that is being "
+                "built; a simulation that needs the whole loop cannot be built "
+                "inside that block."
+            )
+        uc_reform = sys.modules.get("policyengine_uk.scenarios.uc_reform")
+        if uc_reform is not None:
+            installed = getattr(uc_reform, "REBALANCING_YEARS", None)
+            first = getattr(uc_reform, "FIRST_REBALANCING_YEAR", None)
+            last = getattr(uc_reform, "PROJECTION_END_YEAR", None)
+            if (
+                not isinstance(installed, range)
+                or type(first) is not int
+                or type(last) is not int
+            ):
+                raise TypeError(
+                    "policyengine-uk's uc_reform no longer builds REBALANCING_YEARS "
+                    "as a range from FIRST_REBALANCING_YEAR to PROJECTION_END_YEAR "
+                    f"({installed!r}, {first!r}, {last!r}); review the rebalancing "
+                    "cut against the installed engine."
+                )
+            if installed != range(first, last + 1):
+                raise RuntimeError(
+                    "policyengine-uk's uc_reform.REBALANCING_YEARS is "
+                    f"{installed!r}, not the engine's own "
+                    f"{range(first, last + 1)!r}: a cut was left in this process. "
+                    "A simulation built now would skip the Universal Credit "
+                    "rebalancing loop in the missing years."
+                )
+        yield
 
 
 _PERSON_TABLE = "person"
