@@ -14,10 +14,10 @@ the PEP 420 namespace `microcosm.<x>`: `frame`, `fit`, `calibrate`, `build`,
 
 ## Commands
 
-UK build completion exports and stages Orrery graph evidence. Publication uses
-an independent module of the separately installed `microcosm-emitter`, which the
-build starts through `microcosm-emitter-interface`, and a durable queue; see
-[configuration and retry](orrery-publication.md). Staging run files and staged
+UK build completion exports and stages Orrery graph evidence. No build uploads
+its graph: the staged bundle submits the graph's inputs to the collector
+through the separately installed `microcosm-emitter`, which the build starts
+through `microcosm-emitter-interface`; see [UK graph publication](orrery-publication.md). Staging run files and staged
 dataset bundles go through the same emitter. No new producer secret is required. Keep graph export/publication tests independent
 of the hosted runs app and collector; use synthetic files and fake HTTP.
 
@@ -181,6 +181,9 @@ start the installed command with `start_bundle_emitter()`, as the UK re-stage
 command does (the Hugging Face module only), and send its Hugging Face Hub
 requests through `HF_ENDPOINT` to a loopback stand-in server
 (`test_support/microcosm_build/stand_in_hub.py`), so the job needs no secret.
+Builds switch the emitter's collector submissions on, so the tests' fixture
+sends them to a closed loopback port: nothing reaches a collector, and a
+build's wait for the collector ends at the first failed attempt.
 With Xet turned off, the stand-in takes the dataset through the LFS upload a
 real Hub requires for it, with the single-part `basic` transfer. It does not
 model Xet, which machines with `hf_xet` use, or the multipart transfer a real
@@ -340,6 +343,20 @@ HF_STAGING_READ_TOKEN= bash tools/run_integration_tests.sh
 ```
 
 ## The PR-CI / certification boundary
+
+[The release contract](release-contract.md) (C1 to C5) states what the release
+validator, the publication commands and the loaders enforce today, and what
+version 1 (ARCH-1, cos d1160) asks of every country's releases. Change it, its
+golden fixtures (`tools/generate_release_contract_fixtures.py`) and the code
+that enforces it in the same pull request. The US national golden freezes the
+manifests that the US fiscal-refresh tool's `_build_manifests` writes when it
+gets only its required arguments and a staging block: an empty `timing`, a null
+`ledger_artifact` and only the four gate entries that the function always
+writes. A real build adds its own timing, its ledger provenance and the
+optional gate blocks its run produces, and the golden freezes none of them. A
+pull request that changes what `_build_manifests` always writes, such as
+`US_RELEASE_GATE_EVIDENCE_FILES` or `US_DOCUMENTED_ABSENT_INPUTS`, or the
+layout that `rewrite_release_dir` gives it, regenerates the fixtures too.
 
 PR CI never receives external writer credentials or touches restricted
 microdata. Same-repository runs may receive the optional read-only

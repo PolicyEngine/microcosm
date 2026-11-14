@@ -675,6 +675,10 @@ def _medicaid_state_spec(
     )
 
 
+#: The rank the labelled template's state value carries.
+_TEMPLATE_STATE_RANK = 4
+
+
 def _labelled_state_spec(state_fips: str, state_name: str, value: float) -> TargetSpec:
     """A natural state spec as a feed with Chronicle labels compiles it."""
     spec = _medicaid_state_spec(state_fips, value)
@@ -696,6 +700,9 @@ def _labelled_state_spec(state_fips: str, state_name: str, value: float) -> Targ
                     label="State",
                     value_id=state_fips,
                     value_label=state_name,
+                    # The state's row in the CMS table, as the compile
+                    # takes it from the fact's groupby_ordinal.
+                    value_rank=_TEMPLATE_STATE_RANK,
                 ),
                 HierarchyDimension(
                     id="cms_medicaid.measure",
@@ -894,6 +901,10 @@ class TestReviewedSubstitutionRegister:
         assert spec.hierarchy.geography == HierarchyGeography(
             id="0400000US44", label="Rhode Island", level="state"
         )
+        # The template's rank is California's row, so the clone's state
+        # value carries none.
+        assert template.hierarchy.dimensions[0].value_rank == _TEMPLATE_STATE_RANK
+        assert spec.hierarchy.dimensions[0].value_rank is None
         assert spec.hierarchy.dimensions == (
             HierarchyDimension(
                 id="geography_state",

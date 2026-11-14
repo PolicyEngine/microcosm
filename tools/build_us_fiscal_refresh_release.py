@@ -73,10 +73,10 @@ from microcosm.build.gates import (
     GateResult,
     TargetFitRequirement,
     default_valued_columns_gate,
-    input_mass_parity_gate,
     nonconstant_columns_gate,
     observed_value_counts,
     parity_gate,
+    single_record_concentration,
     tail_concentration_gate,
     target_fit_gate,
     target_profile_coverage_gate,
@@ -296,7 +296,12 @@ from microcosm.build.us_runtime.h5_io import (
     require_authenticated_us_multispine_pool_h5,
     us_multispine_pool_release_receipt,
 )
-from microcosm.build.us_runtime.input_mass import us_input_mass_totals
+from microcosm.build.us_runtime.input_mass import (
+    us_input_mass_parity_gate,
+    us_input_mass_totals,
+    us_line_32_carriers,
+    us_line_32_on_reference_terms,
+)
 from microcosm.build.us_runtime.l0_refit_export import (
     attach_l0_refit_entity_weights,
     load_us_frame,
@@ -1078,7 +1083,7 @@ US_ACA_REPORTED_SUBSIDIZED_ANCHOR = (
     "reported_has_subsidized_marketplace_health_coverage_at_interview"
 )
 US_ACA_REPORTED_MARKETPLACE_COVERAGE = "has_marketplace_health_coverage_at_interview"
-#: The SCF education-debt fit table (microcosm#1073), in the artifacts
+#: The SCF education-debt fit table (microcosm#1073), in the release
 #: directory of a ``--scf-education-debt`` build: at the staged frame's
 #: pre-calibration weights, and at the release's calibrated weights before any
 #: post-export scoring (microcosm#1074).
@@ -1086,6 +1091,17 @@ US_SCF_EDUCATION_DEBT_FIT_FILENAME = "us_scf_education_debt_fit.json"
 US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME = (
     "us_scf_education_debt_calibrated_fit.json"
 )
+#: Both fit tables, keyed by their release-manifest artifact key. Only a
+#: ``--scf-education-debt`` build writes them, so only its manifest lists
+#: them, and ``microcosm-publish-release-build`` publishes them into the
+#: build's folder (``releases/<release>/<build>/``) with the other
+#: diagnostics, without ``--extra-file``.
+US_SCF_EDUCATION_DEBT_FIT_ARTIFACTS: dict[str, str] = {
+    "us_scf_education_debt_fit": US_SCF_EDUCATION_DEBT_FIT_FILENAME,
+    "us_scf_education_debt_calibrated_fit": (
+        US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME
+    ),
+}
 US_ACA_APTC_TARGET_TABLE = "cms_aca_aptc_recipients_by_state"
 US_ACA_TARGET_ROLE_TABLES = {
     "aca_ptc_recipients": US_ACA_APTC_TARGET_TABLE,
@@ -7875,9 +7891,11 @@ def _input_mass_reference_gate(
     if reference_h5 is None:
         return None
     input_variables = _engine_input_variables()
-    return input_mass_parity_gate(
+    reference_frame = load_us_frame(reference_h5)
+    return us_input_mass_parity_gate(
         us_input_mass_totals(base_frame, columns=input_variables),
-        us_input_mass_totals(load_us_frame(reference_h5), columns=input_variables),
+        us_input_mass_totals(reference_frame, columns=input_variables),
+        carriers=us_line_32_carriers(base_frame, reference_frame),
         candidate_name="base_frame",
         reference_name=reference_h5.name,
         relative_tolerance=relative_tolerance,
@@ -8262,9 +8280,10 @@ def _export_input_mass_gate(
     """
     input_variables = _engine_input_variables()
     reference = reference_frame if reference_frame is not None else base_frame
-    return input_mass_parity_gate(
+    return us_input_mass_parity_gate(
         us_input_mass_totals(export_frame, columns=input_variables),
         us_input_mass_totals(reference, columns=input_variables),
+        carriers=us_line_32_carriers(export_frame, reference),
         candidate_name="export_frame",
         reference_name=reference_name,
         relative_tolerance=relative_tolerance,
@@ -8318,6 +8337,20 @@ def _qrf_tail_concentration_gate(
     absent, or non-numeric, and each numeric output's record nonzero share and
     finite nonzero record count, the numbers behind the dense/sparse split) for
     the release artifact and the ``--dry-run-gates-report`` certainty model.
+
+    The surface also measures every numeric output, dense and thin ones
+    included, with :func:`microcosm.build.gates.single_record_concentration`:
+    the largest single record's share of the column's weighted absolute mass
+    and that record's weight, next to the top-k share. The measurements cannot
+    change the gate's inputs, its verdict or the errors it raises: the loop
+    resolves weights only for sparse outputs, and the gate runs before any
+    measurement. A misaligned sparse output therefore still fails with the
+    gate's own message, which names the column. The loop stores a dense
+    output's entity and not its values, and the measurement reads the column
+    from the frame again.
+    :func:`_qrf_single_record_measurements` runs after the gate and turns
+    every ``Exception`` into an ``unmeasured`` entry, so no ``Exception``
+    from a measurement fails a run the gate would pass.
     """
     qrf_outputs = sorted(_qrf_imputed_source_outputs())
     values: dict[str, np.ndarray] = {}
@@ -8328,6 +8361,7 @@ def _qrf_tail_concentration_gate(
     nonzero_shares: dict[str, float] = {}
     nonzero_records: dict[str, int] = {}
     entity_weights: dict[str, np.ndarray] = {}
+    dense_entities: dict[str, str] = {}
     for column in qrf_outputs:
         try:
             entity = export_frame.column_entity(column)
@@ -8345,6 +8379,7 @@ def _qrf_tail_concentration_gate(
         nonzero_records[column] = int((np.isfinite(array) & (array != 0.0)).sum())
         if nonzero_share > US_QRF_SPARSE_NONZERO_SHARE_MAX:
             dense.append(column)
+            dense_entities[column] = entity
             continue
         if entity not in entity_weights:
             entity_weights[entity] = np.asarray(
@@ -8360,6 +8395,14 @@ def _qrf_tail_concentration_gate(
         min_nonzero_records=US_QRF_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS,
         reviewed_exclusions=reviewed_exclusions,
     )
+    single_record, unmeasured = _qrf_single_record_measurements(
+        export_frame,
+        qrf_outputs,
+        sparse_values=values,
+        sparse_weights=weights,
+        dense_entities=dense_entities,
+        entity_weights=entity_weights,
+    )
     surface: dict[str, object] = {
         "qrf_imputed_outputs": len(qrf_outputs),
         "checked_sparse_columns": sorted(values),
@@ -8369,8 +8412,86 @@ def _qrf_tail_concentration_gate(
         "sparse_nonzero_share_max": US_QRF_SPARSE_NONZERO_SHARE_MAX,
         "nonzero_shares": nonzero_shares,
         "nonzero_records": nonzero_records,
+        "single_record_concentration": {
+            "top_k": US_QRF_TAIL_CONCENTRATION_TOP_K,
+            "columns": single_record,
+            "unmeasured": unmeasured,
+        },
     }
     return gate, surface
+
+
+def _qrf_single_record_measurements(
+    export_frame: Frame,
+    qrf_outputs: Sequence[str],
+    *,
+    sparse_values: Mapping[str, np.ndarray],
+    sparse_weights: Mapping[str, np.ndarray],
+    dense_entities: Mapping[str, str],
+    entity_weights: Mapping[str, np.ndarray],
+) -> tuple[dict[str, dict[str, float | int | None]], dict[str, str]]:
+    """Each numeric QRF output's single-record measurements, after the gate.
+
+    A sparse output reuses the values and weights the gate checked. For a
+    dense output the gate loop stored only the entity, so this reads the
+    column from the frame again, with the loop's two conversion statements.
+    A dense column's converted values stay in local names: this stores them
+    in no mapping and returns none of them. A dense output resolves its
+    entity's weights here, since the gate never weighs one, and reuses
+    weights that a sparse output of the same entity already resolved. Any
+    ``Exception``, from reading a dense column, from resolving weights or
+    from measuring, lists the output under ``unmeasured`` with the reason
+    :func:`_unmeasured_reason` builds, so no ``Exception`` from an output
+    fails the run. Both mappings keep the order of ``qrf_outputs``.
+    """
+    resolved = dict(entity_weights)
+    columns: dict[str, dict[str, float | int | None]] = {}
+    unmeasured: dict[str, str] = {}
+    for column in qrf_outputs:
+        if column not in sparse_values and column not in dense_entities:
+            continue
+        try:
+            if column in sparse_values:
+                column_values = sparse_values[column]
+                column_weights = sparse_weights[column]
+            else:
+                entity = dense_entities[column]
+                series = export_frame.table(entity)[column]
+                numeric = pd.to_numeric(series, errors="coerce").fillna(0.0)
+                column_values = numeric.to_numpy(dtype=np.float64)
+                if entity not in resolved:
+                    resolved[entity] = np.asarray(
+                        export_frame.resolve_weights(entity).values,
+                        dtype=np.float64,
+                    )
+                column_weights = resolved[entity]
+            columns[column] = single_record_concentration(
+                column_values,
+                column_weights,
+                top_k=US_QRF_TAIL_CONCENTRATION_TOP_K,
+            )
+        except Exception as error:
+            unmeasured[column] = _unmeasured_reason(error)
+    return columns, unmeasured
+
+
+def _unmeasured_reason(error: Exception) -> str:
+    """Why an output went unmeasured: the error's type and text.
+
+    Formatting an error runs the error's own ``__str__`` or ``__format__``,
+    and reading its type's name can run a metaclass property; any of them
+    can raise. When one raises an ``Exception``, the reason falls back to
+    the type's name with ``unprintable error``, then to ``unprintable
+    error`` alone, so no ``Exception`` raised while formatting leaves this
+    function.
+    """
+    try:
+        return f"{type(error).__name__}: {error}"
+    except Exception:
+        try:
+            return f"{type(error).__name__}: unprintable error"
+        except Exception:
+            return "unprintable error"
 
 
 #: Failure-line prefix for a per-run QRF tail-concentration register that does
@@ -8470,9 +8591,9 @@ def _record_qrf_tail_concentration_gate(
     flag says) to ``terminal_gate_failures``, so the batched pre-export raise
     refuses the run with the #568 weight sidecar on disk. Whenever the gate
     evaluated, ``qrf_tail_concentration.json`` is written with the per-column
-    shares, carrier counts, and the mismatch. Only a genuine evaluation crash
-    escapes: it propagates on an otherwise-clean run and becomes one unowned
-    failure line under earlier failures.
+    shares, carrier counts, single-record shares, and the mismatch. Only a
+    genuine evaluation crash escapes: it propagates on an otherwise-clean run
+    and becomes one unowned failure line under earlier failures.
 
     Returns the register-mismatch failure lines (empty when the register
     matches) so --evidence-release can refuse them.
@@ -10430,6 +10551,35 @@ def _gate_evidence_artifacts(release_dir: Path, *, revision: str) -> dict[str, d
     }
 
 
+def _scf_education_debt_fit_artifacts(
+    release_dir: Path, *, revision: str
+) -> dict[str, dict]:
+    """Release-manifest entries for a ``--scf-education-debt`` build's fit tables.
+
+    The build writes both into the release directory before its manifests, so
+    a missing table fails the build instead of shipping without it.
+    """
+    missing = sorted(
+        filename
+        for filename in US_SCF_EDUCATION_DEBT_FIT_ARTIFACTS.values()
+        if not (release_dir / filename).is_file()
+    )
+    if missing:
+        raise RuntimeError(
+            "A --scf-education-debt build must write its fit tables before its "
+            f"manifests; {release_dir} is missing {missing}."
+        )
+    return {
+        key: _artifact_entry(
+            filename,
+            _sha256(release_dir / filename),
+            kind="diagnostics",
+            revision=revision,
+        )
+        for key, filename in US_SCF_EDUCATION_DEBT_FIT_ARTIFACTS.items()
+    }
+
+
 def _gate_evidence_status(
     gate_evidence_artifacts: Mapping[str, object],
     *,
@@ -10860,6 +11010,7 @@ def _build_manifests(
     post_export_scoring: Mapping[str, object] | None = None,
     diagnostics_outcome: DiagnosticsWriteOutcome | None = None,
     scf_wealth_signal: Mapping[str, object] | None = None,
+    scf_education_debt: bool = False,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
     calibration_path = artifact_root / calibration_filename
@@ -10900,6 +11051,13 @@ def _build_manifests(
     # rather than only in loose diagnostics that never ship. The same blocks
     # ride build_manifest.json and release_manifest.json's build section.
     gate_evidence_artifacts = _gate_evidence_artifacts(release_dir, revision=release_id)
+    # microcosm#1074: checked before either manifest is written, so a build
+    # missing a fit table writes neither manifest.
+    scf_education_debt_fit_artifacts = (
+        _scf_education_debt_fit_artifacts(release_dir, revision=release_id)
+        if scf_education_debt
+        else {}
+    )
     qrf_tail_register = _qrf_tail_register_manifest_block(release_dir)
     stored_inputs = _stored_inputs_manifest_block(
         release_dir, dataset_sha256=dataset_sha
@@ -11467,6 +11625,7 @@ def _build_manifests(
                 if (release_dir / "demographics.json").exists()
                 else {}
             ),
+            **scf_education_debt_fit_artifacts,
             **gate_evidence_artifacts,
         },
     }
@@ -12555,15 +12714,23 @@ def _release_dry_run_checks(
         )
         input_variables = _engine_input_variables()
         candidate_totals = us_input_mass_totals(base_frame, columns=input_variables)
+        reference_totals = (
+            candidate_totals
+            if reference_frame is None
+            else us_input_mass_totals(reference_frame, columns=input_variables)
+        )
         check = export_input_mass_check(
             gate_failures=gate.failures,
             gate_details=gate.details,
-            candidate_totals=candidate_totals,
-            reference_totals=(
-                candidate_totals
-                if reference_frame is None
-                else us_input_mass_totals(reference_frame, columns=input_variables)
+            candidate_totals=us_line_32_on_reference_terms(
+                candidate_totals,
+                reference_totals,
+                us_line_32_carriers(
+                    base_frame,
+                    base_frame if reference_frame is None else reference_frame,
+                ),
             ),
+            reference_totals=reference_totals,
             candidate_nonzero_shares=us_nonzero_shares(
                 base_frame, columns=input_variables
             ),
@@ -14827,7 +14994,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             args=args,
             telemetry=telemetry,
             fit_path=(
-                artifact_root / US_SCF_EDUCATION_DEBT_FIT_FILENAME
+                release_dir / US_SCF_EDUCATION_DEBT_FIT_FILENAME
                 if dry_run is None
                 else None
             ),
@@ -15750,7 +15917,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         # follows the export and cleanup statements, which
         # test_us_post_export_scoring runs on their own.
         _write_us_scf_education_debt_fit(
-            artifact_root / US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME,
+            release_dir / US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME,
             export_frame,
             weights="calibrated_household_weights",
         )
@@ -17021,6 +17188,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         post_export_scoring=post_export_scoring,
         diagnostics_outcome=diagnostics_outcome,
         scf_wealth_signal=scf_wealth_signal,
+        scf_education_debt=args.scf_education_debt,
     )
     # Both manifests name the release and this build, in the build-folder
     # layout, before telemetry attaches them; the directory must then pass

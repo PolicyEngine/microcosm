@@ -717,8 +717,8 @@ def national_argv(
         "--ledger-manifest-sha256", chronicle["manifest.json"],
         "--reference-h5", str(paths.reference_h5(reference)),
         "--reference-record", str(paths.reference_record),
-        # The build otherwise submits its graph to the public Orrery whenever
-        # staging is remote; the graph files stay in the run directory.
+        # No build uploads its graph any more; builds accept the flag and
+        # ignore it.
         "--no-publish-orrery",
         "--out", str(paths.run_dir),
     ]  # fmt: skip

@@ -379,15 +379,18 @@ EXPECTED_HASHES = {
     # gains the passive partnership/S-corp leaf, so the PUF QRF targets change.
     # microcosm#1259's recipient-share bound in puf_support moves both again.
     # microcosm#1261 moves both again: the PUF donor carries partnership and
-    # S-corp line-32 shares as separate leaves. microcosm#1585 moves both
+    # S-corp line-32 shares as separate leaves.
+    # The hierarchy value ranks move both again: medicaid_take_up, an
+    # attested kernel module, gives a substituted enrollment spec's value no
+    # rank. No draw, RNG rule or QRF target changes. microcosm#1585 moves both
     # again: the US keyed draws call stochastic_assignment's
     # stable_identity_uniforms, and that module joins the attested kernel
     # modules; no draw changes. #1585's public solve_constraint_system and
     # calibrate's shared option checks move both again; no US solve changes.
     # Its TANF ledger fix moves the protocol again: the site's recorded salt
     # becomes the takes_up_tanf_if_eligible its draw always used.
-    "seed_map": "208fa485c390a80f21e3f4d0747c5b3fc0052e27a337b524e06863052dcd3a82",
-    "seed_protocol": "15c30c15c30e9af41aa5e8f05e2d94a26eae256c379bb946a95c93cae89a0082",
+    "seed_map": "270cf6498f8a2977993f969d0703be88fb930499dab42741a2111f57ffec4266",
+    "seed_protocol": "a696ad74bfa5743b63c65499e6f5a41ea913a96ca38a5e3b9882069284bfca47",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
