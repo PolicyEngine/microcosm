@@ -115,13 +115,14 @@ def out_of_fold_proba(
     A fold whose training rows hold a single class fits no learner, and the
     model gives that fold's rows the class with certainty, as the training
     folds' shares do. Each learner's rows in that fold take the model's
-    probabilities, so every array holds a distribution in every row
-    (:func:`categorical_scores` takes each one), and the model, the learners
-    and the constant are scored on the same rows, differing only where a
-    learner was fitted. Folds from :func:`stratified_folds` after
-    :func:`can_deal_folds` reach this only when they deal whole groups into
-    exactly two folds. A learner that no fold fitted, as when
-    ``table[target]`` holds one class, stays out of the result.
+    probabilities, so every array holds a distribution in every row a fold
+    scores (:func:`categorical_scores` takes each one), and the model, the
+    learners and the constant are scored on the same rows, differing only
+    where a learner was fitted. When ``table[target]`` holds two classes or
+    more, folds from :func:`stratified_folds` after :func:`can_deal_folds`
+    reach this only when they deal whole groups into exactly two folds. A
+    learner that no fold fitted, as when ``table[target]`` holds one class,
+    stays out of the result.
     """
     weights = np.asarray(weights, dtype=np.float64)
     folds = np.asarray(folds)
@@ -219,8 +220,7 @@ def _scored_inputs(
         raise ValueError(
             f"{int(off.sum())} row(s) of proba do not sum to 1 (within "
             f"{PROBABILITY_SUM_TOLERANCE:g}); each row must be a distribution "
-            "over the classes. A row of zeros usually means a learner was not "
-            "fitted for that row's fold."
+            "over the classes. A row of zeros means nothing scored that row."
         )
     if w.shape != (n,):
         raise ValueError(f"weights need one value per label ({n}), got {w.shape}.")

@@ -917,13 +917,16 @@ def _class_balanced_weights(
     averages one, so the classifier's fit is on the scale of an unweighted one.
 
     :func:`_cross_fit_gate` calls this only once every fold's training rows
-    carry weight for every class (:func:`_folds_carry_every_class`); other
-    folds fall back to the in-sample gate (:attr:`GateOutcome.WEIGHTLESS_FOLD`).
+    carry weight for every class (:func:`_folds_carry_every_class`, the same
+    test on the same totals); otherwise the whole gate falls back to the
+    in-sample gate (:attr:`GateOutcome.WEIGHTLESS_FOLD`), so no fit meets the
+    refusal below. A class whose total overflows to infinity does carry
+    weight: its rows weigh zero here, and a fit can reach that.
 
     Raises:
-        ValueError: If a class's rows carry no weight, or weight whose total is
-            not finite, naming the class: dividing by that total would give its
-            rows NaN weights, or weights of zero.
+        ValueError: If a class's rows carry no weight (a total that is not
+            positive), naming the class: dividing by that total would give its
+            rows NaN weights.
     """
     base = (
         np.ones(len(labels), dtype=np.float64)
@@ -934,11 +937,11 @@ def _class_balanced_weights(
     for value in np.unique(labels):
         members = labels == value
         total = base[members].sum()
-        if not (np.isfinite(total) and total > 0.0):
+        if not total > 0.0:
             raise ValueError(
-                "Class-balanced weights need every class to carry a positive, "
-                f"finite total weight; class {value!s} carries {float(total)!r} "
-                "in these rows."
+                "Class-balanced weights need every class to carry positive "
+                f"total weight; class {value!s} carries {float(total)!r} in "
+                "these rows."
             )
         balanced[members] = base[members] / total
     return balanced * (len(labels) / balanced.sum())
