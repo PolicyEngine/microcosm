@@ -1,0 +1,105 @@
+{
+ "version": 1,
+ "country": "us",
+ "source_repo": "PolicyEngine/chronicle",
+ "source_commit": "3e9d3a0694e8ca7e31ed5319c3ceb1bde92b12e0",
+ "rule": "County facts for the ACS-local county rung only (microcosm#922, LWI County Files): IRS SOI county returns and AGI for tax year 2022, Census PEP county population vintage 2024, and the ACS 2020-2024 5-year county tables B01003, B11001, B19001, B19013, B19025, B19051 and B19061, each record set at its own period and built at that year. A separate pin from the main US feed: no fiscal compile reads it.",
+ "pair_count": 10,
+ "runs": {
+  "2022": [
+   "packages/irs_soi/county_2022"
+  ],
+  "2024": [
+   "packages/census/acs5_b01003_county_2024",
+   "packages/census/acs5_b11001_county_2024",
+   "packages/census/acs5_b19001_county_2024",
+   "packages/census/acs5_b19013_county_2024",
+   "packages/census/acs5_b19025_county_2024",
+   "packages/census/acs5_b19051_county_2024",
+   "packages/census/acs5_b19061_county_2024",
+   "packages/census/pep_county_2024"
+  ]
+ },
+ "pairs": [
+  {
+   "record_set_id": "irs_soi.ty2022.county_totals",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-county-2022",
+   "package": "packages/irs_soi/county_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "census_pep.vintage2024.county_population",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-county-population-2024",
+   "package": "packages/census/pep_county_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_acs.acs5_2020_2024.b01003.county.group_0",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-acs5-b01003-county-2024",
+   "package": "packages/census/acs5_b01003_county_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_acs.acs5_2020_2024.b01003.county.group_1",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-acs5-b01003-county-2024",
+   "package": "packages/census/acs5_b01003_county_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_acs.acs5_2020_2024.b11001.county.group_0",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-acs5-b11001-county-2024",
+   "package": "packages/census/acs5_b11001_county_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_acs.acs5_2020_2024.b19001.county.group_0",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-acs5-b19001-county-2024",
+   "package": "packages/census/acs5_b19001_county_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_acs.acs5_2020_2024.b19013.county.group_1",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-acs5-b19013-county-2024",
+   "package": "packages/census/acs5_b19013_county_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_acs.acs5_2020_2024.b19025.county.group_0",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-acs5-b19025-county-2024",
+   "package": "packages/census/acs5_b19025_county_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_acs.acs5_2020_2024.b19051.county.group_0",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-acs5-b19051-county-2024",
+   "package": "packages/census/acs5_b19051_county_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_acs.acs5_2020_2024.b19061.county.group_0",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-acs5-b19061-county-2024",
+   "package": "packages/census/acs5_b19061_county_2024",
+   "build_year": 2024
+  }
+ ]
+}

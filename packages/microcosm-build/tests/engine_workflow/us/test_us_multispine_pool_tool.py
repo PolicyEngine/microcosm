@@ -355,7 +355,9 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # through the bundle's source stages.
             # The hierarchy value ranks move it through medicaid_take_up's
             # attested bytes.
-            "spec_sha256": "98d583653d37fe58edcace1cf3e21a139b69ebe7d1c3dac6a58f08b2b5aab8cf",
+            # microcosm#922's county facts pin, two declared legacy resources,
+            # moves it.
+            "spec_sha256": "fdf6e8f4e81a5b24b43c2665413b4f5a04e38ab8e35e781b232939835df79ed4",
         },
     }
 

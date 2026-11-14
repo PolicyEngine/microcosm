@@ -137,6 +137,10 @@ FROZEN_LEGACY_RESOURCE_SHA256 = {
 # The three projections above are byte-frozen and equality-attested during the
 # F0 bridge; their existing direct consumers retire with the constants adapter.
 LEGACY_RESOURCE_PATHS = (
+    # The county facts pin (microcosm#922): read only by the ACS-local county
+    # rung through --county-facts, never by a fiscal compile.
+    "chronicle_county_facts.json",
+    "chronicle_county_facts_scope.json",
     "chronicle_feed.json",
     "chronicle_feed_scope.json",
     "ecps_parity_known_gaps.json",

@@ -312,6 +312,11 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "congressional_district_geography.py",
         "congressional_district_vintage.py",
         "congressional_district_vintage_crosswalk.py",
+        # Pinned county facts loader for the ACS-local county rung
+        # (microcosm#922): hashes, checks and projects Chronicle rows; assigns
+        # no households and applies no population treatment. Remains subject
+        # to the all-runtime source-identity scan.
+        "county_facts.py",
         # 2020 tract/county -> 2023 county-equivalent metadata and its gate;
         # writes calibration geography only, no population treatment.
         "county_vintage.py",

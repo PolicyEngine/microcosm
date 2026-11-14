@@ -127,60 +127,58 @@ two concepts are available. At fixed error, raising ESS cannot worsen a grade.
 These are report-only evidence grades;
 Kish ESS is not a county standard error or a guarantee of unbiased estimates.
 
-## Audited feed and remaining input work
+## County facts input (microcosm#922)
 
-The release's packaged pin is
-`packages/microcosm-build/src/microcosm/build/us/chronicle_feed.json`, pointing
-to Chronicle commit `51aa40fd28e2ca81937752515e773d123fecfb71`. The corresponding
-local feed is
-`/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_51aa40f.jsonl`.
-The audit streamed its actual bytes: 40,178 facts, 169,038,757 bytes, SHA256
-`965a29ac9458edb58a05184917ee4a19772fd3dc7b4588db6eb6da5803641aac`.
-It contains **zero county facts**: 23,968 congressional-district, 12,251 state,
-and 3,959 country facts. The historical release recipe uses a `--feed`
-placeholder; that recipe does not prove county facts were exported.
+County facts do not come from `--feed`. They have their own pin,
+`packages/microcosm-build/src/microcosm/build/us/chronicle_county_facts.json`,
+with scope `chronicle_county_facts_scope.json` (scope name `us_county_facts`),
+built at Chronicle commit `3e9d3a0694e8ca7e31ed5319c3ceb1bde92b12e0` on the
+`chronicle.consumer_fact.v5` row contract. The file holds 180,326 rows
+(922 MB, SHA256
+`67b0998aa2ee1aeed6637dab6a846f405246706508074b1c1b5bab7bd98c8bea`): IRS SOI
+county TY2022, Census PEP county vintage 2024, and the ACS 2020-2024 5-year county tables B01003, B11001, B19001,
+B19013, B19025, B19051 and B19061. The main feed, its scope and the target
+parity resources are unchanged; [the re-pin notes](us-chronicle-feed-repin.md#the-county-facts-pin-microcosm922)
+say why the county facts are a separate file.
 
-Both county source packages already exist at the pinned Chronicle commit.
-They are omitted by the explicit `chronicle_feed_scope.json` selection. A
-reviewed feed extension needs the following additional pairs:
-
-```json
-[
-  {
-    "record_set_id": "irs_soi.ty2022.county_totals",
-    "period_type": "tax_year",
-    "period_value": "2022",
-    "package_id": "soi-county-2022",
-    "package": "packages/irs_soi/county_2022",
-    "build_year": 2022
-  },
-  {
-    "record_set_id": "census_pep.vintage2024.county_population",
-    "period_type": "calendar_year",
-    "period_value": "2024",
-    "package_id": "census-pep-county-population-2024",
-    "package": "packages/census/pep_county_2024",
-    "build_year": 2024
-  }
-]
-```
-
-Add the packages to their build-year `runs` entries, update the scope pair
-count, rebuild with `tools/build_us_chronicle_feed.py`, and review/update the
-feed and scope hashes and fact-to-target parity/fencing evidence. The current
-fiscal compiler excludes county SOI geography; this rung consumes the raw
-county facts and splits existing state measures. Population defaults still
-use the ladder. Future ACS county packages require an additional scoped feed
-extension. This implementation performs **no feed or scope mutation** and
-does not claim an available county feed hash.
+A `--soi-mode state_county` materialize must pass
+`--county-facts <file> --county-facts-sha256 <the county pin's facts_sha256>`
+and `--feed-sha256`. `--feed-sha256` is the operator's digest of the `--feed`
+file: materialize refuses a `--feed` file that does not match it, but nothing
+binds it to the main pin, because local runs also use other feeds. The parser refuses a county facts digest
+other than the pin's, county facts without county geography or
+`--soi-mode state_county`, and a county facts path that is the `--feed` file.
+`prepare_run` loads the file with
+`microcosm.build.us_runtime.county_facts.load_us_county_facts`. The loader
+first hashes the file and refuses it unless its digest and row count are the
+pin's. A second pass hashes it again and parses it. That pass refuses a row
+that is not a JSON object, is on another row contract, is not a county row or
+is outside the scope, and refuses a file whose bytes changed between the
+passes. It drops the 78 Puerto Rico municipios (4,136 ACS rows) with a count
+and keeps only the fields county targets read. A refusal, or a file that
+cannot be read, is recorded in `county_surface.json` before any target is
+built. On the build machine the loader reads the pinned file in about 5 s and
+holds about 0.9 GB of rows, measured apart from importing the US runtime. The
+rows stay on the surface for the rest of the materialize stage; today only the
+SOI county split reads them, in `prepare_run`. Nothing re-reads `--feed` or the
+county facts file. The
+run identity and `materialize_rss.json` record the county facts receipt under
+`county_facts`. The refresh recipe carries both flags; like `--feed`, it
+names a placeholder file (`<county-facts.jsonl>`) and the pinned digest, never
+the build machine's path. A run without county
+facts records nothing new, so its run identity keeps its pre-county bytes.
 
 The inspected Chronicle publisher inputs have two concrete blockers:
 
-- **Kalawao:** the SOI CSV has 3,143 counties and omits `15005` Kalawao County;
-  the PEP CSV has all 3,144. A complete county SOI block currently fails with
-  that county named. A source correction or an explicitly reviewed county
-  treatment is needed before a full SOI run; this implementation introduces
-  no fallback and does not silently borrow Maui's facts.
+- **Kalawao:** the SOI CSV has 3,143 counties and omits `15005` Kalawao County.
+  PEP and five ACS tables carry all 3,144. B19013 has 3,143 (it has no De Baca
+  County, `35011`), and B01003 reaches 3,144 only across its two record sets.
+  The IRS 2022 county users guide (`22incydocguide.docx`) says items with fewer
+  than 20 returns for a county were excluded, so Kalawao's SOI value is
+  missing, not zero. The guide does not say whether Kalawao's returns are
+  counted in another county's row. Until the rung declares a reviewed treatment (a
+  combined SOI cell {15005, 15009}, planned on `lwi-county-rung-production`),
+  a complete county SOI block still fails with that county named.
 - **Connecticut:** both packages use the nine planning-region codes `09110`
   through `09190`. The household county column and ladder must use those same
   boundaries. Select `--county-column county_fips_2023` when the parallel
@@ -190,7 +188,7 @@ The inspected Chronicle publisher inputs have two concrete blockers:
 SOI facts carry `geography.level = "county"` and Census-style IDs such as
 `0500000US01001`; the row geography is authoritative even though the record
 set itself groups all counties. SOI geography metadata says vintage `2022`,
-PEP says `2024`; actual county-code inventories must agree across feed,
+PEP says `2024`; actual county-code inventories must agree across the county facts,
 ladder, and households. The audited raw publisher artifact hashes are
 `2c04ff235bcbacb990b316bf79c7c628089a9a4c1dd9593ac51f74a109b13343`
 for `22incyallnoagi.csv` and
@@ -199,7 +197,8 @@ for `co-est2024-alldata.csv`.
 
 ## Full-run requirements and command
 
-A full run needs a reviewed county-inclusive Ledger feed and its actual SHA256,
+A full run needs the pinned main feed and its SHA256, the pinned county facts
+file and its SHA256,
 a staging H5 and summary with household support in every county, a matching
 county-boundary PUMA ladder, and resolution of the Kalawao SOI gap. The
 historical staging file was approximately 10.7 GB. The historical ladder was
@@ -225,8 +224,12 @@ engine/frame dominate the total. Historical full materialization peaked at
 not a county-build benchmark. The implementation does not allocate a dense
 households-by-county-target matrix.
 
-Once the input blockers are resolved, set these paths and the new reviewed
-feed hash in the execution environment. This example uses the planning-region
+County materialize runs are local. The Modal stage plan
+(`tools/modal_us_stage_plan.py`) has no way to pass `--county-facts`, so its
+preflight refuses a `state_county` materialize before any compute.
+
+Once the input blockers are resolved, set these paths and the two pinned
+digests in the execution environment. This example uses the planning-region
 column; use `county_fips` only with a feed and ladder matching that column.
 The following is documentation only and has not been executed:
 
@@ -251,8 +254,10 @@ The **tax-target cost is unmeasured until the joint solve runs**; these are
 starting settings, not evidence that the production tradeoff is acceptable.
 
 ```bash
-export COUNTY_FEED=/path/to/consumer_facts_county.jsonl
-export COUNTY_FEED_SHA256='<new-reviewed-64-hex-feed-sha256>'
+export COUNTY_FEED=/path/to/pinned/consumer_facts_us.jsonl
+export COUNTY_FEED_SHA256='<the main pin facts_sha256>'
+export COUNTY_FACTS=/path/to/consumer_facts_us_county_3e9d3a0.jsonl
+export COUNTY_FACTS_SHA256='67b0998aa2ee1aeed6637dab6a846f405246706508074b1c1b5bab7bd98c8bea'
 export COUNTY_STAGING_H5=/path/to/acs_multispine_staging.h5
 export COUNTY_STAGING_SUMMARY=/path/to/acs_multispine_staging.summary.json
 export COUNTY_LADDER=/path/to/matching_us_puma_ladder.npz
@@ -264,6 +269,7 @@ uv run python tools/build_us_acs_local_release.py \
   --staging-h5 "$COUNTY_STAGING_H5" \
   --staging-summary "$COUNTY_STAGING_SUMMARY" \
   --feed "$COUNTY_FEED" --feed-sha256 "$COUNTY_FEED_SHA256" \
+  --county-facts "$COUNTY_FACTS" --county-facts-sha256 "$COUNTY_FACTS_SHA256" \
   --ladder "$COUNTY_LADDER" \
   --families snap,medicaid,soi --geographies state,cd,county \
   --soi-mode state_county --county-column "$COUNTY_COLUMN" \
@@ -307,7 +313,8 @@ installed, after the requested US setup completed:
 - Existing release, sparse district, district property, geography-label, and
   loss-weight suites: **125 passed, 2 skipped**, using `-n 2 --dist loadfile`.
   The skips are optional checks requiring an explicitly configured pinned
-  Chronicle feed; the actual feed inventory was audited separately above.
+  Chronicle feed. This record predates the county facts pin; the county
+  inventory is in the county facts section above.
 - `uv run ruff check .`: clean.
 - `uv run --no-sync python tools/ci_test_plan.py verify`: clean, 772 test files
   in registered directories.

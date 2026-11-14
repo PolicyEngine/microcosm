@@ -4,6 +4,11 @@ County SOI facts supply *shares*, never a second state level. Children split
 the stored state CSR row, including its return universe and engine values.
 Population, splitting, holdout and reliability helpers also accept future ACS
 county families. See docs/us-acs-local-county-rung.md for the input contract.
+
+County facts come from their own pinned file (``--county-facts``, pinned by
+``us/chronicle_county_facts.json``, microcosm#922), never from ``--feed``:
+:func:`prepare_run` loads it once into ``surface.county_facts``; county steps
+read ``surface.county_facts.rows`` and never reopen the file or ``--feed``.
 """
 
 from __future__ import annotations
@@ -274,7 +279,8 @@ def state_county_soi_surface(state_specs, facts, county_populations):
         blocks[key][code] = (value, fact)
     if not blocks:
         raise ValueError(
-            "Ledger feed has no county SOI facts; export soi-county-2022 and repin the feed."
+            "County facts carry no IRS SOI county rows; pass the pinned "
+            "--county-facts file (us/chronicle_county_facts.json, microcosm#922)."
         )
     parents = {}
     for spec in state_specs:
@@ -714,6 +720,69 @@ def add_arguments(parser):
         "--county-holdout-fraction", type=float, default=DEFAULT_COUNTY_HOLDOUT_FRACTION
     )
     parser.add_argument("--county-holdout-salt", default=COUNTY_HOLDOUT_SALT)
+    parser.add_argument(
+        "--county-facts",
+        type=Path,
+        help=(
+            "The pinned US county facts file (us/chronicle_county_facts.json, "
+            "microcosm#922). Required by a --soi-mode state_county materialize."
+        ),
+    )
+    parser.add_argument(
+        "--county-facts-sha256",
+        help="SHA-256 of --county-facts; must be the county pin's facts_sha256.",
+    )
+
+
+def _validate_county_facts(args, parser, geographies):
+    county_facts = getattr(args, "county_facts", None)
+    sha256 = getattr(args, "county_facts_sha256", None)
+    if county_facts is None:
+        if args.soi_mode == SOI_MODE and "materialize" in getattr(
+            args, "stages", ["materialize"]
+        ):
+            parser.error(
+                "--soi-mode state_county needs --county-facts and "
+                "--county-facts-sha256 (the pinned US county facts, microcosm#922)."
+            )
+        if sha256 is not None:
+            parser.error("--county-facts-sha256 needs --county-facts.")
+        return
+    if args.soi_mode != SOI_MODE or "county" not in geographies:
+        parser.error(
+            "--county-facts needs --soi-mode state_county and county in --geographies."
+        )
+    if sha256 is None:
+        parser.error("--county-facts needs --county-facts-sha256.")
+    from microcosm.build.us_runtime.chronicle_feed import (
+        load_us_chronicle_county_facts_pin,
+    )
+
+    pinned = load_us_chronicle_county_facts_pin().facts_sha256
+    if sha256 != pinned:
+        parser.error(
+            f"--county-facts-sha256 {sha256} is not the county pin's "
+            f"facts_sha256 {pinned}."
+        )
+    if not getattr(args, "feed_sha256", None):
+        parser.error("--county-facts needs --feed-sha256 for the main feed.")
+    feed = getattr(args, "feed", None)
+    if feed is not None and (feed_path(feed).resolve() == Path(county_facts).resolve()):
+        parser.error("--county-facts must not be the --feed file.")
+
+
+def _load_county_facts(args):
+    """Read the pinned county facts once and record their receipt on args."""
+
+    from microcosm.build.us_runtime.county_facts import load_us_county_facts
+
+    if getattr(args, "county_facts", None) is None:
+        raise ValueError(
+            "--soi-mode state_county needs --county-facts (microcosm#922)."
+        )
+    facts = load_us_county_facts(Path(args.county_facts).resolve())
+    args.county_facts_receipt = facts.receipt()
+    return facts
 
 
 def validate_arguments(args, parser):
@@ -732,6 +801,7 @@ def validate_arguments(args, parser):
         parser.error("--county-column must be a household column name.")
     if not args.county_holdout_salt:
         parser.error("--county-holdout-salt must be a non-empty string.")
+    _validate_county_facts(args, parser, geographies)
 
 
 def prepare_run(args, geographies, populations, *, surface=None):
@@ -755,15 +825,15 @@ def prepare_run(args, geographies, populations, *, surface=None):
     }:
         raise SystemExit("--soi-mode state_county requires soi in --families.")
     if args.soi_mode == SOI_MODE and surface is not None:
-        from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
-
-        artifact = load_ledger_consumer_artifact(str(args.feed))
         args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         try:
+            surface.county_facts = _load_county_facts(args)
             surface.county_surface = state_county_soi_surface(
-                surface.registry.specs, artifact.facts, populations["county"]
+                surface.registry.specs,
+                surface.county_facts.rows,
+                populations["county"],
             )
-        except ValueError as error:
+        except (ValueError, OSError) as error:
             (args.checkpoint_dir / "county_surface.json").write_text(
                 json.dumps({"status": "refused", "error": str(error)})
             )
@@ -802,11 +872,9 @@ def attach_surface(surface, materialized, frame, populations, args):
         return materialized.compiled_specs, materialized.matrix
     county = getattr(surface, "county_surface", None)
     if county is None:
-        from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
-
-        artifact = load_ledger_consumer_artifact(str(args.feed))
+        facts = getattr(surface, "county_facts", None) or _load_county_facts(args)
         county = state_county_soi_surface(
-            materialized.compiled_specs, artifact.facts, populations["county"]
+            materialized.compiled_specs, facts.rows, populations["county"]
         )
     matrix = split_state_rows(
         materialized.compiled_specs,
@@ -859,7 +927,7 @@ def assign_roles(roles, args):
 
 
 def run_metadata(args, county_holdout):
-    return {
+    metadata = {
         "geographies": ",".join(
             item.strip() for item in args.geographies.split(",") if item.strip()
         ),
@@ -867,6 +935,12 @@ def run_metadata(args, county_holdout):
         "county_holdout": county_holdout,
         "county_targets_dropped": getattr(args, "county_targets_dropped", []),
     }
+    # Only a run that read county facts records them, so a no-county run
+    # identity keeps its pre-county bytes.
+    receipt = getattr(args, "county_facts_receipt", None)
+    if receipt is not None:
+        metadata["county_facts"] = receipt
+    return metadata
 
 
 def struct_columns(households, existing_columns, *, county_column=COUNTY_COLUMN):
@@ -985,12 +1059,21 @@ def refresh_recipe(command, materialize_rss):
     }:
         return command
     holdout = materialize_rss["county_holdout"]
-    return (
+    command = (
         command + f" --geographies {shlex.quote(materialize_rss['geographies'])}"
         f" --county-column {shlex.quote(materialize_rss.get('county_column', COUNTY_COLUMN))}"
         f" --county-holdout-fraction {float(holdout['fraction'])!r}"
         f" --county-holdout-salt {shlex.quote(holdout['salt'])}"
     )
+    # Like --feed, the county facts file is a placeholder: the recipe names
+    # the pinned digest, never the build machine's path.
+    facts = materialize_rss.get("county_facts")
+    if facts:
+        command += (
+            " --county-facts <county-facts.jsonl>"
+            f" --county-facts-sha256 {facts['facts_sha256']}"
+        )
+    return command
 
 
 def _is_county(spec):

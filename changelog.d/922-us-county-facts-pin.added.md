@@ -1,0 +1,1 @@
+Pin the US county facts (IRS SOI county, Census PEP county and seven ACS 5-year county tables) as their own Chronicle file beside the main US feed, and make the ACS-local county rung read them through `--county-facts` and `--county-facts-sha256` instead of `--feed`. The US country package declares the two new pin files, which moves the US bundle's `spec_sha256`.

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "country": "us",
+  "scope": "us_county_facts",
+  "source_repo": "PolicyEngine/chronicle",
+  "source_commit": "3e9d3a0694e8ca7e31ed5319c3ceb1bde92b12e0",
+  "build": "tools/build_us_chronicle_feed.py --skip-artifact --scope packages/microcosm-build/src/microcosm/build/us/chronicle_county_facts_scope.json: one `chronicle build-bundle --year Y --source <package>` per build year in chronicle_county_facts_scope.json, rows kept for exactly the scope's (record set, period) pairs and sorted by aggregate_fact_key, at Chronicle main 3e9d3a069. County rows only (IRS SOI county TY2022, Census PEP county vintage 2024, seven ACS 2020-2024 5-year county tables), read only by the ACS-local county rung through --county-facts (microcosm#922); no fiscal compile reads them. Bare facts file; see docs/us-chronicle-feed-repin.md.",
+  "artifact_schema_version": null,
+  "consumer_fact_schema_versions": [
+    "chronicle.consumer_fact.v5"
+  ],
+  "consumer_fact_schema_sha256": "acd33a091cd8d192be5d264e3e94c13e00afb6fd1972e57d4576ac55a54f6970",
+  "fact_row_count": 180326,
+  "facts_sha256": "67b0998aa2ee1aeed6637dab6a846f405246706508074b1c1b5bab7bd98c8bea",
+  "manifest_sha256": null,
+  "scope_sha256": "87b12e4f74702ccbf5fe96c128ff5df0ffd8214a78de8f1fcce2ab2ba37fe7f5"
+}

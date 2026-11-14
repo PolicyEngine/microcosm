@@ -13,6 +13,103 @@ any other feed, and `test_us_chronicle_feed.py` fails if the parity resources,
 the generator and the pin disagree, or if the scope file changes without a
 new pin.
 
+## The county facts pin (microcosm#922)
+
+The ACS-local county rung (`tools/us_acs_local_county_surface.py`) reads
+county-grain facts: IRS SOI county returns and AGI for tax year 2022, Census
+PEP county population vintage 2024, and the ACS 2020-2024 5-year county tables
+B01003, B11001, B19001, B19013, B19025, B19051 and B19061. They have their own
+pin, `us/chronicle_county_facts.json`, with scope
+`us/chronicle_county_facts_scope.json` (scope name `us_county_facts`), beside
+the main pin. No fiscal compile reads them, and the main feed, its scope and
+the target-parity resources do not move when they do.
+
+They are separate because of size. The ACS county rows keep both estimate and
+margin-of-error rows in one record set, about 5.2 KB per row, and the eight
+ACS record sets come to 170,896 rows and 886 MB. The whole county file is
+922 MB; the main feed at `41b2fb2` is 171.7 MB. Folding the county facts into
+the main feed would grow it to about 1.09 GB (6.4x; 6.2x for the ACS rows
+alone). Measured at the compile and parse sites, that would raise a compile's
+peak memory from 2.8 GB to 6.7 GB and keep about 3.2 GB more resident in every
+fiscal-refresh run, which holds the parsed feed for its whole length, while
+only county builds read the rows. A main-feed rebuild with them also
+passed the build machine's 3.5 GB folder cap. These were measured on the build
+machine on 2026-11-13; the run notes are not in this repository.
+
+- **Commit.** Chronicle main `3e9d3a0694e8ca7e31ed5319c3ceb1bde92b12e0`
+  (merged 2026-11-12), which carries every county package. It is on main, so
+  it needs no branch or tag; the next main re-pin starts at or after it.
+  The rows are on the `chronicle.consumer_fact.v5` contract
+  (schema digest `acd33a09…`); the main pin stays on v3.
+- **Pairs.** 10, built at their own years (2022: `packages/irs_soi/county_2022`;
+  2024: `packages/census/pep_county_2024` and the seven
+  `packages/census/acs5_b*_county_2024` packages). The scopes share no pair,
+  and `test_us_chronicle_county_facts.py` refuses a change that adds one to
+  both.
+- **Build.** The same builder with the county scope:
+
+  ```bash
+  uv run python tools/build_us_chronicle_feed.py --scope packages/microcosm-build/src/microcosm/build/us/chronicle_county_facts_scope.json --chronicle-root <clean Chronicle checkout at the scope's commit> --chronicle-command "uv run --frozen --python 3.13 chronicle" --out <dir> --skip-artifact
+  ```
+
+  `--python 3.13` matters on a fresh checkout: without it, `uv` can pick a
+  newer Python for which Chronicle's locked wheels do not exist. A rebuild
+  that differs from the pin is refused by the pin's digest, not accepted.
+
+  The build at that commit wrote 180,326 rows (922 MB), SHA256
+  `67b0998aa2ee1aeed6637dab6a846f405246706508074b1c1b5bab7bd98c8bea`. Its
+  output folder peaked at 2.89 GB under a disk-cap watcher that deleted each
+  finished package's intermediates. Nine of its ten record sets matched an
+  earlier build at Chronicle `c32c0b0` row for row, keying each row by record
+  set, period type, period value, source row and source column and comparing
+  value, unit, measure and geography; PEP county was not in that build.
+  `c32c0b0` is on no branch of the Chronicle remote and that build's output
+  has been deleted, so the comparison cannot be re-run. Rebuilding at
+  `3e9d3a0` with the command above and comparing the file's SHA256 with the
+  pin's can.
+- **Reading it.** `us_runtime/county_facts.load_us_county_facts` first hashes
+  the file and refuses it unless its digest and row count are the pin's, so a
+  wrong file is named as such before any row is parsed. A second pass hashes
+  the bytes again while parsing; it refuses a row that is not a JSON object,
+  is on another row contract, is at a geography level other than county or is
+  outside the scope's pairs, and a file that changed between the passes. It
+  drops the 78 Puerto Rico municipios (state 72) with a count and projects
+  each kept row to the fields the rung reads. The file on disk keeps
+  Chronicle's bytes.
+- **Tool flags.** County runs pass `--county-facts <file>
+  --county-facts-sha256 <pin digest>`, and `--feed-sha256`. The county digest
+  must be the pin's. `--feed-sha256` is only the operator's digest of the
+  `--feed` file; the tool checks the file against it, not against the main
+  pin.
+  The run identity records the main feed's digest (`feed_sha256`) and the
+  county facts receipt, which carries the county pin.
+- **Where the file lives.** Not in git. The repository holds only the pin:
+  the file's digest, size and row count and the scope. An operator builds the
+  file with the command above at the pinned commit, or copies a build
+  machine's copy, and passes its path with `--county-facts`; the loader's
+  digest check is what makes either acceptable.
+- **What it holds that the rung must handle.** SOI county 2022 has 3,143
+  counties and no Kalawao (15005). ACS B19013 (median household income) has no
+  row for De Baca County (35011) and is a median, so it is a diagnostic, not a
+  linear target. B01003 carries margin-of-error rows for only some counties.
+  Connecticut appears as its nine planning regions (09110-09190) in every
+  package. Against the main pin's state SOI parents, the SOI county rows split
+  the other 49 states and DC into 6,278 county targets whose shares sum to one
+  and whose targets sum to their state parents. The raw county sums are not
+  the parents: county AGI falls short of the state parent by up to 5%
+  (Montana), and returns differ by at most 0.05%. The rung uses the county
+  rows only as shares, so it rescales them to the parents. Hawaii is refused,
+  naming 15005, until the rung declares a treatment for it.
+
+A later main re-pin can fold these pairs into the main scope only by retiring
+the county pin in the same change.
+
+The two pins move together. The main feed is pinned at `41b2fb2` and the
+county facts at `3e9d3a0`; the next main re-pin starts at or after
+`3e9d3a0`. From then on, a change that re-pins the main feed at a Chronicle
+commit also rebuilds the county facts at that commit and re-pins them, so a
+US build reads one Chronicle base.
+
 ## A re-pin onto a newer row contract
 
 The US feed is on `chronicle.consumer_fact.v3`; Chronicle `main` writes
