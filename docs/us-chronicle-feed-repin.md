@@ -83,6 +83,11 @@ machine on 2026-11-13; the run notes are not in this repository.
   pin.
   The run identity records the main feed's digest (`feed_sha256`) and the
   county facts receipt, which carries the county pin.
+- **Where the file lives.** Not in git. The repository holds only the pin:
+  the file's digest, size and row count and the scope. An operator builds the
+  file with the command above at the pinned commit, or copies a build
+  machine's copy, and passes its path with `--county-facts`; the loader's
+  digest check is what makes either acceptable.
 - **What it holds that the rung must handle.** SOI county 2022 has 3,143
   counties and no Kalawao (15005). ACS B19013 (median household income) has no
   row for De Baca County (35011) and is a median, so it is a diagnostic, not a
@@ -98,6 +103,12 @@ machine on 2026-11-13; the run notes are not in this repository.
 
 A later main re-pin can fold these pairs into the main scope only by retiring
 the county pin in the same change.
+
+The two pins move together. The main feed is pinned at `41b2fb2` and the
+county facts at `3e9d3a0`; the next main re-pin starts at or after
+`3e9d3a0`. From then on, a change that re-pins the main feed at a Chronicle
+commit also rebuilds the county facts at that commit and re-pins them, so a
+US build reads one Chronicle base.
 
 ## A re-pin onto a newer row contract
 
