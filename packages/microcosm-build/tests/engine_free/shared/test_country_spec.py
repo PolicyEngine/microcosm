@@ -1078,6 +1078,8 @@ class TestUKCountryPackage:
             # microcosm#1095: no build reads it since the dense band node
             # retired (#931); uk_runtime.property_localisation keeps its loader.
             "scotgov_chargeable_dwellings_by_band.json",
+            # microcosm#931: read through uk_runtime.council_tax_band_d.
+            "scotgov_band_d_council_tax_2024_25.json",
             "dwp_move_to_uc_facts.json",
             "dwp_uc_award_band_facts.json",
             "obr_hvcts_costing_facts.json",
@@ -1117,6 +1119,8 @@ class TestUKCountryPackage:
             "scotland_brma_la_overlap.json",
             "rfdr_area_layer.json",
             "rfdr_area_layer.provenance.json",
+            # microcosm#931: read through uk_runtime.council_tax_band_d.
+            "council_tax_band_d_england_wales_2024_25.json",
             "price_paid_property_support_bounds.json",
             "source_stages.json",
             "take_up_contract.json",
@@ -1259,6 +1263,8 @@ class TestExistingPackagesGeneralize:
             # microcosm#1095: no build reads it since the dense band node
             # retired (#931); uk_runtime.property_localisation keeps its loader.
             "scotgov_chargeable_dwellings_by_band.json",
+            # microcosm#931: read through uk_runtime.council_tax_band_d.
+            "scotgov_band_d_council_tax_2024_25.json",
             "dwp_move_to_uc_facts.json",
             "dwp_uc_award_band_facts.json",
             "obr_hvcts_costing_facts.json",
@@ -1298,6 +1304,8 @@ class TestExistingPackagesGeneralize:
             "scotland_brma_la_overlap.json",
             "rfdr_area_layer.json",
             "rfdr_area_layer.provenance.json",
+            # microcosm#931: read through uk_runtime.council_tax_band_d.
+            "council_tax_band_d_england_wales_2024_25.json",
             "price_paid_property_support_bounds.json",
             "source_stages.json",
             "take_up_contract.json",
