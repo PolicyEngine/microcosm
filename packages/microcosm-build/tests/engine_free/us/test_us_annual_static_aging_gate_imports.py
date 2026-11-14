@@ -1,4 +1,4 @@
-"""The annual lane's parent-flag check never imports ``us_runtime``.
+"""The annual lane's parent-flag check asserts no engine ABI lock.
 
 Importing any ``microcosm.build.us_runtime`` module runs that package's
 ``__init__``, which builds the spine-agreement registry; that loads the
@@ -16,6 +16,13 @@ Invariants:
   parent that carries its flags and on one that lacks them, leaves no
   ``microcosm.build.us_runtime`` module in ``sys.modules``. It must be a fresh
   interpreter: this test process has usually imported ``us_runtime`` already;
+- the same run leaves ``microcosm.build.spec_engine.engine_abi`` unloaded.
+  That module holds the lock assertion, and ``us_runtime`` is only its usual
+  carrier: ``microcosm.build.country_spec``, which the package ``__init__``
+  loads, imports it inside the take-up projection it compiles, so a check
+  that called that projection would assert the lock without ``us_runtime``;
+- the same run leaves ``policyengine_us`` unloaded: the check comes before
+  any model work;
 - ``us_runtime.local_jurisdictions`` re-exports every public name of the
   module as the same object, so the geography lines that import it there
   see one implementation.
@@ -91,6 +98,14 @@ class ReachedModelProvenance(Exception):
     pass
 
 
+def loaded(package):
+    return sorted(
+        module
+        for module in sys.modules
+        if module == package or module.startswith(package + ".")
+    )
+
+
 def reached(**kwargs):
     raise ReachedModelProvenance
 
@@ -127,12 +142,9 @@ print(
         {
             "module": annual.__file__,
             "outcomes": outcomes,
-            "us_runtime_modules": sorted(
-                module
-                for module in sys.modules
-                if module == "microcosm.build.us_runtime"
-                or module.startswith("microcosm.build.us_runtime.")
-            ),
+            "us_runtime_modules": loaded("microcosm.build.us_runtime"),
+            "engine_abi_modules": loaded("microcosm.build.spec_engine.engine_abi"),
+            "policyengine_us_modules": loaded("policyengine_us"),
         }
     )
 )
@@ -169,6 +181,10 @@ def test_the_annual_parent_check_leaves_us_runtime_unloaded(tmp_path) -> None:
     assert result["outcomes"]["flagged"] == "reached model provenance"
     assert "needs a parent that already carries" in result["outcomes"]["unflagged"]
     assert result["us_runtime_modules"] == []
+    # The hazard itself, whatever carries it: the module that asserts the
+    # engine ABI lock never loaded, and neither did the engine.
+    assert result["engine_abi_modules"] == []
+    assert result["policyengine_us_modules"] == []
 
 
 def test_us_runtime_re_exports_the_same_objects() -> None:
