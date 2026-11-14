@@ -685,11 +685,12 @@ _BISECTION_DIGITS = 50
 #: CPython's ``math`` and torch's CPU kernels do on Linux and macOS (torch
 #: keeps subnormals unless ``torch.set_flush_denormal(True)``); the decimal
 #: side is correctly rounded on every platform and Python. The flooring this
-#: replaced raised a positive remainder to 2**-1022, so it put the projected
-#: total over by at most ``2**-1022 - room``, and by less where the other
-#: records' own caps stop the excess. On the review's two inputs it missed by
-#: 0.1 and 1.2e-8 of the total: on the first that bound is 1.8 of the total,
-#: and the second record's cap of half the total held the excess to 0.1.
+#: replaced raised a positive remainder below 2**-1022 to 2**-1022, so it put
+#: the projected total over by at most ``2**-1022 - room``, and by less where
+#: the other records' own caps stop the excess. On the review's two inputs it
+#: missed by 0.1 and 1.2e-8 of the total: on the first that bound is 1.8 of
+#: the total, and the second record's cap of half the total held the excess
+#: to 0.1.
 _SUBNORMAL_ROOM_RTOL = Decimal("1e-9")
 _SUBNORMAL_ROOM_MASS = Decimal("1e-11")
 
@@ -763,7 +764,7 @@ def _assert_matches_the_bisection(
             got = Decimal(float(log_w)).exp() if math.isfinite(log_w) else Decimal(0)
             bound = _SUBNORMAL_ROOM_RTOL * want + absolute
             assert abs(got - want) <= bound, (
-                f"record {i}: {float(got)!r} against {float(want)!r} at a total "
+                f"record {i}: {got:.12g} against {want:.12g} at a total "
                 f"of {total!r}, {float(abs(got - want) / target):.3g} of it, "
                 f"{float(abs(got - want) / step):.3g} steps of 2**-1074"
             )
@@ -922,21 +923,20 @@ def test_drawn_subnormal_remainders_match_the_bisection(problem) -> None:
 #: multiple of a step, so the solver's sum of the held caps and the remainder
 #: it leaves are exact; only each held cap rounds, as float64's ``exp`` of its
 #: log. A step is the ulp of every float64 below 2**-1021, subnormal ones
-#: included, and an ``exp`` within an ulp, as glibc's, Apple's and the Sleef
-#: kernels torch vectorizes with are, lands within a step of the exact cap;
-#: four steps leave a factor of four. The uncapped records share the solver's
-#: remainder, which is the exact one up to that rounding, so each is within
-#: that rounding of its exact share. A remainder that rounds to zero or below
-#: leaves them a share under a step, and then the exact remainder is itself
-#: within that rounding. Below 2**-1037 one step is at least 2**-37 of the
-#: total, 64 spacings of a float64 log near -730 (2**-43), so the normalized
-#: log-weights resolve even a one-step room: every held record is capped from
-#: the start and comes back at its log cap exactly, which reads back as the
-#: bisection's cap. At 4e-308 a step is 1.2e-16 of the total, below one
-#: spacing, and rounding decides whether a held record counts as capped, so
-#: these bounds stop below 2**-1037. The relative term covers the uncapped
-#: records' log-space rounding, as above: every log-weight here is still
-#: within 2,048 of zero.
+#: included, so an ``exp`` good to an ulp lands within a step of the exact
+#: cap, and four steps still hold for one three ulps off. The uncapped records
+#: share the solver's remainder, which is the exact one up to that rounding,
+#: so each is within that rounding of its exact share. A remainder that rounds
+#: to zero or below leaves them a share under a step, and then the exact
+#: remainder is itself within that rounding. Below 2**-1037 one step is at
+#: least 2**-37 of the total, 64 spacings of a float64 log near -730
+#: (2**-43), so the normalized log-weights resolve even a one-step room:
+#: every held record is capped from the start and comes back at its log cap
+#: exactly, which reads back as the bisection's cap. At 4e-308 a step is
+#: 1.2e-16 of the total, below one spacing, and rounding decides whether a
+#: held record counts as capped, so these bounds stop below 2**-1037. The
+#: relative term covers the uncapped records' log-space rounding, as above:
+#: every log-weight here is still within 2,048 of zero.
 _STEPS_PER_HELD_CAP = 4
 #: Totals below 2**-1037 for the table, from 2,024 to 1.2e11 steps.
 _STEP_TOTALS = (1e-320, 1e-316, 6e-313)
@@ -944,7 +944,7 @@ _STEP_TOTALS = (1e-320, 1e-316, 6e-313)
 _STEP_ROOMS = (1, 2, 3, 7)
 
 
-@pytest.mark.parametrize("total", _STEP_TOTALS, ids=lambda total: f"{total:g}")
+@pytest.mark.parametrize("total", _STEP_TOTALS, ids=lambda total: f"{total:.3g}")
 @pytest.mark.parametrize(
     "held_shares", [(1.0,), (0.7, 0.3)], ids=["one-held", "two-held"]
 )
