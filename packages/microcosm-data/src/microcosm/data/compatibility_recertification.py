@@ -1538,10 +1538,10 @@ STATISTICS = (STATISTIC_SUM, STATISTIC_POSITIVE_SUM, STATISTIC_POSITIVE_COUNT)
 #: of whole states (for the Medicaid state sums below).
 BATCHING_HOUSEHOLD = "household"
 BATCHING_STATE = "state"
-#: Formulas that aggregate over the simulation's whole population. Copied from
-#: ``tools/build_us_fiscal_refresh_release.py``'s
-#: ``US_POPULATION_AGGREGATE_VARIABLES`` (a build test holds them equal). A
-#: household-batch engine refuses to have computed any of them.
+#: Formulas that aggregate over the simulation's whole population. The release
+#: tool (``tools/build_us_fiscal_refresh_release.py``) reads this tuple as its
+#: ``US_POPULATION_AGGREGATE_VARIABLES``. A household-batch engine refuses to
+#: have computed any of them.
 POPULATION_AGGREGATE_VARIABLES = (
     "household_income_decile",
     "medicaid_slcsp_state_average_cost_index",
@@ -1555,6 +1555,50 @@ STATE_AGGREGATE_VARIABLES = (
     "medicaid_slcsp_state_average_cost_index",
     "medicaid_slcsp_state_denominator",
 )
+
+
+def engine_known_periods(
+    simulation,
+    variables: Sequence[str],
+    *,
+    walk_branches: bool = True,
+    skip_unknown: bool = False,
+) -> set[tuple[str, str]]:
+    """The ``(variable, period)`` values an engine, or any engine it reaches, holds.
+
+    The release tool reads it with the defaults: the walk covers live
+    branches, the ``_target_materialization_branches`` its target
+    materialization records, and a ``reform=`` engine's ``baseline``, each
+    engine once, and an undefined variable raises from ``get_holder``. The
+    recertification tool reads the root engine alone (``walk_branches=False``)
+    and skips an undefined variable (``skip_unknown=True``).
+    """
+
+    known: set[tuple[str, str]] = set()
+    stack = [simulation]
+    seen: set[int] = set()
+    while stack:
+        current = stack.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        for variable in variables:
+            if skip_unknown and variable not in current.tax_benefit_system.variables:
+                continue
+            known.update(
+                (variable, str(period))
+                for period in current.get_holder(variable).get_known_periods()
+            )
+        if not walk_branches:
+            continue
+        branches = getattr(current, "branches", None)
+        if isinstance(branches, dict):
+            stack.extend(branches.values())
+        stack.extend(getattr(current, "_target_materialization_branches", ()))
+        baseline = getattr(current, "baseline", None)
+        if baseline is not None:
+            stack.append(baseline)
+    return known
 
 
 @dataclass(frozen=True)
@@ -1718,8 +1762,8 @@ HEADLINE_METRICS = (
 
 #: The SOI ``source_variable`` names the release tool scores by identity, by
 #: negative-part magnitude, or as ``max(value, 0)``; every other one by its
-#: positive part (``tools/build_us_fiscal_refresh_release.py``'s
-#: ``_signed_component``; a build test holds the two equal).
+#: positive part. The release tool's ``_signed_component`` is
+#: :func:`signed_component`.
 _SIGNED_IDENTITY = frozenset({"adjusted_gross_income", "rent_and_royalty_net_income"})
 _LOSS_SOURCES = frozenset(
     {

@@ -1,0 +1,1 @@
+Add `microcosm.calibrate.solve.solve_constraint_system`, the Adam solve `calibrate` runs, for a caller that already holds a compiled constraint system (a SciPy matrix or its own operator), with the same mass, ratio-cap and L2 options and the same checks; the US support-mix bake-off now calls it instead of the private `_optimize` (microcosm#1585 item 8.3).

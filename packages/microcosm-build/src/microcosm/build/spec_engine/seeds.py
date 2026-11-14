@@ -308,6 +308,7 @@ _X31_MIX64 = (
 _DIRECT_KERNEL_MODULES = (
     "microcosm.build.frame_sampling",
     "microcosm.build.source_runtime",
+    "microcosm.build.stochastic_assignment",
     "microcosm.build.us_runtime.acs_transfer",
     "microcosm.build.us_runtime.adult_care",
     "microcosm.build.us_runtime.child_support",
@@ -783,7 +784,7 @@ LEGACY_V1_SITES = (
     ),
     _stable_site(
         "tanf_take_up_assignment",
-        salt="takes_up_tanf",
+        salt="takes_up_tanf_if_eligible",
         key_grammar=(
             "complete_source_identity_overrides_support_source_id",
             "support_source_id_overrides_entity_id",

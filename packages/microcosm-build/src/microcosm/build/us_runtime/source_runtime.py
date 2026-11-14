@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -14,6 +13,7 @@ from microcosm.build.source_runtime import (
     SourceRuntimeContext,
     SourceRuntimeError,
 )
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.us_runtime.adult_care import (
     derive_us_adult_care_from_manifest,
 )
@@ -1318,20 +1318,11 @@ def _stable_draws(frame: pd.DataFrame, *, seed: int, salt: str) -> pd.Series:
         keys = frame["tax_unit_id"]
     else:
         keys = pd.Series(frame.index, index=frame.index)
-    denominator = float(2**64)
-    draws = [
-        int.from_bytes(
-            hashlib.blake2b(
-                f"{seed}:{salt}:{key}".encode(),
-                digest_size=8,
-            ).digest(),
-            byteorder="big",
-            signed=False,
-        )
-        / denominator
-        for key in keys
-    ]
-    return pd.Series(draws, index=frame.index, dtype=float)
+    return pd.Series(
+        stable_identity_uniforms(keys, seed=seed, salt=salt),
+        index=frame.index,
+        dtype=float,
+    )
 
 
 def _first_available_target_table(

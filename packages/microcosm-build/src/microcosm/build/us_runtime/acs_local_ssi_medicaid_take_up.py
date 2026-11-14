@@ -95,6 +95,7 @@ import pandas as pd
 
 from microcosm.build.gates import GateResult
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
 from microcosm.build.us_runtime.acs_transfer import ASEC_PUF_DONOR_SPINE
 from microcosm.build.us_runtime.base_pool import spine_column
@@ -359,12 +360,7 @@ def _group_sums(
 def _keyed_uniform(key: str, *, seed: int, stream: str) -> float:
     """A seeded blake2b uniform on ``stream`` for one ACS draw key."""
 
-    value = int.from_bytes(
-        hashlib.blake2b(f"{seed}:{stream}:{key}".encode(), digest_size=8).digest(),
-        byteorder="big",
-        signed=False,
-    )
-    return value / float(2**64)
+    return float(stable_identity_uniforms((key,), seed=seed, salt=stream)[0])
 
 
 def _donor_contribution(

@@ -722,8 +722,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 827,
-        "pointer_sha256": "525ed8621baa2c6e0c0970a6cec85b3b250f8aadfe93750a08deb0d9f240f15e",
+        "pointer_count": 828,
+        "pointer_sha256": "c358fa57ee3bf91f3b25df541cd6e4cf833e49f976a3d57b37006b7f5960b2fc",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/resolved/seed_protocol",
@@ -758,21 +758,21 @@
         "verifier": "vintages"
       }
     ],
-    "configuration_field_count": 42394,
-    "consumed_field_count": 42394,
+    "configuration_field_count": 42395,
+    "consumed_field_count": 42395,
     "generation0_effect_counts": {
       "legacy_behavior": 38780,
-      "no_generation0_effect": 3614
+      "no_generation0_effect": 3615
     },
     "mode_counts": {
-      "compiler_semantic": 27673,
+      "compiler_semantic": 27674,
       "front_end_validation": 349,
       "identity_only": 103,
       "legacy_behavior": 14269
     },
     "multiple_primary_use_field_count": 0,
-    "pointer_inventory_sha256": "f6832e8d2892af22e41afd0b0bea0cba354bbff8b84bebcc652e765a3ae7df92",
-    "resolved_binding_field_count": 9785,
+    "pointer_inventory_sha256": "81bc649e653b467b0da8fa7442a895fe45f24a263c725d764ca9ed8f4441325c",
+    "resolved_binding_field_count": 9786,
     "unused_field_count": 0
   },
   "inventory_coverage": {
@@ -1642,13 +1642,13 @@
           "compiler_ir.node_slices"
         ],
         "expected": {
-          "map_sha256": "0c19b903a43b997886be6222045485954c96d6a624ce2ae3f83cadb4b22a7883",
-          "protocol_sha256": "15e6cad1f1b0082ffd5980095b4060827ed18786fae3076c97cf431c93a50e16"
+          "map_sha256": "270cf6498f8a2977993f969d0703be88fb930499dab42741a2111f57ffec4266",
+          "protocol_sha256": "a696ad74bfa5743b63c65499e6f5a41ea913a96ca38a5e3b9882069284bfca47"
         },
         "failures": [],
         "observed": {
-          "map_sha256": "0c19b903a43b997886be6222045485954c96d6a624ce2ae3f83cadb4b22a7883",
-          "protocol_sha256": "15e6cad1f1b0082ffd5980095b4060827ed18786fae3076c97cf431c93a50e16"
+          "map_sha256": "270cf6498f8a2977993f969d0703be88fb930499dab42741a2111f57ffec4266",
+          "protocol_sha256": "a696ad74bfa5743b63c65499e6f5a41ea913a96ca38a5e3b9882069284bfca47"
         },
         "status": "covered"
       },
@@ -1663,7 +1663,7 @@
           "compiler_ir.seed_stream_map"
         ],
         "expected": {
-          "implementation_sha256": "15e6cad1f1b0082ffd5980095b4060827ed18786fae3076c97cf431c93a50e16",
+          "implementation_sha256": "a696ad74bfa5743b63c65499e6f5a41ea913a96ca38a5e3b9882069284bfca47",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1684,7 +1684,7 @@
         },
         "failures": [],
         "observed": {
-          "implementation_sha256": "15e6cad1f1b0082ffd5980095b4060827ed18786fae3076c97cf431c93a50e16",
+          "implementation_sha256": "a696ad74bfa5743b63c65499e6f5a41ea913a96ca38a5e3b9882069284bfca47",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1722,7 +1722,7 @@
         },
         "failures": [],
         "observed": {
-          "sha256": "a0366cd518f42a240b589af3ef6580aac44ad7ed70969bcc669b365d315146ab",
+          "sha256": "67302e3a53429c0a31195f23c594570885c47052cf7e907664d61b96278a61eb",
           "sites": 53
         },
         "status": "covered"
@@ -2585,7 +2585,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "98d583653d37fe58edcace1cf3e21a139b69ebe7d1c3dac6a58f08b2b5aab8cf"
+      "spec_sha256": "bd526d8cf819e9f97fa46c5fe279c7b9ef4458b3e2d3498f823602f45e6a7575"
     }
   },
   "report_schema_version": 3,
@@ -2595,7 +2595,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "98d583653d37fe58edcace1cf3e21a139b69ebe7d1c3dac6a58f08b2b5aab8cf"
+    "spec_sha256": "bd526d8cf819e9f97fa46c5fe279c7b9ef4458b3e2d3498f823602f45e6a7575"
   },
   "status": "pass"
 }

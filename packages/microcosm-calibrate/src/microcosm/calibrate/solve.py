@@ -92,6 +92,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import torch
+from scipy import sparse
 
 from microcosm.calibrate.exact_k import (
     BOUNDARY_MASS_SHORT,
@@ -116,6 +117,7 @@ __all__ = [
     "calibrate_l0_refit",
     "rebuild_calibration_result",
     "refit_l0_selection",
+    "solve_constraint_system",
     "default_target_loss_scales",
     "chi_square_distance",
     "effective_sample_size",
@@ -2115,6 +2117,99 @@ def _l2_penalty_label(basis: str, anchor: str) -> str:
     return f"mean_{anchor}_pre_gate_weight_ratio_squared"
 
 
+def _check_mass(mass: str) -> None:
+    if mass not in (FREE_MASS, CONSERVE_MASS):
+        raise ValueError(
+            f"mass must be {FREE_MASS!r} or {CONSERVE_MASS!r}, got {mass!r}."
+        )
+
+
+def _check_epochs_and_weight_ratio(
+    epochs: int, max_weight_ratio: float | None, *, mass: str
+) -> None:
+    if epochs <= 0:
+        raise ValueError(f"epochs must be positive, got {epochs!r}.")
+    if max_weight_ratio is not None and not (max_weight_ratio > 0):
+        raise ValueError(
+            f"max_weight_ratio must be positive, got {max_weight_ratio!r}."
+        )
+    if max_weight_ratio is not None and max_weight_ratio < 1 and mass == CONSERVE_MASS:
+        # Every capped weight is below its initial, so sum(cap) < input total:
+        # mass conservation is infeasible a priori (Finding 7). Reject it here
+        # with a named error rather than letting it surface later as the kernel's
+        # opaque mass-conservation failure.
+        raise ValueError(
+            f"max_weight_ratio={max_weight_ratio!r} < 1 with mass={mass!r} is "
+            "infeasible: every weight is capped below its initial value, so the "
+            "total cannot be conserved (sum of caps < input total). Use "
+            "max_weight_ratio >= 1, or mass='free'."
+        )
+
+
+def _checked_l2_options(
+    l2_lambda: float,
+    l2_basis: str,
+    mass_parametrization: str,
+    l2_anchor: str,
+    l2_anchor_weights: np.ndarray | None,
+    *,
+    method: str,
+    mass: str,
+    l0_lambda: float,
+    target_records: int | None,
+) -> np.ndarray | None:
+    """Check the L2 and mass-parametrization options; return the anchor weights."""
+    if not math.isfinite(l2_lambda) or l2_lambda < 0.0:
+        raise ValueError(
+            f"l2_lambda must be finite and non-negative, got {l2_lambda!r}."
+        )
+    if l2_basis not in L2_BASES:
+        raise ValueError(
+            f"l2_basis must be one of {sorted(L2_BASES)}, got {l2_basis!r}."
+        )
+    if mass_parametrization not in MASS_PARAMETRIZATIONS:
+        raise ValueError(
+            f"mass_parametrization must be one of {sorted(MASS_PARAMETRIZATIONS)}, "
+            f"got {mass_parametrization!r}."
+        )
+    if mass_parametrization == MASS_PARAMETRIZATION_SOFTMAX and (
+        method != "adam"
+        or mass != CONSERVE_MASS
+        or l0_lambda > 0.0
+        or target_records is not None
+    ):
+        raise ValueError(
+            "mass_parametrization='softmax' reparametrizes the Adam solve's "
+            "conserved total: it requires method='adam', mass='conserve', and "
+            "no L0 gates (l0_lambda=0, target_records=None)."
+        )
+    if l2_anchor_weights is None:
+        if l2_anchor not in ("initial", "uniform"):
+            raise ValueError(
+                f"l2_anchor must be 'initial' or 'uniform', got {l2_anchor!r}."
+            )
+        return None
+    if not isinstance(l2_anchor, str) or not l2_anchor:
+        raise ValueError(
+            "l2_anchor must be a non-empty label when l2_anchor_weights "
+            f"is supplied, got {l2_anchor!r}."
+        )
+    l2_anchor_weights = np.asarray(l2_anchor_weights, dtype=np.float64)
+    if not np.isfinite(l2_anchor_weights).all() or (l2_anchor_weights <= 0).any():
+        raise ValueError("l2_anchor_weights must be finite and strictly positive.")
+    return l2_anchor_weights
+
+
+def _check_l2_anchor_shape(
+    l2_anchor_weights: np.ndarray | None, shape: tuple[int, ...]
+) -> None:
+    if l2_anchor_weights is not None and l2_anchor_weights.shape != shape:
+        raise ValueError(
+            f"l2_anchor_weights shape {l2_anchor_weights.shape} must match "
+            f"the calibrated weight vector shape {shape}."
+        )
+
+
 def calibrate(
     frame: Frame,
     targets: TargetSet,
@@ -2348,10 +2443,7 @@ def calibrate(
             "'prox' (proximal gradient on raw weights, for the l1_lambda penalty), "
             "and deprecated alias 'apg' -> 'adam'."
         )
-    if mass not in (FREE_MASS, CONSERVE_MASS):
-        raise ValueError(
-            f"mass must be {FREE_MASS!r} or {CONSERVE_MASS!r}, got {mass!r}."
-        )
+    _check_mass(mass)
     if mass_reason is not None:
         if mass != FREE_MASS:
             raise ValueError(
@@ -2360,23 +2452,7 @@ def calibrate(
             )
         if not isinstance(mass_reason, str) or not mass_reason.strip():
             raise ValueError("mass_reason must be a non-empty string when provided.")
-    if epochs <= 0:
-        raise ValueError(f"epochs must be positive, got {epochs!r}.")
-    if max_weight_ratio is not None and not (max_weight_ratio > 0):
-        raise ValueError(
-            f"max_weight_ratio must be positive, got {max_weight_ratio!r}."
-        )
-    if max_weight_ratio is not None and max_weight_ratio < 1 and mass == CONSERVE_MASS:
-        # Every capped weight is below its initial, so sum(cap) < input total:
-        # mass conservation is infeasible a priori (Finding 7). Reject it here
-        # with a named error rather than letting it surface later as the kernel's
-        # opaque mass-conservation failure.
-        raise ValueError(
-            f"max_weight_ratio={max_weight_ratio!r} < 1 with mass={mass!r} is "
-            "infeasible: every weight is capped below its initial value, so the "
-            "total cannot be conserved (sum of caps < input total). Use "
-            "max_weight_ratio >= 1, or mass='free'."
-        )
+    _check_epochs_and_weight_ratio(epochs, max_weight_ratio, mass=mass)
     if gate_initialization is not None:
         if method != "adam" or (target_records is None and l0_lambda <= 0):
             raise ValueError("gate_initialization requires an Adam L0 solve.")
@@ -2386,44 +2462,17 @@ def calibrate(
         raise ValueError(
             f"target_records must be a positive integer, got {target_records!r}."
         )
-    if not math.isfinite(l2_lambda) or l2_lambda < 0.0:
-        raise ValueError(
-            f"l2_lambda must be finite and non-negative, got {l2_lambda!r}."
-        )
-    if l2_basis not in L2_BASES:
-        raise ValueError(
-            f"l2_basis must be one of {sorted(L2_BASES)}, got {l2_basis!r}."
-        )
-    if mass_parametrization not in MASS_PARAMETRIZATIONS:
-        raise ValueError(
-            f"mass_parametrization must be one of {sorted(MASS_PARAMETRIZATIONS)}, "
-            f"got {mass_parametrization!r}."
-        )
-    if mass_parametrization == MASS_PARAMETRIZATION_SOFTMAX and (
-        method != "adam"
-        or mass != CONSERVE_MASS
-        or l0_lambda > 0.0
-        or target_records is not None
-    ):
-        raise ValueError(
-            "mass_parametrization='softmax' reparametrizes the Adam solve's "
-            "conserved total: it requires method='adam', mass='conserve', and "
-            "no L0 gates (l0_lambda=0, target_records=None)."
-        )
-    if l2_anchor_weights is None:
-        if l2_anchor not in ("initial", "uniform"):
-            raise ValueError(
-                f"l2_anchor must be 'initial' or 'uniform', got {l2_anchor!r}."
-            )
-    else:
-        if not isinstance(l2_anchor, str) or not l2_anchor:
-            raise ValueError(
-                "l2_anchor must be a non-empty label when l2_anchor_weights "
-                f"is supplied, got {l2_anchor!r}."
-            )
-        l2_anchor_weights = np.asarray(l2_anchor_weights, dtype=np.float64)
-        if not np.isfinite(l2_anchor_weights).all() or (l2_anchor_weights <= 0).any():
-            raise ValueError("l2_anchor_weights must be finite and strictly positive.")
+    l2_anchor_weights = _checked_l2_options(
+        l2_lambda,
+        l2_basis,
+        mass_parametrization,
+        l2_anchor,
+        l2_anchor_weights,
+        method=method,
+        mass=mass,
+        l0_lambda=l0_lambda,
+        target_records=target_records,
+    )
     if not math.isfinite(l1_lambda) or l1_lambda < 0.0:
         raise ValueError(
             f"l1_lambda must be finite and non-negative, got {l1_lambda!r}."
@@ -2506,11 +2555,7 @@ def calibrate(
     initial = problem.initial_weights
     w0 = initial.values
     prune_atol = _PRUNE_REL_ATOL * float(np.mean(w0))
-    if l2_anchor_weights is not None and l2_anchor_weights.shape != w0.shape:
-        raise ValueError(
-            f"l2_anchor_weights shape {l2_anchor_weights.shape} must match "
-            f"the calibrated weight vector shape {w0.shape}."
-        )
+    _check_l2_anchor_shape(l2_anchor_weights, w0.shape)
 
     torch.manual_seed(seed)
     matrix_t = _torch_constraint_matrix(problem.matrix)
@@ -2781,6 +2826,109 @@ def calibrate(
             ),
         },
         gate_open_probabilities=gate_open_probabilities,
+    )
+
+
+def solve_constraint_system(
+    matrix,
+    targets: np.ndarray,
+    initial_weights: np.ndarray,
+    *,
+    target_loss_weights: np.ndarray | None = None,
+    target_loss_scales: np.ndarray | None = None,
+    target_loss_cap: float = _DEFAULT_TARGET_LOSS_CAP,
+    mass: str = FREE_MASS,
+    mass_parametrization: str = MASS_PARAMETRIZATION_PROJECTION,
+    max_weight_ratio: float | None = None,
+    l2_lambda: float = 0.0,
+    l2_anchor: str = "initial",
+    l2_anchor_weights: np.ndarray | None = None,
+    l2_basis: str = L2_BASIS_RECORD,
+    epochs: int = 256,
+    learning_rate: float = 0.02,
+    seed: int = 0,
+    progress_callback: Callable[[dict[str, object]], None] | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Run :func:`calibrate`'s Adam solve, without L0 gates, on a prebuilt system.
+
+    ``matrix`` is the targets x records constraint matrix. A SciPy sparse
+    matrix becomes the torch operator :func:`calibrate` builds; any other
+    operator (a torch tensor, or an object with ``shape``, a non-CSR
+    ``layout`` and ``@``) is used as given, so its own float32 arithmetic is
+    kept. ``targets`` holds one finite value per row and ``initial_weights``
+    one weight per column, held to a frame's weight rules. The options, their
+    defaults and their checks are :func:`calibrate`'s.
+
+    Returns:
+        ``(weights, trajectory)``, as :func:`calibrate` reports ``weights``
+        and ``loss_trajectory``.
+    """
+    _check_mass(mass)
+    _check_epochs_and_weight_ratio(epochs, max_weight_ratio, mass=mass)
+    l2_anchor_weights = _checked_l2_options(
+        l2_lambda,
+        l2_basis,
+        mass_parametrization,
+        l2_anchor,
+        l2_anchor_weights,
+        method="adam",
+        mass=mass,
+        l0_lambda=0.0,
+        target_records=None,
+    )
+    w0 = Weights(initial_weights, kind=WeightKind.DESIGN).values
+    target_vector = np.asarray(targets, dtype=np.float64)
+    if target_vector.ndim != 1 or not np.isfinite(target_vector).all():
+        raise ValueError("targets must be one-dimensional and finite.")
+    if tuple(matrix.shape) != (target_vector.shape[0], w0.shape[0]):
+        raise ValueError(
+            f"matrix shape {tuple(matrix.shape)} must be (targets, records) = "
+            f"{(target_vector.shape[0], w0.shape[0])}."
+        )
+    _check_l2_anchor_shape(l2_anchor_weights, w0.shape)
+    target_loss_cap = _validate_target_loss_cap(target_loss_cap)
+    target_loss_weights = _validate_target_loss_weights(
+        target_loss_weights, target_vector.shape
+    )
+    target_loss_scales = (
+        default_target_loss_scales(target_vector)
+        if target_loss_scales is None
+        else _validate_target_loss_scales(
+            target_loss_scales, target_vector.shape, targets=target_vector
+        )
+    )
+
+    torch.manual_seed(seed)
+    operator = (
+        _torch_constraint_matrix(sparse.csr_array(matrix))
+        if sparse.issparse(matrix)
+        else matrix
+    )
+    return _optimize(
+        operator,
+        torch.tensor(target_vector, dtype=torch.float32),
+        (
+            None
+            if target_loss_weights is None
+            else torch.tensor(target_loss_weights, dtype=torch.float32)
+        ),
+        torch.tensor(target_loss_scales, dtype=torch.float32),
+        target_loss_cap,
+        w0,
+        epochs=epochs,
+        learning_rate=learning_rate,
+        conserve_mass=(mass == CONSERVE_MASS),
+        max_weight_ratio=max_weight_ratio,
+        l0_lambda=0.0,
+        l2_lambda=l2_lambda,
+        l2_anchor=l2_anchor,
+        l2_anchor_weights=l2_anchor_weights,
+        l2_basis=l2_basis,
+        mass_parametrization=mass_parametrization,
+        target_records=None,
+        init_mean=0.999,
+        temperature=0.25,
+        progress_callback=progress_callback,
     )
 
 

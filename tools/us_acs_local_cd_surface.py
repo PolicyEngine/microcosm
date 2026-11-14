@@ -1544,9 +1544,10 @@ def score_cd_holdout(
 
 
 def kish_ess(weights: np.ndarray) -> float:
-    weights = np.asarray(weights, dtype=np.float64)
-    denominator = float((weights**2).sum())
-    return float(weights.sum() ** 2 / denominator) if denominator > 0 else 0.0
+    """Kish ESS; refuses negative, NaN or infinite weights (microcosm#1585)."""
+    from microcosm.calibrate.solve import effective_sample_size
+
+    return effective_sample_size(weights)
 
 
 def distinct_household_weights(
