@@ -20,6 +20,7 @@ model.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
 import numpy as np
@@ -39,6 +40,8 @@ __all__ = [
     "resolved_weight_kind",
     "predictors_targets_entity",
     "dataframe_fit_columns",
+    "duplicated_column_labels",
+    "validated_integer",
 ]
 
 #: ``weights="design"`` — fit on the owning entity's design weights. The
@@ -143,6 +146,52 @@ class ConditionalModel(Protocol):
             A :class:`FittedModel`.
         """
         ...
+
+
+def validated_integer(value: object, *, name: str, minimum: int) -> int:
+    """Return ``value`` as a Python int, refusing anything but an integer.
+
+    ``int(value)`` aliases distinct inputs silently: ``True`` and ``1.9`` both
+    become 1, so two models that take different "seeds" would share one
+    random stream. It accepts only integers (Python ints and NumPy integer
+    scalars, never booleans, floats or strings), and only from ``minimum`` up.
+    A NumPy integer comes back as the equal Python int, the type the chain
+    checkpoint state requires.
+
+    Args:
+        value: The candidate integer.
+        name: The parameter name the error messages use.
+        minimum: The smallest value accepted.
+
+    Raises:
+        TypeError: If ``value`` is not an integer, or is a boolean.
+        ValueError: If ``value`` falls short of ``minimum``.
+    """
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+        raise TypeError(
+            f"{name} must be an integer, got {value!r} ({type(value).__name__}); "
+            "converting it would silently alias distinct values (True and 1.9 "
+            "both become 1)."
+        )
+    number = int(value)
+    if number < minimum:
+        raise ValueError(f"{name} must be an integer >= {minimum}, got {number}.")
+    return number
+
+
+def duplicated_column_labels(df: pd.DataFrame, labels: Sequence[object]) -> list[str]:
+    """The ``labels`` that name more than one column of ``df``, as sorted strings.
+
+    pandas lets several columns share a label, and then ``df[label]`` is a
+    two-dimensional frame rather than one column: a fit would read every
+    column under the label (or a mix of them) without saying which. The
+    result leaves out labels absent from ``df``; the caller checks membership.
+    """
+    columns = df.columns
+    if columns.is_unique:
+        return []
+    repeated = set(columns[columns.duplicated(keep=False)].tolist())
+    return sorted({str(label) for label in labels if label in repeated})
 
 
 def _duplicates(names: list[str]) -> list[str]:
@@ -337,8 +386,11 @@ def dataframe_fit_columns(
         targets: Target variable names (at least one).
 
     Raises:
-        ValueError: If a name rule is violated or a name is missing from
-            ``df``'s columns. The message names the missing columns.
+        ValueError: If the names break a name rule, a name is missing from
+            ``df``'s columns, or a name labels more than one column of ``df``
+            (the fit could not tell which one to read). The message names the
+            missing or duplicated columns. The check ignores a duplicated label
+            the fit does not read.
     """
     _validate_fit_names(predictors, targets)
     missing = [c for c in (*predictors, *targets) if c not in df.columns]
@@ -346,6 +398,13 @@ def dataframe_fit_columns(
         raise ValueError(
             f"DataFrame fit is missing column(s) {missing}; the fit "
             f"conditions on {predictors} and imputes {targets}."
+        )
+    duplicated = duplicated_column_labels(df, [*predictors, *targets])
+    if duplicated:
+        raise ValueError(
+            f"DataFrame fit column label(s) {duplicated} each name more than one "
+            "column, so the fit cannot tell which column to read. Drop or rename "
+            "the duplicate columns before fitting."
         )
 
 
@@ -390,9 +449,9 @@ def resolve_dataframe_fit_weights(
         TypeError: If ``weights`` is neither a string, a 1-D numeric
             vector, nor ``"none"``.
         ValueError: If a typed-kind spelling is passed, the named column is
-            absent / non-numeric / also a predictor or target, or the vector
-            has the wrong length or dimension, is non-finite, is negative, or
-            sums to zero. Messages name the culprit and the fix.
+            absent / duplicated / non-numeric / also a predictor or target, or
+            the vector has the wrong length or dimension, is non-finite, is
+            negative, or sums to zero. Messages name the culprit and the fix.
     """
     if isinstance(weights, WeightKind) or (
         isinstance(weights, str) and weights in _KIND_BY_NAME
@@ -427,6 +486,12 @@ def resolve_dataframe_fit_weights(
                 f"Weight column {weights!r} is also a target; a fit cannot "
                 "impute its own weights. Drop it from targets or pass the "
                 "weights as a vector."
+            )
+        if duplicated_column_labels(df, [weights]):
+            raise ValueError(
+                f"Weight column label {weights!r} names more than one column, so "
+                "the fit cannot tell which weights to use. Drop or rename the "
+                "duplicate columns, or pass the weights as a vector."
             )
         column = df[weights]
         if not pd.api.types.is_numeric_dtype(column):
