@@ -5211,6 +5211,31 @@ def test_exact_k_uk_gate_battery_rejects_a_synthetic_smoke_report(
     assert "synthetic_smoke must be false" in _battery_failures(directory)
 
 
+def test_exact_k_uk_gate_battery_rejects_an_attestation_smoke_flag_off_the_body(
+    tmp_path: Path,
+) -> None:
+    # Review of #1609: the attestation's own copy must restate the body's.
+    # Signed honestly over the divergent copy, so only that check refuses it.
+    directory, payload = _write_battery_release(tmp_path)
+    attestation = payload["attestation"]
+    attestation["synthetic_smoke"] = True
+    attestation["signature"] = None
+    attestation["signature"] = hmac.new(
+        TEST_UK_TERMINAL_GATE_SIGNING_KEY_BYTES,
+        _canonical_json_bytes(payload),
+        hashlib.sha256,
+    ).hexdigest()
+    _rewrite_battery_report(directory, payload, resign=False)
+
+    failures = _battery_failures(directory)
+    assert (
+        "attestation.synthetic_smoke must equal the report body's synthetic_smoke"
+        in failures
+    )
+    assert "signature does not authenticate" not in failures
+    assert "synthetic_smoke must be false" not in failures
+
+
 def test_exact_k_uk_gate_battery_rejects_loosened_input_mass_tolerance(
     tmp_path: Path,
 ) -> None:
