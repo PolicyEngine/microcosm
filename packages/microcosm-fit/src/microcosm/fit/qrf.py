@@ -915,6 +915,15 @@ def _class_balanced_weights(
 
     A row keeps its weight relative to the rows of its own class. The result
     averages one, so the classifier's fit is on the scale of an unweighted one.
+
+    :func:`_cross_fit_gate` calls this only once every fold's training rows
+    carry weight for every class (:func:`_folds_carry_every_class`); other
+    folds fall back to the in-sample gate (:attr:`GateOutcome.WEIGHTLESS_FOLD`).
+
+    Raises:
+        ValueError: If a class's rows carry no weight, or weight whose total is
+            not finite, naming the class: dividing by that total would give its
+            rows NaN weights, or weights of zero.
     """
     base = (
         np.ones(len(labels), dtype=np.float64)
@@ -924,7 +933,14 @@ def _class_balanced_weights(
     balanced = np.empty(len(labels), dtype=np.float64)
     for value in np.unique(labels):
         members = labels == value
-        balanced[members] = base[members] / base[members].sum()
+        total = base[members].sum()
+        if not (np.isfinite(total) and total > 0.0):
+            raise ValueError(
+                "Class-balanced weights need every class to carry a positive, "
+                f"finite total weight; class {value!s} carries {float(total)!r} "
+                "in these rows."
+            )
+        balanced[members] = base[members] / total
     return balanced * (len(labels) / balanced.sum())
 
 
