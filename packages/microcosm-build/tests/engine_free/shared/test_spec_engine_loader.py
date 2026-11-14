@@ -28,7 +28,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # microcosm#1453's local-jurisdiction flags move geography_ladder's and
     # puma_ladder's attested bytes.
     assert first.spec_sha256 == (
-        "cc8300596237644b744848c9cf7274dc36972a4eb615be37507adb4333248280"
+        "d092ce03746f0cb33e28f8f9a0c0a7bbb2f18dda153d78b9a496bc77312798d5"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")
