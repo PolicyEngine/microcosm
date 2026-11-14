@@ -41,7 +41,7 @@ it as its only and current build. An entry whose repository has no
 `latest-<name>.json`) and reads the manifest at the build's tag; no
 registered entry's repository is still in that state. `available()` lists
 the default-variant `(country, year)` pairs (the ones a bare ``load(country, year)``
-resolves); `available_variants()` lists every published
+resolves); `available_variants()` lists every registered
 `(country, year, variant)`, non-default lines included.
 
 The old mutable-root behavior is an unsafe escape hatch,

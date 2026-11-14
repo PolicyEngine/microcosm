@@ -653203,26 +653203,6 @@
       }
     },
     {
-      "name": "microcosm.high_value_homes.over_1m@E07000127",
-      "ledger_selector": {
-        "source_name": "microcosm",
-        "source_measure_id": "owner_occupied_homes",
-        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1",
-        "geography_level": "local_authority",
-        "geography_id": "E07000127"
-      },
-      "entity": "household",
-      "measure": "high_value_homes/over_1m",
-      "family": "high_value_homes",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "microcosm.high_value_homes.over_1m",
-        "measure_kind": "prepared_column",
-        "geography_level": "local_authority",
-        "geography_id": "E07000127"
-      }
-    },
-    {
       "name": "microcosm.high_value_homes.over_1m@E07000130",
       "ledger_selector": {
         "source_name": "microcosm",
@@ -653380,26 +653360,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "local_authority",
         "geography_id": "E07000149"
-      }
-    },
-    {
-      "name": "microcosm.high_value_homes.over_1m@E07000175",
-      "ledger_selector": {
-        "source_name": "microcosm",
-        "source_measure_id": "owner_occupied_homes",
-        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1m.v1",
-        "geography_level": "local_authority",
-        "geography_id": "E07000175"
-      },
-      "entity": "household",
-      "measure": "high_value_homes/over_1m",
-      "family": "high_value_homes",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "microcosm.high_value_homes.over_1m",
-        "measure_kind": "prepared_column",
-        "geography_level": "local_authority",
-        "geography_id": "E07000175"
       }
     },
     {
@@ -655227,26 +655187,6 @@
       }
     },
     {
-      "name": "microcosm.high_value_homes.over_1_5m@E06000036",
-      "ledger_selector": {
-        "source_name": "microcosm",
-        "source_measure_id": "owner_occupied_homes",
-        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
-        "geography_level": "local_authority",
-        "geography_id": "E06000036"
-      },
-      "entity": "household",
-      "measure": "high_value_homes/over_1_5m",
-      "family": "high_value_homes",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "microcosm.high_value_homes.over_1_5m",
-        "measure_kind": "prepared_column",
-        "geography_level": "local_authority",
-        "geography_id": "E06000036"
-      }
-    },
-    {
       "name": "microcosm.high_value_homes.over_1_5m@E06000037",
       "ledger_selector": {
         "source_name": "microcosm",
@@ -655347,26 +655287,6 @@
       }
     },
     {
-      "name": "microcosm.high_value_homes.over_1_5m@E06000050",
-      "ledger_selector": {
-        "source_name": "microcosm",
-        "source_measure_id": "owner_occupied_homes",
-        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
-        "geography_level": "local_authority",
-        "geography_id": "E06000050"
-      },
-      "entity": "household",
-      "measure": "high_value_homes/over_1_5m",
-      "family": "high_value_homes",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "microcosm.high_value_homes.over_1_5m",
-        "measure_kind": "prepared_column",
-        "geography_level": "local_authority",
-        "geography_id": "E06000050"
-      }
-    },
-    {
       "name": "microcosm.high_value_homes.over_1_5m@E06000052",
       "ledger_selector": {
         "source_name": "microcosm",
@@ -655404,26 +655324,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "local_authority",
         "geography_id": "E06000054"
-      }
-    },
-    {
-      "name": "microcosm.high_value_homes.over_1_5m@E06000056",
-      "ledger_selector": {
-        "source_name": "microcosm",
-        "source_measure_id": "owner_occupied_homes",
-        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
-        "geography_level": "local_authority",
-        "geography_id": "E06000056"
-      },
-      "entity": "household",
-      "measure": "high_value_homes/over_1_5m",
-      "family": "high_value_homes",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "microcosm.high_value_homes.over_1_5m",
-        "measure_kind": "prepared_column",
-        "geography_level": "local_authority",
-        "geography_id": "E06000056"
       }
     },
     {
@@ -655484,26 +655384,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "local_authority",
         "geography_id": "E06000060"
-      }
-    },
-    {
-      "name": "microcosm.high_value_homes.over_1_5m@E06000062",
-      "ledger_selector": {
-        "source_name": "microcosm",
-        "source_measure_id": "owner_occupied_homes",
-        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
-        "geography_level": "local_authority",
-        "geography_id": "E06000062"
-      },
-      "entity": "household",
-      "measure": "high_value_homes/over_1_5m",
-      "family": "high_value_homes",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "microcosm.high_value_homes.over_1_5m",
-        "measure_kind": "prepared_column",
-        "geography_level": "local_authority",
-        "geography_id": "E06000062"
       }
     },
     {
@@ -655787,26 +655667,6 @@
       }
     },
     {
-      "name": "microcosm.high_value_homes.over_1_5m@E07000082",
-      "ledger_selector": {
-        "source_name": "microcosm",
-        "source_measure_id": "owner_occupied_homes",
-        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
-        "geography_level": "local_authority",
-        "geography_id": "E07000082"
-      },
-      "entity": "household",
-      "measure": "high_value_homes/over_1_5m",
-      "family": "high_value_homes",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "microcosm.high_value_homes.over_1_5m",
-        "measure_kind": "prepared_column",
-        "geography_level": "local_authority",
-        "geography_id": "E07000082"
-      }
-    },
-    {
       "name": "microcosm.high_value_homes.over_1_5m@E07000084",
       "ledger_selector": {
         "source_name": "microcosm",
@@ -656064,26 +655924,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "local_authority",
         "geography_id": "E07000116"
-      }
-    },
-    {
-      "name": "microcosm.high_value_homes.over_1_5m@E07000177",
-      "ledger_selector": {
-        "source_name": "microcosm",
-        "source_measure_id": "owner_occupied_homes",
-        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
-        "geography_level": "local_authority",
-        "geography_id": "E07000177"
-      },
-      "entity": "household",
-      "measure": "high_value_homes/over_1_5m",
-      "family": "high_value_homes",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "microcosm.high_value_homes.over_1_5m",
-        "measure_kind": "prepared_column",
-        "geography_level": "local_authority",
-        "geography_id": "E07000177"
       }
     },
     {
@@ -656544,26 +656384,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "local_authority",
         "geography_id": "E07000244"
-      }
-    },
-    {
-      "name": "microcosm.high_value_homes.over_1_5m@E08000003",
-      "ledger_selector": {
-        "source_name": "microcosm",
-        "source_measure_id": "owner_occupied_homes",
-        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_1_5m.v1",
-        "geography_level": "local_authority",
-        "geography_id": "E08000003"
-      },
-      "entity": "household",
-      "measure": "high_value_homes/over_1_5m",
-      "family": "high_value_homes",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "microcosm.high_value_homes.over_1_5m",
-        "measure_kind": "prepared_column",
-        "geography_level": "local_authority",
-        "geography_id": "E08000003"
       }
     },
     {
@@ -657264,26 +657084,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "local_authority",
         "geography_id": "E06000040"
-      }
-    },
-    {
-      "name": "microcosm.high_value_homes.over_2m@E06000043",
-      "ledger_selector": {
-        "source_name": "microcosm",
-        "source_measure_id": "owner_occupied_homes",
-        "record_set_spec_id": "uk.local_geography.high_value_homes.owner_occupied_homes.over_gbp_2m.v1",
-        "geography_level": "local_authority",
-        "geography_id": "E06000043"
-      },
-      "entity": "household",
-      "measure": "high_value_homes/over_2m",
-      "family": "high_value_homes",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "microcosm.high_value_homes.over_2m",
-        "measure_kind": "prepared_column",
-        "geography_level": "local_authority",
-        "geography_id": "E06000043"
       }
     },
     {

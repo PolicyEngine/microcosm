@@ -382,9 +382,19 @@ EXPECTED_HASHES = {
     # S-corp line-32 shares as separate leaves.
     # The hierarchy value ranks move both again: medicaid_take_up, an
     # attested kernel module, gives a substituted enrollment spec's value no
-    # rank. No draw, RNG rule or QRF target changes.
-    "seed_map": '2de5b5eed504179a521c380a077a3c99a92bbfb95a286b7ec03a2a02003ea295',
-    "seed_protocol": 'a61c7cf2a2ad6c9d030e81589e5f7ac0c8e4bdd1582aee4f19985d2f202e641d',
+    # rank. No draw, RNG rule or QRF target changes. microcosm#1585 moves both
+    # again: the US keyed draws call stochastic_assignment's
+    # stable_identity_uniforms, and that module joins the attested kernel
+    # modules; no draw changes. #1585's public solve_constraint_system and
+    # calibrate's shared option checks move both again; no US solve changes.
+    # Its TANF ledger fix moves the protocol again: the site's recorded salt
+    # becomes the takes_up_tanf_if_eligible its draw always used.
+    # microcosm#1543's fit input checks (the microimpute bug-parity audit)
+    # move both again; no valid input's draw changes. microcosm#1617's refusal
+    # of a weightless class in the balanced gate's weights moves both again;
+    # no fit reached it, and no draw changes.
+    "seed_map": "8356c939c63992cdda1642fc76bde71b2074ccd412e5cdb64d79e03bb38f2dc9",
+    "seed_protocol": "bc60564662d9757d90d11601b9c5121e595d39325afa8929691ef5298bc70d0c",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

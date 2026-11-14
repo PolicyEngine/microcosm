@@ -15,7 +15,8 @@ household's own state or district (the release materializer builds its
 columns exactly this way; ``diffcheck`` verifies it on real rows).
 ``materialize`` runs the release tool's own ``_materialize_target_frame`` on
 household shards for the concept specs. ``arm`` then selects rows, assembles
-the sparse target matrix, calls the production ``_optimize`` and scores.
+the sparse target matrix, calls the production solve
+(``microcosm.calibrate.solve.solve_constraint_system``) and scores.
 
 Subcommands, in order: compile, shard, spm-flags, materialize, diffcheck,
 partcheck, truth, arm (or run-grid for every arm), report. Every subcommand writes a JSON
@@ -1334,9 +1335,10 @@ class _ConceptStore:
 class _SparseOperator:
     """``A @ w`` with a precomputed transpose for the backward pass.
 
-    Duck-types the torch tensor ``_optimize`` expects: it reads ``.layout``
-    (not sparse CSR, so ``_apply_constraint`` calls ``matrix @ weights``) and
-    ``@``. Forward and backward are one CSR SpMV each.
+    The caller's operator ``solve_constraint_system`` takes: it duck-types the
+    torch tensor the solve reads, ``.shape``, ``.layout`` (not sparse CSR, so
+    ``_apply_constraint`` calls ``matrix @ weights``) and ``@``. Forward and
+    backward are one CSR SpMV each.
     """
 
     def __init__(self, matrix: sp.csr_matrix):
@@ -1414,7 +1416,11 @@ def do_arm(args) -> None:
 
     torch.set_num_threads(args.threads)
     _SpMV = _spmv_class()
-    from microcosm.calibrate.solve import _optimize, default_target_loss_scales
+    from microcosm.calibrate.solve import (
+        CONSERVE_MASS,
+        default_target_loss_scales,
+        solve_constraint_system,
+    )
 
     targets = pd.read_parquet(args.work / "targets.parquet")
     rows_cps = pd.read_parquet(args.work / "rows_cps.parquet")
@@ -1569,22 +1575,17 @@ def do_arm(args) -> None:
         trajectory = np.array([previous["train"]["loss_initial"], previous["train"]["loss_final"]])
     else:
         operator = _SparseOperator(a_train)
-        weights, trajectory = _optimize(
+        weights, trajectory = solve_constraint_system(
             operator,
-            torch.tensor(b_train, dtype=torch.float32),
-            torch.tensor(loss_w, dtype=torch.float32),
-            torch.tensor(scales, dtype=torch.float32),
-            1.0,
+            b_train,
             w0,
+            target_loss_weights=loss_w,
+            target_loss_scales=scales,
+            target_loss_cap=1.0,
+            mass=CONSERVE_MASS,
+            max_weight_ratio=5.0,
             epochs=args.epochs,
             learning_rate=0.02,
-            conserve_mass=True,
-            max_weight_ratio=5.0,
-            l0_lambda=0.0,
-            l2_lambda=0.0,
-            target_records=None,
-            init_mean=0.999,
-            temperature=0.25,
         )
         del operator
     solve_s = time.time() - solve_started if not rescore else previous["runtime"]["solve_s"]

@@ -65,7 +65,6 @@ parameters.
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from importlib.resources import files
@@ -85,6 +84,7 @@ from microcosm.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
 
@@ -483,23 +483,7 @@ def _stable_person_draws(
         )
     else:
         keys = person["person_id"].astype(str)
-    denominator = float(2**64)
-    return np.fromiter(
-        (
-            int.from_bytes(
-                hashlib.blake2b(
-                    f"{seed}:{salt}:{key}".encode(),
-                    digest_size=8,
-                ).digest(),
-                byteorder="big",
-                signed=False,
-            )
-            / denominator
-            for key in keys
-        ),
-        dtype=np.float64,
-        count=len(keys),
-    )
+    return stable_identity_uniforms(keys, seed=seed, salt=salt)
 
 
 def _select_weight_to_target(
