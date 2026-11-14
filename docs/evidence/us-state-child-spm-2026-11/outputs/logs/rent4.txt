@@ -1,0 +1,19 @@
+['household_id', 'household_source_id', 'household_support_channel', 'household_support_clone_index']
+['source_year', 'source_household_id', 'source_person_id', 'source_row_id', 'child_support_received', 'child_support_expense', 'person_source_id', 'person_support_channel', 'person_support_clone_index']
+first household ids [1, 2, 3, 4] monotone hh True monotone person hh False
+heads 352932 households 352932 same position share 0.0926
+asec 0 heads 168852 hh 168852
+   same position 0.0915
+    own row {'RENTED': 0.408, 'OWNED_WITH_MORTGAGE': 0.271, 'NONE': 0.251}
+    nth household {'RENTED': 1.0, 'OWNED_WITH_MORTGAGE': 0.0, 'NONE': 0.0}
+asec 1 heads 0 hh 0
+asec 2 heads 0 hh 0
+puf_tax_detail 0 heads 0 hh 0
+puf_tax_detail 1 heads 168852 hh 168852
+   same position 0.0915
+    own row {'RENTED': 0.408, 'OWNED_WITH_MORTGAGE': 0.271, 'NONE': 0.251}
+    nth household {'RENTED': 1.0, 'OWNED_WITH_MORTGAGE': 0.0, 'NONE': 0.0}
+puf_tax_detail 2 heads 15228 hh 15228
+   same position 0.1186
+    own row {'RENTED': 0.41, 'OWNED_WITH_MORTGAGE': 0.302, 'NONE': 0.429}
+    nth household {'RENTED': 0.411, 'OWNED_WITH_MORTGAGE': 0.302, 'NONE': 0.31}

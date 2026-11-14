@@ -1,0 +1,260 @@
+{
+ "source": "U.S. Census Bureau, Poverty in the United States: 2025 (P60-290), Table 18: SPM percent and margin of error for people under 18, three-year average 2023 to 2025",
+ "rows": [
+  {
+   "state": "AK",
+   "rate": 10.5,
+   "moe": 2.1
+  },
+  {
+   "state": "AL",
+   "rate": 15.5,
+   "moe": 2.4
+  },
+  {
+   "state": "AR",
+   "rate": 13.3,
+   "moe": 2.7
+  },
+  {
+   "state": "AZ",
+   "rate": 13.3,
+   "moe": 2.3
+  },
+  {
+   "state": "CA",
+   "rate": 17.9,
+   "moe": 1.0
+  },
+  {
+   "state": "CO",
+   "rate": 7.7,
+   "moe": 1.8
+  },
+  {
+   "state": "CT",
+   "rate": 12.8,
+   "moe": 3.2
+  },
+  {
+   "state": "DC",
+   "rate": 20.3,
+   "moe": 3.7
+  },
+  {
+   "state": "DE",
+   "rate": 8.7,
+   "moe": 2.6
+  },
+  {
+   "state": "FL",
+   "rate": 18.4,
+   "moe": 1.8
+  },
+  {
+   "state": "GA",
+   "rate": 15.1,
+   "moe": 2.2
+  },
+  {
+   "state": "HI",
+   "rate": 13.0,
+   "moe": 2.6
+  },
+  {
+   "state": "IA",
+   "rate": 8.2,
+   "moe": 1.9
+  },
+  {
+   "state": "ID",
+   "rate": 6.5,
+   "moe": 1.3
+  },
+  {
+   "state": "IL",
+   "rate": 12.4,
+   "moe": 1.6
+  },
+  {
+   "state": "IN",
+   "rate": 10.6,
+   "moe": 2.2
+  },
+  {
+   "state": "KS",
+   "rate": 9.7,
+   "moe": 2.5
+  },
+  {
+   "state": "KY",
+   "rate": 13.3,
+   "moe": 2.9
+  },
+  {
+   "state": "LA",
+   "rate": 20.7,
+   "moe": 3.0
+  },
+  {
+   "state": "MA",
+   "rate": 12.8,
+   "moe": 2.0
+  },
+  {
+   "state": "MD",
+   "rate": 10.7,
+   "moe": 2.5
+  },
+  {
+   "state": "ME",
+   "rate": 6.5,
+   "moe": 2.3
+  },
+  {
+   "state": "MI",
+   "rate": 10.3,
+   "moe": 1.9
+  },
+  {
+   "state": "MN",
+   "rate": 6.9,
+   "moe": 1.9
+  },
+  {
+   "state": "MO",
+   "rate": 9.7,
+   "moe": 2.3
+  },
+  {
+   "state": "MS",
+   "rate": 19.1,
+   "moe": 2.6
+  },
+  {
+   "state": "MT",
+   "rate": 9.3,
+   "moe": 2.3
+  },
+  {
+   "state": "NC",
+   "rate": 14.4,
+   "moe": 2.2
+  },
+  {
+   "state": "ND",
+   "rate": 10.3,
+   "moe": 2.1
+  },
+  {
+   "state": "NE",
+   "rate": 7.1,
+   "moe": 1.9
+  },
+  {
+   "state": "NH",
+   "rate": 7.5,
+   "moe": 2.4
+  },
+  {
+   "state": "NJ",
+   "rate": 13.3,
+   "moe": 1.9
+  },
+  {
+   "state": "NM",
+   "rate": 10.9,
+   "moe": 2.1
+  },
+  {
+   "state": "NV",
+   "rate": 15.0,
+   "moe": 2.5
+  },
+  {
+   "state": "NY",
+   "rate": 16.2,
+   "moe": 1.9
+  },
+  {
+   "state": "OH",
+   "rate": 12.3,
+   "moe": 2.1
+  },
+  {
+   "state": "OK",
+   "rate": 9.9,
+   "moe": 2.0
+  },
+  {
+   "state": "OR",
+   "rate": 11.0,
+   "moe": 2.4
+  },
+  {
+   "state": "PA",
+   "rate": 11.1,
+   "moe": 2.0
+  },
+  {
+   "state": "RI",
+   "rate": 8.4,
+   "moe": 2.3
+  },
+  {
+   "state": "SC",
+   "rate": 11.1,
+   "moe": 2.1
+  },
+  {
+   "state": "SD",
+   "rate": 7.8,
+   "moe": 2.2
+  },
+  {
+   "state": "TN",
+   "rate": 10.0,
+   "moe": 1.7
+  },
+  {
+   "state": "TX",
+   "rate": 16.1,
+   "moe": 1.3
+  },
+  {
+   "state": "UT",
+   "rate": 7.3,
+   "moe": 1.6
+  },
+  {
+   "state": "VA",
+   "rate": 12.1,
+   "moe": 2.4
+  },
+  {
+   "state": "VT",
+   "rate": 8.3,
+   "moe": 2.5
+  },
+  {
+   "state": "WA",
+   "rate": 9.3,
+   "moe": 1.9
+  },
+  {
+   "state": "WI",
+   "rate": 7.3,
+   "moe": 1.7
+  },
+  {
+   "state": "WV",
+   "rate": 11.3,
+   "moe": 2.4
+  },
+  {
+   "state": "WY",
+   "rate": 6.5,
+   "moe": 1.4
+  }
+ ]
+}

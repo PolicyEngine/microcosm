@@ -1,0 +1,17 @@
+people 3587263 households 1586908
+blank parent_1 166321 parent_2 166321 both 166321 either 166321
+weighted share of people 0.6989 of children 0.6768
+parent_1 zero 3420942 positive 0 negative 0
+                           size     sum
+person_support_channel                 
+acs_2024_1yr            3420942       0
+asec                      66001   66001
+puf_tax_detail           100320  100320
+households with a blank 57240 of them all blank 57240
+        people   blank  weighted_share
+fips                                  
+6     401287.0  7866.0          0.7411
+10     12908.0  3039.0          0.6502
+12    217666.0  4651.0          0.7059
+25     78948.0  4418.0          0.6864
+29     68492.0  2892.0          0.6733

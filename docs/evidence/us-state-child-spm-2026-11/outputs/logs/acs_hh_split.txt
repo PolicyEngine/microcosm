@@ -1,0 +1,3 @@
+households (1586908, 6) unit keys (1589568, 2) people 3587263 person columns 339
+rent was 6.87 now 6.07
+weight total 122537092

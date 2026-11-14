@@ -1,0 +1,12 @@
+state DE
+child_units 1255
+rate_0 22.220429
+rate_m1 22.214556
+units_moved 1
+source_households 1
+by_channel {'asec': 1}
+moved_child_weight_share_pct 0.005873
+largest_source_household_share_pct 0.005873
+            units  share_pct  poor_0  poor_m1
+src                                          
+asec:19577      1     0.0059     1.0      0.0

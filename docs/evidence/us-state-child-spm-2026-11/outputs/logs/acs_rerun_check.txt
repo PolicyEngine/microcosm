@@ -1,0 +1,4 @@
+rates against the deck's fill-0 run: states 51 largest difference 3.3464489135326403e-07
+the split under -1 against the earlier -1 runs: {'CA': (np.float64(19.812992), np.float64(19.812992)), 'DE': (np.float64(22.214556), np.float64(22.214556))}
+CA units that change 1 by channel {'asec': 1} source households 1 rate move 0.5612 largest source household's share of the state's child weight, percent 0.561
+DE units that change 1 by channel {'asec': 1} source households 1 rate move 0.0059 largest source household's share of the state's child weight, percent 0.006

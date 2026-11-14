@@ -1,0 +1,11 @@
+source ids unique in base True <class 'numpy.int64'>
+base households 168852 positive 53053 sum 0.77
+other channel sources found 1.0
+clone index by channel {('asec', 0): 168852, ('puf_tax_detail', 1): 168852, ('puf_tax_detail', 2): 15228}
+                     weight_M  was_any  right_any  was_mean  right_mean
+tenure_type                                                            
+NONE                    1.498    0.285        0.0  4029.497       0.000
+OWNED_WITH_MORTGAGE    90.106    0.299        0.0  4417.972       0.000
+RENTED                 46.494    0.388        1.0  5954.510   15410.143
+weighted total rent, was 681.0 right 716.5
+records moved 0.464 weight moved 0.5185
