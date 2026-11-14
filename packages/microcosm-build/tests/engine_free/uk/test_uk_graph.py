@@ -90,8 +90,10 @@ def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     # frs_brma's place, spi_copy_areas after spi_income_band_donors and
     # private_rent after spi_housing_shell; and microcosm#931 retires
     # regional_home_values, whose England and Wales home values was_wealth
-    # now reads off each owner's constituency.
-    assert len(expected) == 60
+    # now reads off each owner's constituency; and microcosm#931 adds
+    # council_tax_localise, the council tax at each household's local
+    # authority, after private_rent and just before was_wealth.
+    assert len(expected) == 61
     assert "frs_brma" not in expected
     assert "regional_home_values" not in expected
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
@@ -151,6 +153,61 @@ def test_uk_spine_compile_order_is_derived_from_declared_inputs() -> None:
     assert compiled.predecessors["hmrc_spi_income_spine"] == (
         "hmrc_spi_income_spine.boundary",
     )
+    # The council-tax localisation rewrites the housing shell's person council
+    # tax reduction, which private_rent's finite reader anchors on, so it opens
+    # a version of its own: private_rent reads the shell's cells, not the
+    # localisation's, and the WAS chain reads the localised ones (microcosm#931).
+    assert compiled.predecessors["council_tax_localise"] == (
+        "council_tax_localise.boundary",
+    )
+    assert "council_tax_localise" not in compiled.predecessors["private_rent"]
+    assert "council_tax_localise" in compiled.predecessors["was_wealth"]
+
+
+def _provider(compiled, version: str, entity: str, column: str) -> str:
+    """The node whose cell a reader in ``version`` receives: the version's
+    owner of the coordinate, or the owner in the nearest base that has one."""
+
+    while (owner := compiled.owners.get((version, entity, column))) is None:
+        version = compiled.graph.node(version).base
+    return owner
+
+
+def test_the_was_chain_reads_the_localised_council_tax_and_private_rent_the_shells():
+    """microcosm#931: was_wealth and was_lisa bind the council-tax
+    localisation's bill, rebate and person reduction and the paid bill it
+    keeps, council_tax_frs_bill, for their predictors; private_rent, before
+    it, binds the housing shell's person council tax reduction as its shape
+    anchor, and no council-tax cell of the localisation."""
+
+    graph = uk_spine_graph()
+    compiled = compile_graph(graph)
+    council_tax_cells = {
+        ("household", "council_tax"),
+        ("household", "council_tax_rebate"),
+        ("household", "council_tax_frs_bill"),
+        ("person", "council_tax_benefit_reported"),
+    }
+
+    def providers(node_id: str) -> dict[tuple[str, str], str]:
+        version = compiled.versions[node_id]
+        read = {
+            (slice_.entity, column)
+            for slice_ in graph.node(node_id).inputs
+            for column in slice_.columns
+        }
+        return {
+            cell: _provider(compiled, version, *cell)
+            for cell in read & council_tax_cells
+        }
+
+    for reader in ("was_wealth", "was_lisa"):
+        assert providers(reader) == dict.fromkeys(
+            council_tax_cells, "council_tax_localise"
+        ), reader
+    assert providers("private_rent") == {
+        ("person", "council_tax_benefit_reported"): "spi_housing_shell"
+    }
 
 
 def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> None:
@@ -190,9 +247,16 @@ def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> N
         "uk_ni_data_zone_2021_conditioned_support",
     }
     assert {source.codec for source in graph.sources} == {"csv-tables", "raw-bytes-v1"}
-    # The area draw, the fuel-relief flag's roster and the SPI copies' own draw
-    # read them, in the systems' order; no other node does.
-    for stage in ("atomic_area_assign", "rfdr", "spi_copy_areas"):
+    # The area draw, the fuel-relief flag's roster, the SPI copies' own draw
+    # and the council-tax localisation's draw cells read them, in the
+    # systems' order; no other node does.
+    support_readers = (
+        "atomic_area_assign",
+        "rfdr",
+        "spi_copy_areas",
+        "council_tax_localise",
+    )
+    for stage in support_readers:
         assert graph.node(stage).sources == (
             "uk_ew_output_area_2021_conditioned_support",
             "uk_scotland_output_area_2022_conditioned_support",
@@ -202,7 +266,7 @@ def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> N
         node.id
         for node in graph.nodes
         if any(name.endswith("_conditioned_support") for name in node.sources)
-    } == {"atomic_area_assign", "rfdr", "spi_copy_areas"}
+    } == set(support_readers)
     # The NTS household and vehicle tabs feed the zero-emission share by income
     # fifth and the household-paid road-fuel mix (microcosm#1095 B3).
     assert graph.node("lcfs_consumption").sources == (
@@ -1742,8 +1806,13 @@ def test_every_name_a_stage_reads_is_hashed_with_it_upstream_or_listed() -> None
     }
     copy_columns = set(UK_COPY_LINEAGE.copy_columns)
     readers = unlisted[("microcosm.frame.concepts", "SOURCE_HOUSEHOLD_ID_COLUMN")]
-    before = [stage for stage in readers if roster.index(stage) < clones]
-    assert before == ["frs_annual_income_spells"]
+    # In roster order. frs_council_tax counts its bill provenance's source
+    # households before the copies through the receipts' reader (microcosm#931).
+    before = sorted(
+        (stage for stage in readers if roster.index(stage) < clones),
+        key=roster.index,
+    )
+    assert before == ["frs_council_tax", "frs_annual_income_spells"]
     for stage in readers:
         read = _household_inputs(graph.node(walks[stage][0]))
         if roster.index(stage) > clones:
@@ -3854,6 +3923,103 @@ def test_spi_benefit_coherence_reads_cover_its_work_tests() -> None:
     assert required <= declared, sorted(required - declared)
 
 
+def test_council_tax_localise_reads_its_draw_cells_and_the_support_channels_branch():
+    """microcosm#931: the council-tax localisation is given each household's
+    draw inputs, drawn area, system and local authority, its bill's provenance
+    and the statute's single-adult flag, its true source and clone, and the
+    support channel's branch of the copy lineage alone: the later branches'
+    columns are not yet written where it runs, and the compiler refuses a
+    consumed cell no node owns. Its rewritten bill, rebate and person
+    reduction arrive as the rewrite's incumbents."""
+    from microcosm.build.uk_runtime.atomic_area_conditioning import (
+        SUPPORT_CHANNEL_BRANCH,
+    )
+    from microcosm.build.uk_runtime.graph import _STAGE_CONSUMES
+    from microcosm.build.uk_runtime.household_lineage import (
+        GEOGRAPHIC_SUPPORT_BRANCH,
+        UK_COPY_LINEAGE,
+    )
+    from microcosm.build.uk_runtime.spine_council_tax import (
+        UK_COUNCIL_TAX_LOCALISE_HOUSEHOLD_INPUTS,
+        UK_COUNCIL_TAX_LOCALISE_HOUSEHOLD_REWRITES,
+    )
+
+    declared = _STAGE_CONSUMES["council_tax_localise"]
+    assert declared is not None
+    support_channel = next(
+        branch.columns
+        for branch in UK_COPY_LINEAGE.branches
+        if branch.name == SUPPORT_CHANNEL_BRANCH
+    )
+    assert set(support_channel) == {
+        "household_support_channel",
+        "household_support_clone_index",
+    }
+    assert declared == {
+        ("household", column)
+        for column in (
+            "geography_household_key",
+            "region",
+            "imd_decile",
+            "council_tax_band",
+            "council_tax_band_observed",
+            "atomic_area_code",
+            "atomic_area_system",
+            "local_authority_code",
+            "council_tax_bill_provenance",
+            "council_tax_single_adult_raw",
+            *support_channel,
+            "source_household_id",
+            "household_clone_index",
+        )
+    }
+    # The copy layers after it: the CGT and high-value branches.
+    later_branches = {
+        column
+        for branch in UK_COPY_LINEAGE.branches
+        if branch.name not in (SUPPORT_CHANNEL_BRANCH, GEOGRAPHIC_SUPPORT_BRANCH)
+        for column in branch.columns
+    }
+    assert later_branches
+    assert not {column for _, column in declared} & later_branches
+    read = set(UK_COUNCIL_TAX_LOCALISE_HOUSEHOLD_INPUTS) - set(
+        UK_COUNCIL_TAX_LOCALISE_HOUSEHOLD_REWRITES
+    )
+    assert {("household", column) for column in read} <= declared
+
+
+def test_the_housing_shell_reads_no_household_area_column() -> None:
+    """microcosm#931: council_tax_localise localises the housing shell's
+    council tax on the rows the SPI support channel copied, so the shell's
+    bill stays free of the area, or the area would enter it twice. Until the
+    shell is given the drawn area, it reads no household area column; the
+    change that gives it one replaces this pin with a test that holds the
+    shell's council tax free of the area."""
+    from microcosm.build.uk_runtime.atomic_area_conditioning import (
+        UK_SPINE_AREA_COLUMNS,
+    )
+    from microcosm.build.uk_runtime.graph import _STAGE_CONSUMES
+
+    declared = _STAGE_CONSUMES["spi_housing_shell"]
+    assert declared is not None
+    area = {
+        ("household", column)
+        for column in (
+            *UK_SPINE_AREA_COLUMNS,
+            "local_authority",
+            "brma",
+            "in_rural_fuel_duty_relief_area",
+        )
+    }
+    assert not declared & area, (
+        "spi_housing_shell reads the household area columns "
+        f"{sorted(column for _, column in declared & area)}, and "
+        "council_tax_localise would localise an SPI bill that already carries "
+        "the area. Replace this pin with a test that holds the shell's council "
+        "tax free of the area (microcosm#931, (d) default D-37)."
+    )
+
+
 def test_the_root_types_its_area_carriers_and_geographic_expand_owns_the_sources() -> (
     None
 ):
@@ -3921,3 +4087,33 @@ def test_the_wealth_stage_that_runs_the_area_home_values_is_bitwise() -> None:
     from microcosm.graph import Numeric
 
     assert UKStageKernel("was_wealth").capabilities.numeric is Numeric.BITWISE
+
+
+def test_council_tax_localise_is_bitwise_and_declares_its_cells() -> None:
+    """microcosm#931: the council-tax localisation's stage kernel is BITWISE,
+    like every spine stage (F10, the platform-bitwise class, is Max's
+    question). It writes the kept paid bill and rewrites the bill, the rebate
+    and the person council tax reduction, all float64; stage 5 writes the
+    bill and its provenance, a string cell."""
+    from microcosm.build.uk_runtime.graph_kernels import UKStageKernel
+    from microcosm.graph import Numeric
+
+    assert UKStageKernel("council_tax_localise").capabilities.numeric is Numeric.BITWISE
+    graph = uk_spine_graph()
+    assert {
+        (owned.entity, owned.column, owned.dtype, owned.rewrite)
+        for owned in graph.node("council_tax_localise").outputs
+    } == {
+        ("household", "council_tax_frs_bill", "float64", False),
+        ("household", "council_tax", "float64", True),
+        ("household", "council_tax_rebate", "float64", True),
+        ("person", "council_tax_benefit_reported", "float64", True),
+    }
+    assert {
+        (owned.entity, owned.column, owned.dtype, owned.rewrite)
+        for owned in graph.node("frs_council_tax").outputs
+    } == {
+        ("household", "council_tax", "float64", False),
+        ("household", "council_tax_bill_provenance", "string", False),
+    }
+    assert graph.node("council_tax_localise.boundary").base == "private_rent.boundary"

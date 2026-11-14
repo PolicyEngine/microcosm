@@ -10521,6 +10521,153 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "method",
+      "band_d_resources",
+      "band_d_year",
+      "authority_column",
+      "reference",
+      "draw_stage",
+      "copy_draw_stage",
+      "support_sources",
+      "provenance_column",
+      "ratio_classes",
+      "formula_classes",
+      "formula_needs",
+      "band_ratios",
+      "single_adult_column",
+      "single_adult_discount",
+      "scaled_columns",
+      "cap",
+      "excluded_regions",
+      "support_channel_rows"
+     ],
+     "properties": {
+      "kind": {
+       "const": "localise_council_tax"
+      },
+      "method": {
+       "type": "string"
+      },
+      "band_d_resources": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "england_wales",
+        "scotland"
+       ],
+       "properties": {
+        "england_wales": {
+         "type": "string"
+        },
+        "scotland": {
+         "type": "string"
+        }
+       }
+      },
+      "band_d_year": {
+       "type": "string"
+      },
+      "authority_column": {
+       "type": "string"
+      },
+      "reference": {
+       "type": "string"
+      },
+      "draw_stage": {
+       "type": "string"
+      },
+      "copy_draw_stage": {
+       "type": "string"
+      },
+      "support_sources": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "provenance_column": {
+       "type": "string"
+      },
+      "ratio_classes": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "formula_classes": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "formula_needs": {
+       "type": "string"
+      },
+      "band_ratios": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "object",
+        "minProperties": 1,
+        "additionalProperties": {
+         "type": "string"
+        }
+       }
+      },
+      "single_adult_column": {
+       "type": "string"
+      },
+      "single_adult_discount": {
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
+      },
+      "scaled_columns": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "household",
+        "person"
+       ],
+       "properties": {
+        "household": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string"
+         }
+        },
+        "person": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "cap": {
+       "type": "string"
+      },
+      "excluded_regions": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "support_channel_rows": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "clone_flag_column",
       "id_remapping",
       "pairing",

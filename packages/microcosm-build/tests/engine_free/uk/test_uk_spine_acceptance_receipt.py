@@ -224,6 +224,10 @@ def _apply_pending_roster_transformations(
     roster[roster.index("frs_brma")] = "area_brma"
     roster.insert(roster.index("spi_income_band_donors") + 1, "spi_copy_areas")
     roster.insert(roster.index("spi_housing_shell") + 1, "private_rent")
+    # microcosm#931 re-mint pending: the council tax at each household's local
+    # authority, after the private rents and just before the WAS chain.
+    assert "council_tax_localise" not in roster
+    roster.insert(roster.index("private_rent") + 1, "council_tax_localise")
     return tuple(roster)
 
 

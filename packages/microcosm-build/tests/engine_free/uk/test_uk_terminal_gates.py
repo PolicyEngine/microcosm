@@ -457,8 +457,13 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     # carriers (PolicyEngine/uk-autumn-budget-dashboard-2026#316), the WAS
     # chain's kept draw of the main residence (microcosm#1112, microcosm#931),
     # the household ISA totals policyengine-uk sums from the person balances
-    # (microcosm#1415) and the root's area-conditioning carriers
-    # (microcosm#931), and nothing else.
+    # (microcosm#1415), the root's area-conditioning carriers (microcosm#931)
+    # and the council-tax localisation's two carriers, each bill's provenance
+    # and the paid bill kept from before the localisation (microcosm#931), and
+    # nothing else.
+    from microcosm.build.uk_runtime.frs_council_tax import (
+        FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN,
+    )
     from microcosm.build.uk_runtime.frs_disability import (
         UK_INTERNAL_DISABILITY_REPORTED_COLUMNS,
     )
@@ -472,6 +477,9 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     from microcosm.build.uk_runtime.property_localisation import RANK_BASIS_COLUMN
     from microcosm.build.uk_runtime.salary_sacrifice import (
         SALSAC_PRE_CONVERSION_PAY_COLUMN,
+    )
+    from microcosm.build.uk_runtime.spine_council_tax import (
+        COUNCIL_TAX_FRS_BILL_COLUMN,
     )
 
     dropped = {
@@ -494,6 +502,10 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         | {f"household.{RANK_BASIS_COLUMN}"}
         | {"household.cash_isa", "household.stocks_and_shares_isa"}
         | {f"household.{column}" for column in FRS_AREA_CONDITIONING_COLUMNS}
+        | {
+            f"household.{FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN}",
+            f"household.{COUNCIL_TAX_FRS_BILL_COLUMN}",
+        }
     )
     # A frame without the column passes through untouched.
     assert uk_release_export_frame(exported) is exported
@@ -554,6 +566,83 @@ def test_the_release_boundary_drops_the_root_area_conditioning_carriers() -> Non
     }.isdisjoint(uk_export_candidate_columns(exported))
     # The spine keeps them: the boundary drops them from the export alone.
     assert set(FRS_AREA_CONDITIONING_COLUMNS) <= set(frame.table("household").columns)
+
+
+def test_the_release_boundary_drops_the_council_tax_localisations_carriers() -> None:
+    """Each bill's provenance from frs_council_tax and the paid bill
+    council_tax_localise keeps from before it localises leave at the release
+    boundary on the dense and the national lines (microcosm#931): they are no
+    engine inputs, the localisation and the WAS chain's bill predictor their
+    only readers, and neither is a reviewed extra of the export surface. The
+    localised bill, rebate and reduction stay."""
+    import numpy as np
+    import pandas as pd
+
+    from microcosm.build.uk_runtime.frs_council_tax import (
+        FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN,
+        FRS_COUNCIL_TAX_BILL_PROVENANCE_VALUES,
+    )
+    from microcosm.build.uk_runtime.national_frame import (
+        UK_RELEASE_EXPORT_DROPPED_COLUMNS,
+        uk_national_frame,
+        uk_release_export_frame,
+    )
+    from microcosm.build.uk_runtime.spine_council_tax import (
+        COUNCIL_TAX_FRS_BILL_COLUMN,
+    )
+    from microcosm.build.uk_runtime.terminal_gates import (
+        UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
+        uk_export_candidate_columns,
+    )
+
+    carriers = (FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN, COUNCIL_TAX_FRS_BILL_COLUMN)
+    assert set(carriers) <= set(UK_RELEASE_EXPORT_DROPPED_COLUMNS["household"])
+    assert not {f"household.{column}" for column in carriers} & set(
+        UK_ALLOWED_EXTRA_EXPORT_COLUMNS
+    )
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2],
+                "person_benunit_id": [1, 2],
+                "person_household_id": [1, 2],
+                "age": [30, 40],
+                "council_tax_benefit_reported": [0.0, 120.0],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1, 2]}),
+        household=pd.DataFrame(
+            {
+                "household_id": [1, 2],
+                "region": ["LONDON", "WALES"],
+                "council_tax": [1_500.0, 1_000.0],
+                "council_tax_rebate": [0.0, 120.0],
+                FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN: pd.Series(
+                    list(FRS_COUNCIL_TAX_BILL_PROVENANCE_VALUES[:2]),
+                    dtype=pd.StringDtype("python"),
+                ),
+                COUNCIL_TAX_FRS_BILL_COLUMN: [1_400.0, 900.0],
+            }
+        ),
+        time_period="2024",
+        household_weights=np.asarray([1.0, 2.0]),
+    )
+
+    for line in ("local", "national", None):
+        exported = uk_release_export_frame(frame, line=line)
+        household = exported.table("household")
+        assert set(carriers).isdisjoint(household.columns), line
+        assert {f"household.{column}" for column in carriers}.isdisjoint(
+            uk_export_candidate_columns(exported)
+        ), line
+        assert household["council_tax"].tolist() == [1_500.0, 1_000.0], line
+        assert household["council_tax_rebate"].tolist() == [0.0, 120.0], line
+        assert exported.table("person")["council_tax_benefit_reported"].tolist() == [
+            0.0,
+            120.0,
+        ], line
+    # The spine keeps them: the boundary drops them from the export alone.
+    assert set(carriers) <= set(frame.table("household").columns)
 
 
 def test_what_a_national_release_of_a_one_clone_spine_exports_is_allow_listed() -> None:

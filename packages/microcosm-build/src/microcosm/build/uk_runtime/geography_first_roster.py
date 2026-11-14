@@ -19,6 +19,7 @@ from types import MappingProxyType
 __all__ = [
     "AREA_BRMA_STAGE",
     "ATOMIC_AREA_ASSIGN_STAGE",
+    "COUNCIL_TAX_LOCALISE_STAGE",
     "GEOGRAPHIC_EXPAND_STAGE",
     "GEOGRAPHIC_IDENTITY_STAGE",
     "GEOGRAPHY_FIRST_OPERATIONS",
@@ -32,7 +33,8 @@ __all__ = [
 
 #: Each geography-first stage's name, as its transform runs it: the clones,
 #: their keys, the area draw, the local authority, the fuel-relief flag, the
-#: BRMA, the SPI copies' areas and the private rents.
+#: BRMA, the SPI copies' areas, the private rents and the council tax
+#: localised at each household's local authority.
 GEOGRAPHIC_EXPAND_STAGE = "geographic_expand"
 GEOGRAPHIC_IDENTITY_STAGE = "geographic_identity"
 ATOMIC_AREA_ASSIGN_STAGE = "atomic_area_assign"
@@ -41,6 +43,7 @@ RFDR_STAGE = "rfdr"
 AREA_BRMA_STAGE = "area_brma"
 SPI_COPY_AREAS_STAGE = "spi_copy_areas"
 PRIVATE_RENT_STAGE = "private_rent"
+COUNCIL_TAX_LOCALISE_STAGE = "council_tax_localise"
 
 #: The stages a geography-first spine runs, in the spine's order.
 GEOGRAPHY_FIRST_STAGES: tuple[str, ...] = (
@@ -52,6 +55,7 @@ GEOGRAPHY_FIRST_STAGES: tuple[str, ...] = (
     AREA_BRMA_STAGE,
     SPI_COPY_AREAS_STAGE,
     PRIVATE_RENT_STAGE,
+    COUNCIL_TAX_LOCALISE_STAGE,
 )
 
 #: The operations a geography-first spine runs inside stages that are not its

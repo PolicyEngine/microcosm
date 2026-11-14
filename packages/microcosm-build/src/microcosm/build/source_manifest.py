@@ -93,6 +93,9 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         # microcosm#931: England and Wales main residences read off each
         # owner's constituency inside the WAS chain.
         "localise_main_residence_value",
+        # microcosm#931: Great Britain council tax priced at each household's
+        # drawn local authority, just before the WAS chain.
+        "localise_council_tax",
         "clean_nts_travel_tables",
         "clean_was_lisa_donor",
         "clean_aps_occupation_table",

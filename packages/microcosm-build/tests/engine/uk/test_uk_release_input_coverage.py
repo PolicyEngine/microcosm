@@ -473,6 +473,7 @@ class TestUKManifest:
                 "student_loans",
                 "private_school_attendance",
                 "private_rent",
+                "council_tax_localise",
                 "was_wealth",
                 "was_lisa",
                 "isa_subscriptions",

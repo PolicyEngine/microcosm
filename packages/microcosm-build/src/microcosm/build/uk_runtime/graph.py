@@ -35,8 +35,9 @@ from microcosm.graph import (
 
 from ..country_spec import CountrySpec, load_country_spec
 from ..stage_evidence import STAGE_EVIDENCE_TYPE
-from .atomic_area_conditioning import UK_SPINE_AREA_COLUMNS
+from .atomic_area_conditioning import SUPPORT_CHANNEL_BRANCH, UK_SPINE_AREA_COLUMNS
 from .atomic_area_support import CONDITIONED_SOURCES, SYSTEMS
+from .household_lineage import UK_COPY_LINEAGE
 from .national_sampling import UK_SAMPLE_SEED_DEFAULT
 
 __all__ = [
@@ -189,6 +190,13 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
         # borrowers, rewriting was_wealth's ``student_loan_balance``, which the
         # open-surface readers before it bind (microcosm#1095 B9).
         "student_loans",
+        # G6, the council-tax localisation, rewrites the housing shell's
+        # council tax, rebate and person council tax reduction right after
+        # private_rent, whose finite reader anchors on the shell's person
+        # council tax reduction; without its own version the private rents
+        # would bind G6's reduction and G6 the private rents' rent, a cycle
+        # (microcosm#931).
+        "council_tax_localise",
     }
 )
 # ``age_tail`` needs no isolation entry: it is declared immediately after the
@@ -243,12 +251,14 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     "frs_annual_income_spells": ("frs",),
     "spi_income_band_donors": ("spi",),
     "hmrc_spi_income_spine": ("spi", "hmrc_income"),
-    # The area draw, the fuel-relief flag's roster and the SPI copies' own
-    # draw read the three conditioned atomic-area supports, whose bytes enter
-    # their nodes' keys (microcosm#931).
+    # The area draw, the fuel-relief flag's roster, the SPI copies' own draw
+    # and the council-tax localisation's draw cells read the three
+    # conditioned atomic-area supports, whose bytes enter their nodes' keys
+    # (microcosm#931).
     "atomic_area_assign": _ATOMIC_SUPPORT_SOURCES,
     "rfdr": _ATOMIC_SUPPORT_SOURCES,
     "spi_copy_areas": _ATOMIC_SUPPORT_SOURCES,
+    "council_tax_localise": _ATOMIC_SUPPORT_SOURCES,
 }
 
 _SPLIT_SOURCE_DESCRIPTIONS = {
@@ -284,6 +294,18 @@ _SPLIT_SOURCE_DESCRIPTIONS = {
 #: also read household_clone_index to count their targets within each clone.
 _GEOGRAPHIC_CLONE_LINEAGE = frozenset(
     {("household", "source_household_id"), ("household", "household_clone_index")}
+)
+#: The SPI support channel's branch of the copy lineage: the household columns
+#: marking the rows the channel copied, its copies and income band donors,
+#: which the council-tax localisation prices at their own draw cell. The
+#: later branches are not yet written where it runs (microcosm#931).
+_SUPPORT_CHANNEL_LINEAGE = frozenset(
+    ("household", column)
+    for column in next(
+        branch.columns
+        for branch in UK_COPY_LINEAGE.branches
+        if branch.name == SUPPORT_CHANNEL_BRANCH
+    )
 )
 
 # ``None`` means the implementation genuinely has an open formula/model
@@ -558,6 +580,29 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "household_support_channel"),
         }
     )
+    | _GEOGRAPHIC_CLONE_LINEAGE,
+    # Engine-free: the council-tax localisation reads each household's draw
+    # inputs (its geography key, region, IMD decile and council-tax band, and
+    # whether the band was observed), its drawn area, system and local
+    # authority, its bill's provenance and the statute's single-adult flag,
+    # the support channel's branch of its copy path, and its true source and
+    # clone, which its evidence counts by. The rewritten bill, rebate and
+    # person reduction arrive as the rewrite's incumbents (microcosm#931).
+    "council_tax_localise": frozenset(
+        {
+            ("household", "geography_household_key"),
+            ("household", "region"),
+            ("household", "imd_decile"),
+            ("household", "council_tax_band"),
+            ("household", "council_tax_band_observed"),
+            ("household", "atomic_area_code"),
+            ("household", "atomic_area_system"),
+            ("household", "local_authority_code"),
+            ("household", "council_tax_bill_provenance"),
+            ("household", "council_tax_single_adult_raw"),
+        }
+    )
+    | _SUPPORT_CHANNEL_LINEAGE
     | _GEOGRAPHIC_CLONE_LINEAGE,
     # Runs one temporary engine materialization over the whole frame for its
     # award screen, so its input surface is genuinely open.
@@ -1002,7 +1047,12 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "sic_industry_division", "int64"),
         _Cell("person", "soc2020_major_group", "string"),
     ),
-    "frs_council_tax": (_Cell("household", "council_tax", "float64"),),
+    # The bill, and its provenance: the branch it took, which the council-tax
+    # localisation alone reads (microcosm#931).
+    "frs_council_tax": (
+        _Cell("household", "council_tax", "float64"),
+        _Cell("household", "council_tax_bill_provenance", "string"),
+    ),
     "frs_disability": (
         *_cells(
             "person",
@@ -1379,6 +1429,14 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
     # Great Britain private renters' rents, read off their BRMA's list
     # (microcosm#931).
     "private_rent": (_Cell("household", "rent", "float64"),),
+    # The paid bill kept from before the council-tax localisation, then the
+    # bill, the rebate and the person council tax reduction it rewrites at
+    # each household's local authority (microcosm#931).
+    "council_tax_localise": (
+        _Cell("household", "council_tax_frs_bill", "float64"),
+        *_cells("household", ("council_tax", "council_tax_rebate")),
+        _Cell("person", "council_tax_benefit_reported", "float64"),
+    ),
     "uc_reporter_redraw": (_Cell("person", "universal_credit_reported", "float64"),),
     "spi_benefit_coherence": (
         *_cells(

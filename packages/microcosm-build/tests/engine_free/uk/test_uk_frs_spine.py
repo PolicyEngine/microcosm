@@ -36,7 +36,9 @@ from microcosm.build.uk_runtime.birth_month import (
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.frs_council_tax import (
+    FRS_COUNCIL_TAX_OUTPUT_COLUMNS,
     frs_council_tax_operation_parameters,
+    frs_council_tax_provenance_operation_parameters,
 )
 from microcosm.build.uk_runtime.frs_relationships import (
     FRS_RELATIONSHIPS_OUTPUT_COLUMNS,
@@ -759,14 +761,17 @@ def _synthetic_spec(
                     ),
                     nonnegative_outputs=("sic_industry_division",),
                 ),
+                # The bill and its provenance, as the runtime's drift check
+                # requires them (microcosm#931).
                 source_stage(
                     "frs_council_tax",
                     tables=("househol",),
                     operations=[
                         {"kind": "read_tables"},
                         frs_council_tax_operation_parameters(),
+                        frs_council_tax_provenance_operation_parameters(),
                     ],
-                    outputs=("council_tax",),
+                    outputs=FRS_COUNCIL_TAX_OUTPUT_COLUMNS,
                     nonnegative_outputs=("council_tax",),
                 ),
                 source_stage(
@@ -3635,6 +3640,7 @@ def test_a_release_candidate_spine_takes_the_dense_k_only_on_a_geography_first_r
         "every geographic clone its area (microcosm#931); the packaged UK "
         "spec's roster lacks: stage atomic_area_assign; stage local_authority; "
         "stage rfdr; stage area_brma; stage spi_copy_areas; stage private_rent; "
+        "stage council_tax_localise; "
         "operation localise_main_residence_value in was_wealth."
     )
     with pytest.raises(SystemExit):
@@ -5056,6 +5062,116 @@ def test_the_sidecar_reports_no_share_of_the_root_area_carriers() -> None:
     assert projected.produced == produced
 
 
+def test_the_sidecar_reports_no_share_of_the_council_tax_carriers() -> None:
+    """Each bill's provenance from frs_council_tax and the paid bill
+    council_tax_localise keeps stay out of every stage record's nonzero
+    shares in the sidecar, as the root's area carriers do, whichever route
+    built the records, and the graph route asks no artifact for them
+    (microcosm#931). The localised bill's share stays."""
+
+    from microcosm.build.plan import StageRecord
+    from microcosm.build.uk_runtime.frs_council_tax import (
+        FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN,
+        FRS_COUNCIL_TAX_OUTPUT_COLUMNS,
+    )
+    from microcosm.build.uk_runtime.spine_council_tax import (
+        COUNCIL_TAX_FRS_BILL_COLUMN,
+        UK_COUNCIL_TAX_LOCALISE_OUTPUT_COLUMNS,
+        UK_COUNCIL_TAX_LOCALISE_REWRITES,
+    )
+
+    carriers = {FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN, COUNCIL_TAX_FRS_BILL_COLUMN}
+    assert carriers <= spine_build._UNREPORTED_SHARE_COLUMNS
+    assert set(FRS_AREA_CONDITIONING_COLUMNS) <= spine_build._UNREPORTED_SHARE_COLUMNS
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2],
+                "person_benunit_id": [1, 2],
+                "person_household_id": [1, 2],
+                "council_tax_benefit_reported": [0.0, 120.0],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1, 2]}),
+        household=pd.DataFrame(
+            {
+                "household_id": [1, 2],
+                "region": ["LONDON", "WALES"],
+                "council_tax": [1_500.0, 1_000.0],
+                "council_tax_rebate": [0.0, 120.0],
+                FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN: pd.Series(
+                    ["observed_gross", "missing"], dtype=pd.StringDtype("python")
+                ),
+                COUNCIL_TAX_FRS_BILL_COLUMN: [1_400.0, 900.0],
+            }
+        ),
+        time_period="2024",
+        household_weights=np.asarray([1.0, 2.0]),
+    )
+    stage_five = StageRecord(
+        stage="frs_council_tax",
+        produced=FRS_COUNCIL_TAX_OUTPUT_COLUMNS,
+        donor_survey=None,
+        nonzero_share={"council_tax": 1.0, FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN: 1.0},
+    )
+    localisation = StageRecord(
+        stage="council_tax_localise",
+        produced=(
+            *UK_COUNCIL_TAX_LOCALISE_OUTPUT_COLUMNS,
+            *UK_COUNCIL_TAX_LOCALISE_REWRITES,
+        ),
+        donor_survey=None,
+        nonzero_share={
+            COUNCIL_TAX_FRS_BILL_COLUMN: 1.0,
+            "council_tax": 1.0,
+            "council_tax_rebate": 0.5,
+            "council_tax_benefit_reported": 0.5,
+        },
+    )
+
+    sidecar = spine_build._build_sidecar(
+        frame=frame,
+        stages=[],
+        records=[stage_five, localisation],
+        artifact_pins={},
+        resource_pins={},
+        input_artifact_pins={},
+        hmrc_replay={},
+        stochastic_contract_sha256="0" * 64,
+        frs_vintage="synthetic",
+        sampling=None,
+    )
+
+    written_five, written_localisation = sidecar["stage_records"]
+    assert written_five["nonzero_share"] == {"council_tax": 1.0}
+    assert written_localisation["nonzero_share"] == {
+        "council_tax": 1.0,
+        "council_tax_rebate": 0.5,
+        "council_tax_benefit_reported": 0.5,
+    }
+
+    # The graph route: stage 5's node exposes the bill's artifact alone.
+    manifest = SimpleNamespace(
+        nodes={
+            "frs_council_tax": SimpleNamespace(
+                artifacts={("household", "council_tax"): "k"}, wall_time=0.5
+            ),
+        }
+    )
+    store = SimpleNamespace(load_column=lambda key: pd.Series([1_500.0, 0.0]))
+    stage = SimpleNamespace(
+        stage="frs_council_tax",
+        outputs=FRS_COUNCIL_TAX_OUTPUT_COLUMNS,
+        rewrites=(),
+        survey="Synthetic FRS",
+    )
+    (projected,) = spine_build._graph_stage_records(
+        manifest=manifest, store=store, stages=[stage], frame=frame
+    )
+    assert projected.nonzero_share == {"council_tax": 0.5}
+    assert projected.produced == FRS_COUNCIL_TAX_OUTPUT_COLUMNS
+
+
 def test_collect_fit_weight_records_is_duck_typed_and_fail_visible():
     class _Record:
         def __init__(self, fit_name, weight_kind):
@@ -5929,11 +6045,11 @@ def test_the_spine_cli_holds_each_support_to_the_register_before_its_engine(
     by its flag and system alone, and no engine is built. Against
     sources.yaml's own register the toy supports are refused too. With the
     engine built, the preparation composes the sidecar's geography block from
-    those supports under sources.yaml's register, hands the area stages the
-    three files as graph sources, which they hold to the block's pins, and
-    gives a full-scale spine's private rents the strict rule. The toy supports
-    stand in for the register's; the other private inputs are named and never
-    read."""
+    those supports under sources.yaml's register, hands the area stages and
+    the council-tax localisation the three files as graph sources, which they
+    hold to the block's pins, and gives a full-scale spine's private rents the
+    strict rule. The toy supports stand in for the register's; the other
+    private inputs are named and never read."""
 
     from test_support.microcosm_build.uk_conditioned_support_fixtures import (
         toy_conditioned_support_payloads,
@@ -6048,15 +6164,30 @@ def test_the_spine_cli_holds_each_support_to_the_register_before_its_engine(
     for flag, system in zip(supports, payloads, strict=True):
         assert prepared.sources[tool.CONDITIONED_SOURCES[system]] == supports[flag]
     assert prepared.implementations["private_rent"].sampled_rung is False
-    # The area stages hold the files they read to the block's pins: a support
-    # replaced after the spine was prepared is refused by its system and graph
-    # source alone.
+    # The area stages and the council-tax localisation hold the files they
+    # read to the block's pins: a support replaced after the spine was
+    # prepared is refused by its system and graph source alone, before the
+    # localisation builds anything (microcosm#931).
     area_draw = prepared.implementations["atomic_area_assign"]
     area_draw.factory(prepared.sources)
+    from microcosm.build.uk_runtime.spine_council_tax import (
+        UKCouncilTaxLocaliseStageTransform,
+    )
+
+    localiser = prepared.implementations["council_tax_localise"].factory(
+        prepared.sources
+    )
+    assert isinstance(localiser, UKCouncilTaxLocaliseStageTransform)
+    assert localiser.stage.stage == "council_tax_localise"
     supports["--atomic-support-ni"].write_bytes(
         flipped(payloads["uk_ni_data_zone_2021"])
     )
-    for stage in ("atomic_area_assign", "rfdr", "spi_copy_areas"):
+    for stage in (
+        "atomic_area_assign",
+        "rfdr",
+        "spi_copy_areas",
+        "council_tax_localise",
+    ):
         with pytest.raises(ValueError) as refused:
             prepared.implementations[stage].factory(prepared.sources)
         assert str(refused.value) == (

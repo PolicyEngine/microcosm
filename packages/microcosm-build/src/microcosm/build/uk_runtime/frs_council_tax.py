@@ -29,7 +29,6 @@ from microcosm.build.uk_runtime.receipt_counts import (
 )
 from microcosm.frame import Frame
 
-FRS_COUNCIL_TAX_OUTPUT_COLUMNS = ("council_tax",)
 SCOTLAND_GVTREGNO = 12
 NORTHERN_IRELAND_GVTREGNO = 13
 #: Raw household cells the derivation reads; the pinned tab carries them all.
@@ -84,6 +83,9 @@ FRS_COUNCIL_TAX_BILL_PROVENANCE_VALUES = (
 )
 #: The graph's string dtype, which the provenance column is stored in.
 _PROVENANCE_DTYPE = pd.StringDtype(storage="python")
+#: The household columns the stage writes: the bill, then its provenance,
+#: which the release boundary drops and council_tax_localise alone reads.
+FRS_COUNCIL_TAX_OUTPUT_COLUMNS = ("council_tax", FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN)
 
 
 def frs_council_tax_operation_parameters() -> dict[str, Any]:
@@ -129,30 +131,41 @@ def frs_council_tax_provenance_operation_parameters() -> dict[str, Any]:
 
 
 def assert_frs_council_tax_stage_parameters(stage: SourceStageSpec) -> None:
-    """Closed-world drift assert: the manifest declares the implemented rule."""
+    """Closed-world drift assert: the manifest declares the implemented rules.
+
+    The stage reads its table, imputes the bill
+    (:func:`frs_council_tax_operation_parameters`) and derives the bill's
+    provenance (:func:`frs_council_tax_provenance_operation_parameters`), in
+    that order, each declaration exactly as those functions state it.
+    """
 
     if stage.stage != FRS_COUNCIL_TAX_STAGE_NAME:
         raise ValueError(f"frs_council_tax transform received stage {stage.stage!r}.")
     operations = list(stage.operations)
-    kinds = [operation.kind for operation in operations]
-    if kinds != ["read_tables", FRS_COUNCIL_TAX_IMPUTATION_KIND]:
-        raise ValueError(
-            "frs_council_tax stage must declare read_tables followed by "
-            f"{FRS_COUNCIL_TAX_IMPUTATION_KIND}, got {kinds}."
-        )
-    declared = {"kind": operations[1].kind, **dict(operations[1].parameters)}
-    expected = frs_council_tax_operation_parameters()
-    drifted = sorted(
-        key
-        for key in {*declared, *expected}
-        if _plain(declared.get(key)) != _plain(expected.get(key))
+    expected_operations = (
+        frs_council_tax_operation_parameters(),
+        frs_council_tax_provenance_operation_parameters(),
     )
-    if drifted:
+    kinds = [operation.kind for operation in operations]
+    expected_kinds = ["read_tables", *(op["kind"] for op in expected_operations)]
+    if kinds != expected_kinds:
         raise ValueError(
-            "frs_council_tax impute_cell_means declaration drifted from the "
-            f"rule the runtime implements on parameter(s) {drifted} "
-            "(uk-data#496/#499, microcosm#1095)."
+            f"frs_council_tax stage must declare {', '.join(expected_kinds)}, in "
+            f"that order, got {kinds}."
         )
+    for operation, expected in zip(operations[1:], expected_operations, strict=True):
+        declared = {"kind": operation.kind, **dict(operation.parameters)}
+        drifted = sorted(
+            key
+            for key in {*declared, *expected}
+            if _plain(declared.get(key)) != _plain(expected.get(key))
+        )
+        if drifted:
+            raise ValueError(
+                f"frs_council_tax {operation.kind} declaration drifted from the "
+                f"rule the runtime implements on parameter(s) {drifted} "
+                "(uk-data#496/#499, microcosm#1095, microcosm#931)."
+            )
 
 
 def _plain(value: object) -> object:
@@ -164,23 +177,48 @@ def _plain(value: object) -> object:
 
 
 class UKFRSCouncilTaxStageTransform:
-    """Whole-stage callable for FRS council-tax imputation."""
+    """Whole-stage callable for FRS council-tax imputation.
+
+    Running it writes each household's bill and the bill's provenance
+    (:func:`add_frs_council_tax`), then keeps the stage's receipt of the
+    provenance (:func:`council_tax_provenance_evidence`), counted on the frame
+    it wrote, for :meth:`checkpoint_metadata`.
+    """
 
     def __init__(self, raw_dir: str | Path, *, stage: SourceStageSpec) -> None:
         self.raw_dir = Path(raw_dir)
         self.stage = stage
+        self.last_evidence: dict[str, Any] | None = None
 
     def __call__(self, frame: Frame) -> Frame:
-        return add_frs_council_tax(frame, self.raw_dir, stage=self.stage)
+        result = add_frs_council_tax(frame, self.raw_dir, stage=self.stage)
+        self.last_evidence = council_tax_provenance_evidence(
+            result,
+            result.table("household")[FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN],
+        )
+        return result
 
     @staticmethod
     def output_columns() -> tuple[str, ...]:
         return FRS_COUNCIL_TAX_OUTPUT_COLUMNS
 
+    def checkpoint_metadata(self) -> dict[str, object]:
+        if self.last_evidence is None:
+            raise RuntimeError("checkpoint metadata requires a completed stage run.")
+        return {"evidence": self.last_evidence}
+
 
 def add_frs_council_tax(
     frame: Frame, raw_dir: str | Path, *, stage: SourceStageSpec
 ) -> Frame:
+    """Each household's bill and the branch the bill takes, on the frame.
+
+    ``council_tax`` is :func:`derive_council_tax`'s bill and
+    ``FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN`` is
+    :func:`derive_council_tax_provenance`'s flag, both from one set of masks;
+    the flag is in the graph's string dtype (``StringDtype("python")``).
+    """
+
     assert_frs_council_tax_stage_parameters(stage)
     artifacts = _artifact_by_table(stage)
     household_raw = normalize_ids(
@@ -190,8 +228,14 @@ def add_frs_council_tax(
         )
     )
     household = frame.table("household").copy()
-    derived = derive_council_tax(household, household_raw)
-    household["council_tax"] = derived.reindex(household["household_id"]).to_numpy()
+    bill, provenance = _council_tax_branches(household, household_raw)
+    household_ids = household["household_id"]
+    household["council_tax"] = bill.reindex(household_ids).to_numpy()
+    household[FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN] = pd.Series(
+        provenance.reindex(household_ids).to_numpy(dtype=object),
+        index=household.index,
+        dtype=_PROVENANCE_DTYPE,
+    )
     result = uk_national_frame(
         person=frame.table("person"),
         benunit=frame.table("benunit"),

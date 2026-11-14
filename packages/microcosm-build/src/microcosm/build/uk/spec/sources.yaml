@@ -841,11 +841,15 @@ stages:
     donor_filter: raw ctreb != 1 and ctannual > 0
     missing: raw ctannual < 0 or NaN, or ctannual == 0 with ctpaid == 1 and ctreb != 1
     value: 'council tax before council tax reduction: CTANNUAL net of the Scottish water and sewerage charges ((CWATAMT1 + CSEWAMT1) x 52, at 0.65 where CTREB is 1; CWATAMTD where CWATAMT1 is not positive), plus CTREBAMT x 52 where CTREB is 1 and CTREBAMT > 0; a CTREB 1 household without a positive CTREBAMT takes the larger of its netted CTANNUAL and its cell mean'
+  - kind: derive
+    output: council_tax_bill_provenance
+    formula: 'first match: not_levied where raw gvtregno == 13 (Northern Ireland, which pays domestic rates), whatever branch its bill takes; else the branch derive_council_tax takes: missing where the bill is missing (raw ctannual < 0 or NaN, or ctannual == 0 with ctpaid == 1 and ctreb != 1); observed_gross where ctreb == 1 and ctrebamt > 0 (the reported reduction added back); unknown_reduction where ctreb == 1 (the larger of the netted ctannual and the cell mean); else observed_gross (the netted ctannual, kept at zero where ctannual == 0 and ctpaid != 1, as with ctpaid 2 and 3)'
   outputs:
   - council_tax
+  - council_tax_bill_provenance
   nonnegative_outputs:
   - council_tax
-  notes: Re-reads raw househol.tab because spine council_tax_reported clips missing values. FRS 2024-25 CTANNUAL is the bill after discounts and council tax reduction, and the engine reads council_tax before the reduction, so a household reporting a reduction gets its CTREBAMT added back and the cells pool non-recipients only (uk-data#496/#499, microcosm#1095). Scottish water and sewerage charges are netted before cell means at the shares DWP's CTANNUAL carries (the gross charges in full for non-recipients, 65% for reduction recipients); no-donor cells impute zero. A household where someone pays council tax (CTPAID 1) with no reported reduction and a zero CTANNUAL owes a bill, so it takes its cell mean as a missing bill does (microcosm#1278). The dead ct_mean.replace(-1, ...) branch is intentionally dropped.
+  notes: Re-reads raw househol.tab because spine council_tax_reported clips missing values. FRS 2024-25 CTANNUAL is the bill after discounts and council tax reduction, and the engine reads council_tax before the reduction, so a household reporting a reduction gets its CTREBAMT added back and the cells pool non-recipients only (uk-data#496/#499, microcosm#1095). Scottish water and sewerage charges are netted before cell means at the shares DWP's CTANNUAL carries (the gross charges in full for non-recipients, 65% for reduction recipients); no-donor cells impute zero. A household where someone pays council tax (CTPAID 1) with no reported reduction and a zero CTANNUAL owes a bill, so it takes its cell mean as a missing bill does (microcosm#1278). The dead ct_mean.replace(-1, ...) branch is intentionally dropped. It also derives council_tax_bill_provenance, the branch each bill takes (not_levied in Northern Ireland, whatever its branch); it is dropped at the release boundary, and council_tax_localise alone reads it.
 - stage: frs_disability
   survey: Family Resources Survey 2024-25
   source: Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs. plus policyengine-uk DWP parameters.
@@ -3194,6 +3198,112 @@ stages:
   rewrites:
   - rent
   notes: 'Reads each Great Britain private renter''s rent (tenure_type RENT_PRIVATELY, a positive rent, outside Northern Ireland) off the list of rents of the BRMA its drawn area sits in (brma_rent_quantiles.json), as the dense line''s private-rent node did (microcosm#1262, microcosm#931). The renter keeps its rank among the FRS renters of its FRS region and bedroom category, the rank reads the list of its BRMA and category, and each region is scaled so that, on the census private-renter mix of its BRMAs (brma_private_rented_households.json), its mean rent is the FRS level. Each row ranks as a household of its own, on its geography_household_key, and its tie-break uniform is keyed on that key on the stage''s own stream at its declared seed, so two FRS renters at one rent, or two clones of one renter, take ranks of their own, and clone 0''s tie-breaks are the same at every K. A region''s FRS renters are counted in true source households, so a renter''s clones and copies count once: a sampled spine ranks and scales a region with fewer FRS renters than sampled_region_renters against Great Britain''s, and a full-scale spine ranks every region on its own and refuses one with none. Only rent is rewritten: reported Housing Benefit, Universal Credit and mortgage payments stay as reported, the weights pass through, and the stage records its household mass receipt. Its evidence gives K, the seed, the stream, the resources'' digests, the method, the strictness, the numbers of (region, bedroom category) cells ranked against their region or against Great Britain and, among clone-0 rows, the distinct source households re-drawn, rounded by the shared disclosure rules.'
+- stage: council_tax_localise
+  survey: Family Resources Survey 2024-25
+  source: Each Great Britain local authority's Band D council tax for 2024-25, keyed by April 2023 local authority code, England's from MHCLG's Council Tax levels set by local authorities in England 2024 to 2025 (Table 8) and Wales's from StatsWales (council_tax_band_d_england_wales_2024_25.json), and Scotland's from the Scottish Government's CTAS 2026 Council Tax Assumptions, vendored from the pinned Chronicle feed (scotgov_band_d_council_tax_2024_25.json); the statutory band proportions and single-adult discount (Local Government Finance Act 1992, as amended); and the conditioned atomic-area supports sources.yaml declares, on which each household's draw cell is recomputed.
+  grain: household
+  artifacts:
+  - role: council_tax_band_d
+    kind: public_aggregate_reference
+    resource: council_tax_band_d_england_wales_2024_25.json
+    format: json
+    runtime_sha256_required: true
+  - role: scotland_band_d_facts
+    kind: public_aggregate_reference
+    resource: scotgov_band_d_council_tax_2024_25.json
+    format: json
+    runtime_sha256_required: true
+  operations:
+  - kind: verify_vendored_fact_resource
+    artifact_role: scotland_band_d_facts
+    resource: scotgov_band_d_council_tax_2024_25.json
+    feed_pin: chronicle_feed.json
+    record_sets:
+    - scotgov.ctas2026.band_d.fy2024
+    source_vintage: 2024-25 (ScotGov CTAS 2026)
+    mapped_build_period: 2024
+    period_mapping: fiscal_year_2024_25_is_the_build_period
+    require_before_source_read: true
+    runtime_sha256_required: true
+    fail_on_mismatch: true
+  - kind: derive
+    output: council_tax_frs_bill
+    formula: 'max(council_tax - council_tax_rebate, 0) on every row, from the bill and rebate before this stage rewrites them: the paid bill was_wealth''s council-tax predictor reads, so the area does not enter that predictor (ruling 2)'
+  - kind: localise_council_tax
+    method: uk-council-tax-localise-v1
+    band_d_resources:
+      england_wales: council_tax_band_d_england_wales_2024_25.json
+      scotland: scotgov_band_d_council_tax_2024_25.json
+    band_d_year: 2024-25
+    authority_column: local_authority_code
+    reference: expected_band_d_of_draw_cell
+    draw_stage: atomic_area_assign
+    copy_draw_stage: spi_copy_areas
+    support_sources:
+      uk_ew_output_area_2021: uk_ew_output_area_2021_conditioned_support
+      uk_scotland_output_area_2022: uk_scotland_output_area_2022_conditioned_support
+      uk_ni_data_zone_2021: uk_ni_data_zone_2021_conditioned_support
+    provenance_column: council_tax_bill_provenance
+    ratio_classes:
+    - observed_gross
+    formula_classes:
+    - missing
+    - unknown_reduction
+    formula_needs: council_tax_band_observed
+    band_ratios:
+      ENGLAND:
+        A: 6/9
+        B: 7/9
+        C: 8/9
+        D: 9/9
+        E: 11/9
+        F: 13/9
+        G: 15/9
+        H: 18/9
+      WALES:
+        A: 6/9
+        B: 7/9
+        C: 8/9
+        D: 9/9
+        E: 11/9
+        F: 13/9
+        G: 15/9
+        H: 18/9
+        I: 21/9
+      SCOTLAND:
+        A: 240/360
+        B: 280/360
+        C: 320/360
+        D: 360/360
+        E: 473/360
+        F: 585/360
+        G: 705/360
+        H: 882/360
+    single_adult_column: council_tax_single_adult_raw
+    single_adult_discount: 0.25
+    scaled_columns:
+      household:
+      - council_tax_rebate
+      person:
+      - council_tax_benefit_reported
+    cap: reduction_and_rebate_at_bill
+    excluded_regions:
+    - NORTHERN_IRELAND
+    support_channel_rows: ratio_at_copy_draw_level
+  - kind: record_mass_conservation_receipt
+    entity: household
+    reason: 'Council tax localised by each household''s local authority on the source spine: household weights pass through unchanged and total household mass is conserved.'
+    declared_factor: 1.0
+    gate_coupling: The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.
+  outputs:
+  - council_tax_frs_bill
+  nonnegative_outputs:
+  - council_tax_frs_bill
+  rewrites:
+  - council_tax
+  - council_tax_rebate
+  - council_tax_benefit_reported
+  notes: Prices each Great Britain household's council tax at the local authority the spine drew for it, after private_rent and just before the WAS chain (María's rulings of 2026-11-06, 2026-11-13 and 2026-11-14, microcosm#931). Before it rewrites anything, it keeps the paid bill, max(council_tax - council_tax_rebate, 0), as council_tax_frs_bill on every row; was_wealth's council-tax predictor, which was_lisa builds through was_wealth, reads that column, so the area does not enter it, and the release boundary drops it. A household's ratio is its authority's (local_authority_code) 2024-25 Band D over the expected Band D of its own draw cell, recomputed exactly from the inputs atomic_area_assign drew it on, each of the cell's areas weighted as the draw weights it; the rows the SPI support channel copied, SPI copies and income band donors, take the cell spi_copy_areas drew them from, their region by households. A row of the FRS channel whose bill frs_council_tax observed gross (council_tax_bill_provenance observed_gross) takes the ratio; a missing bill, or one netted of a reduction of unknown size (missing, unknown_reduction), takes the 2024-25 statute where council_tax_band_observed holds (the authority's Band D times its band's statutory proportion, less the single-adult discount where council_tax_single_adult_raw is 1) and the ratio on frs_council_tax's bill where it does not. The rebate and the one person's reported council tax reduction are scaled by the same ratio and capped at the new bill. Northern Ireland, which pays domestic rates, keeps every row as it is, with no cap. A Great Britain row whose drawn area is not an area of its recomputed cell is refused. The WAS chain's HBAI net income reads the localised bill and reduction. The weights pass through, and the stage records its household mass receipt. Its evidence gives K, the Band D resources' and the supports' digests, the method and its checks as booleans, with the distinct source households on each path (the FRS channel's over every clone, the support channel's among clone-0 rows) and, among clone-0 rows, those whose reductions were capped and Northern Ireland's whose reductions exceed their bill, counted through receipt_counts.
 - stage: was_wealth
   survey: Wealth and Assets Survey round 8
   source: Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed 2006-22 household tab. England and Wales owners' main residences are read off HM Land Registry Price Paid latest sales uprated with the UK House Price Index, by constituency (uk/high_value_home_value_knots.json, built by tools/build_uk_high_value_home_stock.py from PolicyEngine/chronicle#343's registrations), and the public regional reference (uk/regional_land_values.json) (microcosm#931).

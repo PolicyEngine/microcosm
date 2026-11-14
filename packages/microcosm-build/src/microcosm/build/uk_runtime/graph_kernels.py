@@ -61,6 +61,8 @@ from microcosm.graph.population import dtype_for_token
 from .. import (
     atomic_geography,
     atomic_support_conditioning,
+    atomic_support_expectations,
+    bounded_amounts,
     chronicle_epoch,
     clone_expansion,
     gates,
@@ -90,6 +92,7 @@ from . import (
     cgt_support,
     chronicle_feed,
     copy_id_table,
+    council_tax_band_d,
     council_tax_constants,
     dfe_spring_term,
     donor_uprating,
@@ -98,6 +101,7 @@ from . import (
     etb_vat,
     frs_annual_income,
     frs_brma,
+    frs_council_tax,
     frs_disability,
     frs_education,
     frs_hmrc_source,
@@ -187,13 +191,15 @@ _STAGE_MODULES = {
     "frs_person_draws": "frs_person_draws",
     "frs_household_draws": "frs_household_draws",
     # The area stages' transforms live in spine_geography, the private rents'
-    # in spine_private_rent (microcosm#931).
+    # in spine_private_rent and the council-tax localisation's in
+    # spine_council_tax (microcosm#931).
     "atomic_area_assign": "spine_geography",
     "local_authority": "spine_geography",
     "rfdr": "spine_geography",
     "area_brma": "spine_geography",
     "spi_copy_areas": "spine_geography",
     "private_rent": "spine_private_rent",
+    "council_tax_localise": "spine_council_tax",
     "was_wealth": "was_wealth",
     "was_lisa": "was_lisa",
     "nts_bus_travel": "nts_bus_travel",
@@ -443,6 +449,36 @@ _STAGE_HELPER_MODULES = {
     # coordinates as canonical JSON (microcosm#931).
     "private_rent": (
         private_rent_localisation,
+        geography_first_roster,
+        graph_canonical,
+        graph_randomness,
+    ),
+    # The council-tax localisation recomputes each household's draw cell as
+    # the area draw does, through atomic_area_conditioning's definition, draw
+    # inputs and levels on the decoded supports, which read the support
+    # profile, the band order and the FRS region map; the definition is
+    # encoded canonically and names microcosm.graph's stream. It takes each
+    # cell's expected Band D through the shared draw-cell expectation, reads
+    # the Band D and prices the statute through council_tax_band_d,
+    # Scotland's Band D a vendored fact checked against the pinned feed, reads
+    # stage 5's bill provenance, the authority code column and the nations of
+    # the regions, and holds the reductions within their bills through the
+    # shared bounded amounts. Like every geography-first stage, it reads its
+    # name from the roster leaf (microcosm#931).
+    "council_tax_localise": (
+        atomic_geography,
+        atomic_support_conditioning,
+        atomic_support_expectations,
+        atomic_area_conditioning,
+        atomic_area_support,
+        bounded_amounts,
+        council_tax_band_d,
+        council_tax_constants,
+        frs_council_tax,
+        local_authority_input,
+        rowwise_geography,
+        geography_constants,
+        *_FEED_FACT_MODULES,
         geography_first_roster,
         graph_canonical,
         graph_randomness,
@@ -1006,14 +1042,16 @@ _COUNTING_STAGES = frozenset(
         # shared lineage reader (microcosm#931).
         "geographic_expand",
         "geographic_identity",
-        # So do the area stages and the private rents; the SPI copies' areas
-        # read each copy's path through the shared reader too (microcosm#931).
+        # So do the area stages, the private rents and the council-tax
+        # localisation; the SPI copies' areas and the localisation read each
+        # copy's path through the shared reader too (microcosm#931).
         "atomic_area_assign",
         "local_authority",
         "rfdr",
         "area_brma",
         "spi_copy_areas",
         "private_rent",
+        "council_tax_localise",
         "hmrc_spi_income_spine",
         "spi_support_channel",
         "spi_income_band_donors",
@@ -1417,6 +1455,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
         UKSPIIncomeSpineStageTransform,
         UKSPISupportChannelStageTransform,
     )
+    from .spine_council_tax import UKCouncilTaxLocaliseStageTransform
     from .spine_geography import (
         UKAreaBRMAStageTransform,
         UKAtomicAreaAssignStageTransform,
@@ -1577,6 +1616,12 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             # private rents take the sampled rung's region rule (microcosm#931).
             "private_rent": UKPrivateRentStageTransform(
                 stage=stages["private_rent"], sampled_rung=True
+            ),
+            # Each clone's council tax at its local authority's committed
+            # Band D over the expected Band D of its draw cell on the toy
+            # supports, just before the WAS chain (microcosm#931).
+            "council_tax_localise": UKCouncilTaxLocaliseStageTransform(
+                stage=stages["council_tax_localise"], supports=supports
             ),
             "was_wealth": UKWASWealthStageTransform(
                 stage=stages["was_wealth"], engine=engine, donor=was

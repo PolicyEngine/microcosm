@@ -121,6 +121,36 @@ def test_the_private_rent_family_rewrites_the_rent_and_conserves_mass() -> None:
     assert family["source_manifest_sha256"] == shared
 
 
+def test_the_council_tax_family_keeps_the_paid_bill_and_conserves_mass() -> None:
+    """The spine's council_tax_localise stage prices Great Britain council tax
+    at each household's drawn local authority just before the WAS chain
+    (microcosm#931), so the release requires it at build as a family of its
+    own: it writes the paid bill it keeps from before, rewrites the bill, the
+    rebate and the reported reduction, and records the stage's own
+    mass-conservation reason, at importance weights."""
+    from microcosm.build.uk_runtime.spine_council_tax import (
+        COUNCIL_TAX_LOCALISE_STAGE_NAME,
+        UK_COUNCIL_TAX_LOCALISE_MASS_CONSERVATION_REASON,
+        UK_COUNCIL_TAX_LOCALISE_OUTPUT_COLUMNS,
+        UK_COUNCIL_TAX_LOCALISE_REWRITES,
+    )
+
+    families = _resource("release_input_coverage_manifest.json")["family_coverage"]
+    family = families[COUNCIL_TAX_LOCALISE_STAGE_NAME]
+    assert family["stage"] == COUNCIL_TAX_LOCALISE_STAGE_NAME
+    assert family["status"] == "required_at_build"
+    assert family["outputs"] == list(UK_COUNCIL_TAX_LOCALISE_OUTPUT_COLUMNS)
+    assert family["rewrites"] == list(UK_COUNCIL_TAX_LOCALISE_REWRITES)
+    assert family["mass_change_semantics"] == "mass_conserving"
+    assert family["required_mass_change_reason"] == (
+        UK_COUNCIL_TAX_LOCALISE_MASS_CONSERVATION_REASON
+    )
+    assert family["output_weight_kind"] == "importance"
+    assert family["source_manifest"] == "source_stages.json"
+    shared = families["was_wealth"]["source_manifest_sha256"]
+    assert family["source_manifest_sha256"] == shared
+
+
 def test_the_wealth_family_carries_the_area_home_values_kept_draw() -> None:
     """The WAS chain reads England and Wales home values off each owner's
     constituency inside was_wealth (microcosm#931), so its family requires

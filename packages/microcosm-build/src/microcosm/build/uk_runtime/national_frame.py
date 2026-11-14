@@ -771,6 +771,15 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # inputs.
         "imd_decile",
         "council_tax_band_observed",
+        # The council-tax localisation's two carriers (microcosm#931): each
+        # bill's provenance from frs_council_tax
+        # (frs_council_tax.FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN), which
+        # council_tax_localise reads to choose a household's path, and the
+        # paid bill council_tax_localise keeps from before it localises
+        # (spine_council_tax.COUNCIL_TAX_FRS_BILL_COLUMN), which was_wealth's
+        # council-tax predictor reads. They are no engine inputs.
+        "council_tax_bill_provenance",
+        "council_tax_frs_bill",
     ),
 }
 

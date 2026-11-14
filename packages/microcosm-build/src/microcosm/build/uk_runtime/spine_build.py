@@ -112,7 +112,10 @@ from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
 from microcosm.build.uk_runtime.frs_annual_income import (
     UKFRSAnnualIncomeStageTransform,
 )
-from microcosm.build.uk_runtime.frs_council_tax import UKFRSCouncilTaxStageTransform
+from microcosm.build.uk_runtime.frs_council_tax import (
+    FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN,
+    UKFRSCouncilTaxStageTransform,
+)
 from microcosm.build.uk_runtime.frs_disability import UKFRSDisabilityStageTransform
 from microcosm.build.uk_runtime.frs_education import UKFRSEducationStageTransform
 from microcosm.build.uk_runtime.frs_education_grants import (
@@ -223,6 +226,10 @@ from microcosm.build.uk_runtime.spi_spine import (
     UKFRSHMRCSpineLeavesStageTransform,
     UKSPIIncomeSpineStageTransform,
     UKSPISupportChannelStageTransform,
+)
+from microcosm.build.uk_runtime.spine_council_tax import (
+    COUNCIL_TAX_FRS_BILL_COLUMN,
+    UKCouncilTaxLocaliseStageTransform,
 )
 from microcosm.build.uk_runtime.spine_geography import (
     ATOMIC_AREA_ASSIGN_STAGE_NAME,
@@ -347,10 +354,19 @@ def _atomic_support_argument(flag: str) -> str:
 
 
 #: Declared outputs whose nonzero share no stage record reports: the root's
-#: area-conditioning carriers (frs_spine.FRS_AREA_CONDITIONING_COLUMNS,
-#: microcosm#931), which stay out of every receipt and of the sidecar's
-#: shares, whichever route built the records.
-_UNREPORTED_SHARE_COLUMNS = frozenset(FRS_AREA_CONDITIONING_COLUMNS)
+#: area-conditioning carriers (frs_spine.FRS_AREA_CONDITIONING_COLUMNS), and
+#: the council-tax localisation's two carriers, each bill's provenance from
+#: frs_council_tax and the paid bill council_tax_localise keeps, which the
+#: release boundary drops with the root's (microcosm#931). They stay out of
+#: every receipt and of the sidecar's shares, whichever route built the
+#: records.
+_UNREPORTED_SHARE_COLUMNS = frozenset(
+    (
+        *FRS_AREA_CONDITIONING_COLUMNS,
+        FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN,
+        COUNCIL_TAX_FRS_BILL_COLUMN,
+    )
+)
 #: The library whose version the sidecar records beside ``engine_batches``:
 #: where the engine computes the frame clone by clone, private-school
 #: attendance stores its own restatement of the engine's percentile rank, by
@@ -584,7 +600,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             help=(
                 f"Local {system} conditioned atomic-area support "
                 f"({CONDITIONED_SOURCES[system]} in sources.yaml) for "
-                "atomic_area_assign, rfdr and spi_copy_areas, required when "
+                "atomic_area_assign, rfdr, spi_copy_areas and "
+                "council_tax_localise, required when "
                 "atomic_area_assign is scheduled: its SHA-256 and size must be "
                 "the ones sources.yaml registers (microcosm#931)."
             ),
@@ -1363,7 +1380,8 @@ def _graph_stage_records(
     declares them as outputs.  Their share is read from the final population
     instead, which is what the legacy plan recorded (identity columns are
     never zero, so the value is 1.0 on every vintage). The root's
-    area-conditioning carriers get no share (``_UNREPORTED_SHARE_COLUMNS``).
+    area-conditioning carriers and the council-tax localisation's two
+    carriers get no share (``_UNREPORTED_SHARE_COLUMNS``).
     """
 
     structural = _structural_columns(frame)
@@ -2368,6 +2386,17 @@ def prepare_uk_spine_execution(
         implementations["private_rent"] = UKPrivateRentStageTransform(
             stage=stages_by_name["private_rent"],
             sampled_rung=_is_sampled(args),
+        )
+    # Great Britain council tax at each household's drawn local authority,
+    # just before the WAS chain, on the supports' graph sources; the supports
+    # are held to the geography block's pins before the stage is built
+    # (microcosm#931).
+    if "council_tax_localise" in stage_names:
+        implementations["council_tax_localise"] = _GraphSourceTransform(
+            lambda sources: UKCouncilTaxLocaliseStageTransform(
+                stage=stages_by_name["council_tax_localise"],
+                supports=_source_supports(sources, support_pins),
+            )
         )
     if "uc_reporter_redraw" in stage_names:
         implementations["uc_reporter_redraw"] = UKUCReporterRedrawStageTransform(

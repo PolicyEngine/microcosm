@@ -197,6 +197,9 @@ from microcosm.build.uk_runtime.spi_spine import (
     UKSPIIncomeSpineStageTransform,
     UKSPISupportChannelStageTransform,
 )
+from microcosm.build.uk_runtime.spine_council_tax import (
+    UKCouncilTaxLocaliseStageTransform,
+)
 from microcosm.build.uk_runtime.spine_geography import (
     UKAreaBRMAStageTransform,
     UKAtomicAreaAssignStageTransform,
@@ -245,8 +248,9 @@ _SPI_DONOR_SAMPLE_SIZE = 64
 #: area stages (atomic_area_assign, local_authority, rfdr, area_brma in
 #: frs_brma's place, spi_copy_areas) and private_rent made it 61, and
 #: regional_home_values' retirement 60: the WAS chain localises the home
-#: values (microcosm#931).
-UK_FIXTURE_STAGE_COUNT = 60
+#: values; council_tax_localise, the council tax at each household's local
+#: authority just before the WAS chain, makes it 61 again (microcosm#931).
+UK_FIXTURE_STAGE_COUNT = 61
 _QRF_ESTIMATORS = 4
 #: The fixture spine's geographic clone count K (microcosm#931). The config
 #: records it, the oracle builds geographic_expand and its engine with it, as
@@ -2439,6 +2443,13 @@ def _build_implementations(
         # private rents take the sampled rung's region rule (microcosm#931).
         "private_rent": UKPrivateRentStageTransform(
             stage=stages["private_rent"], sampled_rung=True
+        ),
+        # Each clone's council tax at its local authority's committed Band D
+        # over the expected Band D of its draw cell on the toy supports, just
+        # before the WAS chain (microcosm#931), built as the graph registry's
+        # fixture implementations build it.
+        "council_tax_localise": UKCouncilTaxLocaliseStageTransform(
+            stage=stages["council_tax_localise"], supports=supports
         ),
         "was_wealth": UKWASWealthStageTransform(
             stage=stages["was_wealth"], engine=engine, donor=was

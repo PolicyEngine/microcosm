@@ -78,19 +78,36 @@ def test_driver_projects_a_stage_record_for_every_graph_stage_on_the_fixture(
         manifest=manifest, store=store, stages=stages, frame=final
     )
 
+    from microcosm.build.uk_runtime.frs_council_tax import (
+        FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN,
+    )
     from microcosm.build.uk_runtime.frs_spine import FRS_AREA_CONDITIONING_COLUMNS
+    from microcosm.build.uk_runtime.spine_council_tax import (
+        COUNCIL_TAX_FRS_BILL_COLUMN,
+    )
 
     assert [record.stage for record in records] == [stage.stage for stage in stages]
     by_stage = {record.stage: record for record in records}
     for stage in stages:
         # A declared rewrite is recorded beside the outputs (microcosm#721);
-        # the root's area-conditioning carriers get no share (microcosm#931).
-        assert set(by_stage[stage.stage].nonzero_share) == {
-            *stage.outputs,
-            *stage.rewrites,
-        } - set(FRS_AREA_CONDITIONING_COLUMNS), stage.stage
+        # the root's area-conditioning carriers and the council-tax
+        # localisation's two carriers get no share (microcosm#931).
+        declared = {*stage.outputs, *stage.rewrites}
+        assert set(by_stage[stage.stage].nonzero_share) == (
+            declared - driver._UNREPORTED_SHARE_COLUMNS
+        ), stage.stage
         assert by_stage[stage.stage].rewrote == stage.rewrites, stage.stage
     assert set(FRS_AREA_CONDITIONING_COLUMNS) <= set(by_stage["frs_spine"].produced)
+    # Each bill's provenance and the kept paid bill are produced, by stage 5
+    # and the localisation, and neither stage reports a share of either.
+    carriers = {FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN, COUNCIL_TAX_FRS_BILL_COLUMN}
+    assert carriers <= driver._UNREPORTED_SHARE_COLUMNS
+    for stage, carrier in (
+        ("frs_council_tax", FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN),
+        ("council_tax_localise", COUNCIL_TAX_FRS_BILL_COLUMN),
+    ):
+        assert carrier in by_stage[stage].produced, stage
+        assert not carriers & set(by_stage[stage].nonzero_share), stage
     root_shares = by_stage["frs_spine"].nonzero_share
     for column in (
         "person_id",

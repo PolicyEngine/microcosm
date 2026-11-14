@@ -1212,8 +1212,9 @@ class TestUKCountryPackage:
         # in frs_brma's place, spi_copy_areas after spi_income_band_donors and
         # private_rent after spi_housing_shell; and microcosm#931 retires
         # regional_home_values, whose England and Wales home values was_wealth
-        # reads off each owner's constituency.
-        assert len(spec.sources.stages) == 60
+        # reads off each owner's constituency; and microcosm#931 adds
+        # council_tax_localise after private_rent, just before was_wealth.
+        assert len(spec.sources.stages) == 61
         assert not {
             "frs_hmrc_retained_leaves",
             "hmrc_spi_income",

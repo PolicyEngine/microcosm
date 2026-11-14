@@ -7,9 +7,10 @@ for it. The FRS bill is multiplied by the authority's 2024-25 Band D over the
 expected Band D of the household's own draw cell. Where no gross bill was
 observed and the band was, the bill is the 2024-25 statute. The rebate and
 the reported council tax reduction are scaled by the same ratio and capped
-at the new bill. Northern Ireland's rows are left as they are. No stage
-declares G6 yet, so the transform here runs as a stage built from the
-reviewed declaration spine_council_tax states.
+at the new bill. Northern Ireland's rows are left as they are. sources.yaml
+declares G6 between private_rent and was_wealth; the transform here runs as a
+stage built from the reviewed declaration spine_council_tax states, which the
+packaged stage equals.
 
 The frames are test_support's invented council-tax cases
 (uk_council_tax_fixtures) on the toy conditioned supports, at K = 1 and
@@ -44,7 +45,8 @@ They hold:
   later clones differ; it is byte-equal at K = 1 and K = 3 but for the
   clone count;
 - every refusal names columns only, the draw-cell guard among them;
-- the transform runs only as its reviewed stage.
+- the transform runs only as its reviewed stage, and the packaged stage is
+  that stage.
 """
 
 from __future__ import annotations
@@ -603,6 +605,31 @@ def test_the_transform_runs_only_as_its_reviewed_stage() -> None:
         )
 
 
+def test_the_packaged_stage_is_the_reviewed_stage() -> None:
+    """sources.yaml declares G6 as the reviewed declaration states it, so the
+    spine runs the transform as the packaged stage (microcosm#931)."""
+    from microcosm.build.country_spec import load_country_spec
+
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    packaged = spec.sources.stage_map()[COUNCIL_TAX_LOCALISE_STAGE_NAME]
+    reviewed = _stage()
+    assert packaged.grain == reviewed.grain == "household"
+    assert [dict(artifact) for artifact in packaged.artifacts] == [
+        dict(artifact) for artifact in reviewed.artifacts
+    ]
+    assert [(op.kind, dict(op.parameters)) for op in packaged.operations] == [
+        (kind, parameters)
+        for kind, parameters in council_tax_localise_operation_parameters()
+    ]
+    assert tuple(packaged.outputs) == UK_COUNCIL_TAX_LOCALISE_OUTPUT_COLUMNS
+    assert tuple(packaged.nonnegative_outputs) == UK_COUNCIL_TAX_LOCALISE_OUTPUT_COLUMNS
+    assert tuple(packaged.rewrites) == UK_COUNCIL_TAX_LOCALISE_REWRITES
+    UKCouncilTaxLocaliseStageTransform(
+        stage=packaged, supports=toy_conditioned_support_payloads(), band_d=_band_d()
+    )
+
+
 def test_the_transform_needs_a_run_and_draws_with_the_area_draws_definition() -> None:
     transform = UKCouncilTaxLocaliseStageTransform(
         stage=_stage(), supports=toy_conditioned_support_payloads(), band_d=_band_d()
@@ -1021,8 +1048,8 @@ def test_northern_ireland_is_left_bit_for_bit_and_never_capped(clones) -> None:
 
 
 def _was_paid_bill(household: pd.DataFrame) -> np.ndarray:
-    """The paid bill was_wealth.recipient_predictors computes its council-tax
-    predictor as today, spelled as it spells it."""
+    """The paid bill was_wealth.recipient_predictors computed its council-tax
+    predictor as before it read the kept bill, spelled as it spelled it."""
 
     return np.maximum(
         household["council_tax"].to_numpy(dtype=float)

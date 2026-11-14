@@ -10,10 +10,11 @@ capped at the bill outside Northern Ireland):
 
 - **The kept bill.** Before it rewrites anything, the stage writes
   ``council_tax_frs_bill`` on every row: ``max(council_tax -
-  council_tax_rebate, 0)``, by the expression
-  ``was_wealth.recipient_predictors`` computes its council-tax predictor with,
-  so the WAS chain's bill predictor can read the paid bill from before the
-  area enters it (ruling 2). It is float64 and nonnegative.
+  council_tax_rebate, 0)``, the expression
+  ``was_wealth.recipient_predictors`` computed its council-tax predictor with
+  before it read this column. The WAS chain's bill predictor reads it, so
+  the area does not enter that predictor (ruling 2). It is float64 and
+  nonnegative.
 - **The reference.** Each household's draw cell is recomputed from the
   inputs the area draw (G2, ``atomic_area_assign``) read:
   :func:`~microcosm.build.uk_runtime.atomic_area_conditioning.uk_draw_inputs`,
@@ -90,8 +91,9 @@ The transform checks the stage it runs as against the reviewed declaration
 this module states (name, household grain, the kept bill as its one output,
 nonnegative, the three rewrites, the reviewed operations verbatim and its two
 Band D artifacts), and runs the Scottish resource's runtime arm with the
-frame's period before it reads a row. No source manifest declares the stage
-yet, so no build runs it.
+frame's period before it reads a row. sources.yaml declares the stage between
+``private_rent`` and ``was_wealth``, and the spine build runs it on the
+conditioned supports the area stages read, held to the spine's support pins.
 """
 
 from __future__ import annotations
@@ -162,6 +164,7 @@ from microcosm.build.uk_runtime.geographic_clones import (
 )
 from microcosm.build.uk_runtime.geography_first_roster import (
     ATOMIC_AREA_ASSIGN_STAGE,
+    COUNCIL_TAX_LOCALISE_STAGE,
     SPI_COPY_AREAS_STAGE,
 )
 from microcosm.build.uk_runtime.household_lineage import UK_COPY_LINEAGE
@@ -207,9 +210,8 @@ __all__ = [
     "uk_council_tax_references",
 ]
 
-#: The stage's name. A module constant until the stage is declared, when the
-#: geography-first roster leaf takes it.
-COUNCIL_TAX_LOCALISE_STAGE_NAME = "council_tax_localise"
+#: The stage's name, as the geography-first roster leaf states it.
+COUNCIL_TAX_LOCALISE_STAGE_NAME = COUNCIL_TAX_LOCALISE_STAGE
 COUNCIL_TAX_LOCALISE_OPERATION_KIND = "localise_council_tax"
 COUNCIL_TAX_LOCALISE_METHOD = "uk-council-tax-localise-v1"
 #: The paid bill from before the stage rewrites the bill and the rebate: the
@@ -954,8 +956,8 @@ def localise_uk_council_tax(
     kept paid bill (G6).
 
     The kept bill first, from the columns as they arrive: ``max(council_tax
-    - council_tax_rebate, 0)`` on every row, as
-    ``was_wealth.recipient_predictors`` computes its predictor. Then
+    - council_tax_rebate, 0)`` on every row, the paid bill
+    ``was_wealth.recipient_predictors`` reads as its council-tax predictor. Then
     :func:`uk_council_tax_references` and each row's path: Northern Ireland's
     rows keep every column bit for bit; a Great Britain row of the support
     channel, or of the FRS channel whose bill provenance is
@@ -980,7 +982,8 @@ def localise_uk_council_tax(
     _require_columns(person, (_PERSON_HOUSEHOLD_COLUMN, _REDUCTION_COLUMN), "person")
     _amounts(household, _BILL_COLUMN, "household")
     _amounts(household, _REBATE_COLUMN, "household")
-    # The paid bill from before any rewrite, by was_wealth's own expression.
+    # The paid bill from before any rewrite, the one was_wealth's council-tax
+    # predictor reads.
     kept = np.maximum(
         household[_BILL_COLUMN].to_numpy(dtype=float)
         - household[_REBATE_COLUMN].to_numpy(dtype=float),

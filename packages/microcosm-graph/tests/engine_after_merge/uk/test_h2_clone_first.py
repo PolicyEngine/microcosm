@@ -1,6 +1,6 @@
 """The clone-first UK spine at four geographic clones on the H2 fixture.
 
-microcosm#931 groups (b) and (c). The H2 fixture's invented sources run the
+microcosm#931 groups (b), (c) and (d). The H2 fixture's invented sources run the
 whole spine in this process twice, through the real engine: at one geographic
 clone, the fixture's own config, and at four, the same config with
 ``geographic_clones`` 4, so the graph's geographic_expand node, the transform
@@ -43,9 +43,9 @@ engine-uk-after-merge job on pushes to main.
   two scales are equal. Whether the stage takes a scale per clone is open
   (microcosm#931).
 - **Tolerance classes:** the draws keep their K-invariant receipt fields, and
-  the area stages and private_rent every receipt field but K; from
-  frs_take_up on, every output every clone carries, at a weighted share near
-  one clone's (private_rent's ranks and scales pool over the clones, so its
+  the area stages, private_rent and council_tax_localise every receipt field
+  but K; from frs_take_up on, every output every clone carries, at a weighted
+  share near one clone's (private_rent's ranks and scales pool over the clones, so its
   rents nest only so, and so do the main residences the WAS chain's area home
   values read off each owner's constituency at a rank within its region, G8,
   and the regional uprating that divides by their kept draw), and every node
@@ -72,6 +72,18 @@ engine-uk-after-merge job on pushes to main.
   returns each localised home to its knot within one rounding, and a home at
   the knots' cap to the cap or a few roundings below; and every high-value
   support copy keeps its parent's every column but its ids (microcosm#931).
+- **Council tax, at one clone and at four:** council_tax_localise gives every
+  row on a ratio path its bill from before the stage times the ratio of its
+  own draw cell: one wherever the cell holds one toy authority (Wales's and
+  the North East's rows, and every decile cell), and other than one for some
+  London and Scotland rows in region-level cells, SPI-channel rows among
+  them. Household 12, a paying zero, and the households whose ids are
+  multiples of 21, each a reduction of unknown size, all with observed
+  bands, take the 2024-25 statute, and no other row does. Every reduction and
+  rebate lies within its new bill, and the kept bill, which was_wealth's
+  council-tax predictor reads, is the paid bill from before the stage.
+  Clone 0's FRS rows at four clones hold one clone's bill,
+  rebate, reduction and kept bill, bit for bit (microcosm#931).
 
 It cannot catch within-batch int32 collisions: ids past 2**31 reach the engine
 at K = 1 already, and these households are too few. The adapter's rank rule
@@ -95,6 +107,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -107,6 +120,13 @@ from microcosm.build.uk_runtime.area_home_values import (
     FRS_REGION_TO_KNOTS_REGION,
     load_committed_area_home_values_resources,
     localise_area_home_values,
+)
+from microcosm.build.uk_runtime.council_tax_band_d import uk_statutory_council_tax
+from microcosm.build.uk_runtime.council_tax_constants import UK_NATION_BY_REGION
+from microcosm.build.uk_runtime.frs_council_tax import (
+    FRS_COUNCIL_TAX_BILL_MISSING,
+    FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN,
+    FRS_COUNCIL_TAX_BILL_UNKNOWN_REDUCTION,
 )
 from microcosm.build.uk_runtime.geographic_clones import (
     GEOGRAPHY_HOUSEHOLD_KEY_COLUMN,
@@ -158,10 +178,16 @@ from microcosm.build.uk_runtime.spi_band_donors import (
     UK_SPI_INCOME_BAND_DONORS_STAGE_NAME,
 )
 from microcosm.build.uk_runtime.spi_support import (
+    BASE_FRS_SUPPORT_CHANNEL,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
     UK_SPI_SUPPORT_STAGE_NAME,
     support_channel_column,
     support_source_id_column,
+)
+from microcosm.build.uk_runtime.spine_council_tax import (
+    COUNCIL_TAX_FRS_BILL_COLUMN,
+    COUNCIL_TAX_LOCALISE_STAGE_NAME,
+    uk_council_tax_references,
 )
 from microcosm.build.uk_runtime.spine_geography import (
     AREA_BRMA_STAGE_NAME,
@@ -174,7 +200,9 @@ from microcosm.build.uk_runtime.spine_geography import (
 from microcosm.build.uk_runtime.spine_private_rent import PRIVATE_RENT_STAGE_NAME
 from microcosm.build.uk_runtime.was_wealth import (
     AREA_HOME_VALUES_EVIDENCE,
+    UK_WAS_ENGINE_PREDICTOR_ENTITIES,
     UK_WAS_WEALTH_STAGE_NAME,
+    recipient_predictors,
 )
 from microcosm.frame import Frame
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
@@ -188,11 +216,13 @@ G1B = GEOGRAPHIC_IDENTITY_STAGE_NAME
 SPI = UK_SPI_SUPPORT_STAGE_NAME
 DONORS = UK_SPI_INCOME_BAND_DONORS_STAGE_NAME
 COPY_AREAS = SPI_COPY_AREAS_STAGE_NAME
+COUNCIL_TAX = COUNCIL_TAX_LOCALISE_STAGE_NAME
 #: The spine's stage count since the area stages (microcosm#931): 54, G1 and
 #: G1b, then atomic_area_assign, local_authority, rfdr, spi_copy_areas and
 #: private_rent, with area_brma in frs_brma's place, less regional_home_values,
-#: whose England and Wales home values the WAS chain now reads.
-_STAGE_COUNT = 60
+#: whose England and Wales home values the WAS chain now reads, and
+#: council_tax_localise after private_rent.
+_STAGE_COUNT = 61
 #: The area stages before the draws, which key each row's area on its
 #: geography key, as G1b left it.
 _AREA_STAGES = (
@@ -221,10 +251,16 @@ _COUNTED_WITHIN_EACH_CLONE = {
 #: from a count-table cell that reads the engine's LHA_category.
 _BRMA = ("household", "brma")
 #: The stages whose every receipt field but K is one clone's: the area
-#: stages count their sources over every clone where each is the same at
-#: every K, and among clone-0 rows where a union could grow with K
-#: (microcosm#931).
-_K_INVARIANT_RECEIPTS = (*_AREA_STAGES, _LAST_DRAW, COPY_AREAS, PRIVATE_RENT_STAGE_NAME)
+#: stages and the council-tax localisation count their sources over every
+#: clone where each is the same at every K, and among clone-0 rows where a
+#: union could grow with K (microcosm#931).
+_K_INVARIANT_RECEIPTS = (
+    *_AREA_STAGES,
+    _LAST_DRAW,
+    COPY_AREAS,
+    PRIVATE_RENT_STAGE_NAME,
+    COUNCIL_TAX,
+)
 #: The housing shell, whose rents private_rent reads.
 _HOUSING = "spi_housing_shell"
 #: The WAS stage, whose chain reads England and Wales home values off each
@@ -246,6 +282,7 @@ _KEPT = (
     COPY_AREAS,
     _HOUSING,
     PRIVATE_RENT_STAGE_NAME,
+    COUNCIL_TAX,
     _WAS,
     _UPRATING,
     _HIGH_VALUE,
@@ -677,10 +714,12 @@ def test_every_stage_runs_and_every_engine_call_after_g1_runs_clone_by_clone(
     called = [node for node in many.order if many.calls[node]]
     after = [node for node in called if many.order.index(node) >= first]
     assert {_LAST_DRAW, "private_school_attendance"} <= set(after)
-    # The area stages before the draws and private_rent call no engine, and
-    # neither does spi_copy_areas on a fixture without a Northern Ireland
-    # copy, the one its call reads.
-    assert not {*_AREA_STAGES, COPY_AREAS, PRIVATE_RENT_STAGE_NAME} & set(called)
+    # The area stages before the draws, private_rent and council_tax_localise
+    # call no engine, and neither does spi_copy_areas on a fixture without a
+    # Northern Ireland copy, the one its call reads.
+    assert not {*_AREA_STAGES, COPY_AREAS, PRIVATE_RENT_STAGE_NAME, COUNCIL_TAX} & (
+        set(called)
+    )
     for node in called:
         # As many calls as at one clone: no stage calls the engine per clone.
         assert len(many.calls[node]) == len(one.calls[node]), node
@@ -1008,12 +1047,13 @@ def test_the_draws_keep_their_k_invariant_receipt_fields(runs) -> None:
 
 
 def test_the_area_stages_receipts_are_one_clone_s_but_for_k(runs) -> None:
-    """The area stages, the SPI copies' areas and the private rents count
-    distinct true sources, over every clone where each count is the same at
-    every K and among clone-0 rows where a union could grow with K
-    (microcosm#931), so every field of their receipts but the clone count is
-    one clone's at K = 4: the counts, the levels and fallback reasons, the
-    booleans, the digests, the seed and the stream."""
+    """The area stages, the SPI copies' areas, the private rents and the
+    council-tax localisation count distinct true sources, over every clone
+    where each count is the same at every K and among clone-0 rows where a
+    union could grow with K (microcosm#931), so every field of their receipts
+    but the clone count is one clone's at K = 4: the counts, the levels and
+    fallback reasons, the paths, the booleans, the digests, the seed and the
+    stream."""
 
     one, many = runs[1].evidence, runs[_CLONES].evidence
     for stage in _K_INVARIANT_RECEIPTS:
@@ -1193,6 +1233,244 @@ def test_on_h2_private_rent_rewrites_only_great_britain_private_renters(
     )
 
 
+@pytest.fixture(scope="module")
+def localiser():
+    """council_tax_localise's transform as the H2 fixture's registry builds it:
+    G2's definition at seed 0, the fixture's toy supports decoded, and the
+    committed 2024-25 Band D (microcosm#931)."""
+
+    _, implementations = fixture_stage_plan_inputs(
+        _require(UK_SPINE_PARITY / "sources", "tools/graph_uk_spine_fixture.py")
+    )
+    return implementations[COUNCIL_TAX]
+
+
+def _frs_rows(household: pd.DataFrame) -> np.ndarray:
+    return (
+        household[support_channel_column("household")]
+        .eq(BASE_FRS_SUPPORT_CHANNEL)
+        .to_numpy()
+    )
+
+
+def _statute_rows(household: pd.DataFrame) -> np.ndarray:
+    """The FRS-channel rows whose gross bill stage 5 did not observe, a
+    missing bill or a reduction of unknown size, and whose band it did: the
+    rows council_tax_localise prices at the statute (microcosm#931)."""
+
+    provenance = household[FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN].astype(str)
+    unobserved = provenance.isin(
+        (FRS_COUNCIL_TAX_BILL_MISSING, FRS_COUNCIL_TAX_BILL_UNKNOWN_REDUCTION)
+    ).to_numpy()
+    observed = household["council_tax_band_observed"].to_numpy(dtype=bool)
+    return _frs_rows(household) & unobserved & observed
+
+
+@pytest.mark.parametrize("clones", (1, _CLONES))
+def test_on_h2_council_tax_localise_scales_each_ratio_row_by_its_cells_ratio(
+    runs, localiser, clones
+) -> None:
+    """Every row on a ratio path takes its bill from before the stage times
+    the ratio of its own draw cell, bit for bit. The ratio is one wherever the
+    cell holds one toy authority: Wales's and the North East's rows, and every
+    row drawn in a decile cell (L0 or L1). It is other than one for some
+    London and Scotland rows in region-level cells (L2 or L3), SPI-channel
+    rows among them (microcosm#931). H2 holds no Northern Ireland household,
+    so every row is Great Britain's; test_uk_spine_three_systems.py carries
+    Northern Ireland."""
+
+    run = runs[clones]
+    before = run.frames[PRIVATE_RENT_STAGE_NAME].table("household")
+    after = run.frames[COUNCIL_TAX].table("household")
+    assert after["household_id"].tolist() == before["household_id"].tolist()
+    references = uk_council_tax_references(
+        before,
+        definition=localiser.definition,
+        supports=localiser.decoded_supports,
+        band_d=localiser.band_d,
+    )
+    assert np.asarray(references.great_britain, dtype=bool).all(), f"K={clones}"
+    ratio = ~_statute_rows(before)
+    ratios = np.asarray(references.ratios, dtype=np.float64)
+    old = before["council_tax"].to_numpy(dtype=np.float64)
+    new = after["council_tax"].to_numpy(dtype=np.float64)
+    assert np.array_equal(
+        new[ratio].view(np.int64), (ratios[ratio] * old[ratio]).view(np.int64)
+    ), f"After {COUNCIL_TAX} at K={clones} a ratio row's bill is off its ratio."
+    region = before["region"].astype(str).to_numpy()
+    levels = np.asarray(references.levels, dtype=object)
+    one_authority = np.isin(region, ["WALES", "NORTH_EAST"]) | np.isin(
+        levels, ["L0", "L1"]
+    )
+    assert one_authority.any(), f"K={clones}"
+    assert (ratios[one_authority] == 1.0).all(), f"K={clones}"
+    moved = np.isin(levels, ["L2", "L3"]) & (ratios != 1.0)
+    spi_channel = ~_frs_rows(before)
+    for name in ("LONDON", "SCOTLAND"):
+        assert (moved & (region == name)).any(), f"{name} at K={clones}"
+        assert (moved & spi_channel & (region == name)).any(), (
+            f"{name} SPI channel at K={clones}"
+        )
+
+
+@pytest.mark.parametrize("clones", (1, _CLONES))
+def test_on_h2_council_tax_localise_prices_unobserved_gross_bills_at_the_statute(
+    runs, localiser, clones
+) -> None:
+    """Household 12 pays its council tax on a bill of zero, a missing bill,
+    and the households whose ids are multiples of 21 report a reduction with
+    no amount, an unknown reduction. Their bands were observed, so every
+    clone of each takes the 2024-25 statute at its own authority, nation and
+    band, as a single adult (the fixture's ADULTH), and no other row does
+    (microcosm#931)."""
+
+    run = runs[clones]
+    before = run.frames[PRIVATE_RENT_STAGE_NAME].table("household")
+    after = run.frames[COUNCIL_TAX].table("household")
+    frs = _frs_rows(before)
+    sources = before["source_household_id"].to_numpy(dtype=np.int64)
+    provenance = before[FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN].astype(str).to_numpy()
+    paying_zero = frs & (sources == 12)
+    unknown = frs & (sources % 21 == 0)
+    assert int(paying_zero.sum()) == clones and unknown.any(), f"K={clones}"
+    assert (provenance[paying_zero] == FRS_COUNCIL_TAX_BILL_MISSING).all()
+    assert (provenance[unknown] == FRS_COUNCIL_TAX_BILL_UNKNOWN_REDUCTION).all()
+    statute = _statute_rows(before)
+    assert np.array_equal(statute, paying_zero | unknown), f"K={clones}"
+    rows = before.loc[statute]
+    assert rows["council_tax_single_adult_raw"].eq(1).all()
+    band_d = localiser.band_d.band_d
+    expected = np.asarray(
+        [
+            float(
+                uk_statutory_council_tax(
+                    band_d[authority],
+                    UK_NATION_BY_REGION[region],
+                    band,
+                    single_adult=bool(adults == 1),
+                )
+            )
+            for authority, region, band, adults in zip(
+                rows["local_authority_code"].astype(str),
+                rows["region"].astype(str),
+                rows["council_tax_band"].astype(str),
+                rows["council_tax_single_adult_raw"],
+                strict=True,
+            )
+        ],
+        dtype=np.float64,
+    )
+    new = after["council_tax"].to_numpy(dtype=np.float64)
+    assert np.array_equal(new[statute].view(np.int64), expected.view(np.int64)), (
+        f"After {COUNCIL_TAX} at K={clones} a statute row is off the statute."
+    )
+
+
+class _ZeroPredictorEngine:
+    """An engine whose WAS predictors are all zero, each at the entity
+    was_wealth declares for it: the bill predictor reads the frame alone."""
+
+    def variable_metadata(self, variable: str) -> SimpleNamespace:
+        return SimpleNamespace(entity=UK_WAS_ENGINE_PREDICTOR_ENTITIES[variable])
+
+    def materialize(self, frame: Frame, variables, period) -> dict[str, np.ndarray]:
+        return {
+            variable: np.zeros(
+                len(frame.table(UK_WAS_ENGINE_PREDICTOR_ENTITIES[variable]))
+            )
+            for variable in variables
+        }
+
+
+@pytest.mark.parametrize("clones", (1, _CLONES))
+def test_on_h2_council_tax_localise_keeps_the_paid_bill_and_bounds_reductions(
+    runs, clones
+) -> None:
+    """The kept bill is the paid bill from before the stage, max(council tax
+    - rebate, 0), bit for bit, and was_wealth's council-tax predictor on the
+    stage's output is that bill, bit for bit. After the stage every rebate
+    and every person's reported reduction lies within its household's new
+    bill, as the stage's own checks say. The kept bill and the bill's
+    provenance reach the spine's last population, and the release boundary
+    drops both (microcosm#931)."""
+
+    run = runs[clones]
+    before = run.frames[PRIVATE_RENT_STAGE_NAME].table("household")
+    after = run.frames[COUNCIL_TAX]
+    household = after.table("household")
+    paid = np.maximum(
+        before["council_tax"].to_numpy(dtype=np.float64)
+        - before["council_tax_rebate"].to_numpy(dtype=np.float64),
+        0.0,
+    )
+    kept = household[COUNCIL_TAX_FRS_BILL_COLUMN].to_numpy(dtype=np.float64)
+    assert np.array_equal(kept.view(np.int64), paid.view(np.int64)), f"K={clones}"
+    predictor = recipient_predictors(after, _ZeroPredictorEngine())["council_tax"]
+    assert np.array_equal(
+        predictor.to_numpy(dtype=np.float64).view(np.int64), paid.view(np.int64)
+    ), f"K={clones}"
+    bill = household["council_tax"].to_numpy(dtype=np.float64)
+    rebate = household["council_tax_rebate"].to_numpy(dtype=np.float64)
+    assert np.isfinite(bill).all() and (bill >= 0.0).all(), f"K={clones}"
+    assert ((rebate >= 0.0) & (rebate <= bill)).all(), f"K={clones}"
+    person = after.table("person")
+    bills = pd.Series(bill, index=household["household_id"].to_numpy())
+    reduction = person["council_tax_benefit_reported"].to_numpy(dtype=np.float64)
+    within = person["person_household_id"].map(bills).to_numpy(dtype=np.float64)
+    assert (reduction > 0.0).any(), f"K={clones}"
+    assert ((reduction >= 0.0) & (reduction <= within)).all(), f"K={clones}"
+    checks = run.evidence[COUNCIL_TAX]["checks"]
+    for name in (
+        "reduction_within_bill",
+        "rebate_within_bill",
+        "rebate_equals_reduction",
+        "northern_ireland_unchanged",
+    ):
+        assert checks[name] is True, (name, clones)
+    carriers = {COUNCIL_TAX_FRS_BILL_COLUMN, FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN}
+    final = run.frames[_FINAL]
+    assert carriers <= set(final.table("household").columns), f"K={clones}"
+    released = uk_release_export_frame(final).table("household")
+    assert not carriers & set(released.columns), f"K={clones}"
+
+
+def test_clone_zero_s_frs_rows_take_the_one_clone_council_tax(runs) -> None:
+    """council_tax_localise prices an FRS row from its stage-5 bill, its
+    provenance and its draw cell, which clone 0 shares with one clone, so
+    clone 0's FRS rows at K = 4 hold one clone's bill, rebate, kept bill and
+    reported reductions, bit for bit (microcosm#931). The SPI-channel rows,
+    whose council tax the housing shell draws, nest only to the share
+    class."""
+
+    one, many = runs[1].frames[COUNCIL_TAX], runs[_CLONES].frames[COUNCIL_TAX]
+    reference = one.table("household").set_index("household_id")
+    clone_zero = _clone_zero(many, "household").set_index("household_id")
+    frs = reference.index[_frs_rows(one.table("household"))]
+    assert len(frs) and set(frs) <= set(clone_zero.index)
+    differing = [
+        column
+        for column in ("council_tax", "council_tax_rebate", COUNCIL_TAX_FRS_BILL_COLUMN)
+        if not np.array_equal(
+            clone_zero.loc[frs, column].to_numpy(dtype=np.float64).view(np.int64),
+            reference.loc[frs, column].to_numpy(dtype=np.float64).view(np.int64),
+        )
+    ]
+    people = one.table("person")
+    people = people.loc[people["person_household_id"].isin(frs)].set_index("person_id")
+    clone_zero_people = _clone_zero(many, "person").set_index("person_id")
+    reduction = "council_tax_benefit_reported"
+    if not np.array_equal(
+        clone_zero_people.loc[people.index, reduction]
+        .to_numpy(dtype=np.float64)
+        .view(np.int64),
+        people[reduction].to_numpy(dtype=np.float64).view(np.int64),
+    ):
+        differing.append(reduction)
+    assert not differing, (
+        f"Clone 0's FRS rows after {COUNCIL_TAX} differ on {differing}."
+    )
+
+
 @pytest.mark.parametrize("clones", (1, _CLONES))
 def test_on_h2_the_wealth_chain_localises_every_england_and_wales_owner(
     runs, clones
@@ -1268,7 +1546,8 @@ def test_on_h2_the_uprating_lands_localised_homes_and_copies_keep_them(
 
     run = runs[clones]
     resources = load_committed_area_home_values_resources()
-    before = run.frames[PRIVATE_RENT_STAGE_NAME]
+    # The frame was_wealth ran on: council_tax_localise's (microcosm#931).
+    before = run.frames[COUNCIL_TAX]
     household = before.table("household").reset_index(drop=True)
     order = household["household_id"].to_numpy()
     weights = np.asarray(before.weights_for("household").values, dtype=np.float64)

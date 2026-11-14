@@ -937,6 +937,15 @@ def build_manifest(
                 stage_name="private_rent",
                 candidate_source=candidate_source,
             ),
+            # Great Britain council tax is priced at each household's drawn
+            # local authority just before the WAS chain (microcosm#931); the
+            # stage rewrites the bill, the rebate and the reported reduction
+            # in place, keeps the paid bill from before, and records its own
+            # conservation receipt.
+            "council_tax_localise": _source_stage_family_coverage_contract(
+                stage_name="council_tax_localise",
+                candidate_source=candidate_source,
+            ),
             # The WAS chain reads England and Wales home values off each
             # owner's constituency inside the stage (microcosm#931), so the
             # family carries the draw it keeps beside them; the retired

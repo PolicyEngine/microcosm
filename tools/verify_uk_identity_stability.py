@@ -3919,8 +3919,10 @@ def _frame_as_stage_saw(frame, stage: str):
     pay and employee contribution before the conversion rewrote them. No
     other stage rewrites a column in place for the scope to take back: the
     retired ``regional_home_values`` did, and the WAS chain's area home
-    values, which replace it, keep their draw beside the value they write
-    (microcosm#931).
+    values, which replace it, keep their draw beside the value they write;
+    ``council_tax_localise`` rewrites the council tax, its rebate and the
+    reported council tax reduction in place, and no receipted recompute
+    reads them (microcosm#931).
     """
 
     positions = _roster_positions()

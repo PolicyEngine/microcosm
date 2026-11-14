@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
+from dataclasses import replace
 from typing import NamedTuple
 
 import numpy as np
@@ -16,13 +18,16 @@ from microcosm.build.uk_runtime.frs_council_tax import (
     FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN,
     FRS_COUNCIL_TAX_BILL_PROVENANCE_VALUES,
     FRS_COUNCIL_TAX_BILL_UNKNOWN_REDUCTION,
+    FRS_COUNCIL_TAX_OUTPUT_COLUMNS,
     NORTHERN_IRELAND_GVTREGNO,
     SCOTLAND_GVTREGNO,
     SCOTTISH_CHARGES_IN_RECIPIENT_BILL,
+    UKFRSCouncilTaxStageTransform,
     assert_frs_council_tax_stage_parameters,
     council_tax_provenance_evidence,
     derive_council_tax,
     derive_council_tax_provenance,
+    frs_council_tax_operation_parameters,
     frs_council_tax_provenance_operation_parameters,
 )
 from microcosm.build.uk_runtime.frs_spine import REGION_MAP, WEEKS_IN_YEAR
@@ -531,3 +536,82 @@ def test_the_evidence_refuses_what_it_cannot_receipt(values) -> None:
     ) as refused:
         council_tax_provenance_evidence({"household": household}, values)
     assert not any(character.isdigit() for character in str(refused.value))
+
+
+# --- The stage, wired (microcosm#931) ------------------------------------------------
+
+
+def test_the_packaged_stage_declares_the_bill_and_then_its_provenance() -> None:
+    """The packaged stage is the reviewed one: the cell-mean imputation and
+    then the provenance's derive, verbatim, writing the bill and the flag."""
+    stage = _committed_stage()
+
+    assert [operation.kind for operation in stage.operations] == [
+        "read_tables",
+        "impute_cell_means",
+        "derive",
+    ]
+    _, impute, derive = stage.operations
+    assert {"kind": impute.kind, **dict(impute.parameters)} == (
+        frs_council_tax_operation_parameters()
+    )
+    assert {"kind": derive.kind, **dict(derive.parameters)} == (
+        frs_council_tax_provenance_operation_parameters()
+    )
+    assert (
+        stage.outputs
+        == FRS_COUNCIL_TAX_OUTPUT_COLUMNS
+        == (
+            "council_tax",
+            FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN,
+        )
+    )
+    assert stage.nonnegative_outputs == ("council_tax",)
+
+
+def test_the_stage_writes_the_bill_and_the_flag_and_receipts_the_flag(
+    tmp_path,
+) -> None:
+    """The transform writes each household's bill and its provenance from one
+    set of masks, the flag a Python string column, and keeps its receipt of
+    the flag, counted on the frame it wrote, for its checkpoint. The raw tab
+    holds the invented cases, pinned as the stage pins its tab."""
+    raw = _case_rows()
+    path = tmp_path / "househol.tab"
+    raw.rename(columns={"household_id": "sernum"}).to_csv(path, sep="\t", index=False)
+    committed = _committed_stage()
+    stage = replace(
+        committed,
+        artifacts=tuple(
+            {
+                **artifact,
+                "locator": path.name,
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                "size_bytes": path.stat().st_size,
+            }
+            if artifact.get("table") == "househol"
+            else artifact
+            for artifact in committed.artifacts
+        ),
+    )
+    transform = UKFRSCouncilTaxStageTransform(tmp_path, stage=stage)
+    assert transform.output_columns() == FRS_COUNCIL_TAX_OUTPUT_COLUMNS
+    with pytest.raises(RuntimeError, match="completed stage run"):
+        transform.checkpoint_metadata()
+
+    result = transform(_frame(raw["household_id"].to_numpy()))
+
+    household = result.table("household")
+    assert household["council_tax"].to_list() == _derive(raw).to_list()
+    flag = household[FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN]
+    assert flag.dtype == pd.StringDtype(storage="python")
+    assert flag.to_list() == [case.provenance for case in _CASES]
+    expected = council_tax_provenance_evidence(result, flag)
+    assert transform.checkpoint_metadata() == {"evidence": expected}
+    assert expected == {
+        "stage": "frs_council_tax",
+        "bill_provenance_sources": {
+            value: rounded_count(sum(case.provenance == value for case in _CASES))
+            for value in FRS_COUNCIL_TAX_BILL_PROVENANCE_VALUES
+        },
+    }
