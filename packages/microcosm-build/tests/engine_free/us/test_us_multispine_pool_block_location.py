@@ -36,6 +36,9 @@ from microcosm.build.us_runtime.support_provenance import (
     support_clone_index_column,
     support_source_id_column,
 )
+from microcosm.build.us_runtime.worker_identity import (
+    LegacyWorkerIdentityAuthentication,
+)
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from test_support.microcosm_build.us_block_location import (
     synthetic_blocks,
@@ -834,6 +837,141 @@ def test_h5_io_accepts_a_block_manifest_round_trip(
         h5_io._validate_stacked_late_dag_manifest_binding(
             legacy_order, manifest_path=path
         )
+
+
+# The late-DAG binding checks the operator order first and the geography
+# receipt next. test_h5_io_accepts_a_block_manifest_round_trip above holds two
+# cells of the order rule on a real block_v1 receipt: a current block_v1
+# manifest binds the block order, and one that carries the legacy-rule order
+# is refused. The table below holds every cell at the function, those two
+# included, on manifests that carry only what the rule reads.
+def _order_rule_manifest(contract: dict, operator_order: tuple[str, ...]) -> dict:
+    """A stacked manifest with only what the operator-order rule reads."""
+
+    assignment = {"contract": json.loads(json.dumps(contract))}
+    return {
+        "pipeline": "us-stacked-pool",
+        "operator_order": list(operator_order),
+        "geography_assignment": assignment,
+        "stage_receipts": {"geography_assignment": copy.deepcopy(assignment)},
+    }
+
+
+@pytest.mark.parametrize(
+    ("rule", "attested_schema9", "carried", "accepted"),
+    [
+        pytest.param(
+            "legacy", False, "current", True, id="current-legacy-rule-binds-its-order"
+        ),
+        pytest.param(
+            "legacy", False, "schema9", False, id="current-legacy-rule-needs-the-gate"
+        ),
+        pytest.param(
+            "legacy", False, "block", False, id="current-legacy-rule-refuses-block"
+        ),
+        pytest.param(
+            "block_v1", False, "block", True, id="current-block-rule-binds-its-order"
+        ),
+        pytest.param(
+            "block_v1", False, "current", False, id="current-block-rule-refuses-legacy"
+        ),
+        pytest.param(
+            "block_v1",
+            False,
+            "block_without_gate",
+            False,
+            id="current-block-rule-needs-the-gate",
+        ),
+        pytest.param(
+            "legacy", True, "schema9", True, id="schema9-binds-the-order-it-sealed"
+        ),
+        pytest.param(
+            "legacy", True, "current", False, id="schema9-refuses-the-current-order"
+        ),
+        pytest.param(
+            "legacy", True, "block", False, id="schema9-refuses-the-block-order"
+        ),
+    ],
+)
+def test_late_dag_binding_expects_one_operator_order_per_manifest_kind(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    rule: str,
+    attested_schema9: bool,
+    carried: str,
+    accepted: bool,
+) -> None:
+    """A current pool binds its geography rule's order; a schema-9 pool, its own.
+
+    Both current orders end with the immigration composition gate
+    (microcosm#767). The order an attested schema-9 pool sealed predates that
+    gate and the block_v1 rule, so it is accepted only from a pool that comes
+    with the compatibility attestation, and such a pool is refused when it
+    carries a current order.
+    """
+
+    gate = "us_immigration_composition_gate"
+    block = h5_io.US_STACKED_POOL_BLOCK_LOCATION_OPERATOR_ORDER
+    assert block[-1] == gate
+    orders = {
+        "current": h5_io.US_STACKED_POOL_OPERATOR_ORDER,
+        "block": block,
+        "block_without_gate": block[:-1],
+        "schema9": h5_io._SCHEMA9_STACKED_POOL_OPERATOR_ORDER,
+    }
+    assert len(set(orders.values())) == len(orders)
+    contracts = {
+        "legacy": pool_tool._stacked_geography_assignment_contract(),
+        "block_v1": pool_tool._stacked_block_location_contract(
+            4, 1, "f" * 64, cps_asec_sha256={_INCOME_YEAR: _CPS_SHA256}
+        ),
+    }
+    manifest = _order_rule_manifest(contracts[rule], orders[carried])
+    has_block_rule = h5_io._stacked_geography_algorithm_id(manifest) == (
+        h5_io.US_STACKED_BLOCK_LOCATION_ALGORITHM_ID
+    )
+    assert has_block_rule is (rule == "block_v1")
+    # Only the authentication's presence selects the schema-9 order.
+    authentication = (
+        LegacyWorkerIdentityAuthentication(
+            attestation_sha256="c" * 64,
+            campaign_tree_sha="fixture",
+            recorded_worker_execution={},
+            semantic_identity={},
+            semantic_identity_sha256="d" * 64,
+        )
+        if attested_schema9
+        else None
+    )
+
+    # The geography receipt is not under test: record that the binding
+    # reached it, which it does only once it has accepted the order.
+    reached_geography: list[Path] = []
+
+    def record_geography_check(_manifest: object, *, manifest_path: Path) -> None:
+        reached_geography.append(manifest_path)
+
+    monkeypatch.setattr(
+        h5_io,
+        "_validate_stacked_geography_assignment_manifest_binding",
+        record_geography_check,
+    )
+    # A manifest this bare is refused either way: for its order, or, once
+    # the order is accepted, for the late-producer DAG receipt it lacks.
+    with pytest.raises(
+        ValueError,
+        match=(
+            "late-producer DAG receipt"
+            if accepted
+            else "canonical late-DAG operator order"
+        ),
+    ):
+        h5_io._validate_stacked_late_dag_manifest_binding(
+            manifest,
+            manifest_path=Path("fixture.manifest.json"),
+            legacy_worker_authentication=authentication,
+        )
+    assert bool(reached_geography) is accepted
 
 
 def _mutated(manifest: dict, mutate) -> dict:
