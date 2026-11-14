@@ -1929,6 +1929,22 @@ def _line_sequences(draw):
 
 
 @settings(max_examples=80, deadline=None)
+# The reviewer's sequence on a geography whose New York PUMAs span three
+# counties: a block line, a PUMA redraw, then the artifact re-derivation.
+@example(
+    case=(
+        3,
+        [3601, 3602, 3603, 3601, 3602, 3603],
+        [("block_ladder", 1), ("puma_ladder", 2), ("rederive", 0)],
+    )
+)
+@example(
+    case=(
+        3,
+        [3601, 3602, 3603, 4201, 4202, 800],
+        [("block_v1", 5), ("puma_ladder_with_tract", 6), ("drop_flags", 0)],
+    )
+)
 @given(case=_line_sequences())
 def test_no_sequence_of_lines_leaves_a_flag_or_block_outside_its_county(case) -> None:
     # Invariant: after any sequence of the geography lines (block ladder, PUMA
