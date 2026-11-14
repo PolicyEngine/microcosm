@@ -1,5 +1,5 @@
-"""The spine's BRMA and private-rent stages on all three systems, through the
-installed engine.
+"""The spine's BRMA, private-rent and council-tax stages on all three systems,
+through the installed engine.
 
 microcosm#931 (C-37). H2's households cycle through four Great Britain
 regions, so the parity fixture cannot show the BRMA stages on Northern
@@ -15,7 +15,12 @@ stage's one engine call over their households alone: the copy stage's first
 run on the real engine. private_rent then reads the rents of the frame the
 two left, with the housing spi_housing_shell would give it invented: H2's
 root households all own their homes, so this stand-in is where the spine's
-rent re-draw meets the BRMAs its own stages drew.
+rent re-draw meets the BRMAs its own stages drew. council_tax_localise then
+prices the council tax of the frame private_rent left, invented as stage 5
+and the housing shell would leave it (``with_toy_council_tax``), at the
+committed 2024-25 Band D: H2 has no Northern Ireland household, so this
+stand-in is where the localisation meets Northern Ireland's households and
+their SPI copies (microcosm#931).
 
 At one geographic clone and at two:
 
@@ -32,7 +37,13 @@ At one geographic clone and at two:
 - private_rent re-draws every Great Britain private renter's rent, the
   households' and their copies', off the list of the BRMA those stages gave
   it, so every such BRMA has a list for the renter's bedrooms, and leaves
-  Northern Ireland's rents and every other column as they were.
+  Northern Ireland's rents and every other column as they were;
+- council_tax_localise leaves Northern Ireland's council tax, rebate and
+  reduction bit for bit, an SPI copy of a Northern Ireland household among
+  the rows; gives every Great Britain row on a ratio path its bill times the
+  ratio of its draw cell, the SPI copies at L3, and moves some; holds every
+  Great Britain reduction and rebate within the new bill; keeps the paid bill
+  from before it as ``council_tax_frs_bill``; and changes no other column.
 
 Invented data only; assertion messages give stages, columns and K, never a
 value, a key or an id.
@@ -55,6 +66,12 @@ from microcosm.build.uk_runtime.local_authority_input import (
 from microcosm.build.uk_runtime.spi_support import (
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
     support_channel_column,
+)
+from microcosm.build.uk_runtime.spine_council_tax import (
+    COUNCIL_TAX_FRS_BILL_COLUMN,
+    COUNCIL_TAX_LOCALISE_STAGE_NAME,
+    UKCouncilTaxLocaliseStageTransform,
+    uk_council_tax_references,
 )
 from microcosm.build.uk_runtime.spine_geography import (
     AREA_BRMA_STAGE_NAME,
@@ -80,6 +97,7 @@ from test_support.microcosm_build.uk_conditioned_support_fixtures import (
     toy_spine_frame,
     with_invented_support_channel,
 )
+from test_support.microcosm_build.uk_council_tax_fixtures import with_toy_council_tax
 
 _SYSTEM = "atomic_area_system"
 _CHANNEL = support_channel_column("household")
@@ -187,8 +205,9 @@ def _housed(frame: Frame) -> Frame:
 
 @pytest.fixture(scope="module", params=[1, 2], ids=lambda clones: f"K={clones}")
 def run(request) -> dict[str, object]:
-    """The stand-in through the area stages, area_brma, spi_copy_areas and,
-    on invented housing, private_rent, each engine call recorded."""
+    """The stand-in through the area stages, area_brma, spi_copy_areas,
+    private_rent on invented housing and council_tax_localise on invented
+    council tax, each engine call recorded."""
 
     clones = request.param
     payloads = toy_conditioned_support_payloads()
@@ -212,6 +231,11 @@ def run(request) -> dict[str, object]:
     )(copied)
     housed = _housed(copy_areas)
     rents = UKPrivateRentStageTransform(stage=_stage(PRIVATE_RENT_STAGE_NAME))
+    rented = rents(housed)
+    priced = with_toy_council_tax(rented)
+    localiser = UKCouncilTaxLocaliseStageTransform(
+        stage=_stage(COUNCIL_TAX_LOCALISE_STAGE_NAME), supports=payloads
+    )
     return {
         "clones": clones,
         "placed": placed,
@@ -221,8 +245,12 @@ def run(request) -> dict[str, object]:
         "copy_areas": copy_areas,
         "copy_engine": copy_engine,
         "housed": housed,
-        "private_rent": rents(housed),
+        "private_rent": rented,
         "private_rent_evidence": rents.checkpoint_metadata()["evidence"],
+        "priced": priced,
+        "localiser": localiser,
+        "council_tax_localise": localiser(priced),
+        "council_tax_evidence": localiser.checkpoint_metadata()["evidence"],
     }
 
 
@@ -356,3 +384,149 @@ def test_private_rent_re_draws_great_britain_renters_on_the_stages_brmas(
     evidence = run["private_rent_evidence"]
     assert evidence["clone_count"] == clones
     assert evidence["strict"] is True
+
+
+_NORTHERN_IRELAND = "NORTHERN_IRELAND"
+_REDUCTION = "council_tax_benefit_reported"
+_REWRITTEN = ("council_tax", "council_tax_rebate")
+
+
+def _bits(values) -> np.ndarray:
+    return np.asarray(values, dtype=np.float64).view(np.int64)
+
+
+def test_council_tax_localise_prices_great_britain_and_leaves_northern_ireland(
+    run,
+) -> None:
+    """council_tax_localise, run as the packaged spec declares it on the frame
+    the area stages, the copy stage and the private rents left, with invented
+    council tax, at the committed Band D (microcosm#931). Northern Ireland's
+    households and their SPI copies keep their council tax, rebate and
+    reduction bit for bit, and one reduction above its zero bill stays there.
+    Every Great Britain row on a ratio path takes its bill times the ratio of
+    its own draw cell, the SPI copies at L3, and some ratios differ from one;
+    the statute rows are priced, every Great Britain reduction and rebate lies
+    within the new bill, the kept bill is the paid bill from before the stage,
+    and no other column moves."""
+
+    clones = run["clones"]
+    before, after = run["priced"], run["council_tax_localise"]
+    household_before = before.table("household")
+    household_after = after.table("household")
+    person_before = before.table("person")
+    person_after = after.table("person")
+    northern_ireland = household_before["region"].eq(_NORTHERN_IRELAND).to_numpy()
+    copies = household_before[_CHANNEL].eq(SPI_SYNTHETIC_SUPPORT_CHANNEL).to_numpy()
+    assert (northern_ireland & copies).any() and (~northern_ireland & copies).any()
+    assert (northern_ireland & ~copies).any() and (~northern_ireland & ~copies).any()
+
+    # Northern Ireland, the copies of its households among its rows: bit for
+    # bit.
+    for column in _REWRITTEN:
+        np.testing.assert_array_equal(
+            _bits(household_after.loc[northern_ireland, column]),
+            _bits(household_before.loc[northern_ireland, column]),
+            err_msg=f"Northern Ireland's {column} at K={clones}",
+        )
+    regions = pd.Series(
+        household_before["region"].to_numpy(dtype=object),
+        index=household_before["household_id"].to_numpy(),
+    )
+    person_northern_ireland = (
+        person_before["person_household_id"]
+        .map(regions)
+        .eq(_NORTHERN_IRELAND)
+        .to_numpy()
+    )
+    np.testing.assert_array_equal(
+        _bits(person_after.loc[person_northern_ireland, _REDUCTION]),
+        _bits(person_before.loc[person_northern_ireland, _REDUCTION]),
+        err_msg=f"Northern Ireland's {_REDUCTION} at K={clones}",
+    )
+    # No other column moves, and the kept bill is the only new one.
+    pd.testing.assert_frame_equal(
+        household_after.drop(columns=[*_REWRITTEN, COUNCIL_TAX_FRS_BILL_COLUMN]),
+        household_before.drop(columns=list(_REWRITTEN)),
+        check_exact=True,
+    )
+    pd.testing.assert_frame_equal(
+        person_after.drop(columns=_REDUCTION),
+        person_before.drop(columns=_REDUCTION),
+        check_exact=True,
+    )
+    # The kept bill is WAS's paid bill from the columns before the rewrite.
+    bill_before = household_before["council_tax"].to_numpy(dtype=np.float64)
+    paid = np.maximum(
+        bill_before - household_before["council_tax_rebate"].to_numpy(dtype=np.float64),
+        0.0,
+    )
+    np.testing.assert_array_equal(
+        _bits(household_after[COUNCIL_TAX_FRS_BILL_COLUMN]),
+        _bits(paid),
+        err_msg=f"The kept bill at K={clones}",
+    )
+
+    # Great Britain: each ratio row takes the ratio of its own draw cell.
+    localiser = run["localiser"]
+    references = uk_council_tax_references(
+        household_before,
+        definition=localiser.definition,
+        supports=localiser.decoded_supports,
+        band_d=localiser.band_d,
+    )
+    great_britain = ~northern_ireland
+    assert np.array_equal(
+        np.asarray(references.great_britain, dtype=bool), great_britain
+    ), f"K={clones}"
+    levels = np.asarray(references.levels, dtype=object)
+    assert (levels[copies & great_britain] == "L3").all(), f"K={clones}"
+    provenance = household_before["council_tax_bill_provenance"].to_numpy(dtype=object)
+    observed = household_before["council_tax_band_observed"].to_numpy(dtype=bool)
+    statute = (
+        great_britain
+        & ~copies
+        & np.isin(provenance, ["missing", "unknown_reduction"])
+        & observed
+    )
+    ratio = great_britain & ~statute
+    assert statute.any() and ratio.any(), f"K={clones}"
+    ratios = np.asarray(references.ratios, dtype=np.float64)
+    bill_after = household_after["council_tax"].to_numpy(dtype=np.float64)
+    np.testing.assert_array_equal(
+        _bits(bill_after[ratio]),
+        _bits(ratios[ratio] * bill_before[ratio]),
+        err_msg=f"Great Britain's ratio rows at K={clones}",
+    )
+    assert (ratios[ratio & ~copies] != 1.0).any(), f"K={clones}"
+    assert (ratios[ratio & copies] != 1.0).any(), f"K={clones}"
+    assert np.isfinite(bill_after).all() and (bill_after >= 0.0).all()
+
+    # Every Great Britain reduction and rebate lies within the new bill.
+    rebate_after = household_after["council_tax_rebate"].to_numpy(dtype=np.float64)
+    assert (rebate_after[great_britain] <= bill_after[great_britain]).all(), (
+        f"Great Britain's rebates at K={clones}"
+    )
+    bills = pd.Series(bill_after, index=household_after["household_id"].to_numpy())
+    person_bill = (
+        person_after["person_household_id"].map(bills).to_numpy(dtype=np.float64)
+    )
+    reduction_after = person_after[_REDUCTION].to_numpy(dtype=np.float64)
+    assert (
+        reduction_after[~person_northern_ireland]
+        <= person_bill[~person_northern_ireland]
+    ).all(), f"Great Britain's reductions at K={clones}"
+
+    evidence = run["council_tax_evidence"]
+    assert evidence["stage"] == COUNCIL_TAX_LOCALISE_STAGE_NAME
+    assert evidence["clone_count"] == clones
+    checks = evidence["checks"]
+    for name in (
+        "reduction_within_bill",
+        "rebate_within_bill",
+        "rebate_equals_reduction",
+        "northern_ireland_unchanged",
+    ):
+        assert checks[name] is True, (name, clones)
+    # An invented Northern Ireland reduction sits above its zero bill and is
+    # not capped.
+    assert checks["northern_ireland_reductions_within_bill"] is False

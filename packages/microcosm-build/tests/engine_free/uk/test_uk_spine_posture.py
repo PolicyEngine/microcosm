@@ -50,9 +50,10 @@ from test_support.microcosm_build.uk_full_build_cli import (
 )
 
 #: What a geography-first spine runs that a spine built from the packaged spec
-#: does not: nothing. The area stages and the main-residence localiser inside
-#: the WAS chain are declared (microcosm#931), so the dense line builds on a
-#: packaged spine whose sidecar records its geography block.
+#: does not: nothing. The area stages, the council-tax localisation and the
+#: main-residence localiser inside the WAS chain are declared (microcosm#931),
+#: so the dense line builds on a packaged spine whose sidecar records its
+#: geography block.
 _PACKAGED_ROSTER_LACKS: tuple[str, ...] = ()
 
 
@@ -71,6 +72,7 @@ def test_the_leaf_names_the_stages_the_operation_and_the_sidecar_keys():
         "area_brma",
         "spi_copy_areas",
         "private_rent",
+        "council_tax_localise",
     )
     assert isinstance(GEOGRAPHY_FIRST_OPERATIONS, MappingProxyType)
     assert dict(GEOGRAPHY_FIRST_OPERATIONS) == {
@@ -114,6 +116,7 @@ def test_each_roster_stage_is_the_stage_its_transform_runs_as():
     from microcosm.build.uk_runtime import (
         geographic_expand,
         geographic_identity,
+        spine_council_tax,
         spine_geography,
         spine_private_rent,
     )
@@ -127,6 +130,7 @@ def test_each_roster_stage_is_the_stage_its_transform_runs_as():
         spine_geography.AREA_BRMA_STAGE_NAME,
         spine_geography.SPI_COPY_AREAS_STAGE_NAME,
         spine_private_rent.PRIVATE_RENT_STAGE_NAME,
+        spine_council_tax.COUNCIL_TAX_LOCALISE_STAGE_NAME,
     )
 
 
@@ -526,6 +530,43 @@ def test_the_national_spine_refusal_names_k_and_names_only():
     )
     rest = text.replace("microcosm#931", "").replace("K = 2", "")
     assert not any(character.isdigit() for character in rest)
+
+
+def test_a_spine_built_before_the_council_tax_localisation_is_refused(monkeypatch):
+    """microcosm#931: the leaf names council_tax_localise, so a spine whose
+    roster lacks it, as every spine built before the stage was declared does,
+    is refused on the dense and the national lines by that name alone."""
+    spec = load_country_spec("uk")
+    stages, operations = spec_roster(spec)
+    before = tuple(name for name in stages if name != "council_tax_localise")
+    assert len(before) == len(stages) - 1
+    assert roster_failures(before, operations, from_sidecar=False) == (
+        "stage council_tax_localise",
+    )
+    with pytest.raises(ValueError, match="lacks: stage council_tax_localise[.]$"):
+        require_geography_first_spine(before, operations, from_sidecar=False)
+    sidecar = _written_sidecar(monkeypatch, spec, _toy_block())
+    recorded = [name for name in sidecar["stages"] if name != "council_tax_localise"]
+    assert roster_failures(recorded, sidecar["operations"], sidecar["geography"]) == (
+        "stage council_tax_localise",
+    )
+    with pytest.raises(ValueError, match="lacks: stage council_tax_localise[.]$"):
+        require_geography_first_spine(
+            recorded, sidecar["operations"], sidecar["geography"]
+        )
+    national = _national_sidecar(
+        stages=[
+            name
+            for name in _national_sidecar()["stages"]
+            if name != "council_tax_localise"
+        ]
+    )
+    with pytest.raises(ValueError) as refused:
+        require_national_spine(national)
+    assert str(refused.value) == (
+        _NATIONAL_LEAD
+        + "the bound spine's build sidecar lacks: stage council_tax_localise."
+    )
 
 
 _WINDOW = tuple(

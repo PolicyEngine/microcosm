@@ -292,6 +292,9 @@ def _recipient_frame(households: int = 64, time_period: str = "2024"):
                 "num_bedrooms": 1 + household % 4,
                 "council_tax": 1_000.0 + 10.0 * household,
                 "council_tax_rebate": 0.0,
+                # The paid bill council_tax_localise keeps, which the WAS
+                # predictors read (microcosm#931).
+                "council_tax_frs_bill": 1_000.0 + 10.0 * household,
                 UK_HBAI_NET_INCOME_VARIABLE: 20_000.0 + 1_000.0 * (household % 60),
                 # The engine's other net income, which the stage never reads.
                 "household_net_income": 1_000_000.0 + household,
