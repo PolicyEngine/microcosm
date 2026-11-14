@@ -325,9 +325,11 @@ def test_the_committed_membership_defers_each_rules_cells():
     # constituencies, 37 authorities) with, since microcosm#1420, the pension
     # income count cells so published and their amounts (17 and 3 of each), and the
     # derived high-value homes authority cells under 400 homes (948 cells less
-    # the 350 kept: 192 over £1m, 101 over £1.5m and 57 over £2m;
-    # microcosm#1301). The constituency cells are deferred level-wide first,
-    # so that rule reaches the authorities only.
+    # the 340 kept: 190 over £1m, 94 over £1.5m and 56 over £2m;
+    # microcosm#1301). microcosm#1524's tenure fix lowers the stock, so ten
+    # more cells fall under the floor than the 598 before it. The constituency
+    # cells are deferred level-wide first, so that rule reaches the
+    # authorities only.
     cells: dict[str, Counter] = {}
     for deferral in _committed("local_target_reference_membership.json")[
         "signed_deferrals"
@@ -345,7 +347,7 @@ def test_the_committed_membership_defers_each_rules_cells():
         "hmrc_rounded_thousand_floor": Counter(
             {"constituency": 155 + 2 * 17, "local_authority": 37 + 2 * 3}
         ),
-        "hvcts_la_household_floor": Counter({"local_authority": 598}),
+        "hvcts_la_household_floor": Counter({"local_authority": 608}),
     }
 
 

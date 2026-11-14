@@ -28,20 +28,32 @@ Method, in order:
    committed England-and-Wales atomic support (so boundary vintages match the
    frame), and counted above each threshold with a per-dwelling weight that
    carries the owner-occupied share and the stock-coverage correction.
+
+The stock cell builder (``tools/build_uk_stock_cells.py``, microcosm#1524)
+shares the dwelling table, its cache and the census tenure shares. The
+quantile, digest and pin code it shares with other builders lives in the
+country-neutral ``microcosm.build`` modules this library delegates to.
 """
 
 from __future__ import annotations
 
 import datetime as _dt
 import hashlib
-import json
 import math
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+from microcosm.build.derived_resource import rows_sha256
+from microcosm.build.pinned_inputs import sha256_of_file
+from microcosm.build.weighted_quantiles import (
+    GroupKnots,
+    grouped_knots,
+    weighted_quantiles,
+)
 
 __all__ = [
     "AreaKnots",
@@ -49,14 +61,26 @@ __all__ = [
     "HPIIndex",
     "PRICE_PAID_COLUMN_POSITIONS",
     "RESIDENTIAL_PROPERTY_TYPES",
+    "TENURE_ALL_SPEC_ID",
+    "TENURE_OWNER_SPEC_IDS",
+    "TENURE_SOCIAL_SPEC_ID",
+    "TENURE_SPEC_PREFIX",
+    "build_dwelling_table",
     "count_above_thresholds",
     "deflate_thresholds",
+    "dwelling_cache_name",
+    "dwelling_key",
     "dwelling_stock",
+    "fact_spec_id",
     "latest_valuations",
     "load_hpi",
     "normalise_postcode",
     "read_nspl_postcode_output_areas",
     "read_price_paid_file",
+    "resolve_dwelling_cache",
+    "rows_sha256",
+    "sha256_of_file",
+    "tenure_shares",
     "uprate_to_basis",
     "value_knots",
 ]
@@ -91,6 +115,26 @@ HPI_FIRST_MONTH = (1995, 1)
 def normalise_postcode(values: pd.Series) -> pd.Series:
     """Upper-case a postcode series and drop every internal space."""
     return values.astype("string").str.upper().str.replace(" ", "", regex=False)
+
+
+def _key_from_normalised(
+    postcode: pd.Series, paon: pd.Series, saon: pd.Series
+) -> np.ndarray:
+    paon = paon.astype("string").fillna("").str.strip().str.upper()
+    saon = saon.astype("string").fillna("").str.strip().str.upper()
+    identity = postcode.fillna("") + "|" + paon + "|" + saon
+    return pd.util.hash_pandas_object(identity, index=False).to_numpy(dtype=np.uint64)
+
+
+def dwelling_key(postcode: pd.Series, paon: pd.Series, saon: pd.Series) -> np.ndarray:
+    """Each dwelling's identity: a uint64 hash of its postcode, PAON and SAON.
+
+    The postcode loses its spaces and the three fields are upper-cased and
+    stripped, so the Price Paid file and a file linked to it (UCL's, for one)
+    give one dwelling one key. The hash is pandas' own, which no cache key
+    records, so a golden test pins its values.
+    """
+    return _key_from_normalised(normalise_postcode(postcode), paon, saon)
 
 
 def _month_number(year: int, month: int) -> int:
@@ -160,10 +204,7 @@ def read_price_paid_file(
     if table.empty:
         return _empty_transfers()
     postcode = normalise_postcode(table["postcode"])
-    paon = table["paon"].fillna("").str.strip().str.upper()
-    saon = table["saon"].fillna("").str.strip().str.upper()
-    identity = postcode.fillna("") + "|" + paon + "|" + saon
-    key = pd.util.hash_pandas_object(identity, index=False).to_numpy(dtype=np.uint64)
+    key = _key_from_normalised(postcode, table["paon"], table["saon"])
     date = table["date"].str.slice(0, 10)
     yyyymm = date.str.slice(0, 4).astype(int) * 100 + date.str.slice(5, 7).astype(int)
     price = pd.to_numeric(table["price"], errors="raise").astype(np.int64)
@@ -412,6 +453,7 @@ def dwelling_stock(
     hpi_area_for_local_authority: Mapping[str, str],
     region_hpi_code: Mapping[str, str],
     basis_year: int,
+    include_support_row: bool = False,
 ) -> DwellingStock:
     """Place and uprate the valued stock.
 
@@ -422,6 +464,9 @@ def dwelling_stock(
     HPI area codes (recodes and the Isles of Scilly fallback);
     ``region_hpi_code`` maps support region codes to HPI region codes. Rows
     are the in-stock, valued dwellings whose postcode places in the support.
+    With ``include_support_row`` the table also carries each dwelling's
+    output-area row in the support (``support_row``, int32), from which any
+    other support column (the MSOA, say) is one lookup away.
     """
     rows = valuations[
         valuations["in_stock"]
@@ -502,6 +547,8 @@ def dwelling_stock(
             "basis_value": basis_value[resolved],
         }
     )
+    if include_support_row:
+        table["support_row"] = oa_row[resolved].astype(np.int32)
     receipts["dwellings_valued_in_stock"] = int(len(table))
     return DwellingStock(table.reset_index(drop=True), receipts)
 
@@ -553,30 +600,10 @@ KNOT_GRID: tuple[float, ...] = tuple(
 )
 
 
-@dataclass(frozen=True)
-class AreaKnots:
-    code: str
-    count: int
-    weight: float
-    quantiles: tuple[float, ...]
-
-
-def _weighted_quantiles(
-    values: np.ndarray, weights: np.ndarray, grid: Sequence[float]
-) -> np.ndarray:
-    order = np.argsort(values, kind="stable")
-    values = values[order]
-    weights = weights[order]
-    cumulative = np.cumsum(weights)
-    total = cumulative[-1]
-    midpoints = (cumulative - weights / 2.0) / total
-    return np.interp(
-        np.asarray(grid, dtype=float),
-        midpoints,
-        values,
-        left=values[0],
-        right=values[-1],
-    )
+#: One area's knots. The class lives in ``microcosm.build.weighted_quantiles``.
+AreaKnots = GroupKnots
+#: The weighted quantiles the knots read (``microcosm.build.weighted_quantiles``).
+_weighted_quantiles = weighted_quantiles
 
 
 def value_knots(
@@ -593,55 +620,228 @@ def value_knots(
     Areas with fewer than ``minimum_count`` dwellings are suppressed and
     returned by code in the second element.
     """
-    values = np.minimum(stock["basis_value"].to_numpy(dtype=float), float(cap))
-    weight = np.asarray(weight, dtype=float)
-    codes = stock[group_column].to_numpy().astype(str)
-    order = np.argsort(codes, kind="stable")
-    sorted_codes = codes[order]
-    boundaries = np.flatnonzero(
-        np.r_[True, sorted_codes[1:] != sorted_codes[:-1], True]
+    return grouped_knots(
+        stock["basis_value"].to_numpy(dtype=float),
+        weight,
+        stock[group_column].to_numpy(),
+        grid=grid,
+        cap=cap,
+        minimum_count=minimum_count,
     )
-    knots: list[AreaKnots] = []
-    suppressed: list[str] = []
-    for begin, stop in zip(boundaries[:-1], boundaries[1:], strict=True):
-        code = sorted_codes[begin]
-        rows = order[begin:stop]
-        count = int(stop - begin)
-        if count < minimum_count:
-            suppressed.append(str(code))
-            continue
-        quantiles = _weighted_quantiles(values[rows], weight[rows], grid)
-        knots.append(
-            AreaKnots(
-                code=str(code),
-                count=count,
-                weight=float(weight[rows].sum()),
-                quantiles=tuple(float(round(q, 2)) for q in quantiles),
-            )
-        )
-    return knots, suppressed
-
-
-def sha256_of_file(path: Path | str) -> str:
-    digest = hashlib.sha256()
-    with Path(path).open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def rows_sha256(rows: Iterable[Mapping[str, object]]) -> str:
-    """Digest of consumer-fact rows, independent of their order."""
-    digest = hashlib.sha256()
-    for line in sorted(
-        json.dumps(row, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-        for row in rows
-    ):
-        digest.update(line.encode("utf-8"))
-        digest.update(b"\n")
-    return digest.hexdigest()
 
 
 def stock_yyyymm_from_date(value: str) -> int:
     parsed = _dt.date.fromisoformat(value)
     return parsed.year * 100 + parsed.month
+
+
+# ----------------------------------------------------------------------------
+# The dwelling cache, shared by the home-stock and stock cell builders
+
+
+def dwelling_cache_name(
+    ppd_files: Mapping[str, Mapping[str, object]],
+    *,
+    stock_yyyymm: int,
+    method: str,
+    nspl_sha256: str | None = None,
+) -> str:
+    """The file name of the cached dwelling table.
+
+    The name hashes the Price Paid pins, the stock month and the method.
+    The cached ``postcode_row`` indexes the NSPL's postcodes, so the name
+    also hashes the NSPL's sha256 when it is given. Without it, the name is
+    the one the home-stock builder used before microcosm#1524, whose cache
+    was stale whenever the NSPL changed.
+    """
+    digest = hashlib.sha256()
+    for key in sorted(ppd_files):
+        digest.update(f"{key}:{ppd_files[key]['sha256']}\n".encode())
+    digest.update(f"stock:{stock_yyyymm}\nmethod:{method}\n".encode())
+    if nspl_sha256 is not None:
+        digest.update(f"nspl:{nspl_sha256}\n".encode())
+    return f"dwellings-{digest.hexdigest()[:16]}.parquet"
+
+
+def resolve_dwelling_cache(
+    cache_dir: Path,
+    ppd_files: Mapping[str, Mapping[str, object]],
+    *,
+    stock_yyyymm: int,
+    method: str,
+    nspl_sha256: str,
+    legacy_nspl_sha256: str | None,
+) -> tuple[Path, str]:
+    """Where the dwelling table is cached, and whether that file is usable.
+
+    The cache is named for the NSPL it indexes (:func:`dwelling_cache_name`).
+    A cache under the older name, which leaves the NSPL out, is reused only
+    when the NSPL in use is ``legacy_nspl_sha256``: the one the committed
+    home-stock resources record, which that cache was built against.
+    Returns the path and one of ``"current"`` (the named cache exists),
+    ``"legacy"`` (the older cache stands for it) or ``"absent"`` (build it at
+    the path returned).
+    """
+    current = cache_dir / dwelling_cache_name(
+        ppd_files, stock_yyyymm=stock_yyyymm, method=method, nspl_sha256=nspl_sha256
+    )
+    if _cache_complete(current):
+        return current, "current"
+    legacy = cache_dir / dwelling_cache_name(
+        ppd_files, stock_yyyymm=stock_yyyymm, method=method
+    )
+    if nspl_sha256 == legacy_nspl_sha256 and _cache_complete(legacy):
+        return legacy, "legacy"
+    return current, "absent"
+
+
+def _cache_complete(path: Path) -> bool:
+    return path.is_file() and path.with_suffix(".receipts.json").is_file()
+
+
+def build_dwelling_table(
+    ppd_dir: Path,
+    ppd_files: Mapping[str, Mapping[str, object]],
+    postcode_index: pd.Index,
+    *,
+    stock_yyyymm: int,
+    log: Callable[[str], None] | None = None,
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Reduce every yearly Price Paid file to one row per dwelling.
+
+    It is the home-stock builder's stage A: each year in order through
+    :func:`read_price_paid_file`, then :func:`latest_valuations`. The
+    receipts count transfers by year. The table is what the dwelling cache
+    holds (:func:`resolve_dwelling_cache`).
+    """
+    frames = []
+    receipts: dict[str, object] = {"transfers_by_year": {}}
+    for key in sorted(ppd_files, key=int):
+        path = ppd_dir / str(ppd_files[key]["filename"])
+        frame = read_price_paid_file(path, postcode_index=postcode_index)
+        receipts["transfers_by_year"][key] = {
+            "residential_category_a": int(len(frame)),
+            "bulk_transfers": int(frame["batch"].sum()),
+            "postcode_unmatched": int((frame["postcode_row"] < 0).sum()),
+            "new_build_first_registrations": int(frame["newbuild"].sum()),
+        }
+        if log is not None:
+            log(f"  {path.name}: {len(frame):,} residential category A transfers")
+        frames.append(frame)
+    transfers = pd.concat(frames, ignore_index=True)
+    del frames
+    receipts["transfers_total"] = int(len(transfers))
+    dwellings = latest_valuations(transfers, stock_yyyymm=stock_yyyymm)
+    return dwellings, receipts
+
+
+# ----------------------------------------------------------------------------
+# Census tenure by area, from the pinned Chronicle feed
+
+#: Feed selectors (record set spec ids) of Census 2021 TS054 tenure.
+TENURE_OWNER_SPEC_IDS = (
+    "uk.local_geography.tenure.owned_outright.v1",
+    "uk.local_geography.tenure.owned_mortgage.v1",
+)
+TENURE_SPEC_PREFIX = "uk.local_geography.tenure."
+TENURE_ALL_SPEC_ID = "uk.local_geography.tenure.all_households.v1"
+TENURE_SOCIAL_SPEC_ID = "uk.local_geography.tenure.social_rent.v1"
+#: TS054's categories below the total. Some come in several rows under one
+#: spec id: social renting from the council and other social renting, and
+#: the two kinds of private renting, told apart by their labels.
+TENURE_CATEGORY_SPEC_IDS = (
+    *TENURE_OWNER_SPEC_IDS,
+    "uk.local_geography.tenure.shared_ownership.v1",
+    TENURE_SOCIAL_SPEC_ID,
+    "uk.local_geography.tenure.private_rent.v1",
+    "uk.local_geography.tenure.rent_free.v1",
+)
+
+
+def fact_spec_id(fact: Mapping) -> str:
+    """A feed fact's record set spec id, or empty text."""
+    return str((fact.get("layout") or {}).get("record_set_spec_id") or "")
+
+
+def tenure_shares(
+    facts: Iterable[Mapping], *, level: str = "local_authority"
+) -> tuple[dict[str, float], dict[str, float], dict[str, object]]:
+    """Private-sector stock share and owner-occupied share per area.
+
+    Price Paid Data records market transfers, so its dwellings are the
+    private-sector stock: social rented dwellings are never in it. Both the
+    coverage correction and the owner-occupied share therefore refer to the
+    census households net of social renting (TS054 at ``level``, by default
+    local authorities). Returns ``(private_share, owner_share_of_private,
+    receipt)``.
+
+    A category printed in several rows is their sum: TS054 gives social
+    renting from the council and other social renting as two rows under one
+    spec id (before microcosm#1524 only the last was kept, which halved the
+    social share). The same row twice is refused, and an area that carries
+    every category must add up to its households.
+    """
+    totals: dict[str, float] = {}
+    owner: dict[str, float] = {}
+    social: dict[str, float] = {}
+    categories: dict[str, dict[str, float]] = {}
+    seen: set[tuple] = set()
+    spec_ids: set[str] = set()
+    for fact in facts:
+        spec = fact_spec_id(fact)
+        if not spec.startswith(TENURE_SPEC_PREFIX):
+            continue
+        geography = fact.get("geography") or {}
+        if geography.get("level") != level:
+            continue
+        code = str(geography.get("id"))
+        row = (code, spec, tuple(sorted((fact.get("dimensions") or {}).items())))
+        if row in seen or (spec == TENURE_ALL_SPEC_ID and code in totals):
+            raise ValueError(f"TS054 carries {spec} for {code} twice.")
+        seen.add(row)
+        spec_ids.add(spec)
+        value = float(fact["value"])
+        if spec == TENURE_ALL_SPEC_ID:
+            totals[code] = value
+            continue
+        area = categories.setdefault(code, {})
+        area[spec] = area.get(spec, 0.0) + value
+        if spec in TENURE_OWNER_SPEC_IDS:
+            owner[code] = owner.get(code, 0.0) + value
+        elif spec == TENURE_SOCIAL_SPEC_ID:
+            social[code] = social.get(code, 0.0) + value
+    checked = 0
+    for code, area in categories.items():
+        if code not in totals or not set(TENURE_CATEGORY_SPEC_IDS) <= set(area):
+            continue
+        checked += 1
+        # Scotland's census perturbs its cells, so its categories can miss
+        # the total by a household or two; a lost row moves it by thousands.
+        if abs(sum(area.values()) - totals[code]) > max(0.5, 1e-3 * totals[code]):
+            raise ValueError(
+                f"TS054's categories for {code} add up to {sum(area.values())}, "
+                f"not its {totals[code]} households."
+            )
+    private_share: dict[str, float] = {}
+    owner_share: dict[str, float] = {}
+    for code, total in totals.items():
+        if total <= 0:
+            continue
+        private = total - social.get(code, 0.0)
+        private_share[code] = private / total
+        owner_share[code] = owner.get(code, 0.0) / private if private > 0 else 0.0
+    area = "local authority" if level == "local_authority" else level
+    receipt = {
+        "tenure_record_set_spec_ids": sorted(spec_ids),
+        "areas_checked_against_households": checked,
+        "local_authorities_with_tenure": len(owner_share),
+        "basis": (
+            f"Census 2021 TS054 by {area}: private-sector stock is all "
+            "households less social rented; the owner-occupied share is owned "
+            "outright plus owned with a mortgage over that private stock"
+        ),
+    }
+    if level != "local_authority":
+        receipt["areas_with_tenure"] = receipt.pop("local_authorities_with_tenure")
+        receipt["level"] = level
+    return private_share, owner_share, receipt

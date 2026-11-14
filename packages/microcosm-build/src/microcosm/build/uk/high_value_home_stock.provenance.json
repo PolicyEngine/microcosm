@@ -1,5 +1,5 @@
 {
-  "built_on": "2026-10-13",
+  "built_on": "2026-11-13",
   "inputs": {
     "method": "uk-high-value-home-stock-v1",
     "registrations": {
@@ -286,8 +286,8 @@
   },
   "kind": "uk_high_value_home_stock_provenance",
   "ledger_feed": {
-    "fact_row_count": 950242,
-    "facts_sha256": "3033e437ed61d7d5e970f4fef34a2a5523fe068770a7798e5768af656f2a48a4",
+    "fact_row_count": 2160233,
+    "facts_sha256": "c294ba2013d0ff61b150589640ec63add8563390057b769447c0241661ad5a1c",
     "schema_version": "policyengine_ledger.consumer_artifact.v2"
   },
   "licence": {
@@ -338,16 +338,16 @@
       ],
       "clipped_high": [],
       "clipped_low": [],
-      "england_wales_private_stock": 24838557.294550236,
+      "england_wales_private_stock": 22564368.350570757,
       "england_wales_stock_voa": 27231050.0,
       "england_wales_valued_dwellings": 15567861,
       "local_authorities": 318,
       "ratio_quantiles": {
-        "0.05": 1.3820454528801411,
-        "0.25": 1.4663405883259142,
-        "0.5": 1.5403665205660895,
-        "0.75": 1.6774246956094288,
-        "0.95": 1.928019564499949
+        "0.05": 1.3380519052954116,
+        "0.25": 1.3862157582035197,
+        "0.5": 1.433621755445839,
+        "0.75": 1.4828695976128854,
+        "0.95": 1.6248016400985332
       }
     },
     "dwellings": {
@@ -926,32 +926,33 @@
     },
     "national_counts": {
       "owner_occupied_homes": {
-        "E92000001:over_gbp_1_5m": 247474.6,
-        "E92000001:over_gbp_1m": 712014.8,
-        "E92000001:over_gbp_2m": 115920.8,
-        "W92000004:over_gbp_1_5m": 898.9,
-        "W92000004:over_gbp_1m": 5536.8,
-        "W92000004:over_gbp_2m": 262.5
+        "E92000001:over_gbp_1_5m": 217249.9,
+        "E92000001:over_gbp_1m": 625054.7,
+        "E92000001:over_gbp_2m": 101763.1,
+        "W92000004:over_gbp_1_5m": 789.1,
+        "W92000004:over_gbp_1m": 4860.6,
+        "W92000004:over_gbp_2m": 230.4
       },
       "private_sector_dwellings": {
-        "E92000001:over_gbp_1_5m": 391429.8,
-        "E92000001:over_gbp_1m": 1049214.0,
-        "E92000001:over_gbp_2m": 193201.3,
-        "W92000004:over_gbp_1_5m": 1087.5,
-        "W92000004:over_gbp_1m": 6739.3,
-        "W92000004:over_gbp_2m": 315.7
+        "E92000001:over_gbp_1_5m": 345884.8,
+        "E92000001:over_gbp_1m": 938586.7,
+        "E92000001:over_gbp_2m": 169605.2,
+        "W92000004:over_gbp_1_5m": 994.8,
+        "W92000004:over_gbp_1m": 6163.2,
+        "W92000004:over_gbp_2m": 288.3
       }
     },
     "owner_occupied": {
-      "achieved_share_over_2m_england": 0.6000000000000002,
+      "achieved_share_over_2m_england": 0.6000000000000001,
+      "areas_checked_against_households": 350,
       "basis": "Census 2021 TS054 by local authority: private-sector stock is all households less social rented; the owner-occupied share is owned outright plus owned with a mortgage over that private stock",
-      "census_implied_share_over_2m_england": 0.5208362037686077,
+      "census_implied_share_over_2m_england": 0.5932969895184121,
       "control_owner_occupied_share_over_2m_england": 0.6,
       "local_authorities_capped_at_one": [],
       "local_authorities_with_tenure": 350,
       "obr_fact_key": "ledger.aggregate_fact.v2:6ae750bc79ad4efce34dabb9",
       "obr_non_owner_occupied_share": 0.4,
-      "rescale_factor": 1.151993651091433,
+      "rescale_factor": 1.011297900714158,
       "tenure_record_set_spec_ids": [
         "uk.local_geography.tenure.all_households.v1",
         "uk.local_geography.tenure.owned_mortgage.v1",
@@ -976,12 +977,12 @@
     },
     "sensitivities": {
       "no_coverage_correction": {
-        "E92000001:over_gbp_1_5m": 157768.2,
-        "E92000001:over_gbp_1m": 458501.3,
-        "E92000001:over_gbp_2m": 73434.8,
-        "W92000004:over_gbp_1_5m": 537.7,
-        "W92000004:over_gbp_1m": 3312.5,
-        "W92000004:over_gbp_2m": 155.0
+        "E92000001:over_gbp_1_5m": 152445.7,
+        "E92000001:over_gbp_1m": 439073.0,
+        "E92000001:over_gbp_2m": 71377.1,
+        "W92000004:over_gbp_1_5m": 514.8,
+        "W92000004:over_gbp_1m": 3172.4,
+        "W92000004:over_gbp_2m": 148.6
       },
       "owner_share_without_obr_control": {
         "E92000001:over_gbp_1_5m": 214822.9,
