@@ -34,7 +34,10 @@ and for the deeper ones below float64's range.
 8. A remainder below float64's normal range: where the caps leave the other
    records a room between 2**-1074 and 2**-1022, the projection matches a
    decimal bisection on the shift, on the review's two inputs, on a table of
-   rooms across that range and on drawn ones.
+   rooms across that range and on drawn ones. Where the total is small enough
+   for float64 to resolve one step of 2**-1074, rooms a few steps wide match
+   it to a few steps, and a total a few steps wide that no positive cap
+   reaches matches it to 1e-9 of each weight.
 """
 
 from __future__ import annotations
@@ -682,8 +685,11 @@ _BISECTION_DIGITS = 50
 #: CPython's ``math`` and torch's CPU kernels do on Linux and macOS (torch
 #: keeps subnormals unless ``torch.set_flush_denormal(True)``); the decimal
 #: side is correctly rounded on every platform and Python. The flooring this
-#: replaced missed by ``2**-1022 - room`` in all: 0.1 and 1.2e-8 of the total
-#: on the review's two inputs.
+#: replaced raised a positive remainder to 2**-1022, so it put the projected
+#: total over by at most ``2**-1022 - room``, and by less where the other
+#: records' own caps stop the excess. On the review's two inputs it missed by
+#: 0.1 and 1.2e-8 of the total: on the first that bound is 1.8 of the total,
+#: and the second record's cap of half the total held the excess to 0.1.
 _SUBNORMAL_ROOM_RTOL = Decimal("1e-9")
 _SUBNORMAL_ROOM_MASS = Decimal("1e-11")
 
@@ -734,19 +740,32 @@ def _bisected_weights(
 
 
 def _assert_matches_the_bisection(
-    projected: np.ndarray, log_weights: np.ndarray, log_caps: np.ndarray, total: float
+    projected: np.ndarray,
+    log_weights: np.ndarray,
+    log_caps: np.ndarray,
+    total: float,
+    *,
+    steps: int | None = None,
 ) -> None:
-    """Each projected weight, read exactly from its log, against the bisection."""
+    """Each projected weight, read exactly from its log, against the bisection.
+
+    The bound is ``_SUBNORMAL_ROOM_RTOL`` of each weight plus an absolute
+    part: ``_SUBNORMAL_ROOM_MASS`` of the total, or with ``steps`` that many
+    steps of 2**-1074.
+    """
     expected = _bisected_weights(log_weights, log_caps, total)
     with localcontext() as context:
         context.prec = _BISECTION_DIGITS
         target = Decimal(float(total))
+        step = Decimal(_SMALLEST_SUBNORMAL)
+        absolute = _SUBNORMAL_ROOM_MASS * target if steps is None else steps * step
         for i, (log_w, want) in enumerate(zip(projected, expected, strict=True)):
             got = Decimal(float(log_w)).exp() if math.isfinite(log_w) else Decimal(0)
-            bound = _SUBNORMAL_ROOM_RTOL * want + _SUBNORMAL_ROOM_MASS * target
+            bound = _SUBNORMAL_ROOM_RTOL * want + absolute
             assert abs(got - want) <= bound, (
                 f"record {i}: {float(got)!r} against {float(want)!r} at a total "
-                f"of {total!r}, {float(abs(got - want) / target):.3g} of it"
+                f"of {total!r}, {float(abs(got - want) / target):.3g} of it, "
+                f"{float(abs(got - want) / step):.3g} steps of 2**-1074"
             )
 
 
@@ -890,6 +909,148 @@ def test_drawn_subnormal_remainders_match_the_bisection(problem) -> None:
     _assert_matches_the_bisection(
         _project(log_weights, log_caps, total), log_weights, log_caps, total
     )
+
+
+#: The tests above allow 1e-11 of the total, at least 1e-319 (20,000 steps of
+#: 2**-1074) at these totals, so they cannot see a floor on the remainder
+#: below that (a floor of 2**-1060 passed them all; microcosm#1096, round-1
+#: check). The tests below bound the error in steps instead, on rooms a few
+#: steps wide, at totals small enough for float64 to resolve one step.
+#:
+#: Held caps leave the room: four steps per held cap, plus 1e-9 of each
+#: weight. The totals stay below 2**-1037. Below 2**-1021 every float64 is a
+#: multiple of a step, so the solver's sum of the held caps and the remainder
+#: it leaves are exact; only each held cap rounds, as float64's ``exp`` of its
+#: log. A step is the ulp of every float64 below 2**-1021, subnormal ones
+#: included, and an ``exp`` within an ulp, as glibc's, Apple's and the Sleef
+#: kernels torch vectorizes with are, lands within a step of the exact cap;
+#: four steps leave a factor of four. The uncapped records share the solver's
+#: remainder, which is the exact one up to that rounding, so each is within
+#: that rounding of its exact share. A remainder that rounds to zero or below
+#: leaves them a share under a step, and then the exact remainder is itself
+#: within that rounding. Below 2**-1037 one step is at least 2**-37 of the
+#: total, 64 spacings of a float64 log near -730 (2**-43), so the normalized
+#: log-weights resolve even a one-step room: every held record is capped from
+#: the start and comes back at its log cap exactly, which reads back as the
+#: bisection's cap. At 4e-308 a step is 1.2e-16 of the total, below one
+#: spacing, and rounding decides whether a held record counts as capped, so
+#: these bounds stop below 2**-1037. The relative term covers the uncapped
+#: records' log-space rounding, as above: every log-weight here is still
+#: within 2,048 of zero.
+_STEPS_PER_HELD_CAP = 4
+#: Totals below 2**-1037 for the table, from 2,024 to 1.2e11 steps.
+_STEP_TOTALS = (1e-320, 1e-316, 6e-313)
+#: Rooms of the table, in steps.
+_STEP_ROOMS = (1, 2, 3, 7)
+
+
+@pytest.mark.parametrize("total", _STEP_TOTALS, ids=lambda total: f"{total:g}")
+@pytest.mark.parametrize(
+    "held_shares", [(1.0,), (0.7, 0.3)], ids=["one-held", "two-held"]
+)
+@pytest.mark.parametrize(
+    "offsets",
+    [(-40.0,), (-40.0, -40.5, -47.0, -300.0, -1100.0)],
+    ids=["one-uncapped", "five-uncapped"],
+)
+def test_rooms_a_few_steps_wide_match_the_bisection_to_the_step(
+    total, held_shares, offsets
+) -> None:
+    """Rooms of 1, 2, 3 and 7 steps of 2**-1074 left by one or two held caps.
+
+    Each weight must be within four steps per held cap of the bisection (plus
+    1e-9 of itself). A floor of 2**-1060 lifts a one-step room to 16,384
+    steps, or as far as the uncapped records' caps (the total) where the
+    total is smaller.
+    """
+    for steps in _STEP_ROOMS:
+        room = math.ldexp(float(steps), -1074)
+        log_weights, log_caps, problem_total, remainder = _subnormal_room_problem(
+            total, room, held_shares, offsets
+        )
+        assert remainder == room
+        _assert_matches_the_bisection(
+            _project(log_weights, log_caps, problem_total),
+            log_weights,
+            log_caps,
+            problem_total,
+            steps=_STEPS_PER_HELD_CAP * len(held_shares),
+        )
+
+
+@st.composite
+def step_room_problems(draw):
+    """A total from 2**-1064 to 2**-1038 and a room of 1 to 64 steps under it.
+
+    One to three held records and one to six others, 40 to 1,100 nats below
+    the total, as in :func:`subnormal_room_problems`.
+    """
+    total = math.ldexp(
+        draw(st.floats(1.0, 2.0, exclude_max=True)), draw(st.integers(-1064, -1039))
+    )
+    room = math.ldexp(float(draw(st.integers(1, 64))), -1074)
+    held_shares = draw(st.lists(st.floats(0.05, 1.0), min_size=1, max_size=3))
+    offsets = draw(st.lists(st.floats(-1100.0, -40.0), min_size=1, max_size=6))
+    return (
+        room,
+        len(held_shares),
+        *_subnormal_room_problem(total, room, held_shares, offsets),
+    )
+
+
+@_SETTINGS
+@given(step_room_problems())
+def test_drawn_rooms_a_few_steps_wide_match_the_bisection_to_the_step(
+    problem,
+) -> None:
+    room, held, log_weights, log_caps, total, remainder = problem
+    assert remainder == room
+    _assert_matches_the_bisection(
+        _project(log_weights, log_caps, total),
+        log_weights,
+        log_caps,
+        total,
+        steps=_STEPS_PER_HELD_CAP * held,
+    )
+
+
+#: Totals a few steps wide, in steps, that no positive cap reaches.
+_FEW_STEP_TOTALS = (1, 2, 3, 7)
+
+
+@pytest.mark.parametrize(
+    "offsets",
+    [(0.0,), (0.0, -0.5, -7.0, -300.0, -1100.0)],
+    ids=["one-record", "five-records"],
+)
+@pytest.mark.parametrize("zero_cap", [False, True], ids=["no-zero-cap", "a-zero-cap"])
+def test_a_total_a_few_steps_wide_is_shared_to_rounding(offsets, zero_cap) -> None:
+    """Totals of 1, 2, 3 and 7 steps that no positive cap reaches.
+
+    The records sit under caps of 2**-1022, which none reaches, beside a
+    record that carries weight under a zero cap or not. Nothing rounds into
+    the remainder: a zero cap is exactly zero and the total enters as given,
+    so the remainder is the total itself, and the bound has no absolute part,
+    only 1e-9 of each weight. So a floor on the remainder above one step
+    lifts the one-step total by at least that total, and fails. A floor of
+    one step cannot fail any test: every positive float64 is at least
+    2**-1074, so it changes no positive remainder, and a remainder that is not
+    positive gets the candidate shift ``-inf`` either way.
+    """
+    for steps in _FEW_STEP_TOTALS:
+        total = math.ldexp(float(steps), -1074)
+        log_weights = math.log(total) + np.asarray(offsets, dtype=np.float64)
+        log_caps = np.full(len(offsets), math.log(_TINY))
+        if zero_cap:
+            log_weights = np.append(log_weights, math.log(total))
+            log_caps = np.append(log_caps, -np.inf)
+        _assert_matches_the_bisection(
+            _project(log_weights, log_caps, total),
+            log_weights,
+            log_caps,
+            total,
+            steps=0,
+        )
 
 
 def test_max_cap_ratio_reads_zero_caps() -> None:
