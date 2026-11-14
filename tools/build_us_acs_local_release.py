@@ -2729,6 +2729,41 @@ def _require_current_calibration(identity: dict, summary: dict, *, stage: str) -
         )
 
 
+#: What a softmax solve's summary recorded before the exact cap step
+#: (microcosm#1096): how many epochs ran out of renormalize-and-clamp rounds.
+PRE_EXACT_CAP_SOFTMAX_RECEIPT = "softmax_cap_rounds_exhausted_epochs"
+#: What it records since: the largest in-loop weight over its cap. ``None``
+#: for a solve with no softmax cap step (projection, or softmax uncapped).
+SOFTMAX_CAP_RECEIPT = "softmax_in_loop_max_cap_ratio"
+
+
+def _require_exact_cap_step_summary(summary: dict, *, stage: str) -> None:
+    """Refuse a softmax calibration summary from before the exact cap step.
+
+    The old receipt counts epochs and the new one is a weight-to-cap ratio,
+    so neither can stand in for the other. A summary that holds a count under
+    the old key and lacks the new key was solved by the old step, and the
+    manifest would carry ``None`` for the new key: the value of a solve with
+    no softmax cap step, over a capped softmax solve. A projection solve from
+    before the change recorded the old key as ``None``, and an older summary
+    records neither key; both read as before.
+    """
+
+    if (
+        summary.get(PRE_EXACT_CAP_SOFTMAX_RECEIPT) is not None
+        and SOFTMAX_CAP_RECEIPT not in summary
+    ):
+        raise SystemExit(
+            f"calibration_summary.json records {PRE_EXACT_CAP_SOFTMAX_RECEIPT}="
+            f"{summary[PRE_EXACT_CAP_SOFTMAX_RECEIPT]!r} and no "
+            f"{SOFTMAX_CAP_RECEIPT}: this checkpoint's softmax solve predates "
+            "the exact cap step (microcosm#1096), and the two receipts measure "
+            "different things. Calibrate the checkpoint again before --stage "
+            f"{stage}: run --stage calibrate without --resume (--resume keeps "
+            "a completed weights_latest.npz and this summary)."
+        )
+
+
 def load_checkpoint_surface(checkpoint_dir: Path, identity: dict | None = None):
     """The lean frame, design weights, registry, roles and matrix of a checkpoint.
 
@@ -3100,10 +3135,11 @@ def do_calibrate(args) -> None:
         "effective_sample_size": round(result.effective_sample_size, 1),
         "ess_fraction": round(result.effective_sample_size / n_households, 4),
         "chi_square_distance": round(result.chi_square_distance, 6),
-        # Softmax only: epochs whose cap rounds ran out (the last epoch batch).
-        "softmax_cap_rounds_exhausted_epochs": (
+        # Softmax only: the largest in-loop weight over its cap, before the
+        # closing projection (the last epoch batch).
+        "softmax_in_loop_max_cap_ratio": (
             result.options.get("iterate_selection_receipt") or {}
-        ).get("softmax_cap_rounds_exhausted_epochs"),
+        ).get("softmax_in_loop_max_cap_ratio"),
         "realized_max_weight_ratio": round(result.realized_max_weight_ratio, 4),
         "mass_conserved_ratio": round(
             float(result.weights.sum()) / float(design_weights.sum()), 6
@@ -6161,6 +6197,7 @@ def do_package(args) -> dict:
     soi_mode = _require_recorded_soi_mode(materialize_rss)
     _require_full_rung(identity)
     _require_current_calibration(identity, diagnostics, stage="package")
+    _require_exact_cap_step_summary(diagnostics, stage="package")
     _require_blocking_district_ess_gate(gate_report, args)
     calibrated_h5 = Path(args.out_h5)
     if not calibrated_h5.exists():
@@ -6482,7 +6519,7 @@ def do_package(args) -> dict:
                 "effective_sample_size",
                 "ess_fraction",
                 "chi_square_distance",
-                "softmax_cap_rounds_exhausted_epochs",
+                "softmax_in_loop_max_cap_ratio",
                 "realized_max_weight_ratio",
                 "mass_conserved_ratio",
             )
@@ -6820,10 +6857,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "How the mass-conserving Adam solve holds the total "
             "(microcosm.calibrate mass_parametrization). 'projection' "
             "(default) is the historical per-step uniform shift; 'softmax' "
-            "optimizes total * softmax(log_w). At the ACS release's scale "
-            "softmax's per-step cap rounds run out on most epochs, so it "
-            "optimizes past the cap until the closing projection; the summary "
-            "records the count (docs/calibration-l2-basis.md)."
+            "optimizes total * softmax(log_w), projecting exactly onto the "
+            "capped simplex after every step; the summary records the largest "
+            "in-loop weight over its cap (docs/calibration-l2-basis.md)."
         ),
     )
     parser.add_argument("--seed", type=int, default=0)
