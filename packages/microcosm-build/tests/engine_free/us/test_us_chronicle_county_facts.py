@@ -16,6 +16,11 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from microcosm.build.chronicle_epoch import (
+    ACCEPTED_CONSUMER_ARTIFACT_SCHEMA_VERSIONS,
+)
+from microcosm.build.us_runtime import chronicle_feed
+from microcosm.build.us_runtime import county_facts as county_facts_module
 from microcosm.build.us_runtime.chronicle_feed import (
     US_CHRONICLE_COUNTY_FACTS_SCOPE_RESOURCE,
     US_CHRONICLE_FEED_SCOPE_RESOURCE,
@@ -50,6 +55,67 @@ def test_the_county_pin_loads_and_names_its_scope() -> None:
     assert pin.scope == "us_county_facts"
     assert pin.scope_sha256 == us_chronicle_county_facts_scope_sha256()
     assert pin.is_bare_feed
+
+
+def test_the_county_pin_names_the_3e9d3a0_build() -> None:
+    """Moving the county pin is a deliberate repin, never a side effect."""
+
+    pin = load_us_chronicle_county_facts_pin()
+    assert pin.source_commit == "3e9d3a0694e8ca7e31ed5319c3ceb1bde92b12e0"
+    assert pin.facts_sha256 == (
+        "67b0998aa2ee1aeed6637dab6a846f405246706508074b1c1b5bab7bd98c8bea"
+    )
+    assert pin.fact_row_count == 180_326
+    assert pin.scope_sha256 == (
+        "87b12e4f74702ccbf5fe96c128ff5df0ffd8214a78de8f1fcce2ab2ba37fe7f5"
+    )
+    assert pin.consumer_fact_schema_versions == ("chronicle.consumer_fact.v5",)
+    assert pin.consumer_fact_schema_sha256 == (
+        "acd33a091cd8d192be5d264e3e94c13e00afb6fd1972e57d4576ac55a54f6970"
+    )
+    assert pin.manifest_sha256 is None
+    assert pin.artifact_schema_version is None
+
+
+def _write_pin(monkeypatch, tmp_path, **changes) -> None:
+    raw = json.loads(
+        (_US_PACKAGE / "chronicle_county_facts.json").read_text(encoding="utf-8")
+    )
+    raw.update(changes)
+    path = tmp_path / "chronicle_county_facts.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    monkeypatch.setattr(chronicle_feed, "_county_facts_path", lambda: path)
+
+
+def test_a_county_pin_naming_a_consumer_artifact_is_refused(
+    monkeypatch, tmp_path
+) -> None:
+    _write_pin(
+        monkeypatch,
+        tmp_path,
+        manifest_sha256="a" * 64,
+        artifact_schema_version=sorted(ACCEPTED_CONSUMER_ARTIFACT_SCHEMA_VERSIONS)[0],
+    )
+    with pytest.raises(ValueError, match="must pin a bare facts file"):
+        load_us_chronicle_county_facts_pin()
+
+
+@pytest.mark.parametrize(
+    ("changes", "match"),
+    [
+        ({"scope": "us_fiscal_targets"}, "scope must be 'us_county_facts'"),
+        ({"facts_sha256": "not-hex"}, "facts_sha256"),
+        ({"scope_sha256": "0" * 64}, "scope_sha256 does not match"),
+        ({"fact_row_count": 0}, "fact_row_count must be positive"),
+    ],
+    ids=["main-scope", "bad-digest", "other-scope-bytes", "no-rows"],
+)
+def test_a_malformed_county_pin_is_refused(
+    monkeypatch, tmp_path, changes, match
+) -> None:
+    _write_pin(monkeypatch, tmp_path, **changes)
+    with pytest.raises(ValueError, match=match):
+        load_us_chronicle_county_facts_pin()
 
 
 def test_the_county_pin_is_not_the_main_pin() -> None:
@@ -170,10 +236,11 @@ def test_any_one_byte_change_is_refused(tmp_path_factory, count, data) -> None:
     pin = _pin_for(payload, count)
     position = data.draw(st.integers(min_value=0, max_value=len(payload) - 1))
     mutated = bytearray(payload)
-    # A digit for a digit keeps the line valid JSON, so the digest must refuse it.
+    # Any changed byte moves the digest, which is checked before any row is
+    # parsed, so the refusal names the digest even when the line is still JSON.
     mutated[position] = ord("7") if mutated[position] != ord("7") else ord("3")
     path.write_bytes(bytes(mutated))
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="has sha256 .*; the county pin names"):
         load_us_county_facts(path, pin=pin)
 
 
@@ -189,8 +256,16 @@ def test_any_one_byte_change_is_refused(tmp_path_factory, count, data) -> None:
             lambda: _row(9, contract="chronicle.consumer_fact.v3"),
             "unpinned row contract",
         ),
+        (lambda: ["not", "a", "row"], "must be JSON objects"),
+        (lambda: _row(9, state="0\u0661"), "invalid county geography id"),
     ],
-    ids=["non-county", "out-of-scope", "unpinned-contract"],
+    ids=[
+        "non-county",
+        "out-of-scope",
+        "unpinned-contract",
+        "not-an-object",
+        "non-ascii-digit",
+    ],
 )
 def test_a_bad_row_between_good_ones_is_refused(tmp_path, bad, match) -> None:
     rows = [_row(0), bad(), _row(1)]
@@ -206,3 +281,39 @@ def test_a_row_count_other_than_the_pins_is_refused(tmp_path) -> None:
     payload = _write(path, rows)
     with pytest.raises(ValueError, match="rows; the county pin names 3"):
         load_us_county_facts(path, pin=_pin_for(payload, 3))
+
+
+def test_the_receipt_names_the_file_its_counts_and_the_pin(tmp_path) -> None:
+    rows = [_row(0), _row(1, state="72"), _row(2)]
+    path = tmp_path / "facts.jsonl"
+    payload = _write(path, rows)
+    pin = _pin_for(payload, len(rows))
+    receipt = load_us_county_facts(path, pin=pin).receipt()
+    assert receipt == {
+        "path": str(path),
+        "facts_sha256": hashlib.sha256(payload).hexdigest(),
+        "row_count": 3,
+        "kept_rows": 2,
+        "dropped": {"state_72": 1},
+        "pin": pin.to_dict(),
+    }
+    json.dumps(receipt)
+
+
+def test_a_file_that_changes_between_the_two_passes_is_refused(
+    monkeypatch, tmp_path
+) -> None:
+    pinned = [_row(0), _row(1)]
+    path = tmp_path / "facts.jsonl"
+    payload = _write(path, pinned)
+    pin = _pin_for(payload, len(pinned))
+    # The digest pass sees the pinned bytes; the file then changes before the
+    # parsing pass reads it.
+    monkeypatch.setattr(
+        county_facts_module,
+        "_digest",
+        lambda _path: (pin.facts_sha256, pin.fact_row_count),
+    )
+    _write(path, [_row(0), _row(3)])
+    with pytest.raises(ValueError, match="changed while it was being read"):
+        load_us_county_facts(path, pin=pin)

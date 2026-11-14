@@ -7,8 +7,8 @@ county families. See docs/us-acs-local-county-rung.md for the input contract.
 
 County facts come from their own pinned file (``--county-facts``, pinned by
 ``us/chronicle_county_facts.json``, microcosm#922), never from ``--feed``:
-:func:`prepare_run` loads it once and every county step reads
-``surface.county_facts.rows``.
+:func:`prepare_run` loads it once into ``surface.county_facts``; county steps
+read ``surface.county_facts.rows`` and never reopen the file or ``--feed``.
 """
 
 from __future__ import annotations
@@ -279,7 +279,8 @@ def state_county_soi_surface(state_specs, facts, county_populations):
         blocks[key][code] = (value, fact)
     if not blocks:
         raise ValueError(
-            "Ledger feed has no county SOI facts; export soi-county-2022 and repin the feed."
+            "County facts carry no IRS SOI county rows; pass the pinned "
+            "--county-facts file (us/chronicle_county_facts.json, microcosm#922)."
         )
     parents = {}
     for spec in state_specs:
@@ -832,7 +833,7 @@ def prepare_run(args, geographies, populations, *, surface=None):
                 surface.county_facts.rows,
                 populations["county"],
             )
-        except ValueError as error:
+        except (ValueError, OSError) as error:
             (args.checkpoint_dir / "county_surface.json").write_text(
                 json.dumps({"status": "refused", "error": str(error)})
             )
@@ -1064,10 +1065,12 @@ def refresh_recipe(command, materialize_rss):
         f" --county-holdout-fraction {float(holdout['fraction'])!r}"
         f" --county-holdout-salt {shlex.quote(holdout['salt'])}"
     )
+    # Like --feed, the county facts file is a placeholder: the recipe names
+    # the pinned digest, never the build machine's path.
     facts = materialize_rss.get("county_facts")
     if facts:
         command += (
-            f" --county-facts {shlex.quote(str(facts['path']))}"
+            " --county-facts <county-facts.jsonl>"
             f" --county-facts-sha256 {facts['facts_sha256']}"
         )
     return command

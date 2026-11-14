@@ -143,27 +143,40 @@ say why the county facts are a separate file.
 
 A `--soi-mode state_county` materialize must pass
 `--county-facts <file> --county-facts-sha256 <the county pin's facts_sha256>`
-and `--feed-sha256` for the main feed. The parser refuses a county facts digest
+and `--feed-sha256`. `--feed-sha256` is the operator's digest of the `--feed`
+file: materialize refuses a `--feed` file that does not match it, but nothing
+binds it to the main pin, because local runs also use other feeds. The parser refuses a county facts digest
 other than the pin's, county facts without county geography or
 `--soi-mode state_county`, and a county facts path that is the `--feed` file.
-`prepare_run` reads the file once with
-`microcosm.build.us_runtime.county_facts.load_us_county_facts`, which checks
-the digest, the row count, the row contract, the county level and the scope of
-every row, and drops the 78 Puerto Rico municipios (4,136 ACS rows) with a
-count. Loading the pinned file took 42 s and 2.5 GB of memory on the build
-machine; the rows stay in memory for the rest of the materialize stage. Every later
-county step reads those rows; nothing re-reads `--feed` for county facts. The
+`prepare_run` loads the file with
+`microcosm.build.us_runtime.county_facts.load_us_county_facts`. The loader
+first hashes the file and refuses it unless its digest and row count are the
+pin's. A second pass hashes it again and parses it. That pass refuses a row
+that is not a JSON object, is on another row contract, is not a county row or
+is outside the scope, and refuses a file whose bytes changed between the
+passes. It drops the 78 Puerto Rico municipios (4,136 ACS rows) with a count
+and keeps only the fields county targets read. A refusal, or a file that
+cannot be read, is recorded in `county_surface.json` before any target is
+built. On the build machine the loader reads the pinned file in about 5 s and
+holds about 0.9 GB of rows, measured apart from importing the US runtime. The
+rows stay on the surface for the rest of the materialize stage; today only the
+SOI county split reads them, in `prepare_run`. Nothing re-reads `--feed` or the
+county facts file. The
 run identity and `materialize_rss.json` record the county facts receipt under
-`county_facts`, and the refresh recipe carries both flags. A run without county
+`county_facts`. The refresh recipe carries both flags; like `--feed`, it
+names a placeholder file (`<county-facts.jsonl>`) and the pinned digest, never
+the build machine's path. A run without county
 facts records nothing new, so its run identity keeps its pre-county bytes.
 
 The inspected Chronicle publisher inputs have two concrete blockers:
 
-- **Kalawao:** the SOI CSV has 3,143 counties and omits `15005` Kalawao County;
-  the PEP and ACS tables carry all 3,144. The IRS 2022 county users guide
-  (`22incydocguide.docx`) says items with fewer than 20 returns for a county
-  were excluded, so Kalawao's SOI value is missing, not zero, and the IRS does
-  not fold it into Maui. Until the rung declares a reviewed treatment (a
+- **Kalawao:** the SOI CSV has 3,143 counties and omits `15005` Kalawao County.
+  PEP and five ACS tables carry all 3,144. B19013 has 3,143 (it has no De Baca
+  County, `35011`), and B01003 reaches 3,144 only across its two record sets.
+  The IRS 2022 county users guide (`22incydocguide.docx`) says items with fewer
+  than 20 returns for a county were excluded, so Kalawao's SOI value is
+  missing, not zero. The guide does not say whether Kalawao's returns are
+  counted in another county's row. Until the rung declares a reviewed treatment (a
   combined SOI cell {15005, 15009}, planned on `lwi-county-rung-production`),
   a complete county SOI block still fails with that county named.
 - **Connecticut:** both packages use the nine planning-region codes `09110`
@@ -175,7 +188,7 @@ The inspected Chronicle publisher inputs have two concrete blockers:
 SOI facts carry `geography.level = "county"` and Census-style IDs such as
 `0500000US01001`; the row geography is authoritative even though the record
 set itself groups all counties. SOI geography metadata says vintage `2022`,
-PEP says `2024`; actual county-code inventories must agree across feed,
+PEP says `2024`; actual county-code inventories must agree across the county facts,
 ladder, and households. The audited raw publisher artifact hashes are
 `2c04ff235bcbacb990b316bf79c7c628089a9a4c1dd9593ac51f74a109b13343`
 for `22incyallnoagi.csv` and
@@ -211,8 +224,12 @@ engine/frame dominate the total. Historical full materialization peaked at
 not a county-build benchmark. The implementation does not allocate a dense
 households-by-county-target matrix.
 
-Once the input blockers are resolved, set these paths and the new reviewed
-feed hash in the execution environment. This example uses the planning-region
+County materialize runs are local. The Modal stage plan
+(`tools/modal_us_stage_plan.py`) has no way to pass `--county-facts`, so its
+preflight refuses a `state_county` materialize before any compute.
+
+Once the input blockers are resolved, set these paths and the two pinned
+digests in the execution environment. This example uses the planning-region
 column; use `county_fips` only with a feed and ladder matching that column.
 The following is documentation only and has not been executed:
 
@@ -296,7 +313,8 @@ installed, after the requested US setup completed:
 - Existing release, sparse district, district property, geography-label, and
   loss-weight suites: **125 passed, 2 skipped**, using `-n 2 --dist loadfile`.
   The skips are optional checks requiring an explicitly configured pinned
-  Chronicle feed; the actual feed inventory was audited separately above.
+  Chronicle feed. This record predates the county facts pin; the county
+  inventory is in the county facts section above.
 - `uv run ruff check .`: clean.
 - `uv run --no-sync python tools/ci_test_plan.py verify`: clean, 772 test files
   in registered directories.

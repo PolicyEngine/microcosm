@@ -8,14 +8,16 @@ in their own pinned file, ``us/chronicle_county_facts.json`` with scope
 it 6.5x for every US build while only county builds read them. No fiscal
 compile reads this file.
 
-:func:`load_us_county_facts` reads the file in one pass: it hashes the exact
-bytes, parses every line, refuses a row on an unpinned row contract, at any
-geography level but ``county`` or outside the scope's (record set, period)
-pairs, drops Puerto Rico (state 72, outside the 3,144 county-equivalents the
-County Files cover) with a count, and projects each kept row to the fields the
-county rung reads. It refuses the file unless its digest and row count are the
-pin's. The file on disk keeps Chronicle's own bytes; only the in-memory rows
-are projected.
+:func:`load_us_county_facts` first hashes the exact bytes and refuses the
+file unless its digest and row count are the pin's, so a wrong or damaged file
+is named as such before any row is parsed. A second pass, which hashes the
+bytes again and refuses a file that changed in between, parses every line,
+refuses a row that is not a JSON object, is on an unpinned row contract, is at
+any geography level but ``county`` or is outside the scope's (record set,
+period) pairs, drops Puerto Rico (state 72, outside the 3,144
+county-equivalents the County Files cover) with a count, and projects each
+kept row to the fields county targets read. The file on disk keeps Chronicle's
+own bytes; only the in-memory rows are projected.
 """
 
 from __future__ import annotations
@@ -43,21 +45,20 @@ __all__ = [
     "us_county_facts_scope_pairs",
 ]
 
-#: Top-level row fields kept in memory. Everything else (source, lineage,
-#: concept alignment, period coverage, labels) stays in the pinned bytes.
+#: Top-level row fields kept in memory: what a county target reads (the
+#: geography, the measure, its dimensions, the period, the value and the
+#: layout) plus the row's key and contract. Everything else (source, lineage,
+#: labels, concept alignment, universe constraints, period coverage) stays in
+#: the pinned bytes.
 COUNTY_FACT_FIELDS = (
     "aggregate_fact_key",
     "schema_version",
     "geography",
     "observed_measure",
     "dimensions",
-    "dimension_value_labels",
     "period",
     "value",
     "value_type",
-    "entity",
-    "aggregation",
-    "universe_constraints",
     "layout",
 )
 #: Puerto Rico municipios: in the ACS county tables, outside the County Files.
@@ -115,7 +116,7 @@ def _county_state(row: Mapping[str, Any]) -> str:
     if (
         not geoid.startswith(_COUNTY_GEOID_PREFIX)
         or len(code) != 5
-        or not code.isdigit()
+        or not (code.isascii() and code.isdigit())
     ):
         raise ValueError(f"US county facts: invalid county geography id {geoid!r}.")
     return code[:2]
@@ -131,25 +132,50 @@ def _pair(row: Mapping[str, Any]) -> Pair:
     )
 
 
+def _digest(path: str | Path) -> tuple[str, int]:
+    digest = hashlib.sha256()
+    count = 0
+    with open(path, "rb") as stream:
+        for line in stream:
+            digest.update(line)
+            if line.strip():
+                count += 1
+    return digest.hexdigest(), count
+
+
 def load_us_county_facts(
     path: str | Path, *, pin: USChronicleFeed | None = None
 ) -> USCountyFacts:
-    """Read the pinned county facts file once and keep the projected rows."""
+    """Read the pinned county facts file and keep the projected rows."""
 
     pin = pin or load_us_chronicle_county_facts_pin()
+    facts_sha256, count = _digest(path)
+    if facts_sha256 != pin.facts_sha256:
+        raise ValueError(
+            f"US county facts {path} has sha256 {facts_sha256}; the county pin "
+            f"names {pin.facts_sha256}."
+        )
+    if count != pin.fact_row_count:
+        raise ValueError(
+            f"US county facts {path} has {count} rows; the county pin names "
+            f"{pin.fact_row_count}."
+        )
     pairs = us_county_facts_scope_pairs()
     contracts = set(pin.consumer_fact_schema_versions)
     digest = hashlib.sha256()
     rows: list[dict[str, Any]] = []
     dropped: Counter[str] = Counter()
-    count = 0
     with open(path, "rb") as stream:
         for line in stream:
             digest.update(line)
             if not line.strip():
                 continue
-            count += 1
             row = json.loads(line)
+            if not isinstance(row, dict):
+                raise ValueError(
+                    "US county facts rows must be JSON objects; got "
+                    f"{type(row).__name__}."
+                )
             if row.get("schema_version") not in contracts:
                 raise ValueError(
                     "US county facts row carries an unpinned row contract "
@@ -162,21 +188,13 @@ def load_us_county_facts(
                     f"US county facts row {row.get('aggregate_fact_key')!r} is "
                     f"outside the county scope: {pair}."
                 )
-            if _county_state(row) in DROPPED_STATE_FIPS:
-                dropped[f"state_{_county_state(row)}"] += 1
+            state = _county_state(row)
+            if state in DROPPED_STATE_FIPS:
+                dropped[f"state_{state}"] += 1
                 continue
             rows.append({key: row[key] for key in COUNTY_FACT_FIELDS if key in row})
-    facts_sha256 = digest.hexdigest()
-    if facts_sha256 != pin.facts_sha256:
-        raise ValueError(
-            f"US county facts {path} has sha256 {facts_sha256}; the county pin "
-            f"names {pin.facts_sha256}."
-        )
-    if count != pin.fact_row_count:
-        raise ValueError(
-            f"US county facts {path} has {count} rows; the county pin names "
-            f"{pin.fact_row_count}."
-        )
+    if digest.hexdigest() != facts_sha256:
+        raise ValueError(f"US county facts {path} changed while it was being read.")
     return USCountyFacts(
         rows=tuple(rows),
         path=str(path),

@@ -746,7 +746,8 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
     )
     module.do_materialize(args)
     assert seen == parents
-    # Read once, from the resolved --county-facts path, by prepare_run alone.
+    # Read exactly once, from the resolved --county-facts path; attach_surface
+    # reuses what prepare_run loaded.
     assert county_reads == [county_facts_file.resolve()]
     identity = json.loads((args.checkpoint_dir / "run_identity.json").read_text())
     assert identity["county_facts"]["facts_sha256"] == county_pin.facts_sha256
@@ -931,8 +932,30 @@ def test_county_refresh_recipe_round_trips_custom_geography_and_salt() -> None:
     assert parsed.county_column == "planning_region"
     assert parsed.county_holdout_fraction == 0.0
     assert parsed.county_holdout_salt == metadata["county_holdout"]["salt"]
-    assert str(parsed.county_facts) == metadata["county_facts"]["path"]
+    # Like --feed, the recipe names a placeholder file and the pinned digest,
+    # never the build machine's path.
+    assert metadata["county_facts"]["path"] not in recipe
+    assert str(parsed.county_facts) == "<county-facts.jsonl>"
     assert parsed.county_facts_sha256 == metadata["county_facts"]["facts_sha256"]
+
+
+def test_county_run_metadata_adds_only_the_county_facts_receipt() -> None:
+    """A run that read no county facts keeps its pre-county metadata keys."""
+
+    args = SimpleNamespace(geographies="state, cd", county_column="county_fips")
+    plain = _county().run_metadata(args, {"fraction": 0.1})
+    assert set(plain) == {
+        "geographies",
+        "county_column",
+        "county_holdout",
+        "county_targets_dropped",
+    }
+    receipt = {"path": "/x", "facts_sha256": _pinned_sha(), "row_count": 1}
+    args.county_facts_receipt = receipt
+    assert _county().run_metadata(args, {"fraction": 0.1}) == {
+        **plain,
+        "county_facts": receipt,
+    }
 
 
 # --- the county facts flags (microcosm#922) ----------------------------------
@@ -998,6 +1021,18 @@ def _pinned_sha():
             {"soi_mode": "state"},
             "--county-facts-sha256 needs --county-facts",
         ),
+        (
+            (
+                "--county-facts",
+                "{county}",
+                "--county-facts-sha256",
+                "{pinned}",
+                "--geographies",
+                "state,cd",
+            ),
+            {},
+            "county in --geographies",
+        ),
     ],
     ids=[
         "state-county-without-facts",
@@ -1007,6 +1042,7 @@ def _pinned_sha():
         "facts-are-the-feed",
         "facts-outside-state-county",
         "sha-without-facts",
+        "facts-without-county-geography",
     ],
 )
 def test_the_county_facts_flags_refuse_an_unpinned_or_ambiguous_run(
@@ -1037,11 +1073,46 @@ def test_a_pinned_county_facts_run_parses(tmp_path) -> None:
     assert args.county_facts_sha256 == _pinned_sha()
 
 
+def _v5_soi_row(county, measure, value):
+    """A county SOI row in the pinned v5 shape, with fields the loader drops."""
+
+    return {
+        **_fact(county, measure, value),
+        "aggregate_fact_key": f"key-{county}-{measure}",
+        "schema_version": "chronicle.consumer_fact.v5",
+        "dimension_value_labels": {"irs_soi.county": {county: f"County {county}"}},
+        "universe_constraints": {"domain": "tax_returns", "constraints": []},
+        "lineage": {"source_record_id": f"irs_soi.county.{county}"},
+        "source": {"source_file": "22incyallnoagi.csv"},
+    }
+
+
+def _soi_rows():
+    return [
+        _v5_soi_row(code, measure, value)
+        for measure in ("return_count", "adjusted_gross_income")
+        for code, value in (("01001", 1.0), ("01003", 3.0))
+    ]
+
+
+def _pin_for(payload, rows):
+    return dataclasses.replace(
+        load_us_chronicle_county_facts_pin(),
+        facts_sha256=hashlib.sha256(payload).hexdigest(),
+        fact_row_count=rows,
+    )
+
+
+@pytest.mark.parametrize("case", ["off-pin digest", "missing file"])
 def test_a_county_facts_file_off_the_pin_is_refused_before_any_target(
-    tmp_path,
+    tmp_path, case
 ) -> None:
     facts = tmp_path / "county.jsonl"
-    facts.write_bytes(b"{}\n")
+    if case == "off-pin digest":
+        # Well-formed pinned-contract rows, but not the pinned bytes.
+        facts.write_bytes(
+            b"".join(json.dumps(row).encode() + b"\n" for row in _soi_rows())
+        )
     args = SimpleNamespace(
         soi_mode="state_county",
         families="soi",
@@ -1056,4 +1127,29 @@ def test_a_county_facts_file_off_the_pin_is_refused_before_any_target(
         )
     report = json.loads((args.checkpoint_dir / "county_surface.json").read_text())
     assert report["status"] == "refused"
+    expected = "the county pin names" if case == "off-pin digest" else "county.jsonl"
+    assert expected in report["error"]
     assert not hasattr(surface, "county_surface")
+
+
+def test_projected_county_rows_give_the_same_soi_surface_as_full_rows(
+    tmp_path,
+) -> None:
+    """The loader keeps every field the SOI county surface reads."""
+
+    from microcosm.build.us_runtime.county_facts import load_us_county_facts
+
+    rows = _soi_rows()
+    path = tmp_path / "county.jsonl"
+    payload = b"".join(json.dumps(row).encode() + b"\n" for row in rows)
+    path.write_bytes(payload)
+    loaded = load_us_county_facts(path, pin=_pin_for(payload, len(rows)))
+    assert all("lineage" not in row for row in loaded.rows)
+    parents = [_state_spec(), _state_spec("adjusted_gross_income", 1000.0)]
+    populations = {1001: 80.0, 1003: 120.0}
+    full = _county().state_county_soi_surface(parents, rows, populations)
+    projected = _county().state_county_soi_surface(parents, loaded.rows, populations)
+    assert projected.receipt == full.receipt
+    assert [(s.name, s.value, s.metadata) for s in projected.specs] == [
+        (s.name, s.value, s.metadata) for s in full.specs
+    ]

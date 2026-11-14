@@ -25,14 +25,16 @@ the main pin. No fiscal compile reads them, and the main feed, its scope and
 the target-parity resources do not move when they do.
 
 They are separate because of size. The ACS county rows keep both estimate and
-margin-of-error rows in one record set, about 4.9 KB per row, and the eight
-record sets come to 170,896 rows and 886 MB. In the main feed they would have
-grown it from 169 MB to about 1.1 GB (6.5x), raising every compile site's peak
-from 2.8 GB to 6.7 GB and keeping about 3.2 GB more resident in every
-fiscal-refresh run, while only county builds read them. A main-feed rebuild
-with them also passed the build machine's 3.5 GB folder cap. The measurements
-are in `~/reviews/lwi-county-build-2026-11-13/runs/feed-design-1113/` on the
-build machine.
+margin-of-error rows in one record set, about 5.2 KB per row, and the eight
+ACS record sets come to 170,896 rows and 886 MB. The whole county file is
+922 MB; the main feed at `41b2fb2` is 171.7 MB. Folding the county facts into
+the main feed would grow it to about 1.09 GB (6.4x; 6.2x for the ACS rows
+alone). Measured at the compile and parse sites, that would raise a compile's
+peak memory from 2.8 GB to 6.7 GB and keep about 3.2 GB more resident in every
+fiscal-refresh run, which holds the parsed feed for its whole length, while
+only county builds read the rows. A main-feed rebuild with them also
+passed the build machine's 3.5 GB folder cap. These were measured on the build
+machine on 2026-11-13; the run notes are not in this repository.
 
 - **Commit.** Chronicle main `3e9d3a0694e8ca7e31ed5319c3ceb1bde92b12e0`
   (merged 2026-11-12), which carries every county package. It is on main, so
@@ -47,23 +49,38 @@ build machine.
 - **Build.** The same builder with the county scope:
 
   ```bash
-  uv run python tools/build_us_chronicle_feed.py --scope packages/microcosm-build/src/microcosm/build/us/chronicle_county_facts_scope.json --chronicle-root <clean Chronicle checkout at the scope's commit> --out <dir> --skip-artifact
+  uv run python tools/build_us_chronicle_feed.py --scope packages/microcosm-build/src/microcosm/build/us/chronicle_county_facts_scope.json --chronicle-root <clean Chronicle checkout at the scope's commit> --chronicle-command "uv run --frozen --python 3.13 chronicle" --out <dir> --skip-artifact
   ```
+
+  `--python 3.13` matters on a fresh checkout: without it, `uv` can pick a
+  newer Python for which Chronicle's locked wheels do not exist. A rebuild
+  that differs from the pin is refused by the pin's digest, not accepted.
 
   The build at that commit wrote 180,326 rows (922 MB), SHA256
   `67b0998aa2ee1aeed6637dab6a846f405246706508074b1c1b5bab7bd98c8bea`. Its
   output folder peaked at 2.89 GB under a disk-cap watcher that deleted each
-  finished package's intermediates. Nine of its ten record sets equal an
-  earlier build at Chronicle `c32c0b0` row for row (key, value, unit, measure
-  and geography); PEP county was not in that build.
-- **Reading it.** `us_runtime/county_facts.load_us_county_facts` reads the file
-  in one pass: it hashes the bytes, refuses a row on another row contract, at
-  a geography level other than county or outside the scope's pairs, drops the
-  78 Puerto Rico municipios (state 72) with a count, projects each kept row to
-  the fields the rung reads, and refuses the file unless its digest and row
-  count are the pin's. The file on disk keeps Chronicle's bytes.
+  finished package's intermediates. Nine of its ten record sets matched an
+  earlier build at Chronicle `c32c0b0` row for row, keying each row by record
+  set, period type, period value, source row and source column and comparing
+  value, unit, measure and geography; PEP county was not in that build.
+  `c32c0b0` is on no branch of the Chronicle remote and that build's output
+  has been deleted, so the comparison cannot be re-run. Rebuilding at
+  `3e9d3a0` with the command above and comparing the file's SHA256 with the
+  pin's can.
+- **Reading it.** `us_runtime/county_facts.load_us_county_facts` first hashes
+  the file and refuses it unless its digest and row count are the pin's, so a
+  wrong file is named as such before any row is parsed. A second pass hashes
+  the bytes again while parsing; it refuses a row that is not a JSON object,
+  is on another row contract, is at a geography level other than county or is
+  outside the scope's pairs, and a file that changed between the passes. It
+  drops the 78 Puerto Rico municipios (state 72) with a count and projects
+  each kept row to the fields the rung reads. The file on disk keeps
+  Chronicle's bytes.
 - **Tool flags.** County runs pass `--county-facts <file>
-  --county-facts-sha256 <pin digest>`, and `--feed-sha256` for the main feed.
+  --county-facts-sha256 <pin digest>`, and `--feed-sha256`. The county digest
+  must be the pin's. `--feed-sha256` is only the operator's digest of the
+  `--feed` file; the tool checks the file against it, not against the main
+  pin.
   The run identity records the main feed's digest (`feed_sha256`) and the
   county facts receipt, which carries the county pin.
 - **What it holds that the rung must handle.** SOI county 2022 has 3,143
@@ -72,9 +89,12 @@ build machine.
   linear target. B01003 carries margin-of-error rows for only some counties.
   Connecticut appears as its nine planning regions (09110-09190) in every
   package. Against the main pin's state SOI parents, the SOI county rows split
-  the other 49 states and DC exactly (6,278 county targets; share and target
-  sums exact), and Hawaii is refused, naming 15005, until the rung declares a
-  treatment for it.
+  the other 49 states and DC into 6,278 county targets whose shares sum to one
+  and whose targets sum to their state parents. The raw county sums are not
+  the parents: county AGI falls short of the state parent by up to 5%
+  (Montana), and returns differ by at most 0.05%. The rung uses the county
+  rows only as shares, so it rescales them to the parents. Hawaii is refused,
+  naming 15005, until the rung declares a treatment for it.
 
 A later main re-pin can fold these pairs into the main scope only by retiring
 the county pin in the same change.
