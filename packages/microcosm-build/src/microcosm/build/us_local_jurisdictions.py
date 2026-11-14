@@ -35,10 +35,11 @@ them (any stale column is removed) and its receipt records them as
 unavailable with the reason, rather than writing ``False``. Its frame wrapper
 (``with_household_us_puma_ladder``) redraws every household's county, so it
 also removes each column an earlier block line wrote that only a block
-decides (block, tract, place, state-legislative districts, CBSA): each would
-describe the geography the redraw replaced. The pooled ACS line follows its
-location rule: the PUMA ladder's county rung under the default ``legacy``
-rule, the block rungs under ``block_v1``.
+decides (block, tract, place, state-legislative districts, CBSA, the
+per-plan congressional districts): each would describe the geography the redraw
+replaced. The pooled ACS line follows its location rule: the PUMA ladder's
+county rung under the default ``legacy`` rule, the block rungs under
+``block_v1``.
 
 A 2020 block geoid begins with the five digits of its 2020 county, and every
 line writes ``county_fips`` as a 2020 county (Connecticut's planning regions

@@ -49,7 +49,8 @@ ladder has no place rung, so the place-rule flags (``in_yonkers``,
 records why (:mod:`.local_jurisdictions`). The frame wrapper redraws every
 household's county, so it also removes the block, tract, place,
 state-legislative-district and CBSA columns an earlier block line left
-(:data:`US_PUMA_LADDER_BLOCK_ANCHORED_COLUMNS`).
+(:data:`US_PUMA_LADDER_BLOCK_ANCHORED_COLUMNS`) and any per-plan
+``congressional_district_geoid__<plan>`` column.
 """
 
 from __future__ import annotations

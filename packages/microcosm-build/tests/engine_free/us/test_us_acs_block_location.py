@@ -197,6 +197,20 @@ def _record(pooled: Frame) -> dict:
     return _thaw(pooled.metadata[ACS_POOL_BLOCK_LOCATION_METADATA_KEY])
 
 
+def _with_first_county_outside_its_block(pooled: Frame) -> Frame:
+    """``pooled`` with its first household's county moved off its block."""
+
+    tables = {e: pooled.table(e).copy() for e in pooled.entities}
+    tables["household"].loc[0, "county_fips"] = "99999"
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {"household": pooled.weights_for("household")},
+        pooled.strata,
+        metadata=pooled.metadata,
+    )
+
+
 def _block_index(ladder: UsLocationLadder, blocks: pd.Series) -> np.ndarray:
     return np.searchsorted(ladder.block_geoid, blocks.astype(np.int64).to_numpy())
 
@@ -759,6 +773,76 @@ def test__multispine__block_v1_records_the_block_rungs_flag_receipt(
     json.dumps(result.provenance, allow_nan=False)
 
 
+def test__multispine__block_v1_refuses_a_pool_block_outside_its_county(
+    monkeypatch: pytest.MonkeyPatch, ladder: UsLocationLadder
+) -> None:
+    """A pooled household whose block lies outside its county stops the build.
+
+    The pool's flag receipt reads the place rung from the pool's own blocks,
+    so the build refuses such a pool before it writes any provenance
+    (microcosm#1453, review round 1). The tool's own block-location gate is
+    the second stop: test__legacy_tool__block_v1_gate_failure_is_hard.
+    """
+
+    acs = _acs(ladder)
+    real_pool = acs_multispine.with_optional_acs_spine
+    pooled: dict[str, Frame] = {}
+
+    def tampered_pool(base, recipient, **options):
+        pooled["frame"] = _with_first_county_outside_its_block(
+            real_pool(base, recipient, **options)
+        )
+        return pooled["frame"]
+
+    monkeypatch.setattr(acs_multispine, "with_optional_acs_spine", tampered_pool)
+    monkeypatch.setattr(
+        acs_multispine,
+        "build_acs_pums_unit_frame",
+        lambda source, *, chunksize: (acs, {"spine": ACS_2024_1YR_SPINE}),
+    )
+    monkeypatch.setattr(
+        acs_multispine,
+        "map_acs_native_inputs",
+        lambda raw: type("Mapped", (), {"frame": raw, "native_inputs": {}})(),
+    )
+    monkeypatch.setattr(
+        acs_multispine,
+        "transfer_acs_inputs",
+        lambda recipient, donor, **kwargs: type(
+            "Transfer",
+            (),
+            {
+                "frame": recipient,
+                "imputed_inputs": (),
+                "fit_records": (),
+                "deferred_inputs": (
+                    "block_geoid",
+                    "congressional_district_geoid",
+                    "county_fips",
+                    "tract_geoid",
+                ),
+                "resolved_donor_channel": "asec",
+            },
+        )(),
+    )
+    with pytest.raises(ValueError) as caught:
+        acs_multispine.build_optional_acs_multispine(
+            _donor_base(ladder),
+            object(),  # type: ignore[arg-type]
+            location_rule=US_LOCATION_RULE_BLOCK_V1,
+            block_ladder=ladder,
+            location_seed=9,
+            donor_location_rule=US_LOCATION_RULE_BLOCK_V1,
+        )
+    household = pooled["frame"].table("household")
+    block = str(household.loc[0, "block_geoid"])
+    assert block[:5] != "99999"
+    message = str(caught.value)
+    assert "block_geoid must begin with the row's county_fips" in message
+    assert f"1/{len(household)} household row(s) do not" in message
+    assert f"('{block}', '99999')" in message
+
+
 def test__multispine__refuses_invalid_location_options_before_loading(
     monkeypatch: pytest.MonkeyPatch, ladder: UsLocationLadder
 ) -> None:
@@ -967,16 +1051,6 @@ def _run_block_v1_main(
         max_peak_bytes=None,
         donor_location_rule=US_LOCATION_RULE_BLOCK_V1,
     )
-    if tamper:
-        tables = {e: combined.table(e).copy() for e in combined.entities}
-        tables["household"].loc[0, "county_fips"] = "99999"
-        combined = Frame(
-            tables,
-            US_SCHEMA,
-            {"household": combined.weights_for("household")},
-            combined.strata,
-            metadata=combined.metadata,
-        )
     if puma_ladder is None:
         puma_ladder = _puma_ladder_stub(builder, ladder)
     donor_mode = _record(combined)["donor_blocks"]["mode"]
@@ -1000,6 +1074,11 @@ def _run_block_v1_main(
             }
         ],
     }
+    if tamper:
+        # After the provenance, which refuses a block outside its county on
+        # its own (test__multispine__block_v1_refuses_a_pool_block_outside_its_county),
+        # so the tool's own block-location gate is what this run reaches.
+        combined = _with_first_county_outside_its_block(combined)
     base_h5 = tmp_path / "dense.h5"
     base_h5.write_bytes(b"dense-base")
     puma_ladder_path = tmp_path / "us_puma_ladder_2020.npz"

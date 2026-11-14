@@ -117,7 +117,9 @@ def _parent_local_jurisdiction_flags(frame: Frame) -> dict:
         raise ValueError(
             "The annual lane keeps its parent's columns and base-year bytes, so "
             "it needs a parent that already carries every local-jurisdiction "
-            "flag its own geography decides; rebuild the parent with the flags. "
+            "flag its own geography decides; rebuild the parent through a "
+            "geography line, which writes those flags and keeps every block "
+            "inside its county. "
             f"{error}"
         ) from error
 

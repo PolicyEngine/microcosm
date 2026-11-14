@@ -56,9 +56,9 @@ the new SHA-256 to pin.
   district and county again, so it first removes each column that only a
   block decides, where an earlier block line left one: `block_geoid`,
   `tract_geoid`, `place_fips`, `sldu`, `sldl`, `cbsa_code` and any
-  `congressional_district_geoid__<plan>` column. A kept block would lie
-  outside the new county, and its place would bring a place-rule flag back
-  on the next derivation. `assign_us_puma_ladder`, which the pooled ACS line
+  `congressional_district_geoid__<plan>` column. A kept block could lie
+  outside the new county, and the place beside it would no longer be the
+  household's. `assign_us_puma_ladder`, which the pooled ACS line
   calls, keeps those columns: that line restores a block-line donor's own
   district and county, so the donor's block still sits in its county.
 - **Pooled ACS line** (`with_optional_acs_spine`): donor rows arrive with
@@ -74,10 +74,9 @@ household whose county or place it does not know.
 A 2020 block geoid begins with the five digits of its 2020 county, and every
 line writes `county_fips` as a 2020 county (in Connecticut too, whose planning
 regions go in `county_fips_2023`). A place-rule flag is therefore derived only
-from a table
-in which every row that carries a 15-digit `block_geoid` has it inside the
-row's `county_fips`. On any other table the derivation raises and names the
-count and the first few (block, county) pairs.
+from a table in which every row that carries a 15-digit `block_geoid` has it
+inside the row's `county_fips`. On any other table the derivation raises and
+names the count and the first few (block, county) pairs.
 
 ### Under `--location-rule block_v1`
 
