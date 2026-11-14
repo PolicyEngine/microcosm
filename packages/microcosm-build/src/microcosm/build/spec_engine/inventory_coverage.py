@@ -386,8 +386,8 @@ EXPECTED_HASHES = {
     # housing_inputs puts each ACS rent draw on its own household's head.
     # microcosm#1453 moves both again: geography_ladder and puma_ladder write
     # the local-jurisdiction flags.
-    "seed_map": "0c19b903a43b997886be6222045485954c96d6a624ce2ae3f83cadb4b22a7883",
-    "seed_protocol": "15e6cad1f1b0082ffd5980095b4060827ed18786fae3076c97cf431c93a50e16",
+    "seed_map": "adb7a1d916ab957b5fc70bb94974a6d6e144239335fb1c930e0d8762f6acd382",
+    "seed_protocol": "e3bd670e031fcbe454fd7d5e8d4f25b0a210b3f385a6aaa90af57921c4d531e4",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
