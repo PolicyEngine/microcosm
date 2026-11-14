@@ -20,13 +20,22 @@ from microcosm.build.country_spec import GateSelectionSpec, GatesManifest
 from microcosm.build.gate_battery import (
     DEFAULT_REGISTRY,
     BlockingMode,
+    EvaluatorBinding,
     EvidenceContext,
     FunctionBinding,
     GateBatteryBlockedError,
     GateBatteryRun,
+    GateOutcome,
+    GatePhaseReport,
     GateStatus,
+    assemble_phase_report,
+    blocking_outcomes,
+    evaluate_entries,
     evaluate_phase,
+    gate_phase_report_from_payload,
+    gate_phase_report_payload,
     gate_signing_key_env,
+    scoped_gate_manifest,
     validate_gate_parameters,
 )
 from microcosm.build.trace import compute_composition_fingerprint
@@ -917,3 +926,500 @@ def test_evidence_absent_blocks_a_synthetic_smoke_even_on_a_population_fact_chec
     lenient.run_phase("terminal", EvidenceContext())
     assert lenient.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT) is False
     assert lenient.report_payload()["gates"]["fact"]["status"] == "evidence_absent"
+
+
+class TestStageLevelEvaluation:
+    """Gates evaluated where they run, assembled into one phase (#1585 item 11).
+
+    A build that gates each stage as it finishes keeps failing fast and gives
+    each gate its own stage's evidence. The phase report is assembled from
+    those outcomes and recorded through the same write-then-block boundary.
+    """
+
+    @staticmethod
+    def _registry():
+        return {
+            "support": _binding("support"),
+            "exported_nonzero": _binding("exported_nonzero", passes=False),
+            "nonconstant_columns": _binding("nonconstant_columns"),
+        }
+
+    @staticmethod
+    def _run(manifest, tmp_path, name, *, release_candidate=True):
+        return GateBatteryRun(
+            manifest,
+            release_id="xx-test-build",
+            report_path=tmp_path / name,
+            release_candidate=release_candidate,
+            registry=TestStageLevelEvaluation._registry(),
+        )
+
+    def test_assembled_stages_equal_the_batched_phase(self, tmp_path, signing_env):
+        manifest = _manifest(
+            [
+                _entry("t_first", gate="support"),
+                _entry("t_second", gate="exported_nonzero"),
+                _entry("t_third", gate="nonconstant_columns"),
+                _entry("t_na", gate="parity", not_applicable="no incumbent dataset"),
+            ]
+        )
+        registry = self._registry()
+        context = EvidenceContext()
+        # Stages finish in their own order; the report keeps manifest order.
+        later = evaluate_entries(manifest, ["t_third"], context, registry=registry)
+        earlier = evaluate_entries(
+            manifest, ["t_first", "t_second"], context, registry=registry
+        )
+        assembled = assemble_phase_report(manifest, "terminal", [*later, *earlier])
+        assert assembled == evaluate_phase(
+            manifest, "terminal", context, registry=registry
+        )
+
+        staged = self._run(manifest, tmp_path, "staged.json")
+        batched = self._run(manifest, tmp_path, "batched.json")
+        for run in (staged, batched):
+            run.run_phase("preflight", context)
+        staged.record_phase(assembled)
+        batched.run_phase("terminal", context)
+        assert staged.report_payload() == batched.report_payload()
+        assert staged.blocked_at_phase is None
+
+    def test_an_early_block_leaves_the_rest_of_its_phase_unreached(
+        self, tmp_path, signing_env
+    ):
+        manifest = _manifest(
+            [
+                _entry("a_first", gate="support", phase="assembled"),
+                _entry("a_block", gate="exported_nonzero", phase="assembled"),
+                _entry("a_later", gate="nonconstant_columns", phase="assembled"),
+                _entry(
+                    "a_na",
+                    gate="parity",
+                    phase="assembled",
+                    not_applicable="no incumbent dataset",
+                ),
+                _entry("t_gate", gate="support"),
+            ],
+            ["assembled", "terminal"],
+        )
+        registry = self._registry()
+        context = EvidenceContext()
+        first = evaluate_entries(manifest, ["a_first"], context, registry=registry)
+        assert blocking_outcomes(first, release_candidate=True) == ()
+        stopping = evaluate_entries(manifest, ["a_block"], context, registry=registry)
+        assert blocking_outcomes(stopping, release_candidate=True) == stopping
+
+        report = assemble_phase_report(
+            manifest,
+            "assembled",
+            [*first, *stopping],
+            blocked_by="a_block",
+            release_candidate=True,
+        )
+        statuses = {outcome.entry.id: outcome.status for outcome in report.outcomes}
+        assert statuses == {
+            "a_first": GateStatus.PASSED,
+            "a_block": GateStatus.FAILED,
+            "a_later": GateStatus.UNREACHED,
+            "a_na": GateStatus.NOT_APPLICABLE,
+        }
+        # The assembled phase crosses processes like any other.
+        payload = gate_phase_report_payload(report, gates=manifest)
+        restored = gate_phase_report_from_payload(payload, gates=manifest)
+        assert restored == report
+
+        run = self._run(manifest, tmp_path, "terminal_gates.json")
+        run.record_phase(restored)
+        # The block is on disk before enforce runs.
+        written = json.loads(run.report_path.read_text())
+        assert written["blocked_at_phase"] == "assembled"
+        assert written["attestation"]["blocked_at_phase"] == "assembled"
+        assert written["phases_evaluated"] == ["assembled"]
+        assert written["gates"]["a_later"]["status"] == "unreached"
+        assert (
+            "'a_block' blocked phase 'assembled'"
+            in (written["gates"]["a_later"]["reason"])
+        )
+        # An entry of a phase that never ran keeps the reasonless form.
+        assert written["gates"]["t_gate"]["status"] == "unreached"
+        assert written["gates"]["t_gate"]["reason"] is None
+        assert written["shippable"] is False
+        with pytest.raises(GateBatteryBlockedError) as blocked:
+            run.enforce("assembled", mode=BlockingMode.BLOCKS_ARTIFACT)
+        assert blocked.value.blocking_gate_ids == ("a_block",)
+        with pytest.raises(ValueError, match="blocked at phase 'assembled'"):
+            run.run_phase("terminal", context)
+
+    def test_the_assembly_refuses_a_missing_or_duplicate_entry(self):
+        manifest = _manifest(
+            [
+                _entry("t_pass", gate="support"),
+                _entry("t_fail", gate="exported_nonzero"),
+                _entry("t_diag", gate="exported_nonzero", criticality="diagnostic"),
+                _entry("pf_gate", gate="support", phase="preflight"),
+            ]
+        )
+        registry = self._registry()
+        context = EvidenceContext()
+        passed, failed, diagnostic = evaluate_entries(
+            manifest, ["t_pass", "t_fail", "t_diag"], context, registry=registry
+        )
+        (preflight,) = evaluate_entries(
+            manifest, ["pf_gate"], context, registry=registry
+        )
+        with pytest.raises(ValueError, match=r"no outcome for \['t_diag'\]"):
+            assemble_phase_report(manifest, "terminal", [passed, failed])
+        with pytest.raises(ValueError, match="more than one outcome"):
+            assemble_phase_report(
+                manifest, "terminal", [passed, failed, diagnostic, passed]
+            )
+        with pytest.raises(ValueError, match="does not resolve an entry"):
+            assemble_phase_report(manifest, "terminal", [preflight])
+        with pytest.raises(ValueError, match="does not resolve an entry"):
+            # The same id, evaluated against a different declaration.
+            assemble_phase_report(
+                _manifest([_entry("t_pass", gate="support", notes="edited")]),
+                "terminal",
+                [passed],
+            )
+        with pytest.raises(ValueError, match="already unreached"):
+            assemble_phase_report(
+                manifest,
+                "terminal",
+                [GateOutcome(entry=passed.entry, status=GateStatus.UNREACHED)],
+                blocked_by="t_fail",
+                release_candidate=True,
+            )
+        with pytest.raises(ValueError, match="needs the run's posture"):
+            assemble_phase_report(manifest, "terminal", [failed], blocked_by="t_fail")
+        with pytest.raises(ValueError, match="no outcome in phase"):
+            assemble_phase_report(
+                manifest,
+                "terminal",
+                [passed],
+                blocked_by="t_fail",
+                release_candidate=True,
+            )
+        for blocker, outcome in (("t_pass", passed), ("t_diag", diagnostic)):
+            with pytest.raises(ValueError, match="cannot have blocked"):
+                assemble_phase_report(
+                    manifest,
+                    "terminal",
+                    [outcome],
+                    blocked_by=blocker,
+                    release_candidate=True,
+                )
+        with pytest.raises(ValueError, match="not in the declared order"):
+            assemble_phase_report(manifest, "simulated", [])
+
+        with pytest.raises(TypeError, match="not one string"):
+            evaluate_entries(manifest, "t_pass", context, registry=registry)
+        for ids, message in (
+            ([], "at least one"),
+            (["t_pass", "t_pass"], "more than once"),
+            (["t_missing"], "not declared"),
+        ):
+            with pytest.raises(ValueError, match=message):
+                evaluate_entries(manifest, ids, context, registry=registry)
+
+    def test_a_phase_stopped_early_must_block_the_runs_posture(
+        self, tmp_path, signing_env
+    ):
+        # Absent evidence blocks release candidates only, so a dev run cannot
+        # record a phase that claims to have stopped on it.
+        manifest = _manifest(
+            [
+                _entry("t_absent", gate="weights_audit"),
+                _entry("t_later", gate="support"),
+            ],
+            ["terminal"],
+        )
+        (absent,) = evaluate_entries(manifest, ["t_absent"], EvidenceContext())
+        assert absent.status is GateStatus.EVIDENCE_ABSENT
+        report = assemble_phase_report(
+            manifest,
+            "terminal",
+            [absent],
+            blocked_by="t_absent",
+            release_candidate=True,
+        )
+        dev = self._run(manifest, tmp_path, "dev.json", release_candidate=False)
+        with pytest.raises(ValueError, match="stops early only on a block"):
+            dev.record_phase(report)
+        assert dev.phases_evaluated == ()
+        candidate = self._run(manifest, tmp_path, "candidate.json")
+        candidate.record_phase(report)
+        assert candidate.blocked_at_phase == "terminal"
+        # A phase with every entry unreached, as the UK spine graph stores a
+        # phase an earlier one blocked, did not stop part way: it records as
+        # it did before stage-level assembly, with no block of its own.
+        never_reached = GatePhaseReport(
+            phase="terminal",
+            outcomes=tuple(
+                GateOutcome(
+                    entry=entry,
+                    status=GateStatus.UNREACHED,
+                    reason="An earlier phase blocked this phase.",
+                )
+                for entry in manifest.gates
+            ),
+        )
+        replay = self._run(manifest, tmp_path, "replay.json", release_candidate=False)
+        replay.record_phase(never_reached)
+        assert replay.phases_evaluated == ("terminal",)
+        assert replay.blocked_at_phase is None
+
+    def test_the_named_blocker_must_block_the_runs_posture(self, tmp_path, signing_env):
+        # Review of #1609: the posture decides which outcome stops a phase, so
+        # the named blocker is checked against it, at assembly and at record.
+        manifest = _manifest(
+            [
+                _entry("a_absent", gate="weights_audit", phase="assembled"),
+                _entry("a_fail", gate="exported_nonzero", phase="assembled"),
+                _entry("a_later", gate="support", phase="assembled"),
+            ],
+            ["assembled"],
+        )
+        registry = {
+            **self._registry(),
+            "weights_audit": DEFAULT_REGISTRY["weights_audit"],
+        }
+        reached = evaluate_entries(
+            manifest, ["a_absent", "a_fail"], EvidenceContext(), registry=registry
+        )
+        # A dev build does not stop on absent evidence, only on the failure.
+        with pytest.raises(ValueError, match="does not block a dev build"):
+            assemble_phase_report(
+                manifest,
+                "assembled",
+                reached,
+                blocked_by="a_absent",
+                release_candidate=False,
+            )
+        # A phase assembled under a release candidate's posture does name it;
+        # a dev run refuses to record that claim even though a_fail blocks.
+        candidate_claim = assemble_phase_report(
+            manifest,
+            "assembled",
+            reached,
+            blocked_by="a_absent",
+            release_candidate=True,
+        )
+        dev = self._run(manifest, tmp_path, "dev.json", release_candidate=False)
+        with pytest.raises(
+            ValueError, match=r"do not name an entry that blocks.*\['a_fail'\]"
+        ):
+            dev.record_phase(candidate_claim)
+        assert dev.phases_evaluated == ()
+
+        report = assemble_phase_report(
+            manifest,
+            "assembled",
+            reached,
+            blocked_by="a_fail",
+            release_candidate=False,
+        )
+        dev.record_phase(report)
+        assert (
+            "'a_fail' blocked phase 'assembled'"
+            in (dev.report_payload()["gates"]["a_later"]["reason"])
+        )
+        with pytest.raises(GateBatteryBlockedError) as blocked:
+            dev.enforce("assembled", mode=BlockingMode.BLOCKS_ARTIFACT)
+        assert blocked.value.blocking_gate_ids == ("a_fail",)
+
+        # A synthetic smoke build does not stop on a failed population fact.
+        facts = _manifest(
+            [
+                _entry(
+                    "a_fact",
+                    gate="exported_nonzero",
+                    phase="assembled",
+                    population_fact_check=True,
+                ),
+                _entry("a_later", gate="support", phase="assembled"),
+            ],
+            ["assembled"],
+        )
+        fact = evaluate_entries(
+            facts, ["a_fact"], EvidenceContext(), registry=self._registry()
+        )
+        with pytest.raises(ValueError, match="does not block a synthetic smoke"):
+            assemble_phase_report(
+                facts,
+                "assembled",
+                fact,
+                blocked_by="a_fact",
+                release_candidate=False,
+                synthetic_smoke=True,
+            )
+
+
+class TestRecordWithoutEnforce:
+    """The keep-going posture: run every phase, never enforce (#1585 item 11).
+
+    An evidence build and a dry run continue past failed gates. Running every
+    phase without ``enforce`` records them all, marks nothing blocked, and
+    leaves the report unshippable while a release-blocking entry has not
+    passed.
+    """
+
+    @pytest.mark.parametrize("release_candidate", [True, False])
+    def test_every_phase_records_and_the_report_stays_unshippable(
+        self, tmp_path, signing_env, release_candidate
+    ):
+        manifest = _manifest(
+            [
+                _entry("pf_fail", gate="support", phase="preflight"),
+                _entry("t_pass", gate="exported_nonzero"),
+                _entry("t_absent", gate="weights_audit"),
+            ]
+        )
+        run = GateBatteryRun(
+            manifest,
+            release_id="xx-test-build",
+            report_path=tmp_path / "terminal_gates.json",
+            release_candidate=release_candidate,
+            registry={
+                "support": _binding("support", passes=False),
+                "exported_nonzero": _binding("exported_nonzero"),
+                "weights_audit": DEFAULT_REGISTRY["weights_audit"],
+            },
+        )
+        run.run_phase("preflight", EvidenceContext())
+        # Under enforce the failure would have blocked here.
+        assert run.phase_report("preflight").blocking_outcomes(
+            release_candidate=release_candidate
+        )
+        assert json.loads(run.report_path.read_text())["phases_evaluated"] == [
+            "preflight"
+        ]
+        run.run_phase("terminal", EvidenceContext())
+
+        report = json.loads(run.report_path.read_text())
+        assert report == run.report_payload()
+        assert report["phases_evaluated"] == ["preflight", "terminal"]
+        assert report["blocked_at_phase"] is None
+        assert {entry: gate["status"] for entry, gate in report["gates"].items()} == {
+            "pf_fail": "failed",
+            "t_pass": "passed",
+            "t_absent": "evidence_absent",
+        }
+        assert report["shippable"] is False
+        assert report["attestation"]["signature"] is not None
+
+
+class TestSharedScopesAndBindings:
+    """The UK's scoping and re-minting binding, lifted for every country.
+
+    One battery run takes one manifest, so each build tool runs its own
+    scope; and gates written before the battery mint their own result names,
+    which the shared binding re-mints (#1585 item 11).
+    """
+
+    def test_a_scope_keeps_declared_order_and_has_its_own_digests(self, tmp_path):
+        manifest = _manifest(
+            [
+                _entry("pf", gate="support", phase="preflight"),
+                _entry("t_a", gate="exported_nonzero"),
+                _entry("t_b", gate="nonconstant_columns"),
+            ]
+        )
+        scoped = scoped_gate_manifest(
+            manifest,
+            frozenset({"t_b", "t_a"}),
+            phases=("terminal",),
+            policy_suffix="terminal_scope",
+        )
+        assert [entry.id for entry in scoped.gates] == ["t_a", "t_b"]
+        assert scoped.phases == ("terminal",)
+        assert scoped.policy == "test battery; terminal_scope"
+        assert (scoped.country, scoped.version) == (manifest.country, manifest.version)
+        runs = [
+            GateBatteryRun(
+                gates,
+                release_id="xx-test-build",
+                report_path=tmp_path / f"{index}.json",
+                release_candidate=False,
+                registry={},
+            )
+            for index, gates in enumerate((manifest, scoped))
+        ]
+        for digest in ("gates_manifest_sha256", "policy_sha256", "spec_fingerprint"):
+            assert getattr(runs[0], digest) != getattr(runs[1], digest), digest
+        with pytest.raises(
+            RuntimeError,
+            match=r"XX gate scope names undeclared gate id\(s\): \['t_missing'\]",
+        ):
+            scoped_gate_manifest(
+                manifest,
+                ("t_a", "t_missing"),
+                phases=("terminal",),
+                policy_suffix="terminal_scope",
+            )
+
+    def test_the_binding_re_mints_only_its_declared_legacy_name(self):
+        manifest = _manifest([_entry("t", gate="support")], ["terminal"])
+
+        def minting(name):
+            return lambda context, parameters: GateResult(name=name, passed=True)
+
+        def binding(minted):
+            # Frameless here; like UKGateBinding, the binding needs a frame
+            # unless it says otherwise.
+            return EvaluatorBinding(
+                name="support",
+                evaluator=minting(minted),
+                legacy_name="xx_support",
+                needs_frame=False,
+            )
+
+        reminted, impostor = binding("xx_support"), binding("parity")
+        (passed,) = evaluate_phase(
+            manifest, "terminal", EvidenceContext(), registry={"support": reminted}
+        ).outcomes
+        assert passed.status is GateStatus.PASSED
+        assert passed.result.name == "support"
+        (failed,) = evaluate_phase(
+            manifest, "terminal", EvidenceContext(), registry={"support": impostor}
+        ).outcomes
+        assert failed.status is GateStatus.FAILED
+        assert failed.result.details["returned_gate"] == "parity"
+
+    def test_the_binding_selects_its_evidence_from_declared_parameters(self):
+        binding = EvaluatorBinding(
+            name="support",
+            evaluator=lambda context, parameters: GateResult(
+                name="support", passed=True
+            ),
+            parameter_keys=frozenset({"source"}),
+            artifact_selector=lambda parameters: frozenset({parameters["source"]}),
+            frame_predicate=lambda parameters: parameters["source"] == "stage_frame",
+        )
+        manifest = _manifest(
+            [
+                _entry("t_frame", gate="support", parameters={"source": "stage_frame"}),
+                _entry("t_counts", gate="support", parameters={"source": "counts"}),
+            ],
+            ["terminal"],
+        )
+        report = evaluate_phase(
+            manifest,
+            "terminal",
+            EvidenceContext(artifacts={"counts": 3}),
+            registry={"support": binding},
+        )
+        by_id = {outcome.entry.id: outcome for outcome in report.outcomes}
+        assert by_id["t_counts"].status is GateStatus.PASSED
+        assert by_id["t_frame"].status is GateStatus.EVIDENCE_ABSENT
+        assert by_id["t_frame"].reason == "missing evidence: frame, stage_frame"
+        with pytest.raises(ValueError, match=r"'t'.*sorce"):
+            evaluate_phase(
+                _manifest(
+                    [_entry("t", gate="support", parameters={"sorce": "counts"})],
+                    ["terminal"],
+                ),
+                "terminal",
+                EvidenceContext(),
+                registry={"support": binding},
+            )

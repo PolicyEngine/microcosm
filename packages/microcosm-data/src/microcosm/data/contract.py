@@ -3309,6 +3309,7 @@ def _check_uk_gate_battery_report(
         "country",
         "release_id",
         "release_candidate",
+        "synthetic_smoke",
         "spec_fingerprint",
         "gates_manifest_sha256",
         "phases",
@@ -3347,6 +3348,11 @@ def _check_uk_gate_battery_report(
             f"{file} release_candidate must be true: a report produced off "
             "the candidate posture excused absent evidence and cannot be "
             "promoted into a release."
+        )
+    if report.get("synthetic_smoke") is not False:
+        failures.append(
+            f"{file} synthetic_smoke must be false: a synthetic smoke build "
+            "ran on a fixture, not the population, and is never a release."
         )
     if report.get("blocked_at_phase") is not None:
         failures.append(f"{file} blocked_at_phase must be null for a release.")
@@ -3623,6 +3629,7 @@ def _check_uk_gate_battery_report(
         "country",
         "release_id",
         "release_candidate",
+        "synthetic_smoke",
         "spec_fingerprint",
         "gates_manifest_sha256",
         "policy_sha256",
@@ -3661,6 +3668,7 @@ def _check_uk_gate_battery_report(
         "country",
         "release_id",
         "release_candidate",
+        "synthetic_smoke",
         "spec_fingerprint",
         "gates_manifest_sha256",
         "policy_sha256",

@@ -26,10 +26,23 @@ Three disciplines, held by construction rather than convention:
 - **Every declared gate has exactly one outcome.** ``passed`` / ``failed`` /
   ``not_applicable`` (a reviewed reason declared in the spec) /
   ``evidence_absent`` (no implementation or missing evidence — a named gap,
-  never a silent omission) / ``unreached`` (an earlier phase blocked first).
-  Conflating ``unreached`` with ``not_applicable`` is the failure mode the
-  battery exists to prevent, so the report carries ``phases_evaluated`` and
-  ``blocked_at_phase`` and the attestation covers both.
+  never a silent omission) / ``unreached`` (an earlier phase blocked first,
+  or, in a phase assembled from stage-level outcomes, an earlier stage of the
+  same phase blocked first; such an entry's reason names the entry that
+  blocked). Conflating ``unreached`` with ``not_applicable`` is the failure
+  mode the battery exists to prevent, so the report carries
+  ``phases_evaluated`` and ``blocked_at_phase`` and the attestation covers
+  both.
+
+A build may also evaluate a phase's gates at the stages where its evidence
+appears, rather than in one batch at the boundary: :func:`evaluate_entries`
+resolves named entries exactly as the batch would, :func:`blocking_outcomes`
+says whether they stop the build under its posture, and
+:func:`assemble_phase_report` gathers them into the phase's
+:class:`GatePhaseReport`, which :meth:`GateBatteryRun.record_phase` persists
+through the same write-then-block boundary. That keeps fail-fast, gives each
+gate its own stage's evidence, and lets the signed run be assembled at the end
+(microcosm#1585 item 11).
 
 The gate *comparisons* stay in :mod:`microcosm.build.gates` — pure functions
 from evidence to :class:`~microcosm.build.gates.GateResult`, shared across
@@ -48,8 +61,15 @@ import hashlib
 import hmac
 import json
 import os
-from collections.abc import Callable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import (
+    Callable,
+    Collection,
+    Iterable,
+    Iterator,
+    Mapping,
+    Sequence,
+)
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -68,6 +88,7 @@ from microcosm.frame import Frame
 __all__ = [
     "BlockingMode",
     "DEFAULT_REGISTRY",
+    "EvaluatorBinding",
     "EvidenceContext",
     "FunctionBinding",
     "GATE_BATTERY_ATTESTATION_SCHEMA_VERSION",
@@ -81,10 +102,14 @@ __all__ = [
     "GateOutcome",
     "GatePhaseReport",
     "GateStatus",
+    "assemble_phase_report",
+    "blocking_outcomes",
+    "evaluate_entries",
     "evaluate_phase",
     "gate_phase_report_from_payload",
     "gate_phase_report_payload",
     "gate_signing_key_env",
+    "scoped_gate_manifest",
 ]
 
 #: Continues the ``terminal_gates.json`` numbering: schema 3 is the UK-only
@@ -349,6 +374,87 @@ class FunctionBinding:
         return self.evidence(context, parameters)
 
 
+@dataclass(frozen=True)
+class EvaluatorBinding:
+    """A :class:`GateBinding` over a country runtime evaluator.
+
+    Where :class:`FunctionBinding` routes declared parameters into a pure gate
+    function's keyword arguments, this binding hands its evaluator the whole
+    ``(context, parameters)`` pair, so a country runtime adapts its own
+    evidence and builds its own reviewed policy objects. It also re-mints
+    names. A gate written before the battery mints its own country-flavoured
+    result name, and the executor fails any result whose name differs from
+    the declared one, so ``legacy_name`` names the one other name the
+    evaluator may return, and that result is re-minted under ``name``. Any
+    other name passes through, so the executor's name check still fails it
+    closed. Lifted unchanged from the UK's ``UKGateBinding``, which is now an
+    alias of this class (microcosm#1585 item 11).
+
+    Attributes:
+        name: The declared country-neutral gate name the battery expects
+            back.
+        evaluator: Runs the country gate over ``(context, parameters)``.
+            Declared parameters it does not consume pass through to the
+            gate call, so an unknown parameter raises and fails closed —
+            the same discipline as :class:`FunctionBinding`.
+        parameter_keys: The spec parameter keys the evaluator can route —
+            checked against every declared entry before any gate runs
+            (``validate_gate_parameters``), so a typo'd parameter is
+            refused at arm time instead of surfacing as a mid-battery
+            evaluator error. Fail-closed empty by default.
+        artifact_keys: Context artifact keys the gate needs; missing keys
+            resolve to ``evidence_absent`` before evaluation.
+        artifact_selector: Optional parameter-dependent override of
+            ``artifact_keys`` for bindings whose evidence artifact follows a
+            declared parameter.
+        needs_frame: Whether the gate reads the phase frame.
+        frame_predicate: Optional parameter-dependent override of
+            ``needs_frame`` for bindings that serve more than one declared
+            entry (the UK coverage gate runs frameless at preflight).
+        legacy_name: The country-flavoured name the evaluator mints, when
+            it differs from ``name``; the verdict is re-minted under the
+            declared name. Any other unexpected name passes through so the
+            executor's name check fails it closed.
+        evidence: Optional hook producing the entry's ``evidence_sha256``
+            payload; ``None`` records no evidence hash.
+    """
+
+    name: str
+    evaluator: Callable[[EvidenceContext, Mapping[str, Any]], GateResult]
+    parameter_keys: frozenset[str] = frozenset()
+    artifact_keys: frozenset[str] = frozenset()
+    artifact_selector: Callable[[Mapping[str, Any]], frozenset[str]] | None = None
+    needs_frame: bool = True
+    frame_predicate: Callable[[Mapping[str, Any]], bool] | None = None
+    legacy_name: str | None = None
+    evidence: Callable[[EvidenceContext, Mapping[str, Any]], object] | None = None
+
+    def required_artifacts(self, parameters: Mapping[str, Any]) -> frozenset[str]:
+        if self.artifact_selector is not None:
+            return self.artifact_selector(parameters)
+        return self.artifact_keys
+
+    def requires_frame(self, parameters: Mapping[str, Any]) -> bool:
+        if self.frame_predicate is not None:
+            return self.frame_predicate(parameters)
+        return self.needs_frame
+
+    def evaluate(
+        self, context: EvidenceContext, parameters: Mapping[str, Any]
+    ) -> GateResult:
+        result = self.evaluator(context, parameters)
+        if self.legacy_name is not None and result.name == self.legacy_name:
+            result = replace(result, name=self.name)
+        return result
+
+    def evidence_payload(
+        self, context: EvidenceContext, parameters: Mapping[str, Any]
+    ) -> object | None:
+        if self.evidence is None:
+            return None
+        return self.evidence(context, parameters)
+
+
 def _input_mass_evidence(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> object:
@@ -432,11 +538,21 @@ class GateStatus(enum.Enum):
     FAILED = "failed"
     NOT_APPLICABLE = "not_applicable"
     EVIDENCE_ABSENT = "evidence_absent"
+    #: An earlier phase blocked first, or, in a phase assembled from
+    #: stage-level outcomes (:func:`assemble_phase_report`), an earlier stage
+    #: of the same phase blocked first; the outcome's reason then names the
+    #: entry that blocked.
     UNREACHED = "unreached"
 
 
 #: Statuses a release-blocking entry may hold on a shippable report.
 _SHIPPABLE_STATUSES = frozenset({GateStatus.PASSED, GateStatus.NOT_APPLICABLE})
+
+#: Statuses of an entry whose stage ran. ``not_applicable`` is not among
+#: them: a declared excuse holds whether or not its phase was reached.
+_REACHED_STATUSES = frozenset(
+    {GateStatus.PASSED, GateStatus.FAILED, GateStatus.EVIDENCE_ABSENT}
+)
 
 
 @dataclass(frozen=True)
@@ -509,6 +625,50 @@ class GateOutcome:
         }
 
 
+def blocking_outcomes(
+    outcomes: Iterable[GateOutcome],
+    *,
+    release_candidate: bool,
+    synthetic_smoke: bool = False,
+) -> tuple[GateOutcome, ...]:
+    """Outcomes that stop the build, under one run posture.
+
+    The rule a phase boundary applies (:meth:`GatePhaseReport.blocking_outcomes`),
+    and the one a stage applies to the outcomes :func:`evaluate_entries` just
+    returned, so a build that gates stage by stage stops exactly where the
+    batch would have blocked.
+
+    A failed release-blocking gate always blocks. A release-blocking
+    gate with absent evidence blocks release candidates only: a dev
+    build without, say, an incumbent parity snapshot gets an honest
+    non-shippable report instead of a crash, while a release build
+    cannot excuse missing evidence — a missing frozen reference is not
+    a passing gate. An entry declaring ``evidence_absent_blocks`` opts
+    out of that dev-posture leniency: its absence blocks every posture
+    (the legacy UK weights-audit strictness, ported during the #654
+    schema-3 retirement — "an absent audit is not a passing audit").
+    Diagnostic entries never block. A failed entry declaring
+    ``population_fact_check`` does not block a synthetic smoke build
+    (``synthetic_smoke``): the fixture is not the population its facts
+    describe, so the failure is recorded in the report and the build
+    continues; every other posture blocks on it as usual.
+    """
+
+    blocking = []
+    for outcome in outcomes:
+        if outcome.entry.criticality != "release_blocking":
+            continue
+        if outcome.status is GateStatus.FAILED:
+            if synthetic_smoke and outcome.entry.population_fact_check:
+                continue
+            blocking.append(outcome)
+        elif outcome.status is GateStatus.EVIDENCE_ABSENT and (
+            release_candidate or outcome.entry.evidence_absent_blocks
+        ):
+            blocking.append(outcome)
+    return tuple(blocking)
+
+
 @dataclass(frozen=True)
 class GatePhaseReport:
     """One phase's batched outcomes."""
@@ -521,35 +681,15 @@ class GatePhaseReport:
     ) -> tuple[GateOutcome, ...]:
         """Outcomes that stop the build at this phase boundary.
 
-        A failed release-blocking gate always blocks. A release-blocking
-        gate with absent evidence blocks release candidates only: a dev
-        build without, say, an incumbent parity snapshot gets an honest
-        non-shippable report instead of a crash, while a release build
-        cannot excuse missing evidence — a missing frozen reference is not
-        a passing gate. An entry declaring ``evidence_absent_blocks`` opts
-        out of that dev-posture leniency: its absence blocks every posture
-        (the legacy UK weights-audit strictness, ported during the #654
-        schema-3 retirement — "an absent audit is not a passing audit").
-        Diagnostic entries never block. A failed entry declaring
-        ``population_fact_check`` does not block a synthetic smoke build
-        (``synthetic_smoke``): the fixture is not the population its facts
-        describe, so the failure is recorded in the report and the build
-        continues; every other posture blocks on it as usual.
+        :func:`blocking_outcomes` over this phase's outcomes; its docstring
+        states the rule.
         """
 
-        blocking = []
-        for outcome in self.outcomes:
-            if outcome.entry.criticality != "release_blocking":
-                continue
-            if outcome.status is GateStatus.FAILED:
-                if synthetic_smoke and outcome.entry.population_fact_check:
-                    continue
-                blocking.append(outcome)
-            elif outcome.status is GateStatus.EVIDENCE_ABSENT and (
-                release_candidate or outcome.entry.evidence_absent_blocks
-            ):
-                blocking.append(outcome)
-        return tuple(blocking)
+        return blocking_outcomes(
+            self.outcomes,
+            release_candidate=release_candidate,
+            synthetic_smoke=synthetic_smoke,
+        )
 
     @property
     def failures(self) -> tuple[str, ...]:
@@ -826,6 +966,254 @@ def evaluate_phase(
     return GatePhaseReport(phase=phase, outcomes=outcomes)
 
 
+def evaluate_entries(
+    gates: GatesManifest,
+    entry_ids: Sequence[str],
+    context: EvidenceContext,
+    *,
+    registry: Mapping[str, GateBinding] = DEFAULT_REGISTRY,
+) -> tuple[GateOutcome, ...]:
+    """Evaluate the named entries at the stage where their gates run.
+
+    The stage-level counterpart of :func:`evaluate_phase`, for a build that
+    gates a stage as soon as it finishes instead of batching a whole phase at
+    its boundary: the build keeps failing fast, and each gate sees its own
+    stage's evidence. Each entry resolves exactly as it would in the batch —
+    its binding, its named evidence gaps, fail-closed evaluation and its
+    evidence digest — and the whole manifest's parameters are validated
+    first, so a typo in any entry surfaces before the first gate runs.
+
+    Never raises on a gate failure. Whether the build stops is the caller's
+    call (:func:`blocking_outcomes`), and :func:`assemble_phase_report`
+    gathers the outcomes into the phase's report.
+
+    Returns:
+        One outcome per requested id, in the requested order.
+
+    Raises:
+        TypeError: If ``entry_ids`` is one string rather than a sequence.
+        ValueError: If no id is given, an id repeats or is not declared, an
+            entry's phase is not in the declared order, or an entry declares
+            parameters outside its binding's vocabulary.
+    """
+
+    if isinstance(entry_ids, str):
+        raise TypeError("entry_ids must be a sequence of entry ids, not one string.")
+    requested = tuple(entry_ids)
+    if not requested:
+        raise ValueError("evaluate_entries needs at least one entry id.")
+    repeated = sorted(
+        {entry_id for entry_id in requested if requested.count(entry_id) > 1}
+    )
+    if repeated:
+        raise ValueError(f"entry id(s) {repeated} are requested more than once.")
+    declared = {entry.id: entry for entry in gates.gates}
+    unknown = sorted(set(requested) - set(declared))
+    if unknown:
+        raise ValueError(
+            f"entry id(s) {unknown} are not declared in the "
+            f"{gates.country!r} gate manifest."
+        )
+    for entry_id in requested:
+        if declared[entry_id].phase not in gates.phases:
+            raise ValueError(
+                f"entry {entry_id!r} binds to phase {declared[entry_id].phase!r}, "
+                f"which is not in the declared order {list(gates.phases)}."
+            )
+    validate_gate_parameters(gates, registry)
+    return tuple(
+        _resolve_entry(declared[entry_id], context, registry) for entry_id in requested
+    )
+
+
+def _unreached_reason(blocked_by: str, phase: str) -> str:
+    """The reason an entry left behind by an early block carries.
+
+    :func:`assemble_phase_report` writes it and
+    :meth:`GateBatteryRun.record_phase` regenerates it to check the named
+    blocker, so the two cannot drift apart.
+    """
+
+    return (
+        f"not reached: {blocked_by!r} blocked phase {phase!r} before this "
+        "entry's stage ran"
+    )
+
+
+def assemble_phase_report(
+    gates: GatesManifest,
+    phase: str,
+    outcomes: Iterable[GateOutcome],
+    *,
+    blocked_by: str | None = None,
+    release_candidate: bool | None = None,
+    synthetic_smoke: bool = False,
+) -> GatePhaseReport:
+    """Assemble one phase's report from outcomes evaluated at their stages.
+
+    Gathers the outcomes :func:`evaluate_entries` returned across a phase's
+    stages into the :class:`GatePhaseReport` :func:`evaluate_phase` would have
+    returned: one outcome per declared entry, in manifest order. An entry
+    declared ``not_applicable`` never runs, so when it has no outcome it gets
+    its reviewed one here. The report goes through
+    :meth:`GateBatteryRun.record_phase` and :func:`gate_phase_report_payload`
+    like any phase, so it can also be carried to another process.
+
+    A phase whose build stopped at a blocking stage names that entry in
+    ``blocked_by``. Every entry of the phase that has no outcome is then
+    ``unreached``, with a reason naming ``blocked_by``. This extends what
+    ``unreached`` means: an earlier phase blocked, or an earlier stage of the
+    same phase did. Recording such a phase sets ``blocked_at_phase``.
+
+    Whether an outcome blocks depends on the run's posture, so an early block
+    needs it: ``release_candidate`` and ``synthetic_smoke`` must be the ones
+    the recording :class:`GateBatteryRun` is constructed with, and
+    ``blocked_by`` must be among :func:`blocking_outcomes` under them.
+    :meth:`GateBatteryRun.record_phase` checks the named entry again against
+    the run's own posture.
+
+    Raises:
+        ValueError: If ``phase`` is not declared; an outcome resolves an entry
+            this manifest does not declare in ``phase``, as it stands; an
+            entry has two outcomes; an outcome is already ``unreached``;
+            without ``blocked_by``, an entry that runs has no outcome; or
+            ``blocked_by`` is given without ``release_candidate``, names an
+            entry with no outcome here, or names one that does not block
+            under the given posture.
+    """
+
+    if phase not in gates.phases:
+        raise ValueError(
+            f"phase {phase!r} is not in the declared order {list(gates.phases)}."
+        )
+    declared = tuple(entry for entry in gates.gates if entry.phase == phase)
+    declared_by_id = {entry.id: entry for entry in declared}
+    resolved: dict[str, GateOutcome] = {}
+    for outcome in outcomes:
+        entry_id = outcome.entry.id
+        if declared_by_id.get(entry_id) != outcome.entry:
+            raise ValueError(
+                f"the outcome for {entry_id!r} does not resolve an entry the "
+                f"manifest declares in phase {phase!r}."
+            )
+        if entry_id in resolved:
+            raise ValueError(f"entry {entry_id!r} has more than one outcome.")
+        if outcome.status is GateStatus.UNREACHED:
+            raise ValueError(
+                f"entry {entry_id!r} is already unreached; only the assembly "
+                "marks the entries a block left behind."
+            )
+        resolved[entry_id] = outcome
+    if blocked_by is None:
+        missing = [
+            entry.id
+            for entry in declared
+            if entry.id not in resolved and entry.not_applicable is None
+        ]
+        if missing:
+            raise ValueError(
+                f"phase {phase!r} has no outcome for {missing}; a phase that "
+                "stopped early names the entry that blocked it (blocked_by)."
+            )
+    else:
+        if release_candidate is None:
+            raise ValueError(
+                "an early block needs the run's posture: pass release_candidate "
+                "(and synthetic_smoke) with blocked_by."
+            )
+        blocker = resolved.get(blocked_by)
+        if blocker is None:
+            raise ValueError(
+                f"blocked_by names {blocked_by!r}, which has no outcome in "
+                f"phase {phase!r}."
+            )
+        if not blocking_outcomes(
+            (blocker,),
+            release_candidate=release_candidate,
+            synthetic_smoke=synthetic_smoke,
+        ):
+            posture = (
+                "synthetic smoke build"
+                if synthetic_smoke
+                else "release candidate"
+                if release_candidate
+                else "dev build"
+            )
+            raise ValueError(
+                f"entry {blocked_by!r} cannot have blocked phase {phase!r}: it "
+                f"is {blocker.entry.criticality} with status "
+                f"{blocker.status.value!r}, which does not block a {posture}."
+            )
+    # Without blocked_by, every entry that runs has an outcome by now.
+    unreached_reason = (
+        _unreached_reason(blocked_by, phase) if blocked_by is not None else None
+    )
+    assembled = []
+    for entry in declared:
+        if entry.id in resolved:
+            assembled.append(resolved[entry.id])
+        elif entry.not_applicable is not None:
+            assembled.append(
+                GateOutcome(
+                    entry=entry,
+                    status=GateStatus.NOT_APPLICABLE,
+                    reason=entry.not_applicable,
+                )
+            )
+        else:
+            assembled.append(
+                GateOutcome(
+                    entry=entry, status=GateStatus.UNREACHED, reason=unreached_reason
+                )
+            )
+    return GatePhaseReport(phase=phase, outcomes=tuple(assembled))
+
+
+# ---------------------------------------------------------------------------
+# Scopes
+# ---------------------------------------------------------------------------
+
+
+def scoped_gate_manifest(
+    gates: GatesManifest,
+    scope: Collection[str],
+    *,
+    phases: Sequence[str],
+    policy_suffix: str,
+) -> GatesManifest:
+    """Filter a gate manifest to one battery's scope.
+
+    A :class:`GateBatteryRun` runs one manifest, each phase once and in
+    order, so a country whose build tools each gate part of its spec gives
+    each tool its own scope: the entries it evaluates, the phases it runs
+    them in, and a policy suffix naming the scope. Entries keep the
+    manifest's order, and the suffix lands in ``policy``, so each scope has
+    its own ``gates_manifest_sha256``, ``policy_sha256`` and
+    ``spec_fingerprint`` to pin. Lifted unchanged from the UK's
+    ``uk_scoped_gate_manifest`` (spine build, calibration seam, release cut,
+    local candidate), which now calls it (microcosm#1585 item 11).
+
+    Raises:
+        RuntimeError: If the scope names an entry the manifest does not
+            declare.
+    """
+
+    entries = tuple(entry for entry in gates.gates if entry.id in scope)
+    missing = sorted(set(scope) - {entry.id for entry in entries})
+    if missing:
+        raise RuntimeError(
+            f"{gates.country.upper()} gate scope names undeclared gate id(s): "
+            f"{missing}."
+        )
+    return GatesManifest(
+        country=gates.country,
+        version=gates.version,
+        policy=f"{gates.policy}; {policy_suffix}",
+        phases=tuple(phases),
+        gates=entries,
+    )
+
+
 # ---------------------------------------------------------------------------
 # The battery run
 # ---------------------------------------------------------------------------
@@ -876,7 +1264,14 @@ class GateBatteryRun:
     :meth:`run_phase` (which persists the full report before returning) and
     then :meth:`enforce` (which blocks — or marks — strictly after
     persistence). Once a phase blocks, no later phase may run: the remaining
-    entries stay ``unreached`` in the report, which is the truth.
+    entries stay ``unreached`` in the report, which is the truth. A phase
+    evaluated elsewhere — at its stages, or in another process — is
+    persisted with :meth:`record_phase` instead of :meth:`run_phase`.
+
+    A posture that must keep going past failed gates (an evidence build, a
+    dry run) runs every phase and never calls :meth:`enforce`: nothing is
+    marked blocked, every phase is recorded, and the report stays
+    unshippable while a release-blocking entry has not passed.
 
     Args:
         gates: The country's gate manifest.
@@ -1011,6 +1406,23 @@ class GateBatteryRun:
 
         This is the same ordered write-then-block boundary as ``run_phase``;
         it never reruns evaluators and never accepts a different gate policy.
+
+        A phase assembled after an early block
+        (:func:`assemble_phase_report` with ``blocked_by``) stopped part
+        way: some of its entries were reached and the rest are
+        ``unreached``. The entry its unreached entries name as the one that
+        stopped it must block under this run's posture, and the run records
+        ``blocked_at_phase`` in the same write, so the report on disk never
+        shows a phase that stopped part way without its block, or names a
+        blocker ``enforce`` would not block on. ``enforce`` then raises or
+        marks as usual. A phase whose entries are all unreached, the record a
+        graph keeps when an earlier phase blocked it, is recorded as before.
+
+        Raises:
+            ValueError: If the battery has blocked, the phase is out of
+                order, its outcomes differ from the declared manifest, or it
+                stopped part way but names a blocker that does not block this
+                run's posture, or nothing in it does.
         """
         if self._blocked_at_phase is not None:
             raise ValueError(f"battery blocked at phase {self._blocked_at_phase!r}.")
@@ -1019,7 +1431,44 @@ class GateBatteryRun:
                 f"phase {report.phase!r} is out of order; expected {self._next_phase()!r}."
             )
         gate_phase_report_payload(report, gates=self._gates)
+        statuses = {outcome.status for outcome in report.outcomes}
+        stopped_early = GateStatus.UNREACHED in statuses and bool(
+            statuses & _REACHED_STATUSES
+        )
+        if stopped_early:
+            blocking = report.blocking_outcomes(
+                release_candidate=self._release_candidate,
+                synthetic_smoke=self._synthetic_smoke,
+            )
+            if not blocking:
+                raise ValueError(
+                    f"phase {report.phase!r} stopped part way, but none of its "
+                    "outcomes blocks this run's posture; a phase stops early "
+                    "only on a block."
+                )
+            # The assembly names the blocker only in this reason; regenerate
+            # it for each entry that does block, so a phase claiming another
+            # blocker is refused rather than signed.
+            reasons = {
+                _unreached_reason(outcome.entry.id, report.phase)
+                for outcome in blocking
+            }
+            misnamed = sorted(
+                outcome.entry.id
+                for outcome in report.outcomes
+                if outcome.status is GateStatus.UNREACHED
+                and outcome.reason not in reasons
+            )
+            if misnamed:
+                raise ValueError(
+                    f"phase {report.phase!r} stopped part way, but its "
+                    f"unreached entries {misnamed} do not name an entry that "
+                    f"blocks this run's posture; blocking here: "
+                    f"{sorted(outcome.entry.id for outcome in blocking)}."
+                )
         self._phase_reports[report.phase] = report
+        if stopped_early:
+            self._blocked_at_phase = report.phase
         self._write_report()
 
     def enforce(self, phase: str, *, mode: BlockingMode) -> bool:

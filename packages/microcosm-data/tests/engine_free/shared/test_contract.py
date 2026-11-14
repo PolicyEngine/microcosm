@@ -1368,6 +1368,7 @@ def _resign_gate_battery(
         "country": payload["country"],
         "release_id": payload["release_id"],
         "release_candidate": payload["release_candidate"],
+        "synthetic_smoke": payload["synthetic_smoke"],
         "spec_fingerprint": payload["spec_fingerprint"],
         "gates_manifest_sha256": payload["gates_manifest_sha256"],
         "policy_sha256": payload["policy_sha256"],
@@ -1603,6 +1604,7 @@ def _gate_battery_payload(
         "country": "uk",
         "release_id": release_id,
         "release_candidate": True,
+        "synthetic_smoke": False,
         "spec_fingerprint": UK_GATE_BATTERY_SPEC_FINGERPRINT,
         "gates_manifest_sha256": UK_GATE_BATTERY_GATES_MANIFEST_SHA256,
         "phases": ["preflight", "assembled", "transferred", "terminal"],
@@ -5195,6 +5197,43 @@ def test_exact_k_uk_gate_battery_rejects_a_non_candidate_report(
     _rewrite_battery_report(directory, payload)
 
     assert "release_candidate must be true" in _battery_failures(directory)
+
+
+def test_exact_k_uk_gate_battery_rejects_a_synthetic_smoke_report(
+    tmp_path: Path,
+) -> None:
+    # The executor writes synthetic_smoke into the body and the attestation of
+    # every schema-4 report; a smoke build ran on a fixture and never ships.
+    directory, payload = _write_battery_release(tmp_path)
+    payload["synthetic_smoke"] = True
+    _rewrite_battery_report(directory, payload)
+
+    assert "synthetic_smoke must be false" in _battery_failures(directory)
+
+
+def test_exact_k_uk_gate_battery_rejects_an_attestation_smoke_flag_off_the_body(
+    tmp_path: Path,
+) -> None:
+    # Review of #1609: the attestation's own copy must restate the body's.
+    # Signed honestly over the divergent copy, so only that check refuses it.
+    directory, payload = _write_battery_release(tmp_path)
+    attestation = payload["attestation"]
+    attestation["synthetic_smoke"] = True
+    attestation["signature"] = None
+    attestation["signature"] = hmac.new(
+        TEST_UK_TERMINAL_GATE_SIGNING_KEY_BYTES,
+        _canonical_json_bytes(payload),
+        hashlib.sha256,
+    ).hexdigest()
+    _rewrite_battery_report(directory, payload, resign=False)
+
+    failures = _battery_failures(directory)
+    assert (
+        "attestation.synthetic_smoke must equal the report body's synthetic_smoke"
+        in failures
+    )
+    assert "signature does not authenticate" not in failures
+    assert "synthetic_smoke must be false" not in failures
 
 
 def test_exact_k_uk_gate_battery_rejects_loosened_input_mass_tolerance(
