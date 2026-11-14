@@ -189,6 +189,12 @@ def phase_outcome(report: GatePhaseReport) -> str:
 
     1. ``fail``: a release-blocking entry failed.
     2. ``unreached``: an entry was not reached (an earlier phase blocked).
+       This kernel evaluates each phase in one batch, so here that is the
+       only way an entry is unreached. A phase assembled stage by stage
+       (:func:`~microcosm.build.gate_battery.assemble_phase_report`), where
+       ``unreached`` can also mean that an earlier stage of the same phase
+       blocked, is for ``GateBatteryRun`` only for now: this ranking does not
+       describe it, and :func:`decode_gate_report` refuses its rows.
     3. ``evidence_absent``: a release-blocking entry lacked its evidence or
        implementation.
     4. ``not_applicable``: the phase has no entries, or every entry carries a

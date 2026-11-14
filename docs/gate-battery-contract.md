@@ -236,7 +236,11 @@ since the posture decides which outcomes block; the named entry must be among
 `unreached`, with a reason naming that entry, and `record_phase` takes such a
 phase only if the named entry blocks under the run's own posture, recording
 `blocked_at_phase` in the same write. A signed run can then be assembled at
-the end, from phases carried between stages or processes.
+the end, from phases carried between stages or processes. Stage-assembled
+phases are for `GateBatteryRun` only for now. The transport kernel evaluates
+each phase in one batch, so there `unreached` still means only that an
+earlier phase blocked, and its report check refuses a phase that stopped part
+way.
 
 A posture that must keep going past failed gates, such as an evidence build
 or a dry run, runs every phase and never calls `enforce`. Every phase is
