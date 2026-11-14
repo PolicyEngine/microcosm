@@ -1,0 +1,874 @@
+{
+ "label": "sehi-medicare-r2-peus10120",
+ "policyengine_us": "2.38.24",
+ "policyengine_core": "3.33.2",
+ "dataset": "/Users/maxghenis/.cache/huggingface/hub/datasets--policyengine--populace-us/snapshots/8ab57ffc2ca41d8af631ff62ebbce95e966299f3/populace_us_2024.h5",
+ "period": 2024,
+ "widened_plan_businesses": true,
+ "stored_attribution_reproduced": {
+  "premiums_equal": true,
+  "flag_equal": true,
+  "max_abs_premium_difference": 0.0
+ },
+ "enrollment_from_stored_inputs": {
+  "equal": true,
+  "rows_differing": 0,
+  "enrolled_under_65_rows": 0,
+  "modeled_part_b_positive_not_enrolled_rows": 0
+ },
+ "scenarios_available": [
+  "engine_side",
+  "engine_side_standard_part_b",
+  "reported_only",
+  "reported_plus_all_modeled_medicare",
+  "reported_plus_modeled_part_b",
+  "reported_plus_modeled_part_b_sole_proprietors",
+  "reported_plus_modeled_part_b_where_reported",
+  "reported_plus_reported_part_b",
+  "reported_where_not_enrolled",
+  "shipped"
+ ],
+ "population": {
+  "people": {
+   "people": 340077321.9414408,
+   "rows": 166321
+  },
+  "self_employed_flag": {
+   "people": 39269670.5236046,
+   "rows": 13113
+  },
+  "medicare_proxy": {
+   "people": 72733806.21348652,
+   "rows": 31928
+  },
+  "medicare_eligible": {
+   "people": 61167959.34309381,
+   "rows": 25445
+  },
+  "medicare_enrolled": {
+   "people": 57519410.561252795,
+   "rows": 24147
+  },
+  "enrolled_outside_proxy": {
+   "people": 0.0,
+   "rows": 0
+  },
+  "proxy_not_enrolled": {
+   "people": 15214395.652233724,
+   "rows": 7781
+  },
+  "self_employed_in_proxy": {
+   "people": 8005584.4300333345,
+   "rows": 2920
+  },
+  "self_employed_in_proxy_enrolled": {
+   "people": 6350273.636172185,
+   "rows": 2181
+  },
+  "self_employed_in_proxy_with_esi": {
+   "people": 1701619.1670358845,
+   "rows": 736
+  },
+  "self_employed_in_proxy_outside_esi": {
+   "people": 6303965.26299745,
+   "rows": 2184
+  },
+  "self_employed_in_proxy_outside_esi_enrolled": {
+   "people": 5432978.978362439,
+   "rows": 1792
+  },
+  "self_employed_in_proxy_outside_esi_not_enrolled": {
+   "people": 870986.284635011,
+   "rows": 392
+  },
+  "self_employed_in_proxy_outside_esi_reported_positive": {
+   "people": 2235556.914155313,
+   "rows": 880
+  },
+  "self_employed_in_proxy_outside_esi_part_b_positive": {
+   "people": 5432978.978362439,
+   "rows": 1792
+  },
+  "self_employed_in_proxy_outside_esi_part_b_only": {
+   "people": 3372320.4916633503,
+   "rows": 1016
+  },
+  "self_employed_enrolled_outside_esi_without_social_security": {
+   "people": 2808580.463648805,
+   "rows": 856
+  },
+  "self_employed_enrolled_outside_esi_without_social_security_reported_positive": {
+   "people": 975029.1386392226,
+   "rows": 334
+  },
+  "self_employed_in_proxy_outside_esi_partner_only": {
+   "people": 522613.80174823385,
+   "rows": 183
+  },
+  "by_plan_business_in_proxy": {
+   "schedule_c": {
+    "people": 7026405.282572991,
+    "rows": 2468
+   },
+   "farm": {
+    "people": 452810.7833437661,
+    "rows": 238
+   },
+   "partnership": {
+    "people": 922153.0917083973,
+    "rows": 317
+   }
+  },
+  "by_plan_business": {
+   "schedule_c": {
+    "people": 36753477.010983326,
+    "rows": 11971
+   },
+   "farm": {
+    "people": 3417526.35800874,
+    "rows": 1062
+   },
+   "partnership": {
+    "people": 2121624.4478187445,
+    "rows": 828
+   }
+  }
+ },
+ "premium_mass_self_employed_in_proxy_outside_esi": {
+  "reported_non_part_b": 8639296688.949234,
+  "modeled_part_b_net_of_msp": 8417181907.757737,
+  "modeled_gross_part_b_enrolled": 11389696599.674664,
+  "modeled_base_part_b_enrolled": 11389696599.674664,
+  "modeled_irmaa_part_b_enrolled": 0.0,
+  "msp_part_b_coverage": 2972514691.916927,
+  "modeled_part_a_premium": 0.0,
+  "modeled_part_d_irmaa": 0.0,
+  "stored_reported_part_b": 10375930723.51753
+ },
+ "part_b_all_enrollees": {
+  "modeled_net": 103160706037.58734,
+  "modeled_gross": 120583686683.48044,
+  "irmaa": 0.0,
+  "stored_reported": 116957340678.14566,
+  "enrolled_people": 57519410.561252795,
+  "stored_reported_positive_people": 50594106.05188724
+ },
+ "prepare_seconds": 7.6,
+ "prepare_peak_rss_mb": 3932,
+ "scenarios": {
+  "shipped": {
+   "name": "shipped",
+   "light": false,
+   "deduction": {
+    "amount": 15980982740.002775,
+    "returns": 3730316.1359680453,
+    "tax_unit_rows": 1395,
+    "people": 3792631.1782971853,
+    "amount_in_medicare_proxy": 0.0,
+    "people_in_medicare_proxy": 0.0,
+    "amount_enrolled": 0.0,
+    "people_enrolled": 0.0,
+    "amount_outside_proxy": 15981134160.651169,
+    "by_plan_business": {
+     "schedule_c": {
+      "people": 3656383.919500131,
+      "amount": 14740906538.630768
+     },
+     "farm_without_schedule_c_profit": {
+      "people": 66443.77669523025,
+      "amount": 308061311.6553712
+     },
+     "partnership_without_schedule_c_or_farm_profit": {
+      "people": 69803.48210182379,
+      "amount": 932166310.3650293
+     }
+    }
+   },
+   "premium_base": {
+    "direct_input_total": 19726344928.23739,
+    "direct_input_people": 3880420.4960442316,
+    "self_employed_premiums_total": 19726344928.23739,
+    "self_employed_premiums_people": 3880420.4960442316,
+    "self_employed_premiums_in_proxy": 0.0,
+    "limited_by_earned_income_people": 997531.9399992144,
+    "premiums_above_deduction": 3745210767.586219
+   },
+   "medical_expense_premiums_total": 535449513206.3926,
+   "medicare_part_b_premium_total": 103160706037.58734,
+   "adjusted_gross_income": 16771565806186.895,
+   "income_tax": 2300767932572.466,
+   "state_income_tax": 514903104142.4142,
+   "itemized_medical_expenses": 837281030454.3826,
+   "medical_expense_deduction": 355177081910.28186,
+   "snap": 99295119023.24344,
+   "adjusted_gross_income_periods_computed": [
+    "2022",
+    "2024"
+   ],
+   "out_year": {
+    "year": 2026,
+    "direct_growth_factor": 1.007563735666146,
+    "reported_growth_factor": 1.0623841907225173,
+    "part_b_growth_factor": 1.4243515223578538,
+    "resolver_minus_decomposed_total": 312.8000424069937,
+    "resolver_minus_decomposed_rows": 4,
+    "resolver_minus_decomposed_people": 0.11365298135206103,
+    "decomposed_total": 601212146338.596
+   },
+   "seconds": 228.7,
+   "peak_rss_mb": 13178,
+   "revenue_loss": 2556162847.290039,
+   "income_tax_ald_neutralized": 2303324095419.756,
+   "by_support_channel": {
+    "asec": {
+     "deduction": 5232298880.620576,
+     "people_with_deduction": 1901231.543136742,
+     "premium_base": 6619500408.688213
+    },
+    "puf_tax_detail": {
+     "deduction": 10748835280.030594,
+     "people_with_deduction": 1891399.635160443,
+     "premium_base": 13106844519.549175
+    }
+   },
+   "weight_reconciliation": {
+    "tax_unit_total": 15980982740.002775,
+    "person_total": 15981134160.651167,
+    "tax_unit_ald_equals_member_sum": false
+   }
+  },
+  "reported_where_not_enrolled": {
+   "name": "reported_where_not_enrolled",
+   "light": false,
+   "deduction": {
+    "amount": 16699567061.618488,
+    "returns": 3905214.5541381156,
+    "tax_unit_rows": 1493,
+    "people": 3967529.6057534097,
+    "amount_in_medicare_proxy": 718584321.6157124,
+    "people_in_medicare_proxy": 174898.4274562241,
+    "amount_enrolled": 0.0,
+    "people_enrolled": 0.0,
+    "amount_outside_proxy": 15981134160.651169,
+    "by_plan_business": {
+     "schedule_c": {
+      "people": 3816898.1274773143,
+      "amount": 15454586020.364485
+     },
+     "farm_without_schedule_c_profit": {
+      "people": 70636.02063860928,
+      "amount": 309075012.4379756
+     },
+     "partnership_without_schedule_c_or_farm_profit": {
+      "people": 79995.45763748547,
+      "amount": 936057449.4644197
+     }
+    }
+   },
+   "premium_base": {
+    "direct_input_total": 20650597324.49427,
+    "direct_input_people": 4055318.923500456,
+    "self_employed_premiums_total": 20650597324.49427,
+    "self_employed_premiums_people": 4055318.923500456,
+    "self_employed_premiums_in_proxy": 924252396.2568824,
+    "limited_by_earned_income_people": 1054631.9978850568,
+    "premiums_above_deduction": 3950878842.2273884
+   },
+   "medical_expense_premiums_total": 535449513206.3926,
+   "medicare_part_b_premium_total": 103160706037.58734,
+   "output_groups": [
+    "federal",
+    "state",
+    "snap"
+   ],
+   "adjusted_gross_income": 16770819073461.906,
+   "income_tax": 2300570938727.751,
+   "itemized_medical_expenses": 837281030454.3826,
+   "medical_expense_deduction": 355192129128.2566,
+   "state_income_tax": 514900173335.7141,
+   "snap": 99295119023.24344,
+   "adjusted_gross_income_periods_computed": [
+    "2022",
+    "2024"
+   ],
+   "seconds": 253.0,
+   "peak_rss_mb": 15300,
+   "medical_expense_premiums_vs_shipped": {
+    "people_changed": 0.0,
+    "rows_changed": 0,
+    "total_change": 0.0,
+    "increase": 0.0,
+    "decrease": 0.0,
+    "max_abs_change": 0.0
+   },
+   "medicare_part_b_premium_vs_shipped": {
+    "rows_changed": 0,
+    "total_change": 0.0
+   },
+   "deduction_vs_shipped": {
+    "amount": 718584321.6157131,
+    "returns": 174898.41817007028
+   },
+   "adjusted_gross_income_vs_shipped": -746732724.9882812,
+   "income_tax_vs_shipped": -196993844.71484375,
+   "itemized_medical_expenses_vs_shipped": 0.0,
+   "medical_expense_deduction_vs_shipped": 15047217.974731445,
+   "state_income_tax_vs_shipped": -2930806.700073242,
+   "snap_vs_shipped": 0.0,
+   "revenue_loss": 2754903643.9155273,
+   "income_tax_ald_neutralized": 2303325842371.6665,
+   "by_support_channel": {
+    "asec": {
+     "deduction": 5232435118.333111,
+     "people_with_deduction": 1908020.515391313,
+     "premium_base": 6650042797.249241
+    },
+    "puf_tax_detail": {
+     "deduction": 11467283363.93377,
+     "people_with_deduction": 2059509.0903620962,
+     "premium_base": 14000554527.24503
+    }
+   },
+   "weight_reconciliation": {
+    "tax_unit_total": 16699567061.618488,
+    "person_total": 16699718482.26688,
+    "tax_unit_ald_equals_member_sum": false
+   }
+  },
+  "reported_only": {
+   "name": "reported_only",
+   "light": false,
+   "deduction": {
+    "amount": 22324465396.803734,
+    "returns": 5922131.539982668,
+    "tax_unit_rows": 2242,
+    "people": 6015978.086820923,
+    "amount_in_medicare_proxy": 6343482656.800947,
+    "people_in_medicare_proxy": 2223346.908523738,
+    "amount_enrolled": 5624898335.185234,
+    "people_enrolled": 2048448.4810675136,
+    "amount_outside_proxy": 15981134160.651169,
+    "by_plan_business": {
+     "schedule_c": {
+      "people": 5558133.632169518,
+      "amount": 20277843382.94921
+     },
+     "farm_without_schedule_c_profit": {
+      "people": 153187.13349195523,
+      "amount": 546187266.5659885
+     },
+     "partnership_without_schedule_c_or_farm_profit": {
+      "people": 304657.32115945,
+      "amount": 1500586167.9369197
+     }
+    }
+   },
+   "premium_base": {
+    "direct_input_total": 28365641617.186623,
+    "direct_input_people": 6115977.410199543,
+    "self_employed_premiums_total": 28365641617.186623,
+    "self_employed_premiums_people": 6115977.410199543,
+    "self_employed_premiums_in_proxy": 8639296688.949234,
+    "limited_by_earned_income_people": 1494808.9425793462,
+    "premiums_above_deduction": 6041024799.734505
+   },
+   "medical_expense_premiums_total": 531921813808.4311,
+   "medicare_part_b_premium_total": 103160706037.58734,
+   "output_groups": [
+    "federal",
+    "state",
+    "snap"
+   ],
+   "adjusted_gross_income": 16764773186805.633,
+   "income_tax": 2299788750886.532,
+   "itemized_medical_expenses": 833753331031.759,
+   "medical_expense_deduction": 353307382776.6221,
+   "state_income_tax": 514740481201.5571,
+   "snap": 99244038676.0148,
+   "adjusted_gross_income_periods_computed": [
+    "2022",
+    "2024"
+   ],
+   "seconds": 389.6,
+   "peak_rss_mb": 11297,
+   "medical_expense_premiums_vs_shipped": {
+    "people_changed": 1682741.5569609273,
+    "rows_changed": 652,
+    "total_change": -3527699397.9614134,
+    "increase": 0.0,
+    "decrease": -3527699397.9614134
+   },
+   "medicare_part_b_premium_vs_shipped": {
+    "rows_changed": 0,
+    "total_change": 0.0
+   },
+   "deduction_vs_shipped": {
+    "amount": 6343482656.800959,
+    "returns": 2191815.404014623
+   },
+   "adjusted_gross_income_vs_shipped": -6792619381.261719,
+   "income_tax_vs_shipped": -979181685.9335938,
+   "itemized_medical_expenses_vs_shipped": -3527699422.623535,
+   "medical_expense_deduction_vs_shipped": -1869699133.65979,
+   "state_income_tax_vs_shipped": -162622940.85705566,
+   "snap_vs_shipped": -51080347.228637695,
+   "revenue_loss": 3619968506.208008,
+   "income_tax_ald_neutralized": 2303408719392.74,
+   "by_support_channel": {
+    "asec": {
+     "deduction": 6391389048.854303,
+     "people_with_deduction": 2618188.257240954,
+     "premium_base": 8073082659.274984
+    },
+    "puf_tax_detail": {
+     "deduction": 15933227768.597813,
+     "people_with_deduction": 3397789.829579969,
+     "premium_base": 20292558957.911636
+    }
+   },
+   "weight_reconciliation": {
+    "tax_unit_total": 22324465396.803734,
+    "person_total": 22324616817.452118,
+    "tax_unit_ald_equals_member_sum": false
+   }
+  },
+  "reported_plus_modeled_part_b": {
+   "name": "reported_plus_modeled_part_b",
+   "error": "AssertionError()",
+   "traceback": "Traceback (most recent call last):\n  File \"/Users/maxghenis/reviews/microcosm-sehi-medicare-2026-10-11/measure.py\", line 757, in <module>\n    run_scenario(args.name)\n    ~~~~~~~~~~~~^^^^^^^^^^^\n  File \"/Users/maxghenis/reviews/microcosm-sehi-medicare-2026-10-11/measure.py\", line 460, in run_scenario\n    assert np.allclose(arr(sim, \"health_insurance_premiums\"), premium_input, rtol=0, atol=1e-3)\n           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n",
+   "neutralized_error": "AssertionError()"
+  },
+  "reported_plus_reported_part_b": {
+   "name": "reported_plus_reported_part_b",
+   "light": true,
+   "deduction": {
+    "amount": 30716704884.137596,
+    "returns": 8450423.196517942,
+    "tax_unit_rows": 3053,
+    "people": 8825319.697402244,
+    "amount_in_medicare_proxy": 14819347475.993484,
+    "people_in_medicare_proxy": 5015552.430855243,
+    "amount_enrolled": 14089520508.760418,
+    "people_enrolled": 4809384.323128346,
+    "amount_outside_proxy": 15992787813.61046,
+    "by_plan_business": {
+     "schedule_c": {
+      "people": 8072214.591493882,
+      "amount": 27399182078.64076
+     },
+     "farm_without_schedule_c_profit": {
+      "people": 212051.90887331302,
+      "amount": 832006658.4540057
+     },
+     "partnership_without_schedule_c_or_farm_profit": {
+      "people": 541053.1970350505,
+      "amount": 2580946552.509177
+     }
+    }
+   },
+   "premium_base": {
+    "direct_input_total": 38773643039.40611,
+    "direct_input_people": 8925319.020780867,
+    "self_employed_premiums_total": 38773643039.40611,
+    "self_employed_premiums_people": 8925319.020780867,
+    "self_employed_premiums_in_proxy": 19015227414.127876,
+    "limited_by_earned_income_people": 2236738.3234223602,
+    "premiums_above_deduction": 7961507749.802167
+   },
+   "medical_expense_premiums_total": 537848955657.3171,
+   "medicare_part_b_premium_total": 103160706037.58734,
+   "adjusted_gross_income_periods_computed": [
+    "2022"
+   ],
+   "seconds": 5.1,
+   "peak_rss_mb": 3918,
+   "medical_expense_premiums_vs_shipped": {
+    "people_changed": 4775544.818387461,
+    "rows_changed": 1631,
+    "total_change": 2399442450.9245896,
+    "increase": 3443754619.481627,
+    "decrease": -1044312168.5570374
+   },
+   "medicare_part_b_premium_vs_shipped": {
+    "rows_changed": 0,
+    "total_change": 0.0
+   },
+   "deduction_vs_shipped": {
+    "amount": 14735722144.13482,
+    "returns": 4720107.060549897
+   },
+   "by_support_channel": {
+    "asec": {
+     "deduction": 8967165983.172672,
+     "people_with_deduction": 3501102.6297587063,
+     "premium_base": 11368081909.870337
+    },
+    "puf_tax_detail": {
+     "deduction": 21844969306.431274,
+     "people_with_deduction": 5324217.06764354,
+     "premium_base": 27405561129.535774
+    }
+   },
+   "weight_reconciliation": {
+    "tax_unit_total": 30716704884.137596,
+    "person_total": 30812135289.603943,
+    "tax_unit_ald_equals_member_sum": false
+   }
+  },
+  "reported_plus_all_modeled_medicare": {
+   "name": "reported_plus_all_modeled_medicare",
+   "light": true,
+   "deduction": {
+    "amount": 29208287048.24067,
+    "returns": 8975884.767048668,
+    "tax_unit_rows": 3184,
+    "people": 9388298.578484274,
+    "amount_in_medicare_proxy": 13283433099.812096,
+    "people_in_medicare_proxy": 5595667.400187088,
+    "amount_enrolled": 12564848778.196384,
+    "people_enrolled": 5420768.972730864,
+    "amount_outside_proxy": 15981134160.651169,
+    "by_plan_business": {
+     "schedule_c": {
+      "people": 8593006.174802504,
+      "amount": 26242593071.899292
+     },
+     "farm_without_schedule_c_profit": {
+      "people": 236829.97984972657,
+      "amount": 798683531.846374
+     },
+     "partnership_without_schedule_c_or_farm_profit": {
+      "people": 558462.4238320434,
+      "amount": 2223290656.717601
+     }
+    }
+   },
+   "premium_base": {
+    "direct_input_total": 36782823594.95824,
+    "direct_input_people": 9488297.901862893,
+    "self_employed_premiums_total": 36782823594.95824,
+    "self_employed_premiums_people": 9488297.901862893,
+    "self_employed_premiums_in_proxy": 17056478666.72085,
+    "limited_by_earned_income_people": 2118754.984997079,
+    "premiums_above_deduction": 7518256334.494973
+   },
+   "medical_expense_premiums_total": 535449513206.3926,
+   "medicare_part_b_premium_total": 103160706037.58734,
+   "adjusted_gross_income_periods_computed": [
+    "2022"
+   ],
+   "seconds": 5.9,
+   "peak_rss_mb": 3919,
+   "medical_expense_premiums_vs_shipped": {
+    "people_changed": 0.0,
+    "rows_changed": 0,
+    "total_change": 0.0,
+    "increase": 0.0,
+    "decrease": 0.0,
+    "max_abs_change": 0.0
+   },
+   "medicare_part_b_premium_vs_shipped": {
+    "rows_changed": 0,
+    "total_change": 0.0
+   },
+   "deduction_vs_shipped": {
+    "amount": 13227304308.237894,
+    "returns": 5245568.631080623
+   },
+   "by_support_channel": {
+    "asec": {
+     "deduction": 8757778550.480165,
+     "people_with_deduction": 3703272.237372144,
+     "premium_base": 11091154177.916723
+    },
+    "puf_tax_detail": {
+     "deduction": 20506788709.9831,
+     "people_with_deduction": 5685026.341112128,
+     "premium_base": 25691669417.041515
+    }
+   },
+   "weight_reconciliation": {
+    "tax_unit_total": 29208287048.24067,
+    "person_total": 29264567260.46327,
+    "tax_unit_ald_equals_member_sum": false
+   }
+  },
+  "reported_plus_modeled_part_b_where_reported": {
+   "name": "reported_plus_modeled_part_b_where_reported",
+   "light": true,
+   "deduction": {
+    "amount": 24897411103.026405,
+    "returns": 5922131.539982668,
+    "tax_unit_rows": 2242,
+    "people": 6015978.086820923,
+    "amount_in_medicare_proxy": 8916428363.023603,
+    "people_in_medicare_proxy": 2223346.908523738,
+    "amount_enrolled": 8197844041.407892,
+    "people_enrolled": 2048448.4810675136,
+    "amount_outside_proxy": 15981134160.651169,
+    "by_plan_business": {
+     "schedule_c": {
+      "people": 5558133.632169518,
+      "amount": 22444645436.24684
+     },
+     "farm_without_schedule_c_profit": {
+      "people": 153187.13349195523,
+      "amount": 670819152.1769595
+     },
+     "partnership_without_schedule_c_or_farm_profit": {
+      "people": 304657.32115945,
+      "amount": 1782097935.250974
+     }
+    }
+   },
+   "premium_base": {
+    "direct_input_total": 31893341015.148033,
+    "direct_input_people": 6115977.410199543,
+    "self_employed_premiums_total": 31893341015.148033,
+    "self_employed_premiums_people": 6115977.410199543,
+    "self_employed_premiums_in_proxy": 12166996086.910648,
+    "limited_by_earned_income_people": 1671155.0863932988,
+    "premiums_above_deduction": 6995778491.473262
+   },
+   "medical_expense_premiums_total": 535449513206.3926,
+   "medicare_part_b_premium_total": 103160706037.58734,
+   "adjusted_gross_income_periods_computed": [
+    "2022"
+   ],
+   "seconds": 4.9,
+   "peak_rss_mb": 3899,
+   "medical_expense_premiums_vs_shipped": {
+    "people_changed": 0.0,
+    "rows_changed": 0,
+    "total_change": 0.0,
+    "increase": 0.0,
+    "decrease": 0.0,
+    "max_abs_change": 0.0
+   },
+   "medicare_part_b_premium_vs_shipped": {
+    "rows_changed": 0,
+    "total_change": 0.0
+   },
+   "deduction_vs_shipped": {
+    "amount": 8916428363.02363,
+    "returns": 2191815.404014623
+   },
+   "by_support_channel": {
+    "asec": {
+     "deduction": 7379356356.186822,
+     "people_with_deduction": 2618188.257240954,
+     "premium_base": 9433062486.786903
+    },
+    "puf_tax_detail": {
+     "deduction": 17518206167.487953,
+     "people_with_deduction": 3397789.829579969,
+     "premium_base": 22460278528.36113
+    }
+   },
+   "weight_reconciliation": {
+    "tax_unit_total": 24897411103.026405,
+    "person_total": 24897562523.674774,
+    "tax_unit_ald_equals_member_sum": false
+   }
+  },
+  "reported_plus_modeled_part_b_sole_proprietors": {
+   "name": "reported_plus_modeled_part_b_sole_proprietors",
+   "light": true,
+   "deduction": {
+    "amount": 27921053840.987427,
+    "returns": 8533190.519020993,
+    "tax_unit_rows": 3031,
+    "people": 8909831.612289716,
+    "amount_in_medicare_proxy": 11996199892.558914,
+    "people_in_medicare_proxy": 5117200.43399253,
+    "amount_enrolled": 11277615570.943203,
+    "people_enrolled": 4942302.006536306,
+    "amount_outside_proxy": 15981134160.651169,
+    "by_plan_business": {
+     "schedule_c": {
+      "people": 8593006.174802504,
+      "amount": 26242593071.899292
+     },
+     "farm_without_schedule_c_profit": {
+      "people": 236829.97984972657,
+      "amount": 798683531.846374
+     },
+     "partnership_without_schedule_c_or_farm_profit": {
+      "people": 79995.45763748547,
+      "amount": 936057449.4644197
+     }
+    }
+   },
+   "premium_base": {
+    "direct_input_total": 35069914715.52953,
+    "direct_input_people": 9009830.935668336,
+    "self_employed_premiums_total": 35069914715.52953,
+    "self_employed_premiums_people": 9009830.935668336,
+    "self_employed_premiums_in_proxy": 15343569787.292145,
+    "limited_by_earned_income_people": 2050161.7953798575,
+    "premiums_above_deduction": 7092580662.319448
+   },
+   "medical_expense_premiums_total": 535449513206.3926,
+   "medicare_part_b_premium_total": 103160706037.58734,
+   "adjusted_gross_income_periods_computed": [
+    "2022"
+   ],
+   "seconds": 4.6,
+   "peak_rss_mb": 3906,
+   "medical_expense_premiums_vs_shipped": {
+    "people_changed": 0.0,
+    "rows_changed": 0,
+    "total_change": 0.0,
+    "increase": 0.0,
+    "decrease": 0.0,
+    "max_abs_change": 0.0
+   },
+   "medicare_part_b_premium_vs_shipped": {
+    "rows_changed": 0,
+    "total_change": 0.0
+   },
+   "deduction_vs_shipped": {
+    "amount": 11940071100.984652,
+    "returns": 4802874.383052948
+   },
+   "by_support_channel": {
+    "asec": {
+     "deduction": 8757778550.480165,
+     "people_with_deduction": 3703272.237372144,
+     "premium_base": 11091154177.916723
+    },
+    "puf_tax_detail": {
+     "deduction": 19219555502.72992,
+     "people_with_deduction": 5206559.374917571,
+     "premium_base": 23978760537.61281
+    }
+   },
+   "weight_reconciliation": {
+    "tax_unit_total": 27921053840.987427,
+    "person_total": 27977334053.210083,
+    "tax_unit_ald_equals_member_sum": false
+   }
+  },
+  "engine_side": {
+   "name": "engine_side",
+   "error": "CycleError('Circular definition detected on formula self_employed_health_insurance_ald_person@2024. The circle is:\\n\\nNormal computation tree:\\n\\n\\nCycle start:\\n  >> self_employed_health_insurance_ald_person@2024 (branch default)\\n  >> self_employed_health_insurance_premiums@2024 (branch default)\\n  >> medical_expense_health_insurance_premiums@2024 (branch default)\\n  >> medicare_part_b_premium@2024 (branch default)\\n  >> gross_medicare_part_b_premium@2024 (branch default)\\n  >> filing_status@2024 (branch default)\\n  >> surviving_spouse_eligible@2024 (branch default)\\n  >> tax_unit_child_dependents@2024 (branch default)\\n  >> is_child_dependent@2024 (branch default)\\n  >> is_qualifying_relative_dependent@2024 (branch default)\\n  >> dependent_gross_income@2024 (branch default)\\n  >> dependent_taxable_social_security@2024 (branch default)\\n  >> dependent_taxable_ss_magi@2024 (branch default)\\n  >> self_employed_health_insurance_ald_person@2024 (branch default)')",
+   "traceback": "me/taxable_income/adjusted_gross_income/irs_gross_income/social_security/dependent_taxable_ss_magi.py\", line 115, in formula\n    adjusted_gross_income = income - add(person, period, deductions)\n                                     ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/maxghenis/PolicyEngine/_envs/peus-sehi-10120-47bba5e/lib/python3.13/site-packages/policyengine_core/commons/formulas.py\", line 222, in add\n    return for_each_variable(entity, period, variables, agg_func=\"add\", options=options)\n  File \"/Users/maxghenis/PolicyEngine/_envs/peus-sehi-10120-47bba5e/lib/python3.13/site-packages/policyengine_core/commons/formulas.py\", line 182, in for_each_variable\n    values = entity(variable, period, options=options)\n  File \"/Users/maxghenis/PolicyEngine/_envs/peus-sehi-10120-47bba5e/lib/python3.13/site-packages/policyengine_core/populations/population.py\", line 165, in __call__\n    return self.simulation.calculate(variable_name, period, **calculate_kwargs)\n           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/maxghenis/PolicyEngine/_envs/peus-sehi-10120-47bba5e/lib/python3.13/site-packages/policyengine_core/simulations/microsimulation.py\", line 78, in calculate\n    values = super().calculate(variable_name, period, map_to, decode_enums)\n  File \"/Users/maxghenis/PolicyEngine/_envs/peus-sehi-10120-47bba5e/lib/python3.13/site-packages/policyengine_core/simulations/simulation.py\", line 1430, in calculate\n    result = self._calculate(variable_name, period)\n  File \"/Users/maxghenis/PolicyEngine/_envs/peus-sehi-10120-47bba5e/lib/python3.13/site-packages/policyengine_core/simulations/simulation.py\", line 1735, in _calculate\n    self._check_for_cycle(variable.name, period)\n    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/maxghenis/PolicyEngine/_envs/peus-sehi-10120-47bba5e/lib/python3.13/site-packages/policyengine_core/simulations/simulation.py\", line 2354, in _check_for_cycle\n    raise CycleError(\n    ...<10 lines>...\n    )\npolicyengine_core.errors.cycle_error.CycleError: Circular definition detected on formula self_employed_health_insurance_ald_person@2024. The circle is:\n\nNormal computation tree:\n\n\nCycle start:\n  >> self_employed_health_insurance_ald_person@2024 (branch default)\n  >> self_employed_health_insurance_premiums@2024 (branch default)\n  >> medical_expense_health_insurance_premiums@2024 (branch default)\n  >> medicare_part_b_premium@2024 (branch default)\n  >> gross_medicare_part_b_premium@2024 (branch default)\n  >> filing_status@2024 (branch default)\n  >> surviving_spouse_eligible@2024 (branch default)\n  >> tax_unit_child_dependents@2024 (branch default)\n  >> is_child_dependent@2024 (branch default)\n  >> is_qualifying_relative_dependent@2024 (branch default)\n  >> dependent_gross_income@2024 (branch default)\n  >> dependent_taxable_social_security@2024 (branch default)\n  >> dependent_taxable_ss_magi@2024 (branch default)\n  >> self_employed_health_insurance_ald_person@2024 (branch default)\n"
+  },
+  "engine_side_standard_part_b": {
+   "name": "engine_side_standard_part_b",
+   "light": false,
+   "deduction": {
+    "amount": 29208287048.24067,
+    "returns": 8975884.767048668,
+    "tax_unit_rows": 3184,
+    "people": 9388298.578484274,
+    "amount_in_medicare_proxy": 13283433099.812096,
+    "people_in_medicare_proxy": 5595667.400187088,
+    "amount_enrolled": 12564848778.196384,
+    "people_enrolled": 5420768.972730864,
+    "amount_outside_proxy": 15981134160.651169,
+    "by_plan_business": {
+     "schedule_c": {
+      "people": 8593006.174802504,
+      "amount": 26242593071.899292
+     },
+     "farm_without_schedule_c_profit": {
+      "people": 236829.97984972657,
+      "amount": 798683531.846374
+     },
+     "partnership_without_schedule_c_or_farm_profit": {
+      "people": 558462.4238320434,
+      "amount": 2223290656.717601
+     }
+    }
+   },
+   "premium_base": {
+    "direct_input_total": 19726344928.23739,
+    "direct_input_people": 3880420.4960442316,
+    "self_employed_premiums_total": 36782823594.95824,
+    "self_employed_premiums_people": 9488297.901862893,
+    "self_employed_premiums_in_proxy": 17056478666.72085,
+    "limited_by_earned_income_people": 2118754.984997079,
+    "premiums_above_deduction": 7518256334.494973
+   },
+   "medical_expense_premiums_total": 535449513206.3926,
+   "medicare_part_b_premium_total": 103160706037.58734,
+   "output_groups": [
+    "federal",
+    "state",
+    "snap"
+   ],
+   "adjusted_gross_income": 16756685563396.414,
+   "income_tax": 2298884500830.0156,
+   "itemized_medical_expenses": 837281030454.3826,
+   "medical_expense_deduction": 355868913355.53174,
+   "state_income_tax": 514544667383.5039,
+   "snap": 99295119023.24344,
+   "adjusted_gross_income_periods_computed": [
+    "2022",
+    "2024"
+   ],
+   "seconds": 242.7,
+   "peak_rss_mb": 16862,
+   "medical_expense_premiums_vs_shipped": {
+    "people_changed": 0.0,
+    "rows_changed": 0,
+    "total_change": 0.0,
+    "increase": 0.0,
+    "decrease": 0.0,
+    "max_abs_change": 0.0
+   },
+   "medicare_part_b_premium_vs_shipped": {
+    "rows_changed": 0,
+    "total_change": 0.0
+   },
+   "deduction_vs_shipped": {
+    "amount": 13227304308.237894,
+    "returns": 5245568.631080623
+   },
+   "adjusted_gross_income_vs_shipped": -14880242790.480469,
+   "income_tax_vs_shipped": -1883431742.4501953,
+   "itemized_medical_expenses_vs_shipped": 0.0,
+   "medical_expense_deduction_vs_shipped": 691831445.2498779,
+   "state_income_tax_vs_shipped": -358436758.9102783,
+   "snap_vs_shipped": 0.0,
+   "by_support_channel": {
+    "asec": {
+     "deduction": 8757778550.480165,
+     "people_with_deduction": 3703272.237372144,
+     "premium_base": 11091154177.916723
+    },
+    "puf_tax_detail": {
+     "deduction": 20506788709.9831,
+     "people_with_deduction": 5685026.341112128,
+     "premium_base": 25691669417.041515
+    }
+   },
+   "weight_reconciliation": {
+    "tax_unit_total": 29208287048.24067,
+    "person_total": 29264567260.46327,
+    "tax_unit_ald_equals_member_sum": false
+   }
+  }
+ },
+ "engine_side_vs_frozen_modeled_part_b": {},
+ "stale_artifacts_refused": [],
+ "possible_reported_part_b_overlap": {
+  "self_employed_enrollees_outside_esi_without_social_security": 2808580.463648805,
+  "of_whom_reported_premium_positive": 975029.1386392226,
+  "their_reported_premium": 5258345687.997274,
+  "their_modeled_part_b": 1436695701.8826075,
+  "rows": 334,
+  "by_support_channel": {
+   "asec": {
+    "people": 125757.35973114258,
+    "modeled_part_b": 206015183.51724622
+   },
+   "puf_tax_detail": {
+    "people": 849271.7789080801,
+    "modeled_part_b": 1230680518.3653612
+   }
+  }
+ },
+ "measure_py_sha256": "520de48f04afaffb9c189b130897b12f081512ee51a3a7d40f8af24157dc4b04"
+}

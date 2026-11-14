@@ -1,0 +1,157 @@
+{
+ "label": "sehi-medicare-r2-peus221",
+ "policyengine_us": "2.2.1",
+ "policyengine_core": "3.32.5",
+ "dataset": "/Users/maxghenis/.cache/huggingface/hub/datasets--policyengine--populace-us/snapshots/8ab57ffc2ca41d8af631ff62ebbce95e966299f3/populace_us_2024.h5",
+ "period": 2024,
+ "widened_plan_businesses": false,
+ "stored_attribution_reproduced": {
+  "premiums_equal": true,
+  "flag_equal": true,
+  "max_abs_premium_difference": 0.0
+ },
+ "enrollment_from_stored_inputs": {
+  "equal": true,
+  "rows_differing": 0,
+  "enrolled_under_65_rows": 0,
+  "modeled_part_b_positive_not_enrolled_rows": 0
+ },
+ "scenarios_available": [
+  "engine_side",
+  "engine_side_standard_part_b",
+  "reported_only",
+  "reported_plus_all_modeled_medicare",
+  "reported_plus_modeled_part_b",
+  "reported_plus_modeled_part_b_where_reported",
+  "reported_plus_reported_part_b",
+  "reported_where_not_enrolled",
+  "shipped"
+ ],
+ "population": {
+  "people": {
+   "people": 340077321.9414408,
+   "rows": 166321
+  },
+  "self_employed_flag": {
+   "people": 36753477.010983326,
+   "rows": 11971
+  },
+  "medicare_proxy": {
+   "people": 72733806.21348652,
+   "rows": 31928
+  },
+  "medicare_eligible": {
+   "people": 61167959.34309381,
+   "rows": 25445
+  },
+  "medicare_enrolled": {
+   "people": 57519410.561252795,
+   "rows": 24147
+  },
+  "enrolled_outside_proxy": {
+   "people": 0.0,
+   "rows": 0
+  },
+  "proxy_not_enrolled": {
+   "people": 15214395.652233724,
+   "rows": 7781
+  },
+  "self_employed_in_proxy": {
+   "people": 7026405.282572991,
+   "rows": 2468
+  },
+  "self_employed_in_proxy_enrolled": {
+   "people": 5591170.540494736,
+   "rows": 1827
+  },
+  "self_employed_in_proxy_with_esi": {
+   "people": 1439623.6772070164,
+   "rows": 606
+  },
+  "self_employed_in_proxy_outside_esi": {
+   "people": 5586781.605365976,
+   "rows": 1862
+  },
+  "self_employed_in_proxy_outside_esi_enrolled": {
+   "people": 4788318.052956765,
+   "rows": 1510
+  },
+  "self_employed_in_proxy_outside_esi_not_enrolled": {
+   "people": 798463.5524092115,
+   "rows": 352
+  },
+  "self_employed_in_proxy_outside_esi_reported_positive": {
+   "people": 1913959.718300962,
+   "rows": 725
+  },
+  "self_employed_in_proxy_outside_esi_part_b_positive": {
+   "people": 4788318.052956765,
+   "rows": 1510
+  },
+  "self_employed_in_proxy_outside_esi_part_b_only": {
+   "people": 3034872.5426329854,
+   "rows": 878
+  },
+  "self_employed_enrolled_outside_esi_without_social_security": {
+   "people": 2465637.903025737,
+   "rows": 749
+  },
+  "self_employed_enrolled_outside_esi_without_social_security_reported_positive": {
+   "people": 852368.2808257884,
+   "rows": 290
+  },
+  "self_employed_in_proxy_outside_esi_partner_only": {
+   "people": 0.0,
+   "rows": 0
+  },
+  "by_plan_business_in_proxy": {
+   "schedule_c": {
+    "people": 7026405.282572991,
+    "rows": 2468
+   },
+   "farm": {
+    "people": 452810.7833437661,
+    "rows": 238
+   },
+   "partnership": {
+    "people": 922153.0917083973,
+    "rows": 317
+   }
+  },
+  "by_plan_business": {
+   "schedule_c": {
+    "people": 36753477.010983326,
+    "rows": 11971
+   },
+   "farm": {
+    "people": 3417526.35800874,
+    "rows": 1062
+   },
+   "partnership": {
+    "people": 2121624.4478187445,
+    "rows": 828
+   }
+  }
+ },
+ "premium_mass_self_employed_in_proxy_outside_esi": {
+  "reported_non_part_b": 7499944656.310921,
+  "modeled_part_b_net_of_msp": 7273236939.677223,
+  "modeled_gross_part_b_enrolled": 10038229498.609375,
+  "modeled_base_part_b_enrolled": 10038229498.609375,
+  "modeled_irmaa_part_b_enrolled": 0.0,
+  "msp_part_b_coverage": 2764992558.932151,
+  "modeled_part_a_premium": 0.0,
+  "modeled_part_d_irmaa": 0.0,
+  "stored_reported_part_b": 8689367916.143639
+ },
+ "part_b_all_enrollees": {
+  "modeled_net": 102811453883.77887,
+  "modeled_gross": 120583686683.48044,
+  "irmaa": 0.0,
+  "stored_reported": 116957340678.14566,
+  "enrolled_people": 57519410.561252795,
+  "stored_reported_positive_people": 50594106.05188724
+ },
+ "prepare_seconds": 10.3,
+ "prepare_peak_rss_mb": 3840
+}
