@@ -13,7 +13,9 @@ Invariants:
   before the output directory exists;
 - a parent that carries exactly the flags its geography decides reaches the
   model provenance check, and its receipt lists those flags as carried;
-- a parent with no county decides no flag, so it needs none.
+- a parent with no county decides no flag, so it needs none;
+- a parent in which a household's block lies outside that household's county
+  fails the same way, whatever flags it carries.
 """
 
 from __future__ import annotations
@@ -190,6 +192,41 @@ def test_parent_without_its_flags_is_refused_before_model_work(
         annual.build_annual_static_aging(**inputs)
 
     assert failure in str(error.value)
+    assert not inputs["output_dir"].exists()
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [_complete("block"), _complete("county"), {}],
+    ids=["with-every-flag", "with-the-county-flags", "without-flags"],
+)
+def test_parent_with_a_block_outside_its_county_is_refused_before_model_work(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    flags: dict[str, list[bool]],
+) -> None:
+    # The Yonkers household's county becomes the Bronx while its block and
+    # place stay: what a county redraw that kept the block columns leaves.
+    # No place rung can be read from that parent, whatever flags it carries
+    # (microcosm#1453 review round 1), so the lane stops before model work.
+    tables = _tables(geography="block", flags=flags)
+    assert tables["household"].loc[0, "block_geoid"] == "361190001001000"
+    tables["household"].loc[0, "county_fips"] = "36005"
+    inputs = _inputs(tmp_path, tables)
+    monkeypatch.setattr(
+        annual, "_model_provenance", lambda **kwargs: pytest.fail("must refuse first")
+    )
+    monkeypatch.setattr(
+        annual, "_runtime_provenance", lambda: pytest.fail("must refuse first")
+    )
+
+    with pytest.raises(
+        ValueError, match="block_geoid must begin with the row's county_fips"
+    ) as error:
+        annual.build_annual_static_aging(**inputs)
+
+    assert "1/5 household row(s) do not" in str(error.value)
+    assert "[('361190001001000', '36005')]" in str(error.value)
     assert not inputs["output_dir"].exists()
 
 

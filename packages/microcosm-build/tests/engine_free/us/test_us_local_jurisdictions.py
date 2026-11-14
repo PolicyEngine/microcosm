@@ -13,14 +13,21 @@ Hypothesis):
   malformed geography raises instead of yielding ``False``;
 - deriving a selection of a derived support equals deriving the selected rows
   from scratch, and leaves every flag the kept rows' geography decides;
-- deriving a support whose flags are already complete returns it unchanged.
+- deriving a support whose flags are already complete returns it unchanged;
+- after any sequence of geography lines and artifact steps, no place-rule or
+  county-rule flag is true on a household whose county lies outside the
+  flag's counties, and no line leaves a block outside its household's county;
+- a table in which a row's block lies outside the row's county supplies no
+  rung: reading its rungs raises, so no place-rule flag is derived from it.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+from functools import cache
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import numpy as np
 import pandas as pd
@@ -46,19 +53,43 @@ from microcosm.build.us_local_jurisdictions import (
     us_local_jurisdiction_rungs_present,
     with_us_local_jurisdiction_flags,
 )
+from microcosm.build.us_runtime.base_pool import (
+    ACS_2024_1YR_SPINE,
+    ASEC_PUF_SPINE,
+    spine_column,
+    with_optional_acs_spine,
+)
+from microcosm.build.us_runtime.block_location import (
+    US_CD_PLAN_COLUMN_PREFIX,
+    attach_congressional_district_plans,
+    load_us_location_ladder,
+    location_geography_columns,
+    us_block_location_gate,
+    with_household_us_block_location,
+)
 from microcosm.build.us_runtime.geography_ladder import (
+    US_GEOGRAPHY_LADDER_COLUMNS,
     assign_us_geography_ladder,
     us_geography_ladder_assignment_summary,
     us_geography_ladder_gate,
     with_household_us_geography_ladder,
 )
 from microcosm.build.us_runtime.puma_ladder import (
+    US_PUMA_LADDER_BLOCK_ANCHORED_COLUMNS,
+    US_PUMA_LADDER_BLOCK_PLAN_COLUMN_PREFIX,
+    US_PUMA_LADDER_COLUMNS,
+    US_PUMA_LADDER_TRACT_COLUMN,
     UsPumaLadder,
+    assign_us_puma_ladder,
     us_puma_ladder_assignment_summary,
     us_puma_ladder_gate,
     with_household_us_puma_ladder,
 )
-from microcosm.frame import US_SCHEMA
+from microcosm.frame import US_SCHEMA, Frame
+from test_support.microcosm_build.us_block_location import (
+    local_jurisdiction_blocks,
+    write_location_ladder,
+)
 from test_support.microcosm_build.us_local_jurisdictions import (
     FIXTURE_BLOCK_BY_NAME,
     FIXTURE_BLOCKS,
@@ -1209,3 +1240,815 @@ def test_artifact_receipt_matches_the_rederived_receipt_on_a_complete_artifact()
     bare = us_local_jurisdiction_artifact_receipt(us_frame([{"state_fips": 36}]))
     assert bare["rungs"] == []
     assert bare["carried_flags"] == []
+
+
+# --------------------------------------------------------------------------- #
+# A block outside its household's county (review round 1 of microcosm#1453)
+# --------------------------------------------------------------------------- #
+
+_PUMA_LADDER_METADATA = {
+    "schema_version": 1,
+    "kind": "us_puma_ladder",
+    "puma_vintage": "2020_puma",
+    "sampling_basis": "population",
+    "layers": {
+        "congressional_district": {"vintage": "119th_congress"},
+        "county": {"vintage": "2020_census"},
+        "tract": {"vintage": "2020_census"},
+    },
+}
+# Where the redraw ladder below puts each fixture state's households: a
+# county that holds no registry jurisdiction. New York's is the Bronx.
+_REDRAWN_COUNTY = {
+    6: "06037",
+    8: "08005",
+    10: "10001",
+    36: "36005",
+    37: "37129",
+    42: "42045",
+}
+
+
+def _redraw_puma_ladder() -> UsPumaLadder:
+    """One PUMA per fixture state, wholly inside :data:`_REDRAWN_COUNTY`."""
+
+    county = np.asarray(
+        sorted(int(code) for code in _REDRAWN_COUNTY.values()), dtype=np.int64
+    )
+    state = county // 1000
+    puma = state * 10**5 + 200
+    population = np.full(len(county), 100.0)
+    return UsPumaLadder(
+        puma=puma,
+        puma_population=population,
+        cd_overlap_puma=puma,
+        cd_overlap_cd=state * 100 + 1,
+        cd_overlap_population=population,
+        county_overlap_puma=puma,
+        county_overlap_county=county.astype(np.int32),
+        county_overlap_population=population,
+        tract_overlap_puma=puma,
+        tract_overlap_tract=county * 10**6 + 100,
+        tract_overlap_population=population,
+        metadata=_PUMA_LADDER_METADATA,
+    )
+
+
+def _puma_ladder_from_blocks(arrays: dict[str, np.ndarray]) -> UsPumaLadder:
+    """The PUMA ladder a block ladder implies.
+
+    Block population summed by PUMA, and by (PUMA, district), (PUMA, county)
+    and (PUMA, tract), as ``assemble_us_puma_ladder`` builds the real one.
+    """
+
+    block = arrays["block_geoid"].astype(np.int64)
+    table = pd.DataFrame(
+        {
+            "puma": arrays["puma"].astype(np.int64),
+            "district": arrays["congressional_district_geoid"].astype(np.int64),
+            "county": block // 10**10,
+            "tract": block // 10**4,
+            "population": arrays["population"].astype(np.float64),
+        }
+    )
+
+    def overlap(layer: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        grouped = table.groupby(["puma", layer], sort=True)["population"].sum()
+        return (
+            grouped.index.get_level_values(0).to_numpy(np.int64),
+            grouped.index.get_level_values(1).to_numpy(np.int64),
+            grouped.to_numpy(np.float64),
+        )
+
+    anchor = table.groupby("puma", sort=True)["population"].sum()
+    district_puma, district, district_population = overlap("district")
+    county_puma, county, county_population = overlap("county")
+    tract_puma, tract, tract_population = overlap("tract")
+    return UsPumaLadder(
+        puma=anchor.index.to_numpy(np.int64),
+        puma_population=anchor.to_numpy(np.float64),
+        cd_overlap_puma=district_puma,
+        cd_overlap_cd=district,
+        cd_overlap_population=district_population,
+        county_overlap_puma=county_puma,
+        county_overlap_county=county.astype(np.int32),
+        county_overlap_population=county_population,
+        tract_overlap_puma=tract_puma,
+        tract_overlap_tract=tract,
+        tract_overlap_population=tract_population,
+        metadata=_PUMA_LADDER_METADATA,
+    )
+
+
+def _location_ladder(arrays: dict[str, np.ndarray]):
+    with TemporaryDirectory() as directory:
+        return load_us_location_ladder(
+            write_location_ladder(Path(directory) / "ladder.npz", arrays)
+        )
+
+
+def test_a_puma_redraw_cannot_bring_a_place_flag_back() -> None:
+    # The reviewer's sequence. A household on the Yonkers block is redrawn to
+    # the Bronx by the PUMA wrapper, and the result is then read as an
+    # artifact. At d8e1490db the redraw left the block and its place beside
+    # the new county, the table still looked block-anchored, and the
+    # re-derivation wrote in_yonkers True on a Bronx household.
+    frame = us_frame(households_on_blocks(["yonkers"]), person_inputs=[[{}]])
+
+    located = with_household_us_geography_ladder(frame, block_ladder(), seed=1)
+    placed = located.table("household")
+    assert placed[["county_fips", "block_geoid", "place_fips"]].iloc[0].tolist() == [
+        "36119",
+        "361190001001000",
+        "84000",
+    ]
+    assert placed["in_yonkers"].tolist() == [True]
+
+    redrawn = with_household_us_puma_ladder(located, _redraw_puma_ladder(), seed=1)
+    moved = redrawn.table("household")
+    assert moved["county_fips"].tolist() == ["36005"]
+    assert "block_geoid" not in moved and "place_fips" not in moved
+    assert "in_yonkers" not in moved
+
+    rederived, receipt = rederive_us_local_jurisdiction_flags(redrawn)
+    household = rederived.table("household")
+    assert "in_yonkers" not in household
+    assert "in_wilmington" not in household
+    assert household["in_denver"].tolist() == [False]
+    assert receipt["rungs"] == ["county"]
+    assert receipt["flags"]["in_yonkers"]["status"] == JURISDICTION_FLAG_UNAVAILABLE
+    assert us_local_jurisdiction_artifact_receipt(rederived)["rungs"] == ["county"]
+
+
+@pytest.mark.parametrize("assign_tract", [False, True])
+def test_a_puma_redraw_leaves_no_column_only_a_block_decides(
+    assign_tract: bool,
+) -> None:
+    frame = us_frame(
+        [{**row, "tenure_type": "RENTED"} for row in households_on_blocks(_NAMES)],
+        person_inputs=[[{}, {}] for _ in _NAMES],
+    )
+    located = with_household_us_geography_ladder(frame, block_ladder(), seed=3)
+    before = located.table("household").copy()
+    assert set(US_GEOGRAPHY_LADDER_COLUMNS) <= set(before.columns)
+
+    redrawn = with_household_us_puma_ladder(
+        located, _redraw_puma_ladder(), seed=3, assign_tract=assign_tract
+    )
+    after = redrawn.table("household")
+
+    rewritten = set(US_PUMA_LADDER_COLUMNS)
+    if assign_tract:
+        rewritten.add(US_PUMA_LADDER_TRACT_COLUMN)
+    for column in US_GEOGRAPHY_LADDER_COLUMNS:
+        assert (column in after.columns) == (column in rewritten), column
+    assert set(US_PUMA_LADDER_BLOCK_ANCHORED_COLUMNS) == {
+        "block_geoid",
+        "tract_geoid",
+        "place_fips",
+        "sldu",
+        "sldl",
+        "cbsa_code",
+    }
+    # Only those columns and the place-rule flags went.
+    gone = set(before.columns) - set(after.columns)
+    assert gone == (set(US_PUMA_LADDER_BLOCK_ANCHORED_COLUMNS) - rewritten) | set(
+        PLACE_FLAGS
+    )
+    assert after["household_id"].tolist() == before["household_id"].tolist()
+    assert after["tenure_type"].tolist() == before["tenure_type"].tolist()
+    # What the ladder wrote agrees with itself.
+    assert after["county_fips"].tolist() == [
+        _REDRAWN_COUNTY[int(state)] for state in after["state_fips"]
+    ]
+    if assign_tract:
+        assert (after["tract_geoid"].str[:5] == after["county_fips"]).all()
+    assert us_local_jurisdiction_rungs_present(after) == PUMA_GEOGRAPHY_RUNGS
+    assert not after["in_denver"].any()
+    # The frame handed in keeps its block geography.
+    pd.testing.assert_frame_equal(located.table("household"), before)
+
+
+@pytest.mark.parametrize("assign_tract", [False, True])
+def test_a_puma_redraw_of_a_block_v1_frame_leaves_no_block_lookup(
+    assign_tract: bool,
+) -> None:
+    arrays = local_jurisdiction_blocks(4)
+    ladder = _location_ladder(arrays)
+    ladder = attach_congressional_district_plans(
+        ladder,
+        block_geoid=ladder.block_geoid,
+        plans={"117th_congress": ladder.block_geoid // 10**13 * 100 + 1},
+        plan_sources={
+            "117th_congress": {"vintage": "117th_congress", "source": "test plan"}
+        },
+    )
+    states = [8, 10, 36, 42] * 6
+    frame = us_frame(
+        [{"state_fips": state} for state in states],
+        person_inputs=[[{}] for _ in states],
+    )
+    located, _table = with_household_us_block_location(frame, ladder, seed=17)
+    before = located.table("household").copy()
+    columns = location_geography_columns(ladder)
+    plan_column = f"{US_CD_PLAN_COLUMN_PREFIX}117th_congress"
+    assert plan_column in columns and set(columns) <= set(before.columns)
+    assert us_block_location_gate(before, ladder).passed
+
+    redrawn = with_household_us_puma_ladder(
+        located,
+        _puma_ladder_from_blocks(arrays),
+        seed=17,
+        assign_tract=assign_tract,
+        expected_congressional_district_vintage="119th_congress",
+    )
+    after = redrawn.table("household")
+
+    # Every column the draw looked up from its block is rewritten by the
+    # PUMA ladder or gone, the second plan's district included.
+    rewritten = set(US_PUMA_LADDER_COLUMNS)
+    if assign_tract:
+        rewritten.add(US_PUMA_LADDER_TRACT_COLUMN)
+    for column in columns:
+        assert (column in after.columns) == (column in rewritten), column
+    assert US_PUMA_LADDER_BLOCK_PLAN_COLUMN_PREFIX == US_CD_PLAN_COLUMN_PREFIX
+    assert plan_column not in after
+    # The draw's PUMA is a valid anchor, so the ladder keeps it.
+    assert after["puma"].tolist() == before["puma"].tolist()
+    for flag in PLACE_FLAGS:
+        assert flag not in after
+    gate = us_puma_ladder_gate(
+        after,
+        redrawn.weights_for("household").values,
+        assign_tract=assign_tract,
+        nyc_share_bounds=(0.0, 1.0),
+        nyc_share_of_new_york_bounds=(0.0, 1.0),
+    )
+    assert gate.passed, gate.failures
+    rederived, receipt = rederive_us_local_jurisdiction_flags(redrawn)
+    assert rederived is redrawn
+    assert receipt["rungs"] == ["county"]
+
+
+def test_the_puma_kernel_keeps_block_columns_and_the_result_is_refused() -> None:
+    # assign_us_puma_ladder serves the pooled ACS line, which restores a
+    # block-line donor's own county after it, so the kernel keeps every
+    # column. Used alone on block-located households it leaves each block
+    # beside a redrawn county, and nothing reads a rung from that table.
+    frame = us_frame(households_on_blocks(_NAMES))
+    located = with_household_us_geography_ladder(frame, block_ladder(), seed=3)
+
+    assigned = assign_us_puma_ladder(
+        located.table("household"), _redraw_puma_ladder(), seed=3
+    )
+
+    assert set(US_PUMA_LADDER_BLOCK_ANCHORED_COLUMNS) <= set(assigned.columns)
+    moved = assigned["block_geoid"].str[:5] != assigned["county_fips"]
+    assert 0 < int(moved.sum()) < len(assigned)
+    with pytest.raises(
+        ValueError, match=f"{int(moved.sum())}/{len(assigned)} household row"
+    ):
+        us_local_jurisdiction_rungs_present(assigned)
+
+
+@pytest.mark.parametrize(
+    ("columns", "count", "examples"),
+    [
+        pytest.param(
+            {"county_fips": ["36005", "08031"]},
+            "1/2",
+            "[('361190001001000', '36005')]",
+            id="another-county-of-the-state",
+        ),
+        pytest.param(
+            {"county_fips": ["36119", "08035"]},
+            "1/2",
+            "[('080310001001000', '08035')]",
+            id="a-county-that-differs-in-its-last-digit",
+        ),
+        pytest.param(
+            {"county_fips": ["36005", "08005"]},
+            "2/2",
+            "[('361190001001000', '36005'), ('080310001001000', '08005')]",
+            id="every-row",
+        ),
+        pytest.param(
+            {
+                "county_fips": ["36005", "08031"],
+                "place_fips": ["84000", None],
+                "block_geoid": ["361190001001000", None],
+            },
+            "1/2",
+            "[('361190001001000', '36005')]",
+            id="a-pooled-table-whose-donor-block-is-stale",
+        ),
+        pytest.param(
+            {"county_fips": ["36005", None]},
+            "1/2",
+            "[('361190001001000', '36005')]",
+            id="beside-a-row-without-a-county",
+        ),
+        pytest.param(
+            {
+                "county_fips": [b"36005", b"08031"],
+                "place_fips": [b"84000", b"20000"],
+                "block_geoid": [b"361190001001000", b"080310001001000"],
+            },
+            "1/2",
+            "[('361190001001000', '36005')]",
+            id="bytes-from-an-h5-round-trip",
+        ),
+    ],
+)
+def test_rungs_present_refuses_a_block_outside_its_county(
+    columns, count: str, examples: str
+) -> None:
+    with pytest.raises(
+        ValueError, match="block_geoid must begin with the row's county_fips"
+    ) as refused:
+        us_local_jurisdiction_rungs_present(_block_table(**columns))
+
+    message = str(refused.value)
+    assert f"{count} household row(s) do not, e.g. {examples} " in message
+    assert "(block_geoid, county_fips)" in message
+
+
+@pytest.mark.parametrize(
+    "block",
+    [None, "", "8031000100100", 80310001001000],
+    ids=["null", "empty", "thirteen-digits", "integer"],
+)
+def test_rungs_present_compares_only_rows_that_carry_a_text_block(block) -> None:
+    # The second row's county is not its (former) block's, but the row carries
+    # no 15-digit text block: nothing anchors a place there, and the table
+    # supplies the county rung as before.
+    table = _block_table(
+        county_fips=["36119", "08005"], block_geoid=["361190001001000", block]
+    )
+
+    assert us_local_jurisdiction_rungs_present(table) == PUMA_GEOGRAPHY_RUNGS
+
+
+def _frame_with_a_stale_block(**flags: list[bool]):
+    """A Yonkers household whose county became the Bronx, block and place kept.
+
+    What d8e1490db's PUMA wrapper returned, beside a Denver household that is
+    still on its block.
+    """
+
+    households: list[dict[str, object]] = [
+        {
+            "state_fips": 36,
+            "county_fips": "36005",
+            "place_fips": "84000",
+            "block_geoid": "361190001001000",
+        },
+        {
+            "state_fips": 8,
+            "county_fips": "08031",
+            "place_fips": "20000",
+            "block_geoid": "080310001001000",
+        },
+    ]
+    for flag, values in flags.items():
+        for household, value in zip(households, values, strict=True):
+            household[flag] = value
+    return us_frame(households, person_inputs=[[{}], [{}]])
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        {},
+        {"in_yonkers": [True, False]},
+        {
+            "in_denver": [False, True],
+            "in_wilmington": [False, False],
+            "in_yonkers": [True, False],
+        },
+    ],
+    ids=["no-flag", "the-stale-place-flag", "every-household-flag"],
+)
+@pytest.mark.parametrize(
+    "step",
+    [rederive_us_local_jurisdiction_flags, us_local_jurisdiction_artifact_receipt],
+)
+def test_artifact_steps_refuse_a_block_outside_its_county(step, flags) -> None:
+    with pytest.raises(
+        ValueError, match="block_geoid must begin with the row's county_fips"
+    ) as refused:
+        step(_frame_with_a_stale_block(**flags))
+
+    assert "1/2 household row(s) do not" in str(refused.value)
+    assert "[('361190001001000', '36005')]" in str(refused.value)
+
+
+def test_no_place_flag_is_derived_beside_a_block_outside_its_county() -> None:
+    frame = _frame_with_a_stale_block()
+    household = frame.table("household")
+    tables = {"household": household, "person": frame.table("person")}
+
+    with pytest.raises(ValueError, match="1/2 household row"):
+        us_local_jurisdiction_flag_values(household, rungs=BLOCK_GEOGRAPHY_RUNGS)
+    with pytest.raises(ValueError, match="1/2 household row"):
+        apply_us_local_jurisdiction_flags(tables, rungs=BLOCK_GEOGRAPHY_RUNGS)
+    with pytest.raises(ValueError, match="1/2 household row"):
+        with_us_local_jurisdiction_flags(frame, rungs=BLOCK_GEOGRAPHY_RUNGS)
+    # A line that has just drawn the county derives from that rung alone.
+    values = us_local_jurisdiction_flag_values(household, rungs=PUMA_GEOGRAPHY_RUNGS)
+    assert sorted(values) == ["in_denver", "pa_philadelphia_wage_tax_resident"]
+    assert values["in_denver"].tolist() == [False, True]
+
+
+def test_both_ladder_gates_fail_a_place_flag_beside_a_block_outside_its_county() -> (
+    None
+):
+    household = _assigned_block_household().copy()
+    household["puma"] = [f"{int(state):02d}00200" for state in household["state_fips"]]
+    weights = np.ones(len(household))
+    bounds = {
+        "nyc_share_bounds": (0.0, 1.0),
+        "nyc_share_of_new_york_bounds": (0.0, 1.0),
+    }
+    assert not [
+        failure
+        for failure in us_puma_ladder_gate(household, weights, **bounds).failures
+        if failure.startswith("in_")
+    ]
+    yonkers = household["block_geoid"].eq("361190001001000")
+    assert household.loc[yonkers, "in_yonkers"].tolist() == [True]
+    # The county moves to the Bronx; the block, its place and the flag stay.
+    household.loc[yonkers, ["county_fips", "county_fips_2023"]] = "36005"
+
+    failures = us_local_jurisdiction_flag_failures(
+        household, required_rungs=BLOCK_GEOGRAPHY_RUNGS
+    )
+    puma_gate = us_puma_ladder_gate(household, weights, **bounds)
+    block_gate = us_geography_ladder_gate(household, weights, **bounds)
+
+    assert [failure.split(":")[0] for failure in failures] == [
+        "in_wilmington",
+        "in_yonkers",
+    ]
+    for failure in failures:
+        assert "present but its place rung cannot decide it" in failure
+        assert f"1/{len(household)} household row(s) do not" in failure
+        assert "[('361190001001000', '36005')]" in failure
+        assert failure in puma_gate.failures
+        assert failure in block_gate.failures
+    # The block-ladder gate also sees it without any flag.
+    assert (
+        f"county_fips: 1/{len(household)} row(s) disagree with the block_geoid prefix"
+        in block_gate.failures
+    )
+
+
+# Three blocks of Fairfield County, Connecticut (2020 county 09001), each in
+# a different 2022 planning region, in block order.
+_CT_BLOCKS = (
+    FixtureBlock("stamford", 90010201011000, 73000, 903, 10.0),
+    FixtureBlock("bridgeport", 90010701001000, 8000, 901, 30.0),
+    FixtureBlock("naugatuck_valley", 90011101001000, 0, 902, 20.0),
+)
+_CT_PLANNING_REGIONS = ["09190", "09120", "09140"]
+
+
+def _with_spine(frame: Frame, spine: str) -> Frame:
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    for entity, table in tables.items():
+        table[spine_column(entity)] = spine
+    if "puma" not in tables["household"]:
+        tables["household"]["puma"] = pd.Series(
+            [None] * len(tables["household"]), dtype=object
+        )
+    return Frame(tables, US_SCHEMA, {"household": frame.weights_for("household")})
+
+
+def test_connecticut_blocks_sit_in_their_county_fips_on_every_line() -> None:
+    # Connecticut is the one state whose county-equivalents changed after the
+    # 2020 blocks: a block there begins with its 2020 county (09001), and the
+    # planning region that replaced it (09190, say) goes in county_fips_2023.
+    # Every line writes the 2020 county into county_fips, so comparing a block
+    # with county_fips refuses no Connecticut table; comparing it with
+    # county_fips_2023 would refuse them all.
+    blocks = list(_CT_BLOCKS)
+    frame = us_frame(
+        households_on_blocks_for(blocks), person_inputs=[[{}] for _ in blocks]
+    )
+
+    # The block ladder.
+    located = with_household_us_geography_ladder(frame, block_ladder(blocks), seed=5)
+    household = located.table("household")
+    assert household["block_geoid"].tolist() == [
+        f"{block.block_geoid:015d}" for block in blocks
+    ]
+    assert household["county_fips"].tolist() == ["09001"] * 3
+    assert household["county_fips_2023"].tolist() == _CT_PLANNING_REGIONS
+    assert us_local_jurisdiction_rungs_present(household) == BLOCK_GEOGRAPHY_RUNGS
+    assert rederive_us_local_jurisdiction_flags(located)[0] is located
+    assert us_local_jurisdiction_artifact_receipt(located)["rungs"] == [
+        "county",
+        "place",
+    ]
+
+    # The block_v1 draw, each household within its county.
+    arrays = {
+        "block_geoid": np.asarray([b.block_geoid for b in blocks], dtype=np.int64),
+        "population": np.asarray([b.population for b in blocks], dtype=np.int64),
+        "congressional_district_geoid": np.asarray(
+            [b.congressional_district_geoid for b in blocks], dtype=np.int64
+        ),
+        "puma": np.full(len(blocks), 900100, dtype=np.int64),
+        "sldu": np.full(len(blocks), "001", dtype="U3"),
+        "sldl": np.full(len(blocks), "001", dtype="U3"),
+        "place_fips": np.asarray([b.place_fips for b in blocks], dtype=np.int32),
+        "cbsa_code": np.zeros(len(blocks), dtype=np.int32),
+    }
+    ladder = _location_ladder(arrays)
+    drawn, _table = with_household_us_block_location(
+        frame, ladder, seed=5, county_fips=np.full(len(blocks), 9001)
+    )
+    household = drawn.table("household")
+    assert us_block_location_gate(household, ladder).passed
+    assert household["county_fips"].tolist() == ["09001"] * 3
+    assert set(household["county_fips_2023"]) <= set(_CT_PLANNING_REGIONS)
+    assert (household["county_fips_2023"] != household["county_fips"]).all()
+    assert us_local_jurisdiction_rungs_present(household) == BLOCK_GEOGRAPHY_RUNGS
+    assert rederive_us_local_jurisdiction_flags(drawn)[0] is drawn
+
+    # The PUMA ladder, redrawing the block-located households.
+    puma_ladder = _puma_ladder_from_blocks(arrays)
+    redrawn = with_household_us_puma_ladder(drawn, puma_ladder, seed=5)
+    household = redrawn.table("household")
+    assert household["county_fips"].tolist() == ["09001"] * 3
+    assert set(household["county_fips_2023"]) <= set(_CT_PLANNING_REGIONS)
+    assert not set(US_PUMA_LADDER_BLOCK_ANCHORED_COLUMNS) & set(household.columns)
+    assert us_local_jurisdiction_rungs_present(household) == PUMA_GEOGRAPHY_RUNGS
+    assert rederive_us_local_jurisdiction_flags(redrawn)[0] is redrawn
+
+    # The pooled ACS line: block-line donors keep their blocks, ACS rows get
+    # the PUMA ladder's 2020 county and no block.
+    acs = us_frame([{"state_fips": 9, "puma": "0900100"} for _ in range(2)])
+    pooled = with_optional_acs_spine(
+        _with_spine(located, ASEC_PUF_SPINE),
+        _with_spine(acs, ACS_2024_1YR_SPINE),
+        max_peak_bytes=None,
+        puma_ladder=puma_ladder,
+        geography_seed=5,
+    )
+    household = pooled.table("household")
+    donor = household["block_geoid"].notna()
+    assert int(donor.sum()) == 3 and len(household) == 5
+    assert household["county_fips"].tolist() == ["09001"] * 5
+    assert (
+        household.loc[donor, "block_geoid"].str[:5]
+        == household.loc[donor, "county_fips"]
+    ).all()
+    assert us_local_jurisdiction_rungs_present(household) == PUMA_GEOGRAPHY_RUNGS
+    assert rederive_us_local_jurisdiction_flags(pooled)[1]["rungs"] == ["county"]
+
+    # A table that stored the planning region as county_fips is one no line
+    # writes, and its blocks do not begin with it.
+    regional = located.table("household").copy()
+    regional["county_fips"] = regional["county_fips_2023"]
+    with pytest.raises(ValueError, match="3/3 household row"):
+        us_local_jurisdiction_rungs_present(regional)
+
+
+# --- Properties ------------------------------------------------------------- #
+
+_LADDER_SEEDS = (0, 3, 4)
+_LINES = (
+    "block_ladder",
+    "puma_ladder",
+    "puma_ladder_with_tract",
+    "block_v1",
+    "rederive",
+    "drop_flags",
+    "select",
+)
+
+
+@cache
+def _jurisdiction_ladders(seed: int):
+    """The block, location and PUMA ladders of one synthetic geography.
+
+    Also the counties each flag's jurisdiction has blocks in, read from the
+    ladder's own blocks with the four rules written out here.
+    """
+
+    arrays = local_jurisdiction_blocks(seed)
+    block = arrays["block_geoid"].astype(np.int64)
+    county = np.array([f"{value:05d}" for value in (block // 10**10).tolist()])
+    state = block // 10**13
+    place = arrays["place_fips"]
+    counties = {
+        "in_denver": {"08031"},
+        "pa_philadelphia_wage_tax_resident": {"42101"},
+        "in_yonkers": set(county[(state == 36) & (place == 84000)].tolist()),
+        "in_wilmington": set(county[(state == 10) & (place == 77580)].tolist()),
+    }
+    return arrays, _location_ladder(arrays), _puma_ladder_from_blocks(arrays), counties
+
+
+def _without_any_flag(frame):
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    for entity in ("household", "person"):
+        tables[entity] = tables[entity].drop(
+            columns=[flag for flag in EXPECTED_RULES if flag in tables[entity]]
+        )
+    return type(frame)(
+        tables, frame.schema, {"household": frame.weights_for("household")}
+    )
+
+
+def _apply_line(frame, line: str, seed: int, ladders):
+    _arrays, location, puma_ladder, _counties = ladders
+    if line == "block_ladder":
+        return with_household_us_geography_ladder(frame, location.blocks, seed=seed)
+    if line == "puma_ladder":
+        return with_household_us_puma_ladder(frame, puma_ladder, seed=seed)
+    if line == "puma_ladder_with_tract":
+        return with_household_us_puma_ladder(
+            frame, puma_ladder, seed=seed, assign_tract=True
+        )
+    if line == "block_v1":
+        return with_household_us_block_location(frame, location, seed=seed)[0]
+    if line == "rederive":
+        return rederive_us_local_jurisdiction_flags(frame)[0]
+    if line == "drop_flags":
+        return _without_any_flag(frame)
+    assert line == "select"
+    return _select_households(frame, list(range(0, frame.n("household"), 2)))
+
+
+def _assert_no_flag_or_block_outside_its_county(frame, counties) -> None:
+    household = frame.table("household")
+    if "county_fips" not in household:
+        assert not set(EXPECTED_RULES) & set(household.columns)
+        return
+    county_of = dict(
+        zip(household["household_id"], household["county_fips"], strict=True)
+    )
+    for flag, allowed in counties.items():
+        entity = "person" if flag in PERSON_FLAGS else "household"
+        table = frame.table(entity)
+        if flag not in table:
+            continue
+        members = (
+            table[US_SCHEMA.membership_column("household")]
+            if (entity == "person")
+            else table["household_id"]
+        )
+        flagged = {county_of[key] for key in members[table[flag].astype(bool)]}
+        assert flagged <= allowed, (flag, sorted(flagged))
+    if "block_geoid" in household:
+        assert (household["block_geoid"].str[:5] == household["county_fips"]).all()
+    # Reading the rungs never refuses what the lines wrote, and the place
+    # rung is there exactly when the households sit on blocks.
+    rungs = us_local_jurisdiction_rungs_present(household)
+    assert rungs == (
+        BLOCK_GEOGRAPHY_RUNGS if "block_geoid" in household else PUMA_GEOGRAPHY_RUNGS
+    )
+
+
+@st.composite
+def _line_sequences(draw):
+    ladder_seed = draw(st.sampled_from(_LADDER_SEEDS))
+    arrays = _jurisdiction_ladders(ladder_seed)[0]
+    districts = sorted(set(arrays["congressional_district_geoid"].tolist()))
+    households = draw(st.lists(st.sampled_from(districts), min_size=1, max_size=8))
+    steps = draw(
+        st.lists(
+            st.tuples(st.sampled_from(_LINES), st.integers(0, 50)),
+            min_size=1,
+            max_size=6,
+        )
+    )
+    return ladder_seed, households, steps
+
+
+@settings(max_examples=80, deadline=None)
+@given(case=_line_sequences())
+def test_no_sequence_of_lines_leaves_a_flag_or_block_outside_its_county(case) -> None:
+    # Invariant: after any sequence of the geography lines (block ladder, PUMA
+    # ladder with or without a tract, block_v1 draw) and artifact steps
+    # (re-derivation, a pre-flag artifact, a selection), no flag is true on a
+    # household whose county holds none of the flag's jurisdiction, no
+    # household carries a block outside its county, and the artifact
+    # re-derivation of the result has the same two properties and carries
+    # every flag its geography decides.
+    ladder_seed, districts, steps = case
+    ladders = _jurisdiction_ladders(ladder_seed)
+    counties = ladders[3]
+    frame = us_frame(
+        [
+            {"state_fips": district // 100, "congressional_district_geoid": district}
+            for district in districts
+        ],
+        person_inputs=[[{}, {}] for _ in districts],
+    )
+
+    for line, seed in steps:
+        frame = _apply_line(frame, line, seed, ladders)
+        household = frame.table("household")
+        if line.startswith("puma_ladder"):
+            kept = set(US_PUMA_LADDER_BLOCK_ANCHORED_COLUMNS) & set(household.columns)
+            assert kept == (
+                {US_PUMA_LADDER_TRACT_COLUMN}
+                if line == "puma_ladder_with_tract"
+                else set()
+            )
+        _assert_no_flag_or_block_outside_its_county(frame, counties)
+        derived, receipt = rederive_us_local_jurisdiction_flags(frame)
+        _assert_no_flag_or_block_outside_its_county(derived, counties)
+        complete = us_local_jurisdiction_artifact_receipt(derived)
+        assert complete["carried_flags"] == _derived_flags(receipt)
+        table = derived.table("household")
+        for flag in HOUSEHOLD_FLAGS:
+            decided = EXPECTED_RULES[flag][0] in receipt["rungs"]
+            assert (flag in table) == decided, flag
+            if decided:
+                places = (
+                    table["place_fips"] if "place_fips" in table else [""] * len(table)
+                )
+                assert table[flag].tolist() == [
+                    _oracle(flag, county, place)
+                    for county, place in zip(table["county_fips"], places, strict=True)
+                ]
+
+
+# A block inside each county, so a row can carry its own county's block,
+# another county's, or none.
+_TABLE_BLOCKS = {
+    "08031": "080310001001000",
+    "08035": "080350001001000",
+    "10003": "100030001001000",
+    "36005": "360050001001000",
+    "36119": "361190001001000",
+}
+_TABLE_ROWS = st.tuples(
+    st.sampled_from(sorted(_TABLE_BLOCKS)),
+    st.one_of(st.none(), st.just(""), st.sampled_from(sorted(_TABLE_BLOCKS.values()))),
+    st.sampled_from([None, "", "84000", "77580", "20000"]),
+)
+
+
+@settings(max_examples=200, deadline=None)
+@example(rows=[("36005", "361190001001000", "84000")])
+@example(rows=[("36119", "361190001001000", "84000"), ("08035", "080310001001000", "")])
+@given(rows=st.lists(_TABLE_ROWS, min_size=1, max_size=8))
+def test_rungs_are_never_read_from_a_table_with_a_block_outside_its_county(
+    rows,
+) -> None:
+    # Invariant: for every household table, if any row carries a block that
+    # does not begin with the row's county, reading the rungs raises (and so
+    # do both artifact steps), naming how many rows; otherwise the rungs are
+    # the block rungs exactly when every row has a block and a place, and the
+    # place-rule flags the re-derivation writes are the rule on each row.
+    frame = us_frame(
+        [
+            {
+                "state_fips": int(county[:2]),
+                "county_fips": county,
+                "block_geoid": block,
+                "place_fips": place,
+            }
+            for county, block, place in rows
+        ],
+        person_inputs=[[{}] for _ in rows],
+    )
+    household = frame.table("household")
+    outside = [
+        (block, county)
+        for county, block, _place in rows
+        if block and block[:5] != county
+    ]
+
+    if outside:
+        for read in (
+            lambda: us_local_jurisdiction_rungs_present(household),
+            lambda: rederive_us_local_jurisdiction_flags(frame),
+            lambda: us_local_jurisdiction_artifact_receipt(frame),
+        ):
+            with pytest.raises(
+                ValueError, match="block_geoid must begin with the row's county_fips"
+            ) as refused:
+                read()
+            assert f"{len(outside)}/{len(rows)} household row(s) do not" in str(
+                refused.value
+            )
+        return
+
+    anchored = all(block and place is not None for _county, block, place in rows)
+    expected = BLOCK_GEOGRAPHY_RUNGS if anchored else PUMA_GEOGRAPHY_RUNGS
+    assert us_local_jurisdiction_rungs_present(household) == expected
+    derived, receipt = rederive_us_local_jurisdiction_flags(frame)
+    assert receipt["rungs"] == list(expected)
+    table = derived.table("household")
+    for flag in PLACE_FLAGS:
+        assert (flag in table) == anchored
+        if anchored:
+            assert table[flag].tolist() == [
+                _oracle(flag, county, place) for county, _block, place in rows
+            ]

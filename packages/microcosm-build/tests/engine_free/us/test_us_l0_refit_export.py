@@ -1324,3 +1324,46 @@ def test_export_refuses_a_base_whose_carried_flag_disagrees_with_its_geography(
             require_geography_ladder=False,
         )
     assert not output.exists()
+
+
+@pytest.mark.parametrize("carried", [{}, {"in_yonkers": [False, True]}])
+def test_export_refuses_a_base_whose_block_lies_outside_its_county(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    carried: dict[str, list[bool]],
+) -> None:
+    # The kept household's county is the Bronx while its block and place are
+    # still Yonkers': what a PUMA redraw that kept the block columns would
+    # leave. Deriving from it would export in_yonkers on a Bronx household.
+    base_h5 = tmp_path / "base.h5"
+    base_h5.write_text("base")
+    output = tmp_path / "populace_us_2024.h5"
+
+    monkeypatch.setattr(
+        l0_refit_export,
+        "load_us_frame",
+        lambda path: _frame_with_yonkers_household(
+            county_fips=["36061", "36005"],
+            county_fips_2023=["36061", "36005"],
+            **carried,
+        ),
+    )
+    monkeypatch.setattr(
+        l0_refit_export,
+        "PolicyEngineUSEngine",
+        lambda: pytest.fail("a base with a stale block must not reach the writer"),
+    )
+
+    with pytest.raises(
+        ValueError, match="block_geoid must begin with the row's county_fips"
+    ) as refused:
+        export_us_l0_refit_h5(
+            base_h5=base_h5,
+            weights_npz=_l0_refit_npz(tmp_path),
+            output_h5=output,
+            input_mass_relative_tolerance=1.0,
+            require_geography_ladder=False,
+        )
+    assert "1/1 household row(s) do not" in str(refused.value)
+    assert "[('361190001001000', '36005')]" in str(refused.value)
+    assert not output.exists()

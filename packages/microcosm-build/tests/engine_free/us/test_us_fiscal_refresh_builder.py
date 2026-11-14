@@ -2967,6 +2967,46 @@ def test_builder_flags_follow_the_support_through_frozen_and_l0_selection() -> N
         derive(exported, "selected")
 
 
+def test_builder_refuses_a_support_whose_block_lies_outside_its_county() -> None:
+    # The microcosm#1453 review round 1 case: a donor whose county was
+    # redrawn (the Bronx) while its Yonkers block and place stayed, beside an
+    # ACS row with no block. Deriving from that table would write in_yonkers
+    # on a Bronx household once a selection drops the ACS row, so every
+    # support the builder derives on stops instead, and records nothing.
+    from test_support.microcosm_build.us_local_jurisdictions import us_frame
+
+    builder = _load_builder_module()
+    stale = us_frame(
+        [
+            {
+                "state_fips": 36,
+                "county_fips": "36005",
+                "place_fips": "84000",
+                "block_geoid": "361190001001000",
+            },
+            {
+                "state_fips": 8,
+                "county_fips": "08031",
+                "place_fips": None,
+                "block_geoid": None,
+            },
+        ],
+        person_inputs=[[{}], [{}]],
+    )
+    receipts: dict[str, object] = {}
+
+    for support in builder.LOCAL_JURISDICTION_FLAG_SUPPORTS:
+        with pytest.raises(
+            ValueError, match="block_geoid must begin with the row's county_fips"
+        ) as refused:
+            builder._with_local_jurisdiction_flags(
+                stale, support=support, receipts=receipts, telemetry=None
+            )
+        assert "1/2 household row(s) do not" in str(refused.value)
+        assert "[('361190001001000', '36005')]" in str(refused.value)
+    assert receipts == {}
+
+
 def test_frozen_support_selection_is_followed_by_weeks_unemployed_regate() -> None:
     builder = _load_builder_module()
     source = Path(builder.__file__).read_text(encoding="utf-8")

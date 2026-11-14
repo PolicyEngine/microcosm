@@ -32,16 +32,28 @@ household on one block, which fixes county and place, so every flag is
 derived, after the block is assigned. The PUMA ladder writes a county but no
 place, so the place-rule flags are *unavailable* there: the line never writes
 them (any stale column is removed) and its receipt records them as
-unavailable with the reason, rather than writing ``False``. The pooled ACS
-line follows its location rule: the PUMA ladder's county rung under the
-default ``legacy`` rule, the block rungs under ``block_v1``.
+unavailable with the reason, rather than writing ``False``. Its frame wrapper
+(``with_household_us_puma_ladder``) redraws every household's county, so it
+also removes each column an earlier block line wrote that only a block
+decides (block, tract, place, state-legislative districts, CBSA): each would
+describe the geography the redraw replaced. The pooled ACS line follows its
+location rule: the PUMA ladder's county rung under the default ``legacy``
+rule, the block rungs under ``block_v1``.
+
+A 2020 block geoid begins with the five digits of its 2020 county, and every
+line writes ``county_fips`` as a 2020 county (Connecticut's planning regions
+go in ``county_fips_2023``). So the place rung is read only from a table in
+which every row that carries a block has it inside the row's county: deriving
+a place-rule flag from any other table raises, and so does reading the rungs
+of one (:func:`us_local_jurisdiction_rungs_present`).
 
 An artifact built before the flags existed carries none, so a step that
 exports or recalibrates an existing artifact instead of running a geography
 line calls :func:`rederive_us_local_jurisdiction_flags`. It derives every
-flag the artifact's own geography decides and refuses a carried flag that
-disagrees with that geography. Both ladder gates fail a table that lacks a
-flag its geography decides.
+flag the artifact's own geography decides, refuses a carried flag that
+disagrees with that geography, and refuses an artifact in which a
+household's block lies outside its county. Both ladder gates fail a table
+that lacks a flag its geography decides.
 
 The rungs belong to the whole household table: one row without a block
 withholds the place rung from every row. A step that removes rows (a
@@ -374,6 +386,56 @@ def _holds_text_codes(
     return True
 
 
+def _text_code(value: object, width: int) -> str | None:
+    """``value`` as a ``width``-digit text code, or ``None`` when it is not one."""
+
+    if isinstance(value, bytes):
+        value = value.decode("ascii", "replace")
+    if isinstance(value, str) and len(value) == width and value.isdigit():
+        return value
+    return None
+
+
+def _require_blocks_in_their_counties(household: pd.DataFrame) -> None:
+    """Refuse a table in which a row's block does not sit in the row's county.
+
+    A 2020 block geoid begins with the five digits of its 2020 county, and
+    every geography line writes ``county_fips`` as that county (Connecticut
+    included: its planning regions go in ``county_fips_2023``). A row whose
+    15-digit ``block_geoid`` begins otherwise kept its block from before its
+    county was redrawn, so its ``place_fips`` describes somewhere the
+    household no longer is, and no place rung can be read from the table.
+
+    A row without a 15-digit text block carries no block (a pooled table's
+    ACS rows) and is not compared. A county that is not a 5-digit text code
+    is left to the derivation, which raises on it.
+    """
+
+    if "block_geoid" not in household or "county_fips" not in household:
+        return
+    outside = [
+        (block, county)
+        for block, county in (
+            (_text_code(block, 15), _text_code(county, 5))
+            for block, county in zip(
+                household["block_geoid"].tolist(),
+                household["county_fips"].tolist(),
+                strict=True,
+            )
+        )
+        if block is not None and county is not None and block[:5] != county
+    ]
+    if outside:
+        raise ValueError(
+            "block_geoid must begin with the row's county_fips on every row that "
+            "carries a block to derive local jurisdiction flags from this "
+            f"table's own geography; {len(outside)}/{len(household)} household "
+            f"row(s) do not, e.g. {outside[:5]} (block_geoid, county_fips). A "
+            "block sits in one county, so such a row kept its block, and the "
+            "place that block decides, from before its county was redrawn."
+        )
+
+
 def us_local_jurisdiction_rungs_present(household: pd.DataFrame) -> tuple[str, ...]:
     """The rungs a finished household table's own geography supplies.
 
@@ -384,8 +446,14 @@ def us_local_jurisdiction_rungs_present(household: pd.DataFrame) -> tuple[str, .
     no block therefore supplies only the county rung, even where a writer has
     stored their missing place as an empty string. A malformed
     ``county_fips`` is not judged here; deriving the flags raises on it.
+
+    A table in which any row's block lies outside that row's county supplies
+    no rung at all: this raises (:func:`_require_blocks_in_their_counties`).
+    Such a row kept a block from before its county was redrawn, and nothing
+    in the table says which of the two is the household's geography.
     """
 
+    _require_blocks_in_their_counties(household)
     if "county_fips" not in household or household["county_fips"].isna().any():
         return ()
     block_anchored = (
@@ -412,7 +480,9 @@ def us_local_jurisdiction_flag_values(
     A flag whose rule is not in ``rungs`` is left out. Missing, null or
     malformed geography on a supplied rung raises: a household whose county or
     place is unknown cannot be decided, and writing ``False`` for it would be
-    a silent guess.
+    a silent guess. The place rung also raises when a row's ``block_geoid``
+    lies outside the row's ``county_fips``: the place came with that block,
+    so it is not the place of the county the row now has.
     """
 
     resolved = registry or packaged_us_local_jurisdiction_registry()
@@ -430,11 +500,10 @@ def us_local_jurisdiction_flag_values(
                 f"local-jurisdiction rung(s) {sorted(needed)}."
             )
     county = _text_codes(household["county_fips"], column="county_fips", widths=(5,))
-    place = (
-        _text_codes(household["place_fips"], column="place_fips", widths=(0, 5))
-        if JURISDICTION_RUNG_PLACE in needed
-        else None
-    )
+    place = None
+    if JURISDICTION_RUNG_PLACE in needed:
+        place = _text_codes(household["place_fips"], column="place_fips", widths=(0, 5))
+        _require_blocks_in_their_counties(household)
     flags: dict[str, np.ndarray] = {}
     for item in resolved.jurisdictions:
         if item.rule not in needed:
@@ -560,6 +629,8 @@ def rederive_us_local_jurisdiction_flags(
     every row without a block makes the place-rule flags decidable on the
     rows it keeps. A flag the artifact already carries must agree with that
     geography, or this raises: re-deriving it would hide a corrupt artifact.
+    So does an artifact in which a household's block lies outside its
+    county, whichever flags it carries: its place cannot be trusted.
 
     An artifact that already carries exactly the flags its rungs decide, as
     boolean columns, comes back as the same object with the same receipt
@@ -571,6 +642,9 @@ def rederive_us_local_jurisdiction_flags(
 
     resolved = registry or packaged_us_local_jurisdiction_registry()
     household = frame.table("household")
+    # First, so a block outside its county is reported as that, whether or
+    # not the artifact also carries a flag.
+    rungs = us_local_jurisdiction_rungs_present(household)
     failures = us_local_jurisdiction_flag_failures(
         household, person=frame.table("person"), registry=resolved
     )
@@ -580,7 +654,6 @@ def rederive_us_local_jurisdiction_flags(
             "its own geography: " + "; ".join(failures)
         )
     carried = _carried_flags(frame, resolved)
-    rungs = us_local_jurisdiction_rungs_present(household)
     values = us_local_jurisdiction_flag_values(
         household, rungs=rungs, registry=resolved
     )
@@ -621,8 +694,9 @@ def us_local_jurisdiction_artifact_receipt(
     (:func:`us_local_jurisdiction_rungs_present`), each agreeing with that
     geography, and no flag its rungs cannot decide. Otherwise this raises:
     the engine would default a missing flag to ``False`` on every resident.
-    The receipt has the shape :func:`rederive_us_local_jurisdiction_flags`
-    returns.
+    It also raises, before it reads a flag, on an artifact in which a
+    household's block lies outside its county. The receipt has the shape
+    :func:`rederive_us_local_jurisdiction_flags` returns.
     """
 
     resolved = registry or packaged_us_local_jurisdiction_registry()
@@ -749,7 +823,9 @@ def us_local_jurisdiction_flag_failures(
 
     A flag present must equal its rule applied to the table's own
     ``county_fips``/``place_fips``. A place-rule flag on a table with no
-    complete ``place_fips`` fails: nothing could have decided it. A flag
+    complete ``place_fips`` fails: nothing could have decided it. So does a
+    place-rule flag on a table in which a row's block lies outside the row's
+    county: that place belongs to the block, not to the county. A flag
     whose rule is in ``required_rungs`` must also be present: a gate whose
     line supplies that rung passes ``required_rungs``, so an artifact built
     before the flags existed fails rather than leaving the engine default on

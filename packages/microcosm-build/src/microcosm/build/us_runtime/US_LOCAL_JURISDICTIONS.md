@@ -50,9 +50,17 @@ the new SHA-256 to pin.
 - **PUMA ladder** (`with_household_us_puma_ladder`, the stacked pool): the
   ladder draws a county but no place. The line writes `in_denver` and the
   Philadelphia flag and never writes `in_yonkers` or `in_wilmington`; it also
-  removes a stale column. The assignment summary records those two as
-  `unavailable`, and the engine ABI lock lists them as
-  `unavailable_place_jurisdiction_input`.
+  removes a stale column of either. The assignment summary records those two
+  as `unavailable`, and the engine ABI lock lists them as
+  `unavailable_place_jurisdiction_input`. The wrapper draws every household's
+  district and county again, so it first removes each column that only a
+  block decides, where an earlier block line left one: `block_geoid`,
+  `tract_geoid`, `place_fips`, `sldu`, `sldl`, `cbsa_code` and any
+  `congressional_district_geoid__<plan>` column. A kept block would lie
+  outside the new county, and its place would bring a place-rule flag back
+  on the next derivation. `assign_us_puma_ladder`, which the pooled ACS line
+  calls, keeps those columns: that line restores a block-line donor's own
+  district and county, so the donor's block still sits in its county.
 - **Pooled ACS line** (`with_optional_acs_spine`): donor rows arrive with
   block-line flags and ACS rows without. The pool re-derives the county-rule
   flags for every row from the final county and removes the place-rule flags.
@@ -62,6 +70,14 @@ the new SHA-256 to pin.
 
 Missing, null or malformed geography raises; no line writes `False` for a
 household whose county or place it does not know.
+
+A 2020 block geoid begins with the five digits of its 2020 county, and every
+line writes `county_fips` as a 2020 county (in Connecticut too, whose planning
+regions go in `county_fips_2023`). A place-rule flag is therefore derived only
+from a table
+in which every row that carries a 15-digit `block_geoid` has it inside the
+row's `county_fips`. On any other table the derivation raises and names the
+count and the first few (block, county) pairs.
 
 ### Under `--location-rule block_v1`
 
@@ -114,7 +130,11 @@ lacks a flag its geography decides, carries one that disagrees with it, or
 carries one its geography cannot decide, and records the receipt as
 `base.local_jurisdiction_flags` in the candidate manifest. A parent built
 before the flags existed therefore cannot seed annual files until a rebuild
-adds them. The lane imports the helper from
+adds them, where its geography decides at least one flag: that is, where
+every household has a `county_fips`. A parent with no `county_fips` column,
+or with a null county on some household, decides no flag; the lane accepts
+it when it carries none, and its receipt records no rung and no carried
+flag. The lane imports the helper from
 `microcosm.build.us_local_jurisdictions`, so the check loads no `us_runtime`
 module, never loads the module that asserts the engine ABI lock
 (`spec_engine.engine_abi`) and runs before `policyengine_us` is imported
@@ -127,6 +147,14 @@ a 15-digit `block_geoid`. A pooled artifact whose ACS rows have no block
 therefore gets the county-rule flags only. A flag the artifact already carries
 must agree with its geography (household and person flags both), or the step
 fails.
+
+The helper refuses an artifact in which any household's `block_geoid` does not
+begin with that household's `county_fips`, whatever flags it carries and
+whether or not every row has a block. Such a household kept its block from
+before its county was redrawn, so the place beside the block is not the
+county's, and nothing in the table says which of the two is right. All three
+steps stop on such an artifact: the L0/refit export, the release builder and
+the annual lane.
 
 The rungs belong to the whole table, so removing rows can add one: a frozen
 support or L0 support that keeps only block-anchored donors decides
@@ -141,7 +169,10 @@ Both ladder gates fail:
 
 - a flag column that disagrees with its rule;
 - a null or non-boolean flag;
-- a place-rule flag on a table with no complete `place_fips`; and
+- a place-rule flag on a table with no complete `place_fips`;
+- a place-rule flag on a table in which a row's block lies outside the row's
+  county (the block-ladder gate also fails that table on its own check of
+  `county_fips` against the block's first five digits); and
 - a missing flag that the line's own rung decides. The block-ladder gate
   requires `in_denver`, `in_yonkers` and `in_wilmington`; the PUMA-ladder gate
   requires `in_denver`.

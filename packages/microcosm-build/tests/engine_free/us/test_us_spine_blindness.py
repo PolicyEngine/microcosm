@@ -3585,6 +3585,97 @@ def local_operator(frame):
     assert _re_exported_build_modules(aliased) == ("microcosm.build.us_moved_operator",)
 
 
+def _all_declarations(source: str) -> tuple[str, ...]:
+    """Each statement that binds or changes ``__all__``, in source order.
+
+    ``literal`` is a top-level, unannotated assignment of a list or tuple of
+    string constants: the one form :func:`_re_exported_build_modules` reads.
+    Every other form is named for what hides it from that detector.
+    """
+
+    tree = ast.parse(source)
+    top_level = {id(node) for node in tree.body}
+    found: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            target = node.func.value if isinstance(node.func, ast.Attribute) else None
+            if isinstance(target, ast.Name) and target.id == "__all__":
+                found.append((node.lineno, "mutated"))
+            continue
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+        elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+            targets = [node.target]
+        else:
+            continue
+        if not any(
+            isinstance(target, ast.Name) and target.id == "__all__"
+            for target in targets
+        ):
+            continue
+        if isinstance(node, ast.AnnAssign):
+            form = "annotated"
+        elif isinstance(node, ast.AugAssign):
+            form = "augmented"
+        elif id(node) not in top_level:
+            form = "nested"
+        elif isinstance(node.value, (ast.List, ast.Tuple)) and all(
+            isinstance(element, ast.Constant) and isinstance(element.value, str)
+            for element in node.value.elts
+        ):
+            form = "literal"
+        else:
+            form = "computed"
+        found.append((node.lineno, form))
+    return tuple(form for _line, form in sorted(found))
+
+
+def test_registered_re_exports_declare_one_literal_unannotated_all() -> None:
+    """Pin the re-export detector's boundary for the modules it is used on.
+
+    The detector reads a module's exports from a literal, unannotated,
+    top-level ``__all__``. Any other declaration hides a re-export from it,
+    and so hides the implementation from every scan. Each registered
+    re-export module, and each implementation behind one, must therefore
+    declare ``__all__`` in exactly that form, once.
+    """
+
+    paths = {
+        **{name: _US_RUNTIME / name for name, _ in _OUT_OF_RUNTIME_IMPLEMENTATIONS},
+        **{
+            module: _out_of_runtime_implementation_path(module)
+            for _, module in _OUT_OF_RUNTIME_IMPLEMENTATIONS
+        },
+    }
+    declared = {
+        label: _all_declarations(path.read_text()) for label, path in paths.items()
+    }
+    assert declared == {label: ("literal",) for label in paths}
+    # The forms the detector does not read, each named, and one of them
+    # hiding a re-export from it.
+    literal = '__all__ = ["moved_operator"]\n'
+    assert _all_declarations(literal) == ("literal",)
+    assert _all_declarations('__all__: list[str] = ["a"]\n') == ("annotated",)
+    assert _all_declarations(literal + '__all__ += ["b"]\n') == (
+        "literal",
+        "augmented",
+    )
+    assert _all_declarations(literal + '__all__.append("b")\n') == (
+        "literal",
+        "mutated",
+    )
+    assert _all_declarations("__all__ = sorted(globals())\n") == ("computed",)
+    assert _all_declarations("if True:\n    " + literal) == ("nested",)
+    assert _all_declarations("import os\n") == ()
+    moved = "from microcosm.build.us_moved_operator import moved_operator\n"
+    assert _re_exported_build_modules(moved + literal) == (
+        "microcosm.build.us_moved_operator",
+    )
+    annotated = moved + '__all__: list[str] = ["moved_operator"]\n'
+    assert _re_exported_build_modules(annotated) == ()
+    assert _re_exported_build_modules(moved) == ()
+
+
 def test_us_runtime_frame_rebuilds_preserve_immutable_metadata() -> None:
     """A transformation carrying mass history must also carry stage receipts."""
 

@@ -58,8 +58,14 @@ county, and also `in_yonkers` and `in_wilmington` when every household has a
 place and a block. The builder reads the parent first and refuses one that lacks
 such a flag, carries one that disagrees with its geography, or carries one its
 geography cannot decide (`in_yonkers` where some household has no block, say),
-before any model or output work. Rebuild a parent that predates the flags before
-it seeds annual files.
+before any model or output work. It also refuses a parent in which a
+household's `block_geoid` does not begin with that household's `county_fips`:
+the block was kept from before the county was redrawn, so the place beside it
+cannot be trusted. A parent that predates the flags, in which every household
+has a county, therefore needs a rebuild before it seeds annual files. A parent
+with no `county_fips` column, or with a null county on some household, decides
+no flag: the builder accepts it when it carries none, and its receipt records
+no rung and no carried flag.
 
 The output directory must be new. A failed attempt retains its partial files and
 `build_status.json`; rerunning requires another directory. `annual_manifest.json`

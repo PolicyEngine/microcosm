@@ -30,6 +30,12 @@ The ladder also writes the county-rule local-jurisdiction flags (`in_denver`,
 `pa_philadelphia_wage_tax_resident`) from the drawn county. It has no place
 rung, so it never writes `in_yonkers` or `in_wilmington`, and its summary
 records them as unavailable ([US_LOCAL_JURISDICTIONS.md](US_LOCAL_JURISDICTIONS.md)).
+`with_household_us_puma_ladder` draws every household's district and county
+again, so it first removes each column that only a block decides, where an
+earlier block line left one: `block_geoid`, `tract_geoid`, `place_fips`,
+`sldu`, `sldl`, `cbsa_code` and any `congressional_district_geoid__<plan>`
+column. `assign_us_puma_ladder` keeps them, because the pooled ACS line
+restores a block-line donor's own district and county after it.
 
 ## Why one block pass
 
