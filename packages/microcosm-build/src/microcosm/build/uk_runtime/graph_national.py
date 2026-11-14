@@ -475,7 +475,7 @@ class _NationalKernel(KernelBase):
         import microcosm.calibrate.artifacts as calibrate_artifacts
         import microcosm.calibrate.matrix as calibrate_matrix
 
-        from . import weighted_integrity
+        from . import receipt_counts, weighted_integrity
         from .target_compile_modules import uk_target_compile_modules
 
         implementation = source_hash(
@@ -502,8 +502,11 @@ class _NationalKernel(KernelBase):
             calibrate_matrix,
             calibrate_artifacts,
             # full_targets takes its exclusion clock from here; hashed
-            # directly, as the dense target kernels do.
+            # directly, as the dense target kernels do. Its input-mass gate
+            # counts source households with receipt_counts (microcosm#1095),
+            # hashed beside it so every import it makes is hashed.
             weighted_integrity,
+            receipt_counts,
             *uk_target_compile_modules(),
         )
         return hashlib.sha256(
@@ -1003,7 +1006,7 @@ class UKNationalGateKernel(_NationalKernel):
 
     def implementation_hash(self) -> str:
         from .. import gate_battery
-        from . import battery_bindings, diagnostics, weighted_integrity
+        from . import battery_bindings, diagnostics, receipt_counts, weighted_integrity
 
         return hashlib.sha256(
             canonical_json(
@@ -1015,6 +1018,8 @@ class UKNationalGateKernel(_NationalKernel):
                         battery_bindings,
                         calibration_run,
                         weighted_integrity,
+                        # The input-mass gate's source-household counts.
+                        receipt_counts,
                         diagnostics,
                         support_floor_rules,
                     ),

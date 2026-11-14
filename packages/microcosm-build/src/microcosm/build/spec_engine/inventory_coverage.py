@@ -380,8 +380,11 @@ EXPECTED_HASHES = {
     # microcosm#1259's recipient-share bound in puf_support moves both again.
     # microcosm#1261 moves both again: the PUF donor carries partnership and
     # S-corp line-32 shares as separate leaves.
-    "seed_map": "02d7481697018013c4e9b27a3a010fb7492db5dbdedfed19c91fdf2f97ca83b8",
-    "seed_protocol": "1cba662f7c55ea83049e174095608e2335f02922bc8b48ab6ca95ab192a7a6ba",
+    # The hierarchy value ranks move both again: medicaid_take_up, an
+    # attested kernel module, gives a substituted enrollment spec's value no
+    # rank. No draw, RNG rule or QRF target changes.
+    "seed_map": "0c19b903a43b997886be6222045485954c96d6a624ce2ae3f83cadb4b22a7883",
+    "seed_protocol": "15e6cad1f1b0082ffd5980095b4060827ed18786fae3076c97cf431c93a50e16",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

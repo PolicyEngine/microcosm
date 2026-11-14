@@ -40,6 +40,10 @@ from microcosm.build.uk_runtime.chronicle_feed import (
     require_committed_uk_chronicle_feed_pin,
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
+from microcosm.build.uk_runtime.cut_reference import (
+    UKCutReference,
+    write_uk_cut_reference,
+)
 from microcosm.build.uk_runtime.national_calibration import (
     CalibrationFrameAdapter,
     national_calibration_mass_reason,
@@ -766,6 +770,16 @@ def test_restaging_a_national_build_records_the_bundle_its_emitter_delivered(
     (handed_over,) = queue.jobs
     # The build record changed after the hand-over.
     (job,) = queue.jobs.values()
+    # The hand-over names the build for the collector: its attempt ID and the
+    # release it is a candidate for.
+    from microcosm_emitter_interface import CollectorProvenance
+
+    assert job["request"].collector == CollectorProvenance(
+        country_code="UK",
+        build_id=run_id,
+        licensed_data=True,
+        release="microcosm-uk-2024-25-national",
+    )
     assert (
         job["copied"]["build_record.json"] != (out / "build_record.json").read_bytes()
     )
@@ -1365,15 +1379,18 @@ def test_uk_national_role_records_an_unpinned_feed_override(
     assert operations["configuration"]["allow_unpinned_feed"] is True
 
 
-# --- the end-of-build incumbent evaluation (microcosm#823 E2) -----------------
+# --- the end-of-build comparison with the reference (microcosm#823 E2, #1095) --
+
+REFERENCE_BUILD = "uk-frs-calibration-attempt-20261107T020434Z-eeb6093e"
+REFERENCE_LABEL = f"{UK_NATIONAL_RELEASE_ID}@{REFERENCE_BUILD}"
 
 
 def _fake_evaluator(receipt_of, calls: list[dict]):
-    """A stand-in for microcosm.build.uk_runtime.candidate_score (#967)."""
+    """A stand-in for microcosm.build.uk_runtime.candidate_score."""
 
     class Module:
         @staticmethod
-        def evaluate_uk_candidate_against_incumbent(**kwargs):
+        def evaluate_uk_candidate_against_reference(**kwargs):
             calls.append(kwargs)
             return receipt_of(kwargs)
 
@@ -1383,7 +1400,7 @@ def _fake_evaluator(receipt_of, calls: list[dict]):
 
         @staticmethod
         def pruned_warning(score):
-            pruned = score.get("incumbent_unresolvable_pruned") or {}
+            pruned = score.get("reference_unresolvable_pruned") or {}
             if not pruned.get("n_pruned"):
                 return None
             return "warning: pruned from BOTH arms: " + ", ".join(pruned["measures"])
@@ -1391,37 +1408,44 @@ def _fake_evaluator(receipt_of, calls: list[dict]):
     return Module
 
 
-def _receipt(kwargs, *, verdict="passed", pruned_measures=()):
+def _receipt(kwargs, *, pruned_measures=()):
     n_pruned = len(pruned_measures)
+    targets = {"candidate_lower_count": 1, "reference_lower_count": 0, "equal_count": 0}
     return {
         "artifacts": {
             "candidate": {"sha256": kwargs["candidate_sha256"]},
-            "incumbent": {
-                "sha256": kwargs["incumbent_sha256"],
-                "label": kwargs["incumbent_label"],
+            "reference": {
+                "sha256": kwargs["reference_sha256"],
+                "label": kwargs["reference_label"],
             },
         },
         "candidate_full_loss": 0.01,
-        "incumbent_full_loss": 0.2,
-        "candidate_target_wins": 1,
-        "incumbent_target_wins": 0,
+        "reference_full_loss": 0.2,
         "register": {"n_specs": 1},
-        # Record arrays the reviewed telemetry artifact must not carry.
-        "target_drift": [
-            {
-                "target": "dwp.uc.households@2025",
-                "family": "dwp_universal_credit",
-                "candidate_relative_error": 0.01,
-                "incumbent_relative_error": 0.2,
-                "winner": "candidate",
-            }
-        ],
-        "signed_asymmetries": [{"id": "incumbent_own_registry", "description": "…"}],
+        # A record array the reviewed telemetry artifact must not carry.
+        "head_to_head": {
+            "schema_version": 1,
+            "loss": {"candidate": 0.01, "reference": 0.2},
+            "targets": {
+                **targets,
+                "compared": [
+                    {
+                        "name": "dwp.uc.households@2025",
+                        "family": "dwp_universal_credit",
+                        "candidate_relative_error": 0.01,
+                        "reference_relative_error": 0.2,
+                        "lower_absolute_relative_error": "candidate",
+                    }
+                ],
+            },
+            "by_family": {"dwp_universal_credit": targets},
+        },
+        "signed_asymmetries": [{"id": "reference_own_registry", "description": "…"}],
         "measure_resolution": {
             "candidate": {"rounds": [{"round": 0}]},
-            "incumbent": None,
+            "reference": None,
         },
-        "incumbent_unresolvable_pruned": {
+        "reference_unresolvable_pruned": {
             "n_pruned": n_pruned,
             "n_scored": 1,
             "n_surface": 1 + n_pruned,
@@ -1430,63 +1454,95 @@ def _receipt(kwargs, *, verdict="passed", pruned_measures=()):
             "families": {"dwp_universal_credit": n_pruned} if n_pruned else {},
             "note": "pruned",
         },
+        "reference": kwargs["reference_record"],
         "evaluation": {
-            "schema_version": 1,
-            "rule": "rule 1",
+            "schema_version": 2,
+            "rule": "microcosm#1095",
+            "reference": kwargs["reference_label"],
             "scored_surface": {
                 "n_scored": 1,
                 "n_pruned": n_pruned,
                 "n_surface": 1 + n_pruned,
             },
-            "rule_1": {
-                "passed": verdict == "passed",
-                "candidate_full_loss": 0.01,
-                "incumbent_full_loss": 0.2,
-                "candidate_target_wins": 1,
-                "incumbent_target_wins": 0,
-            },
-            "verdict": verdict,
+            "losses": {"candidate_full_loss": 0.01, "reference_full_loss": 0.2},
+            "targets": targets,
+            "no_threshold_applied": True,
         },
     }
 
 
-def _incumbent_argv(input_h5: Path, tmp_path: Path, *extra: str) -> list[str]:
-    incumbent = tmp_path / "incumbent.h5"
-    shutil.copyfile(input_h5, incumbent)
+def _reference_argv(input_h5: Path, tmp_path: Path, *extra: str) -> list[str]:
+    """A reference file and the record a cut's fetch writes for it."""
+
+    reference = tmp_path / "reference.h5"
+    shutil.copyfile(input_h5, reference)
+    record = UKCutReference(
+        release=UK_NATIONAL_RELEASE_ID,
+        build=REFERENCE_BUILD,
+        repo_id="policyengine/populace-uk-private",
+        path_in_repo=f"releases/{UK_NATIONAL_RELEASE_ID}/{REFERENCE_BUILD}/x.h5",
+        filename=reference.name,
+        sha256=_sha(reference),
+        size_bytes=reference.stat().st_size,
+        built_with_model_package={"name": "policyengine-uk", "version": "2.174.1"},
+        built_with_core_package={"name": "policyengine-core", "version": "3.33.3"},
+        evidence={
+            "key": "release_certification",
+            "filename": "release_certification.json",
+            "sha256": "1" * 64,
+        },
+        resolved_at="2026-11-10T12:00:00Z",
+    )
+    record_path = write_uk_cut_reference(tmp_path / "reference.json", record)
     return [
-        "--incumbent-h5",
-        str(incumbent),
-        "--incumbent-sha256",
-        _sha(incumbent),
-        "--incumbent-label",
-        "efrs_fixture",
+        "--reference-h5",
+        str(reference),
+        "--reference-record",
+        str(record_path),
         *extra,
     ]
 
 
-def test_uk_dense_role_refuses_the_incumbent_flags(tmp_path) -> None:
+def test_uk_dense_role_refuses_the_national_reference_flags(tmp_path) -> None:
     builder = candidate._load_builder_module()
     args = argparse.Namespace(
         target_loss_cap=None,
         allow_unpinned_feed=False,
         target_weight_rule="grain_equal",
-        incumbent_h5=tmp_path / "incumbent.h5",
-        incumbent_sha256=None,
+        reference_h5=tmp_path / "reference.h5",
+        reference_record=None,
     )
-    with pytest.raises(ValueError, match="--incumbent-h5/--incumbent-sha256"):
+    with pytest.raises(ValueError, match="--reference-h5/--reference-record"):
         builder._refuse_national_role_arguments(
             args, builder.uk_rowwise_posture("dense")
         )
 
 
-def test_uk_national_role_requires_the_incumbent_pair(monkeypatch, tmp_path):
+def test_uk_national_role_refuses_the_dense_reference_surface(tmp_path) -> None:
+    # The national cut's certify step reads its reference surface
+    # (microcosm#1095); the national build runs no export-surface gate.
+    builder = candidate._load_builder_module()
+    (tmp_path / "spine.h5").write_bytes(b"spine")
+    parsed = builder._parse_args(
+        _argv(
+            tmp_path / "spine.h5",
+            tmp_path / "out",
+            "--reference-surface",
+            str(tmp_path / "reference_surface.json"),
+        )
+    )
+    with pytest.raises(ValueError, match="--reference-surface"):
+        builder._validate_cli_args(parsed)
+
+
+def test_uk_national_role_requires_the_reference_pair(monkeypatch, tmp_path):
     pytest.importorskip("tables")
     builder = candidate._load_builder_module()
     input_h5, _registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
     out = tmp_path / "out"
     assert (
         builder.main(
-            _argv(input_h5, out, "--no-staging", "--incumbent-h5", str(input_h5))
+            _argv(input_h5, out, "--no-staging", "--reference-h5", str(input_h5))
         )
         == 1
     )
@@ -1495,17 +1551,31 @@ def test_uk_national_role_requires_the_incumbent_pair(monkeypatch, tmp_path):
     assert not (out / "microcosm_uk_2024_25.h5").exists()
 
 
-def test_uk_national_role_refuses_the_incumbent_without_the_scorer() -> None:
+def test_uk_national_role_refuses_a_reference_the_record_does_not_name(
+    monkeypatch, tmp_path
+):
+    pytest.importorskip("tables")
+    builder = candidate._load_builder_module()
+    input_h5, _registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
+    argv = _reference_argv(input_h5, tmp_path)
+    (tmp_path / "reference.h5").write_bytes(b"another file")
+    out = tmp_path / "out"
+
+    assert builder.main(_argv(input_h5, out, "--no-staging", *argv)) == 1
+    failure = json.loads((out / "failure.json").read_text())
+    assert "is" in failure["message"] and "bytes" in failure["message"]
+    assert not (out / "microcosm_uk_2024_25.h5").exists()
+
+
+def test_uk_national_role_refuses_the_reference_without_the_scorer() -> None:
     def missing(name: str):
         raise ImportError(name)
 
-    with pytest.raises(ValueError, match="microcosm#967"):
+    with pytest.raises(ValueError, match="head-to-head scorer"):
         national_role._load_candidate_evaluator(importer=missing)
 
 
-def test_uk_national_role_evaluates_against_the_incumbent(
-    monkeypatch, tmp_path, capsys
-):
+def test_uk_national_role_compares_with_the_reference(monkeypatch, tmp_path, capsys):
     pytest.importorskip("tables")
     builder = candidate._load_builder_module()
     input_h5, registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
@@ -1529,7 +1599,7 @@ def test_uk_national_role_evaluates_against_the_incumbent(
                 "--no-staging",
                 "--epochs",
                 "5",
-                *_incumbent_argv(input_h5, tmp_path),
+                *_reference_argv(input_h5, tmp_path),
             )
         )
         == 0
@@ -1538,22 +1608,27 @@ def test_uk_national_role_evaluates_against_the_incumbent(
     call = calls[0]
     assert call["candidate_h5"] == out / "microcosm_uk_2024_25.h5"
     assert call["candidate_sha256"] == _sha(out / "microcosm_uk_2024_25.h5")
-    assert call["incumbent_h5"] == tmp_path / "incumbent.h5"
-    assert call["incumbent_sha256"] == _sha(tmp_path / "incumbent.h5")
-    assert call["incumbent_label"] == "efrs_fixture"
+    assert call["reference_h5"] == tmp_path / "reference.h5"
+    assert call["reference_sha256"] == _sha(tmp_path / "reference.h5")
+    assert call["reference_label"] == REFERENCE_LABEL
+    assert call["reference_record"]["build"] == REFERENCE_BUILD
     # The registries the scorer receives are the ones the graph solved and
     # froze, by content hash.
     assert call["target_registry"].version == registry.version
     assert call["band_edge_registry"].version == registry.version
     assert call["calibration_year"] == 2025
-    receipt_path = out / "score_vs_incumbent.json"
+    receipt_path = out / "score_vs_reference.json"
     receipt = json.loads(receipt_path.read_text())
-    assert receipt["evaluation"]["verdict"] == "passed"
+    assert receipt["evaluation"]["reference"] == REFERENCE_LABEL
     manifest = json.loads((out / builder.MANIFEST_FILENAME).read_text())
     evaluation = manifest["evaluation"]
     assert evaluation["status"] == "completed"
-    assert evaluation["verdict"] == "passed"
-    assert evaluation["rule_1"]["passed"] is True
+    assert evaluation["reference"] == REFERENCE_LABEL
+    assert "verdict" not in evaluation
+    assert evaluation["losses"] == {
+        "candidate_full_loss": 0.01,
+        "reference_full_loss": 0.2,
+    }
     assert evaluation["scored_surface"] == {
         "n_scored": 1,
         "n_pruned": 1,
@@ -1562,8 +1637,8 @@ def test_uk_national_role_evaluates_against_the_incumbent(
     assert evaluation["pruned_measures"] == ["benunit.uc_calibration_child_count"]
     assert evaluation["pruned_families"] == {"dwp_universal_credit": 1}
     assert evaluation["receipt"]["sha256"] == _sha(receipt_path)
-    assert evaluation["incumbent"]["label"] == "efrs_fixture"
-    assert evaluation["incumbent"]["sha256"] == _sha(tmp_path / "incumbent.h5")
+    assert evaluation["reference_input"]["label"] == REFERENCE_LABEL
+    assert evaluation["reference_input"]["sha256"] == _sha(tmp_path / "reference.h5")
     assert manifest["outputs"]["score_receipt"]["sha256"] == _sha(receipt_path)
     # The absent measure is named loudly on stderr, never hidden.
     assert "benunit.uc_calibration_child_count" in capsys.readouterr().err
@@ -1577,7 +1652,7 @@ def test_uk_national_role_records_an_evaluation_error_without_failing(
     input_h5, _registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
 
     def explode(kwargs):
-        raise RuntimeError("the incumbent frame refused to load")
+        raise RuntimeError("the reference frame refused to load")
 
     module = _fake_evaluator(explode, [])
     monkeypatch.setattr(
@@ -1593,7 +1668,7 @@ def test_uk_national_role_records_an_evaluation_error_without_failing(
                 "--no-staging",
                 "--epochs",
                 "5",
-                *_incumbent_argv(input_h5, tmp_path),
+                *_reference_argv(input_h5, tmp_path),
             )
         )
         == 0
@@ -1604,8 +1679,8 @@ def test_uk_national_role_records_an_evaluation_error_without_failing(
     assert "refused to load" in manifest["evaluation"]["error"]
     assert manifest["evaluation"]["receipt"] is None
     assert "score_receipt" not in manifest["outputs"]
-    assert not (out / "score_vs_incumbent.json").exists()
-    assert "the incumbent evaluation failed" in capsys.readouterr().err
+    assert not (out / "score_vs_reference.json").exists()
+    assert "the comparison with the reference failed" in capsys.readouterr().err
 
 
 def test_uk_national_role_evaluates_after_staging_the_bundle(
@@ -1629,7 +1704,7 @@ def test_uk_national_role_evaluates_after_staging_the_bundle(
                 "--staging-local-only",
                 "--epochs",
                 "5",
-                *_incumbent_argv(input_h5, tmp_path),
+                *_reference_argv(input_h5, tmp_path),
             )
         )
         == 0
@@ -1638,14 +1713,14 @@ def test_uk_national_role_evaluates_after_staging_the_bundle(
     manifest = json.loads((out / builder.MANIFEST_FILENAME).read_text())
     run_id = manifest["build_id"]
     assert manifest["evaluation"]["status"] == "completed"
-    assert manifest["evaluation"]["verdict"] == "passed"
+    assert manifest["evaluation"]["reference"] == REFERENCE_LABEL
     assert manifest["outputs"]["score_receipt"]["sha256"] == _sha(
-        out / "score_vs_incumbent.json"
+        out / "score_vs_reference.json"
     )
     # The receipt is listed in the local sums beside the record and manifest.
     _sums_verify(out)
     assert any(
-        line.endswith("  score_vs_incumbent.json")
+        line.endswith("  score_vs_reference.json")
         for line in (out / "sha256sums.txt").read_text().splitlines()
     )
     bundle = validate_v2_bundle(out / "staging", run_id)
@@ -1653,28 +1728,30 @@ def test_uk_national_role_evaluates_after_staging_the_bundle(
     events = [
         (event["stage_id"], event["status"])
         for event in bundle["events"]
-        if event["stage_id"] == "incumbent_evaluation"
+        if event["stage_id"] == "reference_evaluation"
     ]
     assert events == [
-        ("incumbent_evaluation", "started"),
-        ("incumbent_evaluation", "completed"),
+        ("reference_evaluation", "started"),
+        ("reference_evaluation", "completed"),
     ]
     # The evaluation ran after the bundle was staged, before completion.
     stage_ids = [event["stage_id"] for event in bundle["events"]]
-    assert stage_ids.index("dataset_staging") < stage_ids.index("incumbent_evaluation")
-    assert stage_ids.index("incumbent_evaluation") < stage_ids.index("complete")
+    assert stage_ids.index("dataset_staging") < stage_ids.index("reference_evaluation")
+    assert stage_ids.index("reference_evaluation") < stage_ids.index("complete")
     artifacts = out / "staging" / "runs" / run_id / "artifacts"
-    staged_receipt = json.loads((artifacts / "score_vs_incumbent.json").read_text())
-    assert staged_receipt["evaluation"]["verdict"] == "passed"
-    # The staged copy keeps the verdict, the pruned block and the aggregates
-    # and drops the record arrays the reviewed-artifact policy refuses; the
-    # full receipt is beside the outputs.
-    assert "incumbent_unresolvable_pruned" in staged_receipt
-    assert staged_receipt["candidate_target_wins"] == 1
-    for key in ("target_drift", "signed_asymmetries", "measure_resolution"):
+    staged_receipt = json.loads((artifacts / "score_vs_reference.json").read_text())
+    assert staged_receipt["evaluation"]["reference"] == REFERENCE_LABEL
+    # The staged copy keeps the summary, the pruned block and the counts and
+    # drops the record arrays the reviewed-artifact policy refuses; the full
+    # receipt is beside the outputs.
+    assert "reference_unresolvable_pruned" in staged_receipt
+    assert staged_receipt["head_to_head"]["targets"]["candidate_lower_count"] == 1
+    assert "compared" not in staged_receipt["head_to_head"]["targets"]
+    for key in ("signed_asymmetries", "measure_resolution"):
         assert key not in staged_receipt
-    full_receipt = json.loads((out / "score_vs_incumbent.json").read_text())
-    assert full_receipt["target_drift"][0]["winner"] == "candidate"
+    full_receipt = json.loads((out / "score_vs_reference.json").read_text())
+    compared = full_receipt["head_to_head"]["targets"]["compared"]
+    assert compared[0]["lower_absolute_relative_error"] == "candidate"
     assert calls[0]["candidate_sha256"] == manifest["outputs"]["dataset"]["sha256"]
     # The completion marker binds the final bytes: the build record gained
     # the delivery summary and the manifest its receipts after publication,
@@ -1690,7 +1767,7 @@ def test_uk_national_role_evaluates_after_staging_the_bundle(
     assert completion["dataset"]["sha256"] == _sha(out / "microcosm_uk_2024_25.h5")
 
 
-def test_uk_national_dry_run_records_the_incumbent(monkeypatch, tmp_path, capsys):
+def test_uk_national_dry_run_records_the_reference(monkeypatch, tmp_path, capsys):
     pytest.importorskip("tables")
     builder = candidate._load_builder_module()
     input_h5, _registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
@@ -1706,7 +1783,7 @@ def test_uk_national_dry_run_records_the_incumbent(monkeypatch, tmp_path, capsys
                 tmp_path / "plan",
                 "--dry-run",
                 "--no-staging",
-                *_incumbent_argv(input_h5, tmp_path),
+                *_reference_argv(input_h5, tmp_path),
             )
         )
         == 0
@@ -1714,8 +1791,9 @@ def test_uk_national_dry_run_records_the_incumbent(monkeypatch, tmp_path, capsys
 
     plan = json.loads(capsys.readouterr().out)
     assert plan["dry_run"] is True
-    assert plan["incumbent"]["label"] == "efrs_fixture"
-    assert plan["incumbent"]["sha256"] == _sha(tmp_path / "incumbent.h5")
+    assert plan["reference"]["label"] == REFERENCE_LABEL
+    assert plan["reference"]["sha256"] == _sha(tmp_path / "reference.h5")
+    assert "record" not in plan["reference"]
     assert not (tmp_path / "plan").exists()
 
 
@@ -1725,13 +1803,14 @@ def test_uk_national_role_loads_the_real_scorer_by_its_public_name() -> None:
     module = national_role._load_candidate_evaluator()
     assert module.__name__ == "microcosm.build.uk_runtime.candidate_score"
     assert callable(module.uk_default_measure_resolver_factory)
-    assert callable(module.evaluate_uk_candidate_against_incumbent)
+    assert callable(module.evaluate_uk_candidate_against_reference)
 
 
 def test_uk_score_receipt_telemetry_summary_keeps_the_pruned_block() -> None:
-    """The staged copy drops the three per-target arrays and keeps the
-    pruned block whole, including a populated pruned_targets mapping (the
-    block a real run fills with 120 rows; Vahid's #965 note 2)."""
+    """The staged copy drops the per-target comparisons and the two other
+    record arrays and keeps the pruned block whole, including a populated
+    pruned_targets mapping (the block a real run fills with many rows;
+    Vahid's #965 note 2)."""
     pruned_targets = {
         f"dwp/uc/family_{i}": {
             "name": f"dwp/uc/family_{i}",
@@ -1744,10 +1823,18 @@ def test_uk_score_receipt_telemetry_summary_keeps_the_pruned_block() -> None:
     }
     score = {
         "artifacts": {"candidate": {"sha256": "1" * 64}},
-        "target_drift": [{"target": "a@0", "error": 0.1}],
+        "head_to_head": {
+            "targets": {
+                "candidate_lower_count": 1,
+                "reference_lower_count": 0,
+                "equal_count": 0,
+                "compared": [{"name": "a@0", "lower_absolute_relative_error": "x"}],
+            },
+            "by_family": {},
+        },
         "signed_asymmetries": [{"id": "x"}],
         "measure_resolution": {"candidate": {"rounds": []}},
-        "incumbent_unresolvable_pruned": {
+        "reference_unresolvable_pruned": {
             "n_pruned": 3,
             "n_scored": 1,
             "n_surface": 4,
@@ -1757,15 +1844,21 @@ def test_uk_score_receipt_telemetry_summary_keeps_the_pruned_block() -> None:
             "reviewed_register": {"resource": "r.json", "sha256": "2" * 64},
             "note": "pruned",
         },
-        "evaluation": {"verdict": "passed"},
+        "evaluation": {"reference": REFERENCE_LABEL},
     }
     summary = national_role._score_receipt_telemetry_summary(score)
     assert set(summary) == {
         "artifacts",
-        "incumbent_unresolvable_pruned",
+        "head_to_head",
+        "reference_unresolvable_pruned",
         "evaluation",
     }
-    assert summary["incumbent_unresolvable_pruned"]["pruned_targets"] == pruned_targets
+    assert summary["head_to_head"]["targets"] == {
+        "candidate_lower_count": 1,
+        "reference_lower_count": 0,
+        "equal_count": 0,
+    }
+    assert summary["reference_unresolvable_pruned"]["pruned_targets"] == pruned_targets
 
     # No list of mappings survives (the staging content policy's record
     # array refusal); the pruned rows are a mapping keyed by target name.

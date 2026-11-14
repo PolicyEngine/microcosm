@@ -663,6 +663,22 @@ def _area_signed_deferrals(
         area_ids=("S12000027",),
         defer_if_compiles=True,
     )
+    add(
+        target_id="welshgov.council_tax_stock.by_area.band_i",
+        geography_level="local_authority",
+        reason_id="council_tax_band_i_spine_support_absent",
+        rationale=(
+            "The dense pool on the spine of microcosm#1535's merge leaves "
+            "Carmarthenshire (W06000010) with no band-I household at the ruled "
+            "K=15: the rowwise driver's support check refuses the cell (nonzero "
+            "target, zero household support) while every other Welsh band-I "
+            "cell above the dwelling floor draws at least one band-I clone and "
+            "binds. The cell bound on the spine of microcosm#1491's pair "
+            "(María's ruling of 2026-11-07, microcosm#1095)."
+        ),
+        area_ids=("W06000010",),
+        defer_if_compiles=True,
+    )
     # microcosm#1301: the high-value homes family is controlled by its region
     # rows on the local line and binds its local-authority cells down to the
     # signed hvcts_la_household_floor rule, so its constituency level is

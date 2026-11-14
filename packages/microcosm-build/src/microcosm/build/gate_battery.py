@@ -62,6 +62,7 @@ from microcosm.build.gates import (
     weights_audit_gate,
 )
 from microcosm.build.trace import compute_composition_fingerprint
+from microcosm.data.gate_signing_keys import require_registered_gate_signing_key
 from microcosm.frame import Frame
 
 __all__ = [
@@ -155,7 +156,9 @@ def _signing_key(country: str) -> bytes:
         raise RuntimeError(f"{env} must be valid base64.") from exc
     if len(key) != 32:
         raise RuntimeError(f"{env} must decode to exactly 32 bytes.")
-    return key
+    # A key the committed registry does not let sign would produce reports
+    # no verifier accepts; refuse it here so the report says why.
+    return require_registered_gate_signing_key(country, key, purpose="sign")
 
 
 def _json_safe(value: object) -> object:

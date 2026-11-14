@@ -4553,7 +4553,8 @@
                 "dividend_income",
                 "rental_income",
                 "realized_capital_gains",
-                "private_pension_income"
+                "private_pension_income",
+                "liquid_financial_assets"
               ]
             },
             {
@@ -4609,6 +4610,12 @@
               "rewrite": true
             },
             {
+              "entity": "person",
+              "column": "liquid_financial_assets",
+              "dtype": "float64",
+              "rewrite": true
+            },
+            {
               "entity": "household",
               "column": "mortgage_interest",
               "dtype": "float64",
@@ -4659,6 +4666,11 @@
             {
               "entity": "person",
               "column": "private_pension_income_cents",
+              "dtype": "int64"
+            },
+            {
+              "entity": "person",
+              "column": "liquid_financial_assets_cents",
               "dtype": "int64"
             },
             {
@@ -4780,6 +4792,59 @@
           "params": {
             "declaration": "{\"columns\":[{\"output_column\":\"employment_income_cents\",\"quantum\":\"0.01\",\"rounding\":\"half_even\",\"source_column\":\"employment_income\"}],\"entity\":\"person\"}"
           }
+        },
+        {
+          "id": "nz.v.V1.rent.map",
+          "kernel": "transport.quantile_map@1",
+          "population": "nz.v.V1",
+          "inputs": [
+            {
+              "entity": "household",
+              "columns": [
+                "rent",
+                "household_region_code"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "household",
+              "column": "rent",
+              "dtype": "float64",
+              "rewrite": true
+            }
+          ],
+          "params": {
+            "entity": "household",
+            "column": "rent",
+            "component_column": "household_region_code",
+            "bands": {
+              "resource": "rent_bands",
+              "path": [
+                "map_bands"
+              ],
+              "encoding": "json"
+            },
+            "bands_sha256": {
+              "resource": "rent_bands",
+              "path": [],
+              "encoding": "sha256"
+            },
+            "interpolation": {
+              "resource": "rent_bands",
+              "path": [
+                "interpolation"
+              ],
+              "encoding": "json"
+            }
+          },
+          "artifact_inputs": [
+            {
+              "name": "surface",
+              "producer": "nz.facts.precal",
+              "artifact": "surface"
+            }
+          ]
         },
         {
           "id": "nz.v.V1.encode.person",
@@ -9154,7 +9219,8 @@
                 "dividend_income",
                 "rental_income",
                 "realized_capital_gains",
-                "private_pension_income"
+                "private_pension_income",
+                "liquid_financial_assets"
               ]
             },
             {
@@ -9210,6 +9276,12 @@
               "rewrite": true
             },
             {
+              "entity": "person",
+              "column": "liquid_financial_assets",
+              "dtype": "float64",
+              "rewrite": true
+            },
+            {
               "entity": "household",
               "column": "mortgage_interest",
               "dtype": "float64",
@@ -9260,6 +9332,11 @@
             {
               "entity": "person",
               "column": "private_pension_income_cents",
+              "dtype": "int64"
+            },
+            {
+              "entity": "person",
+              "column": "liquid_financial_assets_cents",
               "dtype": "int64"
             },
             {
@@ -9381,6 +9458,59 @@
           "params": {
             "declaration": "{\"columns\":[{\"output_column\":\"employment_income_cents\",\"quantum\":\"0.01\",\"rounding\":\"half_even\",\"source_column\":\"employment_income\"}],\"entity\":\"person\"}"
           }
+        },
+        {
+          "id": "nz.v.V2.rent.map",
+          "kernel": "transport.quantile_map@1",
+          "population": "nz.v.V2",
+          "inputs": [
+            {
+              "entity": "household",
+              "columns": [
+                "rent",
+                "household_region_code"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "household",
+              "column": "rent",
+              "dtype": "float64",
+              "rewrite": true
+            }
+          ],
+          "params": {
+            "entity": "household",
+            "column": "rent",
+            "component_column": "household_region_code",
+            "bands": {
+              "resource": "rent_bands",
+              "path": [
+                "map_bands"
+              ],
+              "encoding": "json"
+            },
+            "bands_sha256": {
+              "resource": "rent_bands",
+              "path": [],
+              "encoding": "sha256"
+            },
+            "interpolation": {
+              "resource": "rent_bands",
+              "path": [
+                "interpolation"
+              ],
+              "encoding": "json"
+            }
+          },
+          "artifact_inputs": [
+            {
+              "name": "surface",
+              "producer": "nz.facts.precal",
+              "artifact": "surface"
+            }
+          ]
         },
         {
           "id": "nz.v.V2.encode.person",
@@ -13755,7 +13885,8 @@
                 "dividend_income",
                 "rental_income",
                 "realized_capital_gains",
-                "private_pension_income"
+                "private_pension_income",
+                "liquid_financial_assets"
               ]
             },
             {
@@ -13811,6 +13942,12 @@
               "rewrite": true
             },
             {
+              "entity": "person",
+              "column": "liquid_financial_assets",
+              "dtype": "float64",
+              "rewrite": true
+            },
+            {
               "entity": "household",
               "column": "mortgage_interest",
               "dtype": "float64",
@@ -13861,6 +13998,11 @@
             {
               "entity": "person",
               "column": "private_pension_income_cents",
+              "dtype": "int64"
+            },
+            {
+              "entity": "person",
+              "column": "liquid_financial_assets_cents",
               "dtype": "int64"
             },
             {
@@ -13982,6 +14124,59 @@
           "params": {
             "declaration": "{\"columns\":[{\"output_column\":\"employment_income_cents\",\"quantum\":\"0.01\",\"rounding\":\"half_even\",\"source_column\":\"employment_income\"}],\"entity\":\"person\"}"
           }
+        },
+        {
+          "id": "nz.v.V3.rent.map",
+          "kernel": "transport.quantile_map@1",
+          "population": "nz.v.V3",
+          "inputs": [
+            {
+              "entity": "household",
+              "columns": [
+                "rent",
+                "household_region_code"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "household",
+              "column": "rent",
+              "dtype": "float64",
+              "rewrite": true
+            }
+          ],
+          "params": {
+            "entity": "household",
+            "column": "rent",
+            "component_column": "household_region_code",
+            "bands": {
+              "resource": "rent_bands",
+              "path": [
+                "map_bands"
+              ],
+              "encoding": "json"
+            },
+            "bands_sha256": {
+              "resource": "rent_bands",
+              "path": [],
+              "encoding": "sha256"
+            },
+            "interpolation": {
+              "resource": "rent_bands",
+              "path": [
+                "interpolation"
+              ],
+              "encoding": "json"
+            }
+          },
+          "artifact_inputs": [
+            {
+              "name": "surface",
+              "producer": "nz.facts.precal",
+              "artifact": "surface"
+            }
+          ]
         },
         {
           "id": "nz.v.V3.encode.person",
@@ -18356,7 +18551,8 @@
                 "dividend_income",
                 "rental_income",
                 "realized_capital_gains",
-                "private_pension_income"
+                "private_pension_income",
+                "liquid_financial_assets"
               ]
             },
             {
@@ -18412,6 +18608,12 @@
               "rewrite": true
             },
             {
+              "entity": "person",
+              "column": "liquid_financial_assets",
+              "dtype": "float64",
+              "rewrite": true
+            },
+            {
               "entity": "household",
               "column": "mortgage_interest",
               "dtype": "float64",
@@ -18462,6 +18664,11 @@
             {
               "entity": "person",
               "column": "private_pension_income_cents",
+              "dtype": "int64"
+            },
+            {
+              "entity": "person",
+              "column": "liquid_financial_assets_cents",
               "dtype": "int64"
             },
             {
@@ -18583,6 +18790,59 @@
           "params": {
             "declaration": "{\"columns\":[{\"output_column\":\"employment_income_cents\",\"quantum\":\"0.01\",\"rounding\":\"half_even\",\"source_column\":\"employment_income\"}],\"entity\":\"person\"}"
           }
+        },
+        {
+          "id": "nz.v.V4.rent.map",
+          "kernel": "transport.quantile_map@1",
+          "population": "nz.v.V4",
+          "inputs": [
+            {
+              "entity": "household",
+              "columns": [
+                "rent",
+                "household_region_code"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "household",
+              "column": "rent",
+              "dtype": "float64",
+              "rewrite": true
+            }
+          ],
+          "params": {
+            "entity": "household",
+            "column": "rent",
+            "component_column": "household_region_code",
+            "bands": {
+              "resource": "rent_bands",
+              "path": [
+                "map_bands"
+              ],
+              "encoding": "json"
+            },
+            "bands_sha256": {
+              "resource": "rent_bands",
+              "path": [],
+              "encoding": "sha256"
+            },
+            "interpolation": {
+              "resource": "rent_bands",
+              "path": [
+                "interpolation"
+              ],
+              "encoding": "json"
+            }
+          },
+          "artifact_inputs": [
+            {
+              "name": "surface",
+              "producer": "nz.facts.precal",
+              "artifact": "surface"
+            }
+          ]
         },
         {
           "id": "nz.v.V4.encode.person",
@@ -22957,7 +23217,8 @@
                 "dividend_income",
                 "rental_income",
                 "realized_capital_gains",
-                "private_pension_income"
+                "private_pension_income",
+                "liquid_financial_assets"
               ]
             },
             {
@@ -23013,6 +23274,12 @@
               "rewrite": true
             },
             {
+              "entity": "person",
+              "column": "liquid_financial_assets",
+              "dtype": "float64",
+              "rewrite": true
+            },
+            {
               "entity": "household",
               "column": "mortgage_interest",
               "dtype": "float64",
@@ -23063,6 +23330,11 @@
             {
               "entity": "person",
               "column": "private_pension_income_cents",
+              "dtype": "int64"
+            },
+            {
+              "entity": "person",
+              "column": "liquid_financial_assets_cents",
               "dtype": "int64"
             },
             {
@@ -23184,6 +23456,59 @@
           "params": {
             "declaration": "{\"columns\":[{\"output_column\":\"employment_income_cents\",\"quantum\":\"0.01\",\"rounding\":\"half_even\",\"source_column\":\"employment_income\"}],\"entity\":\"person\"}"
           }
+        },
+        {
+          "id": "nz.v.VHF.rent.map",
+          "kernel": "transport.quantile_map@1",
+          "population": "nz.v.VHF",
+          "inputs": [
+            {
+              "entity": "household",
+              "columns": [
+                "rent",
+                "household_region_code"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "household",
+              "column": "rent",
+              "dtype": "float64",
+              "rewrite": true
+            }
+          ],
+          "params": {
+            "entity": "household",
+            "column": "rent",
+            "component_column": "household_region_code",
+            "bands": {
+              "resource": "rent_bands",
+              "path": [
+                "map_bands"
+              ],
+              "encoding": "json"
+            },
+            "bands_sha256": {
+              "resource": "rent_bands",
+              "path": [],
+              "encoding": "sha256"
+            },
+            "interpolation": {
+              "resource": "rent_bands",
+              "path": [
+                "interpolation"
+              ],
+              "encoding": "json"
+            }
+          },
+          "artifact_inputs": [
+            {
+              "name": "surface",
+              "producer": "nz.facts.precal",
+              "artifact": "surface"
+            }
+          ]
         },
         {
           "id": "nz.v.VHF.encode.person",
@@ -27558,7 +27883,8 @@
                 "dividend_income",
                 "rental_income",
                 "realized_capital_gains",
-                "private_pension_income"
+                "private_pension_income",
+                "liquid_financial_assets"
               ]
             },
             {
@@ -27614,6 +27940,12 @@
               "rewrite": true
             },
             {
+              "entity": "person",
+              "column": "liquid_financial_assets",
+              "dtype": "float64",
+              "rewrite": true
+            },
+            {
               "entity": "household",
               "column": "mortgage_interest",
               "dtype": "float64",
@@ -27664,6 +27996,11 @@
             {
               "entity": "person",
               "column": "private_pension_income_cents",
+              "dtype": "int64"
+            },
+            {
+              "entity": "person",
+              "column": "liquid_financial_assets_cents",
               "dtype": "int64"
             },
             {
@@ -27785,6 +28122,59 @@
           "params": {
             "declaration": "{\"columns\":[{\"output_column\":\"employment_income_cents\",\"quantum\":\"0.01\",\"rounding\":\"half_even\",\"source_column\":\"employment_income\"}],\"entity\":\"person\"}"
           }
+        },
+        {
+          "id": "nz.v.VSI.rent.map",
+          "kernel": "transport.quantile_map@1",
+          "population": "nz.v.VSI",
+          "inputs": [
+            {
+              "entity": "household",
+              "columns": [
+                "rent",
+                "household_region_code"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "household",
+              "column": "rent",
+              "dtype": "float64",
+              "rewrite": true
+            }
+          ],
+          "params": {
+            "entity": "household",
+            "column": "rent",
+            "component_column": "household_region_code",
+            "bands": {
+              "resource": "rent_bands",
+              "path": [
+                "map_bands"
+              ],
+              "encoding": "json"
+            },
+            "bands_sha256": {
+              "resource": "rent_bands",
+              "path": [],
+              "encoding": "sha256"
+            },
+            "interpolation": {
+              "resource": "rent_bands",
+              "path": [
+                "interpolation"
+              ],
+              "encoding": "json"
+            }
+          },
+          "artifact_inputs": [
+            {
+              "name": "surface",
+              "producer": "nz.facts.precal",
+              "artifact": "surface"
+            }
+          ]
         },
         {
           "id": "nz.v.VSI.encode.person",
@@ -32155,7 +32545,8 @@
                 "dividend_income",
                 "rental_income",
                 "realized_capital_gains",
-                "private_pension_income"
+                "private_pension_income",
+                "liquid_financial_assets"
               ]
             },
             {
@@ -32211,6 +32602,12 @@
               "rewrite": true
             },
             {
+              "entity": "person",
+              "column": "liquid_financial_assets",
+              "dtype": "float64",
+              "rewrite": true
+            },
+            {
               "entity": "household",
               "column": "mortgage_interest",
               "dtype": "float64",
@@ -32261,6 +32658,11 @@
             {
               "entity": "person",
               "column": "private_pension_income_cents",
+              "dtype": "int64"
+            },
+            {
+              "entity": "person",
+              "column": "liquid_financial_assets_cents",
               "dtype": "int64"
             },
             {
@@ -32382,6 +32784,59 @@
           "params": {
             "declaration": "{\"columns\":[{\"output_column\":\"employment_income_cents\",\"quantum\":\"0.01\",\"rounding\":\"half_even\",\"source_column\":\"employment_income\"}],\"entity\":\"person\"}"
           }
+        },
+        {
+          "id": "nz.v.VEX.rent.map",
+          "kernel": "transport.quantile_map@1",
+          "population": "nz.v.VEX",
+          "inputs": [
+            {
+              "entity": "household",
+              "columns": [
+                "rent",
+                "household_region_code"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "household",
+              "column": "rent",
+              "dtype": "float64",
+              "rewrite": true
+            }
+          ],
+          "params": {
+            "entity": "household",
+            "column": "rent",
+            "component_column": "household_region_code",
+            "bands": {
+              "resource": "rent_bands",
+              "path": [
+                "map_bands"
+              ],
+              "encoding": "json"
+            },
+            "bands_sha256": {
+              "resource": "rent_bands",
+              "path": [],
+              "encoding": "sha256"
+            },
+            "interpolation": {
+              "resource": "rent_bands",
+              "path": [
+                "interpolation"
+              ],
+              "encoding": "json"
+            }
+          },
+          "artifact_inputs": [
+            {
+              "name": "surface",
+              "producer": "nz.facts.precal",
+              "artifact": "surface"
+            }
+          ]
         },
         {
           "id": "nz.v.VEX.encode.person",
@@ -36756,7 +37211,8 @@
                 "dividend_income",
                 "rental_income",
                 "realized_capital_gains",
-                "private_pension_income"
+                "private_pension_income",
+                "liquid_financial_assets"
               ]
             },
             {
@@ -36812,6 +37268,12 @@
               "rewrite": true
             },
             {
+              "entity": "person",
+              "column": "liquid_financial_assets",
+              "dtype": "float64",
+              "rewrite": true
+            },
+            {
               "entity": "household",
               "column": "mortgage_interest",
               "dtype": "float64",
@@ -36862,6 +37324,11 @@
             {
               "entity": "person",
               "column": "private_pension_income_cents",
+              "dtype": "int64"
+            },
+            {
+              "entity": "person",
+              "column": "liquid_financial_assets_cents",
               "dtype": "int64"
             },
             {
@@ -36983,6 +37450,59 @@
           "params": {
             "declaration": "{\"columns\":[{\"output_column\":\"employment_income_cents\",\"quantum\":\"0.01\",\"rounding\":\"half_even\",\"source_column\":\"employment_income\"}],\"entity\":\"person\"}"
           }
+        },
+        {
+          "id": "nz.v.VPT.rent.map",
+          "kernel": "transport.quantile_map@1",
+          "population": "nz.v.VPT",
+          "inputs": [
+            {
+              "entity": "household",
+              "columns": [
+                "rent",
+                "household_region_code"
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "entity": "household",
+              "column": "rent",
+              "dtype": "float64",
+              "rewrite": true
+            }
+          ],
+          "params": {
+            "entity": "household",
+            "column": "rent",
+            "component_column": "household_region_code",
+            "bands": {
+              "resource": "rent_bands",
+              "path": [
+                "map_bands"
+              ],
+              "encoding": "json"
+            },
+            "bands_sha256": {
+              "resource": "rent_bands",
+              "path": [],
+              "encoding": "sha256"
+            },
+            "interpolation": {
+              "resource": "rent_bands",
+              "path": [
+                "interpolation"
+              ],
+              "encoding": "json"
+            }
+          },
+          "artifact_inputs": [
+            {
+              "name": "surface",
+              "producer": "nz.facts.precal",
+              "artifact": "surface"
+            }
+          ]
         },
         {
           "id": "nz.v.VPT.encode.person",

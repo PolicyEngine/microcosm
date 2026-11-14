@@ -216,10 +216,9 @@ def extract_incumbent_surface(
                 f"{incumbent_h5}: the local UC child bands read "
                 "benunit.uc_calibration_child_count, and this incumbent lacks "
                 f"its relationship inputs ({error.args[0]}). The enhanced FRS "
-                "is known not to carry that measure "
-                "(uk/incumbent_unresolvable_measures.json); the local extractor "
-                "does not prune listed measures, so use a Microcosm release as "
-                "the incumbent."
+                "is known not to carry that measure, and the local extractor "
+                "does not prune unresolvable measures, so use a Microcosm "
+                "release as the incumbent."
             ) from error
     metrics = metric_frames[0].copy()
     for frame in metric_frames[1:]:

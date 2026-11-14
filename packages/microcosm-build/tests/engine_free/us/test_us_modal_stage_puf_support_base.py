@@ -706,7 +706,7 @@ def test_an_option_that_maps_to_an_owned_flag_is_refused(monkeypatch, flag) -> N
     # A registry mistake: an allowlisted option for a flag the builder sets
     # would pass it twice, and one for a withheld flag would open an escape
     # hatch (--base-h5, --allow-geography-ladder-gate-failures, ...). The
-    # plan is refused, and so is the argv, for every one of the 26 flags.
+    # plan is refused, and so is the argv, for every one of the 29 flags.
     rogue = dataclasses.replace(BASE, options={"x": plan_lib.OptionFlag(flag, str)})
     monkeypatch.setitem(plan_lib.TOOLS, BASE.name, rogue)
     with pytest.raises(plan_lib.PlanError, match=f"runner-owned flag {flag}"):
@@ -755,7 +755,7 @@ def test_an_abbreviation_of_a_withheld_flag_is_refused(monkeypatch, flag) -> Non
 
 
 def _owned_flag_parser():
-    """An argparse parser with the base's 26 owned flags, as the tool's own
+    """An argparse parser with the base's 29 owned flags, as the tool's own
     (4b57d15a2 ``_parse_args``: ``argparse.ArgumentParser()``, so
     ``allow_abbrev`` is on). Each flag takes an optional value, so a bool
     flag and a valued one both parse."""
@@ -833,14 +833,19 @@ def test_the_owned_flags_are_exactly_the_tool_s_flags() -> None:
         plan_lib.PUF_SUPPORT_BASE_WITHHELD_FLAGS
         & plan_lib.PUF_SUPPORT_BASE_BUILDER_FLAGS
     )
-    assert len(_OWNED) == 26
+    assert len(_OWNED) == 29
     assert BASE.owned_flags == _OWNED
     assert plan_lib.TOOLS[BASE.name].owned_flags == _OWNED
     assert _tool_flags(BASE_TOOL.read_text()) == _OWNED
 
 
 def test_the_owned_flags_are_the_pinned_tool_s_flags(pinned_source: str) -> None:
-    assert _tool_flags(pinned_source) == _OWNED == BASE.owned_flags
+    # The location flags (#696) arrived after the pinned commit, and the
+    # plan withholds them.
+    location = plan_lib.PUF_SUPPORT_BASE_LOCATION_FLAGS
+    assert location <= plan_lib.PUF_SUPPORT_BASE_WITHHELD_FLAGS
+    assert not _tool_flags(pinned_source) & location
+    assert _tool_flags(pinned_source) | location == _OWNED == BASE.owned_flags
 
 
 def test_a_staged_input_whose_bytes_differ_is_refused() -> None:

@@ -26,6 +26,7 @@ as policyengine-core does. Invariants:
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import math
 from pathlib import Path
@@ -524,6 +525,37 @@ def test_an_older_reference_manifest_is_compared_not_fatal(probe_tool) -> None:
     ]
 
 
+def test_the_target_surface_resolves_from_a_build_folder_release_manifest(
+    probe_tool,
+) -> None:
+    """A reference release's manifest in the build-folder layout names its
+    release and build as strings and records the build's details, the target
+    surface selection among them, at its top level (microcosm#1570); a
+    tagged manifest records them in its build object."""
+    selection = {
+        "mode": "national_state",
+        "dropped_congressional_district_targets": 27_148,
+    }
+    identity = {
+        "release": "microcosm-us-2024-national",
+        "build": "populace-us-2024-fixture",
+    }
+    for manifest, field in (
+        ({**identity, "target_surface_selection": selection}, ""),
+        ({"build": {"target_surface_selection": selection}}, "build."),
+    ):
+        surface = probe_tool.resolve_target_surface(None, None, manifest)
+        assert surface == {
+            "mode": "national_state",
+            "dropped_congressional_district_targets": 27_148,
+            "source": (
+                f"reference release_manifest.json {field}target_surface_selection"
+            ),
+        }
+
+    assert probe_tool.resolve_target_surface(None, None, identity)["mode"] == "full"
+
+
 def test_census_with_a_receipt_is_refused(
     probe_tool, builder, fake_reforms, chain, tmp_path
 ) -> None:
@@ -834,3 +866,237 @@ def test_the_report_names_the_commit_the_probe_loaded_from(
             "hashed": "at write",
         },
     }
+
+
+def _tail_result(single_record=None, *, passed=True, share=0.4, unmeasured=None):
+    surface = {"checked_sparse_columns": ["partnership_income"]}
+    if single_record is not None:
+        surface["single_record_concentration"] = {
+            "top_k": 100,
+            "columns": single_record,
+            "unmeasured": unmeasured or {},
+        }
+    return {
+        "passed": passed,
+        "surface": surface,
+        "details": {"top_share": {"partnership_income": share}},
+    }
+
+
+def _tail_reference(single_record=None, **options):
+    result = _tail_result(single_record, **options)
+    return {
+        "surface": result["surface"],
+        "tail_concentration": {
+            "passed": result["passed"],
+            "details": result["details"],
+        },
+    }
+
+
+# Line 32 in #1259's seed-0 rerun of the #1251 chain, at initial weights: one
+# measurement, rounded.
+_LINE_32 = {
+    "carriers": 16_001,
+    "top_1_share": 0.217,
+    "top_1_weight": 644.7,
+    "top_k_share": 0.451,
+}
+_ZERO_MASS = {
+    "carriers": 0,
+    "top_1_share": None,
+    "top_1_weight": None,
+    "top_k_share": None,
+}
+
+
+def test_the_probe_compares_single_record_measurements(probe_tool) -> None:
+    measured = {"partnership_income": _LINE_32, "estate_income": _ZERO_MASS}
+
+    same = probe_tool.compare_qrf_tail(
+        _tail_result(measured), _tail_reference(measured)
+    )
+
+    assert same == {
+        "differences": [],
+        "columns_compared": 1,
+        "single_record_columns_compared": 2,
+    }
+
+    moved = probe_tool.compare_qrf_tail(
+        _tail_result(
+            {**measured, "partnership_income": {**_LINE_32, "top_1_weight": 1.08}}
+        ),
+        _tail_reference(measured),
+    )
+
+    assert moved["differences"] == ["partnership_income: top_1_weight 1.08 vs 644.7"]
+
+    lost = probe_tool.compare_qrf_tail(
+        _tail_result({**measured, "estate_income": {**_ZERO_MASS, "top_1_share": 0.5}}),
+        _tail_reference(measured),
+    )
+
+    assert lost["differences"] == ["estate_income: top_1_share 0.5 vs None"]
+
+    # The other direction, a probe column with the release's carriers and no
+    # share: what the measurement reports when a column's mass sums past the
+    # float range.
+    no_share = {
+        **_LINE_32,
+        "top_1_share": None,
+        "top_1_weight": None,
+        "top_k_share": None,
+    }
+    unshared = probe_tool.compare_qrf_tail(
+        _tail_result({**measured, "partnership_income": no_share}),
+        _tail_reference(measured),
+    )
+
+    assert unshared["differences"] == [
+        "partnership_income: top_1_share None vs 0.217",
+        "partnership_income: top_1_weight None vs 644.7",
+        "partnership_income: top_k_share None vs 0.451",
+    ]
+
+    narrower = probe_tool.compare_qrf_tail(
+        _tail_result({"partnership_income": _LINE_32}), _tail_reference(measured)
+    )
+
+    assert narrower["differences"] == [
+        "single-record columns differ: only probe [], only release ['estate_income']"
+    ]
+    assert narrower["single_record_columns_compared"] == 1
+
+    wider = probe_tool.compare_qrf_tail(
+        _tail_result(measured), _tail_reference({"partnership_income": _LINE_32})
+    )
+
+    assert wider["differences"] == [
+        "single-record columns differ: only probe ['estate_income'], only release []"
+    ]
+    assert wider["single_record_columns_compared"] == 1
+
+    for field, value in (("carriers", 16_002), ("top_k_share", 0.452)):
+        one_field = probe_tool.compare_qrf_tail(
+            _tail_result(
+                {**measured, "partnership_income": {**_LINE_32, field: value}}
+            ),
+            _tail_reference(measured),
+        )
+
+        assert one_field["differences"] == [
+            f"partnership_income: {field} {value!r} vs {_LINE_32[field]!r}"
+        ]
+
+
+def test_the_probe_compares_unmeasured_reasons(probe_tool) -> None:
+    """Review N8: an output unmeasured in both runs for different reasons is a
+    difference, and so is an output unmeasured in one run only."""
+    measured = {"partnership_income": _LINE_32}
+    unmeasured = {
+        "taxable_interest_income": "ValueError: Cannot resolve person-level weights"
+    }
+
+    same = probe_tool.compare_qrf_tail(
+        _tail_result(measured, unmeasured=unmeasured),
+        _tail_reference(measured, unmeasured=unmeasured),
+    )
+
+    assert same["differences"] == []
+
+    another_reason = probe_tool.compare_qrf_tail(
+        _tail_result(
+            measured,
+            unmeasured={
+                "taxable_interest_income": "RuntimeError: weight store offline"
+            },
+        ),
+        _tail_reference(measured, unmeasured=unmeasured),
+    )
+
+    assert another_reason["differences"] == [
+        "taxable_interest_income: unmeasured as 'RuntimeError: weight store "
+        "offline' vs 'ValueError: Cannot resolve person-level weights'"
+    ]
+
+    only_release = probe_tool.compare_qrf_tail(
+        _tail_result(measured), _tail_reference(measured, unmeasured=unmeasured)
+    )
+
+    assert only_release["differences"] == [
+        "unmeasured columns differ: only probe [], only release "
+        "['taxable_interest_income']"
+    ]
+
+    only_probe = probe_tool.compare_qrf_tail(
+        _tail_result(measured, unmeasured=unmeasured), _tail_reference(measured)
+    )
+
+    assert only_probe["differences"] == [
+        "unmeasured columns differ: only probe ['taxable_interest_income'], "
+        "only release []"
+    ]
+
+
+def test_a_release_without_single_record_measurements_compares_none(
+    probe_tool,
+) -> None:
+    """A release built before its tail surface carried the block (Route A)."""
+    comparison = probe_tool.compare_qrf_tail(
+        _tail_result({"partnership_income": _LINE_32}), _tail_reference()
+    )
+
+    assert comparison == {
+        "differences": [],
+        "columns_compared": 1,
+        "single_record_columns_compared": 0,
+    }
+
+
+def test_a_probe_surface_without_the_block_compares_none(probe_tool) -> None:
+    """The comparison skips the block when either side lacks it. A probe run's
+    side is the surface its builder's ``_qrf_tail_concentration_gate``
+    returns, and the release tool's always carries the block, so this pins
+    the skip on a hand-built result."""
+    comparison = probe_tool.compare_qrf_tail(
+        _tail_result(), _tail_reference({"partnership_income": _LINE_32})
+    )
+
+    assert comparison == {
+        "differences": [],
+        "columns_compared": 1,
+        "single_record_columns_compared": 0,
+    }
+
+
+def test_the_timed_scorer_passes_every_scoring_argument_on(
+    probe_tool, builder, tmp_path, monkeypatch
+) -> None:
+    """The probe times each pass, and the release scorer gets what it was sent,
+    including a reform pass's outer counter (microcosm#1556)."""
+    from microcosm_emitter_interface.telemetry import OuterProgress
+
+    received: list[dict[str, object]] = []
+
+    def score(self, keys, *, label, reform_system=None, outer=None):
+        received.append({"label": label, "outer": outer})
+        return {}
+
+    monkeypatch.setattr(builder._HouseholdBatchedPostExportScorer, "_score", score)
+    passes = tmp_path / "passes.jsonl"
+    timed = probe_tool._timed_scorer_class(builder, passes, probe_tool.StageClock(None))
+    parameters = inspect.signature(timed._score).parameters
+    assert "outer" in parameters or any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    )
+    monkeypatch.setattr(timed, "n_batches", 3, raising=False)
+    scorer = object.__new__(timed)
+    counter = OuterProgress(2, 5, "reform_pass")
+    scorer._score(
+        ("fixture key",), label="fixture reform", reform_system=object(), outer=counter
+    )
+    assert received == [{"label": "fixture reform", "outer": counter}]
+    row = json.loads(passes.read_text())
+    assert (row["label"], row["reform"], row["batches"]) == ("fixture reform", True, 3)

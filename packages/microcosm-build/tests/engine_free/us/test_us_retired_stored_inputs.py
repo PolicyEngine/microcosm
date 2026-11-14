@@ -1,8 +1,10 @@
 """Moving the donor's retired stored inputs to the live ones (microcosm#1263).
 
 Every frame here is invented. The engine is a variable-name set, so no
-policyengine-us is imported; ``test_us_retired_stored_inputs_engine`` checks
-the names against the installed engine.
+policyengine-us is imported. The installed engine's side of the premise (the
+live input is a Person Boolean defaulting to True, and neither retired name is
+defined) is pinned by
+``packages/microcosm-data/tests/engine_contract/us/test_stored_inputs.py``.
 """
 
 from __future__ import annotations
@@ -32,13 +34,11 @@ ACS_CHANNEL = "acs_2024_1yr"
 
 
 def _remedy(frame, engine=ENGINE, allowed=None):
-    """The rule with the release tool's mask: the ACS people may lack one."""
+    """The rule with the release tool's mask: the ACS-spine people may lack one."""
 
     if allowed is None:
-        channels = frame.table("person")["person_support_channel"].map(
-            lambda value: value.decode() if isinstance(value, bytes) else value
-        )
-        allowed = channels.eq(ACS_CHANNEL).to_numpy(dtype=bool)
+        spine = frame.table("person")["person_spine"]
+        allowed = spine.eq(ACS_CHANNEL).fillna(False).to_numpy(dtype=bool)
     return with_live_stored_inputs(
         frame, engine_variables=engine, may_lack_decision=allowed
     )
@@ -50,6 +50,9 @@ def _frame(channels, decisions=None, part_b=None) -> Frame:
     frame = acs_frame([[(20, 40.0)] for _ in channels])
     person = frame.table("person").copy()
     person["person_support_channel"] = channels
+    person["person_spine"] = [
+        ACS_CHANNEL if channel == ACS_CHANNEL else "asec_puf" for channel in channels
+    ]
     if decisions is not None:
         person[RETIRED_WIC_INPUT] = pd.Series(decisions, dtype=object)
     if part_b is not None:
@@ -80,6 +83,7 @@ def test_donor_decisions_are_kept_and_acs_gaps_take_wic_up():
     assert wic["stored_decisions_kept"] == 2
     assert wic["stored_decisions_true"] == 1
     assert wic["people_assumed_true"] == 2
+    assert wic["people_allowed_without_decision"] == 2
     assert wic["status"] == "interim"
     assert "microcosm#1156" in wic["flip_condition"]
 
@@ -164,6 +168,58 @@ def test_the_rule_reads_no_provenance_column():
 def test_it_refuses_rather_than_guessing(channels, decisions, match):
     with pytest.raises(ValueError, match=match):
         _remedy(_frame(channels, decisions))
+
+
+@pytest.mark.parametrize(
+    ("stored", "expected"),
+    [
+        (pd.array([True, False, None], dtype="boolean"), [True, False, True]),
+        (np.array([True, False, True]), [True, False, True]),
+        (np.array([1.0, 0.0, np.nan]), [True, False, True]),
+        (pd.Series([True, False, None], dtype=object), [True, False, True]),
+        (pd.array([1, 0, None], dtype="Int64"), [True, False, True]),
+        (pd.array([1.0, 0.0, None], dtype="Float64"), [True, False, True]),
+        (np.array([1, 0, 1], dtype=np.int8), [True, False, True]),
+        (np.array([1, 0, 1], dtype=np.uint8), [True, False, True]),
+    ],
+    ids=[
+        "pandas-boolean-NA",
+        "numpy-bool",
+        "float-0-1-nan",
+        "object",
+        "nullable-Int64-NA",
+        "nullable-Float64-NA",
+        "int8",
+        "uint8",
+    ],
+)
+def test_every_stored_boolean_dtype_reads_alike(stored, expected):
+    frame = _frame(["asec", "puf_tax_detail", ACS_CHANNEL])
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = tables["person"].assign(**{RETIRED_WIC_INPUT: stored})
+    typed = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+    )
+
+    person = _remedy(typed).frame.table("person")
+
+    assert person[LIVE_WIC_INPUT].dtype == bool
+    assert person[LIVE_WIC_INPUT].tolist() == expected
+
+
+@pytest.mark.parametrize("value", ["fraction", "decimal", "complex"])
+def test_only_bools_and_real_zero_or_one_are_decisions(value):
+    """Bools and int/float 0/1 only. policyengine.py's reader refuses a
+    Fraction and a Decimal too; this rule is stricter about complex."""
+
+    from decimal import Decimal
+    from fractions import Fraction
+
+    stored = {"fraction": Fraction(1), "decimal": Decimal(1), "complex": 1 + 0j}
+    with pytest.raises(ValueError, match="not a Boolean"):
+        _remedy(_frame(["asec"], [stored[value]]))
 
 
 def test_zero_one_numbers_are_read_as_decisions():

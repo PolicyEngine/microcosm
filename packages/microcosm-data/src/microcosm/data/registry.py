@@ -37,7 +37,15 @@ class DatasetSpec:
         hf_repo: The Hugging Face **dataset** repo holding the artifact, e.g.
             ``"policyengine/populace-us"``.
         filename: The artifact filename within ``hf_repo``, e.g.
-            ``"populace_us_2024.h5"``.
+            ``"populace_us_2024.h5"``: the name a tagged build's manifest
+            declares, and the file the repository's root held in the tagged
+            layout, which the switch tool's ``delete-old-layout`` step
+            deletes.
+        build_folder_filename: The dataset file name new builds of
+            ``release`` declare, when it differs from ``filename``: the US
+            national release's builds declare ``microcosm_us_2024.h5``,
+            while the builds the US switch moved into folders keep
+            ``filename``. The loader accepts either for a listed build.
         engine_module: The importable module holding the dataset class, e.g.
             ``"policyengine_us.data"``.
         engine_class: The class in ``engine_module`` that reads the H5 and is
@@ -48,12 +56,15 @@ class DatasetSpec:
             ImportError when the engine is absent.
         pointer_path: The repository-root release pointer followed by the
             certified loader while the repository has no ``releases.json``.
-        release: The release whose builds can publish into their own folders,
-            ``releases/<release>/<build>/``. Where the repository has
-            ``releases.json``, the loader reads the release's current build
-            there and loads ``filename`` from that build's folder; until the
-            repository switches to it, the loader follows ``pointer_path``.
-            ``None`` for a release that keeps the tagged layout.
+        release: The release the loader reads through ``releases.json``,
+            whose builds are in ``releases/<release>/<build>/``: one whose
+            builds publish into their own folders, or ``populace-uk-2023``,
+            whose one build the switch moved into a folder. Where the
+            repository has ``releases.json``, the loader reads the release's
+            current build there and loads ``filename`` from that build's
+            folder; until the repository switches to it, the loader follows
+            ``pointer_path``. ``None`` for a release that keeps the tagged
+            layout.
     """
 
     country: str
@@ -66,6 +77,14 @@ class DatasetSpec:
     variant: str = DEFAULT_VARIANT
     pointer_path: str = "latest.json"
     release: str | None = None
+    build_folder_filename: str | None = None
+
+    @property
+    def dataset_filenames(self) -> tuple[str, ...]:
+        """The dataset file names a build of this entry may declare."""
+        if self.build_folder_filename is None:
+            return (self.filename,)
+        return (self.filename, self.build_folder_filename)
 
     @property
     def key(self) -> tuple[str, int, str]:
@@ -107,6 +126,12 @@ def register(spec: DatasetSpec) -> DatasetSpec:
 
 register(
     DatasetSpec(
+        # The June 2023 build, populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z.
+        # Until its repository switches to releases.json, the loader follows
+        # latest.json, which names it. The switch moves it into its own folder
+        # as the only and current build of release populace-uk-2023, under its
+        # old release ID, and deletes latest.json; the loader then reads it
+        # there. No new builds publish to this release.
         country="uk",
         year=2023,
         variant=DEFAULT_VARIANT,
@@ -115,6 +140,7 @@ register(
         engine_module="policyengine_uk.data",
         engine_class="UKSingleYearDataset",
         engine_package="policyengine-uk",
+        release="populace-uk-2023",
     )
 )
 
@@ -144,11 +170,13 @@ register(
 
 register(
     DatasetSpec(
-        # microcosm#762 A18: the dense joint national + local UK build is
-        # tag-only; no pointer. It carries every constituency and local
-        # authority at K=15 clones per spine household. Once the repository
-        # switches to releases.json, each new dense build becomes current when
-        # it is published, and the loader reads it there.
+        # microcosm#762 A18: the dense joint national + local UK build. Before
+        # the switch its builds were tags only, with no pointer file. It
+        # carries every constituency and local authority at K=15 clones per
+        # spine household. Once the repository
+        # switches to releases.json, a new dense build becomes current when it
+        # is promoted, or published with --make-current, through
+        # microcosm-publish-release-build, and the loader reads it there.
         country="uk",
         year=2025,
         variant="dense",
@@ -177,5 +205,11 @@ register(
         engine_module="policyengine_us.data",
         engine_class="USSingleYearDataset",
         engine_package="policyengine-us",
+        # Every US national build goes into this release once the repository
+        # records its builds in releases.json (microcosm#1570); until then
+        # the loader follows latest.json. New builds declare the new file
+        # name; the builds the switch moved keep populace_us_2024.h5.
+        release="microcosm-us-2024-national",
+        build_folder_filename="microcosm_us_2024.h5",
     )
 )

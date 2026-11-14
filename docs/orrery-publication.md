@@ -1,88 +1,95 @@
 # UK graph publication
 
 UK full, dense, size and national builds export `graph.orrery.json` from the
-saved graph schema and recorded execution evidence. They preserve the explicit
-allowlisted file inventory in the attempt directory, attempt publication before
-Hugging Face artifact staging when `--publish-orrery` asks for it, and register
-graph/evidence files and an `orrery.publication.json` receipt snapshot in the
-artifact manifest.
+saved graph schema and recorded execution evidence, for viewing the graph
+offline. When execution was recorded, they also write the execution overlay
+that `graph.orrery.json` embeds as `graph.execution.json`. They register the
+graph and evidence files, the emitter's publication inventory
+(`orrery.upload.json`) and an `orrery.publication.json` receipt snapshot in
+the artifact manifest, and a failed build's evidence bundle carries the same
+files.
 
-When execution was recorded, they also write the execution overlay that
-`graph.orrery.json` embeds as `graph.execution.json` and register it in the
-same manifest. A failed build's bundle carries it too. It is not copied to the
-preserved `orrery-publication/` directory or listed in `orrery.upload.json`:
-the emitter's file roles and the runs service's contract do not admit it yet.
-Its content is already inside `graph.orrery.json`, so registering it discloses
-nothing new.
+No build uploads its graph. The collector builds the Orrery graph files
+itself, from the inputs the build's staged bundle submits:
+
+| Bundle file | Role in the hand-over | Collector role |
+| --- | --- | --- |
+| `graph.schema.json` | `orrery_schema` | `schema` |
+| `graph.execution.json` | `execution_overlay` | `execution_overlay` |
+| each `upstream-<sha256>.json` the projection links | `orrery_upstream` | `upstream` |
+
+`microcosm.build.staging_dataset.output_role` gives these roles to the three
+kinds of file, registered under `orrery/` in a dataset bundle or by name in a
+failed build's evidence bundle. The hand-over names the build for the
+collector (see [UK staging operations](uk-staging-operations.md#staged-datasets)),
+so the emitter submits the files as one `orrery-inputs` submission once the
+bundle's Hugging Face commit lands. Every emitter a build or the re-stage
+command starts has its collector submissions on
+(`telemetry_emitter.COLLECTOR_SUBMISSIONS`, from emitter 0.15.0), and the
+build waits for the collector to accept the bundle's submissions, its
+calibration diagnostics and its Orrery inputs alike, as that section
+describes.
+The collector projects the document with
+`orrery_json_from_schema(schema, execution=overlay)`, validates it and keeps
+the graph of a build that used licensed microdata, as every UK build does,
+private; staff are to see it through the run viewer once it reads graphs
+from the collector. The native evidence
+files (`execution.evidence.json` and `evidence-<phase>-*.json`) and
+`graph.orrery.json` keep roles named after their keys, so they are not
+submitted.
+
+A build submits its Orrery inputs only with remote staging: with
+`--staging-local-only`, `--no-staging` or `--no-staged-dataset`, or with
+`HF_HUB_OFFLINE` set, its graph files stay on disk. The re-stage command
+(`tools/stage_uk_rowwise_candidate.py`) can stage a finished run's dataset
+bundle kept on disk later, Orrery inputs included; it does not stage a failed
+build's evidence bundle. `--publish-orrery`, which asked for an upload to the
+public Orrery (María's ruling of 2026-10-26 made that upload opt-in), now
+prints a warning and changes nothing; `--no-publish-orrery` is accepted too.
 
 Microcosm's build adapter (`microcosm.build.telemetry_emitter`) starts the
 separately installed `microcosm-emitter` command as the build's child process
 through `microcosm-emitter-interface`, with independent telemetry, graph
 publication and Hugging Face hand-over modules. The emitter owns sockets,
 authentication, persistence, retries and resource sampling. Microcosm retains
-graph generation and public-file selection; the staged dataset bundle, including
-a failed build's graph evidence, goes to the same emitter's Hugging Face module.
-Slow uploads cannot delay socket acknowledgement or telemetry delivery. A
+graph generation and public-file selection; the staged dataset bundle,
+including a failed build's graph evidence, goes to the same emitter's Hugging
+Face module. The build still asks the emitter's graph publication module for
+the publication inventory it registers, and queues nothing with it; the
+inventory and the receipt go once the projection code leaves Microcosm. A
 command that started no emitter of its own starts a short-lived one with only
-the graph module to measure and queue the files.
+the graph module to measure the files.
 
 UK full-build commands explicitly defer process shutdown when recording a completed,
 validation-refused or failed telemetry outcome. Their final cleanup closes the combined
-process after graph inventory and enqueue requests, so failure evidence uses the same
-graph socket. Other callers close the process automatically when reporting their outcome.
+process after the graph inventory requests, so failure evidence uses the same
+graph socket. Other callers close the process automatically when they report their outcome.
 
-Publication IDs do not depend on telemetry run IDs. Jobs use SQLAlchemy ORM and
-Alembic inside the emitter service's existing local SQLite database. Pending jobs survive missing or
-rejected credentials, process restarts and telemetry event pruning. Retry
-leases prevent a stale worker from replacing another worker's result.
-The exact source bytes must remain available until delivery completes.
-
-The authenticated API creates upload permissions, receives exact files using
-scoped signed URLs, then finalizes an immutable publication. Signed uploads
-never receive the collector bearer credential. The API rejects different bytes
-under an existing publication ID. No population H5 or content-store arrays are
-included; only allowlisted graph declarations, execution receipts and reviewed
-aggregate summaries can be published publicly.
+No population H5 or content-store arrays are among the graph files; only
+allowlisted graph declarations, execution receipts and reviewed aggregate
+summaries are exported.
 
 ## Status
 
-No upload is published today. The runs application accepts an upload only
-after the collector authorizes it, and the collector has no authorization
-endpoint: PolicyEngine/calibration-diagnostics#208, which would have added
-one, was closed unmerged. A build run with `--publish-orrery` still queues an
-upload as described above when it can start the separately installed emitter
-(see [the emitter dependency](#emitter-dependency)). Without the emitter, the
-build preserves the files but writes no `orrery.upload.json`, its receipt
-snapshot records `local_service_unavailable`, and nothing is queued. A build
-run without `--publish-orrery`, the default, queues none. A queued job stays
-pending in the emitter's local queue, its files stay in the preserved
-directory, and no retry can succeed.
+Builds made before this change, run with `--publish-orrery`, queued uploads
+to the runs application in the emitter's local queue. The runs application
+accepts an upload only after the collector authorizes it, and the collector
+has no authorization endpoint
+(PolicyEngine/calibration-diagnostics#208, which would have added one, was
+closed unmerged), so none of them can succeed. Each stays pending in its
+machine's queue with its files in the attempt's preserved
+`orrery-publication/` directory, until an emitter change removes the direct
+upload. That change can re-submit a queued upload to the collector as an
+`orrery-inputs` submission only with an execution overlay, which the
+preserved directory never holds: the overlay is in the build's staged bundle
+(`graph.execution.json`), and the collector's rebuild of past builds reads it
+there.
 
-The collector will build the Orrery graph files itself instead. Builds will
-submit the graph's inputs to the collector's artifact intake
-(PolicyEngine/microcosm-collector#12): `graph.schema.json`,
-`graph.execution.json`, the `upstream-<sha256>.json` files and the native
-evidence files, which the collector keeps private. They will not submit
-`graph.orrery.json`: the collector's Orrery worker will build it from the
-schema and the execution overlay. The worker keeps the graph of a build that
-used licensed microdata, as UK builds do, private; it becomes public only
-after output clearance. The direct upload to the runs application will then
-be removed.
-
-When a build queues an upload with remote staging enabled, it then hands its
-artifact bundle to its emitter, which uploads it to Hugging Face under
-`staged/<run_id>/`. That bundle holds every file of the queued upload, plus
-`graph.execution.json` when execution was recorded, so the Orrery graph files
-can be rebuilt from it later. This does not hold for:
-
-- an interrupted build;
-- a build run with `--publish-orrery` while staging is local-only or disabled;
-- a build whose Hugging Face staging failed or did not complete;
-- a build whose hand-over the emitter still held when the build's wait ended
-  (`UPLOAD_PENDING`, or the emitter's last error code while it retries): the
-  bundle may land later, and a re-stage records it;
-- a build refused remote staging before it began, because no usable emitter
-  was installed.
+The receipt snapshot (`orrery.publication.json`) of every build now records
+`skipped` with the error code `local_only`: nothing was queued for the runs
+application. It records `failed` with `local_service_unavailable` when the
+build could not measure the inventory, and with `unpublishable_summary` (see
+below) when a summary failed its check.
 
 ## Configuration
 
@@ -104,11 +111,8 @@ No new secret is required. Tests isolate ambient credentials and caches,
 replace the interface's emitter client with an in-memory one, and refuse to
 start the installed command.
 
-A build exports locally without remote submission unless `--publish-orrery`
-enables it (María's ruling of 2026-10-26), whatever its staging:
-`--no-publish-orrery` states the default, and `--publish-orrery` submits even
-when dataset staging is local-only. A publication failure does not replace
-the dataset's validation result or prevent HF artifact staging.
+A graph export failure does not replace the dataset's validation result or
+prevent Hugging Face artifact staging.
 
 Since the same ruling the build no longer withholds the figures of target rows
 resting on fewer than ten source households, or the per-area support figures
@@ -121,36 +125,25 @@ in the gates' failure lines, so the summaries never carry them:
   not the lines.
 
 The build's private diagnostics and gate reports keep all of them. Before it
-preserves anything for publication, the export checks the summaries and stops,
-with the `unpublishable_summary` error code, if one carries a row's estimates
-or a failure line. With no `orrery.upload.json` inventory written, neither the
-build nor the retry command below can submit them (Vahid's review of
-microcosm#1396).
+preserves anything, the export checks the summaries and stops, with the
+`unpublishable_summary` error code, if one carries a row's estimates or a
+failure line. It then writes no execution overlay and no
+`orrery.upload.json` inventory, so the bundle carries no Orrery inputs for
+the collector (Vahid's review of microcosm#1396).
 
 Failed builds preserve recorded graph evidence before temporary-file cleanup.
 They publish it, with an `orrery.failure.json` marker, to `orrery-failure/` in
 the attempt evidence directory named by `failure.json`, and leave the output
-directory, including an earlier successful bundle, unchanged. An interrupted
-build preserves the same local evidence and queue entry but does not wait for
-an upload or stage to Hugging Face.
-
-## Retry
-
-```bash
-microcosm-emitter-publish-graph --publication-id PUBLICATION_ID \
-  --directory /path/to/attempt/orrery-publication
-```
-
-The preserved directory contains `orrery.upload.json` and the exact files.
-Retries update a separate `publication.status.json`, never the original
-HF receipt snapshot. Pending jobs also resume when a subsequent emitter
-starts. The retry command is installed with the emitter; Microcosm does not
-retain a second delivery implementation or a compatibility wrapper.
+directory, including an earlier successful bundle, unchanged. Its evidence
+bundle is staged as a dataset bundle is, naming the build for the collector
+with no release, so its Orrery inputs are submitted the same way. An
+interrupted build preserves the same local evidence but does not stage to
+Hugging Face.
 
 ## Emitter dependency
 
 `packages/microcosm-build` depends on `microcosm-emitter-interface`
-(`>=0.7.0,<1`), the dependency-free package of typed calls, which `uv.lock`
+(`>=0.15.0,<1`), the dependency-free package of typed calls, which `uv.lock`
 records with its hashes. The emitter itself, `microcosm-emitter`, is not a
 workspace dependency: each machine installs it on its own with
 `uv tool install microcosm-emitter`, and the Modal image installs the newest
@@ -162,9 +155,9 @@ versions interfaces still send, and an emitter that lacks a module the build
 asks for starts without it.
 
 A build does not start an emitter older than `MINIMUM_EMITTER_VERSION` in
-`microcosm.build.telemetry_emitter`, now 0.13.0, and the Modal image installs
+`microcosm.build.telemetry_emitter`, now 0.15.0, and the Modal image installs
 at least the same release (`image_emitter_requirement()` in
-`tools/modal_us_stage_plan.py`, `microcosm-emitter>=0.13.0`). The release is
+`tools/modal_us_stage_plan.py`, `microcosm-emitter>=0.15.0`). The release is
 written once, in microcosm-build's package data,
 `packages/microcosm-build/src/microcosm/build/minimum_emitter_version.json`:
 the adapter reads it as package data, and the runner, which imports nothing
@@ -179,22 +172,35 @@ changes when the collector moves to another Google Cloud project. From 0.10.0
 on, the emitter's default collector address is the collector's hostname,
 which stays the same. Microcosm passes the emitter no collector address: the
 adapter's `development_collector_url` parameter, which no build command sets,
-accepts only a loopback address.
+accepts only a loopback address, and reaches telemetry, Orrery graph
+publication and the Hugging Face module's collector submissions alike.
 
-The minimum is 0.13.0, the newest release on 2026-11-05. 0.13.0 added
+The minimum is 0.15.0, the newest release on 2026-11-13. 0.15.0 adds the
+Hugging Face module's setting that switches collector submissions on, which
+every emitter a build starts sets (`telemetry_emitter.COLLECTOR_SUBMISSIONS`),
+collector provenance on a release publication, which it submits after the
+release commit, and a `skipped` collector receipt with an error code when it
+refuses its collector settings. An older emitter accepts the setting but
+drops a publication's provenance, so it would submit no release. The
+minimum before it, 0.14.0, added the build machine's readings to each
+heartbeat, the sleeps the machine took, a description of the machine in the
+run's first event, each stage's awake and asleep time at its end, and a
+counter one level above a stage's progress, which the US fiscal refresh's
+post-export scoring sends as the reform pass each scoring batch belongs to
+(the interface's `OuterProgress`, from 0.14.0). 0.13.0 added
 `microcosm-emitter status`, which the US Modal stage runner runs after each
 stage to record how many telemetry events the stage's emitter left
-undelivered; builds require the same release so that it is written once.
-Practically no machine ran the separately installed emitter then, so
-refusing 0.11.9 to 0.12.5 cost nothing; the minimum before it, 0.11.9, came
-from the collector's hostname, for which 0.10.0 would have been enough. A
-refused emitter does cost the build:
+undelivered; builds require the same release as the Modal image so that it
+is written once. Practically no machine ran the separately installed
+emitter on any of these dates, so refusing 0.11.9 to 0.14.0 cost nothing;
+the minimum before those, 0.11.9, came from the
+collector's hostname, for which 0.10.0 would have been enough. A refused
+emitter does cost the build:
 
 - no hosted telemetry, and no staging hand-overs (the staging run files are
   still written locally);
 - the UK graph step records a failed receipt (`local_service_unavailable`)
-  and queues no Orrery job, so the emitter's retry command has nothing to
-  deliver later;
+  and writes no publication inventory;
 - a UK build given `--staging-read-back` fails at the read-back;
 - a UK build that asks for remote staging of its dataset bundle, as UK builds
   do by default, is refused before it starts, and the refusal gives the
@@ -213,7 +219,7 @@ the new lockfile digest and rerun the tests and wheel checks.
 
 ## Migrating an existing workstation
 
-Install the emitter once with `uv tool install microcosm-emitter` (0.13.0 or
+Install the emitter once with `uv tool install microcosm-emitter` (0.15.0 or
 later; a build does not start an older emitter, says how to upgrade it and
 continues without it). It keeps using the existing spool database,
 `$XDG_CACHE_HOME/microcosm/telemetry/events.sqlite3`, at the same Alembic
@@ -226,7 +232,7 @@ modification. The emitter's README describes the repair for a machine that
 ran an earlier, unreleased build of the hand-over queue. No new credential,
 hosted service or infrastructure is required by this migration.
 
-To upgrade a machine whose emitter is older than 0.13.0, run
-`uv tool install --upgrade 'microcosm-emitter>=0.13.0'`; it also replaces a
+To upgrade a machine whose emitter is older than 0.15.0, run
+`uv tool install --upgrade 'microcosm-emitter>=0.15.0'`; it also replaces a
 version constraint given at install time, which `uv tool upgrade` keeps.
 `microcosm-emitter version` prints the installed release.

@@ -1604,6 +1604,198 @@
       ]
     },
     {
+      "resource": "dwp_uc_people_by_age_facts.json",
+      "purpose": "DWP Stat-Xplore, People on Universal Credit in Great Britain by age (bands and single year), every conditionality regime, in February, May, August and November 2025: the facts the dwp.uc.people_aged_16_to_24 diagnostic averages (microcosm#1095, Y4 of the November event-data plan). Consumed by the uc_take_up stage's age fit, which takes the mean over the four months of the single years 16 to 24 as the count of young claimants and partners its odds ratio aims at on the spine's design weights (Mar\u00eda's call of 2026-11-09). No value is derived here.",
+      "consumers": [
+        "uk_runtime.uc_take_up"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "uc_people_by_age_great_britain_2025_02",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_people.country_age_conditionality_regime.month2025_02.total",
+            "geography_id": "K03000001"
+          },
+          "expected_row_count": 28
+        },
+        {
+          "label": "uc_people_by_age_great_britain_2025_05",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_people.country_age_conditionality_regime.month2025_05.total",
+            "geography_id": "K03000001"
+          },
+          "expected_row_count": 28
+        },
+        {
+          "label": "uc_people_by_age_great_britain_2025_08",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_people.country_age_conditionality_regime.month2025_08.total",
+            "geography_id": "K03000001"
+          },
+          "expected_row_count": 28
+        },
+        {
+          "label": "uc_people_by_age_great_britain_2025_11",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_people.country_age_conditionality_regime.month2025_11.total",
+            "geography_id": "K03000001"
+          },
+          "expected_row_count": 28
+        }
+      ]
+    },
+    {
+      "resource": "dwp_uc_lcwra_households_facts.json",
+      "purpose": "DWP Stat-Xplore, Households on Universal Credit in Great Britain by limited capability for work entitlement group and payment indicator, January to December 2025: the LCWRA group's paid and nil-award cells, whose paid cells the bound dwp.uc.households_lcwra_element row averages (microcosm#1095, B3 of the November event-data plan's PR3). Consumed by the uc_take_up stage's LCWRA fit, which takes the mean over the twelve months of the paid count as the LCWRA households its second odds ratio aims at on the spine's design weights (Mar\u00eda's choices of 2026-11-11). No value is derived here.",
+      "consumers": [
+        "uk_runtime.uc_take_up"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "uc_lcwra_households_great_britain_2025_01",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_01",
+            "geography_id": "K03000001"
+          },
+          "expected_row_count": 2
+        },
+        {
+          "label": "uc_lcwra_households_great_britain_2025_02",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_02",
+            "geography_id": "K03000001"
+          },
+          "expected_row_count": 2
+        },
+        {
+          "label": "uc_lcwra_households_great_britain_2025_03",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_03",
+            "geography_id": "K03000001"
+          },
+          "expected_row_count": 2
+        },
+        {
+          "label": "uc_lcwra_households_great_britain_2025_04",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_04",
+            "geography_id": "K03000001"
+          },
+          "expected_row_count": 2
+        },
+        {
+          "label": "uc_lcwra_households_great_britain_2025_05",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_05",
+            "geography_id": "K03000001"
+          },
+          "expected_row_count": 2
+        },
+        {
+          "label": "uc_lcwra_households_great_britain_2025_06",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_06",
+            "geography_id": "K03000001"
+          },
+          "expected_row_count": 2
+        },
+        {
+          "label": "uc_lcwra_households_great_britain_2025_07",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_07",
+            "geography_id": "K03000001"
+          },
+          "expected_row_count": 2
+        },
+        {
+          "label": "uc_lcwra_households_great_britain_2025_08",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_08",
+            "geography_id": "K03000001"
+          },
+          "expected_row_count": 2
+        },
+        {
+          "label": "uc_lcwra_households_great_britain_2025_09",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_09",
+            "geography_id": "K03000001"
+          },
+          "expected_row_count": 2
+        },
+        {
+          "label": "uc_lcwra_households_great_britain_2025_10",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_10",
+            "geography_id": "K03000001"
+          },
+          "expected_row_count": 2
+        },
+        {
+          "label": "uc_lcwra_households_great_britain_2025_11",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_11",
+            "geography_id": "K03000001"
+          },
+          "expected_row_count": 2
+        },
+        {
+          "label": "uc_lcwra_households_great_britain_2025_12",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_12",
+            "geography_id": "K03000001"
+          },
+          "expected_row_count": 2
+        }
+      ]
+    },
+    {
+      "resource": "dwp_pip_points_facts.json",
+      "purpose": "DWP's Pathways to Work evidence pack, chapter 2 (the data tables' file of 23 July 2025), Tables 2.9 and 2.10: the PIP caseload's daily living points by band and mobility points by total, by age group, in England and Wales at the end of January 2025, normal rules, as shares of each group's claimants with the group's volume (microcosm#1095, P1 of the November event-data plan). Consumed by the pip_points stage, which draws each recipient's points within their stored award from their age group's distribution. No value is derived here.",
+      "consumers": [
+        "uk_runtime.pip_points"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "pip_daily_living_points_by_age_england_and_wales_2025_01",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.pathways_pip_points.jan2025.t2_9.daily_living",
+            "geography_id": "K04000001"
+          },
+          "expected_row_count": 91
+        },
+        {
+          "label": "pip_mobility_points_by_age_england_and_wales_2025_01",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.pathways_pip_points.jan2025.t2_10.mobility",
+            "geography_id": "K04000001"
+          },
+          "expected_row_count": 84
+        }
+      ]
+    },
+    {
       "resource": "obr_hvcts_costing_facts.json",
       "purpose": "OBR costing of the high value council tax surcharge (2 April 2026): Table 1.1 and 1.2 properties in scope by band for 2028-29 to 2030-31 (static and post-behaviour) and the paragraph 1.13 non-owner-occupied share. Consumed by the uk_high_value_homes_benchmarks diagnostic gate and the high-value home stock builder's owner-occupied control (microcosm#1240).",
       "consumers": [
@@ -1951,6 +2143,84 @@
             ]
           },
           "expected_row_count": 256
+        }
+      ]
+    },
+    {
+      "resource": "scotgov_band_d_liability_facts.json",
+      "purpose": "The Scottish Government's Band D equivalent dwellings before council tax reduction at September 2024 (CTAXBASE 2025) and average Band D council tax for 2024-25 (CTAS 2026), for each of the 32 council areas, with Scotland's chargeable dwellings (CTAXBASE 2024) and its second homes and its empty homes liable for council tax (empty more than 6 months; Second homes and empty properties in September 2025), at September 2024. Consumed by the FRS council tax stage, which levels the Scottish bills to the sum over the councils of their products (S2(a) of the November event-data plan, microcosm#1095), times Scotland's main-residence share, one less the second and empty homes over the chargeable dwellings (B11 of its PR3).",
+      "consumers": [
+        "uk_runtime.frs_council_tax"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "ctaxbase_2025_band_d_equivalents_september_2024",
+          "selector": {
+            "source_name": "scotgov",
+            "record_set_id": [
+              "scotgov.ctaxbase2025.band_d_equivalents.y2024"
+            ],
+            "geography_level": [
+              "local_authority"
+            ]
+          },
+          "expected_row_count": 32
+        },
+        {
+          "label": "ctas_2026_average_band_d_2024_25",
+          "selector": {
+            "source_name": "scotgov",
+            "record_set_id": [
+              "scotgov.ctas2026.band_d.fy2024"
+            ],
+            "geography_level": [
+              "local_authority"
+            ]
+          },
+          "expected_row_count": 32
+        },
+        {
+          "label": "ctaxbase_2024_chargeable_dwellings_scotland_september_2024",
+          "selector": {
+            "source_name": "scotgov",
+            "record_set_id": [
+              "scotgov.ctaxbase2024.chargeable_dwellings.scotland"
+            ],
+            "source_concept": [
+              "scotgov.chargeable_dwellings_total"
+            ],
+            "geography_level": [
+              "country"
+            ]
+          },
+          "expected_row_count": 1
+        },
+        {
+          "label": "second_homes_scotland_september_2024",
+          "selector": {
+            "source_name": "scotgov",
+            "record_set_id": [
+              "scotgov.second_homes_empty_properties_2025.second_homes.y2024"
+            ],
+            "geography_level": [
+              "country"
+            ]
+          },
+          "expected_row_count": 1
+        },
+        {
+          "label": "empty_homes_scotland_september_2024",
+          "selector": {
+            "source_name": "scotgov",
+            "record_set_id": [
+              "scotgov.second_homes_empty_properties_2025.empty_properties.y2024"
+            ],
+            "geography_level": [
+              "country"
+            ]
+          },
+          "expected_row_count": 1
         }
       ]
     }

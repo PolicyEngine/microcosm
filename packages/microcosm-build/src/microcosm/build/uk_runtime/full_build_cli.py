@@ -604,6 +604,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--register-json", type=Path)
     parser.add_argument("--input-mass-reference", type=Path)
     parser.add_argument(
+        "--reference-surface",
+        type=Path,
+        help=(
+            "Dense role: the export surface and carried inputs of the dense "
+            "line's current build (reference_surface.json from "
+            "tools/resolve_uk_reference.py), which the export-surface and "
+            "input-coverage gates compare with (microcosm#1095)."
+        ),
+    )
+    parser.add_argument(
         "--native-scorecard",
         type=Path,
         help=(
@@ -825,18 +835,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="National role only: allow a Ledger artifact whose feed commit is not the committed Chronicle pin.",
     )
     parser.add_argument(
-        "--incumbent-h5",
+        "--reference-h5",
         type=Path,
-        help="National role only: the incumbent dataset the finished candidate is evaluated against.",
+        help=(
+            "National role only: the current national build the finished "
+            "candidate is compared with (microcosm#1095)."
+        ),
     )
     parser.add_argument(
-        "--incumbent-sha256",
-        help="National role only: the incumbent's SHA-256, verified before it is read.",
-    )
-    parser.add_argument(
-        "--incumbent-label",
-        default="enhanced_frs_2024_25",
-        help="National role only: the incumbent's label in the score receipt.",
+        "--reference-record",
+        type=Path,
+        help=(
+            "National role only: the cut's record of that build "
+            "(tools/resolve_uk_reference.py), checked against the file."
+        ),
     )
     parser.add_argument(
         "--logbook-prev-row-digest",
@@ -894,24 +906,31 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         dest="publish_orrery",
         action="store_true",
         help=(
-            "Publish the saved graph to the public Orrery, including when "
-            "dataset staging is local-only. Off by default. Its summaries "
-            "carry the targets and each gate's verdict and count of failure "
-            "lines, but no target row's model figures and no failure line; "
-            "the export stops if a summary carries either."
+            "Accepted for older launchers; it only prints a warning. Builds no "
+            "longer upload the graph to the runs application: the staged "
+            "dataset bundle hands the graph's inputs to the emitter for the "
+            "collector, which builds the Orrery graph files."
         ),
     )
     graph_publication.add_argument(
         "--no-publish-orrery",
         dest="publish_orrery",
         action="store_false",
-        help=(
-            "Export graph files locally without submitting a publication job "
-            "(the default)."
-        ),
+        help=("Accepted for older launchers; builds upload no graph either way."),
     )
     parser.set_defaults(publish_orrery=None)
     args = parser.parse_args(argv)
+    if args.publish_orrery is True:
+        print(
+            "warning: --publish-orrery no longer uploads the graph to the runs "
+            "application. The staged dataset bundle hands the graph's inputs to "
+            "the emitter, which submits them to the collector with or without "
+            "the flag; the collector builds the Orrery graph files and keeps a "
+            "licensed build's private. With local-only or no "
+            "staging nothing is handed over.",
+            file=sys.stderr,
+            flush=True,
+        )
     validate_staging_arguments(parser, args)
     validate_staged_dataset_arguments(parser, args)
     if args.input_h5 is None and any(
@@ -1460,14 +1479,18 @@ def prepare_full_build(
         if path is not None:
             sources[name] = path
             optional.append(name)
-    if args.input_mass_reference is not None:
-        sources["uk_input_mass_reference"] = args.input_mass_reference
+    for name, path in (
+        ("uk_input_mass_reference", args.input_mass_reference),
+        # The reference build's surface (microcosm#1095): the export-surface
+        # and input-coverage gates read it, and are evidence_absent without.
+        ("uk_reference_surface", getattr(args, "reference_surface", None)),
+    ):
+        if path is None:
+            continue
+        sources[name] = path
         spine = replace(
             spine,
-            sources=(
-                *spine.sources,
-                SourceRef("uk_input_mass_reference", "raw-bytes-v1"),
-            ),
+            sources=(*spine.sources, SourceRef(name, "raw-bytes-v1")),
         )
     checkpoint_identity = (
         None
@@ -1807,6 +1830,7 @@ def _argument_sources(args: argparse.Namespace) -> dict[str, Path]:
             ("measure_exclusions", args.measure_exclusions),
             ("register_json", args.register_json),
             ("input_mass_reference", args.input_mass_reference),
+            ("reference_surface", getattr(args, "reference_surface", None)),
             ("native_scorecard", args.native_scorecard),
             ("matched_size_scorecard", args.matched_size_scorecard),
             ("resume_size_checkpoint", args.resume_size_checkpoint),
@@ -1882,12 +1906,16 @@ def _run_with_graph_publication[Prepared](
             prepared, args, telemetry=telemetry, attempt=attempt, record=record
         )
     except BaseException as failure:
-        # An interrupt still preserves local evidence and its durable queue
-        # entry, but does not wait for an upload or start Hugging Face staging.
+        # An interrupt still preserves local evidence, but does not start
+        # Hugging Face staging.
         interrupted = not isinstance(failure, Exception)
         try:
             _publish_failure_evidence(
-                args, record, telemetry=telemetry, interrupted=interrupted
+                args,
+                record,
+                telemetry=telemetry,
+                interrupted=interrupted,
+                build_id=getattr((attempt or {}).get("state"), "build_id", None),
             )
         except Exception as error:
             print(
@@ -1906,8 +1934,12 @@ def _publish_failure_evidence(
     *,
     telemetry: StagingRunBundleWriterV2 | None,
     interrupted: bool,
+    build_id: str | None = None,
 ) -> None:
     """Publish a failed build's graph evidence beside its attempt evidence.
+
+    ``build_id`` is the attempt's build ID, which the staged evidence bundle
+    names for the collector.
 
     A failed build leaves the output directory, including any earlier
     successful bundle and its completion marker, unchanged. The graph files go
@@ -1921,7 +1953,6 @@ def _publish_failure_evidence(
         EVIDENCE_MANIFEST_NAME,
         FAILURE_BUNDLE_DIRECTORY,
         FAILURE_MARKER_NAME,
-        GRAPH_PUBLICATION_WAIT_SECONDS,
         finalize_graph,
         stage_graph_evidence,
     )
@@ -1931,7 +1962,6 @@ def _publish_failure_evidence(
         args,
         manifest=record.get("manifest"),
         published_root=output,
-        wait_seconds=0 if interrupted else GRAPH_PUBLICATION_WAIT_SECONDS,
     )
     names = [*graph.files, EVIDENCE_MANIFEST_NAME]
     staged = {name: args.out / name for name in names if (args.out / name).is_file()}
@@ -1964,6 +1994,7 @@ def _publish_failure_evidence(
                 if telemetry is not None
                 else Path(args.attempt_evidence).name
             ),
+            build_id=build_id,
         )
     except Exception as error:
         print(
@@ -2136,6 +2167,7 @@ def _close_attempt(
             output_paths={"manifest": output / MANIFEST_FILENAME},
             run_id=state.build_id if telemetry is None else telemetry.run_id,
             staging_bundle=telemetry,
+            build_id=state.build_id,
         )
         staged_dataset = staged.delivery
         append_phase(state, STAGED_DATASET_PHASES[staged_dataset["status"]])
@@ -2165,6 +2197,7 @@ def _close_attempt(
             args,
             output,
             run_id=state.build_id if telemetry is None else telemetry.run_id,
+            build_id=state.build_id,
         )
         _close_staging(args, telemetry, classified, record)
     spool_path = record_candidate_attempt(
@@ -3194,7 +3227,7 @@ def _execute_national_build(
         "chronicle_provenance": dict(registry_document["chronicle_provenance"]),
     }
     record["inputs"] = inputs
-    record["incumbent"] = national_role.incumbent_arguments(args)
+    record["reference"] = national_role.reference_arguments(args)
     # 3. The solve and the seam battery, evaluated in the graph.
     stage(
         telemetry,
@@ -3275,7 +3308,6 @@ def _execute_national_build(
         "measure_resolution": evidence["calibration"].get("measure_resolution"),
         "register": evidence["register"],
         "spine_provenance": spine_provenance,
-        "score_vs_enhanced_frs": None,
     }
     stage(telemetry, "diagnostics", "started")
     diagnostics_outcome = write_uk_calibration_diagnostics(
@@ -3528,7 +3560,7 @@ def _close_national_attempt(
     """Stage the published bundle, evaluate, close the telemetry, spool the row.
 
     The seam's order: the manifest and the staged bundle's hand-over first,
-    then the incumbent evaluation, which waits for no upload and runs before
+    then the comparison with the reference, which waits for no upload and runs before
     the telemetry completes, then the build record and the manifest rewritten
     with the delivery summary and the sums refreshed. The build record is
     rewritten after the hand-over, so the bundle the emitter holds keeps the
@@ -3553,12 +3585,13 @@ def _close_national_attempt(
             output_paths=paths,
             run_id=state.build_id if telemetry is None else telemetry.run_id,
             staging_bundle=telemetry,
+            build_id=state.build_id,
         )
         staged_dataset = staged.delivery
         append_phase(state, STAGED_DATASET_PHASES[staged_dataset["status"]])
-        evaluation = national_role.evaluate_against_incumbent(
+        evaluation = national_role.evaluate_against_reference(
             args,
-            incumbent=record.get("incumbent"),
+            reference=record.get("reference"),
             inputs=record["inputs"],
             output_paths=paths,
             telemetry=telemetry,
@@ -3613,6 +3646,7 @@ def _close_national_attempt(
             args,
             output,
             run_id=state.build_id if telemetry is None else telemetry.run_id,
+            build_id=state.build_id,
         )
         _close_staging(args, telemetry, classified, record)
     spool_path = record_candidate_attempt(
@@ -3737,6 +3771,7 @@ def _national_attempt(
         # These checks must precede input loading. The emitter is already
         # running so a refusal is visible as a failed attempt.
         refuse_occupied_national_output(args)
+        national_role.require_signing_key()
         preflight_staged_dataset(args)
         predecessor = resolve_predecessor(args.logbook_prev_row_digest)
         telemetry = create_staging_run_bundle(args, build_id=state.build_id)

@@ -124,6 +124,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     coerce_reviewed_exclusions,
     load_uk_local_area_support_exclusion_register,
     uk_default_input_mass_reviewed_exclusions,
+    uk_input_mass_carriers,
     uk_input_mass_parity_gate,
     uk_input_mass_totals,
 )
@@ -257,9 +258,13 @@ def _evaluate_release_input_coverage(
         build_state = _uk_gate_surface(spine_frame)
     else:
         build_state = spine_frame
+    # The required inputs are the ones the cut's reference build carries
+    # (microcosm#1095); the artifact selector marks the gate evidence_absent
+    # when no reference surface arrived.
     return uk_release_input_coverage_gate(
         _uk_gate_surface(uk_release_export_frame(context.frame)),
         engine,
+        reference_surface=context.artifacts["reference_surface"],
         manifest=manifest,
         build_state_frame=build_state,
     )
@@ -276,7 +281,7 @@ def _coverage_required_artifacts(parameters: Mapping[str, Any]) -> frozenset[str
     # the calibrated frame.
     if parameters.get("check") == "manifest_current":
         return frozenset({"coverage_engine"})
-    return frozenset({"coverage_engine", "spine_frame"})
+    return frozenset({"coverage_engine", "spine_frame", "reference_surface"})
 
 
 def _evaluate_source_coverage(
@@ -1143,18 +1148,31 @@ def _validate_input_mass_exclusion_references(
     *,
     label: str,
 ) -> None:
-    unknown = sorted(set(register) - set(UK_INPUT_MASS_REFERENCE_REGISTRY))
-    if unknown:
+    from microcosm.build.uk_runtime.cut_reference import UK_CUT_REFERENCE_RELEASES
+
+    malformed = sorted(
+        name
+        for name in register
+        if name.count("@") != 1
+        or name.split("@", 1)[0] not in UK_CUT_REFERENCE_RELEASES
+        or not name.split("@", 1)[1]
+    )
+    if malformed:
         raise ValueError(
-            f"{label} names unknown input-mass reference(s) {unknown}; known "
-            f"references are {sorted(UK_INPUT_MASS_REFERENCE_REGISTRY)}."
+            f"{label} names {malformed}; an input-mass exclusion is signed for "
+            "one reference build, named <release>@<build> for a UK line "
+            "(microcosm#1095)."
         )
 
 
 def _resolve_input_mass_exclusions(
     context: EvidenceContext, *, reference: str
 ) -> tuple[Mapping[str, UKReviewedExclusion], str]:
-    """Active-reference input-mass exclusions and their content source."""
+    """The exclusions signed for this reference build, and their source.
+
+    ``reference`` is the build's ``<release>@<build>``; entries signed for
+    any other build are dormant (microcosm#1095).
+    """
 
     committed = uk_default_input_mass_reviewed_exclusions()
     _validate_input_mass_exclusion_references(
@@ -1475,10 +1493,14 @@ def _evaluate_weights_audit(
 def _evaluate_export_surface(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
+    # The reference side is the export surface of the cut's reference build,
+    # the current build of the line (microcosm#1095).
     parity = context.artifacts["parity_evidence"]
+    reference = context.artifacts["reference_surface"]
     return uk_export_surface_gate(
         parity.candidate_columns,
-        parity.reference_columns,
+        reference.export_columns,
+        reference_name=reference.label,
         **dict(parameters),
     )
 
@@ -1766,6 +1788,12 @@ def _evaluate_input_mass_parity(
     register = kwargs.pop("reviewed_exclusions_resource", None)
     relative_tolerance = kwargs.pop("relative_tolerance", None)
     minimum_reference_total = kwargs.pop("minimum_reference_total", None)
+    maximum_relative_drop = kwargs.pop("maximum_relative_drop", None)
+    if maximum_relative_drop is None:
+        raise ValueError(
+            "uk/gates.json input_mass_parity declares no maximum_relative_drop; "
+            "the drop limit is part of the reviewed policy (microcosm#1095)."
+        )
     coerced_registry = coerce_input_mass_reference_registry(
         declared_registry, label="uk/gates.json input_mass_parity"
     )
@@ -1780,18 +1808,21 @@ def _evaluate_input_mass_parity(
             f"uk/gates.json declares input-mass reference {reference_name!r} "
             f"but known references are {sorted(coerced_registry)}."
         )
+    reference = context.artifacts["input_mass_reference"]
+    descriptor = coerced_registry[reference_name].descriptor_for(reference)
     if register != UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE:
         raise ValueError(
             f"uk/gates.json names exclusion register {register!r} but the "
             f"runtime loads {UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE!r}."
         )
     exclusions, _source = _resolve_input_mass_exclusions(
-        context, reference=reference_name
+        context, reference=reference.label
     )
     exclusions, out_of_line = _in_line(exclusions, context)
     policy = UKInputMassParityPolicy(
         relative_tolerance=relative_tolerance,
         minimum_reference_total=minimum_reference_total,
+        maximum_relative_drop=maximum_relative_drop,
         reviewed_exclusions=exclusions,
     )
     # The reference is compared against the surface the release ships: the
@@ -1800,12 +1831,14 @@ def _evaluate_input_mass_parity(
     # carries the spine's WAS property_wealth, which the reference also
     # stores, so comparing it there would call the signed exclusion stale
     # (microcosm#1106).
+    export_frame = uk_release_export_frame(context.frame)
     result = uk_input_mass_parity_gate(
-        uk_input_mass_totals(uk_release_export_frame(context.frame)),
-        context.artifacts["input_mass_reference"],
-        descriptor=coerced_registry[reference_name],
+        uk_input_mass_totals(export_frame),
+        reference,
+        descriptor=descriptor,
         policy=policy,
         now=_exclusion_clock(context),
+        candidate_carriers=uk_input_mass_carriers(export_frame),
         **kwargs,
     )
     return _with_out_of_line(result, context, out_of_line)
@@ -1817,10 +1850,11 @@ def _input_mass_reference_evidence(
     reference_name = str(parameters["reference"])
     reference = context.artifacts["input_mass_reference"]
     exclusions, source = _resolve_input_mass_exclusions(
-        context, reference=reference_name
+        context, reference=reference.label
     )
     return {
         "reference": reference_name,
+        "reference_label": reference.label,
         "reference_evidence_sha256": _input_mass_reference_evidence_sha256(reference),
         "exclusions_policy": source,
         "reviewed_exclusions": _exclusion_payload(exclusions),
@@ -2367,7 +2401,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         name="export_surface",
         evaluator=_evaluate_export_surface,
         parameter_keys=frozenset({"allowed_extra_columns", "reviewed_exclusions"}),
-        artifact_keys=frozenset({"parity_evidence"}),
+        artifact_keys=frozenset({"parity_evidence", "reference_surface"}),
         needs_frame=False,
     ),
     "target_surface": UKGateBinding(
@@ -2405,6 +2439,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "reviewed_exclusions_resource",
                 "relative_tolerance",
                 "minimum_reference_total",
+                "maximum_relative_drop",
                 "candidate_name",
             }
         ),

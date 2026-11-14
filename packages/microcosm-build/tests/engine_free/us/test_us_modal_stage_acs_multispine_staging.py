@@ -57,6 +57,10 @@ OWNED_FLAGS = {
     "--puma-ladder",
     "--donor-release-manifest",
     "--sipp-donor",
+    "--location-rule",
+    "--location-seed",
+    "--location-clones",
+    "--block-ladder",
 }
 
 
@@ -126,6 +130,9 @@ def _parse_function(source: str):
         "ACS_DONOR_CHANNEL_AUTO": "auto",
         "ACS_UNDER15_ZERO_POLICY": "us_hours_under15_zero_completion_v1",
         "ACS_LOCAL_SSI_DISABILITY_ISSUE": "microcosm#1022",
+        # block_location's rule names (importing it would load us_runtime).
+        "US_LOCATION_RULE_CHOICES": ("legacy", "block_v1"),
+        "US_LOCATION_RULE_LEGACY": "legacy",
     }
     # Every tuning value is supplied explicitly below; synthetic default
     # paths are never used. No executable engine or build code is extracted.
@@ -635,6 +642,8 @@ def _synthetic_builder_source(plan) -> str:
         "DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT = 8\nACS_DONOR_CHANNEL_AUTO = 'auto'\n"
         "ACS_UNDER15_ZERO_POLICY = 'us_hours_under15_zero_completion_v1'\n"
         "ACS_LOCAL_SSI_DISABILITY_ISSUE = 'microcosm#1022'\n"
+        "US_LOCATION_RULE_CHOICES = ('legacy', 'block_v1')\n"
+        "US_LOCATION_RULE_LEGACY = 'legacy'\n"
         + parser_source
         + "\n_legacy = types.SimpleNamespace(_parse_args=_parse_args)\n"
         + "if __name__ == '__main__':\n"
