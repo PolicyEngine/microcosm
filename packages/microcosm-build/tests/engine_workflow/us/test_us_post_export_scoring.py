@@ -150,7 +150,9 @@ def test_batched_scoring_matches_whole_pool_policyengine_us(builder, tmp_path) -
     (first_batch, _) = scorer._batches()
     engine = Microsimulation(
         dataset=builder._dataset_from_frame(
-            first_batch, assert_no_formula_owned_columns=False
+            first_batch,
+            assert_no_formula_owned_columns=False,
+            keep_engine_projection=True,
         ),
         spm=dict(US_RELEASE_SPM_SELECTION),
     )

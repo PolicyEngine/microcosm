@@ -272,3 +272,64 @@ def test_population_aggregate_list_matches_installed_engine_sources() -> None:
     assert triaged_digest == (
         "f26eb560e474207fc1fa1d8828b62ba4791fb763089ea2ce7a85b57a259f2755"
     ), triaged_digest
+
+
+def test_in_build_datasets_hold_period_alone_and_match_the_projection(
+    monkeypatch,
+) -> None:
+    """In-build simulations read only PERIOD, so their datasets stop there.
+
+    Values must match policyengine-us's own projection to later years: the
+    target frame, Medicaid and SNAP eligibility, and December SSI amounts.
+    """
+    import functools
+
+    from policyengine_us.data import USMultiYearDataset, USSingleYearDataset
+
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", ())
+    frame = _real_engine_frame()
+    cut = builder._dataset_from_frame(frame, assert_no_formula_owned_columns=False)
+    projected = builder._dataset_from_frame(
+        frame, assert_no_formula_owned_columns=False, keep_engine_projection=True
+    )
+    assert isinstance(cut, USMultiYearDataset)
+    assert cut.years == [builder.PERIOD]
+    assert isinstance(projected, USSingleYearDataset)
+
+    targets = (
+        _soi("agi_amount", "adjusted_gross_income"),
+        _soi("wages", "employment_income"),
+        _population_age("pop_18_to_65", 18, 65),
+        _variable("snap_amount", base_variable="snap"),
+        _variable("ssi_recipients", base_variable="ssi", measure_mode="indicator_sum"),
+        _spec("ca_state_income_tax", "state_income_tax", {"state_fips": "06"}),
+        _spec("md_state_income_tax", "state_income_tax", {"state_fips": "24"}),
+        _spec("eitc", "fixture"),
+    )
+
+    def run() -> dict[str, object]:
+        target_frame, _, _ = builder._materialize_target_frame(frame, targets)
+        return {
+            "targets": target_frame.table("household"),
+            "medicaid": builder._medicaid_person_eligibility(frame),
+            "snap": builder._snap_spm_unit_eligibility(frame),
+            "ssi": builder._ssi_person_uncapped_amount(frame),
+        }
+
+    with_cut = run()
+    monkeypatch.setattr(
+        builder,
+        "_dataset_from_frame",
+        functools.partial(builder._dataset_from_frame, keep_engine_projection=True),
+    )
+    with_projection = run()
+
+    assert with_cut["targets"]["income_tax"].to_numpy().any()
+    pd.testing.assert_frame_equal(
+        with_cut["targets"], with_projection["targets"], check_exact=True
+    )
+    for name in ("medicaid", "snap", "ssi"):
+        np.testing.assert_array_equal(
+            with_cut[name], with_projection[name], err_msg=name
+        )
