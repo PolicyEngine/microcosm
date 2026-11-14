@@ -799,13 +799,21 @@ def test_gates_declare_the_stage_health_and_enum_gates_and_export_columns() -> N
     enum = by_id["uk_ons_household_type_enum_domain"]
     assert (enum["gate"], enum["phase"]) == ("enum_domain", "assembled")
     assert enum["parameters"]["columns"] == ["ons_household_type"]
-    exported = set(by_id["uk_export_surface"]["parameters"]["allowed_extra_columns"])
-    assert {
+    # The columns leave with the release; the current national build exports
+    # them, so since microcosm#1095 they are part of the reference surface
+    # rather than declared extras of the export-surface gate.
+    from microcosm.build.uk_runtime.national_frame import (
+        UK_RELEASE_EXPORT_DROPPED_COLUMNS,
+    )
+
+    for name in (
         "person.relationship_to_head",
         "person.ons_family_role",
         "person.ons_family_index",
         "household.ons_household_type",
-    } <= exported
+    ):
+        entity, column = name.split(".")
+        assert column not in UK_RELEASE_EXPORT_DROPPED_COLUMNS.get(entity, ())
 
 
 # --- stage health -----------------------------------------------------------

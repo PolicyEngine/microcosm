@@ -18,6 +18,7 @@ from microcosm.build.us_runtime.acs_sources import (
 from microcosm.build.us_runtime.base_pool import spine_column
 from microcosm.build.us_runtime.puf_support import support_channel_column
 from microcosm.build.us_runtime.spm_role_source import NATIVE_SPM_ROLE
+from microcosm.data.build_folder_manifests import ReferencedBuild, referenced_build
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from test_support.paths import paths_for
 
@@ -1789,6 +1790,7 @@ def test_donor_release_identity_verifies_sha_and_pins_provenance(
 
     identity = module._donor_release_identity(manifest, sha)
 
+    # A donor that keeps only its tag is named by its ID and revision.
     assert identity == {
         "manifest_path": str(manifest.resolve()),
         "artifact": "populace_us_2024",
@@ -1799,7 +1801,114 @@ def test_donor_release_identity_verifies_sha_and_pins_provenance(
         "dataset_role": "national_default",
         "is_default": True,
     }
+    assert referenced_build(identity) == ReferencedBuild(
+        repo_id="policyengine/populace-us",
+        revision="populace-us-2024-buildo-sparse-x",
+        folder="releases/populace-us-2024-buildo-sparse-x",
+    )
     assert module._donor_release_identity(None, sha) is None
+
+
+def _build_folder_donor_manifest(sha: str) -> dict:
+    """A donor's release manifest in the build-folder layout."""
+    return {
+        "schema_version": 1,
+        "release": "microcosm-us-2024-receipt-donor",
+        "build": "populace-us-2024-spm-receipts-20261201",
+        "built_at": "2026-12-01T00:00:00+00:00",
+        "dataset_role": "national_default",
+        "is_default": False,
+        "artifacts": {
+            "microcosm_us_2024_receipt_qualified": {
+                "kind": "microdata",
+                "path": "microcosm_us_2024_receipt_qualified.h5",
+                "repo_id": "policyengine/populace-us",
+                "sha256": sha,
+                "role": "dataset",
+            },
+            "calibration_diagnostics": {
+                "kind": "diagnostics",
+                "path": "calibration_diagnostics.json",
+                "repo_id": "policyengine/populace-us",
+                "sha256": "b" * 64,
+                "role": "calibration_diagnostics",
+            },
+        },
+    }
+
+
+def test_donor_release_identity_names_a_build_folder_donor_by_release_and_build(
+    tmp_path: Path,
+) -> None:
+    """A donor published into a build folder has no tag: staging names it by
+    its release and build, read at main from its folder (microcosm#1570)."""
+    module = _load_builder_module()
+    sha = "a" * 64
+    manifest = tmp_path / "release_manifest.json"
+    manifest.write_text(json.dumps(_build_folder_donor_manifest(sha)))
+
+    identity = module._donor_release_identity(manifest, sha)
+
+    assert identity == {
+        "manifest_path": str(manifest.resolve()),
+        "artifact": "microcosm_us_2024_receipt_qualified",
+        "repo_id": "policyengine/populace-us",
+        "release": "microcosm-us-2024-receipt-donor",
+        "build": "populace-us-2024-spm-receipts-20261201",
+        "sha256": sha,
+        "dataset_role": "national_default",
+        "is_default": False,
+    }
+    assert referenced_build(identity) == ReferencedBuild(
+        repo_id="policyengine/populace-us",
+        revision="main",
+        folder=(
+            "releases/microcosm-us-2024-receipt-donor/"
+            "populace-us-2024-spm-receipts-20261201"
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("edit", "message"),
+    [
+        (
+            lambda manifest: manifest["artifacts"][
+                "microcosm_us_2024_receipt_qualified"
+            ].update(revision="populace-us-2024-spm-receipts-20261201"),
+            "pins revision",
+        ),
+        (
+            lambda manifest: manifest.update(release=""),
+            "names its release and its build",
+        ),
+        (
+            lambda manifest: manifest.pop("release"),
+            "names its release and its build",
+        ),
+        (
+            lambda manifest: manifest.update(
+                build={"build_id": "populace-us-2024-spm-receipts-20261201"}
+            ),
+            "names its release and its build",
+        ),
+    ],
+    ids=["revision", "empty-release", "no-release", "build-object"],
+)
+def test_donor_release_identity_refuses_a_manifest_in_neither_layout(
+    tmp_path: Path, edit, message: str
+) -> None:
+    """A manifest that names a release or build as strings but is not fully in
+    the build-folder layout says nowhere the donor can be read from."""
+    module = _load_builder_module()
+    sha = "a" * 64
+    donor = _build_folder_donor_manifest(sha)
+    edit(donor)
+    manifest = tmp_path / "release_manifest.json"
+    manifest.write_text(json.dumps(donor))
+
+    with pytest.raises(SystemExit, match=message):
+        module._donor_release_identity(manifest, sha)
 
 
 def test_donor_release_identity_rejects_sha_mismatch(tmp_path: Path) -> None:

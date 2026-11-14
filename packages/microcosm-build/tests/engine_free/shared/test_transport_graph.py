@@ -16,6 +16,11 @@ Properties:
 - A6 input identity: renaming source paths changes nothing; changing one
   source's bytes re-keys exactly that source's consumers and their
   descendants.
+- Gate identity: a binding edited, or a source file in a binding's closure
+  rewritten, after the run derived its keys leaves nothing in the store for
+  the gate (graph amendment 29), so a later run with the unedited registry on
+  that store computes the gate instead of being served a stale ``fail`` --
+  the three-run probe of the #1125 review, finding 1.
 - Differential: ``calibrate.ordered_adam@1`` over the compiled problem and
   ``calibrate.adam@1`` over the same targets as params install
   byte-identical weights. This holds because both paths build their
@@ -35,8 +40,10 @@ from __future__ import annotations
 
 import ast
 import functools
+import importlib
 import re
 import shutil
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -45,6 +52,7 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+from microcosm.build.transport.gate_kernels import GateBatteryKernel
 from microcosm.build.transport.target_kernels import decode_target_surface
 from microcosm.calibrate.kernels import CALIBRATE_ADAM
 from microcosm.frame import WeightKind, Weights
@@ -55,6 +63,7 @@ from microcosm.graph import (
     Graph,
     KernelBase,
     KernelContext,
+    KernelIdentityChangedError,
     KernelResult,
     Node,
     NodeRejectedError,
@@ -72,6 +81,7 @@ from test_support.microcosm_build.transport_graph import (
     descendants,
     run_through,
     run_toy,
+    through,
     toy_facts,
     toy_frame,
     toy_graph,
@@ -86,6 +96,9 @@ TRANSPORT = (
     paths_for("microcosm-build").package / "src" / "microcosm" / "build" / "transport"
 )
 CALIBRATE = "toy.calibrate"
+_IDENTITY_MOVED = "binding registry, or a module in its source closure, changed"
+#: The battery's own refusal, unwrapped: no other layer rephrases it.
+_BATTERY_REFUSED = r"^gates\.battery@1 " + re.escape(_IDENTITY_MOVED)
 
 
 def _bytes_of(run) -> dict[str, dict[str, bytes]]:
@@ -152,7 +165,7 @@ def test_binding_edit_after_first_run_raises_without_changing_store(tmp_path) ->
     before = _store_files(store)
     bindings["weight_ratio"].artifact_arguments["solution"] = "missing"
 
-    with pytest.raises(ValueError, match="binding registry changed"):
+    with pytest.raises(KernelIdentityChangedError, match=_IDENTITY_MOVED):
         run_through(
             tmp_path,
             sources,
@@ -175,7 +188,7 @@ def test_binding_edit_before_first_run_raises_then_correct_registry_runs_fresh(
     before = _store_files(store)
     bindings["weight_ratio"].artifact_arguments["solution"] = "missing"
 
-    with pytest.raises(ValueError, match="binding registry changed"):
+    with pytest.raises(KernelIdentityChangedError, match=_IDENTITY_MOVED):
         run_through(
             tmp_path,
             sources,
@@ -196,6 +209,222 @@ def test_binding_edit_before_first_run_raises_then_correct_registry_runs_fresh(
     )
     assert correct.nodes["toy.gates.terminal"].receipt["outcome"] == "pass"
     assert all(not receipt.hit for receipt in correct.nodes.values())
+
+
+GATE = "toy.gates.terminal"
+
+
+def _run_to_gate(sources, store, registry, observer=None):
+    """Run the gate's ancestor closure, with an optional population observer."""
+
+    graph = through(toy_graph(DEFAULT_CONFIG, through_prepare=True), GATE)
+    used = {name for node in graph.nodes for name in node.sources}
+    return run_graph(
+        compile_graph(graph),
+        sources={k: v for k, v in sources.mapping().items() if k in used},
+        store=store,
+        kernels=registry,
+        _population_observer=observer,
+    )
+
+
+def _once_after(node_id, action):
+    """An observer that runs ``action`` once ``node_id`` has been admitted."""
+
+    def observe(seen, population) -> None:
+        if seen == node_id:
+            action()
+
+    return observe
+
+
+def _assert_gate_computed_fresh_then_matches_cold(tmp_path, sources, store, bindings):
+    """Runs 2 and 3 of the review's probe: same store, then a cold store."""
+
+    resumed = _run_to_gate(sources, store, toy_registry(bindings()))
+    gate = resumed.nodes[GATE]
+    assert gate.receipt["outcome"] == "pass"
+    assert not gate.hit
+    assert all(r.hit for node, r in resumed.nodes.items() if node != GATE)
+    cold = _run_to_gate(
+        sources, ContentStore(tmp_path / "cold"), toy_registry(bindings())
+    )
+    assert cold.nodes[GATE].receipt["outcome"] == "pass"
+    assert cold.nodes[GATE].key == gate.key
+    assert _keys(cold) == _keys(resumed)
+
+
+def test_binding_edit_mid_run_stores_no_gate_verdict_under_the_unedited_key(
+    tmp_path,
+) -> None:
+    """The #1125 review's probe: run 1 refuses, runs 2 and 3 both pass.
+
+    Before graph amendment 29, run 1 filed ``fail`` under the unedited
+    binding's key and run 2, with a fresh correct registry on the same store,
+    was served that ``fail`` as a hit; only the cold store in run 3 passed.
+    """
+    sources = write_toy_sources(tmp_path / "src")
+    store = ContentStore(tmp_path / "store")
+    bindings = _editable_gate_bindings()
+
+    def edit() -> None:
+        bindings["weight_ratio"].artifact_arguments["solution"] = "missing"
+
+    with pytest.raises(KernelIdentityChangedError, match=_BATTERY_REFUSED):
+        _run_to_gate(
+            sources, store, toy_registry(bindings), _once_after(CALIBRATE, edit)
+        )
+
+    _assert_gate_computed_fresh_then_matches_cold(
+        tmp_path, sources, store, _editable_gate_bindings
+    )
+
+
+_PROBE_SOURCE = '''"""A gate binding whose source file a test changes while a build runs."""
+
+#: Called inside the gate, so a test can change this file mid-evaluation.
+HOOKS = []
+#: Non-empty: report details that are not plain data, so the kernel raises
+#: after evaluation.
+OBJECT_DETAILS = []
+
+
+def probe_weight_ratio(*, solution, problem, max_ratio):
+    from microcosm.build.gates import GateResult
+    from test_support.microcosm_build.transport_graph import weight_ratio_gate
+
+    for hook in HOOKS:
+        hook()
+    if OBJECT_DETAILS:
+        return GateResult("weight_ratio", True, details={"object": object()})
+    return weight_ratio_gate(solution=solution, problem=problem, max_ratio=max_ratio)
+'''
+_UNPARSEABLE = b"def probe_weight_ratio(:\n"
+
+
+@pytest.fixture
+def probe_module(tmp_path, monkeypatch):
+    """A binding module on disk outside the repository, imported fresh."""
+
+    name = f"_gate_identity_probe_{tmp_path.name.replace('-', '_')}"
+    root = tmp_path / "probe"
+    root.mkdir()
+    path = root / f"{name}.py"
+    path.write_text(_PROBE_SOURCE, encoding="utf-8")
+    monkeypatch.syspath_prepend(str(root))
+    module = importlib.import_module(name)
+    original = path.read_bytes()
+    try:
+        yield module, path
+    finally:
+        module.HOOKS.clear()
+        module.OBJECT_DETAILS.clear()
+        path.write_bytes(original)
+        sys.modules.pop(name, None)
+
+
+def _probe_bindings(module):
+    return {
+        **TOY_BINDINGS,
+        "weight_ratio": replace(
+            TOY_BINDINGS["weight_ratio"], gate=module.probe_weight_ratio
+        ),
+    }
+
+
+def _change(path, change: str, original: bytes) -> None:
+    if change == "rewrite":
+        path.write_bytes(original + b"# rewritten while the build ran\n")
+    elif change == "unparseable":
+        path.write_bytes(_UNPARSEABLE)
+    else:
+        path.unlink()
+
+
+@pytest.mark.parametrize(
+    ("when", "change", "cause"),
+    [
+        ("before_the_gate", "rewrite", None),
+        ("before_the_gate", "unparseable", SyntaxError),
+        ("before_the_gate", "delete", FileNotFoundError),
+        ("before_the_gate_then_undone", "rewrite", None),
+        ("inside_the_gate", "rewrite", None),
+        ("inside_the_gate_then_raises", "rewrite", ValueError),
+    ],
+)
+def test_closure_source_changed_mid_run_stores_no_gate_verdict(
+    tmp_path, probe_module, when, change, cause
+) -> None:
+    """The review's likeliest trigger: a closure file changed during a build.
+
+    ``before_the_gate`` changes the binding's module once calibration is
+    admitted, so the kernel's check before it evaluates refuses; a file left
+    unparseable or deleted is a change too. ``before_the_gate_then_undone``
+    restores the file while the gate evaluates, so only that first check can
+    see the move: the later checks read the original bytes again.
+    ``inside_the_gate`` rewrites it
+    while the gate evaluates, after that check passed: the gate would return
+    ``pass``, and its check before returning refuses, so not even a stale
+    ``pass`` is filed. ``inside_the_gate_then_raises`` makes evaluation raise
+    after the rewrite, and the check on that path refuses, chained to the
+    exception. Each time the file is then restored and a fresh registry derives
+    the original key, which must not be served anything run 1 computed.
+    """
+    module, path = probe_module
+    original = path.read_bytes()
+
+    def change_file() -> None:
+        _change(path, change, original)
+
+    sources = write_toy_sources(tmp_path / "src")
+    store = ContentStore(tmp_path / "store")
+    registry = toy_registry(_probe_bindings(module))
+    observer = None
+    if when.startswith("before_the_gate"):
+        observer = _once_after(CALIBRATE, change_file)
+        if when == "before_the_gate_then_undone":
+            module.HOOKS.append(lambda: path.write_bytes(original))
+    else:
+        module.HOOKS.append(change_file)
+        if when == "inside_the_gate_then_raises":
+            module.OBJECT_DETAILS.append(True)
+    try:
+        with pytest.raises(
+            KernelIdentityChangedError, match=_BATTERY_REFUSED
+        ) as refused:
+            _run_to_gate(sources, store, registry, observer)
+    finally:
+        module.HOOKS.clear()
+        module.OBJECT_DETAILS.clear()
+        path.write_bytes(original)
+    if cause is None:
+        assert refused.value.__cause__ is None
+    else:
+        assert isinstance(refused.value.__cause__, cause)
+    if cause is ValueError:
+        assert "not plain data" in str(refused.value.__cause__)
+
+    _assert_gate_computed_fresh_then_matches_cold(
+        tmp_path, sources, store, lambda: _probe_bindings(module)
+    )
+
+
+@pytest.mark.parametrize(
+    ("change", "cause"), [("unparseable", SyntaxError), ("delete", FileNotFoundError)]
+)
+def test_a_closure_file_that_can_no_longer_be_described_is_a_changed_identity(
+    probe_module, change, cause
+) -> None:
+    """At key derivation too: the kernel's hash refuses with the same type."""
+    module, path = probe_module
+    kernel = GateBatteryKernel(_probe_bindings(module))
+    kernel.implementation_hash()
+    _change(path, change, path.read_bytes())
+
+    with pytest.raises(KernelIdentityChangedError, match=_BATTERY_REFUSED) as refused:
+        kernel.implementation_hash()
+    assert isinstance(refused.value.__cause__, cause)
+    assert "can no longer be described" in str(refused.value)
 
 
 def test_a4_description_and_citation_move_no_key(tmp_path) -> None:

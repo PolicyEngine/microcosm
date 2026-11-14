@@ -1,0 +1,5 @@
+sidecar keys: ['final_estimates', 'household_weight', 'initial_estimates', 'initial_household_weight', 'registry_version', 'relative_errors', 'target_names', 'target_values']
+households: 352,932
+initial  total 138,098,416.6  median 378.04  p99 1,021.20  min 0.1028  max 2,371.62
+final    total 138,098,416.6  median 117.78  p99 3,730.77  min 0.0207  max 9,740.07
+final/initial ratio: max 5.0000  min 0.014248  households with initial weight 0: 0

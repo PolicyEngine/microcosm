@@ -1216,11 +1216,6 @@ def _run_final_gate_kernel(monkeypatch, *, brma_row: bool = False, solved=None):
         ),
     )
     monkeypatch.setattr(
-        full_gates,
-        "load_efrs_parity_reference",
-        lambda: SimpleNamespace(input_entities={}),
-    )
-    monkeypatch.setattr(
         full_gates, "uk_aggregate_admin_totals", lambda frame, gates: ({}, [])
     )
 
@@ -1577,3 +1572,27 @@ def test_the_calibrated_gates_refuse_a_stale_terminal_code() -> None:
     )
     with pytest.raises(ValueError, match="terminal-only code"):
         kernel.run(context)
+
+
+def test_the_dense_gates_refuse_references_of_two_builds() -> None:
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime.graph_terminal import _require_one_reference
+
+    mass = SimpleNamespace(label="microcosm-uk-2024-25-dense@a", sha256="1" * 64)
+    same = SimpleNamespace(label="microcosm-uk-2024-25-dense@a", sha256="1" * 64)
+    other = SimpleNamespace(label="microcosm-uk-2024-25-dense@b", sha256="2" * 64)
+    _require_one_reference({"input_mass_reference": mass, "reference_surface": same})
+    _require_one_reference({"input_mass_reference": mass})
+    _require_one_reference({"reference_surface": other})
+    with pytest.raises(ValueError, match="from one reference"):
+        _require_one_reference(
+            {"input_mass_reference": mass, "reference_surface": other}
+        )
+    # Two files of one national build agree with each other, but the dense
+    # line compares with its own current build (the review of microcosm#1574).
+    national = SimpleNamespace(label="microcosm-uk-2024-25-national@b", sha256="3" * 64)
+    with pytest.raises(ValueError, match="not a build of microcosm-uk-2024-25-dense"):
+        _require_one_reference(
+            {"input_mass_reference": national, "reference_surface": national}
+        )

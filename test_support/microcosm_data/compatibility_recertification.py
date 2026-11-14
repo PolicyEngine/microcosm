@@ -1,11 +1,14 @@
 """Fixtures for the compatibility recertification lane.
 
 ``parent`` is the publisher suite's synthetic US release (``release_dir``,
-``artifact_root``) made a real published parent: its root artifacts carry the
-digests its manifests pin, its critical diagnostics rows carry the release
-tool's materializer metadata, and it passes today's release contract.
-``candidate`` is the pending child the tool builds from it. Engine-free tests
-replace the loader replay with :func:`fake_replay` and score documents with
+``artifact_root``) made a real published parent that keeps only its tag: its
+root artifacts carry the digests its manifests pin, its critical diagnostics
+rows carry the release tool's materializer metadata, and it passes today's
+release contract. ``folder_parent`` is the same build published into a build
+folder of the national release instead. ``candidate`` is the pending child
+the tool builds from ``parent``: a build of the national release whose
+directory is named after that release. Engine-free tests replace the loader
+replay with :func:`fake_replay` and score documents with
 :func:`score_document`; none of these values is a measurement.
 """
 
@@ -15,16 +18,28 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 from pathlib import Path
 
 import pytest
 
 from microcosm.data import compatibility_recertification as recert
-from microcosm.data.contract import validate_release_dir
+from microcosm.data.build_folder_manifests import rewrite_release_dir
+from microcosm.data.contract import (
+    US_NATIONAL_RELEASE_ID,
+    US_RELEASE_DATASET_FILES,
+    validate_release_dir,
+)
 from test_support.microcosm_data.release import *
 from test_support.microcosm_data.release import _bind_stored_input_evidence
 
+#: The recertification's build ID; its directory is named after the release.
 CHILD_ID = "populace-us-2024-9f1260b-recert-pe-us-2.60.4"
+#: The national release's dataset file, which the child's H5 is named.
+CHILD_DATASET_FILE = US_RELEASE_DATASET_FILES[US_NATIONAL_RELEASE_ID]
+CHILD_DATASET_KEY = CHILD_DATASET_FILE.removesuffix(".h5")
+#: The build ID of the parent published into a build folder.
+FOLDER_PARENT_BUILD = "populace-us-2024-9f1260b-20261101"
 
 
 def _identity(version, digit):
@@ -222,6 +237,51 @@ def parent(release_dir: Path, artifact_root: Path) -> tuple[Path, Path]:
     return release_dir, artifact_root
 
 
+def make_build_folder_parent(
+    tagged_release_dir: Path, tagged_artifact_root: Path, output: Path
+) -> tuple[Path, Path]:
+    """The tagged parent republished as a build of the national release.
+
+    Its directory is named after the release, its dataset and calibration
+    weights have the release's ``microcosm_`` names, and its manifests are in
+    the build-folder layout.
+    """
+
+    release_dir = output / "releases" / US_NATIONAL_RELEASE_ID
+    artifact_root = output / "artifacts"
+    shutil.copytree(tagged_release_dir, release_dir)
+    artifact_root.mkdir(parents=True)
+    renames = {
+        "populace_us_2024": CHILD_DATASET_KEY,
+        "populace_us_2024_calibration": f"{CHILD_DATASET_KEY}_calibration",
+    }
+
+    def rename_release(payload):
+        for old_key, new_key in renames.items():
+            entry = payload["artifacts"].pop(old_key)
+            new_path = new_key + Path(entry["path"]).suffix
+            shutil.copyfile(
+                tagged_artifact_root / entry["path"], artifact_root / new_path
+            )
+            payload["artifacts"][new_key] = {**entry, "path": new_path}
+        payload["default_datasets"]["national"] = CHILD_DATASET_KEY
+
+    def rename_build(payload):
+        payload["dataset"]["filename"] = CHILD_DATASET_FILE
+        payload["calibration"]["filename"] = f"{CHILD_DATASET_KEY}_calibration.npz"
+
+    _rewrite(release_dir / "release_manifest.json", rename_release)
+    _rewrite(release_dir / "build_manifest.json", rename_build)
+    rewrite_release_dir(release_dir, build=FOLDER_PARENT_BUILD)
+    validate_release_dir(release_dir, artifact_root=artifact_root)
+    return release_dir, artifact_root
+
+
+@pytest.fixture
+def folder_parent(parent, tmp_path: Path) -> tuple[Path, Path]:
+    return make_build_folder_parent(*parent, tmp_path / "folder-parent")
+
+
 FIXTURE_PRODUCER = {
     "repository": "https://github.com/PolicyEngine/microcosm",
     "git_commit": "a" * 40,
@@ -237,21 +297,30 @@ def load_tool():
     return tool
 
 
-@pytest.fixture
-def candidate(parent, tmp_path, monkeypatch) -> tuple[Path, Path]:
-    """The pending child the tool builds; returns (release_dir, artifact_root)."""
+def build_child(parent, output: Path, monkeypatch) -> tuple[Path, Path]:
+    """Build the pending child of ``parent`` into ``output``.
+
+    Returns the child's release directory, named after the national release,
+    and its artifact root.
+    """
 
     tool = load_tool()
     monkeypatch.setattr(tool, "_producer_identity", lambda: dict(FIXTURE_PRODUCER))
     release_dir, artifact_root = parent
-    output = tmp_path / "candidate"
     tool.build_candidate(
         parent_release_dir=release_dir,
         parent_artifact_root=artifact_root,
         output_dir=output,
-        release_id=CHILD_ID,
+        build_id=CHILD_ID,
     )
-    return output / "releases" / CHILD_ID, output / "artifacts"
+    return output / "releases" / US_NATIONAL_RELEASE_ID, output / "artifacts"
+
+
+@pytest.fixture
+def candidate(parent, tmp_path, monkeypatch) -> tuple[Path, Path]:
+    """The pending child the tool builds; returns (release_dir, artifact_root)."""
+
+    return build_child(parent, tmp_path / "candidate", monkeypatch)
 
 
 def fake_replay(changes=None, packages=None):
@@ -363,13 +432,17 @@ def write_scores(directory: Path, release_dir: Path, **overrides) -> dict[str, P
 
 
 class PathsInfoHub(FakeHub):
-    """FakeHub with ``get_paths_info``: LFS for H5/NPZ, git blob ids otherwise."""
+    """FakeHub with ``get_paths_info`` (LFS for H5/NPZ, git blob ids
+    otherwise), ``list_repo_tree`` and downloads into a ``local_dir``."""
+
+    def _files(self, revision):
+        return self._commits[self._refs.get(revision or "main", revision)]
 
     def get_paths_info(self, *, repo_id, paths, revision=None, repo_type=None):
         from types import SimpleNamespace
 
         assert repo_type == "dataset" and repo_id == self.repo_id
-        files = self._commits[self._refs.get(revision or "main", revision)]
+        files = self._files(revision)
         infos = []
         for path in paths:
             if path not in files:
@@ -387,12 +460,65 @@ class PathsInfoHub(FakeHub):
             )
         return infos
 
+    def list_repo_tree(self, *, repo_id, path_in_repo, repo_type, revision=None):
+        """The files directly under ``path_in_repo``, as the Hub lists them."""
+
+        from types import SimpleNamespace
+
+        assert repo_type == "dataset" and repo_id == self.repo_id
+        prefix = path_in_repo.rstrip("/") + "/"
+        return [
+            SimpleNamespace(path=path)
+            for path in sorted(self._files(revision))
+            if path.startswith(prefix) and "/" not in path[len(prefix) :]
+        ]
+
+    def hf_hub_download(
+        self, *, repo_id, filename, repo_type, revision=None, local_dir=None
+    ) -> str:
+        if local_dir is None:
+            return super().hf_hub_download(
+                repo_id=repo_id,
+                filename=filename,
+                repo_type=repo_type,
+                revision=revision,
+            )
+        cached = Path(
+            super().hf_hub_download(
+                repo_id=repo_id,
+                filename=filename,
+                repo_type=repo_type,
+                revision=revision,
+            )
+        )
+        local = Path(local_dir) / filename
+        local.parent.mkdir(parents=True, exist_ok=True)
+        local.write_bytes(cached.read_bytes())
+        return str(local)
+
 
 def seed_published_parent(hub, parent_dir: Path, artifact_root: Path) -> None:
-    """Publish the parent's files at its tag on the fake Hub, as the publisher did."""
+    """Publish the parent's files on the fake Hub, as its publisher did.
 
-    tag = parent_dir.name
+    A parent that keeps only its tag has its release files under
+    ``releases/<id>/`` and its root artifacts at their paths, at its tag; a
+    build-folder parent has every file in ``releases/<release>/<build>/`` at
+    ``main``.
+    """
+
     manifest = json.loads((parent_dir / "release_manifest.json").read_text())
+    if isinstance(manifest.get("build"), str):
+        folder = f"releases/{manifest['release']}/{manifest['build']}"
+        for name in ("release_manifest.json", "build_manifest.json"):
+            hub.seed_main_file(f"{folder}/{name}", (parent_dir / name).read_bytes())
+        for entry in manifest["artifacts"].values():
+            path = entry["path"]
+            local = parent_dir / path
+            if not local.is_file():
+                local = artifact_root / path
+            hub.seed_main_file(f"{folder}/{path}", local.read_bytes())
+        return
+    tag = parent_dir.name
     files = {
         f"releases/{tag}/{name}": (parent_dir / name).read_bytes()
         for name in ("release_manifest.json", "build_manifest.json")

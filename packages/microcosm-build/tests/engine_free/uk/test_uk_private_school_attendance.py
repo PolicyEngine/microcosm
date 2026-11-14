@@ -118,6 +118,7 @@ def test_only_the_isa_subscriptions_and_receipts_follow_the_stage():
     later = stages[names.index("private_school_attendance") + 1 :]
     assert [stage.stage for stage in later] == [
         "isa_subscriptions",
+        "pip_points",
         "trading_allowance_receipts",
     ]
     for stage in later:

@@ -34,7 +34,8 @@ from microcosm.build.spec_engine import (  # noqa: E402
     scoped_take_up_manifest_program_bindings,
 )
 
-TOMBSTONE_DATE = "2026-11-16"
+# Renewed from 2026-11-16 (microcosm#1585 item 1): no build runs on the bundle yet (F1).
+TOMBSTONE_DATE = "2027-02-16"
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 US_PACKAGE_ROOT = (
     REPOSITORY_ROOT

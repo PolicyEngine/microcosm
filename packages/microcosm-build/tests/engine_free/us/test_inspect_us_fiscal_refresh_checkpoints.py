@@ -303,3 +303,11 @@ def test__given_existing_npz__then_checkpoint_says_summary_only(tmp_path) -> Non
     calibration_npz = payload["checkpoints"]["calibration_npz"]
     assert calibration_npz["exists"] is True
     assert "not sufficient to recalibrate" in calibration_npz["note"]
+
+
+def test_the_inspector_looks_for_the_calibration_file_a_run_writes() -> None:
+    """A national run writes its calibration weights under the new
+    ``microcosm_`` name (microcosm#1570)."""
+    inspector = _load_inspector_module()
+
+    assert inspector.CALIBRATION_FILENAME == "microcosm_us_2024_calibration.npz"

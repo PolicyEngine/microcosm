@@ -1,0 +1,43 @@
+{
+ "peak_rss_gb": 7.76,
+ "results": {
+  "acs": {
+   "households": 4000,
+   "max_scaled_abs_diff": 0.0,
+   "per_family_level": {
+    "census_population/state": 0.0,
+    "cms_aca/state": 0.0,
+    "cms_medicaid/state": 0.0,
+    "hhs_acf_tanf/state": 0.0,
+    "irs_soi/cd": 0.0,
+    "irs_soi/state": 0.0,
+    "ssa/state": 0.0,
+    "state_income_tax/state": 0.0,
+    "usda_snap/state": 0.0
+   },
+   "specs_checked": 349,
+   "specs_skipped": 0
+  },
+  "cps": {
+   "households": 4000,
+   "logged_at": "2026-09-28 23:41:21",
+   "max_scaled_abs_diff": 0.0,
+   "per_family_level": {
+    "census_population/state": 0.0,
+    "cms_aca/state": 0.0,
+    "cms_medicaid/state": 0.0,
+    "hhs_acf_tanf/state": 0.0,
+    "irs_soi/cd": 0.0,
+    "irs_soi/state": 0.0,
+    "ssa/state": 0.0,
+    "state_income_tax/state": 0.0,
+    "usda_snap/state": 0.0
+   },
+   "source": "diffcheck.log (run 2026-09-28, before the CPS shard pickles were removed to free disk)",
+   "specs_checked": 349,
+   "specs_skipped": 0
+  }
+ },
+ "sample_size": 349,
+ "wall_s": 2157.4
+}

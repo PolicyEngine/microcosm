@@ -23,10 +23,13 @@ gate. Main has no US held-out test: the rotated-fold holdout in
 US release says it beats the incumbent on the frozen register, and says it beats
 it on held-out cells only once a US holdout exists and has run.
 
-Publication stays a human step: `tools/publish_release.sh` wraps
-`microcosm-publish-release`, which uploads `latest.json` last
-(`microcosm.data.release.publish_release`), and only that pointer makes a
-release the certified default.
+Publication stays a human step. Since the US repository's switch to
+`releases.json`, the release tool writes each build to
+`<out>/releases/microcosm-us-2024-national/` and prints two commands:
+`microcosm-publish-release-build` publishes the build into its own folder of
+the national release without making it current, and the same command with
+`--promote` makes it the release's current build. Only that promotion makes a
+build the certified default.
 
 ## What stands between main and that build
 
@@ -146,7 +149,9 @@ not to a selection, as `capital_gains_tail_presence`: the base must carry the
 materialized PUF capital-gains own-tail, the same call the release tool makes
 on every arm after loading the base. It runs the other checks unchanged on the
 whole base. With `--release-manifest`, it also requires that release to record
-`build.selection_source` as `{"enabled": false}`.
+`selection_source` as `{"enabled": false}`: at the release manifest's top
+level for a build in a build folder, or in its `build` object for a build that
+keeps only its tag.
 
 **23 September 2026:** without a selection source the release runs its stages
 on every support copy the base carries, including the capital-gains own-tail
@@ -308,12 +313,19 @@ and writes no manifest.
 
 ```bash
 uv run --no-sync python tools/sample_us_export_households.py \
-  --export /path/to/artifacts/populace_us_2024.h5 \
+  --export /path/to/artifacts/microcosm_us_2024.h5 \
   --fraction 0.05 --seed 0 --out /path/to/subsample
 uv run --no-sync python tools/probe_us_post_export.py \
-  --export /path/to/subsample/populace_us_2024.h5 --out /path/to/probe \
-  --reference-release-dir /path/to/releases/<release id>
+  --export /path/to/subsample/microcosm_us_2024.h5 --out /path/to/probe \
+  --reference-release-dir /path/to/releases/microcosm-us-2024-national
 ```
+
+A national build made since the US switch writes its export as
+`artifacts/microcosm_us_2024.h5` and its release directory as
+`releases/microcosm-us-2024-national/`. An earlier build's export is
+`populace_us_2024.h5` and its release directory `releases/<build id>/`; both
+tools take either. The sample keeps the export's file name unless
+`--dataset-filename` gives another.
 
 **The sample** (`tools/sample_us_export_households.py`) is a seeded draw of
 whole households, written through the release's own writer and verified
@@ -373,7 +385,11 @@ first real run](evidence/us-export-subsample-design/route-a-p005/README.md),
 at p = 0.05 on the published Route A export, found no authoritative failure;
 all 8 authoritative smoke verdicts agree with the full-size build.
 
-`--reference-release-dir` points at a full-size build's `releases/<id>/`. It
+`--reference-release-dir` points at a full-size build's release directory:
+`releases/microcosm-us-2024-national/` for a build made since the US switch,
+or `releases/<build id>/` for an earlier one. The probe reads the target
+surface selection from the release manifest's top level in the first case and
+from its `build` object in the second, and says which field it read. It
 supplies the build's target surface, QRF register and calibration fit (so
 reform validation takes its in-sample rows from the fit, as the release
 does), compares each smoke effect with the full-size one, and checks two

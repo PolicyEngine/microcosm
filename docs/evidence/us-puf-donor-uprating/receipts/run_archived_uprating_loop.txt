@@ -1,0 +1,8 @@
+policyengine-us 2.2.1
+table index name: Variable | columns: [2020, 2021, 2022, 2023, 2024, 2025] ...
+wage rows in the table: ['employment_income_before_lsr']
+   employment_income_before_lsr 2021: 1.068 2024: 1.251
+has a 'Variable' column: False
+loop iterated over: [2020, 2021, 2022, 2023] ... 2034
+times the body ran: 0
+arrays unchanged: True

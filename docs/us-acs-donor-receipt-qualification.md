@@ -25,7 +25,7 @@ declares `receives_wic` on `person` (`acs_transfer.py:426`) and
 `model_required_boolean` transfer targets. `acs_transfer_donor_requirements`
 (`acs_transfer.py:844`) folds every declared target into the donor requirement
 set (`:865-870`), and `_require_dense_donor_coverage`
-(`tools/_legacy/build_us_acs_multispine_base.py:349-420`) refuses a donor that
+(`tools/_legacy/build_us_acs_multispine_base.py`) refuses a donor that
 cannot supply them.
 
 The certified July Build P donor predates those declarations. It carries the
@@ -158,7 +158,7 @@ message. It re-raises the producer's name and exception class only.
 ## What the staging gate requires
 
 `_require_dense_donor_coverage`
-(`tools/_legacy/build_us_acs_multispine_base.py:349-420`), in order:
+(`tools/_legacy/build_us_acs_multispine_base.py`), in order:
 
 1. **Resolve the donor channel first** (`:362`, through
    `_coverage_donor_channel`, `:430-437`). `resolve_acs_donor_channel`

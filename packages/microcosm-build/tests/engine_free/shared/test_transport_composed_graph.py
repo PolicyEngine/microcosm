@@ -2748,48 +2748,51 @@ def test_cli_arguments():
 
 
 # ---------------------------------------------------------------------------
-# The packaged country spec: activation gaps refuse, named
+# The packaged country spec: it activates, and each engine pin it needs is a
+# named gap when absent
 # ---------------------------------------------------------------------------
 
-_GAPS = (
+_PINS = (
     "axiom_rules_bindings.engine.commit",
     "axiom_rules_bindings.engine.wheel_sha256",
 )
+_NO_RULESPEC_TREE = "Source 'rulespec_nz' (the RuleSpec tree) needs a path."
 
 
-def test_packaged_spec_refuses_with_every_activation_gap_named():
+def _unpinned(spec, pins):
+    spec = copy.deepcopy(spec)
+    for pin in pins:
+        spec["resources"]["axiom_rules_bindings"]["engine"][pin.rsplit(".", 1)[1]] = (
+            None
+        )
+    return spec
+
+
+def test_the_packaged_spec_activates():
+    # G8-x2 set the engine pins, the last two gaps. Every reference row that
+    # isn't active is exempt from its selection, so none is a gap either.
     spec = load_transport_spec("nz")
-    with pytest.raises(ValueError) as error:
-        validate_transport_activation(spec)
-    for gap in _GAPS:
-        assert gap in str(error.value), gap
-    assert len(
-        str(error.value).removeprefix("Transport spec is not activated: ").split("; ")
-    ) == len(_GAPS)
-    for removed in (
-        "placeholder reference precal_references.",
-        "placeholder reference target_references.",
-        "placeholder reference holdout_references.",
-        "receipt_contract.json",
-        "scenario S4 rent_stock_factor",
-    ):
-        assert removed not in str(error.value), removed
-    # The dependent-child rule is settled from the Social Security Act 2018
-    # Schedule 2, so it is no longer an activation gap.
-    assert "benefit_unit_rule.dependent_child" not in str(error.value)
+    validate_transport_activation(spec)
     selections = compose_module._reference_selections(spec)
     for resource in ("precal_references", "target_references", "holdout_references"):
         exempt = {row["name"] for row in selections[resource]["exempt"]}
         for reference in compose_module.transport_resource(spec, resource)[
             "target_references"
         ]:
-            if (
-                reference["metadata"].get("activation_status", "active") != "active"
-                and reference["name"] not in exempt
-            ):
-                assert f"placeholder reference {resource}.{reference['name']}" in str(
-                    error.value
-                )
+            assert (
+                reference["metadata"].get("activation_status", "active") == "active"
+                or reference["name"] in exempt
+            ), (resource, reference["name"])
+
+
+@pytest.mark.parametrize("pins", [_PINS[:1], _PINS[1:], _PINS])
+def test_each_absent_engine_pin_is_the_named_activation_gap(pins):
+    spec = _unpinned(load_transport_spec("nz"), pins)
+    with pytest.raises(ValueError) as error:
+        validate_transport_activation(spec)
+    assert str(error.value) == (
+        "Transport spec is not activated: " + "; ".join(pins) + "."
+    )
     config = TransportGraphConfig(
         engine_refs={"x": "y"}, create_outputs=(Owned("person", "age", "int64"),)
     )
@@ -2797,26 +2800,33 @@ def test_packaged_spec_refuses_with_every_activation_gap_named():
         compose_transport_graph(spec, config)
 
 
-def test_packaged_spec_refuses_before_reading_any_source(tmp_path, monkeypatch):
-    # Inside the packaged factors' validity, so activation decides the refusal.
+def test_packaged_spec_needs_its_rulespec_tree_before_reading_any_source(
+    tmp_path, monkeypatch
+):
+    # Inside the packaged factors' validity, so the source check decides.
     monkeypatch.setattr(cli_module, "_today", lambda: date(2026, 11, 5))
-    missing = tmp_path / "absent"
-    with pytest.raises(ValueError, match="not activated"):
-        prepare_transport_build(
-            load_transport_spec("nz"), sources={"rulespec_nz": missing}
-        )
+    spec = load_transport_spec("nz")
+    with pytest.raises(ValueError, match=re.escape(_NO_RULESPEC_TREE)):
+        prepare_transport_build(spec, sources={})
+    with pytest.raises(ValueError, match="must resolve to a directory"):
+        prepare_transport_build(spec, sources={"rulespec_nz": tmp_path / "absent"})
 
 
-def test_cli_main_refuses_the_packaged_spec_and_writes_nothing(
+def test_cli_main_refuses_the_packaged_spec_without_sources_and_stores_nothing(
     tmp_path, monkeypatch, capsys
 ):
     monkeypatch.setattr(cli_module, "_today", lambda: date(2026, 11, 5))
     out = tmp_path / "out"
     assert cli_module.main(["--country", "nz", "--out", str(out)]) == 1
-    message = capsys.readouterr().err
-    for gap in _GAPS:
-        assert gap in message, gap
-    assert not out.exists()
+    assert _NO_RULESPEC_TREE in capsys.readouterr().err
+    # Activation passes, so preparation opens the graph store, and the
+    # source check refuses before anything writes into it.
+    assert sorted(path.relative_to(out).as_posix() for path in out.rglob("*")) == [
+        ".graph-store",
+        ".graph-store/objects",
+        ".graph-store/tmp",
+    ]
+    assert cli_module._store_is_cold(out / ".graph-store")
 
 
 @pytest.mark.parametrize("guard", ["reference", "absent", "empty"])
@@ -3531,11 +3541,14 @@ def test_prepare_does_not_create_inventory_store_before_activation(
     tmp_path, monkeypatch
 ):
     # Inside the packaged factors' validity, so activation decides the refusal.
+    # The packaged spec activates, so this copy drops its engine pins.
     monkeypatch.setattr(cli_module, "_today", lambda: date(2026, 11, 5))
     inventory = tmp_path / "inventory"
     with pytest.raises(ValueError, match="not activated"):
         prepare_transport_build(
-            load_transport_spec("nz"), sources={}, inventory_store=inventory
+            _unpinned(load_transport_spec("nz"), _PINS),
+            sources={},
+            inventory_store=inventory,
         )
     assert not inventory.exists()
 

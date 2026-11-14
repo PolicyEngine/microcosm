@@ -62,7 +62,9 @@ package; each is separately resumable):
                 (unit- and person-weighted; not the FNS fiscal-year
                 participation rate).
   finalize    : release-style gate report (PUMA-ladder gate, calibration
-                gate, spine-composition evidence) + the reviewed-limitations
+                gate, district ESS collapse gate -- report-only unless
+                ``--district-ess-gate-blocking`` --, spine-composition
+                evidence) + the reviewed-limitations
                 register for this lineage (inherited #507 SSI aged-band
                 collapse, #393 miscellaneous-income defect, CD marginal
                 vintage, ESS concentration, sparse-selection donor, mixed
@@ -84,13 +86,19 @@ package; each is separately resumable):
                 block, microcosm#1022), re-grade the packaged fill manifests
                 against the reviewed-fill consumer register (microcosm#1022),
                 then
-                assemble releases/<id>/ with the non-default local-area
-                manifest shape (dataset_role ``non_default_local_area``,
-                namespace ``buildo_acs_local``, donor identity chain, the
-                one-command refresh recipe) + sha256sums. Publication stays
-                a separate reviewed step (``microcosm-publish-release
-                <dir> --no-latest``); this tool never uploads and never
-                touches latest.json.
+                assemble releases/microcosm-us-2024-local/, a build of the
+                US local-area release in the build-folder layout
+                (microcosm#1570): the non-default local-area manifest shape
+                (dataset_role ``non_default_local_area``, namespace
+                ``buildo_acs_local``, donor identity chain, the one-command
+                refresh recipe), both manifests naming the release and the
+                build (``populace-us-2024-buildo-acs-local-<sha>-<timestamp>``),
+                the dataset ``microcosm_us_2024_acs_local.h5``, no revision
+                on any artifact, + sha256sums. Publication stays a separate
+                reviewed step: the printed ``microcosm-publish-release-build``
+                command publishes the build through the emitter without
+                making it current, and the promotion command makes it the
+                release's current build; this tool never uploads.
 
 Telemetry: after parsing its arguments the tool starts the emitter
 (``microcosm.build.program_telemetry``, pipeline ``us_acs_local_release``),
@@ -201,9 +209,15 @@ from microcosm.build.us_runtime.org_wages import (
 from microcosm.build.us_runtime.ssi_disability_criteria import (
     SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
 )
+from microcosm.data.build_folder_manifests import (
+    publication_commands,
+    rewrite_release_dir,
+)
 from microcosm.data.contract import (
     US_LOCAL_AREA_SPM_MEASUREMENT_STAGE,
     US_LOCAL_AREA_STORED_INPUTS_STAGE,
+    US_LOCAL_RELEASE_ID,
+    US_RELEASE_DATASET_FILES,
     US_SPM_MEASUREMENT_EVIDENCE_KEY,
     US_STORED_INPUTS_EVIDENCE_KEY,
     us_engine_scopes_spm_universe,
@@ -221,10 +235,15 @@ import us_acs_local_county_surface as county_surface  # noqa: E402
 
 PERIOD = 2024
 RELEASE_NAMESPACE = "buildo_acs_local"
+#: Every build's ID starts with this; the build is published into a folder of
+#: the US local-area release, ``US_LOCAL_RELEASE_ID`` (microcosm#1570).
 RELEASE_ID_PREFIX = "populace-us-2024-buildo-acs-local"
-ARTIFACT_NAME = "populace_us_2024_acs_local"
-ARTIFACT_FILENAME = f"{ARTIFACT_NAME}.h5"
+#: The dataset file a build of the local-area release declares, and its key.
+ARTIFACT_FILENAME = US_RELEASE_DATASET_FILES[US_LOCAL_RELEASE_ID]
+ARTIFACT_NAME = Path(ARTIFACT_FILENAME).stem
 HF_REPO_ID = "policyengine/populace-us"
+#: The release directory the package stage writes under ``--out``.
+RELEASE_DIR_PARTS = ("releases", US_LOCAL_RELEASE_ID)
 LEGACY_STAGING_REFRESH_RECIPE = (
     "uv run tools/build_us_acs_multispine_base.py "
     "--base-h5 <next-certified-release>.h5 "
@@ -358,6 +377,166 @@ def release_refresh_recipe(
         "--out-h5 <run>/populace_us_2024_acs_local.h5 "
         "--out <run>/release"
     )
+
+
+#: The staging summary's ``orchestration.location_rule`` value that marks a
+#: ``block_v1`` staging run (``tools/_legacy/build_us_acs_multispine_base.py
+#: --location-rule block_v1``). A summary without the key is a legacy run.
+BLOCK_V1_LOCATION_RULE = "block_v1"
+
+
+def staging_location_rule(staging_summary: dict) -> str:
+    """The household location rule the staging run recorded (default legacy)."""
+
+    orchestration = staging_summary.get("orchestration")
+    if not isinstance(orchestration, dict):
+        return "legacy"
+    return str(orchestration.get("location_rule", "legacy"))
+
+
+def staging_household_location(staging_summary: dict) -> dict | None:
+    """The ``block_v1`` location record, or ``None`` for a legacy staging run.
+
+    A summary that says ``block_v1`` but lacks the record (or its block-ladder
+    path and sha) is refused: finalize could not re-run the block gate.
+    """
+
+    rule = staging_location_rule(staging_summary)
+    if rule == "legacy":
+        return None
+    if rule != BLOCK_V1_LOCATION_RULE:
+        raise SystemExit(
+            f"The staging summary records an unknown location_rule {rule!r}."
+        )
+    record = staging_summary.get("household_location")
+    ladder = record.get("block_ladder") if isinstance(record, dict) else None
+    if (
+        not isinstance(record, dict)
+        or not isinstance(ladder, dict)
+        or not ladder.get("sha256")
+        or not record.get("block_ladder_path")
+    ):
+        raise SystemExit(
+            "The staging summary records location_rule block_v1 but no "
+            "household_location block-ladder path and sha256; re-run staging "
+            "with the current builder."
+        )
+    return record
+
+
+def staging_refresh_recipe(staging_summary: dict) -> str:
+    """The staging command that reproduces the recorded location rule.
+
+    A legacy staging run's recipe is :data:`LEGACY_STAGING_REFRESH_RECIPE`,
+    unchanged; a ``block_v1`` run's names its rule, seed and block ladder.
+    """
+
+    if staging_household_location(staging_summary) is None:
+        return LEGACY_STAGING_REFRESH_RECIPE
+    orchestration = staging_summary["orchestration"]
+    return (
+        f"{LEGACY_STAGING_REFRESH_RECIPE} "
+        f"--location-rule {BLOCK_V1_LOCATION_RULE} "
+        f"--location-seed {int(orchestration.get('location_seed', 0))} "
+        "--block-ladder <us_block_ladder_2020_puma.npz>"
+    )
+
+
+def calibrated_location_root_attributes(
+    staging_summary: dict, *, targets_ladder_sha256: str | None = None
+) -> dict | None:
+    """H5 root attributes recording a ``block_v1`` staging run's location rule.
+
+    ``None`` for a legacy staging run, whose calibrated artifact is written
+    exactly as before. ``targets_ladder_sha256`` is the PUMA ladder the
+    population targets were materialized from (run identity
+    ``ladder_sha256``); under ``block_v1`` it must be the ladder staging
+    recorded, because the attribute names that ladder as the targets' source.
+    """
+
+    record = staging_household_location(staging_summary)
+    if record is None:
+        return None
+    from build_us_acs_multispine_base import _legacy
+
+    orchestration = staging_summary["orchestration"]
+    geography_ladder = staging_summary.get("geography_ladder") or {}
+    if not geography_ladder.get("sha256"):
+        raise SystemExit(
+            "The block_v1 staging summary records no PUMA-ladder sha256 "
+            "(geography_ladder.sha256); refusing to write location attributes "
+            "that cannot name it."
+        )
+    require_block_v1_targets_ladder(staging_summary, targets_ladder_sha256)
+    return _legacy.location_root_attributes(
+        location_rule=BLOCK_V1_LOCATION_RULE,
+        location_seed=int(orchestration.get("location_seed", record.get("seed", 0))),
+        location_clones=int(
+            orchestration.get("location_clones", record.get("clones", 1))
+        ),
+        block_ladder_sha256=str(record["block_ladder"]["sha256"]),
+        block_ladder_vintages=dict(record["block_ladder"].get("layer_vintages") or {}),
+        puma_ladder_sha256=str(geography_ladder["sha256"]),
+        puma_ladder_vintages=dict(geography_ladder.get("layer_vintages") or {}),
+    )
+
+
+def require_block_v1_targets_ladder(
+    staging_summary: dict, targets_ladder_sha256: str | None
+) -> None:
+    """Refuse a block_v1 release whose targets ladder is not the staged one.
+
+    Staging checked the block ladder against its ``--puma-ladder``; the
+    release's state and CD population targets come from ``--ladder``. Under
+    ``block_v1`` they must be the same file, or the recorded ladder agreement
+    and ``populace_puma_ladder_artifact_sha256`` would name a ladder the
+    calibration never used.
+    """
+
+    if staging_household_location(staging_summary) is None:
+        return
+    staged = (staging_summary.get("geography_ladder") or {}).get("sha256")
+    if targets_ladder_sha256 is not None and targets_ladder_sha256 != staged:
+        raise SystemExit(
+            f"--ladder (sha {str(targets_ladder_sha256)[:12]}…) is not the PUMA "
+            f"ladder the block_v1 staging run recorded ({str(staged)[:12]}…); "
+            "the calibrated artifact and the ladder-agreement check name that "
+            "ladder."
+        )
+
+
+def load_staging_block_ladder(staging_summary: dict, override: Path | None = None):
+    """Load the block ladder a ``block_v1`` staging run recorded, sha-verified.
+
+    ``override`` relocates the file (another machine or volume); its sha256
+    must still equal the one the staging summary recorded.
+    """
+
+    from microcosm.build.us_runtime.block_location import load_us_location_ladder
+
+    record = staging_household_location(staging_summary)
+    if record is None:
+        if override is not None:
+            raise SystemExit(
+                "--block-ladder applies only to a block_v1 staging run; this "
+                "staging summary records the legacy location rule."
+            )
+        return None
+    path = Path(override or record["block_ladder_path"])
+    expected = record["block_ladder"]["sha256"]
+    if not path.exists():
+        raise SystemExit(
+            f"Block ladder {path} (recorded by the block_v1 staging run) is "
+            "missing; pass --block-ladder with the same bytes."
+        )
+    actual = _sha256(path)
+    if actual != expected:
+        raise SystemExit(
+            f"Block ladder {path} has sha256 {actual[:12]}…, not the "
+            f"{str(expected)[:12]}… the block_v1 staging run located households "
+            "with."
+        )
+    return load_us_location_ladder(path)
 
 
 # ---------------------------------------------------------------------------
@@ -2734,6 +2913,10 @@ def calibration_evidence(
 
 
 def do_calibrate(args) -> None:
+    # The checkout's code identity as this stage starts, before it loads or
+    # solves anything. The write reads it again and refuses if the commit or
+    # the dirty state changed in between (review of #1311).
+    code = _repo_code_identity(allow_dirty=True)
     from microcosm.calibrate import write_calibration_diagnostics
 
     identity = _verify_run_identity(args)
@@ -2829,7 +3012,11 @@ def do_calibrate(args) -> None:
                 "weights_latest.npz to recalibrate)."
             )
             _write_calibrated_artifact(
-                args, np.asarray(warm, dtype=np.float64), identity, settings
+                args,
+                np.asarray(warm, dtype=np.float64),
+                identity,
+                settings,
+                code=code,
             )
             county_surface.write_reports(
                 args.checkpoint_dir, previous, identity=identity
@@ -2935,7 +3122,11 @@ def do_calibrate(args) -> None:
     }
     county_surface.write_reports(args.checkpoint_dir, summary, identity=identity)
     _write_calibrated_artifact(
-        args, np.asarray(result.weights, dtype=np.float64), identity, settings
+        args,
+        np.asarray(result.weights, dtype=np.float64),
+        identity,
+        settings,
+        code=code,
     )
 
     holdout = summary["cd_holdout"]
@@ -3067,7 +3258,7 @@ def _with_live_stored_inputs(frame):
 
 
 def _write_calibrated_artifact(
-    args, weights: np.ndarray, identity: dict, settings: dict
+    args, weights: np.ndarray, identity: dict, settings: dict, *, code: dict
 ) -> None:
     """Write the consumer-ready calibrated H5 with verified attachment.
 
@@ -3078,7 +3269,10 @@ def _write_calibrated_artifact(
     fill — so a plain ``USSingleYearDataset``/``Microsimulation`` consumer
     loads the published file directly. The nullable staging H5 remains the
     archival nullable truth; every fill is recorded in the run's consumer
-    manifest.
+    manifest. ``code`` is the code identity the calibrate stage read when it
+    started; ``consumer_export.json`` records it, and this function writes
+    neither that file nor the H5 unless the checkout still has that commit
+    and dirty state just before the H5.
     """
 
     if args.out_h5 is None:
@@ -3153,12 +3347,30 @@ def _write_calibrated_artifact(
         projected.strata,
         mass_log=projected.mass_log,
     )
-    _write_dataset(
-        calibrated,
-        Path(args.out_h5),
-        period=PERIOD,
-        artifact_kind="calibrated_local_area_artifact",
+    location_attributes = calibrated_location_root_attributes(
+        _load_json(_staging_summary_path(args)),
+        targets_ladder_sha256=identity.get("ladder_sha256"),
     )
+    # The last moment before any byte of the artifact exists.
+    _require_unchanged_code(code)
+    if location_attributes is None:
+        _write_dataset(
+            calibrated,
+            Path(args.out_h5),
+            period=PERIOD,
+            artifact_kind="calibrated_local_area_artifact",
+        )
+    else:
+        # block_v1: the shim's writer plus the location root attributes.
+        from microcosm.build.us_runtime.h5_io import write_nullable_us_h5
+
+        write_nullable_us_h5(
+            calibrated,
+            Path(args.out_h5),
+            period=PERIOD,
+            artifact_kind="calibrated_local_area_artifact",
+            root_attributes=location_attributes,
+        )
     (args.checkpoint_dir / "consumer_export.json").write_text(
         json.dumps(
             {
@@ -3178,6 +3390,10 @@ def _write_calibrated_artifact(
                     "assignment_file": ssi_medicaid["assignment_file"],
                 },
                 "live_stored_inputs": live_inputs.provenance,
+                # The code that wrote these bytes, as read when the stage
+                # started. The build's ID names the packaging code, so
+                # package refuses any other writer.
+                "code": code,
                 "note": (
                     "The engine-pass contract (input-schema projection + "
                     "reviewed-null default fill) is applied to the published "
@@ -3552,6 +3768,53 @@ def do_qa(args) -> None:
     )
 
 
+def _require_artifact_written_by(
+    consumer_export: dict, code: dict, *, allow_dirty: bool
+) -> bool:
+    """Refuse to give a build an ID that names code other than its writer.
+
+    The calibrate stage writes the published bytes and records its code in
+    ``consumer_export.json``; the build's ID names the packaging code. They
+    must be the same commit, so the build's ID names the code that produced
+    the artifact. A checkpoint that records no writer is refused, not
+    trusted. A writer record that does not say ``dirty: false`` counts as
+    dirty, so it needs ``allow_dirty``.
+
+    Returns whether the writer's tree counts as dirty, so the build can
+    record it even when packaging runs from a clean tree.
+    """
+
+    written_by = consumer_export.get("code")
+    commit = written_by.get("commit") if isinstance(written_by, dict) else None
+    # A commit is a non-empty string; anything else names no code.
+    if not isinstance(commit, str) or not commit:
+        raise SystemExit(
+            "consumer_export.json records no code identity for the calibrated "
+            "H5, so the build's ID cannot be shown to name the code that wrote "
+            "it. Re-run --stage calibrate (then qa and finalize) with the "
+            "current tool."
+        )
+    # Full commits: the abbreviated sha's length depends on the checkout (a
+    # shallow clone abbreviates shorter), so it cannot be compared.
+    if written_by["commit"] != code["commit"]:
+        raise SystemExit(
+            f"The calibrated H5 was written by code {written_by['commit']}, but "
+            f"packaging runs {code['commit']}, and the build's ID names the "
+            "packaging code. Package with the code that wrote the artifact, or "
+            "re-run --stage calibrate (then qa and finalize) with this code."
+        )
+    # Only a record that says its tree was clean reads as clean.
+    writer_dirty = written_by.get("dirty") is not False
+    if writer_dirty and not allow_dirty:
+        raise SystemExit(
+            "The calibrated H5 was written from a dirty tree, or its record "
+            f"does not say the tree was clean (dirty={written_by.get('dirty')!r}); "
+            "a build's ID names a committed code vintage. Re-run --stage "
+            "calibrate from a clean tree, or pass --allow-dirty."
+        )
+    return writer_dirty
+
+
 def _repo_code_identity(allow_dirty: bool) -> dict[str, object]:
     def _git(*parts: str) -> str:
         return subprocess.check_output(
@@ -3559,6 +3822,7 @@ def _repo_code_identity(allow_dirty: bool) -> dict[str, object]:
         ).strip()
 
     sha = _git("rev-parse", "--short", "HEAD")
+    commit = _git("rev-parse", "HEAD")
     dirty = bool(_git("status", "--porcelain"))
     if dirty and not allow_dirty:
         raise SystemExit(
@@ -3566,7 +3830,34 @@ def _repo_code_identity(allow_dirty: bool) -> dict[str, object]:
             "committed code vintage. Commit first or pass --allow-dirty "
             "(the manifest will record dirty=true)."
         )
-    return {"sha": sha, "dirty": dirty, "branch": _git("branch", "--show-current")}
+    return {
+        "sha": sha,
+        "commit": commit,
+        "dirty": dirty,
+        "branch": _git("branch", "--show-current"),
+    }
+
+
+def _require_unchanged_code(started: dict) -> None:
+    """Refuse to write the calibrated artifact from a checkout that moved.
+
+    ``consumer_export.json`` records the code identity the calibrate stage
+    read when it started. A solve can run for hours, so just before calibrate
+    writes the H5 the checkout must still be at that commit and in that dirty
+    state; otherwise the record would name code other than the code that ran.
+    The branch's name may change: it names no code.
+    """
+
+    now = _repo_code_identity(allow_dirty=True)
+    if (now["commit"], now["dirty"]) != (started["commit"], started["dirty"]):
+        raise SystemExit(
+            "The checkout changed while calibrate ran: it started at "
+            f"{started['commit']} (dirty={started['dirty']}) and is now at "
+            f"{now['commit']} (dirty={now['dirty']}). Refusing to write the "
+            "calibrated H5 and consumer_export.json, whose record would name "
+            "code other than the code that ran. Re-run --stage calibrate from "
+            "a checkout that does not change during the run."
+        )
 
 
 def _ess_concentration_limitation(diagnostics: dict) -> dict:
@@ -3630,7 +3921,8 @@ def _ess_concentration_limitation(diagnostics: dict) -> dict:
     }
 
 
-#: Donor releases verified free of the microcosm#1178 Social Security erasure.
+#: Donor builds verified free of the microcosm#1178 Social Security erasure, by
+#: build ID (a tag donor's ``release_id``, a build-folder donor's ``build``).
 #: Before microcosm#1186 (merged 980282520), the PUF-support finalizer replaced
 #: CPS-reported Social Security with the PUF prediction, so a zero prediction
 #: erased a CPS reporter's benefit; on the national default
@@ -3638,24 +3930,35 @@ def _ess_concentration_limitation(diagnostics: dict) -> dict:
 #: fix runs where a national base is built. The ACS staging takes its donor
 #: as a finished H5 and never re-runs it, so a release inherits whatever its
 #: donor carries. The register is empty: every published US national release
-#: predates #1186. Add a donor's release id only after checking its
+#: predates #1186. Add a donor's build ID only after checking its
 #: PUF-support CPS reporters keep their reported benefit; until then the
 #: release discloses the inherited erasure.
 DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE: frozenset[str] = frozenset()
 
 
+def _donor_build_id(donor_release: dict) -> str | None:
+    """The donor build's ID from either reference form (microcosm#1570).
+
+    A donor that keeps only its tag is recorded with its ID as
+    ``release_id``; a donor in a build folder with it as ``build``, beside
+    its ``release``.
+    """
+
+    return donor_release.get("release_id") or donor_release.get("build")
+
+
 def _social_security_erasure_limitation(donor_release: dict) -> dict | None:
     """The inherited microcosm#1178 erasure, unless the donor is verified free."""
 
-    release_id = donor_release.get("release_id")
-    if release_id in DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE:
+    donor_build = _donor_build_id(donor_release)
+    if donor_build in DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE:
         return None
     return {
         "id": "social_security_cps_reporters_erased_inherited",
         "status": "reviewed_inherited_defect",
         "issue": "microcosm#1178",
         "fixed_by": "microcosm#1186 (980282520), in the national base build",
-        "donor_release": release_id,
+        "donor_release": donor_build,
         "affected_spines": ["asec_puf", "acs_2024_1yr"],
         "reason": (
             "The donor was built before microcosm#1186, so its PUF-support "
@@ -3673,7 +3976,7 @@ def _social_security_erasure_limitation(donor_release: dict) -> dict | None:
         "treatment": (
             "Refresh this artifact against the first national release built "
             "after microcosm#1186 (its refresh_recipe re-runs the chain with "
-            "that release as the donor), then add the donor's release id to "
+            "that release as the donor), then add the donor's build ID to "
             "DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE once its PUF-support CPS "
             "reporters are checked."
         ),
@@ -3688,6 +3991,9 @@ def _acs_wic_takeup_limitation(consumer_export: dict | None) -> dict | None:
     assumed = wic.get("people_assumed_true")
     if not assumed:
         return None
+    # A receipt written before the count existed states no count.
+    allowed = wic.get("people_allowed_without_decision")
+    of_allowed = "" if allowed is None else f", of {allowed} ACS-spine people"
     return {
         "id": "acs_wic_takeup_assumed_interim",
         "status": "reviewed_interim_assumption",
@@ -3700,8 +4006,9 @@ def _acs_wic_takeup_limitation(consumer_export: dict | None) -> dict | None:
             "people, and the donor stores its decisions under the retired "
             f"input name {wic.get('from')!r}, which the installed "
             "policyengine-us ignores. The consumer artifact stores them as "
-            f"{wic.get('to')!r}: every donor decision is kept, and every ACS "
-            "person is set to take WIC up when eligible. That is the engine's "
+            f"{wic.get('to')!r}: every stored decision is kept, and every "
+            f"person without one ({assumed}, all on the ACS spine{of_allowed}) "
+            "is set to take WIC up when eligible. That is the engine's "
             "default and the assumption policyengine.py applies to the same "
             "cells today; it is a modelling assumption, not observed "
             "participation."
@@ -3727,6 +4034,7 @@ def finalize_reviewed_limitations(
     """
 
     donor_release = (staging_summary.get("base") or {}).get("donor_release") or {}
+    household_location = staging_household_location(staging_summary)
     limitations = list(staging_summary.get("reviewed_limitations", []))
     aged_ssi = (spine_qa or {}).get("per_spine", {})
     register = reviewed_fill_register_summary(load_reviewed_fill_consumer_register())
@@ -4261,17 +4569,21 @@ def finalize_reviewed_limitations(
             "known_bias": register["known_bias"],
             "calibration_blocker": False,
         },
-        {
-            "id": "cd_population_marginal_vintage_2020",
-            "status": "reviewed_vintage",
-            "reason": (
-                "Congressional-district population marginals use "
-                "119th-boundary / 2020-apportionment Census populations from "
-                "the PUMA ladder; the build period is 2024. Boundaries are "
-                "2020-census-drawn (honest v1)."
-            ),
-            "calibration_blocker": False,
-        },
+        (
+            _block_v1_cd_population_limitation(household_location)
+            if household_location is not None
+            else {
+                "id": "cd_population_marginal_vintage_2020",
+                "status": "reviewed_vintage",
+                "reason": (
+                    "Congressional-district population marginals use "
+                    "119th-boundary / 2020-apportionment Census populations from "
+                    "the PUMA ladder; the build period is 2024. Boundaries are "
+                    "2020-census-drawn (honest v1)."
+                ),
+                "calibration_blocker": False,
+            }
+        ),
         _ess_concentration_limitation(diagnostics),
         {
             "id": "donor_sparse_selection_training_set",
@@ -4279,7 +4591,7 @@ def finalize_reviewed_limitations(
             "reason": (
                 "The QRF transfer donor is the certified Build O sparse "
                 "release "
-                f"({donor_release.get('release_id', 'unknown donor id')}): "
+                f"({_donor_build_id(donor_release) or 'unknown donor id'}): "
                 "the 57,240-household certified selection rather than a "
                 "dense full-row donor (buildl trained on the June dense "
                 "artifact). The conditioning set is thinner; per-fit donor "
@@ -4287,25 +4599,29 @@ def finalize_reviewed_limitations(
             ),
             "calibration_blocker": False,
         },
-        {
-            "id": "mixed_sub_puma_column_coverage",
-            "status": "reviewed_construction",
-            "columns": [
-                "block_geoid",
-                "tract_geoid",
-                "cbsa_code",
-                "place_fips",
-                "sldl",
-                "sldu",
-            ],
-            "reason": (
-                "Donor rows keep their certified block-ladder geography "
-                "columns; ACS rows carry no sub-PUMA geography, so these "
-                "columns are donor-spine-only. Consumers filtering on them "
-                "must scope to the asec_puf spine."
-            ),
-            "calibration_blocker": False,
-        },
+        (
+            _block_v1_sub_puma_column_limitation(household_location)
+            if household_location is not None
+            else {
+                "id": "mixed_sub_puma_column_coverage",
+                "status": "reviewed_construction",
+                "columns": [
+                    "block_geoid",
+                    "tract_geoid",
+                    "cbsa_code",
+                    "place_fips",
+                    "sldl",
+                    "sldu",
+                ],
+                "reason": (
+                    "Donor rows keep their certified block-ladder geography "
+                    "columns; ACS rows carry no sub-PUMA geography, so these "
+                    "columns are donor-spine-only. Consumers filtering on them "
+                    "must scope to the asec_puf spine."
+                ),
+                "calibration_blocker": False,
+            }
+        ),
     ]
     social_security = _social_security_erasure_limitation(donor_release)
     if social_security is not None:
@@ -4404,6 +4720,347 @@ def state_cd_reviewed_limitations(materialize_rss: dict) -> list[dict]:
             "calibration_blocker": False,
         },
     ]
+
+
+#: Finalize's district ESS gate. A congressional district collapses when
+#: calibration leaves its Kish ESS below this share of its Kish ESS at the
+#: design weights. At the release's ACS share (0.5), microcosm#1078's solves
+#: (full surface and two holdout folds) leave 15-24 districts below a quarter
+#: unpenalized, and none with the chi-square design-weight penalty.
+DISTRICT_ESS_RELATIVE_FLOOR = 0.25
+#: The absolute floor on a district's calibrated Kish ESS (0 turns it off).
+#: Those solves' smallest district ESS is 7.8-11.7 unpenalized and at least
+#: 18.5 penalized.
+DISTRICT_ESS_FLOOR = 15.0
+DISTRICT_ESS_GATE = "district_ess_collapse"
+
+
+def _district_ess(weight_summary) -> dict[str, float] | None:
+    """A weight summary's per-district Kish ESS as finite, nonnegative floats.
+
+    None when the summary records none, or any value is not such a number.
+    """
+
+    by_district = (
+        weight_summary.get("effective_sample_size_by_district")
+        if isinstance(weight_summary, dict)
+        else None
+    )
+    if not isinstance(by_district, dict) or not by_district:
+        return None
+    values = {}
+    for district, ess in by_district.items():
+        if isinstance(ess, bool) or not isinstance(ess, (int, float)):
+            return None
+        try:
+            value = float(ess)
+        except OverflowError:  # a JSON integer too large for a float
+            return None
+        if not np.isfinite(value) or value < 0:
+            return None
+        values[str(district)] = value
+    return values
+
+
+def district_ess_collapse_gate(
+    weight_origin: dict | None,
+    *,
+    relative_floor: float = DISTRICT_ESS_RELATIVE_FLOOR,
+    absolute_floor: float = DISTRICT_ESS_FLOOR,
+    blocking: bool = False,
+) -> dict:
+    """The district ESS gate entry, from the calibration summary's weight origin.
+
+    Reads ``effective_sample_size_by_district`` at the design and the
+    calibrated weights. A district collapses when its calibrated Kish ESS is
+    below ``relative_floor`` times its design-weight Kish ESS, and is below
+    the floor when its calibrated Kish ESS is below ``absolute_floor``; a
+    floor of 0 turns its check off. ``criteria_met`` says whether no district
+    does either (None when the evidence is missing or malformed).
+
+    The release contract publishes only gates that pass, so a report-only
+    entry passes whatever it measured. Under ``blocking`` the entry passes
+    only when the criteria are met.
+    """
+
+    if not 0.0 <= relative_floor <= 1.0:
+        raise ValueError(f"relative_floor must be in [0, 1], got {relative_floor!r}.")
+    if not (np.isfinite(absolute_floor) and absolute_floor >= 0.0):
+        raise ValueError(
+            f"absolute_floor must be finite and >= 0, got {absolute_floor!r}."
+        )
+    origin = weight_origin if isinstance(weight_origin, dict) else {}
+    design = _district_ess(origin.get("design"))
+    calibrated = _district_ess(origin.get("calibrated"))
+    gate = {
+        "blocking": bool(blocking),
+        "report_only": not blocking,
+        "relative_floor": float(relative_floor),
+        "absolute_floor": float(absolute_floor),
+        "note": (
+            "A congressional district collapses when its calibrated Kish ESS "
+            "is below relative_floor x its design-weight Kish ESS, and is "
+            "below the floor when its calibrated Kish ESS is below "
+            "absolute_floor (0 turns a check off); from "
+            "calibration_summary.json weight_origin."
+        ),
+    }
+    failures = []
+    if design is None or calibrated is None:
+        failures.append(
+            "calibration_summary.json weight_origin records no finite, "
+            "nonnegative effective_sample_size_by_district at both the design "
+            "and the calibrated weights"
+        )
+    elif set(design) != set(calibrated):
+        failures.append(
+            "the design and calibrated per-district ESS cover different districts"
+        )
+    if failures:
+        return {
+            **gate,
+            "passed": not blocking,
+            "criteria_met": None,
+            "failures": failures,
+        }
+
+    rows = [
+        {
+            "district": district,
+            "calibrated_ess": calibrated[district],
+            "design_ess": design[district],
+            "ratio": (
+                calibrated[district] / design[district]
+                if design[district] > 0
+                else None
+            ),
+        }
+        for district in sorted(design)
+    ]
+    collapsed = sorted(
+        (
+            row
+            for row in rows
+            if row["calibrated_ess"] < relative_floor * row["design_ess"]
+        ),
+        key=lambda row: (row["ratio"], row["district"]),
+    )
+    below_floor = sorted(
+        (row for row in rows if row["calibrated_ess"] < absolute_floor),
+        key=lambda row: (row["calibrated_ess"], row["district"]),
+    )
+    smallest = min(rows, key=lambda row: (row["calibrated_ess"], row["district"]))
+    rated = [row for row in rows if row["ratio"] is not None]
+    lowest = (
+        min(rated, key=lambda row: (row["ratio"], row["district"])) if rated else None
+    )
+    criteria_met = not collapsed and not below_floor
+    return {
+        **gate,
+        "passed": criteria_met or not blocking,
+        "criteria_met": criteria_met,
+        "failures": [],
+        "n_districts": len(rows),
+        "n_collapsed": len(collapsed),
+        "n_below_floor": len(below_floor),
+        "min_calibrated_ess": smallest["calibrated_ess"],
+        "min_calibrated_ess_district": smallest["district"],
+        "min_ess_ratio": lowest["ratio"] if lowest else None,
+        "min_ess_ratio_district": lowest["district"] if lowest else None,
+        "collapsed": collapsed,
+        "below_floor": below_floor,
+    }
+
+
+def district_ess_collapse_limitation(gate: dict) -> dict:
+    """The reviewed-limitations entry stating the district ESS gate's result."""
+
+    if gate["criteria_met"] is None:
+        measured = (
+            "The district ESS gate could not be evaluated: "
+            + "; ".join(gate["failures"])
+            + "."
+        )
+    else:
+        n = gate["n_districts"]
+        checks = []
+        if gate["relative_floor"] > 0:
+            checks.append(
+                f"below {gate['relative_floor']:g} x their design-weight Kish "
+                f"ESS: {gate['n_collapsed']} of {n}"
+            )
+        if gate["absolute_floor"] > 0:
+            checks.append(
+                f"below {gate['absolute_floor']:g}: {gate['n_below_floor']} of {n}"
+            )
+        ratio = gate["min_ess_ratio"]
+        measured = (
+            (
+                "Congressional districts with a calibrated Kish ESS "
+                + "; ".join(checks)
+                + "."
+                if checks
+                else f"No district ESS check is on for the {n} districts."
+            )
+            + f" Smallest calibrated district ESS: "
+            f"{gate['min_calibrated_ess']:.1f} "
+            f"({gate['min_calibrated_ess_district']})"
+            + (
+                f"; smallest ratio to design ESS: {ratio:.3f} "
+                f"({gate['min_ess_ratio_district']})."
+                if ratio is not None
+                else "."
+            )
+        )
+    if not gate["blocking"]:
+        mode = (
+            " The gate is report-only for this build; "
+            "--district-ess-gate-blocking makes it a hard failure."
+        )
+    elif gate["passed"]:
+        mode = " The gate is blocking for this build and passed."
+    else:
+        mode = (
+            " The gate is blocking for this build and fails, so the build is "
+            "not simulation-ready."
+        )
+    return {
+        "id": "district_effective_sample_size_gate",
+        "status": "recorded_concentration",
+        "reason": measured + mode,
+        "gate": DISTRICT_ESS_GATE,
+        "criteria_met": gate["criteria_met"],
+        "n_collapsed": gate.get("n_collapsed"),
+        "n_below_floor": gate.get("n_below_floor"),
+        "relative_floor": gate["relative_floor"],
+        "absolute_floor": gate["absolute_floor"],
+        "blocking": gate["blocking"],
+        "calibration_blocker": not gate["passed"],
+    }
+
+
+def _require_blocking_district_ess_gate(gate_report: dict, args) -> None:
+    """Under ``--district-ess-gate-blocking``, refuse a report finalize did not block on.
+
+    A finalize run without the flag (or at other floors, or from before the
+    gate existed) records a gate that passes whatever it measured, so
+    packaging its report under the flag would ship what the flag refuses.
+    """
+
+    if not args.district_ess_gate_blocking:
+        return
+    gates = gate_report.get("gates")
+    gate = gates.get(DISTRICT_ESS_GATE) if isinstance(gates, dict) else None
+    if not (
+        isinstance(gate, dict)
+        and gate.get("blocking") is True
+        and gate.get("passed") is True
+        and gate.get("relative_floor") == args.district_ess_relative_floor
+        and gate.get("absolute_floor") == args.district_ess_floor
+    ):
+        raise SystemExit(
+            f"--district-ess-gate-blocking: the finalize gate report carries no "
+            f"passing blocking {DISTRICT_ESS_GATE} gate at relative floor "
+            f"{args.district_ess_relative_floor:g} and floor "
+            f"{args.district_ess_floor:g}; re-run --stage finalize with the "
+            "same flags."
+        )
+
+
+def district_ess_refresh_flags(gate) -> str:
+    """The recorded district ESS gate's non-default flags, for the refresh recipe."""
+
+    if not isinstance(gate, dict):
+        return ""
+    flags = ""
+    for key, flag, default in (
+        (
+            "relative_floor",
+            "--district-ess-relative-floor",
+            DISTRICT_ESS_RELATIVE_FLOOR,
+        ),
+        ("absolute_floor", "--district-ess-floor", DISTRICT_ESS_FLOOR),
+    ):
+        value = gate.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if float(value) != default:
+                flags += f" {flag} {float(value)!r}"
+    if gate.get("blocking") is True:
+        flags += " --district-ess-gate-blocking"
+    return flags
+
+
+def _block_v1_cd_population_limitation(household_location: dict) -> dict:
+    """``cd_population_marginal_vintage_2020`` for a ``block_v1`` staging run."""
+
+    vintages = (household_location.get("block_ladder") or {}).get(
+        "layer_vintages"
+    ) or {}
+    plan = vintages.get("congressional_district", "unrecorded")
+    agreement = household_location.get("ladder_agreement")
+    districts = (
+        agreement.get("congressional_districts")
+        if isinstance(agreement, dict)
+        else None
+    )
+    checked = (
+        (
+            " The staging run checked that the two ladders carry the same "
+            "PUMAs, states and districts; the largest per-district population "
+            "difference between them was "
+            f"{districts.get('max_abs_population_difference')}."
+        )
+        if isinstance(districts, dict)
+        else ""
+    )
+    return {
+        "id": "cd_population_marginal_vintage_2020",
+        "status": "reviewed_vintage",
+        "reason": (
+            "Congressional-district population marginals use "
+            "119th-boundary / 2020-apportionment Census populations from "
+            "the PUMA ladder; the build period is 2024. Each household's "
+            "congressional district is the block ladder's "
+            f"{plan!r} district of its one 2020 census block "
+            f"({household_location.get('rule')}).{checked} Boundaries are "
+            "2020-census-drawn (honest v1)."
+        ),
+        "location_rule": BLOCK_V1_LOCATION_RULE,
+        "household_district_plan": plan,
+        "ladder_agreement": agreement,
+        "calibration_blocker": False,
+    }
+
+
+def _block_v1_sub_puma_column_limitation(household_location: dict) -> dict:
+    """``mixed_sub_puma_column_coverage`` for a ``block_v1`` staging run."""
+
+    donor_blocks = household_location.get("donor_blocks") or {}
+    return {
+        "id": "mixed_sub_puma_column_coverage",
+        "status": "reviewed_construction",
+        "location_rule": BLOCK_V1_LOCATION_RULE,
+        "columns": [
+            "block_geoid",
+            "tract_geoid",
+            "cbsa_code",
+            "place_fips",
+            "sldl",
+            "sldu",
+        ],
+        "reason": (
+            "Every household on both spines carries these columns, derived "
+            "from its one 2020 census block through the block ladder: ACS "
+            "rows from a block drawn with probability proportional to 2020 "
+            "block population within their observed PUMA; donor rows from "
+            "the block their block_v1 base-H5 build drew within their CPS "
+            "source geography. On ACS rows they are draws, "
+            "not observations; the PUMS record identifies only state and "
+            "PUMA."
+        ),
+        "donor_blocks": dict(donor_blocks),
+        "calibration_blocker": False,
+    }
 
 
 def _local_hours_gate(frame, staging_summary: dict):
@@ -4826,6 +5483,15 @@ def do_finalize(args) -> None:
     weights = np.asarray(frame.weights_for("household").values, dtype=np.float64)
     load_us_puma_ladder(args.ladder)
     ladder_gate = us_puma_ladder_gate(households, weights)
+    block_location_gate = None
+    require_block_v1_targets_ladder(staging_summary, ladder_sha)
+    block_ladder = load_staging_block_ladder(
+        staging_summary, getattr(args, "block_ladder", None)
+    )
+    if block_ladder is not None:
+        from microcosm.build.us_runtime.block_location import us_block_location_gate
+
+        block_location_gate = us_block_location_gate(households, block_ladder)
     composition = spine_composition(households, frame.table("person"), weights)
     # microcosm#765: refuse to package an artifact whose usual-weekly-hours
     # surface is the engine's constant-40 default (or otherwise out of band),
@@ -5122,6 +5788,12 @@ def do_finalize(args) -> None:
             "detail": composition,
         },
     }
+    if block_location_gate is not None:
+        gates["us_block_location_gate"] = {
+            "passed": bool(block_location_gate.passed),
+            "failures": list(block_location_gate.failures),
+            "detail": dict(block_location_gate.details),
+        }
     if spine_qa:
         gates["spine_ssi_qa"] = {
             "passed": True,
@@ -5141,6 +5813,8 @@ def do_finalize(args) -> None:
                 "filled_columns",
                 "total_values_filled",
                 "staging_sha256",
+                "live_stored_inputs",
+                "code",
             )
         }
         if consumer_export
@@ -5151,10 +5825,18 @@ def do_finalize(args) -> None:
         "artifact_sha256": spine_qa.get("artifact_sha256"),
     }
 
+    gates[DISTRICT_ESS_GATE] = district_ess_collapse_gate(
+        diagnostics.get("weight_origin"),
+        relative_floor=args.district_ess_relative_floor,
+        absolute_floor=args.district_ess_floor,
+        blocking=args.district_ess_gate_blocking,
+    )
+
     limitations = finalize_reviewed_limitations(
         staging_summary, diagnostics, spine_qa, consumer_export=consumer_export
     )
     limitations += state_cd_reviewed_limitations(materialize_rss)
+    limitations.append(district_ess_collapse_limitation(gates[DISTRICT_ESS_GATE]))
     hard_failures = [
         name
         for name in (
@@ -5174,6 +5856,11 @@ def do_finalize(args) -> None:
         )
         if not gates[name]["passed"]
     ]
+    # Report-only unless --district-ess-gate-blocking, so it passes otherwise.
+    if not gates[DISTRICT_ESS_GATE]["passed"]:
+        hard_failures.append(DISTRICT_ESS_GATE)
+    if block_location_gate is not None and not block_location_gate.passed:
+        hard_failures.append("us_block_location_gate")
     updated_summary = dict(staging_summary)
     updated_summary.update(
         {
@@ -5214,6 +5901,16 @@ _STAGING_ORCHESTRATION_KEYS = (
     "geography_seed",
     "donor_channel",
 )
+#: Staging location settings a ``block_v1`` staging run records. A legacy
+#: summary has none of them, and they are projected only when present (with
+#: the run's ``household_location`` record), so a legacy build manifest's
+#: ``staging_orchestration`` is unchanged.
+_STAGING_LOCATION_ORCHESTRATION_KEYS = (
+    "location_rule",
+    "location_seed",
+    "location_clones",
+    "block_ladder_sha256",
+)
 
 
 def _require_uncapped_staging(staging_summary: dict) -> dict[str, object]:
@@ -5242,7 +5939,21 @@ def _require_uncapped_staging(staging_summary: dict) -> dict[str, object]:
             f"The staging run was capped at {cap} ACS household(s) "
             "(--max-households); a smoke's output must not be packaged."
         )
-    return {key: orchestration.get(key) for key in _STAGING_ORCHESTRATION_KEYS}
+    projected = {key: orchestration.get(key) for key in _STAGING_ORCHESTRATION_KEYS}
+    projected.update(
+        {
+            key: orchestration[key]
+            for key in _STAGING_LOCATION_ORCHESTRATION_KEYS
+            if key in orchestration
+        }
+    )
+    # A block_v1 staging run's full location record (rule, seed, clones,
+    # ladders, donor-block accounting, gate) rides into the build manifest
+    # with the settings above; a legacy run records none.
+    household_location = staging_household_location(staging_summary)
+    if household_location is not None:
+        projected["household_location"] = household_location
+    return projected
 
 
 def _require_recorded_soi_mode(materialize_rss: dict) -> str:
@@ -5402,7 +6113,25 @@ def _require_spm_measurement(frame) -> dict[str, object]:
     }
 
 
+def _new_release_dir(args) -> Path:
+    """The release directory the package stage will write, which must not exist.
+
+    It is named after the release, not the build (microcosm#1570), so an
+    earlier package's directory under the same ``--out`` would mix two
+    builds' files.
+    """
+
+    release_dir = args.out.joinpath(*RELEASE_DIR_PARTS)
+    if release_dir.exists() or release_dir.is_symlink():
+        raise SystemExit(
+            f"{release_dir} already exists from an earlier package; remove it, "
+            "or package into another --out."
+        )
+    return release_dir
+
+
 def do_package(args) -> dict:
+    release_dir = _new_release_dir(args)
     diagnostics = _load_json(args.checkpoint_dir / "calibration_summary.json")
     diagnostics_status = diagnostics.get("calibration_diagnostics")
     if not isinstance(diagnostics_status, dict) or diagnostics_status.get(
@@ -5432,6 +6161,7 @@ def do_package(args) -> dict:
     soi_mode = _require_recorded_soi_mode(materialize_rss)
     _require_full_rung(identity)
     _require_current_calibration(identity, diagnostics, stage="package")
+    _require_blocking_district_ess_gate(gate_report, args)
     calibrated_h5 = Path(args.out_h5)
     if not calibrated_h5.exists():
         raise SystemExit(f"Calibrated H5 not found: {calibrated_h5}.")
@@ -5489,9 +6219,12 @@ def do_package(args) -> dict:
     )
 
     code = _repo_code_identity(args.allow_dirty)
+    writer_dirty = _require_artifact_written_by(
+        consumer_export, code, allow_dirty=args.allow_dirty
+    )
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    release_id = f"{RELEASE_ID_PREFIX}-{code['sha']}-{timestamp}"
-    release_dir = args.out / "releases" / release_id
+    # The build's ID; it names the build within the local-area release.
+    build_id = f"{RELEASE_ID_PREFIX}-{code['sha']}-{timestamp}"
 
     gates = gate_report.get("gates")
     hours_gate = gates.get("hours_worked_signal") if isinstance(gates, dict) else None
@@ -5672,7 +6405,7 @@ def do_package(args) -> dict:
             "against the new certified release H5; everything else is "
             "unchanged."
         ),
-        "staging": LEGACY_STAGING_REFRESH_RECIPE,
+        "staging": staging_refresh_recipe(staging_summary),
         "release": release_refresh_recipe(
             soi_mode,
             (identity.get("cd_holdout") or {}).get("fraction"),
@@ -5681,9 +6414,11 @@ def do_package(args) -> dict:
                 "family_multipliers"
             ),
         ),
-        "publish": (
-            "tools/publish_release.sh <release_dir> --no-latest "
-            f"--artifact-root <run> --repo-id {HF_REPO_ID}"
+        # The release recipe's --out is <run>/release, the artifact root.
+        "publish": publication_commands(
+            "<run>/release/" + "/".join(RELEASE_DIR_PARTS),
+            repo_id=HF_REPO_ID,
+            artifact_root="<run>/release",
         ),
     }
     refresh_recipe["release"] = county_surface.refresh_recipe(
@@ -5697,11 +6432,18 @@ def do_package(args) -> dict:
             f" --county-target-loss-cap {float(county_profile['target_loss_cap'])!r}"
             f" --county-max-weight-ratio {float(county_profile['max_weight_ratio'])!r}"
         )
+    refresh_recipe["release"] += district_ess_refresh_flags(
+        (gate_report.get("gates") or {}).get(DISTRICT_ESS_GATE)
+    )
 
+    # Both manifests are written in the tagged shape and rewritten into the
+    # build-folder layout below, by rewrite_release_dir.
     build_manifest = {
-        "build_id": release_id,
+        "build_id": build_id,
         "build_sha": code["sha"],
-        "build_dirty": code["dirty"],
+        # Dirty if either the packaging tree or the tree that wrote the
+        # artifact was.
+        "build_dirty": bool(code["dirty"]) or writer_dirty,
         "created_at": datetime.now(UTC).isoformat(),
         "code": {"branch": code["branch"], "repo": "microcosm"},
         "runtime": {
@@ -5825,7 +6567,7 @@ def do_package(args) -> dict:
             "kind": kind,
             "path": path_name,
             "repo_id": HF_REPO_ID,
-            "revision": release_id,
+            "revision": build_id,
             "sha256": _sha256(local),
         }
 
@@ -5834,7 +6576,7 @@ def do_package(args) -> dict:
             "kind": "microdata",
             "path": ARTIFACT_FILENAME,
             "repo_id": HF_REPO_ID,
-            "revision": release_id,
+            "revision": build_id,
             "sha256": h5_sha,
         },
         "gate_summary": _artifact(
@@ -5854,19 +6596,27 @@ def do_package(args) -> dict:
             "diagnostics",
             release_dir / "calibration_diagnostics.json",
         )
+    # The emitter publishes a build folder's manifests, checksum ledger and
+    # declared artifacts only (microcosm#1570), so every other file written
+    # above, the evidence JSON included, is declared, as the UK dense
+    # assembler declares its evidence.
+    for name in contract_files:
+        key = Path(name).stem
+        if name != "build_manifest.json" and key not in artifacts:
+            artifacts[key] = _artifact(name, "diagnostics", release_dir / name)
 
     release_manifest = {
         "schema_version": 1,
         "data_package": {"name": "microcosm-data", "version": "0.1.0"},
-        # NON-DEFAULT: this artifact claims NO default dataset slot.
-        # Publishing it must never flip latest.json; it is discoverable by
-        # its immutable release id / tag only.
+        # NON-DEFAULT: this artifact claims NO default dataset slot. Its
+        # release is a local-area release in releases.json, never the
+        # repository's default; the build is found there by its ID.
         "default_datasets": {},
         "dataset_role": "non_default_local_area",
         "is_default": False,
         "namespace": RELEASE_NAMESPACE,
         "build": {
-            "build_id": release_id,
+            "build_id": build_id,
             "built_at": datetime.now(UTC).isoformat(),
             "built_with_core_package": {
                 "name": "policyengine-core",
@@ -5892,6 +6642,11 @@ def do_package(args) -> dict:
     (release_dir / "sha256sums.txt").write_text(
         "".join(f"{digest}  {name}\n" for name, digest in sorted(sums.items()))
     )
+    # microcosm#1570: both manifests name the release and the build, the build's
+    # details move to the release manifest's top level, each artifact gets its
+    # role and loses its revision, and the ledger's lines for the two
+    # manifests get their new digests.
+    rewrite_release_dir(release_dir, build=build_id)
 
     artifact_root = args.out
     root_copy = artifact_root / ARTIFACT_FILENAME
@@ -5911,7 +6666,9 @@ def do_package(args) -> dict:
         )
 
     result = {
-        "release_id": release_id,
+        "release_id": US_LOCAL_RELEASE_ID,
+        "release": US_LOCAL_RELEASE_ID,
+        "build": build_id,
         "release_dir": str(release_dir),
         "artifact_root": str(artifact_root),
         "root_artifact": {
@@ -5921,9 +6678,10 @@ def do_package(args) -> dict:
         },
         "is_default": False,
         "files": sorted(path.name for path in release_dir.iterdir()),
-        "publish_command": (
-            f"tools/publish_release.sh {release_dir} --no-latest "
-            f"--artifact-root {artifact_root} --repo-id {HF_REPO_ID}"
+        # Publishing lists the build without making it current; promoting,
+        # after review, makes it the release's current build.
+        **publication_commands(
+            release_dir, repo_id=HF_REPO_ID, artifact_root=artifact_root
         ),
     }
     (args.out / "package_result.json").write_text(json.dumps(result, indent=2))
@@ -6101,7 +6859,20 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--out",
         type=Path,
-        help="Release root for --stage package (releases/<id>/ lands here).",
+        help=(
+            "Release root for --stage package (releases/microcosm-us-2024-local/ "
+            "and the dataset land here)."
+        ),
+    )
+    parser.add_argument(
+        "--block-ladder",
+        type=Path,
+        default=None,
+        help=(
+            "Relocated copy of the block ladder a --location-rule block_v1 "
+            "staging run recorded (default: the path in its summary). Its "
+            "sha256 must equal the recorded one; refused for a legacy run."
+        ),
     )
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument(
@@ -6111,6 +6882,35 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Permit ladder population cells with no supporting household "
             "(a capped smoke shrinks the surface). Never for a release "
             "build: materialize hard-fails on dropped cells without this."
+        ),
+    )
+    parser.add_argument(
+        "--district-ess-relative-floor",
+        type=float,
+        default=DISTRICT_ESS_RELATIVE_FLOOR,
+        help=(
+            "Finalize's district ESS gate: a congressional district collapses "
+            "when its calibrated Kish ESS is below this share of its "
+            "design-weight Kish ESS (0 to 1; 0 turns the check off)."
+        ),
+    )
+    parser.add_argument(
+        "--district-ess-floor",
+        type=float,
+        default=DISTRICT_ESS_FLOOR,
+        help=(
+            "Finalize's district ESS gate: the floor on every congressional "
+            "district's calibrated Kish ESS (0 turns the check off)."
+        ),
+    )
+    parser.add_argument(
+        "--district-ess-gate-blocking",
+        action="store_true",
+        help=(
+            "Make the district ESS gate a hard failure at finalize, and make "
+            "package refuse a gate report finalize did not block on. Off by "
+            "default: the gate is recorded in gate_summary.json, the build "
+            "manifest and the reviewed limitations, and passes."
         ),
     )
     args = parser.parse_args(argv)
@@ -6136,6 +6936,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--out-h5 is required for calibrate/qa/finalize/package.")
     if "package" in stages and args.out is None:
         parser.error("--out is required for the package stage.")
+    if "package" in stages:
+        # Refused here as well as when the package stage starts, so a run of
+        # every stage stops before hours of the others.
+        earlier = args.out.joinpath(*RELEASE_DIR_PARTS)
+        if earlier.exists() or earlier.is_symlink():
+            parser.error(
+                f"{earlier} already exists from an earlier package; remove it, "
+                "or package into another --out."
+            )
     if args.out_h5 is not None and args.out_summary is None:
         args.out_summary = args.out_h5.with_suffix(".summary.json")
     if args.gate_report is None:
@@ -6151,6 +6960,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "--cd-holdout-fraction must be in "
             f"[0, {cd_surface.MAX_CD_HOLDOUT_FRACTION}]."
         )
+    if not 0.0 <= args.district_ess_relative_floor <= 1.0:
+        parser.error("--district-ess-relative-floor must be in [0, 1].")
+    if not (np.isfinite(args.district_ess_floor) and args.district_ess_floor >= 0.0):
+        parser.error("--district-ess-floor must be finite and >= 0.")
     args.stages = stages
     county_surface.validate_arguments(args, parser)
     for flag in ("county_target_loss_cap", "county_max_weight_ratio"):

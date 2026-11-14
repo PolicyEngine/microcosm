@@ -609,15 +609,21 @@ def test_the_d1982_disclosure_names_the_convention_and_its_limits():
 
 
 def test_the_d1982_stock_keeps_the_release_candidate_off():
-    """A release candidate reading the interim stock needs a new ruling first."""
+    """A release candidate reading the interim stock needs a new ruling first.
+
+    Every packaged ``gates.battery@1`` node counts. A battery that omits the
+    flag fails too, since only an explicit ``False`` keeps it off.
+    test_nz_transport_declarations.py checks the batteries an extension
+    branch adds when the graph composes.
+    """
     reason = _declaration()["index_family_factors"]["consumer_prices"]["reason"]
     assert "d1982" in reason
-    (terminal,) = [
-        node
+    packaged = {
+        node["id"]: node["params"].get("release_candidate")
         for node in _load("transport_graph.json")["nodes"]
-        if node["id"] == "nz.gates.terminal"
-    ]
-    assert terminal["params"]["release_candidate"] is False
+        if node["kernel"] == "gates.battery@1"
+    }
+    assert packaged == {"nz.gates.terminal": False}
 
 
 def test_one_run_carries_the_d1982_diagnostic_and_s1_beside_it():

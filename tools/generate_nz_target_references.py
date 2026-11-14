@@ -540,7 +540,7 @@ def calibration_bindings():
 
 
 def merge_zero_count_bands(bands):
-    """Hand each zero-count band's width to the nearest lower band with households.
+    """Hand each zero-count band's width to the nearest lower band with a count.
 
     ``bands`` holds ordered, contiguous rows with ``lower``, ``upper``,
     ``reference`` and ``count``. ``transport.quantile_map`` refuses a zero
@@ -556,7 +556,7 @@ def merge_zero_count_bands(bands):
             continue
         if not kept:
             raise ValueError(
-                f"Rent band {band['reference']} holds no households and has no "
+                f"Rent band {band['reference']} publishes 0 and has no "
                 "lower band to merge into."
             )
         kept[-1]["upper"] = band["upper"]
@@ -586,7 +586,7 @@ def _rent_fact(inventory, place, code, label):
 def rent_bands_and_references(inventory):
     """Regional rent bands for ``transport.quantile_map@1`` and their selectors.
 
-    Returns the precal rows (one per band with households) and the
+    Returns the precal rows (one per band with a positive count) and the
     ``rent_bands.json`` document. Every region takes one Pareto alpha, fitted
     to the national counts at $600 a week and above, for its open top band.
     """
@@ -683,11 +683,16 @@ def rent_bands_and_references(inventory):
         "zero_count_merges": merges,
         "disclosure": RENT_DISCLOSURE,
         "zero_count_disclosure": (
-            "transport.quantile_map refuses a zero share. Where a published band "
-            "holds no households, the band below it takes its upper edge and "
-            "keeps its own reference. A region whose open top band holds no "
-            "households takes its Pareto top from the lower edge of the nearest "
-            "band with households."
+            "transport.quantile_map refuses a zero share. Where the Census "
+            "publishes 0 for a band, the band below it takes its upper edge and "
+            "keeps its own reference, so the merged band spreads its households "
+            "across the range the Census publishes as 0. A published 0 need not "
+            "mean no households: every count in these tables is a multiple of 3, "
+            "and the regional counts sum to the national count within 6 per band "
+            "while the totals agree. A region whose open top band publishes 0 "
+            "takes its Pareto top from the lower edge of the nearest band with a "
+            "positive count, so part of that top maps above cuts where the Census "
+            "publishes 0."
         ),
     }
     return references, document
@@ -933,7 +938,7 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
         (
             "mbie_bond_rents_by_territorial_authority",
             "requires_rent_band_frequencies",
-            "G8-d1 supplies a Census rent-band replacement and must resolve C1 rent ageing; that replacement does not activate this MBIE P2 row. MBIE activation needs rent-band frequencies that medians, quartiles and bond counts cannot supply; G8-y owns the closing step.",
+            "G8-d1 supplies a Census rent-band replacement at Census 2023 levels. The C1 rent ageing ruling stays open: under the hub's B6 ruling (2026-11-08, stated in #1547), C1 blocks publication but not a run. That replacement does not activate this MBIE P2 row. MBIE activation needs rent-band frequencies that medians, quartiles and bond counts cannot supply; G8-y owns the closing step.",
         ),
         (
             "stats_nz_household_financial_net_worth_distribution",

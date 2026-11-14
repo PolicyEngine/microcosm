@@ -105,11 +105,13 @@ from microcosm.fit.qrf import (  # noqa: E402 - after the compatibility gate
     ConditionalUniforms,
     FittedRegimeGatedQRF,
     GateCalibration,
+    GateLevelFit,
     GateOutcome,
     QRFChainState,
     QRFChainStepResult,
     Regime,
     RegimeGatedQRF,
+    gate_level_settings,
 )
 
 __version__ = "0.1.0"
@@ -172,7 +174,9 @@ __all__ = [
     "QRFChainStepResult",
     "Regime",
     "GateCalibration",
+    "GateLevelFit",
     "GateOutcome",
+    "gate_level_settings",
     "QRFCacheKey",
     "cache_path",
     "load_fitted_qrf_cache",
