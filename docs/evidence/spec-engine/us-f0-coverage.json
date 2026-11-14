@@ -722,8 +722,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 828,
-        "pointer_sha256": "c358fa57ee3bf91f3b25df541cd6e4cf833e49f976a3d57b37006b7f5960b2fc",
+        "pointer_count": 844,
+        "pointer_sha256": "fc9558b2494006cda7e3f9d13146a981a02daa7b5dc36a064905ab3f252de6a3",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/resolved/seed_protocol",
@@ -758,21 +758,21 @@
         "verifier": "vintages"
       }
     ],
-    "configuration_field_count": 42395,
-    "consumed_field_count": 42395,
+    "configuration_field_count": 42452,
+    "consumed_field_count": 42452,
     "generation0_effect_counts": {
-      "legacy_behavior": 38780,
-      "no_generation0_effect": 3615
+      "legacy_behavior": 38806,
+      "no_generation0_effect": 3646
     },
     "mode_counts": {
-      "compiler_semantic": 27674,
+      "compiler_semantic": 27718,
       "front_end_validation": 349,
       "identity_only": 103,
       "legacy_behavior": 14282
     },
     "multiple_primary_use_field_count": 0,
-    "pointer_inventory_sha256": "81bc649e653b467b0da8fa7442a895fe45f24a263c725d764ca9ed8f4441325c",
-    "resolved_binding_field_count": 9786,
+    "pointer_inventory_sha256": "59df84d570bf6b5d9ac5dd7119a7a460e1d8b3d4101edf80e5988bcb3f3baf2e",
+    "resolved_binding_field_count": 9805,
     "unused_field_count": 0
   },
   "inventory_coverage": {
@@ -1643,13 +1643,13 @@
           "compiler_ir.node_slices"
         ],
         "expected": {
-          "map_sha256": "270cf6498f8a2977993f969d0703be88fb930499dab42741a2111f57ffec4266",
-          "protocol_sha256": "a696ad74bfa5743b63c65499e6f5a41ea913a96ca38a5e3b9882069284bfca47"
+          "map_sha256": "e476e135f885ad178526227140552ad421e29bbd4a6fd78b8af1a44ac180c0df",
+          "protocol_sha256": "e7faba84be754a8ad986f4a1e7d4ab93395f51cea1d8973487f96f2a7f01feab"
         },
         "failures": [],
         "observed": {
-          "map_sha256": "270cf6498f8a2977993f969d0703be88fb930499dab42741a2111f57ffec4266",
-          "protocol_sha256": "a696ad74bfa5743b63c65499e6f5a41ea913a96ca38a5e3b9882069284bfca47"
+          "map_sha256": "e476e135f885ad178526227140552ad421e29bbd4a6fd78b8af1a44ac180c0df",
+          "protocol_sha256": "e7faba84be754a8ad986f4a1e7d4ab93395f51cea1d8973487f96f2a7f01feab"
         },
         "status": "covered"
       },
@@ -1664,7 +1664,7 @@
           "compiler_ir.seed_stream_map"
         ],
         "expected": {
-          "implementation_sha256": "a696ad74bfa5743b63c65499e6f5a41ea913a96ca38a5e3b9882069284bfca47",
+          "implementation_sha256": "e7faba84be754a8ad986f4a1e7d4ab93395f51cea1d8973487f96f2a7f01feab",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1685,7 +1685,7 @@
         },
         "failures": [],
         "observed": {
-          "implementation_sha256": "a696ad74bfa5743b63c65499e6f5a41ea913a96ca38a5e3b9882069284bfca47",
+          "implementation_sha256": "e7faba84be754a8ad986f4a1e7d4ab93395f51cea1d8973487f96f2a7f01feab",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1723,8 +1723,8 @@
         },
         "failures": [],
         "observed": {
-          "sha256": "67302e3a53429c0a31195f23c594570885c47052cf7e907664d61b96278a61eb",
-          "sites": 53
+          "sha256": "492506d07dfc844815edcc06ba04896d19a896f26a3b497eda06b1f8d013a831",
+          "sites": 54
         },
         "status": "covered"
       },
@@ -2586,7 +2586,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "bd526d8cf819e9f97fa46c5fe279c7b9ef4458b3e2d3498f823602f45e6a7575"
+      "spec_sha256": "c02312b5ff2a2d421e02baebe9f55561ab5cf23568b762ada1f90f05d0299cbf"
     }
   },
   "report_schema_version": 3,
@@ -2596,7 +2596,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "bd526d8cf819e9f97fa46c5fe279c7b9ef4458b3e2d3498f823602f45e6a7575"
+    "spec_sha256": "c02312b5ff2a2d421e02baebe9f55561ab5cf23568b762ada1f90f05d0299cbf"
   },
   "status": "pass"
 }

@@ -30,7 +30,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # stage's attested bytes and the seed protocol, and the clock's years
     # catalog unit moves the schema-set receipt.
     assert first.spec_sha256 == (
-        "1ff3b42c42250c734fdf1b5cf4c03e28a582ee5b448e2a8363c77a59a3932bdc"
+        "e8679fec43739ed9bc7f9ddc4101ee9cd39deb2c6adc181d83c7e8c2dde2ddd6"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

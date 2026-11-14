@@ -392,9 +392,9 @@ EXPECTED_HASHES = {
     # becomes the takes_up_tanf_if_eligible its draw always used.
     # microcosm#776 moves both again: the immigration stage's arrival-year
     # draw joins the protocol as the immigration_arrival_year_draw site.
-    "seed_map": "270cf6498f8a2977993f969d0703be88fb930499dab42741a2111f57ffec4266",
-    "seed_protocol": "a696ad74bfa5743b63c65499e6f5a41ea913a96ca38a5e3b9882069284bfca47",
-    "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
+    "seed_map": "e476e135f885ad178526227140552ad421e29bbd4a6fd78b8af1a44ac180c0df",
+    "seed_protocol": "e7faba84be754a8ad986f4a1e7d4ab93395f51cea1d8973487f96f2a7f01feab",
+    "source_manifest": "ee208024a8be0e5f4f0094c76230ff53cc84a6cc662e14bd58bd8f653881f673",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
 }
