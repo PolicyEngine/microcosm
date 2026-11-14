@@ -77,12 +77,18 @@ _BUILD_IMPORT_PREFIX = "microcosm.build"
 #: the ``microcosm.build`` module that holds its code. The local-jurisdiction
 #: flags moved out so the annual static-aging lane can check its parent
 #: without importing ``us_runtime`` (microcosm#1453), yet the geography
-#: ladders and the pool still derive the flags through the re-export. Every
+#: ladders and the pool still derive the flags through the re-export.
+#: ``support_mix.hash_uniform`` is ``microcosm.build.holdout``'s
+#: ``hash_holdout_uniform`` since microcosm#1585 gave the two one copy. Every
 #: scan of ``us_runtime`` below therefore reads each implementation too, and
-#: the pool tool's import graph follows each re-export into it.
+#: the pool tool's import graph follows each re-export it reaches into it.
 _OUT_OF_RUNTIME_IMPLEMENTATIONS = (
     ("local_jurisdictions.py", "microcosm.build.us_local_jurisdictions"),
+    ("support_mix.py", "microcosm.build.holdout"),
 )
+#: The registered re-exports the pool build tool's import graph reaches.
+#: ``support_mix.py`` serves the support-mix bake-off tool, not the pool.
+_POOL_BUILD_RE_EXPORTS = frozenset({"local_jurisdictions.py"})
 _SPINE_BLIND_BUILD_TOOLS = (_REPOSITORY_ROOT / "tools" / "build_us_multispine_pool.py",)
 _REQUIRED_POOL_RUNTIME_MODULES = frozenset(
     {
@@ -4074,6 +4080,13 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
     assert not missing_tools, (
         f"registered spine-blind build tools are missing: {missing_tools}"
     )
+    unregistered = sorted(
+        _POOL_BUILD_RE_EXPORTS
+        - {re_export for re_export, _ in _OUT_OF_RUNTIME_IMPLEMENTATIONS}
+    )
+    assert not unregistered, (
+        f"the pool build's re-exports name unregistered modules: {unregistered}"
+    )
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
@@ -4123,9 +4136,13 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
         # A re-export in the graph holds no code: scan the implementation
         # behind it as part of the build path.
         implementations = _out_of_runtime_implementations(runtime_names)
-        assert implementations == _out_of_runtime_implementations(), (
-            f"{tool.name} no longer reaches a registered re-export; its "
-            f"implementation would go unscanned: reached={implementations}"
+        assert implementations == _out_of_runtime_implementations(
+            set(_POOL_BUILD_RE_EXPORTS)
+        ), (
+            f"{tool.name} must reach exactly the registered re-exports "
+            f"{sorted(_POOL_BUILD_RE_EXPORTS)}; the implementation behind one "
+            "it stopped reaching would go unscanned on the build path: "
+            f"reached={implementations}"
         )
         offenders: dict[str, tuple[str, ...]] = {}
         for path in (tool, *runtime_graph, *implementations):

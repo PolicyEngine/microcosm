@@ -147,6 +147,9 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         # microcosm#1074: us_runtime.fiscal_targets imports the FSA student
         # loan targets.
         "microcosm.build.us_runtime.fsa_student_loan_targets",
+        # microcosm#1585: the US keyed draws call
+        # stochastic_assignment.stable_identity_uniforms.
+        "microcosm.build.stochastic_assignment",
         # microcosm#1405: the gate battery refuses a signing key the committed
         # registry does not let sign, so it imports
         # microcosm.data.gate_signing_keys, and with it the microcosm.data

@@ -382,12 +382,18 @@ EXPECTED_HASHES = {
     # S-corp line-32 shares as separate leaves.
     # The hierarchy value ranks move both again: medicaid_take_up, an
     # attested kernel module, gives a substituted enrollment spec's value no
-    # rank. No draw, RNG rule or QRF target changes. microcosm#1444 moves both:
-    # housing_inputs puts each ACS rent draw on its own household's head.
-    # microcosm#1453 moves both again: geography_ladder and puma_ladder write
-    # the local-jurisdiction flags.
-    "seed_map": "2b14547bbbd50b166f8000332b983864cc8b2e3247245f5717bbf183bc08eafe",
-    "seed_protocol": "eb6a5a8793526f8f45b032895f79f8441b892bc69689824ef1581afac6112acf",
+    # rank. No draw, RNG rule or QRF target changes. microcosm#1585 moves both
+    # again: the US keyed draws call stochastic_assignment's
+    # stable_identity_uniforms, and that module joins the attested kernel
+    # modules; no draw changes. #1585's public solve_constraint_system and
+    # calibrate's shared option checks move both again; no US solve changes.
+    # Its TANF ledger fix moves the protocol again: the site's recorded salt
+    # becomes the takes_up_tanf_if_eligible its draw always used.
+    # microcosm#1444 moves both: housing_inputs puts each ACS rent draw on its
+    # own household's head. microcosm#1453 moves both again: geography_ladder
+    # and puma_ladder write the local-jurisdiction flags.
+    "seed_map": "a402868badd22b263581ab1cbd73ae36036848cefa773b7ea3ed516aadb3510d",
+    "seed_protocol": "27fd0f86f2f90bee699e50d9bbabf64c90223e9b129ee8f44b23928f0e7e6866",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
