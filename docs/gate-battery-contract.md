@@ -230,11 +230,13 @@ exactly as the batch would, `blocking_outcomes` says whether they stop the
 build under its posture, and `assemble_phase_report` gathers the phase's
 outcomes into its report in manifest order, refusing a missing or duplicate
 entry. A build that stopped at a blocking stage names that entry in
-`blocked_by`: the phase's remaining entries become `unreached`, with a reason
-naming it, and `record_phase` takes such a phase only if it blocks under the
-run's posture, recording `blocked_at_phase` in the same write. A signed run
-can then be assembled at the end, from phases carried between stages or
-processes.
+`blocked_by`, with the run's posture (`release_candidate`, `synthetic_smoke`),
+since the posture decides which outcomes block; the named entry must be among
+`blocking_outcomes` under it. The phase's remaining entries become
+`unreached`, with a reason naming that entry, and `record_phase` takes such a
+phase only if the named entry blocks under the run's own posture, recording
+`blocked_at_phase` in the same write. A signed run can then be assembled at
+the end, from phases carried between stages or processes.
 
 A posture that must keep going past failed gates, such as an evidence build
 or a dry run, runs every phase and never calls `enforce`. Every phase is

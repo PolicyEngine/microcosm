@@ -1026,12 +1026,28 @@ def evaluate_entries(
     )
 
 
+def _unreached_reason(blocked_by: str, phase: str) -> str:
+    """The reason an entry left behind by an early block carries.
+
+    :func:`assemble_phase_report` writes it and
+    :meth:`GateBatteryRun.record_phase` regenerates it to check the named
+    blocker, so the two cannot drift apart.
+    """
+
+    return (
+        f"not reached: {blocked_by!r} blocked phase {phase!r} before this "
+        "entry's stage ran"
+    )
+
+
 def assemble_phase_report(
     gates: GatesManifest,
     phase: str,
     outcomes: Iterable[GateOutcome],
     *,
     blocked_by: str | None = None,
+    release_candidate: bool | None = None,
+    synthetic_smoke: bool = False,
 ) -> GatePhaseReport:
     """Assemble one phase's report from outcomes evaluated at their stages.
 
@@ -1049,14 +1065,21 @@ def assemble_phase_report(
     ``unreached`` means: an earlier phase blocked, or an earlier stage of the
     same phase did. Recording such a phase sets ``blocked_at_phase``.
 
+    Whether an outcome blocks depends on the run's posture, so an early block
+    needs it: ``release_candidate`` and ``synthetic_smoke`` must be the ones
+    the recording :class:`GateBatteryRun` is constructed with, and
+    ``blocked_by`` must be among :func:`blocking_outcomes` under them.
+    :meth:`GateBatteryRun.record_phase` checks the named entry again against
+    the run's own posture.
+
     Raises:
         ValueError: If ``phase`` is not declared; an outcome resolves an entry
             this manifest does not declare in ``phase``, as it stands; an
             entry has two outcomes; an outcome is already ``unreached``;
             without ``blocked_by``, an entry that runs has no outcome; or
-            ``blocked_by`` names an entry with no outcome here, or one whose
-            outcome cannot block (it must be release-blocking, and failed or
-            evidence_absent).
+            ``blocked_by`` is given without ``release_candidate``, names an
+            entry with no outcome here, or names one that does not block
+            under the given posture.
     """
 
     if phase not in gates.phases:
@@ -1093,21 +1116,38 @@ def assemble_phase_report(
                 "stopped early names the entry that blocked it (blocked_by)."
             )
     else:
+        if release_candidate is None:
+            raise ValueError(
+                "an early block needs the run's posture: pass release_candidate "
+                "(and synthetic_smoke) with blocked_by."
+            )
         blocker = resolved.get(blocked_by)
         if blocker is None:
             raise ValueError(
                 f"blocked_by names {blocked_by!r}, which has no outcome in "
                 f"phase {phase!r}."
             )
-        if blocker.entry.criticality != "release_blocking" or blocker.status not in (
-            GateStatus.FAILED,
-            GateStatus.EVIDENCE_ABSENT,
+        if not blocking_outcomes(
+            (blocker,),
+            release_candidate=release_candidate,
+            synthetic_smoke=synthetic_smoke,
         ):
+            posture = (
+                "synthetic smoke build"
+                if synthetic_smoke
+                else "release candidate"
+                if release_candidate
+                else "dev build"
+            )
             raise ValueError(
                 f"entry {blocked_by!r} cannot have blocked phase {phase!r}: it "
                 f"is {blocker.entry.criticality} with status "
-                f"{blocker.status.value!r}."
+                f"{blocker.status.value!r}, which does not block a {posture}."
             )
+    # Without blocked_by, every entry that runs has an outcome by now.
+    unreached_reason = (
+        _unreached_reason(blocked_by, phase) if blocked_by is not None else None
+    )
     assembled = []
     for entry in declared:
         if entry.id in resolved:
@@ -1123,12 +1163,7 @@ def assemble_phase_report(
         else:
             assembled.append(
                 GateOutcome(
-                    entry=entry,
-                    status=GateStatus.UNREACHED,
-                    reason=(
-                        f"not reached: {blocked_by!r} blocked phase {phase!r} "
-                        "before this entry's stage ran"
-                    ),
+                    entry=entry, status=GateStatus.UNREACHED, reason=unreached_reason
                 )
             )
     return GatePhaseReport(phase=phase, outcomes=tuple(assembled))
@@ -1375,17 +1410,19 @@ class GateBatteryRun:
         A phase assembled after an early block
         (:func:`assemble_phase_report` with ``blocked_by``) stopped part
         way: some of its entries were reached and the rest are
-        ``unreached``. It must block under this run's posture, and the run
-        records ``blocked_at_phase`` in the same write, so the report on disk
-        never shows a phase that stopped part way without its block.
-        ``enforce`` then raises or marks as usual. A phase whose entries are
-        all unreached, the record a graph keeps when an earlier phase blocked
-        it, is recorded as before.
+        ``unreached``. The entry its unreached entries name as the one that
+        stopped it must block under this run's posture, and the run records
+        ``blocked_at_phase`` in the same write, so the report on disk never
+        shows a phase that stopped part way without its block, or names a
+        blocker ``enforce`` would not block on. ``enforce`` then raises or
+        marks as usual. A phase whose entries are all unreached, the record a
+        graph keeps when an earlier phase blocked it, is recorded as before.
 
         Raises:
             ValueError: If the battery has blocked, the phase is out of
                 order, its outcomes differ from the declared manifest, or it
-                stopped part way but nothing in it blocks this run's posture.
+                stopped part way but names a blocker that does not block this
+                run's posture, or nothing in it does.
         """
         if self._blocked_at_phase is not None:
             raise ValueError(f"battery blocked at phase {self._blocked_at_phase!r}.")
@@ -1398,15 +1435,37 @@ class GateBatteryRun:
         stopped_early = GateStatus.UNREACHED in statuses and bool(
             statuses & _REACHED_STATUSES
         )
-        if stopped_early and not report.blocking_outcomes(
-            release_candidate=self._release_candidate,
-            synthetic_smoke=self._synthetic_smoke,
-        ):
-            raise ValueError(
-                f"phase {report.phase!r} stopped part way, but none of its "
-                "outcomes blocks this run's posture; a phase stops early only "
-                "on a block."
+        if stopped_early:
+            blocking = report.blocking_outcomes(
+                release_candidate=self._release_candidate,
+                synthetic_smoke=self._synthetic_smoke,
             )
+            if not blocking:
+                raise ValueError(
+                    f"phase {report.phase!r} stopped part way, but none of its "
+                    "outcomes blocks this run's posture; a phase stops early "
+                    "only on a block."
+                )
+            # The assembly names the blocker only in this reason; regenerate
+            # it for each entry that does block, so a phase claiming another
+            # blocker is refused rather than signed.
+            reasons = {
+                _unreached_reason(outcome.entry.id, report.phase)
+                for outcome in blocking
+            }
+            misnamed = sorted(
+                outcome.entry.id
+                for outcome in report.outcomes
+                if outcome.status is GateStatus.UNREACHED
+                and outcome.reason not in reasons
+            )
+            if misnamed:
+                raise ValueError(
+                    f"phase {report.phase!r} stopped part way, but its "
+                    f"unreached entries {misnamed} do not name an entry that "
+                    f"blocks this run's posture; blocking here: "
+                    f"{sorted(outcome.entry.id for outcome in blocking)}."
+                )
         self._phase_reports[report.phase] = report
         if stopped_early:
             self._blocked_at_phase = report.phase

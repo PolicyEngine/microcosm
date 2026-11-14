@@ -1010,7 +1010,11 @@ class TestStageLevelEvaluation:
         assert blocking_outcomes(stopping, release_candidate=True) == stopping
 
         report = assemble_phase_report(
-            manifest, "assembled", [*first, *stopping], blocked_by="a_block"
+            manifest,
+            "assembled",
+            [*first, *stopping],
+            blocked_by="a_block",
+            release_candidate=True,
         )
         statuses = {outcome.entry.id: outcome.status for outcome in report.outcomes}
         assert statuses == {
@@ -1084,13 +1088,26 @@ class TestStageLevelEvaluation:
                 "terminal",
                 [GateOutcome(entry=passed.entry, status=GateStatus.UNREACHED)],
                 blocked_by="t_fail",
+                release_candidate=True,
             )
+        with pytest.raises(ValueError, match="needs the run's posture"):
+            assemble_phase_report(manifest, "terminal", [failed], blocked_by="t_fail")
         with pytest.raises(ValueError, match="no outcome in phase"):
-            assemble_phase_report(manifest, "terminal", [passed], blocked_by="t_fail")
+            assemble_phase_report(
+                manifest,
+                "terminal",
+                [passed],
+                blocked_by="t_fail",
+                release_candidate=True,
+            )
         for blocker, outcome in (("t_pass", passed), ("t_diag", diagnostic)):
             with pytest.raises(ValueError, match="cannot have blocked"):
                 assemble_phase_report(
-                    manifest, "terminal", [outcome], blocked_by=blocker
+                    manifest,
+                    "terminal",
+                    [outcome],
+                    blocked_by=blocker,
+                    release_candidate=True,
                 )
         with pytest.raises(ValueError, match="not in the declared order"):
             assemble_phase_report(manifest, "simulated", [])
@@ -1120,7 +1137,11 @@ class TestStageLevelEvaluation:
         (absent,) = evaluate_entries(manifest, ["t_absent"], EvidenceContext())
         assert absent.status is GateStatus.EVIDENCE_ABSENT
         report = assemble_phase_report(
-            manifest, "terminal", [absent], blocked_by="t_absent"
+            manifest,
+            "terminal",
+            [absent],
+            blocked_by="t_absent",
+            release_candidate=True,
         )
         dev = self._run(manifest, tmp_path, "dev.json", release_candidate=False)
         with pytest.raises(ValueError, match="stops early only on a block"):
@@ -1147,6 +1168,91 @@ class TestStageLevelEvaluation:
         replay.record_phase(never_reached)
         assert replay.phases_evaluated == ("terminal",)
         assert replay.blocked_at_phase is None
+
+    def test_the_named_blocker_must_block_the_runs_posture(self, tmp_path, signing_env):
+        # Review of #1609: the posture decides which outcome stops a phase, so
+        # the named blocker is checked against it, at assembly and at record.
+        manifest = _manifest(
+            [
+                _entry("a_absent", gate="weights_audit", phase="assembled"),
+                _entry("a_fail", gate="exported_nonzero", phase="assembled"),
+                _entry("a_later", gate="support", phase="assembled"),
+            ],
+            ["assembled"],
+        )
+        registry = {
+            **self._registry(),
+            "weights_audit": DEFAULT_REGISTRY["weights_audit"],
+        }
+        reached = evaluate_entries(
+            manifest, ["a_absent", "a_fail"], EvidenceContext(), registry=registry
+        )
+        # A dev build does not stop on absent evidence, only on the failure.
+        with pytest.raises(ValueError, match="does not block a dev build"):
+            assemble_phase_report(
+                manifest,
+                "assembled",
+                reached,
+                blocked_by="a_absent",
+                release_candidate=False,
+            )
+        # A phase assembled under a release candidate's posture does name it;
+        # a dev run refuses to record that claim even though a_fail blocks.
+        candidate_claim = assemble_phase_report(
+            manifest,
+            "assembled",
+            reached,
+            blocked_by="a_absent",
+            release_candidate=True,
+        )
+        dev = self._run(manifest, tmp_path, "dev.json", release_candidate=False)
+        with pytest.raises(
+            ValueError, match=r"do not name an entry that blocks.*\['a_fail'\]"
+        ):
+            dev.record_phase(candidate_claim)
+        assert dev.phases_evaluated == ()
+
+        report = assemble_phase_report(
+            manifest,
+            "assembled",
+            reached,
+            blocked_by="a_fail",
+            release_candidate=False,
+        )
+        dev.record_phase(report)
+        assert (
+            "'a_fail' blocked phase 'assembled'"
+            in (dev.report_payload()["gates"]["a_later"]["reason"])
+        )
+        with pytest.raises(GateBatteryBlockedError) as blocked:
+            dev.enforce("assembled", mode=BlockingMode.BLOCKS_ARTIFACT)
+        assert blocked.value.blocking_gate_ids == ("a_fail",)
+
+        # A synthetic smoke build does not stop on a failed population fact.
+        facts = _manifest(
+            [
+                _entry(
+                    "a_fact",
+                    gate="exported_nonzero",
+                    phase="assembled",
+                    population_fact_check=True,
+                ),
+                _entry("a_later", gate="support", phase="assembled"),
+            ],
+            ["assembled"],
+        )
+        fact = evaluate_entries(
+            facts, ["a_fact"], EvidenceContext(), registry=self._registry()
+        )
+        with pytest.raises(ValueError, match="does not block a synthetic smoke"):
+            assemble_phase_report(
+                facts,
+                "assembled",
+                fact,
+                blocked_by="a_fact",
+                release_candidate=False,
+                synthetic_smoke=True,
+            )
 
 
 class TestRecordWithoutEnforce:
