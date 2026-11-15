@@ -20,6 +20,9 @@ from microcosm.build.transport.codecs import register_transport_codecs
 from microcosm.build.transport.evidence_kernels import register_evidence_kernels
 from microcosm.build.transport.gate_bindings import TRANSPORT_GATE_REGISTRY
 from microcosm.build.transport.gate_kernels import register_gate_kernel
+from microcosm.build.transport.income_evidence_kernels import (
+    register_income_evidence_kernels,
+)
 from microcosm.build.transport.person_location_kernels import (
     register_person_location_kernels,
 )
@@ -61,4 +64,5 @@ def transport_kernels() -> Mapping[str, object]:
     register_takeup_kernels(kernels)
     register_reporting_kernels(kernels)
     register_evidence_kernels(kernels, engines)
+    register_income_evidence_kernels(kernels)
     return MappingProxyType({ref: kernels.get(ref) for ref in kernels.refs()})
