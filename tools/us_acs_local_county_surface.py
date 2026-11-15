@@ -1762,7 +1762,9 @@ def reliability_report(
             (float(entry["abs_rel_error"]), f"validation:{name}")
             for name, entry in graded.items()
         ]
-        evidence = cell["holdout"]["n_targets"] > 0 or bool(graded)
+        # A county without household support is U: a combined SOI cell's
+        # rows (Kalawao's in Maui's) carry another county's error.
+        evidence = len(rows) and (cell["holdout"]["n_targets"] > 0 or bool(graded))
         if evidence and candidates:
             error, driver = max(candidates, key=lambda item: (item[0], item[1]))
         else:

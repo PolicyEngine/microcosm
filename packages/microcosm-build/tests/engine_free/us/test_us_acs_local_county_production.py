@@ -1224,6 +1224,20 @@ def test_combined_soi_cell_errors_count_toward_both_member_counties() -> None:
         assert report["counties"][code]["holdout"]["max_abs_rel_error"] == (
             pytest.approx(0.2)
         )
+        assert report["counties"][code]["grade"] == "D"
+    # With no Kalawao household, Kalawao is U: Maui's error is not its own.
+    only_maui = county.reliability_report(
+        households.iloc[[1]],
+        records,
+        sparse.csr_array(np.asarray([[1.0]])),
+        final_weights=np.asarray([8.0]),
+        county_populations={15005: 80.0, 15009: 160.0},
+    )
+    kalawao = only_maui["counties"]["15005"]
+    assert kalawao["status"] == "no_support"
+    assert kalawao["holdout"]["n_targets"] == 1
+    assert (kalawao["grade"], kalawao["grade_error"]) == ("U", None)
+    assert only_maui["counties"]["15009"]["grade"] == "D"
 
 
 @_SETTINGS
