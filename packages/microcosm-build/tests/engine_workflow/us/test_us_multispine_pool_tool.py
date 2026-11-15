@@ -357,7 +357,8 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # attested bytes.
             # microcosm#922's county facts pin, two declared legacy resources,
             # moves it.
-            "spec_sha256": "d3a3c6c6fbcf4bd7cae760215b909214e5593d606da74aa8f78e6c347e3b41b5",
+            # microcosm#1096's exact softmax cap projection in solve moves it.
+            "spec_sha256": "1e727e1ca69287fccacc0f7e4402ebf449472c9103daf92a8287bc49dbd5db15",
         },
     }
 
