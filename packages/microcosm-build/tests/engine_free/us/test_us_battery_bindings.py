@@ -1,0 +1,344 @@
+"""US gate scopes and bindings over today's gates (microcosm#1585 item 11).
+
+PR 2 of 4. ``us/gates.json`` declares every US gate the four build tools
+evaluate in shadow; these tests hold the spec to today's code. Each scope is
+a closed-world share of the spec with pinned digests; every declared
+threshold equals the constant or keyword default today's gate uses; every
+declared entry is wired at a site in its tool, calling the gate its binding
+calls; and a fault injected into any gate fails it identically in today's
+code and in the battery, in the entry's own phase.
+"""
+
+from __future__ import annotations
+
+import importlib
+import inspect
+import json
+from dataclasses import replace
+
+import pytest
+
+from microcosm.build import FitWeightRecord
+from microcosm.build.country_spec import load_gates_manifest
+from microcosm.build.gate_battery import EvidenceContext, GateStatus
+from microcosm.build.gates import UNWEIGHTED_KIND, GateResult
+from microcosm.build.us_runtime.battery_bindings import (
+    FRAME,
+    USCheckBinding,
+    declared_value,
+    resolve_reference,
+    us_gate_registry,
+    us_gate_specs,
+)
+from microcosm.build.us_runtime.gate_scopes import (
+    US_GATE_SCOPES,
+    check_us_gate_scopes,
+    us_gate_scope_digests,
+    us_scope_entry_ids,
+    us_scoped_gate_manifest,
+)
+from microcosm.build.us_runtime.gate_shadow import (
+    GateBatteryShadow,
+    active_gate_shadow,
+    shadow_file_paths,
+    shadow_gate,
+)
+from test_support.microcosm_build.us_gate_shadow import (
+    load_us_gate_tool,
+    shadow_wiring,
+)
+
+#: The scopes PR 2 has declared so far, each wired in its tool.
+WIRED_SCOPES = ("us_base",)
+
+#: Each scope's pinned digests. They move only when the scope's entries,
+#: parameters, phases or the manifest's policy line do.
+SCOPE_PINS: dict[str, dict[str, str]] = {
+    "us_base": {
+        "gates_manifest_sha256": (
+            "b919d3a37e9aeadd507568a30c274d325a84b32c8706e1407dc9ac1626fef5ce"
+        ),
+        "policy_sha256": (
+            "1a86c63cc20a6259c3349cc9dd831f0571d8c7e82e1ba77f06e4c4a102274e22"
+        ),
+        "spec_fingerprint": (
+            "4ce5ca7abaef48a6026be8d120862761cf8a457904690b0e59e4a501828f43da"
+        ),
+    },
+}
+
+
+def _entries(scope: str):
+    return us_scoped_gate_manifest(scope).gates
+
+
+def _registry(scope: str):
+    return us_gate_registry(scope, tool=vars(load_us_gate_tool(scope)))
+
+
+def _check_binding(scope: str) -> USCheckBinding:
+    binding = _registry(scope)["stage_health"]
+    assert isinstance(binding, USCheckBinding)
+    return binding
+
+
+def _check_entries(scope: str):
+    return [entry for entry in _entries(scope) if entry.gate == "stage_health"]
+
+
+def _same(left: object, right: object) -> bool:
+    return json.dumps(declared_value(left), sort_keys=True) == json.dumps(
+        declared_value(right), sort_keys=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# Scopes
+# ---------------------------------------------------------------------------
+
+
+def test_the_scopes_partition_the_spec() -> None:
+    gates = load_gates_manifest("us")
+    check_us_gate_scopes(gates)
+    owned = [
+        entry_id for scope in US_GATE_SCOPES for entry_id in us_scope_entry_ids(scope)
+    ]
+    assert sorted(owned) == sorted(entry.id for entry in gates.gates)
+    assert len(owned) == len(set(owned))
+
+
+def test_a_manifest_the_scopes_do_not_partition_is_refused() -> None:
+    gates = load_gates_manifest("us")
+    first = gates.gates[0]
+
+    def with_entries(*entries):
+        return replace(gates, gates=(*entries, *gates.gates[1:]))
+
+    with pytest.raises(
+        RuntimeError, match="owned by no scope \\['us_elsewhere_gate'\\]"
+    ):
+        check_us_gate_scopes(with_entries(replace(first, id="us_elsewhere_gate")))
+    with pytest.raises(RuntimeError, match="does not evaluate"):
+        check_us_gate_scopes(with_entries(replace(first, phase="simulated")))
+    with pytest.raises(ValueError, match="unknown US gate scope"):
+        us_scoped_gate_manifest("us_elsewhere")
+
+
+@pytest.mark.parametrize("scope", WIRED_SCOPES)
+def test_each_scope_has_its_own_pinned_digests(scope) -> None:
+    digests = us_gate_scope_digests(scope, _registry(scope))
+    assert digests == SCOPE_PINS[scope]
+    others = {
+        other: us_gate_scope_digests(other, _registry(other))
+        for other in WIRED_SCOPES
+        if other != scope
+    }
+    assert all(
+        pins["gates_manifest_sha256"] != digests["gates_manifest_sha256"]
+        for pins in others.values()
+    )
+
+
+# ---------------------------------------------------------------------------
+# Thresholds: the spec carries today's values
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("scope", WIRED_SCOPES)
+def test_every_pinned_threshold_equals_todays_constant(scope) -> None:
+    binding = _check_binding(scope)
+    for entry in _check_entries(scope):
+        check = entry.parameters["check"]
+        today = binding.pinned_values(check)
+        declared = {key: entry.parameters[key] for key in today}
+        assert _same(declared, today), (entry.id, declared, today)
+
+
+@pytest.mark.parametrize("scope", WIRED_SCOPES)
+def test_every_routed_threshold_equals_todays_default(scope) -> None:
+    binding = _check_binding(scope)
+    for entry in _check_entries(scope):
+        spec = binding.checks[entry.parameters["check"]]
+        if not spec.parameters:
+            continue
+        gate = resolve_reference(spec.gate, tool=binding.tool)
+        defaults = inspect.signature(gate).parameters
+        for key in spec.parameters:
+            assert _same(entry.parameters[key], defaults[key].default), (
+                entry.id,
+                key,
+            )
+
+
+@pytest.mark.parametrize("scope", WIRED_SCOPES)
+def test_entries_declare_exactly_their_gates_thresholds(scope) -> None:
+    binding = _check_binding(scope)
+    used = set()
+    for entry in _check_entries(scope):
+        check = entry.parameters["check"]
+        assert check in binding.checks, entry.id
+        used.add(check)
+        declared = set(entry.parameters) - {"check"}
+        assert declared == binding.checks[check].parameter_keys, entry.id
+    # No spec is dead weight in its scope.
+    assert used == set(binding.checks)
+
+
+# ---------------------------------------------------------------------------
+# Wiring: every entry has a site, calling the gate its binding calls
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("scope", WIRED_SCOPES)
+def test_every_entry_is_wired_at_a_site_calling_its_gate(scope) -> None:
+    binding = _check_binding(scope)
+    declared = {entry.id: entry for entry in _entries(scope)}
+    sites = shadow_wiring(scope)
+    unknown = sorted({entry_id for entry_id, _, _ in sites} - set(declared))
+    assert not unknown, unknown
+    assert {entry_id for entry_id, _, _ in sites} == set(declared)
+    for entry_id, reference, where in sites:
+        entry = declared[entry_id]
+        if reference is None or entry.gate != "stage_health":
+            continue
+        spec = binding.checks[entry.parameters["check"]]
+        assert spec.gate == reference, (entry_id, where, reference, spec.gate)
+
+
+# ---------------------------------------------------------------------------
+# Fault injection: one failure per gate, identical in both, in its phase
+# ---------------------------------------------------------------------------
+
+
+def _shadow(tmp_path, scope: str) -> GateBatteryShadow:
+    report, comparison = shadow_file_paths(tmp_path, scope)
+    return GateBatteryShadow(
+        us_scoped_gate_manifest(scope),
+        scope=scope,
+        release_id=f"{scope}-fault-injection",
+        report_path=report,
+        comparison_path=comparison,
+        registry=_registry(scope),
+    )
+
+
+def _evidence(spec) -> EvidenceContext:
+    """Evidence of the right shape; the injected gate ignores its values."""
+
+    return EvidenceContext(
+        frame=object() if spec.needs_frame else None,
+        artifacts={key: object() for key in spec.artifact_keys},
+    )
+
+
+def _fault_cases(scope: str):
+    return [
+        pytest.param(scope, entry.id, id=entry.id) for entry in _check_entries(scope)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("scope", "entry_id"),
+    [case for scope in WIRED_SCOPES for case in _fault_cases(scope)],
+)
+@pytest.mark.parametrize("fault", ["fails", "crashes"])
+def test_an_injected_fault_fails_both_verdicts_alike(
+    tmp_path, monkeypatch, scope, entry_id, fault
+) -> None:
+    tool = vars(load_us_gate_tool(scope))
+    shadow = _shadow(tmp_path, scope)
+    entry = next(entry for entry in shadow.gates.gates if entry.id == entry_id)
+    spec = {spec.check: spec for spec in us_gate_specs(scope)}[
+        entry.parameters["check"]
+    ]
+    namespace, _, gate_name = spec.gate.partition(":")
+    target = tool if namespace == "tool" else vars(importlib.import_module(namespace))
+    lines = (f"{entry_id}: injected failure.",)
+
+    def injected(*args, **kwargs):
+        if fault == "crashes":
+            raise KeyError(f"{entry_id}: injected crash")
+        if spec.returns_failures:
+            return list(lines)
+        return GateResult(name=spec.legacy_name, passed=False, failures=lines)
+
+    monkeypatch.setitem(target, gate_name, injected)
+    evidence = _evidence(spec)
+
+    def today():
+        return target[gate_name](
+            *(
+                evidence.frame if source == FRAME else evidence.artifacts[source]
+                for source in spec.positional
+            ),
+        )
+
+    with active_gate_shadow(shadow):
+        if fault == "crashes":
+            with pytest.raises(KeyError):
+                shadow_gate(entry_id, today, evidence)
+        else:
+            result = shadow_gate(entry_id, today, evidence)
+            assert result.failures == lines
+    outcome = shadow.outcome(entry_id)
+    assert outcome is not None and outcome.status is GateStatus.FAILED
+    assert outcome.entry.phase == entry.phase
+    if fault == "fails":
+        assert outcome.result.failures == lines
+    else:
+        assert "evaluation_error" in outcome.result.details
+    assert shadow.differences() == ()
+
+
+@pytest.mark.parametrize("scope", WIRED_SCOPES)
+def test_the_shared_weights_audit_fails_both_verdicts_alike(tmp_path, scope) -> None:
+    shadow = _shadow(tmp_path, scope)
+    tool = vars(load_us_gate_tool(scope))
+    records = [FitWeightRecord("us_puf_tax_detail_support", UNWEIGHTED_KIND)]
+    with active_gate_shadow(shadow):
+        result = shadow_gate(
+            f"{scope}_weights_audit",
+            lambda: tool["weights_audit_gate"](records),
+            EvidenceContext(artifacts={"fit_weight_records": records}),
+        )
+    assert not result.passed
+    outcome = shadow.outcome(f"{scope}_weights_audit")
+    assert outcome.status is GateStatus.FAILED
+    assert outcome.result.failures == result.failures
+    assert shadow.differences() == ()
+
+
+def test_a_declared_threshold_off_todays_constant_is_a_difference(tmp_path) -> None:
+    # The pin is live: a spec edit that today's constant does not follow is
+    # caught at the next evaluation, as a verdict difference.
+    scoped = us_scoped_gate_manifest("us_base")
+    altered = replace(
+        scoped,
+        gates=tuple(
+            replace(
+                entry,
+                parameters={**entry.parameters, "pregnant_share_band": [0.0, 1.0]},
+            )
+            if entry.id == "us_base_pregnancy"
+            else entry
+            for entry in scoped.gates
+        ),
+    )
+    report, comparison = shadow_file_paths(tmp_path, "us_base")
+    shadow = GateBatteryShadow(
+        altered,
+        scope="us_base",
+        release_id="us-base-altered",
+        report_path=report,
+        comparison_path=comparison,
+        registry=_registry("us_base"),
+    )
+    passing = GateResult(name="pregnancy_signal", passed=True)
+    with active_gate_shadow(shadow):
+        shadow_gate(
+            "us_base_pregnancy",
+            lambda: passing,
+            EvidenceContext(frame=object()),
+        )
+    (difference,) = shadow.differences()
+    assert "differs from today's" in difference

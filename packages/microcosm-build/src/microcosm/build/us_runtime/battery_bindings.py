@@ -437,7 +437,287 @@ def _frame_check(
 #: The frame signal gates both the base builder and the national release
 #: run, keyed by check: (legacy name, gate function, module, pinned
 #: constants). Each tool calls its own global of the same name.
-_SCOPE_SPECS: Mapping[str, Callable[[], tuple[USGateSpec, ...]]] = MappingProxyType({})
+_SHARED_FRAME_SIGNALS: Mapping[str, tuple[str, str, str, tuple[str, ...]]] = (
+    MappingProxyType(
+        {
+            "relationship_inputs_signal": (
+                "relationship_inputs_signal",
+                "us_relationship_inputs_signal_gate",
+                "relationship_inputs",
+                (
+                    "_HOUSEHOLD_HEAD_SHARE_BAND",
+                    "_SEPARATED_SHARE_BAND",
+                    "_SURVIVING_SPOUSE_SHARE_BAND",
+                ),
+            ),
+            "spm_independence_role_signal": (
+                "spm_independence_role_signal",
+                "us_spm_independence_role_signal_gate",
+                "spm_independence_role",
+                ("_ROLE_SHARE_BAND", "_MINOR_ROLE_SHARE_BAND"),
+            ),
+            "medicare_take_up_input_signal": (
+                "medicare_take_up_input_signal",
+                "us_medicare_take_up_signal_gate",
+                "medicare_take_up",
+                ("_WEIGHTED_ENROLLED_SHARE_BAND", "_CHANNEL_ENROLLED_SHARE_BAND"),
+            ),
+            "housing_inputs_signal": (
+                "housing_inputs_signal",
+                "us_housing_inputs_signal_gate",
+                "housing_inputs",
+                ("_RENT_SHARE_BAND", "_HOUSING_ASSISTANCE_SHARE_BAND"),
+            ),
+            "eligibility_inputs_signal": (
+                "eligibility_inputs_signal",
+                "us_eligibility_inputs_signal_gate",
+                "eligibility_inputs",
+                (
+                    "_DISABLED_SHARE_BAND",
+                    "_FULL_TIME_STUDENT_SHARE_BAND",
+                    "_PARENT_SHARE_BAND",
+                    "_VETERANS_BENEFITS_SHARE_BAND",
+                ),
+            ),
+            "pregnancy_signal": (
+                "pregnancy_signal",
+                "us_pregnancy_signal_gate",
+                "pregnancy",
+                ("_PREGNANT_SHARE_BAND",),
+            ),
+            "wic_claim_input_signal": (
+                "wic_claim_input_signal",
+                "us_wic_claim_signal_gate",
+                "wic_claim",
+                ("_WEIGHTED_CLAIM_SHARE_BAND", "_CATEGORY_WEIGHTED_CLAIM_SHARE_BANDS"),
+            ),
+            "esi_premiums_signal": (
+                "esi_premiums_signal",
+                "us_esi_premiums_signal_gate",
+                "esi_premiums",
+                ("_POSITIVE_SHARE_BAND", "_RAW_MEAN_BAND"),
+            ),
+            "prior_year_income_signal": (
+                "prior_year_income_signal",
+                "us_prior_year_income_signal_gate",
+                "prior_year_income",
+                (
+                    "_PREVIOUS_YEAR_AVAILABLE_SHARE_BAND",
+                    "_SELF_EMPLOYMENT_NONZERO_SHARE_BAND",
+                ),
+            ),
+            "prior_year_income_source_reconciliation": (
+                "prior_year_income_source_reconciliation",
+                "us_prior_year_income_source_reconciliation_gate",
+                "prior_year_income",
+                (),
+            ),
+            "qbi_inputs_signal": (
+                "qbi_inputs_signal",
+                "us_qbi_inputs_signal_gate",
+                "qbi_inputs",
+                (
+                    "_BOOLEAN_SHARE_BANDS",
+                    "_NUMERIC_NONZERO_SHARE_BANDS",
+                    "_INVARIANT_ATOL",
+                ),
+            ),
+            "farm_business_income_signal": (
+                "farm_business_income_signal",
+                "us_farm_business_income_signal_gate",
+                "farm_business_income",
+                ("_NONZERO_SHARE_BANDS",),
+            ),
+            "domestic_production_ald_signal": (
+                "domestic_production_ald_signal",
+                "us_domestic_production_ald_signal_gate",
+                "domestic_production",
+                ("_DOMESTIC_PRODUCTION_ALD_POSITIVE_SHARE_BAND",),
+            ),
+            "child_support_inputs_signal": (
+                "child_support_inputs_signal",
+                "us_child_support_signal_gate",
+                "child_support",
+                ("_NONZERO_SHARE_BANDS", "_CHANNEL_NONZERO_SHARE_BAND"),
+            ),
+            "disability_benefits_signal": (
+                "disability_benefits_signal",
+                "us_disability_benefits_signal_gate",
+                "disability_benefits",
+                ("_NONZERO_SHARE_BAND", "_CHANNEL_NONZERO_SHARE_BANDS"),
+            ),
+            "workers_compensation_signal": (
+                "workers_compensation_signal",
+                "us_workers_compensation_signal_gate",
+                "workers_compensation",
+                ("_NONZERO_SHARE_BAND", "_CHANNEL_NONZERO_SHARE_BANDS"),
+            ),
+            "weeks_unemployed_signal": (
+                "weeks_unemployed_signal",
+                "us_weeks_unemployed_signal_gate",
+                "weeks_unemployed",
+                (
+                    "_CHANNEL_POSITIVE_SHARE_BANDS",
+                    "_CHANNEL_WEIGHTED_MEAN_WEEKS_BANDS",
+                ),
+            ),
+            "educator_expense_signal": (
+                "educator_expense_signal",
+                "us_educator_expense_signal_gate",
+                "educator_expenses",
+                ("_OVERALL_POSITIVE_SHARE_BAND", "_PUF_POSITIVE_SHARE_BAND"),
+            ),
+            "form_4952_election_signal": (
+                "form_4952_election_signal",
+                "us_form_4952_election_signal_gate",
+                "form_4952",
+                ("_OVERALL_POSITIVE_SHARE_BAND", "_PUF_POSITIVE_SHARE_BAND"),
+            ),
+            "salt_refund_income_signal": (
+                "salt_refund_income_signal",
+                "us_salt_refund_income_signal_gate",
+                "salt_refund_income",
+                ("_OVERALL_POSITIVE_SHARE_BAND", "_PUF_POSITIVE_SHARE_BAND"),
+            ),
+            "capital_gain_details_signal": (
+                "capital_gain_details_signal",
+                "us_capital_gain_details_signal_gate",
+                "capital_gain_details",
+                ("_SIGNAL_BANDS",),
+            ),
+            "childcare_inputs_signal": (
+                "childcare_inputs_signal",
+                "us_childcare_signal_gate",
+                "childcare",
+                ("_NONZERO_SHARE_BAND",),
+            ),
+            "adult_care_inputs_signal": (
+                "adult_care_inputs_signal",
+                "us_adult_care_signal_gate",
+                "adult_care",
+                ("_FLAG_SHARE_BAND", "_EXPENSE_PLAUSIBILITY_CEILING"),
+            ),
+            "energy_subsidy_signal": (
+                "energy_subsidy_signal",
+                "us_energy_subsidy_signal_gate",
+                "energy_subsidy",
+                ("_OVERALL_POSITIVE_SHARE_BAND", "_CHANNEL_POSITIVE_SHARE_BANDS"),
+            ),
+            "alimony_inputs_signal": (
+                "alimony_inputs_signal",
+                "us_alimony_signal_gate",
+                "alimony",
+                ("_NONZERO_SHARE_BAND",),
+            ),
+            "casualty_loss_signal": (
+                "casualty_loss_signal",
+                "us_casualty_loss_signal_gate",
+                "casualty_losses",
+                ("_CASUALTY_LOSS_NONZERO_SHARE_BAND",),
+            ),
+            "misc_itemized_signal": (
+                "misc_itemized_signal",
+                "us_misc_itemized_signal_gate",
+                "misc_itemized",
+                ("_MISC_ITEMIZED_NONZERO_SHARE_BAND",),
+            ),
+            "retirement_contributions_signal": (
+                "retirement_contributions_signal",
+                "us_retirement_contributions_signal_gate",
+                "retirement_contributions",
+                ("_NONZERO_SHARE_BAND",),
+            ),
+            "retirement_distributions_signal": (
+                "retirement_distributions_signal",
+                "us_retirement_distributions_signal_gate",
+                "retirement_distributions",
+                ("_NONZERO_SHARE_BANDS",),
+            ),
+            "education_inputs_signal": (
+                "education_inputs_signal",
+                "us_education_inputs_signal_gate",
+                "education_inputs",
+                ("_TUITION_SHARE_BAND", "_ASSISTANCE_SHARE_BAND"),
+            ),
+        }
+    )
+)
+
+
+def _shared_frame_checks(*checks: str) -> tuple[USGateSpec, ...]:
+    return tuple(
+        _frame_check(check, legacy, gate, module, *constants)
+        for check in checks
+        for legacy, gate, module, constants in (_SHARED_FRAME_SIGNALS[check],)
+    )
+
+
+#: Thresholds the geography ladder gate takes as keywords today.
+_GEOGRAPHY_LADDER_THRESHOLDS = frozenset(
+    {
+        "nyc_share_bounds",
+        "nyc_share_of_new_york_bounds",
+        "place_share_bounds",
+        "cbsa_share_bounds",
+        "sld_min_share",
+    }
+)
+
+
+def _us_base_specs() -> tuple[USGateSpec, ...]:
+    return (
+        *_shared_frame_checks(
+            "relationship_inputs_signal",
+            "spm_independence_role_signal",
+            "medicare_take_up_input_signal",
+            "housing_inputs_signal",
+            "eligibility_inputs_signal",
+            "pregnancy_signal",
+            "wic_claim_input_signal",
+            "esi_premiums_signal",
+            "prior_year_income_signal",
+            "prior_year_income_source_reconciliation",
+            "qbi_inputs_signal",
+            "farm_business_income_signal",
+            "domestic_production_ald_signal",
+            "child_support_inputs_signal",
+            "disability_benefits_signal",
+            "workers_compensation_signal",
+            "weeks_unemployed_signal",
+            "educator_expense_signal",
+            "form_4952_election_signal",
+            "salt_refund_income_signal",
+            "capital_gain_details_signal",
+            "childcare_inputs_signal",
+            "adult_care_inputs_signal",
+            "energy_subsidy_signal",
+            "alimony_inputs_signal",
+            "casualty_loss_signal",
+            "misc_itemized_signal",
+            "retirement_contributions_signal",
+            "retirement_distributions_signal",
+            "education_inputs_signal",
+        ),
+        USGateSpec(
+            check="geography_ladder",
+            legacy_name="us_geography_ladder",
+            gate="tool:us_geography_ladder_gate",
+            positional=("household", "household_weights"),
+            parameters=_GEOGRAPHY_LADDER_THRESHOLDS,
+        ),
+        USGateSpec(
+            check="block_location",
+            legacy_name="us_block_location",
+            gate="tool:us_block_location_gate",
+            positional=("household", "location_ladder"),
+        ),
+    )
+
+
+#: Configuration and thresholds the PUMA ladder gate takes as keywords today.
+_SCOPE_SPECS: Mapping[str, Callable[[], tuple[USGateSpec, ...]]] = MappingProxyType(
+    {"us_base": _us_base_specs}
+)
 
 
 def us_gate_specs(scope: str) -> tuple[USGateSpec, ...]:

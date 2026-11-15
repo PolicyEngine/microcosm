@@ -33,8 +33,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from microcosm.build import FitWeightRecord, weights_audit_gate
+from microcosm.build import FitWeightRecord, GateResult, weights_audit_gate
 from microcosm.build.frame_checkpoint import write_frame_checkpoint
+from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.outer_stage_runtime import (
     Stage,
@@ -172,6 +173,7 @@ from microcosm.build.us_runtime import (
     write_puf_capital_gains_tail_manifest,
 )
 from microcosm.build.us_runtime.asec_sources import ASEC_SOURCE_ARTIFACTS
+from microcosm.build.us_runtime.battery_bindings import us_gate_registry
 from microcosm.build.us_runtime.block_location import (
     POPULACE_BLOCK_LADDER_SHA256_ATTR,
     POPULACE_BLOCK_LADDER_VINTAGES_ATTR,
@@ -191,6 +193,17 @@ from microcosm.build.us_runtime.cps_source_geography import (
     cps_source_geography,
     household_source_keys,
     load_cps_household_geography,
+)
+from microcosm.build.us_runtime.gate_scopes import us_scoped_gate_manifest
+from microcosm.build.us_runtime.gate_shadow import (
+    GATE_BATTERY_SHADOW_DIRECTORY,
+    GateBatteryShadow,
+    LegacyVerdict,
+    active_gate_shadow,
+    current_gate_shadow,
+    shadow_file_paths,
+    shadow_gate,
+    shadow_not_run,
 )
 from microcosm.build.us_runtime.h5_io import (
     assert_h5_unchanged,
@@ -895,9 +908,10 @@ def _dispatch(
         return
     if checkpoint_dir is None:
         # This is intentionally a direct call with no profiler, checkpoint
-        # directory creation, or other side effect, except telemetry: the
-        # emitter started in main() and the one stage change below, which
-        # change no output byte. It is the pre-refactor pipeline and remains
+        # directory creation, or other side effect, except telemetry (the
+        # emitter started in main() and the one stage change below) and the
+        # gate battery's shadow files beside the outputs, none of which
+        # changes an output byte. It is the pre-refactor pipeline and remains
         # the byte-for-byte compatibility path.
         if telemetry is not None:
             telemetry.transition_stage("all")
@@ -909,10 +923,12 @@ def _dispatch(
                 boundary_dir, pipeline_steps=_pipeline_steps_for(args)
             )
         )
-        if observer is None:
-            _run_all(args)
-        else:
-            _run_all(args, boundary_observer=observer)
+        with _armed_base_gate_shadow(args):
+            if observer is None:
+                _run_all(args)
+            else:
+                _run_all(args, boundary_observer=observer)
+        if observer is not None:
             observer.assert_complete()
         return
     _run_staged_all(args, telemetry)
@@ -940,23 +956,183 @@ def _run_staged_all(
         # Re-enter only the fresh final child so it can validate/repair the
         # export and stage_all alias after a crash in the post-context window.
         remaining = ("final_export",)
-    for stage in remaining:
-        if telemetry is not None:
-            telemetry.transition_stage(stage)
-        completed = subprocess.run(
-            [
-                sys.executable,
-                str(Path(__file__).resolve()),
-                *_stage_cli_args(args, stage),
-            ],
-            check=False,
-            env=_staged_subprocess_environment(),
-        )
-        if completed.returncode != 0:
-            raise SystemExit(
-                f"Checkpointed stage {stage!r} failed with exit code "
-                f"{completed.returncode}."
+    # Each child observes its own stage's gates; this parent finishes the
+    # shadow scope from what they saved, completed stages included.
+    directory = _final_gate_shadow_directory(args)
+    shadow = None if directory is None else _base_gate_shadow(args, directory)
+    try:
+        for stage in remaining:
+            if telemetry is not None:
+                telemetry.transition_stage(stage)
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve()),
+                    *_stage_cli_args(args, stage),
+                ],
+                check=False,
+                env=_staged_subprocess_environment(),
             )
+            if completed.returncode != 0:
+                raise SystemExit(
+                    f"Checkpointed stage {stage!r} failed with exit code "
+                    f"{completed.returncode}."
+                )
+    except BaseException as error:
+        if shadow is not None:
+            _load_stage_gate_shadows(shadow, args, pipeline_steps)
+            shadow.stop(error)
+        raise
+    if shadow is not None:
+        _load_stage_gate_shadows(shadow, args, pipeline_steps)
+        shadow.finish()
+
+
+#: This tool's scope of us/gates.json, evaluated in shadow beside today's
+#: gates (microcosm#1585 item 11, PR 2 of 4).
+US_BASE_GATE_SCOPE = "us_base"
+_GEOGRAPHY_LADDER_WAIVER = "--allow-geography-ladder-gate-failures"
+
+
+def _final_gate_shadow_directory(args: argparse.Namespace) -> Path | None:
+    """Where the finished shadow files go: beside the outputs.
+
+    ``None`` only for stand-in arguments without ``--out`` (a test driving
+    the dispatcher), which have nowhere to write and run without a shadow;
+    the parser requires ``--out`` of every real run.
+    """
+
+    out = getattr(args, "out", None)
+    return None if out is None else Path(out).resolve() / GATE_BATTERY_SHADOW_DIRECTORY
+
+
+def _stage_gate_shadow_observations(args: argparse.Namespace, stage: str) -> Path:
+    return (
+        args.checkpoint_dir
+        / GATE_BATTERY_SHADOW_DIRECTORY
+        / f"{stage}.observations.json"
+    )
+
+
+def _base_gate_shadow(args: argparse.Namespace, directory: Path) -> GateBatteryShadow:
+    """This build's gate battery in shadow, its files in ``directory``."""
+
+    report_path, comparison_path = shadow_file_paths(directory, US_BASE_GATE_SCOPE)
+    waived = (
+        ("us_base_geography_ladder", "us_base_block_location")
+        if getattr(args, "allow_geography_ladder_gate_failures", False)
+        else ()
+    )
+    target_year = getattr(args, "target_year", PERIOD)
+    return GateBatteryShadow(
+        us_scoped_gate_manifest(US_BASE_GATE_SCOPE),
+        scope=US_BASE_GATE_SCOPE,
+        release_id=f"populace-us-{target_year}-puf-support-base",
+        report_path=report_path,
+        comparison_path=comparison_path,
+        registry=us_gate_registry(US_BASE_GATE_SCOPE, tool=globals()),
+        waivers={entry_id: (_GEOGRAPHY_LADDER_WAIVER,) for entry_id in waived},
+    )
+
+
+@contextmanager
+def _armed_base_gate_shadow(
+    args: argparse.Namespace,
+) -> Iterator[GateBatteryShadow | None]:
+    """The single-process run's shadow, finished when the block exits."""
+
+    directory = _final_gate_shadow_directory(args)
+    if directory is None:
+        yield None
+        return
+    shadow = _base_gate_shadow(args, directory)
+    with shadow, active_gate_shadow(shadow):
+        yield shadow
+
+
+@contextmanager
+def _armed_stage_gate_shadow(args: argparse.Namespace) -> Iterator[Callable[[], None]]:
+    """Arm one checkpointed stage's shadow; yield the call that saves it.
+
+    The stage saves before it marks itself complete, so a resumed build finds
+    the observations of every stage it does not run again. A stage that
+    raises saves what it saw on the way out, so the parent's report says
+    where the build stopped. A save that fails warns and is otherwise left to
+    the parent, which then reports the stage's entries as unobserved.
+    """
+
+    shadow = _base_gate_shadow(
+        args, args.checkpoint_dir / GATE_BATTERY_SHADOW_DIRECTORY / args.stage
+    )
+    path = _stage_gate_shadow_observations(args, args.stage)
+    saved = False
+
+    def save() -> None:
+        nonlocal saved
+        if saved:
+            return
+        saved = True
+        try:
+            shadow.save_observations(path)
+        except Exception as error:  # noqa: BLE001 - the shadow never stops a stage
+            print(
+                f"warning: could not save gate battery shadow observations to "
+                f"{path}: {type(error).__name__}: {error}",
+                file=sys.stderr,
+            )
+
+    with active_gate_shadow(shadow):
+        try:
+            yield save
+        except BaseException:
+            save()
+            raise
+    save()
+
+
+def _load_stage_gate_shadows(
+    shadow: GateBatteryShadow,
+    args: argparse.Namespace,
+    pipeline_steps: Sequence[str],
+) -> None:
+    for stage in pipeline_steps:
+        path = _stage_gate_shadow_observations(args, stage)
+        if path.is_file():
+            shadow.load_observations(path)
+
+
+def _shadow_frame_gate(
+    entry_id: str, evaluate: Callable[[], GateResult], frame: Frame
+) -> GateResult:
+    """Today's frame signal gate, with the battery's entry beside it."""
+
+    return shadow_gate(entry_id, evaluate, lambda: EvidenceContext(frame=frame))
+
+
+def _observe_frame_gate(entry_id: str, result: GateResult, frame: Frame) -> None:
+    """Observe a frame gate verdict today's code reached by itself."""
+
+    shadow = current_gate_shadow(entry_id)
+    if shadow is None:
+        return
+    try:
+        legacy = LegacyVerdict.from_result(result)
+    except TypeError as error:
+        shadow.record_error(entry_id, f"today's verdict is not comparable: {error}")
+        return
+    shadow.check(entry_id, lambda: EvidenceContext(frame=frame), legacy)
+
+
+def _shadow_legacy_location_not_run(args: argparse.Namespace) -> None:
+    """The location entries the legacy location rule never evaluates."""
+
+    shadow_not_run("us_base_block_location", "the legacy location rule draws no block")
+    if getattr(args, "block_ladder_artifact", None) is None:
+        shadow_not_run(
+            "us_base_geography_ladder",
+            "the legacy location rule assigns no geography ladder without "
+            "--block-ladder-artifact",
+        )
 
 
 def _stage_cli_args(args: argparse.Namespace, stage: str) -> list[str]:
@@ -1390,11 +1566,23 @@ def _block_v1_household_location(
     )
     household = located.table("household")
     household_weights = located.weights_for("household").values
-    location_gate = us_block_location_gate(household, ladder)
+    location_gate = shadow_gate(
+        "us_base_block_location",
+        lambda: us_block_location_gate(household, ladder),
+        lambda: EvidenceContext(
+            artifacts={"household": household, "location_ladder": ladder}
+        ),
+    )
     # The L0/refit release export re-runs the legacy geography-ladder gate
     # (l0_refit_export.py:export_us_l0_refit_h5) on frames built from this
     # base, so the block draw must pass it here too.
-    ladder_gate = us_geography_ladder_gate(household, household_weights)
+    ladder_gate = shadow_gate(
+        "us_base_geography_ladder",
+        lambda: us_geography_ladder_gate(household, household_weights),
+        lambda: EvidenceContext(
+            artifacts={"household": household, "household_weights": household_weights}
+        ),
+    )
     failures = [
         *(f"us_block_location: {failure}" for failure in location_gate.failures),
         *(f"geography_ladder: {failure}" for failure in ladder_gate.failures),
@@ -1527,7 +1715,11 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    relationship_inputs_gate = us_relationship_inputs_signal_gate(base)
+    relationship_inputs_gate = _shadow_frame_gate(
+        "us_base_relationship_inputs",
+        lambda: us_relationship_inputs_signal_gate(base),
+        base,
+    )
     if not relationship_inputs_gate.passed:
         raise SystemExit(
             "Relationship-input signal gate failed:\n  "
@@ -1539,7 +1731,11 @@ def _run_all(
         time_period=args.target_year,
         asec_spm_role_source_paths=_asec_education_source_paths(args),
     )
-    spm_independence_role_gate = us_spm_independence_role_signal_gate(base)
+    spm_independence_role_gate = _shadow_frame_gate(
+        "us_base_spm_independence_role",
+        lambda: us_spm_independence_role_signal_gate(base),
+        base,
+    )
     if not spm_independence_role_gate.passed:
         raise SystemExit(
             "SPM independence role signal gate failed:\n  "
@@ -1550,7 +1746,11 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    medicare_take_up_gate = us_medicare_take_up_signal_gate(base)
+    medicare_take_up_gate = _shadow_frame_gate(
+        "us_base_medicare_take_up_pre_clone",
+        lambda: us_medicare_take_up_signal_gate(base),
+        base,
+    )
     if not medicare_take_up_gate.passed:
         raise SystemExit(
             "Medicare take-up input signal gate failed before support cloning:\n  "
@@ -1560,6 +1760,9 @@ def _run_all(
     acs_rent_donor: pd.DataFrame | None = None
     if not housing_inputs_gate.passed:
         if args.acs_h5 is None:
+            _observe_frame_gate(
+                "us_base_housing_inputs_pre_clone", housing_inputs_gate, base
+            )
             raise SystemExit(
                 "Housing-input signal gate is not already green and --acs-h5 "
                 "was not provided; exact pre_subsidy_rent restoration requires "
@@ -1573,6 +1776,7 @@ def _run_all(
             acs_rent_donor=acs_rent_donor,
         )
         housing_inputs_gate = us_housing_inputs_signal_gate(base)
+    _observe_frame_gate("us_base_housing_inputs_pre_clone", housing_inputs_gate, base)
     if not housing_inputs_gate.passed:
         raise SystemExit(
             "Housing-input signal gate failed before support cloning:\n  "
@@ -1583,7 +1787,11 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    eligibility_inputs_gate = us_eligibility_inputs_signal_gate(base)
+    eligibility_inputs_gate = _shadow_frame_gate(
+        "us_base_eligibility_inputs",
+        lambda: us_eligibility_inputs_signal_gate(base),
+        base,
+    )
     if not eligibility_inputs_gate.passed:
         raise SystemExit(
             "Eligibility-input signal gate failed before support cloning:\n  "
@@ -1594,7 +1802,9 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    pregnancy_gate = us_pregnancy_signal_gate(base)
+    pregnancy_gate = _shadow_frame_gate(
+        "us_base_pregnancy", lambda: us_pregnancy_signal_gate(base), base
+    )
     if not pregnancy_gate.passed:
         raise SystemExit(
             "Pregnancy signal gate failed before support cloning:\n  "
@@ -1605,7 +1815,9 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    wic_claim_gate = us_wic_claim_signal_gate(base)
+    wic_claim_gate = _shadow_frame_gate(
+        "us_base_wic_claim_pre_clone", lambda: us_wic_claim_signal_gate(base), base
+    )
     if not wic_claim_gate.passed:
         raise SystemExit(
             "WIC-claim signal gate failed before support cloning:\n  "
@@ -1657,7 +1869,11 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    esi_premiums_gate = us_esi_premiums_signal_gate(base)
+    esi_premiums_gate = _shadow_frame_gate(
+        "us_base_esi_premiums_pre_clone",
+        lambda: us_esi_premiums_signal_gate(base),
+        base,
+    )
     if not esi_premiums_gate.passed:
         raise SystemExit(
             "ESI premium signal gate failed before support cloning:\n  "
@@ -1726,13 +1942,21 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    wic_claim_gate = us_wic_claim_signal_gate(imputed)
+    wic_claim_gate = _shadow_frame_gate(
+        "us_base_wic_claim_post_clone",
+        lambda: us_wic_claim_signal_gate(imputed),
+        imputed,
+    )
     if not wic_claim_gate.passed:
         raise SystemExit(
             "WIC-claim signal gate failed after support cloning:\n  "
             + "\n  ".join(wic_claim_gate.failures)
         )
-    medicare_take_up_gate = us_medicare_take_up_signal_gate(imputed)
+    medicare_take_up_gate = _shadow_frame_gate(
+        "us_base_medicare_take_up_post_clone",
+        lambda: us_medicare_take_up_signal_gate(imputed),
+        imputed,
+    )
     if not medicare_take_up_gate.passed:
         raise SystemExit(
             "Medicare take-up input signal gate failed after support cloning:\n  "
@@ -1749,38 +1973,58 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    prior_year_income_gate = us_prior_year_income_signal_gate(imputed)
+    prior_year_income_gate = _shadow_frame_gate(
+        "us_base_prior_year_income",
+        lambda: us_prior_year_income_signal_gate(imputed),
+        imputed,
+    )
     if not prior_year_income_gate.passed:
         raise SystemExit(
             "Prior-year-income signal gate failed:\n  "
             + "\n  ".join(prior_year_income_gate.failures)
         )
-    prior_year_income_reconciliation_gate = (
-        us_prior_year_income_source_reconciliation_gate(imputed)
+    prior_year_income_reconciliation_gate = _shadow_frame_gate(
+        "us_base_prior_year_income_source_reconciliation",
+        lambda: us_prior_year_income_source_reconciliation_gate(imputed),
+        imputed,
     )
     if not prior_year_income_reconciliation_gate.passed:
         raise SystemExit(
             "Prior-year-income source reconciliation failed:\n  "
             + "\n  ".join(prior_year_income_reconciliation_gate.failures)
         )
-    housing_inputs_gate = us_housing_inputs_signal_gate(imputed)
+    housing_inputs_gate = _shadow_frame_gate(
+        "us_base_housing_inputs_post_clone",
+        lambda: us_housing_inputs_signal_gate(imputed),
+        imputed,
+    )
     if not housing_inputs_gate.passed:
         raise SystemExit(
             "Housing-input signal gate failed after PUF-support imputation:\n  "
             + "\n  ".join(housing_inputs_gate.failures)
         )
-    qbi_inputs_gate = us_qbi_inputs_signal_gate(imputed)
+    qbi_inputs_gate = _shadow_frame_gate(
+        "us_base_qbi_inputs", lambda: us_qbi_inputs_signal_gate(imputed), imputed
+    )
     if not qbi_inputs_gate.passed:
         raise SystemExit(
             "QBI-input signal gate failed:\n  " + "\n  ".join(qbi_inputs_gate.failures)
         )
-    farm_business_income_gate = us_farm_business_income_signal_gate(imputed)
+    farm_business_income_gate = _shadow_frame_gate(
+        "us_base_farm_business_income",
+        lambda: us_farm_business_income_signal_gate(imputed),
+        imputed,
+    )
     if not farm_business_income_gate.passed:
         raise SystemExit(
             "Farm-business-income signal gate failed:\n  "
             + "\n  ".join(farm_business_income_gate.failures)
         )
-    domestic_production_ald_gate = us_domestic_production_ald_signal_gate(imputed)
+    domestic_production_ald_gate = _shadow_frame_gate(
+        "us_base_domestic_production_ald",
+        lambda: us_domestic_production_ald_signal_gate(imputed),
+        imputed,
+    )
     if not domestic_production_ald_gate.passed:
         raise SystemExit(
             "Domestic-production-ALD signal gate failed:\n  "
@@ -1792,7 +2036,9 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    child_support_gate = us_child_support_signal_gate(imputed)
+    child_support_gate = _shadow_frame_gate(
+        "us_base_child_support", lambda: us_child_support_signal_gate(imputed), imputed
+    )
     if not child_support_gate.passed:
         raise SystemExit(
             "Child-support signal gate failed:\n  "
@@ -1804,7 +2050,11 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    disability_benefits_gate = us_disability_benefits_signal_gate(imputed)
+    disability_benefits_gate = _shadow_frame_gate(
+        "us_base_disability_benefits",
+        lambda: us_disability_benefits_signal_gate(imputed),
+        imputed,
+    )
     if not disability_benefits_gate.passed:
         raise SystemExit(
             "Disability-benefits signal gate failed:\n  "
@@ -1818,7 +2068,11 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    workers_compensation_gate = us_workers_compensation_signal_gate(imputed)
+    workers_compensation_gate = _shadow_frame_gate(
+        "us_base_workers_compensation",
+        lambda: us_workers_compensation_signal_gate(imputed),
+        imputed,
+    )
     if not workers_compensation_gate.passed:
         raise SystemExit(
             "Workers-compensation signal gate failed:\n  "
@@ -1833,31 +2087,51 @@ def _run_all(
         time_period=args.target_year,
         asec_2023_source=weeks_unemployed_source,
     )
-    weeks_unemployed_gate = us_weeks_unemployed_signal_gate(imputed)
+    weeks_unemployed_gate = _shadow_frame_gate(
+        "us_base_weeks_unemployed",
+        lambda: us_weeks_unemployed_signal_gate(imputed),
+        imputed,
+    )
     if not weeks_unemployed_gate.passed:
         raise SystemExit(
             "Weeks-unemployed signal gate failed:\n  "
             + "\n  ".join(weeks_unemployed_gate.failures)
         )
-    educator_expense_gate = us_educator_expense_signal_gate(imputed)
+    educator_expense_gate = _shadow_frame_gate(
+        "us_base_educator_expense",
+        lambda: us_educator_expense_signal_gate(imputed),
+        imputed,
+    )
     if not educator_expense_gate.passed:
         raise SystemExit(
             "Educator-expense signal gate failed:\n  "
             + "\n  ".join(educator_expense_gate.failures)
         )
-    form_4952_election_gate = us_form_4952_election_signal_gate(imputed)
+    form_4952_election_gate = _shadow_frame_gate(
+        "us_base_form_4952_election",
+        lambda: us_form_4952_election_signal_gate(imputed),
+        imputed,
+    )
     if not form_4952_election_gate.passed:
         raise SystemExit(
             "Form 4952 election signal gate failed:\n  "
             + "\n  ".join(form_4952_election_gate.failures)
         )
-    salt_refund_income_gate = us_salt_refund_income_signal_gate(imputed)
+    salt_refund_income_gate = _shadow_frame_gate(
+        "us_base_salt_refund_income",
+        lambda: us_salt_refund_income_signal_gate(imputed),
+        imputed,
+    )
     if not salt_refund_income_gate.passed:
         raise SystemExit(
             "SALT-refund-income signal gate failed:\n  "
             + "\n  ".join(salt_refund_income_gate.failures)
         )
-    capital_gain_details_gate = us_capital_gain_details_signal_gate(imputed)
+    capital_gain_details_gate = _shadow_frame_gate(
+        "us_base_capital_gain_details",
+        lambda: us_capital_gain_details_signal_gate(imputed),
+        imputed,
+    )
     if not capital_gain_details_gate.passed:
         raise SystemExit(
             "Capital-gain details signal gate failed:\n  "
@@ -1869,7 +2143,9 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    childcare_gate = us_childcare_signal_gate(imputed)
+    childcare_gate = _shadow_frame_gate(
+        "us_base_childcare", lambda: us_childcare_signal_gate(imputed), imputed
+    )
     if not childcare_gate.passed:
         raise SystemExit(
             "Childcare-input signal gate failed:\n  "
@@ -1881,7 +2157,9 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    adult_care_gate = us_adult_care_signal_gate(imputed)
+    adult_care_gate = _shadow_frame_gate(
+        "us_base_adult_care", lambda: us_adult_care_signal_gate(imputed), imputed
+    )
     if not adult_care_gate.passed:
         raise SystemExit(
             "Adult-care input signal gate failed:\n  "
@@ -1893,24 +2171,34 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    energy_subsidy_gate = us_energy_subsidy_signal_gate(imputed)
+    energy_subsidy_gate = _shadow_frame_gate(
+        "us_base_energy_subsidy",
+        lambda: us_energy_subsidy_signal_gate(imputed),
+        imputed,
+    )
     if not energy_subsidy_gate.passed:
         raise SystemExit(
             "Energy-subsidy signal gate failed:\n  "
             + "\n  ".join(energy_subsidy_gate.failures)
         )
-    alimony_gate = us_alimony_signal_gate(imputed)
+    alimony_gate = _shadow_frame_gate(
+        "us_base_alimony", lambda: us_alimony_signal_gate(imputed), imputed
+    )
     if not alimony_gate.passed:
         raise SystemExit(
             "Alimony-input signal gate failed:\n  " + "\n  ".join(alimony_gate.failures)
         )
-    casualty_loss_gate = us_casualty_loss_signal_gate(imputed)
+    casualty_loss_gate = _shadow_frame_gate(
+        "us_base_casualty_loss", lambda: us_casualty_loss_signal_gate(imputed), imputed
+    )
     if not casualty_loss_gate.passed:
         raise SystemExit(
             "Casualty-loss signal gate failed:\n  "
             + "\n  ".join(casualty_loss_gate.failures)
         )
-    misc_itemized_gate = us_misc_itemized_signal_gate(imputed)
+    misc_itemized_gate = _shadow_frame_gate(
+        "us_base_misc_itemized", lambda: us_misc_itemized_signal_gate(imputed), imputed
+    )
     if not misc_itemized_gate.passed:
         raise SystemExit(
             "Miscellaneous-itemized signal gate failed:\n  "
@@ -1922,7 +2210,11 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    retirement_contributions_gate = us_retirement_contributions_signal_gate(imputed)
+    retirement_contributions_gate = _shadow_frame_gate(
+        "us_base_retirement_contributions",
+        lambda: us_retirement_contributions_signal_gate(imputed),
+        imputed,
+    )
     if not retirement_contributions_gate.passed:
         raise SystemExit(
             "Retirement-contribution signal gate failed:\n  "
@@ -1940,7 +2232,11 @@ def _run_all(
         # preserve this completed draw even after selecting a narrower support.
         force_puf_imputation=True,
     )
-    retirement_distributions_gate = us_retirement_distributions_signal_gate(imputed)
+    retirement_distributions_gate = _shadow_frame_gate(
+        "us_base_retirement_distributions",
+        lambda: us_retirement_distributions_signal_gate(imputed),
+        imputed,
+    )
     if not retirement_distributions_gate.passed:
         raise SystemExit(
             "Retirement-distribution signal gate failed:\n  "
@@ -1955,7 +2251,11 @@ def _run_all(
         time_period=args.target_year,
         asec_education_source=education_assistance_source,
     )
-    education_inputs_gate = us_education_inputs_signal_gate(imputed)
+    education_inputs_gate = _shadow_frame_gate(
+        "us_base_education_inputs",
+        lambda: us_education_inputs_signal_gate(imputed),
+        imputed,
+    )
     if not education_inputs_gate.passed:
         raise SystemExit(
             "Education-input signal gate failed:\n  "
@@ -1963,7 +2263,11 @@ def _run_all(
         )
     # The ESI premium inputs ride the support clone unchanged; re-prove clone
     # agreement and the cell multiples on the cloned frame.
-    esi_premiums_post_clone_gate = us_esi_premiums_signal_gate(imputed)
+    esi_premiums_post_clone_gate = _shadow_frame_gate(
+        "us_base_esi_premiums_post_clone",
+        lambda: us_esi_premiums_signal_gate(imputed),
+        imputed,
+    )
     if not esi_premiums_post_clone_gate.passed:
         raise SystemExit(
             "ESI premium signal gate failed after support cloning:\n  "
@@ -2038,6 +2342,7 @@ def _run_all(
             "applied": False,
             "opted_out": bool(args.without_block_ladder),
         }
+        _shadow_legacy_location_not_run(args)
         if args.block_ladder_artifact is not None:
             ladder = load_us_block_ladder(args.block_ladder_artifact)
             imputed = with_household_us_geography_ladder(
@@ -2050,7 +2355,16 @@ def _run_all(
             )
             household = imputed.table("household")
             household_weights = imputed.weights_for("household").values
-            gate = us_geography_ladder_gate(household, household_weights)
+            gate = shadow_gate(
+                "us_base_geography_ladder",
+                lambda: us_geography_ladder_gate(household, household_weights),
+                lambda: EvidenceContext(
+                    artifacts={
+                        "household": household,
+                        "household_weights": household_weights,
+                    }
+                ),
+            )
             if not gate.passed and not args.allow_geography_ladder_gate_failures:
                 raise SystemExit(
                     "Geography-ladder gate failed:\n  " + "\n  ".join(gate.failures)
@@ -2374,7 +2688,10 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
             )
         return
 
-    with profile_stage(args.stage, args.checkpoint_dir):
+    with (
+        profile_stage(args.stage, args.checkpoint_dir),
+        _armed_stage_gate_shadow(args) as save_gate_shadow,
+    ):
         if args.stage == "source_construction":
             predecessor = runtime.load_predecessor(args.stage)
             if predecessor is not None:
@@ -2448,6 +2765,7 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
                 stage_metadata,
             )
             assert_unchanged_identity(before, after, stage=args.stage)
+        save_gate_shadow()
         completed = runtime.complete(args.stage, after, metadata=metadata)
         if args.stage == "final_export":
             _link_all_stage_checkpoint(args.checkpoint_dir, completed.path)
@@ -2722,7 +3040,11 @@ def _pre_clone_enrichment_stage(
     )
     signals: dict[str, object] = {
         "relationship_inputs_signal": _checked_gate_payload(
-            us_relationship_inputs_signal_gate(base),
+            _shadow_frame_gate(
+                "us_base_relationship_inputs",
+                lambda: us_relationship_inputs_signal_gate(base),
+                base,
+            ),
             "Relationship-input signal gate failed",
         )
     }
@@ -2733,7 +3055,11 @@ def _pre_clone_enrichment_stage(
         asec_spm_role_source_paths=_asec_education_source_paths(args),
     )
     signals["spm_independence_role_signal"] = _checked_gate_payload(
-        us_spm_independence_role_signal_gate(base),
+        _shadow_frame_gate(
+            "us_base_spm_independence_role",
+            lambda: us_spm_independence_role_signal_gate(base),
+            base,
+        ),
         "SPM independence role signal gate failed before support cloning",
     )
     base = with_us_medicare_take_up_input(
@@ -2742,13 +3068,18 @@ def _pre_clone_enrichment_stage(
         time_period=args.target_year,
     )
     signals["medicare_take_up_input_signal"] = _checked_gate_payload(
-        us_medicare_take_up_signal_gate(base),
+        _shadow_frame_gate(
+            "us_base_medicare_take_up_pre_clone",
+            lambda: us_medicare_take_up_signal_gate(base),
+            base,
+        ),
         "Medicare take-up input signal gate failed before support cloning",
     )
     housing_gate = us_housing_inputs_signal_gate(base)
     acs_rent_donor: pd.DataFrame | None = None
     if not housing_gate.passed:
         if args.acs_h5 is None:
+            _observe_frame_gate("us_base_housing_inputs_pre_clone", housing_gate, base)
             raise SystemExit(
                 "Housing-input signal gate is not already green and --acs-h5 "
                 "was not provided; exact pre_subsidy_rent restoration requires "
@@ -2762,6 +3093,7 @@ def _pre_clone_enrichment_stage(
             acs_rent_donor=acs_rent_donor,
         )
         housing_gate = us_housing_inputs_signal_gate(base)
+    _observe_frame_gate("us_base_housing_inputs_pre_clone", housing_gate, base)
     signals["housing_inputs_signal"] = _checked_gate_payload(
         housing_gate,
         "Housing-input signal gate failed before support cloning",
@@ -2772,7 +3104,11 @@ def _pre_clone_enrichment_stage(
         time_period=args.target_year,
     )
     signals["eligibility_inputs_signal"] = _checked_gate_payload(
-        us_eligibility_inputs_signal_gate(base),
+        _shadow_frame_gate(
+            "us_base_eligibility_inputs",
+            lambda: us_eligibility_inputs_signal_gate(base),
+            base,
+        ),
         "Eligibility-input signal gate failed before support cloning",
     )
     base = with_us_pregnancy_inputs(
@@ -2781,7 +3117,9 @@ def _pre_clone_enrichment_stage(
         time_period=args.target_year,
     )
     signals["pregnancy_signal"] = _checked_gate_payload(
-        us_pregnancy_signal_gate(base),
+        _shadow_frame_gate(
+            "us_base_pregnancy", lambda: us_pregnancy_signal_gate(base), base
+        ),
         "Pregnancy signal gate failed before support cloning",
     )
     base = with_us_wic_claim_input(
@@ -2790,7 +3128,9 @@ def _pre_clone_enrichment_stage(
         time_period=args.target_year,
     )
     signals["wic_claim_signal"] = _checked_gate_payload(
-        us_wic_claim_signal_gate(base),
+        _shadow_frame_gate(
+            "us_base_wic_claim_pre_clone", lambda: us_wic_claim_signal_gate(base), base
+        ),
         "WIC-claim signal gate failed before support cloning",
     )
     base = with_us_child_support_inputs(
@@ -2840,7 +3180,11 @@ def _pre_clone_enrichment_stage(
         time_period=args.target_year,
     )
     signals["esi_premiums_signal"] = _checked_gate_payload(
-        us_esi_premiums_signal_gate(base),
+        _shadow_frame_gate(
+            "us_base_esi_premiums_pre_clone",
+            lambda: us_esi_premiums_signal_gate(base),
+            base,
+        ),
         "ESI premium signal gate failed before support cloning",
     )
     base = with_us_immigration_inputs(
@@ -2929,7 +3273,12 @@ def _qrf_finalization_stage(
         args.checkpoint_dir / "primary_qrf",
         tail_bound_diagnostics=tail_bound_diagnostics,
     )
-    report = weights_audit_gate([FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, weight_kind)])
+    fit_records = [FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, weight_kind)]
+    report = shadow_gate(
+        "us_base_weights_audit",
+        lambda: weights_audit_gate(fit_records),
+        lambda: EvidenceContext(artifacts={"fit_weight_records": fit_records}),
+    )
     if not report.passed:
         raise SystemExit("Weights audit failed:\n  " + "\n  ".join(report.failures))
     return imputed, {
@@ -3205,11 +3554,19 @@ def _post_qrf_frame_stage(
             time_period=args.target_year,
         )
         signals["wic_claim_signal"] = _checked_gate_payload(
-            us_wic_claim_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_wic_claim_post_clone",
+                lambda: us_wic_claim_signal_gate(frame),
+                frame,
+            ),
             "WIC-claim signal gate failed after support cloning",
         )
         signals["medicare_take_up_input_signal"] = _checked_gate_payload(
-            us_medicare_take_up_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_medicare_take_up_post_clone",
+                lambda: us_medicare_take_up_signal_gate(frame),
+                frame,
+            ),
             "Medicare take-up input signal gate failed after support cloning",
         )
     elif stage == "housing_assistance":
@@ -3221,27 +3578,49 @@ def _post_qrf_frame_stage(
             time_period=args.target_year,
         )
         signals["prior_year_income_signal"] = _checked_gate_payload(
-            us_prior_year_income_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_prior_year_income",
+                lambda: us_prior_year_income_signal_gate(frame),
+                frame,
+            ),
             "Prior-year-income signal gate failed",
         )
         signals["prior_year_income_source_reconciliation"] = _checked_gate_payload(
-            us_prior_year_income_source_reconciliation_gate(frame),
+            _shadow_frame_gate(
+                "us_base_prior_year_income_source_reconciliation",
+                lambda: us_prior_year_income_source_reconciliation_gate(frame),
+                frame,
+            ),
             "Prior-year-income source reconciliation failed",
         )
         signals["housing_inputs_signal"] = _checked_gate_payload(
-            us_housing_inputs_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_housing_inputs_post_clone",
+                lambda: us_housing_inputs_signal_gate(frame),
+                frame,
+            ),
             "Housing-input signal gate failed after PUF-support imputation",
         )
         signals["qbi_inputs_signal"] = _checked_gate_payload(
-            us_qbi_inputs_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_qbi_inputs", lambda: us_qbi_inputs_signal_gate(frame), frame
+            ),
             "QBI-input signal gate failed",
         )
         signals["farm_business_income_signal"] = _checked_gate_payload(
-            us_farm_business_income_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_farm_business_income",
+                lambda: us_farm_business_income_signal_gate(frame),
+                frame,
+            ),
             "Farm-business-income signal gate failed",
         )
         signals["domestic_production_ald_signal"] = _checked_gate_payload(
-            us_domestic_production_ald_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_domestic_production_ald",
+                lambda: us_domestic_production_ald_signal_gate(frame),
+                frame,
+            ),
             "Domestic-production-ALD signal gate failed",
         )
     elif stage == "child_support_post_clone":
@@ -3251,7 +3630,12 @@ def _post_qrf_frame_stage(
             time_period=args.target_year,
         )
         signals["child_support_signal"] = _checked_gate_payload(
-            us_child_support_signal_gate(frame), "Child-support signal gate failed"
+            _shadow_frame_gate(
+                "us_base_child_support",
+                lambda: us_child_support_signal_gate(frame),
+                frame,
+            ),
+            "Child-support signal gate failed",
         )
     elif stage == "disability_benefits_post_clone":
         frame = with_us_disability_benefits(
@@ -3260,7 +3644,11 @@ def _post_qrf_frame_stage(
             time_period=args.target_year,
         )
         signals["disability_benefits_signal"] = _checked_gate_payload(
-            us_disability_benefits_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_disability_benefits",
+                lambda: us_disability_benefits_signal_gate(frame),
+                frame,
+            ),
             "Disability-benefits signal gate failed",
         )
     elif stage == "workers_compensation_post_clone":
@@ -3270,7 +3658,11 @@ def _post_qrf_frame_stage(
             time_period=args.target_year,
         )
         signals["workers_compensation_signal"] = _checked_gate_payload(
-            us_workers_compensation_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_workers_compensation",
+                lambda: us_workers_compensation_signal_gate(frame),
+                frame,
+            ),
             "Workers-compensation signal gate failed",
         )
     elif stage == "weeks_unemployed_post_clone":
@@ -3294,23 +3686,43 @@ def _post_qrf_frame_stage(
             asec_2023_source=weeks_source,
         )
         signals["weeks_unemployed_signal"] = _checked_gate_payload(
-            us_weeks_unemployed_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_weeks_unemployed",
+                lambda: us_weeks_unemployed_signal_gate(frame),
+                frame,
+            ),
             "Weeks-unemployed signal gate failed",
         )
         signals["educator_expense_signal"] = _checked_gate_payload(
-            us_educator_expense_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_educator_expense",
+                lambda: us_educator_expense_signal_gate(frame),
+                frame,
+            ),
             "Educator-expense signal gate failed",
         )
         signals["form_4952_election_signal"] = _checked_gate_payload(
-            us_form_4952_election_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_form_4952_election",
+                lambda: us_form_4952_election_signal_gate(frame),
+                frame,
+            ),
             "Form 4952 election signal gate failed",
         )
         signals["salt_refund_income_signal"] = _checked_gate_payload(
-            us_salt_refund_income_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_salt_refund_income",
+                lambda: us_salt_refund_income_signal_gate(frame),
+                frame,
+            ),
             "SALT-refund-income signal gate failed",
         )
         signals["capital_gain_details_signal"] = _checked_gate_payload(
-            us_capital_gain_details_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_capital_gain_details",
+                lambda: us_capital_gain_details_signal_gate(frame),
+                frame,
+            ),
             "Capital-gain details signal gate failed",
         )
     elif stage == "childcare_post_clone":
@@ -3320,7 +3732,10 @@ def _post_qrf_frame_stage(
             time_period=args.target_year,
         )
         signals["childcare_inputs_signal"] = _checked_gate_payload(
-            us_childcare_signal_gate(frame), "Childcare-input signal gate failed"
+            _shadow_frame_gate(
+                "us_base_childcare", lambda: us_childcare_signal_gate(frame), frame
+            ),
+            "Childcare-input signal gate failed",
         )
     elif stage == "adult_care_post_clone":
         frame = with_us_adult_care_inputs(
@@ -3329,7 +3744,10 @@ def _post_qrf_frame_stage(
             time_period=args.target_year,
         )
         signals["adult_care_inputs_signal"] = _checked_gate_payload(
-            us_adult_care_signal_gate(frame), "Adult-care input signal gate failed"
+            _shadow_frame_gate(
+                "us_base_adult_care", lambda: us_adult_care_signal_gate(frame), frame
+            ),
+            "Adult-care input signal gate failed",
         )
     elif stage == "energy_subsidy_post_clone":
         frame = with_us_energy_subsidy_input(
@@ -3338,17 +3756,33 @@ def _post_qrf_frame_stage(
             time_period=args.target_year,
         )
         signals["energy_subsidy_signal"] = _checked_gate_payload(
-            us_energy_subsidy_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_energy_subsidy",
+                lambda: us_energy_subsidy_signal_gate(frame),
+                frame,
+            ),
             "Energy-subsidy signal gate failed",
         )
         signals["alimony_inputs_signal"] = _checked_gate_payload(
-            us_alimony_signal_gate(frame), "Alimony-input signal gate failed"
+            _shadow_frame_gate(
+                "us_base_alimony", lambda: us_alimony_signal_gate(frame), frame
+            ),
+            "Alimony-input signal gate failed",
         )
         signals["casualty_loss_signal"] = _checked_gate_payload(
-            us_casualty_loss_signal_gate(frame), "Casualty-loss signal gate failed"
+            _shadow_frame_gate(
+                "us_base_casualty_loss",
+                lambda: us_casualty_loss_signal_gate(frame),
+                frame,
+            ),
+            "Casualty-loss signal gate failed",
         )
         signals["misc_itemized_signal"] = _checked_gate_payload(
-            us_misc_itemized_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_misc_itemized",
+                lambda: us_misc_itemized_signal_gate(frame),
+                frame,
+            ),
             "Miscellaneous-itemized signal gate failed",
         )
     elif stage == "retirement_contributions_post_clone":
@@ -3358,7 +3792,11 @@ def _post_qrf_frame_stage(
             time_period=args.target_year,
         )
         signals["retirement_contributions_signal"] = _checked_gate_payload(
-            us_retirement_contributions_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_retirement_contributions",
+                lambda: us_retirement_contributions_signal_gate(frame),
+                frame,
+            ),
             "Retirement-contribution signal gate failed",
         )
     elif stage == "retirement_distributions_post_clone":
@@ -3371,7 +3809,11 @@ def _post_qrf_frame_stage(
             force_puf_imputation=True,
         )
         signals["retirement_distributions_signal"] = _checked_gate_payload(
-            us_retirement_distributions_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_retirement_distributions",
+                lambda: us_retirement_distributions_signal_gate(frame),
+                frame,
+            ),
             "Retirement-distribution signal gate failed",
         )
     elif stage == "education_inputs_post_clone":
@@ -3386,11 +3828,19 @@ def _post_qrf_frame_stage(
             asec_education_source=education_assistance_source,
         )
         signals["education_inputs_signal"] = _checked_gate_payload(
-            us_education_inputs_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_education_inputs",
+                lambda: us_education_inputs_signal_gate(frame),
+                frame,
+            ),
             "Education-input signal gate failed",
         )
         signals["esi_premiums_post_clone_signal"] = _checked_gate_payload(
-            us_esi_premiums_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_esi_premiums_post_clone",
+                lambda: us_esi_premiums_signal_gate(frame),
+                frame,
+            ),
             "ESI premium signal gate failed after support cloning",
         )
     elif stage == "congressional_district_assignment":
@@ -3440,6 +3890,7 @@ def _post_qrf_frame_stage(
             "applied": False,
             "opted_out": bool(args.without_block_ladder),
         }
+        _shadow_legacy_location_not_run(args)
         if args.block_ladder_artifact is not None:
             ladder = load_us_block_ladder(args.block_ladder_artifact)
             frame = with_household_us_geography_ladder(
@@ -3452,7 +3903,16 @@ def _post_qrf_frame_stage(
             )
             household = frame.table("household")
             household_weights = frame.weights_for("household").values
-            gate = us_geography_ladder_gate(household, household_weights)
+            gate = shadow_gate(
+                "us_base_geography_ladder",
+                lambda: us_geography_ladder_gate(household, household_weights),
+                lambda: EvidenceContext(
+                    artifacts={
+                        "household": household,
+                        "household_weights": household_weights,
+                    }
+                ),
+            )
             if not gate.passed and not args.allow_geography_ladder_gate_failures:
                 raise SystemExit(
                     "Geography-ladder gate failed:\n  " + "\n  ".join(gate.failures)
@@ -3722,7 +4182,11 @@ def impute_and_audit_us_puf_support(
         raw_predictions_callback=raw_predictions_callback,
         tail_bound_diagnostics=tail_bound_diagnostics,
     )
-    report = weights_audit_gate(fit_records)
+    report = shadow_gate(
+        "us_base_weights_audit",
+        lambda: weights_audit_gate(fit_records),
+        lambda: EvidenceContext(artifacts={"fit_weight_records": list(fit_records)}),
+    )
     if not report.passed:
         raise SystemExit("Weights audit failed:\n  " + "\n  ".join(report.failures))
     weights_audit = {

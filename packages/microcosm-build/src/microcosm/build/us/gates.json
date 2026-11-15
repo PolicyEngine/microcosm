@@ -1,0 +1,805 @@
+{
+  "version": 1,
+  "country": "us",
+  "policy": "US gates declared as data for the shared battery (microcosm#1585 item 11, microcosm#611), one scope per build tool. PR 2 of 4 runs them in shadow: each US tool still gates as it did, evaluates the declared entry beside each gate on the same evidence, and fails the run on a verdict difference. A threshold the gate reads from a module constant is declared at today's value and pinned equal to that constant until the flip makes this file the only source; one the gate takes as a keyword is routed from here. Waivers stay the tools' --allow-* flags, which the shadow records by entry id. Gate names and phases are the shared vocabulary's, pending Max's Step 0 answer.",
+  "phases": [
+    "assembled",
+    "transferred",
+    "terminal"
+  ],
+  "gates": [
+    {
+      "id": "us_base_relationship_inputs",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "relationship_inputs_signal",
+        "household_head_share_band": [
+          0.3,
+          0.55
+        ],
+        "separated_share_band": [
+          0.003,
+          0.04
+        ],
+        "surviving_spouse_share_band": [
+          0.02,
+          0.08
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): relationship inputs on the ASEC frame before support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_spm_independence_role",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "spm_independence_role_signal",
+        "role_share_band": [
+          0.4,
+          0.75
+        ],
+        "minor_role_share_band": [
+          0.003,
+          0.06
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): SPM independence role on the ASEC frame before support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_medicare_take_up_pre_clone",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "medicare_take_up_input_signal",
+        "weighted_enrolled_share_band": [
+          0.15,
+          0.24
+        ],
+        "channel_enrolled_share_band": [
+          0.15,
+          0.24
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): Medicare enrollment input on the ASEC frame before support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_housing_inputs_pre_clone",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "housing_inputs_signal",
+        "rent_share_band": [
+          0.05,
+          0.25
+        ],
+        "housing_assistance_share_band": [
+          0.005,
+          0.08
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): housing inputs before support cloning: the source frame's verdict, or the verdict after the pinned ACS restore when the source frame is not green. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_eligibility_inputs",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "eligibility_inputs_signal",
+        "disabled_share_band": [
+          0.05,
+          0.2
+        ],
+        "full_time_student_share_band": [
+          0.01,
+          0.08
+        ],
+        "parent_share_band": [
+          0.12,
+          0.4
+        ],
+        "veterans_benefits_share_band": [
+          0.002,
+          0.04
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): eligibility inputs on the ASEC frame before support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_pregnancy",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "pregnancy_signal",
+        "pregnant_share_band": [
+          0.002,
+          0.02
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): pregnancy input on the ASEC frame before support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_wic_claim_pre_clone",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "wic_claim_input_signal",
+        "weighted_claim_share_band": [
+          0.015,
+          0.06
+        ],
+        "category_weighted_claim_share_bands": {
+          "pregnant": [
+            0.25,
+            0.67
+          ],
+          "postpartum": [
+            0.45,
+            0.9
+          ],
+          "infant": [
+            0.55,
+            0.96
+          ],
+          "child": [
+            0.3,
+            0.63
+          ],
+          "none": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): WIC claims on the ASEC frame before support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_esi_premiums_pre_clone",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "esi_premiums_signal",
+        "positive_share_band": [
+          0.15,
+          0.32
+        ],
+        "raw_mean_band": [
+          6000.0,
+          20000.0
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): ESI employer premiums on the ASEC frame before support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_weights_audit",
+      "gate": "weights_audit",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "notes": "Route A base (tools/build_us_puf_support_base.py): every fit the PUF-support QRF finalization ran resolved a weight. Raises at once today."
+    },
+    {
+      "id": "us_base_wic_claim_post_clone",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "wic_claim_input_signal",
+        "weighted_claim_share_band": [
+          0.015,
+          0.06
+        ],
+        "category_weighted_claim_share_bands": {
+          "pregnant": [
+            0.25,
+            0.67
+          ],
+          "postpartum": [
+            0.45,
+            0.9
+          ],
+          "infant": [
+            0.55,
+            0.96
+          ],
+          "child": [
+            0.3,
+            0.63
+          ],
+          "none": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): WIC claims after support cloning, with the channel checks live. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_medicare_take_up_post_clone",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "medicare_take_up_input_signal",
+        "weighted_enrolled_share_band": [
+          0.15,
+          0.24
+        ],
+        "channel_enrolled_share_band": [
+          0.15,
+          0.24
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): Medicare enrollment input after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_prior_year_income",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "prior_year_income_signal",
+        "previous_year_available_share_band": [
+          0.05,
+          0.5
+        ],
+        "self_employment_nonzero_share_band": [
+          0.01,
+          0.25
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): prior-year income inputs after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_prior_year_income_source_reconciliation",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "prior_year_income_source_reconciliation"
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): exact recomputation of the ASEC prior-year carry after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_housing_inputs_post_clone",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "housing_inputs_signal",
+        "rent_share_band": [
+          0.05,
+          0.25
+        ],
+        "housing_assistance_share_band": [
+          0.005,
+          0.08
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): housing inputs after PUF-support imputation. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_qbi_inputs",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "qbi_inputs_signal",
+        "boolean_share_bands": {
+          "business_is_sstb": [
+            0.001,
+            0.25
+          ],
+          "estate_income_would_be_qualified": [
+            0.01,
+            0.9999
+          ],
+          "farm_operations_income_would_be_qualified": [
+            0.01,
+            0.9999
+          ],
+          "farm_rent_income_would_be_qualified": [
+            0.01,
+            0.9999
+          ],
+          "partnership_s_corp_income_would_be_qualified": [
+            0.01,
+            0.9999
+          ],
+          "rental_income_would_be_qualified": [
+            0.01,
+            0.9999
+          ],
+          "self_employment_income_would_be_qualified": [
+            0.01,
+            0.9999
+          ],
+          "sstb_self_employment_income_would_be_qualified": [
+            0.0001,
+            0.25
+          ]
+        },
+        "numeric_nonzero_share_bands": {
+          "qualified_bdc_income": [
+            0.0001,
+            0.15
+          ],
+          "qualified_reit_and_ptp_income": [
+            0.001,
+            0.35
+          ],
+          "sstb_self_employment_income_before_lsr": [
+            0.0001,
+            0.25
+          ],
+          "sstb_unadjusted_basis_qualified_property": [
+            0.0001,
+            0.25
+          ],
+          "sstb_w2_wages_from_qualified_business": [
+            0.0001,
+            0.2
+          ],
+          "unadjusted_basis_qualified_property": [
+            0.001,
+            0.45
+          ],
+          "w2_wages_from_qualified_business": [
+            0.001,
+            0.35
+          ]
+        },
+        "invariant_atol": 1e-08
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): QBI inputs after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_farm_business_income",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "farm_business_income_signal",
+        "nonzero_share_bands": {
+          "farm_operations_income": [
+            0.0001,
+            0.2
+          ],
+          "farm_rent_income": [
+            1e-05,
+            0.2
+          ]
+        }
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): farm business income after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_domestic_production_ald",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "domestic_production_ald_signal",
+        "domestic_production_ald_positive_share_band": [
+          0.0001,
+          0.02
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): domestic production deduction after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_child_support",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "child_support_inputs_signal",
+        "nonzero_share_bands": {
+          "child_support_received": [
+            0.005,
+            0.15
+          ],
+          "child_support_expense": [
+            0.003,
+            0.15
+          ]
+        },
+        "channel_nonzero_share_band": [
+          0.002,
+          0.15
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): child support inputs after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_disability_benefits",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "disability_benefits_signal",
+        "nonzero_share_band": [
+          0.003,
+          0.15
+        ],
+        "channel_nonzero_share_bands": {
+          "asec": [
+            0.003,
+            0.02
+          ],
+          "puf_tax_detail": [
+            0.002,
+            0.15
+          ]
+        }
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): disability benefits after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_workers_compensation",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "workers_compensation_signal",
+        "nonzero_share_band": [
+          0.0005,
+          0.05
+        ],
+        "channel_nonzero_share_bands": {
+          "asec": [
+            0.001,
+            0.01
+          ],
+          "puf_tax_detail": [
+            0.0002,
+            0.1
+          ]
+        }
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): workers' compensation after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_weeks_unemployed",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "weeks_unemployed_signal",
+        "channel_positive_share_bands": {
+          "asec": [
+            0.015,
+            0.1
+          ],
+          "puf_tax_detail": [
+            0.001,
+            0.03
+          ]
+        },
+        "channel_weighted_mean_weeks_bands": {
+          "asec": [
+            0.2,
+            2.0
+          ],
+          "puf_tax_detail": [
+            0.01,
+            0.5
+          ]
+        }
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): weeks unemployed after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_educator_expense",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "educator_expense_signal",
+        "overall_positive_share_band": [
+          0.002,
+          0.04
+        ],
+        "puf_positive_share_band": [
+          0.005,
+          0.08
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): educator expenses after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_form_4952_election",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "form_4952_election_signal",
+        "overall_positive_share_band": [
+          5e-05,
+          0.02
+        ],
+        "puf_positive_share_band": [
+          0.0001,
+          0.04
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): Form 4952 election after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_salt_refund_income",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "salt_refund_income_signal",
+        "overall_positive_share_band": [
+          0.005,
+          0.2
+        ],
+        "puf_positive_share_band": [
+          0.01,
+          0.4
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): SALT refund income after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_capital_gain_details",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "capital_gain_details_signal",
+        "signal_bands": {
+          "long_term_capital_gains_on_collectibles": {
+            "overall": [
+              1e-05,
+              0.005
+            ],
+            "puf": [
+              2e-05,
+              0.01
+            ]
+          },
+          "unrecaptured_section_1250_gain": {
+            "overall": [
+              0.0005,
+              0.03
+            ],
+            "puf": [
+              0.001,
+              0.06
+            ]
+          }
+        }
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): capital gain details after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_childcare",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "childcare_inputs_signal",
+        "nonzero_share_band": [
+          0.005,
+          0.5
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): childcare inputs after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_adult_care",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "adult_care_inputs_signal",
+        "flag_share_band": [
+          0.002,
+          0.12
+        ],
+        "expense_plausibility_ceiling": 250000.0
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): adult care inputs after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_energy_subsidy",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "energy_subsidy_signal",
+        "overall_positive_share_band": [
+          0.01,
+          0.2
+        ],
+        "channel_positive_share_bands": {
+          "asec": [
+            0.025,
+            0.045
+          ],
+          "puf_tax_detail": [
+            0.002,
+            0.2
+          ]
+        }
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): energy subsidy after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_alimony",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "alimony_inputs_signal",
+        "nonzero_share_band": [
+          1e-05,
+          0.02
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): alimony after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_casualty_loss",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "casualty_loss_signal",
+        "casualty_loss_nonzero_share_band": [
+          0.0001,
+          0.02
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): casualty losses after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_misc_itemized",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "misc_itemized_signal",
+        "misc_itemized_nonzero_share_band": [
+          0.05,
+          0.55
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): miscellaneous itemized deductions after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_retirement_contributions",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "retirement_contributions_signal",
+        "nonzero_share_band": [
+          0.0001,
+          0.75
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): retirement contributions after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_retirement_distributions",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "retirement_distributions_signal",
+        "nonzero_share_bands": {
+          "taxable_401k_distributions": [
+            0.001,
+            0.2
+          ],
+          "taxable_403b_distributions": [
+            5e-05,
+            0.05
+          ],
+          "tax_exempt_ira_distributions": [
+            0.0001,
+            0.05
+          ],
+          "taxable_ira_distributions": [
+            0.001,
+            0.25
+          ],
+          "keogh_distributions": [
+            1e-07,
+            0.005
+          ],
+          "taxable_sep_distributions": [
+            1e-05,
+            0.05
+          ]
+        }
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): retirement distributions after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_education_inputs",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "education_inputs_signal",
+        "tuition_share_band": [
+          0.001,
+          0.05
+        ],
+        "assistance_share_band": [
+          0.005,
+          0.08
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): education inputs after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_esi_premiums_post_clone",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "esi_premiums_signal",
+        "positive_share_band": [
+          0.15,
+          0.32
+        ],
+        "raw_mean_band": [
+          6000.0,
+          20000.0
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): ESI employer premiums after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_geography_ladder",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "geography_ladder",
+        "nyc_share_bounds": [
+          0.005,
+          0.06
+        ],
+        "nyc_share_of_new_york_bounds": [
+          0.2,
+          0.65
+        ],
+        "place_share_bounds": [
+          0.4,
+          0.95
+        ],
+        "cbsa_share_bounds": [
+          0.75,
+          0.99
+        ],
+        "sld_min_share": 0.95
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): the household geography ladder before the H5 write. Runs with --block-ladder-artifact on the legacy location rule and on every block_v1 run; --allow-geography-ladder-gate-failures waives its raise today. Its thresholds are the gate's keyword defaults."
+    },
+    {
+      "id": "us_base_block_location",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "block_location"
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): every written geography equals the block ladder's lookup of its block. Runs on block_v1 runs only, where its failures and the ladder's share one raise."
+    }
+  ]
+}
