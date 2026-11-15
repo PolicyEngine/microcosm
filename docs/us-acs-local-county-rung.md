@@ -240,6 +240,17 @@ moves' SHA256; the export stage re-applies the recorded moves to the reloaded
 staging frame and refuses moves that no longer match. Filled counties are
 graded normally with status `minimum_support`.
 
+The step is for legacy-location staging. Under `--location-rule block_v1`
+([US household location](us-location-v1.md)) every household carries a
+`block_geoid` and `tract_geoid`, so no household is eligible: an empty county
+stays unsupported (status `insufficient_eligible_donors`) and a full build
+refuses as before. Filling counties there needs a block redrawn inside the
+PUMA and county, with every block-derived geography (tract, both county
+columns, place, legislative districts, CBSA and congressional districts)
+looked up again; that is not implemented. The receipt's
+`location_columns_present` names the columns that made households
+ineligible.
+
 ## County facts input (microcosm#922)
 
 County facts do not come from `--feed`. They have their own pin,

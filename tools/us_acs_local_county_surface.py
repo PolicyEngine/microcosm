@@ -2442,9 +2442,14 @@ def check_support(frame, populations, args):
             "moved_counties": support.get("moved_counties", []),
             "rewritten_columns": support["rewritten_columns"],
         }
-    missing = sorted(set(populations["county"]) - set(codes))
+    # A state_county run trains an ACS households row for every county, which
+    # only household-universe records support; refuse a county with group
+    # quarters alone here, before the engine pass, not after it.
+    strict = getattr(args, "soi_mode", None) == SOI_MODE
+    supporting = codes[support_universe(households)] if strict else codes
+    missing = sorted(set(populations["county"]) - set(supporting))
     counts = defaultdict(int)
-    for code in codes:
+    for code in supporting:
         counts[int(code)] += 1
     report = {
         "county_column": column,
@@ -2455,6 +2460,11 @@ def check_support(frame, populations, args):
         "unsupported_counties": [f"{int(code):05d}" for code in missing],
         "unknown_counties": [f"{int(code):05d}" for code in unknown],
     }
+    if strict:
+        report["support_basis"] = (
+            "households in the household universe (ACS group-quarters records "
+            "support no acs_households target)"
+        )
     if support is not None:
         report["minimum_support"] = support
     (args.checkpoint_dir / SUPPORT_FILENAME).write_text(json.dumps(report, indent=2))

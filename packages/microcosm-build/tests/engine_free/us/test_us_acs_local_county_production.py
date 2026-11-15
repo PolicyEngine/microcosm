@@ -840,6 +840,41 @@ def test_group_quarters_records_are_not_county_support() -> None:
     assert {move["from_county"] for move in moves} == {"01009"}
 
 
+@pytest.mark.parametrize("soi_mode", ["state_county", "state"])
+def test_a_state_county_run_refuses_group_quarters_only_counties_before_the_engine(
+    tmp_path, soi_mode
+) -> None:
+    county = _county()
+    households = pd.DataFrame(
+        {
+            "household_id": [1, 2],
+            "county_fips": ["01001", "01003"],
+            "state_fips": [1, 1],
+            "household_spine": ["acs_2024_1yr", "acs_2024_1yr"],
+            "TYPEHUGQ": [1.0, 3.0],
+        }
+    )
+    frame = SimpleNamespace(table=lambda _entity: households)
+    args = SimpleNamespace(
+        checkpoint_dir=tmp_path,
+        county_column="county_fips",
+        county_min_support=0,
+        soi_mode=soi_mode,
+        allow_partial_geography=False,
+        sample_fraction=1.0,
+    )
+    populations = {"county": {1001: 10.0, 1003: 20.0}}
+    if soi_mode == "state_county":
+        with pytest.raises(SystemExit, match="01003"):
+            county.check_support(frame, populations, args)
+    else:
+        assert county.check_support(frame, populations, args) is frame
+    report = json.loads((tmp_path / county.SUPPORT_FILENAME).read_text())
+    strict = soi_mode == "state_county"
+    assert report["unsupported_counties"] == (["01003"] if strict else [])
+    assert report["counties"]["01003"]["supporting_households"] == (0 if strict else 1)
+
+
 def test_a_fully_supported_frame_is_returned_unchanged() -> None:
     county = _county()
     households = _support_households([(100001, 1001)] * 3 + [(100001, 1003)] * 3)
