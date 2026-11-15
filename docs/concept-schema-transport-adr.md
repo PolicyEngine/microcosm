@@ -419,12 +419,14 @@ These hold for every input and are tested (Hypothesis properties unless noted):
   Longer cycles and other inconsistent relationships still fail validation.
 - The consuming builder supplies the destination frame declaration after
   transport. New Zealand's group bindings now execute on benefit units built
-  from the concept pointers. Belgium's group bindings (46 of its 105 module
-  bindings), and the take-up and housing bindings on US and UK group entities,
-  still wait for a step that builds those engines' units from the pointers, so
-  they stay deferred. Transport also still needs a country pack with
-  geography, targets and an engine adapter. The schema was the one piece that
-  belongs in the core from the start.
+  from the concept pointers. Belgium's 39 `person_role` bindings on `Child`
+  need no units: `encode` runs them on the person table
+  (`ConceptMapping.is_executable`). Belgium's 11 other group bindings (of
+  its 109 module bindings), and the take-up and housing bindings on US and UK
+  group entities, still wait for a step that builds those engines' units from
+  the pointers, so they stay deferred. Transport also still needs a country
+  pack with geography, targets and an engine adapter. The schema was the one
+  piece that belongs in the core from the start.
 - Open questions this does not settle: whether take-up propensities persist or
   are chosen at simulation time (#360), and how the Belgian population-input
   boundary treats `takes_up_*` names (#824). The Axiom concept-coverage
