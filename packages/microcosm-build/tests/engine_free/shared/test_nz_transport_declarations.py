@@ -1935,6 +1935,7 @@ def _composed_param(spec, value, scenario):
 
 
 def test_every_strict_reference_parameter_parses_as_its_kernel_parses_it():
+    from microcosm.build.reference_profiles import REFERENCE_DOCUMENT_KEYS
     from microcosm.build.transport.target_kernels import parse_reference_document
 
     # NZ's mass, precal and holdout files carry description and reference_set
@@ -1942,15 +1943,25 @@ def test_every_strict_reference_parameter_parses_as_its_kernel_parses_it():
     # composer drops them before a node receives the document.
     spec = _pristine_spec()
     checked = []
+    lenient = []
     for row, scenario in compose._instantiated_rows(spec):
+        if row.get("kernel") == "calibration.prepare@1":
+            # This kernel reads only target_references, but it receives the
+            # same trimmed form as the strict kernels.
+            value = row["params"]["references"]
+            document = json.loads(_composed_param(spec, value, scenario))
+            assert set(document) <= REFERENCE_DOCUMENT_KEYS, row["id"]
+            lenient.append(row["id"])
         name = _STRICT_REFERENCE_PARAMS.get(row.get("kernel"))
         if name is None:
             continue
         document = json.loads(_composed_param(spec, row["params"][name], scenario))
         parse_reference_document(document, country="nz")
         checked.append(row["id"])
+    assert lenient
     # CREATE, ten targets.compile nodes and thirteen takeup.gap nodes.
-    assert len(checked) == 24, checked
+    message = f"update this count when NZ changes a strict reference node: {checked}"
+    assert len(checked) == 24, message
 
 
 def test_reference_parameters_keep_the_file_digest_and_the_effective_view():

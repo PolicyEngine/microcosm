@@ -16,7 +16,9 @@ explicit selection:
   selection of a whole target-reference document (one that carries
   ``target_references``) keeps only ``REFERENCE_DOCUMENT_KEYS``, the keys the
   reference kernels read (docs/transport-graph-kernels.md); the resource file
-  keeps its other keys, and its ``"sha256"`` stays the file's digest.
+  keeps its other keys, and its ``"sha256"`` selection is unchanged: the
+  file's digest, or the effective view's digest for the reference and interval
+  resources that ``reference_profiles`` resolves.
 - ``{"prepared": "engine_refs"}`` is the canonical JSON of the prepared
   binding-id -> engine reference map that preparation built.
 - ``{"prepared": "unit_entities"}`` is the canonical JSON of every declared
@@ -4145,7 +4147,9 @@ def _resource_param(
 
     Selected roots cannot be null; skeleton JSON roots must be objects.
     Entitlement JSON may also select lists. Value roots must not be objects.
-    Optional JSON fields remain unchanged.
+    Optional JSON fields remain unchanged, except that a whole-resource JSON
+    selection of a reference document keeps only ``REFERENCE_DOCUMENT_KEYS``;
+    a selection with a path keeps every field.
     """
 
     if set(value) - {"resource", "path", "encoding"} or "resource" not in value:
@@ -4188,6 +4192,9 @@ def _resource_param(
         ):
             # The reference kernels refuse keys they do not read
             # (target_kernels.parse_reference_document); the file keeps them.
+            # Every consumer of a whole reference document, strict or not,
+            # receives this trimmed form; a kernel that needs a dropped key
+            # must select it with a path.
             document = {
                 key: item
                 for key, item in document.items()
