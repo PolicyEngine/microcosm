@@ -15,7 +15,9 @@ end. When the tool finishes, the scope's battery report and the comparison
 are written beside its outputs as shadow files. A verdict difference then
 fails the run, so a build proves parity on its own inputs. When today's code
 raises, the files are written with what the battery saw up to that point, and
-today's exception propagates unchanged.
+today's exception propagates unchanged. The phase it stopped in is recorded
+only when every entry there without an outcome is one today's code never
+reached, here or in a process whose observations were loaded.
 
 The comparison follows the waiver proposal posted on microcosm#1609, which is
 still for Max and María to settle:
@@ -480,6 +482,13 @@ class GateBatteryShadow:
         self._declared = frozenset(declared)
         self._lock = threading.RLock()
         self._observations: dict[str, _Observation] = {}
+        # Entries today's code reached, here or in a process whose saved
+        # observations were loaded, whatever the shadow made of them: a
+        # stopped phase never marks one of them unreached.
+        self._reached: set[str] = set()
+        # Observations of this scope that are missing: a saved file that could
+        # not be read, or a stage that ran and saved none.
+        self._observations_missing: list[str] = []
         self._shadow_errors: list[str] = []
         self._finished = False
         self._files_held = bool(hold_files)
@@ -585,6 +594,9 @@ class GateBatteryShadow:
         site: str | None,
     ) -> GateOutcome | None:
         try:
+            # Today's code reached this entry, whatever the shadow makes of it
+            # (as text, so a miswired id cannot stop the stage's save).
+            self._reached.add(str(entry_id))
             if self._finished:
                 raise RuntimeError("the shadow has already finished.")
             if entry_id in self._observations:
@@ -747,7 +759,9 @@ class GateBatteryShadow:
         stage's gates in its own process and leaves them here; the process
         that finishes the scope loads every stage's file. The file is bound
         to the scope's manifest digest, so a later process with another
-        policy refuses it instead of mixing two.
+        policy refuses it instead of mixing two. It also names every entry
+        today's code reached here, including those the shadow could not
+        evaluate, so a later process never marks one of them unreached.
         """
 
         with self._lock:
@@ -757,6 +771,7 @@ class GateBatteryShadow:
                 "producer": GATE_BATTERY_SHADOW_PRODUCER,
                 "scope": self._scope,
                 "gates_manifest_sha256": self._run.gates_manifest_sha256,
+                "reached": sorted(self._reached),
                 "observations": [
                     {
                         "id": observation.entry_id,
@@ -779,7 +794,9 @@ class GateBatteryShadow:
 
         Each stored observation is compared again under this shadow's own
         rule and overrides. A file for another scope or manifest, an entry
-        already observed, or an unreadable file is a shadow error.
+        already observed, or an unreadable file is a shadow error; a file
+        not read whole also counts as missing observations (see
+        :meth:`note_missing_observations`).
         """
 
         source = Path(path)
@@ -799,6 +816,12 @@ class GateBatteryShadow:
                     != self._run.gates_manifest_sha256
                 ):
                     raise ValueError("observations made under another gate manifest.")
+                reached = payload.get("reached")
+                if not isinstance(reached, list) or not all(
+                    isinstance(entry_id, str) for entry_id in reached
+                ):
+                    raise ValueError("reached must be a list of entry ids.")
+                self._reached.update(reached)
                 rows = payload.get("observations")
                 if not isinstance(rows, list):
                     raise ValueError("observations must be a list.")
@@ -811,9 +834,25 @@ class GateBatteryShadow:
                     f"could not load shadow observations {source}: "
                     f"{type(exc).__name__}: {exc}"
                 )
+                self._observations_missing.append(f"{source.name} was not read whole")
+
+    def note_missing_observations(self, source: str) -> None:
+        """Note that a process which may have reached this scope's entries left
+        no observations here, such as a stage that ran and saved none.
+
+        It does not fail a finished run by itself: an entry that process
+        observed is then unobserved, which does. A stopped run cannot tell
+        that process's entries from the ones never reached, so it leaves the
+        phase it stopped in unrecorded. Never raises.
+        """
+
+        with self._lock:
+            self._observations_missing.append(str(source))
 
     def _load_row(self, row: Mapping, source: Path) -> None:
         entry_id = str(row["id"])
+        # Another process observed it, so today's code reached it there.
+        self._reached.add(entry_id)
         if entry_id in self._observations:
             self._shadow_errors.append(
                 f"[{entry_id}] observed again in {source.name}; kept the first."
@@ -897,7 +936,10 @@ class GateBatteryShadow:
         stops on purpose before its last phase (``stopped_at``: why, as the
         release's dry run does) records the phases it completed, plus the
         phase it stopped in when a battery outcome there blocks, and never
-        raises: the tool's own exit stands.
+        raises: the tool's own exit stands. That phase names unreached the
+        entries without an outcome, so it is recorded only when today's code
+        reached none of them and no observations are missing; otherwise it
+        stays unrecorded rather than mark a gate that ran as never reached.
 
         Returns:
             The comparison payload written to disk, or an empty mapping when a
@@ -933,7 +975,10 @@ class GateBatteryShadow:
         recorded: list[str] = []
         not_observed: list[str] = []
         try:
-            recorded, not_observed = self._record_phases(completed=completed)
+            not_observed = self._not_observed()
+            # Phases recorded before a fault stay listed: the run has already
+            # written them to its report.
+            self._record_phases(recorded, completed=completed)
         except Exception as exc:  # noqa: BLE001 - written down, decided below
             self._shadow_errors.append(
                 f"shadow could not record its phases: {type(exc).__name__}: {exc}"
@@ -973,12 +1018,25 @@ class GateBatteryShadow:
             )
         return payload
 
-    def _record_phases(self, *, completed: bool) -> tuple[list[str], list[str]]:
-        """Assemble and record each phase the tool reached, in order."""
+    def _not_observed(self) -> list[str]:
+        """Applicable entries without a battery outcome, phase by phase."""
 
-        recorded: list[str] = []
-        not_observed: list[str] = []
-        stop = False
+        return [
+            entry.id
+            for phase in self._gates.phases
+            for entry in self._gates.gates
+            if entry.phase == phase
+            and entry.not_applicable is None
+            and self.outcome(entry.id) is None
+        ]
+
+    def _record_phases(self, recorded: list[str], *, completed: bool) -> None:
+        """Assemble and record each phase the tool reached, in order.
+
+        Each recorded phase is appended to ``recorded`` as soon as the run
+        has written it, so a later fault leaves the list true to the report.
+        """
+
         for phase in self._gates.phases:
             entries = [entry for entry in self._gates.gates if entry.phase == phase]
             ran = [
@@ -991,9 +1049,6 @@ class GateBatteryShadow:
                 for entry in entries
                 if entry.not_applicable is None and self.outcome(entry.id) is None
             ]
-            not_observed.extend(missing)
-            if stop:
-                continue
             outcomes = [self.outcome(entry.id) for entry in ran]
             if not missing:
                 self._run.record_phase(
@@ -1001,12 +1056,22 @@ class GateBatteryShadow:
                 )
                 recorded.append(phase)
                 continue
-            stop = True
             if completed or not ran:
-                continue
-            # The tool stopped inside this phase. Name the last observed entry
-            # that blocks as the blocker, as the battery would have stopped
-            # there; without one the phase stays unrecorded.
+                return
+            # The tool stopped inside this phase, and its entries without an
+            # outcome would be named unreached. That is untrue of one today's
+            # code reached but the shadow could not evaluate (here or in the
+            # process that saved it), and may be untrue when a stage's
+            # observations are missing, so then the phase stays unrecorded.
+            # The run itself refuses a phase that marks unreached an entry it
+            # evaluated, but it sees only this process's stages.
+            if self._observations_missing or any(
+                entry_id in self._reached for entry_id in missing
+            ):
+                return
+            # Otherwise name the last observed entry that blocks as the
+            # blocker, as the battery would have stopped there; without one
+            # the phase stays unrecorded.
             observed_order = [
                 observation.entry_id
                 for observation in self._observations.values()
@@ -1019,7 +1084,7 @@ class GateBatteryShadow:
             }
             blockers = [entry_id for entry_id in observed_order if entry_id in blocking]
             if not blockers:
-                continue
+                return
             self._run.record_phase(
                 assemble_phase_report(
                     self._gates,
@@ -1031,7 +1096,7 @@ class GateBatteryShadow:
                 )
             )
             recorded.append(phase)
-        return recorded, not_observed
+            return
 
     def _comparison_payload(
         self,
@@ -1104,6 +1169,7 @@ class GateBatteryShadow:
             "overrides": self._overrides,
             "entries": entries,
             "not_observed": not_observed,
+            "observations_missing": list(self._observations_missing),
             "differences": unexplained,
             "explained_differences": explained,
             "shadow_errors": list(self._shadow_errors),

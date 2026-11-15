@@ -501,6 +501,10 @@ def test_a_stop_inside_a_phase_names_the_last_blocking_entry(tmp_path) -> None:
         "type": "RuntimeError",
         "message": "Release gates failed: beta",
     }
+    # The run took the stopped phase: it marks unreached no entry it
+    # evaluated (#1609), and no observations are missing.
+    assert payload["shadow_errors"] == []
+    assert payload["observations_missing"] == []
 
 
 def test_a_stop_that_no_gate_explains_leaves_its_phase_unrecorded(tmp_path) -> None:
@@ -518,6 +522,163 @@ def test_a_stop_that_no_gate_explains_leaves_its_phase_unrecorded(tmp_path) -> N
     assert payload["phases_recorded"] == []
     assert payload["report_file"] is None
     assert not shadow.report_path.exists()
+
+
+def _stopping_gates() -> GatesManifest:
+    return _manifest(
+        [
+            _entry("us_test_first", "alpha"),
+            _entry("us_test_second", "beta"),
+            _entry("us_test_third", "alpha"),
+            _entry("us_test_final", "alpha", phase="terminal"),
+        ]
+    )
+
+
+def _broken_context():
+    raise ValueError("cannot build evidence")
+
+
+def _stop_on_a_failed_beta(shadow: GateBatteryShadow) -> None:
+    """Observe a failing second entry and stop as today's code would."""
+
+    with pytest.raises(RuntimeError, match="Release gates failed: beta"):
+        with shadow:
+            result = shadow.gate(
+                "us_test_second",
+                lambda: BETA(4.0),
+                EvidenceContext(artifacts={"beta_value": 4.0}),
+            )
+            if not result.passed:
+                raise RuntimeError("Release gates failed: beta")
+
+
+def test_a_stop_never_names_unreached_a_gate_today_reached(tmp_path) -> None:
+    # Review of #1609: a stopped phase names unreached the entries without an
+    # outcome. Today's code reached the first entry; the shadow only failed to
+    # build its evidence, so the phase stays unrecorded.
+    shadow = _shadow(tmp_path, _stopping_gates())
+    shadow.gate("us_test_first", lambda: ALPHA(0.5), _broken_context)
+    _stop_on_a_failed_beta(shadow)
+    payload = json.loads(shadow.comparison_path.read_text())
+    assert payload["phases_recorded"] == []
+    assert payload["report_file"] is None
+    assert not shadow.report_path.exists()
+    assert payload["not_observed"] == [
+        "us_test_first",
+        "us_test_third",
+        "us_test_final",
+    ]
+    (error,) = payload["shadow_errors"]
+    assert "[us_test_first]" in error and "cannot build evidence" in error
+
+
+def test_a_later_process_never_names_unreached_what_an_earlier_one_reached(
+    tmp_path,
+) -> None:
+    gates = _stopping_gates()
+    earlier = _shadow(tmp_path / "earlier", gates)
+    earlier.gate("us_test_first", lambda: ALPHA(0.5), _broken_context)
+    saved = tmp_path / "earlier.observations.json"
+    earlier.save_observations(saved)
+    stored = json.loads(saved.read_text())
+    assert stored["reached"] == ["us_test_first"]
+    assert stored["observations"] == []
+
+    later = _shadow(tmp_path / "later", gates)
+    later.load_observations(saved)
+    _stop_on_a_failed_beta(later)
+    payload = json.loads(later.comparison_path.read_text())
+    assert payload["phases_recorded"] == []
+    assert not later.report_path.exists()
+    (error,) = payload["shadow_errors"]
+    assert "cannot build evidence" in error
+
+
+@pytest.mark.parametrize("missing", ["a stage saved nothing", "a file is torn"])
+def test_missing_observations_leave_the_stopped_phase_unrecorded(
+    tmp_path, missing
+) -> None:
+    # The first entry may have been reached by the stage whose observations
+    # are missing, so the shadow cannot name it unreached.
+    shadow = _shadow(tmp_path, _stopping_gates())
+    if missing == "a stage saved nothing":
+        note = "the first stage saved no observations"
+        shadow.note_missing_observations(note)
+    else:
+        torn = tmp_path / "first.observations.json"
+        torn.write_text("{")
+        shadow.load_observations(torn)
+        note = "first.observations.json was not read whole"
+    _stop_on_a_failed_beta(shadow)
+    payload = json.loads(shadow.comparison_path.read_text())
+    assert payload["phases_recorded"] == []
+    assert not shadow.report_path.exists()
+    assert payload["observations_missing"] == [note]
+    # A file that cannot be read is also a shadow error; a stage that saved
+    # nothing is only a note.
+    assert len(payload["shadow_errors"]) == (1 if missing == "a file is torn" else 0)
+
+
+def test_a_note_of_missing_observations_alone_passes_a_finished_run(
+    tmp_path,
+) -> None:
+    # A stage that saved nothing and observed nothing (ACS's qa stage
+    # declares no entry) leaves a finished run's verdict to its entries.
+    shadow = _shadow(tmp_path, _two_phase_gates())
+    shadow.note_missing_observations("the qa stage saved no observations")
+    with shadow:
+        for entry_id, gate, key in (
+            ("us_test_alpha", ALPHA, "alpha_value"),
+            ("us_test_beta", BETA, "beta_value"),
+            ("us_test_final", ALPHA, "alpha_value"),
+        ):
+            shadow.gate(
+                entry_id,
+                lambda gate=gate: gate(0.5),
+                EvidenceContext(artifacts={key: 0.5}),
+            )
+    payload = json.loads(shadow.comparison_path.read_text())
+    assert payload["run_completed"] is True
+    assert payload["verdict_difference"] is False
+    assert payload["phases_recorded"] == ["assembled", "terminal"]
+    assert payload["observations_missing"] == ["the qa stage saved no observations"]
+
+
+def test_the_run_refuses_a_stopped_phase_that_drops_an_entry_it_evaluated(
+    tmp_path,
+) -> None:
+    # In one process the run's own refusal (#1609) backs the shadow up: an
+    # entry evaluated through the run but never observed would otherwise be
+    # named unreached. The shadow records the refusal, never raises, and still
+    # lists the phase the run had already written.
+    gates = _manifest(
+        [
+            _entry("us_test_alpha", "alpha"),
+            _entry("us_test_first", "alpha", phase="terminal"),
+            _entry("us_test_second", "beta", phase="terminal"),
+            _entry("us_test_third", "alpha", phase="terminal"),
+        ]
+    )
+    shadow = _shadow(tmp_path, gates)
+    shadow.gate(
+        "us_test_alpha",
+        lambda: ALPHA(0.5),
+        EvidenceContext(artifacts={"alpha_value": 0.5}),
+    )
+    # A wiring fault: the run evaluates an entry the shadow never observes.
+    shadow.run.evaluate_entries(
+        ("us_test_first",), EvidenceContext(artifacts={"alpha_value": 0.5})
+    )
+    _stop_on_a_failed_beta(shadow)
+    payload = json.loads(shadow.comparison_path.read_text())
+    assert payload["phases_recorded"] == ["assembled"]
+    assert payload["report_file"] == shadow.report_path.name
+    report = json.loads(shadow.report_path.read_text())
+    assert report["blocked_at_phase"] is None
+    assert report["gates"]["us_test_alpha"]["status"] == "passed"
+    (error,) = payload["shadow_errors"]
+    assert "marks ['us_test_first'] unreached, but this run evaluated" in error
 
 
 def test_the_shadow_never_raises_while_the_tool_runs(tmp_path) -> None:
