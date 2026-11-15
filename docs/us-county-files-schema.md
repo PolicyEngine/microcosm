@@ -88,6 +88,22 @@ employer-share deduction that the self-employment tax base applies, and it is
 negative when self-employment losses exceed wages. Passive partnership and
 S-corporation income is market income, not earnings.
 
+On a person row from the ACS, the sum counts self-employment once. ACS
+reports one total (`SEMP`) that covers farm, non-farm and own-partnership
+self-employment. The local release build refuses to materialize, calibrate
+or package a file unless each ACS person's leaves add up to that total
+(`acs_self_employment_identity_gate`, microcosm#1380). The total sits wholly
+on `self_employment_income` or, after QBI reconciliation, wholly on
+`sstb_self_employment_income`, and farm operations income and partnership
+self-employment earnings are zero on those rows. Rows from donor surveys carry
+the components that those surveys report separately. An earnings concept
+that leaves out the SSTB leaf would therefore miss ACS self-employment that
+QBI reconciliation routed there. The County pilot's earnings measure
+(`experiments/us-county-pilot-20261024/county_targets.py`) zeroes the SSTB
+and farm leaves on ACS rows, guarding against donor draws stacked on `SEMP`
+before the gate existed, and never adds partnership self-employment
+earnings. So on those rows it can differ from this column.
+
 **Gross income** is `household_market_income + household_benefits`. Under
 policyengine-us 2.2.1 for 2026 and 2027:
 
