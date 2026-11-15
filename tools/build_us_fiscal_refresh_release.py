@@ -15872,12 +15872,15 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     degenerate_input_engine = PolicyEngineUSEngine()
     degenerate_input_gate = shadow_gate(
         "us_national_degenerate_input",
-        lambda: _degenerate_input_signal_gate(base_frame, degenerate_input_engine),
-        lambda: EvidenceContext(
-            frame=base_frame,
-            artifacts={"policyengine_engine": degenerate_input_engine},
+        lambda engine=degenerate_input_engine: _degenerate_input_signal_gate(
+            base_frame, engine
+        ),
+        lambda engine=degenerate_input_engine: EvidenceContext(
+            frame=base_frame, artifacts={"policyengine_engine": engine}
         ),
     )
+    # Today's call made the engine a temporary; it lives no longer here.
+    del degenerate_input_engine
     if not degenerate_input_gate.passed:
         # Same degraded contract as the input-mass gate above: the gate
         # object rides _release_gate_failures to the batch; no raise, no
@@ -16785,33 +16788,58 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         None if args.allow_ecps_parity_gaps else ecps_parity_gate
     )
     try:
-        release_gate_inputs = {
-            "target_profile_gate": target_profile_gate,
-            "health_input_gate": health_input_gate,
-            "base_population_gate": base_population_gate,
-            "incumbent_diagnostics": incumbent_diagnostics,
-            "immigration_gate": immigration_gate,
-            "input_mass_reference_gate": enforced_input_mass_reference_gate,
-            "degenerate_input_gate": degenerate_input_gate,
-            "ecps_parity_gate": enforced_ecps_parity_gate,
-            "hours_worked_gate": hours_worked_gate,
-            "snap_take_up_gate": snap_take_up_gate,
-            "eligibility_inputs_gate": eligibility_inputs_gate,
-            "pregnancy_gate": pregnancy_gate,
-            "reported_coverage_vintage_gate": reported_coverage_vintage_gate,
-            "snap_discretionary_exemption_gate": snap_discretionary_exemption_gate,
-            "target_registry": registry,
-        }
         gate_failures = shadow_failures(
             "us_national_release_gates",
-            lambda: _release_gate_failures(result, compilation, **release_gate_inputs),
+            # Today's call, argument for argument: callers read its
+            # positional arguments (the #547 corridor tests read args[8]).
+            lambda: _release_gate_failures(
+                result,
+                compilation,
+                target_profile_gate,
+                health_input_gate,
+                base_population_gate,
+                incumbent_diagnostics,
+                immigration_gate,
+                enforced_input_mass_reference_gate,
+                degenerate_input_gate,
+                ecps_parity_gate=enforced_ecps_parity_gate,
+                hours_worked_gate=hours_worked_gate,
+                snap_take_up_gate=snap_take_up_gate,
+                eligibility_inputs_gate=eligibility_inputs_gate,
+                pregnancy_gate=pregnancy_gate,
+                reported_coverage_vintage_gate=reported_coverage_vintage_gate,
+                snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
+                target_registry=registry,
+            ),
             lambda: EvidenceContext(
                 artifacts={
                     "calibration_result": result,
                     "target_compilation": compilation,
                     **{
                         f"release_gates_{name}": value
-                        for name, value in release_gate_inputs.items()
+                        for name, value in {
+                            "target_profile_gate": target_profile_gate,
+                            "health_input_gate": health_input_gate,
+                            "base_population_gate": base_population_gate,
+                            "incumbent_diagnostics": incumbent_diagnostics,
+                            "immigration_gate": immigration_gate,
+                            "input_mass_reference_gate": (
+                                enforced_input_mass_reference_gate
+                            ),
+                            "degenerate_input_gate": degenerate_input_gate,
+                            "ecps_parity_gate": enforced_ecps_parity_gate,
+                            "hours_worked_gate": hours_worked_gate,
+                            "snap_take_up_gate": snap_take_up_gate,
+                            "eligibility_inputs_gate": eligibility_inputs_gate,
+                            "pregnancy_gate": pregnancy_gate,
+                            "reported_coverage_vintage_gate": (
+                                reported_coverage_vintage_gate
+                            ),
+                            "snap_discretionary_exemption_gate": (
+                                snap_discretionary_exemption_gate
+                            ),
+                            "target_registry": registry,
+                        }.items()
                     },
                 }
             ),
