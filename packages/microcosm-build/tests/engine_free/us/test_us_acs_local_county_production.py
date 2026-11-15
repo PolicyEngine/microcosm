@@ -13,6 +13,7 @@ import hashlib
 import importlib.util
 import json
 import math
+import sys
 from functools import lru_cache
 from types import SimpleNamespace
 
@@ -21,7 +22,7 @@ import pandas as pd
 import pytest
 from scipy import sparse
 
-from microcosm.calibrate import TargetRegistry
+from microcosm.calibrate import TargetRegistry, TargetSpec
 from test_support.paths import paths_for
 
 hypothesis = pytest.importorskip("hypothesis")
@@ -31,29 +32,81 @@ from hypothesis import strategies as st  # noqa: E402
 _SETTINGS = settings(max_examples=40, deadline=None)
 
 
+# The SOI fixtures of test_us_acs_local_county_surface.py, copied rather than
+# imported: that module imports microcosm.build.us_runtime, whose package
+# imports policyengine_us, and these tests need no engine.
+def _state_spec(measure="return_count", value=100.0, *, state="01", **metadata):
+    variable = "count" if measure == "return_count" else measure
+    name = f"state.{state}.{measure}"
+    return TargetSpec(
+        name=name,
+        entity="household",
+        measure=name,
+        value=value,
+        period=2024,
+        source="fixture state SOI",
+        family="irs_soi",
+        signed=value < 0,
+        metadata={
+            "ledger_geography_level": "state",
+            "ledger_layout_record_set_spec_id": "irs_soi.historic_table_2.state_broad_totals.v1",
+            "state_fips": state,
+            "source_measure_id": measure,
+            "source_period": "2022",
+            "ledger_measure_unit": "count" if measure == "return_count" else "usd",
+            "variable": variable,
+            "source_variable": variable,
+            "soi_variable": variable,
+            "measure_mode": "sum",
+            "agi_lower_bound": "-inf",
+            "agi_upper_bound": "inf",
+            "filing_status": "All",
+            **metadata,
+        },
+    )
+
+
+def _fact(county, measure, value):
+    return {
+        "geography": {
+            "id": f"0500000US{county}",
+            "level": "county",
+            "name": f"County {county}",
+            "vintage": "2022",
+        },
+        "period": {"type": "tax_year", "value": 2022},
+        "observed_measure": {
+            "source_measure_id": measure,
+            "source_concept": (
+                "irs_soi.individual_income_tax_returns"
+                if measure == "return_count"
+                else "irs_soi.adjusted_gross_income"
+            ),
+            "source_name": "irs_soi",
+            "unit": "count" if measure == "return_count" else "usd",
+        },
+        "layout": {
+            "record_set_id": "irs_soi.ty2022.county_totals",
+            "record_set_spec_id": "irs_soi.county_totals.v1",
+            "measure_id": measure,
+        },
+        "dimensions": {"filing_status": "all", "income_range": "all"},
+        "value": value,
+    }
+
+
 @lru_cache
-def _fixtures():
-    path = (
-        paths_for("microcosm-build").tests
-        / "engine_free"
-        / "us"
-        / "test_us_acs_local_county_surface.py"
-    )
-    spec = importlib.util.spec_from_file_location(
-        "county_production_fixtures", path
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
-
-
 def _county():
-    return _fixtures()._county()
+    """The county surface module alone.
 
-
-def _release():
-    return _fixtures()._release()
+    Loading it through the release tool imports policyengine_us, which these
+    engine-free tests never need. The release imports the same module by the
+    same name, so either route gives one module object.
+    """
+    tools = str(paths_for("microcosm-build").repository / "tools")
+    if tools not in sys.path:
+        sys.path.insert(0, tools)
+    return importlib.import_module("us_acs_local_county_surface")
 
 
 _TABLE_DIMENSIONS = {
@@ -171,14 +224,13 @@ def _acs_rows(counties, *, values=None, without_median=(), b01003_group_1=()):
 
 def _soi_rows(values):
     """IRS SOI county rows, ``{county: (returns, agi)}``."""
-    fixture = _fixtures()
     rows = []
     for county, (returns, agi) in values.items():
         for measure, value in (
             ("return_count", returns),
             ("adjusted_gross_income", agi),
         ):
-            row = fixture._fact(county, measure, value)
+            row = _fact(county, measure, value)
             row["layout"]["groupby_value_id"] = f"county_{county}"
             rows.append(row)
     return rows
@@ -255,12 +307,11 @@ def test_acs_county_inventory_refusals(case) -> None:
 
 
 def test_a_puerto_rico_soi_row_reaching_the_rung_is_refused() -> None:
-    fixture = _fixtures()
     county = _county()
     rows = _soi_rows({"01001": (10, 100), "72001": (5, 50)})
     with pytest.raises(ValueError, match="Puerto Rico"):
         county.state_county_soi_surface(
-            [fixture._state_spec(), fixture._state_spec("adjusted_gross_income")],
+            [_state_spec(), _state_spec("adjusted_gross_income")],
             rows,
             {1001: 10.0},
         )
@@ -281,9 +332,7 @@ def test_median_income_is_a_diagnostic_and_a_missing_county_is_listed() -> None:
     assert "B19013_001E" not in measures
 
 
-def test_validation_design_refuses_a_zero_state_denominator_and_bad_brackets() -> (
-    None
-):
+def test_validation_design_refuses_a_zero_state_denominator_and_bad_brackets() -> None:
     county = _county()
     values = {code: _county_values(code) for code in ["01001", "01003"]}
     for data in values.values():
@@ -306,7 +355,9 @@ def test_validation_design_refuses_a_zero_state_denominator_and_bad_brackets() -
 @st.composite
 def _acs_layouts(draw):
     states = draw(
-        st.lists(st.sampled_from([1, 6, 12, 15, 36]), min_size=1, max_size=3, unique=True)
+        st.lists(
+            st.sampled_from([1, 6, 12, 15, 36]), min_size=1, max_size=3, unique=True
+        )
     )
     counties = {}
     for state in states:
@@ -342,9 +393,7 @@ def test_acs_household_children_sum_to_their_new_state_parent(layout) -> None:
     }
     for state, parent in parents.items():
         public = math.fsum(
-            data["households"]
-            for code, data in values.items()
-            if code[:2] == state
+            data["households"] for code, data in values.items() if code[:2] == state
         )
         assert parent.value == pytest.approx(public, rel=1e-12)
         assert parent.family == "acs_households"
@@ -362,20 +411,23 @@ def test_acs_household_children_sum_to_their_new_state_parent(layout) -> None:
     assert surface.receipt["new_state_targets"] == len(parents)
 
 
-def test_acs_household_specs_share_one_label_per_geography_with_other_targets() -> (
-    None
-):
-    fixture = _fixtures()
+def test_acs_household_specs_share_one_label_per_geography_with_other_targets() -> None:
+    from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_NAME
+
     county = _county()
-    module = _release()
     populations = {1001: 80.0, 1003: 120.0}
     acs = county.acs_household_surface(_acs_rows(["01001", "01003"]), populations)
-    population_specs = module.population_target_specs(
-        ["pop_state_01", "pop_county_01001", "pop_county_01003"], [200.0, 80.0, 120.0]
-    )
-    TargetRegistry(
-        (*population_specs, *acs.specs, fixture._state_spec()), country="us"
-    )
+    for spec in acs.specs:
+        geography = spec.hierarchy.geography
+        if spec.metadata["geography_level"] == "state":
+            assert geography.id == "0400000US01"
+            # The label the release's state population targets carry.
+            assert geography.label == US_STATE_FIPS_TO_NAME["01"]
+    county_population = [
+        county.population_spec(f"pop_county_{code:05d}", value)
+        for code, value in populations.items()
+    ]
+    TargetRegistry((*county_population, *acs.specs, _state_spec()), country="us")
 
 
 def _households(rows):
@@ -445,7 +497,9 @@ def test_acs_household_rows_partition_each_state_row(draws) -> None:
         # Each household counts in at most one county row, and only if it is
         # a household (not group quarters).
         assert (rows[children].toarray() > 0).sum(axis=0).max(initial=0) <= 1
-        in_state = households["state_fips"].to_numpy() == int(spec.metadata["state_fips"])
+        in_state = households["state_fips"].to_numpy() == int(
+            spec.metadata["state_fips"]
+        )
         np.testing.assert_array_equal(parent, universe * in_state)
 
 
@@ -455,10 +509,9 @@ _HAWAII = {15001: 200.0, 15003: 1000.0, 15005: 80.0, 15007: 70.0, 15009: 160.0}
 
 
 def _hawaii_parents():
-    fixture = _fixtures()
     return [
-        fixture._state_spec(state="15", value=500.0),
-        fixture._state_spec("adjusted_gross_income", 50_000.0, state="15"),
+        _state_spec(state="15", value=500.0),
+        _state_spec("adjusted_gross_income", 50_000.0, state="15"),
     ]
 
 
@@ -474,9 +527,7 @@ def _hawaii_soi(without=(15005,)):
 
 def test_kalawao_shares_a_declared_soi_cell_with_maui() -> None:
     county = _county()
-    surface = county.state_county_soi_surface(
-        _hawaii_parents(), _hawaii_soi(), _HAWAII
-    )
+    surface = county.state_county_soi_surface(_hawaii_parents(), _hawaii_soi(), _HAWAII)
     maui = [spec for spec in surface.specs if spec.metadata["county_fips"] == "15009"]
     assert len(maui) == 2
     for spec in maui:
@@ -521,7 +572,11 @@ def test_an_undeclared_absent_county_is_still_refused() -> None:
 
 @pytest.mark.parametrize(
     ("cells", "match"),
-    [({15005: 6001}, "one state"), ({15005: 15005}, "distinct"), ({15005: 15009, 15009: 15001}, "itself merged")],
+    [
+        ({15005: 6001}, "one state"),
+        ({15005: 15005}, "distinct"),
+        ({15005: 15009, 15009: 15001}, "itself merged"),
+    ],
 )
 def test_declared_combined_cells_must_be_well_formed(cells, match) -> None:
     with pytest.raises(ValueError, match=match):
@@ -535,9 +590,10 @@ def test_a_present_declared_county_keeps_its_own_soi_row() -> None:
         _hawaii_parents(), _hawaii_soi(without=()), _HAWAII
     )
     assert surface.receipt["combined_cells"] == []
-    assert {spec.metadata["county_fips"] for spec in surface.specs} == _codes(
-        _HAWAII
-    ).__class__(_codes(_HAWAII)) | set()
+    assert {spec.metadata["county_fips"] for spec in surface.specs} == set(
+        _codes(_HAWAII)
+    )
+    assert "state_county_cell_members" not in surface.specs[0].metadata
 
 
 @_SETTINGS
@@ -547,12 +603,8 @@ def test_a_present_declared_county_keeps_its_own_soi_row() -> None:
 )
 def test_combined_cells_partition_the_parent_row_exactly(codes, values) -> None:
     county = _county()
-    surface = county.state_county_soi_surface(
-        _hawaii_parents(), _hawaii_soi(), _HAWAII
-    )
-    households = _households(
-        {"county_fips": code, "state_fips": 15} for code in codes
-    )
+    surface = county.state_county_soi_surface(_hawaii_parents(), _hawaii_soi(), _HAWAII)
+    households = _households({"county_fips": code, "state_fips": 15} for code in codes)
     parents = _hawaii_parents()
     data = np.asarray(values[: len(codes)], dtype=np.float32)
     parent_matrix = sparse.csr_array(np.vstack([np.ones(len(codes)), data]))
@@ -591,9 +643,7 @@ def test_combined_cells_partition_the_parent_row_exactly(codes, values) -> None:
 
 def test_split_rows_refuse_overlapping_member_sets() -> None:
     county = _county()
-    surface = county.state_county_soi_surface(
-        _hawaii_parents(), _hawaii_soi(), _HAWAII
-    )
+    surface = county.state_county_soi_surface(_hawaii_parents(), _hawaii_soi(), _HAWAII)
     specs = list(surface.specs)
     tampered = [
         spec
@@ -620,12 +670,11 @@ def test_split_rows_refuse_overlapping_member_sets() -> None:
 
 
 def test_any_all_return_soi_concept_with_a_broad_parent_gets_county_rows() -> None:
-    fixture = _fixtures()
     county = _county()
     parents = [
-        fixture._state_spec(),
-        fixture._state_spec("adjusted_gross_income", 1000.0),
-        fixture._state_spec(
+        _state_spec(),
+        _state_spec("adjusted_gross_income", 1000.0),
+        _state_spec(
             "wages_and_salaries_amount",
             600.0,
             ledger_measure_unit="usd",
@@ -633,12 +682,10 @@ def test_any_all_return_soi_concept_with_a_broad_parent_gets_county_rows() -> No
     ]
     facts = _soi_rows({"01001": (10, 100), "01003": (30, 300)})
     for code, value in (("01001", 40.0), ("01003", 120.0)):
-        row = fixture._fact(code, "wages_and_salaries_amount", value)
+        row = _fact(code, "wages_and_salaries_amount", value)
         row["observed_measure"]["unit"] = "usd"
         facts.append(row)
-    surface = county.state_county_soi_surface(
-        parents, facts, {1001: 1.0, 1003: 1.0}
-    )
+    surface = county.state_county_soi_surface(parents, facts, {1001: 1.0, 1003: 1.0})
     wages = {
         spec.metadata["county_fips"]: spec.value
         for spec in surface.specs
@@ -736,20 +783,32 @@ def test_a_fully_supported_frame_is_returned_unchanged() -> None:
 
 @st.composite
 def _support_layouts(draw):
-    states = draw(st.lists(st.sampled_from([1, 6]), min_size=1, max_size=2, unique=True))
+    states = draw(
+        st.lists(st.sampled_from([1, 6]), min_size=1, max_size=2, unique=True)
+    )
     overlaps_rows, cells, populations = [], [], {}
     for state in states:
-        pumas = [state * 100_000 + index + 1 for index in range(draw(st.integers(1, 2)))]
-        counties = [state * 1000 + 2 * index + 1 for index in range(draw(st.integers(2, 5)))]
+        pumas = [
+            state * 100_000 + index + 1 for index in range(draw(st.integers(1, 2)))
+        ]
+        counties = [
+            state * 1000 + 2 * index + 1 for index in range(draw(st.integers(2, 5)))
+        ]
         for code in counties:
             populations[code] = float(draw(st.integers(0, 1000)))
-            for puma in draw(st.lists(st.sampled_from(pumas), min_size=1, max_size=2, unique=True)):
+            for puma in draw(
+                st.lists(st.sampled_from(pumas), min_size=1, max_size=2, unique=True)
+            ):
                 overlaps_rows.append((puma, code, float(draw(st.integers(1, 500)))))
                 cells += [(puma, code)] * draw(st.integers(0, 7))
     if not cells:
         cells = [(overlaps_rows[0][0], overlaps_rows[0][1])]
     flags = draw(
-        st.lists(st.sampled_from(["", "tract", "gq", "disagree"]), min_size=len(cells), max_size=len(cells))
+        st.lists(
+            st.sampled_from(["", "tract", "gq", "disagree"]),
+            min_size=len(cells),
+            max_size=len(cells),
+        )
     )
     per_county = draw(st.integers(1, 4))
     order = draw(st.permutations(range(len(cells))))
@@ -831,7 +890,7 @@ def test_recorded_moves_reapply_to_a_fresh_frame_and_refuse_a_changed_plan(
         ),
     }
     for group in US_SCHEMA.group_entities:
-        tables[group] = pd.DataFrame({f"{group}_id": ids})
+        tables.setdefault(group, pd.DataFrame({f"{group}_id": ids}))
     frame = Frame(
         tables,
         US_SCHEMA,
@@ -887,7 +946,7 @@ def test_check_support_applies_minimum_support_before_refusing(
         ),
     }
     for group in US_SCHEMA.group_entities:
-        tables[group] = pd.DataFrame({f"{group}_id": ids})
+        tables.setdefault(group, pd.DataFrame({f"{group}_id": ids}))
     frame = Frame(
         tables, US_SCHEMA, {"household": Weights(np.ones(8), WeightKind.DESIGN)}
     )
@@ -917,7 +976,9 @@ def test_check_support_applies_minimum_support_before_refusing(
     # Without the step the same frame is refused.
     with pytest.raises(SystemExit, match="no supporting household"):
         county.check_support(
-            frame, populations, SimpleNamespace(**{**vars(args), "county_min_support": 0})
+            frame,
+            populations,
+            SimpleNamespace(**{**vars(args), "county_min_support": 0}),
         )
 
 
@@ -938,7 +999,9 @@ def _validation_inputs(counties, households_per_county, *, seed=0):
             "household_id": np.arange(1, n + 1),
             "county_fips": codes,
             "state_fips": codes // 1000,
-            "household_spine": np.where(np.arange(n) % 2 == 0, "acs_2024_1yr", "asec_puf"),
+            "household_spine": np.where(
+                np.arange(n) % 2 == 0, "acs_2024_1yr", "asec_puf"
+            ),
             "household_source_id": np.arange(n),
         }
     )
@@ -955,7 +1018,9 @@ def _validation_inputs(counties, households_per_county, *, seed=0):
 def test_validation_targets_redistribute_each_state_total_by_public_shares() -> None:
     county = _county()
     counties = ["01001", "01003", "01005", "06001", "06003"]
-    design, measures, households, weights = _validation_inputs(counties, [5, 3, 4, 6, 2])
+    design, measures, households, weights = _validation_inputs(
+        counties, [5, 3, 4, 6, 2]
+    )
     result = county.score_county_validation(
         design,
         measures,
@@ -1134,7 +1199,9 @@ def test_combined_soi_cell_errors_count_toward_both_member_counties() -> None:
 
 @_SETTINGS
 @given(st.floats(0.0, 1.0), st.floats(1.0, 2_000.0), st.floats(1.0, 2_000.0))
-def test_grades_stay_monotone_in_ess_at_fixed_validation_error(error, low, high) -> None:
+def test_grades_stay_monotone_in_ess_at_fixed_validation_error(
+    error, low, high
+) -> None:
     county = _county()
     order = "UABCD"
     low, high = sorted((low, high))
@@ -1161,8 +1228,7 @@ def test_household_validation_measures_count_semp_once_and_exclude_gq() -> None:
             "person_id": [1, 2, 3, 4],
             "person_household_id": [1, 1, 2, 3],
             **{
-                f"person_{group}_id": [1, 1, 2, 3]
-                for group in US_SCHEMA.group_entities
+                f"person_{group}_id": [1, 1, 2, 3] for group in US_SCHEMA.group_entities
             },
             "employment_income_before_lsr": [100.0, 50.0, 10.0, 1000.0],
             # ACS SEMP routed wholly to the SSTB leaf after QBI reconciliation.
@@ -1175,7 +1241,7 @@ def test_household_validation_measures_count_semp_once_and_exclude_gq() -> None:
     )
     tables = {"household": households, "person": person}
     for group in US_SCHEMA.group_entities:
-        tables[group] = pd.DataFrame({f"{group}_id": ids})
+        tables.setdefault(group, pd.DataFrame({f"{group}_id": ids}))
     frame = Frame(
         tables, US_SCHEMA, {"household": Weights(np.ones(3), WeightKind.DESIGN)}
     )
@@ -1249,7 +1315,11 @@ def test_acs_household_rows_have_their_own_state_budgets_in_the_loss() -> None:
     mapping = county.loss_row_mapping(specs)
     assert mapping.mapping_id == "us_acs_local_county.v2"
     keys = [mapping.concept_budget_key(spec) for spec in specs]
-    states = [key for key, spec in zip(keys, specs, strict=True) if spec.metadata["geography_level"] == "state"]
+    states = [
+        key
+        for key, spec in zip(keys, specs, strict=True)
+        if spec.metadata["geography_level"] == "state"
+    ]
     assert len(set(states)) == 2
     counties = {
         spec.metadata["state_fips"]: key

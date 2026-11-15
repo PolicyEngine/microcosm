@@ -41,6 +41,22 @@ def _county():
     return _release().county_surface
 
 
+@lru_cache
+def _production():
+    """The production county tests, for their ACS fact builders."""
+    path = (
+        paths_for("microcosm-build").tests
+        / "engine_free"
+        / "us"
+        / "test_us_acs_local_county_production.py"
+    )
+    spec = importlib.util.spec_from_file_location("county_production_rows", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
 def _state_spec(measure="return_count", value=100.0, *, state="01", **metadata):
     variable = "count" if measure == "return_count" else measure
     name = f"state.{state}.{measure}"
@@ -283,7 +299,11 @@ def test_state_county_requires_both_concepts_and_parents_in_every_state(
         )
 
 
-def test_kalawao_gap_still_refuses_the_county_surface_with_the_missing_code() -> None:
+def test_kalawao_without_its_declared_host_still_refuses_with_the_missing_code() -> (
+    None
+):
+    # Kalawao's SOI cell is declared combined with Maui (15009); with Maui
+    # absent too there is no published cell to carry it.
     with pytest.raises(ValueError, match="15005"):
         _county().state_county_soi_surface(
             [
@@ -499,8 +519,10 @@ def test_reliability_report_counts_source_households_and_absent_counties() -> No
     assert cells["01005"]["distinct_source_households"] == 0
     assert cells["01005"]["kish_ess"] == 0.0
     assert cells["01005"]["kish_ess_rows"] == 0.0
-    assert report["schema_version"] == 2
+    assert report["schema_version"] == 3
     assert report["grade_rule"]["provisional"] is True
+    assert cells["01001"]["status"] == "supported"
+    assert cells["01005"]["status"] == "no_support"
     assert "household_source_id" in report["ess_basis"]["kish_ess"]
 
 
@@ -593,6 +615,11 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
             "person_id": ids,
             "person_household_id": ids,
             **{f"person_{group}_id": ids for group in US_SCHEMA.group_entities},
+            # The held-out ACS validation families read household earnings.
+            "employment_income_before_lsr": [30_000.0, 50_000.0, 0.0],
+            "self_employment_income_before_lsr": [0.0, 5_000.0, 0.0],
+            "sstb_self_employment_income_before_lsr": [0.0, 0.0, 0.0],
+            "farm_operations_income": [0.0, 0.0, 0.0],
         }
     )
     tables = {"person": person}
@@ -722,18 +749,28 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
     monkeypatch.setattr(module, "materialize_chunked", fake_materialize)
     county_reads = []
 
+    # The SOI rows plus every ACS county table, in the pinned row shape;
+    # B01003 spans its two record sets and 01003 has no B19013 median.
+    acs_rows = _production()._acs_rows(
+        ["01001", "01003"], without_median=["01003"], b01003_group_1=["01003"]
+    )
+
     def fake_county_facts(path, **_kwargs):
         county_reads.append(path)
-        return SimpleNamespace(
-            rows=tuple(
+        rows = (
+            *(
                 _fact(code, measure, value)
                 for measure in ("return_count", "adjusted_gross_income")
                 for code, value in (("01001", 1.0), ("01003", 3.0))
             ),
+            *acs_rows,
+        )
+        return SimpleNamespace(
+            rows=rows,
             receipt=lambda: {
                 "path": str(path),
                 "facts_sha256": county_pin.facts_sha256,
-                "row_count": 4,
+                "row_count": len(rows),
             },
         )
 
@@ -759,8 +796,27 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
     np.testing.assert_array_equal(
         loaded.table("household")["planning_region"], [1001, 1003, 1001]
     )
-    assert matrix.shape == (9, 3)
-    assert len(registry) == 9
+    # 2 SOI parents, 4 SOI county rows, 1 ACS households state parent and
+    # its 2 county rows, and 3 population rows; validation adds no row.
+    assert matrix.shape == (12, 3)
+    assert len(registry) == 12
+    households_rows = [
+        index
+        for index, record in enumerate(records)
+        if record.get("family") == "acs_households"
+    ]
+    assert len(households_rows) == 3
+    np.testing.assert_array_equal(
+        matrix[households_rows].toarray().sum(axis=0), [2.0, 2.0, 2.0]
+    )
+    assert identity["county_acs_households"]["new_state_targets"] == 1
+    assert (
+        identity["county_validation"]["design_sha256"]
+        == hashlib.sha256(
+            (args.checkpoint_dir / "county_validation.json").read_bytes()
+        ).hexdigest()
+    )
+    assert identity["county_support"]["moves"] == 0
     assert {
         record["county_column"]
         for record in records
@@ -782,14 +838,24 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
         design_weights=design,
         weights=np.asarray([10.0, 75.0, 15.0]),
         target_loss_cap=1.0,
+        checkpoint_dir=args.checkpoint_dir,
+        identity=identity,
     )
-    assert evidence["county_holdout"]["n_targets"] == 4
+    # Four SOI and two ACS households county rows.
+    assert evidence["county_holdout"]["n_targets"] == 6
     assert evidence["county_reliability"]["county_column"] == "planning_region"
     assert set(evidence["county_reliability"]["counties"]) == {"01001", "01003"}
+    assert evidence["county_validation"]["never_in_loss"] is True
+    for cell in evidence["county_reliability"]["counties"].values():
+        assert cell["validation"]["n_families"] == 4
+        assert cell["grade"] in {"A", "B", "C", "D"}
     county.write_reports(args.checkpoint_dir, evidence, identity=identity)
     written = json.loads((args.checkpoint_dir / "county_reliability.json").read_text())
     assert written["county_column"] == "planning_region"
     assert written["counties"]["01001"]["distinct_source_households"] == 1
+    assert (args.checkpoint_dir / "county_reliability.csv").read_text() == (
+        county.reliability_csv(written)
+    )
 
 
 def test_county_loss_weights_share_a_state_concept_budget_without_changing_other_rows() -> (
@@ -821,7 +887,7 @@ def test_county_loss_weights_share_a_state_concept_budget_without_changing_other
     ]
     mapping = county.loss_row_mapping(specs)
     weights = county.target_loss_weights(specs, {})
-    assert mapping.mapping_id == "us_acs_local_county.v1"
+    assert mapping.mapping_id == "us_acs_local_county.v2"
     assert np.isfinite(weights).all()
     assert np.all(weights > 0)
     for parent in parents:
@@ -937,6 +1003,13 @@ def test_county_refresh_recipe_round_trips_custom_geography_and_salt() -> None:
     assert metadata["county_facts"]["path"] not in recipe
     assert str(parsed.county_facts) == "<county-facts.jsonl>"
     assert parsed.county_facts_sha256 == metadata["county_facts"]["facts_sha256"]
+    # No support receipt: the run moved no household, and its replay moves none.
+    assert parsed.county_min_support == 0
+    supported = _county().refresh_recipe(
+        module.release_refresh_recipe("state_county"),
+        {**metadata, "county_support": {"households_per_county": 5}},
+    )
+    assert module._parse_args(shlex.split(supported)[3:]).county_min_support == 5
 
 
 def test_county_run_metadata_adds_only_the_county_facts_receipt() -> None:

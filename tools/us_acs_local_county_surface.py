@@ -2823,9 +2823,10 @@ def refresh_recipe(command, materialize_rss):
             " --county-facts <county-facts.jsonl>"
             f" --county-facts-sha256 {facts['facts_sha256']}"
         )
-    support = materialize_rss.get("county_support")
-    if support:
-        command += f" --county-min-support {int(support['households_per_county'])}"
+    # A run without a support receipt moved no household (the step was off,
+    # or the run predates it), so its replay must turn the step off too.
+    support = materialize_rss.get("county_support") or {}
+    command += f" --county-min-support {int(support.get('households_per_county', 0))}"
     return command
 
 
