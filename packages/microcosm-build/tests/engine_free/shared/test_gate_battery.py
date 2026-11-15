@@ -1288,6 +1288,56 @@ class TestStageLevelEvaluation:
         with pytest.raises(ValueError, match="no later stage may run"):
             run.evaluate_entries(["t_gate"], EvidenceContext())
 
+    def test_evaluate_entries_refuses_an_undeclared_phase_and_a_stray_key(self):
+        # Review of #1609: one case for each refusal before any gate runs.
+        manifest = _manifest(
+            [
+                _entry("pf_gate", gate="support", phase="preflight"),
+                _entry("t_gate", gate="support"),
+            ]
+        )
+        terminal_only = scoped_gate_manifest(
+            manifest,
+            ("pf_gate", "t_gate"),
+            phases=("terminal",),
+            policy_suffix="terminal_only",
+        )
+        with pytest.raises(ValueError, match=r"'pf_gate' binds to phase 'preflight'"):
+            evaluate_entries(
+                terminal_only,
+                ["pf_gate"],
+                EvidenceContext(),
+                registry=self._registry(),
+            )
+        calls = []
+
+        def counting(**kwargs) -> GateResult:
+            calls.append(kwargs)
+            return GateResult(name="support", passed=True)
+
+        stray = _manifest(
+            [
+                _entry("t_gate", gate="support"),
+                _entry(
+                    "t_typo",
+                    gate="input_mass_parity",
+                    parameters={"relative_tolerence": 0.5},
+                ),
+            ],
+            ["terminal"],
+        )
+        with pytest.raises(ValueError, match=r"'t_typo'.*relative_tolerence"):
+            evaluate_entries(
+                stray,
+                ["t_gate"],
+                EvidenceContext(),
+                registry={
+                    **DEFAULT_REGISTRY,
+                    "support": FunctionBinding(name="support", gate=counting),
+                },
+            )
+        assert calls == []
+
     def test_an_early_block_names_the_entries_that_never_ran(self):
         # Review of #1609: an entry with no outcome is unreached only when the
         # caller names it, so a stage's dropped outcomes are refused, not

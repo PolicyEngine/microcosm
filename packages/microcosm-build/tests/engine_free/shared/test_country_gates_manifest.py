@@ -63,3 +63,34 @@ def test_country_resource_is_the_packaged_file() -> None:
     for country in ("UK", "u.k", "", "uk/x"):
         with pytest.raises(ValueError, match="country code"):
             country_resource(country, "gates.json")
+
+
+def test_the_narrow_loader_keeps_each_resource_check(tmp_path) -> None:
+    # Review of #1609: one case for each check the full loader also runs.
+    misplaced = tmp_path / "misplaced" / "xx"
+    shutil.copytree(Path(str(files("microcosm.build").joinpath("be"))), misplaced)
+    with pytest.raises(
+        ValueError, match="declares country 'be' but lives in directory 'xx'"
+    ):
+        load_gates_manifest(misplaced)
+
+    retyped = _package_copy(tmp_path / "retyped", "be")
+    package = json.loads((retyped / "country_package.json").read_text(encoding="utf-8"))
+    (row,) = [row for row in package["resources"] if row["path"] == "gates.json"]
+    row.update(kind="battery", schema_id="battery.schema.json")
+    (retyped / "country_package.json").write_text(json.dumps(package), encoding="utf-8")
+    with pytest.raises(ValueError, match="no legacy_json gates.json"):
+        load_gates_manifest(retyped)
+
+    outside = _package_copy(tmp_path / "outside", "be")
+    elsewhere = tmp_path / "gates_elsewhere.json"
+    shutil.move(outside / "gates.json", elsewhere)
+    (outside / "gates.json").symlink_to(elsewhere)
+    with pytest.raises(ValueError, match="resolves outside the country package"):
+        load_gates_manifest(outside)
+
+    directory = _package_copy(tmp_path / "directory", "be")
+    (directory / "gates.json").unlink()
+    (directory / "gates.json").mkdir()
+    with pytest.raises(ValueError, match="is not a file"):
+        load_gates_manifest(directory)
