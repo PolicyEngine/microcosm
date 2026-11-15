@@ -138,31 +138,39 @@ def sha256_file(path: Path) -> str:
 class _ColumnTally:
     """Accumulates one table's per-column dtypes and null counts over chunks.
 
-    A column's dtype is taken from the chunks where it holds at least one
-    value. pandas infers an object column's dtype per read: a fixed-format
-    object column (the frame codec's nullable booleans) whose chunk is all
-    missing reads as ``str`` there and as ``object`` elsewhere, as the whole
-    column does. A column missing in every row takes the dtype of the first
-    chunk with rows (of the empty read for an empty table), which is what a
-    whole-table read gives. Two different dtypes among chunks with values
-    refuse.
+    pandas 3 infers a fixed-format object block's dtype on every read: the
+    block reads as ``str`` when all its values are strings or missing, and as
+    ``object`` otherwise. A whole read therefore gives ``str`` only if every
+    chunk does, so a column read as ``str`` in some chunks and ``object`` in
+    others is ``object`` (the frame codec's nullable booleans, for one, read
+    as ``str`` in a chunk where the whole block is missing). Any other mix of
+    dtypes refuses. An empty table keeps the dtypes of its empty read.
     """
+
+    _STR_OR_OBJECT = frozenset({"str", "object"})
 
     def __init__(self, table: str) -> None:
         self.table = table
         self.columns: list[str] | None = None
-        self.first_dtypes: dict[str, str] = {}
-        self.valued_dtypes: dict[str, str] = {}
+        self.empty_dtypes: dict[str, str] = {}
+        self.seen: dict[str, set[str]] = {}
         self.nulls: dict[str, int] = {}
         self.rows = 0
-        self._first_from_rows = False
 
     @property
     def dtypes(self) -> dict[str, str]:
-        return {
-            name: self.valued_dtypes.get(name, self.first_dtypes[name])
-            for name in self.columns or []
-        }
+        resolved = {}
+        for name in self.columns or []:
+            seen = self.seen.get(name) or {self.empty_dtypes[name]}
+            if len(seen) == 1:
+                resolved[name] = next(iter(seen))
+            elif seen == self._STR_OR_OBJECT:
+                resolved[name] = "object"
+            else:
+                raise ManifestError(
+                    f"{self.table}.{name} reads as {sorted(seen)} in different chunks."
+                )
+        return resolved
 
     def add(self, chunk: pd.DataFrame) -> None:
         names = [str(name) for name in chunk.columns]
@@ -170,28 +178,17 @@ class _ColumnTally:
             raise ManifestError(f"Table {self.table!r} repeats a column name.")
         if self.columns is None:
             self.columns = names
-            self.first_dtypes = {name: str(chunk[name].dtype) for name in names}
+            self.empty_dtypes = {name: str(chunk[name].dtype) for name in names}
+            self.seen = {name: set() for name in names}
             self.nulls = dict.fromkeys(names, 0)
         elif names != self.columns:
             raise ManifestError(f"Table {self.table!r} changed columns between chunks.")
         if len(chunk) == 0:
             return
-        if not self._first_from_rows:
-            self.first_dtypes = {name: str(chunk[name].dtype) for name in names}
-            self._first_from_rows = True
         counts = chunk.isna().sum()
         for name in names:
-            missing = int(counts[name])
-            self.nulls[name] += missing
-            if missing == len(chunk):
-                continue
-            dtype = str(chunk[name].dtype)
-            known = self.valued_dtypes.setdefault(name, dtype)
-            if dtype != known:
-                raise ManifestError(
-                    f"{self.table}.{name} reads as {known} in one chunk and "
-                    f"{dtype} in another."
-                )
+            self.nulls[name] += int(counts[name])
+            self.seen[name].add(str(chunk[name].dtype))
         self.rows += len(chunk)
 
     def entry(

@@ -163,45 +163,39 @@ def test_a_tax_unit_spanning_two_households_refuses(tool):
         list(tool.household_batches(tables, 1))
 
 
+def _orphan_person_household(tables):
+    person = tables["person"]
+    person["person_household_id"] = person["person_household_id"].replace({100: 99_999})
+
+
+def _orphan_family(tables):
+    tables["family"] = pd.concat([tables["family"], pd.DataFrame({"family_id": [5]})])
+
+
+def _drop_spm_unit_row(tables):
+    tables["spm_unit"] = tables["spm_unit"].iloc[1:]
+
+
+def _repeat_household(tables):
+    household = tables["household"]
+    tables["household"] = pd.concat([household, household.iloc[:1]])
+
+
+def _memberless_household(tables):
+    household = tables["household"]
+    tables["household"] = pd.concat(
+        [household.iloc[:1].assign(household_id=101), household]
+    )
+
+
 @pytest.mark.parametrize(
     ("mutate", "message"),
     [
-        (
-            lambda t: t["person"].__setitem__(
-                "person_household_id",
-                t["person"]["person_household_id"].replace({100: 99_999}),
-            ),
-            "names no household row",
-        ),
-        (
-            lambda t: t.__setitem__(
-                "family",
-                pd.concat([t["family"], pd.DataFrame({"family_id": [5]})]),
-            ),
-            "has no member person",
-        ),
-        (
-            lambda t: t.__setitem__("spm_unit", t["spm_unit"].iloc[1:]),
-            "names no spm_unit row",
-        ),
-        (
-            lambda t: t.__setitem__(
-                "household", pd.concat([t["household"], t["household"].iloc[:1]])
-            ),
-            "appears more than once",
-        ),
-        (
-            lambda t: t.__setitem__(
-                "household",
-                pd.concat(
-                    [
-                        t["household"].iloc[:1].assign(household_id=101),
-                        t["household"],
-                    ]
-                ),
-            ),
-            "have no member person",
-        ),
+        (_orphan_person_household, "names no household row"),
+        (_orphan_family, "has no member person"),
+        (_drop_spm_unit_row, "names no spm_unit row"),
+        (_repeat_household, "appears more than once"),
+        (_memberless_household, "have no member person"),
     ],
 )
 def test_batching_refuses_a_broken_membership(tool, mutate, message):
