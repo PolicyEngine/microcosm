@@ -11,8 +11,8 @@ explicit selection:
 - ``{"resource": name, "path": [...], "encoding": e}`` reads the value at
   ``path`` (a list of object keys) inside the named spec resource. ``e`` is
   ``"value"`` (the JSON value, lists as tuples), ``"json"`` (an object as
-  canonical JSON text) or ``"sha256"`` (the SHA-256 of the whole resource's
-  bytes, so the node's key moves with that one resource only). A ``"json"``
+  canonical JSON text) or ``"sha256"`` (the SHA-256 of the whole resource, as
+  below, so the node's key moves with that one resource only). A ``"json"``
   selection of a whole target-reference document (one that carries
   ``target_references``) keeps only ``REFERENCE_DOCUMENT_KEYS``, the keys the
   reference kernels read (docs/transport-graph-kernels.md); the resource file
@@ -4194,11 +4194,11 @@ def _resource_param(
             # The reference kernels refuse keys they do not read
             # (target_kernels.parse_reference_document); the file keeps them.
             # Every node that selects a whole reference document, whatever
-            # its kernel, receives this trimmed form. A kernel that needs
-            # another key of a raw reference file selects it with a path;
-            # the view reference_profiles resolves has already dropped those
-            # keys. Activation reads only target_references, which the trim
-            # keeps.
+            # its kernel, receives this trimmed form. A node whose kernel
+            # needs another key of a raw reference file selects that key with
+            # a path; the view reference_profiles resolves has already dropped
+            # those keys. Activation's reference checks read only
+            # target_references, which the trim keeps.
             document = {
                 key: item
                 for key, item in document.items()

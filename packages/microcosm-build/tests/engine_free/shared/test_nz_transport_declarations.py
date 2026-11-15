@@ -1941,7 +1941,8 @@ def test_every_strict_reference_parameter_parses_as_its_kernel_parses_it():
         parse_reference_document,
     )
 
-    # A new strict kernel must join the table above, or this test skips it.
+    # A kernel added to TARGET_COMPILATION_KERNELS must join the table above,
+    # or this test skips it.
     assert set(_STRICT_REFERENCE_PARAMS) == TARGET_COMPILATION_KERNELS
 
     # NZ's mass, precal and holdout files carry description and reference_set
@@ -1978,7 +1979,7 @@ def test_every_strict_reference_parameter_parses_as_its_kernel_parses_it():
         checked.append(row["id"])
     # At least one such node reads a file the trim changes, so the subset
     # check above can fail.
-    assert lenient and trimmed_lenient, (lenient, trimmed_lenient)
+    assert trimmed_lenient, lenient
     # CREATE, ten targets.compile nodes and thirteen takeup.gap nodes.
     message = f"update this count when NZ changes a strict reference node: {checked}"
     assert len(checked) == 24, message
