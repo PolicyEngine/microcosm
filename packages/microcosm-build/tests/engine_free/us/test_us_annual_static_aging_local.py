@@ -451,8 +451,8 @@ def test_a_base_without_the_local_metadata_row_is_refused(tmp_path, monkeypatch)
 def test_a_base_of_another_year_is_refused(tmp_path, monkeypatch):
     install_engine_stand_ins(monkeypatch)
     kwargs = local_build_kwargs(tmp_path)
-    with pytest.raises(ValueError, match="_time_period must be exactly 2023"):
-        annual.build_annual_static_aging(**{**kwargs, "base_year": 2023}, years=[2026])
+    with pytest.raises(ValueError, match="_time_period must be exactly 2025"):
+        annual.build_annual_static_aging(**{**kwargs, "base_year": 2025}, years=[2026])
 
 
 @pytest.mark.parametrize(
