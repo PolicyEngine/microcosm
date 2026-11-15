@@ -324,6 +324,10 @@ def test_median_income_is_a_diagnostic_and_a_missing_county_is_listed() -> None:
         _acs_rows(counties, without_median=["35011"]), {35001: 10.0, 35011: 5.0}
     )
     assert design["median_income_diagnostic"]["missing"] == ["35011"]
+    # Materialize writes the design as strict JSON (open bracket ends: null).
+    assert (
+        json.loads(json.dumps(design, allow_nan=False))["brackets"][0]["lower"] is None
+    )
     measures = {
         measure
         for family in design["families"].values()
@@ -1147,6 +1151,7 @@ def test_validation_targets_redistribute_each_state_total_by_public_shares() -> 
         cap=10.0,
     )
     assert result["never_in_loss"] is True
+    json.dumps(result, allow_nan=False)
     for family in county.VALIDATION_FAMILIES:
         if family.household_measure == "income_bracket":
             continue

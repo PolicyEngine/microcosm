@@ -1132,8 +1132,14 @@ def county_validation_design(facts, county_populations):
             }
             for family in VALIDATION_FAMILIES
         },
+        # [lower, upper) dollars; JSON has no infinity, so an open end is null.
         "brackets": [
-            {"measure": measure, "income_range": label, "lower": lower, "upper": upper}
+            {
+                "measure": measure,
+                "income_range": label,
+                "lower": None if math.isinf(lower) else lower,
+                "upper": None if math.isinf(upper) else upper,
+            }
             for measure, label, lower, upper in B19001_BRACKETS
         ],
         "median_income_diagnostic": {
