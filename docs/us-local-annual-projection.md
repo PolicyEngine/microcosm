@@ -77,8 +77,11 @@ The candidate manifest has `layout: "fixed_nullable"`, and these entries:
   `source: "base_build"`. The assembler takes that file from the base build,
   not from the candidate.
 
-The household measures sidecar attaches to each projected year by that file
-name and SHA-256.
+Any downstream household-measures sidecar must identify the projected file by
+its name and SHA-256. This builder and the assembler do not create or attach
+those sidecars. Adding materialized columns to an H5 changes its hash and
+column inventory; a separate delivery export must define and validate that
+schema, rather than mutating a hash-bound annual candidate in place.
 
 ## What the projection changes
 
