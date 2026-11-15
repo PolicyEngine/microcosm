@@ -977,21 +977,32 @@ class TestTransferredEntryClockBound:
         }
         assert person[YEARS].tolist() == [8.0, 2.0, 45.0, 9.0, 66.0]
 
-    def test_refuses_a_filled_cell_it_cannot_bound(self) -> None:
-        person = pd.DataFrame({"age": [3.0, np.nan], YEARS: [2.0, 6.0]})
+    @pytest.mark.parametrize(
+        ("age", "clock"),
+        [(np.nan, 6.0), (3.0, np.nan), (np.inf, 6.0), (3.0, np.inf)],
+        ids=["nan-age", "nan-clock", "inf-age", "inf-clock"],
+    )
+    def test_refuses_a_filled_cell_it_cannot_bound(
+        self, age: float, clock: float
+    ) -> None:
+        person = pd.DataFrame({"age": [3.0, age], YEARS: [2.0, clock]})
         with pytest.raises(ValueError, match="1 transferred years_since_us_entry"):
             bound_transferred_us_entry_clock(
                 person, mutable_rows=np.asarray([True, True])
             )
-        # A source row without an age is not the bound's to judge.
+        # A source row the bound cannot judge keeps its values.
         bounded, counts = bound_transferred_us_entry_clock(
             person, mutable_rows=np.asarray([True, False])
         )
-        assert bounded.tolist() == [2.0, 6.0]
-        assert counts["cells_capped_at_age_plus_one"] == 0
-        with pytest.raises(ValueError, match=r"\['age'\]"):
+        np.testing.assert_array_equal(bounded, [2.0, clock])
+        assert counts == {"cells_checked": 1, "cells_capped_at_age_plus_one": 0}
+
+    @pytest.mark.parametrize("column", ["age", YEARS])
+    def test_refuses_a_table_without_age_or_clock(self, column: str) -> None:
+        person = pd.DataFrame({"age": [3.0], YEARS: [2.0]})
+        with pytest.raises(ValueError, match=rf"\['{column}'\]"):
             bound_transferred_us_entry_clock(
-                person.drop(columns=["age"]), mutable_rows=np.asarray([True, True])
+                person.drop(columns=[column]), mutable_rows=np.asarray([True])
             )
 
 

@@ -881,10 +881,12 @@ def test_explicit_transfer_adds_requested_model_inputs(
 def test_transferred_entry_clock_never_exceeds_the_recipients_life() -> None:
     """The chained transfer caps the clock it draws at floor(age) + 1.
 
-    Every donor is US-born (clock equals age), so the clock's donor support is
+    Every donor's clock equals age, so the clock's donor support is
     {8, 17, 30, 39, 43, 45, 66, 68}. Without the cap every 3-year-old
     recipient draws one of those, past the five-year bar; with it each one
-    carries 4, the longest a 3-year-old can have been in the US.
+    carries 4, the longest a 3-year-old can have been in the US. The first
+    recipient already holds a clock of 66, above that bound; the transfer
+    fills only the other five, so the cap leaves the 66 alone.
     """
 
     donor_frame = _donor_frame()
@@ -898,7 +900,14 @@ def test_transferred_entry_clock_never_exceeds_the_recipients_life() -> None:
             "years_since_us_entry": donor_frame.person["age"].to_numpy(copy=True),
         },
     )
-    recipient = _replace_column(_recipient_frame(), "person", "age", [3.0] * 6)
+    recipient = _with_columns(
+        _recipient_frame(),
+        "person",
+        {
+            "age": [3.0] * 6,
+            "years_since_us_entry": [66.0] + [np.nan] * 5,
+        },
+    )
     family = ("immigration_status_str", "ssn_card_type", "years_since_us_entry")
 
     result = transfer_acs_inputs(
@@ -910,13 +919,13 @@ def test_transferred_entry_clock_never_exceeds_the_recipients_life() -> None:
     )
 
     clock = result.frame.person["years_since_us_entry"]
-    assert clock.tolist() == [4.0] * 6
+    assert clock.tolist() == [66.0] + [4.0] * 5
     receipts = [
-        entry.reconciliation
+        (entry.imputed_recipient_rows, entry.reconciliation)
         for entry in result.imputed_inputs
         if entry.column == "years_since_us_entry"
     ]
-    assert receipts[0] == {"cells_checked": 6, "cells_capped_at_age_plus_one": 6}
+    assert receipts == [(5, {"cells_checked": 5, "cells_capped_at_age_plus_one": 5})]
     contract = acs_transfer_module.acs_transfer_execution_contract_identity(
         targets=family
     )["post_transfer_structure"]["immigration_clock_age_bound"]
