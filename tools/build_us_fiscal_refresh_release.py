@@ -69,6 +69,8 @@ from microcosm.build.calibration_epoch_telemetry import (
     calibration_epoch_stride,
     forwards_calibration_epoch,
 )
+from microcosm.build.country_spec import GatesManifest
+from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.gates import (
     GateResult,
     TargetFitRequirement,
@@ -248,6 +250,11 @@ from microcosm.build.us_runtime import (
 from microcosm.build.us_runtime.acs_release_predictors import (
     join_acs_release_predictors,
 )
+from microcosm.build.us_runtime.battery_bindings import (
+    us_flag_overrides,
+    us_gate_registry,
+    us_gate_specs,
+)
 from microcosm.build.us_runtime.chronicle_feed import (
     USChronicleFeed,
     load_us_chronicle_feed,
@@ -283,6 +290,19 @@ from microcosm.build.us_runtime.fsa_student_loan_targets import (
     fsa_student_loan_household_values,
     fsa_student_loan_target_receipt,
     plan_fsa_student_loan_targets,
+)
+from microcosm.build.us_runtime.gate_scopes import us_scoped_gate_manifest
+from microcosm.build.us_runtime.gate_shadow import (
+    GATE_BATTERY_SHADOW_DIRECTORY,
+    GateBatteryShadow,
+    LegacyVerdict,
+    arm_gate_shadow,
+    disarm_gate_shadow,
+    shadow_failures,
+    shadow_file_paths,
+    shadow_gate,
+    shadow_not_run,
+    shadow_value,
 )
 from microcosm.build.us_runtime.h5_io import (
     AuthenticatedPoolH5,
@@ -7939,17 +7959,36 @@ def _input_mass_reference_gate(
     before calibration burns hours on a base that cannot score those reforms.
     """
     if reference_h5 is None:
+        shadow_not_run(
+            "us_national_input_mass_reference",
+            "no --input-mass-reference-h5 was given",
+        )
         return None
     input_variables = _engine_input_variables()
     reference_frame = load_us_frame(reference_h5)
-    return us_input_mass_parity_gate(
-        us_input_mass_totals(base_frame, columns=input_variables),
-        us_input_mass_totals(reference_frame, columns=input_variables),
-        carriers=us_line_32_carriers(base_frame, reference_frame),
-        candidate_name="base_frame",
-        reference_name=reference_h5.name,
-        relative_tolerance=relative_tolerance,
-        minimum_reference_total=minimum_reference_total,
+    candidate_totals = us_input_mass_totals(base_frame, columns=input_variables)
+    reference_totals = us_input_mass_totals(reference_frame, columns=input_variables)
+    carriers = us_line_32_carriers(base_frame, reference_frame)
+    return shadow_gate(
+        "us_national_input_mass_reference",
+        lambda: us_input_mass_parity_gate(
+            candidate_totals,
+            reference_totals,
+            carriers=carriers,
+            candidate_name="base_frame",
+            reference_name=reference_h5.name,
+            relative_tolerance=relative_tolerance,
+            minimum_reference_total=minimum_reference_total,
+        ),
+        lambda: EvidenceContext(
+            artifacts={
+                "candidate_input_mass_totals": candidate_totals,
+                "reference_input_mass_totals": reference_totals,
+                "input_mass_carriers": carriers,
+                "input_mass_candidate_name": "base_frame",
+                "input_mass_reference_name": reference_h5.name,
+            }
+        ),
     )
 
 
@@ -8650,9 +8689,17 @@ def _record_qrf_tail_concentration_gate(
     """
     try:
         register = _load_qrf_tail_concentration_exclusions(exclusions_path)
-        gate, surface = _qrf_tail_concentration_gate(
-            export_frame,
-            reviewed_exclusions=register,
+        gate, surface = shadow_value(
+            "us_national_qrf_tail_concentration",
+            lambda: _qrf_tail_concentration_gate(
+                export_frame,
+                reviewed_exclusions=register,
+            ),
+            lambda: EvidenceContext(
+                frame=export_frame,
+                artifacts={"qrf_tail_reviewed_exclusions": register},
+            ),
+            verdict=lambda value: LegacyVerdict.from_result(value[0]),
         )
         mismatch = _qrf_tail_register_mismatch(register, gate)
         surface = {
@@ -9385,8 +9432,18 @@ def _enforce_ssi_take_up_delivery(
     written.
     """
 
-    delivery_gate = us_ssi_take_up_delivery_gate(
-        diagnostics, targets=targets, enforcement_fences=enforcement_fences
+    delivery_gate = shadow_gate(
+        "us_national_ssi_take_up_delivery",
+        lambda: us_ssi_take_up_delivery_gate(
+            diagnostics, targets=targets, enforcement_fences=enforcement_fences
+        ),
+        lambda: EvidenceContext(
+            artifacts={
+                "ssi_take_up_diagnostics": diagnostics,
+                "ssi_band_targets": targets,
+                "ssi_enforcement_fences": enforcement_fences,
+            }
+        ),
     )
     if delivery_gate.passed:
         return [], delivery_gate
@@ -13145,6 +13202,163 @@ def _is_release_refusal(error: BaseException) -> bool:
     return isinstance(error, Exception)
 
 
+#: This tool's scope of us/gates.json, evaluated in shadow beside today's
+#: gates (microcosm#1585 item 11, PR 2 of 4).
+US_NATIONAL_GATE_SCOPE = "us_national"
+_ACTIVE_GATE_SHADOW: GateBatteryShadow | None = None
+
+#: The waiver flags, each with the entries it waives today.
+_NATIONAL_GATE_WAIVERS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    (
+        "allow_input_mass_drift",
+        "--allow-input-mass-drift",
+        ("us_national_input_mass_reference", "us_national_export_input_mass"),
+    ),
+    (
+        "allow_ecps_parity_gaps",
+        "--allow-ecps-parity-gaps",
+        ("us_national_ecps_parity",),
+    ),
+    (
+        "allow_input_coverage_gaps",
+        "--allow-input-coverage-gaps",
+        ("us_national_release_input_coverage",),
+    ),
+    (
+        "allow_esi_premium_gaps",
+        "--allow-esi-premium-gaps",
+        (
+            "us_national_esi_anchor_feed",
+            "us_national_esi_premiums",
+            "us_national_esi_premiums_export",
+            "us_national_esi_premiums_anchor",
+        ),
+    ),
+    ("allow_unpinned_feed", "--allow-unpinned-feed", ("us_national_esi_anchor_feed",)),
+    (
+        "allow_qrf_tail_concentration",
+        "--allow-qrf-tail-concentration",
+        ("us_national_qrf_tail_concentration",),
+    ),
+)
+
+
+def _national_gate_shadow_directory(args: argparse.Namespace) -> Path:
+    """Beside the outputs: ``<out>/gate_battery_shadow``, never a release dir.
+
+    A dry run writes no output directory, so its shadow goes beside its
+    report instead.
+    """
+
+    if args.dry_run_gates_report is not None:
+        report = Path(args.dry_run_gates_report).resolve()
+        return report.parent / f"{report.stem}.{GATE_BATTERY_SHADOW_DIRECTORY}"
+    return Path(args.out).resolve() / GATE_BATTERY_SHADOW_DIRECTORY
+
+
+def _national_gate_waivers(
+    args: argparse.Namespace, gates: GatesManifest
+) -> dict[str, list[str]]:
+    waivers: dict[str, list[str]] = {}
+    for destination, flag, entry_ids in _NATIONAL_GATE_WAIVERS:
+        if getattr(args, destination, False):
+            for entry_id in entry_ids:
+                waivers.setdefault(entry_id, []).append(flag)
+    if getattr(args, "evidence_release", False):
+        # The evidence tier owns its terminal failures instead of raising.
+        for entry in gates.gates:
+            if entry.phase == "terminal":
+                waivers.setdefault(entry.id, []).append("--evidence-release")
+    return waivers
+
+
+def _start_national_gate_shadow(args: argparse.Namespace, *, release_id: str) -> None:
+    """Arm this run's gate battery in shadow (finished in :func:`main`)."""
+
+    global _ACTIVE_GATE_SHADOW
+    _finish_national_gate_shadow(stopped_at="a previous run in this process")
+    gates = us_scoped_gate_manifest(US_NATIONAL_GATE_SCOPE)
+    report, comparison = shadow_file_paths(
+        _national_gate_shadow_directory(args), US_NATIONAL_GATE_SCOPE
+    )
+    shadow = GateBatteryShadow(
+        gates,
+        scope=US_NATIONAL_GATE_SCOPE,
+        release_id=release_id,
+        report_path=report,
+        comparison_path=comparison,
+        registry=us_gate_registry(US_NATIONAL_GATE_SCOPE, tool=globals()),
+        waivers=_national_gate_waivers(args, gates),
+        overrides=us_flag_overrides(gates, us_gate_specs(US_NATIONAL_GATE_SCOPE), args),
+    )
+    arm_gate_shadow(shadow)
+    _ACTIVE_GATE_SHADOW = shadow
+
+
+def _finish_national_gate_shadow(
+    *,
+    stopped_by: BaseException | None = None,
+    stopped_at: str | None = None,
+) -> None:
+    """Finish the armed shadow, if any; only a finished build can fail it."""
+
+    global _ACTIVE_GATE_SHADOW
+    shadow, _ACTIVE_GATE_SHADOW = _ACTIVE_GATE_SHADOW, None
+    if shadow is None:
+        return
+    disarm_gate_shadow(shadow)
+    if stopped_by is not None:
+        shadow.stop(stopped_by)
+    elif stopped_at is not None:
+        shadow.finish(stopped_at=stopped_at)
+    else:
+        shadow.finish()
+
+
+def _shadow_frame_gate(
+    entry_id: str, evaluate: Callable[[], GateResult], frame: Frame
+) -> GateResult:
+    """Today's frame signal gate, with the battery's entry beside it."""
+
+    return shadow_gate(entry_id, evaluate, lambda: EvidenceContext(frame=frame))
+
+
+def _shadow_exact_k_puf_tail_support_gate(
+    frame: Frame, support: np.ndarray
+) -> GateResult:
+    """The exact-k arm's tail gate, with the battery's entry beside it."""
+
+    return shadow_gate(
+        "us_national_exact_k_puf_capital_gains_tail",
+        lambda: _exact_k_puf_tail_support_gate(frame, support),
+        lambda: EvidenceContext(frame=frame, artifacts={"exact_k_support": support}),
+    )
+
+
+def _shadow_tail_survival(
+    entry_id: str, candidate: Frame, selected: Frame
+) -> dict[str, object]:
+    """Today's PUF tail survival check, observed: its refusal is its failure."""
+
+    return shadow_value(
+        entry_id,
+        lambda: assert_puf_capital_gains_tail_survives_selection(
+            candidate,
+            selected,
+            require_present=True,
+        ),
+        lambda: EvidenceContext(
+            frame=selected,
+            artifacts={
+                "tail_candidate_frame": candidate,
+                "tail_require_present": True,
+            },
+        ),
+        verdict=lambda receipt: LegacyVerdict.from_failures(()),
+        refusals=(ValueError,),
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     """Run the build and mark its staging run failed if it does not finish.
 
@@ -13159,9 +13373,18 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     global _ACTIVE_DRY_RUN
     _ACTIVE_DRY_RUN = None
+    _finish_national_gate_shadow(stopped_at="a previous run in this process")
     try:
         dry_run_exit = _main(argv)
+        _finish_national_gate_shadow(
+            stopped_at=(
+                "dry run: the release stops before target materialization"
+                if dry_run_exit is not None
+                else None
+            )
+        )
     except BaseException as error:
+        _finish_national_gate_shadow(stopped_by=error)
         dry_run = _ACTIVE_DRY_RUN
         if dry_run is not None and _is_release_refusal(error):
             # A dry run the release refuses before its stop point: the
@@ -13286,7 +13509,11 @@ def _with_scf_education_debt_stage(
         time_period=PERIOD,
         scf_education_debt_donor=donor,
     )
-    gate = us_scf_education_debt_signal_gate(base_frame)
+    gate = _shadow_frame_gate(
+        "us_national_scf_education_debt",
+        lambda: us_scf_education_debt_signal_gate(base_frame),
+        base_frame,
+    )
     if not gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -13378,7 +13605,11 @@ def _check_us_esi_anchor_against_feed(
     either way and written to ``esi_premiums.json``.
     """
 
-    mismatches = us_esi_premiums_anchor_feed_mismatches(facts)
+    mismatches = shadow_failures(
+        "us_national_esi_anchor_feed",
+        lambda: us_esi_premiums_anchor_feed_mismatches(facts),
+        lambda: EvidenceContext(artifacts={"ledger_facts": facts}),
+    )
     if mismatches and not (allow_unpinned_feed or allow_esi_premium_gaps):
         raise SystemExit(
             "error: the meps_esi_premiums anchor differs from the Chronicle "
@@ -13547,6 +13778,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     _assert_us_release_id(release_id, evidence_release=args.evidence_release)
     if args.exact_k is not None:
         _assert_exact_k_release_id(release_id, args.exact_k)
+    _start_national_gate_shadow(args, release_id=release_id)
     # Every build, exact-k builds included, writes its dataset and calibration
     # weights under the names its release's new builds declare
     # (microcosm#1570); the build ID carries the exact count.
@@ -13582,7 +13814,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # checked against the live PolicyEngine-US graph so a stale entry cannot mask
     # a real gap.
     assert_validation_leaf_registry_current()
-    validation_input_coverage_gate = us_validation_input_coverage_gate()
+    validation_input_coverage_gate = shadow_gate(
+        "us_national_validation_input_coverage",
+        lambda: us_validation_input_coverage_gate(),
+        EvidenceContext(),
+    )
     if not validation_input_coverage_gate.passed:
         raise RuntimeError(
             "Release gates failed: "
@@ -13604,10 +13840,22 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # documented-absent). Such a pincer aborts every build AFTER the expensive
     # source stages — the stale TANF exclusion did exactly that on Build G and
     # Build I. Fail it here, in seconds.
-    register_consistency_gate = us_register_consistency_gate(
-        degenerate_reviewed_exclusions=US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS,
-        documented_absent_inputs=US_DOCUMENTED_ABSENT_INPUTS,
-        nonconstant_required_columns=US_HEALTH_INPUT_NONCONSTANT_COLUMNS,
+    register_consistency_gate = shadow_gate(
+        "us_national_register_consistency",
+        lambda: us_register_consistency_gate(
+            degenerate_reviewed_exclusions=US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS,
+            documented_absent_inputs=US_DOCUMENTED_ABSENT_INPUTS,
+            nonconstant_required_columns=US_HEALTH_INPUT_NONCONSTANT_COLUMNS,
+        ),
+        lambda: EvidenceContext(
+            artifacts={
+                "degenerate_reviewed_exclusions": (
+                    US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS
+                ),
+                "documented_absent_inputs": US_DOCUMENTED_ABSENT_INPUTS,
+                "nonconstant_required_columns": US_HEALTH_INPUT_NONCONSTANT_COLUMNS,
+            }
+        ),
     )
     if not register_consistency_gate.passed:
         raise RuntimeError(
@@ -13710,7 +13958,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # the one-surface parity contract until that stage is default.
     parity_registry = _without_opt_in_student_loan_targets(target_registry)
     assert_target_parity_manifest_current(registry=parity_registry)
-    target_parity_gate = us_release_target_parity_gate(parity_registry)
+    target_parity_gate = shadow_gate(
+        "us_national_target_parity",
+        lambda: us_release_target_parity_gate(parity_registry),
+        lambda: EvidenceContext(artifacts={"target_parity_registry": parity_registry}),
+    )
     if not target_parity_gate.passed:
         raise RuntimeError(
             "Release gates failed: "
@@ -13731,9 +13983,18 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         targets=ssi_band_targets,
         expected_sha256=args.ssi_take_up_prior_weight_basis_sha256,
     )
-    target_profile_gate = target_profile_coverage_gate(
-        target_specs,
-        US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    target_profile_gate = shadow_gate(
+        "us_national_target_profile_coverage",
+        lambda: target_profile_coverage_gate(
+            target_specs,
+            US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+        ),
+        lambda: EvidenceContext(
+            artifacts={
+                "target_specs": target_specs,
+                "target_coverage_requirements": US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+            }
+        ),
     )
     if not target_profile_gate.passed:
         raise RuntimeError(
@@ -13801,10 +14062,8 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         base_frame = _load_frame(base_h5, expected_sha256=base_dataset_sha256)
     else:
         base_frame = pool_frame
-    capital_gains_tail_presence = assert_puf_capital_gains_tail_survives_selection(
-        base_frame,
-        base_frame,
-        require_present=True,
+    capital_gains_tail_presence = _shadow_tail_survival(
+        "us_national_capital_gains_tail_presence", base_frame, base_frame
     )
     if telemetry is not None:
         telemetry.stage(
@@ -13845,7 +14104,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             "Verified measured ASEC LKWEEKS before selection and target "
             "materialization."
         )
-    weeks_unemployed_gate = us_weeks_unemployed_signal_gate(base_frame)
+    weeks_unemployed_gate = _shadow_frame_gate(
+        "us_national_weeks_unemployed",
+        lambda: us_weeks_unemployed_signal_gate(base_frame),
+        base_frame,
+    )
     if not weeks_unemployed_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -13881,6 +14144,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # ~57k support instead of the ~338k pool.
     selection_source, _selection_join_key = _resolve_selection_source(args)
     selection_source_payload: dict | None = None
+    if selection_source is None:
+        for entry_id in (
+            "us_national_capital_gains_tail_retention",
+            "us_national_weeks_unemployed_post_selection",
+        ):
+            shadow_not_run(entry_id, "no frozen-support selection source was given")
     if selection_source is not None:
         if args.selection_mode != "frozen_support":
             raise ValueError(
@@ -13901,10 +14170,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         )
         selection_source_payload = selection_report.as_manifest()
         selection_source_payload["puf_capital_gains_tail_retention"] = (
-            assert_puf_capital_gains_tail_survives_selection(
+            _shadow_tail_survival(
+                "us_national_capital_gains_tail_retention",
                 selection_candidate_frame,
                 base_frame,
-                require_present=True,
             )
         )
         if telemetry is not None:
@@ -13915,8 +14184,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 n_base_candidates=selection_report.n_base_candidates,
                 n_unmapped=selection_report.n_unmapped,
             )
-        post_selection_weeks_unemployed_gate = us_weeks_unemployed_signal_gate(
-            base_frame
+        post_selection_weeks_unemployed_gate = _shadow_frame_gate(
+            "us_national_weeks_unemployed_post_selection",
+            lambda: us_weeks_unemployed_signal_gate(base_frame),
+            base_frame,
         )
         if not post_selection_weeks_unemployed_gate.passed:
             if telemetry is not None:
@@ -13993,9 +14264,16 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             target=non_sch_d_cgd_repair.get("target"),
             initial_estimate=non_sch_d_cgd_repair.get("initial_estimate"),
         )
-    base_population_gate = _base_population_scale_gate(
-        base_frame,
-        mass_repair=base_population_repair,
+    base_population_gate = shadow_gate(
+        "us_national_base_population_scale",
+        lambda: _base_population_scale_gate(
+            base_frame,
+            mass_repair=base_population_repair,
+        ),
+        lambda: EvidenceContext(
+            frame=base_frame,
+            artifacts={"base_population_mass_repair": base_population_repair},
+        ),
     )
     if not base_population_gate.passed:
         if telemetry is not None:
@@ -14015,7 +14293,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         )
     if pool_frame is None:
         base_frame = with_us_qbi_input_reconciliation(base_frame)
-    qbi_inputs_gate = us_qbi_inputs_signal_gate(base_frame)
+    qbi_inputs_gate = _shadow_frame_gate(
+        "us_national_qbi_inputs",
+        lambda: us_qbi_inputs_signal_gate(base_frame),
+        base_frame,
+    )
     if not qbi_inputs_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14032,7 +14314,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in qbi_inputs_gate.failures
             )
         )
-    farm_business_income_gate = us_farm_business_income_signal_gate(base_frame)
+    farm_business_income_gate = _shadow_frame_gate(
+        "us_national_farm_business_income",
+        lambda: us_farm_business_income_signal_gate(base_frame),
+        base_frame,
+    )
     if not farm_business_income_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14049,7 +14335,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in farm_business_income_gate.failures
             )
         )
-    domestic_production_ald_gate = us_domestic_production_ald_signal_gate(base_frame)
+    domestic_production_ald_gate = _shadow_frame_gate(
+        "us_national_domestic_production_ald",
+        lambda: us_domestic_production_ald_signal_gate(base_frame),
+        base_frame,
+    )
     if not domestic_production_ald_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14066,7 +14356,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in domestic_production_ald_gate.failures
             )
         )
-    child_support_gate = us_child_support_signal_gate(base_frame)
+    child_support_gate = _shadow_frame_gate(
+        "us_national_child_support",
+        lambda: us_child_support_signal_gate(base_frame),
+        base_frame,
+    )
     if not child_support_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14083,7 +14377,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in child_support_gate.failures
             )
         )
-    disability_benefits_gate = us_disability_benefits_signal_gate(base_frame)
+    disability_benefits_gate = _shadow_frame_gate(
+        "us_national_disability_benefits",
+        lambda: us_disability_benefits_signal_gate(base_frame),
+        base_frame,
+    )
     if not disability_benefits_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14100,7 +14398,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in disability_benefits_gate.failures
             )
         )
-    workers_compensation_gate = us_workers_compensation_signal_gate(base_frame)
+    workers_compensation_gate = _shadow_frame_gate(
+        "us_national_workers_compensation",
+        lambda: us_workers_compensation_signal_gate(base_frame),
+        base_frame,
+    )
     if not workers_compensation_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14117,7 +14419,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in workers_compensation_gate.failures
             )
         )
-    educator_expense_gate = us_educator_expense_signal_gate(base_frame)
+    educator_expense_gate = _shadow_frame_gate(
+        "us_national_educator_expense",
+        lambda: us_educator_expense_signal_gate(base_frame),
+        base_frame,
+    )
     if not educator_expense_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14134,7 +14440,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in educator_expense_gate.failures
             )
         )
-    form_4952_election_gate = us_form_4952_election_signal_gate(base_frame)
+    form_4952_election_gate = _shadow_frame_gate(
+        "us_national_form_4952_election",
+        lambda: us_form_4952_election_signal_gate(base_frame),
+        base_frame,
+    )
     if not form_4952_election_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14151,7 +14461,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in form_4952_election_gate.failures
             )
         )
-    salt_refund_income_gate = us_salt_refund_income_signal_gate(base_frame)
+    salt_refund_income_gate = _shadow_frame_gate(
+        "us_national_salt_refund_income",
+        lambda: us_salt_refund_income_signal_gate(base_frame),
+        base_frame,
+    )
     if not salt_refund_income_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14168,7 +14482,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in salt_refund_income_gate.failures
             )
         )
-    capital_gain_details_gate = us_capital_gain_details_signal_gate(base_frame)
+    capital_gain_details_gate = _shadow_frame_gate(
+        "us_national_capital_gain_details",
+        lambda: us_capital_gain_details_signal_gate(base_frame),
+        base_frame,
+    )
     if not capital_gain_details_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14192,7 +14510,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             time_period=PERIOD,
             allow_existing_without_source=True,
         )
-    childcare_gate = us_childcare_signal_gate(base_frame)
+    childcare_gate = _shadow_frame_gate(
+        "us_national_childcare",
+        lambda: us_childcare_signal_gate(base_frame),
+        base_frame,
+    )
     if not childcare_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14216,7 +14538,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             time_period=PERIOD,
             allow_existing_without_source=True,
         )
-    energy_subsidy_gate = us_energy_subsidy_signal_gate(base_frame)
+    energy_subsidy_gate = _shadow_frame_gate(
+        "us_national_energy_subsidy",
+        lambda: us_energy_subsidy_signal_gate(base_frame),
+        base_frame,
+    )
     if not energy_subsidy_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14233,7 +14559,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in energy_subsidy_gate.failures
             )
         )
-    alimony_gate = us_alimony_signal_gate(base_frame)
+    alimony_gate = _shadow_frame_gate(
+        "us_national_alimony", lambda: us_alimony_signal_gate(base_frame), base_frame
+    )
     if not alimony_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14250,7 +14578,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in alimony_gate.failures
             )
         )
-    casualty_loss_gate = us_casualty_loss_signal_gate(base_frame)
+    casualty_loss_gate = _shadow_frame_gate(
+        "us_national_casualty_loss",
+        lambda: us_casualty_loss_signal_gate(base_frame),
+        base_frame,
+    )
     if not casualty_loss_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14267,7 +14599,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in casualty_loss_gate.failures
             )
         )
-    misc_itemized_gate = us_misc_itemized_signal_gate(base_frame)
+    misc_itemized_gate = _shadow_frame_gate(
+        "us_national_misc_itemized",
+        lambda: us_misc_itemized_signal_gate(base_frame),
+        base_frame,
+    )
     if not misc_itemized_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14295,7 +14631,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    retirement_contributions_gate = us_retirement_contributions_signal_gate(base_frame)
+    retirement_contributions_gate = _shadow_frame_gate(
+        "us_national_retirement_contributions",
+        lambda: us_retirement_contributions_signal_gate(base_frame),
+        base_frame,
+    )
     if not retirement_contributions_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14323,7 +14663,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    immigration_gate = us_immigration_composition_gate(base_frame)
+    immigration_gate = _shadow_frame_gate(
+        "us_national_immigration_composition",
+        lambda: us_immigration_composition_gate(base_frame),
+        base_frame,
+    )
     if not immigration_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14351,7 +14695,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    take_up_gate = us_take_up_signal_gate(base_frame)
+    take_up_gate = _shadow_frame_gate(
+        "us_national_take_up", lambda: us_take_up_signal_gate(base_frame), base_frame
+    )
     if not take_up_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14378,7 +14724,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    hours_worked_gate = us_hours_worked_signal_gate(base_frame)
+    hours_worked_gate = _shadow_frame_gate(
+        "us_national_hours_worked",
+        lambda: us_hours_worked_signal_gate(base_frame),
+        base_frame,
+    )
     if not hours_worked_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14405,7 +14755,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         seed=args.seed,
         time_period=PERIOD,
     )
-    snap_take_up_gate = us_snap_take_up_signal_gate(base_frame)
+    snap_take_up_gate = _shadow_frame_gate(
+        "us_national_snap_take_up",
+        lambda: us_snap_take_up_signal_gate(base_frame),
+        base_frame,
+    )
     if not snap_take_up_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14433,7 +14787,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    relationship_inputs_gate = us_relationship_inputs_signal_gate(base_frame)
+    relationship_inputs_gate = _shadow_frame_gate(
+        "us_national_relationship_inputs",
+        lambda: us_relationship_inputs_signal_gate(base_frame),
+        base_frame,
+    )
     if not relationship_inputs_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14464,7 +14822,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    spm_independence_role_gate = us_spm_independence_role_signal_gate(base_frame)
+    spm_independence_role_gate = _shadow_frame_gate(
+        "us_national_spm_independence_role",
+        lambda: us_spm_independence_role_signal_gate(base_frame),
+        base_frame,
+    )
     if not spm_independence_role_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14492,7 +14854,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    medicare_take_up_gate = us_medicare_take_up_signal_gate(base_frame)
+    medicare_take_up_gate = _shadow_frame_gate(
+        "us_national_medicare_take_up",
+        lambda: us_medicare_take_up_signal_gate(base_frame),
+        base_frame,
+    )
     if not medicare_take_up_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14509,7 +14875,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in medicare_take_up_gate.failures
             )
         )
-    prior_year_income_gate = us_prior_year_income_signal_gate(base_frame)
+    prior_year_income_gate = _shadow_frame_gate(
+        "us_national_prior_year_income",
+        lambda: us_prior_year_income_signal_gate(base_frame),
+        base_frame,
+    )
     if not prior_year_income_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14532,7 +14902,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             message="Verified restored adjacent-ASEC prior-year income inputs.",
             details=dict(prior_year_income_gate.details),
         )
-    housing_inputs_gate = us_housing_inputs_signal_gate(base_frame)
+    housing_inputs_gate = _shadow_frame_gate(
+        "us_national_housing_inputs",
+        lambda: us_housing_inputs_signal_gate(base_frame),
+        base_frame,
+    )
     if not housing_inputs_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14568,7 +14942,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    retirement_distributions_gate = us_retirement_distributions_signal_gate(base_frame)
+    retirement_distributions_gate = _shadow_frame_gate(
+        "us_national_retirement_distributions",
+        lambda: us_retirement_distributions_signal_gate(base_frame),
+        base_frame,
+    )
     early_terminal_gate_failures: list[str] = []
     if not retirement_distributions_gate.passed:
         # A selected support is consume-only at this boundary. Preserve the
@@ -14603,7 +14981,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    eligibility_inputs_gate = us_eligibility_inputs_signal_gate(base_frame)
+    eligibility_inputs_gate = _shadow_frame_gate(
+        "us_national_eligibility_inputs",
+        lambda: us_eligibility_inputs_signal_gate(base_frame),
+        base_frame,
+    )
     if not eligibility_inputs_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14634,7 +15016,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    education_inputs_gate = us_education_inputs_signal_gate(base_frame)
+    education_inputs_gate = _shadow_frame_gate(
+        "us_national_education_inputs",
+        lambda: us_education_inputs_signal_gate(base_frame),
+        base_frame,
+    )
     if not education_inputs_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14662,7 +15048,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    pregnancy_gate = us_pregnancy_signal_gate(base_frame)
+    pregnancy_gate = _shadow_frame_gate(
+        "us_national_pregnancy",
+        lambda: us_pregnancy_signal_gate(base_frame),
+        base_frame,
+    )
     if not pregnancy_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14679,8 +15069,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in pregnancy_gate.failures
             )
         )
-    reported_coverage_vintage_gate = us_reported_coverage_vintage_signal_gate(
-        base_frame
+    reported_coverage_vintage_gate = _shadow_frame_gate(
+        "us_national_reported_coverage_vintage",
+        lambda: us_reported_coverage_vintage_signal_gate(base_frame),
+        base_frame,
     )
     if not reported_coverage_vintage_gate.passed:
         receipt_path = (
@@ -14717,7 +15109,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    wic_claim_gate = us_wic_claim_signal_gate(base_frame)
+    wic_claim_gate = _shadow_frame_gate(
+        "us_national_wic_claim",
+        lambda: us_wic_claim_signal_gate(base_frame),
+        base_frame,
+    )
     if not wic_claim_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14744,8 +15140,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         seed=args.seed,
         time_period=PERIOD,
     )
-    snap_discretionary_exemption_gate = us_snap_discretionary_exemption_signal_gate(
-        base_frame
+    snap_discretionary_exemption_gate = _shadow_frame_gate(
+        "us_national_snap_discretionary_exemption",
+        lambda: us_snap_discretionary_exemption_signal_gate(base_frame),
+        base_frame,
     )
     if not snap_discretionary_exemption_gate.passed:
         if telemetry is not None:
@@ -14823,9 +15221,15 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         scf_donor=scf_wealth_donor,
         sipp_donor=sipp_financial_asset_donor,
     )
-    scf_wealth_gate = us_scf_wealth_signal_gate(
-        base_frame,
-        require_sipp_blend=True,
+    scf_wealth_gate = shadow_gate(
+        "us_national_scf_wealth",
+        lambda: us_scf_wealth_signal_gate(
+            base_frame,
+            require_sipp_blend=True,
+        ),
+        lambda: EvidenceContext(
+            frame=base_frame, artifacts={"scf_require_sipp_blend": True}
+        ),
     )
     if not scf_wealth_gate.passed:
         if telemetry is not None:
@@ -14868,7 +15272,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         time_period=PERIOD,
         sipp_donor=ssi_disability_donor,
     )
-    ssi_disability_gate = us_ssi_disability_criteria_signal_gate(base_frame)
+    ssi_disability_gate = _shadow_frame_gate(
+        "us_national_ssi_disability_criteria",
+        lambda: us_ssi_disability_criteria_signal_gate(base_frame),
+        base_frame,
+    )
     if not ssi_disability_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14905,7 +15313,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         time_period=PERIOD,
         sipp_donor=head_start_donor,
     )
-    head_start_gate = us_sipp_head_start_signal_gate(base_frame)
+    head_start_gate = _shadow_frame_gate(
+        "us_national_sipp_head_start",
+        lambda: us_sipp_head_start_signal_gate(base_frame),
+        base_frame,
+    )
     if not head_start_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14954,8 +15366,17 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         reporter_source_ids=ssi_reporter_source_ids,
         prior_basis=ssi_take_up_prior_basis,
     )
-    ssi_take_up_gate = us_ssi_take_up_gate(
-        ssi_take_up_stage_diagnostics, targets=ssi_band_targets
+    ssi_take_up_gate = shadow_gate(
+        "us_national_ssi_take_up",
+        lambda: us_ssi_take_up_gate(
+            ssi_take_up_stage_diagnostics, targets=ssi_band_targets
+        ),
+        lambda: EvidenceContext(
+            artifacts={
+                "ssi_take_up_diagnostics": ssi_take_up_stage_diagnostics,
+                "ssi_band_targets": ssi_band_targets,
+            }
+        ),
     )
     if not ssi_take_up_gate.passed:
         if telemetry is not None:
@@ -15017,7 +15438,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         time_period=PERIOD,
         scf_auto_loan_donor=scf_auto_loan_donor,
     )
-    scf_auto_loan_gate = us_scf_auto_loans_signal_gate(base_frame)
+    scf_auto_loan_gate = _shadow_frame_gate(
+        "us_national_scf_auto_loans",
+        lambda: us_scf_auto_loans_signal_gate(base_frame),
+        base_frame,
+    )
     if not scf_auto_loan_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -15049,6 +15474,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 else None
             ),
         )
+    else:
+        shadow_not_run(
+            "us_national_scf_education_debt",
+            "the SCF education-debt stage runs only with --scf-education-debt",
+        )
     if telemetry is not None:
         telemetry.stage(
             "sipp_vehicle_inputs",
@@ -15069,7 +15499,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         time_period=PERIOD,
         sipp_donor=sipp_vehicle_donor,
     )
-    sipp_vehicles_gate = us_sipp_vehicles_signal_gate(base_frame)
+    sipp_vehicles_gate = _shadow_frame_gate(
+        "us_national_sipp_vehicles",
+        lambda: us_sipp_vehicles_signal_gate(base_frame),
+        base_frame,
+    )
     if not sipp_vehicles_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -15105,7 +15539,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         time_period=PERIOD,
         sipp_donor=voluntary_filing_donor,
     )
-    voluntary_filing_gate = us_voluntary_filing_signal_gate(base_frame)
+    voluntary_filing_gate = _shadow_frame_gate(
+        "us_national_voluntary_filing",
+        lambda: us_voluntary_filing_signal_gate(base_frame),
+        base_frame,
+    )
     if not voluntary_filing_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -15145,7 +15583,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         time_period=PERIOD,
         sipp_donor=sipp_tip_donor,
     )
-    sipp_tips_gate = us_sipp_tips_signal_gate(base_frame)
+    sipp_tips_gate = _shadow_frame_gate(
+        "us_national_sipp_tips",
+        lambda: us_sipp_tips_signal_gate(base_frame),
+        base_frame,
+    )
     if not sipp_tips_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -15186,7 +15628,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         time_period=PERIOD,
         org_donor=org_wages_donor,
     )
-    org_wages_gate = us_org_wages_signal_gate(base_frame)
+    org_wages_gate = _shadow_frame_gate(
+        "us_national_org_wages",
+        lambda: us_org_wages_signal_gate(base_frame),
+        base_frame,
+    )
     if not org_wages_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -15214,7 +15660,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         seed=args.seed,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
     )
-    health_input_gate = _health_input_signal_gate(base_frame)
+    health_input_gate = _shadow_frame_gate(
+        "us_national_health_input",
+        lambda: _health_input_signal_gate(base_frame),
+        base_frame,
+    )
     if not health_input_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -15246,7 +15696,13 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         substitutions=medicaid_enrollment_substitutions,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
     )
-    medicaid_take_up_gate = us_medicaid_take_up_gate(medicaid_take_up_diagnostics)
+    medicaid_take_up_gate = shadow_gate(
+        "us_national_medicaid_take_up",
+        lambda: us_medicaid_take_up_gate(medicaid_take_up_diagnostics),
+        lambda: EvidenceContext(
+            artifacts={"medicaid_take_up_diagnostics": medicaid_take_up_diagnostics}
+        ),
+    )
     if not medicaid_take_up_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -15274,7 +15730,13 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         seed=args.seed,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
     )
-    snap_state_take_up_gate = us_snap_state_take_up_gate(snap_state_take_up_diagnostics)
+    snap_state_take_up_gate = shadow_gate(
+        "us_national_snap_state_take_up",
+        lambda: us_snap_state_take_up_gate(snap_state_take_up_diagnostics),
+        lambda: EvidenceContext(
+            artifacts={"snap_state_take_up_diagnostics": snap_state_take_up_diagnostics}
+        ),
+    )
     if not snap_state_take_up_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -15305,7 +15767,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         time_period=PERIOD,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
     )
-    other_health_insurance_gate = us_other_health_insurance_signal_gate(base_frame)
+    other_health_insurance_gate = _shadow_frame_gate(
+        "us_national_other_health_insurance",
+        lambda: us_other_health_insurance_signal_gate(base_frame),
+        base_frame,
+    )
     if not other_health_insurance_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -15324,7 +15790,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         )
     # microcosm#454: the meps_esi_premiums base stage owns the ESI employer
     # premium input; refuse a base that lacks or flattens it before the solve.
-    esi_premiums_base_gate = us_esi_premiums_signal_gate(base_frame)
+    esi_premiums_base_gate = _shadow_frame_gate(
+        "us_national_esi_premiums",
+        lambda: us_esi_premiums_signal_gate(base_frame),
+        base_frame,
+    )
     if not esi_premiums_base_gate.passed and not args.allow_esi_premium_gaps:
         if telemetry is not None:
             telemetry.stage(
@@ -15396,8 +15866,14 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                     for failure in input_mass_reference_gate.failures
                 )
             )
-    degenerate_input_gate = _degenerate_input_signal_gate(
-        base_frame, PolicyEngineUSEngine()
+    degenerate_input_engine = PolicyEngineUSEngine()
+    degenerate_input_gate = shadow_gate(
+        "us_national_degenerate_input",
+        lambda: _degenerate_input_signal_gate(base_frame, degenerate_input_engine),
+        lambda: EvidenceContext(
+            frame=base_frame,
+            artifacts={"policyengine_engine": degenerate_input_engine},
+        ),
     )
     if not degenerate_input_gate.passed:
         # Same degraded contract as the input-mass gate above: the gate
@@ -15445,7 +15921,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             "ecps_parity_gate",
             message="Gating candidate layers against the incumbent eCPS reference.",
         )
-    ecps_parity_gate = _ecps_parity_gate(base_frame)
+    ecps_parity_gate = _shadow_frame_gate(
+        "us_national_ecps_parity", lambda: _ecps_parity_gate(base_frame), base_frame
+    )
     if not ecps_parity_gate.passed and not args.allow_ecps_parity_gaps:
         # Same degraded contract as the input-mass/degenerate gates above
         # (PR #557 round 3 finding 1): the pinned parity reference requires
@@ -15769,6 +16247,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     calibration_runtime = _calibration_runtime()
     ladder_outcome = None
     exact_k_puf_tail_gate: GateResult | None = None
+    if args.exact_k is None:
+        for entry_id in (
+            "us_national_exact_k_puf_capital_gains_tail",
+            "us_national_exact_k_frozen_register_fit",
+        ):
+            shadow_not_run(entry_id, "the exact-k gates run on the exact-k arm only")
     if args.exact_k is not None:
         if (
             pool_original_household_ids is None
@@ -15811,7 +16295,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         )
         assert_exact_k_realized_count(ladder_outcome, args.exact_k)
         result = ladder_outcome.result
-        exact_k_puf_tail_gate = _exact_k_puf_tail_support_gate(
+        # A helper, not a lambda over target_frame: the frame is deleted
+        # below to free it, and a closure must not keep it alive.
+        exact_k_puf_tail_gate = _shadow_exact_k_puf_tail_support_gate(
             target_frame,
             ladder_outcome.support,
         )
@@ -16001,8 +16487,15 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # weight-safe, so any downstream transform that corrupted the frozen
     # decisions fails the build here instead of shipping (PR #477 review
     # finding 3). The SSA-count miss itself stays scorecard-only.
-    final_ssi_take_up_gate = us_ssi_take_up_gate(
-        ssi_take_up_diagnostics, targets=ssi_band_targets
+    final_ssi_take_up_gate = shadow_gate(
+        "us_national_ssi_take_up_final",
+        lambda: us_ssi_take_up_gate(ssi_take_up_diagnostics, targets=ssi_band_targets),
+        lambda: EvidenceContext(
+            artifacts={
+                "ssi_take_up_diagnostics": ssi_take_up_diagnostics,
+                "ssi_band_targets": ssi_band_targets,
+            }
+        ),
     )
     # SSI gate failures join the #437 batched terminal gates instead of
     # raising here: an early raise destroyed the failed run's calibration
@@ -16068,7 +16561,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # rows, and a column nonconstant on the candidate base can flatten on the
     # selected support.
     try:
-        health_input_gate = _health_input_signal_gate(export_frame)
+        health_input_gate = _shadow_frame_gate(
+            "us_national_health_input_export",
+            lambda: _health_input_signal_gate(export_frame),
+            export_frame,
+        )
     except Exception as error:
         # Degraded-mode guard (microcosm#547): record instead of masking; the
         # downstream gate-failure evaluation is itself guarded, so a None
@@ -16081,8 +16578,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             f"recorded instead of masking earlier failures: {error}"
         )
     try:
-        reported_coverage_vintage_gate = us_reported_coverage_vintage_signal_gate(
-            export_frame
+        reported_coverage_vintage_gate = _shadow_frame_gate(
+            "us_national_reported_coverage_vintage_export",
+            lambda: us_reported_coverage_vintage_signal_gate(export_frame),
+            export_frame,
         )
     except Exception as error:
         if not early_terminal_gate_failures:
@@ -16093,8 +16592,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             f"mode; recorded instead of masking earlier failures: {error}"
         )
     try:
-        other_health_insurance_gate = us_other_health_insurance_signal_gate(
-            export_frame
+        other_health_insurance_gate = _shadow_frame_gate(
+            "us_national_other_health_insurance_export",
+            lambda: us_other_health_insurance_signal_gate(export_frame),
+            export_frame,
         )
     except Exception as error:
         if not early_terminal_gate_failures:
@@ -16115,7 +16616,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             for failure in other_health_insurance_gate.failures
         )
     try:
-        esi_premiums_export_gate = us_esi_premiums_signal_gate(export_frame)
+        esi_premiums_export_gate = _shadow_frame_gate(
+            "us_national_esi_premiums_export",
+            lambda: us_esi_premiums_signal_gate(export_frame),
+            export_frame,
+        )
     except Exception as error:
         if not early_terminal_gate_failures:
             raise
@@ -16237,13 +16742,26 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             )
         if current_target_surface is None:
             current_target_surface = target_surface_payload(result)
-        exact_k_incumbent_fit_gate = _exact_k_frozen_register_fit_gate(
-            result,
-            incumbent_diagnostics,
-            target_registry=registry,
-            target_loss_weights=target_loss_weights,
-            configured_loss_basis=target_loss_basis,
-            incumbent_loss_basis=incumbent_loss_basis,
+        exact_k_incumbent_fit_gate = shadow_gate(
+            "us_national_exact_k_frozen_register_fit",
+            lambda: _exact_k_frozen_register_fit_gate(
+                result,
+                incumbent_diagnostics,
+                target_registry=registry,
+                target_loss_weights=target_loss_weights,
+                configured_loss_basis=target_loss_basis,
+                incumbent_loss_basis=incumbent_loss_basis,
+            ),
+            lambda: EvidenceContext(
+                artifacts={
+                    "calibration_result": result,
+                    "incumbent_diagnostics": incumbent_diagnostics,
+                    "target_registry": registry,
+                    "target_loss_weights": target_loss_weights,
+                    "configured_loss_basis": target_loss_basis,
+                    "incumbent_loss_basis": incumbent_loss_basis,
+                }
+            ),
         )
         exact_k_ladder_provenance = _exact_k_ladder_manifest_payload(
             args=args,
@@ -16264,24 +16782,36 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         None if args.allow_ecps_parity_gaps else ecps_parity_gate
     )
     try:
-        gate_failures = _release_gate_failures(
-            result,
-            compilation,
-            target_profile_gate,
-            health_input_gate,
-            base_population_gate,
-            incumbent_diagnostics,
-            immigration_gate,
-            enforced_input_mass_reference_gate,
-            degenerate_input_gate,
-            ecps_parity_gate=enforced_ecps_parity_gate,
-            hours_worked_gate=hours_worked_gate,
-            snap_take_up_gate=snap_take_up_gate,
-            eligibility_inputs_gate=eligibility_inputs_gate,
-            pregnancy_gate=pregnancy_gate,
-            reported_coverage_vintage_gate=reported_coverage_vintage_gate,
-            snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
-            target_registry=registry,
+        release_gate_inputs = {
+            "target_profile_gate": target_profile_gate,
+            "health_input_gate": health_input_gate,
+            "base_population_gate": base_population_gate,
+            "incumbent_diagnostics": incumbent_diagnostics,
+            "immigration_gate": immigration_gate,
+            "input_mass_reference_gate": enforced_input_mass_reference_gate,
+            "degenerate_input_gate": degenerate_input_gate,
+            "ecps_parity_gate": enforced_ecps_parity_gate,
+            "hours_worked_gate": hours_worked_gate,
+            "snap_take_up_gate": snap_take_up_gate,
+            "eligibility_inputs_gate": eligibility_inputs_gate,
+            "pregnancy_gate": pregnancy_gate,
+            "reported_coverage_vintage_gate": reported_coverage_vintage_gate,
+            "snap_discretionary_exemption_gate": snap_discretionary_exemption_gate,
+            "target_registry": registry,
+        }
+        gate_failures = shadow_failures(
+            "us_national_release_gates",
+            lambda: _release_gate_failures(result, compilation, **release_gate_inputs),
+            lambda: EvidenceContext(
+                artifacts={
+                    "calibration_result": result,
+                    "target_compilation": compilation,
+                    **{
+                        f"release_gates_{name}": value
+                        for name, value in release_gate_inputs.items()
+                    },
+                }
+            ),
         )
     except Exception as error:
         # Degraded-mode guard (microcosm#547): the batch must still form and
@@ -16416,8 +16946,13 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # SPM-measured, so reform validation below reaches the engine's own
     # refusal; that is the declared, owner-checked, manifest-recorded choice an
     # evidence release makes about any pre-export gate, not a hole here.
-    spm_composition_failures, export_frame_spm_composition = (
-        _spm_composition_gate_failures(export_frame, stage="export frame")
+    spm_composition_failures, export_frame_spm_composition = shadow_value(
+        "us_national_spm_composition",
+        lambda: _spm_composition_gate_failures(export_frame, stage="export frame"),
+        lambda: EvidenceContext(
+            frame=export_frame, artifacts={"spm_composition_stage": "export frame"}
+        ),
+        verdict=lambda value: LegacyVerdict.from_failures(value[0]),
     )
     terminal_gate_failures.extend(spm_composition_failures)
     terminal_batch_telemetry.stage(
@@ -16453,8 +16988,16 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # build.built_with_model_package. Column names only: no rows are read, and
     # the verdict joins the one batched pre-export raise below, so a refusal
     # names every other failing gate too and mints no H5.
-    stored_input_failures_, export_frame_stored_inputs = _stored_input_gate_failures(
-        export_frame, stage=US_FISCAL_STORED_INPUTS_STAGE
+    stored_input_failures_, export_frame_stored_inputs = shadow_value(
+        "us_national_stored_inputs",
+        lambda: _stored_input_gate_failures(
+            export_frame, stage=US_FISCAL_STORED_INPUTS_STAGE
+        ),
+        lambda: EvidenceContext(
+            frame=export_frame,
+            artifacts={"stored_inputs_stage": US_FISCAL_STORED_INPUTS_STAGE},
+        ),
+        verdict=lambda value: LegacyVerdict.from_failures(value[0]),
     )
     terminal_gate_failures.extend(stored_input_failures_)
     terminal_batch_telemetry.stage(
@@ -16510,8 +17053,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # RED on today's asset-less artifacts by design (Deliverable 2 turns it
     # green); that is the gate doing its job, not a bug.
     try:
-        input_coverage_gate = us_release_input_coverage_gate(
-            export_frame, release_engine
+        input_coverage_gate = shadow_gate(
+            "us_national_release_input_coverage",
+            lambda: us_release_input_coverage_gate(export_frame, release_engine),
+            lambda: EvidenceContext(
+                frame=export_frame, artifacts={"release_engine": release_engine}
+            ),
         )
     except Exception as exc:
         # Degraded mode only: with earlier pre-export failures on record, a
@@ -16570,8 +17117,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # evidence, with the base and export signal verdicts beside it so a waived
     # assignment failure stays on the record.
     try:
-        esi_premiums_anchor_gate = us_esi_premiums_anchor_gate(
-            export_frame, time_period=PERIOD
+        esi_premiums_anchor_gate = shadow_gate(
+            "us_national_esi_premiums_anchor",
+            lambda: us_esi_premiums_anchor_gate(export_frame, time_period=PERIOD),
+            lambda: EvidenceContext(
+                frame=export_frame, artifacts={"time_period": PERIOD}
+            ),
         )
     except Exception as exc:
         if not terminal_gate_failures:
@@ -16666,20 +17217,34 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             if args.export_input_mass_reference_h5 is not None
             else None
         )
-        export_input_mass_gate = _export_input_mass_gate(
-            export_frame,
-            base_frame,
-            relative_tolerance=args.input_mass_relative_tolerance,
-            minimum_reference_total=args.input_mass_minimum_reference_total,
-            reference_frame=export_reference_frame,
-            reference_name=export_reference_name,
-            # Build H (microcosm#299): the two SOI-identified columns whose true
-            # target level provably cannot sit inside the live-default reference
-            # band (estate_income, non_sch_d_capital_gains). miscellaneous_income
-            # and both mortgage columns are deliberately NOT excluded so the run
-            # adjudicates their actual gate outcome. See the constant's band-math
-            # rationale above.
-            reviewed_exclusions=US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS,
+        # Build H (microcosm#299): the two SOI-identified columns whose true
+        # target level provably cannot sit inside the live-default reference
+        # band (estate_income, non_sch_d_capital_gains). miscellaneous_income
+        # and both mortgage columns are deliberately NOT excluded so the run
+        # adjudicates their actual gate outcome. See the constant's band-math
+        # rationale above.
+        export_input_mass_gate = shadow_gate(
+            "us_national_export_input_mass",
+            lambda: _export_input_mass_gate(
+                export_frame,
+                base_frame,
+                relative_tolerance=args.input_mass_relative_tolerance,
+                minimum_reference_total=args.input_mass_minimum_reference_total,
+                reference_frame=export_reference_frame,
+                reference_name=export_reference_name,
+                reviewed_exclusions=US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS,
+            ),
+            lambda: EvidenceContext(
+                frame=export_frame,
+                artifacts={
+                    "base_frame": base_frame,
+                    "export_input_mass_reference_frame": export_reference_frame,
+                    "export_input_mass_reference_name": export_reference_name,
+                    "export_input_mass_reviewed_exclusions": (
+                        US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS
+                    ),
+                },
+            ),
         )
     except Exception as exc:
         # Same degraded-mode contract as the coverage gate above.
@@ -16854,8 +17419,20 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # writer's output; the written bytes are graded whatever the gate reached
     # and must earn the same verdict (no refusal, if the gate could not
     # evaluate).
-    stored_input_premise_failure = _written_stored_input_verdict_mismatch(
-        dataset_path, export_frame_stored_inputs
+    stored_input_premise_failure = shadow_value(
+        "us_national_stored_inputs_written",
+        lambda: _written_stored_input_verdict_mismatch(
+            dataset_path, export_frame_stored_inputs
+        ),
+        lambda: EvidenceContext(
+            artifacts={
+                "dataset_path": dataset_path,
+                "pre_export_stored_inputs": export_frame_stored_inputs,
+            }
+        ),
+        verdict=lambda mismatch: LegacyVerdict.from_failures(
+            [] if mismatch is None else [mismatch]
+        ),
     )
     if stored_input_premise_failure is not None:
         raise RuntimeError(stored_input_premise_failure)

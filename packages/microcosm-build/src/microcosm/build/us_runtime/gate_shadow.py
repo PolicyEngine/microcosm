@@ -75,14 +75,17 @@ __all__ = [
     "LegacyStatus",
     "LegacyVerdict",
     "active_gate_shadow",
+    "arm_gate_shadow",
     "compare_verdicts",
     "current_gate_shadow",
+    "disarm_gate_shadow",
     "legacy_parameter_overrides",
     "shadow_check",
     "shadow_failures",
     "shadow_file_paths",
     "shadow_gate",
     "shadow_not_run",
+    "shadow_value",
 ]
 
 GATE_BATTERY_SHADOW_SCHEMA_VERSION = 1
@@ -629,6 +632,47 @@ class GateBatteryShadow:
         with self._lock:
             self._shadow_errors.append(f"[{entry_id}] {message}")
 
+    def value(
+        self,
+        entry_id: str,
+        evaluate: Callable[[], Any],
+        context: EvidenceContext | Callable[[], EvidenceContext],
+        *,
+        verdict: Callable[[Any], LegacyVerdict],
+        refusals: tuple[type[BaseException], ...] = (),
+        site: str | None = None,
+    ) -> Any:
+        """:meth:`gate` for a check that returns something else.
+
+        ``verdict`` reads today's verdict from the value; an exception of a
+        ``refusals`` type is the check's own failure, its message the line.
+        Either way today's value, or exception, comes back unchanged.
+        """
+
+        try:
+            result = evaluate()
+        except refusals as refusal:
+            self.check(
+                entry_id,
+                context,
+                LegacyVerdict.from_failures([str(refusal)]),
+                site=site,
+            )
+            raise
+        except Exception as exc:
+            self.check(entry_id, context, LegacyVerdict.from_exception(exc), site=site)
+            raise
+        try:
+            legacy = verdict(result)
+        except Exception as exc:  # noqa: BLE001 - recorded, never raised
+            self.record_error(
+                entry_id,
+                f"today's verdict is not comparable: {type(exc).__name__}: {exc}",
+            )
+            return result
+        self.check(entry_id, context, legacy, site=site)
+        return result
+
     def not_run(self, entry_id: str, reason: str, *, site: str | None = None) -> None:
         """Record that today's code did not evaluate ``entry_id`` on this build.
 
@@ -1011,6 +1055,22 @@ _ACTIVE_LOCK = threading.Lock()
 _ACTIVE: list[GateBatteryShadow] = []
 
 
+def arm_gate_shadow(shadow: GateBatteryShadow) -> None:
+    """Arm ``shadow`` until :func:`disarm_gate_shadow`; prefer the context
+    manager, :func:`active_gate_shadow`, where one block holds the run."""
+
+    with _ACTIVE_LOCK:
+        _ACTIVE.append(shadow)
+
+
+def disarm_gate_shadow(shadow: GateBatteryShadow) -> None:
+    """Disarm a shadow :func:`arm_gate_shadow` armed; a no-op otherwise."""
+
+    with _ACTIVE_LOCK:
+        if shadow in _ACTIVE:
+            _ACTIVE.remove(shadow)
+
+
 @contextmanager
 def active_gate_shadow(shadow: GateBatteryShadow) -> Iterator[GateBatteryShadow]:
     """Arm ``shadow`` for the gate sites while the block runs.
@@ -1074,6 +1134,25 @@ def shadow_failures(
     if shadow is None:
         return evaluate()
     return shadow.failures(entry_id, evaluate, context, site=site)
+
+
+def shadow_value(
+    entry_id: str,
+    evaluate: Callable[[], Any],
+    context: EvidenceContext | Callable[[], EvidenceContext],
+    *,
+    verdict: Callable[[Any], LegacyVerdict],
+    refusals: tuple[type[BaseException], ...] = (),
+    site: str | None = None,
+) -> Any:
+    """:func:`shadow_gate` for a check that returns another value."""
+
+    shadow = current_gate_shadow(entry_id)
+    if shadow is None:
+        return evaluate()
+    return shadow.value(
+        entry_id, evaluate, context, verdict=verdict, refusals=refusals, site=site
+    )
 
 
 def shadow_check(

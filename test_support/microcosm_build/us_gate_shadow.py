@@ -75,8 +75,10 @@ _HELPERS = frozenset(
         "shadow_failures",
         "shadow_check",
         "shadow_not_run",
+        "shadow_value",
         "_shadow_frame_gate",
         "_observe_frame_gate",
+        "_shadow_tail_survival",
     }
 )
 

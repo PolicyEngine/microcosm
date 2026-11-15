@@ -592,7 +592,7 @@ def test_failure_line_gates_compare_their_lines(tmp_path) -> None:
             gate="tool:spm_lines",
             positional=("value",),
             parameters=frozenset({"cap"}),
-            returns_failures=True,
+            returns="failures",
         ),
     )
     gates = _manifest(

@@ -57,6 +57,8 @@ __all__ = [
     "ToolNamespace",
     "USCheckBinding",
     "USGateSpec",
+    "RETURNS",
+    "us_flag_overrides",
     "declared_value",
     "resolve_reference",
     "us_check_binding",
@@ -151,11 +153,23 @@ class USGateSpec:
             entry parameter of the same name.
         pinned: Entry parameter to the reference of the module constant the
             gate reads it from; the declared value must equal the constant.
-        returns_failures: The gate returns failure lines rather than a
-            :class:`~microcosm.build.gates.GateResult`; the binding wraps
-            them (an empty list passes).
-        adapt: Optional final step turning the gate's return value into its
-            :class:`~microcosm.build.gates.GateResult`.
+        returns: How the gate hands back its verdict (:data:`RETURNS`):
+            ``result``, a :class:`~microcosm.build.gates.GateResult` (or an
+            object with ``passed`` and ``failures``); ``failures``, failure
+            lines (none is a pass); ``failures_and_details``, a pair of those
+            lines and a details mapping; ``result_and_details``, a pair whose
+            first item is the result; ``failure_or_none``, one failure line or
+            ``None``; ``mapping``, a dict carrying ``passed`` and
+            ``failures``; or ``receipt``, a refusal-style check whose
+            returning at all is a pass and whose ``refusals`` are its
+            failures.
+        refusals: Exception types a refusal-style check raises to fail; the
+            binding reads one as a failure whose line is its message, as
+            the shadow reads today's.
+        flags: Routed parameter to the tool's argparse destination that
+            sets it per run. The entry declares the parser's default; a
+            build that passes another value is a runtime override, which
+            the shadow records and explains.
     """
 
     check: str
@@ -165,8 +179,9 @@ class USGateSpec:
     arguments: Mapping[str, str] = field(default_factory=dict)
     parameters: frozenset[str] = frozenset()
     pinned: Mapping[str, str] = field(default_factory=dict)
-    returns_failures: bool = False
-    adapt: Callable[[Any], GateResult] | None = None
+    returns: str = "result"
+    refusals: tuple[type[BaseException], ...] = ()
+    flags: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.check or not self.legacy_name:
@@ -189,10 +204,20 @@ class USGateSpec:
             raise ValueError(
                 f"{self.check}: {sorted(overlap)} are both evidence and thresholds."
             )
-        if self.returns_failures and self.adapt is not None:
-            raise ValueError(f"{self.check}: returns_failures and adapt both wrap.")
+        if self.returns not in RETURNS:
+            raise ValueError(
+                f"{self.check}: returns {self.returns!r} is not one of {sorted(RETURNS)}."
+            )
+        if self.returns == "receipt" and not self.refusals:
+            raise ValueError(f"{self.check}: a receipt check fails only by a refusal.")
+        stray_flags = sorted(set(self.flags) - set(self.parameters))
+        if stray_flags:
+            raise ValueError(
+                f"{self.check}: flags {stray_flags} name parameters it does not route."
+            )
         object.__setattr__(self, "arguments", MappingProxyType(dict(self.arguments)))
         object.__setattr__(self, "pinned", MappingProxyType(dict(self.pinned)))
+        object.__setattr__(self, "flags", MappingProxyType(dict(self.flags)))
 
     @property
     def parameter_keys(self) -> frozenset[str]:
@@ -349,27 +374,22 @@ class USCheckBinding:
                     "until the flip the spec must equal today's constant."
                 )
         gate = resolve_reference(spec.gate, tool=self._tool)
-        value = gate(
-            *(_source(context, source) for source in spec.positional),
-            **{
-                argument: _source(context, source)
-                for argument, source in spec.arguments.items()
-            },
-            **{
-                key: _routed(declared[key])
-                for key in spec.parameters
-                if key in declared
-            },
-        )
-        if spec.returns_failures:
-            if isinstance(value, str):
-                raise TypeError(f"check {spec.check!r} returned one string, not lines.")
-            lines = tuple(str(line) for line in value)
-            value = GateResult(name=spec.legacy_name, passed=not lines, failures=lines)
-        elif spec.adapt is not None:
-            value = spec.adapt(value)
-        elif not isinstance(value, GateResult):
-            value = _as_gate_result(value, spec.legacy_name)
+        try:
+            value = gate(
+                *(_source(context, source) for source in spec.positional),
+                **{
+                    argument: _source(context, source)
+                    for argument, source in spec.arguments.items()
+                },
+                **{
+                    key: _routed(declared[key])
+                    for key in spec.parameters
+                    if key in declared
+                },
+            )
+        except spec.refusals as refusal:
+            return GateResult(name=self.name, passed=False, failures=(str(refusal),))
+        value = _verdict_of(spec, value)
         if isinstance(value, GateResult) and value.name == spec.legacy_name:
             value = replace(value, name=self.name)
         return value
@@ -378,6 +398,90 @@ class USCheckBinding:
         self, context: EvidenceContext, parameters: Mapping[str, Any]
     ) -> object | None:
         return None
+
+
+#: How a gate hands back its verdict (:attr:`USGateSpec.returns`).
+RETURNS = frozenset(
+    {
+        "result",
+        "failures",
+        "failures_and_details",
+        "result_and_details",
+        "failure_or_none",
+        "mapping",
+        "receipt",
+    }
+)
+
+
+def _lines(value: object, check: str) -> tuple[str, ...]:
+    if isinstance(value, str):
+        raise TypeError(f"check {check!r} returned one string, not lines.")
+    return tuple(str(line) for line in value)
+
+
+def _verdict_of(spec: USGateSpec, value: Any) -> object:
+    """The gate's return value as its result, by :attr:`USGateSpec.returns`."""
+
+    name = spec.legacy_name
+    if spec.returns == "result":
+        return value if isinstance(value, GateResult) else _as_gate_result(value, name)
+    if spec.returns == "result_and_details":
+        first = value[0]
+        return first if isinstance(first, GateResult) else _as_gate_result(first, name)
+    if spec.returns == "receipt":
+        return GateResult(name=name, passed=True)
+    if spec.returns == "mapping":
+        failures = _lines(value.get("failures") or (), spec.check)
+        details = {key: item for key, item in value.items() if key != "failures"}
+        return GateResult(
+            name=name,
+            passed=bool(value.get("passed")),
+            failures=failures,
+            details=details,
+        )
+    if spec.returns == "failure_or_none":
+        if value is None:
+            return GateResult(name=name, passed=True)
+        return GateResult(name=name, passed=False, failures=(str(value),))
+    details: dict[str, object] = {}
+    if spec.returns == "failures_and_details":
+        value, raw_details = value
+        details = dict(raw_details or {})
+    failures = _lines(value, spec.check)
+    return GateResult(
+        name=name, passed=not failures, failures=failures, details=details
+    )
+
+
+def us_flag_overrides(
+    gates: Any, specs: Sequence[USGateSpec], args: Any
+) -> dict[str, dict[str, dict[str, object]]]:
+    """The declared thresholds this build's flags overrode, by entry id.
+
+    For each ``stage_health`` entry whose gate routes a flag-set threshold,
+    a parsed value that differs from the declared one is an override.
+    """
+
+    by_check = {spec.check: spec for spec in specs}
+    overrides: dict[str, dict[str, dict[str, object]]] = {}
+    for entry in gates.gates:
+        if entry.gate != "stage_health":
+            continue
+        spec = by_check.get(entry.parameters.get("check"))
+        if spec is None:
+            continue
+        for key, destination in spec.flags.items():
+            if not hasattr(args, destination):
+                continue
+            runtime = getattr(args, destination)
+            declared = entry.parameters.get(key)
+            if not _same(declared, runtime):
+                overrides.setdefault(entry.id, {})[key] = {
+                    "declared": declared_value(declared),
+                    "runtime": declared_value(runtime),
+                }
+    return overrides
 
 
 def us_check_binding(
@@ -771,8 +875,426 @@ def _us_pool_specs() -> tuple[USGateSpec, ...]:
     )
 
 
+def _tool_pins(*constants: str) -> dict[str, str]:
+    """Pinned parameters named after the tool's own module constants."""
+
+    return {constant.lstrip("_").lower(): f"tool:{constant}" for constant in constants}
+
+
+#: Frame signal gates only the national release runs: (check, legacy name,
+#: gate, module, pinned constants).
+_NATIONAL_FRAME_SIGNALS: tuple[tuple[str, str, str, str, tuple[str, ...]], ...] = (
+    (
+        "immigration_composition",
+        "immigration_composition",
+        "us_immigration_composition_gate",
+        "immigration",
+        ("_NON_CITIZEN_SHARE_BAND", "_UNDOCUMENTED_ANCHOR_RELATIVE_BAND"),
+    ),
+    (
+        "take_up_signal",
+        "take_up_signal",
+        "us_take_up_signal_gate",
+        "take_up",
+        ("US_TAKE_UP_SHARE_BAND",),
+    ),
+    (
+        "hours_worked_signal",
+        "hours_worked_signal",
+        "us_hours_worked_signal_gate",
+        "hours_worked",
+        ("_WORKED_SHARE_BAND", "_MEAN_WEEKLY_HOURS_BAND"),
+    ),
+    (
+        "snap_take_up_signal",
+        "snap_take_up_signal",
+        "us_snap_take_up_signal_gate",
+        "snap_take_up",
+        ("_TAKE_UP_SHARE_BAND",),
+    ),
+    (
+        "snap_discretionary_exemption_signal",
+        "snap_discretionary_exemption_signal",
+        "us_snap_discretionary_exemption_signal_gate",
+        "snap_discretionary_exemption",
+        ("_EXEMPT_SHARE_BAND",),
+    ),
+    (
+        "ssi_disability_criteria_signal",
+        "ssi_disability_criteria_signal",
+        "us_ssi_disability_criteria_signal_gate",
+        "ssi_disability_criteria",
+        ("_TRUE_SHARE_BAND",),
+    ),
+    (
+        "sipp_head_start_signal",
+        "sipp_head_start_signal",
+        "us_sipp_head_start_signal_gate",
+        "sipp_head_start",
+        ("_ELIGIBLE_TAKE_UP_SHARE_BAND",),
+    ),
+    (
+        "scf_auto_loans_signal",
+        "scf_auto_loans_signal",
+        "us_scf_auto_loans_signal_gate",
+        "scf_auto_loans",
+        ("_AUTO_LOAN_NONZERO_SHARE_BAND",),
+    ),
+    (
+        "scf_education_debt_signal",
+        "scf_education_debt_signal",
+        "us_scf_education_debt_signal_gate",
+        "scf_education_debt",
+        ("_BORROWER_HOUSEHOLD_SHARE_BAND",),
+    ),
+    (
+        "sipp_vehicles_signal",
+        "sipp_vehicles_signal",
+        "us_sipp_vehicles_signal_gate",
+        "sipp_vehicles",
+        ("_OWNED_NONZERO_SHARE_BAND", "_VALUE_NONZERO_SHARE_BAND"),
+    ),
+    (
+        "voluntary_filing_signal",
+        "voluntary_filing_signal",
+        "us_voluntary_filing_signal_gate",
+        "voluntary_filing",
+        ("_TRUE_SHARE_BAND",),
+    ),
+    (
+        "sipp_tips_signal",
+        "sipp_tips_signal",
+        "us_sipp_tips_signal_gate",
+        "sipp_tips",
+        ("_TIPPED_OCCUPATION_SHARE_BAND", "_TIP_INCOME_NONZERO_SHARE_BAND"),
+    ),
+    (
+        "org_wages_signal",
+        "org_wages_signal",
+        "us_org_wages_signal_gate",
+        "org_wages",
+        ("_SHARE_BANDS",),
+    ),
+    (
+        "other_health_insurance_premiums_signal",
+        "other_health_insurance_premiums_signal",
+        "us_other_health_insurance_signal_gate",
+        "other_health_insurance",
+        ("_POSITIVE_SHARE_BAND",),
+    ),
+)
+
+
+def _us_national_specs() -> tuple[USGateSpec, ...]:
+    return (
+        # Preflight: the registers and the target surface, before any stage.
+        USGateSpec(
+            check="validation_input_coverage",
+            legacy_name="us_validation_input_coverage",
+            gate="tool:us_validation_input_coverage_gate",
+        ),
+        USGateSpec(
+            check="register_consistency",
+            legacy_name="us_register_consistency",
+            gate="tool:us_register_consistency_gate",
+            arguments={
+                "degenerate_reviewed_exclusions": "degenerate_reviewed_exclusions",
+                "documented_absent_inputs": "documented_absent_inputs",
+                "nonconstant_required_columns": "nonconstant_required_columns",
+            },
+        ),
+        USGateSpec(
+            check="esi_anchor_feed",
+            legacy_name="esi_anchor_feed",
+            gate="tool:us_esi_premiums_anchor_feed_mismatches",
+            positional=("ledger_facts",),
+            returns="failures",
+        ),
+        USGateSpec(
+            check="target_parity",
+            legacy_name="us_release_target_parity",
+            gate="tool:us_release_target_parity_gate",
+            positional=("target_parity_registry",),
+        ),
+        USGateSpec(
+            check="target_profile_coverage",
+            legacy_name="target_profile_coverage",
+            gate="tool:target_profile_coverage_gate",
+            positional=("target_specs", "target_coverage_requirements"),
+        ),
+        # The staged stages' signal gates.
+        USGateSpec(
+            check="capital_gains_tail_survives_selection",
+            legacy_name="capital_gains_tail_survives_selection",
+            gate="tool:assert_puf_capital_gains_tail_survives_selection",
+            positional=("tail_candidate_frame", FRAME),
+            arguments={"require_present": "tail_require_present"},
+            refusals=(ValueError,),
+            returns="receipt",
+        ),
+        *_shared_frame_checks(
+            "weeks_unemployed_signal",
+            "qbi_inputs_signal",
+            "farm_business_income_signal",
+            "domestic_production_ald_signal",
+            "child_support_inputs_signal",
+            "disability_benefits_signal",
+            "workers_compensation_signal",
+            "educator_expense_signal",
+            "form_4952_election_signal",
+            "salt_refund_income_signal",
+            "capital_gain_details_signal",
+            "childcare_inputs_signal",
+            "energy_subsidy_signal",
+            "alimony_inputs_signal",
+            "casualty_loss_signal",
+            "misc_itemized_signal",
+            "retirement_contributions_signal",
+            "relationship_inputs_signal",
+            "spm_independence_role_signal",
+            "medicare_take_up_input_signal",
+            "prior_year_income_signal",
+            "housing_inputs_signal",
+            "retirement_distributions_signal",
+            "eligibility_inputs_signal",
+            "education_inputs_signal",
+            "pregnancy_signal",
+            "wic_claim_input_signal",
+            "esi_premiums_signal",
+        ),
+        *(
+            _frame_check(check, legacy, gate, module, *constants)
+            for check, legacy, gate, module, constants in _NATIONAL_FRAME_SIGNALS
+        ),
+        USGateSpec(
+            check="base_population_scale",
+            legacy_name="base_population_scale",
+            gate="tool:_base_population_scale_gate",
+            positional=(FRAME,),
+            arguments={"mass_repair": "base_population_mass_repair"},
+            pinned=_tool_pins("US_BASE_PERSON_POPULATION_MAX_ABS_RELATIVE_ERROR"),
+        ),
+        USGateSpec(
+            check="reported_coverage_vintage_signal",
+            legacy_name="reported_coverage_vintage_signal",
+            gate="tool:us_reported_coverage_vintage_signal_gate",
+            positional=(FRAME,),
+            pinned=_pins("cps_carried", "US_REPORTED_COVERAGE_VINTAGE_GATE_MIN_ROWS"),
+        ),
+        USGateSpec(
+            check="scf_wealth_signal",
+            legacy_name="scf_wealth_signal",
+            gate="tool:us_scf_wealth_signal_gate",
+            positional=(FRAME,),
+            arguments={"require_sipp_blend": "scf_require_sipp_blend"},
+            pinned=_pins(
+                "scf_wealth",
+                "_BANK_NONZERO_SHARE_BAND",
+                "_STOCK_NONZERO_SHARE_BAND",
+                "_BOND_NONZERO_SHARE_BAND",
+                "_NET_WORTH_NONZERO_SHARE_BAND",
+                "_NET_WORTH_POSITIVE_SHARE_BAND",
+                "_NET_WORTH_NEGATIVE_SHARE_BAND",
+                "_SCF_SOURCE_SHARE_BAND",
+                "_BANK_LOW_TAIL_THRESHOLD",
+            ),
+        ),
+        USGateSpec(
+            check="ssi_take_up",
+            legacy_name="ssi_take_up",
+            gate="tool:us_ssi_take_up_gate",
+            positional=("ssi_take_up_diagnostics",),
+            arguments={"targets": "ssi_band_targets"},
+        ),
+        USGateSpec(
+            check="health_input_signal",
+            legacy_name="health_input_signal",
+            gate="tool:_health_input_signal_gate",
+            positional=(FRAME,),
+        ),
+        USGateSpec(
+            check="medicaid_take_up",
+            legacy_name="medicaid_take_up",
+            gate="tool:us_medicaid_take_up_gate",
+            positional=("medicaid_take_up_diagnostics",),
+            parameters=frozenset({"tolerance"}),
+        ),
+        USGateSpec(
+            check="snap_state_take_up",
+            legacy_name="snap_state_take_up",
+            gate="tool:us_snap_state_take_up_gate",
+            positional=("snap_state_take_up_diagnostics",),
+            parameters=frozenset({"tolerance"}),
+        ),
+        USGateSpec(
+            check="input_mass_parity",
+            legacy_name="input_mass_parity",
+            gate="tool:us_input_mass_parity_gate",
+            positional=("candidate_input_mass_totals", "reference_input_mass_totals"),
+            arguments={
+                "carriers": "input_mass_carriers",
+                "candidate_name": "input_mass_candidate_name",
+                "reference_name": "input_mass_reference_name",
+            },
+            parameters=frozenset({"relative_tolerance", "minimum_reference_total"}),
+            flags={
+                "relative_tolerance": "input_mass_relative_tolerance",
+                "minimum_reference_total": "input_mass_minimum_reference_total",
+            },
+        ),
+        USGateSpec(
+            check="degenerate_input_signal",
+            legacy_name="degenerate_input_signal",
+            gate="tool:_degenerate_input_signal_gate",
+            positional=(FRAME, "policyengine_engine"),
+        ),
+        USGateSpec(
+            check="ecps_parity",
+            legacy_name="parity",
+            gate="tool:_ecps_parity_gate",
+            positional=(FRAME,),
+        ),
+        # After the solve: the terminal batch and the export checks.
+        USGateSpec(
+            check="exact_k_puf_capital_gains_tail",
+            legacy_name="exact_k_puf_capital_gains_tail",
+            gate="tool:_exact_k_puf_tail_support_gate",
+            positional=(FRAME, "exact_k_support"),
+        ),
+        USGateSpec(
+            check="ssi_take_up_delivery",
+            legacy_name="ssi_take_up_delivery",
+            gate="tool:us_ssi_take_up_delivery_gate",
+            positional=("ssi_take_up_diagnostics",),
+            arguments={
+                "targets": "ssi_band_targets",
+                "enforcement_fences": "ssi_enforcement_fences",
+            },
+            pinned=_pins(
+                "ssi_take_up", "US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE"
+            ),
+        ),
+        USGateSpec(
+            check="exact_k_frozen_register_fit",
+            legacy_name="exact_k_frozen_register_fit",
+            gate="tool:_exact_k_frozen_register_fit_gate",
+            positional=("calibration_result", "incumbent_diagnostics"),
+            arguments={
+                "target_registry": "target_registry",
+                "target_loss_weights": "target_loss_weights",
+                "configured_loss_basis": "configured_loss_basis",
+                "incumbent_loss_basis": "incumbent_loss_basis",
+            },
+            pinned=_tool_pins("US_FISCAL_TARGET_LOSS_CAP"),
+        ),
+        USGateSpec(
+            check="release_gate_failures",
+            legacy_name="release_gate_failures",
+            gate="tool:_release_gate_failures",
+            positional=("calibration_result", "target_compilation"),
+            arguments={
+                name: f"release_gates_{name}"
+                for name in (
+                    "target_profile_gate",
+                    "health_input_gate",
+                    "base_population_gate",
+                    "incumbent_diagnostics",
+                    "immigration_gate",
+                    "input_mass_reference_gate",
+                    "degenerate_input_gate",
+                    "ecps_parity_gate",
+                    "hours_worked_gate",
+                    "snap_take_up_gate",
+                    "eligibility_inputs_gate",
+                    "pregnancy_gate",
+                    "reported_coverage_vintage_gate",
+                    "snap_discretionary_exemption_gate",
+                    "target_registry",
+                )
+            },
+            returns="failures",
+        ),
+        USGateSpec(
+            check="spm_composition",
+            legacy_name="spm_composition",
+            gate="tool:_spm_composition_gate_failures",
+            positional=(FRAME,),
+            arguments={"stage": "spm_composition_stage"},
+            returns="failures_and_details",
+        ),
+        USGateSpec(
+            check="stored_inputs",
+            legacy_name="stored_inputs",
+            gate="tool:_stored_input_gate_failures",
+            positional=(FRAME,),
+            arguments={"stage": "stored_inputs_stage"},
+            returns="failures_and_details",
+        ),
+        USGateSpec(
+            check="release_input_coverage",
+            legacy_name="us_release_input_coverage",
+            gate="tool:us_release_input_coverage_gate",
+            positional=(FRAME, "release_engine"),
+        ),
+        USGateSpec(
+            check="esi_premiums_anchor",
+            legacy_name="esi_premiums_anchor",
+            gate="tool:us_esi_premiums_anchor_gate",
+            positional=(FRAME,),
+            arguments={"time_period": "time_period"},
+            pinned=_pins(
+                "esi_premiums",
+                "ANCHOR_RELATIVE_TOLERANCE",
+                "_EMPLOYED_SHARE_BAND",
+                "_RAW_MEAN_BAND",
+            ),
+        ),
+        USGateSpec(
+            check="export_input_mass_parity",
+            legacy_name="input_mass_parity",
+            gate="tool:_export_input_mass_gate",
+            positional=(FRAME, "base_frame"),
+            arguments={
+                "reference_frame": "export_input_mass_reference_frame",
+                "reference_name": "export_input_mass_reference_name",
+                "reviewed_exclusions": "export_input_mass_reviewed_exclusions",
+            },
+            parameters=frozenset({"relative_tolerance", "minimum_reference_total"}),
+            flags={
+                "relative_tolerance": "input_mass_relative_tolerance",
+                "minimum_reference_total": "input_mass_minimum_reference_total",
+            },
+        ),
+        USGateSpec(
+            check="qrf_tail_concentration",
+            legacy_name="tail_concentration",
+            gate="tool:_qrf_tail_concentration_gate",
+            positional=(FRAME,),
+            arguments={"reviewed_exclusions": "qrf_tail_reviewed_exclusions"},
+            returns="result_and_details",
+            pinned=_tool_pins(
+                "US_QRF_TAIL_CONCENTRATION_TOP_K",
+                "US_QRF_TAIL_CONCENTRATION_MAX_TOP_SHARE",
+                "US_QRF_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS",
+                "US_QRF_SPARSE_NONZERO_SHARE_MAX",
+            ),
+        ),
+        USGateSpec(
+            check="stored_inputs_written",
+            legacy_name="stored_inputs_written",
+            gate="tool:_written_stored_input_verdict_mismatch",
+            positional=("dataset_path", "pre_export_stored_inputs"),
+            returns="failure_or_none",
+        ),
+    )
+
+
 _SCOPE_SPECS: Mapping[str, Callable[[], tuple[USGateSpec, ...]]] = MappingProxyType(
-    {"us_base": _us_base_specs, "us_pool": _us_pool_specs}
+    {
+        "us_base": _us_base_specs,
+        "us_pool": _us_pool_specs,
+        "us_national": _us_national_specs,
+    }
 )
 
 

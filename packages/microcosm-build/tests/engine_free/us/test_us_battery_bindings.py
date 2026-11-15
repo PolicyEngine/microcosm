@@ -39,9 +39,11 @@ from microcosm.build.us_runtime.gate_scopes import (
 )
 from microcosm.build.us_runtime.gate_shadow import (
     GateBatteryShadow,
+    LegacyVerdict,
     active_gate_shadow,
     shadow_file_paths,
     shadow_gate,
+    shadow_value,
 )
 from test_support.microcosm_build.us_gate_shadow import (
     load_us_gate_tool,
@@ -49,7 +51,7 @@ from test_support.microcosm_build.us_gate_shadow import (
 )
 
 #: The scopes PR 2 has declared so far, each wired in its tool.
-WIRED_SCOPES = ("us_base", "us_pool")
+WIRED_SCOPES = ("us_base", "us_pool", "us_national")
 
 #: Each scope's pinned digests. They move only when the scope's entries,
 #: parameters, phases or the manifest's policy line do.
@@ -76,6 +78,22 @@ SCOPE_PINS: dict[str, dict[str, str]] = {
             "cc1eeadceb9ea05efe81b5594c23832dd05e9fedbdd25c3cb1cfc52355c12047"
         ),
     },
+    "us_national": {
+        "gates_manifest_sha256": (
+            "db5578411c6a3a17ede8a28e85bfa641590016580e51307f1bd3da3b8fe4b7cd"
+        ),
+        "policy_sha256": (
+            "fa4a2eb355e35271e2bc79be903649f333cd5ed62c899d359029db0ac5387ac6"
+        ),
+        "spec_fingerprint": (
+            "898315b5b0fd8cd782c4238d5003008a5237bcac1e205c45676b089252b4a9b0"
+        ),
+    },
+}
+
+#: The arguments each tool's parser needs to report its defaults.
+MINIMAL_ARGV = {
+    "us_national": ["--ledger-facts", "facts.jsonl", "--out", "out"],
 }
 
 
@@ -174,11 +192,16 @@ def test_every_routed_threshold_equals_todays_default(scope) -> None:
             continue
         gate = resolve_reference(spec.gate, tool=binding.tool)
         defaults = inspect.signature(gate).parameters
+        parsed = (
+            binding.tool["_parse_args"](MINIMAL_ARGV[scope]) if spec.flags else None
+        )
         for key in spec.parameters:
-            assert _same(entry.parameters[key], defaults[key].default), (
-                entry.id,
-                key,
+            today = (
+                getattr(parsed, spec.flags[key])
+                if key in spec.flags
+                else defaults[key].default
             )
+            assert _same(entry.parameters[key], today), (entry.id, key)
 
 
 @pytest.mark.parametrize("scope", WIRED_SCOPES)
@@ -266,12 +289,21 @@ def test_an_injected_fault_fails_both_verdicts_alike(
     target = tool if namespace == "tool" else vars(importlib.import_module(namespace))
     lines = (f"{entry_id}: injected failure.",)
 
+    failing = GateResult(name=spec.legacy_name, passed=False, failures=lines)
+
     def injected(*args, **kwargs):
         if fault == "crashes":
             raise KeyError(f"{entry_id}: injected crash")
-        if spec.returns_failures:
-            return list(lines)
-        return GateResult(name=spec.legacy_name, passed=False, failures=lines)
+        if spec.refusals:
+            raise spec.refusals[0](lines[0])
+        return {
+            "result": failing,
+            "failures": list(lines),
+            "failures_and_details": (list(lines), {}),
+            "result_and_details": (failing, {}),
+            "failure_or_none": lines[0],
+            "mapping": {"passed": False, "failures": list(lines)},
+        }[spec.returns]
 
     monkeypatch.setitem(target, gate_name, injected)
     evidence = _evidence(spec)
@@ -284,13 +316,33 @@ def test_an_injected_fault_fails_both_verdicts_alike(
             ),
         )
 
+    # Today's verdict as each kind of site reads it.
+    verdicts = {
+        "result": LegacyVerdict.from_result,
+        "receipt": lambda value: LegacyVerdict.from_failures(()),
+        "failures": LegacyVerdict.from_failures,
+        "failures_and_details": lambda value: LegacyVerdict.from_failures(value[0]),
+        "result_and_details": lambda value: LegacyVerdict.from_result(value[0]),
+        "failure_or_none": lambda value: LegacyVerdict.from_failures(
+            [] if value is None else [value]
+        ),
+        "mapping": lambda value: LegacyVerdict.from_failures(
+            () if value["passed"] else value["failures"]
+        ),
+    }
+    expected = (KeyError,) if fault == "crashes" else spec.refusals
     with active_gate_shadow(shadow):
-        if fault == "crashes":
-            with pytest.raises(KeyError):
-                shadow_gate(entry_id, today, evidence)
+        if expected:
+            with pytest.raises(expected):
+                shadow_value(
+                    entry_id,
+                    today,
+                    evidence,
+                    verdict=verdicts[spec.returns],
+                    refusals=spec.refusals,
+                )
         else:
-            result = shadow_gate(entry_id, today, evidence)
-            assert result.failures == lines
+            shadow_value(entry_id, today, evidence, verdict=verdicts[spec.returns])
     outcome = shadow.outcome(entry_id)
     assert outcome is not None and outcome.status is GateStatus.FAILED
     assert outcome.entry.phase == entry.phase
@@ -301,7 +353,7 @@ def test_an_injected_fault_fails_both_verdicts_alike(
     assert shadow.differences() == ()
 
 
-@pytest.mark.parametrize("scope", WIRED_SCOPES)
+@pytest.mark.parametrize("scope", ["us_base", "us_pool"])
 def test_the_shared_weights_audit_fails_both_verdicts_alike(tmp_path, scope) -> None:
     shadow = _shadow(tmp_path, scope)
     tool = vars(load_us_gate_tool(scope))
