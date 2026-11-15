@@ -800,6 +800,95 @@
         "check": "block_location"
       },
       "notes": "Route A base (tools/build_us_puf_support_base.py): every written geography equals the block ladder's lookup of its block. Runs on block_v1 runs only, where its failures and the ladder's share one raise."
+    },
+    {
+      "id": "us_pool_puma_ladder",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "puma_ladder",
+        "assign_tract": false,
+        "nyc_share_bounds": [
+          0.005,
+          0.06
+        ],
+        "nyc_share_of_new_york_bounds": [
+          0.2,
+          0.65
+        ]
+      },
+      "notes": "US multispine pool (tools/build_us_multispine_pool.py), stacked path: the household PUMA ladder right after assembly, on a cold run; with block_v1 it runs beside the block draw's gate and shares its raise. Raises at once today. A resumed run re-reads its checkpointed receipt instead."
+    },
+    {
+      "id": "us_pool_block_location",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "block_location"
+      },
+      "notes": "US multispine pool (tools/build_us_multispine_pool.py), stacked path: every written geography equals the block ladder's lookup of its block. Runs on block_v1 cold runs only, where it shares one raise with the PUMA ladder."
+    },
+    {
+      "id": "us_pool_hours_worked",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "hours_worked_signal",
+        "worked_share_band": [
+          0.35,
+          0.62
+        ],
+        "mean_weekly_hours_band": [
+          30.0,
+          45.0
+        ]
+      },
+      "notes": "US multispine pool (tools/build_us_multispine_pool.py), stacked path: hours worked on the CPS evidence projection, inside the pool runtime's source preparation. Raises at once today. Skipped on a resume from the transferred or simulated checkpoint, which carries its receipt."
+    },
+    {
+      "id": "us_pool_weights_audit",
+      "gate": "weights_audit",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "notes": "US multispine pool (tools/build_us_multispine_pool.py), stacked path: every gap-fill, primary-QRF and late-DAG fit resolved a weight, before the transferred checkpoint. Raises at once today; skipped as the hours gate is on a resume."
+    },
+    {
+      "id": "us_pool_stacked_completeness",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "stacked_completeness"
+      },
+      "notes": "US multispine pool (tools/build_us_multispine_pool.py), stacked path: the terminal completeness gate over the declared surface. It marks today: a failure publishes a gate_failed pool and the tool returns 1. Its GateReport(...).to_manifest() seal and the manifest shape are today's and unchanged; the battery re-evaluates it on its own."
+    },
+    {
+      "id": "us_pool_by_origin_battery",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "by_origin_battery",
+        "battery_incidence_ratio_bounds": [
+          0.8,
+          1.25
+        ],
+        "battery_quantiles": [
+          0.1,
+          0.25,
+          0.5,
+          0.75,
+          0.9
+        ],
+        "battery_quantile_envelope_tolerance": 0.25,
+        "battery_categorical_tvd_tolerance": 0.25,
+        "mass_rtol": 1e-09
+      },
+      "notes": "US multispine pool (tools/build_us_multispine_pool.py), stacked path: the terminal by-origin battery. It marks today, as the completeness gate does. Its first four thresholds are the ones us/spec/battery.yaml mirrors."
     }
   ]
 }

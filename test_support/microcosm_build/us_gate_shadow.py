@@ -65,7 +65,9 @@ def _lambda_call_name(node: ast.AST) -> str | None:
 
 #: Package modules where a scope observes a gate inside a runtime function
 #: rather than in its tool.
-US_GATE_SCOPE_RUNTIME_SITES: dict[str, tuple[str, ...]] = {}
+US_GATE_SCOPE_RUNTIME_SITES = {
+    "us_pool": ("microcosm.build.us_runtime.multispine_pool",),
+}
 
 _HELPERS = frozenset(
     {

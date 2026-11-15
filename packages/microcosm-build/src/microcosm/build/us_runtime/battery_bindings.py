@@ -715,8 +715,64 @@ def _us_base_specs() -> tuple[USGateSpec, ...]:
 
 
 #: Configuration and thresholds the PUMA ladder gate takes as keywords today.
+_PUMA_LADDER_KEYWORDS = frozenset(
+    {"assign_tract", "nyc_share_bounds", "nyc_share_of_new_york_bounds"}
+)
+
+
+def _us_pool_specs() -> tuple[USGateSpec, ...]:
+    return (
+        USGateSpec(
+            check="puma_ladder",
+            legacy_name="us_puma_ladder",
+            gate="tool:us_puma_ladder_gate",
+            positional=("household", "household_weights"),
+            parameters=_PUMA_LADDER_KEYWORDS,
+        ),
+        USGateSpec(
+            check="block_location",
+            legacy_name="us_block_location",
+            gate="tool:us_block_location_gate",
+            positional=("household", "location_ladder"),
+        ),
+        USGateSpec(
+            # Evaluated inside the pool runtime's source preparation, not in
+            # the tool, so the binding calls the runtime's own global.
+            check="hours_worked_signal",
+            legacy_name="hours_worked_signal",
+            gate=f"{_US}.multispine_pool:us_hours_worked_signal_gate",
+            positional=(FRAME,),
+            pinned=_pins(
+                "hours_worked", "_WORKED_SHARE_BAND", "_MEAN_WEEKLY_HOURS_BAND"
+            ),
+        ),
+        USGateSpec(
+            check="stacked_completeness",
+            legacy_name="us_stacked_completeness",
+            gate="tool:stacked_completeness_gate",
+            positional=(FRAME,),
+            arguments={"tail_manifest": "tail_manifest"},
+        ),
+        USGateSpec(
+            check="by_origin_battery",
+            legacy_name="us_by_origin_battery",
+            gate="tool:by_origin_battery",
+            positional=(FRAME,),
+            arguments={"tail_manifest": "tail_manifest"},
+            pinned=_pins(
+                "stacked_spine",
+                "_BATTERY_INCIDENCE_RATIO_BOUNDS",
+                "_BATTERY_QUANTILES",
+                "_BATTERY_QUANTILE_ENVELOPE_TOLERANCE",
+                "_BATTERY_CATEGORICAL_TVD_TOLERANCE",
+                "_MASS_RTOL",
+            ),
+        ),
+    )
+
+
 _SCOPE_SPECS: Mapping[str, Callable[[], tuple[USGateSpec, ...]]] = MappingProxyType(
-    {"us_base": _us_base_specs}
+    {"us_base": _us_base_specs, "us_pool": _us_pool_specs}
 )
 
 

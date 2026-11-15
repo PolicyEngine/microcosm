@@ -49,7 +49,7 @@ from test_support.microcosm_build.us_gate_shadow import (
 )
 
 #: The scopes PR 2 has declared so far, each wired in its tool.
-WIRED_SCOPES = ("us_base",)
+WIRED_SCOPES = ("us_base", "us_pool")
 
 #: Each scope's pinned digests. They move only when the scope's entries,
 #: parameters, phases or the manifest's policy line do.
@@ -63,6 +63,17 @@ SCOPE_PINS: dict[str, dict[str, str]] = {
         ),
         "spec_fingerprint": (
             "4ce5ca7abaef48a6026be8d120862761cf8a457904690b0e59e4a501828f43da"
+        ),
+    },
+    "us_pool": {
+        "gates_manifest_sha256": (
+            "31dfdd5dc38129e08979e3a47822b3c61891b489b9140b40ec80dc6aba791355"
+        ),
+        "policy_sha256": (
+            "98ff80d5bbe6f7a11f3ee3f63cae5f953fc6607559de22e2f552fe3e1f06d872"
+        ),
+        "spec_fingerprint": (
+            "cc1eeadceb9ea05efe81b5594c23832dd05e9fedbdd25c3cb1cfc52355c12047"
         ),
     },
 }
