@@ -799,10 +799,10 @@ def acs_self_employment_identity_gate(
     partnership = numeric(_PARTNERSHIP)
     s_corp = numeric(_S_CORP)
     passive = numeric(_PASSIVE)
-    partnership_zero = np.isfinite(partnership) & (partnership == 0.0)
-    # A blank cell is unmodeled, not a double count: it fails on its own below.
+    # A blank cell is unmodeled and an infinite one is not a dollar amount;
+    # each fails on its own below, not as a double count.
     partnership_blank = np.isnan(partnership)
-    partnership_nonzero = ~partnership_zero & ~partnership_blank
+    partnership_nonzero = np.isfinite(partnership) & (partnership != 0.0)
     own_semp = np.isfinite(semp) & (semp != 0.0)
     units = subset[_TAX_UNIT]
     head_or_spouse, malformed_role = acs_tax_unit_head_or_spouse(
@@ -825,18 +825,18 @@ def acs_self_employment_identity_gate(
     )
     line_32_values = np.column_stack([partnership, s_corp, passive])
     infinite_line_32 = np.isinf(line_32_values).any(axis=1)
-    person_line_32 = pd.Series(
-        np.where(np.isnan(partnership), 0.0, partnership)
-        + np.where(np.isnan(s_corp), 0.0, s_corp),
-        index=subset.index,
-    )
-    unit_line_32 = person_line_32.groupby(units, sort=False).transform("sum")
+    # Infinite inputs fail on their own clause; inf minus inf is NaN here.
+    with np.errstate(invalid="ignore"):
+        person_line_32 = pd.Series(
+            np.where(np.isnan(partnership), 0.0, partnership)
+            + np.where(np.isnan(s_corp), 0.0, s_corp),
+            index=subset.index,
+        )
+        unit_line_32 = person_line_32.groupby(units, sort=False).transform("sum")
     no_line_32 = (person_line_32 == 0.0).to_numpy() | (unit_line_32 == 0.0).to_numpy(
         dtype=bool, na_value=False
     )
-    passive_without_line_32 = no_line_32 & (
-        np.where(np.isnan(passive), 0.0, passive) != 0.0
-    )
+    passive_without_line_32 = no_line_32 & np.isfinite(passive) & (passive != 0.0)
 
     failures: list[str] = []
     if not selected.any():

@@ -118,11 +118,13 @@ _unit = st.one_of(st.integers(min_value=1, max_value=4).map(float), st.just(np.n
 # Whole dollars, so a tax unit's line-32 sum is exact in any order and the
 # oracle's zero test agrees with the gate's. Zeros, a cancelling pair and NaN
 # are drawn often, so the passive clause (person and tax-unit line 32) and the
-# NaN-as-zero reading are reached.
+# NaN-as-zero reading are reached. An infinity fails on its own clause and
+# never as a double count.
 _dollars = st.one_of(
     st.just(0.0),
     st.just(np.nan),
     st.sampled_from([-900.0, 900.0]),
+    st.sampled_from([-np.inf, np.inf]),
     st.integers(min_value=-1_000_000, max_value=10_000_000).map(float),
 )
 
@@ -466,6 +468,57 @@ def test_the_receipt_counts_semp_that_disagrees_with_the_income_universe_age() -
     )
 
 
+def test_the_income_universe_starts_at_age_15() -> None:
+    """SEMP is asked from age 15, so a 15-year-old is inside the universe."""
+
+    masks = {("person", _P): np.ones(2, dtype=bool)}
+    reporting = pd.DataFrame(
+        {
+            "SEMP": [500.0, np.nan],
+            "age": [15.0, 14.0],
+            _UNIT: [1, 2],
+            _ROLE: ["HEAD", "HEAD"],
+            _P: [7.0, 9.0],
+        }
+    )
+
+    counts = keep_semp_covered_partnership_income(reporting, imputed_masks=masks)
+
+    assert counts is not None
+    assert counts["persons_aged_15_plus"] == 1
+    assert counts["blank_semp_age_15_plus_rows"] == 0
+    assert counts["finite_semp_under_15_rows"] == 0
+    # The only person aged 15 or over is exactly 15 and has blank SEMP.
+    lost = reporting.assign(SEMP=[np.nan, np.nan], **{_P: [7.0, 9.0]})
+    with pytest.raises(ValueError, match="lost SEMP"):
+        keep_semp_covered_partnership_income(lost, imputed_masks=masks)
+    assert lost[_P].tolist() == [7.0, 9.0]
+
+
+def test_the_step_does_not_refuse_a_frame_of_children_only() -> None:
+    """No one is asked SEMP below 15, so blank SEMP everywhere is expected."""
+
+    person = pd.DataFrame(
+        {
+            "SEMP": [np.nan, np.nan],
+            "age": [9.0, 3.0],
+            _UNIT: [1, 1],
+            _ROLE: ["DEPENDENT", "DEPENDENT"],
+            _P: [7.0, 0.0],
+        }
+    )
+
+    counts = keep_semp_covered_partnership_income(
+        person, imputed_masks={("person", _P): np.ones(2, dtype=bool)}
+    )
+
+    assert counts is not None
+    assert counts["persons_aged_15_plus"] == 0
+    assert counts["blank_semp_age_15_plus_rows"] == 0
+    assert counts["blank_semp_cells"] == 2
+    assert person[_P].tolist() == [0.0, 0.0]
+
+
 @pytest.mark.parametrize("column", ("SEMP", _UNIT, _ROLE))
 def test_the_step_refuses_a_recipient_missing_a_column_it_reads(column: str) -> None:
     person = pd.DataFrame(
@@ -511,20 +564,27 @@ def _gate_tables(draw):
 def _oracle_gate_counts(person: pd.DataFrame) -> dict[str, int]:
     sets = _oracle_sets(person)
     partnership = person[_P].to_numpy(dtype=float)
-    # A blank cell is unmodeled, counted on its own, not as a double count.
+    # A blank cell is unmodeled and an infinite one is not a dollar amount;
+    # each is counted on its own, not as a double count.
     not_zero = np.isfinite(partnership) & (partnership != 0.0)
     blank = np.isnan(partnership)
     covered = sets["own_semp"] | sets["tax_unit"] | sets["blank_semp"]
-    line_32 = (person[_P].fillna(0.0) + person[_S].fillna(0.0)).to_numpy()
     units = person[_UNIT].tolist()
-    unit_line_32 = {
-        unit: sum(
-            value for other, value in zip(units, line_32, strict=True) if other == unit
-        )
-        for unit in units
-        if not pd.isna(unit)
-    }
-    passive = person[_PASSIVE].fillna(0.0).to_numpy()
+    # A person whose line 32 is inf minus inf (NaN) drops out of the tax-unit
+    # sum, as in a pandas groupby sum; that row fails as infinite regardless.
+    with np.errstate(invalid="ignore"):
+        line_32 = (person[_P].fillna(0.0) + person[_S].fillna(0.0)).to_numpy()
+        unit_line_32 = {
+            unit: sum(
+                value
+                for other, value in zip(units, line_32, strict=True)
+                if other == unit and not np.isnan(value)
+            )
+            for unit in units
+            if not pd.isna(unit)
+        }
+    passive = person[_PASSIVE].to_numpy(dtype=float)
+    infinite = np.isinf(person[[_P, _S, _PASSIVE]].to_numpy(dtype=float)).any(axis=1)
     no_line_32 = np.asarray(
         [
             own == 0.0 or (not pd.isna(unit) and unit_line_32[unit] == 0.0)
@@ -535,8 +595,11 @@ def _oracle_gate_counts(person: pd.DataFrame) -> dict[str, int]:
         "partnership_on_semp_rows": int((sets["own_semp"] & not_zero).sum()),
         "partnership_on_spouse_rows": int((sets["tax_unit"] & not_zero).sum()),
         "partnership_on_blank_semp_rows": int((sets["blank_semp"] & not_zero).sum()),
-        "passive_without_line_32_rows": int((no_line_32 & (passive != 0.0)).sum()),
+        "passive_without_line_32_rows": int(
+            (no_line_32 & np.isfinite(passive) & (passive != 0.0)).sum()
+        ),
         "partnership_blank_on_covered_rows": int((covered & blank).sum()),
+        "infinite_line_32_rows": int(infinite.sum()),
     }
 
 
@@ -730,6 +793,72 @@ def test_the_gate_fails_an_extract_that_lost_semp() -> None:
     assert any("lost SEMP" in failure for failure in gate.failures)
 
 
+def test_the_gate_puts_a_15_year_old_inside_the_income_universe() -> None:
+    reporting = _gate_row(SEMP=[500.0, np.nan], age=[15.0, 14.0])
+    lost = _gate_row(SEMP=[np.nan, np.nan], age=[15.0, 14.0])
+
+    gate = acs_self_employment_identity_gate(reporting, rows=np.ones(2, dtype=bool))
+    refused = acs_self_employment_identity_gate(lost, rows=np.ones(2, dtype=bool))
+
+    assert gate.passed, gate.failures
+    assert gate.details["semp_age"] == {
+        "persons_aged_15_plus": 1,
+        "blank_semp_age_15_plus_rows": 0,
+        "finite_semp_under_15_rows": 0,
+    }
+    assert not refused.passed
+    assert any("lost SEMP" in failure for failure in refused.failures)
+
+
+def test_the_gate_passes_a_frame_of_children_only() -> None:
+    person = _gate_row(
+        SEMP=[np.nan, np.nan],
+        age=[9.0, 3.0],
+        **{_UNIT: [1, 1], _ROLE: ["DEPENDENT", "DEPENDENT"]},
+    )
+
+    gate = acs_self_employment_identity_gate(person, rows=np.ones(2, dtype=bool))
+
+    assert gate.passed, gate.failures
+    assert gate.details["semp_age"] == {
+        "persons_aged_15_plus": 0,
+        "blank_semp_age_15_plus_rows": 0,
+        "finite_semp_under_15_rows": 0,
+    }
+
+
+@pytest.mark.parametrize("infinity", (np.inf, -np.inf))
+def test_an_infinite_line_32_value_is_never_a_double_count(infinity: float) -> None:
+    """An infinity fails on its own clause, so it names no rebuild."""
+
+    # Own SEMP, the spouse it covers and blank SEMP, each with an infinite
+    # partnership draw beside S-corp income; then passive income on a row
+    # whose line 32 is zero.
+    person = _gate_row(
+        SEMP=[1_000.0, 0.0, np.nan, 0.0],
+        **{
+            _UNIT: [1, 1, 2, 3],
+            _ROLE: ["HEAD", "SPOUSE", "HEAD", "HEAD"],
+            _P: [infinity, infinity, infinity, 0.0],
+            _S: [10.0, 10.0, 10.0, 0.0],
+            _PASSIVE: [0.0, 0.0, 0.0, infinity],
+        },
+    )
+
+    gate = acs_self_employment_identity_gate(person, rows=np.ones(4, dtype=bool))
+
+    assert not gate.passed
+    assert gate.details["infinite_line_32_rows"] == 4
+    for key in (
+        "partnership_on_semp_rows",
+        "partnership_on_spouse_rows",
+        "partnership_on_blank_semp_rows",
+        "partnership_blank_on_covered_rows",
+        "passive_without_line_32_rows",
+    ):
+        assert gate.details[key] == 0, key
+
+
 @pytest.mark.parametrize("column", (_P, _S, _PASSIVE))
 def test_the_gate_refuses_an_infinite_line_32_value(column: str) -> None:
     person = _gate_row(**{_S: [10.0], column: [np.inf]})
@@ -762,7 +891,10 @@ def _frame(person: pd.DataFrame, weights: np.ndarray, kind: WeightKind) -> Frame
     )
 
 
-def _donor(s_corp: float) -> Frame:
+_DONOR_PARTNERSHIP = (5_000.0, 0.0, 3_000.0, 0.0)
+
+
+def _donor(s_corp: float, partnership=_DONOR_PARTNERSHIP) -> Frame:
     person = pd.DataFrame(
         {
             "person_id": np.arange(1, 5, dtype=np.int64),
@@ -771,7 +903,7 @@ def _donor(s_corp: float) -> Frame:
             "age": [45.0, 43.0, 30.0, 52.0],
             "is_female": [False, True, True, False],
             _TOTAL: [0.0, 20_000.0, 0.0, 5_000.0],
-            _P: [5_000.0, 0.0, 3_000.0, 0.0],
+            _P: list(partnership),
             _S: [s_corp, 0.0, 0.0, 0.0],
             _PASSIVE: [400.0, 0.0, 0.0, 0.0],
         }
@@ -846,11 +978,18 @@ class _DonorMeanFitted:
         )
 
 
-def _transfer(monkeypatch, *, lane: bool, s_corp: float = 0.0, targets=_PASS_THROUGH):
+def _transfer(
+    monkeypatch,
+    *,
+    lane: bool,
+    s_corp: float = 0.0,
+    targets=_PASS_THROUGH,
+    partnership=_DONOR_PARTNERSHIP,
+):
     monkeypatch.setattr(acs_transfer_module, "QRF", _DonorMeanQRF)
     return acs_transfer_module.transfer_acs_inputs(
         _recipient(),
-        _donor(s_corp),
+        _donor(s_corp, partnership),
         target_families={"person": {"pass_through": targets}},
         donor_channel=None,
         n_estimators=1,
@@ -943,6 +1082,28 @@ def test_the_lane_keeps_s_corp_income_on_every_row(monkeypatch) -> None:
         ]
         == 2_400
     )
+
+
+def test_a_zero_partnership_draw_is_kept_at_zero_but_not_discarded(
+    monkeypatch,
+) -> None:
+    """Passive income beside a zero draw is not counted as left on a discard."""
+
+    result = _transfer(
+        monkeypatch, lane=True, s_corp=1_000.0, partnership=(0.0, 0.0, 0.0, 0.0)
+    )
+    person = result.frame.table("person")
+
+    assert (person[_P] == 0.0).all()
+    assert np.allclose(person[_S], 250.0)
+    assert np.allclose(person[_PASSIVE], 100.0)
+    assert _gate(person).passed
+    receipt = next(item for item in result.imputed_inputs if item.column == _P)
+    assert receipt.reconciliation is not None
+    assert receipt.reconciliation["cells_kept_at_zero"] == int(_COVERED.sum())
+    assert receipt.reconciliation["nonzero_draws_discarded"] == 0
+    assert receipt.reconciliation["passive_kept_on_discarded_rows"] == 0
+    assert receipt.reconciliation["passive_kept_on_discarded_rows_dollars"] == 0
 
 
 def test_off_the_lane_the_gate_fails_on_exactly_the_covered_rows(monkeypatch) -> None:

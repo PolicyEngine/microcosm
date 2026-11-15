@@ -1335,18 +1335,29 @@ def test_release_refuses_partnership_income_that_semp_already_holds() -> None:
         )
 
 
-def test_release_names_a_rebuild_only_for_income_counted_twice() -> None:
-    """A rebuild cures a double count, not an unmodeled cell (microcosm#1387)."""
+@pytest.mark.parametrize(
+    ("partnership", "failure"),
+    (
+        (np.nan, "never modeled"),
+        (np.inf, "an infinite partnership"),
+        (-np.inf, "an infinite partnership"),
+    ),
+)
+def test_release_names_a_rebuild_only_for_income_counted_twice(
+    partnership: float, failure: str
+) -> None:
+    """A rebuild cures a double count, not a blank or infinite cell (#1387)."""
 
     module = _load_tool_module()
-    unmodeled = _self_employment_person(0.0)
-    # The ACS row that reports SEMP, with its partnership cell left blank.
-    unmodeled.loc[1, "partnership_income"] = np.nan
+    person = _self_employment_person(0.0)
+    # The ACS row that reports SEMP: a blank partnership cell is unmodeled and
+    # an infinite one is not a dollar amount, so neither is counted twice.
+    person.loc[1, "partnership_income"] = partnership
 
     with pytest.raises(SystemExit) as refused:
-        module._require_acs_self_employment_identity(_SelfEmploymentFrame(unmodeled))
+        module._require_acs_self_employment_identity(_SelfEmploymentFrame(person))
 
-    assert "never modeled" in str(refused.value)
+    assert failure in str(refused.value)
     assert "must be rebuilt" not in str(refused.value)
     with pytest.raises(SystemExit, match="must be rebuilt"):
         module._require_acs_self_employment_identity(
