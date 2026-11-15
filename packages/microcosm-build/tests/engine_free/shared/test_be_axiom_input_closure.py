@@ -72,9 +72,10 @@ PER_MODULE = {
 #: rely on that: neither the registry nor the adapter refuses a scheme that
 #: runs behind another's column. The variables are the choice each binding's
 #: notes state, and an outside value keeps its output's type: 0.0 for Money and
-#: 0 for a Count. The pinned engine gives a Count a decimal dtype, which takes
-#: either, but ``_outside_values`` refuses a float for an integer output, so an
-#: integer 0 stays valid if a Count becomes one (the bindings' views_note).
+#: 0 for a Count. The surface's engine (04315d94) gives a Count a decimal
+#: dtype, which takes either, but ``_outside_values`` refuses a float for an
+#: integer output, so an integer 0 stays valid if a Count becomes one (the
+#: bindings' views_note).
 BINDINGS = {
     "brussels_family_benefits_basic_amounts": (
         "be-bru/statutes/family_benefits/basic_amounts.yaml",
