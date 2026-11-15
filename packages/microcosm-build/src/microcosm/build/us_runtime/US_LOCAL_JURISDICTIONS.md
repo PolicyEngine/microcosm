@@ -180,18 +180,21 @@ its own geography decides beyond them as unavailable, with that reason. Such a
 release carries the flags of an ordinary pooled release. Its own geography
 still decides the place-rule flags, so the annual lane refuses it as a parent.
 
-The L0/refit export follows the same rule for the same reason: its saved
-weights were fit elsewhere, on the base it loads. It derives the flags on that
-base before it applies the weights, then calls
-`us_local_jurisdiction_artifact_receipt` on the kept rows with the base's
-rungs. When the weights keep only the block-anchored rows of a pooled base,
-those rows decide `in_yonkers` and `in_wilmington`, but the export writes
-neither and its receipt records both as unavailable, with that reason. The
-geography-ladder gate requires every flag a block decides, so by default it
-refuses that export, and the refusal names the two flags and says why the
-export withholds them. With `--allow-geography-ladder-gate-failures` the export
-writes the kept rows with the base's flags and records the gate failure in its
-summary.
+The L0/refit export follows the same rule. Its saved weights come from a fit
+on the base it loads, so the export writes no flag that only the rows those
+weights keep decide. It derives the flags on that whole base before it applies
+the weights, then calls `us_local_jurisdiction_artifact_receipt` on the kept
+rows with the base's rungs. A base H5 that predates the flags carries none,
+and a fit that reads it unchanged sees the engine default, `False`. On such a
+base the flags the export derives can change a value the fit computed, such
+as a Wilmington itemizer's federal income tax. When the weights keep only the
+block-anchored rows of a pooled base, those rows decide `in_yonkers` and
+`in_wilmington`, but the export writes neither and its receipt records both as
+unavailable, with that reason. The geography-ladder gate requires every flag a
+block decides, so by default it refuses that export, and the refusal names the
+two flags and says why the export withholds them. With
+`--allow-geography-ladder-gate-failures` the export writes the kept rows with
+the base's flags and records the gate failure in its summary.
 
 ## Gates
 

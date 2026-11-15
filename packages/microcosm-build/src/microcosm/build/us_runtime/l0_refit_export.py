@@ -611,20 +611,22 @@ def export_us_l0_refit_h5(
     its calibrated weights (microcosm #275/#34): a release whose spine is
     inconsistent or whose NYC mass collapsed fails by default.
 
-    The local-jurisdiction flags are those of the base the saved weights were
-    fit on. The export derives them on the loaded base, from the whole base's
-    geography, before it applies the weights, so a base H5 built before the
-    flags existed exports them instead of leaving the engine default on every
-    resident. It writes no flag that only the selected rows' geography
-    decides: when the weights keep only the block-anchored rows of a pooled
+    The export writes the local-jurisdiction flags that the whole loaded
+    base's geography decides, and derives them before it applies the weights.
+    It therefore writes them for a base H5 that predates the flags, instead
+    of leaving the engine default on every resident. A fit that reads such an
+    H5 unchanged sees that default, so the written flags can change a value
+    the fit computed, such as a Wilmington itemizer's federal income tax. The
+    export writes no flag that only the selected rows' geography decides. For
+    example, when the weights keep only the block-anchored rows of a pooled
     base whose other rows have no block, those rows decide ``in_yonkers`` and
-    ``in_wilmington``, and writing either would change an input after the
-    weights were fit. The summary's receipt records such a flag as
-    unavailable, with the reason. The geography-ladder gate requires every
-    flag a block decides, so it refuses that export unless its failures are
-    allowed, and the refusal names the withheld flags. A base whose carried
-    flags disagree with its geography, or in which a household's block lies
-    outside its county, is refused whichever rows the weights keep.
+    ``in_wilmington``. Writing either would change an input after the fit.
+    The summary's receipt records such a flag as unavailable, with the
+    reason. The geography-ladder gate requires every flag a block decides, so
+    it refuses that export unless its failures are allowed, and the refusal
+    names the withheld flags. A base whose carried flags disagree with its
+    geography, or in which a household's block lies outside its county, is
+    refused whichever rows the weights keep.
     """
 
     root_attrs_source = (
