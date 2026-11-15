@@ -4,11 +4,12 @@ import importlib.util
 import inspect
 import json
 import os
+import re
 import sys
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from types import SimpleNamespace
+from types import CodeType, SimpleNamespace
 
 import h5py
 import hypothesis
@@ -2820,21 +2821,32 @@ def test_frozen_support_selection_is_followed_by_weeks_unemployed_regate() -> No
     builder = _load_builder_module()
     source = Path(builder.__file__).read_text(encoding="utf-8")
 
+    # The tail checks and the regate may run inside their gate battery shadow
+    # sites (microcosm#1585 item 11): `_shadow_tail_survival` makes today's
+    # tail call, and the regate runs in the lambda its site evaluates at once.
+    tail_check = (
+        r"(?:assert_puf_capital_gains_tail_survives_selection|_shadow_tail_survival)\("
+    )
+    if hasattr(builder, "_shadow_tail_survival"):
+        assert "assert_puf_capital_gains_tail_survives_selection(" in (
+            inspect.getsource(builder._shadow_tail_survival)
+        )
     base_load = source.index(
         "base_frame = _load_frame(base_h5, expected_sha256=base_dataset_sha256)"
     )
-    tail_presence = source.index(
-        "capital_gains_tail_presence = assert_puf_capital_gains_tail_survives_selection(",
-        base_load,
+    tail_presence = (
+        re.compile(r"capital_gains_tail_presence = " + tail_check)
+        .search(source, base_load)
+        .start()
     )
     selection = source.index("base_frame, selection_report = select_frozen_support(")
-    tail_retention = source.index(
-        "assert_puf_capital_gains_tail_survives_selection(",
-        selection,
-    )
-    regate = source.index(
-        "post_selection_weeks_unemployed_gate = us_weeks_unemployed_signal_gate("
-    )
+    tail_retention = re.compile(tail_check).search(source, selection).start()
+    regate = re.search(
+        r"post_selection_weeks_unemployed_gate = (?:_shadow_frame_gate\(\s*"
+        r'"us_national_weeks_unemployed_post_selection",\s*lambda: )?'
+        r"us_weeks_unemployed_signal_gate\(",
+        source,
+    ).start()
     mass_repair = source.index(
         "base_frame, base_population_repair = _with_base_population_mass_repair("
     )
@@ -16030,7 +16042,16 @@ def test_main_runs_cross_register_and_take_up_contract_preflights() -> None:
     are looked up by name inside ``main``).
     """
     builder = _load_builder_module()
-    called = set(builder._main.__code__.co_names)
+    code = builder._main.__code__
+    # A preflight may run inside the lambda its gate battery shadow site
+    # evaluates at once (microcosm#1585 item 11), so main's lambdas count.
+    called = set(code.co_names).union(
+        *(
+            constant.co_names
+            for constant in code.co_consts
+            if isinstance(constant, CodeType) and constant.co_name == "<lambda>"
+        )
+    )
     for preflight in (
         "assert_release_input_coverage_manifest_current",
         "us_register_consistency_gate",
