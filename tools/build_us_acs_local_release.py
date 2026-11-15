@@ -7215,11 +7215,21 @@ def _finish_local_gate_scope(args, *, stage: str, stopped_by=None) -> None:
     """
 
     try:
+        # The stages run before this one, and this one: each should have saved.
+        stages_run = _LOCAL_GATE_SHADOW_STAGES[
+            : _LOCAL_GATE_SHADOW_STAGES.index(stage) + 1
+        ]
         shadow = _local_gate_shadow(args, _local_gate_shadow_directory(args))
         for name in _LOCAL_GATE_SHADOW_STAGES:
             observations = _local_stage_observations(args, name)
             if observations.is_file():
                 shadow.load_observations(observations)
+            elif name in stages_run:
+                # Its save failed, or it ran with the shadow off: a stopped
+                # run then never names its entries unreached.
+                shadow.note_missing_observations(
+                    f"the {name} stage saved no observations"
+                )
     except Exception as error:  # noqa: BLE001 - the shadow never stops a stage
         if stopped_by is None and stage == "package":
             raise

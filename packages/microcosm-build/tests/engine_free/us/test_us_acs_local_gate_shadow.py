@@ -168,6 +168,30 @@ def test_a_finalize_stop_is_recorded_and_its_rerun_starts_clean(
     assert not (acs_directory(args) / "package.observations.json").exists()
 
 
+def test_a_stage_that_saved_nothing_is_never_named_unreached(
+    tmp_path, monkeypatch, acs
+) -> None:
+    # A phase carried in from other processes holds outcomes, not the ids the
+    # run evaluated (#1609), so the shadow's own unreached list is the only
+    # check here. Finalize's entries ran, but its file is gone, as when its
+    # save failed: the package stop must not name them unreached.
+    args = _args(tmp_path)
+    stand_in_gates(monkeypatch, "us_local", acs, failing={"stored_inputs"})
+    for stage in ("materialize", "calibrate", "qa", "finalize"):
+        _run_stage(acs, args, stage)
+    (acs_directory(args) / "finalize.observations.json").unlink()
+    with pytest.raises(SystemExit, match="hard gate failure"):
+        with acs._local_gate_shadow_stage(args, "package"):
+            observe_entries("us_local", acs, ("us_local_stored_inputs",))
+            raise SystemExit("package: hard gate failure(s): stored inputs")
+    payload = _comparison(args)
+    assert payload["observations_missing"] == [
+        "the finalize stage saved no observations"
+    ]
+    assert payload["phases_recorded"] == ["assembled"]
+    assert payload["blocked_at_phase"] is None
+
+
 def test_a_difference_fails_the_finished_package_stage(
     tmp_path, monkeypatch, acs
 ) -> None:
