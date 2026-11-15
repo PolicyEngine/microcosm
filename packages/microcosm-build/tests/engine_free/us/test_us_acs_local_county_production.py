@@ -381,6 +381,24 @@ def test_attach_surface_refuses_unprepared_facts_without_reopening(
     assert "prepare_run did not load the county facts" in report["error"]
 
 
+@pytest.mark.parametrize("bracket_index", range(16))
+@pytest.mark.parametrize("county_code", ["01001", "01003"])
+@pytest.mark.parametrize("suffix", ["E", "M"])
+def test_every_countys_income_bracket_label_is_checked(
+    bracket_index, county_code, suffix
+) -> None:
+    county = _county()
+    measure = county.B19001_BRACKETS[bracket_index][0][:-1] + suffix
+    rows = _acs_rows(["01001", "01003"])
+    for row in rows:
+        if row["observed_measure"]["source_measure_id"] == measure and row["geography"][
+            "id"
+        ].endswith(county_code):
+            row["dimensions"]["income_range"] = "wrong_bracket"
+    with pytest.raises(ValueError, match=f"{measure}.*labelled.*bracket"):
+        county.county_validation_design(rows, {1001: 1.0, 1003: 1.0})
+
+
 # --- ACS households (trained) -------------------------------------------------
 
 

@@ -162,7 +162,9 @@ set `group_0` and 130 counties with estimates and margins in `group_1`. Each
 table must name every county exactly once; duplicates, negative or nonfinite
 estimates, a statistic that does not match the measure ID, a layout county
 that differs from the row geography, a Puerto Rico row (state `72`) and
-incomplete or unexpected county inventories are refused by name.
+incomplete or unexpected county inventories are refused by name. Every
+B19001 estimate and margin row must carry the expected income-bracket label,
+including rows after the first county.
 
 **Trained: `acs_households`.** Each state gets a new households target equal
 to the sum of its counties' B11001_001E estimates, and each county a child
@@ -214,9 +216,10 @@ pro_rata(c) = M_s * ladder population(c) / state population
 ```
 
 where `M_s` is the state's total of the household measure under the final
-weights. The report gives each county's calibrated, design-weight and
-pro-rata errors per family; the bracket family's graded error is the L1
-error over its 16 brackets divided by the county's bracket target total (at
+weights. The design-weight diagnostic uses its own state total, so it also
+measures within-state shares. The report gives each county's calibrated,
+design-weight and pro-rata errors per family; the bracket family's graded
+error is the L1 error over its 16 brackets divided by the county's bracket target total (at
 least 1). Materialize
 writes the public values (`county_validation.json`) and the household
 measures (`county_validation_measures.npz`), and the run identity binds their
@@ -362,8 +365,9 @@ For the historical 1,588,854-household staging population, each household can
 contribute to at most four added county rows and one added state households
 row. That gives at most **7,944,270 added nnz**, approximately **63.6 MB** of
 raw float32/int32 CSR data and indices, plus about 50 KB of row pointers. The
-validation measures file holds four float64 arrays per household, about
-51 MB. Zero measures reduce nnz. Temporary matrix
+validation measures file holds four 64-bit arrays per household (the
+household ID and three float64 measures), about 51 MB. Zero measures reduce
+nnz. Temporary matrix
 copies and Python overhead add memory, and existing state rows and the
 engine/frame dominate the total. Historical full materialization peaked at
 75.6–93.9 GB; calibration was about 67.6 GB. Allocate **128 GiB** and start with

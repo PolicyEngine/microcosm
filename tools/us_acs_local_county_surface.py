@@ -1080,21 +1080,27 @@ def county_validation_design(facts, county_populations):
         measure for family in VALIDATION_FAMILIES for measure in family.measure_ids
     ]
     values = acs_county_values(facts, measure_ids, required=counties)
-    labels = {}
+    brackets = {
+        measure: (label, lower, upper)
+        for measure, label, lower, upper in B19001_BRACKETS
+    }
     for fact in facts:
         observed = fact.get("observed_measure", {})
-        if observed.get("source_name") == ACS_SOURCE_NAME and str(
-            observed.get("source_measure_id", "")
-        ).startswith("B19001_0"):
-            labels.setdefault(
-                observed["source_measure_id"],
-                (fact.get("dimensions") or {}).get("income_range"),
-            )
-    for measure, label, lower, upper in B19001_BRACKETS:
-        if labels.get(measure) != label or _bracket_bounds(label) != (lower, upper):
+        measure = str(observed.get("source_measure_id", ""))
+        estimate_id = measure[:-1] + "E"
+        if (
+            observed.get("source_name") != ACS_SOURCE_NAME
+            or measure[-1:] not in {"E", "M"}
+            or estimate_id not in brackets
+        ):
+            continue
+        expected, lower, upper = brackets[estimate_id]
+        label = (fact.get("dimensions") or {}).get("income_range")
+        if label != expected or _bracket_bounds(label) != (lower, upper):
             raise ValueError(
-                f"ACS {measure} is labelled {labels.get(measure)!r}; the bracket "
-                f"table expects {label!r} = [{lower}, {upper})."
+                f"ACS {measure} for {fact.get('geography', {}).get('id')} is "
+                f"labelled {label!r}; the bracket table expects {expected!r} "
+                f"= [{lower}, {upper})."
             )
     states = sorted({code // 1000 for code in counties})
     for measure, public in values.items():
@@ -1172,10 +1178,12 @@ def household_validation_measures(frame):
     """Household-aligned measures the validation families are scored on.
 
     Returns ``(arrays, report)``: ``household_id``, ``in_household_universe``,
-    ``earnings`` (:data:`EARNINGS_COLUMNS` summed over the household's
-    people) and ``household_income_approx`` (earnings plus the carried
-    :data:`OTHER_INCOME_COLUMNS`, plus :data:`DONOR_ONLY_OTHER_INCOME_COLUMNS`
-    on donor records). Missing person values count as zero, as in the pilot.
+    ``earnings`` (the four :data:`EARNINGS_COLUMNS` leaves, plus donor
+    partnership self-employment earnings, summed over the household's people)
+    and ``household_income_approx`` (the four leaves plus carried
+    :data:`OTHER_INCOME_COLUMNS` on all records, and
+    :data:`DONOR_ONLY_OTHER_INCOME_COLUMNS` on donor records). Income includes donor partnership earnings through
+    partnership income, once. Missing person values count as zero, as in the pilot.
     """
     households = frame.table("household")
     person = frame.table("person")
