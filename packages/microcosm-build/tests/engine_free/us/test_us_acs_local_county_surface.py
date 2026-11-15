@@ -903,9 +903,9 @@ def test_validation_values_change_no_loss_input_and_no_weight(
                 "income": data["income"] * scale + scale,
                 "brackets": data["brackets"][::-1] if scale > 1 else data["brackets"],
             }
-        run = _materialize_county_fixture(
-            monkeypatch, tmp_path / f"scale_{scale}", acs_values=values
-        )
+        scale_dir = tmp_path / f"scale_{scale}"
+        scale_dir.mkdir()
+        run = _materialize_county_fixture(monkeypatch, scale_dir, acs_values=values)
         identity = json.loads(
             (run.args.checkpoint_dir / "run_identity.json").read_text()
         )

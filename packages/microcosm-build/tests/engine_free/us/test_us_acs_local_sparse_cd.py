@@ -1137,6 +1137,7 @@ def test_calibration_outputs_are_bound_to_the_materialization(tmp_path) -> None:
         "calibration_summary.json",
         "calibration_diagnostics.json",
         "county_reliability.json",
+        "county_reliability.csv",
         "consumer_export.json",
         "consumer_reviewed_null_fills.json",
         "spine_qa.json",
