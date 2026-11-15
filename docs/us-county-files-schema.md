@@ -85,8 +85,10 @@ and `sstb_self_employment_income` for specified service businesses), Schedule
 F profit (`farm_operations_income`) and general partners' self-employment
 earnings (`partnership_self_employment_net_earnings`). It is taken before the
 employer-share deduction that the self-employment tax base applies, and it is
-negative when self-employment losses exceed wages. Passive partnership and
-S-corporation income is market income, not earnings.
+negative when self-employment losses exceed wages. Partnership self-employment
+earnings are already included in `partnership_income`, and therefore in market
+income through `partnership_s_corp_income`. Passive partnership and
+S-corporation income also enters market income, but does not enter earnings.
 
 On a person row from the ACS, the sum counts self-employment once. ACS
 reports one total (`SEMP`) that covers farm, non-farm and own-partnership
@@ -101,8 +103,9 @@ that leaves out the SSTB leaf would therefore miss ACS self-employment that
 QBI reconciliation routed there. The County pilot's earnings measure
 (`experiments/us-county-pilot-20261024/county_targets.py`) zeroes the SSTB
 and farm leaves on ACS rows, guarding against donor draws stacked on `SEMP`
-before the gate existed, and never adds partnership self-employment
-earnings. So on those rows it can differ from this column.
+before the gate existed. It includes both leaves on donor rows. The systematic
+difference on donor rows is that the pilot omits partnership self-employment
+earnings, which this column includes.
 
 **Gross income** is `household_market_income + household_benefits`. Under
 policyengine-us 2.2.1 for 2026 and 2027:
@@ -161,10 +164,6 @@ unless every check holds for every row:
 - the columns and dtypes are exactly those in the table above;
 - every `household_id` in the H5's `household` table appears exactly once,
   and the sidecar names no other household;
-- (before scoring) every household and group row has a member person, and
-  every group unit sits inside one household. policyengine-core places
-  members by sorted id position, so a memberless row would shift later
-  households' members onto the wrong rows;
 - every `year` equals the H5's `_time_period`;
 - every value is finite;
 - `gross_income == household_market_income + household_benefits` exactly;
@@ -174,6 +173,12 @@ unless every check holds for every row:
   10^7 of that scale;
 - (`verify`) the H5's and the sidecar's sha256 equal those the receipt
   records.
+
+Before scoring, `compute` also requires every household and group row to have
+a member person, and every group unit to sit inside one household.
+policyengine-core places members by sorted id position, so a memberless row
+would shift later households' members onto the wrong rows. These structural
+checks run in `compute` only.
 
 Before computing anything, `compute` refuses an installed engine that defines
 `household_net_income`'s adds and subtracts, or `household_market_income`'s
@@ -186,13 +191,18 @@ household variable.
 `compute` scores the H5 in batches of whole households (default 5,000), each
 in a fresh `Microsimulation`. Every measure is a per-household quantity, and
 policyengine-core forbids formula-time randomness, so a batch gives each
-household the value a whole-file engine would. The one exception is a formula
-that aggregates over its simulation's whole population (the income deciles
-and the Medicaid SLCSP state sums). A multi-batch run refuses as soon as a
-batch engine computes one of them (microcosm#956), and the receipt records
-any that a single-batch run computed. Batches must partition every entity:
-each group unit has to nest in one household, the same premise as the
-post-export scorer.
+household the value a whole-file engine would when its dependencies remain
+within that household. Two engine features need extra guards. A formula may
+aggregate over its simulation's whole population (the income deciles and the
+Medicaid SLCSP state sums); a multi-batch run refuses as soon as any branch of
+a batch engine computes one of them (microcosm#956), and the receipt records
+any that a single-batch run computed. A person's
+`medicaid_claiming_tax_unit_id` may name a tax unit in another household; a
+multi-batch run refuses such a link before scoring. Batches must partition
+every entity: each group unit has to nest in one household, the same premise
+as the post-export scorer. Each batch holds only the file's year, using
+policyengine-us's supported `extend_single_year_dataset(..., end_year=year)`
+API instead of retaining inputs through the CPI-U projection horizon.
 
 ## Commands
 
@@ -211,13 +221,21 @@ uv run python tools/us_release_schema_manifest.py \
     --output-md <release dir>/schema_manifest.md
 ```
 
-`compute` loads the H5's tables once (as `USSingleYearDataset` does), so its
-peak memory is about the H5's uncompressed size plus one batch engine.
+`compute` loads the H5's tables once (as `USSingleYearDataset` does). Its
+estimated peak memory is roughly up to twice the entity tables' uncompressed
+in-memory size, plus one batch engine: a fixed-format table read may briefly
+hold two copies. This is a rough bound, not a full-release measurement; engine
+branches and temporary arrays also use memory. The tool reuses
+`policyengine_us.system.system` for definition checks and receipt metadata.
 `--batch-households` trades batch-engine memory against per-batch overhead.
+Estimated runtime is the observed per-batch time times the number of batches,
+plus H5 reads, hashing and sidecar I/O; it is not a measured full-release time.
+The receipt records the run's actual wall time and peak RSS.
 The manifest tool needs no engine. It reads each `table`-format table in
-chunks of about 256 MiB. pandas reads a `fixed`-format table's object columns
-whole for every chunk, which is slower but gives the same result. Neither
-tool overwrites an existing output.
+chunks of about 256 MiB, resolving a column with inconsistent chunk dtypes
+through a whole-column read. It reads each `fixed`-format table whole once
+because pandas' object-block inference can depend on the other columns in
+the block. Neither tool overwrites an existing output.
 
 ## Schema manifest
 
@@ -246,6 +264,8 @@ Known changes from the sample column list sent on August 18 (a 2024 file):
   policyengine-us uses for the WIC take-up input (a declared rename).
 - `person.weeks_worked` is not in the 2026 or 2027 person tables.
   policyengine-us 2.2.1 defines it by formula from 2025 on (`formula_2025`,
-  which carries the previous year's value forward). So from 2026 the export's
-  formula-owned guard holds it back like any other engine output, until
-  policyengine-us#9660 deletes that formula.
+  which carries the previous year's value forward). The build's input-only
+  projection holds this formula-owned variable back at every period.
+  policyengine-us PR #9716, which closed issue #9660, deleted that formula
+  upstream. The column can ship once Microcosm's policyengine-us pin moves
+  past that change.

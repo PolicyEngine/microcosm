@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
+from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -19,12 +23,13 @@ from test_support.microcosm_build.us_county_files import (
 )
 
 hypothesis = pytest.importorskip("hypothesis")
-from hypothesis import HealthCheck, given, settings  # noqa: E402
+from hypothesis import HealthCheck, example, given, settings  # noqa: E402
 from hypothesis import strategies as st  # noqa: E402
 
 _SETTINGS = settings(
     max_examples=40,
     deadline=None,
+    derandomize=True,
     # Generation is slow only on a loaded host.
     suppress_health_check=[
         HealthCheck.function_scoped_fixture,
@@ -149,14 +154,24 @@ def _manifests(draw):
 
 
 @_SETTINGS
-@given(_frames(), _frames(), st.integers(1, 7))
+@given(_frames(), _frames(), st.integers(1, 7), st.booleans())
 def test_h5_description_matches_pandas_whatever_the_chunking(
-    manifest_tool, tmp_path_factory, person, household, chunk
+    manifest_tool, tmp_path_factory, person, household, chunk, data_columns
 ):
     path = tmp_path_factory.mktemp("h5") / "f.h5"
     with pd.HDFStore(str(path), mode="w") as store:
-        store.put("household", household, format="table", data_columns=True)
-        store.put("person", person, format="table", data_columns=True)
+        store.put(
+            "household",
+            household,
+            format="table",
+            data_columns=True if data_columns else None,
+        )
+        store.put(
+            "person",
+            person,
+            format="table",
+            data_columns=True if data_columns else None,
+        )
         store.put("_time_period", pd.Series([2027]), format="table")
     entry = manifest_tool.describe_h5(path, chunk_rows=chunk)
 
@@ -173,6 +188,36 @@ def test_h5_description_matches_pandas_whatever_the_chunking(
             assert column["dtype"] == str(whole[column["name"]].dtype)
             assert column["null_count"] == int(whole[column["name"]].isna().sum())
             assert "logical_dtype" not in column
+
+
+@pytest.mark.parametrize("layout", ["table", "table_data_columns", "fixed"])
+@_SETTINGS
+@example(3, ["06001", "06001", "06001"], 3)
+@given(
+    st.integers(1, 8),
+    st.lists(st.sampled_from(["06001", "36061", "x"]), min_size=1, max_size=8),
+    st.integers(1, 9),
+)
+def test_missing_string_chunks_and_mixed_object_blocks_match_whole_reads(
+    manifest_tool, tmp_path_factory, layout, missing, strings, chunk
+):
+    """Inference is per column on whole reads, even across mixed object blocks."""
+    table = pd.DataFrame({"s": pd.Series([None] * missing + strings, dtype=object)})
+    if layout == "fixed":
+        table["b"] = pd.Series([True] * missing + [None] * len(strings), dtype=object)
+    path = tmp_path_factory.mktemp("inferred") / "f.h5"
+    with pd.HDFStore(path, mode="w") as store:
+        store.put(
+            "person",
+            table,
+            format="fixed" if layout == "fixed" else "table",
+            data_columns=True if layout == "table_data_columns" else None,
+        )
+    (actual,) = manifest_tool.describe_h5(path, chunk_rows=chunk)["tables"]
+    whole = pd.read_hdf(path, "person")
+    for column in actual["columns"]:
+        assert column["dtype"] == str(whole[column["name"]].dtype)
+        assert column["null_count"] == int(whole[column["name"]].isna().sum())
 
 
 def test_frame_codec_booleans_get_a_logical_dtype(manifest_tool, tmp_path):
@@ -213,8 +258,9 @@ def test_fixed_tables_count_rows_whatever_block_comes_first(
 ):
     """A fixed frame whose first block holds objects still counts every row.
 
-    pandas' fixed storer reports its first block's leading dimension as
-    ``shape[0]``, which for an object block is its column count.
+    pandas' fixed storer reports its first block's physical leading dimension
+    as ``shape[0]``. A pickled object block has one stored item, whatever the
+    frame's row count.
     """
     rows = len(flags)
     table = pd.DataFrame({"flag": pd.array(flags, dtype="boolean")})
@@ -242,8 +288,8 @@ def test_a_long_run_of_missing_codec_booleans_reads_as_object(
 ):
     """A chunk where the column is all missing reads as ``str`` in pandas 3.
 
-    The manifest takes the dtype from chunks with values, as a whole read
-    does, instead of refusing the table.
+    The manifest reads fixed frames whole, preserving pandas' inference for
+    the entire object column.
     """
     flags = [True] * 1000 + [None] * 2000 + [False] * 1000
     table = pd.DataFrame(
@@ -357,6 +403,166 @@ def test_a_measures_sidecar_is_described_with_its_declared_dtypes(
     assert all(column["null_count"] == 0 for column in table["columns"])
 
 
+@_SETTINGS
+@given(st.lists(st.integers(-1000, 1000), min_size=1, max_size=12, unique=True))
+def test_sidecar_declared_dtypes_override_csv_integer_inference(
+    manifest_tool, measures_tool, tmp_path_factory, ids
+):
+    path = tmp_path_factory.mktemp("declared") / "x.household_measures.csv.gz"
+    table = pd.DataFrame(
+        {
+            name: np.asarray(ids, dtype=dtype)
+            for name, dtype in measures_tool.SIDECAR_COLUMNS
+        }
+    )
+    table.to_csv(path, index=False, float_format="%.0f")
+    (actual,) = manifest_tool.describe_csv(path, chunk_rows=1)["tables"]
+    assert [(c["name"], c["dtype"]) for c in actual["columns"]] == list(
+        measures_tool.SIDECAR_COLUMNS
+    )
+
+
+@_SETTINGS
+@given(
+    st.sampled_from(["int64", "float32", "object", "str"]),
+    st.integers(1, 10),
+)
+def test_empty_fixed_frames_and_metadata_series_have_zero_rows(
+    manifest_tool, tmp_path_factory, dtype, chunk
+):
+    path = tmp_path_factory.mktemp("empty") / "f.h5"
+    with pd.HDFStore(path, mode="w") as store:
+        store.put("person", pd.DataFrame({"x": pd.Series([], dtype=dtype)}))
+        store.put("_empty", pd.Series([], dtype=dtype))
+    entry = manifest_tool.describe_h5(path, chunk_rows=chunk)
+    (table,) = entry["tables"]
+    assert table["rows"] == 0
+    assert table["columns"] == [
+        {
+            "name": "x",
+            "dtype": str(pd.read_hdf(path, "person")["x"].dtype),
+            "null_count": 0,
+        }
+    ]
+    assert entry["other_keys"] == [
+        {"key": "_empty", "pandas_type": "series", "rows": 0}
+    ]
+
+
+@_SETTINGS
+@given(st.integers(1, 10), st.integers(1, 5))
+def test_underscore_frames_are_metadata_even_with_rows(
+    manifest_tool, tmp_path_factory, rows, chunk
+):
+    path = tmp_path_factory.mktemp("metadata") / "f.h5"
+    with pd.HDFStore(path, mode="w") as store:
+        store.put("_private", pd.DataFrame({"value": range(rows)}))
+    entry = manifest_tool.describe_h5(path, chunk_rows=chunk)
+    assert entry["tables"] == []
+    assert entry["other_keys"] == [
+        {"key": "_private", "pandas_type": "frame", "rows": rows, "columns": ["value"]}
+    ]
+
+
+@_SETTINGS
+@given(
+    st.sampled_from(
+        [
+            "not-json",
+            "null",
+            "[]",
+            "{}",
+            '{"codec_version": 1, "nullable_boolean_columns": "flag"}',
+            '{"codec_version": 1, "nullable_boolean_columns": [1]}',
+            '{"codec_version": 2, "nullable_boolean_columns": ["flag"]}',
+            '{"codec_version": true, "nullable_boolean_columns": ["flag"]}',
+            '{"codec_version": 1, "nullable_boolean_columns": []}',
+            '{"codec_version": 1, "nullable_boolean_columns": ["flag", "flag"]}',
+        ]
+    )
+)
+def test_malformed_codec_metadata_always_refuses(manifest_tool, raw):
+    storer = SimpleNamespace(
+        attrs=SimpleNamespace(**{manifest_tool.FRAME_TABLE_CODEC_ATTR: raw})
+    )
+    with pytest.raises(manifest_tool.ManifestError, match="malformed frame codec"):
+        manifest_tool._codec_columns(storer, "person")
+
+
+@_SETTINGS
+@given(st.integers(-1000, 1000), st.booleans())
+def test_non_string_and_multiindex_column_names_refuse_as_manifest_error(
+    manifest_tool, tmp_path_factory, label, multiindex
+):
+    columns = pd.MultiIndex.from_tuples([("x", label)]) if multiindex else [label]
+    path = tmp_path_factory.mktemp("names") / "f.h5"
+    with pd.HDFStore(path, mode="w") as store:
+        store.put("person", pd.DataFrame([[1]], columns=columns))
+    with pytest.raises(manifest_tool.ManifestError, match="string column names"):
+        manifest_tool.describe_h5(path, chunk_rows=1)
+
+
+@pytest.mark.parametrize("layout", ["fixed", "table"])
+@_SETTINGS
+@given(st.integers(1, 20), st.integers(1, 8))
+def test_reader_row_count_must_match_the_storer(
+    manifest_tool, tmp_path_factory, monkeypatch, layout, rows, chunk
+):
+    path = tmp_path_factory.mktemp("rows") / "f.h5"
+    with pd.HDFStore(path, mode="w") as store:
+        store.put("person", pd.DataFrame({"x": range(rows)}), format=layout)
+    original_select = pd.HDFStore.select
+
+    def incomplete_read(store, *args, **kwargs):
+        frame = original_select(store, *args, **kwargs)
+        return frame.iloc[:-1] if len(frame) else frame
+
+    with monkeypatch.context() as patch:
+        patch.setattr(pd.HDFStore, "select", incomplete_read)
+        with pytest.raises(manifest_tool.ManifestError, match="its storer says"):
+            manifest_tool.describe_h5(path, chunk_rows=chunk)
+
+
+@pytest.mark.parametrize("layout", ["hdf5", "csv"])
+def test_file_identity_is_taken_before_reading_tables(
+    manifest_tool, tmp_path, monkeypatch, layout
+):
+    path = tmp_path / ("f.h5" if layout == "hdf5" else "f.csv")
+    frame = pd.DataFrame({"x": [1, 2]})
+    if layout == "hdf5":
+        with pd.HDFStore(path, mode="w") as store:
+            store.put("person", frame)
+    else:
+        frame.to_csv(path, index=False)
+    events = []
+    original_hash = manifest_tool.sha256_file
+    original_stat = Path.stat
+    reader_name = "HDFStore" if layout == "hdf5" else "read_csv"
+    original_reader = getattr(pd, reader_name)
+
+    def record_hash(file_path):
+        result = original_hash(file_path)
+        events.append("sha256")
+        return result
+
+    def record_stat(file_path, *args, **kwargs):
+        result = original_stat(file_path, *args, **kwargs)
+        if file_path == path:
+            events.append("size")
+        return result
+
+    def read_after_identity(*args, **kwargs):
+        assert events[:2] == ["sha256", "size"]
+        return original_reader(*args, **kwargs)
+
+    monkeypatch.setattr(manifest_tool, "sha256_file", record_hash)
+    monkeypatch.setattr(Path, "stat", record_stat)
+    monkeypatch.setattr(pd, reader_name, read_after_identity)
+    entry = manifest_tool.describe_file(path)
+    assert entry["sha256"] == original_hash(path)
+    assert entry["size_bytes"] == original_stat(path).st_size
+
+
 # ---------------------------------------------------------------------------
 # Round trips and diffs
 # ---------------------------------------------------------------------------
@@ -420,6 +626,41 @@ def test_the_diff_reports_exactly_the_set_differences(manifest_tool, entry, data
     assert diff["renamed"] == []
     for item in diff["dtype_changed"]:
         assert item["dtype_before"] == item["dtype_after"] + "_old"
+
+
+@_SETTINGS
+@given(
+    st.sets(st.sampled_from(["person", "household", "family", "tax_unit"])),
+    st.sets(st.sampled_from(["person", "household", "family", "tax_unit"])),
+)
+def test_table_diffs_include_empty_tables_and_exact_set_differences(
+    manifest_tool, before, after
+):
+    prior = manifest_tool.build_manifest([_entry(dict.fromkeys(before, []))])
+    current = manifest_tool.build_manifest([_entry(dict.fromkeys(after, []))])
+    diff = manifest_tool.diff_manifests(prior, current, renames=())
+    assert diff["tables_added"] == sorted(after - before)
+    assert diff["tables_removed"] == sorted(before - after)
+    assert manifest_tool.diff_is_empty(diff) == (before == after)
+
+
+@_SETTINGS
+@given(st.from_regex(r"[a-z][a-z_]{0,11}", fullmatch=True))
+def test_dtype_changes_keep_the_current_logical_dtype(manifest_tool, column):
+    prior = manifest_tool.build_manifest([_entry({"person": [(column, "bool")]})])
+    entry = _entry({"person": [(column, "object")]})
+    entry["tables"][0]["columns"][0]["logical_dtype"] = "boolean"
+    current = manifest_tool.build_manifest([entry])
+    diff = manifest_tool.diff_manifests(prior, current, renames=())
+    assert diff["dtype_changed"] == [
+        {
+            "table": "person",
+            "column": column,
+            "dtype_before": "bool",
+            "dtype_after": "object",
+            "logical_dtype_after": "boolean",
+        }
+    ]
 
 
 def _entry(tables):
@@ -507,6 +748,11 @@ def test_the_wic_rename_and_the_weeks_worked_removal(manifest_tool, tmp_path):
             "still has 'from'",
         ),
         (
+            {"person": [("would_claim_wic", "bool")]},
+            {"person": [("age", "float64")]},
+            "the current has no column 'to'",
+        ),
+        (
             {
                 "person": [
                     ("would_claim_wic", "bool"),
@@ -528,6 +774,33 @@ def test_a_declared_rename_that_does_not_apply_says_why(
     assert diff["renamed"] == []
     (item,) = diff["declared_renames_not_applied"]
     assert why in item["why"]
+
+
+@_SETTINGS
+@given(
+    st.lists(
+        st.from_regex(r"[a-z][a-z_]{0,11}", fullmatch=True),
+        min_size=3,
+        max_size=3,
+        unique=True,
+    )
+)
+def test_a_rename_whose_destination_is_absent_explains_why(manifest_tool, names):
+    source, target, other = names
+    prior = manifest_tool.build_manifest([_entry({"person": [(source, "bool")]})])
+    current = manifest_tool.build_manifest([_entry({"person": [(other, "bool")]})])
+    diff = manifest_tool.diff_manifests(
+        prior, current, renames=[{"table": "person", "from": source, "to": target}]
+    )
+    assert diff["renamed"] == []
+    assert diff["declared_renames_not_applied"] == [
+        {
+            "table": "person",
+            "from": source,
+            "to": target,
+            "why": "the current has no column 'to'",
+        }
+    ]
 
 
 @pytest.mark.parametrize(
@@ -562,6 +835,46 @@ def test_a_table_named_in_two_files_refuses(manifest_tool):
     entry = _entry({"person": [("a", "int64")]})
     with pytest.raises(manifest_tool.ManifestError, match="appears in both"):
         manifest_tool.build_manifest([entry, {**entry, "name": "g.csv"}])
+
+
+@_SETTINGS
+@given(st.from_regex(r"[a-z][a-z_]{0,11}", fullmatch=True), st.sampled_from(_DTYPES))
+def test_a_manifest_column_listed_twice_refuses(manifest_tool, name, dtype):
+    entry = _entry({"person": [(name, dtype), (name, dtype)]})
+    with pytest.raises(manifest_tool.ManifestError, match="listed twice"):
+        manifest_tool.build_manifest([entry])
+
+
+@_SETTINGS
+@given(
+    st.text(alphabet='abc,"\n', min_size=1, max_size=15).filter(
+        lambda text: bool(text.strip()) and text == text.strip()
+    ),
+    st.sampled_from(["str", "object", "float64"]),
+    st.booleans(),
+    st.booleans(),
+)
+def test_column_lists_quote_csv_fields_and_accept_bom_and_suffix_case(
+    manifest_tool, tmp_path_factory, name, dtype, bom, uppercase
+):
+    manifest = manifest_tool.build_manifest([_entry({name: [(name, dtype)]})])
+    path = tmp_path_factory.mktemp("quoted") / (
+        "prior.CSV" if uppercase else "prior.csv"
+    )
+    text = manifest_tool.manifest_column_list(manifest)
+    path.write_text(("\ufeff" if bom else "") + text, encoding="utf-8")
+    prior = manifest_tool.load_prior(path)
+    assert manifest_tool.diff_is_empty(
+        manifest_tool.diff_manifests(prior, manifest, renames=())
+    )
+
+
+@_SETTINGS
+@given(st.from_regex(r"[a-z][a-z_]{0,11}", fullmatch=True))
+def test_a_read_frame_with_duplicate_columns_refuses(manifest_tool, name):
+    tally = manifest_tool._ColumnTally("person")
+    with pytest.raises(manifest_tool.ManifestError, match="repeats a column name"):
+        tally.add(pd.DataFrame([[1, 2]], columns=[name, name]))
 
 
 @pytest.mark.parametrize(
@@ -648,3 +961,131 @@ def test_the_cli_writes_json_and_markdown_and_never_overwrites(
     assert out_md.read_text() == manifest_tool.render_markdown(manifest)
     with pytest.raises(FileExistsError):
         manifest_tool.main(arguments)
+
+
+@_SETTINGS
+@given(st.integers(0, 0o777))
+def test_exclusive_manifest_writes_obey_the_umask(
+    manifest_tool, tmp_path_factory, mask
+):
+    path = tmp_path_factory.mktemp("mode") / "m.json"
+    previous = os.umask(mask)
+    try:
+        manifest_tool._write_exclusive(path, "{}\n")
+    finally:
+        os.umask(previous)
+    assert stat.S_IMODE(path.stat().st_mode) == 0o666 & ~mask
+
+
+@pytest.mark.parametrize("dangling", [False, True])
+def test_exclusive_manifest_write_checks_existing_paths_before_writing(
+    manifest_tool, tmp_path, monkeypatch, dangling
+):
+    path = tmp_path / "m.json"
+    if dangling:
+        path.symlink_to(tmp_path / "nonexistent-manifest-target")
+    else:
+        path.write_text("incumbent")
+
+    def unexpected_link(*args):
+        pytest.fail("an existing output reached the link layer")
+
+    monkeypatch.setattr(manifest_tool.os, "link", unexpected_link)
+    with pytest.raises(FileExistsError, match="refusing to overwrite"):
+        manifest_tool._write_exclusive(path, "replacement")
+    assert path.is_symlink() if dangling else path.read_text() == "incumbent"
+    assert sorted(item.name for item in tmp_path.iterdir()) == ["m.json"]
+
+
+def test_exclusive_manifest_link_refuses_a_destination_created_after_precheck(
+    manifest_tool, tmp_path, monkeypatch
+):
+    path = tmp_path / "m.json"
+
+    def create_destination(_size):
+        path.write_text("racing incumbent")
+        return "deterministic"
+
+    monkeypatch.setattr(manifest_tool.secrets, "token_hex", create_destination)
+    with pytest.raises(FileExistsError):
+        manifest_tool._write_exclusive(path, "replacement")
+    assert path.read_text() == "racing incumbent"
+    assert sorted(item.name for item in tmp_path.iterdir()) == ["m.json"]
+
+
+def test_exclusive_manifest_write_preserves_a_colliding_temporary_path(
+    manifest_tool, tmp_path, monkeypatch
+):
+    path = tmp_path / "m.json"
+    temporary = tmp_path / ".m.json.deterministic.partial"
+    temporary.write_text("another writer's temporary file")
+    monkeypatch.setattr(
+        manifest_tool.secrets, "token_hex", lambda _size: "deterministic"
+    )
+    with pytest.raises(FileExistsError):
+        manifest_tool._write_exclusive(path, "replacement")
+    assert temporary.read_text() == "another writer's temporary file"
+    assert not path.exists()
+
+
+def _cli_arguments(tmp_path, json_path=None, md_path=None):
+    return [
+        "--h5", str(tmp_path / "nonexistent-county-file.h5"),
+        "--output-json", str(json_path or tmp_path / "m.json"),
+        "--output-md", str(md_path or tmp_path / "m.md"),
+    ]  # fmt: skip
+
+
+@pytest.mark.parametrize("suffix", ["json", "md"])
+@pytest.mark.parametrize("dangling", [False, True])
+def test_cli_prechecks_each_output_before_describing_or_writing(
+    manifest_tool, tmp_path, monkeypatch, suffix, dangling
+):
+    path = tmp_path / f"m.{suffix}"
+    if dangling:
+        path.symlink_to(tmp_path / "nonexistent-manifest-target")
+    else:
+        path.write_text("incumbent")
+
+    def unexpected_work(*args, **kwargs):
+        pytest.fail("an existing output reached description or writing")
+
+    monkeypatch.setattr(manifest_tool, "emit", unexpected_work)
+    monkeypatch.setattr(manifest_tool, "_write_exclusive", unexpected_work)
+    with pytest.raises(FileExistsError, match="refusing to overwrite"):
+        manifest_tool.main(_cli_arguments(tmp_path))
+    assert path.is_symlink() if dangling else path.read_text() == "incumbent"
+    assert sorted(item.name for item in tmp_path.iterdir()) == [f"m.{suffix}"]
+
+
+@pytest.mark.parametrize("alias", [False, True])
+def test_cli_refuses_equal_output_paths_before_description(
+    manifest_tool, tmp_path, monkeypatch, alias
+):
+    path = tmp_path / "m.json"
+    md_path = tmp_path / "subdir" / ".." / "m.json" if alias else path
+
+    def unexpected_description(**kwargs):
+        pytest.fail("equal output paths reached description")
+
+    monkeypatch.setattr(manifest_tool, "emit", unexpected_description)
+    with pytest.raises(manifest_tool.ManifestError, match="must be different"):
+        manifest_tool.main(_cli_arguments(tmp_path, path, md_path))
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_cli_removes_json_if_markdown_write_fails(manifest_tool, tmp_path, monkeypatch):
+    manifest = manifest_tool.build_manifest([])
+    monkeypatch.setattr(manifest_tool, "emit", lambda **kwargs: manifest)
+    original_write = manifest_tool._write_exclusive
+
+    def fail_markdown(path, text):
+        if path.suffix == ".md":
+            assert (tmp_path / "m.json").is_file()
+            raise OSError("simulated markdown write failure")
+        original_write(path, text)
+
+    monkeypatch.setattr(manifest_tool, "_write_exclusive", fail_markdown)
+    with pytest.raises(OSError, match="simulated markdown write failure"):
+        manifest_tool.main(_cli_arguments(tmp_path))
+    assert list(tmp_path.iterdir()) == []

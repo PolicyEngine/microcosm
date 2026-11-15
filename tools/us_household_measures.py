@@ -58,10 +58,12 @@ Scoring runs in batches of whole households, each a fresh
 (``reform_validation.US_RELEASE_SPM_SELECTION``). Every measure is a
 per-household quantity, and policyengine-core forbids formula-time
 randomness, so a batch gives each household the value a whole-file engine
-would, except through a formula that aggregates over its simulation's whole
-population (``POPULATION_AGGREGATE_VARIABLES``, the deciles and the Medicaid
-state sums). A multi-batch run refuses once any batch engine has computed one
-of them (microcosm#956).
+would when all references stay within households. A multi-batch run refuses
+positive ``medicaid_claiming_tax_unit_id`` references outside the person's
+own household, including unresolved references. It also refuses once any
+batch engine or its branches computes a whole-population formula
+(``POPULATION_AGGREGATE_VARIABLES``, the deciles and the Medicaid state sums;
+microcosm#956).
 
 Usage::
 
@@ -84,10 +86,9 @@ import io
 import json
 import os
 import platform
-import resource
 import sys
-import tempfile
 import time
+import uuid
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from importlib import metadata
@@ -182,6 +183,7 @@ ENGINE_DEFINITIONS: Mapping[str, Mapping[str, Any]] = {
     "household_market_income": {
         "entity": "household",
         "adds": "gov.household.market_income_sources",
+        "subtracts": None,
     },
 }
 MARKET_INCOME_PARAMETER = "gov.household.market_income_sources"
@@ -235,7 +237,7 @@ MEASURE_DEFINITIONS: Mapping[str, Mapping[str, Any]] = {
 #: them equal): importing that package builds the policyengine-us system.
 US_RELEASE_SPM_SELECTION: Mapping[str, object] = {"geography_kind": "county"}
 #: Copied from ``microcosm.data.compatibility_recertification`` (a test holds
-#: them equal), which copies the fiscal-refresh builder's list.
+#: them equal); the fiscal-refresh builder aliases this list.
 POPULATION_AGGREGATE_VARIABLES = (
     "household_income_decile",
     "medicaid_slcsp_state_average_cost_index",
@@ -246,13 +248,39 @@ POPULATION_AGGREGATE_VARIABLES = (
 DEFAULT_BATCH_HOUSEHOLDS = 5_000
 #: net_income against its components: |difference| <= ATOL + RTOL * scale.
 #: ``scale`` is the sum of the components' absolute values. The engine adds
-#: them in float32 (eps 1.2e-7): five roundings stay below 3e-7 * scale.
+#: them in float32: four roundings of at most 6e-8 each give a bound of
+#: about 2.4e-7 * scale. The tolerance allows 1e-6 * scale plus one cent.
 IDENTITY_ATOL = 0.01
 IDENTITY_RTOL = 1e-6
 
 
 class HouseholdMeasuresError(ValueError):
     """A sidecar, its source H5 or the engine breaks this module's contract."""
+
+
+def _household_ids(values: Any) -> np.ndarray:
+    """IDs must convert to int64 without losing their value."""
+
+    ids = np.asarray(values)
+    if ids.dtype.kind in "iu":
+        valid = (ids >= np.iinfo(np.int64).min) & (ids <= np.iinfo(np.int64).max)
+    elif ids.dtype.kind == "f":
+        valid = (
+            np.isfinite(ids)
+            & (ids == np.floor(ids))
+            & (ids >= -(2.0**63))
+            & (ids < 2.0**63)
+        )
+    else:
+        valid = np.zeros(ids.shape, dtype=bool)
+    if not valid.all():
+        raise HouseholdMeasuresError("household_id values must be integral int64 IDs.")
+    return ids.astype(np.int64)
+
+
+def _validate_batch_households(batch_households: int) -> None:
+    if type(batch_households) is not int or batch_households <= 0:
+        raise HouseholdMeasuresError("batch_households must be a positive integer.")
 
 
 # ---------------------------------------------------------------------------
@@ -295,7 +323,7 @@ def read_h5_household_ids(path: Path) -> tuple[np.ndarray, int]:
         if "/household" not in store.keys():
             raise HouseholdMeasuresError(f"{path} has no household table.")
         ids = store.select("household", columns=None)[HOUSEHOLD_ID]
-    return np.asarray(ids, dtype=np.int64), year
+    return _household_ids(ids), year
 
 
 def read_h5_tables(path: Path) -> tuple[dict[str, pd.DataFrame], int]:
@@ -349,11 +377,10 @@ def household_batches(
     units the engine sums over.
     """
 
-    if type(batch_households) is not int or batch_households <= 0:
-        raise HouseholdMeasuresError("batch_households must be a positive integer.")
+    _validate_batch_households(batch_households)
     household = tables["household"]
     person = tables["person"]
-    household_ids = household[HOUSEHOLD_ID].to_numpy()
+    household_ids = _household_ids(household[HOUSEHOLD_ID])
     household_index = _unique_index(household_ids, "household_id")
     person_house_pos = _positions(
         household_index,
@@ -373,6 +400,8 @@ def household_batches(
     household_batch = np.arange(len(household_ids), dtype=np.int64) // batch_households
     person_batch = household_batch[person_house_pos]
     n_batches = int(household_batch[-1]) + 1 if len(household_ids) else 0
+    if n_batches > 1:
+        _assert_medicaid_claiming_tax_units_local(person)
 
     row_batches: dict[str, np.ndarray] = {
         "household": household_batch,
@@ -427,6 +456,32 @@ def household_batches(
         }
 
 
+def _assert_medicaid_claiming_tax_units_local(person: pd.DataFrame) -> None:
+    """Keep positive Medicaid claiming references within their household.
+
+    As in the fiscal-refresh builder, unresolved positive IDs refuse too:
+    their household might have been omitted by a caller slicing the input.
+    """
+
+    column = "medicaid_claiming_tax_unit_id"
+    if column not in person:
+        return
+    claims = person.loc[person[column] > 0]
+    if claims.empty:
+        return
+    local_units = pd.MultiIndex.from_frame(
+        person[["person_household_id", "person_tax_unit_id"]]
+    )
+    claimed_units = pd.MultiIndex.from_frame(claims[["person_household_id", column]])
+    if not claimed_units.isin(local_units).all():
+        raise HouseholdMeasuresError(
+            "A positive medicaid_claiming_tax_unit_id does not resolve within "
+            "the person's own household; batched measures would differ from "
+            "a whole-file simulation. Rerun with --batch-households at least "
+            "the household count."
+        )
+
+
 # ---------------------------------------------------------------------------
 # The engine seam
 # ---------------------------------------------------------------------------
@@ -458,6 +513,7 @@ def check_engine_definitions(system: Any) -> None:
         *COMPONENT_VARIABLES,
         NET_INCOME_VARIABLE,
         HOUSEHOLD_ID,
+        *POPULATION_AGGREGATE_VARIABLES,
     }
     missing = sorted(name for name in wanted if name not in variables)
     if missing:
@@ -516,16 +572,9 @@ class EngineRun:
 
 
 def _known(simulation: Any, names: Sequence[str]) -> set[tuple[str, str]]:
-    known: set[tuple[str, str]] = set()
-    variables = simulation.tax_benefit_system.variables
-    for name in names:
-        if name not in variables:
-            continue
-        known.update(
-            (name, str(period))
-            for period in simulation.get_holder(name).get_known_periods()
-        )
-    return known
+    from microcosm.data.compatibility_recertification import engine_known_periods
+
+    return engine_known_periods(simulation, names)
 
 
 def engine_batch_calculator(
@@ -554,9 +603,9 @@ def engine_batch_calculator(
         simulation = microsimulation_cls(dataset=dataset, spm=dict(spm))
         try:
             before = _known(simulation, POPULATION_AGGREGATE_VARIABLES)
-            engine_ids = np.asarray(
-                simulation.calculate(HOUSEHOLD_ID, year, map_to="household"),
-            ).astype(np.int64)
+            engine_ids = _household_ids(
+                simulation.calculate(HOUSEHOLD_ID, year, map_to="household")
+            )
             values = {
                 name: np.asarray(
                     simulation.calculate(name, year, map_to="household"),
@@ -585,7 +634,7 @@ def engine_batch_calculator(
                     "measures would hold batch-local values (microcosm#956). "
                     "Rerun with --batch-households at least the household count."
                 )
-        expected = batch["household"][HOUSEHOLD_ID].to_numpy(dtype=np.int64)
+        expected = _household_ids(batch["household"][HOUSEHOLD_ID])
         if engine_ids.shape != expected.shape:
             raise HouseholdMeasuresError(
                 f"A batch engine returned {engine_ids.shape[0]} households for "
@@ -614,7 +663,7 @@ def assemble_household_measures(
 ) -> pd.DataFrame:
     """The sidecar table from per-household engine values, in household order."""
 
-    household_ids = np.asarray(household_ids, dtype=np.int64)
+    household_ids = _household_ids(household_ids)
     n = len(household_ids)
     needed = (*EARNINGS_VARIABLES, *COMPONENT_VARIABLES, NET_INCOME_VARIABLE)
     missing = [name for name in needed if name not in values]
@@ -694,7 +743,7 @@ def check_household_measures(
     if failures:
         raise HouseholdMeasuresError("; ".join(failures) + ".")
 
-    source = np.asarray(household_ids, dtype=np.int64)
+    source = _household_ids(household_ids)
     if len(np.unique(source)) != len(source):
         raise HouseholdMeasuresError("The H5's household table repeats a household_id.")
     ids = table[HOUSEHOLD_ID].to_numpy(dtype=np.int64)
@@ -775,7 +824,8 @@ def compute_household_measures(
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Score every household through ``calculate``, batch by batch."""
 
-    household_ids = tables["household"][HOUSEHOLD_ID].to_numpy(dtype=np.int64)
+    _validate_batch_households(batch_households)
+    household_ids = _household_ids(tables["household"][HOUSEHOLD_ID])
     n = len(household_ids)
     needed = (*EARNINGS_VARIABLES, *COMPONENT_VARIABLES, NET_INCOME_VARIABLE)
     collected: dict[str, list[np.ndarray]] = {name: [] for name in needed}
@@ -850,14 +900,12 @@ def sidecar_paths(h5_path: Path, output_dir: Path | None = None) -> tuple[Path, 
 def _write_exclusive(path: Path, write: Callable[[Path], None]) -> None:
     """Write through a temporary sibling and link it in without overwriting."""
 
-    if path.exists():
+    if os.path.lexists(path):
         raise FileExistsError(f"{path} exists; refusing to overwrite it.")
     path.parent.mkdir(parents=True, exist_ok=True)
-    handle, temporary = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".partial", dir=path.parent
-    )
+    temporary_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.partial")
+    handle = os.open(temporary_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
     os.close(handle)
-    temporary_path = Path(temporary)
     try:
         write(temporary_path)
         os.link(temporary_path, path)
@@ -866,10 +914,11 @@ def _write_exclusive(path: Path, write: Callable[[Path], None]) -> None:
 
 
 def write_sidecar(table: pd.DataFrame, path: Path) -> None:
-    """Gzip CSV at full float precision, byte-reproducible.
+    """Gzip CSV at full float precision, reproducible with the same zlib build.
 
     The gzip header carries no file name and a zero timestamp, so the same
-    table always gives the same bytes (and the temporary name never leaks).
+    table gives the same bytes with the same zlib build (the temporary name
+    never leaks).
     """
 
     def write(target: Path) -> None:
@@ -911,7 +960,11 @@ def _package_version(name: str) -> str | None:
         return None
 
 
-def _peak_rss_bytes() -> int:
+def _peak_rss_bytes() -> int | None:
+    try:
+        import resource
+    except ImportError:
+        return None
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return int(peak if sys.platform == "darwin" else peak * 1024)
 
@@ -1006,10 +1059,17 @@ def verify_sidecar(
 
 
 def _installed_engine() -> tuple[Any, Any, Any]:
-    from policyengine_us import CountryTaxBenefitSystem, Microsimulation
-    from policyengine_us.data import USSingleYearDataset
+    from policyengine_us import Microsimulation
+    from policyengine_us.data import USSingleYearDataset, extend_single_year_dataset
+    from policyengine_us.system import system
 
-    return Microsimulation, USSingleYearDataset, CountryTaxBenefitSystem()
+    def dataset_through_file_year(**kwargs: Any) -> Any:
+        dataset = USSingleYearDataset(**kwargs)
+        # A USMultiYearDataset bypasses Microsimulation's default extension
+        # through the CPI-U horizon. No measure reads after the file's year.
+        return extend_single_year_dataset(dataset, end_year=int(kwargs["time_period"]))
+
+    return Microsimulation, dataset_through_file_year, system
 
 
 def run_compute(
@@ -1023,11 +1083,12 @@ def run_compute(
 ) -> dict[str, Any]:
     """Compute, check and write the sidecar and receipt for ``h5_path``."""
 
+    _validate_batch_households(batch_households)
     started = time.perf_counter()
     h5_path = Path(h5_path)
     sidecar_path, receipt_path = sidecar_paths(h5_path, output_dir)
     for path in (sidecar_path, receipt_path):
-        if path.exists():
+        if os.path.lexists(path):
             raise FileExistsError(f"{path} exists; refusing to overwrite it.")
     h5_sha256 = sha256_file(h5_path)
     tables, year = read_h5_tables(h5_path)
@@ -1060,34 +1121,39 @@ def run_compute(
     if sha256_file(h5_path) != h5_sha256:
         raise HouseholdMeasuresError(f"{h5_path} changed while it was scored.")
     write_sidecar(table, sidecar_path)
-    reread = read_sidecar(sidecar_path)
-    if not reread.equals(table):
-        sidecar_path.unlink()
-        raise HouseholdMeasuresError("The written sidecar does not read back exactly.")
-    engine = {
-        "policyengine_us": _package_version("policyengine-us"),
-        "policyengine_core": _package_version("policyengine-core"),
-        "python": platform.python_version(),
-        "spm_selection": dict(US_RELEASE_SPM_SELECTION),
-        "period": int(year),
-        "resolved_parameters": parameters,
-        "aggregate_variables_computed": list(run.aggregate_variables_computed),
-    }
-    timing = {
-        "wall_seconds": round(time.perf_counter() - started, 3),
-        "peak_rss_bytes": _peak_rss_bytes(),
-    }
-    receipt = build_receipt(
-        h5_path=h5_path,
-        h5_sha256=h5_sha256,
-        year=year,
-        sidecar_path=sidecar_path,
-        table=table,
-        run_info=run_info,
-        engine=engine,
-        timing=timing,
-    )
-    _write_json(receipt_path, receipt)
+    try:
+        reread = read_sidecar(sidecar_path)
+        if not reread.equals(table):
+            raise HouseholdMeasuresError(
+                "The written sidecar does not read back exactly."
+            )
+        engine = {
+            "policyengine_us": _package_version("policyengine-us"),
+            "policyengine_core": _package_version("policyengine-core"),
+            "python": platform.python_version(),
+            "spm_selection": dict(US_RELEASE_SPM_SELECTION),
+            "period": int(year),
+            "resolved_parameters": parameters,
+            "aggregate_variables_computed": list(run.aggregate_variables_computed),
+        }
+        timing = {
+            "wall_seconds": round(time.perf_counter() - started, 3),
+            "peak_rss_bytes": _peak_rss_bytes(),
+        }
+        receipt = build_receipt(
+            h5_path=h5_path,
+            h5_sha256=h5_sha256,
+            year=year,
+            sidecar_path=sidecar_path,
+            table=table,
+            run_info=run_info,
+            engine=engine,
+            timing=timing,
+        )
+        _write_json(receipt_path, receipt)
+    except BaseException:
+        sidecar_path.unlink(missing_ok=True)
+        raise
     log(f"wrote {sidecar_path} and {receipt_path}")
     return receipt
 

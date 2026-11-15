@@ -12,6 +12,8 @@ import gzip
 import hashlib
 import json
 import math
+import os
+import struct
 import sys
 
 import numpy as np
@@ -31,12 +33,13 @@ from test_support.microcosm_build.us_county_files import (
 from test_support.paths import paths_for
 
 hypothesis = pytest.importorskip("hypothesis")
-from hypothesis import HealthCheck, given, settings  # noqa: E402
+from hypothesis import HealthCheck, assume, example, given, settings  # noqa: E402
 from hypothesis import strategies as st  # noqa: E402
 
 _SETTINGS = settings(
     max_examples=40,
     deadline=None,
+    derandomize=True,
     # Generation is slow only on a loaded host (too_slow fired at load 200).
     suppress_health_check=[
         HealthCheck.function_scoped_fixture,
@@ -61,12 +64,15 @@ def _populations(draw, max_households: int = 24):
     seed = draw(st.integers(0, 2**16))
     year = draw(st.sampled_from([2026, 2027]))
     batch = draw(st.integers(1, len(sizes) + 3))
+    id_base = draw(st.integers(-2000, 2000))
     tables = population_tables(
         sizes,
         seed=seed,
         tax_unit_splits=splits,
         household_order=household_order,
         person_order=person_order,
+        id_base=id_base,
+        shuffle_groups=True,
     )
     return tables, year, batch
 
@@ -86,6 +92,22 @@ def _valid_sidecar(tool, tables, year):
 
 @_SETTINGS
 @given(_populations(), st.booleans())
+@example(
+    (
+        population_tables(
+            [2, 3, 1, 4],
+            id_base=-31,
+            seed=109,
+            tax_unit_splits=[True] * 4,
+            household_order=[2, 0, 3, 1],
+            person_order=[9, 4, 0, 7, 2, 8, 1, 6, 3, 5],
+            shuffle_groups=True,
+        ),
+        2027,
+        1,
+    ),
+    True,
+)
 def test_every_household_once_in_its_own_order_whatever_the_batches(
     tool, population, reverse
 ):
@@ -150,14 +172,40 @@ def test_batches_partition_every_entity_into_whole_households(tool, population):
         )
 
 
-def test_a_tax_unit_spanning_two_households_refuses(tool):
-    tables = population_tables([2, 2])
+@_SETTINGS
+@given(st.integers(2, 16), st.integers(0, 2**16))
+def test_compute_refuses_batches_that_change_household_order(
+    tool, monkeypatch, count, seed
+):
+    tables = population_tables([1] * count, seed=seed, shuffle_groups=True)
+    batcher = tool.household_batches
+
+    def reversed_batches(tables, batch_households):
+        yield from reversed(list(batcher(tables, batch_households)))
+
+    calculate, _, _ = fake_calculator(tool, multi_batch=True)
+    with monkeypatch.context() as patch:
+        patch.setattr(tool, "household_batches", reversed_batches)
+        with pytest.raises(tool.HouseholdMeasuresError, match="its own order"):
+            tool.compute_household_measures(
+                tables, 2026, calculate=calculate, batch_households=count - 1
+            )
+
+
+@_SETTINGS
+@given(
+    sizes=st.lists(st.integers(1, 6), min_size=2, max_size=8),
+    seed=st.integers(0, 2**16),
+)
+@pytest.mark.parametrize("group", ["tax_unit", "spm_unit", "family", "marital_unit"])
+def test_a_group_spanning_two_households_refuses(tool, sizes, seed, group):
+    tables = population_tables(sizes, seed=seed, shuffle_groups=True)
     person = tables["person"]
-    person.loc[person.index[-1], "person_tax_unit_id"] = person.loc[
-        person.index[0], "person_tax_unit_id"
+    person.loc[person.index[-1], f"person_{group}_id"] = person.loc[
+        person.index[0], f"person_{group}_id"
     ]
-    tables["tax_unit"] = pd.DataFrame(
-        {"tax_unit_id": pd.unique(person["person_tax_unit_id"])}
+    tables[group] = pd.DataFrame(
+        {f"{group}_id": pd.unique(person[f"person_{group}_id"])}
     )
     with pytest.raises(tool.HouseholdMeasuresError, match="span more than one"):
         list(tool.household_batches(tables, 1))
@@ -212,6 +260,73 @@ def test_batch_size_must_be_a_positive_integer(tool):
             list(tool.household_batches(tables, bad))
 
 
+@_SETTINGS
+@given(
+    _populations(), st.sampled_from(["tax_unit", "spm_unit", "family", "marital_unit"])
+)
+@example((population_tables([1], id_base=-1, shuffle_groups=True), 2026, 1), "tax_unit")
+@example((population_tables([1], id_base=-1, shuffle_groups=True), 2026, 1), "spm_unit")
+@example((population_tables([1], id_base=-1, shuffle_groups=True), 2026, 1), "family")
+@example(
+    (population_tables([1], id_base=-1, shuffle_groups=True), 2026, 1), "marital_unit"
+)
+def test_every_group_id_must_be_unique(tool, population, group):
+    tables, _, batch = population
+    frame = tables[group]
+    tables[group] = pd.concat([frame, frame.iloc[:1]], ignore_index=True)
+    with pytest.raises(tool.HouseholdMeasuresError, match="appears more than once"):
+        list(tool.household_batches(tables, batch))
+
+
+@_SETTINGS
+@given(st.integers(2, 12), st.integers(0, 2**16), st.booleans())
+def test_medicaid_claims_must_stay_inside_the_household_when_batched(
+    tool, count, seed, unresolved
+):
+    tables = population_tables([2] * count, seed=seed, tax_unit_splits=[True] * count)
+    person = tables["person"]
+    # Positive local claims are safe, including a different tax unit at home.
+    local = person.groupby("person_household_id")["person_tax_unit_id"].transform(
+        "last"
+    )
+    person["medicaid_claiming_tax_unit_id"] = local
+    assert len(list(tool.household_batches(tables, 1))) == count
+    # Nonpositive values are the engine's unknown-claim sentinels.
+    person["medicaid_claiming_tax_unit_id"] = np.where(
+        np.arange(len(person)) % 2, -1, 0
+    )
+    assert len(list(tool.household_batches(tables, 1))) == count
+    person.loc[0, "medicaid_claiming_tax_unit_id"] = (
+        int(person["person_tax_unit_id"].max()) + 1
+        if unresolved
+        else int(person.loc[2, "person_tax_unit_id"])
+    )
+    with pytest.raises(
+        tool.HouseholdMeasuresError, match="medicaid_claiming_tax_unit_id"
+    ):
+        list(tool.household_batches(tables, count - 1))
+    # Whole-file scoring still has the same lookup universe as the engine.
+    assert len(list(tool.household_batches(tables, count))) == 1
+
+
+@_SETTINGS
+@given(st.integers(-10000, 10000), st.sampled_from([0.25, 0.5, 0.75]))
+def test_nonintegral_household_ids_refuse_before_scoring(tool, base, fraction):
+    tables = population_tables([2, 1], id_base=base)
+    for frame, column in (
+        (tables["household"], "household_id"),
+        (tables["person"], "person_household_id"),
+    ):
+        frame[column] = frame[column].astype("float64") + fraction
+    with pytest.raises(tool.HouseholdMeasuresError, match="integer|integral|int64"):
+        tool.compute_household_measures(
+            tables,
+            2026,
+            calculate=lambda *args: pytest.fail("calculated invalid ids"),
+            batch_households=1,
+        )
+
+
 # ---------------------------------------------------------------------------
 # The engine seam
 # ---------------------------------------------------------------------------
@@ -251,6 +366,35 @@ def test_a_single_batch_may_compute_a_population_aggregate(tool):
     assert run.aggregate_variables_computed == ("spm_unit_income_decile",)
 
 
+@pytest.mark.parametrize(
+    "name",
+    [
+        "household_income_decile",
+        "medicaid_slcsp_state_average_cost_index",
+        "medicaid_slcsp_state_denominator",
+        "spm_unit_income_decile",
+    ],
+)
+def test_a_guarded_variable_computed_only_in_a_branch_refuses(tool, name):
+    calculate, _, _ = fake_calculator(
+        tool, multi_batch=True, branch_aggregate_on=(name,)
+    )
+    with pytest.raises(tool.HouseholdMeasuresError, match="microcosm#956"):
+        tool.compute_household_measures(
+            population_tables([1, 1]), 2026, calculate=calculate, batch_households=1
+        )
+
+
+@pytest.mark.parametrize("rename", [False, True])
+def test_every_guarded_name_must_still_exist(tool, rename):
+    for name in tool.POPULATION_AGGREGATE_VARIABLES:
+        system = fake_system(drop=[name])
+        if rename:
+            system.variables[name + "_renamed"] = fake_system().variables[name]
+        with pytest.raises(tool.HouseholdMeasuresError, match="defines no variable"):
+            tool.check_engine_definitions(system)
+
+
 def test_the_installed_definitions_are_checked(tool):
     tool.check_engine_definitions(fake_system())
     with pytest.raises(tool.HouseholdMeasuresError, match="adds"):
@@ -267,6 +411,24 @@ def test_the_installed_definitions_are_checked(tool):
         tool.check_engine_definitions(
             fake_system(entities={"household_benefits": "spm_unit"})
         )
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        {"market_income_adds": "gov.household.another_source"},
+        {"market_income_adds": ""},
+        {"market_income_subtracts": ["employment_income"]},
+        {"net_income_subtracts": []},
+        {"net_income_subtracts": ["household_health_costs"]},
+        {"drop": ["household_id"]},
+    ],
+)
+def test_each_documented_engine_definition_is_required(tool, changed):
+    with pytest.raises(
+        tool.HouseholdMeasuresError, match="adds|subtracts|defines no variable"
+    ):
+        tool.check_engine_definitions(fake_system(**changed))
 
 
 def test_resolved_parameters_are_recorded(tool):
@@ -402,6 +564,18 @@ def test_the_check_refuses_other_columns_or_dtypes(tool):
         tool.check_household_measures(table.astype({"year": "float64"}), ids, 2026)
 
 
+@_SETTINGS
+@given(_populations(max_households=6), st.data())
+def test_the_check_refuses_every_repeated_source_household_id(tool, population, data):
+    tables, year, _ = population
+    table = _valid_sidecar(tool, tables, year)
+    ids = tables["household"]["household_id"].to_numpy()
+    row = data.draw(st.integers(0, len(ids) - 1))
+    repeated_ids = np.append(ids, ids[row])
+    with pytest.raises(tool.HouseholdMeasuresError, match="repeats a household_id"):
+        tool.check_household_measures(table, repeated_ids, year)
+
+
 # ---------------------------------------------------------------------------
 # The sidecar file
 # ---------------------------------------------------------------------------
@@ -442,6 +616,84 @@ def test_writing_never_overwrites(tool, tmp_path):
     with pytest.raises(FileExistsError):
         tool.write_sidecar(table, path)
     assert not list(tmp_path.glob("*.partial"))
+
+
+def test_gzip_header_has_zero_mtime_and_no_filename(tool, tmp_path):
+    table = _valid_sidecar(tool, population_tables([1]), 2026)
+    path = tmp_path / "named.csv.gz"
+    tool.write_sidecar(table, path)
+    header = path.read_bytes()[:10]
+    assert header[:3] == b"\x1f\x8b\x08"
+    assert header[3] & 0x08 == 0
+    assert struct.unpack("<I", header[4:8])[0] == 0
+
+
+@pytest.mark.parametrize("mask", [0o022, 0o027, 0o077, 0o002])
+def test_every_written_file_respects_the_umask(tool, tmp_path, mask):
+    table = _valid_sidecar(tool, population_tables([1]), 2026)
+    sidecar, receipt = tmp_path / "out.csv.gz", tmp_path / "out.json"
+    previous = os.umask(mask)
+    try:
+        tool.write_sidecar(table, sidecar)
+        tool._write_json(receipt, {"kind": "fixture"})
+    finally:
+        os.umask(previous)
+    for path in (sidecar, receipt):
+        assert path.stat().st_mode & 0o777 == 0o666 & ~mask
+
+
+def test_exclusive_writer_refuses_before_calling_the_writer(tool, tmp_path):
+    path = tmp_path / "exists"
+    path.write_bytes(b"original")
+    with pytest.raises(FileExistsError):
+        tool._write_exclusive(
+            path, lambda target: pytest.fail("writer called for existing output")
+        )
+    assert path.read_bytes() == b"original"
+
+
+def test_exclusive_writer_refuses_a_dangling_symlink_before_writing(tool, tmp_path):
+    path = tmp_path / "exists"
+    target = tmp_path / "absent"
+    path.symlink_to(target)
+    with pytest.raises(FileExistsError):
+        tool._write_exclusive(
+            path, lambda output: pytest.fail("writer called for existing symlink")
+        )
+    assert path.is_symlink()
+    assert not target.exists()
+
+
+@_SETTINGS
+@given(st.binary(max_size=256))
+def test_temporary_file_creation_never_overwrites_a_colliding_name(
+    tool, tmp_path, monkeypatch, contents
+):
+    path = tmp_path / "out"
+    identifier = tool.uuid.UUID(int=1)
+    temporary = path.with_name(f".{path.name}.{identifier.hex}.partial")
+    temporary.write_bytes(contents)
+    with monkeypatch.context() as patch:
+        patch.setattr(tool.uuid, "uuid4", lambda: identifier)
+        with pytest.raises(FileExistsError):
+            tool._write_exclusive(
+                path, lambda output: pytest.fail("writer called for existing temporary")
+            )
+    assert temporary.read_bytes() == contents
+    assert not path.exists()
+
+
+def test_exclusive_link_preserves_a_file_created_during_the_write(tool, tmp_path):
+    path = tmp_path / "raced"
+
+    def write(temporary):
+        temporary.write_bytes(b"new")
+        path.write_bytes(b"other writer")
+
+    with pytest.raises(FileExistsError):
+        tool._write_exclusive(path, write)
+    assert path.read_bytes() == b"other writer"
+    assert not list(tmp_path.glob(".*.partial"))
 
 
 # ---------------------------------------------------------------------------
@@ -492,6 +744,180 @@ def test_compute_refuses_a_file_of_another_year(tool, tmp_path):
             h5, expect_year=2026, engine_factory=_fake_engine_factory, log=print
         )
     assert not any(tmp_path.glob("x.household_measures*"))
+
+
+@pytest.mark.parametrize("batch", [1, 2, 3])
+def test_run_compute_uses_the_exact_multibatch_boundary(tool, tmp_path, batch):
+    h5 = write_population_h5(
+        population_tables([1, 1]), tmp_path / "boundary.h5", year=2026
+    )
+
+    def engine_factory():
+        return (
+            fake_microsimulation_class(aggregate_on=("household_income_decile",)),
+            FakeDataset,
+            fake_system(),
+        )
+
+    if batch < 2:
+        with pytest.raises(tool.HouseholdMeasuresError, match="microcosm#956"):
+            tool.run_compute(
+                h5,
+                batch_households=batch,
+                engine_factory=engine_factory,
+                log=lambda message: None,
+            )
+        assert not any(tmp_path.glob("boundary.household_measures*"))
+    else:
+        receipt = tool.run_compute(
+            h5,
+            batch_households=batch,
+            engine_factory=engine_factory,
+            log=lambda message: None,
+        )
+        assert receipt["engine"]["aggregate_variables_computed"] == [
+            "household_income_decile"
+        ]
+
+
+@pytest.mark.parametrize("bad", [0, -1, 1.5, True])
+def test_invalid_batch_size_refuses_before_loading_any_engine(tool, tmp_path, bad):
+    h5 = write_population_h5(population_tables([1]), tmp_path / "batch.h5", year=2026)
+    with pytest.raises(tool.HouseholdMeasuresError, match="positive integer"):
+        tool.run_compute(
+            h5,
+            batch_households=bad,
+            engine_factory=lambda: pytest.fail("engine loaded for invalid batch size"),
+        )
+
+
+@pytest.mark.parametrize("which", [0, 1])
+@pytest.mark.parametrize("dangling", [False, True])
+def test_run_compute_refuses_each_existing_output_before_loading_engine(
+    tool, tmp_path, which, dangling
+):
+    h5 = write_population_h5(
+        population_tables([1]), tmp_path / "existing.h5", year=2026
+    )
+    paths = tool.sidecar_paths(h5)
+    if dangling:
+        paths[which].symlink_to(tmp_path / "absent")
+    else:
+        paths[which].write_bytes(b"original")
+    with pytest.raises(FileExistsError):
+        tool.run_compute(
+            h5,
+            engine_factory=lambda: pytest.fail("engine loaded despite existing output"),
+        )
+    if dangling:
+        assert paths[which].is_symlink()
+    else:
+        assert paths[which].read_bytes() == b"original"
+    assert not paths[1 - which].exists()
+
+
+def test_compute_refuses_if_the_h5_changes_during_scoring(tool, tmp_path):
+    h5 = write_population_h5(
+        population_tables([1]), tmp_path / "changing.h5", year=2026
+    )
+
+    def engine_factory():
+        with h5.open("ab") as handle:
+            handle.write(b"changed during scoring")
+        return _fake_engine_factory()
+
+    with pytest.raises(
+        tool.HouseholdMeasuresError, match="changed while it was scored"
+    ):
+        tool.run_compute(h5, engine_factory=engine_factory, log=lambda message: None)
+    assert not any(tmp_path.glob("changing.household_measures*"))
+
+
+def test_compute_refuses_and_cleans_up_an_inexact_readback(tool, tmp_path, monkeypatch):
+    h5 = write_population_h5(
+        population_tables([1]), tmp_path / "readback.h5", year=2026
+    )
+    real_read = tool.read_sidecar
+
+    def inexact_read(path):
+        table = real_read(path)
+        table.loc[0, "earnings"] += 1
+        return table
+
+    monkeypatch.setattr(tool, "read_sidecar", inexact_read)
+    with pytest.raises(tool.HouseholdMeasuresError, match="does not read back exactly"):
+        tool.run_compute(
+            h5, engine_factory=_fake_engine_factory, log=lambda message: None
+        )
+    assert not any(tmp_path.glob("readback.household_measures*"))
+
+
+def test_compute_removes_the_sidecar_if_receipt_writing_fails(
+    tool, tmp_path, monkeypatch
+):
+    h5 = write_population_h5(
+        population_tables([1]), tmp_path / "receipt_failure.h5", year=2026
+    )
+
+    def fail_receipt(*args):
+        raise OSError("fixture receipt failure")
+
+    monkeypatch.setattr(tool, "_write_json", fail_receipt)
+    with pytest.raises(OSError, match="fixture receipt failure"):
+        tool.run_compute(
+            h5, engine_factory=_fake_engine_factory, log=lambda message: None
+        )
+    assert not any(tmp_path.glob("receipt_failure.household_measures*"))
+
+
+@pytest.fixture
+def computed_sidecar(tool, tmp_path):
+    h5 = write_population_h5(
+        population_tables([1]), tmp_path / "identity.h5", year=2026
+    )
+    receipt = tool.run_compute(
+        h5, engine_factory=_fake_engine_factory, log=lambda message: None
+    )
+    _, receipt_path = tool.sidecar_paths(h5)
+    return h5, receipt, receipt_path
+
+
+_JSON_VALUES = st.one_of(
+    st.none(),
+    st.booleans(),
+    st.integers(),
+    st.text(max_size=80),
+    st.lists(st.one_of(st.none(), st.integers(), st.text(max_size=20)), max_size=5),
+)
+
+
+@_SETTINGS
+@given(value=_JSON_VALUES)
+@pytest.mark.parametrize("field", ["kind", "schema_version", "year"])
+def test_verify_refuses_each_changed_receipt_identity(
+    tool, computed_sidecar, field, value
+):
+    h5, receipt, receipt_path = computed_sidecar
+    assume(value != receipt[field])
+    receipt_path.write_text(json.dumps({**receipt, field: value}))
+    with pytest.raises(tool.HouseholdMeasuresError, match=f"receipt {field}"):
+        tool.verify_sidecar(h5)
+
+
+def test_verify_binds_even_an_identity_preserving_edit_to_the_sidecar_hash(
+    tool, tmp_path
+):
+    h5 = write_population_h5(population_tables([1, 2]), tmp_path / "hash.h5", year=2026)
+    tool.run_compute(h5, engine_factory=_fake_engine_factory, log=lambda message: None)
+    sidecar, _ = tool.sidecar_paths(h5)
+    table = tool.read_sidecar(sidecar)
+    table.loc[0, "earnings"] += 1
+    ids, year = tool.read_h5_household_ids(h5)
+    tool.check_household_measures(table, ids, year)
+    sidecar.unlink()
+    tool.write_sidecar(table, sidecar)
+    with pytest.raises(tool.HouseholdMeasuresError, match="sidecar's sha256"):
+        tool.verify_sidecar(h5)
 
 
 def test_verify_refuses_a_changed_sidecar_or_another_h5(tool, tmp_path):

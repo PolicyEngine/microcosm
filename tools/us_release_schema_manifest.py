@@ -18,12 +18,12 @@ What is read and how:
   ``frame_table``) whose key does not start with ``_`` is a table; anything
   else (``_time_period``, ``_populace_staging_metadata``) is listed under
   ``other_keys`` with its value when it is one short scalar, and the root
-  node's user attributes under ``root_attributes``. Tables are read in row chunks with
-  ``HDFStore.select(start=, stop=)``, the reader ``USSingleYearDataset`` uses,
-  so a dtype is what ``pd.read_hdf`` gives for the whole table. Memory stays
-  near one chunk for ``table``-format tables; pandas reads a ``fixed``-format
-  table's object block whole for every chunk, which is slower but still
-  correct. A column the Microcosm frame codec stores as object-backed
+  node's user attributes under ``root_attributes``. Table-format tables are
+  read in row chunks with ``HDFStore.select(start=, stop=)``. A dtype is what
+  ``pd.read_hdf`` gives for the whole table. Table-format
+  columns whose chunks disagree are read whole to resolve their dtype.
+  Fixed-format tables are read whole, since pandas otherwise unpickles each
+  object block again for every chunk. A column the Microcosm frame codec stores as object-backed
   nullable booleans is also given ``logical_dtype: "boolean"``.
 - **Sidecar CSV.** Read in row chunks with ``pd.read_csv``. A household
   measures sidecar is read with its declared dtypes; any other CSV with
@@ -47,10 +47,11 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import io
 import json
 import os
+import secrets
 import sys
-import tempfile
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -138,16 +139,11 @@ def sha256_file(path: Path) -> str:
 class _ColumnTally:
     """Accumulates one table's per-column dtypes and null counts over chunks.
 
-    pandas 3 infers a fixed-format object block's dtype on every read: the
-    block reads as ``str`` when all its values are strings or missing, and as
-    ``object`` otherwise. A whole read therefore gives ``str`` only if every
-    chunk does, so a column read as ``str`` in some chunks and ``object`` in
-    others is ``object`` (the frame codec's nullable booleans, for one, read
-    as ``str`` in a chunk where the whole block is missing). Any other mix of
-    dtypes refuses. An empty table keeps the dtypes of its empty read.
+    pandas may infer different dtypes for different chunks. HDF readers
+    resolve such columns with a whole-column read before emitting the entry.
+    Other readers refuse a mix of dtypes. An empty table keeps the dtypes of
+    its empty read.
     """
-
-    _STR_OR_OBJECT = frozenset({"str", "object"})
 
     def __init__(self, table: str) -> None:
         self.table = table
@@ -156,16 +152,18 @@ class _ColumnTally:
         self.seen: dict[str, set[str]] = {}
         self.nulls: dict[str, int] = {}
         self.rows = 0
+        self.resolved_dtypes: dict[str, str] = {}
 
     @property
     def dtypes(self) -> dict[str, str]:
         resolved = {}
         for name in self.columns or []:
+            if name in self.resolved_dtypes:
+                resolved[name] = self.resolved_dtypes[name]
+                continue
             seen = self.seen.get(name) or {self.empty_dtypes[name]}
             if len(seen) == 1:
                 resolved[name] = next(iter(seen))
-            elif seen == self._STR_OR_OBJECT:
-                resolved[name] = "object"
             else:
                 raise ManifestError(
                     f"{self.table}.{name} reads as {sorted(seen)} in different chunks."
@@ -173,7 +171,13 @@ class _ColumnTally:
         return resolved
 
     def add(self, chunk: pd.DataFrame) -> None:
-        names = [str(name) for name in chunk.columns]
+        if isinstance(chunk.columns, pd.MultiIndex) or any(
+            not isinstance(name, str) for name in chunk.columns
+        ):
+            raise ManifestError(
+                f"Table {self.table!r} needs single-level string column names."
+            )
+        names = list(chunk.columns)
         if len(set(names)) != len(names):
             raise ManifestError(f"Table {self.table!r} repeats a column name.")
         if self.columns is None:
@@ -217,10 +221,11 @@ class _ColumnTally:
 def _storer_rows(storer: Any) -> int:
     """Rows of one stored object.
 
-    A ``table`` storer counts its rows. A ``fixed`` frame does not: pandas'
-    ``shape`` takes its first entry from block 0, which is the column count
-    when that block holds objects, so the rows are read off the stored row
-    index (``axis1``) instead.
+    A ``table`` storer counts its rows. A ``fixed`` frame reports its first
+    block's physical shape; an object block can store one pickled array
+    instead of one item per row. Use the row index (``axis1``). Empty fixed
+    indexes have a one-element placeholder node;
+    their ``shape`` attribute records the actual zero length.
     """
 
     nrows = getattr(storer, "nrows", None)
@@ -228,9 +233,9 @@ def _storer_rows(storer: Any) -> int:
         return int(nrows)
     group = getattr(storer, "group", None)
     if getattr(storer, "pandas_type", None) == "frame" and group is not None:
-        return int(group.axis1.shape[0])
+        return int(getattr(group.axis1._v_attrs, "shape", group.axis1.shape)[0])
     if group is not None and "index" in group._v_children:
-        return int(group.index.shape[0])
+        return int(getattr(group.index._v_attrs, "shape", group.index.shape)[0])
     raise ManifestError(f"Cannot count the rows of {storer.pathname!r}.")
 
 
@@ -240,7 +245,21 @@ def _codec_columns(storer: Any, key: str) -> dict[str, str]:
         return {}
     try:
         codec = json.loads(raw)
+        if (
+            not isinstance(codec, dict)
+            or set(codec) != {"codec_version", "nullable_boolean_columns"}
+            or type(codec["codec_version"]) is not int
+            or codec["codec_version"] != 1
+        ):
+            raise ValueError("unsupported frame codec")
         columns = codec["nullable_boolean_columns"]
+        if (
+            not isinstance(columns, list)
+            or not columns
+            or any(not isinstance(column, str) or not column for column in columns)
+            or len(columns) != len(set(columns))
+        ):
+            raise ValueError("nullable_boolean_columns must be a list of strings")
     except (TypeError, ValueError, KeyError) as exc:
         raise ManifestError(
             f"Table {key!r} has malformed frame codec metadata."
@@ -275,6 +294,7 @@ def describe_h5(
     """The manifest entry of one HDF5 file (tables first, entities in order)."""
 
     path = Path(path)
+    sha256, size_bytes = sha256_file(path), path.stat().st_size
     tables: list[dict[str, Any]] = []
     other_keys: list[dict[str, Any]] = []
     with pd.HDFStore(str(path), mode="r") as store:
@@ -289,9 +309,18 @@ def describe_h5(
                 continue
             step = chunk_rows or _chunk_rows(store, key, storer, chunk_bytes)
             tally = _ColumnTally(key)
-            tally.add(store.select(key, start=0, stop=0))
-            for start in range(0, nrows, step):
-                tally.add(store.select(key, start=start, stop=min(nrows, start + step)))
+            if pandas_type == "frame":
+                tally.add(store.select(key))
+            else:
+                tally.add(store.select(key, start=0, stop=0))
+                for start in range(0, nrows, step):
+                    tally.add(
+                        store.select(key, start=start, stop=min(nrows, start + step))
+                    )
+                for name, seen in tally.seen.items():
+                    if len(seen) > 1:
+                        whole_column = store.select(key, columns=[name])[name]
+                        tally.resolved_dtypes[name] = str(whole_column.dtype)
             if tally.rows != nrows:
                 raise ManifestError(
                     f"Table {key!r} read {tally.rows} rows; its storer says {nrows}."
@@ -305,8 +334,8 @@ def describe_h5(
     return {
         "name": path.name,
         "format": "hdf5",
-        "sha256": sha256_file(path),
-        "size_bytes": path.stat().st_size,
+        "sha256": sha256,
+        "size_bytes": size_bytes,
         "tables": tables,
         "other_keys": other_keys,
         "root_attributes": root_attributes,
@@ -370,6 +399,7 @@ def describe_csv(
     """The manifest entry of one CSV (optionally gzip) file, one table."""
 
     path = Path(path)
+    sha256, size_bytes = sha256_file(path), path.stat().st_size
     name = table or _csv_table_name(path)
     options: dict[str, Any] = {"chunksize": chunk_rows}
     if path.name.endswith(measures.SIDECAR_SUFFIX):
@@ -384,8 +414,8 @@ def describe_csv(
     return {
         "name": path.name,
         "format": "csv",
-        "sha256": sha256_file(path),
-        "size_bytes": path.stat().st_size,
+        "sha256": sha256,
+        "size_bytes": size_bytes,
         "tables": [tally.entry(storage="csv")],
         "other_keys": [],
     }
@@ -454,7 +484,7 @@ def load_column_list(path: Path) -> dict[str, Any]:
     """A ``table,column,dtype`` CSV as a manifest without row or null counts."""
 
     path = Path(path)
-    with path.open(newline="") as handle:
+    with path.open(newline="", encoding="utf-8-sig") as handle:
         reader = csv.DictReader(handle)
         if reader.fieldnames is None or [
             name.strip() for name in reader.fieldnames
@@ -503,7 +533,7 @@ def load_manifest(path: Path) -> dict[str, Any]:
 
 
 def load_prior(path: Path) -> dict[str, Any]:
-    if Path(path).suffix == ".csv":
+    if Path(path).suffix.lower() == ".csv":
         return load_column_list(path)
     return load_manifest(path)
 
@@ -511,10 +541,12 @@ def load_prior(path: Path) -> dict[str, Any]:
 def manifest_column_list(manifest: Mapping[str, Any]) -> str:
     """The manifest's columns as ``table,column,dtype`` CSV text."""
 
-    lines = ["table,column,dtype"]
+    output = io.StringIO(newline="")
+    writer = csv.writer(output, lineterminator="\n")
+    writer.writerow(("table", "column", "dtype"))
     for (table, column), entry in column_index(manifest).items():
-        lines.append(f"{table},{column},{entry['dtype']}")
-    return "\n".join(lines) + "\n"
+        writer.writerow((table, column, entry["dtype"]))
+    return output.getvalue()
 
 
 def load_renames(path: Path | None) -> tuple[dict[str, str], ...]:
@@ -833,16 +865,14 @@ def render_markdown(manifest: Mapping[str, Any], *, title: str | None = None) ->
 
 def _write_exclusive(path: Path, text: str) -> None:
     path = Path(path)
-    if path.exists():
+    if os.path.lexists(path):
         raise FileExistsError(f"{path} exists; refusing to overwrite it.")
     path.parent.mkdir(parents=True, exist_ok=True)
-    handle, temporary = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".partial", dir=path.parent
-    )
-    os.close(handle)
-    temporary_path = Path(temporary)
+    temporary_path = path.parent / f".{path.name}.{secrets.token_hex(16)}.partial"
+    handle = os.open(temporary_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
     try:
-        temporary_path.write_text(text)
+        with os.fdopen(handle, "w") as stream:
+            stream.write(text)
         os.link(temporary_path, path)
     finally:
         temporary_path.unlink(missing_ok=True)
@@ -884,8 +914,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--output-json", type=Path, required=True)
     parser.add_argument("--output-md", type=Path, required=True)
     args = parser.parse_args(argv)
+    if args.output_json.resolve() == args.output_md.resolve():
+        raise ManifestError("--output-json and --output-md must be different files.")
     for path in (args.output_json, args.output_md):
-        if path.exists():
+        if os.path.lexists(path):
             raise FileExistsError(f"{path} exists; refusing to overwrite it.")
     manifest = emit(
         h5=args.h5,
@@ -895,7 +927,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         prior_label=args.prior_label,
     )
     _write_exclusive(args.output_json, manifest_json(manifest))
-    _write_exclusive(args.output_md, render_markdown(manifest, title=args.title))
+    try:
+        _write_exclusive(args.output_md, render_markdown(manifest, title=args.title))
+    except BaseException:
+        args.output_json.unlink()
+        raise
     print(f"wrote {args.output_json} and {args.output_md}")
     return 0
 

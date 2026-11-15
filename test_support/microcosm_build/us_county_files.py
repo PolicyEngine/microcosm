@@ -60,6 +60,7 @@ def population_tables(
     household_order: Sequence[int] | None = None,
     person_order: Sequence[int] | None = None,
     id_base: int = 100,
+    shuffle_groups: bool = False,
 ) -> dict[str, pd.DataFrame]:
     """Nested US entity tables: every group unit sits inside one household.
 
@@ -112,7 +113,17 @@ def population_tables(
     tables = {"person": person, "household": household}
     for group in GROUP_ENTITIES:
         ids = pd.unique(person[f"person_{group}_id"])
-        tables[group] = pd.DataFrame({f"{group}_id": ids})
+        frame = pd.DataFrame(
+            {f"{group}_id": ids, "fixture_group_value": np.arange(len(ids)) + 1}
+        )
+        if shuffle_groups:
+            # Independent id order and table order exercise core's sorted-rank join.
+            replacement = rng.permutation(np.arange(len(ids)) * 13 - len(ids) * 7)
+            mapping = dict(zip(ids, replacement, strict=True))
+            person[f"person_{group}_id"] = person[f"person_{group}_id"].map(mapping)
+            frame[f"{group}_id"] = frame[f"{group}_id"].map(mapping)
+            frame = frame.iloc[rng.permutation(len(frame))].reset_index(drop=True)
+        tables[group] = frame
     tables["spm_unit"]["spm_unit_net_income_reported"] = np.linspace(
         0.0, 1.0, len(tables["spm_unit"])
     )
@@ -146,7 +157,7 @@ def write_population_h5(
 
 
 def expected_household_values(
-    tables: Mapping[str, pd.DataFrame], year: int
+    tables: Mapping[str, pd.DataFrame], year: int, *, core_membership: bool = False
 ) -> pd.DataFrame:
     """What :class:`FakeMicrosimulation` gives every household, by household id.
 
@@ -157,15 +168,35 @@ def expected_household_values(
     """
 
     person = tables["person"]
+    household_assignment = person["person_household_id"].to_numpy()
+    if core_membership:
+        household_ids = tables["household"]["household_id"].to_numpy()
+        household_assignment = household_ids[
+            _core_member_positions(household_ids, household_assignment)
+        ]
     per_person = pd.DataFrame(
         {
-            "household_id": person["person_household_id"].to_numpy(),
+            "household_id": household_assignment,
             **{
                 name: fake_person_values(name, person, year)
                 for name in FAKE_PERSON_VARIABLES
             },
         }
     )
+    # Group payloads make a wrong membership visible in calculated benefits.
+    # The oracle maps by id; the fake engine follows core's sorted-rank rule.
+    for group in GROUP_ENTITIES:
+        frame = tables[group]
+        if "fixture_group_value" not in frame:
+            continue
+        assignment = person[f"person_{group}_id"].to_numpy()
+        ids = frame[f"{group}_id"].to_numpy()
+        values = frame["fixture_group_value"].to_numpy()
+        if core_membership:
+            contribution = values[_core_member_positions(ids, assignment)]
+        else:
+            contribution = pd.Series(values, index=ids).reindex(assignment).to_numpy()
+        per_person["social_security"] += contribution
     sums = per_person.groupby("household_id").sum()
     household_ids = tables["household"]["household_id"].to_numpy()
     sums = sums.reindex(household_ids, fill_value=0.0)
@@ -187,6 +218,12 @@ def expected_household_values(
     out["household_health_costs"] = 0.0
     out["household_net_income"] = (market + benefits + credits) - (tax + 0.0)
     return out
+
+
+def _core_member_positions(ids: np.ndarray, assignment: np.ndarray) -> np.ndarray:
+    """policyengine-core SimulationBuilder.join_with_persons' sorted-rank join."""
+
+    return np.argsort(ids)[np.unique(assignment, return_inverse=True)[1]]
 
 
 FAKE_PERSON_VARIABLES = (
@@ -238,6 +275,9 @@ def fake_system(
     net_income_adds: Sequence[str] | None = None,
     entities: Mapping[str, str] | None = None,
     drop: Sequence[str] = (),
+    market_income_adds: str | None = None,
+    market_income_subtracts: Sequence[str] | None = None,
+    net_income_subtracts: Sequence[str] | None = None,
 ) -> SimpleNamespace:
     """A tax-benefit system stand-in exposing what the definition check reads."""
 
@@ -263,10 +303,21 @@ def fake_system(
     if tool.NET_INCOME_VARIABLE in variables:
         net = variables[tool.NET_INCOME_VARIABLE]
         definition = tool.ENGINE_DEFINITIONS[tool.NET_INCOME_VARIABLE]
-        net.adds = list(net_income_adds or definition["adds"])
-        net.subtracts = list(definition["subtracts"])
+        net.adds = list(
+            definition["adds"] if net_income_adds is None else net_income_adds
+        )
+        net.subtracts = list(
+            definition["subtracts"]
+            if net_income_subtracts is None
+            else net_income_subtracts
+        )
     if "household_market_income" in variables:
-        variables["household_market_income"].adds = tool.MARKET_INCOME_PARAMETER
+        variables["household_market_income"].adds = (
+            tool.MARKET_INCOME_PARAMETER
+            if market_income_adds is None
+            else market_income_adds
+        )
+        variables["household_market_income"].subtracts = market_income_subtracts
 
     def parameters(instant: str) -> SimpleNamespace:
         return SimpleNamespace(
@@ -300,6 +351,7 @@ class FakeMicrosimulation:
     instances: list[FakeMicrosimulation] = []
     reverse_households = False
     aggregate_on: tuple[str, ...] = ()
+    branch_aggregate_on: tuple[str, ...] = ()
     drop_household: int | None = None
 
     def __init__(self, *, dataset: FakeDataset, spm: Mapping[str, object]) -> None:
@@ -308,7 +360,10 @@ class FakeMicrosimulation:
         self.year = int(dataset.time_period)
         self.tax_benefit_system = fake_system()
         self._known: dict[str, set[str]] = {}
-        expected = expected_household_values(dataset.tables, self.year)
+        self.branches = {}
+        expected = expected_household_values(
+            dataset.tables, self.year, core_membership=True
+        )
         if self.reverse_households:
             expected = expected.iloc[::-1]
         if self.drop_household is not None:
@@ -317,6 +372,8 @@ class FakeMicrosimulation:
         type(self).instances.append(self)
 
     def get_holder(self, name: str) -> _Holder:
+        if name not in self.tax_benefit_system.variables:
+            raise KeyError(name)
         return _Holder(self._known.get(name, set()))
 
     def calculate(self, name: str, period: int, map_to: str | None = None):
@@ -327,6 +384,14 @@ class FakeMicrosimulation:
         if name == "household_net_income":
             for aggregate in self.aggregate_on:
                 self._known.setdefault(aggregate, set()).add(str(period))
+            if self.branch_aggregate_on:
+                known = {
+                    aggregate: {str(period)} for aggregate in self.branch_aggregate_on
+                }
+                self.branches["itemizing"] = SimpleNamespace(
+                    tax_benefit_system=self.tax_benefit_system,
+                    get_holder=lambda variable: _Holder(known.get(variable, set())),
+                )
         return self._values[name].to_numpy()
 
 
