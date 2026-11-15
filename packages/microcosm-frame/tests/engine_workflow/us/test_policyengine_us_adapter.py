@@ -683,6 +683,29 @@ class TestTakeUpContract:
         assert dead == [], f"unexpected dead take-up flags: {dead}"
 
 
+def _held_through(simulation, last_year: int) -> dict[tuple[str, str, str], object]:
+    """Every array a simulation and its branches hold for a period up to
+    ``last_year``, by branch, variable and period."""
+
+    from policyengine_core import periods
+
+    held = {}
+    pending = [("", simulation)]
+    while pending:
+        path, current = pending.pop()
+        for population in current.populations.values():
+            for name, holder in population._holders.items():
+                for key, array in holder._memory_storage._arrays.items():
+                    branch, period_text = key.split(":", 1)
+                    if periods.period(period_text).start.year > last_year:
+                        continue
+                    held[(f"{path}{branch}", name, period_text)] = np.asarray(array)
+        pending.extend(
+            (f"{path}{name}/", branch) for name, branch in current.branches.items()
+        )
+    return held
+
+
 class _RecordingMicrosimulation:
     """Stands in for ``policyengine_us.Microsimulation`` and records kwargs."""
 
@@ -782,9 +805,8 @@ class TestReadYearWindow:
             "state_income_tax",
             "household_net_income",
         ]
-        default = Microsimulation(
-            dataset=adapter._build_dataset(adapter._engine_tables(us_bundle), 2024)
-        )
+        tables = adapter._engine_tables(us_bundle)
+        default = Microsimulation(dataset=adapter._build_dataset(tables, 2024))
         # The comparison is only meaningful while the engine still extends.
         assert len(default.get_holder("age").get_known_periods()) > 1
 
@@ -795,4 +817,18 @@ class TestReadYearWindow:
                 results[name],
                 np.asarray(default.calculate(name, period=2024)),
                 err_msg=name,
+            )
+
+        # Every array both engines hold through 2024, in every branch, is the
+        # same: a formula that read a later year's data, or core filling 2024
+        # from a later year, would show here and not only in the six outputs.
+        cut = Microsimulation(dataset=adapter._read_year_dataset(tables, 2024))
+        for name in variables:
+            cut.calculate(name, period=2024)
+        held_cut = _held_through(cut, 2024)
+        held_default = _held_through(default, 2024)
+        assert held_cut.keys() == held_default.keys()
+        for key in sorted(held_default):
+            np.testing.assert_array_equal(
+                held_cut[key], held_default[key], err_msg=str(key)
             )

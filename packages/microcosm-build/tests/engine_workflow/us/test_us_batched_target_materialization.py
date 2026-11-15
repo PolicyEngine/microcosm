@@ -274,6 +274,62 @@ def test_population_aggregate_list_matches_installed_engine_sources() -> None:
     ), triaged_digest
 
 
+def test_forward_reads_match_the_reviewed_engine_sources() -> None:
+    """Pin the formulas that may read a later period than the one asked.
+
+    In-build simulations hold PERIOD alone, and the adapter holds the read
+    year alone, so a formula that read a later year's stored data would get
+    nothing there. The scan marks forward period offsets and holder lookups in
+    US Variable classes and the helpers they call. Each one found is reviewed
+    here and its source is pinned, so an engine that adds or changes one fails
+    until it is reviewed. It is a tripwire, not a proof.
+    """
+    source_digests = {}
+    found = _engine_forward_read_sources(source_digests=source_digests)
+    reviewed = {
+        # The offset dates a parameter lookup, not a data read.
+        "sc_cdcc_potential": {".offset(max_decoupled_year_offset"},
+        "md_dependent_care_subtraction": {".offset(max_decoupled_year_offset"},
+        # The twelve months of the year asked.
+        "tx_ceap_eligible": {".offset(month_offset"},
+        # The holder is read only at the period asked.
+        "has_tin": {"get_holder(", "get_known_periods(", "get_array("},
+        # The holder gives the filing-status enum, not a stored value.
+        "gross_medicare_part_b_premium": {"get_holder("},
+        # The holder sets an input at the period asked, on a branch.
+        "tob_revenue_oasdi": {"get_holder("},
+        "tob_revenue_medicare_hi": {"get_holder("},
+        # Over a dataset, county returns its last stored year's array when the
+        # year asked holds none. A dataset that holds county holds it at the
+        # year the build reads, so that read never reaches the lookup.
+        "county": {"get_holder(", "get_known_periods(", "get_array("},
+    }
+    assert {name: set(evidence) for name, evidence in found.items()} == reviewed
+    reviewed_digest = hashlib.sha256(
+        "\n".join(f"{name}:{source_digests[name]}" for name in sorted(reviewed)).encode()
+    ).hexdigest()
+    assert reviewed_digest == (
+        "4c3a61a320e3d7d57f887ba3a364293d59b9cc363e2e38e7aecd8fac13409d5e"
+    ), reviewed_digest
+
+
+def test_core_fills_a_missing_period_only_from_earlier_ones() -> None:
+    """policyengine-core fills an input missing at the period asked from the
+    latest earlier stored period (uprated), or carries the last stored period
+    over only when it is not later than the period asked; a later one gives
+    the default. So a dataset cut at the year read and the engine's projection
+    agree at that year. A new digest means core changed the rule (in
+    ``Simulation._calculate``): re-check the cut, then re-pin."""
+    import inspect
+
+    from policyengine_core.simulations import Simulation
+
+    source = inspect.getsource(Simulation._calculate)
+    assert hashlib.sha256(source.encode()).hexdigest() == (
+        "3a36c798f58eced1d61812cd374997ac1732fa1a1beaff74ba6b7e6588aa3269"
+    )
+
+
 def test_in_build_datasets_hold_period_alone_and_match_the_projection(
     monkeypatch,
 ) -> None:
