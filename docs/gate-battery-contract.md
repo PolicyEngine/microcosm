@@ -339,10 +339,17 @@ not evaluate matches `evidence_absent`. The shadow writes its scope's
 report and the comparison beside the tool's outputs (never inside a
 release directory), never raises while the tool runs, and fails a finished
 run on a verdict difference; today's own exception always propagates
-unchanged. The national release's shadow is armed before its preflight
-gates, which run ahead of the refusal to reuse a certified release
-directory, so it holds its files until that refusal has passed: a refused
-rerun leaves the certified build's shadow files as they were, and each
+unchanged. When today's code stops, the phase it stopped in is recorded
+only if every entry there without an outcome is one today's code never
+reached. The run refuses a phase that marks unreached an entry it
+evaluated, but a scope rebuilt from stages run as separate processes
+(Route A's checkpointed base, ACS local) holds only their outcomes, so each
+stage's saved observations also name every entry it reached, and a stage
+that ran and saved none leaves the stopped phase unrecorded. The national
+release's shadow is armed before its preflight gates, which run ahead of
+the refusal to reuse a certified release directory, so it holds its files
+until that refusal has passed: a refused rerun leaves the certified
+build's shadow files as they were, and each
 release keeps its own, in `<out>/gate_battery_shadow/<release>`. Real
 builds always arm the shadow. The test suite turns it off for every test
 (`MICROCOSM_US_GATE_SHADOW=off`, in `packages/microcosm-build/tests/conftest.py`),
