@@ -142,9 +142,11 @@ Exact then means equal to one engine over the pool to float32 rounding, not
 bitwise. A receipt without `exact_basis` predates the correction, when exact
 meant identical copies. A per-block run is releasable only when it is exact.
 While policyengine-uk draws new-claimant status by position, a calibration
-year, or a dated measure's year, of 2026 or later therefore leaves every
-per-clone run inexact, and so not releasable, and refuses every batched spine
-call. Best-effort staging telemetry uploads every 300 s by default on this
+year of 2026 or later therefore leaves every per-clone run inexact, and so
+not releasable, and refuses every batched spine call. A block's scratch
+engine holds no year after the calibration year (microcosm#1615): a measure
+dated later is refused, and the block computes at no such year.
+Best-effort staging telemetry uploads every 300 s by default on this
 driver (the Hub allows about 128 commits per hour per repository).
 For scale: at K=25 with `--engine-blocks 25` the graph driver's dense solve took
 about 3 hours (2,000 epochs over 1.6 million households, M1 Max), each of three

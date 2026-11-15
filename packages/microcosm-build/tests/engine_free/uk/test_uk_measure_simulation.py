@@ -2467,6 +2467,57 @@ def test_an_engine_blocks_siblings_are_built_inside_the_year_window(
     assert len(block.siblings) == before + 1
 
 
+@pytest.mark.parametrize(
+    ("year", "periods"), [(2025, (2024, 2025)), (2026, (2024, 2025, 2026))]
+)
+def test_an_engine_block_computes_at_no_dated_year_after_the_resolvers(
+    monkeypatch, tmp_path, year, periods
+):
+    """A contract target dated after the resolver's year gives its engine
+    block no period: the scratch engine holds no later year and the measure
+    is refused before it is computed (microcosm#1615), so the block neither
+    checks the engine's growth nor sets the pool's shares there
+    (microcosm#931). Every dated year up to the resolver's stays a period.
+    The stand-in engine matches no declaration, so the block corrects
+    nothing; its periods are still the years it would correct at."""
+
+    dated = {
+        "cgt_2025_gains": 2025,
+        "cgt_2026_tax": 2026,
+        "company_car_benefit_2027": 2027,
+    }
+    monkeypatch.setattr(
+        measure_simulation,
+        "_uk_contract_targets",
+        lambda: {
+            name: {
+                "bindings": {
+                    "policyengine": {
+                        "value_variable": name,
+                        "measurement_period": measured,
+                    }
+                }
+            }
+            for name, measured in dated.items()
+        },
+    )
+    resolver = _fake_engine_resolver(
+        monkeypatch,
+        tmp_path,
+        year=year,
+        engine_weight_scale=4.0,
+        engine_pool_shares=_block_pool_shares(),
+    )
+    assert resolver._engine_pool_block.periods == periods
+    receipt = resolver.receipt()["engine_pool_shares"]
+    assert receipt["periods"] == [str(period) for period in periods]
+    later = [name for name, measured in dated.items() if measured > year]
+    assert later
+    for name in later:
+        with pytest.raises(ValueError, match=f"holds no year after {year}"):
+            resolver.compute("person", name)
+
+
 def test_the_other_spells_factor_is_the_engines_growth_parameters(
     monkeypatch, tmp_path
 ):
