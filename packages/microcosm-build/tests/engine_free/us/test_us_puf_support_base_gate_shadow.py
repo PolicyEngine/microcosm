@@ -227,7 +227,7 @@ def test_checkpointed_stages_carry_their_observations_to_the_parent(
     parent = _args(tmp_path)
     shadow = base._base_gate_shadow(parent, base._final_gate_shadow_directory(parent))
     base._load_stage_gate_shadows(
-        shadow, parent, ("wic_post_clone", "medicare_post_clone", "never_ran")
+        shadow, parent, ("wic_post_clone", "medicare_post_clone")
     )
     shadow.stop(SystemExit("Checkpointed stage 'medicare_post_clone' failed"))
     payload = json.loads(shadow.comparison_path.read_text())
@@ -241,6 +241,43 @@ def test_checkpointed_stages_carry_their_observations_to_the_parent(
         "failed"
     )
     assert payload["shadow_errors"] == []
+    assert payload["observations_missing"] == []
+
+
+def test_the_parent_notes_each_stage_that_ran_and_saved_nothing(
+    tmp_path, monkeypatch, base
+):
+    # A stage that ran but left no file (its save failed, or it ran with the
+    # shadow off) may have reached entries the parent then lacks, so it is
+    # noted and a stopped run never names them unreached. The stage after the
+    # one that failed never ran, so it is not.
+    steps = ("source_construction", "pre_clone_enrichment", "clone_feature_extraction")
+
+    class Runtime:
+        def __init__(self, *_args, **_kwargs) -> None:
+            self.context = SimpleNamespace(completed=steps[:1])
+
+    monkeypatch.setattr(base, "_pipeline_steps_for", lambda args: steps)
+    monkeypatch.setattr(base, "_pipeline_for", lambda args: None)
+    monkeypatch.setattr(base, "StageRuntime", Runtime)
+    monkeypatch.setattr(base, "_stage_run_config", lambda args: {})
+    monkeypatch.setattr(base, "_stage_cli_args", lambda args, stage: ["--stage", stage])
+    monkeypatch.setattr(
+        base.subprocess, "run", lambda command, **kwargs: SimpleNamespace(returncode=1)
+    )
+    args = _args(tmp_path)
+    with pytest.raises(SystemExit, match="'pre_clone_enrichment' failed"):
+        base._run_staged_all(args)
+    _, comparison = shadow_file_paths(
+        base._final_gate_shadow_directory(args), "us_base"
+    )
+    payload = json.loads(comparison.read_text())
+    assert payload["run_completed"] is False
+    assert payload["observations_missing"] == [
+        "the source_construction stage saved no observations",
+        "the pre_clone_enrichment stage saved no observations",
+    ]
+    assert payload["phases_recorded"] == []
 
 
 def test_the_geography_waiver_is_recorded_by_entry(tmp_path, base) -> None:

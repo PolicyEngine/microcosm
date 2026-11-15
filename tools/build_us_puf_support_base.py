@@ -961,8 +961,13 @@ def _run_staged_all(
     # shadow scope from what they saved, completed stages included.
     directory = _final_gate_shadow_directory(args)
     shadow = None if directory is None else _base_gate_shadow(args, directory)
+    # The stages that ran, in an earlier run of this checkpoint or here: each
+    # one should have saved its observations.
+    stages_run = list(completed_prefix)
     try:
         for stage in remaining:
+            if stage not in stages_run:
+                stages_run.append(stage)
             if telemetry is not None:
                 telemetry.transition_stage(stage)
             completed = subprocess.run(
@@ -981,11 +986,11 @@ def _run_staged_all(
                 )
     except BaseException as error:
         if shadow is not None:
-            _load_stage_gate_shadows(shadow, args, pipeline_steps)
+            _load_stage_gate_shadows(shadow, args, stages_run)
             shadow.stop(error)
         raise
     if shadow is not None:
-        _load_stage_gate_shadows(shadow, args, pipeline_steps)
+        _load_stage_gate_shadows(shadow, args, stages_run)
         shadow.finish()
 
 
@@ -1061,7 +1066,8 @@ def _armed_stage_gate_shadow(args: argparse.Namespace) -> Iterator[Callable[[], 
     the observations of every stage it does not run again. A stage that
     raises saves what it saw on the way out, so the parent's report says
     where the build stopped. A save that fails warns and is otherwise left to
-    the parent, which then reports the stage's entries as unobserved. With
+    the parent, which then notes that the stage saved nothing and reports its
+    entries as unobserved. With
     the switch off the stage runs without a shadow and saves nothing.
     """
 
@@ -1100,12 +1106,20 @@ def _armed_stage_gate_shadow(args: argparse.Namespace) -> Iterator[Callable[[], 
 def _load_stage_gate_shadows(
     shadow: GateBatteryShadow,
     args: argparse.Namespace,
-    pipeline_steps: Sequence[str],
+    stages_run: Sequence[str],
 ) -> None:
-    for stage in pipeline_steps:
+    """Load what each stage that ran saved.
+
+    A stage that ran but saved nothing (its save failed, or it ran with the
+    shadow off) is noted, so a stopped run never names its entries unreached.
+    """
+
+    for stage in stages_run:
         path = _stage_gate_shadow_observations(args, stage)
         if path.is_file():
             shadow.load_observations(path)
+        else:
+            shadow.note_missing_observations(f"the {stage} stage saved no observations")
 
 
 def _shadow_frame_gate(
