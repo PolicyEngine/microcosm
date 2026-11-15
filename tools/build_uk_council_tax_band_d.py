@@ -22,8 +22,8 @@ Ireland has domestic rates and no Band D.
   the all-Wales row "Total Unitary Authorities" is a declared exclusion.
 
 Both files are chronicle#412's raw-only registrations (PR chronicle#413),
-pinned here by sha256 and size at the Chronicle commit the UK feed pinned when
-this resource was built. Each local file is held to its pin and to its
+pinned here by sha256 and size at the Chronicle commit they are read at
+(``CHRONICLE_COMMIT``). Each local file is held to its pin and to its
 Chronicle manifest, else refused. The authorities read must be exactly the
 roster's English and Welsh codes: a duplicate, a missing authority, an
 unmatched name, a Northern Ireland code or a note on a row read is refused,
@@ -76,9 +76,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 UK_PACKAGE = REPO_ROOT / "packages/microcosm-build/src/microcosm/build/uk"
 DEFAULT_OUT = UK_PACKAGE / UK_BAND_D_ENGLAND_WALES_RESOURCE
 
-#: The Chronicle commit the registrations are read at: the one
-#: ``uk/chronicle_feed.json`` pinned when this resource was built. Both
-#: manifests and both files are there as their registering merge left them.
+#: The Chronicle commit the registrations are read at, where both manifests
+#: and both files are as their registering merge left them, and which the
+#: resource names. ``uk/chronicle_feed.json`` may pin a later feed: the
+#: resource reads no fact through the feed, and each raw file is held to its
+#: own sha256 (microcosm#931).
 CHRONICLE_COMMIT = "80a3482905843d447f8811b500a56dbf3b5f47fa"
 _REGISTERED_BY = {
     "issue": "PolicyEngine/chronicle#412",
