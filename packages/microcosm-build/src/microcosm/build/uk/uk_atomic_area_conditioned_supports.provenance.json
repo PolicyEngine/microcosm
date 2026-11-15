@@ -1,6 +1,6 @@
 {
   "band_weight_scale": 1000000,
-  "built_on": "2026-11-05",
+  "built_on": "2026-11-15",
   "chronicle": {
     "commit": "80a3482905843d447f8811b500a56dbf3b5f47fa",
     "merged": true,
@@ -27,10 +27,10 @@
   },
   "kind": "uk_atomic_area_conditioned_supports_provenance",
   "ledger_feed": {
-    "fact_row_count": 2030062,
-    "facts_sha256": "cb3342c3f59ff961a0ae369ca489293ddd6d021fdeb5cfafb89f6d125329bdfe",
-    "manifest_sha256": "d2323e7bddb30043fafecc2249fca0ee1506dae8ff20bc5f4db8575dc2ec1b73",
-    "source_commit": "80a3482905843d447f8811b500a56dbf3b5f47fa"
+    "fact_row_count": 2160233,
+    "facts_sha256": "c294ba2013d0ff61b150589640ec63add8563390057b769447c0241661ad5a1c",
+    "manifest_sha256": "74e564fba1c4589e15e4bb19138414c46e4db316486b5c0d7ccbcccb211c52df",
+    "source_commit": "4ce631f5ad690fb85007193273ee85a873b824d3"
   },
   "notes": [
     "imd_decile is the 2019 vintage of each nation's index (IoD 2019, WIMD 2019, SIMD 2020v2, NIMDM 2017): the FRS 2024-25 variables IMDE, IMDW, IMDS and IMDN carry no change note from 2023-24, which predates the 2025 indices, and on an internal comparison England's FRS decile shares by region fit IoD 2019 better than IoD 2025, as the 2023-24 FRS does. The vintage is still to be confirmed with DWP.",
