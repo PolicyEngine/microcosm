@@ -1071,6 +1071,13 @@ def resolve_json_pointer(file: str, pointer: str) -> object:
         for candidate in _repository_files()
         if candidate == relative or candidate.endswith("/" + relative)
     }
+    if len(candidates) > 1:
+        # Another country's package may hold a resource of the same name
+        # (Belgium's axiom_input_closure.json). A name in an NZ document
+        # cites NZ's own file when NZ's package has one at that path.
+        own = (NZ_ROOT / relative).resolve()
+        if own in candidates:
+            candidates = {own}
     if len(candidates) != 1:
         raise ValueError(f"JSON citation needs one checkout file: {file}: {candidates}")
     (path,) = candidates
@@ -3240,6 +3247,32 @@ class TestSourceCitations:
         assert resolve_json_pointer("records.json", "/values/1") == 42
         with pytest.raises(IndexError):
             resolve_json_pointer("records.json", "/values/2")
+
+    @pytest.mark.parametrize(
+        ("owners", "expected"),
+        [
+            (("nz", "be"), "nz"),
+            (("be", "uk"), None),
+            (("nz/extra", "be"), None),
+            (("be",), "be"),
+        ],
+        ids=["nz-and-foreign", "two-foreign", "nz-only-in-a-subfolder", "foreign-only"],
+    )
+    def test_a_name_other_packages_share_cites_nz_own_file(
+        self, citation_checkout, monkeypatch, tmp_path, owners, expected
+    ) -> None:
+        # Belgium's package also holds an axiom_input_closure.json. A bare name
+        # that several packages share cites NZ's own file when NZ's package has
+        # one at that path, and otherwise still needs exactly one file.
+        build = "packages/microcosm-build/src/microcosm/build"
+        monkeypatch.setattr(__name__ + ".NZ_ROOT", tmp_path / build / "nz")
+        for owner in owners:
+            citation_checkout(f"{build}/{owner}/closure.json", {"owner": owner})
+        if expected is None:
+            with pytest.raises(ValueError, match="needs one checkout file"):
+                resolve_json_pointer("closure.json", "/owner")
+        else:
+            assert resolve_json_pointer("closure.json", "/owner") == expected
 
     def test_keyed_selector_is_independent_of_record_position(
         self, citation_checkout
