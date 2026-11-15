@@ -2587,7 +2587,8 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
                                 value = ast.Attribute(base, value.attr, ast.Load())
                         assert ast.unparse(value) in passed, (stage, function.name)
                         built[stage] += 1
-        assert len(built) == 9 and all(built.values()), built
+        # Ten stages, main's pip_points among them.
+        assert len(built) == 10 and all(built.values()), built
 
 
 # --- copy ids at the copy-id table's declared radices (microcosm#931) ----------
