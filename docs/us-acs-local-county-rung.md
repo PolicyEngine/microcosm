@@ -193,9 +193,13 @@ and `farm_operations_income` on every record. The pilot zeroed the last two
 on ACS records because staging then stacked donor draws on SEMP
 (microcosm#1380); materialize now refuses such staging, and the gate it runs
 lets an ACS row's SEMP sit wholly on the SSTB leaf, so summing all four counts
-SEMP once. The income approximation adds the pilot's 22 other income inputs
-that staging stores, plus `partnership_income` and `s_corp_income` on donor
-records only; the receipt lists any input staging lacks. B19013 (median
+SEMP once. Donor records also add `partnership_self_employment_net_earnings`,
+which ACS SEMP counts (the gate keeps it zero on ACS rows). The income
+approximation starts from the four leaves, not from earnings, and adds the
+pilot's 22 other income inputs that staging stores plus `partnership_income`
+and `s_corp_income` on donor records only, so donor partnership earnings,
+mostly inside `partnership_income`, are not counted twice. The receipt lists
+any input staging lacks. B19013 (median
 household income) is a diagnostic only, never a target or a share; De Baca
 County (`35011`) has no B19013 row and is listed as missing.
 

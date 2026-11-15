@@ -629,6 +629,14 @@ EARNINGS_COLUMNS = (
     "sstb_self_employment_income_before_lsr",
     "farm_operations_income",
 )
+#: Partnership self-employment earnings, imputed on donor records from PUF
+#: partnership SE income; ACS SEMP counts them, and the identity gate keeps
+#: them zero on ACS rows. They count toward earnings on donor records when
+#: staging stores them. The pilot left them out because it built income as
+#: earnings plus ``partnership_income``, which already holds most of them;
+#: here income is built from :data:`EARNINGS_COLUMNS` instead, so neither
+#: measure counts them twice.
+DONOR_PARTNERSHIP_EARNINGS_COLUMNS = ("partnership_self_employment_net_earnings",)
 #: The pilot's other person-level income inputs, carried when staging stores
 #: them, so the household-income concept of ACS B19025/B19001 can be
 #: approximated. Absent ones are listed in the receipt.
@@ -1204,7 +1212,18 @@ def household_validation_measures(frame):
         part = summed(column)
         earnings += part
         components[column] = float((weights * part).sum())
+    # Income starts from the base leaves: donor partnership SE earnings are
+    # mostly inside partnership_income, which the income approximation adds.
     income = earnings.copy()
+    donor_earnings = [
+        column
+        for column in DONOR_PARTNERSHIP_EARNINGS_COLUMNS
+        if column in person.columns
+    ]
+    for column in donor_earnings:
+        part = summed(column, donor_only=True)
+        earnings += part
+        components[column] = float((weights * part).sum())
     carried = [column for column in OTHER_INCOME_COLUMNS if column in person.columns]
     donor_carried = [
         column for column in DONOR_ONLY_OTHER_INCOME_COLUMNS if column in person.columns
@@ -1221,7 +1240,12 @@ def household_validation_measures(frame):
     report = {
         "earnings_columns": list(EARNINGS_COLUMNS),
         "earnings_rule": "all four leaves on every record; the ACS "
-        "self-employment identity gate guarantees SEMP once (microcosm#1380)",
+        "self-employment identity gate guarantees SEMP once (microcosm#1380); "
+        "partnership SE earnings on donor records",
+        "donor_only_earnings_columns_carried": donor_earnings,
+        "income_rule": "the four earnings leaves plus the carried income "
+        "columns; donor partnership SE earnings enter through "
+        "partnership_income, not twice",
         "other_income_columns_carried": carried,
         "donor_only_income_columns_carried": donor_carried,
         "income_columns_absent": [

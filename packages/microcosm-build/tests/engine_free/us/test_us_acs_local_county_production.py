@@ -1373,6 +1373,9 @@ def test_household_validation_measures_count_semp_once_and_exclude_gq() -> None:
             "farm_operations_income": [0.0, 0.0, 0.0, 7.0],
             "taxable_interest_income": [1.0, 0.0, 0.0, 2.0],
             "partnership_income": [99.0, 0.0, 0.0, 11.0],
+            # Donor-only earnings; zero on ACS rows after the identity gate,
+            # and ignored there even when not.
+            "partnership_self_employment_net_earnings": [40.0, 0.0, 0.0, 9.0],
         }
     )
     tables = {"household": households, "person": person}
@@ -1382,11 +1385,16 @@ def test_household_validation_measures_count_semp_once_and_exclude_gq() -> None:
         tables, US_SCHEMA, {"household": Weights(np.ones(3), WeightKind.DESIGN)}
     )
     arrays, report = county.household_validation_measures(frame)
-    np.testing.assert_array_equal(arrays["earnings"], [180.0, 10.0, 1032.0])
-    # Partnership income is donor-only in the income approximation.
+    # The donor household adds its partnership SE earnings (9) to earnings.
+    np.testing.assert_array_equal(arrays["earnings"], [180.0, 10.0, 1041.0])
+    # Income starts from the four leaves, then adds the carried inputs and
+    # donor-only partnership income, which holds the partnership earnings.
     np.testing.assert_array_equal(
         arrays["household_income_approx"], [181.0, 10.0, 1045.0]
     )
+    assert report["donor_only_earnings_columns_carried"] == [
+        "partnership_self_employment_net_earnings"
+    ]
     np.testing.assert_array_equal(arrays["in_household_universe"], [1.0, 0.0, 1.0])
     assert report["group_quarters_households"] == 1
     with pytest.raises(ValueError, match="earnings inputs"):
