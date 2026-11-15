@@ -3052,15 +3052,17 @@ def test_adult_care_qualifying_rows_fails_closed_on_missing_structure(
 #: existed. Every caller that passes none (the shared plan, the pool lane,
 #: banked checkpoints and the spec projection) must keep these.
 #: microcosm#776 moves all three: the contract carries the discrete
-#: numeric targets, which gain years_since_us_entry.
+#: numeric targets, which gain years_since_us_entry, and the
+#: post_transfer_structure entry immigration_clock_age_bound (enabled
+#: only when the clock is a target).
 _DEFAULT_CONTRACT_SHA256 = (
-    "37710521926bb4dc69b4fdd305d0371a81e0156320aae669c4e665f6c90f1715"
+    "8a43ba29a0af0d8aa0f5ae8eca4e1a8c1a545ed517140c3e02891b680978d57d"
 )
 _DECLARED_PLAN_CONTRACT_SHA256 = (
-    "9ec17804e602e0ce24597110bfbaf09a3165a05182978736427b7f63b4fc2bf8"
+    "5473a6b41481607365ceb6a789cebb7bd5ff0cf4889d4d3e6619eed445fef3a8"
 )
 _PREGNANCY_CONTRACT_SHA256 = (
-    "4b156a6b9bb95ff402315dbcb1be59dcc3ab2513c34f25067d01ef9275928619"
+    "a16675a30a6a9bb4cc239e8833ad5431987ee333de18cd3581663c6a82f528ed"
 )
 _EXTENSION_FEATURE = "__acs_transfer_fixture_interest_total"
 _EXTENSION_FAMILIES = {
