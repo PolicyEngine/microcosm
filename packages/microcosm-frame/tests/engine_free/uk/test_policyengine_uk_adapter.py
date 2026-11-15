@@ -1177,3 +1177,85 @@ def test_the_id_warning_is_filtered_only_while_a_simulation_is_built(
         (RuntimeWarning, "made-up construction warning"),
         (EntityIdWarning, "made-up later warning"),
     ]
+
+
+@pytest.mark.parametrize("clones", [None, (0, 1, 2)])
+def test_each_simulation_is_projected_to_the_period_and_built_inside_the_cut(
+    monkeypatch, clones
+):
+    """Both routes build through _read_year_simulation (microcosm#931 with
+    microcosm#1615): the dataset is built at the dataset's year, projected on
+    the adapter's own tree to the call's period, and constructed by
+    _simulation while the rebalancing cut at that period is open. Everything
+    is made up."""
+
+    from contextlib import contextmanager
+
+    events = []
+    tree = object()
+    engine = PolicyEngineUKEngine()
+    engine._system = SimpleNamespace(parameters=tree)
+
+    class Simulation:
+        tax_benefit_system = SimpleNamespace(variables={})
+        input_variables = ()
+
+        def __init__(self, dataset):
+            events.append(("construct", dataset[0]))
+            self._rows = len(dataset[1])
+
+        def calculate(self, name, period=None):
+            return np.zeros(self._rows)
+
+    monkeypatch.setattr(
+        engine,
+        "_import_policyengine_uk",
+        lambda: SimpleNamespace(Microsimulation=Simulation),
+    )
+    monkeypatch.setattr(
+        engine,
+        "_build_dataset",
+        lambda bundle, period: (int(period), list(range(bundle.n("person")))),
+    )
+    monkeypatch.setattr(
+        engine, "variable_metadata", lambda name: SimpleNamespace(entity="person")
+    )
+    monkeypatch.setattr(adapter_module, "validate_uc_claimant_input", lambda *a: None)
+
+    def through(dataset, end_year, parameters):
+        assert parameters is tree
+        events.append(("project", dataset[0], int(end_year)))
+        return dataset
+
+    @contextmanager
+    def cut(end_year):
+        events.append(("cut", int(end_year)))
+        yield range(0)
+        events.append(("restore", int(end_year)))
+
+    monkeypatch.setattr(adapter_module, "uk_dataset_through", through)
+    monkeypatch.setattr(adapter_module, "uk_rebalancing_years_through", cut)
+    constructed = []
+    simulation = engine._simulation
+
+    def recorded(microsimulation_class, dataset):
+        constructed.append(events[-1])
+        return simulation(microsimulation_class, dataset)
+
+    monkeypatch.setattr(engine, "_simulation", recorded)
+
+    def batched(bundle, variables, period, **kwargs):
+        kwargs["build"](bundle.select(kwargs["batches"][0].persons))
+        return {}
+
+    monkeypatch.setattr(adapter_module, "materialize_in_batches", batched)
+    frame = _clone_frame(column=False) if clones is None else _clone_frame(clones)
+    engine.materialize(frame, ["age"], 2025, dataset_period=2024)
+    assert events == [
+        ("project", 2024, 2025),
+        ("cut", 2025),
+        ("construct", 2024),
+        ("restore", 2025),
+    ]
+    # _simulation (the id-warning filter) constructs while the cut is open.
+    assert constructed == [("cut", 2025)]
