@@ -438,7 +438,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "person_source_id"),
             ("household", "region"),
             ("household", "household_support_channel"),
-            ("household", "household_source_id"),
+            ("household", "source_household_id"),
         }
     ),
     # Engine-free: the housing predictors and the channel split. The rewritten
@@ -732,7 +732,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         {
             ("person", "pip_dl_category"),
             ("person", "pip_m_category"),
-            ("household", "household_source_id"),
+            ("household", "source_household_id"),
         }
     ),
     # The claim statuses are drawn on each person's final self-employment

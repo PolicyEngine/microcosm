@@ -147,6 +147,8 @@ def test_spi_carer_link_is_taken_again_from_the_channels_benefits() -> None:
             "household_id": [1, 2, 101, 102, 103, 104],
             "household_weight": [10.0, 10.0, 1.0, 1.0, 1.0, 1.0],
             "household_source_id": [1, 2, 1, 2, 3, 4],
+            # The true source each floor counts (microcosm#931).
+            "source_household_id": [1, 2, 1, 2, 3, 4],
         }
     )
     spi_channel = person["person_household_id"].ge(100)

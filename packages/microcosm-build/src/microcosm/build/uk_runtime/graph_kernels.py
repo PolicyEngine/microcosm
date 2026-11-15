@@ -341,6 +341,13 @@ _COUNTING_STAGES = frozenset(
         "childcare_copy_take_up",
         "isa_subscriptions",
         "trading_allowance_receipts",
+        "frs_spine",
+        "frs_council_tax",
+        "frs_disability",
+        "spi_employment_shell",
+        "aps_occupation",
+        "uc_limited_capability",
+        "pip_points",
     }
 )
 

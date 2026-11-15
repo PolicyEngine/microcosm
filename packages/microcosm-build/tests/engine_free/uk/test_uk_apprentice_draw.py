@@ -85,7 +85,7 @@ def test_full_time_students_are_never_flagged() -> None:
     person["is_in_full_time_education"] = full_time
     weights = np.ones(len(person))
 
-    draw = derive_is_apprentice(person, rate=0.06, person_weights=weights)
+    draw = _apprentices(person, rate=0.06, person_weights=weights)
 
     age = person["age"].to_numpy()
     in_ages = (age >= 21) & (age <= 24)
@@ -105,7 +105,7 @@ def test_refuses_a_frame_without_the_full_time_education_flag() -> None:
     person = _small([22], ["FT_EMPLOYED"]).drop(columns="is_in_full_time_education")
 
     with pytest.raises(ValueError, match="is_in_full_time_education"):
-        derive_is_apprentice(person, rate=0.06)
+        _apprentices(person, rate=0.06)
 
 
 def test_flagged_weight_is_nearest_the_per_head_target() -> None:

@@ -278,10 +278,15 @@ def test_counting_module_changes_invalidate_every_stage_that_counts(monkeypatch)
 
     graph = uk_spine_graph()
     registry = uk_registry(graph=graph)
+    # The root stage's transform runs in the CREATE node; the node named
+    # after it only claims its cells. frs_employment reads no counting
+    # module, so its hash must stay.
+    runs = {"frs_spine": "create_uk_frs"}
     affected = [
-        graph.node(stage).kernel for stage in sorted(graph_kernels._COUNTING_STAGES)
+        graph.node(runs.get(stage, stage)).kernel
+        for stage in sorted(graph_kernels._COUNTING_STAGES)
     ]
-    control = graph.node("frs_council_tax").kernel
+    control = graph.node("frs_employment").kernel
     for module in (receipt_counts, source_lineage):
         before = {
             ref: registry.implementation_hash(ref) for ref in (*affected, control)
