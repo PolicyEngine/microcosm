@@ -1045,6 +1045,12 @@ _POOLED_ROWS = st.one_of(
     st.tuples(st.just("block"), st.sampled_from(_NAMES)),
     st.tuples(st.just("acs"), st.sampled_from(_ACS_COUNTIES)),
 )
+# A row with a state and no county, place or block. A support that holds one
+# supplies no rung, so a selection that drops it can gain both.
+_STATES_WITHOUT_A_COUNTY = ("08", "36", "42", "10", "06")
+_ROWS_WITHOUT_A_COUNTY = st.tuples(
+    st.just("state"), st.sampled_from(_STATES_WITHOUT_A_COUNTY)
+)
 
 
 def _pooled_household(row: tuple[str, str]) -> dict[str, object]:
@@ -1056,6 +1062,13 @@ def _pooled_household(row: tuple[str, str]) -> dict[str, object]:
             "county_fips": block.county_fips,
             "place_fips": "" if block.place_fips == 0 else f"{block.place_fips:05d}",
             "block_geoid": f"{block.block_geoid:015d}",
+        }
+    if kind == "state":
+        return {
+            "state_fips": int(value),
+            "county_fips": None,
+            "place_fips": None,
+            "block_geoid": None,
         }
     return {
         "state_fips": int(value[:2]),
@@ -1081,8 +1094,13 @@ def _select_households(frame, positions: list[int]):
 
 
 @st.composite
-def _pool_and_selection(draw) -> tuple[list[tuple[str, str]], list[int]]:
+def _pool_and_selection(
+    draw, *, rows_without_a_county: bool = False
+) -> tuple[list[tuple[str, str]], list[int]]:
     rows = draw(st.lists(_POOLED_ROWS, min_size=1, max_size=10))
+    if rows_without_a_county and draw(st.booleans()):
+        extra = draw(st.lists(_ROWS_WITHOUT_A_COUNTY, min_size=1, max_size=2))
+        rows = draw(st.permutations(rows + extra))
     keep = draw(st.sets(st.integers(0, len(rows) - 1), min_size=1))
     return rows, sorted(keep)
 
@@ -1256,7 +1274,8 @@ def test_artifact_receipt_matches_the_rederived_receipt_on_a_complete_artifact()
     case=([("block", "yonkers"), ("block", "wilmington"), ("acs", "08031")], [0, 1])
 )
 @example(case=([("block", "yonkers"), ("acs", "08031")], [0, 1]))
-@given(case=_pool_and_selection())
+@example(case=([("block", "wilmington"), ("state", "10")], [0]))
+@given(case=_pool_and_selection(rows_without_a_county=True))
 def test_a_selection_held_to_its_supports_rungs_keeps_that_supports_flags(
     case,
 ) -> None:
@@ -1267,7 +1286,9 @@ def test_a_selection_held_to_its_supports_rungs_keeps_that_supports_flags(
     # adds is unavailable with the reason. The selection already carries
     # exactly the support's flags, so a step that holds it to those rungs
     # writes no input the support's targets were not computed with. When
-    # the selection adds no rung, the receipt is the unheld one.
+    # the selection adds no rung, the receipt is the unheld one. A support
+    # with a row that has no county supplies no rung, so the flags a
+    # selection adds can be county-rule flags as well as place-rule ones.
     rows, keep = case
     derived, derived_receipt = rederive_us_local_jurisdiction_flags(_pooled_frame(rows))
     selected = _select_households(derived, keep)
@@ -1290,6 +1311,35 @@ def test_a_selection_held_to_its_supports_rungs_keeps_that_supports_flags(
         )
     if not added:
         assert receipt == us_local_jurisdiction_artifact_receipt(selected)
+
+
+def test_a_selection_held_to_a_support_with_no_rung_says_why_for_every_flag() -> None:
+    # Review round 3 of the adopted microcosm#1453. The pool's second row has
+    # a state and no county, so the support supplies no rung and decides no
+    # flag. The kept Wilmington donor's own block decides all four, the
+    # county-rule flags too, so each of the four is unavailable with the
+    # reason that its own geography decides it, not that no rung exists.
+    derived, derived_receipt = rederive_us_local_jurisdiction_flags(
+        _pooled_frame([("block", "wilmington"), ("state", "10")])
+    )
+    assert derived_receipt["rungs"] == []
+    selected = _select_households(derived, [0])
+    own = rederive_us_local_jurisdiction_flags(selected)[1]
+    assert own["rungs"] == list(BLOCK_GEOGRAPHY_RUNGS)
+
+    receipt = us_local_jurisdiction_artifact_receipt(selected, rungs=[])
+
+    assert receipt["rungs"] == []
+    assert receipt["carried_flags"] == []
+    assert sorted(receipt["flags"]) == sorted(EXPECTED_RULES)
+    for flag in EXPECTED_RULES:
+        assert receipt["flags"][flag]["status"] == JURISDICTION_FLAG_UNAVAILABLE
+        assert receipt["flags"][flag]["reason"] == (
+            "this artifact's own geography (rungs ['county', 'place']) decides "
+            "it, but its inputs were fixed on a support with the rungs [], so "
+            "the flag is not written and the engine default (False) applies to "
+            "every row"
+        )
 
 
 def test_a_selection_cannot_be_held_to_rungs_its_geography_does_not_supply() -> None:
