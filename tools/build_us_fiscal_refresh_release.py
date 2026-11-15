@@ -7739,16 +7739,22 @@ def _with_local_jurisdiction_flags(
         receipt = us_local_jurisdiction_artifact_receipt(
             frame, rungs=receipts[calibrated[-1]]["rungs"]
         )
+        message = (
+            "Kept the local-jurisdiction flags of the "
+            f"{calibrated[-1].replace('_', ' ')}, which the targets were "
+            "materialized from, on the export support and checked them against "
+            "its geography."
+        )
     else:
         frame, receipt = rederive_us_local_jurisdiction_flags(frame)
+        message = (
+            f"Derived local-jurisdiction flags from the {support} support's geography."
+        )
     receipts[support] = receipt
     if telemetry is not None:
         telemetry.stage(
             f"local_jurisdiction_flags_{support}",
-            message=(
-                f"Derived local-jurisdiction flags from the {support} support's "
-                "geography."
-            ),
+            message=message,
             rungs=receipt["rungs"],
             carried_flags=receipt["carried_flags"],
             flag_status={

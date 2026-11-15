@@ -2975,6 +2975,15 @@ def test_builder_flags_follow_the_support_through_frozen_and_l0_selection() -> N
         "local_jurisdiction_flags_export",
     ]
     assert telemetry.stages[1][1]["rungs"] == ["county", "place"]
+    # The export's message says what it does: it keeps and checks the flags
+    # of the support the targets were materialized from (review round 3).
+    messages = [details["message"] for _name, details in telemetry.stages]
+    assert messages[1].startswith("Derived local-jurisdiction flags")
+    for message in messages[2:]:
+        assert message.startswith(
+            "Kept the local-jurisdiction flags of the frozen support, which the "
+            "targets were materialized from"
+        )
     with pytest.raises(ValueError, match="Unknown local-jurisdiction flag support"):
         derive(exported, "selected")
 
