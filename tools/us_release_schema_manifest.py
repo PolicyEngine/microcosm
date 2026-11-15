@@ -192,13 +192,23 @@ class _ColumnTally:
 
 
 def _storer_rows(storer: Any) -> int:
+    """Rows of one stored object.
+
+    A ``table`` storer counts its rows. A ``fixed`` frame does not: pandas'
+    ``shape`` takes its first entry from block 0, which is the column count
+    when that block holds objects, so the rows are read off the stored row
+    index (``axis1``) instead.
+    """
+
     nrows = getattr(storer, "nrows", None)
-    if nrows is None:
-        shape = getattr(storer, "shape", None)
-        if not shape:
-            raise ManifestError(f"Cannot count the rows of {storer.pathname!r}.")
-        nrows = shape[0]
-    return int(nrows)
+    if nrows is not None:
+        return int(nrows)
+    group = getattr(storer, "group", None)
+    if getattr(storer, "pandas_type", None) == "frame" and group is not None:
+        return int(group.axis1.shape[0])
+    if group is not None and "index" in group._v_children:
+        return int(group.index.shape[0])
+    raise ManifestError(f"Cannot count the rows of {storer.pathname!r}.")
 
 
 def _codec_columns(storer: Any, key: str) -> dict[str, str]:
