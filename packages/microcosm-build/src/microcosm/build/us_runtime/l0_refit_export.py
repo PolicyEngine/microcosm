@@ -574,11 +574,10 @@ def _withheld_flags_note(frame: Frame, receipt: Mapping[str, Any]) -> list[str]:
     if not withheld:
         return []
     return [
-        "the export keeps the local-jurisdiction flags of the base its saved "
-        f"weights were fit on (rungs {receipt['rungs']}), so it does not write "
+        "the export writes only the local-jurisdiction flags its whole base's "
+        f"geography decides (rungs {receipt['rungs']}), so it does not write "
         f"{', '.join(withheld)}, which only the selected households' own "
-        "geography decides: writing them would change inputs after the weights "
-        "were fit"
+        "geography decides"
     ]
 
 

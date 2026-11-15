@@ -65,10 +65,11 @@ already complete returns it unchanged. A step that must keep an artifact's
 columns and bytes, and so cannot write the flags, calls
 :func:`us_local_jurisdiction_artifact_receipt` instead, which refuses an
 artifact that lacks a flag its geography decides. A step whose inputs a
-larger support fixed passes that support's rungs, and keeps exactly that
-support's flags: the release builder's export, after its weights were fit to
-targets computed on that support, and the L0/refit export, whose saved
-weights were fit on the base it loads.
+larger support fixed passes that support's rungs, and carries the flags those
+rungs decide and no others. The release builder's export passes the rungs of
+the support it computed its targets on. The L0/refit export passes the rungs
+of the whole base it loads, and assumes that a fit on that base produced its
+saved weights.
 
 This module and its registry sit outside ``microcosm.build.us_runtime`` on
 purpose, and import only the standard library, numpy, pandas and
@@ -705,12 +706,13 @@ def us_local_jurisdiction_artifact_receipt(
     household's block lies outside its county. The receipt has the shape
     :func:`rederive_us_local_jurisdiction_flags` returns.
 
-    ``rungs`` is for a step whose inputs a larger support fixed: the release
-    builder's export keeps the rows its L0 selection chose from the support
-    its targets were computed on, and the L0/refit export keeps the rows its
-    saved weights chose from the base they were fit on. Writing a flag only
-    the kept rows decide would change an input after the weights were fit.
-    The artifact must then carry exactly the flags of ``rungs``, which must be
+    A step whose inputs a larger support fixed passes that support's
+    ``rungs``. The release builder's export keeps the rows its L0 selection
+    chose from the support it computed its targets on. The L0/refit export
+    keeps the rows its saved weights chose from the base it loads, and
+    assumes that a fit on that base produced those weights. Writing a flag
+    only the kept rows decide would change an input after the fit. The
+    artifact must then carry exactly the flags of ``rungs``, which must be
     among its own rungs, and the receipt records each flag its own geography
     decides beyond them as unavailable, with that reason.
     """

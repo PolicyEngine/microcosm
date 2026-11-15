@@ -12,8 +12,8 @@ The release builder's export keeps the inputs its targets were computed from:
 after a legacy pool becomes block-only through L0 selection, a retained
 Wilmington itemizer's ``income_tax`` on the written support is the value the
 refit used, though writing ``in_wilmington`` would lower it. The standalone
-L0/refit export keeps the inputs of the base its saved weights were fit on in
-the same way.
+L0/refit export likewise withholds ``in_wilmington`` when the rows its saved
+weights keep decide it and the base it loads does not.
 """
 
 from __future__ import annotations

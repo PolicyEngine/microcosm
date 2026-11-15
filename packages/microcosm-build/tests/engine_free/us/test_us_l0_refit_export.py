@@ -1490,8 +1490,9 @@ def test_export_says_which_flags_it_withholds_when_the_geography_gate_refuses(
     message = str(refused.value)
     assert "in_wilmington: absent, but this table's place rung decides it" in message
     assert (
-        "the export keeps the local-jurisdiction flags of the base its saved "
-        "weights were fit on (rungs ['county']), so it does not write "
-        "in_wilmington, in_yonkers" in message
+        "the export writes only the local-jurisdiction flags its whole base's "
+        "geography decides (rungs ['county']), so it does not write "
+        "in_wilmington, in_yonkers, which only the selected households' own "
+        "geography decides" in message
     )
     assert not (tmp_path / "populace_us_2024.h5").exists()

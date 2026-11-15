@@ -180,9 +180,10 @@ its own geography decides beyond them as unavailable, with that reason. Such a
 release carries the flags of an ordinary pooled release. Its own geography
 still decides the place-rule flags, so the annual lane refuses it as a parent.
 
-The L0/refit export follows the same rule. Its saved weights come from a fit
-on the base it loads, so the export writes no flag that only the rows those
-weights keep decide. It derives the flags on that whole base before it applies
+The L0/refit export follows the same rule. It assumes that a fit on the base it
+loads produced its saved weights, so it writes no flag that only the rows those
+weights keep decide. `load_l0_refit_npz` checks that assumption by household
+count alone. The export derives the flags on that whole base before it applies
 the weights, then calls `us_local_jurisdiction_artifact_receipt` on the kept
 rows with the base's rungs. A base H5 that predates the flags carries none,
 and a fit that reads it unchanged sees the engine default, `False`. On such a
