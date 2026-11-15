@@ -1612,7 +1612,13 @@ def test_what_a_geography_first_spine_adds_to_the_export_is_allow_listed(clones)
     """The dense line exports the bound spine as it stands (microcosm#931):
     every column the spine's clones, keys and areas add to the surface the
     export-surface gate reads is reviewed in UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
-    so the gate needs no list change (the dense allow-list pin)."""
+    so the gate needs no list change (the dense allow-list pin). The gate
+    compares with the current build of the line (microcosm#1095), which
+    exports each household's true source, its year and its key already, so
+    the list reviews the rest."""
+    from microcosm.build.uk_runtime.geographic_clones import (
+        UK_GEOGRAPHIC_SOURCE_COLUMNS,
+    )
     from microcosm.build.uk_runtime.national_frame import uk_release_export_frame
     from microcosm.build.uk_runtime.terminal_gates import (
         UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
@@ -1633,6 +1639,6 @@ def test_what_a_geography_first_spine_adds_to_the_export_is_allow_listed(clones)
         "household.local_authority",
         "household.in_rural_fuel_duty_relief_area",
     } <= added
-    assert added <= set(UK_ALLOWED_EXTRA_EXPORT_COLUMNS), sorted(
-        added - set(UK_ALLOWED_EXTRA_EXPORT_COLUMNS)
-    )
+    sources = {f"household.{column}" for column in UK_GEOGRAPHIC_SOURCE_COLUMNS}
+    allowed = set(UK_ALLOWED_EXTRA_EXPORT_COLUMNS)
+    assert added - sources <= allowed, sorted(added - sources - allowed)

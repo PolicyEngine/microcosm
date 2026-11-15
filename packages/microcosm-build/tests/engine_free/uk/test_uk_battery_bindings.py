@@ -3526,11 +3526,14 @@ class TestNationalLineExport:
             "uk_input_mass_parity_gate",
             lambda *args, **kwargs: GateResult(name="input_mass_parity", passed=True),
         )
+        # The cut's reference build (microcosm#1095): the input-mass gate
+        # reads its label and descriptor, the coverage gate its surface.
         artifacts = {
             "coverage_engine": object(),
             "spine_frame": frame,
             "exclusions_evaluated_on": CLOCK,
-            "input_mass_reference": object(),
+            "input_mass_reference": _reference(),
+            "reference_surface": NO_REFERENCE_INPUTS,
         }
         if line is not None:
             artifacts["release_line"] = line

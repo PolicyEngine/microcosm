@@ -700,13 +700,15 @@ def test_the_release_boundary_drops_the_council_tax_localisations_carriers() -> 
 
 
 def test_what_a_national_release_of_a_one_clone_spine_exports_is_allow_listed() -> None:
-    """The national allow-list pin (microcosm#931). A national release of a
-    geography-first spine of one clone keeps every lineage column but the
-    geographic clone indices, and every column the spine's clone, key and
-    area stages write, the three area codes under the consumers' names; each
-    is reviewed in UK_ALLOWED_EXTRA_EXPORT_COLUMNS, as is every other column
-    the export-surface gate reads beyond the spine's own before the clones,
-    so the national line needs no list change. The clone indices stay in the
+    """The national allow-list pin (microcosm#931), on the reference model of
+    microcosm#1095. A national release of a geography-first spine of one
+    clone keeps every lineage column but the geographic clone indices, and
+    every column the spine's clone, key and area stages write, the three area
+    codes under the consumers' names. The export-surface gate compares with
+    the current build of the national line, which exports the lineage and
+    build-id columns already, so UK_ALLOWED_EXTRA_EXPORT_COLUMNS reviews only
+    what the spine adds beyond them: the area columns and the geography key.
+    The national line needs no list change. The clone indices stay in the
     list, as the dense line's lineage."""
     from microcosm.build.uk_runtime.atomic_area_conditioning import (
         UK_SPINE_AREA_COLUMNS,
@@ -766,11 +768,11 @@ def test_what_a_national_release_of_a_one_clone_spine_exports_is_allow_listed() 
         )
     }
     assert lineage | areas <= after
-    assert lineage | areas <= allowed
+    assert areas | {f"household.{GEOGRAPHY_HOUSEHOLD_KEY_COLUMN}"} <= allowed
     assert not clone_indices & after
     assert clone_indices <= allowed
     added = after - before
-    assert added <= allowed, sorted(added - allowed)
+    assert added - lineage <= allowed, sorted(added - lineage - allowed)
 
 
 def test_no_spine_column_writes_an_input_signed_at_the_engine_default() -> None:
