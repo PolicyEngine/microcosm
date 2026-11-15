@@ -4808,8 +4808,8 @@ def test_reported_coverage_vintage_gate_receipt_is_written(tmp_path) -> None:
     builder._refuse_certified_release_dir_reuse(release_dir)
 
 
-def test_every_release_solver_can_fit_the_acs_household_total() -> None:
-    """A fixed table-row mass also counts ACS group-quarters placeholders."""
+def test_every_release_solver_uses_free_mass() -> None:
+    """Pin the release wiring separately from its numerical behavior below."""
     import ast
 
     builder = _load_builder_module()
@@ -4828,6 +4828,218 @@ def test_every_release_solver_can_fit_the_acs_household_total() -> None:
         mass = next(keyword.value for keyword in call.keywords if keyword.arg == "mass")
         assert isinstance(mass, ast.Name)
         assert mass.id == "US_FISCAL_CALIBRATION_MASS"
+
+
+@pytest.fixture
+def housing_and_group_quarters_targets():
+    """Three roster types with independently identifiable aggregate weights."""
+    from microcosm.build.us_runtime.household_type_targets import (
+        household_type_household_values,
+    )
+    from microcosm.calibrate import Target, TargetSet
+
+    # Eight copies each of a two-person housing household, a one-person
+    # housing household, and an ACS group-quarters placeholder. Each type must
+    # retain total weight 16 to meet all three independent target equations.
+    household_id = np.arange(24, dtype=np.int64)
+    sizes = np.repeat([2, 1, 1], 8)
+    person_household_id = np.repeat(household_id, sizes)
+    relationship = np.full(len(person_household_id), 2, dtype=np.int64)
+    relationship[:16] = np.tile([1, 3], 8)
+    person = pd.DataFrame(
+        {
+            "person_id": np.arange(len(person_household_id), dtype=np.int64),
+            "person_household_id": person_household_id,
+            "A_EXPRRP": relationship,
+            "A_MARITL": np.ones(len(person_household_id), dtype=np.int64),
+            "age": np.full(len(person_household_id), 40),
+            "is_female": np.zeros(len(person_household_id), dtype=bool),
+            "person_count": np.ones(len(person_household_id)),
+        }
+    )
+    household = pd.DataFrame(
+        {
+            "household_id": household_id,
+            "TYPEHUGQ": np.repeat([1, 1, 2], 8),
+            "fiscal_amount": np.repeat([100.0, 10.0, 0.0], 8),
+        }
+    )
+    frame = Frame(
+        {"person": person, "household": household},
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(np.ones(24), kind=WeightKind.DESIGN)},
+    )
+    targets = TargetSet(
+        (
+            Target(
+                name="acs_housing_households",
+                entity="household",
+                measure=lambda candidate: household_type_household_values(
+                    candidate, {"household_type": "all"}
+                ),
+                value=32.0,
+            ),
+            Target(
+                name="population",
+                entity="person",
+                measure="person_count",
+                value=64.0,
+            ),
+            Target(
+                name="fiscal_amount",
+                entity="household",
+                measure="fiscal_amount",
+                value=1760.0,
+            ),
+        )
+    )
+    return frame, targets
+
+
+def _solve_release_housing_fixture(
+    frame, targets, *, arm, monkeypatch, max_weight_ratio=5.0
+):
+    """Execute the release's real solver call with small materialized inputs."""
+    import ast
+
+    builder = _load_builder_module()
+    # Ownership of these synthetic columns is separate from the population
+    # solve and requires optional engine metadata. Keep the solver and export
+    # support/weight attachment live, as in the other engine-free export tests.
+    monkeypatch.setattr(builder, "_assert_no_formula_owned_columns", lambda frame: None)
+    solver_name = {
+        "dense": "calibrate",
+        "l0_refit": "calibrate_l0_refit",
+        "exact_k": "calibrate_exact_k_ladder",
+        "full_pool": "calibrate_exact_k_ladder",
+    }[arm]
+    tree = ast.parse(inspect.getsource(builder._main))
+    [call] = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == solver_name
+    ]
+    # Evaluate the actual release call with a small engine-free target frame.
+    # This retains the release's mass, cap, loss and refit argument wiring.
+    args = SimpleNamespace(
+        epochs=600,
+        learning_rate=0.02,
+        max_weight_ratio=max_weight_ratio,
+        seed=0,
+        l2_lambda=0.0,
+        refit_l2_lambda=0.0,
+        exact_k=24 if arm == "full_pool" else 12,
+        exact_k_pi_hi=1.0,
+    )
+    outcome = eval(
+        compile(ast.Expression(call), builder.__file__, "eval"),
+        vars(builder),
+        {
+            "target_frame": frame,
+            "registry": SimpleNamespace(to_target_set=lambda: targets),
+            "args": args,
+            "l0_refit_lambda": 0.1,
+            # Leave broad positive probabilities for the small exact-count
+            # draw; the ordinary L0 arm separately exercises gate pruning.
+            "ladder_l0_lambda": 1e-8,
+            "target_loss_weights": None,
+            "warm_start_weights": None,
+            "telemetry": None,
+        },
+    )
+    result = outcome.result if arm in {"exact_k", "full_pool"} else outcome
+    exported = (
+        builder._with_calibrated_weights(frame, result.weights)
+        if arm in {"dense", "full_pool"}
+        else builder._with_l0_refit_weights(frame, result)
+    )
+    return outcome, exported
+
+
+@pytest.mark.parametrize("arm", ("dense", "l0_refit", "exact_k", "full_pool"))
+def test_release_solvers_fit_housing_person_and_fiscal_totals(
+    housing_and_group_quarters_targets, arm, monkeypatch
+) -> None:
+    """Exercise free mass, GQ population and actual sparse selection/refit."""
+    frame, targets = housing_and_group_quarters_targets
+    max_weight_ratio = 5.0
+    outcome, exported = _solve_release_housing_fixture(
+        frame,
+        targets,
+        arm=arm,
+        monkeypatch=monkeypatch,
+        max_weight_ratio=max_weight_ratio,
+    )
+    result = outcome.result if arm in {"exact_k", "full_pool"} else outcome
+    weights = exported.resolve_weights("household").values
+    person_weights = exported.resolve_weights("person").values
+    housing = exported.table("household")["TYPEHUGQ"].eq(1).to_numpy()
+    fiscal_amount = exported.table("household")["fiscal_amount"].to_numpy()
+
+    # Count people from the exported roster rather than treating the table-row
+    # weight sum as either housing households or population. In particular,
+    # GQ's 16 weighted residents must survive outside the 32 housing households.
+    assert weights[housing].sum() == pytest.approx(32.0, rel=0.01)
+    assert person_weights.sum() == pytest.approx(64.0, rel=0.01)
+    assert weights @ fiscal_amount == pytest.approx(1760.0, rel=0.01)
+    assert weights[~housing].sum() == pytest.approx(16.0, rel=0.02)
+    assert weights.sum() == pytest.approx(48.0, rel=0.01)
+    assert weights.sum() > frame.resolve_weights("household").values.sum() * 1.9
+    assert (weights <= max_weight_ratio * result.initial_weights + 1e-10).all()
+    if arm in {"l0_refit", "exact_k"}:
+        assert exported.n("household") < frame.n("household")
+        assert result.refit.l0_lambda == 0.0
+        assert (
+            result.selection.weights
+            <= max_weight_ratio * result.selection.initial_weights + 1e-10
+        ).all()
+    if arm == "l0_refit":
+        np.testing.assert_allclose(
+            result.initial_weights,
+            result.selection.weights[result.selected_mask],
+        )
+    if arm == "exact_k":
+        assert exported.n("household") == 12
+        # Exact-k caps bind to the expanded original w/q baseline, which
+        # retains the full pool's 24 units of starting weight after selection.
+        baseline = (
+            frame.resolve_weights("household").values[outcome.support]
+            / outcome.selected_inclusion_probabilities
+        )
+        baseline *= 24.0 / baseline.sum()
+        np.testing.assert_allclose(result.initial_weights, baseline)
+        assert result.initial_weights.sum() == pytest.approx(24.0)
+
+
+@pytest.mark.parametrize("arm", ("dense", "exact_k", "full_pool"))
+def test_release_housing_fixture_cannot_fit_past_the_weight_cap(
+    housing_and_group_quarters_targets, arm, monkeypatch
+) -> None:
+    """Free mass leaves the per-record cap intact, including after sampling."""
+    frame, targets = housing_and_group_quarters_targets
+    outcome, exported = _solve_release_housing_fixture(
+        frame, targets, arm=arm, monkeypatch=monkeypatch, max_weight_ratio=1.5
+    )
+    result = outcome.result if arm in {"exact_k", "full_pool"} else outcome
+    weights = exported.resolve_weights("household").values
+    assert (weights <= 1.5 * result.initial_weights + 1e-10).all()
+    # All targets together require table-row mass 48. A 1.5x cap on the
+    # full-pool or normalized exact-k baseline permits at most 36, so the
+    # diagnostic must report a material miss rather than silently lose the cap.
+    assert weights.sum() <= 36.0 + 1e-8
+    assert any(abs(row.relative_error) > 0.05 for row in result.diagnostics)
+    if arm != "exact_k":
+        household = exported.table("household")
+        housing = household["TYPEHUGQ"].eq(1).to_numpy()
+        assert weights[housing].sum() == pytest.approx(24.0, rel=0.001)
+        assert exported.resolve_weights("person").values.sum() == pytest.approx(
+            48.0, rel=0.001
+        )
+        assert weights @ household["fiscal_amount"].to_numpy() == pytest.approx(
+            1320.0, rel=0.001
+        )
 
 
 def test_base_population_scale_gate_rejects_underweighted_base(small_frame) -> None:
