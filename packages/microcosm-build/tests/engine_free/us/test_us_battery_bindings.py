@@ -20,7 +20,7 @@ import pytest
 
 from microcosm.build import FitWeightRecord
 from microcosm.build.country_spec import load_gates_manifest
-from microcosm.build.gate_battery import EvidenceContext, GateStatus
+from microcosm.build.gate_battery import DEFAULT_REGISTRY, EvidenceContext, GateStatus
 from microcosm.build.gates import UNWEIGHTED_KIND, GateResult
 from microcosm.build.us_runtime.battery_bindings import (
     FRAME,
@@ -397,6 +397,14 @@ def test_the_shared_weights_audit_fails_both_verdicts_alike(tmp_path, scope) -> 
     assert outcome.status is GateStatus.FAILED
     assert outcome.result.failures == result.failures
     assert shadow.differences() == ()
+
+
+@pytest.mark.parametrize("scope", ["us_base", "us_pool"])
+def test_the_audit_site_calls_the_shared_bindings_own_gate(scope) -> None:
+    # The one binding not looked up in the tool: PR 1's shared weights_audit
+    # holds the gate function itself, so the tool must call that same object.
+    tool = load_us_gate_tool(scope)
+    assert tool.weights_audit_gate is DEFAULT_REGISTRY["weights_audit"].gate
 
 
 def test_a_declared_threshold_off_todays_constant_is_a_difference(tmp_path) -> None:
