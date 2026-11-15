@@ -40,8 +40,10 @@
     "A status that grants a supplement or an increase defaults to not held, which gives a lower bound on spending.",
     "A condition the law requires for any benefit (residence, nationality or an equivalent title, domicile in the scheme's region) defaults to held, for the children the scheme's selector admits.",
     "An index or revaluation factor defaults to 1, which keeps amounts at their unindexed nominal level.",
-    "A rare status that removes or suspends entitlement (abduction, disappearance, an exclusion) defaults to not held.",
-    "A count, rank, income or period fact that a later graph node is to derive takes the value that pays the base benefit with no supplement, and its reason names the node that replaces it."
+    "A rare status that removes entitlement or keeps it open (an exclusion, abduction, disappearance) defaults to not held.",
+    "A count, rank, income or period fact that a later graph node is to derive takes the value that pays the base benefit with no supplement or extension, and its reason names the node that replaces it.",
+    "The routing bridge's region code defaults to a code outside the four regions, so the bridge pays nothing until a node supplies each child's code. Until then no routing copy of a regional scheme's default changes the bridge's result; most copies keep the reason of the regional module they repeat.",
+    "A flag whose value is fixed wherever its one reader can change a result takes that value, and its reason shows why (the German-speaking no_current_article_9_entitlement, true)."
   ],
   "engine_optional_evidence": "The axiom-rules-engine commit named in input_surface.engine (the engine that generated the committed input surface) gives these modules no optional inputs. A RuleSpec document holds no inputs section at that commit (RulesDocument, src/rulespec.rs:361-374), and none of the twelve modules carries a top-level inputs key at the pin. The engine rejects a rule-level default (RuleSpecError::UnsupportedDefault, src/rulespec.rs:91-94 and src/rulespec.rs:2411-2418), and the dense batch call collects only the inputs the caller supplies (python-ext/src/lib.rs:458-466). A plain read of an absent input fails every row whose evaluation reaches it with EvalError::MissingInput (src/dense.rs:2790-2803). The internal input_or_else node that would read a default (src/dense.rs:2805-2811) never comes from RuleSpec text: formula lowering turns a name that no parameter or rule defines into a plain input read (src/formula.rs:1400-1413), and src/formula.rs names no input_or_else node. So no root input of these modules can be verified engine-optional, and this closure classes none as such: it defaults, with a reason, every input the mapping doesn't encode.",
   "engine_source_pins": {
@@ -100,7 +102,7 @@
       "input": "brussels_family_benefits_single_child_without_article_8_9_or_12_supplement",
       "class": "defaulted",
       "value": true,
-      "reason": "No concept binding counts a family's beneficiary children yet, so the default treats every child as the family's only beneficiary child with no supplement, and article 7(a) pays a flat 150. That is a lower bound at ages 0 to 24, where article 7(b) pays 150, 160 or 170, but the rule tests the flag before its over-24 test, so this ungated amount pays 150 above 24 as well and only eligibility.yaml's gated amount drops those children. W3's household-composition node will replace it, together with the beneficiary-child count (defaulted 1).",
+      "reason": "No concept binding counts a family's beneficiary children yet, so the default treats every child as the family's only beneficiary child with no supplement, and article 7(a) pays a flat 150. That is a lower bound at ages 0 to 24, where article 7(b) pays 150, 160 or 170, but the rule tests the flag before its over-24 test, so this ungated amount pays 150 above 24 as well and only eligibility.yaml's gated amount drops those children. While the flag holds, the rule never reaches article 7(b)'s branches, so the encoded brussels_family_benefits_child_enrolled_in_higher_education changes no amount yet. W3's household-composition node will replace it, together with the beneficiary-child count (defaulted 1).",
       "citation": "Brussels ordinance of 25 April 2019 regulating family benefits, article 7 (brussels_family_benefits_article_7_base_monthly_amount, basic_amounts.yaml); the rule records no corpus_citation_path of its own, the module's source_verification gives be-bru/statute/ordonnance/2019/04/25/2019012118/article/7",
       "new_default": true
     },
@@ -231,7 +233,7 @@
       "input": "brussels_family_benefits_single_child_without_article_8_9_or_12_supplement",
       "class": "defaulted",
       "value": true,
-      "reason": "No concept binding counts a family's beneficiary children yet, so the default treats every child as the family's only beneficiary child with no supplement, and article 7(a) pays a flat 150 at every age. That gives a lower bound, since article 7(b) pays 150, 160 or 170 by age and enrolment. W3's household-composition node will replace it, together with the beneficiary-child count (defaulted 1).",
+      "reason": "No concept binding counts a family's beneficiary children yet, so the default treats every child as the family's only beneficiary child with no supplement, and article 7(a) pays a flat 150 at every age. That gives a lower bound, since article 7(b) pays 150, 160 or 170 by age and enrolment. While the flag holds, basic_amounts.yaml's article 7 rule never reaches article 7(b)'s branches, so the encoded brussels_family_benefits_child_enrolled_in_higher_education changes no amount yet. W3's household-composition node will replace it, together with the beneficiary-child count (defaulted 1).",
       "citation": "Brussels ordinance of 25 April 2019 regulating family benefits, article 7 (brussels_family_benefits_article_7_base_monthly_amount, basic_amounts.yaml); the rule records no corpus_citation_path of its own, the module's source_verification gives be-bru/statute/ordonnance/2019/04/25/2019012118/article/7",
       "new_default": true
     },
@@ -302,7 +304,7 @@
       "input": "brussels_family_benefits_single_child_without_article_8_9_or_12_supplement",
       "class": "defaulted",
       "value": true,
-      "reason": "No concept binding counts a family's beneficiary children yet, so the default treats every child as the family's only beneficiary child with no supplement, and article 7(a) pays a flat 150. That is a lower bound at ages 0 to 24, where article 7(b) pays 150, 160 or 170, but the rule tests the flag before its over-24 test, so this ungated amount pays 150 above 24 as well and only eligibility.yaml's gated amount drops those children. W3's household-composition node will replace it, together with the beneficiary-child count (defaulted 1).",
+      "reason": "No concept binding counts a family's beneficiary children yet, so the default treats every child as the family's only beneficiary child with no supplement, and article 7(a) pays a flat 150. That is a lower bound at ages 0 to 24, where article 7(b) pays 150, 160 or 170, but the rule tests the flag before its over-24 test, so this ungated amount pays 150 above 24 as well and only eligibility.yaml's gated amount drops those children. While the flag holds, the rule never reaches article 7(b)'s branches, so the encoded brussels_family_benefits_child_enrolled_in_higher_education changes no amount yet. W3's household-composition node will replace it, together with the beneficiary-child count (defaulted 1).",
       "citation": "Brussels ordinance of 25 April 2019 regulating family benefits, article 7 (brussels_family_benefits_article_7_base_monthly_amount, basic_amounts.yaml); the rule records no corpus_citation_path of its own, the module's source_verification gives be-bru/statute/ordonnance/2019/04/25/2019012118/article/7",
       "new_default": true
     },
@@ -416,7 +418,7 @@
       "input": "german_speaking_community_family_benefits_benefit_year",
       "class": "defaulted",
       "value": 2026,
-      "reason": "The benefit year is the query year, which METHOD-CARD-BE BE-MC0 sets at 2026. With 2026 the 2025-2027 indexation freeze applies and the annual supplement takes the Article 15 amount, not the 2025 override of 62.55 EUR. The query-period node will replace the constant, which must move with the policy year.",
+      "reason": "The benefit year is the query year, which METHOD-CARD-BE's row BE-MC0 proposes as 2026, pending a ruling. With 2026 the 2025-2027 indexation freeze applies and the annual supplement takes the Article 15 amount, not the 2025 override of 62.55 EUR. The query-period node will replace the constant, which must move with the policy year.",
       "citation": "German-speaking Community program decree of 22 December 2025, article 17 amending article 117.3 (german_speaking_community_family_benefits_indexation_freeze_applies), corpus_citation_path be-dg/statute/moniteur/decret-2025-12-22/2026001207/program-decree-2025-ii-family-benefits/block-1 (recorded by the parameter rules german_speaking_community_family_benefits_indexation_freeze_start_year and _end_year); German-speaking Community decree of 23 April 2018 on family benefits, articles 15, 16 and 38, and 22 December 2025 program decree article 18 (german_speaking_community_family_benefits_annual_supplement_amount)",
       "new_default": true
     },
@@ -436,7 +438,7 @@
       "input": "german_speaking_community_family_benefits_child_has_base_entitlement",
       "class": "defaulted",
       "value": true,
-      "reason": "The base amount and the five monthly supplements in the amounts module pay only when this flag holds, and no rule ties it to the eligibility module, which decides entitlement and gates the selected amount itself. The default holds the flag so the eligibility gate alone decides which child the scheme pays; false would pay no monthly amount to any child.",
+      "reason": "The base amount and the five monthly supplements in the amounts module pay only when this flag holds, and no rule ties it to the eligibility module, which decides entitlement and gates the selected amount itself. The default holds the flag so the eligibility gate alone decides which child the eligibility-gated amount pays; false would pay no monthly amount to any child. The ungated selected amount, which the amounts binding requests as a component, pays the base to every child its selector admits.",
       "citation": "German-speaking Community decree of 23 April 2018 on family benefits, articles 8 and 38 (german_speaking_community_family_benefits_base_monthly_amount); module corpus_citation_path be-dg/statute/moniteur/decret-2018-04-23/2018202523/family-benefits/block-1",
       "new_default": true
     },
@@ -555,8 +557,8 @@
       "entity": "Child",
       "input": "german_speaking_community_family_benefits_article_10_extension_months_used",
       "class": "defaulted",
-      "value": 0,
-      "reason": "No concept counts the months a young adult has drawn under the Article 10 extension, so the default sets none used. The extension path stays shut through no_current_article_9_entitlement, which defaults to false; this value alone would leave it open (0 < 12).",
+      "value": 12,
+      "reason": "No concept counts the months a young adult has drawn under the Article 10 extension. The default treats all 12 as drawn, so the extension branch (be-dg eligibility.yaml line 98) stays shut, since 12 < 12 is false, whatever no_current_article_9_entitlement says: a child of 18 to 24 who is not in training gets nothing, a lower bound. A node that counts the months drawn should replace it.",
       "citation": "German-speaking Community decree of 23 April 2018 on family benefits, articles 9, 10, 11 and 14 (german_speaking_community_family_benefits_article_9_10_age_or_status_condition_met); module corpus_citation_path be-dg/statute/moniteur/decret-2018-04-23/2018202523/family-benefits/block-1; the limit it is compared with, german_speaking_community_family_benefits_article_10_extension_months (12), is sourced to 'German-speaking Community family-benefits decree article 10'",
       "new_default": true
     },
@@ -566,7 +568,7 @@
       "input": "german_speaking_community_family_benefits_benefit_year",
       "class": "defaulted",
       "value": 2026,
-      "reason": "The benefit year is the query year, which METHOD-CARD-BE BE-MC0 sets at 2026. With 2026 the 2025-2027 indexation freeze applies and the annual supplement takes the Article 15 amount, not the 2025 override of 62.55 EUR. The query-period node will replace the constant, which must move with the policy year.",
+      "reason": "The benefit year is the query year, which METHOD-CARD-BE's row BE-MC0 proposes as 2026, pending a ruling. With 2026 the 2025-2027 indexation freeze applies and the annual supplement takes the Article 15 amount, not the 2025 override of 62.55 EUR. The query-period node will replace the constant, which must move with the policy year.",
       "citation": "German-speaking Community program decree of 22 December 2025, article 17 amending article 117.3 (german_speaking_community_family_benefits_indexation_freeze_applies), corpus_citation_path be-dg/statute/moniteur/decret-2025-12-22/2026001207/program-decree-2025-ii-family-benefits/block-1 (recorded by the parameter rules german_speaking_community_family_benefits_indexation_freeze_start_year and _end_year); German-speaking Community decree of 23 April 2018 on family benefits, articles 15, 16 and 38, and 22 December 2025 program decree article 18 (german_speaking_community_family_benefits_annual_supplement_amount)",
       "new_default": true
     },
@@ -586,7 +588,7 @@
       "input": "german_speaking_community_family_benefits_child_abducted",
       "class": "defaulted",
       "value": false,
-      "reason": "No concept observes abduction, a rare status. The abducted-child path needs age under 18 (line 117), where the age test at line 89 already holds, and line 130 joins the two with 'or', so the flag cannot change statutory_base_entitlement.",
+      "reason": "No concept observes abduction, a rare status. The abducted-child path needs age under 18 (be-dg eligibility.yaml line 117), where the age test at line 89 of that file already holds, and its line 130 joins the two with 'or', so the flag cannot change statutory_base_entitlement.",
       "citation": "German-speaking Community decree of 23 April 2018 on family benefits, articles 12 and 13 (german_speaking_community_family_benefits_article_12_13_missing_or_abducted_condition_met); module corpus_citation_path be-dg/statute/moniteur/decret-2018-04-23/2018202523/family-benefits/block-1",
       "new_default": true
     },
@@ -603,7 +605,7 @@
       "input": "german_speaking_community_family_benefits_child_disappeared",
       "class": "defaulted",
       "value": false,
-      "reason": "No concept observes a disappeared child, a rare status. The rule uses it only to keep entitlement open for up to 60 months as an alternative to the age test (line 130 joins the two with 'or'), so false removes no child's benefit.",
+      "reason": "No concept observes a disappeared child, a rare status. The rule uses it only to keep entitlement open for up to 60 months as an alternative to the age test (be-dg eligibility.yaml line 130 joins the two with 'or'), so false leaves out only a disappeared child of 18 to 24 whom no other branch admits (line 112 keeps such a child entitled up to age 25): a lower bound.",
       "citation": "German-speaking Community decree of 23 April 2018 on family benefits, articles 12 and 13 (german_speaking_community_family_benefits_article_12_13_missing_or_abducted_condition_met); module corpus_citation_path be-dg/statute/moniteur/decret-2018-04-23/2018202523/family-benefits/block-1",
       "new_default": true
     },
@@ -623,7 +625,7 @@
       "input": "german_speaking_community_family_benefits_child_has_base_entitlement",
       "class": "defaulted",
       "value": true,
-      "reason": "The base amount and the five monthly supplements in the amounts module pay only when this flag holds, and no rule ties it to the eligibility module, which decides entitlement and gates the selected amount itself. The default holds the flag so the eligibility gate alone decides which child the scheme pays; false would pay no monthly amount to any child.",
+      "reason": "The base amount and the five monthly supplements in the amounts module pay only when this flag holds, and no rule ties it to the eligibility module, which decides entitlement and gates the selected amount itself. The default holds the flag so the eligibility gate alone decides which child the eligibility-gated amount pays; false would pay no monthly amount to any child. The ungated selected amount, which the amounts binding requests as a component, pays the base to every child its selector admits.",
       "citation": "German-speaking Community decree of 23 April 2018 on family benefits, articles 8 and 38 (german_speaking_community_family_benefits_base_monthly_amount); module corpus_citation_path be-dg/statute/moniteur/decret-2018-04-23/2018202523/family-benefits/block-1",
       "new_default": true
     },
@@ -720,7 +722,7 @@
       "input": "german_speaking_community_family_benefits_government_residence_condition_deemed_met",
       "class": "defaulted",
       "value": false,
-      "reason": "The rule lets this flag stand in for domicile (line 70 joins the two with 'or'), and the module leaves the delegated residence rules as a supplied input. The domicile default (true) already meets Article 6, so the default grants no derogation.",
+      "reason": "The rule lets this flag stand in for domicile (be-dg eligibility.yaml line 70 joins the two with 'or'), and the module leaves the delegated residence rules as a supplied input. The domicile default (true) already meets Article 6, so the default grants no derogation.",
       "citation": "German-speaking Community decree of 23 April 2018 on family benefits, article 6 (german_speaking_community_family_benefits_article_6_residence_condition_met); module corpus_citation_path be-dg/statute/moniteur/decret-2018-04-23/2018202523/family-benefits/block-1",
       "new_default": true
     },
@@ -799,8 +801,8 @@
       "entity": "Child",
       "input": "german_speaking_community_family_benefits_no_current_article_9_entitlement",
       "class": "defaulted",
-      "value": false,
-      "reason": "This flag opens the 12-month Article 10 extension for a young adult whose Article 9 entitlement has lapsed. No concept dates the lapse, so the default keeps the extension shut: a child of 18 to 24 who is not in training gets nothing, a lower bound.",
+      "value": true,
+      "reason": "Only the Article 10 extension branch reads this flag (be-dg eligibility.yaml line 98). The flag can change that branch only for a child of 18 to 24 who has failed the age, disability and training tests above it (lines 89, 92 and 95 of that file) and whose work suspends nothing. That child meets none of Article 9's conditions, so true is the flag's value there. A child in training whose work suspends entitlement also reaches line 98, but the line's own employment test shuts it whatever the flag says. The extension stays shut through article_10_extension_months_used, defaulted to 12.",
       "citation": "German-speaking Community decree of 23 April 2018 on family benefits, articles 9, 10, 11 and 14 (german_speaking_community_family_benefits_article_9_10_age_or_status_condition_met); module corpus_citation_path be-dg/statute/moniteur/decret-2018-04-23/2018202523/family-benefits/block-1; the limit in the same test, german_speaking_community_family_benefits_article_10_extension_months (12), is sourced to 'German-speaking Community family-benefits decree article 10'",
       "new_default": true
     },
@@ -847,7 +849,7 @@
       "input": "flanders_family_benefits_equal_shared_housing",
       "class": "defaulted",
       "value": false,
-      "reason": "The mapping carries no fact on how separated parents share a child's housing. False pays the article 18 supplement whole in the child's family, and it changes nothing while the income default keeps that supplement at zero. A W3 household-composition node should replace it.",
+      "reason": "The mapping carries no fact on how separated parents share a child's housing. False pays the article 18 supplement whole in the child's family, the upper choice, since true halves it (be-vlg amounts.yaml lines 550-552 multiply it by flanders_family_benefits_social_supplement_monthly_amount_scalar_limit, 0.5), and it changes nothing while the income default keeps that supplement at zero. A W3 household-composition node should replace it.",
       "citation": "Flemish decree of 27 April 2018 regulating family-policy allowances, article 18 (flanders_family_benefits_social_supplement_monthly_amount); corpus_citation_path be-vlg/statute/decreet/2018/04/27/2018040369/article/18, recorded on the halving parameter the rule reads (flanders_family_benefits_social_supplement_monthly_amount_scalar_limit), not on the rule",
       "new_default": true
     },
@@ -1051,7 +1053,7 @@
       "input": "flanders_family_benefits_equal_shared_housing",
       "class": "defaulted",
       "value": false,
-      "reason": "The mapping carries no fact on how separated parents share a child's housing. False pays the article 18 supplement whole in the child's family, and it changes nothing while the income default keeps that supplement at zero. A W3 household-composition node should replace it.",
+      "reason": "The mapping carries no fact on how separated parents share a child's housing. False pays the article 18 supplement whole in the child's family, the upper choice, since true halves it (be-vlg amounts.yaml lines 550-552 multiply it by flanders_family_benefits_social_supplement_monthly_amount_scalar_limit, 0.5), and it changes nothing while the income default keeps that supplement at zero. A W3 household-composition node should replace it.",
       "citation": "Flemish decree of 27 April 2018 regulating family-policy allowances, article 18 (flanders_family_benefits_social_supplement_monthly_amount); corpus_citation_path be-vlg/statute/decreet/2018/04/27/2018040369/article/18, recorded on the halving parameter the rule reads (flanders_family_benefits_social_supplement_monthly_amount_scalar_limit), not on the rule",
       "new_default": true
     },
@@ -1313,7 +1315,7 @@
       "input": "wallonia_family_benefits_child_in_qualifying_diploma_training",
       "class": "defaulted",
       "value": false,
-      "reason": "The enrolment concept feeds child_in_qualifying_courses_or_stage, and no concept binding separately records diploma training. Off, so this route into the 21-to-24 window stays closed: a lower bound on spending.",
+      "reason": "No concept binding records diploma training separately. False closes this route into the 21-to-24 window only for a child whom the enrolment fact behind wallonia_family_benefits_child_in_qualifying_courses_or_stage doesn't count, since be-wal eligibility.yaml line 110 joins the two with 'or': a lower bound.",
       "citation": "Walloon family-benefits decree article 5 age and status windows (wallonia_family_benefits_article_5_age_or_status_condition_met); corpus_citation_path be-wal/statute/decret/2018/02/08/2018201006/article/5",
       "new_default": true
     },
@@ -1716,8 +1718,8 @@
       "entity": "Child",
       "input": "belgium_family_benefits_region",
       "class": "defaulted",
-      "value": 0,
-      "reason": "The code picks the regional scheme whose amount the bridge returns: 0 Flanders, 1 Brussels, 2 Wallonia, 3 the German-speaking Community, and any other value returns 0. One constant can describe one region's children only, so 0 holds only while the bridge's selector admits children domiciled in the Dutch language region; a W3 region node from NIS geography will replace it with each child's own code.",
+      "value": 99,
+      "reason": "The code picks the regional scheme whose amount the bridge returns: 0 Flanders, 1 Brussels, 2 Wallonia, 3 the German-speaking Community, and any other value returns 0. One constant can't give each child its own region, so the default is 99, the out-of-range code the module's tests use: the bridge returns 0 for every child under any selector, a lower bound that also keeps the bridge from paying a child whom a regional binding already pays. A W3 region node from NIS geography will replace it with each child's own code.",
       "citation": "No legal article: the reading rules give their source as 'Regional and community bridge over encoded Belgian family-benefit amount rules' (belgium_family_benefits_selected_monthly_amount) and 'Regional and community bridge over encoded Belgian family-benefit eligibility-gated amount rules' (belgium_family_benefits_eligibility_gated_monthly_amount), and the four code parameters are 'Structural selector' rules. Module-level corpus_citation_path: be-bru/statute/ordonnance/2019/04/25/2019012118/article/4 (the reading rules record none)",
       "new_default": true
     },
@@ -1751,7 +1753,7 @@
       "input": "brussels_family_benefits_child_domiciled_in_brussels_capital_region",
       "class": "defaulted",
       "value": true,
-      "reason": "Article 4, 1\u00b0 requires the child's domicile in the bilingual Brussels-Capital Region. A selector column will admit to this scheme only children domiciled there, so the default describes every child the scheme evaluates. W3's region derivation from NIS geography will supply that selector and replace the default.",
+      "reason": "Article 4, 1\u00b0 requires the child's domicile in the bilingual Brussels-Capital Region. In the routing bridge the Brussels amounts reach a child only through belgium_family_benefits_region, whose default (99) routes no child, so this default changes no result yet. W3's region derivation from NIS geography, which should route to Brussels only children domiciled there, should replace both.",
       "citation": "Brussels family-benefits ordinance article 4, with Article 25 age/status gate (brussels_family_benefits_child_entitlement, eligibility.yaml); the rule records no corpus_citation_path of its own, the module's source_verification gives be-bru/statute/ordonnance/2019/04/25/2019012118/article/4",
       "new_default": true
     },
@@ -1768,7 +1770,7 @@
       "input": "brussels_family_benefits_child_has_belgian_nationality",
       "class": "defaulted",
       "value": true,
-      "reason": "Article 4, 2\u00b0 requires a Belgian child or a foreign child who holds a residence title. No concept binding supplies nationality, and a selector column will admit only children domiciled in Brussels, so the default treats each of them as meeting the condition through this leg.",
+      "reason": "Article 4, 2\u00b0 requires a Belgian child or a foreign child who holds a residence title. No concept binding supplies nationality. In the routing bridge the Brussels amounts reach a child only through belgium_family_benefits_region, whose default (99) routes no child, so this default changes no result yet.",
       "citation": "Brussels family-benefits ordinance article 4, with Article 25 age/status gate (brussels_family_benefits_child_entitlement, eligibility.yaml); the rule records no corpus_citation_path of its own, the module's source_verification gives be-bru/statute/ordonnance/2019/04/25/2019012118/article/4",
       "new_default": true
     },
@@ -1848,7 +1850,7 @@
       "input": "brussels_family_benefits_single_child_without_article_8_9_or_12_supplement",
       "class": "defaulted",
       "value": true,
-      "reason": "No concept binding counts a family's beneficiary children yet, so the default treats every child as the family's only beneficiary child with no supplement, and article 7(a) pays a flat 150. That is a lower bound at ages 0 to 24, where article 7(b) pays 150, 160 or 170, but the rule tests the flag before its over-24 test, so this ungated amount pays 150 above 24 as well and only eligibility.yaml's gated amount drops those children. W3's household-composition node will replace it, together with the beneficiary-child count (defaulted 1).",
+      "reason": "No concept binding counts a family's beneficiary children yet, so the default treats every child as the family's only beneficiary child with no supplement, and article 7(a) pays a flat 150. That is a lower bound at ages 0 to 24, where article 7(b) pays 150, 160 or 170, but the rule tests the flag before its over-24 test, so this ungated amount pays 150 above 24 as well and only eligibility.yaml's gated amount drops those children. While the flag holds, the rule never reaches article 7(b)'s branches, so the encoded brussels_family_benefits_child_enrolled_in_higher_education changes no amount yet. W3's household-composition node will replace it, together with the beneficiary-child count (defaulted 1).",
       "citation": "Brussels ordinance of 25 April 2019 regulating family benefits, article 7 (brussels_family_benefits_article_7_base_monthly_amount, basic_amounts.yaml); the rule records no corpus_citation_path of its own, the module's source_verification gives be-bru/statute/ordonnance/2019/04/25/2019012118/article/7",
       "new_default": true
     },
@@ -1939,7 +1941,7 @@
       "input": "flanders_family_benefits_child_domiciled_in_dutch_language_region",
       "class": "defaulted",
       "value": true,
-      "reason": "Article 8 section 1 item 1 requires domicile in the Dutch-language region for any benefit. The scheme's selector column will admit only children domiciled there, so true describes every child the module evaluates. PR 4b's selector producer, fed by W3's region derivation from NIS geography, should replace it.",
+      "reason": "Article 8 section 1 item 1 requires domicile in the Dutch-language region for any benefit. In the routing bridge the Flemish amounts reach a child only through belgium_family_benefits_region, whose default (99) routes no child, so this default changes no result yet. W3's region derivation from NIS geography, which should route to Flanders only children domiciled there, should replace both.",
       "citation": "Flemish Groeipakket decree article 8 section 1 domicile, residence, disappearance, and abduction conditions (flanders_family_benefits_residence_and_status_condition_met); corpus_citation_path be-vlg/statute/decreet/2018/04/27/2018040369/article/8, recorded on the module (source_verification) and on flanders_family_benefits_child_entitlement, not on this rule",
       "new_default": true
     },
@@ -2059,7 +2061,7 @@
       "input": "flanders_family_benefits_equal_shared_housing",
       "class": "defaulted",
       "value": false,
-      "reason": "The mapping carries no fact on how separated parents share a child's housing. False pays the article 18 supplement whole in the child's family, and it changes nothing while the income default keeps that supplement at zero. A W3 household-composition node should replace it.",
+      "reason": "The mapping carries no fact on how separated parents share a child's housing. False pays the article 18 supplement whole in the child's family, the upper choice, since true halves it (be-vlg amounts.yaml lines 550-552 multiply it by flanders_family_benefits_social_supplement_monthly_amount_scalar_limit, 0.5), and it changes nothing while the income default keeps that supplement at zero. A W3 household-composition node should replace it.",
       "citation": "Flemish decree of 27 April 2018 regulating family-policy allowances, article 18 (flanders_family_benefits_social_supplement_monthly_amount); corpus_citation_path be-vlg/statute/decreet/2018/04/27/2018040369/article/18, recorded on the halving parameter the rule reads (flanders_family_benefits_social_supplement_monthly_amount_scalar_limit), not on the rule",
       "new_default": true
     },
@@ -2158,8 +2160,8 @@
       "entity": "Child",
       "input": "german_speaking_community_family_benefits_article_10_extension_months_used",
       "class": "defaulted",
-      "value": 0,
-      "reason": "No concept counts the months a young adult has drawn under the Article 10 extension, so the default sets none used. The extension path stays shut through no_current_article_9_entitlement, which defaults to false; this value alone would leave it open (0 < 12).",
+      "value": 12,
+      "reason": "No concept counts the months a young adult has drawn under the Article 10 extension. The default treats all 12 as drawn, so the extension branch (be-dg eligibility.yaml line 98) stays shut, since 12 < 12 is false, whatever no_current_article_9_entitlement says: a child of 18 to 24 who is not in training gets nothing, a lower bound. A node that counts the months drawn should replace it.",
       "citation": "German-speaking Community decree of 23 April 2018 on family benefits, articles 9, 10, 11 and 14 (german_speaking_community_family_benefits_article_9_10_age_or_status_condition_met); module corpus_citation_path be-dg/statute/moniteur/decret-2018-04-23/2018202523/family-benefits/block-1; the limit it is compared with, german_speaking_community_family_benefits_article_10_extension_months (12), is sourced to 'German-speaking Community family-benefits decree article 10'",
       "new_default": true
     },
@@ -2169,7 +2171,7 @@
       "input": "german_speaking_community_family_benefits_benefit_year",
       "class": "defaulted",
       "value": 2026,
-      "reason": "The benefit year is the query year, which METHOD-CARD-BE BE-MC0 sets at 2026. With 2026 the 2025-2027 indexation freeze applies and the annual supplement takes the Article 15 amount, not the 2025 override of 62.55 EUR. The query-period node will replace the constant, which must move with the policy year.",
+      "reason": "The benefit year is the query year, which METHOD-CARD-BE's row BE-MC0 proposes as 2026, pending a ruling. With 2026 the 2025-2027 indexation freeze applies and the annual supplement takes the Article 15 amount, not the 2025 override of 62.55 EUR. The query-period node will replace the constant, which must move with the policy year.",
       "citation": "German-speaking Community program decree of 22 December 2025, article 17 amending article 117.3 (german_speaking_community_family_benefits_indexation_freeze_applies), corpus_citation_path be-dg/statute/moniteur/decret-2025-12-22/2026001207/program-decree-2025-ii-family-benefits/block-1 (recorded by the parameter rules german_speaking_community_family_benefits_indexation_freeze_start_year and _end_year); German-speaking Community decree of 23 April 2018 on family benefits, articles 15, 16 and 38, and 22 December 2025 program decree article 18 (german_speaking_community_family_benefits_annual_supplement_amount)",
       "new_default": true
     },
@@ -2189,7 +2191,7 @@
       "input": "german_speaking_community_family_benefits_child_abducted",
       "class": "defaulted",
       "value": false,
-      "reason": "No concept observes abduction, a rare status. The abducted-child path needs age under 18 (line 117), where the age test at line 89 already holds, and line 130 joins the two with 'or', so the flag cannot change statutory_base_entitlement.",
+      "reason": "No concept observes abduction, a rare status. The abducted-child path needs age under 18 (be-dg eligibility.yaml line 117), where the age test at line 89 of that file already holds, and its line 130 joins the two with 'or', so the flag cannot change statutory_base_entitlement.",
       "citation": "German-speaking Community decree of 23 April 2018 on family benefits, articles 12 and 13 (german_speaking_community_family_benefits_article_12_13_missing_or_abducted_condition_met); module corpus_citation_path be-dg/statute/moniteur/decret-2018-04-23/2018202523/family-benefits/block-1",
       "new_default": true
     },
@@ -2206,7 +2208,7 @@
       "input": "german_speaking_community_family_benefits_child_disappeared",
       "class": "defaulted",
       "value": false,
-      "reason": "No concept observes a disappeared child, a rare status. The rule uses it only to keep entitlement open for up to 60 months as an alternative to the age test (line 130 joins the two with 'or'), so false removes no child's benefit.",
+      "reason": "No concept observes a disappeared child, a rare status. The rule uses it only to keep entitlement open for up to 60 months as an alternative to the age test (be-dg eligibility.yaml line 130 joins the two with 'or'), so false leaves out only a disappeared child of 18 to 24 whom no other branch admits (line 112 keeps such a child entitled up to age 25): a lower bound.",
       "citation": "German-speaking Community decree of 23 April 2018 on family benefits, articles 12 and 13 (german_speaking_community_family_benefits_article_12_13_missing_or_abducted_condition_met); module corpus_citation_path be-dg/statute/moniteur/decret-2018-04-23/2018202523/family-benefits/block-1",
       "new_default": true
     },
@@ -2216,7 +2218,7 @@
       "input": "german_speaking_community_family_benefits_child_domiciled_in_german_language_region",
       "class": "defaulted",
       "value": true,
-      "reason": "Article 6 requires domicile in the German-language region for any benefit. The selector column will admit to this scheme only children domiciled there, so the default describes every child the scheme sees. The W3 region node (NIS geography) will replace it.",
+      "reason": "Article 6 requires domicile in the German-language region for any benefit. In the routing bridge the German-speaking Community's amounts reach a child only through belgium_family_benefits_region, whose default (99) routes no child, so this default changes no result yet. W3's region derivation from NIS geography, which should route to the Community only children domiciled there, should replace both.",
       "citation": "German-speaking Community decree of 23 April 2018 on family benefits, article 6 (german_speaking_community_family_benefits_article_6_residence_condition_met); module corpus_citation_path be-dg/statute/moniteur/decret-2018-04-23/2018202523/family-benefits/block-1",
       "new_default": true
     },
@@ -2226,7 +2228,7 @@
       "input": "german_speaking_community_family_benefits_child_has_base_entitlement",
       "class": "defaulted",
       "value": true,
-      "reason": "The base amount and the five monthly supplements in the amounts module pay only when this flag holds, and no rule ties it to the eligibility module, which decides entitlement and gates the selected amount itself. The default holds the flag so the eligibility gate alone decides which child the scheme pays; false would pay no monthly amount to any child.",
+      "reason": "The base amount and the five monthly supplements in the amounts module pay only when this flag holds, and no rule ties it to the eligibility module, which decides entitlement and gates the selected amount itself. The default holds the flag so the eligibility gate alone decides which child the eligibility-gated amount pays; false would pay no monthly amount to any child. The ungated selected amount, which the amounts binding requests as a component, pays the base to every child its selector admits.",
       "citation": "German-speaking Community decree of 23 April 2018 on family benefits, articles 8 and 38 (german_speaking_community_family_benefits_base_monthly_amount); module corpus_citation_path be-dg/statute/moniteur/decret-2018-04-23/2018202523/family-benefits/block-1",
       "new_default": true
     },
@@ -2323,7 +2325,7 @@
       "input": "german_speaking_community_family_benefits_government_residence_condition_deemed_met",
       "class": "defaulted",
       "value": false,
-      "reason": "The rule lets this flag stand in for domicile (line 70 joins the two with 'or'), and the module leaves the delegated residence rules as a supplied input. The domicile default (true) already meets Article 6, so the default grants no derogation.",
+      "reason": "The rule lets this flag stand in for domicile (be-dg eligibility.yaml line 70 joins the two with 'or'), and the module leaves the delegated residence rules as a supplied input. The domicile default (true) already meets Article 6, so the default grants no derogation.",
       "citation": "German-speaking Community decree of 23 April 2018 on family benefits, article 6 (german_speaking_community_family_benefits_article_6_residence_condition_met); module corpus_citation_path be-dg/statute/moniteur/decret-2018-04-23/2018202523/family-benefits/block-1",
       "new_default": true
     },
@@ -2402,8 +2404,8 @@
       "entity": "Child",
       "input": "german_speaking_community_family_benefits_no_current_article_9_entitlement",
       "class": "defaulted",
-      "value": false,
-      "reason": "This flag opens the 12-month Article 10 extension for a young adult whose Article 9 entitlement has lapsed. No concept dates the lapse, so the default keeps the extension shut: a child of 18 to 24 who is not in training gets nothing, a lower bound.",
+      "value": true,
+      "reason": "Only the Article 10 extension branch reads this flag (be-dg eligibility.yaml line 98). The flag can change that branch only for a child of 18 to 24 who has failed the age, disability and training tests above it (lines 89, 92 and 95 of that file) and whose work suspends nothing. That child meets none of Article 9's conditions, so true is the flag's value there. A child in training whose work suspends entitlement also reaches line 98, but the line's own employment test shuts it whatever the flag says. The extension stays shut through article_10_extension_months_used, defaulted to 12.",
       "citation": "German-speaking Community decree of 23 April 2018 on family benefits, articles 9, 10, 11 and 14 (german_speaking_community_family_benefits_article_9_10_age_or_status_condition_met); module corpus_citation_path be-dg/statute/moniteur/decret-2018-04-23/2018202523/family-benefits/block-1; the limit in the same test, german_speaking_community_family_benefits_article_10_extension_months (12), is sourced to 'German-speaking Community family-benefits decree article 10'",
       "new_default": true
     },
@@ -2521,7 +2523,7 @@
       "input": "wallonia_family_benefits_child_in_qualifying_diploma_training",
       "class": "defaulted",
       "value": false,
-      "reason": "The enrolment concept feeds child_in_qualifying_courses_or_stage, and no concept binding separately records diploma training. Off, so this route into the 21-to-24 window stays closed: a lower bound on spending.",
+      "reason": "No concept binding records diploma training separately. False closes this route into the 21-to-24 window only for a child whom the enrolment fact behind wallonia_family_benefits_child_in_qualifying_courses_or_stage doesn't count, since be-wal eligibility.yaml line 110 joins the two with 'or': a lower bound.",
       "citation": "Walloon family-benefits decree article 5 age and status windows (wallonia_family_benefits_article_5_age_or_status_condition_met); corpus_citation_path be-wal/statute/decret/2018/02/08/2018201006/article/5",
       "new_default": true
     },
@@ -2551,7 +2553,7 @@
       "input": "wallonia_family_benefits_child_legal_domicile_in_french_language_region",
       "class": "defaulted",
       "value": true,
-      "reason": "Article 4 asks for a legal domicile in the French-language region. A selector column will admit to the Walloon scheme only children domiciled there, so the default describes those children; the selector must follow the language region, which leaves out the German-language municipalities of the Walloon Region. W3's region node, from NIS geography, will replace the default.",
+      "reason": "Article 4 asks for a legal domicile in the French-language region. In the routing bridge the Walloon amounts reach a child only through belgium_family_benefits_region, whose default (99) routes no child, so this default changes no result yet. W3's region derivation from NIS geography, which should route to Wallonia only children domiciled in the French-language region (not the German-language municipalities of the Walloon Region), should replace both.",
       "citation": "Walloon family-benefits decree article 4 residence, status, and supranational conditions (wallonia_family_benefits_article_4_residence_and_status_condition_met); corpus_citation_path be-wal/statute/decret/2018/02/08/2018201006/article/4",
       "new_default": true
     },

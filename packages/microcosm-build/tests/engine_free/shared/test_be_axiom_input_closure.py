@@ -406,6 +406,17 @@ class TestClosure:
                 )
         assert {name: found for name, found in values.items() if len(found) > 1} == {}
 
+    def test_the_routing_region_default_routes_no_child(self) -> None:
+        # The bridge returns a scheme's amount for codes 0 to 3 and 0 for any
+        # other code. A default inside 0 to 3 would pay every child the bridge
+        # runs on that one scheme's amount, whatever the child's region.
+        closure = InputClosure.from_dict(_closure_payload())
+        (entry,) = [
+            e for e in closure.entries if e.input == "belgium_family_benefits_region"
+        ]
+        assert entry.closure_class is ClosureClass.DEFAULTED
+        assert type(entry.value) is int and entry.value not in (0, 1, 2, 3)
+
     def test_every_engine_line_citation_is_pinned_at_the_surface_engine(self) -> None:
         # A line citation into axiom-rules-engine names one file version only
         # when a pin records that file at input_surface.engine's commit.
