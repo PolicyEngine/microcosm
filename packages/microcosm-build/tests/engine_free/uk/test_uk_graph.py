@@ -379,12 +379,25 @@ def _imported_module_names(module) -> set[str]:
     return names
 
 
+#: Stages that bind frs_spine for names that count nothing: its tab reader, id
+#: normaliser and interview dates. frs_spine imports receipt_counts for its own
+#: receipts since microcosm#1095, but these stages' modules import no counting
+#: module and their walks reach none, which the test below checks, so they need
+#: not bind them, and frs_employment stays the next test's control
+#: (microcosm#931; the rule's name-only exemption, as for the copy-id table).
+_COUNTING_NAME_ONLY_STAGES = frozenset(
+    {"frs_education", "frs_employment", "frs_legacy_proxies", "frs_relationships"}
+)
+
+
 def test_every_stage_that_counts_by_lineage_binds_the_counting_modules() -> None:
     """An edit to how a floor counts moves the hash of every stage that counts.
 
     ``source_hash`` does not follow imports, so the receipts' counting rules,
     the shared lineage reader and the UK's lineage declaration are bound into
-    each stage whose module or helpers import one of them (microcosm#931).
+    each stage whose module or helpers import one of them (microcosm#931),
+    save the stages that bind such a helper for names that count nothing
+    (``_COUNTING_NAME_ONLY_STAGES``), whose walks reach no counting module.
     """
     from microcosm.build.uk_runtime import graph_kernels
 
@@ -400,7 +413,17 @@ def test_every_stage_that_counts_by_lineage_binds_the_counting_modules() -> None
             )
         )
     }
-    assert set(graph_kernels._COUNTING_STAGES) == expected
+    assert _COUNTING_NAME_ONLY_STAGES <= expected
+    assert set(graph_kernels._COUNTING_STAGES) == (
+        expected - _COUNTING_NAME_ONLY_STAGES
+    )
+    counting_modules = {module.__name__ for module in graph_kernels._COUNTING_MODULES}
+    walks = _stage_walks()
+    for stage in sorted(_COUNTING_NAME_ONLY_STAGES):
+        module = graph_kernels._stage_module(stage)
+        assert not counting & _imported_module_names(module), stage
+        _, _, walk = walks[stage]
+        assert not counting_modules & set(walk.reach), stage
 
 
 def test_counting_module_changes_invalidate_every_stage_that_counts(monkeypatch):
@@ -473,6 +496,7 @@ _COPY_ID_TABLE_NAME_ONLY_STAGES = frozenset(
         "spi_benefit_coherence",
         "uc_capital_coherence",
         "uc_deduction_attributes",
+        "uc_limited_capability",
         "uc_take_up",
         "was_lisa",
         "was_wealth",
@@ -1446,6 +1470,21 @@ _KERNEL_UNBOUND_NAMES: dict[tuple[str, str], str] = {
         "(full_measure._engine_block_frames; checked); its early refusal of a "
         "spine of another clone count reads the bound sidecar's count, not "
         "the columns"
+    ),
+    ("microcosm.frame.concepts", "SOURCE_HOUSEHOLD_ID_COLUMN"): (
+        "names the source household column, CopyLineage's default source, "
+        "which the calibrated gates and the national gates read to count "
+        "true sources (through receipt_counts.SOURCE_HOUSEHOLD_COLUMN and "
+        "household_lineage.UK_COPY_LINEAGE, which both keys hash; "
+        "microcosm#1095). Its value is a column's name: a rename changes "
+        "which column the shared reader looks up, never what a count "
+        "computes, and the reader refuses a frame without the column it "
+        "names (source_lineage.record_sources). The column's bytes are the "
+        "frame's, which the gates' keys chain on: on a composed spine "
+        "geographic_expand's, which writes and declares the column (the "
+        "stage table's reason), and on a bound one the checkpoint's. So no "
+        "gate can replay a count of another column under a renamed constant "
+        "(microcosm#931)"
     ),
 }
 #: Where the kernel rule stops, each with why a kernel that names the

@@ -190,24 +190,27 @@ def uk_terminal_only_code_hash() -> str:
     to one of these modules re-keys the calibrated gates and what follows
     them, and re-solves too wherever a node upstream of the solve hashes the
     module, as a spine stage, a target or problem kernel, a population kernel
-    or the dense solve itself does for most of them. Eight never re-solve, on
+    or the dense solve itself does for most of them. Nine never re-solve, on
     any line: ``high_value_home_gates``, ``microcosm.diagnostics``' catalogs
     and schema, ``calibrate.hierarchy_labels``, the target loss attribution,
-    ``input_mass``, ``cgt_projection`` and ``source_runtime``.
-    ``uk_runtime.diagnostics`` re-solves only the national line, whose problem
-    kernel hashes it. ``calibration_run`` and ``release_certification``
-    re-solve only on a bound spine, whose kernel hashes both, and seven that
-    upstream of the solve only the spine's stage and gate nodes hash re-solve
-    only in the in-graph build (``donor_uprating``, ``etb_services``,
-    ``etb_vat``, ``frs_take_up``, ``hmrc_capital_gains``,
+    ``input_mass``, ``cgt_projection``, ``source_runtime`` and
+    ``cut_reference``. ``uk_runtime.diagnostics`` re-solves only the national
+    line, whose problem kernel hashes it. ``calibration_run`` and
+    ``release_certification`` re-solve only on a bound spine, whose kernel
+    hashes both, and nine that upstream of the solve only the spine's stage
+    and gate nodes hash re-solve only in the in-graph build
+    (``donor_uprating``, ``etb_services``, ``etb_vat``, ``frs_take_up``,
+    ``hmrc_capital_gains``, ``household_lineage``, ``source_lineage``,
     ``take_up_contract``, ``uc_capital_coherence``). That is the terminal
     branch of the full gate kernel's run, and what the terminal gates compute
     through beyond the preflight's:
 
     - the high-value homes evidence, on the calibrated pool alone
-      (``high_value_home_gates``, with the disclosure floor it reads from
-      ``receipt_counts`` and the tenure categories behind its owner mask,
-      ``tenure_constants``). ``high_value_homes`` itself is in the kernel's
+      (``high_value_home_gates``, with the tenure categories behind its
+      owner mask, ``tenure_constants``; the disclosure floor it reads from
+      ``receipt_counts`` is in the kernel's hash, since both phases' coverage
+      gate counts true sources through it, microcosm#1095).
+      ``high_value_homes`` itself is in the kernel's
       hash, since the preflight's target-surface evidence reads its metric
       names, and the target kernels hash it too, so an edit to it re-solves:
       a disclosure fix between two builds that must reuse the solve belongs
@@ -227,7 +230,11 @@ def uk_terminal_only_code_hash() -> str:
       gate context with (``support_floor``, ``etb_services``,
       ``cgt_projection``, ``donor_uprating``, and the runner's admin totals
       and projection artifact, ``calibration_run``), the input-mass reference
-      (``weighted_integrity``) and the fit-weight records it rehydrates
+      (``weighted_integrity``), whose candidate carriers it counts in true
+      source households through the shared lineage reader on the UK's copy
+      lineage (``source_lineage``, ``household_lineage``) and whose signed
+      exclusions it keys by the cut's reference releases (``cut_reference``;
+      microcosm#1095), and the fit-weight records it rehydrates
       (``release_certification``);
     - the terminal gates' evaluators: the input-mass parity
       (``input_mass``), the CGT projection fence's conditioning facts
@@ -251,11 +258,12 @@ def uk_terminal_only_code_hash() -> str:
     import microcosm.diagnostics.catalogs as diagnostics_catalogs
     import microcosm.diagnostics.schema as diagnostics_schema
 
-    from .. import chronicle_epoch, input_mass
+    from .. import chronicle_epoch, input_mass, source_lineage
     from . import (
         calibration_run,
         cgt_projection,
         chronicle_feed,
+        cut_reference,
         dfe_spring_term,
         diagnostics,
         domestic_energy_targets,
@@ -267,11 +275,11 @@ def uk_terminal_only_code_hash() -> str:
         graph_population,
         high_value_home_gates,
         hmrc_capital_gains,
+        household_lineage,
         lcfs_consumption,
         ledger_fact_vendoring,
         local_authority_input,
         local_rowwise,
-        receipt_counts,
         release_certification,
         rowwise_geography,
         source_runtime,
@@ -300,6 +308,9 @@ def uk_terminal_only_code_hash() -> str:
         rowwise_geography,
         release_certification,
         weighted_integrity,
+        source_lineage,
+        household_lineage,
+        cut_reference,
         input_mass,
         calibration_run,
         etb_services,
@@ -313,7 +324,6 @@ def uk_terminal_only_code_hash() -> str:
         frs_take_up,
         take_up_contract,
         dfe_spring_term,
-        receipt_counts,
         uc_capital_coherence,
         tenure_constants,
         source_runtime,
