@@ -54,7 +54,8 @@ candidate bytes (C1's digest bindings).
   `microcosm-publish-release-build` publishes a build, and only that command
   makes one current (`--promote`, or `--make-current` at publication). Since
   microcosm#1571 merged on 2026-11-11, the UK national, dense and local-area
-  releases and the five US releases publish only this way.
+  releases and the US releases publish only this way (six since
+  microcosm#922 added `microcosm-us-2024-local-annual`).
 - **One registry.** `microcosm.data.registry` names every file any consumer
   serves, and policyengine.py's bundle mirrors it.
 - **Publishing refuses** any release that does not conform (from 2026-11-06, in
@@ -148,13 +149,14 @@ the local release manifest names.
 The validator reads the release's name from the directory. For a release that
 publishes each build into its own folder, the directory carries the release's
 name, such as `microcosm-us-2024-national`. `publishes_to_build_folder` lists
-those releases: the UK national, dense and local-area releases and the five US
+those releases: the UK national, dense and local-area releases and the six US
 releases in `US_RELEASES`. For a build in the tagged layout the directory
 carries the build id, such as `populace-us-2024-<sha>-<date>`. Before it
 dispatches, the validator refuses two kinds of misplaced build.
 `_refuse_misplaced_annual_years` refuses a build-folder build that declares
-annual years outside `microcosm-us-2024-annual`, and a build of that release
-that declares none. `_refuse_a_receipt_donor_that_is_not_an_enrichment`
+annual years outside the two annual releases (`US_ANNUAL_BASE_RELEASES`:
+`microcosm-us-2024-annual` and `microcosm-us-2024-local-annual`), and a build
+of either that declares none. `_refuse_a_receipt_donor_that_is_not_an_enrichment`
 refuses a build of `microcosm-us-2024-receipt-donor` that declares any release
 type but a source enrichment. The validator then dispatches in three steps:
 
@@ -171,17 +173,26 @@ type but a source enrichment. The validator then dispatches in three steps:
    build, or by build id and tag for a parent that kept only its tag. An absent
    `release_type`, or `calibration`, means a calibration build; the validator
    refuses any other value. When the manifest declares an annual-projection
-   extension, `validate_annual_projection_extension` checks it next.
+   extension, `validate_annual_projection_extension` checks it next. For a
+   build of `microcosm-us-2024-local-annual` it takes the local-area branch:
+   the base is a build of `microcosm-us-2024-local`, the release claims no
+   default dataset, the base-year H5 is the one microdata artifact that is
+   not a projected year, the projected years need not be consecutive, and
+   the H5s are read in their fixed-format layout through h5py.
 2. **Dataset role.** `dataset_role` is `national_default` (also when absent) or
    `non_default_local_area`. A local-area release goes to
    `_validate_local_area_release_dir`, or to `_validate_uk_dense_release_dir`
-   when its name is the UK dense release's.
+   when its name is the UK dense release's. A local-annual build is in the
+   local-area role: that validator accepts its base H5 plus one
+   `microcosm_us_<year>_acs_local.h5` per projected year in place of the one
+   microdata artifact, and holds the carried stored-input and SPM gates to
+   the base H5.
 3. **The release name.** Everything else keys on the directory name:
    - `required_release_files(release_id)` adds `us_source_coverage.json` for a
      US release, `terminal_gates.json` for a UK exact-k id
      (`populace-uk-<year>-<tier>-k<N>`), and `release_certification.json` for
      the literal `microcosm-uk-2024-25-national`. `is_us_release` decides the
-     first: it accepts the five `US_RELEASES` names and any `populace-us-`
+     first: it accepts the six `US_RELEASES` names and any `populace-us-`
      build id. For any other name `required_release_files` returns the three
      base files: `build_manifest.json`, `release_manifest.json` and
      `calibration_diagnostics.json`. The UK dense and local-area names are
@@ -315,7 +326,7 @@ both:
   weakest contract by default.
 - **No other country can publish into a build folder.**
   `publishes_to_build_folder` names only the UK national, dense and local-area
-  releases and the five US releases. `microcosm-publish-release-build` refuses
+  releases and the six US releases. `microcosm-publish-release-build` refuses
   any other name, for publication and promotion alike: its `main` checks
   `publishes_to_build_folder` before anything else, and `build_folder_identity`
   refuses the same names inside `publish_release_build` and
@@ -835,7 +846,7 @@ either. No publication command reads a Logbook row.
 
 #### Today
 
-The UK national, dense and local-area releases and the five US releases
+The UK national, dense and local-area releases and the six US releases
 publish each build into its own folder, `releases/<release>/<build>/`. The
 repository's `releases.json` records each release's builds and names the
 current one. For those releases the `latest*.json` pointer files survive as
@@ -847,7 +858,7 @@ repository that has no `releases.json`.
   `microcosm-uk-2024-25-national`, the dense release
   `microcosm-uk-2024-25-dense`, each local-area release
   `microcosm-uk-2024-25-local-k<N>` that a UK registry entry names as its
-  `release`, and the five US releases in `US_RELEASES`. The function reads
+  `release`, and the six US releases in `US_RELEASES`. The function reads
   the registry on each call. `validate_release_dir` and
   `validate_evidence_release_dir` refuse every layout of a local-area name
   that no entry names, and neither publisher takes one (microcosm#1586).
@@ -855,10 +866,12 @@ repository that has no `releases.json`.
   calibrated builds, SPM source enrichments, compatibility recertifications
   and exact-k builds. `microcosm-us-2024-local` holds the ACS local-area
   builds, `microcosm-us-2024-receipt-donor` the reported-receipt source
-  enrichments, `microcosm-us-2024-evidence` the evidence-tier builds and
-  `microcosm-us-2024-annual` the annual projections. `US_RELEASES` gives each
-  its role in `releases.json`: `local_area` for the local release and
-  `national` for the other four. `RELEASE_ROLES` maps a build's
+  enrichments, `microcosm-us-2024-evidence` the evidence-tier builds,
+  `microcosm-us-2024-annual` the annual projections of a national build and
+  `microcosm-us-2024-local-annual` the annual projections of a local-area
+  build (the County Files, microcosm#922). `US_RELEASES` gives each its role
+  in `releases.json`: `local_area` for the local and local-annual releases
+  and `national` for the other four. `RELEASE_ROLES` maps a build's
   `dataset_role` onto those two roles. The registry reads the June 2023 UK
   build as the one build of release `populace-uk-2023`, which
   `publishes_to_build_folder` does not name, so that release takes no new
@@ -1019,7 +1032,8 @@ work.
   The lines in service on 2026-11-12:
   - UK: `national` and `dense`, and a local-area line `local-k<N>` for each
     `N` that the registry names;
-  - US: `national`, `local`, `receipt-donor`, `evidence` and `annual`.
+  - US: `national`, `local`, `receipt-donor`, `evidence`, `annual` and
+    `local-annual`.
 
   `evidence` is a registered line on the retire list. A UK local-area release
   takes the name `microcosm-uk-2024-25-local-k<N>` for each `N` that the
@@ -1033,7 +1047,7 @@ work.
   facts, not rules: a UK national build takes its calibration attempt's id
   (`uk-frs-calibration-attempt-<stamp>-<hex8>`), a UK dense build takes the
   `build_id` of its Logbook row, a US build takes a `populace-us-2024-…` id,
-  and an annual build takes `<base build>-annual-<stamp>-<hex8>`.
+  and an annual or local-annual build takes `<base build>-annual-<stamp>-<hex8>`.
 - **Every country and line publishes into build folders.** A new country's
   release joins `publishes_to_build_folder` and the registry in the pull
   request that authorizes its first publication. The gaps on 2026-11-12:

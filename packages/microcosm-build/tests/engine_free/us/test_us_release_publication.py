@@ -560,3 +560,87 @@ def test_the_command_takes_the_incomplete_reform_validation_override(
     else:
         assert exit_code == 1
         assert "--allow-incomplete-reform-validation" in error_output
+
+
+class _LocalBaseOnTheHub:
+    """A Hub serving a local-area base build's published release manifest."""
+
+    def __init__(self, directory, manifest):
+        self.directory = directory
+        self.manifest = manifest
+        self.requests = []
+
+    def hf_hub_download(self, *, repo_id, filename, repo_type, revision):
+        import json
+
+        self.requests.append((repo_id, filename, repo_type, revision))
+        local = self.directory / filename
+        local.parent.mkdir(parents=True, exist_ok=True)
+        local.write_text(json.dumps(self.manifest))
+        return str(local)
+
+
+@pytest.mark.parametrize("published_sha256", [None, "d" * 64])
+def test_a_local_annual_build_is_handed_over_only_once_its_local_base_is_published(
+    tmp_path, monkeypatch, published_sha256
+) -> None:
+    """A build of microcosm-us-2024-local-annual (microcosm#922) is an annual
+    build too: before the hand-over, the publisher reads its base build's
+    manifest from releases/microcosm-us-2024-local/<base build>/ and requires
+    the base-year H5 there."""
+    from test_support.microcosm_data.local_annual import (
+        LOCAL_BUILD,
+        LOCAL_DATASET_KEY,
+        local_annual_build_folder_of,
+        local_build_folder,
+        read_json,
+    )
+
+    root = tmp_path / "package"
+    local = local_build_folder(root)
+    published = read_json(local / "release_manifest.json")
+    if published_sha256 is not None:
+        published["artifacts"][LOCAL_DATASET_KEY]["sha256"] = published_sha256
+    release_dir = local_annual_build_folder_of(local, root)
+    hub = _LocalBaseOnTheHub(tmp_path / "hub", published)
+    handed_over = []
+    monkeypatch.setattr(
+        release_publication, "_refuse_pointer_files", lambda _repo: None
+    )
+    monkeypatch.setattr(
+        release_publication,
+        "prepare_build_folder_release",
+        lambda path, **_kwargs: _prepared(path),
+    )
+    monkeypatch.setattr(
+        release_publication,
+        "publication_request",
+        lambda prepared, **_kwargs: prepared,
+    )
+    monkeypatch.setattr(release_publication, "_hub_api", lambda: hub)
+    monkeypatch.setattr(
+        release_publication,
+        "_hand_over",
+        lambda change, **_kwargs: handed_over.append(change) or "handed over",
+    )
+
+    def publish():
+        return release_publication.publish_release_build(
+            release_dir, artifact_root=root, client=object()
+        )
+
+    if published_sha256 is None:
+        assert publish() == "handed over"
+        assert len(handed_over) == 1
+    else:
+        with pytest.raises(ValueError, match="published base build's bytes"):
+            publish()
+        assert handed_over == []
+    assert hub.requests == [
+        (
+            _US_REPOSITORY,
+            f"releases/microcosm-us-2024-local/{LOCAL_BUILD}/release_manifest.json",
+            "dataset",
+            "main",
+        )
+    ]
