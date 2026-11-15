@@ -353,6 +353,34 @@ def test_validation_design_refuses_a_zero_state_denominator_and_bad_brackets() -
         county.county_validation_design(rows, {1001: 1.0})
 
 
+@pytest.mark.parametrize("cached_parts", range(8))
+@pytest.mark.parametrize("facts_attribute", ["absent", "none"])
+def test_attach_surface_refuses_unprepared_facts_without_reopening(
+    monkeypatch, tmp_path, cached_parts, facts_attribute
+) -> None:
+    """P3-4: no combination of cached derived surfaces may reopen the file."""
+    county = _county()
+    surface = SimpleNamespace()
+    if facts_attribute == "none":
+        surface.county_facts = None
+    for bit, name in enumerate(
+        ("county_surface", "acs_households", "county_validation_design")
+    ):
+        if cached_parts & (1 << bit):
+            setattr(surface, name, SimpleNamespace())
+
+    def unexpected_load(_args):
+        pytest.fail("attach_surface reopened the county facts file")
+
+    monkeypatch.setattr(county, "_load_county_facts", unexpected_load)
+    args = SimpleNamespace(soi_mode="state_county", checkpoint_dir=tmp_path / "run")
+    with pytest.raises(SystemExit, match="prepare_run did not load the county facts"):
+        county.attach_surface(surface, None, None, None, args)
+    report = json.loads((args.checkpoint_dir / county.SURFACE_FILENAME).read_text())
+    assert report["status"] == "refused"
+    assert "prepare_run did not load the county facts" in report["error"]
+
+
 # --- ACS households (trained) -------------------------------------------------
 
 

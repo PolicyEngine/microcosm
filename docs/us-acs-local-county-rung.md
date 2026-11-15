@@ -292,7 +292,9 @@ holds about 0.9 GB of rows, measured apart from importing the US runtime. The
 rows stay on the surface for the rest of the materialize stage; today only the
 SOI county split, the ACS households family and the validation design read
 them, all in `prepare_run`. No county step reads `--feed`, and nothing reopens
-the county facts file after `prepare_run`. The
+the county facts file after `prepare_run`. If the prepared facts are missing,
+`attach_surface` records a refusal in `county_surface.json` and stops, even
+when derived surfaces are cached. The
 run identity and `materialize_rss.json` record the county facts receipt under
 `county_facts`. The refresh recipe carries both flags. It names placeholder files
 (`<county-facts.jsonl>`, like `--feed`'s) and never the build machine's path;

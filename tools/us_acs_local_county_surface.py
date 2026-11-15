@@ -2565,19 +2565,26 @@ def attach_surface(surface, materialized, frame, populations, args):
         return materialized.compiled_specs, materialized.matrix
     column = getattr(args, "county_column", COUNTY_COLUMN)
     facts = getattr(surface, "county_facts", None)
+    if facts is None:
+        message = (
+            "prepare_run did not load the county facts; refusing to reopen "
+            "the county facts file during attach_surface. Re-run --stage materialize."
+        )
+        args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        (args.checkpoint_dir / SURFACE_FILENAME).write_text(
+            json.dumps({"status": "refused", "error": message})
+        )
+        raise SystemExit(message)
     county = getattr(surface, "county_surface", None)
     if county is None:
-        facts = facts or _load_county_facts(args)
         county = state_county_soi_surface(
             materialized.compiled_specs, facts.rows, populations["county"]
         )
     acs = getattr(surface, "acs_households", None)
     if acs is None:
-        facts = facts or _load_county_facts(args)
         acs = acs_household_surface(facts.rows, populations["county"])
     design = getattr(surface, "county_validation_design", None)
     if design is None:
-        facts = facts or _load_county_facts(args)
         design = county_validation_design(facts.rows, populations["county"])
     households = frame.table("household")
     matrix = split_state_rows(
