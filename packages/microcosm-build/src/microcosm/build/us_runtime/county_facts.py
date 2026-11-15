@@ -5,7 +5,7 @@ AGI, Census PEP county population, and the ACS 5-year county tables. They live
 in their own pinned file, ``us/chronicle_county_facts.json`` with scope
 ``us/chronicle_county_facts_scope.json``, beside the main US feed pin
 (``us/chronicle_feed.json``), because carrying them in the main feed would grow
-it 6.5x for every US build while only county builds read them. No fiscal
+it 6.4x for every US build while only county builds read them. No fiscal
 compile reads this file.
 
 :func:`load_us_county_facts` first hashes the exact bytes and refuses the
@@ -16,8 +16,11 @@ refuses a row that is not a JSON object, is on an unpinned row contract, is at
 any geography level but ``county`` or is outside the scope's (record set,
 period) pairs, drops Puerto Rico (state 72, outside the 3,144
 county-equivalents the County Files cover) with a count, and projects each
-kept row to the fields county targets read. The file on disk keeps Chronicle's
-own bytes; only the in-memory rows are projected.
+kept row to the fields county targets read. A row the second pass cannot
+accept stops parsing but not hashing: the pass reads to the end, so a file
+swapped between the passes is named as changed, whatever its rows hold, and a
+malformed row in the pinned bytes is always a ``ValueError``. The file on disk
+keeps Chronicle's own bytes; only the in-memory rows are projected.
 """
 
 from __future__ import annotations
@@ -125,11 +128,47 @@ def _county_state(row: Mapping[str, Any]) -> str:
 def _pair(row: Mapping[str, Any]) -> Pair:
     period = row.get("period") or {}
     layout = row.get("layout") or {}
+    if not isinstance(period, Mapping) or not isinstance(layout, Mapping):
+        raise ValueError(
+            f"US county facts row {row.get('aggregate_fact_key')!r} has a "
+            "period or layout that is not an object."
+        )
     return (
         str(layout.get("record_set_id", "")),
         str(period.get("type", "")),
         str(period.get("value", "")),
     )
+
+
+def _checked_row(
+    line: bytes, pairs: frozenset[Pair], contracts: frozenset[str]
+) -> tuple[str, dict[str, Any] | None]:
+    """Check one non-blank line; return its state and projected row.
+
+    The projected row is ``None`` for a dropped state.
+    """
+
+    row = json.loads(line)
+    if not isinstance(row, dict):
+        raise ValueError(
+            f"US county facts rows must be JSON objects; got {type(row).__name__}."
+        )
+    version = row.get("schema_version")
+    if not isinstance(version, str) or version not in contracts:
+        raise ValueError(
+            "US county facts row carries an unpinned row contract "
+            f"{version!r}; the pin declares {sorted(contracts)}."
+        )
+    pair = _pair(row)
+    if pair not in pairs:
+        raise ValueError(
+            f"US county facts row {row.get('aggregate_fact_key')!r} is "
+            f"outside the county scope: {pair}."
+        )
+    state = _county_state(row)
+    if state in DROPPED_STATE_FIPS:
+        return state, None
+    return state, {key: row[key] for key in COUNTY_FACT_FIELDS if key in row}
 
 
 def _digest(path: str | Path) -> tuple[str, int]:
@@ -161,40 +200,36 @@ def load_us_county_facts(
             f"{pin.fact_row_count}."
         )
     pairs = us_county_facts_scope_pairs()
-    contracts = set(pin.consumer_fact_schema_versions)
+    contracts = frozenset(pin.consumer_fact_schema_versions)
     digest = hashlib.sha256()
     rows: list[dict[str, Any]] = []
     dropped: Counter[str] = Counter()
+    failure: Exception | None = None
     with open(path, "rb") as stream:
         for line in stream:
             digest.update(line)
-            if not line.strip():
+            if failure is not None or not line.strip():
                 continue
-            row = json.loads(line)
-            if not isinstance(row, dict):
-                raise ValueError(
-                    "US county facts rows must be JSON objects; got "
-                    f"{type(row).__name__}."
-                )
-            if row.get("schema_version") not in contracts:
-                raise ValueError(
-                    "US county facts row carries an unpinned row contract "
-                    f"{row.get('schema_version')!r}; the pin declares "
-                    f"{sorted(contracts)}."
-                )
-            pair = _pair(row)
-            if pair not in pairs:
-                raise ValueError(
-                    f"US county facts row {row.get('aggregate_fact_key')!r} is "
-                    f"outside the county scope: {pair}."
-                )
-            state = _county_state(row)
-            if state in DROPPED_STATE_FIPS:
+            try:
+                state, kept = _checked_row(line, pairs, contracts)
+            except Exception as error:  # classified once the hash is complete
+                failure = error
+                continue
+            if kept is None:
                 dropped[f"state_{state}"] += 1
-                continue
-            rows.append({key: row[key] for key in COUNTY_FACT_FIELDS if key in row})
+            else:
+                rows.append(kept)
     if digest.hexdigest() != facts_sha256:
-        raise ValueError(f"US county facts {path} changed while it was being read.")
+        raise ValueError(
+            f"US county facts {path} changed while it was being read."
+        ) from failure
+    if isinstance(failure, ValueError):
+        raise failure
+    if failure is not None:
+        raise ValueError(
+            f"US county facts {path} holds a malformed row: "
+            f"{type(failure).__name__}: {failure}"
+        ) from failure
     return USCountyFacts(
         rows=tuple(rows),
         path=str(path),

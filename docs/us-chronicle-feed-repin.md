@@ -33,7 +33,7 @@ alone). Measured at the compile and parse sites, that would raise a compile's
 peak memory from 2.8 GB to 6.7 GB and keep about 3.2 GB more resident in every
 fiscal-refresh run, which holds the parsed feed for its whole length, while
 only county builds read the rows. A main-feed rebuild with them also
-passed the build machine's 3.5 GB folder cap. These were measured on the build
+exceeded the build machine's 3.5 GB folder cap. These were measured on the build
 machine on 2026-11-13; the run notes are not in this repository.
 
 - **Commit.** Chronicle main `3e9d3a0694e8ca7e31ed5319c3ceb1bde92b12e0`
@@ -41,9 +41,10 @@ machine on 2026-11-13; the run notes are not in this repository.
   it needs no branch or tag; the next main re-pin starts at or after it.
   The rows are on the `chronicle.consumer_fact.v5` contract
   (schema digest `acd33a09…`); the main pin stays on v3.
-- **Pairs.** 10, built at their own years (2022: `packages/irs_soi/county_2022`;
-  2024: `packages/census/pep_county_2024` and the seven
-  `packages/census/acs5_b*_county_2024` packages). The scopes share no pair,
+- **Pairs.** 10 (record set, period) pairs from nine packages, built at their
+  own years (2022: `packages/irs_soi/county_2022`; 2024:
+  `packages/census/pep_county_2024` and the seven
+  `packages/census/acs5_b*_county_2024` packages; B01003 has two record sets). The scopes share no pair,
   and `test_us_chronicle_county_facts.py` refuses a change that adds one to
   both.
 - **Build.** The same builder with the county scope:
@@ -84,7 +85,7 @@ machine on 2026-11-13; the run notes are not in this repository.
   The run identity records the main feed's digest (`feed_sha256`) and the
   county facts receipt, which carries the county pin.
 - **Where the file lives.** Not in git. The repository holds only the pin:
-  the file's digest, size and row count and the scope. An operator builds the
+  the file's digest and row count (the file is 922,268,386 bytes) and the scope. An operator builds the
   file with the command above at the pinned commit, or copies a build
   machine's copy, and passes its path with `--county-facts`; the loader's
   digest check is what makes either acceptable.

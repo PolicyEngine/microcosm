@@ -66,8 +66,8 @@ every state, even when an entire concept or parent block is absent:
 | `return_count` | `irs_soi.individual_income_tax_returns` | count |
 | `adjusted_gross_income` | `us:statutes/26/62#adjusted_gross_income`, source concept `irs_soi.adjusted_gross_income` | USD |
 
-The feed has already converted the AGI publisher values from thousands of USD
-to USD; the county rung does not apply another scale factor. It refuses
+Chronicle has already converted the AGI publisher values from thousands of USD
+to USD in the county facts file; the county rung does not apply another scale factor. It refuses
 duplicate facts, negative or nonfinite shares, zero share denominators,
 incomplete county inventories, incompatible boundaries, and missing or
 ambiguous state parents. No unsupported concept receives a new engine measure.
@@ -154,18 +154,21 @@ first hashes the file and refuses it unless its digest and row count are the
 pin's. A second pass hashes it again and parses it. That pass refuses a row
 that is not a JSON object, is on another row contract, is not a county row or
 is outside the scope, and refuses a file whose bytes changed between the
-passes. It drops the 78 Puerto Rico municipios (4,136 ACS rows) with a count
+passes; it reads to the end before refusing, so a file swapped between the
+passes is named as changed whatever its rows hold. It drops the 78 Puerto Rico municipios (4,136 ACS rows) with a count
 and keeps only the fields county targets read. A refusal, or a file that
-cannot be read, is recorded in `county_surface.json` before any target is
-built. On the build machine the loader reads the pinned file in about 5 s and
+cannot be read, is recorded in `county_surface.json` before the staging frame
+is loaded or any target row is materialized (the state administrative targets
+are compiled from `--feed` earlier). On the build machine the loader reads the pinned file in about 5 s and
 holds about 0.9 GB of rows, measured apart from importing the US runtime. The
 rows stay on the surface for the rest of the materialize stage; today only the
-SOI county split reads them, in `prepare_run`. Nothing re-reads `--feed` or the
-county facts file. The
+SOI county split reads them, in `prepare_run`. No county step reads `--feed`,
+and nothing reopens the county facts file after `prepare_run`. The
 run identity and `materialize_rss.json` record the county facts receipt under
-`county_facts`. The refresh recipe carries both flags; like `--feed`, it
-names a placeholder file (`<county-facts.jsonl>`) and the pinned digest, never
-the build machine's path. A run without county
+`county_facts`. The refresh recipe carries both flags. It names placeholder files
+(`<county-facts.jsonl>`, like `--feed`'s) and never the build machine's path;
+the county digest it carries is the pinned one, while `--feed-sha256` stays a
+`<sha>` placeholder. A run without county
 facts records nothing new, so its run identity keeps its pre-county bytes.
 
 The inspected Chronicle publisher inputs have two concrete blockers:
@@ -177,7 +180,7 @@ The inspected Chronicle publisher inputs have two concrete blockers:
   than 20 returns for a county were excluded, so Kalawao's SOI value is
   missing, not zero. The guide does not say whether Kalawao's returns are
   counted in another county's row. Until the rung declares a reviewed treatment (a
-  combined SOI cell {15005, 15009}, planned on `lwi-county-rung-production`),
+  combined SOI cell {15005, 15009}, planned in the production county rung's own change),
   a complete county SOI block still fails with that county named.
 - **Connecticut:** both packages use the nine planning-region codes `09110`
   through `09190`. The household county column and ladder must use those same
@@ -210,7 +213,7 @@ At 3,144 counties and the current two SOI concepts, the county increment is
 `3,144 × (population + returns + AGI) = 9,432` rows. With the pinned 4,380 state
 administrative rows, 51 state population rows and 436 district population
 rows, this is approximately **14,299 rows** including holdouts. The exact
-count depends on the reviewed feed and ladder; an incomplete SOI county block
+count depends on the pinned county facts and the ladder; an incomplete SOI county block
 is refused rather than reducing that count silently.
 
 For the historical 1,588,854-household staging population, each household can
@@ -226,11 +229,13 @@ households-by-county-target matrix.
 
 County materialize runs are local. The Modal stage plan
 (`tools/modal_us_stage_plan.py`) has no way to pass `--county-facts`, so its
-preflight refuses a `state_county` materialize before any compute.
+check (`check_stage`) refuses a `state_county` materialize before any compute.
+A `--run` that skips that check stages its inputs first and is then refused by
+the release tool's own argument check.
 
 Once the input blockers are resolved, set these paths and the two pinned
 digests in the execution environment. This example uses the planning-region
-column; use `county_fips` only with a feed and ladder matching that column.
+column; use `county_fips` only with a ladder matching that column.
 The following is documentation only and has not been executed:
 
 County rows activate a separate solver profile: `--county-target-loss-cap 10`
@@ -300,7 +305,7 @@ tests with at most two workers, the related release/district tests, the test
 layout verifier, `uv run ruff check .`, and `uv run ruff format --check` on
 touched Python files; report actual results in the PR.
 No release build, full materialization, annual projection, publication, or
-county-inclusive feed regeneration is part of this implementation's validation.
+county facts rebuild is part of this implementation's validation.
 
 ## Validation record
 

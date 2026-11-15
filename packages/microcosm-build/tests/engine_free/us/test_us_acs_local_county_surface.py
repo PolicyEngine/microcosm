@@ -1103,7 +1103,7 @@ def _pin_for(payload, rows):
     )
 
 
-@pytest.mark.parametrize("case", ["off-pin digest", "missing file"])
+@pytest.mark.parametrize("case", ["off-pin digest", "missing file", "no county facts"])
 def test_a_county_facts_file_off_the_pin_is_refused_before_any_target(
     tmp_path, case
 ) -> None:
@@ -1118,6 +1118,58 @@ def test_a_county_facts_file_off_the_pin_is_refused_before_any_target(
         families="soi",
         sample_fraction=0.01,
         checkpoint_dir=tmp_path / "checkpoint",
+        county_facts=None if case == "no county facts" else facts,
+    )
+    surface = SimpleNamespace(registry=SimpleNamespace(specs=()))
+    with pytest.raises(SystemExit):
+        _county().prepare_run(
+            args, ["state", "county"], {"county": {1001: 10.0}}, surface=surface
+        )
+    report = json.loads((args.checkpoint_dir / "county_surface.json").read_text())
+    assert report["status"] == "refused"
+    expected = {
+        "off-pin digest": "the county pin names",
+        "missing file": "county.jsonl",
+        "no county facts": "needs --county-facts",
+    }[case]
+    assert expected in report["error"]
+    assert not hasattr(surface, "county_surface")
+
+
+@pytest.mark.parametrize(
+    "swapped_row",
+    [
+        {"period": "2022"},
+        {"schema_version": ["chronicle.consumer_fact.v5"]},
+        {"schema_version": "chronicle.consumer_fact.v6"},
+        {"layout": None, "period": 7},
+    ],
+    ids=["period-text", "contract-list", "contract-v6", "period-number"],
+)
+def test_a_county_facts_file_swapped_between_passes_is_recorded_as_changed(
+    monkeypatch, tmp_path, swapped_row
+) -> None:
+    """microcosm#922 review P2-1: a file that changes after the digest pass is
+    recorded as changed, whatever its rows hold, never an unrecorded crash."""
+
+    from microcosm.build.us_runtime import county_facts as county_facts_module
+
+    pin = load_us_chronicle_county_facts_pin()
+    # The digest pass sees the pinned bytes; the parsing pass reads this file.
+    monkeypatch.setattr(
+        county_facts_module,
+        "_digest",
+        lambda _path: (pin.facts_sha256, pin.fact_row_count),
+    )
+    rows = _soi_rows()
+    rows[0] = {**rows[0], **swapped_row}
+    facts = tmp_path / "county.jsonl"
+    facts.write_bytes(b"".join(json.dumps(row).encode() + b"\n" for row in rows))
+    args = SimpleNamespace(
+        soi_mode="state_county",
+        families="soi",
+        sample_fraction=0.01,
+        checkpoint_dir=tmp_path / "checkpoint",
         county_facts=facts,
     )
     surface = SimpleNamespace(registry=SimpleNamespace(specs=()))
@@ -1127,9 +1179,7 @@ def test_a_county_facts_file_off_the_pin_is_refused_before_any_target(
         )
     report = json.loads((args.checkpoint_dir / "county_surface.json").read_text())
     assert report["status"] == "refused"
-    expected = "the county pin names" if case == "off-pin digest" else "county.jsonl"
-    assert expected in report["error"]
-    assert not hasattr(surface, "county_surface")
+    assert "changed while it was being read" in report["error"]
 
 
 def test_projected_county_rows_give_the_same_soi_surface_as_full_rows(

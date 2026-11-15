@@ -177,6 +177,10 @@ def _row(index: int, *, state: str = "01", pair=None, level="county", contract=N
     }
 
 
+def _with_geoid(row: dict, geoid: str) -> dict:
+    return {**row, "geography": {**row["geography"], "id": geoid}}
+
+
 def _write(path: Path, rows, *, separators=(",", ":")) -> bytes:
     payload = b"".join(
         json.dumps(row, separators=separators, sort_keys=True).encode() + b"\n"
@@ -258,6 +262,20 @@ def test_any_one_byte_change_is_refused(tmp_path_factory, count, data) -> None:
         ),
         (lambda: ["not", "a", "row"], "must be JSON objects"),
         (lambda: _row(9, state="0\u0661"), "invalid county geography id"),
+        (lambda: _with_geoid(_row(9), "0400000US01001"), "invalid county geography id"),
+        (lambda: _with_geoid(_row(9), "0500000US0100"), "invalid county geography id"),
+        (
+            lambda: _with_geoid(_row(9), "0500000US010010"),
+            "invalid county geography id",
+        ),
+        (lambda: _with_geoid(_row(9), "0500000US01ABC"), "invalid county geography id"),
+        (lambda: {**_row(9), "period": "2022"}, "period or layout that is not"),
+        (lambda: {**_row(9), "layout": ["x"]}, "period or layout that is not"),
+        (
+            lambda: {**_row(9), "schema_version": ["chronicle.consumer_fact.v5"]},
+            "unpinned row contract",
+        ),
+        (lambda: {**_row(9), "geography": "0500000US01001"}, "county rows"),
     ],
     ids=[
         "non-county",
@@ -265,6 +283,14 @@ def test_any_one_byte_change_is_refused(tmp_path_factory, count, data) -> None:
         "unpinned-contract",
         "not-an-object",
         "non-ascii-digit",
+        "not-a-county-geoid-prefix",
+        "four-digit-code",
+        "six-digit-code",
+        "non-digit-code",
+        "period-text",
+        "layout-list",
+        "contract-list",
+        "geography-text",
     ],
 )
 def test_a_bad_row_between_good_ones_is_refused(tmp_path, bad, match) -> None:
@@ -317,3 +343,109 @@ def test_a_file_that_changes_between_the_two_passes_is_refused(
     _write(path, [_row(0), _row(3)])
     with pytest.raises(ValueError, match="changed while it was being read"):
         load_us_county_facts(path, pin=pin)
+
+
+def test_blank_lines_are_hashed_but_not_counted_or_parsed(tmp_path) -> None:
+    rows = [_row(0), _row(1, state="72"), _row(2)]
+    lines = [json.dumps(row, sort_keys=True).encode() + b"\n" for row in rows]
+    payload = b"\n" + lines[0] + b"   \n" + lines[1] + b"\t\n" + lines[2] + b"\n"
+    path = tmp_path / "facts.jsonl"
+    path.write_bytes(payload)
+    facts = load_us_county_facts(path, pin=_pin_for(payload, len(rows)))
+    assert facts.row_count == 3
+    assert [row["aggregate_fact_key"] for row in facts.rows] == [
+        "key-000000",
+        "key-000002",
+    ]
+    assert facts.dropped == {"state_72": 1}
+    assert facts.facts_sha256 == hashlib.sha256(payload).hexdigest()
+    # Counting blank lines would name four or more rows, not the pin's three.
+    with pytest.raises(ValueError, match="rows; the county pin names 4"):
+        load_us_county_facts(path, pin=_pin_for(payload, 4))
+
+
+_SWAPPED = [
+    b'{"not": "json"\n',
+    b'["not", "a", "row"]\n',
+    json.dumps({**_row(5), "period": "2022"}).encode() + b"\n",
+    json.dumps({**_row(5), "schema_version": ["chronicle.consumer_fact.v5"]}).encode()
+    + b"\n",
+    json.dumps(_row(5, contract="chronicle.consumer_fact.v6")).encode() + b"\n",
+    json.dumps(_row(5, level="state")).encode() + b"\n",
+    json.dumps(_with_geoid(_row(5), "0500000US01ABC")).encode() + b"\n",
+    b"\xff\xfe\n",
+]
+
+
+@pytest.mark.parametrize("swapped", _SWAPPED, ids=range(len(_SWAPPED)))
+@pytest.mark.parametrize("where", ["first", "last"])
+def test_a_file_swapped_between_the_passes_is_named_as_changed(
+    monkeypatch, tmp_path, swapped, where
+) -> None:
+    """Review P2-1: whatever a swapped file holds, the refusal is the change,
+    a ValueError, and it is decided only after the whole file is hashed."""
+
+    pinned = [_row(0), _row(1), _row(2)]
+    path = tmp_path / "facts.jsonl"
+    payload = _write(path, pinned)
+    pin = _pin_for(payload, len(pinned))
+    monkeypatch.setattr(
+        county_facts_module,
+        "_digest",
+        lambda _path: (pin.facts_sha256, pin.fact_row_count),
+    )
+    good = [json.dumps(row, sort_keys=True).encode() + b"\n" for row in pinned]
+    lines = [swapped, *good[1:]] if where == "first" else [*good[:2], swapped]
+    path.write_bytes(b"".join(lines))
+    with pytest.raises(ValueError, match="changed while it was being read"):
+        load_us_county_facts(path, pin=pin)
+
+
+_JSON = st.recursive(
+    st.none()
+    | st.booleans()
+    | st.integers(min_value=-(2**40), max_value=2**40)
+    | st.floats(allow_nan=False, allow_infinity=False)
+    | st.text(max_size=12),
+    lambda children: (
+        st.lists(children, max_size=3)
+        | st.dictionaries(st.text(max_size=8), children, max_size=3)
+    ),
+    max_leaves=8,
+)
+_FIELDS = st.sampled_from(
+    [
+        ("schema_version",),
+        ("geography",),
+        ("geography", "id"),
+        ("geography", "level"),
+        ("period",),
+        ("period", "type"),
+        ("period", "value"),
+        ("layout",),
+        ("layout", "record_set_id"),
+    ]
+)
+
+
+@settings(max_examples=150, deadline=None)
+@given(field=_FIELDS, value=_JSON, data=st.data())
+def test_any_pinned_row_value_loads_or_is_a_value_error(
+    tmp_path_factory, field, value, data
+) -> None:
+    """For every pinned file, the loader returns rows or raises ValueError."""
+
+    rows = [_row(i) for i in range(3)]
+    index = data.draw(st.integers(min_value=0, max_value=2))
+    target = rows[index]
+    if len(field) == 1:
+        target[field[0]] = value
+    else:
+        target[field[0]] = {**target[field[0]], field[1]: value}
+    path = tmp_path_factory.mktemp("cf") / "facts.jsonl"
+    payload = _write(path, rows)
+    try:
+        facts = load_us_county_facts(path, pin=_pin_for(payload, len(rows)))
+    except ValueError:
+        return
+    assert len(facts.rows) + sum(facts.dropped.values()) == len(rows)

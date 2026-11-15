@@ -361,6 +361,33 @@ def test_no_option_maps_to_a_runner_owned_flag() -> None:
             ), (tool.name, key)
 
 
+def test_a_release_plan_cannot_pass_the_county_facts() -> None:
+    """microcosm#922: county materialize runs are local.
+
+    No staged input or plan option of the release tool reaches
+    ``--county-facts`` or ``--county-facts-sha256``, so a ``state_county``
+    materialize plan builds an argv without them, which the tool's own argument
+    check (``county_surface._validate_county_facts``) refuses.
+    """
+
+    tool = plan_lib.US_ACS_LOCAL_RELEASE
+    assert not [name for name in tool.inputs if "county" in name]
+    assert not [
+        option.flag
+        for option in tool.options.values()
+        if option.flag.startswith("--county-facts")
+    ]
+    data = _plan_data()
+    data["options"] = {
+        **data.get("options", {}),
+        "soi_mode": "state_county",
+        "geographies": "state,cd,county",
+    }
+    argv = plan_lib.planned_argv(plan_lib.parse_plan(data))
+    assert argv[argv.index("--soi-mode") + 1] == "state_county"
+    assert not [item for item in argv if item.startswith("--county-facts")]
+
+
 def test_build_stage_argv_requires_every_staged_path() -> None:
     plan = plan_lib.parse_plan(_plan_data())
     with pytest.raises(plan_lib.PlanError, match="no staged path"):
