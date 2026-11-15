@@ -1911,3 +1911,80 @@ def test_property_vsi_is_the_central_measure_less_its_four_transfers(rows):
         assert central[index] - vsi[index] == sum(transfers)
         for value, status in ((central, central_status), (vsi, vsi_status)):
             assert status[index] == ("included" if value[index] > 0 else "excluded")
+
+
+#: Kernels that parse their reference parameter with
+#: ``target_kernels.parse_reference_document``, which refuses any key outside
+#: ``REFERENCE_DOCUMENT_KEYS``.
+_STRICT_REFERENCE_PARAMS = {
+    "transport.create@1": "mass_reference",
+    "transport.create@2": "mass_reference",
+    "targets.compile@1": "references",
+    "takeup.compare@1": "references",
+    "takeup.gap@1": "references",
+}
+
+
+def _composed_param(spec, value, scenario):
+    return compose._resource_param(
+        spec,
+        value,
+        allow_json_sequences=scenario is not None,
+        profile_selection=None if scenario is None else scenario.get("knobs", {}),
+    )
+
+
+def test_every_strict_reference_parameter_parses_as_its_kernel_parses_it():
+    from microcosm.build.reference_profiles import REFERENCE_DOCUMENT_KEYS
+    from microcosm.build.transport.target_kernels import parse_reference_document
+
+    # NZ's mass, precal and holdout files carry description and reference_set
+    # (and the last two target_profile and allowed_value_operations); the
+    # composer drops them before a node receives the document.
+    spec = _pristine_spec()
+    checked = []
+    lenient = []
+    for row, scenario in compose._instantiated_rows(spec):
+        if row.get("kernel") == "calibration.prepare@1":
+            # This kernel reads only target_references, but it receives the
+            # same trimmed form as the strict kernels.
+            value = row["params"]["references"]
+            document = json.loads(_composed_param(spec, value, scenario))
+            assert set(document) <= REFERENCE_DOCUMENT_KEYS, row["id"]
+            lenient.append(row["id"])
+        name = _STRICT_REFERENCE_PARAMS.get(row.get("kernel"))
+        if name is None:
+            continue
+        document = json.loads(_composed_param(spec, row["params"][name], scenario))
+        parse_reference_document(document, country="nz")
+        checked.append(row["id"])
+    assert lenient
+    # CREATE, ten targets.compile nodes and thirteen takeup.gap nodes.
+    message = f"update this count when NZ changes a strict reference node: {checked}"
+    assert len(checked) == 24, message
+
+
+def test_reference_parameters_keep_the_file_digest_and_the_effective_view():
+    from microcosm.build.reference_profiles import REFERENCE_DOCUMENT_KEYS
+    from microcosm.graph.canonical import canonical_json
+
+    spec = _pristine_spec()
+    hashes = spec["resource_hashes"]
+    for resource in ("mass_references", "precal_references", "holdout_references"):
+        raw = compose.transport_resource(spec, resource)
+        keys = set(raw)
+        assert keys - REFERENCE_DOCUMENT_KEYS, resource
+        whole = {"resource": resource, "path": [], "encoding": "json"}
+        trimmed = {key: raw[key] for key in keys & REFERENCE_DOCUMENT_KEYS}
+        expected = canonical_json(trimmed).decode("utf-8")
+        assert compose._resource_param(spec, whole) == expected
+        digest = {"resource": resource, "path": [], "encoding": "sha256"}
+        assert compose._resource_param(spec, digest) == hashes.get(
+            resource, hashes.get(f"{resource}.json")
+        )
+        # The trim builds a new mapping; the spec's resource keeps every key.
+        assert set(compose.transport_resource(spec, resource)) == keys
+    effective, _, _ = compose.reference_profile_view(spec, None)
+    whole = {"resource": "target_references", "path": [], "encoding": "json"}
+    expected = canonical_json(effective).decode("utf-8")
+    assert compose._resource_param(spec, whole) == expected

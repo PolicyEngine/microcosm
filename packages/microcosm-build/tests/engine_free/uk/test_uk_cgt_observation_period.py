@@ -2,6 +2,7 @@
 
 # ruff: noqa: F403, F405
 from test_support.microcosm_build.uk_cgt_observation_period import *
+from test_support.microcosm_build.uk_engine_window import stub_scratch_engine_window
 from test_support.microcosm_build.uk_local_rowwise import COMMITTED_BINDING_NOW
 
 
@@ -18,6 +19,7 @@ def test_dated_cgt_fit_restores_base2024_values_with_fitted_weights(
         "_policyengine_uk_module",
         lambda: SimpleNamespace(__version__="test"),
     )
+    stub_scratch_engine_window(monkeypatch)
 
     def resolver_factory(**kwargs):
         kwargs.setdefault("simulation_source", None)

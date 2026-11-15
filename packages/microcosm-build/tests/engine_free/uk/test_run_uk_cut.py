@@ -256,10 +256,9 @@ def test_national_argv_parses(tmp_path, dry_run):
 
 @pytest.mark.parametrize("dry_run", [True, False])
 def test_the_national_build_never_publishes_to_the_orrery(tmp_path, dry_run):
-    """With remote staging, the build would otherwise submit its graph."""
+    """The runner never asks for the retired upload to the public Orrery."""
 
     from microcosm.build.uk_runtime import full_build_cli
-    from microcosm.build.uk_runtime.orrery_publication import publication_enabled
 
     sources = {s.key: s for s in cut.load_input_sources()}
     paths = _paths(tmp_path)
@@ -272,7 +271,7 @@ def test_the_national_build_never_publishes_to_the_orrery(tmp_path, dry_run):
         dry_run=dry_run,
     )
     assert "--publish-orrery" not in argv
-    assert publication_enabled(full_build_cli.parse_args(argv[2:])) is False
+    assert full_build_cli.parse_args(argv[2:]).publish_orrery is False
 
 
 def _tool(name: str):

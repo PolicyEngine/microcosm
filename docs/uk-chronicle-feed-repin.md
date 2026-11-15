@@ -503,3 +503,26 @@ input coverage manifest only their source digests. The charter-H2 fixture moves 
 contract hashes of the stages that read A3's care tab, A3 (f)'s UC carer element column and B3's
 resource, and regenerates byte-identically. The high-value home stock's feed inputs pass on the
 new pin, so it was not rebuilt.
+
+The `4ce631f5` re-pin (microcosm#1524, the merge of PolicyEngine/chronicle#439 on top of
+`81caed75`) adds ONS's dwellings by sector from the two balance sheets, its gross and net capital
+stocks of dwellings and Census 2021 TS054 by MSOA: 66,230 rows, 2,160,233 in all, under the same
+row contract. The merge adds no file to #439's head `86ae4d49` (the same tree); the artifact is
+built from `4ce631f5`. Every vendored resource changes only its pin stamps, and the DESNZ
+constituency resource keeps its 2,526 values, with new keys and input digests.
+
+The same change rebuilds the high-value home stock, because the census tenure shares now sum
+TS054's two social-rent rows (they kept only the last since microcosm#1240). Its private-sector
+counts fall by about 10% to 12% (England's homes over £2 million from 193,201 to 169,605), and the
+stock records its feed-inputs fingerprint on this feed (`8f9c40ee…`). So the national references
+move only the values of the three regional high-value homes targets
+(`microcosm.high_value_homes.over_*_by_region`; 1,710 active references, as before), and the
+national compile-parity receipt moves their 28 rows. In the local references, ten authority cells
+fall below the `hvcts_la_household_floor` of 400 homes and move from active to signed deferred
+(27,157 active), and the local receipt moves 340 high-value homes rows and drops those ten. The
+local census and the release input coverage manifest change only their digests. The charter-H2
+fixture moves the `stage_contract_sha256` of 22 stages: the 19 that bind vendored resources and
+the three property stages that bind the stock. The stock cells (microcosm#1524) read E46Y, MJF8,
+MJF7 and TS054 by MSOA from this feed. The regional targets' values move, so the frozen scoring
+register of the candidate evaluation (uk-candidate-eval) is due to be re-frozen before the next
+national solve.

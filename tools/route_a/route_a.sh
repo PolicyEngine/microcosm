@@ -611,7 +611,9 @@ fi
 # --- 8. Publisher preflight, offline: microcosm-publish-release-build checks
 # the build with its release contract and lists what it would publish when
 # --preflight-only is set, and starts no emitter. Secrets are stripped as
-# overnight_chain.sh does. ---
+# overnight_chain.sh does. It takes no --extra-file: the command publishes
+# every artifact the release manifest lists, a --scf-education-debt build's
+# two fit tables included. ---
 if ! stage_done publisher-preflight; then
   write_config publisher-preflight 24 16 22 7200 14400 "$W" "$PF_ENV" -- "${NOSECRETS[@]}" \
     "PATH=$W/.venv/bin:/usr/bin:/bin:/usr/sbin:/sbin" "$W/.venv/bin/microcosm-publish-release-build" \

@@ -12,7 +12,13 @@ explicit selection:
   ``path`` (a list of object keys) inside the named spec resource. ``e`` is
   ``"value"`` (the JSON value, lists as tuples), ``"json"`` (an object as
   canonical JSON text) or ``"sha256"`` (the SHA-256 of the whole resource's
-  bytes, so the node's key moves with that one resource only).
+  bytes, so the node's key moves with that one resource only). A ``"json"``
+  selection of a whole target-reference document (one that carries
+  ``target_references``) keeps only ``REFERENCE_DOCUMENT_KEYS``, the keys the
+  reference kernels read (docs/transport-graph-kernels.md); the resource file
+  keeps its other keys, and its ``"sha256"`` selection is unchanged: the
+  file's digest, or the effective view's digest for the reference and interval
+  resources that ``reference_profiles`` resolves.
 - ``{"prepared": "engine_refs"}`` is the canonical JSON of the prepared
   binding-id -> engine reference map that preparation built.
 - ``{"prepared": "unit_entities"}`` is the canonical JSON of every declared
@@ -91,7 +97,10 @@ from microcosm.build.money_normalization import (
     money_concept_columns,
     validate_money_normalization,
 )
-from microcosm.build.reference_profiles import resolve_reference_profiles
+from microcosm.build.reference_profiles import (
+    REFERENCE_DOCUMENT_KEYS,
+    resolve_reference_profiles,
+)
 from microcosm.calibrate.ordered_kernels import OUTPUT_TYPES
 from microcosm.frame.concepts import ProvenanceClass, concept_for_column
 from microcosm.frame.kernels import missing_relation_inputs
@@ -4138,7 +4147,9 @@ def _resource_param(
 
     Selected roots cannot be null; skeleton JSON roots must be objects.
     Entitlement JSON may also select lists. Value roots must not be objects.
-    Optional JSON fields remain unchanged.
+    Optional JSON fields remain unchanged, except that a whole-resource JSON
+    selection of a reference document keeps only ``REFERENCE_DOCUMENT_KEYS``;
+    a selection with a path keeps every field.
     """
 
     if set(value) - {"resource", "path", "encoding"} or "resource" not in value:
@@ -4174,6 +4185,21 @@ def _resource_param(
             raise ValueError(
                 f"Resource {name!r} path {list(path)!r} json selection must be an object."
             )
+        if (
+            not path
+            and isinstance(document, Mapping)
+            and "target_references" in document
+        ):
+            # The reference kernels refuse keys they do not read
+            # (target_kernels.parse_reference_document); the file keeps them.
+            # Every consumer of a whole reference document, strict or not,
+            # receives this trimmed form; a kernel that needs a dropped key
+            # must select it with a path.
+            document = {
+                key: item
+                for key, item in document.items()
+                if key in REFERENCE_DOCUMENT_KEYS
+            }
         return canonical_json(document).decode("utf-8")
     if isinstance(document, Mapping):
         raise ValueError(

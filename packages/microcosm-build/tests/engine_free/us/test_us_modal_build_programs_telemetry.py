@@ -472,6 +472,11 @@ def test_the_acs_staging_builder_records_its_phases_up_to_a_failure(
         period=2024,
         puma_ladder=tmp_path / "ladder.npz",
         inputs_dir=tmp_path / "acs-pums",
+        # The parser's household-location defaults (#696).
+        location_rule="legacy",
+        location_seed=0,
+        location_clones=1,
+        block_ladder=None,
     )
     base = SimpleNamespace(weights_for=lambda unit: SimpleNamespace(total=1.0))
     monkeypatch.setattr(module, "_parse_args", lambda argv: args)

@@ -9,7 +9,8 @@ file names the current build. After it, each build is in its own folder,
 only record of each release's builds and which one is current. From then on
 the emitter's release writer is the only thing that changes it.
 
-The switch is two steps, each a separate run of this tool:
+The switch is two steps, each a separate run of this tool, and a third
+step deletes what the old layout left on ``main`` once both have run:
 
 ``copy``
     One commit for each build that moves adds its folder:
@@ -95,6 +96,23 @@ names one, and ``--default RELEASE`` chooses the default. The switch refuses
 a pointer file whose build does not move, unless ``--retire-pointer PATH``
 says that the switch should delete it with nothing in its place.
 
+``delete-old-layout``
+    One commit deletes the old layout's files from ``main``: every file under
+    ``releases/`` that is not inside a build folder (the files each tagged
+    build overwrote directly in ``releases/<release>/``, and each
+    release-per-build tag's ``releases/<tag>/`` folder), and the dataset
+    files at the repository's root (``.h5``, ``.hdf5`` and ``.npz``). It
+    keeps ``releases.json``, every build folder it lists, the other root
+    files and every directory outside ``releases/`` (``staged/``, say). It
+    refuses a repository without ``releases.json`` or with a pointer file,
+    and a build folder ``releases.json`` does not list, which it never
+    deletes, and it runs the interface's repository check on what remains
+    (and its commit check, which a deletion outside build folders always
+    passes). Every deleted file stays in ``main``'s history at the head the
+    report names, and each tagged build at its tag; the report lists, as
+    ``untagged_folders``, any deleted release-per-build folder no tag names.
+    Run it once nothing reads those files from ``main`` any more.
+
 Run the ``switch`` step only while nobody publishes to the repository. The
 tagged publisher checks for ``releases.json`` only when it starts, so a
 publication that starts just before the switch commit, and makes its staging
@@ -102,7 +120,7 @@ branch after the switch's last read, would still be in neither the record nor
 a folder. A build tagged while ``copy`` runs is safe: the switch refuses until
 ``copy`` runs again.
 
-Both steps read the Hub and print, as JSON, what they would do. They change
+Every step reads the Hub and prints, as JSON, what it would do. They change
 nothing without ``--write``. They read and write with ``HF_TOKEN``, then
 ``HUGGINGFACE_TOKEN``, then the login ``hf auth login`` saved, and refuse to
 run with ``HF_HUB_OFFLINE`` or ``TRANSFORMERS_OFFLINE`` set. Each commit names
@@ -110,7 +128,8 @@ the head it was checked against as its ``parent_commit``, so if another
 commit lands first, the Hub refuses this one; run the step again.
 
 Run it as ``uv run python -m microcosm.build.build_folder_switch copy
-<repository> ...``, then the same with ``switch``.
+<repository> ...``, then the same with ``switch``, and later
+``delete-old-layout <repository>``, which takes none of the other options.
 """
 
 from __future__ import annotations
@@ -158,6 +177,7 @@ __all__ = [
     "build_folder_build_manifest",
     "build_folder_release_manifest",
     "copy_builds",
+    "delete_old_layout",
     "main",
     "switch_repository",
 ]
@@ -174,6 +194,10 @@ _BUILD_MANIFEST_NAME = "build_manifest.json"
 _DATED_TAG = re.compile(r"(?P<release>.+)-(?P<suffix>[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8})")
 #: The pointer files whose build's release becomes ``default``, in order.
 _DEFAULT_POINTER_FILES = ("latest-national.json", "latest.json")
+#: The root files a tagged build wrote its data to: the dataset and its
+#: calibration weights.
+_ROOT_DATASET_SUFFIXES = (".h5", ".hdf5", ".npz")
+_DELETE_STEP = "delete-old-layout"
 #: One line of a checksum ledger, as ``sha256sum`` writes it.
 _LEDGER_LINE = re.compile(r"(?P<digest>[0-9a-f]{64}) [ *](?P<name>[^/]+)")
 #: The field a rewritten release manifest records its origin in.
@@ -1384,6 +1408,125 @@ def switch_repository(
     return report
 
 
+def _old_layout_file(path: str) -> bool:
+    """Whether a file on ``main`` belongs to the tagged layout.
+
+    That is every file under ``releases/`` outside a build folder (a path
+    the interface does not place in ``releases/<release>/<build>/``) and
+    every dataset file at the repository's root.
+    """
+    if path.startswith("releases/"):
+        return _build_folder_of(path) is None
+    return "/" not in path and path.lower().endswith(_ROOT_DATASET_SUFFIXES)
+
+
+def delete_old_layout(api: Any, repository: str, *, write: bool) -> dict[str, Any]:
+    """The ``delete-old-layout`` step: delete the tagged layout's files from ``main``.
+
+    Without ``write`` it only reads. With it, it refuses before the commit
+    if it found a problem: a pointer file, a build folder ``releases.json``
+    does not list, or a failed interface check on what remains. A second
+    run after the commit finds nothing to delete and writes nothing.
+    """
+    hub = _Hub(api, repository)
+    head = hub.head()
+    head_files = hub.files(head)
+    if RELEASES_RECORD_PATH not in head_files:
+        raise SwitchRefusedError(
+            f"{repository} has not switched: it has no {RELEASES_RECORD_PATH}, "
+            "so the loader still follows its pointer files; run the copy and "
+            "switch steps first"
+        )
+    try:
+        record = ReleasesRecord.parse(hub.read(RELEASES_RECORD_PATH, head))
+    except ReleaseRecordError as error:
+        raise SwitchRefusedError(
+            f"{RELEASES_RECORD_PATH} in {repository} is not a valid record: {error}"
+        ) from error
+    problems = [
+        f"{path} is a pointer file; nothing writes one after the switch, so "
+        "find the commit that added it and remove it first"
+        for path in sorted(path for path in head_files if is_pointer_file(path))
+    ]
+    listed = {
+        build_folder(release, build)
+        for release, entry in record.releases.items()
+        for build in entry.builds
+    }
+    unlisted = sorted({_build_folder_of(path) for path in head_files} - listed - {None})
+    problems.extend(
+        f"{folder}/ is a build folder that {RELEASES_RECORD_PATH} does not list; "
+        "this step deletes no build folder, so list its build or remove the "
+        "folder first"
+        for folder in unlisted
+    )
+    delete = sorted(path for path in head_files if _old_layout_file(path))
+    # A release-per-build folder is named by its build's tag; a folder named
+    # by a release whose builds publish into folders held copies of builds
+    # that each have their own tag.
+    listed_tags, _ = hub.refs()
+    untagged = sorted(
+        {
+            f"releases/{parts[1]}"
+            for parts in (path.split("/") for path in delete)
+            if len(parts) == 3
+            and not publishes_to_build_folder(parts[1])
+            and parts[1] not in listed_tags
+        }
+    )
+    remaining = [path for path in head_files if not _old_layout_file(path)]
+    if not problems:
+        violations = [
+            *check_repository(record, remaining, lambda path: hub.read(path, head)),
+            *check_commit(
+                before_files=head_files,
+                added_paths=[],
+                deleted_paths=delete,
+                before=record,
+                after=record,
+            ),
+        ]
+        problems.extend(f"{item.code}: {item.message}" for item in violations)
+    report: dict[str, Any] = {
+        "step": _DELETE_STEP,
+        "repository": repository,
+        "head": head,
+        "delete": delete,
+        "kept_root_files": sorted(path for path in remaining if "/" not in path),
+        "kept_directories": sorted(
+            {path.split("/", 1)[0] for path in remaining if "/" in path} - {"releases"}
+        ),
+        "untagged_folders": untagged,
+        "problems": problems,
+        "written": False,
+        "commit": None,
+    }
+    if not write or not delete:
+        return report
+    if problems:
+        raise SwitchRefusedError("nothing was written: " + "; ".join(problems))
+    from huggingface_hub import CommitOperationDelete
+
+    try:
+        report["commit"] = hub.commit(
+            [CommitOperationDelete(path_in_repo=path) for path in delete],
+            message=(
+                f"Delete the old layout's {len(delete)} files: the release-folder "
+                "contents outside build folders and the root dataset files"
+            ),
+            parent=head,
+        )
+    # One commit deletes every file, so it landed whole or not at all; a
+    # second run finds nothing to delete if it landed.
+    except Exception as error:
+        raise SwitchRefusedError(
+            f"the deletion commit failed ({type(error).__name__}: {error}); run "
+            "the step again, which finds nothing to delete if it did land"
+        ) from error
+    report["written"] = True
+    return report
+
+
 def _pairs(values: Sequence[str], option: str) -> dict[str, str]:
     pairs: dict[str, str] = {}
     for value in values:
@@ -1401,11 +1544,12 @@ def _parser() -> argparse.ArgumentParser:
         description=(
             "Switch a dataset repository from tags and latest*.json pointer files "
             "to build folders and releases.json: first copy every build into its "
-            "folder, then switch. Each step prints what it would do and changes "
-            "nothing without --write."
+            "folder, then switch, and once nothing reads them from main, delete "
+            "the old layout's files. Each step prints what it would do and "
+            "changes nothing without --write."
         ),
     )
-    parser.add_argument("step", choices=("copy", "switch"))
+    parser.add_argument("step", choices=("copy", "switch", _DELETE_STEP))
     parser.add_argument("repository", help="The Hugging Face dataset repository.")
     parser.add_argument(
         "--include",
@@ -1467,11 +1611,32 @@ def main(argv: Sequence[str] | None = None, *, api: Any = None) -> int:
     args = _parser().parse_args(argv)
     if api is None and hub_offline():
         print(
-            "refusing to switch: HF_HUB_OFFLINE or TRANSFORMERS_OFFLINE is set, and "
+            f"refusing to {args.step}: HF_HUB_OFFLINE or TRANSFORMERS_OFFLINE is "
+            "set, and "
             "this tool reads the Hub",
             file=sys.stderr,
         )
         return 1
+    if args.step == _DELETE_STEP:
+        given = [
+            option
+            for option, value in (
+                ("--include", args.include),
+                ("--exclude", args.exclude),
+                ("--current", args.current),
+                ("--default", args.default),
+                ("--retire-pointer", args.retire_pointer),
+                ("--finished-branch", args.finished_branch),
+            )
+            if value
+        ]
+        if given:
+            print(
+                f"refusing to {_DELETE_STEP}: it takes none of {', '.join(given)}, "
+                "which only the copy and switch steps read",
+                file=sys.stderr,
+            )
+            return 1
     try:
         selection = Selection(
             include=_pairs(args.include, "--include"),
@@ -1481,15 +1646,14 @@ def main(argv: Sequence[str] | None = None, *, api: Any = None) -> int:
             retired_pointers=frozenset(args.retire_pointer),
             finished_branches=frozenset(args.finished_branch),
         )
-        step: Callable[..., dict[str, Any]] = (
-            copy_builds if args.step == "copy" else switch_repository
-        )
-        report = step(
-            api if api is not None else _default_api(),
-            args.repository,
-            selection,
-            write=args.write,
-        )
+        client = api if api is not None else _default_api()
+        if args.step == _DELETE_STEP:
+            report = delete_old_layout(client, args.repository, write=args.write)
+        else:
+            step: Callable[..., dict[str, Any]] = (
+                copy_builds if args.step == "copy" else switch_repository
+            )
+            report = step(client, args.repository, selection, write=args.write)
     except SwitchRefusedError as error:
         print(f"refusing to {args.step}: {error}", file=sys.stderr)
         return 1

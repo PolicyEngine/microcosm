@@ -471,15 +471,9 @@ class _BatchFrames:
 
 
 def _engine_known_periods(simulation, variables) -> set[tuple[str, str]]:
-    known = set()
-    for variable in variables:
-        if variable not in simulation.tax_benefit_system.variables:
-            continue
-        known.update(
-            (variable, str(period))
-            for period in simulation.get_holder(variable).get_known_periods()
-        )
-    return known
+    return recert.engine_known_periods(
+        simulation, variables, walk_branches=False, skip_unknown=True
+    )
 
 
 def _values(simulation, variable):

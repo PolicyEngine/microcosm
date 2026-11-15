@@ -1821,9 +1821,10 @@ class TestPreflightBindings:
         # Great Britain, three rows), 1,040 of them compiled: the support
         # floor defers five, Orkney and Shetland's gas-connected cells are
         # deferred, and the Isles of Scilly, Orkney and Shetland have no gas
-        # kWh row. microcosm#1301 defers 2,323 of the high-value homes cells:
+        # kWh row. microcosm#1301 defers 2,333 of the high-value homes cells:
         # all 1,725 constituency cells, which the region rows now control,
-        # and the 598 authority cells under the 400-home floor.
+        # and the 608 authority cells under the 400-home floor (598 before
+        # microcosm#1524's tenure fix lowered the stock).
         # microcosm#1262 adds Scotland's 18 PIPR BRMA cells, all compiled.
         # microcosm#1095 adds England's single adult discount cells: 296
         # billing authorities, less the two the support floor defers; and
@@ -1836,9 +1837,9 @@ class TestPreflightBindings:
         # (microcosm#1420: the 20 count cells HMRC publishes at 5,000 or fewer
         # and their amounts). The pair built on microcosm#1535's merge defers
         # Carmarthenshire's band-I cell, which the support check refused.
-        assert result.details["candidate_targets"] == 27_167
+        assert result.details["candidate_targets"] == 27_157
         assert result.details["reference_targets"] == 31_347
-        # Only the 4,180 signed area deferrals and absences remain (2,100
+        # Only the 4,190 signed area deferrals and absences remain (2,100
         # before microcosm#929 bound the Welsh and Scottish council-tax cells;
         # Shetland band H is the one Scottish support deferral and
         # Carmarthenshire band I the one Welsh; microcosm#1123
@@ -1846,14 +1847,14 @@ class TestPreflightBindings:
         # high-value homes cells above; microcosm#1278 signs the two
         # small-cell rules, which defer 16 council-tax band cells and 192
         # higher-rate cells; microcosm#1207 the ten energy cells above;
-        # microcosm#1301 the 2,323 high-value homes cells above; microcosm#1095
+        # microcosm#1301 the 2,333 high-value homes cells above; microcosm#1095
         # the two single adult discount cells and the Orkney and Shetland
         # seat's two gas cells above; microcosm#1418 the six pension cells of
         # the two authorities without SPI local measures and the City of
         # London, and the 40 under the rounded-thousand floor); the 1,011
         # household rows are ordinary Chronicle-compiled references.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 4_180
+        assert len(exclusions) == 4_190
         households = [
             name for name in exclusions if str(name).startswith("households@")
         ]
