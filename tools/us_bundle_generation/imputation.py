@@ -884,6 +884,15 @@ def _normalise_transfer_execution(
         )
     )
     adult_care.pop("enabled")
+    entry_clock = deepcopy(
+        dict(
+            _mapping_like(
+                post_transfer["entry_clock_age_bound"],
+                "entry-clock age-bound post-transfer contract",
+            )
+        )
+    )
+    entry_clock.pop("enabled")
     passive = deepcopy(
         dict(
             _mapping_like(
@@ -922,6 +931,10 @@ def _normalise_transfer_execution(
                 ]
             },
             "contract": adult_care,
+        },
+        "entry_clock_age_bound": {
+            "activation": {"all_targets": [str(entry_clock["target"])]},
+            "contract": entry_clock,
         },
         "schedule_d_capital_gain_distributions": {
             "activation": {

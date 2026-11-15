@@ -878,6 +878,63 @@ def test_explicit_transfer_adds_requested_model_inputs(
     )
 
 
+def test_transferred_entry_clock_never_exceeds_the_recipients_life() -> None:
+    """The chained transfer caps the clock it draws at floor(age) + 1.
+
+    Every donor is US-born (clock equals age), so the clock's donor support is
+    {8, 17, 30, 39, 43, 45, 66, 68}. Without the cap every 3-year-old
+    recipient draws one of those, past the five-year bar; with it each one
+    carries 4, the longest a 3-year-old can have been in the US.
+    """
+
+    donor_frame = _donor_frame()
+    donor = _with_columns(
+        donor_frame,
+        "person",
+        {
+            "ssn_card_type": ["CITIZEN"] * 6 + ["NONE", "NONE"],
+            "immigration_status_str": ["CITIZEN"] * 6
+            + ["UNDOCUMENTED", "UNDOCUMENTED"],
+            "years_since_us_entry": donor_frame.person["age"].to_numpy(copy=True),
+        },
+    )
+    recipient = _replace_column(_recipient_frame(), "person", "age", [3.0] * 6)
+    family = ("immigration_status_str", "ssn_card_type", "years_since_us_entry")
+
+    result = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families={"person": {"source_operator_immigration": family}},
+        seed=0,
+        n_estimators=5,
+    )
+
+    clock = result.frame.person["years_since_us_entry"]
+    assert clock.tolist() == [4.0] * 6
+    receipts = [
+        entry.reconciliation
+        for entry in result.imputed_inputs
+        if entry.column == "years_since_us_entry"
+    ]
+    assert receipts[0] == {"cells_checked": 6, "cells_capped_at_age_plus_one": 6}
+    contract = acs_transfer_module.acs_transfer_execution_contract_identity(
+        targets=family
+    )["post_transfer_structure"]["entry_clock_age_bound"]
+    assert contract == {
+        "enabled": True,
+        "target": "years_since_us_entry",
+        "age": "age",
+        "rule": "cap_at_floor_age_plus_one",
+        "mutable_rows": "newly_imputed_clock_cells_only",
+    }
+    assert (
+        acs_transfer_module.acs_transfer_execution_contract_identity(
+            targets=family[:2]
+        )["post_transfer_structure"]["entry_clock_age_bound"]["enabled"]
+        is False
+    )
+
+
 def test_large_target_family_is_split_to_bound_retained_qrf_forests(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

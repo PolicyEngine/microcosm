@@ -109,6 +109,7 @@ __all__ = [
     "US_IMMIGRATION_STAGE_NAME",
     "US_IMMIGRATION_YEARS_SINCE_ENTRY_COLUMN",
     "UndocumentedControls",
+    "bound_transferred_us_entry_clock",
     "derive_us_immigration_status_from_manifest",
     "us_immigration_composition_gate",
     "us_immigration_composition_summary",
@@ -969,6 +970,55 @@ def _asec_years_since_us_entry(
     arrival_year = lower + offset
     years[rows] = np.maximum(float(time_period) - arrival_year, 0.0)
     return years
+
+
+def bound_transferred_us_entry_clock(
+    person: pd.DataFrame, *, mutable_rows: np.ndarray
+) -> tuple[np.ndarray, dict[str, int]]:
+    """Cap a transferred ``years_since_us_entry`` at ``floor(age) + 1``.
+
+    A chained-QRF transfer draws the clock from donors near the recipient's
+    age, not at it, so a recipient can receive a clock longer than its life
+    (a 3-year-old with 8 years since entry, past the five-year bar). The cap
+    is the stage's own largest clock for a foreign-born person interviewed in
+    the period: arrival no earlier than the year before ``period - age``. Only
+    ``mutable_rows``, the cells the transfer filled, can change; a source
+    row's clock, including an ASEC row whose age contradicts its band, is
+    never touched.
+
+    Returns the full column and the receipt counts. Raises ``ValueError``
+    when a mutable row has no finite ``age`` or clock, because the cap could
+    not be applied to it.
+    """
+
+    column = US_IMMIGRATION_YEARS_SINCE_ENTRY_COLUMN
+    mutable = np.asarray(mutable_rows, dtype=bool)
+    missing = sorted({column, "age"} - set(person.columns))
+    if missing:
+        raise ValueError(
+            f"Bounding a transferred {column} requires the recipient "
+            f"column(s) {missing}; refusing to ship an unbounded clock."
+        )
+    years = pd.to_numeric(person[column], errors="coerce").to_numpy(
+        dtype=np.float64, na_value=np.nan
+    )
+    age = pd.to_numeric(person["age"], errors="coerce").to_numpy(
+        dtype=np.float64, na_value=np.nan
+    )
+    unbounded = mutable & ~(np.isfinite(years) & np.isfinite(age))
+    if unbounded.any():
+        raise ValueError(
+            f"{int(unbounded.sum())} transferred {column} cell(s) have no "
+            "finite clock or age; refusing to ship an unbounded clock."
+        )
+    cap = np.floor(age) + 1.0
+    over = mutable & (years > cap)
+    bounded = years.copy()
+    bounded[over] = cap[over]
+    return bounded, {
+        "cells_checked": int(mutable.sum()),
+        "cells_capped_at_age_plus_one": int(over.sum()),
+    }
 
 
 def with_us_immigration_inputs(

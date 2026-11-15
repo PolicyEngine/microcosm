@@ -34,6 +34,10 @@ from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtype
 from microcosm.build.us_runtime.capital_gain_distributions import (
     capital_gain_distribution_shares_asset_identity,
 )
+from microcosm.build.us_runtime.immigration import (
+    US_IMMIGRATION_YEARS_SINCE_ENTRY_COLUMN,
+    bound_transferred_us_entry_clock,
+)
 from microcosm.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
@@ -434,6 +438,7 @@ def acs_transfer_execution_contract_identity(
         requested_targets & {_SCHEDULE_D_CGD_SOURCE, _SCHEDULE_D_CGD_EXCLUSIVE_WITH}
     )
     adult_care_enabled = _ADULT_CARE_EXPENSE in requested_targets
+    entry_clock_enabled = _ENTRY_CLOCK_TARGET in requested_targets
     passive_enabled = _PASSIVE_PARTNERSHIP_S_CORP in requested_targets
     payload: dict[str, object] = {
         "schema_version": 2,
@@ -488,6 +493,13 @@ def acs_transfer_execution_contract_identity(
                 "tax_unit_role": _ADULT_CARE_ROLE,
                 "tax_unit_link": _ADULT_CARE_UNIT,
                 "mutable_rows": "newly_imputed_expense_cells_only",
+            },
+            "entry_clock_age_bound": {
+                "enabled": entry_clock_enabled,
+                "target": _ENTRY_CLOCK_TARGET,
+                "age": _ENTRY_CLOCK_AGE,
+                "rule": "cap_at_floor_age_plus_one",
+                "mutable_rows": "newly_imputed_clock_cells_only",
             },
             "passive_partnership_s_corp": {
                 "enabled": passive_enabled,
@@ -849,6 +861,11 @@ _PASSIVE_PARTNERSHIP_S_CORP = "passive_partnership_s_corp_income"
 _LINE_32_COMPONENTS = ("partnership_income", "s_corp_income")
 _ADULT_CARE_ROLE = "tax_unit_role_input"
 _ADULT_CARE_UNIT = "person_tax_unit_id"
+# A transferred entry clock is drawn from donors near the recipient's age, not
+# at it, so the post-transfer step below caps it at the recipient's floor(age)
+# + 1 (see :func:`bound_transferred_us_entry_clock`).
+_ENTRY_CLOCK_TARGET = US_IMMIGRATION_YEARS_SINCE_ENTRY_COLUMN
+_ENTRY_CLOCK_AGE = "age"
 
 
 def derive_acs_schedule_d_capital_gain_distributions(
@@ -1952,6 +1969,9 @@ def _apply_post_transfer_structure(
       capital-gain parents at the packaged share with route exclusivity.
     - The adult-care expense surface is reconciled to the statute structure
       (qualifying carriers only, at most one per tax unit).
+    - A transferred ``years_since_us_entry`` is capped at the recipient's
+      ``floor(age) + 1``, so no recipient has been in the US longer than it
+      has been alive (microcosm#776).
     - The passive partnership/S-corp subset is zeroed where it has no line-32
       total under it (microcosm#1239).
     - Self-employment components drawn onto rows whose self-employment total
@@ -1964,6 +1984,23 @@ def _apply_post_transfer_structure(
         return
 
     post_transfer_contract = execution_contract["post_transfer_structure"]
+    entry_clock_contract = post_transfer_contract["entry_clock_age_bound"]
+    assert isinstance(entry_clock_contract, Mapping)
+    entry_clock_mask = imputed_masks.get(("person", _ENTRY_CLOCK_TARGET))
+    if (
+        entry_clock_contract["enabled"] is True
+        and entry_clock_mask is not None
+        and entry_clock_mask.any()
+    ):
+        clock, counts = bound_transferred_us_entry_clock(
+            person, mutable_rows=entry_clock_mask
+        )
+        person[_ENTRY_CLOCK_TARGET] = clock
+        for index, item in enumerate(provenance):
+            if item.column == _ENTRY_CLOCK_TARGET and item.entity == "person":
+                provenance[index] = replace(item, reconciliation=counts)
+                break
+
     assert isinstance(post_transfer_contract, Mapping)
     schedule_d_contract = post_transfer_contract[
         "schedule_d_capital_gain_distributions"

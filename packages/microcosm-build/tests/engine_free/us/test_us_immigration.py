@@ -23,6 +23,7 @@ from microcosm.build.us_runtime import (
     US_SOURCE_MANIFEST,
     US_STAGE_NAMES,
     UndocumentedControls,
+    bound_transferred_us_entry_clock,
     derive_us_immigration_status_from_manifest,
     us_immigration_composition_gate,
     us_immigration_composition_summary,
@@ -951,6 +952,47 @@ class TestEntryClockFrameIntegration:
         frame = _us_frame([{"PRCITSHP": 1, YEARS: 30.0}])
         with pytest.raises(ValueError, match="partial"):
             with_us_immigration_inputs(frame, seed=0, time_period=TIME_PERIOD)
+
+
+class TestTransferredEntryClockBound:
+    """A transferred clock never runs longer than the recipient's life."""
+
+    def test_caps_only_the_cells_the_transfer_filled(self) -> None:
+        person = pd.DataFrame(
+            {
+                "age": [3.0, 3.0, 40.0, 7.6, 3.0],
+                YEARS: [8.0, 2.0, 45.0, 9.0, 66.0],
+            }
+        )
+        # The last row is a source row (an ASEC age that contradicts its
+        # band); the stage's band-last rule stands there.
+        mutable = np.asarray([True, True, True, True, False])
+
+        bounded, counts = bound_transferred_us_entry_clock(person, mutable_rows=mutable)
+
+        assert bounded.tolist() == [4.0, 2.0, 41.0, 8.0, 66.0]
+        assert counts == {
+            "cells_checked": 4,
+            "cells_capped_at_age_plus_one": 3,
+        }
+        assert person[YEARS].tolist() == [8.0, 2.0, 45.0, 9.0, 66.0]
+
+    def test_refuses_a_filled_cell_it_cannot_bound(self) -> None:
+        person = pd.DataFrame({"age": [3.0, np.nan], YEARS: [2.0, 6.0]})
+        with pytest.raises(ValueError, match="1 transferred years_since_us_entry"):
+            bound_transferred_us_entry_clock(
+                person, mutable_rows=np.asarray([True, True])
+            )
+        # A source row without an age is not the bound's to judge.
+        bounded, counts = bound_transferred_us_entry_clock(
+            person, mutable_rows=np.asarray([True, False])
+        )
+        assert bounded.tolist() == [2.0, 6.0]
+        assert counts["cells_capped_at_age_plus_one"] == 0
+        with pytest.raises(ValueError, match=r"\['age'\]"):
+            bound_transferred_us_entry_clock(
+                person.drop(columns=["age"]), mutable_rows=np.asarray([True, True])
+            )
 
 
 def _clocked_composition_frame(lpr_years: list[float]) -> Frame:
