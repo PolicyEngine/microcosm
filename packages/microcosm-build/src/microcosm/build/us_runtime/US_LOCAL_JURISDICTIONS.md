@@ -112,9 +112,11 @@ A base H5 built before this registry carries no flags. Two steps start from
 an existing artifact rather than a geography line, and both call
 `rederive_us_local_jurisdiction_flags`:
 
-- the L0/refit export (`export_us_l0_refit_h5`) calls it on the selected
-  support and records the receipt as `local_jurisdiction_flags` in its
-  summary; and
+- the L0/refit export (`export_us_l0_refit_h5`) calls it on the loaded base,
+  before it applies the saved weights, and the rows the weights keep must
+  carry exactly the base's flags (see below). It records the export's receipt
+  as `local_jurisdiction_flags` in its summary, with the flags the base H5
+  itself held as `carried_flags`; and
 - the fiscal refresh release builder calls it on the loaded base or prepared
   pool, and again on the frozen support when a selection source reduces it,
   both before it materializes its targets. Its export support, the rows the L0
@@ -155,7 +157,8 @@ whether or not every row has a block. Such a household kept its block from
 before its county was redrawn, so the place beside the block is not the
 county's, and nothing in the table says which of the two is right. All three
 steps stop on such an artifact: the L0/refit export, the release builder and
-the annual lane.
+the annual lane. The L0/refit export judges the whole loaded base, so it stops
+even when the saved weights drop that household.
 
 The rungs belong to the whole table, so removing rows can add one: a frozen
 support or L0 support that keeps only block-anchored donors decides
@@ -176,6 +179,19 @@ the export must carry exactly those flags, and the receipt records each flag
 its own geography decides beyond them as unavailable, with that reason. Such a
 release carries the flags of an ordinary pooled release. Its own geography
 still decides the place-rule flags, so the annual lane refuses it as a parent.
+
+The L0/refit export follows the same rule for the same reason: its saved
+weights were fit elsewhere, on the base it loads. It derives the flags on that
+base before it applies the weights, then calls
+`us_local_jurisdiction_artifact_receipt` on the kept rows with the base's
+rungs. When the weights keep only the block-anchored rows of a pooled base,
+those rows decide `in_yonkers` and `in_wilmington`, but the export writes
+neither and its receipt records both as unavailable, with that reason. The
+geography-ladder gate requires every flag a block decides, so by default it
+refuses that export, and the refusal names the two flags and says why the
+export withholds them. With `--allow-geography-ladder-gate-failures` the export
+writes the kept rows with the base's flags and records the gate failure in its
+summary.
 
 ## Gates
 

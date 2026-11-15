@@ -11,12 +11,15 @@ result, so the flags, not other geography, drive the difference.
 The release builder's export keeps the inputs its targets were computed from:
 after a legacy pool becomes block-only through L0 selection, a retained
 Wilmington itemizer's ``income_tax`` on the written support is the value the
-refit used, though writing ``in_wilmington`` would lower it.
+refit used, though writing ``in_wilmington`` would lower it. The standalone
+L0/refit export keeps the inputs of the base its saved weights were fit on in
+the same way.
 """
 
 from __future__ import annotations
 
 import importlib.util
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -24,6 +27,7 @@ import pytest
 from microcosm.build.us_local_jurisdictions import (
     rederive_us_local_jurisdiction_flags,
 )
+from microcosm.build.us_runtime import l0_refit_export
 from microcosm.build.us_runtime.geography_ladder import (
     with_household_us_geography_ladder,
 )
@@ -272,6 +276,77 @@ def test_a_block_only_l0_export_keeps_the_income_tax_its_weights_were_fit_to(
     assert not written["in_wilmington"].any()
     # The parity is not vacuous: the flag's own geography decides it, and
     # writing it moves the fitted target.
+    assert flagged["in_wilmington"].tolist() == [True]
+    assert flagged["de_wilmington_earned_income_tax"][0] == pytest.approx(1_250.0)
+    assert flagged["salt_deduction"][0] > fitted["salt_deduction"][0]
+    assert flagged["income_tax"][0] < fitted["income_tax"][0]
+
+
+def test_a_block_only_saved_weight_export_keeps_the_income_tax_they_were_fit_to(
+    engine, monkeypatch, tmp_path
+) -> None:
+    # Review round 3 of the adopted microcosm#1453: the standalone export
+    # (export_us_l0_refit_h5). Two New Castle County itemizers with the same
+    # wages and gifts, a Wilmington donor on a block and an ACS row with no
+    # block, so the base decides no place-rule flag. Saved weights fit on
+    # that base keep only the donor. The export writes the base's inputs, so
+    # the H5 gives the income tax the weights were fit to.
+    pool = us_frame(
+        [
+            {
+                "state_fips": 10,
+                "county_fips": "10003",
+                "place_fips": "77580",
+                "block_geoid": "100030001001000",
+            },
+            {
+                "state_fips": 10,
+                "county_fips": "10003",
+                "place_fips": None,
+                "block_geoid": None,
+            },
+        ],
+        person_inputs=[[WILMINGTON_ITEMIZER], [WILMINGTON_ITEMIZER]],
+    )
+    weights_npz = tmp_path / "weights.npz"
+    np.savez_compressed(weights_npz, weights=np.asarray([2.0, 0.0]))
+    base_h5 = tmp_path / "base.h5"
+    base_h5.write_text("base")
+    captured: dict[str, Frame] = {}
+
+    class CapturingWriter:
+        def write_dataset(self, frame, path, period):
+            captured["frame"] = frame
+            Path(path).write_text("sentinel")
+
+    monkeypatch.setattr(l0_refit_export, "load_us_frame", lambda path: pool)
+    monkeypatch.setattr(
+        l0_refit_export, "copy_microcosm_root_attrs", lambda source, destination: ()
+    )
+    monkeypatch.setattr(l0_refit_export, "PolicyEngineUSEngine", CapturingWriter)
+
+    summary = l0_refit_export.export_us_l0_refit_h5(
+        base_h5=base_h5,
+        weights_npz=weights_npz,
+        output_h5=tmp_path / "populace_us_2026.h5",
+        require_source_columns=False,
+        # Two households cannot satisfy national NYC-share bounds.
+        require_geography_ladder=False,
+    )
+    fitted_on, _receipt = rederive_us_local_jurisdiction_flags(pool)
+    # What the export wrote before this fix: the kept row's own flags.
+    rewritten, _receipt = rederive_us_local_jurisdiction_flags(captured["frame"])
+
+    fitted = dict(engine.materialize(fitted_on, PARITY_OUTPUTS, PERIOD))
+    written = dict(engine.materialize(captured["frame"], PARITY_OUTPUTS, PERIOD))
+    flagged = dict(engine.materialize(rewritten, PARITY_OUTPUTS, PERIOD))
+
+    # The input-mass gate passes either way: a column only the export
+    # carries is not a failure.
+    assert summary["input_mass_parity"]["passed"] is True
+    for output in ("income_tax", "salt_deduction", "in_wilmington"):
+        np.testing.assert_array_equal(written[output], fitted[output][:1])
+    assert not written["in_wilmington"].any()
     assert flagged["in_wilmington"].tolist() == [True]
     assert flagged["de_wilmington_earned_income_tax"][0] == pytest.approx(1_250.0)
     assert flagged["salt_deduction"][0] > fitted["salt_deduction"][0]

@@ -65,9 +65,10 @@ already complete returns it unchanged. A step that must keep an artifact's
 columns and bytes, and so cannot write the flags, calls
 :func:`us_local_jurisdiction_artifact_receipt` instead, which refuses an
 artifact that lacks a flag its geography decides. A step whose inputs a
-larger support fixed (the release builder's export, after its weights were
-fit to targets computed on that support) passes that support's rungs, and
-keeps exactly that support's flags.
+larger support fixed passes that support's rungs, and keeps exactly that
+support's flags: the release builder's export, after its weights were fit to
+targets computed on that support, and the L0/refit export, whose saved
+weights were fit on the base it loads.
 
 This module and its registry sit outside ``microcosm.build.us_runtime`` on
 purpose, and import only the standard library, numpy, pandas and
@@ -706,11 +707,12 @@ def us_local_jurisdiction_artifact_receipt(
 
     ``rungs`` is for a step whose inputs a larger support fixed: the release
     builder's export keeps the rows its L0 selection chose from the support
-    its targets were computed on, and writing a flag only the kept rows
-    decide would change an input after the weights were fit. The artifact
-    must then carry exactly the flags of ``rungs``, which must be among its
-    own rungs, and the receipt records each flag its own geography decides
-    beyond them as unavailable, with that reason.
+    its targets were computed on, and the L0/refit export keeps the rows its
+    saved weights chose from the base they were fit on. Writing a flag only
+    the kept rows decide would change an input after the weights were fit.
+    The artifact must then carry exactly the flags of ``rungs``, which must be
+    among its own rungs, and the receipt records each flag its own geography
+    decides beyond them as unavailable, with that reason.
     """
 
     resolved = registry or packaged_us_local_jurisdiction_registry()

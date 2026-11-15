@@ -81,7 +81,10 @@ from microcosm.build.us_runtime.input_mass import (
     us_line_32_carriers,
 )
 from microcosm.build.us_runtime.local_jurisdictions import (
+    JURISDICTION_FLAG_UNAVAILABLE,
     rederive_us_local_jurisdiction_flags,
+    us_local_jurisdiction_artifact_receipt,
+    us_local_jurisdiction_rungs_present,
 )
 from microcosm.build.us_runtime.medicare_take_up import (
     US_MEDICARE_TAKE_UP_NONCONSTANT_PERSON_COLUMNS,
@@ -558,6 +561,27 @@ def copy_microcosm_root_attrs(
     return tuple(copied)
 
 
+def _withheld_flags_note(frame: Frame, receipt: Mapping[str, Any]) -> list[str]:
+    """Say which flags the export withholds from rows whose geography decides them."""
+
+    own_rungs = us_local_jurisdiction_rungs_present(frame.table("household"))
+    withheld = sorted(
+        flag
+        for flag, entry in receipt["flags"].items()
+        if entry["status"] == JURISDICTION_FLAG_UNAVAILABLE
+        and entry["rule"] in own_rungs
+    )
+    if not withheld:
+        return []
+    return [
+        "the export keeps the local-jurisdiction flags of the base its saved "
+        f"weights were fit on (rungs {receipt['rungs']}), so it does not write "
+        f"{', '.join(withheld)}, which only the selected households' own "
+        "geography decides: writing them would change inputs after the weights "
+        "were fit"
+    ]
+
+
 def export_us_l0_refit_h5(
     *,
     base_h5: str | Path,
@@ -587,10 +611,20 @@ def export_us_l0_refit_h5(
     its calibrated weights (microcosm #275/#34): a release whose spine is
     inconsistent or whose NYC mass collapsed fails by default.
 
-    The local-jurisdiction flags are re-derived from the selected support's
-    own geography before the gate, so a base H5 built before the flags
-    existed exports them instead of leaving the engine default on every
-    resident; the summary records the receipt.
+    The local-jurisdiction flags are those of the base the saved weights were
+    fit on. The export derives them on the loaded base, from the whole base's
+    geography, before it applies the weights, so a base H5 built before the
+    flags existed exports them instead of leaving the engine default on every
+    resident. It writes no flag that only the selected rows' geography
+    decides: when the weights keep only the block-anchored rows of a pooled
+    base whose other rows have no block, those rows decide ``in_yonkers`` and
+    ``in_wilmington``, and writing either would change an input after the
+    weights were fit. The summary's receipt records such a flag as
+    unavailable, with the reason. The geography-ladder gate requires every
+    flag a block decides, so it refuses that export unless its failures are
+    allowed, and the refusal names the withheld flags. A base whose carried
+    flags disagree with its geography, or in which a household's block lies
+    outside its county, is refused whichever rows the weights keep.
     """
 
     root_attrs_source = (
@@ -603,9 +637,15 @@ def export_us_l0_refit_h5(
         weight_key=weight_key,
         zero_weight_tolerance=zero_weight_tolerance,
     )
-    export_frame, local_jurisdiction_flags = rederive_us_local_jurisdiction_flags(
-        attach_l0_refit_weights(base_frame, solution)
+    fitted_frame, fitted_flags = rederive_us_local_jurisdiction_flags(base_frame)
+    export_frame = attach_l0_refit_weights(fitted_frame, solution)
+    # The kept rows carry exactly the base's flags; this checks that and
+    # records each flag only their own geography decides as unavailable.
+    local_jurisdiction_flags = us_local_jurisdiction_artifact_receipt(
+        export_frame, rungs=fitted_flags["rungs"]
     )
+    # The receipt has always recorded the flags the base H5 itself held.
+    local_jurisdiction_flags["carried_flags"] = fitted_flags["carried_flags"]
     if require_source_columns:
         assert_required_us_release_source_columns(export_frame)
     geography_ladder_gate = us_geography_ladder_gate(
@@ -615,7 +655,12 @@ def export_us_l0_refit_h5(
     if require_geography_ladder and not geography_ladder_gate.passed:
         raise ValueError(
             "US L0/refit release export failed the geography-ladder gate: "
-            + "; ".join(geography_ladder_gate.failures)
+            + "; ".join(
+                [
+                    *geography_ladder_gate.failures,
+                    *_withheld_flags_note(export_frame, local_jurisdiction_flags),
+                ]
+            )
         )
     reference_frame = (
         load_us_frame(reference_h5) if reference_h5 is not None else base_frame
