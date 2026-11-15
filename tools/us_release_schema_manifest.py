@@ -18,9 +18,11 @@ What is read and how:
   ``frame_table``) is a table; anything else (``_time_period``, metadata) is
   listed under ``other_keys``. Tables are read in row chunks with
   ``HDFStore.select(start=, stop=)``, the reader ``USSingleYearDataset`` uses,
-  so a dtype is what ``pd.read_hdf`` gives and memory stays near one chunk.
-  A column the Microcosm frame codec stores as object-backed nullable
-  booleans is also given ``logical_dtype: "boolean"``.
+  so a dtype is what ``pd.read_hdf`` gives for the whole table. Memory stays
+  near one chunk for ``table``-format tables; pandas reads a ``fixed``-format
+  table's object block whole for every chunk, which is slower but still
+  correct. A column the Microcosm frame codec stores as object-backed
+  nullable booleans is also given ``logical_dtype: "boolean"``.
 - **Sidecar CSV.** Read in row chunks with ``pd.read_csv``. A household
   measures sidecar is read with its declared dtypes; any other CSV with
   pandas' own inference.
@@ -130,54 +132,74 @@ def sha256_file(path: Path) -> str:
 
 
 class _ColumnTally:
-    """Accumulates one table's per-column dtypes and null counts over chunks."""
+    """Accumulates one table's per-column dtypes and null counts over chunks.
+
+    A column's dtype is taken from the chunks where it holds at least one
+    value. pandas infers an object column's dtype per read: a fixed-format
+    object column (the frame codec's nullable booleans) whose chunk is all
+    missing reads as ``str`` there and as ``object`` elsewhere, as the whole
+    column does. A column missing in every row takes the dtype of the first
+    chunk with rows (of the empty read for an empty table), which is what a
+    whole-table read gives. Two different dtypes among chunks with values
+    refuse.
+    """
 
     def __init__(self, table: str) -> None:
         self.table = table
         self.columns: list[str] | None = None
-        self.dtypes: dict[str, str] = {}
+        self.first_dtypes: dict[str, str] = {}
+        self.valued_dtypes: dict[str, str] = {}
         self.nulls: dict[str, int] = {}
         self.rows = 0
-        self._typed_by_rows = False
+        self._first_from_rows = False
+
+    @property
+    def dtypes(self) -> dict[str, str]:
+        return {
+            name: self.valued_dtypes.get(name, self.first_dtypes[name])
+            for name in self.columns or []
+        }
 
     def add(self, chunk: pd.DataFrame) -> None:
-        """Count one chunk; dtypes come from the first chunk that has rows."""
-
         names = [str(name) for name in chunk.columns]
         if len(set(names)) != len(names):
             raise ManifestError(f"Table {self.table!r} repeats a column name.")
         if self.columns is None:
             self.columns = names
-            self.dtypes = {name: str(chunk[name].dtype) for name in names}
+            self.first_dtypes = {name: str(chunk[name].dtype) for name in names}
             self.nulls = dict.fromkeys(names, 0)
         elif names != self.columns:
             raise ManifestError(f"Table {self.table!r} changed columns between chunks.")
         if len(chunk) == 0:
             return
-        if not self._typed_by_rows:
-            self.dtypes = {name: str(chunk[name].dtype) for name in names}
-            self._typed_by_rows = True
-        for name in names:
-            dtype = str(chunk[name].dtype)
-            if dtype != self.dtypes[name]:
-                raise ManifestError(
-                    f"{self.table}.{name} reads as {self.dtypes[name]} in one "
-                    f"chunk and {dtype} in another."
-                )
+        if not self._first_from_rows:
+            self.first_dtypes = {name: str(chunk[name].dtype) for name in names}
+            self._first_from_rows = True
         counts = chunk.isna().sum()
         for name in names:
-            self.nulls[name] += int(counts[name])
+            missing = int(counts[name])
+            self.nulls[name] += missing
+            if missing == len(chunk):
+                continue
+            dtype = str(chunk[name].dtype)
+            known = self.valued_dtypes.setdefault(name, dtype)
+            if dtype != known:
+                raise ManifestError(
+                    f"{self.table}.{name} reads as {known} in one chunk and "
+                    f"{dtype} in another."
+                )
         self.rows += len(chunk)
 
     def entry(
         self, *, storage: str, logical: Mapping[str, str] | None = None
     ) -> dict[str, Any]:
         logical = logical or {}
+        dtypes = self.dtypes
         columns = []
         for name in self.columns or []:
             column: dict[str, Any] = {
                 "name": name,
-                "dtype": self.dtypes[name],
+                "dtype": dtypes[name],
                 "null_count": self.nulls[name],
             }
             if name in logical:
@@ -408,6 +430,8 @@ def load_column_list(path: Path) -> dict[str, Any]:
             )
         tables: dict[str, list[dict[str, Any]]] = {}
         for line, row in enumerate(reader, start=2):
+            if None in row or None in row.values():
+                raise ManifestError(f"{path}:{line} does not have exactly 3 fields.")
             values = {key.strip(): (value or "").strip() for key, value in row.items()}
             if not all(values.get(key) for key in ("table", "column", "dtype")):
                 raise ManifestError(f"{path}:{line} has an empty field.")
@@ -509,9 +533,10 @@ def diff_manifests(
     Keyed by ``(table, column)``. A declared rename applies when the prior
     has ``from`` but not ``to`` and the current has ``to`` but not ``from``;
     it then appears under ``renamed`` instead of under ``removed`` and
-    ``added``. A declaration that does not apply is listed, with the reason,
-    under ``declared_renames_not_applied``. A column whose dtype changed
-    (compared across a rename too) appears under ``dtype_changed``.
+    ``added``, with both dtypes. A declaration that does not apply is listed,
+    with the reason, under ``declared_renames_not_applied``. A column kept
+    under its name whose dtype changed appears under ``dtype_changed``, with
+    its current ``logical_dtype`` when it has one.
     """
 
     before = column_index(prior)
@@ -553,6 +578,11 @@ def diff_manifests(
             "column": column,
             "dtype_before": before[(table, column)]["dtype"],
             "dtype_after": after[(table, column)]["dtype"],
+            **(
+                {"logical_dtype_after": after[(table, column)]["logical_dtype"]}
+                if after[(table, column)].get("logical_dtype")
+                else {}
+            ),
         }
         for (table, column) in sorted(set(before) & set(after))
         if before[(table, column)]["dtype"] != after[(table, column)]["dtype"]

@@ -275,7 +275,10 @@ def fake_system(
                     market_income_sources=["employment_income", "dividend_income"],
                     household_benefits=["social_security", "snap"],
                 ),
-                simulation=SimpleNamespace(include_health_benefits_in_net_income=False),
+                simulation=SimpleNamespace(
+                    include_health_benefits_in_net_income=False,
+                    include_head_start_benefits_in_net_income=False,
+                ),
                 hud=SimpleNamespace(abolition=False),
             )
         )

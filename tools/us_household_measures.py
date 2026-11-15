@@ -42,10 +42,16 @@ Definitions (each a policyengine-us 2.2.1 variable, computed with
   - household_health_costs``.
 
 The sidecar stores those five components too, so a reader can check
-``net_income`` against them; the tool checks that identity itself, and
-refuses to run when the installed engine defines ``household_net_income``,
-``household_market_income`` or ``household_benefits`` differently from what
-this module documents.
+``net_income`` against them; the tool checks that identity itself. It refuses
+to run when the installed engine defines ``household_net_income``'s adds and
+subtracts, or ``household_market_income``'s source, differently from what
+this module documents, and it records the benefit and market-income lists
+and the net-income switches the engine resolved for the year.
+
+policyengine-core stores float variables as float32, so every amount carries
+about seven significant digits, and the engine's own float32 sum behind
+``household_net_income`` can differ from the components' float64 sum by a
+few float32 roundings of their magnitude; the identity check allows for that.
 
 Scoring runs in batches of whole households, each a fresh
 ``Microsimulation`` with the release's SPM selection
@@ -183,6 +189,8 @@ BENEFIT_PARAMETER = "gov.household.household_benefits"
 HEALTH_BENEFITS_PARAMETER = "gov.simulation.include_health_benefits_in_net_income"
 #: household_benefits drops housing_assistance when this reform switch is on.
 HUD_ABOLITION_PARAMETER = "gov.hud.abolition"
+#: household_head_start_benefits is zero unless this switch is on.
+HEAD_START_PARAMETER = "gov.simulation.include_head_start_benefits_in_net_income"
 
 #: Human-readable definitions, written into the receipt and the schema doc.
 MEASURE_DEFINITIONS: Mapping[str, Mapping[str, Any]] = {
@@ -237,8 +245,10 @@ POPULATION_AGGREGATE_VARIABLES = (
 
 DEFAULT_BATCH_HOUSEHOLDS = 5_000
 #: net_income against its components: |difference| <= ATOL + RTOL * scale.
+#: ``scale`` is the sum of the components' absolute values. The engine adds
+#: them in float32 (eps 1.2e-7): five roundings stay below 3e-7 * scale.
 IDENTITY_ATOL = 0.01
-IDENTITY_RTOL = 1e-9
+IDENTITY_RTOL = 1e-6
 
 
 class HouseholdMeasuresError(ValueError):
@@ -350,6 +360,16 @@ def household_batches(
         person["person_household_id"].to_numpy(),
         "person_household_id {} names no household row.",
     )
+    memberless = np.ones(len(household_ids), dtype=bool)
+    memberless[person_house_pos] = False
+    if memberless.any():
+        # policyengine-core maps persons to groups by sorted id position, so
+        # a group row no person names shifts every later group's members.
+        raise HouseholdMeasuresError(
+            f"{int(memberless.sum())} household(s) have no member person "
+            f"(first: household_id {household_ids[memberless][0]}); the engine "
+            "would attach later households' members to the wrong rows."
+        )
     household_batch = np.arange(len(household_ids), dtype=np.int64) // batch_households
     person_batch = household_batch[person_house_pos]
     n_batches = int(household_batch[-1]) + 1 if len(household_ids) else 0
@@ -483,6 +503,7 @@ def resolved_engine_parameters(system: Any, year: int) -> dict[str, Any]:
         HUD_ABOLITION_PARAMETER: bool(
             _parameter_node(parameters, HUD_ABOLITION_PARAMETER)
         ),
+        HEAD_START_PARAMETER: bool(_parameter_node(parameters, HEAD_START_PARAMETER)),
     }
 
 
@@ -626,7 +647,9 @@ def assemble_household_measures(
     return table[[name for name, _ in SIDECAR_COLUMNS]]
 
 
-def _net_income_residual(table: pd.DataFrame) -> np.ndarray:
+def _net_income_residual(table: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """``net_income`` less its rebuilt components, and the components' scale."""
+
     rebuilt = (
         table["household_market_income"]
         + table["household_benefits"]
@@ -635,7 +658,11 @@ def _net_income_residual(table: pd.DataFrame) -> np.ndarray:
         table["household_tax_before_refundable_credits"]
         + table["household_health_costs"]
     )
-    return (table["net_income"] - rebuilt).to_numpy(dtype=np.float64)
+    scale = sum(table[name].abs() for name in COMPONENT_VARIABLES)
+    return (
+        (table["net_income"] - rebuilt).to_numpy(dtype=np.float64),
+        np.asarray(scale, dtype=np.float64),
+    )
 
 
 def check_household_measures(
@@ -650,8 +677,9 @@ def check_household_measures(
     once and no other does; every ``year`` equals the H5's ``_time_period``;
     every value is finite; ``gross_income`` equals market income plus
     benefits; and ``net_income`` equals its components within
-    ``IDENTITY_ATOL + IDENTITY_RTOL * scale``. Returns the summary the
-    receipt records.
+    ``IDENTITY_ATOL + IDENTITY_RTOL * scale``, ``scale`` being the sum of
+    the components' absolute values. Returns the summary the receipt
+    records.
     """
 
     failures: list[str] = []
@@ -705,14 +733,13 @@ def check_household_measures(
             f"{int(gross_off.sum())} row(s) have gross_income != "
             "household_market_income + household_benefits"
         )
-    residual = _net_income_residual(table)
-    scale = np.maximum(np.abs(table["net_income"].to_numpy(dtype=np.float64)), 1.0)
-    identity_off = np.abs(residual) > IDENTITY_ATOL + IDENTITY_RTOL * scale
+    residual, scale = _net_income_residual(table)
+    identity_off = ~(np.abs(residual) <= IDENTITY_ATOL + IDENTITY_RTOL * scale)
     if identity_off.any():
         failures.append(
             f"{int(identity_off.sum())} row(s) have net_income off its "
-            f"components by more than {IDENTITY_ATOL} (largest "
-            f"{float(np.abs(residual).max()):.6g})"
+            f"components by more than {IDENTITY_ATOL} + {IDENTITY_RTOL} times "
+            f"their scale (largest {float(np.abs(residual).max()):.6g})"
         )
     if failures:
         raise HouseholdMeasuresError("Sidecar refused: " + "; ".join(failures) + ".")
@@ -728,6 +755,7 @@ def check_household_measures(
         "net_income_identity_tolerance": {
             "atol": IDENTITY_ATOL,
             "rtol": IDENTITY_RTOL,
+            "scale": "sum of the five components' absolute values",
         },
     }
 
@@ -743,7 +771,7 @@ def compute_household_measures(
     *,
     calculate: BatchCalculator,
     batch_households: int = DEFAULT_BATCH_HOUSEHOLDS,
-    progress: Callable[[int, int], None] | None = None,
+    progress: Callable[[int, int, float], None] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Score every household through ``calculate``, batch by batch."""
 
@@ -754,8 +782,11 @@ def compute_household_measures(
     collected_ids: list[np.ndarray] = []
     batches = 0
     total = -(-n // batch_households) if n else 0
+    batch_seconds: list[float] = []
     for batch in household_batches(tables, batch_households):
+        started = time.perf_counter()
         values = calculate(batch, year)
+        batch_seconds.append(time.perf_counter() - started)
         batch_ids = batch["household"][HOUSEHOLD_ID].to_numpy(dtype=np.int64)
         for name in needed:
             array = np.asarray(values[name], dtype=np.float64)
@@ -768,7 +799,7 @@ def compute_household_measures(
         collected_ids.append(batch_ids)
         batches += 1
         if progress is not None:
-            progress(batches, total)
+            progress(batches, total, batch_seconds[-1])
     scored_ids = (
         np.concatenate(collected_ids) if collected_ids else np.zeros(0, np.int64)
     )
@@ -785,7 +816,20 @@ def compute_household_measures(
     return table, {
         "batch_households": batch_households,
         "batches": batches,
+        "batch_seconds": _batch_timing(batch_seconds),
         "checks": checks,
+    }
+
+
+def _batch_timing(seconds: Sequence[float]) -> dict[str, float | None]:
+    """The first batch (it builds the engine's caches) apart from the rest."""
+
+    rest = list(seconds[1:])
+    return {
+        "first": round(seconds[0], 3) if seconds else None,
+        "mean_after_first": round(sum(rest) / len(rest), 3) if rest else None,
+        "max": round(max(seconds), 3) if seconds else None,
+        "total": round(sum(seconds), 3),
     }
 
 
@@ -909,6 +953,7 @@ def build_receipt(
             "method": "whole-household batches, one Microsimulation each",
             "batch_households": run_info["batch_households"],
             "batches": run_info["batches"],
+            "batch_seconds": dict(run_info["batch_seconds"]),
             "population_aggregate_guard": list(POPULATION_AGGREGATE_VARIABLES),
         },
         "checks": dict(run_info["checks"]),
@@ -1007,7 +1052,9 @@ def run_compute(
         year,
         calculate=calculate,
         batch_households=batch_households,
-        progress=lambda done, total: log(f"batch {done}/{total}"),
+        progress=lambda done, total, seconds: log(
+            f"batch {done}/{total} in {seconds:.1f} s"
+        ),
     )
     del tables
     if sha256_file(h5_path) != h5_sha256:

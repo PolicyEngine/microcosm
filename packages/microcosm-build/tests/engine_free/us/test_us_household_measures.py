@@ -37,7 +37,12 @@ from hypothesis import strategies as st  # noqa: E402
 _SETTINGS = settings(
     max_examples=40,
     deadline=None,
-    suppress_health_check=[HealthCheck.function_scoped_fixture],
+    # Generation is slow only on a loaded host (too_slow fired at load 200).
+    suppress_health_check=[
+        HealthCheck.function_scoped_fixture,
+        HealthCheck.too_slow,
+        HealthCheck.data_too_large,
+    ],
 )
 
 
@@ -185,6 +190,18 @@ def test_a_tax_unit_spanning_two_households_refuses(tool):
             ),
             "appears more than once",
         ),
+        (
+            lambda t: t.__setitem__(
+                "household",
+                pd.concat(
+                    [
+                        t["household"].iloc[:1].assign(household_id=101),
+                        t["household"],
+                    ]
+                ),
+            ),
+            "have no member person",
+        ),
     ],
 )
 def test_batching_refuses_a_broken_membership(tool, mutate, message):
@@ -265,6 +282,7 @@ def test_resolved_parameters_are_recorded(tool):
         "gov.household.household_benefits": ["social_security", "snap"],
         "gov.simulation.include_health_benefits_in_net_income": False,
         "gov.hud.abolition": False,
+        "gov.simulation.include_head_start_benefits_in_net_income": False,
     }
 
 
@@ -272,6 +290,13 @@ def test_resolved_parameters_are_recorded(tool):
 # The coverage check
 # ---------------------------------------------------------------------------
 
+_COMPONENTS = (
+    "household_market_income",
+    "household_benefits",
+    "household_refundable_tax_credits",
+    "household_tax_before_refundable_credits",
+    "household_health_costs",
+)
 _MUTATIONS = (
     "duplicate",
     "drop",
@@ -300,7 +325,8 @@ def _mutate(table: pd.DataFrame, mutation: str, row: int) -> pd.DataFrame:
         table.loc[table.index[row], "earnings"] = np.nan
         return table
     if mutation == "net_income":
-        table.loc[table.index[row], "net_income"] += 1.0
+        scale = sum(abs(float(table[name].iloc[row])) for name in _COMPONENTS)
+        table.loc[table.index[row], "net_income"] += 0.02 + 2e-6 * scale
         return table
     if mutation == "gross_income":
         table.loc[table.index[row], "gross_income"] += 1e-3
@@ -323,6 +349,44 @@ def test_the_check_refuses_every_coverage_and_identity_break(
     broken = _mutate(table, mutation, row)
     with pytest.raises(tool.HouseholdMeasuresError):
         tool.check_household_measures(broken, household_ids, year)
+
+
+_AMOUNTS = st.floats(-2e7, 2e7, allow_nan=False, width=32)
+
+
+@_SETTINGS
+@given(st.lists(st.tuples(*[_AMOUNTS] * 5), min_size=1, max_size=30))
+def test_the_identity_allows_the_engines_float32_sum_and_nothing_more(tool, components):
+    """policyengine-core adds household_net_income's terms in float32.
+
+    The engine stores float variables as float32 and builds the sum from 0 in
+    float32: ``0 + m + b + c - t - h``. Every such sum passes the identity
+    check, and moving net income by more than the tolerance fails it.
+    """
+    values = np.asarray(components, dtype=np.float32)
+    net = np.zeros(len(values), dtype=np.float32)
+    for column, sign in zip(range(5), (1, 1, 1, -1, -1), strict=True):
+        net = net + np.float32(sign) * values[:, column]
+    ids = np.arange(1, len(values) + 1, dtype=np.int64) * 3
+    engine = {name: np.zeros(len(values)) for name in tool.EARNINGS_VARIABLES}
+    engine.update(
+        {
+            name: values[:, index].astype(np.float64)
+            for index, name in enumerate(tool.COMPONENT_VARIABLES)
+        }
+    )
+    engine[tool.NET_INCOME_VARIABLE] = net.astype(np.float64)
+    table = tool.assemble_household_measures(ids, 2026, engine)
+    summary = tool.check_household_measures(table, ids, 2026)
+    scale = np.abs(values.astype(np.float64)).sum(axis=1)
+    assert summary["net_income_identity_max_abs_residual"] <= float(
+        (3e-7 * scale).max() + 1e-9
+    )
+
+    moved = table.copy()
+    moved.loc[0, "net_income"] += 0.011 + 1.3e-6 * scale[0]
+    with pytest.raises(tool.HouseholdMeasuresError, match="off its components"):
+        tool.check_household_measures(moved, ids, 2026)
 
 
 def test_the_check_refuses_a_year_other_than_the_files(tool):
@@ -363,12 +427,13 @@ def test_the_sidecar_reads_back_exactly_and_byte_reproducibly(
     assert first.read_bytes() == second.read_bytes()
     reread = tool.read_sidecar(first)
     pd.testing.assert_frame_equal(reread, table, check_exact=True)
-    # Plain pandas, with no dtype hints, reads the same values.
+    # Plain pandas, with no hints, reads the dtypes and values to within one
+    # ulp: its default float parser is not round-trip exact.
     plain = pd.read_csv(first)
     assert [str(dtype) for dtype in plain.dtypes] == [
         dtype for _, dtype in tool.SIDECAR_COLUMNS
     ]
-    np.testing.assert_array_equal(plain.to_numpy(), table.to_numpy())
+    np.testing.assert_allclose(plain.to_numpy(), table.to_numpy(), rtol=1e-15, atol=0)
     with gzip.open(first, "rt") as handle:
         assert handle.readline().strip() == ",".join(
             name for name, _ in tool.SIDECAR_COLUMNS

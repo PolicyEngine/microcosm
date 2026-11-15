@@ -28,9 +28,16 @@ import pandas as pd
 
 person = pd.read_hdf("county_files_2026.h5", "person")
 household = pd.read_hdf("county_files_2026.h5", "household")
-measures = pd.read_csv("county_files_2026.household_measures.csv.gz")
+measures = pd.read_csv(
+    "county_files_2026.household_measures.csv.gz", float_precision="round_trip"
+)
 household = household.merge(measures, on="household_id", validate="one_to_one")
 ```
+
+`float_precision="round_trip"` reads every value back exactly as written.
+pandas' default parser can differ from the written value in the last binary
+digit (about one part in 10^16), which is enough to break an exact equality
+such as the gross income identity below.
 
 ## Household measures
 
@@ -67,7 +74,9 @@ the sidecar was chosen for four reasons:
 Every amount is annual US dollars for the file's year, computed with
 policyengine-us 2.2.1 `Microsimulation` at the H5's own `_time_period`, under
 the release's SPM selection (`{"geography_kind": "county"}`). Values are
-nominal for that year, not deflated.
+nominal for that year, not deflated. policyengine-core stores float variables
+as float32, so each engine amount carries about seven significant digits
+(within $0.06 at $1 million); the CSV writes them in full float64 precision.
 
 **Earnings** sums wages and salaries (`employment_income`) and the
 self-employment sources that policyengine-us's `taxable_self_employment_income`
@@ -101,7 +110,15 @@ policyengine-us 2.2.1 for 2026 and 2027:
   `commodity_supplemental_food_program` and `household_health_benefits`
   (`gov.household.household_benefits`).
 
+Two of those benefits are zero under current law, because their switches are
+off: `household_health_benefits` (see net income below) and
+`household_head_start_benefits`
+(`gov.simulation.include_head_start_benefits_in_net_income`). The receipt
+records both switches.
+
 Refundable tax credits are not part of gross income; they enter net income.
+So a household whose refundable credits (an EITC, say) exceed its taxes has
+net income above its gross income.
 Each receipt records both lists as the engine resolved them for its year
 (`engine.resolved_parameters`), and the receipt, not this page, is
 authoritative for a delivered file.
@@ -128,11 +145,17 @@ unless every check holds for every row:
 - the columns and dtypes are exactly those in the table above;
 - every `household_id` in the H5's `household` table appears exactly once,
   and the sidecar names no other household;
+- (before scoring) every household and group row has a member person, and
+  every group unit sits inside one household. policyengine-core places
+  members by sorted id position, so a memberless row would shift later
+  households' members onto the wrong rows;
 - every `year` equals the H5's `_time_period`;
 - every value is finite;
 - `gross_income == household_market_income + household_benefits` exactly;
-- `net_income` equals its five components to within $0.01 plus one part in
-  10^9;
+- `net_income` equals its five components to within $0.01 plus one
+  millionth of the sum of their absolute values. The engine adds them in
+  float32, which can differ from the float64 sum by up to about 3 parts in
+  10^7 of that scale;
 - (`verify`) the H5's and the sidecar's sha256 equal those the receipt
   records.
 
@@ -175,8 +198,10 @@ uv run python tools/us_release_schema_manifest.py \
 `compute` loads the H5's tables once (as `USSingleYearDataset` does), so its
 peak memory is about the H5's uncompressed size plus one batch engine.
 `--batch-households` trades batch-engine memory against per-batch overhead.
-The manifest tool reads each table in chunks of about 256 MiB and needs no
-engine. Neither tool overwrites an existing output.
+The manifest tool needs no engine. It reads each `table`-format table in
+chunks of about 256 MiB. pandas reads a `fixed`-format table's object columns
+whole for every chunk, which is slower but gives the same result. Neither
+tool overwrites an existing output.
 
 ## Schema manifest
 
@@ -192,8 +217,10 @@ The diff keys columns by `(table, column)` and reports tables and columns
 added and removed, dtype changes, and renames. A rename is reported only when
 it is declared (`DECLARED_RENAMES`, plus any `--renames` JSON) and the prior
 has the old name but not the new one, while the current file has the new name
-but not the old one. A declaration that does not apply is listed with the
-reason.
+but not the old one. A rename entry carries both dtypes. A declaration that
+does not apply is listed with the reason. Dtypes are compared as pandas reads
+them; a changed column whose current file stores nullable booleans also shows
+its `logical_dtype`.
 
 Known changes from the sample column list sent on August 18 (a 2024 file):
 

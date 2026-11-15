@@ -25,7 +25,12 @@ from hypothesis import strategies as st  # noqa: E402
 _SETTINGS = settings(
     max_examples=40,
     deadline=None,
-    suppress_health_check=[HealthCheck.function_scoped_fixture],
+    # Generation is slow only on a loaded host.
+    suppress_health_check=[
+        HealthCheck.function_scoped_fixture,
+        HealthCheck.too_slow,
+        HealthCheck.data_too_large,
+    ],
 )
 
 
@@ -229,6 +234,35 @@ def test_fixed_tables_count_rows_whatever_block_comes_first(
         assert column["null_count"] == int(whole[column["name"]].isna().sum())
     assert person["columns"][0]["logical_dtype"] == "boolean"
     assert person["columns"][0]["null_count"] == flags.count(None)
+
+
+@pytest.mark.parametrize("chunk", [1000, 1500, 4000, 7])
+def test_a_long_run_of_missing_codec_booleans_reads_as_object(
+    manifest_tool, tmp_path, chunk
+):
+    """A chunk where the column is all missing reads as ``str`` in pandas 3.
+
+    The manifest takes the dtype from chunks with values, as a whole read
+    does, instead of refusing the table.
+    """
+    flags = [True] * 1000 + [None] * 2000 + [False] * 1000
+    table = pd.DataFrame(
+        {"flag": pd.array(flags, dtype="boolean"), "x": np.arange(4000)}
+    )
+    path = tmp_path / "codec.h5"
+    with pd.HDFStore(str(path), mode="w") as store:
+        materialize.put_frame_table(
+            store, "person", table, preferred_format="table", data_columns=True
+        )
+    (person,) = manifest_tool.describe_h5(path, chunk_rows=chunk)["tables"]
+    assert str(pd.read_hdf(path, "person")["flag"].dtype) == "object"
+    assert person["rows"] == 4000
+    assert person["columns"][0] == {
+        "name": "flag",
+        "dtype": "object",
+        "null_count": 2000,
+        "logical_dtype": "boolean",
+    }
 
 
 def test_the_codec_attribute_is_the_frames(manifest_tool):
@@ -472,7 +506,12 @@ def test_a_table_named_in_two_files_refuses(manifest_tool):
 
 @pytest.mark.parametrize(
     "text",
-    ["table,column\nperson,a\n", "table,column,dtype\nperson,,int64\n"],
+    [
+        "table,column\nperson,a\n",
+        "table,column,dtype\nperson,,int64\n",
+        "table,column,dtype\nperson,a,int64,extra\n",
+        "table,column,dtype\nperson,a\n",
+    ],
 )
 def test_a_malformed_column_list_refuses(manifest_tool, tmp_path, text):
     path = tmp_path / "bad.csv"
