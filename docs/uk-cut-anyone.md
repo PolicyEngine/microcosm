@@ -155,9 +155,11 @@ MICROCOSM_UK_CUT_MODAL_RUN=1 modal run --detach tools/modal_uk_cut.py --commit <
 
 `tools/uk_cut_inputs.json` says where each input lives. Every expected digest
 is read at run time from the pins the build already checks:
-`uk/source_stages.json`, `uk/frs_release.json`, `uk/chronicle_feed.json` and
-`uk/gates.json`. A file is installed only if it is byte-identical to what the
-build will accept, and nothing unverified is ever left at an input's path.
+`uk/source_stages.json`, `uk/frs_release.json`, `uk/chronicle_feed.json`,
+`uk/gates.json` and the conditioned atomic-area support register in
+`uk/spec/sources.yaml`. A file is installed only if it is byte-identical to
+what the build will accept, and nothing unverified is ever left at an input's
+path.
 The build the cut compares with is not a fixed input: the `reference` step
 resolves it ([The reference build](#the-reference-build)).
 
@@ -177,6 +179,7 @@ is what admits a builder to the licensed inputs.
 | NTS 2002-2024 (6 tabs) | `policyengine-uk-data-private` `nts_2002_24.zip` @ `559b69e9` | fetched, every member matches its pin |
 | LCFS 2024-25 (2 tabs) | `policyengine-uk-data-private` `lcfs_2024_25.zip` @ `11051052` (a repack of the extracted files) | fetched, every member matches its pin |
 | APS April 2024-March 2025 (1 tab) | `policyengine-uk-data-private` `aps_2024_25.zip` @ `ebebd1e0` (a repack of the extracted files) | fetched, the member matches its pin |
+| Conditioned atomic-area supports (3 files, microcosm#931) | not hosted yet: no location is named | pinned to `sources.yaml`'s conditioned register, which the spine holds `--atomic-support-ew`, `--atomic-support-scotland` and `--atomic-support-ni` to. Until a location is named, `fetch` refuses them unless the three files `tools/build_uk_conditioned_area_supports.py` writes are already in `inputs/atomic_area_supports/`, where they are verified like any other input |
 
 ### NTS, LCFS and APS
 
