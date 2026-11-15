@@ -4194,8 +4194,13 @@ def _refresh_carer_link(
         )
         .to_numpy()
     )
+    # The FRS channel holds every geographic clone of each survey household,
+    # so the share's households are counted as true sources (microcosm#931).
     share = frs_disability.carer_link_share(
-        person.loc[~channel], weights=weights[~channel], min_hours=float(min_hours)
+        person.loc[~channel],
+        weights=weights[~channel],
+        min_hours=float(min_hours),
+        support_keys=sources[~channel],
     )
     link, evidence = frs_disability.derive_carer_link(
         person.loc[channel],
