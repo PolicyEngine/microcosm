@@ -14,7 +14,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
 from microcosm.data import annual_projections, contract
@@ -286,7 +286,7 @@ def _object_ids(table):
         ),
         (
             _projected(2026, household=_set("household_weight", 0.0)),
-            "positive mass",
+            "strictly positive",
         ),
         (
             _projected(2026, household=_set("household_weight", np.nan)),
@@ -589,4 +589,47 @@ def test_the_fixed_layout_check_refuses_every_reordered_identity_column(
     with pytest.raises(ValueError, match=f"{column} differs"):
         annual_projections._check_fixed_native_identity(
             base, changed, 2026, 2024, {"rows": rows}
+        )
+
+
+@_PROPERTY
+@given(
+    weights=st.lists(
+        st.floats(
+            min_value=0.001, max_value=1e6, allow_nan=False, allow_infinity=False
+        ),
+        min_size=2,
+        max_size=6,
+    ),
+    bad_weight=st.one_of(
+        st.floats(max_value=0.0, allow_nan=False, allow_infinity=False),
+        st.sampled_from([np.nan, np.inf, -np.inf]),
+    ),
+    row=st.integers(min_value=0, max_value=5),
+)
+@example(weights=[1.0, 2.0], bad_weight=0.0, row=1)
+@example(weights=[1.0, 2.0], bad_weight=-1.0, row=0)
+@example(weights=[1.0, 2.0], bad_weight=np.nan, row=1)
+@example(weights=[1.0, 2.0], bad_weight=np.inf, row=0)
+@example(weights=[1.0, 2.0], bad_weight=-np.inf, row=1)
+def test_the_fixed_layout_check_refuses_any_single_invalid_household_weight(
+    tmp_path_factory, weights, bad_weight, row
+) -> None:
+    """Positive weights elsewhere cannot hide a zero, negative or nonfinite row."""
+    directory = tmp_path_factory.mktemp("fixed-weight")
+    base = write_local_h5(
+        directory / "base.h5", 2024, weights=weights, households=len(weights)
+    )
+    tables = local_tables(weights=weights, households=len(weights))
+    rows = {entity: len(table) for entity, table in tables.items()}
+    valid = write_local_h5(directory / "valid.h5", 2026, tables)
+    annual_projections._check_fixed_native_identity(
+        base, valid, 2026, 2024, {"rows": rows}
+    )
+    tables["household"].loc[row % len(weights), "household_weight"] = bad_weight
+    invalid = write_local_h5(directory / "invalid.h5", 2026, tables)
+
+    with pytest.raises(ValueError, match="finite and strictly positive"):
+        annual_projections._check_fixed_native_identity(
+            base, invalid, 2026, 2024, {"rows": rows}
         )

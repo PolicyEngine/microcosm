@@ -140,8 +140,8 @@ GEOGRAPHY_COLUMNS = frozenset(
 )
 _GEOGRAPHY_PREFIXES = ("congressional_district_geoid__",)
 #: Person attributes no factor may touch, besides every ``is_*`` flag and every
-#: column whose name holds ``occupation`` or ``industry``.
-_PROTECTED_ATTRIBUTES = frozenset({"age", "is_female"})
+#: column whose name holds ``relationship``, ``occupation`` or ``industry``.
+_PROTECTED_ATTRIBUTES = frozenset({"age", "is_female", "worked_last_year"})
 #: The columns whose weighted household shares a local receipt reports, the
 #: county column being the first of the two the household table has.
 _SHARE_STATE_COLUMN = "state_fips"
@@ -551,6 +551,7 @@ def _is_protected(column: str) -> bool:
         is_geography_column(column)
         or column in _PROTECTED_ATTRIBUTES
         or column.startswith("is_")
+        or "relationship" in column
         or "occupation" in column
         or "industry" in column
     )
@@ -560,8 +561,8 @@ def refuse_protected_factors(columns: Iterable[str], *, what: str) -> None:
     """Refuse a factor on a geography column or a protected person attribute.
 
     Static aging changes weights and monetary amounts only; a factor on a
-    geography code, ``age``, ``is_female``, an ``is_*`` flag, or an industry
-    or occupation column would move what a household is, not how much it has.
+    geography code, age, relationship, work indicator, an ``is_*`` flag, or an
+    industry or occupation column would change a carried attribute.
     """
     protected = sorted(column for column in columns if _is_protected(column))
     if protected:
@@ -654,6 +655,7 @@ def read_local_base(path: str | Path, base_year: int) -> LocalBase:
             f"{stray or 'no household_weight'}"
         )
     frame = load_legacy_calibrated_us_h5(path)
+    _require_positive_local_weights(frame.weights_for("household").values)
     return LocalBase(frame=frame, columns=columns, root_attributes=root_attributes)
 
 
@@ -790,14 +792,20 @@ def geography_share_drift(
     return drift
 
 
+def _require_positive_local_weights(weights: np.ndarray) -> None:
+    if not np.isfinite(weights).all() or not (weights > 0).all():
+        raise ValueError("local household weights must be finite and strictly positive")
+
+
 def projected_local_frame(tables: Mapping[str, pd.DataFrame], base: Frame) -> Frame:
     """A projected year's tables as a frame with calibrated household weights.
 
-    Refuses weights that are not finite, are negative or have no mass.
+    Refuses weights that are not finite and strictly positive on every row.
     """
     tables = {entity: tables[entity] for entity in base.entities}
     household = tables["household"]
     weights = household["household_weight"].to_numpy(dtype=np.float64)
+    _require_positive_local_weights(weights)
     tables["household"] = household.drop(columns="household_weight")
     return Frame(
         tables, base.schema, {"household": Weights(weights, WeightKind.CALIBRATED)}
@@ -824,6 +832,7 @@ def write_local_year(
         write_nullable_us_h5,
     )
 
+    _require_positive_local_weights(frame.weights_for("household").values)
     write_nullable_us_h5(
         frame,
         path,
@@ -954,7 +963,7 @@ def build_annual_static_aging(
         raise ValueError("parent_release must identify the pinned base release")
     projected = projection_years(base_year, end_year, years)
     names = annual_dataset_names(
-        base_year, end_year, base_dataset=base_dataset, line=line, years=years
+        base_year, end_year, base_dataset=base_dataset, line=line, years=projected
     )
     local = line == LOCAL_LINE
     # Hugging Face snapshot paths are .h5 symlinks to extensionless blobs.

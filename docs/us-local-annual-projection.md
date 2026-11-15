@@ -30,7 +30,8 @@ format, written by `microcosm.build.us_runtime.h5_io.write_nullable_us_h5`,
 a `_time_period` of 2024, the artifact-metadata row
 `{"artifact_kind": "calibrated_local_area_artifact", "entity_hdf_format":
 "fixed_nullable", "household_weight_kind": "calibrated"}`, and
-`household_weight` as the only stored weight.
+`household_weight` as the only stored weight. Every base and projected
+household weight must be finite and strictly positive.
 
 ## What it writes
 
@@ -52,6 +53,15 @@ base has them), and `_time_period` set to the year. The builder checks the
 written file round trip, its stored column order, its metadata row and its
 root attributes. It also checks that policyengine-us's `USSingleYearDataset`
 opens the file at its year.
+
+The builder's `_verify_native_local` guard refuses a requested year that
+differs from the file's stored year. The upstream `USSingleYearDataset`
+constructor itself reads the stored period without enforcing a requested
+period, and an unbounded `Microsimulation` can extend a single-year input.
+Engine callers must select the correct file and bound its projection window
+with `us_dataset_through`. The fixture workflow test checks own-year input
+calculations with that bounded dataset; independent acceptance must also
+check any earlier-year inputs policy formulas read.
 
 The candidate manifest has `layout: "fixed_nullable"`, and these entries:
 
@@ -98,7 +108,7 @@ and projected weighted household share, and the largest absolute change in
 any value's share.
 
 Every projected year is a forecast from the 2024 base. That includes 2026,
-and 2027 is two years further out.
+and 2027 is three years after the base year.
 
 Static aging changes nothing else. Every column the year's uprating did not
 factor is checked equal to the base's, in value and dtype, before the year is
@@ -107,7 +117,8 @@ written. That covers ids, memberships, every geography column (`state_fips`,
 `block_geoid`, `tract_geoid`, `place_fips`, `sldu`, `sldl`, `cbsa_code`) and
 the person attributes: age, relationships, work indicators, industry and
 occupation. A factor on a geography column, on `age` or `is_female`, on an
-`is_*` flag, or on an industry or occupation column is refused. A factored
+`is_*` flag, on `worked_last_year`, or on a relationship, industry or
+occupation column is refused. A factored
 integer column is stored as float64 in projected years. Record IDs do not
 track individual lives across years.
 
@@ -147,11 +158,13 @@ step.
 
 3. **Compute each year's household measures** on
    `$CANDIDATE/microcosm_us_2026_acs_local.h5` and
-   `$CANDIDATE/microcosm_us_2027_acs_local.h5`.
+   `$CANDIDATE/microcosm_us_2027_acs_local.h5`. This projection builder does
+   not compute or attach those measures.
 4. **Write the acceptance report.** Run the independent acceptance checks on
    2024, 2026 and 2027. Write a passing schema-1
    `us_annual_projection_acceptance` report bound to the SHA-256 of
    `$CANDIDATE/annual_manifest.json`, as in the national guide's step 3.
+   This branch validates that report; it provides no acceptance-runner CLI.
 5. **Assemble the build:**
 
    ```sh

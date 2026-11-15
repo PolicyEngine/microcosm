@@ -16,6 +16,7 @@ import sys
 import types
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from importlib import import_module
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -23,7 +24,6 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build import us_annual_static_aging as annual
-from microcosm.build.us_runtime.h5_io import write_nullable_us_h5
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights, apply_scale
 from microcosm.frame.materialize import engine_tables
 
@@ -168,6 +168,8 @@ def write_local_base(
     artifact_kind: str = annual.LOCAL_ARTIFACT_KIND,
 ) -> Path:
     """Write ``frame`` as the local release tool writes its calibrated H5."""
+    from microcosm.build.us_runtime.h5_io import write_nullable_us_h5
+
     write_nullable_us_h5(
         frame,
         path,
@@ -319,6 +321,9 @@ def install_engine_stand_ins(monkeypatch, *, static_aging=None) -> list:
     ``static_aging`` stays the real operator unless a stand-in is given. The
     returned list records each native-loader check as ``(path, year, rows)``.
     """
+    # Load the real writer before replacing the engine. Defer this to the
+    # executing worker so every xdist worker need not load US runtime at collection.
+    import_module("microcosm.build.us_runtime.h5_io")
     fake = types.ModuleType("policyengine_us")
     fake.CountryTaxBenefitSystem = lambda: object()
     monkeypatch.setitem(sys.modules, "policyengine_us", fake)

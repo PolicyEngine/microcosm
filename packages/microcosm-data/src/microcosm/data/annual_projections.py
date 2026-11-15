@@ -434,7 +434,7 @@ def _check_fixed_native_identity(
     its own year and the base its base year; every entity keeps the base's
     columns in order and its row count, which the candidate record repeats;
     each entity's ID and every person membership ID are equal to the base's;
-    and the household weights are finite and non-negative with positive mass.
+    and the household weights are finite and strictly positive on every row.
     """
     with (
         h5py.File(base, mode="r") as original,
@@ -485,11 +485,10 @@ def _check_fixed_native_identity(
         if (
             weights.dtype.kind != "f"
             or not np.isfinite(weights).all()
-            or (weights < 0).any()
-            or not (weights > 0).any()
+            or not (weights > 0).all()
         ):
             raise ValueError(
-                f"{year} household weights must be finite nonnegative with positive mass"
+                f"{year} household weights must be finite and strictly positive"
             )
 
 

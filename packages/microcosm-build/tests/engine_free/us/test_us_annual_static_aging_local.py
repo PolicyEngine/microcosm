@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import shutil
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -22,7 +23,6 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build import us_annual_static_aging as annual
-from microcosm.build.us_runtime.h5_io import read_nullable_us_h5_metadata
 from test_support.microcosm_build.us_annual_local import (
     HOUSEHOLD_GEOGRAPHY,
     LOCAL_BUILD,
@@ -68,6 +68,8 @@ def _period(path: Path) -> list[int]:
 def test_a_local_build_writes_exactly_the_requested_years_in_the_base_layout(
     tmp_path, monkeypatch
 ):
+    from microcosm.build.us_runtime.h5_io import read_nullable_us_h5_metadata
+
     native = install_engine_stand_ins(monkeypatch)
     kwargs = local_build_kwargs(tmp_path)
     base_h5 = kwargs["base_artifact_root"] / LOCAL_FILE
@@ -222,7 +224,7 @@ def test_for_all_households_geography_ids_and_rows_carry_and_weights_stay_positi
     install_engine_stand_ins(monkeypatch)
     with tempfile.TemporaryDirectory() as directory:
         kwargs = local_build_kwargs(Path(directory), households)
-        manifest = annual.build_annual_static_aging(**kwargs, years=sorted(years))
+        manifest = annual.build_annual_static_aging(**kwargs, years=iter(sorted(years)))
         output = kwargs["output_dir"]
         assert sorted(p.name for p in output.glob("*.h5")) == sorted(
             f"microcosm_us_{year}_acs_local.h5" for year in years
@@ -308,7 +310,7 @@ def test_projection_years_are_exactly_the_requested_years(base_year, span, data)
     assert annual.projection_years(base_year, end_year, chosen) == tuple(sorted(chosen))
     assert annual.projection_years(base_year, end_year) == tuple(window)
     names = annual.annual_dataset_names(
-        base_year, end_year, line=annual.LOCAL_LINE, years=chosen
+        base_year, end_year, line=annual.LOCAL_LINE, years=iter(chosen)
     )
     assert names == {
         base_year: f"microcosm_us_{base_year}_acs_local",
@@ -361,7 +363,12 @@ def test_age_cells_band_single_year_and_cps_coded_ages_alike(ages, bad):
     column=st.sampled_from(
         sorted(annual.GEOGRAPHY_COLUMNS)
         + ["congressional_district_geoid__2025", "age", "is_female", "is_disabled"]
-        + ["detailed_occupation_recode", "industry_code"]
+        + [
+            "detailed_occupation_recode",
+            "industry_code",
+            "worked_last_year",
+            "relationship_to_household_head",
+        ]
     ),
     others=st.lists(st.sampled_from(MONETARY), unique=True),
 )
@@ -418,6 +425,43 @@ def test_share_drift_is_zero_under_uniform_scaling_and_shares_sum_to_one(
 
 
 # --- Refusals ---------------------------------------------------------------------
+
+
+@settings(max_examples=30, deadline=None)
+@given(
+    row=st.integers(0, 4),
+    bad=st.one_of(
+        st.just(0.0),
+        st.floats(max_value=-1e-10, allow_infinity=False),
+        st.sampled_from([float("nan"), float("inf"), float("-inf")]),
+    ),
+)
+def test_any_nonpositive_or_nonfinite_projected_household_weight_is_refused(row, bad):
+    frame = local_frame(default_households())
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    weights = frame.weights_for("household").values.copy()
+    weights[row] = bad
+    tables["household"]["household_weight"] = weights
+    with pytest.raises(ValueError, match="finite and strictly positive"):
+        annual.projected_local_frame(tables, frame)
+
+
+@settings(max_examples=5, deadline=None)
+@given(row=st.integers(0, 4))
+def test_any_zero_weight_local_household_is_refused_by_reader_and_writer(row):
+    households = default_households()
+    households[row] = replace(households[row], weight=0.0)
+    with tempfile.TemporaryDirectory() as directory:
+        frame = local_frame(households)
+        projected_path = Path(directory) / "projected.h5"
+        with pytest.raises(ValueError, match="finite and strictly positive"):
+            annual.write_local_year(
+                frame, projected_path, 2026, root_attributes={}, columns={}
+            )
+        assert not projected_path.exists()
+        path = write_local_base(Path(directory) / "base.h5", frame)
+        with pytest.raises(ValueError, match="finite and strictly positive"):
+            annual.read_local_base(path, 2024)
 
 
 def test_a_geography_column_in_the_uprating_map_is_refused_before_writing(
