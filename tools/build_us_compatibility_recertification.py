@@ -572,6 +572,9 @@ class _BatchScorer:
             values = np.sum(arrays, axis=0)
         if metric["itemizers_only"]:
             values = values * self._at("tax_unit_itemizes", "tax_unit")
+        if metric.get("filing_statuses"):
+            status = _values(self.simulation, "filing_status").astype(str)
+            values = np.where(np.isin(status, metric["filing_statuses"]), values, 0.0)
         statistic = metric["statistic"]
         if statistic != recert.STATISTIC_SUM:
             values = recert.signed_component(values, metric["source_variable"] or "")

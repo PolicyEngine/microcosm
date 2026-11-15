@@ -87,6 +87,10 @@ from microcosm.data.contract import (
     release_artifact_role,
     required_release_files,
 )
+from microcosm.diagnostics.us_filing_status_constants import (
+    SOI_FILING_STATUS_ENGINE_NAMES,
+    SOI_FILING_STATUS_LABELS,
+)
 
 RECERTIFICATION_RELEASE_TYPE = "compatibility_recertification"
 REPORT_FILE = "compatibility_recertification.json"
@@ -1569,8 +1573,10 @@ class DriftMetric:
     base_part_b_premium) * medicare_enrolled``. ``entity =
     "household_members"`` sums a person variable over each household, as the
     release tool's ``policyengine_variable`` rows do. ``itemizers_only`` masks
-    by ``tax_unit_itemizes``. The weight is the H5's household weight of the
-    unit's household, so both engines weigh the same rows identically.
+    by ``tax_unit_itemizes``; ``filing_statuses`` selects the named engine
+    filing statuses (an empty tuple selects all). The weight is the H5's
+    household weight of the unit's household, so both engines weigh the same
+    rows identically.
     """
 
     metric_id: str
@@ -1581,6 +1587,7 @@ class DriftMetric:
     unit: str
     combine: str = "add"
     itemizers_only: bool = False
+    filing_statuses: tuple[str, ...] = ()
     batching: str = BATCHING_HOUSEHOLD
     requirement_id: str | None = None
     target_name: str | None = None
@@ -1748,13 +1755,14 @@ def signed_component(values, source_variable: str):
 
 
 def _soi_row_metric(target: Mapping, requirement_id: str | None) -> DriftMetric | None:
-    """A national, all-AGI, all-status SOI or SSA row as a metric, else ``None``.
+    """A national, all-AGI SOI or SSA row as a metric, else ``None``.
 
     Only the rows whose release-tool materialization this module reproduces
     are scored: the SOI slice on the national all-returns population (no state,
-    district, filing-status, AGI-band, child-count, positive-EITC or
-    taxable-only filter, no ledger filters other than the trivial ones), and
-    the plain-sum ``policyengine_variable`` rows.
+    district, AGI-band, child-count, positive-EITC or
+    taxable-only filter), with all-status or supported filing-status slices
+    and no other nontrivial ledger filters, and the plain-sum
+    ``policyengine_variable`` rows.
     """
 
     metadata = _mapping(target.get("metadata"))
@@ -1791,10 +1799,20 @@ def _soi_row_metric(target: Mapping, requirement_id: str | None) -> DriftMetric 
         )
     if materializer != "irs_soi_slice":
         return None
+    filing_status = metadata.get("filing_status")
+    ledger_status = metadata.get("ledger_filter_filing_status")
     if (
         metadata.get("agi_lower_bound") != "-inf"
         or metadata.get("agi_upper_bound") != "inf"
-        or metadata.get("filing_status") != "All"
+        or not isinstance(filing_status, str)
+        or filing_status not in SOI_FILING_STATUS_ENGINE_NAMES
+        or (
+            ledger_status is not None
+            and (
+                not isinstance(ledger_status, str)
+                or SOI_FILING_STATUS_LABELS.get(ledger_status) != filing_status
+            )
+        )
         or metadata.get("state_fips")
         or metadata.get("congressional_district_geoid")
         or metadata.get("taxable_only") == "true"
@@ -1805,7 +1823,6 @@ def _soi_row_metric(target: Mapping, requirement_id: str | None) -> DriftMetric 
             and key not in {"ledger_filter_filing_status", "ledger_filter_income_range"}
             for key in metadata
         )
-        or metadata.get("ledger_filter_filing_status", "all") != "all"
         or metadata.get("ledger_filter_income_range", "all") != "all"
     ):
         return None
@@ -1824,6 +1841,7 @@ def _soi_row_metric(target: Mapping, requirement_id: str | None) -> DriftMetric 
         "count" if mode == "indicator_sum" else "usd",
         combine=combine,
         itemizers_only=metadata.get("itemized_only") == "true",
+        filing_statuses=SOI_FILING_STATUS_ENGINE_NAMES[filing_status],
         requirement_id=requirement_id,
         target_name=name,
         source_variable=source_variable,
@@ -1882,8 +1900,15 @@ def drift_metric_definitions(calibration_diagnostics: Mapping) -> dict:
             )
             continue
         metrics.append(metric)
+    definitions = []
+    for metric in metrics:
+        definition = asdict(metric)
+        if not metric.filing_statuses:
+            # Keep historical all-status definitions and their attested hash.
+            definition.pop("filing_statuses")
+        definitions.append(definition)
     return {
-        "metrics": [asdict(metric) for metric in metrics],
+        "metrics": definitions,
         "unscored_critical_rows": unscored,
     }
 
@@ -2069,6 +2094,16 @@ def combine_drift(
         failures.append(
             "drift must score every exact critical row; unscored: "
             f"{sorted(exact - scored_exact)}"
+        )
+    unscored_exact = sorted(
+        row["target_name"]
+        for row in definitions["unscored_critical_rows"]
+        if row["requirement_id"] in exact
+    )
+    if unscored_exact:
+        failures.append(
+            "drift must score every exact critical row; unscored targets: "
+            f"{unscored_exact}"
         )
     sides = [
         ("baseline", baseline, VARIANT_AS_STORED),

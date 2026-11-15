@@ -53,6 +53,7 @@ from microcosm.calibrate import (
     calibration_variable_label,
 )
 from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_POSTAL
+from microcosm.diagnostics.us_filing_status_constants import SOI_FILING_STATUS_LABELS
 
 __all__ = [
     "US_FISCAL_MACRO_REALISM_BANDS",
@@ -4293,16 +4294,7 @@ def _format_number(value: object) -> str:
 
 def _filing_status_label(value: object) -> str | None:
     raw = str(value or "all").lower()
-    labels = {
-        "all": "All",
-        "head_of_household": "Head of Household",
-        "married_filing_jointly_surviving_spouse": (
-            "Married Filing Jointly/Surviving Spouse"
-        ),
-        "married_filing_separately": "Married Filing Separately",
-        "single": "Single",
-    }
-    return labels.get(raw)
+    return SOI_FILING_STATUS_LABELS.get(raw)
 
 
 def _state_fips(fact: object) -> str | None:

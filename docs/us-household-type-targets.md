@@ -199,11 +199,13 @@ zero if the totals fit exactly. Whether the entire SOI family should instead
 count filed returns needs a separate change and receipt. The new constraints
 do not establish that all tax units are filed returns.
 
-The separate compatibility-recertification drift scorer currently refuses
-SOI filing-status filters (`microcosm.data.compatibility_recertification`,
-`_soi_row_metric`). It needs support before a future compatibility
-recertification can score these new critical rows. The from-scratch release
-scores them through its existing SOI slice materializer.
+The compatibility-recertification drift scorer applies the same filing-status
+partition to nonrefundable CTC amounts and positive-CTC claims. Its metric
+definitions retain `ctc_amount` and `ctc_claims` for all eight status rows, so a
+diagnostic with no retired all-status CTC row remains recertifiable. Unsupported
+or contradictory status metadata remains unscored, and any unscored exact
+critical row refuses recertification even when its siblings are scored.
+Existing all-status metric definitions retain their serialized shape and hashes.
 
 B11007 (households with people 65 and over) and B12002 (marital status by age
 and sex) remain follow-ups from microcosm#1212. The calibration receipt and

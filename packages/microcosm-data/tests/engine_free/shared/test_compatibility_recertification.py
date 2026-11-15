@@ -1031,6 +1031,235 @@ def test_signed_component_scores_soi_rows_as_the_release_tool_does():
     ]
 
 
+def _filing_status_ctc_rows():
+    from microcosm.diagnostics.us_filing_status_constants import (
+        SOI_FILING_STATUS_LABELS,
+    )
+
+    return [
+        {
+            "name": f"irs_soi.ty2023.table_1_3.{record_set}.{status}.{measure}@2024",
+            "registry": {"family": "irs_soi"},
+            "target": 1_000.0,
+            "final_estimate": 1_000.0,
+            "metadata": {
+                "materializer": "irs_soi_slice",
+                "source_variable": "ctc",
+                "base_variables": "ctc,ctc_limiting_tax_liability",
+                "measure_mode": mode,
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": label,
+                "ledger_filter_filing_status": status,
+                "ledger_filter_income_range": "all",
+            },
+        }
+        for status, label in SOI_FILING_STATUS_LABELS.items()
+        if status != "all"
+        for record_set, measure, mode in (
+            ("filing_status_ctc_amount", "ctc_amount", "sum"),
+            ("filing_status_ctc_returns", "ctc_claims", "indicator_sum"),
+        )
+    ]
+
+
+def test_filing_status_constant_views_match_the_release_builder_api():
+    from microcosm.diagnostics.us_filing_status_constants import (
+        FILING_STATUS_MAP,
+        SOI_FILING_STATUS_ENGINE_NAMES,
+        SOI_FILING_STATUS_LABELS,
+    )
+
+    assert set(SOI_FILING_STATUS_LABELS.values()) == set(FILING_STATUS_MAP)
+    for label, names in SOI_FILING_STATUS_ENGINE_NAMES.items():
+        selection = FILING_STATUS_MAP[label]
+        expected = (
+            ()
+            if selection is None
+            else (
+                (selection,) if isinstance(selection, str) else tuple(sorted(selection))
+            )
+        )
+        assert tuple(sorted(names)) == expected
+
+
+def test_historical_all_status_metric_definitions_keep_their_wire_shape():
+    name = "irs_soi.ty2022.historic_table_2.us.all.ctc_amount@2024"
+    definitions = recert.drift_metric_definitions(
+        {"targets": [{"name": name, "metadata": CRITICAL_METADATA[name]}]}
+    )
+    assert all("filing_statuses" not in metric for metric in definitions["metrics"])
+    assert definitions["metrics"][-1] == {
+        "metric_id": f"target:{name}",
+        "label": name,
+        "entity": "tax_unit",
+        "variables": ("ctc", "ctc_limiting_tax_liability"),
+        "statistic": "positive_sum",
+        "unit": "usd",
+        "combine": "nonrefundable_ctc",
+        "itemizers_only": False,
+        "batching": "household",
+        "requirement_id": "ctc_amount",
+        "target_name": name,
+        "source_variable": "ctc",
+    }
+
+
+def test_ctc_status_rows_score_nonrefundable_amounts_and_claims_numerically():
+    import numpy as np
+    import pandas as pd
+
+    rows = _filing_status_ctc_rows()
+    definitions = recert.drift_metric_definitions({"targets": rows})
+    metrics = [m for m in definitions["metrics"] if m["requirement_id"]]
+    assert len(metrics) == 8
+    assert definitions["unscored_critical_rows"] == []
+    ids = np.arange(8)
+    weights = np.array([2, 3, 5, 7, 11, 13, 17, 19], dtype=float)
+    arrays = {
+        "person_id": ids,
+        "ctc": np.array([1_000, 1_000, 4_000, 3_000, 2_000, -100, 1_000, 900]),
+        "ctc_limiting_tax_liability": np.array(
+            [500, 0, 2_000, 2_500, -1, 100, 1_200, 1_000]
+        ),
+        "filing_status": np.array(
+            [
+                "SINGLE",
+                "SINGLE",
+                "JOINT",
+                "SURVIVING_SPOUSE",
+                "SEPARATE",
+                "HEAD_OF_HOUSEHOLD",
+                "HEAD_OF_HOUSEHOLD",
+                "SEPARATE",
+            ]
+        ),
+    }
+    tables = {"person": pd.DataFrame({"person_id": ids})}
+    entities = dict.fromkeys(arrays, "tax_unit") | {"person_id": "person"}
+    for group in recert._ENTITIES[1:]:
+        column = f"{group}_id"
+        tables[group] = pd.DataFrame({column: ids})
+        tables["person"][f"person_{column}"] = ids
+        arrays[column] = ids
+        entities[column] = group
+    tables["household"]["household_weight"] = weights
+    simulation = SimpleNamespace(
+        calculate=lambda variable, period: arrays[variable],
+        tax_benefit_system=SimpleNamespace(
+            variables={
+                variable: SimpleNamespace(entity=SimpleNamespace(key=entity))
+                for variable, entity in entities.items()
+            }
+        ),
+    )
+    scorer = load_tool()._BatchScorer(simulation, tables)
+    expected = {
+        "single": (1_000.0, 2.0),
+        "married_filing_jointly_surviving_spouse": (27_500.0, 12.0),
+        "married_filing_separately": (17_100.0, 19.0),
+        "head_of_household": (17_000.0, 17.0),
+    }
+    for metric in metrics:
+        status = metric["target_name"].split(".")[-2]
+        amount, claims = expected[status]
+        want = amount if metric["requirement_id"] == "ctc_amount" else claims
+        assert scorer.total(metric) == pytest.approx(want)
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"filing_status": "Unknown"},
+        {"ledger_filter_filing_status": "unknown"},
+        {"filing_status": "Single", "ledger_filter_filing_status": "all"},
+    ],
+)
+def test_soi_status_metrics_refuse_unknown_or_conflicting_filters(metadata):
+    target = _filing_status_ctc_rows()[0]
+    target["metadata"].update(metadata)
+    assert recert._soi_row_metric(target, "ctc_amount") is None
+
+
+def test_status_only_ctc_diagnostics_satisfy_the_drift_metric_contract(candidate):
+    release_dir, _ = candidate
+    retired = {
+        "irs_soi.ty2022.historic_table_2.us.all.ctc_amount@2024",
+        "irs_soi.ty2022.historic_table_2.us.all.ctc_claims@2024",
+    }
+
+    def replace_ctc_rows(diagnostics):
+        diagnostics["targets"] = [
+            row for row in diagnostics["targets"] if row["name"] not in retired
+        ] + _filing_status_ctc_rows()
+
+    _rewrite_json(release_dir / "calibration_diagnostics.json", replace_ctc_rows)
+    drift = _combine(release_dir)
+    assert drift["unscored_critical_rows"] == []
+    ctc = [
+        row
+        for row in drift["rows"]
+        if row["requirement_id"] in {"ctc_amount", "ctc_claims"}
+    ]
+    assert len(ctc) == 8
+    assert all(
+        row["within_tolerance"] == {"baseline": True, "tested": True} for row in ctc
+    )
+    assert not {f"target:{name}" for name in retired} & {
+        row["metric_id"] for row in drift["rows"]
+    }
+
+
+def test_drift_refuses_one_unscored_status_even_when_siblings_cover_the_requirement(
+    candidate,
+):
+    release_dir, _ = candidate
+    rows = _filing_status_ctc_rows()
+    broken = rows[0]
+    broken["metadata"]["ledger_filter_filing_status"] = "all"
+
+    def replace_ctc_rows(diagnostics):
+        diagnostics["targets"] = [
+            row
+            for row in diagnostics["targets"]
+            if row["name"]
+            not in {
+                "irs_soi.ty2022.historic_table_2.us.all.ctc_amount@2024",
+                "irs_soi.ty2022.historic_table_2.us.all.ctc_claims@2024",
+            }
+        ] + rows
+
+    path = release_dir / "calibration_diagnostics.json"
+    _rewrite_json(path, replace_ctc_rows)
+    definitions = recert.drift_metric_definitions(json.loads(path.read_text()))
+    assert {"ctc_amount", "ctc_claims"} <= {
+        metric["requirement_id"] for metric in definitions["metrics"]
+    }
+    assert definitions["unscored_critical_rows"] == [
+        {"target_name": broken["name"], "requirement_id": "ctc_amount"}
+    ]
+    with pytest.raises(ValueError, match="unscored targets") as error:
+        _combine(release_dir)
+    assert broken["name"] in str(error.value)
+
+
+def test_drift_still_allows_an_unscored_nonexact_blanket_row(candidate):
+    release_dir, _ = candidate
+    name = "irs_soi.ty2023.table_1_4.all.wages_salaries_amount@2024"
+
+    def make_blanket_row_unscorable(diagnostics):
+        target = next(row for row in diagnostics["targets"] if row["name"] == name)
+        target["metadata"]["filing_status"] = "Unknown"
+
+    _rewrite_json(
+        release_dir / "calibration_diagnostics.json", make_blanket_row_unscorable
+    )
+    drift = _combine(release_dir)
+    assert drift["unscored_critical_rows"] == [
+        {"target_name": name, "requirement_id": "soi_table_1_4_national_dollar_rows"}
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Publication.
 # ---------------------------------------------------------------------------

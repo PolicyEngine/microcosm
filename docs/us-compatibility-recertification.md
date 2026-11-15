@@ -157,7 +157,9 @@ from the H5, so both engines weigh the same rows identically. The rules:
 
 - **Critical rows** use the release tool's SOI semantics: the signed
   component (positive part, except the identity and loss sources), the
-  nonrefundable-CTC rule and the itemizer mask.
+  nonrefundable-CTC rule, the itemizer mask and the filing-status partition.
+  CTC status rows retain the `ctc_amount` and `ctc_claims` requirements without
+  needing an all-status row; joint returns include surviving spouses.
 - **Population aggregates are refused.** A batch engine that computed one of
   the release tool's population-aggregate formulas refuses
   (`POPULATION_AGGREGATE_VARIABLES`).

@@ -456,6 +456,7 @@ from microcosm.diagnostics import (
     DiagnosticsWriteOutcome,
     DiagnosticsWriteSuccess,
 )
+from microcosm.diagnostics.us_filing_status_constants import FILING_STATUS_MAP
 from microcosm.frame import Frame, MassChange, WeightKind, Weights, read_frame_table
 from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSEngine,
@@ -1117,17 +1118,6 @@ US_ACA_PERSON_COUNT_TARGET_TABLES = frozenset(
 )
 US_MEDICAID_ENROLLMENT_TARGET_ROLE = "medicaid_enrollment"
 US_SNAP_HOUSEHOLDS_TARGET_ROLE = "snap_households"
-
-FILING_STATUS_MAP = {
-    "All": None,
-    "Head of Household": "HEAD_OF_HOUSEHOLD",
-    "Married Filing Jointly/Surviving Spouse": {
-        "JOINT",
-        "SURVIVING_SPOUSE",
-    },
-    "Married Filing Separately": "SEPARATE",
-    "Single": "SINGLE",
-}
 
 SUPPORTED_SOI_LEDGER_FILTERS = frozenset(
     {
@@ -6846,7 +6836,7 @@ def _base_simulation_household_columns(
         status = FILING_STATUS_MAP[spec.metadata["filing_status"]]
         if isinstance(status, str):
             mask &= filing_status == status
-        elif isinstance(status, set):
+        elif status is not None:
             mask &= np.isin(filing_status, sorted(status))
         child_filter = _soi_eitc_child_count_filter(spec.metadata)
         if child_filter is not None:
