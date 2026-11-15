@@ -402,7 +402,7 @@
         "contract"
        ]
       },
-      "entry_clock_age_bound": {
+      "immigration_clock_age_bound": {
        "type": "object",
        "additionalProperties": false,
        "properties": {
@@ -683,7 +683,7 @@
      },
      "required": [
       "adult_care",
-      "entry_clock_age_bound",
+      "immigration_clock_age_bound",
       "passive_partnership_s_corp",
       "schedule_d_capital_gain_distributions",
       "self_employment_components"

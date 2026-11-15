@@ -919,7 +919,7 @@ def test_transferred_entry_clock_never_exceeds_the_recipients_life() -> None:
     assert receipts[0] == {"cells_checked": 6, "cells_capped_at_age_plus_one": 6}
     contract = acs_transfer_module.acs_transfer_execution_contract_identity(
         targets=family
-    )["post_transfer_structure"]["entry_clock_age_bound"]
+    )["post_transfer_structure"]["immigration_clock_age_bound"]
     assert contract == {
         "enabled": True,
         "target": "years_since_us_entry",
@@ -930,7 +930,7 @@ def test_transferred_entry_clock_never_exceeds_the_recipients_life() -> None:
     assert (
         acs_transfer_module.acs_transfer_execution_contract_identity(
             targets=family[:2]
-        )["post_transfer_structure"]["entry_clock_age_bound"]["enabled"]
+        )["post_transfer_structure"]["immigration_clock_age_bound"]["enabled"]
         is False
     )
 

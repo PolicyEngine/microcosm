@@ -494,7 +494,7 @@ def acs_transfer_execution_contract_identity(
                 "tax_unit_link": _ADULT_CARE_UNIT,
                 "mutable_rows": "newly_imputed_expense_cells_only",
             },
-            "entry_clock_age_bound": {
+            "immigration_clock_age_bound": {
                 "enabled": entry_clock_enabled,
                 "target": _ENTRY_CLOCK_TARGET,
                 "age": _ENTRY_CLOCK_AGE,
@@ -1984,7 +1984,8 @@ def _apply_post_transfer_structure(
         return
 
     post_transfer_contract = execution_contract["post_transfer_structure"]
-    entry_clock_contract = post_transfer_contract["entry_clock_age_bound"]
+    assert isinstance(post_transfer_contract, Mapping)
+    entry_clock_contract = post_transfer_contract["immigration_clock_age_bound"]
     assert isinstance(entry_clock_contract, Mapping)
     entry_clock_mask = imputed_masks.get(("person", _ENTRY_CLOCK_TARGET))
     if (
@@ -2001,7 +2002,6 @@ def _apply_post_transfer_structure(
                 provenance[index] = replace(item, reconciliation=counts)
                 break
 
-    assert isinstance(post_transfer_contract, Mapping)
     schedule_d_contract = post_transfer_contract[
         "schedule_d_capital_gain_distributions"
     ]

@@ -887,8 +887,8 @@ def _normalise_transfer_execution(
     entry_clock = deepcopy(
         dict(
             _mapping_like(
-                post_transfer["entry_clock_age_bound"],
-                "entry-clock age-bound post-transfer contract",
+                post_transfer["immigration_clock_age_bound"],
+                "immigration clock age-bound post-transfer contract",
             )
         )
     )
@@ -932,7 +932,7 @@ def _normalise_transfer_execution(
             },
             "contract": adult_care,
         },
-        "entry_clock_age_bound": {
+        "immigration_clock_age_bound": {
             "activation": {"all_targets": [str(entry_clock["target"])]},
             "contract": entry_clock,
         },
