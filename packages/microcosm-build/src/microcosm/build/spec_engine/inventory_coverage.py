@@ -389,8 +389,12 @@ EXPECTED_HASHES = {
     # calibrate's shared option checks move both again; no US solve changes.
     # Its TANF ledger fix moves the protocol again: the site's recorded salt
     # becomes the takes_up_tanf_if_eligible its draw always used.
-    "seed_map": "270cf6498f8a2977993f969d0703be88fb930499dab42741a2111f57ffec4266",
-    "seed_protocol": "a696ad74bfa5743b63c65499e6f5a41ea913a96ca38a5e3b9882069284bfca47",
+    # microcosm#931 moves both again: it adds the keyed tie order, the keyed
+    # uniform for a label, the binomial share band and a strata keyword to
+    # stochastic_assignment. stable_identity_uniforms, the one function the
+    # US keyed draws call there, is unchanged, so no US draw changes.
+    "seed_map": "8b4cf2e4ddaec8494a1ef41ddc0892ac454894315e51bb7d244b160568593a87",
+    "seed_protocol": "5b870f9fed400cad5d8a138f622de5bb60954cc62f9ae4f451e2e46035e87fa9",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
