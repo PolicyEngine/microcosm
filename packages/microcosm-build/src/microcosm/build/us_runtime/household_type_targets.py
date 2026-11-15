@@ -6,10 +6,10 @@ maps its native relationships onto those same codes before unit construction.
 or tax-unit filing decision enters this household classification.
 
 ACS group-quarters records are one-person placeholders, not households.
-Their source ``TYPEHUGQ`` excludes them before the householder check; every
-remaining household must have exactly one CPS reference person (code 1/2).
-The ASEC frame has no household record-type field, so an ASEC row with no
-householder refuses rather than being inferred to be group quarters.
+Source ``TYPEHUGQ`` and ASEC ``HRHTYPE`` exclude group quarters before the
+householder check; ASEC group quarters may contain multiple people and a
+valid code-1/2 householder. Historical ASEC frames without HRHTYPE still use
+the roster: their group quarters cannot be distinguished from housing units.
 """
 
 from __future__ import annotations
@@ -21,6 +21,11 @@ import numpy as np
 import pandas as pd
 
 from .asec_census_person_columns import ASEC_CENSUS_PERSON_COLUMNS
+from .asec_household_type import (
+    ASEC_GROUP_QUARTERS_KINDS,
+    ASEC_HOUSEHOLD_KIND_COLUMN,
+    ASEC_HOUSEHOLD_KINDS,
+)
 from .relationship_inputs import _VALID_A_MARITL_CODES
 from .spm_universe_source import (
     ACS_ARM,
@@ -84,7 +89,14 @@ def household_type_household_values(
 
     members = count(np.ones(len(person), dtype=bool))
     in_household = _household_universe(household)
-    if ((~in_household) & (members != 1)).any():
+    acs_gq = (
+        pd.to_numeric(household[ACS_HOUSEHOLD_KIND_COLUMN], errors="coerce")
+        .isin(ACS_GROUP_QUARTERS_KINDS)
+        .to_numpy()
+        if ACS_HOUSEHOLD_KIND_COLUMN in household
+        else np.zeros(n_households, dtype=bool)
+    )
+    if (acs_gq & (members != 1)).any():
         raise ValueError("ACS group-quarters records must contain exactly one person.")
     head = np.isin(relationship, [1, 2])
     head_count = count(head)
@@ -138,7 +150,7 @@ def household_type_household_values(
 
 
 def _household_universe(household: pd.DataFrame) -> np.ndarray:
-    """Exclude source-declared ACS group quarters, allowing ASEC's absent kind."""
+    """Exclude native group quarters; retain the legacy field-less ASEC path."""
     if ACS_HOUSEHOLD_KIND_COLUMN in household:
         raw = household[ACS_HOUSEHOLD_KIND_COLUMN]
         kind = pd.to_numeric(raw, errors="coerce")
@@ -153,7 +165,14 @@ def _household_universe(household: pd.DataFrame) -> np.ndarray:
                 raise ValueError(
                     "ACS household-type targets require observed TYPEHUGQ."
                 )
-    return ~kind.isin(ACS_GROUP_QUARTERS_KINDS).to_numpy()
+    in_household = ~kind.isin(ACS_GROUP_QUARTERS_KINDS).to_numpy()
+    if ASEC_HOUSEHOLD_KIND_COLUMN in household:
+        raw = household[ASEC_HOUSEHOLD_KIND_COLUMN]
+        asec_kind = pd.to_numeric(raw, errors="coerce")
+        if (raw.notna() & ~asec_kind.isin(ASEC_HOUSEHOLD_KINDS)).any():
+            raise ValueError("Household-type targets require HRHTYPE in 1--10.")
+        in_household &= ~asec_kind.isin(ASEC_GROUP_QUARTERS_KINDS).to_numpy()
+    return in_household
 
 
 def _require_columns(

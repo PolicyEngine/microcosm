@@ -151,6 +151,7 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         # household materializer in each ACS household-type target. Its
         # group-quarters constants come from the source-universe producer.
         "microcosm.build.us_runtime.household_type_targets",
+        "microcosm.build.us_runtime.asec_household_type",
         "microcosm.build.us_runtime.spm_universe_source",
         # microcosm#1405: the gate battery refuses a signing key the committed
         # registry does not let sign, so it imports

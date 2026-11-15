@@ -110,11 +110,32 @@ institutional and noninstitutional group quarters (2 and 3). The ACS loader
 retains a one-person household-table placeholder for each group-quarters
 resident, recodes their relationship to 14 and replaces zero household weight
 with person weight. The indicators exclude both kinds before checking for a
-householder. An ACS provenance row missing its type refuses. The ASEC frame
-has no native household record-type field; it uses the carried CPS roster and
-refuses a missing householder rather than guessing that a malformed household
-is group quarters. This does not recover an ASEC group-quarters distinction
-that the frame does not carry.
+householder. An ACS provenance row missing its type refuses.
+
+ASEC's raw household table carries `HRHTYPE`. Its source producer
+(`CensusCPS.generate` in the archived US data package, commit `40314a75`)
+reads the complete `hhpub` table and retains every household referenced by a
+person, including group quarters. `asec_pool._remap_source_year` now maps
+`HRHTYPE` onto the pooled persons by their source household id, and
+`build_pooled_asec_unit_frame` moves it onto the constructed household table.
+The indicators exclude codes 9 and 10 before checking householders; ASEC group
+quarters can have multiple people and a valid householder. Codes 1–8 identify
+housing households. See the [Census 2024 ASEC dictionary and Appendix D](https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf).
+Carrying this field leaves the CPS SPM universe unchanged: its sample includes
+these noninstitutional group-quarters residents, unlike the ACS SPM sample.
+
+Today's certified frame was built before this carry and lacks `HRHTYPE`.
+The re-solve receipt can still run on it: when that field is absent, ASEC
+records use the existing roster classification. **The receipt therefore
+counts all 59 native group-quarters records in the pinned 2024 ASEC survey as
+housing households, and the 48 one-person records as living alone.** All 59
+have positive source weights and exactly one code-1/2 householder; the
+householder check cannot remove them. Those are source-record counts, not a
+weighted population correction or a statement about cloned row counts. A
+re-solve cannot recover this missing distinction. A fresh source build carries
+the field and excludes their weighted contributions from household cells while
+retaining their persons and positive weights. The 2024 survey archive is
+income year 2023 (`asecpub24csv.zip`), not the income-2024 processed H5.
 
 For every valid roster, each result is zero or one. Married-couple family,
 other family with a male householder, other family with a female householder

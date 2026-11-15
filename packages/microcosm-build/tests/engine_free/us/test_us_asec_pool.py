@@ -11,6 +11,10 @@ from microcosm.build.us_runtime.asec_pool import (
     load_asec_h5_tables,
     pool_asec_sources,
 )
+from microcosm.build.us_runtime.household_type_targets import (
+    household_type_household_values,
+)
+from microcosm.frame import Frame
 
 pytest.importorskip("microunit")
 pytest.importorskip("tables")
@@ -56,6 +60,7 @@ def _write_asec(
         tuple[int, int] | tuple[int, int, int] | tuple[int, int, int, int]
     ],
     include_relationship_recode: bool = True,
+    household_kinds: dict[int, int] | None = None,
 ) -> None:
     person_rows = []
     household_rows = []
@@ -75,6 +80,7 @@ def _write_asec(
                 "HSUP_WGT": household_weight,
                 "GESTFIPS": state_fips,
                 "H_TENURE": 1 + (household_id % 2),
+                "HRHTYPE": (household_kinds or {}).get(household_id, 1),
             }
         )
         if n_people >= 2:
@@ -199,8 +205,55 @@ def test_build_pooled_asec_unit_frame_runs_unit_assignment_on_pooled_source(
     assert np.array_equal(frame.table("household")["household_id"], np.array([1, 2]))
     assert frame.table("household")["state_fips"].tolist() == [6, 36]
     assert frame.table("household")["H_TENURE"].tolist() == [2, 2]
+    assert frame.table("household")["HRHTYPE"].tolist() == [1, 1]
     assert "state_fips" not in frame.table("person")
     assert "H_TENURE" not in frame.table("person")
+    assert "HRHTYPE" not in frame.table("person")
+
+
+def test_pool_preserves_native_group_quarters_through_unit_assignment(
+    tmp_path: Path,
+) -> None:
+    current = tmp_path / "asec_2024.h5"
+    prior = tmp_path / "asec_2023.h5"
+    # Deliberately unsorted ids, repeated across years, and group quarters
+    # with valid householders. Native ASEC GQ need not be one-person records.
+    _write_asec(
+        current,
+        households=[(20, 1), (10, 3), (30, 1)],
+        household_kinds={20: 6, 10: 9, 30: 10},
+    )
+    _write_asec(prior, households=[(10, 1)], household_kinds={10: 7})
+    sources = [AsecSource(2024, current), AsecSource(2023, prior)]
+    pooled = pool_asec_sources(sources, anchor_year=2024)
+    assert pooled.person["HRHTYPE"].tolist() == [6, 9, 9, 9, 10, 7]
+
+    frame, metadata = build_pooled_asec_unit_frame(sources, target_year=2024)
+    assert frame.table("household")["HRHTYPE"].tolist() == [9, 6, 10, 7]
+    assert "HRHTYPE" not in frame.table("person")
+    assert (frame.weights_for("household").values > 0).all()
+    assert frame.n("person") == 6
+    assert metadata["weighted_person_population"] == pytest.approx(500)
+    # Unit construction precedes the CPS-carried stage's direct age/sex
+    # mapping. Supply only those two model inputs needed by the materializer.
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = tables["person"].assign(
+        age=lambda p: p.A_AGE, is_female=lambda p: p.A_SEX.eq(2)
+    )
+    frame = Frame(tables, frame.schema, {"household": frame.weights_for("household")})
+    for kind in ("all", "householder_living_alone", "nonfamily"):
+        np.testing.assert_array_equal(
+            household_type_household_values(frame, {"household_type": kind}),
+            [0, 1, 0, 1],
+        )
+
+
+@pytest.mark.parametrize("kind", [0, 11, 1.5, "unknown"])
+def test_pool_rejects_invalid_native_household_type(tmp_path: Path, kind) -> None:
+    source = tmp_path / "asec.h5"
+    _write_asec(source, households=[(1, 1)], household_kinds={1: kind})
+    with pytest.raises(ValueError, match="HRHTYPE"):
+        pool_asec_sources([AsecSource(2024, source)])
 
 
 def test_build_pooled_asec_unit_frame_aligns_household_weights_by_remapped_id(

@@ -28,6 +28,10 @@ import pandas as pd
 from microcosm.build.us_runtime.asec_census_person_columns import (
     restore_asec_census_person_columns,
 )
+from microcosm.build.us_runtime.asec_household_type import (
+    ASEC_HOUSEHOLD_KIND_COLUMN,
+    ASEC_HOUSEHOLD_KINDS,
+)
 from microcosm.build.us_runtime.spm_role_source import AsecSpmRoleSource
 from microcosm.frame import (
     MICROUNIT_REQUIRED_COLUMNS,
@@ -200,7 +204,12 @@ def build_pooled_asec_unit_frame(
     # Keep raw household tenure through unit construction.  The archived eCPS
     # housing stage maps H_TENURE directly; SPM_TENMORTSTATUS is a distinct
     # concept and cannot reconstruct rent-free occupancy (H_TENURE == 3).
-    frame = _attach_household_attributes(frame, ("state_fips", "H_TENURE"))
+    # The source producer retains HRHTYPE, including positively weighted
+    # group quarters. Carry it through the person-only unit constructor so
+    # household targets can distinguish housing units from those records.
+    frame = _attach_household_attributes(
+        frame, ("state_fips", "H_TENURE", ASEC_HOUSEHOLD_KIND_COLUMN)
+    )
     return frame, pooled.metadata
 
 
@@ -327,22 +336,27 @@ def _remap_source_year(
             .astype("int64")
             .to_numpy()
         )
-    if "H_TENURE" in household:
-        tenure_by_household = (
-            household[["H_SEQ", "H_TENURE"]]
+    for column in ("H_TENURE", ASEC_HOUSEHOLD_KIND_COLUMN):
+        if column not in household:
+            continue
+        values_by_household = (
+            household[["H_SEQ", column]]
             .drop_duplicates("H_SEQ")
-            .set_index("H_SEQ")["H_TENURE"]
+            .set_index("H_SEQ")[column]
         )
-        result["H_TENURE"] = result["source_household_id"].map(tenure_by_household)
-        if result["H_TENURE"].isna().any():
+        result[column] = result["source_household_id"].map(values_by_household)
+        if result[column].isna().any():
             missing = (
-                result.loc[result["H_TENURE"].isna(), "source_household_id"]
-                .head()
-                .tolist()
+                result.loc[result[column].isna(), "source_household_id"].head().tolist()
             )
             raise ValueError(
-                f"ASEC H_TENURE is missing for source household id(s): {missing}."
+                f"ASEC {column} is missing for source household id(s): {missing}."
             )
+        if column == ASEC_HOUSEHOLD_KIND_COLUMN:
+            kind = pd.to_numeric(result[column], errors="coerce")
+            if not kind.isin(ASEC_HOUSEHOLD_KINDS).all():
+                raise ValueError("ASEC HRHTYPE must contain integer codes 1--10.")
+            result[column] = kind.astype("int64")
     result["PH_SEQ"] = result["PH_SEQ"].map(household_map).astype("int64")
     result["household_id"] = result["PH_SEQ"]
     result[ASEC_PERSON_WEIGHT_COLUMN] = (

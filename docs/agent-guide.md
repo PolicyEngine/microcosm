@@ -421,8 +421,11 @@ offline, and leaves publication to Max.
 The US fiscal-refresh release binds national ACS household-type counts by
 default, including the household total. Its dense, sparse and exact-k solve
 arms use free mass: ACS group-quarters placeholders carry positive weights
-but do not count as households. Keep these universes separate when changing
-weight handling. See [the household-target guide](us-household-type-targets.md).
+but do not count as households. Fresh ASEC pools carry household `HRHTYPE`
+and exclude its group-quarters codes 9/10 from these cells too. Historical
+frames without that field still use the roster and include those ASEC records;
+the re-solve receipt must state that limitation. Keep these universes separate
+when changing weight handling. See [the household-target guide](us-household-type-targets.md).
 
 The US fiscal-refresh builder scores its written H5 in household batches.
 Alongside its out-of-sample reports, it writes

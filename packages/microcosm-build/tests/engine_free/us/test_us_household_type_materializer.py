@@ -122,6 +122,68 @@ def test_group_quarters_stay_outside_every_household_indicator() -> None:
     np.testing.assert_array_equal(_values(frame, "all"), [1, 0, 0])
 
 
+@pytest.mark.parametrize("group_quarters_kind", [9, 10])
+def test_native_asec_group_quarters_with_householders_are_not_households(
+    group_quarters_kind: int,
+) -> None:
+    frame = _frame(
+        [
+            [(2, 7, 30, False)],
+            [(2, 7, 30, False)],
+            [(1, 1, 40, False), (4, 1, 40, True), (5, 7, 8, False)],
+        ]
+    )
+    frame.tables["household"]["HRHTYPE"] = [6, group_quarters_kind, group_quarters_kind]
+    for kind in (
+        "all",
+        "nonfamily",
+        "householder_living_alone",
+    ):
+        np.testing.assert_array_equal(_values(frame, kind), [1, 0, 0])
+    for kind in (
+        "family",
+        "married_couple_family",
+        "male_householder_no_spouse",
+        "female_householder_no_spouse",
+        "householder_not_living_alone",
+    ):
+        np.testing.assert_array_equal(_values(frame, kind), [0, 0, 0])
+        np.testing.assert_array_equal(
+            _values(frame, kind, "with_own_children_under_18"), [0, 0, 0]
+        )
+
+
+def test_historical_asec_frame_without_hrhtype_still_uses_roster() -> None:
+    # A code-2 reference person in native GQ is indistinguishable from a
+    # housing householder on today's certified frame, which lacks HRHTYPE.
+    frame = _frame([[(2, 7, 30, False)], [(2, 7, 30, True)]])
+    frame.tables["household"]["household_spine"] = "asec_puf"
+    for kind in ("all", "householder_living_alone", "nonfamily"):
+        np.testing.assert_array_equal(_values(frame, kind), [1, 1])
+
+
+def test_mixed_native_acs_and_asec_group_quarters() -> None:
+    frame = _frame(
+        [[(14, 7, 30, False)], [(2, 7, 30, False)], [(2, 7, 30, False)]],
+        kinds=[2, np.nan, np.nan],
+    )
+    frame.tables["household"]["HRHTYPE"] = [np.nan, 10, 6]
+    frame.tables["household"]["household_spine"] = [
+        "acs_2024_1yr",
+        "asec_puf",
+        "asec_puf",
+    ]
+    np.testing.assert_array_equal(_values(frame, "all"), [0, 0, 1])
+
+
+@pytest.mark.parametrize("kind", [0, 11, 1.5, "unknown"])
+def test_invalid_asec_household_type_refuses(kind) -> None:
+    frame = _frame([[(2, 7, 30, False)]])
+    frame.tables["household"]["HRHTYPE"] = kind
+    with pytest.raises(ValueError, match="HRHTYPE"):
+        _values(frame, "all")
+
+
 @pytest.mark.parametrize("heads", [0, 2])
 def test_requires_exactly_one_householder(heads: int) -> None:
     frame = _frame([[(2 if i < heads else 12, 7, 30, False) for i in range(2)]])
