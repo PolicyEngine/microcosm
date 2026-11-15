@@ -1936,7 +1936,13 @@ def _composed_param(spec, value, scenario):
 
 def test_every_strict_reference_parameter_parses_as_its_kernel_parses_it():
     from microcosm.build.reference_profiles import REFERENCE_DOCUMENT_KEYS
-    from microcosm.build.transport.target_kernels import parse_reference_document
+    from microcosm.build.transport.target_kernels import (
+        TARGET_COMPILATION_KERNELS,
+        parse_reference_document,
+    )
+
+    # A new strict kernel must join the table above, or this test skips it.
+    assert set(_STRICT_REFERENCE_PARAMS) == TARGET_COMPILATION_KERNELS
 
     # NZ's mass, precal and holdout files carry description and reference_set
     # (and the last two target_profile and allowed_value_operations); the
@@ -1944,24 +1950,43 @@ def test_every_strict_reference_parameter_parses_as_its_kernel_parses_it():
     spec = _pristine_spec()
     checked = []
     lenient = []
+    trimmed_lenient = []
     for row, scenario in compose._instantiated_rows(spec):
         if row.get("kernel") == "calibration.prepare@1":
-            # This kernel reads only target_references, but it receives the
-            # same trimmed form as the strict kernels.
+            # This kernel reads target_references (and, with a
+            # reference_resolution receipt, hashes the whole document to
+            # check it); it receives the same trimmed form as the strict
+            # kernels.
             value = row["params"]["references"]
             document = json.loads(_composed_param(spec, value, scenario))
             assert set(document) <= REFERENCE_DOCUMENT_KEYS, row["id"]
             lenient.append(row["id"])
+            raw = compose.transport_resource(
+                spec,
+                value["resource"],
+                profile_selection=(
+                    None if scenario is None else scenario.get("knobs", {})
+                ),
+            )
+            if not value.get("path") and set(raw) - REFERENCE_DOCUMENT_KEYS:
+                trimmed_lenient.append(row["id"])
         name = _STRICT_REFERENCE_PARAMS.get(row.get("kernel"))
         if name is None:
             continue
         document = json.loads(_composed_param(spec, row["params"][name], scenario))
         parse_reference_document(document, country="nz")
         checked.append(row["id"])
-    assert lenient
+    # At least one such node reads a file the trim changes, so the subset
+    # check above can fail.
+    assert lenient and trimmed_lenient, (lenient, trimmed_lenient)
     # CREATE, ten targets.compile nodes and thirteen takeup.gap nodes.
     message = f"update this count when NZ changes a strict reference node: {checked}"
     assert len(checked) == 24, message
+    # The CREATE probe builds its parameter through _param, the path the
+    # failed build took.
+    create = compose.skeleton_create_declaration(spec)
+    name = _STRICT_REFERENCE_PARAMS[create.kernel]
+    parse_reference_document(json.loads(create.params[name]), country="nz")
 
 
 def test_reference_parameters_keep_the_file_digest_and_the_effective_view():
