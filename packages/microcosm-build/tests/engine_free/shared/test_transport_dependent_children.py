@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import numpy as np
 import pandas as pd
@@ -14,6 +15,7 @@ from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from microcosm.frame.concept_mapping import UnitRole
 from microcosm.frame.unit_construction import (
     BenefitUnitRule,
+    UnparentedChildPlacement,
     benefit_unit_diagnostics,
     benefit_unit_roles,
     build_benefit_units,
@@ -392,6 +394,84 @@ def test_strict_reference_flag_is_read_from_spec(rows, reference) -> None:
     person, household = _household(rows, reference=reference)
     with pytest.raises(ValueError, match="reference person.*dependent child"):
         build_benefit_units(person, household, strict)
+
+
+_PARENTLESS_PAIR = [{"person_id": 1, "age": 15}, {"person_id": 2, "age": 10}]
+_LONE_REFERENCE = [{"person_id": 1, "age": 15}]
+
+
+@pytest.mark.parametrize(
+    ("placement", "strict", "rows", "expected", "diagnostics"),
+    [
+        pytest.param(
+            UnparentedChildPlacement.REFERENCE_PERSON_UNIT,
+            False,
+            _PARENTLESS_PAIR,
+            [1, 1],
+            _counts(
+                children_with_reference_person=1,
+                parentless_reference_person_heads=1,
+            ),
+            id="reference-unit",
+        ),
+        pytest.param(
+            UnparentedChildPlacement.REFERENCE_PERSON_UNIT,
+            True,
+            _PARENTLESS_PAIR,
+            None,
+            "reference person.*dependent child",
+            id="reference-unit-strict",
+        ),
+        pytest.param(
+            UnparentedChildPlacement.OWN_UNIT,
+            False,
+            _PARENTLESS_PAIR,
+            [1, 2],
+            _counts(),
+            id="own-unit",
+        ),
+        pytest.param(
+            UnparentedChildPlacement.OWN_UNIT,
+            True,
+            _PARENTLESS_PAIR,
+            [1, 2],
+            _counts(),
+            id="own-unit-strict",
+        ),
+        pytest.param(
+            UnparentedChildPlacement.REFUSE,
+            False,
+            _LONE_REFERENCE,
+            [1],
+            _counts(parentless_reference_person_heads=1),
+            id="refuse",
+        ),
+        pytest.param(
+            UnparentedChildPlacement.REFUSE,
+            True,
+            _LONE_REFERENCE,
+            None,
+            "refuses 1 candidate child",
+            id="refuse-strict",
+        ),
+    ],
+)
+def test_reference_heads_count_only_the_reference_branch(
+    placement, strict, rows, expected, diagnostics
+) -> None:
+    # Person 1, aged 15 with no co-resident parent, is the reference person.
+    # Reference heads count them only when being the reference person is what
+    # makes them a head: own-unit placement heads every parentless candidate,
+    # and the strict flag refuses the frame before any count.
+    rule = replace(
+        _rule(), unparented_child=placement, refuse_dependent_reference_person=strict
+    )
+    if expected is None:
+        person, household = _household(rows)
+        with pytest.raises(ValueError, match=diagnostics):
+            build_benefit_units(person, household, rule)
+    else:
+        _assert_units(rows, expected, diagnostics, rule=rule)
 
 
 @pytest.mark.parametrize(

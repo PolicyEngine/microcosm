@@ -1,6 +1,6 @@
 {
   "country": "nz",
-  "fingerprint": "552fc601d3cca63ef5176e30e81f4138c1d3e19658e73a9cb2971ac6f759d5a4",
+  "fingerprint": "8367a4578c093d50af51a4ece40b03e5cb814d09d8c05712c316cd3c29d2b435",
   "gate_ids": [
     "calibration_per_family_fit",
     "demography_per_family_fit",
@@ -46,7 +46,7 @@
     "axiom_input_closure.json": "acd994081b81c21f7b8da4ba80648d92cfd7ddd849db8bfa1db98c2fa2fe3b2e",
     "axiom_rules_bindings.json": "5a83c1dd1778dd33e58b4b4064df4ad5e32239e2bd812e53f4b1aac2e3e64e7f",
     "benefit_gross_up.json": "5518e7ad23b4053d36df842a3335358f8ff89c494ed065e540eb83585d8c6137",
-    "benefit_unit_rule.json": "038015451480c0cad23187e69311b031880f6054816b5c6192908746f63bed03",
+    "benefit_unit_rule.json": "50f6379bdd6e307ed2c7325662366d5f71b88c48a09efaa45a05af14de3d08dc",
     "calibration_bindings.json": "26983da893770a7ea915d9eee70c47f310654ffe0fdffcc0327ac5a34c01bf50",
     "calibration_settings.json": "56e4d1da8468245da6bd41daf263425cc65e4e9c9f11ff45eee459d3aed1989e",
     "chronicle_feed.json": "598f4f50c0e68e28e7824470e262815bae88344c2ab7248339034841054dbffc",

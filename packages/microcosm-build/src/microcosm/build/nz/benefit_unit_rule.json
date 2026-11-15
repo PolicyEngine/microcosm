@@ -65,7 +65,7 @@
     "central": "household_reference_person_unit",
     "refuse_dependent_reference_person": false,
     "status": "settled by the NZ hub on 2026-10-12, G8 method addendum B8; amended by the NZ hub on 2026-11-15 (amendments)",
-    "rule": "A dependent child with no co-resident parent joins the unit that holds the household reference person. A household reference person below age_limit_years with no co-resident parent is not a dependent child, even when no other declared test makes them independent: they head their own unit, and their own co-resident children and every dependent child in the household with no co-resident parent join it. When the reference person is a dependent child with a co-resident parent, a dependent child with no co-resident parent follows the reference person's caregiver chain into the unit that holds the reference person: their parent's unit, or the unit further up the parent chain when that parent is also dependent. No placement is refused because the reference person is below the age limit; the caregiver refusal in refusals still applies.",
+    "rule": "A dependent child with no co-resident parent joins the unit that holds the household reference person. A household reference person below age_limit_years with no co-resident parent is not a dependent child, even when no other declared test makes them independent: they head their own unit, and the dependent children who name them as parent 1, and every dependent child in the household with no co-resident parent, join it. When the reference person is a dependent child with a co-resident parent, a dependent child with no co-resident parent follows the reference person's caregiver chain into the unit that holds the reference person: their parent's unit, or the unit further up the parent chain when that parent is also dependent. No placement is refused because the reference person is below the age limit; the caregiver refusal in refusals still applies.",
     "amendments": [
       {
         "date": "2026-11-15",
@@ -131,7 +131,7 @@
   },
   "teen_parent": {
     "at_or_above_parent_independence_min_age": "A person below age_limit_years with a co-resident child of their own forms their own unit with that child once at or above parent_independence_min_age.",
-    "below_parent_independence_min_age": "The parent rule does not make a younger parent independent; the other declared tests decide. With a co-resident parent they remain dependent in their own parent's unit, and their child joins that same unit. Without one, the declared reference-person placement applies: they join the unit that holds the household reference person, or, when they are the reference person, they head their own unit and their child joins it (child_without_coresident_parent, as amended on 2026-11-15).",
+    "below_parent_independence_min_age": "The parent rule does not make a younger parent independent; the other declared tests decide. With a co-resident parent they remain dependent in their own parent's unit, and their child joins that same unit. Without one, the declared reference-person placement applies: they join the unit that holds the household reference person, or, when they are the reference person, they head their own unit and a child who names them as parent 1 joins it (child_without_coresident_parent, as amended on 2026-11-15).",
     "basis": "Settled by the NZ hub on 2026-10-12, G8 method addendum B8. Young Parent Payment is a main benefit; Schedule 2 financially independent (DLM6784504, limb d) excludes its recipient from child. Unit construction infers the older teen-parent exclusion from the co-resident parent pointer before the receipt layer runs; receipt is not observed or assigned by this rule.",
     "placement_of_the_child": "These branches decide whether the teen parent is a dependent child. When the child's two co-resident parents end up in separate units, the child follows the declared parent-1 placement (split_parents)."
   },
@@ -171,7 +171,7 @@
     },
     {
       "definition": "child (LMS6902) and dependent child (LMS7234), for a household reference person below the age limit with no co-resident parent",
-      "omission": "Unit construction does not treat this person as a dependent child: they head their own unit, and their own co-resident children and any dependent child in the household with no co-resident parent join it (child_without_coresident_parent, amended by the NZ hub on 2026-11-15). This is a modelling approximation, not a statutory exclusion. The Act makes no exception for a household reference person; the pointers name no co-resident person whose dependent child they could be, and who has primary responsibility for them is not observed. It applies at any age below age_limit_years, so it can make a person under 16 the head of a unit."
+      "omission": "Unit construction does not treat this person as a dependent child: they head their own unit, and the dependent children who name them as parent 1, and any dependent child in the household with no co-resident parent, join it (child_without_coresident_parent, amended by the NZ hub on 2026-11-15). This is a modelling approximation, not a statutory exclusion. The Act makes no exception for a household reference person; the pointers name no co-resident person whose dependent child they could be, and who has primary responsibility for them is not observed. It applies at any age below age_limit_years, so it can make a person under 16 the head of a unit."
     }
   ],
   "unit_construction_diagnostics": {
@@ -180,7 +180,7 @@
     "younger_independent_teen_parents": "Count of persons with a co-resident child, below parent_independence_min_age, who are not dependent children because another branch applies: a co-resident partner, or heading their own unit as a parentless household reference person. With independent_teen_parents and dependent_teen_parents it partitions the persons below age_limit_years who have a co-resident child.",
     "dependent_teen_parents": "Count of persons with a co-resident child below parent_independence_min_age who remain dependent under the declared rules.",
     "non_partnered_coparent_households": "Count of distinct households containing a dependent child with two co-resident parents who are not partners; count a household once even when several children qualify.",
-    "children_with_reference_person": "Count of dependent children with no co-resident parent placed in the household reference person's unit.",
+    "children_with_reference_person": "Count of dependent children with no co-resident parent placed in the unit that holds the household reference person.",
     "parentless_reference_person_heads": "Count of household reference persons below age_limit_years with no co-resident parent whom neither a partner nor the hours or parent rules exclude from dependency; each heads their own unit because refuse_dependent_reference_person is false."
   }
 }

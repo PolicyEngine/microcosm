@@ -21,10 +21,10 @@ The statute defines who is a dependent child. It does not say how a microsimulat
 - **Teen parents.** A 16- or 17-year-old with a co-resident child of their own forms their own unit with that child.
   - The basis is that Young Parent Payment is a main benefit for parents of that age, and receiving a main benefit makes a 16- or 17-year-old financially independent (DLM6784504, limb d), so not a child.
   - The rule infers this from the co-resident child pointer before the receipt layer runs; receipt itself is not observed here.
-  - A parent under 16 with a co-resident parent stays a dependent child in their own parent's unit, and their child joins that same unit. A parent under 16 with no co-resident parent is placed as a child with no co-resident parent (below); if they are the household's reference person, they head their own unit and their child joins it.
+  - A parent under 16 with a co-resident parent stays a dependent child in their own parent's unit, and their child joins that same unit. A parent under 16 with no co-resident parent is placed as a child with no co-resident parent (below); if they are the household's reference person, they head their own unit and a child who names them as parent 1 joins it.
   - These branches decide whether the teen parent is a dependent child. When the child's two co-resident parents end up in separate units, the child follows the declared parent-1 placement.
 - **Two co-resident parents who are not partners.** The child joins parent 1's unit.
-- **A child with no co-resident parent.** The child joins the unit that holds the household's reference person. If the reference person is a dependent child with a co-resident parent, that is the unit their parent chain leads to, usually their parent's. A reference person under 18 with no co-resident parent isn't treated as a dependent child, even if no partner, hours or parenthood test makes them independent: they head their own unit, and any other child with no co-resident parent joins it. This is the hub's amendment of 2026-11-15 (below); before it, construction refused these households.
+- **A child with no co-resident parent.** The child joins the unit that holds the household's reference person. If the reference person is a dependent child with a co-resident parent, that is the unit their parent chain leads to, usually their parent's. A reference person under 18 with no co-resident parent isn't treated as a dependent child, even if no partner, hours or parenthood test makes them independent: they head their own unit, and any other dependent child with no co-resident parent joins it. This is the hub's amendment of 2026-11-15 (below); before it, construction refused these households.
 - **Orphan's benefit and unsupported child's benefit.** The statute excludes these children from "dependent child", but the donor can't identify them, so they remain dependent children of the unit they join.
 
 ## Amendment of 2026-11-15
@@ -64,4 +64,4 @@ Unit construction reports, in the CREATE receipt:
 - teen parents in each branch: independent at 16 or 17, not dependent under 16 (a partner, or a reference person with no co-resident parent heading their own unit), and dependent under 16;
 - households with non-partnered co-parents;
 - children placed with the reference person;
-- reference persons under 18 with no co-resident parent who head their own unit (the amendment above).
+- reference persons under 18 with no co-resident parent who head their own unit only as the reference person, not as a partner, an independent teen parent or a worker independent by hours (the amendment above).

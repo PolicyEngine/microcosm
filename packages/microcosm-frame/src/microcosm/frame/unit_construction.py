@@ -917,10 +917,13 @@ def benefit_unit_diagnostics(
     qualify as candidate children. Parent counts partition parents under the
     child age limit three ways: not dependent at or above the declared
     parent-independence age, not dependent below it (for example a partner or
-    a parentless reference person), and dependent. Co-parent counts distinct
+    a parentless reference person), and dependent; with no declared age, every
+    parent who is not dependent is in the first. Co-parent counts distinct
     households; reference placements count dependent children. Reference heads
-    count parentless candidate children who head their own unit because they
-    are their household's reference person.
+    count parentless candidate children who head their own unit only because
+    they are their household's reference person. Own-unit placement makes
+    every parentless candidate a head, so it counts none; the strict reference
+    flag refuses those frames before any count.
     """
     rows = _Pointers.read(person, household, rule)
     dependent = (
@@ -942,6 +945,7 @@ def benefit_unit_diagnostics(
         & (rows.parent_1 < 0)
         & is_reference
         & ~dependent
+        & (rule.unparented_child is not UnparentedChildPlacement.OWN_UNIT)
     )
     return {
         "hours_independent_children": int(
