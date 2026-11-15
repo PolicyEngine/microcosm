@@ -475,7 +475,11 @@ def _carer_routes(person: pd.DataFrame) -> _CarerRoutes:
 
 
 def carer_link_share(
-    person: pd.DataFrame, *, weights: np.ndarray, min_hours: float
+    person: pd.DataFrame,
+    *,
+    weights: np.ndarray,
+    min_hours: float,
+    support_keys: np.ndarray | None = None,
 ) -> tuple[float | None, int]:
     """The share the carer link draws outside carers at, and its households.
 
@@ -483,7 +487,12 @@ def carer_link_share(
     hours reach ``min_hours`` and who report no Carer's Allowance, the share
     by ``weights`` who give it to a qualifying member; None where none of them
     has weight. The second value is the distinct households that base rests
-    on, for the receipt to band.
+    on, for the receipt to band. ``support_keys`` are what that count reads,
+    by default each person's household. On the clone-first spine the FRS
+    channel holds every geographic clone, so the SPI channel's refresh passes
+    each person's true source household (``spi_income``), and a survey
+    household's clones count once, as the disclosure floor counts them
+    (microcosm#931).
     """
 
     _assert_care_line(min_hours)
@@ -501,7 +510,8 @@ def carer_link_share(
         if base_weight > 0.0
         else None
     )
-    return share, len(set(routes.households[base].tolist()))
+    keys = routes.households if support_keys is None else np.asarray(support_keys)
+    return share, len(set(keys[base].tolist()))
 
 
 def derive_carer_link(
@@ -519,19 +529,22 @@ def derive_carer_link(
     the care carriers and the categories this stage derives; ``weights`` are
     the persons' household weights. ``share`` is the drawn route's share and
     the households it rests on, by default :func:`carer_link_share` of
-    ``person``; the SPI channel passes the survey's own (``spi_income``).
-    ``support_keys`` are what the evidence counts support in, by default each
-    person's household; the SPI channel passes source households, so a survey
-    household's copies count once. The evidence gives each route's records in
-    rounded counts and support bands, withheld where one or two households
-    carry them, and the share the drawn route takes.
+    ``person`` over ``support_keys``; the SPI channel passes the survey's own
+    (``spi_income``). ``support_keys`` are what the evidence counts support
+    in, by default each person's household; the SPI channel passes source
+    households, so a survey household's copies count once. The evidence
+    gives each route's records in rounded counts and support bands, withheld
+    where one or two households carry them, and the share the drawn route
+    takes.
     """
 
     _assert_care_line(min_hours)
     routes = _carer_routes(person)
     weights = np.asarray(weights, dtype=float)
     if share is None:
-        share = carer_link_share(person, weights=weights, min_hours=min_hours)
+        share = carer_link_share(
+            person, weights=weights, min_hours=min_hours, support_keys=support_keys
+        )
     share_value, share_households = share
     keys = routes.households if support_keys is None else np.asarray(support_keys)
     linked = routes.carer & routes.member_qualifies

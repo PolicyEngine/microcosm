@@ -195,6 +195,67 @@ def test_spi_carer_link_is_taken_again_from_the_channels_benefits() -> None:
     assert column not in passed
 
 
+def test_spi_carer_link_share_counts_the_frs_channels_true_sources() -> None:
+    """On the clone-first spine the FRS channel holds every geographic clone
+    (microcosm#931): the share the copies' outside carers are drawn at rests
+    on two survey households here, in four clone households, so the receipt
+    withholds it, as it would at one clone. The draw still reads the share."""
+
+    from microcosm.build.uk_runtime.frs_spine import (
+        FRS_CARE_HELPER_BIT,
+        FRS_CARE_OUTSIDE_BIT,
+    )
+
+    column = frs_disability.CARER_LINK_COLUMN
+    member = (1 << FRS_CARE_HELPER_BIT) | (1 << 2)
+    outside = (1 << FRS_CARE_HELPER_BIT) | (1 << FRS_CARE_OUTSIDE_BIT)
+    rows = []
+    # Survey households 1 and 2 at two clones: each clone's carer gives the
+    # line to member 2, whose daily living component qualifies.
+    for clone in (0, 1):
+        for survey in (1, 2):
+            household = survey + clone * GEOGRAPHIC_RADIX
+            shift = clone * GEOGRAPHIC_RADIX
+            rows.append((survey * 1000 + 1 + shift, household, member, 35.0, "NONE"))
+            rows.append((survey * 1000 + 2 + shift, household, 0, 0.0, "STANDARD"))
+    # An SPI copy of survey household 1 whose carer cares outside the home.
+    rows.append((101001, 101, outside, 35.0, "NONE"))
+    person = pd.DataFrame(
+        rows,
+        columns=[
+            "person_id",
+            "person_household_id",
+            "frs_care_recipients",
+            "care_hours",
+            "pip_dl_category",
+        ],
+    ).assign(
+        aa_category="NONE",
+        dla_sc_category="NONE",
+        carers_allowance_reported=0.0,
+        **{column: False},
+    )
+    household_ids = [1, 2, 1 + GEOGRAPHIC_RADIX, 2 + GEOGRAPHIC_RADIX, 101]
+    household = pd.DataFrame(
+        {
+            "household_id": household_ids,
+            "household_weight": [1.0] * len(household_ids),
+            "household_source_id": [1, 2, 1, 2, 1],
+            "source_household_id": [1, 2, 1, 2, 1],
+        }
+    )
+    spi_channel = person["person_household_id"].eq(101)
+
+    result, receipt = spi_income._refresh_carer_link(
+        person.copy(), household, spi_channel=spi_channel, min_hours=35.0
+    )
+
+    assert receipt["share"] == "<3"
+    assert receipt["share_support"] == "<3"
+    by_id = dict(zip(result["person_id"], result[column], strict=True))
+    assert by_id[101001]
+
+
 def test_spi_esa_group_returns_to_the_engines_default_on_redrawn_rows() -> None:
     """A redrawn row's ESA comes from another donor, so its group is reset."""
 

@@ -369,6 +369,37 @@ def test_the_carer_link_takes_a_share_from_other_households() -> None:
     }
 
 
+def test_the_carer_link_share_counts_its_base_in_the_support_keys_given() -> None:
+    """On the clone-first spine a household's geographic clones are separate
+    households (microcosm#931), so the share counts its base in the support
+    keys it is given: four households that are two survey households' clones
+    rest on two, which the receipt withholds."""
+
+    from microcosm.build.uk_runtime import frs_disability
+
+    people = _carer_link_people()
+    weights = np.ones(len(people))
+    households = people["person_household_id"]
+    # Households 1 to 4 make the base: read them as two clones each of
+    # survey households 1 and 3.
+    keys = households.where(~households.isin([2, 4]), households - 1).to_numpy(
+        dtype=np.int64
+    )
+    by_household = frs_disability.carer_link_share(
+        people, weights=weights, min_hours=35.0
+    )
+    by_source = frs_disability.carer_link_share(
+        people, weights=weights, min_hours=35.0, support_keys=keys
+    )
+    assert (by_household, by_source) == ((0.5, 4), (0.5, 2))
+    # Without a share given, the evidence's share counts the same keys.
+    _, evidence = frs_disability.derive_carer_link(
+        people, weights=weights, min_hours=35.0, support_keys=keys
+    )
+    assert evidence["share"] == "<3"
+    assert evidence["share_support"] == "<3"
+
+
 def test_the_carer_link_is_checked_against_dwps_uc_carer_element() -> None:
     """A3 (f): DWP's record of the UC carer element checks the link, and
     changes no value. A claim counts once, by its UC row's carrier, against
