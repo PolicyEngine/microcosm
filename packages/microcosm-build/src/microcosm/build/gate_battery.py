@@ -35,8 +35,9 @@ Three disciplines, held by construction rather than convention:
   both.
 
 A build may also evaluate a phase's gates at the stages where its evidence
-appears, rather than in one batch at the boundary: :func:`evaluate_entries`
-resolves named entries exactly as the batch would, :func:`blocking_outcomes`
+appears, rather than in one batch at the boundary:
+:meth:`GateBatteryRun.evaluate_entries` resolves named entries exactly as the
+batch would, with the run's registry, :func:`blocking_outcomes`
 says whether they stop the build under its posture, and
 :func:`assemble_phase_report` gathers them into the phase's
 :class:`GatePhaseReport`, which :meth:`GateBatteryRun.record_phase` persists
@@ -971,7 +972,7 @@ def evaluate_entries(
     entry_ids: Sequence[str],
     context: EvidenceContext,
     *,
-    registry: Mapping[str, GateBinding] = DEFAULT_REGISTRY,
+    registry: Mapping[str, GateBinding],
 ) -> tuple[GateOutcome, ...]:
     """Evaluate the named entries at the stage where their gates run.
 
@@ -982,6 +983,11 @@ def evaluate_entries(
     its binding, its named evidence gaps, fail-closed evaluation and its
     evidence digest — and the whole manifest's parameters are validated
     first, so a typo in any entry surfaces before the first gate runs.
+
+    Prefer :meth:`GateBatteryRun.evaluate_entries`, which uses the run's
+    registry. ``registry`` has no default here: a stage that fell back to
+    :data:`DEFAULT_REGISTRY` would record a named gap for every gate only its
+    country binds, and a dev build would continue where the batch blocks.
 
     Never raises on a gate failure. Whether the build stops is the caller's
     call (:func:`blocking_outcomes`), and :func:`assemble_phase_report`
@@ -1046,6 +1052,7 @@ def assemble_phase_report(
     outcomes: Iterable[GateOutcome],
     *,
     blocked_by: str | None = None,
+    unreached: Collection[str] = (),
     release_candidate: bool | None = None,
     synthetic_smoke: bool = False,
 ) -> GatePhaseReport:
@@ -1060,10 +1067,12 @@ def assemble_phase_report(
     like any phase, so it can also be carried to another process.
 
     A phase whose build stopped at a blocking stage names that entry in
-    ``blocked_by``. Every entry of the phase that has no outcome is then
-    ``unreached``, with a reason naming ``blocked_by``. This extends what
-    ``unreached`` means: an earlier phase blocked, or an earlier stage of the
-    same phase did. Recording such a phase sets ``blocked_at_phase``.
+    ``blocked_by``, and names in ``unreached`` the entries whose stages never
+    ran. Those become ``unreached``, with a reason naming ``blocked_by``; any
+    other entry without an outcome is refused, so a stage's dropped outcomes
+    cannot read as never reached. This extends what ``unreached`` means: an
+    earlier phase blocked, or an earlier stage of the same phase did.
+    Recording such a phase sets ``blocked_at_phase``.
 
     Whether an outcome blocks depends on the run's posture, so an early block
     needs it: ``release_candidate`` and ``synthetic_smoke`` must be the ones
@@ -1073,13 +1082,16 @@ def assemble_phase_report(
     the run's own posture.
 
     Raises:
+        TypeError: If ``unreached`` is one string rather than a collection.
         ValueError: If ``phase`` is not declared; an outcome resolves an entry
             this manifest does not declare in ``phase``, as it stands; an
             entry has two outcomes; an outcome is already ``unreached``;
-            without ``blocked_by``, an entry that runs has no outcome; or
-            ``blocked_by`` is given without ``release_candidate``, names an
-            entry with no outcome here, or names one that does not block
-            under the given posture.
+            ``unreached`` repeats an id, names an entry that is not declared
+            in ``phase``, is declared ``not_applicable`` or has an outcome, or
+            is given without ``blocked_by``; an entry that runs has neither an
+            outcome nor a place in ``unreached``; or ``blocked_by`` is given
+            without ``release_candidate``, names an entry with no outcome
+            here, or names one that does not block under the given posture.
     """
 
     if phase not in gates.phases:
@@ -1104,16 +1116,33 @@ def assemble_phase_report(
                 "marks the entries a block left behind."
             )
         resolved[entry_id] = outcome
-    if blocked_by is None:
-        missing = [
-            entry.id
-            for entry in declared
-            if entry.id not in resolved and entry.not_applicable is None
-        ]
-        if missing:
+    if isinstance(unreached, str):
+        raise TypeError("unreached must be a collection of entry ids, not one string.")
+    never_ran = tuple(unreached)
+    repeated = sorted(
+        {entry_id for entry_id in never_ran if never_ran.count(entry_id) > 1}
+    )
+    if repeated:
+        raise ValueError(f"unreached names {repeated} more than once.")
+    for entry_id in never_ran:
+        entry = declared_by_id.get(entry_id)
+        if entry is None:
             raise ValueError(
-                f"phase {phase!r} has no outcome for {missing}; a phase that "
-                "stopped early names the entry that blocked it (blocked_by)."
+                f"unreached names {entry_id!r}, which is not declared in phase "
+                f"{phase!r}."
+            )
+        if entry.not_applicable is not None:
+            raise ValueError(
+                f"unreached names {entry_id!r}, which is declared "
+                "not_applicable and keeps its reviewed reason."
+            )
+        if entry_id in resolved:
+            raise ValueError(f"unreached names {entry_id!r}, which has an outcome.")
+    if blocked_by is None:
+        if never_ran:
+            raise ValueError(
+                f"unreached names {sorted(never_ran)} without blocked_by; only an "
+                "early block leaves entries unreached."
             )
     else:
         if release_candidate is None:
@@ -1144,7 +1173,21 @@ def assemble_phase_report(
                 f"is {blocker.entry.criticality} with status "
                 f"{blocker.status.value!r}, which does not block a {posture}."
             )
-    # Without blocked_by, every entry that runs has an outcome by now.
+    missing = [
+        entry.id
+        for entry in declared
+        if entry.id not in resolved
+        and entry.not_applicable is None
+        and entry.id not in never_ran
+    ]
+    if missing:
+        raise ValueError(
+            f"phase {phase!r} has no outcome for {missing}. A phase that "
+            "stopped early names the entry that blocked it (blocked_by) and "
+            "the entries that never ran (unreached)."
+        )
+    # Every entry that runs has an outcome or is named in unreached by now,
+    # and unreached is empty without blocked_by.
     unreached_reason = (
         _unreached_reason(blocked_by, phase) if blocked_by is not None else None
     )
@@ -1265,8 +1308,9 @@ class GateBatteryRun:
     then :meth:`enforce` (which blocks — or marks — strictly after
     persistence). Once a phase blocks, no later phase may run: the remaining
     entries stay ``unreached`` in the report, which is the truth. A phase
-    evaluated elsewhere — at its stages, or in another process — is
-    persisted with :meth:`record_phase` instead of :meth:`run_phase`.
+    evaluated elsewhere — at its stages (:meth:`evaluate_entries`), or in
+    another process — is persisted with :meth:`record_phase` instead of
+    :meth:`run_phase`.
 
     A posture that must keep going past failed gates (an evidence build, a
     dry run) runs every phase and never calls :meth:`enforce`: nothing is
@@ -1400,6 +1444,47 @@ class GateBatteryRun:
         report = evaluate_phase(self._gates, phase, context, registry=self._registry)
         self.record_phase(report)
         return report
+
+    def evaluate_entries(
+        self, entry_ids: Sequence[str], context: EvidenceContext
+    ) -> tuple[GateOutcome, ...]:
+        """Evaluate named entries at their stages, with this run's registry.
+
+        The stage-level counterpart of :meth:`run_phase`: the module-level
+        :func:`evaluate_entries` over this run's manifest and registry, so a
+        stage cannot evaluate against another registry than the one the run
+        was armed with. It persists nothing. The phase's report is assembled
+        with :func:`assemble_phase_report`, under this run's posture, and
+        recorded with :meth:`record_phase`.
+
+        Raises:
+            ValueError: If the battery has blocked, an entry belongs to a
+                phase already recorded, or as :func:`evaluate_entries`
+                raises.
+        """
+
+        if self._blocked_at_phase is not None:
+            raise ValueError(
+                f"battery blocked at phase {self._blocked_at_phase!r}; no "
+                "later stage may run."
+            )
+        if not isinstance(entry_ids, str):
+            phases = {entry.id: entry.phase for entry in self._gates.gates}
+            recorded = sorted(
+                {
+                    phases[entry_id]
+                    for entry_id in entry_ids
+                    if phases.get(entry_id) in self._phase_reports
+                }
+            )
+            if recorded:
+                raise ValueError(
+                    f"phase(s) {recorded} have already been recorded; their "
+                    "entries cannot be evaluated again."
+                )
+        return evaluate_entries(
+            self._gates, entry_ids, context, registry=self._registry
+        )
 
     def record_phase(self, report: GatePhaseReport) -> None:
         """Persist an evaluated or verified cached phase before enforcement.

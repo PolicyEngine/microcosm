@@ -1014,6 +1014,7 @@ class TestStageLevelEvaluation:
             "assembled",
             [*first, *stopping],
             blocked_by="a_block",
+            unreached=["a_later"],
             release_candidate=True,
         )
         statuses = {outcome.entry.id: outcome.status for outcome in report.outcomes}
@@ -1134,13 +1135,16 @@ class TestStageLevelEvaluation:
             ],
             ["terminal"],
         )
-        (absent,) = evaluate_entries(manifest, ["t_absent"], EvidenceContext())
+        (absent,) = evaluate_entries(
+            manifest, ["t_absent"], EvidenceContext(), registry=DEFAULT_REGISTRY
+        )
         assert absent.status is GateStatus.EVIDENCE_ABSENT
         report = assemble_phase_report(
             manifest,
             "terminal",
             [absent],
             blocked_by="t_absent",
+            unreached=["t_later"],
             release_candidate=True,
         )
         dev = self._run(manifest, tmp_path, "dev.json", release_candidate=False)
@@ -1194,6 +1198,7 @@ class TestStageLevelEvaluation:
                 "assembled",
                 reached,
                 blocked_by="a_absent",
+                unreached=["a_later"],
                 release_candidate=False,
             )
         # A phase assembled under a release candidate's posture does name it;
@@ -1203,6 +1208,7 @@ class TestStageLevelEvaluation:
             "assembled",
             reached,
             blocked_by="a_absent",
+            unreached=["a_later"],
             release_candidate=True,
         )
         dev = self._run(manifest, tmp_path, "dev.json", release_candidate=False)
@@ -1217,6 +1223,7 @@ class TestStageLevelEvaluation:
             "assembled",
             reached,
             blocked_by="a_fail",
+            unreached=["a_later"],
             release_candidate=False,
         )
         dev.record_phase(report)
@@ -1250,9 +1257,88 @@ class TestStageLevelEvaluation:
                 "assembled",
                 fact,
                 blocked_by="a_fact",
+                unreached=["a_later"],
                 release_candidate=False,
                 synthetic_smoke=True,
             )
+
+    def test_the_run_evaluates_entries_with_its_own_registry(
+        self, tmp_path, signing_env
+    ):
+        # Review of #1609: a stage that fell back to the default registry
+        # would record a named gap for a gate only its country binds, and a
+        # dev build would continue where the batch blocks.
+        manifest = _manifest(
+            [
+                _entry("pf_gate", gate="support", phase="preflight"),
+                _entry("t_gate", gate="exported_nonzero"),
+            ]
+        )
+        run = self._run(manifest, tmp_path, "terminal_gates.json")
+        (stage,) = run.evaluate_entries(["t_gate"], EvidenceContext())
+        assert stage.status is GateStatus.FAILED  # the run's binding ran
+        with pytest.raises(TypeError, match="registry"):
+            evaluate_entries(manifest, ["t_gate"], EvidenceContext())
+        run.run_phase("preflight", EvidenceContext())
+        with pytest.raises(ValueError, match="already been recorded"):
+            run.evaluate_entries(["pf_gate"], EvidenceContext())
+        run.record_phase(assemble_phase_report(manifest, "terminal", [stage]))
+        with pytest.raises(GateBatteryBlockedError):
+            run.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT)
+        with pytest.raises(ValueError, match="no later stage may run"):
+            run.evaluate_entries(["t_gate"], EvidenceContext())
+
+    def test_an_early_block_names_the_entries_that_never_ran(self):
+        # Review of #1609: an entry with no outcome is unreached only when the
+        # caller names it, so a stage's dropped outcomes are refused, not
+        # signed as never reached.
+        manifest = _manifest(
+            [
+                _entry("t_pass", gate="support"),
+                _entry("t_diag", gate="exported_nonzero", criticality="diagnostic"),
+                _entry("t_block", gate="exported_nonzero"),
+                _entry("t_later", gate="nonconstant_columns"),
+                _entry("t_na", gate="parity", not_applicable="no incumbent dataset"),
+            ],
+            ["terminal"],
+        )
+        reached = evaluate_entries(
+            manifest,
+            ["t_pass", "t_diag", "t_block"],
+            EvidenceContext(),
+            registry=self._registry(),
+        )
+        block = {"blocked_by": "t_block", "release_candidate": True}
+        with pytest.raises(ValueError, match=r"no outcome for \['t_pass', 't_diag'\]"):
+            assemble_phase_report(
+                manifest, "terminal", reached[2:], unreached=["t_later"], **block
+            )
+        for unreached, message in (
+            (["t_later", "t_pass"], "which has an outcome"),
+            (["t_later", "t_na"], "declared not_applicable"),
+            (["t_later", "t_elsewhere"], "not declared in phase"),
+            (["t_later", "t_later"], "more than once"),
+        ):
+            with pytest.raises(ValueError, match=message):
+                assemble_phase_report(
+                    manifest, "terminal", reached, unreached=unreached, **block
+                )
+        with pytest.raises(TypeError, match="not one string"):
+            assemble_phase_report(
+                manifest, "terminal", reached, unreached="t_later", **block
+            )
+        with pytest.raises(ValueError, match="without blocked_by"):
+            assemble_phase_report(manifest, "terminal", reached, unreached=["t_later"])
+        report = assemble_phase_report(
+            manifest, "terminal", reached, unreached=["t_later"], **block
+        )
+        assert [outcome.status for outcome in report.outcomes] == [
+            GateStatus.PASSED,
+            GateStatus.FAILED,
+            GateStatus.FAILED,
+            GateStatus.UNREACHED,
+            GateStatus.NOT_APPLICABLE,
+        ]
 
 
 class TestRecordWithoutEnforce:

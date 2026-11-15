@@ -225,15 +225,18 @@ artifact carries that payload.
 
 A build may also evaluate a phase's gates where each one's evidence appears
 instead of in one batch at the boundary, which keeps it failing fast and gives
-each gate its own stage's evidence. `evaluate_entries` resolves named entries
-exactly as the batch would, `blocking_outcomes` says whether they stop the
-build under its posture, and `assemble_phase_report` gathers the phase's
-outcomes into its report in manifest order, refusing a missing or duplicate
-entry. A build that stopped at a blocking stage names that entry in
-`blocked_by`, with the run's posture (`release_candidate`, `synthetic_smoke`),
-since the posture decides which outcomes block; the named entry must be among
-`blocking_outcomes` under it. The phase's remaining entries become
-`unreached`, with a reason naming that entry, and `record_phase` takes such a
+each gate its own stage's evidence. The run's `evaluate_entries` resolves
+named entries exactly as the batch would, with the run's registry (the
+module-level `evaluate_entries` takes the registry explicitly and has no
+default), `blocking_outcomes` says whether they stop the build under its
+posture, and `assemble_phase_report` gathers the phase's outcomes into its
+report in manifest order, refusing a missing or duplicate entry. A build that
+stopped at a blocking stage names that entry in `blocked_by`, with the run's
+posture (`release_candidate`, `synthetic_smoke`), since the posture decides
+which outcomes block; the named entry must be among `blocking_outcomes` under
+it. It also names in `unreached` the entries whose stages never ran. Those
+become `unreached`, with a reason naming the blocker, and any other entry
+without an outcome is still refused. `record_phase` takes such a
 phase only if the named entry blocks under the run's own posture, recording
 `blocked_at_phase` in the same write. A signed run can then be assembled at
 the end, from phases carried between stages or processes. Stage-assembled
@@ -352,7 +355,9 @@ enhanced FRS, through a closed registry of named identities with
 2. **A registry**, if `DEFAULT_REGISTRY` does not already bind every
    selected gate: bindings implementing the `GateBinding` protocol
    (`FunctionBinding` over a pure gate function, `EvaluatorBinding` over a
-   country evaluator), passed as `GateBatteryRun(..., registry=...)`.
+   country evaluator), passed as `GateBatteryRun(..., registry=...)`. A build
+   that gates stage by stage evaluates through the run
+   (`run.evaluate_entries`), so its stages use the same registry.
    Unbound declared gates are named gaps, so a country can land its spec
    before its bindings.
 3. **Runtime artifacts**, under the canonical keys each selected gate's
