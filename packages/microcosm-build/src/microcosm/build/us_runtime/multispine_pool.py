@@ -367,11 +367,11 @@ is asserted.
 
 POOL_PROJECTION_INPUT_PROVISION_COUNTS: tuple[tuple[str, int], ...] = (
     ("assembled_native_engine_input", 5),
-    ("declared_absent_engine_input", 762),
+    ("declared_absent_engine_input", 761),
     ("declared_deferred_null_input", 3),
     ("derived_schedule_d_input", 1),
     ("frame_structural_engine_input", 10),
-    ("materialized_pool_input_surface", 123),
+    ("materialized_pool_input_surface", 124),
     ("preserved_stacked_engine_input", 4),
     ("seed_stage_program_contract", 17),
     ("unprovisioned_source_input", 1),
@@ -383,7 +383,7 @@ tool re-derives every engine-pinned quantity this module carries.
 """
 
 POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256 = (
-    "d4fb9de9c0b8081474a24d0abde84ebf05eb346483fc20e3852e29abc769a501"
+    "7ae93314d1aa09fd9d250cc1d8faea5767fd53a9c6ad32afcbb7c72c2af0d740"
 )
 """Pinned content digest of all 1,059 post-transfer consumer/input rows."""
 

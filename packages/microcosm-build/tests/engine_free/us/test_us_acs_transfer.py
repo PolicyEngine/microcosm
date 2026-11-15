@@ -878,6 +878,72 @@ def test_explicit_transfer_adds_requested_model_inputs(
     )
 
 
+def test_transferred_entry_clock_never_exceeds_the_recipients_life() -> None:
+    """The chained transfer caps the clock it draws at floor(age) + 1.
+
+    Every donor's clock equals age, so the clock's donor support is
+    {8, 17, 30, 39, 43, 45, 66, 68}. Without the cap every 3-year-old
+    recipient draws one of those, past the five-year bar; with it each one
+    carries 4, the longest a 3-year-old can have been in the US. The first
+    recipient already holds a clock of 66, above that bound; the transfer
+    fills only the other five, so the cap leaves the 66 alone.
+    """
+
+    donor_frame = _donor_frame()
+    donor = _with_columns(
+        donor_frame,
+        "person",
+        {
+            "ssn_card_type": ["CITIZEN"] * 6 + ["NONE", "NONE"],
+            "immigration_status_str": ["CITIZEN"] * 6
+            + ["UNDOCUMENTED", "UNDOCUMENTED"],
+            "years_since_us_entry": donor_frame.person["age"].to_numpy(copy=True),
+        },
+    )
+    recipient = _with_columns(
+        _recipient_frame(),
+        "person",
+        {
+            "age": [3.0] * 6,
+            "years_since_us_entry": [66.0] + [np.nan] * 5,
+        },
+    )
+    family = ("immigration_status_str", "ssn_card_type", "years_since_us_entry")
+
+    result = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families={"person": {"source_operator_immigration": family}},
+        seed=0,
+        n_estimators=5,
+    )
+
+    clock = result.frame.person["years_since_us_entry"]
+    assert clock.tolist() == [66.0] + [4.0] * 5
+    receipts = [
+        (entry.imputed_recipient_rows, entry.reconciliation)
+        for entry in result.imputed_inputs
+        if entry.column == "years_since_us_entry"
+    ]
+    assert receipts == [(5, {"cells_checked": 5, "cells_capped_at_age_plus_one": 5})]
+    contract = acs_transfer_module.acs_transfer_execution_contract_identity(
+        targets=family
+    )["post_transfer_structure"]["immigration_clock_age_bound"]
+    assert contract == {
+        "enabled": True,
+        "target": "years_since_us_entry",
+        "age": "age",
+        "rule": "cap_at_floor_age_plus_one",
+        "mutable_rows": "newly_imputed_clock_cells_only",
+    }
+    assert (
+        acs_transfer_module.acs_transfer_execution_contract_identity(
+            targets=family[:2]
+        )["post_transfer_structure"]["immigration_clock_age_bound"]["enabled"]
+        is False
+    )
+
+
 def test_large_target_family_is_split_to_bound_retained_qrf_forests(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2994,14 +3060,18 @@ def test_adult_care_qualifying_rows_fails_closed_on_missing_structure(
 #: The execution contract's SHA-256 before person predictor extensions
 #: existed. Every caller that passes none (the shared plan, the pool lane,
 #: banked checkpoints and the spec projection) must keep these.
+#: microcosm#776 moves all three: the contract carries the discrete
+#: numeric targets, which gain years_since_us_entry, and the
+#: post_transfer_structure entry immigration_clock_age_bound (enabled
+#: only when the clock is a target).
 _DEFAULT_CONTRACT_SHA256 = (
-    "f6294b47f18f223e757baafa545075c4b9fcea7d168fc59ac38fc7e9352cbb80"
+    "8a43ba29a0af0d8aa0f5ae8eca4e1a8c1a545ed517140c3e02891b680978d57d"
 )
 _DECLARED_PLAN_CONTRACT_SHA256 = (
-    "e90a808a1218681a7084d16807f926d5522717556f2b97708e416082a876e0ca"
+    "5473a6b41481607365ceb6a789cebb7bd5ff0cf4889d4d3e6619eed445fef3a8"
 )
 _PREGNANCY_CONTRACT_SHA256 = (
-    "cda751e047f1772b20fb019fab8dc72ea77730e13f76bb671744c51c9dc27fa5"
+    "a16675a30a6a9bb4cc239e8833ad5431987ee333de18cd3581663c6a82f528ed"
 )
 _EXTENSION_FEATURE = "__acs_transfer_fixture_interest_total"
 _EXTENSION_FAMILIES = {

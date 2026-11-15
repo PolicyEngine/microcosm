@@ -117,6 +117,7 @@
            "categorical",
            "hours",
            "weeks",
+           "years",
            "calendar_year"
           ]
          },

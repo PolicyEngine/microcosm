@@ -106,7 +106,7 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
         assert published_transfer["completion"] == {
             "status": "complete",
             "group_count": 19,
-            "target_count": 72,
+            "target_count": 73,
             "residual_null_rows": 0,
         }
         calibrated = [
@@ -356,7 +356,9 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # The hierarchy value ranks move it through medicaid_take_up's
             # attested bytes.
             # microcosm#1096's exact softmax cap projection in solve moves it.
-            "spec_sha256": "fa75bd68f579fd7fb0dd0eed955c867415c251f11fc34087bbc24ae3a77a2a49",
+            # microcosm#776's entry clock and arrival-year seed site move it
+            # again.
+            "spec_sha256": "6fb922d23f22c6f038e069778a36320d23d5316a1761fd43457ce1d12097b071",
         },
     }
 

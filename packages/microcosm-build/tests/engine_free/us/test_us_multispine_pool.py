@@ -603,10 +603,10 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
     assert "has_marketplace_health_coverage" not in owners
 
     target_names = sorted(owners)
-    assert len(target_names) == 120
+    assert len(target_names) == 121
     assert (
         hashlib.sha256(("\n".join(target_names) + "\n").encode()).hexdigest()
-        == "8b234f9ad808407d2fc6ff889f7f43be371f4df07c21c65f63f85205f31003e9"
+        == "dd0b1be5e81bfbcb09ce2049dcd82315e16c1b800ae49951c8ea78a1cc6c8ddb"
     )
 
 
@@ -626,11 +626,11 @@ def test_pool_transfer_plan_partitions_at_the_declared_producer_boundary() -> No
     source_producers = keys(pool_post_puf_source_producer_target_families())
 
     assert len(early) == 48
-    assert len(late) == 72
+    assert len(late) == 73
     assert early.isdisjoint(late)
     assert early | late == full
     assert len(puf_producers) == 45
-    assert len(source_producers) == 29
+    assert len(source_producers) == 30
     assert len(puf_producers & source_producers) == 2
     assert puf_producers | source_producers == late
     assert ("person", "source_operator_cps_carried", "strike_benefits") in early
@@ -661,13 +661,13 @@ def test_pool_input_surface_normalizes_all_four_source_registries() -> None:
     surface = pool_input_surface()
     by_name = {entry.variable: entry for entry in surface}
 
-    assert len(surface) == len(by_name) == 143
+    assert len(surface) == len(by_name) == 144
     assert [entry.variable for entry in surface] == sorted(by_name)
     assert Counter(
         provenance for entry in surface for provenance in entry.provenance
     ) == Counter(
         {
-            "pool_transfer_target_families": 120,
+            "pool_transfer_target_families": 121,
             "POOL_DEFERRED_TRANSFER_INPUTS": 3,
             "PRIMARY_QRF_TARGET_ORDER": 66,
             "load_take_up_contract": 17,
@@ -1031,14 +1031,14 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
     }
     assert Counter(entry.provision for entry in projection) == Counter(
         {
-            "materialized_pool_input_surface": 123,
+            "materialized_pool_input_surface": 124,
             "seed_stage_program_contract": 17,
             "declared_deferred_null_input": 3,
             "assembled_native_engine_input": 5,
             "frame_structural_engine_input": 10,
             "preserved_stacked_engine_input": 4,
             "derived_schedule_d_input": 1,
-            "declared_absent_engine_input": 762,
+            "declared_absent_engine_input": 761,
             "unprovisioned_source_input": 1,
         }
     )
@@ -1130,7 +1130,7 @@ def test_every_pool_transfer_target_is_an_installed_engine_input_leaf() -> None:
         for columns in families.values()
         for target in columns
     }
-    assert len(targets) == 120
+    assert len(targets) == 121
     acs_transfer_module.assert_acs_transfer_targets_are_input_leaves(
         targets,
         require_known=True,
@@ -1155,7 +1155,7 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
         )
     )
 
-    assert len(targets) == 120
+    assert len(targets) == 121
     assert len(predictors) == 32
     assert len(primary_predictor_sets) == 66
     primary_targets = tuple(
@@ -1172,7 +1172,7 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
     assert len(primary_predictor_sets[0][1]) == 8
     assert len(primary_predictor_sets[-1][1]) == 73
     assert len(POOL_DEFERRED_TRANSFER_INPUTS) == 3
-    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 123
+    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 124
     assert set(POOL_SOURCE_OPERATOR_ORDER) <= set(calls)
     assert all(calls[name] > 0 for name in POOL_SOURCE_OPERATOR_ORDER)
     assert calls["with_us_prior_year_income_inputs"] == 2
@@ -1398,6 +1398,7 @@ def test_pool_agreement_registry_exactly_covers_expanded_pool_charter() -> None:
     assert immigration_spec.columns == (
         "immigration_status_str",
         "ssn_card_type",
+        "years_since_us_entry",
     )
     assert immigration_spec.joint_categorical_groups == (
         ("ssn_card_type", "immigration_status_str"),
@@ -1521,6 +1522,96 @@ def test_single_post_clone_source_entrypoint_rejects_unknown_operator_before_run
         run_multispine_post_clone_source_operator(
             _source_frame(),
             "with_us_housing_inputs",
+        )
+
+
+def _cloned_pool_with_asec_entry_codes(*, source_years: list[int] | None) -> Frame:
+    """A cloned two-spine pool whose two ASEC persons are recent non-citizens.
+
+    The first reports ``PEINUSYR`` 29 at age 30 and the second 27 at age 0.
+    ``source_years`` is each person's ASEC income year; ``None`` builds the
+    pool without the column.
+    """
+
+    asec = _source_frame()
+    tables = {entity: asec.table(entity).copy() for entity in asec.entities}
+    person = tables["person"]
+    for column, value in {
+        "PRCITSHP": 5,
+        "PENATVTY": 303,
+        "A_MARITL": 7,
+        "A_SPOUSE": 0,
+        "A_HSCOL": 0,
+        "WSAL_VAL": 0.0,
+        "SEMP_VAL": 0.0,
+        "MCARE": 2,
+        "CAID": 2,
+        "IHSFLG": 2,
+        "CHAMPVA": 2,
+        "MIL": 2,
+        "PEN_SC1": 0,
+        "PEN_SC2": 0,
+        "RESNSS1": 0,
+        "RESNSS2": 0,
+        "SS_YN": 2,
+        "SSI_YN": 2,
+        "PEIO1COW": 0,
+        "A_MJOCC": 0,
+        "PEAFEVER": 2,
+        "SPM_CAPHOUSESUB": 0.0,
+    }.items():
+        person[column] = value
+    person["PEINUSYR"] = [29, 27]
+    person["A_AGE"] = [30, 0]
+    person["age"] = [30.0, 0.0]
+    person["PERIDNUM"] = ["asec-1", "asec-2"]
+    person["source_person_id"] = ["asec-1", "asec-2"]
+    if source_years is not None:
+        person["source_year"] = source_years
+    asec = Frame(
+        tables,
+        asec.schema,
+        {"household": asec.weights_for("household")},
+        asec.strata,
+    )
+    return clone_us_frame_for_puf_support(
+        assemble_spines(
+            {"asec": asec, "acs": _source_frame(offset=100.0)},
+            household_mass_shares={"asec": 0.5, "acs": 0.5},
+        )
+    )
+
+
+def test_post_clone_immigration_reads_each_asec_rows_own_source_year() -> None:
+    """The post-clone projection keeps ``source_year`` for the entry clock.
+
+    ``PEINUSYR`` 29 exists only in the ASEC 2026 codebook (income year 2025),
+    where it is 2024-2026: zero years in the pool's 2024 period. Code 27 is
+    2020-2023 in ASEC 2023 (income year 2022) and 2020-2021 in later vintages;
+    a person aged 0 at that interview arrived in 2022 or 2023. Without
+    ``source_year`` the stage reads every row in the ASEC 2025 codebook, which
+    has no code 29.
+    """
+
+    result = run_multispine_post_clone_source_operator(
+        _cloned_pool_with_asec_entry_codes(source_years=[2025, 2022]),
+        "with_us_immigration_inputs",
+    )
+
+    person = result.frame.table("person")
+    clock = person["years_since_us_entry"]
+    asec_2026 = person["PERIDNUM"].eq("asec-1")
+    asec_2023 = person["PERIDNUM"].eq("asec-2")
+    assert int(asec_2026.sum()) == int(asec_2023.sum()) == 2
+    assert clock[asec_2026].tolist() == [0.0, 0.0]
+    assert set(clock[asec_2023]) <= {1.0, 2.0}
+    assert clock[asec_2023].nunique() == 1
+    assert clock[person["PERIDNUM"].isna()].isna().all()
+
+    with pytest.raises(SourceRuntimeError, match=r"\(2025, 29\)"):
+        run_multispine_post_clone_source_operator(
+            _cloned_pool_with_asec_entry_codes(source_years=None),
+            "with_us_immigration_inputs",
         )
 
 

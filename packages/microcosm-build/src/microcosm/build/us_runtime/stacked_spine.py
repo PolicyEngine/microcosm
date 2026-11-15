@@ -2578,6 +2578,11 @@ _EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS: Mapping[
             ("person", "model_required_numeric", "other_medical_expenses"),
             (
                 "person",
+                "source_operator_immigration",
+                "years_since_us_entry",
+            ),
+            (
+                "person",
                 "model_required_numeric",
                 "over_the_counter_health_expenses",
             ),
@@ -5066,7 +5071,7 @@ def validate_stacked_post_puf_transfer_receipt(
     if not isinstance(targets, Mapping) or set(targets) != expected_target_labels:
         raise ValueError(
             f"{boundary}: stacked post-PUF transfer target surface is not the "
-            "canonical 71-target surface; production manifest emission is "
+            "canonical 73-target surface; production manifest emission is "
             "forbidden."
         )
     for name, group in expected_groups.items():
@@ -5097,7 +5102,7 @@ def validate_stacked_post_puf_transfer_receipt(
         )
     # The counts come from the canonical partition and surface checked above.
     # Their sizes are pinned once, at import: 19 groups in
-    # us_late_producer_registry and 72 targets in this module's surface check.
+    # us_late_producer_registry and 73 targets in this module's surface check.
     completion = receipt.get("completion")
     if completion != {
         "status": "complete",
@@ -8998,12 +9003,12 @@ _canonical_full_transfer_keys = set(
     _surface_target_keys(_freeze_target_families(pool_transfer_target_families()))
 )
 if (
-    len(_canonical_surface_keys) != 136
-    or len(set(_canonical_surface_keys)) != 136
+    len(_canonical_surface_keys) != 137
+    or len(set(_canonical_surface_keys)) != 137
     or len(_canonical_early_transfer_keys) != 48
-    or len(_canonical_late_transfer_keys) != 72
+    or len(_canonical_late_transfer_keys) != 73
     or len(_canonical_late_puf_producer_keys) != 45
-    or len(_canonical_late_source_producer_keys) != 29
+    or len(_canonical_late_source_producer_keys) != 30
     or len(_canonical_late_puf_producer_keys & _canonical_late_source_producer_keys)
     != 2
     or _canonical_late_puf_producer_keys | _canonical_late_source_producer_keys
@@ -9011,7 +9016,7 @@ if (
     or _canonical_early_transfer_keys & _canonical_late_transfer_keys
     or _canonical_early_transfer_keys | _canonical_late_transfer_keys
     != _canonical_full_transfer_keys
-    or len(_canonical_full_transfer_keys) != 120
+    or len(_canonical_full_transfer_keys) != 121
     or set(_plan_target_keys(_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR))
     != _canonical_early_transfer_keys
     or not _canonical_full_transfer_keys.issubset(_canonical_surface_keys)
@@ -9031,10 +9036,10 @@ if (
     )
 ):
     raise RuntimeError(
-        "Canonical stacked authority must partition the exact 120-target "
-        "transfer surface into 48 early gap-fill and 72 post-PUF targets "
-        "inside an exact 136-target terminal surface and metric registry; "
-        "the late surface must be exactly covered by 45 PUF-clone and 29 "
+        "Canonical stacked authority must partition the exact 121-target "
+        "transfer surface into 48 early gap-fill and 73 post-PUF targets "
+        "inside an exact 137-target terminal surface and metric registry; "
+        "the late surface must be exactly covered by 45 PUF-clone and 30 "
         "ASEC-source producer targets with their declared two-target overlap."
     )
 
@@ -11156,7 +11161,7 @@ def _aggregate_late_transfer_result(
     ],
     execution_order: Sequence[str],
 ) -> StackedPostPufTransferResult:
-    """Bind all bounded group outcomes into the canonical 71-target receipt."""
+    """Bind all bounded group outcomes into the canonical 73-target receipt."""
 
     expected_groups = tuple(group.name for group in CANONICAL_US_LATE_TRANSFER_GROUPS)
     if set(group_results) != set(expected_groups):
@@ -13256,7 +13261,7 @@ class OriginBatterySpec:
     """Test-seam grouping for per-column battery metrics.
 
     Production never accepts these specs from a caller: it consumes the
-    immutable 135-column canonical registry. The explicit test-authority seam
+    immutable 137-column canonical registry. The explicit test-authority seam
     groups its digested registry into specs so the comparison engine can reuse
     the same loop. ``clone_index`` scopes a fixture comparison to one clone
     role: 0 compares native rows and 1 compares a PUF arm.
@@ -13310,7 +13315,7 @@ def by_origin_battery(
     *,
     tail_manifest: Mapping[str, object] | None = None,
 ) -> GateResult:
-    """Run the canonical 135-target plus joint by-origin battery."""
+    """Run the canonical 137-target plus joint by-origin battery."""
 
     return _by_origin_battery_evaluate(
         frame,

@@ -884,6 +884,15 @@ def _normalise_transfer_execution(
         )
     )
     adult_care.pop("enabled")
+    entry_clock = deepcopy(
+        dict(
+            _mapping_like(
+                post_transfer["immigration_clock_age_bound"],
+                "immigration clock age-bound post-transfer contract",
+            )
+        )
+    )
+    entry_clock.pop("enabled")
     passive = deepcopy(
         dict(
             _mapping_like(
@@ -922,6 +931,10 @@ def _normalise_transfer_execution(
                 ]
             },
             "contract": adult_care,
+        },
+        "immigration_clock_age_bound": {
+            "activation": {"all_targets": [str(entry_clock["target"])]},
+            "contract": entry_clock,
         },
         "schedule_d_capital_gain_distributions": {
             "activation": {
@@ -2089,12 +2102,12 @@ def _assert_invariants(
     expected = {
         "gap_fill_stacked_spine": (13, 48),
         "primary_puf_qrf": (1, 66),
-        "late_producer_dag": (19, 72),
+        "late_producer_dag": (19, 73),
     }
     expected_dtypes = {
         "gap_fill_stacked_spine": {"bool": 20, "float": 27, "int": 1},
         "primary_puf_qrf": {"bool": 8, "float": 56, "int": 2},
-        "late_producer_dag": {"bool": 17, "float": 52, "int": 1, "str": 2},
+        "late_producer_dag": {"bool": 17, "float": 53, "int": 1, "str": 2},
     }
     for stage, (family_count, target_count) in expected.items():
         rows = by_stage.get(stage, [])
@@ -2148,7 +2161,7 @@ def _assert_invariants(
         late_authored_output_count,
         len(tolerated_receipts),
     )
-    expected_graph_counts = (2747, 92, 230, 35, 0, 214)
+    expected_graph_counts = (2748, 93, 232, 35, 0, 214)
     if graph_counts != expected_graph_counts:
         raise RuntimeError(
             "US producer graph input/output/absence counts changed: "
