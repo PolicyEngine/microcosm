@@ -1020,6 +1020,14 @@ def _set_first_nan(years: np.ndarray) -> None:
     years[0] = np.nan
 
 
+def _set_first_positive_infinity(years: np.ndarray) -> None:
+    years[0] = np.inf
+
+
+def _set_first_negative_infinity(years: np.ndarray) -> None:
+    years[0] = -np.inf
+
+
 def _set_first_negative(years: np.ndarray) -> None:
     years[0] = -1.0
 
@@ -1064,11 +1072,14 @@ class TestEntryClockSummaryAndGate:
         ("change", "match"),
         [
             (_set_first_nan, "no finite value"),
+            (_set_first_positive_infinity, "no finite value"),
+            (_set_first_negative_infinity, "no finite value"),
             (_set_first_negative, "negative"),
             (_set_all_default, "engine default"),
         ],
+        ids=["nan", "positive-infinity", "negative-infinity", "negative", "default"],
     )
-    def test_gate_fails_on_an_incomplete_negative_or_default_clock(
+    def test_gate_fails_on_a_non_finite_negative_or_default_clock(
         self, change, match: str
     ) -> None:
         frame = _clocked_composition_frame([2.0] * 10 + [15.0] * 20)
@@ -1079,3 +1090,20 @@ class TestEntryClockSummaryAndGate:
         gate = us_immigration_composition_gate(frame, controls=_plausible_controls())
         assert not gate.passed
         assert any(match in failure for failure in gate.failures)
+
+    def test_gate_reads_the_default_signature_on_non_citizens_alone(self) -> None:
+        # Citizens keep a measured clock (40); every non-citizen carries the
+        # engine default, so the clock reads as default-filled.
+        frame = _clocked_composition_frame([5.0] * 30)
+        person = frame.table("person")
+        non_citizen = (person["ssn_card_type"] != "CITIZEN").to_numpy()
+        years = person[YEARS].to_numpy(dtype=np.float64, copy=True)
+        years[non_citizen] = 5.0
+        person[YEARS] = years
+        assert (years[~non_citizen] == 40.0).all()
+
+        gate = us_immigration_composition_gate(frame, controls=_plausible_controls())
+
+        assert not gate.passed
+        assert len(gate.failures) == 1
+        assert "every non-citizen carries the engine default" in gate.failures[0]
