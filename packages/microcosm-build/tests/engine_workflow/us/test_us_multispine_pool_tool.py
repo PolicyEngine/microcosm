@@ -357,7 +357,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # attested bytes.
             # microcosm#776's entry clock and arrival-year seed site move it
             # again.
-            "spec_sha256": "0d9cfcfbb6aa89a1cfc83b533515090489a42313ba63fa0ba2ee31bb9116ab25",
+            "spec_sha256": "11059ca3b1400a90dd8cbc1bd38e8372b85372f419378defadecbd49a0570b0f",
         },
     }
 
