@@ -15,7 +15,8 @@ The transport's own tables say where the rule stops, each entry with a reason
 a test below checks: the core modules every node runs through
 (``CORE_MODULES``), the core definitions the kernels name
 (``KERNEL_CORE_NAMES``), the checks that only refuse
-(``REFUSAL_ONLY_HELPERS``), the kernel stops (``KERNEL_STOPS``) and the names
+(``REFUSAL_ONLY_HELPERS``), the kernel stops (``KERNEL_STOPS``), the stops one
+kernel takes alone (``KERNEL_HALTS``) and the names
 the rule may stop at outside a key (``KERNEL_UNBOUND_NAMES``, none). Beside
 what a kernel's code names, the rule walks what the registry hands it
 (``HANDED_CLASSES``, ``HANDED_VALUES``) and holds what a key binds beyond its
@@ -39,6 +40,7 @@ import ast
 import contextlib
 import functools
 import importlib
+import inspect
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from types import FunctionType, MappingProxyType, MethodType, ModuleType
@@ -58,6 +60,7 @@ from microcosm.build.transport import (
 from microcosm.build.transport.gate_bindings import TRANSPORT_GATE_REGISTRY
 from microcosm.build.transport.gate_kernels import GateBatteryKernel
 from microcosm.build.transport.registry import build_transport_registry
+from microcosm.calibrate import artifacts as calibrate_artifacts
 from microcosm.calibrate.ordered_kernels import CalibrateOrderedAdamKernel
 from microcosm.frame import rules_kernels
 from microcosm.frame.rules import RulesEngine
@@ -232,6 +235,25 @@ KERNEL_STOPS: dict[tuple[str, str], str] = {
         "the second quantile map hashes the list itself"
     ),
 }
+#: Where the rule stops for one kernel alone, by kernel ref, each with why
+#: that kernel need not hash what lies beyond it;
+#: test_the_kernel_halts_hold_where_their_reasons_say checks each.
+_DECODED_TARGETS_REASON = (
+    "the kernel decodes a calibration problem, whose targets' class, "
+    "calibrate.target's Target, names CalibrationHierarchy only for a target "
+    "that carries a hierarchy, and calibrate.artifacts' _read_target, which "
+    "builds every target a problem decodes to, passes none. The income "
+    "evidence kernels' module lists leave the hierarchy out on the same "
+    "premise (HIERARCHY_GUARD in test_transport_income_evidence_kernels)"
+)
+KERNEL_HALTS: dict[str, dict[tuple[str, str], str]] = {
+    ref: {
+        ("microcosm.calibrate.hierarchy", "CalibrationHierarchy"): (
+            _DECODED_TARGETS_REASON
+        )
+    }
+    for ref in ("transport.native_band_report@1", "transport.omission_register@1")
+}
 #: Names a kernel reads from a module its key does not hash, each with why.
 #: None: every name the rule stops at lies inside its kernel's key.
 KERNEL_UNBOUND_NAMES: dict[tuple[str, str], str] = {}
@@ -302,14 +324,15 @@ _RULE = BindingRule(
 
 
 def _keyed_walk(ref: str, kernel):
-    """One kernel's walk, with what the registry hands it, against what its
-    key hashes (``BindingRule.keyed_walk``)."""
+    """One kernel's walk, with what the registry hands it and the stops it
+    takes alone, against what its key hashes (``BindingRule.keyed_walk``)."""
 
     handed_class = HANDED_CLASSES.get(ref)
     handed_value = HANDED_VALUES.get(ref)
     beyond = KEYS_BEYOND_SOURCE_HASH.get(ref)
     return _RULE.keyed_walk(
         kernel,
+        halts={**KERNEL_STOPS, **KERNEL_HALTS.get(ref, {})},
         handed_classes=() if handed_class is None else (handed_class[0],),
         handed_values=() if handed_value is None else (handed_value[0],),
         key=() if beyond is None else beyond[0](kernel),
@@ -416,7 +439,12 @@ def test_the_rule_sees_every_kernel_the_transport_registers(toy_registry) -> Non
     assert {
         ref: type(prepared.kernels.get(ref)) for ref in prepared.kernels.refs()
     } == {ref: type(kernel) for ref, kernel in kernels.items()}
-    for table in (HANDED_CLASSES, HANDED_VALUES, KEYS_BEYOND_SOURCE_HASH):
+    for table in (
+        KERNEL_HALTS,
+        HANDED_CLASSES,
+        HANDED_VALUES,
+        KEYS_BEYOND_SOURCE_HASH,
+    ):
         assert set(table) <= set(kernels), sorted(set(table) - set(kernels))
 
 
@@ -429,14 +457,16 @@ def test_every_transport_kernel_hashes_each_helper_it_computes_through() -> None
     The rule starts at what the kernel runs (its methods by method resolution
     order, without the hash itself, the methods only the hash calls and the
     listed refusal-only methods), stops at the core-module, refusal-only and
-    stop tables, and follows the engines and the gate registry the registry
-    hands the kernels that take them (``BindingRule.keyed_walk``)."""
+    stop tables and at the kernel's own halts, and follows the engines and the
+    gate registry the registry hands the kernels that take them
+    (``BindingRule.keyed_walk``)."""
     found = findings(_transport_rule_walks())
     assert not found.unhashed, found.unhashed
     assert found.unlisted == set(KERNEL_UNBOUND_NAMES), sorted(
         found.unlisted ^ set(KERNEL_UNBOUND_NAMES)
     )
-    assert found.met == set(KERNEL_STOPS), sorted(found.met ^ set(KERNEL_STOPS))
+    listed = set(KERNEL_STOPS).union(*KERNEL_HALTS.values())
+    assert found.met == listed, sorted(found.met ^ listed)
 
 
 def test_the_core_modules_are_on_every_nodes_path() -> None:
@@ -495,7 +525,8 @@ def test_the_kernel_rule_stops_only_where_its_reasons_hold() -> None:
     for walks in _transport_rule_walks().values():
         for walk, _ in walks.values():
             for stop, by in walk.met.items():
-                namers.setdefault(stop, set()).update(by)
+                if stop in KERNEL_STOPS:
+                    namers.setdefault(stop, set()).update(by)
     compile_list = (target_kernels.__name__, "_COMPILE_MODULES")
     assert namers == {
         compile_list: {(population_kernels.__name__, "TransportQuantileMapKernel")}
@@ -515,6 +546,27 @@ def test_the_kernel_rule_stops_only_where_its_reasons_hold() -> None:
             )
             if reads and not isinstance(sub.ctx, ast.Store):
                 assert id(sub) in hashing, (module, sub.lineno)
+
+
+def test_the_kernel_halts_hold_where_their_reasons_say() -> None:
+    """Each kernel's own halts are met through calibrate.target's Target
+    alone, the class their reason names; without them, the kernel's walk
+    reaches the halted modules and nothing else outside its key; and the
+    target decoder passes no hierarchy, the premise the income evidence
+    kernels' module lists rest on (test_no_decoded_target_carries_a_hierarchy
+    there)."""
+    kernels = transport_kernels()
+    target = ("microcosm.calibrate.target", "Target")
+    for ref, halts in KERNEL_HALTS.items():
+        (halted,) = _transport_rule_walks()[ref].values()
+        assert {stop: halted.walk.met.get(stop) for stop in halts} == dict.fromkeys(
+            halts, frozenset({target})
+        ), ref
+        unhalted = _RULE.keyed_walk(kernels[ref])
+        assert set(unhalted.walk.reach) - unhalted.key == {
+            module for module, _ in halts
+        }, ref
+    assert "hierarchy" not in inspect.getsource(calibrate_artifacts._read_target)
 
 
 def test_the_registry_hands_the_kernels_what_the_tables_list(toy_registry) -> None:
