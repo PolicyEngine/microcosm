@@ -812,7 +812,7 @@ def test_group_quarters_records_are_not_county_support() -> None:
     households["household_spine"] = "acs_2024_1yr"
     households["TYPEHUGQ"] = kinds
     # 01003 has one housing unit beside three group-quarters records; 01007
-    # has group quarters only; 01005 has nothing.
+    # has group quarters only; 01005 and 01009 have nothing initially.
     populations = {1001: 10.0, 1003: 40.0, 1005: 5.0, 1007: 8.0, 1009: 30.0}
     overlaps = county.puma_overlaps(
         [100001] * 5, sorted(populations), [10.0, 40.0, 5.0, 8.0, 30.0]
@@ -820,7 +820,7 @@ def test_group_quarters_records_are_not_county_support() -> None:
     moves, receipt = county.plan_minimum_support(
         households, populations, overlaps, per_county=1
     )
-    assert receipt["unsupported_before"] == ["01005", "01007"]
+    assert receipt["unsupported_before"] == ["01005", "01007", "01009"]
     # 01003's lone housing unit would leave it with group quarters only.
     assert moves == []
     assert {entry["status"] for entry in receipt["counties"].values()} == {
