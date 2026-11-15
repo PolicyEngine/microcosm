@@ -277,15 +277,14 @@ def test_population_aggregate_list_matches_installed_engine_sources() -> None:
 def test_in_build_datasets_hold_period_alone_and_match_the_projection(
     monkeypatch,
 ) -> None:
-    """In-build simulations read only PERIOD, so their datasets stop there.
+    """In-build simulations read only PERIOD, so they ask for datasets that
+    stop there; by default a dataset keeps policyengine-us's projection.
 
     Values must match policyengine-us's own projection to later years: the
     target frame with one JCT reform family (a reform system on the cut
     dataset), the ACA source inputs, Medicaid and SNAP eligibility, and
     December SSI amounts.
     """
-    import functools
-
     from policyengine_us.data import USMultiYearDataset, USSingleYearDataset
 
     builder = _load_builder_module()
@@ -298,10 +297,10 @@ def test_in_build_datasets_hold_period_alone_and_match_the_projection(
     )
     monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", (salt,))
     frame = _real_engine_frame()
-    cut = builder._dataset_from_frame(frame, assert_no_formula_owned_columns=False)
-    projected = builder._dataset_from_frame(
-        frame, assert_no_formula_owned_columns=False, keep_engine_projection=True
+    cut = builder._dataset_from_frame(
+        frame, assert_no_formula_owned_columns=False, period_only=True
     )
+    projected = builder._dataset_from_frame(frame, assert_no_formula_owned_columns=False)
     assert isinstance(cut, USMultiYearDataset)
     assert cut.years == [builder.PERIOD]
     assert isinstance(projected, USSingleYearDataset)
@@ -330,12 +329,23 @@ def test_in_build_datasets_hold_period_alone_and_match_the_projection(
             "ssi": builder._ssi_person_uncapped_amount(frame),
         }
 
+    dataset_from_frame = builder._dataset_from_frame
+    asked: list[bool] = []
+
+    def recording(*args, **kwargs):
+        asked.append(kwargs.get("period_only", False))
+        return dataset_from_frame(*args, **kwargs)
+
+    def projecting(*args, **kwargs):
+        # The in-build sites ask for PERIOD alone; give them the projection.
+        return dataset_from_frame(*args, **{**kwargs, "period_only": False})
+
+    monkeypatch.setattr(builder, "_dataset_from_frame", recording)
     with_cut = run()
-    monkeypatch.setattr(
-        builder,
-        "_dataset_from_frame",
-        functools.partial(builder._dataset_from_frame, keep_engine_projection=True),
-    )
+    # Every site run here asked for PERIOD alone: the target frame, the JCT
+    # reform, the ACA source inputs, Medicaid, SNAP and December SSI.
+    assert len(asked) >= 6 and all(asked), asked
+    monkeypatch.setattr(builder, "_dataset_from_frame", projecting)
     with_projection = run()
 
     assert with_cut["targets"]["income_tax"].to_numpy().any()

@@ -232,6 +232,14 @@ one Microsimulation over the whole file.
   2025 state taxes after 2027 keys. It checks for the
   `md.msde.ccs.payment.informal.rates` error and warns if that error is absent;
   it does not require the upstream bug to persist.
+- Each batch engine keeps policyengine-us's projection of the release year to
+  its last CPI-U year (2035), because the plans request keys in later years
+  (reform validation reaches past 2025). The build's own simulations hold
+  `PERIOD` alone instead: the six in-build sites (target frame, JCT reforms,
+  ACA source inputs, Medicaid, SNAP and December SSI) ask
+  `_dataset_from_frame(..., period_only=True)`. By default it keeps the
+  projection, so a new caller that reads a later year gets the engine's own
+  projected inputs.
 - Each reform builds one tax-benefit system and scores its measure batch by
   batch. Each batch engine gets that system alone, without `reform=`: given
   both, policyengine-us creates a baseline branch, which clones the system.

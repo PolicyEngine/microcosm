@@ -3974,6 +3974,7 @@ def _aca_source_tax_unit_table_batched(
                 dataset=_dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
+                    period_only=True,
                 )
             )
             batch_tax_unit = _aca_source_tax_unit_table_from_simulation(
@@ -4188,6 +4189,7 @@ def _medicaid_person_eligibility(
                 dataset=_dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
+                    period_only=True,
                 )
             )
             batch_eligible = (
@@ -4275,6 +4277,7 @@ def _ssi_person_uncapped_amount(
                 dataset=_dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
+                    period_only=True,
                 )
             )
             batch_uncapped = calculate(batch_simulation)
@@ -4490,6 +4493,7 @@ def _snap_spm_unit_eligibility(
                 dataset=_dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
+                    period_only=True,
                 )
             )
             batch_eligible = (
@@ -4576,17 +4580,21 @@ def _dataset_from_frame(
     zero_variables: Iterable[str] = (),
     system=None,
     assert_no_formula_owned_columns: bool = True,
-    keep_engine_projection: bool = False,
+    period_only: bool = False,
 ):
     """The frame as a policyengine-us dataset for ``PERIOD``.
 
-    The in-build simulations read only ``PERIOD`` (``_calculate_array``, and
-    the December SSI month), so by default the dataset holds that year alone
-    (``us_dataset_through``). Given a single-year dataset, policyengine-us
-    would add an uprated copy of every later year to its last CPI-U year and
-    store them all, and copy them again into each branch it opens.
-    ``keep_engine_projection`` keeps that projection: post-export scoring
-    plans keys in later years too.
+    By default the dataset is the one year, and policyengine-us projects it
+    as a user's load does: it adds an uprated copy of every later year to its
+    last CPI-U year, stores them all, and copies them again into each branch
+    it opens. A read at a later year then gets the engine's own projected
+    inputs; post-export scoring plans keys in later years.
+
+    ``period_only`` holds ``PERIOD`` alone (``us_dataset_through``), for an
+    in-build simulation that reads only ``PERIOD`` (``_calculate_array``, and
+    the December SSI month). A later read on that dataset is not refused: the
+    engine carries or uprates leaf inputs itself and reads a stored
+    formula-owned column as its default, so only such a caller may ask.
     """
     if assert_no_formula_owned_columns:
         _assert_no_formula_owned_columns(frame)
@@ -4610,7 +4618,7 @@ def _dataset_from_frame(
         marital_unit=tables["marital_unit"],
         time_period=PERIOD,
     )
-    if keep_engine_projection:
+    if not period_only:
         return dataset
     return us_dataset_through(dataset, PERIOD)
 
@@ -5369,11 +5377,10 @@ class _HouseholdBatchedPostExportScorer:
             def dataset_from_frame(batch_frame: Frame):
                 # Consumer plans read years after PERIOD (reform validation
                 # reaches past 2025), so the scorer keeps the engine's
-                # projection.
+                # projection: it does not ask for PERIOD alone.
                 return _dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
-                    keep_engine_projection=True,
                 )
 
         self._dataset_from_frame = dataset_from_frame
@@ -5770,6 +5777,7 @@ def _reform_household_income_tax(
                 zero_variables=(reform_spec.neutralized_variable,),
                 system=system,
                 assert_no_formula_owned_columns=False,
+                period_only=True,
             )
             reformed = microsimulation_cls(
                 tax_benefit_system=reform_system,
@@ -7137,6 +7145,7 @@ def _materialize_base_simulation_columns(
                 dataset=_dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
+                    period_only=True,
                 )
             )
             try:

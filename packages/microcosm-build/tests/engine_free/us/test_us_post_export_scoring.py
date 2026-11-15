@@ -1891,7 +1891,8 @@ def test_scorer_dataset_keeps_the_engine_projection(
     builder, monkeypatch, tmp_path
 ) -> None:
     """Consumer plans read years after PERIOD, so the scorer's default
-    dataset keeps policyengine-us's projection; in-build simulations do not."""
+    dataset keeps policyengine-us's projection: it does not ask for PERIOD
+    alone, as the in-build simulations do."""
     calls: list[dict[str, object]] = []
 
     def recording_dataset_from_frame(frame, **kwargs):
@@ -1908,6 +1909,4 @@ def test_scorer_dataset_keeps_the_engine_projection(
     first_batch = scorer._batches()[0]
 
     assert scorer._dataset_from_frame(first_batch) is first_batch
-    assert calls == [
-        {"assert_no_formula_owned_columns": False, "keep_engine_projection": True}
-    ]
+    assert calls == [{"assert_no_formula_owned_columns": False}]

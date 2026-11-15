@@ -259,6 +259,7 @@ def _install_fake_engine(
         zero_variables=(),
         system=None,
         assert_no_formula_owned_columns=True,
+        period_only=False,
     ):
         return {"frame": frame_arg, "zero_variables": tuple(zero_variables)}
 
@@ -745,8 +746,6 @@ def _engine_population_aggregate_sources(
                         "\n".join(sorted(sources)).encode()
                     ).hexdigest()
     return found
-
-
 
 
 # These inspected 2.2.1 formulas compare a record's status or geography with
