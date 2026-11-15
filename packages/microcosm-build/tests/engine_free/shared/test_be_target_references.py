@@ -2186,8 +2186,15 @@ def test_belgium_still_refuses_to_activate():
     spec = load_transport_spec(_SPEC)
     with pytest.raises(ValueError, match="not activated") as error:
         validate_transport_activation(spec)
-    for missing in ("benefit_unit_rule.json", "axiom_rules_bindings.json"):
+    # The bindings resource exists now, so its null engine pins are the gaps.
+    for missing in (
+        "benefit_unit_rule.json",
+        "axiom_rules_bindings.engine.commit",
+        "axiom_rules_bindings.engine.wheel_sha256",
+        "transport_graph.json",
+    ):
         assert missing in str(error.value)
+    assert "axiom_rules_bindings.json" not in str(error.value)
     # The pension surface rows are parked, so each is a named gap.
     for row in _rows("precal"):
         parked = row["metadata"]["activation_status"] != "active"
