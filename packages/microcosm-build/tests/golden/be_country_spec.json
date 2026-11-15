@@ -1,6 +1,6 @@
 {
   "country": "be",
-  "fingerprint": "d63045f3a96ec61f205b208463a6bf45b68038c503e93d70be4a0df5ba20a708",
+  "fingerprint": "d482b2f983feecc744541ac16f3a01e61d45f06614bbbcd09530c2037983ddde",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_nuts1_admin_aggregates",
@@ -33,7 +33,7 @@
     "axiom_rules_bindings.json": "0d8c9670cc22761f90fba5df99c27bfea420708dad94926248da7dc1cea3a589",
     "chronicle_feed.json": "71f3967cefa12d8ad6c4b955547bfc37e33183ee839b3edf3a43e0cb72559030",
     "country_package.json": "204c8c06934160c856d86a9d6c5305d40e9b3a85713c11c3ab031bebb27fbe89",
-    "gates.json": "8e0ff2db51ca2ef19f62342098ef07ea4e5d93b2eb844d517e9808260c098fec",
+    "gates.json": "9704a0c86b324d4243365a320438b47a9d7d5a6af7ec2adfa1821ecb8d611f68",
     "geography_spine.json": "090b83a4fa511e691b8f1486bc4188e4170cf9d4a1239e7418d33d5020ceca50",
     "holdout_references.json": "c9d32204b4c6364a95fcab066cbbc8b1b99dd49ef608e72c99009f01c7d1c942",
     "precal_references.json": "321bd4bd675b80c2e3241e19346fb191b72c8a0c101080dca27bae061c3edd89",

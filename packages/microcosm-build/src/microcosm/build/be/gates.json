@@ -12,7 +12,7 @@
       "phase": "terminal",
       "criticality": "release_blocking",
       "not_applicable": "awaiting d1902: Belgium's per-family fit tolerances (method card BE-MC6) are proposed, not ruled. Shared runner defaults and other countries' numbers may not silently govern Belgium.",
-      "notes": "Calibration fit per source family so no family hides in the average. Activate when d1902 rules, before any calibrated Belgian candidate. BE-MC6 proposes every calibration target within 5% and demography within 2%; written as NZ wrote its ruled d1376, that is within = hard_within = 0.05, min_family_share = min_hard_family_share = 1 and min_family_size = 1, so a one-target family gates too. Only hard_within, min_hard_family_share and min_family_size decide pass or fail; within and min_family_share are reported."
+      "notes": "Calibration fit per source family so no family hides in the average. Activate when d1902 rules BE-MC6's fit tolerances, before any calibrated Belgian candidate. BE-MC6 proposes every calibration target within 5% and demography within 2%. NZ's ruled d1376 wrote its two tolerances as two per_family_fit rows, each with evidence_absent_blocks true: one at 5% over its calibration families and demography_per_family_fit at 2%, each with within = hard_within, min_family_share = min_hard_family_share = 1 and min_family_size = 1, so a one-target family gates too. Belgium's 2% lives in demographics_vs_statbel (aggregate_admin), so on activation this row takes within = hard_within = 0.05, both family shares 1, min_family_size 1 and evidence_absent_blocks true as NZ's rows carry; a demography per_family_fit row at 0.02, as NZ has, is the other option. NZ's rows also list their families, so a missing calibration family fails the row; without families, target_profile_coverage is what catches a missing family. Only hard_within, min_hard_family_share and min_family_size decide pass or fail; within and min_family_share are reported."
     },
     {
       "id": "national_and_nuts1_admin_aggregates",
@@ -26,14 +26,14 @@
         ],
         "default_rtol": 0.05
       },
-      "notes": "Intended weighted aggregates against admin anchors on the future hard surface. The tier metadata in target_references.json is declaration-only in this change; a later runner integration must explicitly bridge it into gate tolerances."
+      "notes": "Intended weighted aggregates against admin anchors on the future hard surface. The tier metadata in target_references.json is declaration-only in this change; a later runner integration must explicitly bridge it into gate tolerances. default_rtol 0.05 is BE-MC6's administrative-aggregate tolerance, proposed and pending d1902; it equals the 5% each non-demography reference's fit_tolerance carries today. The row stays applicable on purpose, so it binds as soon as a country-level reference activates. Until then it fails on a calibrated surface, because its country level selects no active reference. demographics_vs_statbel is Belgium's live fit grading while calibration_per_family_fit waits on d1902, and a d1902 ruling moves all three rows. Every anchor the row selects, the NUTS1 demography anchors included, is graded at default_rtol; demographics_vs_statbel holds the demography anchors to 2%."
     },
     {
       "id": "commune_fiscal_income_fit",
       "gate": "aggregate_admin",
       "phase": "terminal",
       "criticality": "diagnostic",
-      "not_applicable": "Belgium has no commune-grain calibration reference: target_references.json covers the country and NUTS1 levels only, and commune fiscal income waits for a later commune spine gate. No ruling sets a commune tolerance, so aggregate_admin has no anchor to select and no default_rtol to apply.",
+      "not_applicable": "Belgium has no commune-grain fiscal income calibration reference: commune fiscal income waits for a later commune spine gate, and no ruling sets a commune tolerance, so aggregate_admin has no anchor to select and no default_rtol to apply.",
       "notes": "Commune-grain diagnostics should render per-target fit with the 25 worst-fit communes named; promotion to release_blocking is a spine-quality decision (populace#263), not a default. Activate with commune fiscal-income calibration references, families [fiscal_income], geography_levels [commune] and a ruled default_rtol. aggregate_admin names every anchor that misses default_rtol, with its miss; a ranked worst-25 list that also shows passing communes needs a shared binding parameter first."
     },
     {
@@ -74,7 +74,7 @@
         ],
         "default_rtol": 0.02
       },
-      "notes": "The US demographics.json / base_population_scale posture against Statbel population structure: age-band x sex x region totals within tight tolerance. families [demography] selects the compiled demography anchors (all NUTS1 today). default_rtol 0.02 is BE-MC6's demography tolerance, proposed and pending d1902, as each demography reference's fit_tolerance also is."
+      "notes": "The US demographics.json / base_population_scale posture against Statbel population structure: age-band x sex x region totals within tight tolerance. families [demography] selects the compiled demography anchors (all NUTS1 today). default_rtol 0.02 is BE-MC6's demography tolerance, proposed and pending d1902, as each demography reference's fit_tolerance also is. The row stays applicable on purpose: it is Belgium's live fit grading while calibration_per_family_fit waits on d1902, and a d1902 ruling moves it, national_and_nuts1_admin_aggregates and calibration_per_family_fit together."
     },
     {
       "id": "exported_nonzero",
