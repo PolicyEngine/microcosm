@@ -1319,17 +1319,24 @@ def test_main_has_no_calibrated_target_frame_at_the_export_write(
     from microcosm.calibrate import calibrate_l0_refit
 
     target_frame, targets = _small_calibration_problem()
-    # The export statements derive the local-jurisdiction flags on the export
+    # _main derives the local-jurisdiction flags on the base before it
+    # materializes targets, and the export statements keep them on the export
     # support (microcosm#1453). Every household here has a county, half of
-    # them Denver's, so that derivation writes real columns on a new frame.
+    # them Denver's, so the base derivation writes real columns.
     households = target_frame.table("household").drop(columns="x")
     households["county_fips"] = np.where(
         households["household_id"] % 2 == 0, "08031", "06037"
     )
-    base_frame = Frame(
-        {"person": target_frame.table("person"), "household": households},
-        target_frame.schema,
-        {"household": target_frame.weights_for("household")},
+    local_jurisdiction_flags: dict[str, object] = {}
+    base_frame = builder._with_local_jurisdiction_flags(
+        Frame(
+            {"person": target_frame.table("person"), "household": households},
+            target_frame.schema,
+            {"household": target_frame.weights_for("household")},
+        ),
+        support="base",
+        receipts=local_jurisdiction_flags,
+        telemetry=None,
     )
     if full_pool:
         result = calibrate(target_frame, targets, epochs=3, mass="conserve", seed=0)
@@ -1385,8 +1392,8 @@ def test_main_has_no_calibrated_target_frame_at_the_export_write(
         writes.append(frame)
         written = frame.table("household")
         assert "x" not in written
-        # The written support carries the flags its own geography decides,
-        # and it is the frame the cleanup below keeps for an exact-K outcome.
+        # The written support carries the base support's flags, and it is
+        # the frame the cleanup below keeps for an exact-K outcome.
         assert (
             written["in_denver"].tolist() == written["county_fips"].eq("08031").tolist()
         )
@@ -1412,7 +1419,7 @@ def test_main_has_no_calibrated_target_frame_at_the_export_write(
         "dataset_path": Path("fixture.h5"),
         # Bound earlier in _main: the receipts of the base and frozen-support
         # derivations, and the build's progress reporter.
-        "local_jurisdiction_flags": {},
+        "local_jurisdiction_flags": local_jurisdiction_flags,
         "telemetry": None,
     }
     module = ast.Module(
@@ -1421,9 +1428,13 @@ def test_main_has_no_calibrated_target_frame_at_the_export_write(
     exec(compile(module, "<main export statements>", "exec"), namespace)
     assert len(writes) == 1
     receipts = namespace["local_jurisdiction_flags"]
-    assert list(receipts) == ["export"]
+    assert list(receipts) == ["base", "export"]
     receipt = receipts["export"]
-    assert receipt["rungs"] == ["county"] and receipt["carried_flags"] == []
+    assert receipt["rungs"] == ["county"] == receipts["base"]["rungs"]
+    assert receipt["carried_flags"] == [
+        "in_denver",
+        "pa_philadelphia_wage_tax_resident",
+    ]
     in_denver = receipt["flags"]["in_denver"]
     assert in_denver["status"] == "derived"
     assert in_denver["households_in_jurisdiction"] == int(

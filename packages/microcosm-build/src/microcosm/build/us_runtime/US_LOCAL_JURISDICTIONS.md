@@ -116,8 +116,10 @@ an existing artifact rather than a geography line, and both call
   support and records the receipt as `local_jurisdiction_flags` in its
   summary; and
 - the fiscal refresh release builder calls it on the loaded base or prepared
-  pool, again on the frozen support when a selection source reduces it, and
-  again on the export support after the L0 or full-pool weights attach. It
+  pool, and again on the frozen support when a selection source reduces it,
+  both before it materializes its targets. Its export support, the rows the L0
+  or full-pool weights keep, is not derived again: it must carry exactly the
+  flags of the last support derived before it (see below). The builder
   records each receipt, keyed `base`, `frozen_support` and `export`, under
   `support_value_repairs.local_jurisdiction_flags` in the calibration
   diagnostics.
@@ -157,10 +159,23 @@ the annual lane.
 
 The rungs belong to the whole table, so removing rows can add one: a frozen
 support or L0 support that keeps only block-anchored donors decides
-`in_yonkers` and `in_wilmington` even though the pooled base did not. That is
-why the builder derives the flags again after each step that removes rows.
+`in_yonkers` and `in_wilmington` even though the pooled base did not. Frozen
+selection comes before the builder materializes its targets, so the builder
+derives the flags again on the frozen support, and the targets see them.
 Deriving a support that already carries exactly the flags it decides returns
-the same frame, so these repeat calls copy no tables.
+the same frame, so that call copies no tables.
+
+L0 selection comes after: the builder fits its weights to targets computed
+from the calibrated support's flags, and its fit gates report those fitted
+values. Writing `in_wilmington` on a retained Wilmington household at that
+point would change its local tax, and through SALT an itemizer's federal
+income tax, so the written H5 would no longer give the fitted targets. The
+export step therefore writes nothing. It calls
+`us_local_jurisdiction_artifact_receipt` with the calibrated support's rungs:
+the export must carry exactly those flags, and the receipt records each flag
+its own geography decides beyond them as unavailable, with that reason. Such a
+release carries the flags of an ordinary pooled release. Its own geography
+still decides the place-rule flags, so the annual lane refuses it as a parent.
 
 ## Gates
 

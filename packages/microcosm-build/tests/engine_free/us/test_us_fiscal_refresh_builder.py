@@ -2819,9 +2819,10 @@ def test_cli_result_names_the_build_and_its_publication_commands(
 def test_builder_derives_flags_after_every_support_reduction() -> None:
     # The rungs belong to the whole household table, so a step that removes
     # rows can make the place-rule flags decidable (microcosm#1453 review r2).
-    # _main derives on the loaded base, again on the frozen support before
-    # anything materializes targets from it, and again on the export support
-    # before any export gate reads it or the release engine writes it to H5.
+    # _main derives on the loaded base and again on the frozen support before
+    # anything materializes targets from it, and records the export support's
+    # flags (the calibrated support's) before any export gate reads it or the
+    # release engine writes it to H5 (review round 2 of the adopted PR).
     import inspect
 
     builder = _load_builder_module()
@@ -2873,9 +2874,13 @@ def test_builder_derives_flags_after_every_support_reduction() -> None:
 def test_builder_flags_follow_the_support_through_frozen_and_l0_selection() -> None:
     # The microcosm#1453 review r2 case, on real frames: a pooled base with a
     # Yonkers donor on a block and an ACS row with no block decides only the
-    # county-rule flags. A frozen support from a block-line release, or an L0
-    # support without the ACS row, keeps only the donor, so in_yonkers becomes
-    # decidable; selection alone would export the donor without it.
+    # county-rule flags. A frozen support from a block-line release keeps only
+    # the donor, so in_yonkers becomes decidable; selection alone would
+    # export the donor without it. The frozen support comes before the
+    # targets are materialized, so it derives in_yonkers, and an L0 support
+    # drawn from it exports the flag the targets saw. (An L0 support that
+    # gains the place rung only after the fit keeps the calibrated flags:
+    # test_builder_export_writes_no_input_its_targets_were_not_materialized_with.)
     from microcosm.build.us_runtime.l0_refit_export import (
         attach_l0_refit_entity_weights,
     )
@@ -2941,21 +2946,28 @@ def test_builder_flags_follow_the_support_through_frozen_and_l0_selection() -> N
     ]
 
     l0_support = attach_l0_refit_entity_weights(
-        base,
+        frozen,
         weight_entity="household",
         selected_entity_ids=np.asarray([1]),
         selected_weights=np.asarray([5.0]),
         reason="fixture L0 support",
     )
-    assert "in_yonkers" not in l0_support.table("household")
     exported = derive(l0_support, "export")
+    # The export writes nothing: it carries the frozen support's flags.
+    assert exported is l0_support
     assert exported.table("household")["in_yonkers"].tolist() == [True]
+    assert receipts["export"]["rungs"] == ["county", "place"]
     assert receipts["export"]["flags"]["in_yonkers"]["status"] == "derived"
     assert receipts["export"]["flags"]["in_yonkers"][
         "weighted_households_in_jurisdiction"
     ] == pytest.approx(5.0)
-    # A support whose flags are already complete comes back unchanged.
     assert derive(exported, "export") is exported
+    # The export keeps the flags of the last support derived before it, so
+    # with none derived it has nothing to keep and refuses.
+    with pytest.raises(ValueError, match="must be derived first"):
+        builder._with_local_jurisdiction_flags(
+            l0_support, support="export", receipts={}, telemetry=None
+        )
     assert [name for name, _details in telemetry.stages] == [
         "local_jurisdiction_flags_base",
         "local_jurisdiction_flags_frozen_support",
@@ -2967,6 +2979,79 @@ def test_builder_flags_follow_the_support_through_frozen_and_l0_selection() -> N
         derive(exported, "selected")
 
 
+def test_builder_export_writes_no_input_its_targets_were_not_materialized_with() -> (
+    None
+):
+    # The microcosm#1453 review round 2 case. A legacy pool whose block-line
+    # donors sit beside ACS rows with no block decides only the county-rule
+    # flags, and _main materializes the targets from that support. An L0
+    # support that keeps only the donors decides in_yonkers and in_wilmington;
+    # writing them on the export would change engine inputs after the refit
+    # (Wilmington's tax enters SALT and so federal income_tax), while the fit
+    # gates keep the values the refit used. The export therefore carries
+    # exactly the inputs of the rows it keeps, and its receipt says why the
+    # place-rule flags are not written.
+    from microcosm.build.us_runtime.l0_refit_export import (
+        attach_l0_refit_entity_weights,
+    )
+    from test_support.microcosm_build.us_local_jurisdictions import us_frame
+
+    builder = _load_builder_module()
+    pooled = us_frame(
+        [
+            {
+                "state_fips": 36,
+                "county_fips": "36119",
+                "place_fips": "84000",
+                "block_geoid": "361190001001000",
+            },
+            {
+                "state_fips": 10,
+                "county_fips": "10003",
+                "place_fips": "77580",
+                "block_geoid": "100030001001000",
+            },
+            {
+                "state_fips": 8,
+                "county_fips": "08031",
+                "place_fips": None,
+                "block_geoid": None,
+            },
+        ],
+        person_inputs=[[{}], [{}], [{}]],
+    )
+    receipts: dict[str, object] = {}
+    calibrated = builder._with_local_jurisdiction_flags(
+        pooled, support="base", receipts=receipts, telemetry=None
+    )
+    l0_support = attach_l0_refit_entity_weights(
+        calibrated,
+        weight_entity="household",
+        selected_entity_ids=np.asarray([1, 2]),
+        selected_weights=np.asarray([5.0, 7.0]),
+        reason="fixture L0 support without the ACS row",
+    )
+
+    exported = builder._with_local_jurisdiction_flags(
+        l0_support, support="export", receipts=receipts, telemetry=None
+    )
+
+    # Input parity: every table the export writes is the kept rows of the
+    # support the targets were materialized from, column for column.
+    for entity in l0_support.entities:
+        pd.testing.assert_frame_equal(exported.table(entity), l0_support.table(entity))
+    receipt = receipts["export"]
+    assert receipt["rungs"] == ["county"] == receipts["base"]["rungs"]
+    for flag in ("in_wilmington", "in_yonkers"):
+        assert receipt["flags"][flag]["status"] == "unavailable"
+        assert "decides it" in receipt["flags"][flag]["reason"]
+    assert receipt["flags"]["in_denver"]["status"] == "derived"
+    assert receipt["carried_flags"] == [
+        "in_denver",
+        "pa_philadelphia_wage_tax_resident",
+    ]
+
+
 def test_builder_refuses_a_support_whose_block_lies_outside_its_county() -> None:
     # The microcosm#1453 review round 1 case: a donor whose county was
     # redrawn (the Bronx) while its Yonkers block and place stayed, beside an
@@ -2976,26 +3061,37 @@ def test_builder_refuses_a_support_whose_block_lies_outside_its_county() -> None
     from test_support.microcosm_build.us_local_jurisdictions import us_frame
 
     builder = _load_builder_module()
-    stale = us_frame(
-        [
-            {
-                "state_fips": 36,
-                "county_fips": "36005",
-                "place_fips": "84000",
-                "block_geoid": "361190001001000",
-            },
-            {
-                "state_fips": 8,
-                "county_fips": "08031",
-                "place_fips": None,
-                "block_geoid": None,
-            },
-        ],
-        person_inputs=[[{}], [{}]],
+
+    def pool(donor_county: str):
+        return us_frame(
+            [
+                {
+                    "state_fips": 36,
+                    "county_fips": donor_county,
+                    "place_fips": "84000",
+                    "block_geoid": "361190001001000",
+                },
+                {
+                    "state_fips": 8,
+                    "county_fips": "08031",
+                    "place_fips": None,
+                    "block_geoid": None,
+                },
+            ],
+            person_inputs=[[{}], [{}]],
+        )
+
+    stale = pool("36005")
+    # The export keeps the flags of a support derived before it, so each call
+    # starts from the receipt of the same pool with the donor in its block's
+    # county.
+    prior: dict[str, object] = {}
+    builder._with_local_jurisdiction_flags(
+        pool("36119"), support="base", receipts=prior, telemetry=None
     )
-    receipts: dict[str, object] = {}
 
     for support in builder.LOCAL_JURISDICTION_FLAG_SUPPORTS:
+        receipts = dict(prior)
         with pytest.raises(
             ValueError, match="block_geoid must begin with the row's county_fips"
         ) as refused:
@@ -3004,7 +3100,7 @@ def test_builder_refuses_a_support_whose_block_lies_outside_its_county() -> None
             )
         assert "1/2 household row(s) do not" in str(refused.value)
         assert "[('361190001001000', '36005')]" in str(refused.value)
-    assert receipts == {}
+        assert receipts == prior
 
 
 def test_frozen_support_selection_is_followed_by_weeks_unemployed_regate() -> None:
@@ -7888,24 +7984,39 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "carried_flags": [],
         "flags": {"in_yonkers": {"status": "derived"}},
     }
+    local_jurisdiction_export_receipt = {
+        "rungs": ["county", "place"],
+        "carried_flags": ["in_yonkers"],
+        "flags": {"in_yonkers": {"status": "derived"}},
+    }
 
     def fake_rederive_local_jurisdiction_flags(frame):
         captured["local_jurisdiction_frames"] = [
             *captured.get("local_jurisdiction_frames", []),
             frame,
         ]
-        if isinstance(frame, FakeExportFrame):
-            # A new object, so the run can show that every export gate and
-            # the written H5 see the derived frame, not the L0 support.
-            derived = FakeExportFrame()
-            captured["local_jurisdiction_export_frame"] = derived
-            return derived, local_jurisdiction_receipt
         return frame, local_jurisdiction_receipt
+
+    def fake_local_jurisdiction_artifact_receipt(frame, *, rungs):
+        # The export support is checked, never rewritten: it must carry the
+        # flags of the support its targets were computed from.
+        captured["local_jurisdiction_frames"] = [
+            *captured.get("local_jurisdiction_frames", []),
+            frame,
+        ]
+        captured["local_jurisdiction_export_frame"] = frame
+        captured["local_jurisdiction_export_rungs"] = list(rungs)
+        return local_jurisdiction_export_receipt
 
     monkeypatch.setattr(
         builder,
         "rederive_us_local_jurisdiction_flags",
         fake_rederive_local_jurisdiction_flags,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_local_jurisdiction_artifact_receipt",
+        fake_local_jurisdiction_artifact_receipt,
     )
     if prepared_pool:
 
@@ -9458,11 +9569,16 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             ),
         )
         if terminal_mode != "stored_input_refused":
-            # The release engine writes the frame the export derivation returned.
+            # The release engine writes the export support the flag check
+            # was given, held to the base support's rungs: nothing rewrote it.
             assert (
                 captured["written_frame"]
                 is (captured["local_jurisdiction_export_frame"])
             )
+            assert captured["local_jurisdiction_export_rungs"] == [
+                "county",
+                "place",
+            ]
         return
 
     try:
@@ -9810,15 +9926,17 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "non_sch_d_capital_gains": cgd_repair_payload,
         "local_jurisdiction_flags": {
             "base": local_jurisdiction_receipt,
-            "export": local_jurisdiction_receipt,
+            "export": local_jurisdiction_export_receipt,
         },
     }
-    # _main derives the flags on the loaded base (or prepared pool) and again
-    # on the export support; this harness selects no frozen support.
+    # _main derives the flags on the loaded base (or prepared pool) and
+    # checks the export support against the base's rungs; this harness
+    # selects no frozen support.
     assert [type(frame) for frame in captured["local_jurisdiction_frames"]] == [
         FakeFrame,
         FakeExportFrame,
     ]
+    assert captured["local_jurisdiction_export_rungs"] == ["county", "place"]
     # The diagnostics carry a complete post-export scoring plan, never an
     # error record, so no plan line joins the terminal batch (#956).
     post_export_scoring = captured["diagnostics"]["post_export_scoring"]

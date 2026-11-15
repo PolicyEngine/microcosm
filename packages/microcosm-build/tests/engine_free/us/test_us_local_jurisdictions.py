@@ -14,6 +14,9 @@ Hypothesis):
 - deriving a selection of a derived support equals deriving the selected rows
   from scratch, and leaves every flag the kept rows' geography decides;
 - deriving a support whose flags are already complete returns it unchanged;
+- a selection held to the rungs of the support it came from carries exactly
+  that support's flags, and each flag its own geography adds is recorded as
+  unavailable rather than written;
 - after any sequence of geography lines and artifact steps, no place-rule or
   county-rule flag is true on a household whose county lies outside the
   flag's counties, and no line leaves a block outside its household's county;
@@ -1240,6 +1243,82 @@ def test_artifact_receipt_matches_the_rederived_receipt_on_a_complete_artifact()
     bare = us_local_jurisdiction_artifact_receipt(us_frame([{"state_fips": 36}]))
     assert bare["rungs"] == []
     assert bare["carried_flags"] == []
+
+
+# --------------------------------------------------------------------------- #
+# A selection held to the rungs of the support that fixed its inputs
+# (review round 2 of the adopted microcosm#1453)
+# --------------------------------------------------------------------------- #
+
+
+@settings(max_examples=80, deadline=None)
+@example(
+    case=([("block", "yonkers"), ("block", "wilmington"), ("acs", "08031")], [0, 1])
+)
+@example(case=([("block", "yonkers"), ("acs", "08031")], [0, 1]))
+@given(case=_pool_and_selection())
+def test_a_selection_held_to_its_supports_rungs_keeps_that_supports_flags(
+    case,
+) -> None:
+    # Invariant: for every pooled support and every non-empty selection of its
+    # households, the selected rows of the derived support pass the artifact
+    # receipt held to the support's rungs. The receipt reads those rungs and
+    # derives the same flags, and each flag the selection's own geography
+    # adds is unavailable with the reason. The selection already carries
+    # exactly the support's flags, so a step that holds it to those rungs
+    # writes no input the support's targets were not computed with. When
+    # the selection adds no rung, the receipt is the unheld one.
+    rows, keep = case
+    derived, derived_receipt = rederive_us_local_jurisdiction_flags(_pooled_frame(rows))
+    selected = _select_households(derived, keep)
+
+    receipt = us_local_jurisdiction_artifact_receipt(
+        selected, rungs=derived_receipt["rungs"]
+    )
+
+    assert receipt["rungs"] == derived_receipt["rungs"]
+    assert _derived_flags(receipt) == _derived_flags(derived_receipt)
+    assert receipt["carried_flags"] == _derived_flags(derived_receipt)
+    own = rederive_us_local_jurisdiction_flags(selected)[1]
+    added = set(_derived_flags(own)) - set(_derived_flags(derived_receipt))
+    assert bool(added) == (own["rungs"] != derived_receipt["rungs"])
+    for flag in added:
+        entry = receipt["flags"][flag]
+        assert entry["status"] == JURISDICTION_FLAG_UNAVAILABLE
+        assert entry["reason"].startswith(
+            f"this artifact's own geography (rungs {own['rungs']}) decides it"
+        )
+    if not added:
+        assert receipt == us_local_jurisdiction_artifact_receipt(selected)
+
+
+def test_a_selection_cannot_be_held_to_rungs_its_geography_does_not_supply() -> None:
+    # The pool's ACS row has no block, so its geography supplies the county
+    # rung only, and the place rung's flags cannot be required of it.
+    derived, _receipt = rederive_us_local_jurisdiction_flags(
+        _pooled_frame([("block", "yonkers"), ("acs", "08031")])
+    )
+
+    with pytest.raises(
+        ValueError, match=r"supplies the rungs \['county'\], not \['place'\]"
+    ):
+        us_local_jurisdiction_artifact_receipt(derived, rungs=BLOCK_GEOGRAPHY_RUNGS)
+
+
+def test_a_selection_held_to_its_supports_rungs_refuses_a_flag_beyond_them() -> None:
+    derived, receipt = rederive_us_local_jurisdiction_flags(
+        _pooled_frame([("block", "yonkers"), ("block", "wilmington")])
+    )
+    assert receipt["rungs"] == list(BLOCK_GEOGRAPHY_RUNGS)
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"in_yonkers: present, but the rungs \['county'\] its inputs were "
+            r"fixed on do not decide it"
+        ),
+    ):
+        us_local_jurisdiction_artifact_receipt(derived, rungs=PUMA_GEOGRAPHY_RUNGS)
 
 
 # --------------------------------------------------------------------------- #

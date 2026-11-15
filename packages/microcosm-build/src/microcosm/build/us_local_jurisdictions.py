@@ -59,11 +59,15 @@ that lacks a flag its geography decides.
 The rungs belong to the whole household table: one row without a block
 withholds the place rung from every row. A step that removes rows (a
 frozen-support or L0 selection) can therefore make a place-rule flag
-decidable, so it derives the flags again on the rows it keeps; deriving a
-support whose flags are already complete returns it unchanged. A step that
-must keep an artifact's columns and bytes, and so cannot write the flags,
-calls :func:`us_local_jurisdiction_artifact_receipt` instead, which refuses
-an artifact that lacks a flag its geography decides.
+decidable. A selection made before anything is computed from the flags
+derives them again on the rows it keeps; deriving a support whose flags are
+already complete returns it unchanged. A step that must keep an artifact's
+columns and bytes, and so cannot write the flags, calls
+:func:`us_local_jurisdiction_artifact_receipt` instead, which refuses an
+artifact that lacks a flag its geography decides. A step whose inputs a
+larger support fixed (the release builder's export, after its weights were
+fit to targets computed on that support) passes that support's rungs, and
+keeps exactly that support's flags.
 
 This module and its registry sit outside ``microcosm.build.us_runtime`` on
 purpose, and import only the standard library, numpy, pandas and
@@ -684,6 +688,7 @@ def rederive_us_local_jurisdiction_flags(
 def us_local_jurisdiction_artifact_receipt(
     frame: Frame,
     *,
+    rungs: Collection[str] | None = None,
     registry: UsLocalJurisdictionRegistry | None = None,
 ) -> dict[str, Any]:
     """Require an artifact to carry its flags already, and return its receipt.
@@ -698,11 +703,32 @@ def us_local_jurisdiction_artifact_receipt(
     It also raises, before it reads a flag, on an artifact in which a
     household's block lies outside its county. The receipt has the shape
     :func:`rederive_us_local_jurisdiction_flags` returns.
+
+    ``rungs`` is for a step whose inputs a larger support fixed: the release
+    builder's export keeps the rows its L0 selection chose from the support
+    its targets were computed on, and writing a flag only the kept rows
+    decide would change an input after the weights were fit. The artifact
+    must then carry exactly the flags of ``rungs``, which must be among its
+    own rungs, and the receipt records each flag its own geography decides
+    beyond them as unavailable, with that reason.
     """
 
     resolved = registry or packaged_us_local_jurisdiction_registry()
     household = frame.table("household")
-    rungs = us_local_jurisdiction_rungs_present(household)
+    own_rungs = us_local_jurisdiction_rungs_present(household)
+    if rungs is None:
+        rungs = own_rungs
+        scope = f"this artifact's rungs {list(rungs)}"
+    else:
+        rungs = _normalized_rungs(rungs)
+        beyond = [rung for rung in rungs if rung not in own_rungs]
+        if beyond:
+            raise ValueError(
+                f"The artifact's own geography supplies the rungs {list(own_rungs)}, "
+                f"not {beyond}; it cannot be required to carry the flags of rungs it "
+                "does not decide."
+            )
+        scope = f"the rungs {list(rungs)} its inputs were fixed on"
     failures = us_local_jurisdiction_flag_failures(
         household,
         person=frame.table("person"),
@@ -714,7 +740,7 @@ def us_local_jurisdiction_artifact_receipt(
     )
     carried = _carried_flags(frame, resolved)
     failures.extend(
-        f"{flag}: present, but this artifact's rungs {list(rungs)} do not decide it"
+        f"{flag}: present, but {scope} do not decide it"
         for flag in carried
         if flag not in values
     )
@@ -729,6 +755,14 @@ def us_local_jurisdiction_artifact_receipt(
         registry=resolved,
         household_weights=frame.weights_for("household").values,
     )
+    for item in resolved.jurisdictions:
+        if item.rule in own_rungs and item.flag not in values:
+            receipt["flags"][item.flag]["reason"] = (
+                f"this artifact's own geography (rungs {list(own_rungs)}) decides "
+                f"it, but its inputs were fixed on a support with the rungs "
+                f"{list(rungs)}, so the flag is not written and the engine default "
+                "(False) applies to every row"
+            )
     receipt["carried_flags"] = carried
     return receipt
 
