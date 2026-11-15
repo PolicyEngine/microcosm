@@ -1372,6 +1372,9 @@ class GateBatteryRun:
         )
         self._phase_reports: dict[str, GatePhaseReport] = {}
         self._blocked_at_phase: str | None = None
+        # Entries this run evaluated at their stages: their stages ran, so
+        # record_phase refuses a phase that marks one of them unreached.
+        self._stage_evaluated: set[str] = set()
 
     @property
     def report_path(self) -> Path:
@@ -1453,9 +1456,11 @@ class GateBatteryRun:
         The stage-level counterpart of :meth:`run_phase`: the module-level
         :func:`evaluate_entries` over this run's manifest and registry, so a
         stage cannot evaluate against another registry than the one the run
-        was armed with. It persists nothing. The phase's report is assembled
-        with :func:`assemble_phase_report`, under this run's posture, and
-        recorded with :meth:`record_phase`.
+        was armed with. It persists no outcome, but the run keeps the ids it
+        evaluated, and :meth:`record_phase` refuses a phase that marks one of
+        them ``unreached``. The phase's report is assembled with
+        :func:`assemble_phase_report`, under this run's posture, and recorded
+        with :meth:`record_phase`.
 
         Raises:
             ValueError: If the battery has blocked, an entry belongs to a
@@ -1482,9 +1487,11 @@ class GateBatteryRun:
                     f"phase(s) {recorded} have already been recorded; their "
                     "entries cannot be evaluated again."
                 )
-        return evaluate_entries(
+        outcomes = evaluate_entries(
             self._gates, entry_ids, context, registry=self._registry
         )
+        self._stage_evaluated.update(outcome.entry.id for outcome in outcomes)
+        return outcomes
 
     def record_phase(self, report: GatePhaseReport) -> None:
         """Persist an evaluated or verified cached phase before enforcement.
@@ -1503,11 +1510,18 @@ class GateBatteryRun:
         marks as usual. A phase whose entries are all unreached, the record a
         graph keeps when an earlier phase blocked it, is recorded as before.
 
+        No phase may mark ``unreached`` an entry this run evaluated at a stage
+        (:meth:`evaluate_entries`): that stage ran, so the phase must carry
+        the outcome it produced. The check sees only this run's stages; a
+        phase carried in from another process holds outcomes, not the ids its
+        stages evaluated.
+
         Raises:
             ValueError: If the battery has blocked, the phase is out of
-                order, its outcomes differ from the declared manifest, or it
-                stopped part way but names a blocker that does not block this
-                run's posture, or nothing in it does.
+                order, its outcomes differ from the declared manifest, it
+                marks unreached an entry this run evaluated, or it stopped
+                part way but names a blocker that does not block this run's
+                posture, or nothing in it does.
         """
         if self._blocked_at_phase is not None:
             raise ValueError(f"battery blocked at phase {self._blocked_at_phase!r}.")
@@ -1516,6 +1530,18 @@ class GateBatteryRun:
                 f"phase {report.phase!r} is out of order; expected {self._next_phase()!r}."
             )
         gate_phase_report_payload(report, gates=self._gates)
+        evaluated_unreached = sorted(
+            outcome.entry.id
+            for outcome in report.outcomes
+            if outcome.status is GateStatus.UNREACHED
+            and outcome.entry.id in self._stage_evaluated
+        )
+        if evaluated_unreached:
+            raise ValueError(
+                f"phase {report.phase!r} marks {evaluated_unreached} unreached, "
+                "but this run evaluated them at their stages; record the "
+                "outcomes those stages produced."
+            )
         statuses = {outcome.status for outcome in report.outcomes}
         stopped_early = GateStatus.UNREACHED in statuses and bool(
             statuses & _REACHED_STATUSES

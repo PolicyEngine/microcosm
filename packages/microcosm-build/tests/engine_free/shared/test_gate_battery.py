@@ -1391,6 +1391,60 @@ class TestStageLevelEvaluation:
             GateStatus.NOT_APPLICABLE,
         ]
 
+    def test_the_run_refuses_an_unreached_entry_it_evaluated(
+        self, tmp_path, signing_env
+    ):
+        # Review of #1609: a caller that fills ``unreached`` from the entries
+        # it lacks outcomes for would sign a gate the run evaluated as never
+        # reached, so the run keeps the ids it evaluates.
+        manifest = _manifest(
+            [
+                _entry("a_first", gate="support", phase="assembled"),
+                _entry("a_block", gate="exported_nonzero", phase="assembled"),
+                _entry("a_later", gate="nonconstant_columns", phase="assembled"),
+            ],
+            ["assembled"],
+        )
+        run = self._run(manifest, tmp_path, "terminal_gates.json")
+        first = run.evaluate_entries(["a_first"], EvidenceContext())
+        stopping = run.evaluate_entries(["a_block"], EvidenceContext())
+        block = {"blocked_by": "a_block", "release_candidate": True}
+        dropped = assemble_phase_report(
+            manifest, "assembled", stopping, unreached=["a_first", "a_later"], **block
+        )
+        with pytest.raises(
+            ValueError, match=r"marks \['a_first'\] unreached, but this run evaluated"
+        ):
+            run.record_phase(dropped)
+        # A phase with every entry unreached is refused on the same ground.
+        never_reached = GatePhaseReport(
+            phase="assembled",
+            outcomes=tuple(
+                GateOutcome(
+                    entry=entry,
+                    status=GateStatus.UNREACHED,
+                    reason="An earlier phase blocked this phase.",
+                )
+                for entry in manifest.gates
+            ),
+        )
+        with pytest.raises(ValueError, match=r"marks \['a_block', 'a_first'\]"):
+            run.record_phase(never_reached)
+        assert run.phases_evaluated == ()
+        assert run.blocked_at_phase is None
+        # The phase that carries what its stages produced records and blocks.
+        run.record_phase(
+            assemble_phase_report(
+                manifest,
+                "assembled",
+                [*first, *stopping],
+                unreached=["a_later"],
+                **block,
+            )
+        )
+        assert run.blocked_at_phase == "assembled"
+        assert run.report_payload()["gates"]["a_first"]["status"] == "passed"
+
 
 class TestRecordWithoutEnforce:
     """The keep-going posture: run every phase, never enforce (#1585 item 11).

@@ -238,12 +238,15 @@ it. It also names in `unreached` the entries whose stages never ran. Those
 become `unreached`, with a reason naming the blocker, and any other entry
 without an outcome is still refused. `record_phase` takes such a
 phase only if the named entry blocks under the run's own posture, recording
-`blocked_at_phase` in the same write. A signed run can then be assembled at
-the end, from phases carried between stages or processes. Stage-assembled
-phases are for `GateBatteryRun` only for now. The transport kernel evaluates
-each phase in one batch, so there `unreached` still means only that an
-earlier phase blocked, and its report check refuses a phase that stopped part
-way.
+`blocked_at_phase` in the same write. It also refuses a phase that marks
+`unreached` an entry the run itself evaluated at a stage. That check sees
+only the run's own stages, since a phase carried in from another process
+holds outcomes, not the ids its stages evaluated. A signed run can then be
+assembled at the end, from phases carried between stages or processes.
+Stage-assembled phases are for `GateBatteryRun` only for now. The transport
+kernel evaluates each phase in one batch, so there `unreached` still means
+only that an earlier phase blocked, and its report check refuses a phase that
+stopped part way.
 
 A posture that must keep going past failed gates, such as an evidence build
 or a dry run, runs every phase and never calls `enforce`. Every phase is
@@ -357,7 +360,8 @@ enhanced FRS, through a closed registry of named identities with
    (`FunctionBinding` over a pure gate function, `EvaluatorBinding` over a
    country evaluator), passed as `GateBatteryRun(..., registry=...)`. A build
    that gates stage by stage evaluates through the run
-   (`run.evaluate_entries`), so its stages use the same registry.
+   (`run.evaluate_entries`), so its stages use the same registry and the run
+   knows which entries ran.
    Unbound declared gates are named gaps, so a country can land its spec
    before its bindings.
 3. **Runtime artifacts**, under the canonical keys each selected gate's
