@@ -125,3 +125,123 @@ def shadow_wiring(scope: str) -> list[tuple[str, str | None, str]]:
     for module in US_GATE_SCOPE_RUNTIME_SITES.get(scope, ()):
         sites.extend(_sites(_module_path(module), module))
     return sites
+
+
+# ---------------------------------------------------------------------------
+# Stand-in gates: every gate a scope's bindings call, answering a verdict
+# ---------------------------------------------------------------------------
+
+
+def _verdicts():
+    from microcosm.build.us_runtime.gate_shadow import LegacyVerdict
+
+    return {
+        "result": LegacyVerdict.from_result,
+        "receipt": lambda value: LegacyVerdict.from_failures(()),
+        "failures": LegacyVerdict.from_failures,
+        "failures_and_details": lambda value: LegacyVerdict.from_failures(value[0]),
+        "result_and_details": lambda value: LegacyVerdict.from_result(value[0]),
+        "failure_or_none": lambda value: LegacyVerdict.from_failures(
+            [] if value is None else [value]
+        ),
+        "mapping": lambda value: LegacyVerdict.from_failures(
+            () if value["passed"] else value["failures"]
+        ),
+    }
+
+
+def gate_namespace(tool: ModuleType, reference: str) -> tuple[dict, str]:
+    """The namespace a binding resolves ``reference`` in, and the name."""
+
+    namespace, _, name = reference.partition(":")
+    if namespace == "tool":
+        return vars(tool), name
+    return vars(importlib.import_module(namespace)), name
+
+
+def stand_in_gates(monkeypatch, scope: str, tool: ModuleType, *, failing=()) -> None:
+    """Replace every gate the scope's bindings call with a stand-in verdict.
+
+    A check in ``failing`` fails with one line; a refusal-style check
+    raises its refusal instead.
+    """
+
+    from microcosm.build.gates import GateResult
+    from microcosm.build.us_runtime.battery_bindings import us_gate_specs
+
+    for spec in us_gate_specs(scope):
+        target, name = gate_namespace(tool, spec.gate)
+        failed = spec.check in failing
+        result = (
+            GateResult(
+                name=spec.legacy_name,
+                passed=False,
+                failures=(f"{spec.check}: stand-in.",),
+            )
+            if failed
+            else GateResult(name=spec.legacy_name, passed=True)
+        )
+        lines = list(result.failures)
+        if failed and spec.refusals:
+
+            def gate(*args, _refusal=spec.refusals[0], _line=lines[0], **kwargs):
+                raise _refusal(_line)
+
+        else:
+            value = {
+                "result": result,
+                "receipt": {"passed": True},
+                "failures": lines,
+                "failures_and_details": (lines, {}),
+                "result_and_details": (result, {}),
+                "failure_or_none": lines[0] if lines else None,
+                "mapping": {"passed": not failed, "failures": lines},
+            }[spec.returns]
+
+            def gate(*args, _value=value, **kwargs):
+                return _value
+
+        monkeypatch.setitem(target, name, gate)
+
+
+def observe_entries(scope: str, tool: ModuleType, entry_ids, *, legacy=None) -> None:
+    """Observe ``entry_ids`` as their sites do, calling the stand-in gates.
+
+    ``legacy`` maps an entry id to today's own call, to make today's verdict
+    differ from the battery's.
+    """
+
+    from microcosm.build.gate_battery import EvidenceContext
+    from microcosm.build.us_runtime.battery_bindings import FRAME, us_gate_specs
+    from microcosm.build.us_runtime.gate_scopes import us_scoped_gate_manifest
+    from microcosm.build.us_runtime.gate_shadow import shadow_value
+
+    specs = {spec.check: spec for spec in us_gate_specs(scope)}
+    entries = {entry.id: entry for entry in us_scoped_gate_manifest(scope).gates}
+    verdicts = _verdicts()
+    for entry_id in entry_ids:
+        spec = specs[entries[entry_id].parameters["check"]]
+        target, name = gate_namespace(tool, spec.gate)
+        evidence = EvidenceContext(
+            frame=object() if spec.needs_frame else None,
+            artifacts={key: object() for key in spec.artifact_keys},
+        )
+
+        def today(target=target, name=name, spec=spec, evidence=evidence):
+            return target[name](
+                *(
+                    evidence.frame if source == FRAME else evidence.artifacts[source]
+                    for source in spec.positional
+                )
+            )
+
+        try:
+            shadow_value(
+                entry_id,
+                (legacy or {}).get(entry_id) or today,
+                evidence,
+                verdict=verdicts[spec.returns],
+                refusals=spec.refusals,
+            )
+        except spec.refusals:
+            pass

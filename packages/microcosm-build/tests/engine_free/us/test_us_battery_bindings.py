@@ -51,7 +51,7 @@ from test_support.microcosm_build.us_gate_shadow import (
 )
 
 #: The scopes PR 2 has declared so far, each wired in its tool.
-WIRED_SCOPES = ("us_base", "us_pool", "us_national")
+WIRED_SCOPES = ("us_base", "us_pool", "us_national", "us_local")
 
 #: Each scope's pinned digests. They move only when the scope's entries,
 #: parameters, phases or the manifest's policy line do.
@@ -89,11 +89,32 @@ SCOPE_PINS: dict[str, dict[str, str]] = {
             "898315b5b0fd8cd782c4238d5003008a5237bcac1e205c45676b089252b4a9b0"
         ),
     },
+    "us_local": {
+        "gates_manifest_sha256": (
+            "6b4286429c8ad369b8b3d2fbbcc4e3f16dcb553915969d72f02873fd87f56f60"
+        ),
+        "policy_sha256": (
+            "a1fe120a37dbc2f4e55091872f06c2fe6f2d0ecf504cf1c08323aac4514dfda5"
+        ),
+        "spec_fingerprint": (
+            "139d82665b455eb86f5c2c9a4f597cb3bdeff61a6ef666a9fc415241568195b2"
+        ),
+    },
 }
 
 #: The arguments each tool's parser needs to report its defaults.
 MINIMAL_ARGV = {
     "us_national": ["--ledger-facts", "facts.jsonl", "--out", "out"],
+    "us_local": [
+        "--staging-h5",
+        "staging.h5",
+        "--checkpoint-dir",
+        "checkpoints",
+        "--stage",
+        "qa",
+        "--out-h5",
+        "out.h5",
+    ],
 }
 
 

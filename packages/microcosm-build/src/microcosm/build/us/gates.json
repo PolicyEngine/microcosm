@@ -2224,6 +2224,274 @@
         "check": "stored_inputs_written"
       },
       "notes": "US national release (tools/build_us_fiscal_refresh_release.py): the written H5's stored inputs are the ones the pre-export gate graded. Raises at once today, after the H5 write."
+    },
+    {
+      "id": "us_local_hours_materialize",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "local_hours_staging"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): local hours on the staging frame as materialize loads it. Its refusal exits at once."
+    },
+    {
+      "id": "us_local_self_employment_identity_materialize",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "self_employment_identity"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the ACS self-employment leaves add to SEMP on the staging frame. Its refusal exits at once."
+    },
+    {
+      "id": "us_local_ssi_medicaid_take_up_materialize",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "ssi_medicaid_take_up_signal",
+        "residual_relative_tolerance": 1e-09,
+        "saturated_relative_tolerance": 1e-06
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): ACS SSI and Medicaid take-up after materialize assigns them; the verdict is recorded in run_identity.json. Exits at once on failure."
+    },
+    {
+      "id": "us_local_hours_calibrate",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "local_hours_staging"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): local hours again on a fresh staging frame, when calibrate writes the calibrated artifact. Its refusal exits at once."
+    },
+    {
+      "id": "us_local_self_employment_identity_calibrate",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "self_employment_identity"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the self-employment identity again, when calibrate writes the calibrated artifact. Its refusal exits at once."
+    },
+    {
+      "id": "us_local_hours_finalize",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "local_hours_signal"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): local hours on the calibrated H5. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
+    },
+    {
+      "id": "us_local_puma_ladder",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "puma_ladder",
+        "assign_tract": false,
+        "nyc_share_bounds": [
+          0.005,
+          0.06
+        ],
+        "nyc_share_of_new_york_bounds": [
+          0.2,
+          0.65
+        ]
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the PUMA ladder on the calibrated households. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure. Its gate_summary.json key is us_puma_ladder_gate."
+    },
+    {
+      "id": "us_local_block_location",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "block_location"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): every geography equals its block's ladder lookup, on block_v1 staging only. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
+    },
+    {
+      "id": "us_local_hours_worked",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "hours_worked_signal",
+        "worked_share_band": [
+          0.35,
+          0.62
+        ],
+        "mean_weekly_hours_band": [
+          30.0,
+          45.0
+        ]
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): hours worked over the two pool hours columns. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
+    },
+    {
+      "id": "us_local_take_up",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "take_up_signal",
+        "medicare_aged_share_floor": 0.8
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): SNAP and TANF take-up on both spines. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
+    },
+    {
+      "id": "us_local_immigration",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "immigration_signal"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): immigration labels and entry clocks. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
+    },
+    {
+      "id": "us_local_work_disability",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "work_disability_signal"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the native ACS disability items, with their staging receipt. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
+    },
+    {
+      "id": "us_local_income_transfer",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "income_transfer_signal"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the transferred ACS income leaves, with their staging receipt. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
+    },
+    {
+      "id": "us_local_ssi_disability",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "ssi_disability_signal"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the ACS SSI disability criteria, with their staging receipt. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
+    },
+    {
+      "id": "us_local_ssi_medicaid_take_up_finalize",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "ssi_medicaid_take_up_signal",
+        "residual_relative_tolerance": 1e-09,
+        "saturated_relative_tolerance": 1e-06
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): ACS SSI and Medicaid take-up on the calibrated bytes. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
+    },
+    {
+      "id": "us_local_receipt_anchors",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "receipt_anchor_signal",
+        "acs_snap_household_share_band": [
+          0.09,
+          0.15
+        ]
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): SNAP reporters are the native household FS. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
+    },
+    {
+      "id": "us_local_reviewed_fill_consumers_finalize",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "reviewed_fill_consumers"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): every reviewed default fill both engine passes applied has its register entry and consumer notes. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
+    },
+    {
+      "id": "us_local_district_ess_collapse",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "diagnostic",
+      "parameters": {
+        "check": "district_ess_collapse",
+        "relative_floor": 0.25,
+        "absolute_floor": 15.0
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): congressional districts keep their Kish ESS against the design weights. Report-only unless --district-ess-gate-blocking, which the shadow passes to the battery as the run's own; its floors are flags, and the entry declares their defaults."
+    },
+    {
+      "id": "us_local_stored_inputs",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "stored_inputs"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the artifact stores no model input the installed engine lacks. Package re-grades the bytes it packages and raises at once."
+    },
+    {
+      "id": "us_local_work_experience_inputs",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "work_experience_inputs"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the occupation and work-experience inputs are complete. Package re-grades the bytes it packages and raises at once."
+    },
+    {
+      "id": "us_local_spm_measurement",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "spm_measurement"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the engine the release records can measure SPM on the bytes. Package re-grades the bytes it packages and raises at once."
+    },
+    {
+      "id": "us_local_hours_package",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "local_hours_signal"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): local hours on the packaged bytes. Package re-grades the bytes it packages and raises at once."
+    },
+    {
+      "id": "us_local_self_employment_identity_package",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "self_employment_identity"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the self-employment identity on the packaged bytes. Package re-grades the bytes it packages and raises at once."
+    },
+    {
+      "id": "us_local_reviewed_fill_consumers_package",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "reviewed_fill_consumers"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the reviewed fills against the packaged register. Package re-grades the bytes it packages and raises at once."
     }
   ]
 }

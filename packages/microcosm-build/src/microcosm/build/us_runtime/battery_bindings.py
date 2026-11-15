@@ -1289,11 +1289,170 @@ def _us_national_specs() -> tuple[USGateSpec, ...]:
     )
 
 
+def _us_local_specs() -> tuple[USGateSpec, ...]:
+    refuses = (SystemExit,)
+    return (
+        # Staging-frame checks at materialize and calibrate: the tool's own
+        # refusal helpers, whose SystemExit is the failure.
+        USGateSpec(
+            check="local_hours_staging",
+            legacy_name="local_hours_staging",
+            gate="tool:_require_local_hours",
+            positional=(FRAME, "staging_summary"),
+            refusals=refuses,
+            returns="receipt",
+        ),
+        USGateSpec(
+            check="self_employment_identity",
+            legacy_name="acs_self_employment_identity",
+            gate="tool:_require_acs_self_employment_identity",
+            positional=(FRAME,),
+            refusals=refuses,
+            returns="receipt",
+        ),
+        USGateSpec(
+            check="ssi_medicaid_take_up_signal",
+            legacy_name="acs_local_ssi_medicaid_take_up_signal",
+            gate="tool:acs_local_ssi_medicaid_take_up_signal_gate",
+            positional=(FRAME,),
+            arguments={"receipt": "ssi_medicaid_receipt"},
+            pinned=_pins(
+                "acs_local_ssi_medicaid_take_up",
+                "_RESIDUAL_RELATIVE_TOLERANCE",
+                "_SATURATED_RELATIVE_TOLERANCE",
+            ),
+        ),
+        # The calibrated artifact's gates at finalize, and package's re-checks.
+        USGateSpec(
+            check="local_hours_signal",
+            legacy_name="acs_local_hours_signal",
+            gate="tool:_local_hours_gate",
+            positional=(FRAME, "staging_summary"),
+        ),
+        USGateSpec(
+            # Imported inside the finalize stage, so not a tool global; nor
+            # are the hours gate and the block-location gate below.
+            check="puma_ladder",
+            legacy_name="us_puma_ladder",
+            gate=f"{_US}.puma_ladder:us_puma_ladder_gate",
+            positional=("household", "household_weights"),
+            parameters=_PUMA_LADDER_KEYWORDS,
+        ),
+        USGateSpec(
+            check="block_location",
+            legacy_name="us_block_location",
+            gate=f"{_US}.block_location:us_block_location_gate",
+            positional=("household", "location_ladder"),
+        ),
+        USGateSpec(
+            check="hours_worked_signal",
+            legacy_name="hours_worked_signal",
+            gate=f"{_US}.hours_worked:us_hours_worked_signal_gate",
+            positional=(FRAME,),
+            arguments={"required_columns": "hours_required_columns"},
+            pinned=_pins(
+                "hours_worked", "_WORKED_SHARE_BAND", "_MEAN_WEEKLY_HOURS_BAND"
+            ),
+        ),
+        USGateSpec(
+            check="take_up_signal",
+            legacy_name="acs_local_take_up_signal",
+            gate="tool:acs_local_take_up_signal_gate",
+            positional=(FRAME,),
+            pinned=_pins("acs_local_take_up", "_MEDICARE_AGED_SHARE_FLOOR"),
+        ),
+        USGateSpec(
+            check="immigration_signal",
+            legacy_name="acs_local_immigration_signal",
+            gate="tool:acs_local_immigration_signal_gate",
+            positional=(FRAME,),
+        ),
+        USGateSpec(
+            check="work_disability_signal",
+            legacy_name="acs_local_work_disability_signal",
+            gate="tool:acs_local_work_disability_signal_gate",
+            positional=(FRAME,),
+            arguments={
+                "receipt": "work_disability_receipt",
+                "require_weeks_worked": "require_weeks_worked",
+            },
+        ),
+        USGateSpec(
+            check="income_transfer_signal",
+            legacy_name="acs_local_income_transfer_signal",
+            gate="tool:acs_local_income_transfer_signal_gate",
+            positional=(FRAME,),
+            arguments={"receipt": "income_transfer_receipt"},
+        ),
+        USGateSpec(
+            check="ssi_disability_signal",
+            legacy_name="acs_local_ssi_disability_signal",
+            gate="tool:acs_local_ssi_disability_signal_gate",
+            positional=(FRAME,),
+            arguments={"receipt": "ssi_disability_receipt"},
+        ),
+        USGateSpec(
+            check="receipt_anchor_signal",
+            legacy_name="acs_local_receipt_anchor_signal",
+            gate="tool:acs_local_receipt_anchor_signal_gate",
+            positional=(FRAME,),
+            arguments={"receipt": "receipt_anchors_receipt"},
+            pinned=_pins("acs_local_receipt_anchors", "ACS_SNAP_HOUSEHOLD_SHARE_BAND"),
+        ),
+        USGateSpec(
+            check="reviewed_fill_consumers",
+            legacy_name="acs_local_reviewed_fill_consumers",
+            gate="tool:_reviewed_fill_consumer_gate",
+            positional=("fill_manifests",),
+            arguments={"document": "fill_register"},
+        ),
+        USGateSpec(
+            check="district_ess_collapse",
+            legacy_name="district_ess_collapse",
+            gate="tool:district_ess_collapse_gate",
+            positional=("weight_origin",),
+            arguments={"blocking": "district_ess_blocking"},
+            parameters=frozenset({"relative_floor", "absolute_floor"}),
+            flags={
+                "relative_floor": "district_ess_relative_floor",
+                "absolute_floor": "district_ess_floor",
+            },
+            returns="mapping",
+        ),
+        USGateSpec(
+            check="stored_inputs",
+            legacy_name="stored_inputs",
+            gate="tool:_require_stored_inputs",
+            positional=("calibrated_h5",),
+            refusals=refuses,
+            returns="receipt",
+        ),
+        USGateSpec(
+            check="work_experience_inputs",
+            legacy_name="work_experience_inputs",
+            gate="tool:require_us_occupation_and_work_experience_inputs",
+            positional=("person",),
+            arguments={"label": "work_experience_label"},
+            refusals=(ValueError,),
+            returns="receipt",
+        ),
+        USGateSpec(
+            check="spm_measurement",
+            legacy_name="spm_measurement_composition",
+            gate="tool:_require_spm_measurement",
+            positional=(FRAME,),
+            refusals=refuses,
+            returns="receipt",
+        ),
+    )
+
+
 _SCOPE_SPECS: Mapping[str, Callable[[], tuple[USGateSpec, ...]]] = MappingProxyType(
     {
         "us_base": _us_base_specs,
         "us_pool": _us_pool_specs,
         "us_national": _us_national_specs,
+        "us_local": _us_local_specs,
     }
 )
 
