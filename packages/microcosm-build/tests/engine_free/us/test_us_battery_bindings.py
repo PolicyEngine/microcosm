@@ -252,11 +252,18 @@ def test_every_entry_is_wired_at_a_site_calling_its_gate(scope) -> None:
     unknown = sorted({entry_id for entry_id, _, _ in sites} - set(declared))
     assert not unknown, unknown
     assert {entry_id for entry_id, _, _ in sites} == set(declared)
+    tool = binding.tool
     for entry_id, reference, where in sites:
         entry = declared[entry_id]
         if reference is None or entry.gate != "stage_health":
             continue
         spec = binding.checks[entry.parameters["check"]]
+        name = reference.removeprefix("tool:")
+        if reference.startswith("tool:") and name not in tool:
+            # The site imports the gate inside its function, so the binding
+            # names the gate's own module instead.
+            assert spec.gate.endswith(f":{name}"), (entry_id, where, spec.gate)
+            continue
         assert spec.gate == reference, (entry_id, where, reference, spec.gate)
 
 

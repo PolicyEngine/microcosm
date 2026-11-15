@@ -79,6 +79,8 @@ _HELPERS = frozenset(
         "_shadow_frame_gate",
         "_observe_frame_gate",
         "_shadow_tail_survival",
+        "_shadow_local_frame_gate",
+        "_shadow_local_refusal",
     }
 )
 
