@@ -10,7 +10,7 @@ import os
 import re
 import sys
 import urllib.request
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -23,7 +23,11 @@ API_ROOT = "https://api.github.com"
 
 @dataclass(frozen=True)
 class TestGroup:
-    """One directory-defined test group and its complete CI ownership."""
+    """One directory-defined test group and its complete CI ownership.
+
+    ``after_merge`` marks a group too slow for every pull request: its job
+    runs on pushes to ``main`` only, after merge (:func:`after_merge_job`).
+    """
 
     directory: tuple[str, str]
     job: str
@@ -31,6 +35,7 @@ class TestGroup:
     report_category: str | None = None
     engine_module: str | None = None
     integration: bool = False
+    after_merge: bool = False
 
 
 # This registry is the only authority for test directories, country ownership,
@@ -66,12 +71,14 @@ TEST_GROUPS = {
         ("engine", "uk"), "engine-uk", "uk", engine_module="policyengine_uk"
     ),
     # UK engine tests too slow for every pull request: the engine-uk-after-merge
-    # job runs them on pushes to main only, after merge (microcosm#931).
+    # job runs them on pushes to main only, after merge (microcosm#931). ``ci``
+    # needs the job, and passes its skip on any other event.
     "engine-after-merge-uk": TestGroup(
         ("engine_after_merge", "uk"),
         "engine-uk-after-merge",
         "uk",
         engine_module="policyengine_uk",
+        after_merge=True,
     ),
     "integration-uk": TestGroup(
         ("integration", "uk"),
@@ -98,13 +105,18 @@ WORKFLOW_INFRASTRUCTURE_JOBS = {
     "ci": "reports one result for all the other jobs, for the main ruleset to require",
 }
 # ``ci`` gives the ``main`` ruleset one check that covers the country jobs. It
-# fails unless every other job passed or the selection left it out. A skipped
+# fails unless every other job passed, the selection left it out, or it runs
+# after merge and the run is not a push to ``main``. A skipped
 # matrix job reports under its unexpanded name (``engine-uk``, not
 # ``engine-uk (3.13)``), so a ruleset cannot require ``engine-us`` or
 # ``engine-uk`` by name. The ruleset also names both ``engine-free`` legs, and
 # that job runs this plan's tests. A change that breaks ``ci`` therefore fails
 # a check the ruleset reads without ``ci``.
 AGGREGATE_JOB = "ci"
+# The event an after-merge job runs on, and the ``if`` that says so. Such a job
+# waits on no selection: a push to ``main`` selects every country.
+AFTER_MERGE_EVENT = "push"
+AFTER_MERGE_CONDITION = f"github.event_name == '{AFTER_MERGE_EVENT}'"
 # The job and step whose outputs say which country jobs a run needs.
 SELECTION_JOB = "select-countries"
 SELECTION_STEP = "plan"
@@ -160,14 +172,40 @@ def plan_jobs() -> tuple[str, ...]:
     )
 
 
+def after_merge_job(job: object) -> bool:
+    """Say whether one job runs on pushes to ``main`` only, after merge.
+
+    It does when it runs test groups and every one of them is marked
+    ``after_merge``. ``verify`` refuses a job whose groups disagree.
+    """
+
+    specs = [spec for spec in TEST_GROUPS.values() if spec.job == job]
+    return bool(specs) and all(spec.after_merge for spec in specs)
+
+
+def after_merge_errors() -> tuple[str, ...]:
+    """Return an error for each job whose test groups disagree on running
+    after merge, since its ``if`` cannot follow both."""
+
+    return tuple(
+        f"{job}: its test groups must all run after merge, or none of them"
+        for job in JOBS
+        if len({spec.after_merge for spec in TEST_GROUPS.values() if spec.job == job})
+        > 1
+    )
+
+
 def selection_output(job: object) -> str | None:
     """Return the selection output that decides whether one job runs.
 
     A job whose every test group needs the same country's engine runs only
-    when ``select-countries`` reports that country. Every other job always
-    runs, and this returns ``None`` for it.
+    when ``select-countries`` reports that country, unless it runs after
+    merge: a push to ``main`` selects every country, so no output decides it.
+    Every other job always runs, and this returns ``None`` for both.
     """
 
+    if after_merge_job(job):
+        return None
     specs = [spec for spec in TEST_GROUPS.values() if spec.job == job]
     countries = {spec.country for spec in specs}
     if len(countries) == 1 and all(spec.engine_module for spec in specs):
@@ -203,7 +241,8 @@ def plan_tests_errors() -> tuple[str, ...]:
         and spec.job == PLAN_TESTS_JOB
         and spec.engine_module is None
         and not spec.integration
-        and selection_output(PLAN_TESTS_JOB) is None
+        and not spec.after_merge
+        and selection_condition(PLAN_TESTS_JOB) is None
     ):
         return ()
     return (
@@ -237,8 +276,14 @@ def us_runner_errors() -> tuple[str, ...]:
 
 
 def selection_condition(job: object) -> str | None:
-    """Return the ``if`` the workflow must give one job, or ``None`` for no ``if``."""
+    """Return the ``if`` the workflow must give one job, or ``None`` for no ``if``.
 
+    An after-merge job's is :data:`AFTER_MERGE_CONDITION`; a job the selection
+    decides reads its output.
+    """
+
+    if after_merge_job(job):
+        return AFTER_MERGE_CONDITION
     output = selection_output(job)
     if output is None:
         return None
@@ -430,8 +475,10 @@ def workflow_document_errors(document: object) -> tuple[str, ...]:
     selection job publishes the outputs its ``plan`` step writes. Two more
     rules keep a run from failing for no fault of its
     pull request. Each other job carries the ``if`` the plan gives it, and
-    needs ``select-countries`` when that ``if`` reads its outputs. A job needs
-    only jobs that run whenever it runs.
+    needs ``select-countries`` when that ``if`` reads its outputs; an
+    after-merge job's ``if`` reads the event alone. A job needs only jobs that
+    run whenever it runs, so only an after-merge job may need an after-merge
+    job.
     """
 
     jobs = document.get("jobs") if isinstance(document, Mapping) else None
@@ -506,13 +553,19 @@ def workflow_document_errors(document: object) -> tuple[str, ...]:
             )
         elif condition is not None and job.get("if") != condition:
             errors.append(f"{name}: `if` must read {condition}")
-        elif condition is not None and SELECTION_JOB not in needs:
+        elif output is not None and SELECTION_JOB not in needs:
             errors.append(f"{name}: needs must list {SELECTION_JOB}")
         errors.extend(
             f"{name}: needs {needed}, which the selection may leave out when "
             f"it runs {name}, and GitHub would then skip {name} too"
             for needed in needs
             if selection_output(needed) not in (None, output)
+        )
+        errors.extend(
+            f"{name}: needs {needed}, which runs only after merge, and GitHub "
+            f"would then skip {name} on every pull request"
+            for needed in needs
+            if after_merge_job(needed) and not after_merge_job(name)
         )
     return tuple(errors)
 
@@ -539,11 +592,25 @@ def _unplanned_skip(needs: Mapping[str, object], output: str | None) -> str | No
     return f"and {SELECTION_JOB} did not report {output} as true or false"
 
 
+def _after_merge_skip(event_name: object) -> str | None:
+    """Say why an after-merge job should not have skipped, or ``None`` when it
+    skipped as planned: it runs on a push to ``main`` and skips on any other
+    event."""
+
+    if not isinstance(event_name, str) or not event_name:
+        return "and the run names no event (GITHUB_EVENT_NAME)"
+    if event_name == AFTER_MERGE_EVENT:
+        return f"but it runs on every {AFTER_MERGE_EVENT} to main"
+    return None
+
+
 def aggregate_result_errors(
     needs: Mapping[str, object],
     *,
     jobs: Sequence[str],
     selected_by: Mapping[str, str],
+    after_merge: Collection[str] = frozenset(),
+    event_name: str | None = None,
 ) -> tuple[str, ...]:
     """Return errors unless every job passed, or the selection left it out.
 
@@ -552,10 +619,12 @@ def aggregate_result_errors(
     ``cancelled`` or ``skipped``) and its ``outputs``. ``selected_by`` names
     the selection output that decides each job the selection may leave out. A
     skip passes only when ``selected_by`` names the job, the selection job
-    succeeded and that output reads ``false``. Any other result, a missing job
-    and a job outside ``jobs`` each add an error, so the aggregate job passes
-    only when every job in ``jobs`` reported, none failed, and nothing skipped
-    that the selection asked for.
+    succeeded and that output reads ``false``. ``after_merge`` names the jobs
+    that run on pushes to ``main`` only: such a skip passes only when
+    ``event_name``, the run's event, names another one. Any other result, a
+    missing job and a job outside ``jobs`` each add an error, so the aggregate
+    job passes only when every job in ``jobs`` reported, none failed, and
+    nothing skipped that the selection or the event asked for.
     """
 
     errors: list[str] = []
@@ -568,7 +637,11 @@ def aggregate_result_errors(
         elif result != "skipped":
             errors.append(f"{job}: {result}")
         else:
-            reason = _unplanned_skip(needs, selected_by.get(job))
+            reason = (
+                _after_merge_skip(event_name)
+                if job in after_merge
+                else _unplanned_skip(needs, selected_by.get(job))
+            )
             if reason is not None:
                 errors.append(f"{job}: skipped, {reason}")
     errors.extend(
@@ -739,6 +812,7 @@ def verify() -> None:
         raise SystemExit("no test files found below packages/*/tests")
 
     errors = list(selection_errors())
+    errors.extend(after_merge_errors())
     errors.extend(plan_tests_errors())
     errors.extend(us_runner_errors())
     counts = {name: 0 for name in TEST_GROUPS}
@@ -973,12 +1047,14 @@ def verify_workflow() -> None:
 
 
 def require_results() -> None:
-    """Fail unless ``NEEDS`` shows each job passed, or the selection left it out."""
+    """Fail unless ``NEEDS`` shows each job passed, or the selection left it
+    out, or it runs after merge and ``GITHUB_EVENT_NAME`` is not a push."""
 
     jobs = plan_jobs()
     selected_by = {
         job: output for job in jobs if (output := selection_output(job)) is not None
     }
+    after_merge = frozenset(job for job in jobs if after_merge_job(job))
     try:
         needs = json.loads(os.environ["NEEDS"])
     except (KeyError, json.JSONDecodeError) as error:
@@ -989,7 +1065,13 @@ def require_results() -> None:
         raise SystemExit("NEEDS must hold a JSON object, one entry per needed job")
     for job in jobs:
         print(f"{job}={_job_result(needs, job)}", flush=True)
-    errors = aggregate_result_errors(needs, jobs=jobs, selected_by=selected_by)
+    errors = aggregate_result_errors(
+        needs,
+        jobs=jobs,
+        selected_by=selected_by,
+        after_merge=after_merge,
+        event_name=os.environ.get("GITHUB_EVENT_NAME"),
+    )
     if errors:
         raise SystemExit("workflow did not pass:\n  " + "\n  ".join(errors))
     print("results=ok", flush=True)

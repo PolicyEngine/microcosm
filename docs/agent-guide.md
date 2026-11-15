@@ -46,16 +46,18 @@ or `uv sync --all-packages --all-extras`. To keep both countries set up, point
 
 PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
 `engine-uk`, `integration-uk`, `wheels`, and `installed-emitter` jobs, plus the
-`select-countries` orchestration job and the `ci` job.
+`select-countries` orchestration job and the `ci` job. The same workflow's
+`engine-uk-after-merge` job runs on pushes to `main` only, after merge.
 
 `ci` gives the `main` ruleset one check that covers the country jobs. It fails
 unless every other job passed, or skipped because `select-countries` succeeded
-and reported `false` for its country. A skipped matrix job reports under its
-unexpanded name, so a ruleset cannot require `engine-us` or `engine-uk` by
-name. The ruleset also names each other check that runs on every pull
-request: `lint`, `wheels`, `select-countries`, `installed-emitter` and both
-`engine-free` legs. When `engine-free`'s matrix changes, change the ruleset
-too, because a leg's check name holds its Python version.
+and reported `false` for its country, or skipped because it runs after merge
+and the run's event (`GITHUB_EVENT_NAME`) is not a push. A skipped matrix job
+reports under its unexpanded name, so a ruleset cannot require `engine-us` or
+`engine-uk` by name. The ruleset also names each other check that runs on
+every pull request: `lint`, `wheels`, `select-countries`, `installed-emitter`
+and both `engine-free` legs. When `engine-free`'s matrix changes, change the
+ruleset too, because a leg's check name holds its Python version.
 
 The workflow runs on a pull request only when it targets `main`. Retargeting a
 pull request to `main` starts no run, because GitHub reports a base change as
@@ -64,7 +66,11 @@ request retargets, push a commit or close and reopen it, then merge once its
 checks pass.
 
 The plan names the jobs the selection may leave out: each job whose test
-groups all need the same country's engine. The lint job runs
+groups all need the same country's engine. It also names the jobs that run
+after merge: each job whose test groups are all marked `after_merge`. Such a
+job's `if` is `github.event_name == 'push'` and it needs no selection; `ci`
+needs it, so a push must run it, and `require-results` passes its skip on any
+other event. The lint job runs
 `tools/ci_test_plan.py verify-workflow`, which parses the workflow with PyYAML
 and refuses:
 
@@ -75,6 +81,7 @@ and refuses:
 - a job the selection may leave out that doesn't need `select-countries`, and
   a job that needs one the selection may leave out, unless both follow the
   same country's selection;
+- a job that needs an after-merge job, unless it runs after merge too;
 - a `ci` job that lacks `if: always()`, omits a job from `needs`, or does
   anything but check out the repository and run `require-results` on its
   `needs` context;

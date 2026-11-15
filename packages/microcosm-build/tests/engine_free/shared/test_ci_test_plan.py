@@ -206,6 +206,9 @@ def test_the_selection_decides_only_the_country_engine_jobs() -> None:
         "engine-free": None,
         "engine-us": "run_us",
         "engine-uk": "run_uk",
+        # A push to main selects every country, so the selection decides
+        # nothing for a job that runs only then.
+        "engine-uk-after-merge": None,
         "integration-uk": "run_uk",
         "wheels": None,
         "installed-emitter": None,
@@ -216,6 +219,46 @@ def test_the_selection_decides_only_the_country_engine_jobs() -> None:
     )
     assert ci_test_plan.selection_condition("lint") is None
     assert ci_test_plan.selection_output("no-such-job") is None
+
+
+def test_an_after_merge_job_runs_on_a_push_and_waits_on_no_selection() -> None:
+    """The engine-uk-after-merge job's tests are too slow for every pull
+    request (microcosm#931): its ``if`` is the push event, and no selection
+    output decides it."""
+
+    job = "engine-uk-after-merge"
+
+    assert ci_test_plan.after_merge_job(job)
+    assert ci_test_plan.selection_output(job) is None
+    assert ci_test_plan.selection_condition(job) == "github.event_name == 'push'"
+    assert [
+        name for name in ci_test_plan.JOBS if ci_test_plan.after_merge_job(name)
+    ] == [job]
+    assert not ci_test_plan.after_merge_job("no-such-job")
+    assert ci_test_plan.after_merge_errors() == ()
+
+
+def test_verify_refuses_a_job_whose_groups_disagree_on_running_after_merge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    group = ci_test_plan.TEST_GROUPS["engine-uk"]
+    monkeypatch.setitem(
+        ci_test_plan.TEST_GROUPS,
+        "engine-uk",
+        dataclasses.replace(group, job="engine-uk-after-merge"),
+    )
+
+    assert not ci_test_plan.after_merge_job("engine-uk-after-merge")
+    assert ci_test_plan.after_merge_errors() == (
+        "engine-uk-after-merge: its test groups must all run after merge, or "
+        "none of them",
+    )
+    monkeypatch.setattr(ci_test_plan, "test_files", lambda: (Path(__file__),))
+    with pytest.raises(SystemExit) as refused:
+        ci_test_plan.verify()
+    assert "\n  engine-uk-after-merge: its test groups must all run after merge" in (
+        str(refused.value)
+    )
 
 
 def test_the_selection_decides_a_job_only_when_every_group_needs_one_engine(
@@ -305,6 +348,7 @@ def test_engine_free_runs_these_tests() -> None:
         {"job": "engine-us"},
         {"engine_module": "policyengine_us"},
         {"integration": True},
+        {"after_merge": True},
     ],
 )
 def test_plan_refuses_tests_that_engine_free_would_not_run(
@@ -372,13 +416,14 @@ def test_this_file_holds_the_tests_of_what_ci_runs() -> None:
 
 def test_the_workflow_reports_the_checks_the_main_ruleset_names() -> None:
     """The ``main`` ruleset names checks that run on every pull request, and a
-    matrix leg's name holds its value. When a job this test names changes,
-    change the ruleset too."""
+    matrix leg's name holds its value. A job the selection decides, or one
+    that runs after merge only, is not one of them. When a job this test
+    names changes, change the ruleset too."""
 
     jobs = yaml.safe_load(ci_test_plan.WORKFLOW.read_text(encoding="utf-8"))["jobs"]
     checks: set[str] = set()
     for name, job in jobs.items():
-        if ci_test_plan.selection_output(name) is not None:
+        if ci_test_plan.selection_condition(name) is not None:
             continue
         matrix = job.get("strategy", {}).get("matrix")
         if matrix is None:
@@ -444,6 +489,10 @@ jobs:
     if: needs['select-countries'].outputs.run_uk == 'true'
     steps:
       - run: pytest
+  engine-uk-after-merge:
+    if: github.event_name == 'push'
+    steps:
+      - run: pytest
   integration-uk:
     needs:
       - select-countries
@@ -464,6 +513,7 @@ jobs:
       - engine-free
       - engine-us
       - engine-uk
+      - engine-uk-after-merge
       - integration-uk
       - wheels
       - installed-emitter
@@ -477,6 +527,7 @@ jobs:
 _WHEELS = "  wheels:\n    steps:\n      - run: build\n"
 _CI_IF = "  ci:\n    if: always()\n"
 _US_IF = "    if: needs['select-countries'].outputs.run_us == 'true'\n"
+_AFTER_MERGE_IF = "    if: github.event_name == 'push'\n"
 _CI_CHECKOUT = (
     "    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n"
 )
@@ -495,6 +546,9 @@ _CI_MUST_ALWAYS_RUN = (
 )
 _US_MUST_READ = (
     "engine-us: `if` must read needs['select-countries'].outputs.run_us == 'true'"
+)
+_AFTER_MERGE_MUST_READ = (
+    "engine-uk-after-merge: `if` must read github.event_name == 'push'"
 )
 _CI_STEPS = (
     "ci: steps must be a checkout that sets only `name`, `uses` and `with`, then "
@@ -709,6 +763,47 @@ def test_a_complete_aggregate_job_has_no_workflow_errors() -> None:
         (_US_IF, _US_IF.rstrip("\n") + " || always()\n", (_US_MUST_READ,)),
         (_US_IF, _US_IF + "      && false\n", (_US_MUST_READ,)),
         ("  lint:\n", "  lint:\n    if: github.event_name == 'push'\n", (_NO_IF,)),
+        # An after-merge job runs on a push alone, whatever the selection says.
+        (_AFTER_MERGE_IF, "", (_AFTER_MERGE_MUST_READ,)),
+        (_AFTER_MERGE_IF, "    if: always()\n", (_AFTER_MERGE_MUST_READ,)),
+        (
+            _AFTER_MERGE_IF,
+            "    needs: select-countries\n"
+            "    if: needs['select-countries'].outputs.run_uk == 'true'\n",
+            (_AFTER_MERGE_MUST_READ,),
+        ),
+        (
+            "      - engine-uk-after-merge\n",
+            "",
+            ("ci: needs must list engine-uk-after-merge",),
+        ),
+        # A job that needs an after-merge job skips on every pull request.
+        (
+            "  wheels:\n",
+            "  wheels:\n    needs: engine-uk-after-merge\n",
+            (
+                "wheels: needs engine-uk-after-merge, which runs only after "
+                "merge, and GitHub would then skip wheels on every pull request",
+            ),
+        ),
+        (
+            "    needs: select-countries\n",
+            "    needs: [select-countries, engine-uk-after-merge]\n",
+            (
+                "engine-us: needs engine-uk-after-merge, which runs only after "
+                "merge, and GitHub would then skip engine-us on every pull "
+                "request",
+            ),
+        ),
+        (
+            _AFTER_MERGE_IF,
+            _AFTER_MERGE_IF + "    needs: engine-uk\n",
+            (
+                "engine-uk-after-merge: needs engine-uk, which the selection may "
+                "leave out when it runs engine-uk-after-merge, and GitHub would "
+                "then skip engine-uk-after-merge too",
+            ),
+        ),
         ("  lint:\n", "  lint:\n    if:\n", (_NO_IF,)),
         (
             "    needs: select-countries\n",
@@ -900,6 +995,9 @@ def test_workflow_rejects_a_job_whose_failure_could_pass_ci(
             "    needs: [select-countries]\n",
             "    needs: [select-countries, integration-uk]\n",
         ),
+        # An after-merge job needs no selection, and may wait on jobs that run
+        # on every push.
+        (_AFTER_MERGE_IF, _AFTER_MERGE_IF + "    needs: [select-countries, lint]\n"),
         # Keys and steps a job may carry.
         (
             "  engine-free:\n    steps:\n",
@@ -1082,6 +1180,8 @@ def test_load_workflow_reads_what_a_yaml_parser_reads() -> None:
 _VALID = yaml.safe_load(_AGGREGATE_WORKFLOW)["jobs"]
 _JOB_NAMES = (*_VALID, "deploy")
 _COUNTRY = {"engine-us": "us", "engine-uk": "uk", "integration-uk": "uk"}
+#: The jobs that run on a push to main only, and the ``if`` that says so.
+_AFTER_MERGE = {"engine-uk-after-merge": "github.event_name == 'push'"}
 _IFS = st.sampled_from(
     [
         None,
@@ -1089,6 +1189,7 @@ _IFS = st.sampled_from(
         "success()",
         "needs['select-countries'].outputs.run_us == 'true'",
         "needs['select-countries'].outputs.run_uk == 'true'",
+        "github.event_name == 'push'",
     ]
 )
 _NEEDS = st.one_of(
@@ -1226,15 +1327,19 @@ def _lets_ci_speak(jobs: dict[str, dict[str, object]]) -> bool:
         wanted = (
             f"needs['select-countries'].outputs.run_{_COUNTRY[name]} == 'true'"
             if name in _COUNTRY
-            else None
+            else _AFTER_MERGE.get(name)
         )
-        if job.get("if") != wanted or ("if" in job) != (name in _COUNTRY):
+        if job.get("if") != wanted or ("if" in job) != (wanted is not None):
             return False
         if name in _COUNTRY and "select-countries" not in _needed(job):
             return False
         if any(
             _COUNTRY.get(needed, _COUNTRY.get(name)) != _COUNTRY.get(name)
             for needed in _needed(job)
+        ):
+            return False
+        if name not in _AFTER_MERGE and any(
+            needed in _AFTER_MERGE for needed in _needed(job)
         ):
             return False
         if name == "select-countries":
@@ -1592,6 +1697,69 @@ def test_aggregate_names_each_job_that_did_not_pass(
     assert _errors(needs) == expected
 
 
+_AFTER_MERGE_JOB = "engine-uk-after-merge"
+
+
+@pytest.mark.parametrize(
+    ("event", "result", "expected"),
+    [
+        ("pull_request", "skipped", ()),
+        ("pull_request", "success", ()),
+        ("push", "success", ()),
+        (
+            "push",
+            "skipped",
+            (f"{_AFTER_MERGE_JOB}: skipped, but it runs on every push to main",),
+        ),
+        ("push", "failure", (f"{_AFTER_MERGE_JOB}: failure",)),
+        ("pull_request", "cancelled", (f"{_AFTER_MERGE_JOB}: cancelled",)),
+        (
+            None,
+            "skipped",
+            (
+                f"{_AFTER_MERGE_JOB}: skipped, and the run names no event "
+                "(GITHUB_EVENT_NAME)",
+            ),
+        ),
+        (
+            "",
+            "skipped",
+            (
+                f"{_AFTER_MERGE_JOB}: skipped, and the run names no event "
+                "(GITHUB_EVENT_NAME)",
+            ),
+        ),
+    ],
+)
+def test_aggregate_passes_an_after_merge_skip_only_off_a_push(
+    event: str | None, result: str, expected: tuple[str, ...]
+) -> None:
+    """A job that runs on pushes to main only skips on a pull request, and a
+    push must run it: ``ci`` waits for it there (microcosm#931)."""
+
+    needs = _needs(**{_AFTER_MERGE_JOB.replace("-", "_"): result})
+
+    assert (
+        ci_test_plan.aggregate_result_errors(
+            needs,
+            jobs=(*_JOBS, _AFTER_MERGE_JOB),
+            selected_by=_SELECTED_BY,
+            after_merge=frozenset({_AFTER_MERGE_JOB}),
+            event_name=event,
+        )
+        == expected
+    )
+    # The selection's outputs never excuse it, and without ``after_merge`` a
+    # skip is a job the plan runs on every run.
+    assert ci_test_plan.aggregate_result_errors(
+        needs, jobs=(*_JOBS, _AFTER_MERGE_JOB), selected_by=_SELECTED_BY
+    ) == (
+        (f"{_AFTER_MERGE_JOB}: skipped, but the plan runs it on every run",)
+        if result == "skipped"
+        else expected
+    )
+
+
 # ``derandomize`` seeds each property from its own source, so a rerun draws no
 # new seed. Hypothesis also draws on constants of the local modules loaded at
 # that point, so two runs that load different modules can draw differently.
@@ -1757,6 +1925,28 @@ def test_require_results_reads_the_needs_context_for_the_real_workflow(
         "workflow did not pass:\n"
         "  lint: skipped, but the plan runs it on every run\n"
         "  engine-us: skipped, but select-countries selected it (run_us=true)"
+    )
+
+
+def test_require_results_passes_the_after_merge_skip_on_a_pull_request_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``require-results`` reads the run's event from GitHub's
+    ``GITHUB_EVENT_NAME``, which every step sees."""
+
+    needs = _passing_needs()
+    needs["engine-uk-after-merge"]["result"] = "skipped"
+    monkeypatch.setenv("NEEDS", json.dumps(needs))
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
+
+    assert ci_test_plan.main(["require-results"]) == 0
+
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
+    with pytest.raises(SystemExit) as refused:
+        ci_test_plan.main(["require-results"])
+    assert str(refused.value) == (
+        "workflow did not pass:\n"
+        "  engine-uk-after-merge: skipped, but it runs on every push to main"
     )
 
 

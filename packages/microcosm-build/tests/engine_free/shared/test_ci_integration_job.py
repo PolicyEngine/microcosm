@@ -66,7 +66,12 @@ def test_only_the_after_merge_uk_job_waits_for_a_push_to_main() -> None:
     after_merge = jobs["engine-uk-after-merge"]
 
     assert after_merge["if"] == "github.event_name == 'push'"
+    assert after_merge["if"] == ci_test_plan.selection_condition(
+        "engine-uk-after-merge"
+    )
     assert "needs" not in after_merge
+    # ci waits for it: a push must run it, and any other event skips it.
+    assert "engine-uk-after-merge" in jobs["ci"]["needs"]
     assert after_merge["steps"][-1]["run"] == (
         "bash tools/run_engine_uk_tests.sh engine-uk-after-merge"
     )
