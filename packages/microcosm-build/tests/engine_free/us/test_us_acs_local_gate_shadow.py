@@ -17,15 +17,24 @@ import pytest
 from microcosm.build.gates import GateResult
 from microcosm.build.us_runtime.gate_scopes import us_scoped_gate_manifest
 from microcosm.build.us_runtime.gate_shadow import (
+    US_GATE_SHADOW_SWITCH,
     GateBatteryShadowMismatchError,
+    current_gate_shadow,
     shadow_file_paths,
     shadow_not_run,
 )
 from test_support.microcosm_build.us_gate_shadow import (
+    arm_us_tool_gate_shadows,
     load_us_gate_tool,
     observe_entries,
     stand_in_gates,
 )
+
+
+@pytest.fixture(autouse=True)
+def _tool_shadows_on(monkeypatch) -> None:
+    arm_us_tool_gate_shadows(monkeypatch)
+
 
 #: Which stage evaluates each entry (the qa stage has none).
 STAGE_ENTRIES = {
@@ -119,6 +128,22 @@ def test_separate_stage_processes_add_up_to_one_finished_run(
     assert payload["phases_recorded"] == ["assembled", "terminal"]
     for stage in STAGE_ENTRIES:
         assert (acs_directory(args) / f"{stage}.observations.json").is_file()
+
+
+def test_with_the_switch_off_a_stage_touches_no_shadow_file(
+    tmp_path, monkeypatch, acs
+) -> None:
+    args = _args(tmp_path)
+    stand_in_gates(monkeypatch, "us_local", acs)
+    _run_stage(acs, args, "materialize")
+    saved = acs_directory(args) / "materialize.observations.json"
+    before = saved.read_bytes()
+    monkeypatch.setenv(US_GATE_SHADOW_SWITCH, "off")
+    with acs._local_gate_shadow_stage(args, "materialize") as shadow:
+        assert shadow is None
+        assert current_gate_shadow() is None
+    # A rerun with the switch off neither discards nor rewrites what was saved.
+    assert saved.read_bytes() == before
 
 
 def test_a_finalize_stop_is_recorded_and_its_rerun_starts_clean(

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 
 import pytest
 
@@ -29,6 +30,7 @@ from microcosm.build.us_runtime.battery_bindings import (
     us_check_binding,
 )
 from microcosm.build.us_runtime.gate_shadow import (
+    US_GATE_SHADOW_SWITCH,
     GateBatteryShadow,
     GateBatteryShadowMismatchError,
     LegacyStatus,
@@ -36,6 +38,7 @@ from microcosm.build.us_runtime.gate_shadow import (
     compare_verdicts,
     legacy_parameter_overrides,
     shadow_file_paths,
+    tool_gate_shadows_enabled,
 )
 
 
@@ -615,6 +618,20 @@ def test_stale_shadow_files_are_removed_when_a_run_starts(tmp_path) -> None:
     comparison.write_text("{}")
     _shadow(tmp_path, _two_phase_gates())
     assert not report.exists() and not comparison.exists()
+
+
+def test_the_suite_runs_the_tools_without_their_shadows(monkeypatch) -> None:
+    # tests/conftest.py spells the switch out; this holds it to the constant.
+    assert os.environ.get(US_GATE_SHADOW_SWITCH) == "off"
+    assert tool_gate_shadows_enabled() is False
+    for value in (" OFF ", "Off"):
+        monkeypatch.setenv(US_GATE_SHADOW_SWITCH, value)
+        assert tool_gate_shadows_enabled() is False
+    for value in ("", "on", "0", "false"):
+        monkeypatch.setenv(US_GATE_SHADOW_SWITCH, value)
+        assert tool_gate_shadows_enabled() is True
+    monkeypatch.delenv(US_GATE_SHADOW_SWITCH)
+    assert tool_gate_shadows_enabled() is True
 
 
 def test_waivers_and_overrides_must_name_scope_entries(tmp_path) -> None:

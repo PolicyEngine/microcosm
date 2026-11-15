@@ -14,7 +14,21 @@ from functools import cache
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
+from microcosm.build.us_runtime.gate_shadow import US_GATE_SHADOW_SWITCH
 from test_support.paths import paths_for
+
+
+def arm_us_tool_gate_shadows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Let the build tools arm their shadows in this test.
+
+    ``packages/microcosm-build/tests/conftest.py`` turns them off for every
+    test; a shadow test turns them back on before it drives a tool.
+    """
+
+    monkeypatch.delenv(US_GATE_SHADOW_SWITCH, raising=False)
+
 
 #: Scope to the build tool that evaluates it.
 US_GATE_SCOPE_TOOLS = {

@@ -303,6 +303,7 @@ from microcosm.build.us_runtime.gate_shadow import (
     shadow_gate,
     shadow_not_run,
     shadow_value,
+    tool_gate_shadows_enabled,
 )
 from microcosm.build.us_runtime.h5_io import (
     AuthenticatedPoolH5,
@@ -13277,6 +13278,8 @@ def _start_national_gate_shadow(args: argparse.Namespace, *, release_id: str) ->
 
     global _ACTIVE_GATE_SHADOW
     _finish_national_gate_shadow(stopped_at="a previous run in this process")
+    if not tool_gate_shadows_enabled():
+        return
     gates = us_scoped_gate_manifest(US_NATIONAL_GATE_SCOPE)
     report, comparison = shadow_file_paths(
         _national_gate_shadow_directory(args), US_NATIONAL_GATE_SCOPE

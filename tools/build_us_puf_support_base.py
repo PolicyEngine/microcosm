@@ -204,6 +204,7 @@ from microcosm.build.us_runtime.gate_shadow import (
     shadow_file_paths,
     shadow_gate,
     shadow_not_run,
+    tool_gate_shadows_enabled,
 )
 from microcosm.build.us_runtime.h5_io import (
     assert_h5_unchanged,
@@ -997,13 +998,15 @@ _GEOGRAPHY_LADDER_WAIVER = "--allow-geography-ladder-gate-failures"
 def _final_gate_shadow_directory(args: argparse.Namespace) -> Path | None:
     """Where the finished shadow files go: beside the outputs.
 
-    ``None`` only for stand-in arguments without ``--out`` (a test driving
-    the dispatcher), which have nowhere to write and run without a shadow;
-    the parser requires ``--out`` of every real run.
+    ``None``, and the run goes without a shadow, when the switch is off (the
+    test suite) or for stand-in arguments without ``--out``, which have
+    nowhere to write; the parser requires ``--out`` of every real run.
     """
 
     out = getattr(args, "out", None)
-    return None if out is None else Path(out).resolve() / GATE_BATTERY_SHADOW_DIRECTORY
+    if out is None or not tool_gate_shadows_enabled():
+        return None
+    return Path(out).resolve() / GATE_BATTERY_SHADOW_DIRECTORY
 
 
 def _stage_gate_shadow_observations(args: argparse.Namespace, stage: str) -> Path:
@@ -1058,9 +1061,13 @@ def _armed_stage_gate_shadow(args: argparse.Namespace) -> Iterator[Callable[[], 
     the observations of every stage it does not run again. A stage that
     raises saves what it saw on the way out, so the parent's report says
     where the build stopped. A save that fails warns and is otherwise left to
-    the parent, which then reports the stage's entries as unobserved.
+    the parent, which then reports the stage's entries as unobserved. With
+    the switch off the stage runs without a shadow and saves nothing.
     """
 
+    if not tool_gate_shadows_enabled():
+        yield lambda: None
+        return
     shadow = _base_gate_shadow(
         args, args.checkpoint_dir / GATE_BATTERY_SHADOW_DIRECTORY / args.stage
     )

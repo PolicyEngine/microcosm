@@ -147,6 +147,7 @@ from microcosm.build.us_runtime.gate_shadow import (
     shadow_file_paths,
     shadow_gate,
     shadow_not_run,
+    tool_gate_shadows_enabled,
 )
 from microcosm.build.us_runtime.h5_io import (
     POPULACE_BLOCK_LADDER_SHA256_ATTR,
@@ -7028,13 +7029,19 @@ def _pool_gate_shadow(args: argparse.Namespace) -> GateBatteryShadow:
 
 
 @contextmanager
-def _armed_pool_gate_shadow(args: argparse.Namespace) -> Iterator[GateBatteryShadow]:
+def _armed_pool_gate_shadow(
+    args: argparse.Namespace,
+) -> Iterator[GateBatteryShadow | None]:
     """Arm the stacked path's shadow; finish it when the build returns.
 
     It finishes after every file today's build writes, its Logbook row
     included, so a verdict difference fails the run without changing them.
+    With the switch off (the test suite) the build runs without one.
     """
 
+    if not tool_gate_shadows_enabled():
+        yield None
+        return
     shadow = _pool_gate_shadow(args)
     with shadow, active_gate_shadow(shadow):
         yield shadow

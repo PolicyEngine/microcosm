@@ -219,6 +219,7 @@ from microcosm.build.us_runtime.gate_shadow import (
     shadow_gate,
     shadow_not_run,
     shadow_value,
+    tool_gate_shadows_enabled,
 )
 from microcosm.build.us_runtime.org_wages import (
     US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
@@ -7239,9 +7240,13 @@ def _local_gate_shadow_stage(args, stage: str):
     The stages may run as separate processes, so each saves what it observed
     beside the checkpoint, and rerunning a stage discards its own and every
     later stage's observations. Afterwards the scope's report and comparison
-    are rebuilt from every stage saved so far.
+    are rebuilt from every stage saved so far. With the switch off (the test
+    suite) the stage runs without a shadow and touches no shadow file.
     """
 
+    if not tool_gate_shadows_enabled():
+        yield None
+        return
     for name in _LOCAL_GATE_SHADOW_STAGES[_LOCAL_GATE_SHADOW_STAGES.index(stage) :]:
         _local_stage_observations(args, name).unlink(missing_ok=True)
     shadow = _local_gate_shadow(args, _local_gate_shadow_directory(args) / stage)

@@ -19,12 +19,22 @@ from microcosm.build.us_runtime.battery_bindings import us_gate_specs
 from microcosm.build.us_runtime.gate_scopes import us_scoped_gate_manifest
 from microcosm.build.us_runtime.gate_shadow import (
     GATE_BATTERY_SHADOW_DIRECTORY,
+    US_GATE_SHADOW_SWITCH,
     GateBatteryShadowMismatchError,
     active_gate_shadow,
+    current_gate_shadow,
     shadow_file_paths,
     shadow_gate,
 )
-from test_support.microcosm_build.us_gate_shadow import load_us_gate_tool
+from test_support.microcosm_build.us_gate_shadow import (
+    arm_us_tool_gate_shadows,
+    load_us_gate_tool,
+)
+
+
+@pytest.fixture(autouse=True)
+def _tool_shadows_on(monkeypatch) -> None:
+    arm_us_tool_gate_shadows(monkeypatch)
 
 
 @pytest.fixture
@@ -107,6 +117,23 @@ def test_the_single_process_run_finishes_its_shadow(tmp_path, monkeypatch, base)
     assert {row["battery"]["status"] for row in location.values()} == {
         "evidence_absent"
     }
+
+
+def test_with_the_switch_off_no_shadow_is_armed_or_written(tmp_path, monkeypatch, base):
+    monkeypatch.setenv(US_GATE_SHADOW_SWITCH, "off")
+    args = _args(tmp_path, checkpoint_dir=None)
+    monkeypatch.setattr(base, "_verify_asec_source_digests", lambda args: None)
+    armed = []
+    monkeypatch.setattr(
+        base, "_run_all", lambda args: armed.append(current_gate_shadow())
+    )
+    base._dispatch(args, None)
+    assert armed == [None]
+    with base._armed_stage_gate_shadow(_args(tmp_path, stage="wic_post_clone")) as save:
+        assert current_gate_shadow() is None
+        save()
+    assert not (args.out / GATE_BATTERY_SHADOW_DIRECTORY).exists()
+    assert not (tmp_path / "checkpoints" / GATE_BATTERY_SHADOW_DIRECTORY).exists()
 
 
 def test_a_verdict_difference_fails_the_single_process_run(tmp_path, monkeypatch, base):

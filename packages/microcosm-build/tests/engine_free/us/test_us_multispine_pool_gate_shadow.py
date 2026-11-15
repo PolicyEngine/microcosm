@@ -18,12 +18,22 @@ from microcosm.build import FitWeightRecord, GateResult
 from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.us_runtime.battery_bindings import us_gate_specs
 from microcosm.build.us_runtime.gate_shadow import (
+    US_GATE_SHADOW_SWITCH,
     GateBatteryShadowMismatchError,
+    current_gate_shadow,
     shadow_file_paths,
     shadow_gate,
     shadow_not_run,
 )
-from test_support.microcosm_build.us_gate_shadow import load_us_gate_tool
+from test_support.microcosm_build.us_gate_shadow import (
+    arm_us_tool_gate_shadows,
+    load_us_gate_tool,
+)
+
+
+@pytest.fixture(autouse=True)
+def _tool_shadows_on(monkeypatch) -> None:
+    arm_us_tool_gate_shadows(monkeypatch)
 
 
 @pytest.fixture
@@ -109,6 +119,17 @@ def test_the_stacked_path_finishes_its_shadow_beside_the_pool(
     assert payload["verdict_difference"] is False
     assert payload["phases_recorded"] == ["assembled", "transferred", "terminal"]
     assert json.loads(report.read_text())["shippable"] is False
+
+
+def test_with_the_switch_off_the_stacked_path_has_no_shadow(
+    tmp_path, monkeypatch, pool
+) -> None:
+    monkeypatch.setenv(US_GATE_SHADOW_SWITCH, "off")
+    args = SimpleNamespace(out=tmp_path / "stacked.h5")
+    with pool._armed_pool_gate_shadow(args) as shadow:
+        assert shadow is None
+        assert current_gate_shadow() is None
+    assert not pool._pool_gate_shadow_directory(args).exists()
 
 
 def test_a_terminal_difference_fails_the_build_after_its_files(

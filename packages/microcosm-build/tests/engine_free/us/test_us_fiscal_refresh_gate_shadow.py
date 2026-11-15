@@ -24,12 +24,23 @@ from microcosm.build.us_runtime.battery_bindings import (
 )
 from microcosm.build.us_runtime.gate_scopes import us_scoped_gate_manifest
 from microcosm.build.us_runtime.gate_shadow import (
+    GATE_BATTERY_SHADOW_DIRECTORY,
+    US_GATE_SHADOW_SWITCH,
     GateBatteryShadowMismatchError,
     LegacyVerdict,
+    current_gate_shadow,
     shadow_file_paths,
     shadow_value,
 )
-from test_support.microcosm_build.us_gate_shadow import load_us_gate_tool
+from test_support.microcosm_build.us_gate_shadow import (
+    arm_us_tool_gate_shadows,
+    load_us_gate_tool,
+)
+
+
+@pytest.fixture(autouse=True)
+def _tool_shadows_on(monkeypatch) -> None:
+    arm_us_tool_gate_shadows(monkeypatch)
 
 
 @pytest.fixture
@@ -214,6 +225,22 @@ def test_todays_exception_propagates_and_the_shadow_records_it(
     payload = _comparison(args.out.resolve() / "gate_battery_shadow")
     assert payload["stopped_by"]["type"] == "RuntimeError"
     assert payload["run_completed"] is False
+
+
+def test_with_the_switch_off_main_arms_no_shadow(tmp_path, monkeypatch, release):
+    monkeypatch.setenv(US_GATE_SHADOW_SWITCH, "off")
+    args = _args(tmp_path)
+    armed = []
+
+    def build(argv):
+        release._start_national_gate_shadow(args, release_id="microcosm-us-test")
+        armed.append(current_gate_shadow("us_national_pregnancy"))
+        return None
+
+    monkeypatch.setattr(release, "_main", build)
+    release.main([])
+    assert armed == [None]
+    assert not (args.out / GATE_BATTERY_SHADOW_DIRECTORY).exists()
 
 
 def test_waivers_and_flag_overrides_are_recorded_by_entry(tmp_path, release):

@@ -35,6 +35,11 @@ with a command-line flag is evaluated by the battery at the declared value,
 so a difference there is recorded as explained by the override and does not
 fail the run: the spec cannot hold a per-run threshold, and that decision
 belongs to the flip (PR 3), not to the shadow.
+
+Every real run arms its tool's shadow. The test suite sets
+:data:`US_GATE_SHADOW_SWITCH` to ``off`` for every test, because its tests
+stand stubs in for whole stages and a finished shadow would rightly report
+the gate sites they skip; the shadow's own tests turn it back on.
 """
 
 from __future__ import annotations
@@ -70,6 +75,7 @@ __all__ = [
     "GATE_BATTERY_SHADOW_PRODUCER",
     "GATE_BATTERY_SHADOW_REPORT_SUFFIX",
     "GATE_BATTERY_SHADOW_SCHEMA_VERSION",
+    "US_GATE_SHADOW_SWITCH",
     "GateBatteryShadow",
     "GateBatteryShadowMismatchError",
     "LegacyStatus",
@@ -86,6 +92,7 @@ __all__ = [
     "shadow_gate",
     "shadow_not_run",
     "shadow_value",
+    "tool_gate_shadows_enabled",
 ]
 
 GATE_BATTERY_SHADOW_SCHEMA_VERSION = 1
@@ -99,6 +106,20 @@ _OBSERVATIONS_KIND = "us_gate_battery_shadow_observations"
 GATE_BATTERY_SHADOW_REPORT_SUFFIX = ".gate_battery_shadow_report.json"
 #: ``<scope><suffix>``: the comparison with today's verdicts.
 GATE_BATTERY_SHADOW_COMPARISON_SUFFIX = ".gate_battery_shadow_comparison.json"
+#: Set to ``off`` and a build tool runs without its scope's shadow. Real
+#: builds never set it; ``packages/microcosm-build/tests/conftest.py`` sets it
+#: for every test.
+US_GATE_SHADOW_SWITCH = "MICROCOSM_US_GATE_SHADOW"
+
+
+def tool_gate_shadows_enabled() -> bool:
+    """Whether a build tool arms its scope's shadow: unless the switch is ``off``.
+
+    Only the tools ask; a shadow built and armed directly behaves the same
+    either way.
+    """
+
+    return os.environ.get(US_GATE_SHADOW_SWITCH, "").strip().lower() != "off"
 
 
 def shadow_file_paths(directory: Path | str, scope: str) -> tuple[Path, Path]:
