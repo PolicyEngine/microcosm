@@ -13245,7 +13245,9 @@ _NATIONAL_GATE_WAIVERS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 
 
 def _national_gate_shadow_directory(args: argparse.Namespace) -> Path:
-    """Beside the outputs: ``<out>/gate_battery_shadow``, never a release dir.
+    """``<out>/gate_battery_shadow/<release>``: beside the outputs, never in a
+    release directory, and one per release, since the national and evidence
+    releases can share an ``--out``.
 
     A dry run writes no output directory, so its shadow goes beside its
     report instead.
@@ -13254,7 +13256,11 @@ def _national_gate_shadow_directory(args: argparse.Namespace) -> Path:
     if args.dry_run_gates_report is not None:
         report = Path(args.dry_run_gates_report).resolve()
         return report.parent / f"{report.stem}.{GATE_BATTERY_SHADOW_DIRECTORY}"
-    return Path(args.out).resolve() / GATE_BATTERY_SHADOW_DIRECTORY
+    return (
+        Path(args.out).resolve()
+        / GATE_BATTERY_SHADOW_DIRECTORY
+        / _release_for_build(args)
+    )
 
 
 def _national_gate_waivers(
@@ -13274,7 +13280,14 @@ def _national_gate_waivers(
 
 
 def _start_national_gate_shadow(args: argparse.Namespace, *, release_id: str) -> None:
-    """Arm this run's gate battery in shadow (finished in :func:`main`)."""
+    """Arm this run's gate battery in shadow (finished in :func:`main`).
+
+    The preflight gates run before ``_main`` refuses to reuse a certified
+    release directory, so a build's shadow holds its files until
+    :func:`_release_national_gate_shadow_files`: a refused rerun leaves the
+    certified build's shadow files as they were. A dry run's files go beside
+    its own report and are not held.
+    """
 
     global _ACTIVE_GATE_SHADOW
     _finish_national_gate_shadow(stopped_at="a previous run in this process")
@@ -13293,9 +13306,17 @@ def _start_national_gate_shadow(args: argparse.Namespace, *, release_id: str) ->
         registry=us_gate_registry(US_NATIONAL_GATE_SCOPE, tool=globals()),
         waivers=_national_gate_waivers(args, gates),
         overrides=us_flag_overrides(gates, us_gate_specs(US_NATIONAL_GATE_SCOPE), args),
+        hold_files=args.dry_run_gates_report is None,
     )
     arm_gate_shadow(shadow)
     _ACTIVE_GATE_SHADOW = shadow
+
+
+def _release_national_gate_shadow_files() -> None:
+    """Let the armed shadow write, once no certified release dir is reused."""
+
+    if _ACTIVE_GATE_SHADOW is not None:
+        _ACTIVE_GATE_SHADOW.release_files()
 
 
 def _finish_national_gate_shadow(
@@ -14023,6 +14044,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # --checkpoint-root beneath releases/<release> must not mutate a certified
     # directory before the raise (microcosm#568 round 4).
     _refuse_certified_release_dir_reuse(release_dir)
+    _release_national_gate_shadow_files()
     checkpoint_root, target_materialization_cache_dir, target_frame_checkpoint_path = (
         _resolve_checkpoint_paths(args, artifact_root=artifact_root)
     )

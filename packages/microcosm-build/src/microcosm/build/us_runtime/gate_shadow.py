@@ -428,6 +428,11 @@ class GateBatteryShadow:
             waive it today.
         overrides: Entry id to the declared parameters this build's flags
             overrode, each ``{"declared": ..., "runtime": ...}``.
+        hold_files: Touch no file until :meth:`release_files`, for a tool
+            that must refuse before its first side effect: the shadow neither
+            clears an earlier run's files nor writes its own, and a run that
+            stops while they are held leaves the directory as it found it.
+            A finished run writes them regardless.
     """
 
     def __init__(
@@ -441,6 +446,7 @@ class GateBatteryShadow:
         registry: Mapping[str, GateBinding],
         waivers: Mapping[str, Sequence[str]] | None = None,
         overrides: Mapping[str, Mapping[str, Mapping[str, object]]] | None = None,
+        hold_files: bool = False,
     ) -> None:
         declared = {entry.id for entry in gates.gates}
         self._scope = str(scope)
@@ -471,16 +477,39 @@ class GateBatteryShadow:
             raise ValueError(
                 f"waivers or overrides name entries outside scope {scope!r}: {unknown}."
             )
-        # A rerun into the same output directory must not leave an earlier
-        # attempt's shadow files looking like this run's when it stops before
-        # writing its own.
-        for stale in (self._run.report_path, self._comparison_path):
-            stale.unlink(missing_ok=True)
         self._declared = frozenset(declared)
         self._lock = threading.RLock()
         self._observations: dict[str, _Observation] = {}
         self._shadow_errors: list[str] = []
         self._finished = False
+        self._files_held = bool(hold_files)
+        if not self._files_held:
+            self._clear_stale_files()
+
+    def _clear_stale_files(self) -> None:
+        # A rerun into the same output directory must not leave an earlier
+        # attempt's shadow files looking like this run's when it stops before
+        # writing its own.
+        for stale in (self._run.report_path, self._comparison_path):
+            stale.unlink(missing_ok=True)
+
+    def release_files(self) -> None:
+        """Let a shadow built with ``hold_files`` clear and write its files.
+
+        Never raises: a fault is recorded as a shadow error.
+        """
+
+        with self._lock:
+            if not self._files_held:
+                return
+            self._files_held = False
+            try:
+                self._clear_stale_files()
+            except Exception as exc:  # noqa: BLE001 - the shadow never stops the tool
+                self._shadow_errors.append(
+                    f"shadow could not clear an earlier run's files: "
+                    f"{type(exc).__name__}: {exc}"
+                )
 
     # -- properties ---------------------------------------------------------
 
@@ -871,7 +900,8 @@ class GateBatteryShadow:
         raises: the tool's own exit stands.
 
         Returns:
-            The comparison payload written to disk.
+            The comparison payload written to disk, or an empty mapping when a
+            run stopped while its files were held, which writes nothing.
         """
 
         with self._lock:
@@ -887,6 +917,19 @@ class GateBatteryShadow:
             raise RuntimeError("the shadow has already finished.")
         self._finished = True
         completed = stopped_by is None and stopped_at is None
+        if self._files_held:
+            if not completed:
+                # The tool stopped before it let the shadow write, as on a
+                # refusal ahead of its first side effect: an earlier run's
+                # files stay exactly as they were.
+                print(
+                    f"note: US gate battery shadow for scope {self._scope!r} wrote "
+                    "no files: the run stopped before the tool let it write.",
+                    file=sys.stderr,
+                )
+                return {}
+            self._files_held = False
+            self._clear_stale_files()
         recorded: list[str] = []
         not_observed: list[str] = []
         try:

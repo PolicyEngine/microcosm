@@ -620,6 +620,58 @@ def test_stale_shadow_files_are_removed_when_a_run_starts(tmp_path) -> None:
     assert not report.exists() and not comparison.exists()
 
 
+def _earlier_files(tmp_path):
+    report, comparison = shadow_file_paths(tmp_path, "us_test")
+    report.write_text('{"earlier": "report"}')
+    comparison.write_text('{"earlier": "comparison"}')
+    return report, comparison
+
+
+def test_held_files_survive_a_run_that_stops_before_it_lets_them_go(
+    tmp_path,
+) -> None:
+    report, comparison = _earlier_files(tmp_path)
+    shadow = _shadow(tmp_path, _two_phase_gates(), hold_files=True)
+    shadow.gate(
+        "us_test_alpha",
+        lambda: ALPHA(0.5),
+        EvidenceContext(artifacts={"alpha_value": 0.5}),
+    )
+    shadow.stop(RuntimeError("refused before the first side effect"))
+    assert json.loads(report.read_text()) == {"earlier": "report"}
+    assert json.loads(comparison.read_text()) == {"earlier": "comparison"}
+
+
+def test_released_files_are_cleared_and_then_written(tmp_path) -> None:
+    report, comparison = _earlier_files(tmp_path)
+    shadow = _shadow(tmp_path, _two_phase_gates(), hold_files=True)
+    shadow.release_files()
+    assert not report.exists() and not comparison.exists()
+    shadow.release_files()  # once is enough; a second call changes nothing
+    shadow.stop(RuntimeError("a later failure"))
+    payload = json.loads(comparison.read_text())
+    assert payload["stopped_by"]["type"] == "RuntimeError"
+
+
+def test_a_finished_run_writes_its_files_even_while_held(tmp_path) -> None:
+    _, comparison = _earlier_files(tmp_path)
+    gates = _two_phase_gates()
+    with _shadow(tmp_path, gates, hold_files=True) as shadow:
+        for entry_id, value in (
+            ("us_test_alpha", 0.5),
+            ("us_test_beta", 2.0),
+            ("us_test_final", 0.1),
+        ):
+            gate = BETA if entry_id == "us_test_beta" else ALPHA
+            key = "beta_value" if entry_id == "us_test_beta" else "alpha_value"
+            shadow.gate(
+                entry_id,
+                lambda gate=gate, value=value: gate(value),
+                EvidenceContext(artifacts={key: value}),
+            )
+    assert json.loads(comparison.read_text())["run_completed"] is True
+
+
 def test_the_suite_runs_the_tools_without_their_shadows(monkeypatch) -> None:
     # tests/conftest.py spells the switch out; this holds it to the constant.
     assert os.environ.get(US_GATE_SHADOW_SWITCH) == "off"

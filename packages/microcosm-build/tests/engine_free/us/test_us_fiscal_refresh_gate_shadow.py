@@ -9,8 +9,10 @@ seams with stand-in gates; no release is built.
 
 from __future__ import annotations
 
+import ast
 import importlib
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -165,11 +167,21 @@ def test_main_finishes_the_shadow_a_build_armed(tmp_path, monkeypatch, release):
 
     monkeypatch.setattr(release, "_main", build)
     release.main([])
-    payload = _comparison(args.out.resolve() / "gate_battery_shadow")
+    payload = _comparison(release._national_gate_shadow_directory(args))
     assert payload["run_completed"] is True
     assert payload["verdict_difference"] is False
     assert payload["phases_recorded"] == ["preflight", "assembled", "terminal"]
     assert payload["release_id"] == "microcosm-us-test"
+
+
+def test_each_release_keeps_its_own_shadow_files(tmp_path, release) -> None:
+    national = release._national_gate_shadow_directory(_args(tmp_path))
+    evidence = release._national_gate_shadow_directory(
+        _args(tmp_path, evidence_release=True)
+    )
+    shared = (tmp_path / "out").resolve() / GATE_BATTERY_SHADOW_DIRECTORY
+    assert national == shared / release.US_NATIONAL_RELEASE_ID
+    assert evidence == shared / release.US_EVIDENCE_RELEASE_ID
 
 
 def test_a_verdict_difference_fails_a_finished_build(tmp_path, monkeypatch, release):
@@ -217,14 +229,58 @@ def test_todays_exception_propagates_and_the_shadow_records_it(
 
     def refused(argv):
         release._start_national_gate_shadow(args, release_id="microcosm-us-test")
+        # Past the certified-directory refusal, where _main lets it write.
+        release._release_national_gate_shadow_files()
         raise RuntimeError("Release gates failed: something upstream")
 
     monkeypatch.setattr(release, "_main", refused)
     with pytest.raises(RuntimeError, match="something upstream"):
         release.main([])
-    payload = _comparison(args.out.resolve() / "gate_battery_shadow")
+    payload = _comparison(release._national_gate_shadow_directory(args))
     assert payload["stopped_by"]["type"] == "RuntimeError"
     assert payload["run_completed"] is False
+
+
+def test_a_run_refused_before_its_outputs_leaves_earlier_files_alone(
+    tmp_path, monkeypatch, release
+):
+    args = _args(tmp_path)
+    report, comparison = shadow_file_paths(
+        release._national_gate_shadow_directory(args), "us_national"
+    )
+    comparison.parent.mkdir(parents=True)
+    comparison.write_text('{"the certified build": true}')
+    report.write_text("{}")
+
+    def refused(argv):
+        release._start_national_gate_shadow(args, release_id="microcosm-us-test")
+        raise RuntimeError("the release directory already carries a certified build")
+
+    monkeypatch.setattr(release, "_main", refused)
+    with pytest.raises(RuntimeError, match="already carries"):
+        release.main([])
+    assert json.loads(comparison.read_text()) == {"the certified build": True}
+    assert report.read_text() == "{}"
+
+
+def test_main_lets_the_shadow_write_only_after_the_certified_dir_refusal(
+    release,
+) -> None:
+    tree = ast.parse(Path(release.__file__).read_text())
+    main_fn = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
+    )
+    statements = [ast.unparse(statement) for statement in main_fn.body]
+    refusal = statements.index("_refuse_certified_release_dir_reuse(release_dir)")
+    assert statements[refusal + 1] == "_release_national_gate_shadow_files()"
+    starts = [
+        index
+        for index, statement in enumerate(statements)
+        if statement.startswith("_start_national_gate_shadow(")
+    ]
+    assert len(starts) == 1 and starts[0] < refusal
 
 
 def test_with_the_switch_off_main_arms_no_shadow(tmp_path, monkeypatch, release):
