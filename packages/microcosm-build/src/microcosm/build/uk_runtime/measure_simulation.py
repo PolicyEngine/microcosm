@@ -1798,6 +1798,11 @@ class UKMeasureResolver:
         that would. A direct H5 keeps the engine's whole projection, and is
         built where no cut of that loop is in force
         (:func:`~microcosm.frame.adapters.policyengine_uk.uk_whole_rebalancing_years`).
+
+        Once the resolver is an engine block, ``self._factory`` is the block's
+        wrapped factory (``EngineBlock.wrap``), so each sibling built here,
+        the annual-income and counterfactual simulations, reads the pool's
+        shares and is built inside the same cut (microcosm#931).
         """
 
         if self._simulation_end_year is None:

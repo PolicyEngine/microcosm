@@ -2424,6 +2424,37 @@ def test_an_engine_block_refuses_a_sibling_that_moves_what_its_correction_reads(
     plain._refuse_pool_share_substitution(["corporate_wealth"], "a counterfactual")
 
 
+def test_an_engine_blocks_siblings_are_built_inside_the_year_window(
+    monkeypatch, tmp_path
+):
+    """An engine block's later simulations (its annual-income and
+    counterfactual siblings) come from the block's wrapped factory, built
+    inside the scratch engine's rebalancing cut at the resolver's year
+    (microcosm#931 with microcosm#1615)."""
+
+    from contextlib import contextmanager
+
+    resolver = _fake_engine_resolver(
+        monkeypatch,
+        tmp_path,
+        engine_weight_scale=4.0,
+        engine_pool_shares=_block_pool_shares(),
+    )
+    cuts = []
+
+    @contextmanager
+    def cut(end_year):
+        cuts.append(int(end_year))
+        yield range(0)
+
+    monkeypatch.setattr(measure_simulation, "uk_rebalancing_years_through", cut)
+    block = resolver._engine_pool_block
+    before = len(block.siblings)
+    resolver._new_simulation()
+    assert cuts == [2025]
+    assert len(block.siblings) == before + 1
+
+
 def test_the_other_spells_factor_is_the_engines_growth_parameters(
     monkeypatch, tmp_path
 ):

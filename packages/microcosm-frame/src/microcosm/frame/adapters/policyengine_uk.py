@@ -589,13 +589,15 @@ class PolicyEngineUKEngine:
         fresh ``CountryTaxBenefitSystem``.
 
         No simulation reads this tree: each builds its own and edits it
-        while it is constructed. A call that runs in batches holds every
-        batch's tree equal to this one at the call's period wherever the UK
-        declaration's restatements read it (``UK_ENGINE_POPULATION.restated``:
-        the private-school attendance rates and population factor), and
-        raises otherwise, so a stage that restates the attendance formula
-        over the pool from these parameters reads what each batch's engine
-        holds (microcosm#931).
+        while it is constructed. The projection of each simulation's dataset
+        to the call's period reads its uprating from this tree and edits
+        nothing (:meth:`_read_year_simulation`). A call that runs in batches
+        holds every batch's tree equal to this one at the call's period
+        wherever the UK declaration's restatements read it
+        (``UK_ENGINE_POPULATION.restated``: the private-school attendance
+        rates and population factor), and raises otherwise, so a stage that
+        restates the attendance formula over the pool from these parameters
+        reads what each batch's engine holds (microcosm#931).
         """
 
         return self._tax_benefit_system().parameters(period)
