@@ -23,6 +23,11 @@ from microcosm.build.us_runtime import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
 )
+from microcosm.build.us_runtime.gate_shadow import (
+    GATE_BATTERY_SHADOW_DIRECTORY,
+    US_GATE_SHADOW_SWITCH,
+    shadow_file_paths,
+)
 from microcosm.frame import Frame
 from test_support.paths import paths_for
 
@@ -127,6 +132,70 @@ def test_monolith_and_staged_builds_are_bit_exact_at_every_boundary(
         staged_checkpoints,
         fixture.builder.PIPELINE_STEPS,
     )
+
+
+@pytest.mark.slow
+def test_the_gate_battery_shadow_agrees_and_changes_no_output(tmp_path: Path) -> None:
+    """microcosm#1585 item 11 (PR 2): the base's gates in shadow, on real gates.
+
+    Three locked builds of one sample: single-process with the shadow,
+    single-process without it, and staged with it. On every entry the
+    battery reaches today's verdict; the shadow changes no byte of the
+    dataset; and the staged children's saved observations add up to the
+    single process's comparison.
+    """
+
+    fixture = _prepare_builder_fixture(tmp_path)
+    locked = {**os.environ, **_LOCKED_ENVIRONMENT}
+    # tests/conftest.py turns the tools' shadows off for every test.
+    shadowed = {
+        key: value for key, value in locked.items() if key != US_GATE_SHADOW_SWITCH
+    }
+    unshadowed = {**locked, US_GATE_SHADOW_SWITCH: "off"}
+    staged_checkpoints = tmp_path / "staged_checkpoints"
+    runs = {
+        "monolith": (tmp_path / "monolith", (), shadowed),
+        "unshadowed": (tmp_path / "unshadowed", (), unshadowed),
+        "staged": (
+            tmp_path / "staged",
+            ("--checkpoint-dir", str(staged_checkpoints)),
+            shadowed,
+        ),
+    }
+    for out, extra, environment in runs.values():
+        _run_builder(
+            [*fixture.common_command, "--out", str(out), *extra],
+            cwd=fixture.root,
+            environment=environment,
+        )
+
+    shadowed_h5 = runs["monolith"][0] / _DATASET_FILENAME
+    unshadowed_h5 = runs["unshadowed"][0] / _DATASET_FILENAME
+    assert shadowed_h5.read_bytes() == unshadowed_h5.read_bytes()
+    assert not (runs["unshadowed"][0] / GATE_BATTERY_SHADOW_DIRECTORY).exists()
+    verdicts = {}
+    for name in ("monolith", "staged"):
+        _, path = shadow_file_paths(
+            runs[name][0] / GATE_BATTERY_SHADOW_DIRECTORY, "us_base"
+        )
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        assert payload["run_completed"] is True, name
+        assert payload["verdict_difference"] is False, (
+            name,
+            payload["differences"],
+            payload["shadow_errors"],
+        )
+        assert payload["not_observed"] == [], name
+        verdicts[name] = {
+            row["id"]: (
+                row["legacy"]["status"],
+                row["legacy"].get("failures"),
+                row["battery"]["status"],
+                row["battery"].get("failures"),
+            )
+            for row in payload["entries"]
+        }
+    assert verdicts["monolith"] == verdicts["staged"]
 
 
 @pytest.mark.slow
