@@ -451,6 +451,15 @@ transfer_execution:
         tax_unit_role: tax_unit_role_input
         tax_unit_link: person_tax_unit_id
         mutable_rows: newly_imputed_expense_cells_only
+    entry_clock_age_bound:
+      activation:
+        all_targets:
+        - years_since_us_entry
+      contract:
+        target: years_since_us_entry
+        age: age
+        rule: cap_at_floor_age_plus_one
+        mutable_rows: newly_imputed_clock_cells_only
     schedule_d_capital_gain_distributions:
       activation:
         derive_schedule_d: true

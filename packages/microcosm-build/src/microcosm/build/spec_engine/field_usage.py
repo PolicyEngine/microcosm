@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32647
+EXPECTED_AUTHORED_FIELD_COUNT = 32652
 EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9805
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42452
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42457
 
 
 class FieldUsageError(AssertionError):
@@ -421,8 +421,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "018610285fcef5d736970adfce7c39d102d043a1fb12d75b64b6abdd9b13d95d",
     ),
     "imputation_transfer_execution": (
-        111,
-        "54b40c7a1e6e6fcfc630e1761b328f439772059e62987f5389c6f31603be961e",
+        116,
+        "a69645d2dd669191a19320c27f9aa4664110d65d5c05f57baf64c0b4129f5b8d",
     ),
     "imputation_waiver_records": (
         70,

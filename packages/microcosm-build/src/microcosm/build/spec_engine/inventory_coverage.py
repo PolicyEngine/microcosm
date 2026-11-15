@@ -351,12 +351,12 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "b9ce079f1f8c76436d92f0adfa92757c3317c0e321a62f088a0dfd19a01e9fbe",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "451ed2931109fa658204919613681c0801b4c8aeb7c9edd0ded8350c11c20194",
+    "full_checkpoint": "c28d3a0a888e2fb0c4ed72cd6e5c9b95e3327c36d0f9bc754c884c94f135ffd5",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
     "graph_nodes": "584ae6d4e01bd3b5da31e76cabf740798e331f1d5bb8082732a7426c32bcdf7b",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
     "late_families": "e9c7ab7019ee115a0dd700a182f41a020df4a47f7acd6bd6d53a22d21a415d00",
-    "late_resource_semantics": "f7ab2d1d2e5c68410c224a1193426bcb2075e770f5bc769f9dfdfd41bb93d162",
+    "late_resource_semantics": "73140d10e615faf7a54a50777cba388a477a07436f56e7866b6c3383db37e743",
     "late_schedule": "3b9801f845400e77aaef28f1d4315b8a329f159ff3fade66255ce9a35b9c6bdc",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "6655e37f15befe053f8de2583c216f97098e4c2bde526f315299c2858c97f055",
@@ -392,8 +392,8 @@ EXPECTED_HASHES = {
     # becomes the takes_up_tanf_if_eligible its draw always used.
     # microcosm#776 moves both again: the immigration stage's arrival-year
     # draw joins the protocol as the immigration_arrival_year_draw site.
-    "seed_map": "e476e135f885ad178526227140552ad421e29bbd4a6fd78b8af1a44ac180c0df",
-    "seed_protocol": "e7faba84be754a8ad986f4a1e7d4ab93395f51cea1d8973487f96f2a7f01feab",
+    "seed_map": "05a6e5abd58fa0173b0e221a73e65e73c389f924b2cea44cf7f7fcb64b733fa3",
+    "seed_protocol": "8025dab3723b413e9ec60c7e4c857921087b48d34aa91a1c5dc2510b9ddef78c",
     "source_manifest": "ee208024a8be0e5f4f0094c76230ff53cc84a6cc662e14bd58bd8f653881f673",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
