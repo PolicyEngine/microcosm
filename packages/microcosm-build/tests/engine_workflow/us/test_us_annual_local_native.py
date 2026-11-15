@@ -45,6 +45,20 @@ def projected_local_year(tmp_path_factory, request):
     return path, year, rows, tables
 
 
+def _with_string_storage_of(frame, like):
+    """``frame`` with each string column in ``like``'s string storage.
+
+    pandas picks a string column's storage (Python or Arrow) when it reads a
+    file, so only the storage, not the values or the dtype kind, may differ.
+    """
+    frame = frame.copy()
+    for column in frame.columns.intersection(like.columns):
+        ours, theirs = frame[column].dtype, like[column].dtype
+        if isinstance(ours, pd.StringDtype) and isinstance(theirs, pd.StringDtype):
+            frame[column] = frame[column].astype(theirs)
+    return frame
+
+
 def test_projected_local_fixed_file_opens_at_its_own_year(projected_local_year):
     from policyengine_us import Microsimulation
     from policyengine_us.data import USSingleYearDataset
@@ -55,7 +69,8 @@ def test_projected_local_fixed_file_opens_at_its_own_year(projected_local_year):
     native = USSingleYearDataset(file_path=str(path))
     assert str(native.time_period) == str(year)
     for entity, expected in tables.items():
-        pd.testing.assert_frame_equal(getattr(native, entity), expected)
+        table = getattr(native, entity)
+        pd.testing.assert_frame_equal(table, _with_string_storage_of(expected, table))
     assert annual._verify_native_local(path, year, rows)
 
     # Bound the native engine to this artifact's year, as the production
