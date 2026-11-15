@@ -965,6 +965,8 @@ def test_carriers_count_source_households_not_rows() -> None:
                 "council_tax": np.full(4, 10.0),
                 # Two clones of one source household, and two others.
                 "household_source_id": np.array([7, 7, 8, 9], dtype=np.int64),
+                # The true source each floor counts (microcosm#931).
+                "source_household_id": np.array([7, 7, 8, 9], dtype=np.int64),
             }
         ),
         time_period="2023",
