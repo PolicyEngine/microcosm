@@ -265,6 +265,66 @@ def test_a_long_run_of_missing_codec_booleans_reads_as_object(
     }
 
 
+def test_the_local_release_layout(manifest_tool, tmp_path):
+    """The layout ``h5_io.write_nullable_us_h5`` gives the local release.
+
+    Fixed-format entity tables (nullable booleans under the frame codec),
+    ``_time_period`` and the JSON ``_populace_staging_metadata`` row as
+    table-format series, and string root attributes. Only the entities are
+    tables; the rest is file metadata.
+    """
+    tables = population_tables([3, 1, 2], tax_unit_splits=[True, False, True])
+    tables["person"]["is_blind"] = pd.array(
+        [True, None, False, None, False, True], dtype="boolean"
+    )
+    metadata = json.dumps({"artifact_kind": "calibrated_local_area_artifact"})
+    path = tmp_path / "microcosm_us_2026_acs_local.h5"
+    with pd.HDFStore(str(path), mode="w") as store:
+        for entity, frame in tables.items():
+            materialize.put_frame_table(store, entity, frame, preferred_format="fixed")
+        store.put("_time_period", pd.Series([2026]), format="table")
+        store.put("_populace_staging_metadata", pd.Series([metadata]), format="table")
+        store.get_node("/")._v_attrs["block_v1_crosswalk_sha256"] = "ab" * 32
+        store.get_node("/")._v_attrs["long_note"] = "x" * 5_000
+    entry = manifest_tool.describe_h5(path, chunk_rows=2)
+
+    assert [table["name"] for table in entry["tables"]] == list(
+        manifest_tool.ENTITY_ORDER
+    )
+    assert entry["other_keys"] == [
+        {
+            "key": "_populace_staging_metadata",
+            "pandas_type": "series_table",
+            "rows": 1,
+            "value": metadata,
+        },
+        {
+            "key": "_time_period",
+            "pandas_type": "series_table",
+            "rows": 1,
+            "value": 2026,
+        },
+    ]
+    assert entry["root_attributes"] == {
+        "block_v1_crosswalk_sha256": "ab" * 32,
+        "long_note": "<str, not shown>",
+    }
+    for table in entry["tables"]:
+        whole = pd.read_hdf(path, table["name"])
+        assert table["storage"] == "fixed"
+        assert table["rows"] == len(whole)
+        assert [c["name"] for c in table["columns"]] == list(whole.columns)
+        for column in table["columns"]:
+            assert column["dtype"] == str(whole[column["name"]].dtype)
+            assert column["null_count"] == int(whole[column["name"]].isna().sum())
+    person = entry["tables"][0]
+    blind = next(c for c in person["columns"] if c["name"] == "is_blind")
+    assert blind["logical_dtype"] == "boolean" and blind["null_count"] == 2
+    markdown = manifest_tool.render_markdown(manifest_tool.build_manifest([entry]))
+    assert "## Metadata" in markdown
+    assert "root attribute `block_v1_crosswalk_sha256`" in markdown
+
+
 def test_the_codec_attribute_is_the_frames(manifest_tool):
     assert (
         manifest_tool.FRAME_TABLE_CODEC_ATTR

@@ -206,7 +206,9 @@ tool overwrites an existing output.
 ## Schema manifest
 
 The manifest lists, for each file, its sha256 and size and every table: its
-storage format, row count and columns. For each column it gives the dtype
+storage format, row count and columns. Keys whose names start with `_`
+(`_time_period`, `_populace_staging_metadata`) and the HDF5 root attributes
+are listed as file metadata, with their values when short, not as tables. For each column it gives the dtype
 pandas reads it as and its null count. A column that Microcosm's frame codec
 stores as object-backed nullable booleans also carries
 `logical_dtype: "boolean"`. Dtypes are pandas 3 names (`str` for strings);

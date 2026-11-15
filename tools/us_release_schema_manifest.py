@@ -15,8 +15,10 @@ beside the files.
 What is read and how:
 
 - **H5.** Every key of the HDF5 store. A pandas frame (``frame`` or
-  ``frame_table``) is a table; anything else (``_time_period``, metadata) is
-  listed under ``other_keys``. Tables are read in row chunks with
+  ``frame_table``) whose key does not start with ``_`` is a table; anything
+  else (``_time_period``, ``_populace_staging_metadata``) is listed under
+  ``other_keys`` with its value when it is one short scalar, and the root
+  node's user attributes under ``root_attributes``. Tables are read in row chunks with
   ``HDFStore.select(start=, stop=)``, the reader ``USSingleYearDataset`` uses,
   so a dtype is what ``pd.read_hdf`` gives for the whole table. Memory stays
   near one chunk for ``table``-format tables; pandas reads a ``fixed``-format
@@ -112,6 +114,8 @@ ENTITY_ORDER = (
 DEFAULT_CHUNK_BYTES = 256 * 2**20
 MINIMUM_CHUNK_ROWS = 1_000
 DEFAULT_CSV_CHUNK_ROWS = 500_000
+#: Longer metadata strings are noted by type, not copied into the manifest.
+MAX_METADATA_TEXT = 4_000
 
 
 class ManifestError(ValueError):
@@ -277,19 +281,14 @@ def describe_h5(
     tables: list[dict[str, Any]] = []
     other_keys: list[dict[str, Any]] = []
     with pd.HDFStore(str(path), mode="r") as store:
+        root_attributes = _root_attributes(store)
         for key in _key_order(store.keys()):
             storer = store.get_storer(key)
-            pandas_type = getattr(storer, "pandas_type", None)
+            raw_type = getattr(storer, "pandas_type", None)
+            pandas_type = None if raw_type is None else str(raw_type)
             nrows = _storer_rows(storer)
-            if pandas_type not in TABLE_PANDAS_TYPES:
-                entry: dict[str, Any] = {
-                    "key": key,
-                    "pandas_type": pandas_type,
-                    "rows": nrows,
-                }
-                if key == measures.TIME_PERIOD_KEY:
-                    entry["value"] = measures.read_time_period(store, path)
-                other_keys.append(entry)
+            if pandas_type not in TABLE_PANDAS_TYPES or key.startswith("_"):
+                other_keys.append(_other_key(store, path, key, pandas_type, nrows))
                 continue
             step = chunk_rows or _chunk_rows(store, key, storer, chunk_bytes)
             tally = _ColumnTally(key)
@@ -313,7 +312,46 @@ def describe_h5(
         "size_bytes": path.stat().st_size,
         "tables": tables,
         "other_keys": other_keys,
+        "root_attributes": root_attributes,
     }
+
+
+def _short(value: Any) -> Any:
+    """A JSON-safe scalar, or a note of its type when it is long or not scalar."""
+
+    if hasattr(value, "item") and getattr(value, "ndim", 1) == 0:
+        value = value.item()
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", "replace")
+    if isinstance(value, bool | int) or (
+        isinstance(value, float) and value == value and abs(value) != float("inf")
+    ):
+        return value
+    if isinstance(value, str) and len(value) <= MAX_METADATA_TEXT:
+        return value
+    return f"<{type(value).__name__}, not shown>"
+
+
+def _root_attributes(store: pd.HDFStore) -> dict[str, Any]:
+    attributes = store.get_node("/")._v_attrs
+    return {
+        name: _short(attributes[name]) for name in sorted(attributes._v_attrnamesuser)
+    }
+
+
+def _other_key(
+    store: pd.HDFStore, path: Path, key: str, pandas_type: Any, nrows: int
+) -> dict[str, Any]:
+    """A metadata key: ``_time_period``, a Microcosm metadata row, or a non-frame."""
+
+    entry: dict[str, Any] = {"key": key, "pandas_type": pandas_type, "rows": nrows}
+    if key == measures.TIME_PERIOD_KEY:
+        entry["value"] = measures.read_time_period(store, path)
+    elif pandas_type in TABLE_PANDAS_TYPES:
+        entry["columns"] = [str(name) for name in store.select(key, start=0, stop=0)]
+    elif nrows == 1 and pandas_type in ("series", "series_table"):
+        entry["value"] = _short(store.select(key).iloc[0])
+    return entry
 
 
 def _csv_table_name(path: Path) -> str:
@@ -669,10 +707,23 @@ def render_markdown(manifest: Mapping[str, Any], *, title: str | None = None) ->
                 entry.get("sha256"),
             )
         )
-    for entry in manifest["files"]:
-        for key in entry.get("other_keys", []):
-            if "value" in key:
-                lines += ["", f"`{entry['name']}` key `{key['key']}`: {key['value']}."]
+    metadata = [
+        (entry["name"], f"key `{key['key']}`", key.get("value", key.get("columns")))
+        for entry in manifest["files"]
+        for key in entry.get("other_keys", [])
+    ] + [
+        (entry["name"], f"root attribute `{name}`", value)
+        for entry in manifest["files"]
+        for name, value in (entry.get("root_attributes") or {}).items()
+    ]
+    if metadata:
+        lines += ["", "## Metadata", "", _row("File", "Item", "Value")]
+        lines.append(_row("---", "---", "---"))
+        lines += [
+            # str() so a year is not printed with a thousands separator.
+            _row(name, item, str(value))
+            for name, item, value in metadata
+        ]
     lines += ["", "## Tables", "", _row("Table", "File", "Storage", "Rows", "Columns")]
     lines.append(_row("---", "---", "---", "---:", "---:"))
     for entry in manifest["files"]:
