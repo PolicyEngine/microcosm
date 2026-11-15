@@ -598,10 +598,8 @@ def test_missing_source_identity_cannot_produce_a_row_based_reliability_grade(
 @pytest.mark.skipif(
     importlib.util.find_spec("tables") is None, reason="requires pytables"
 )
-def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
-    monkeypatch, tmp_path
-) -> None:
-    """A three-household smoke exercises real sparse checkpoints, without an engine."""
+def _materialize_county_fixture(monkeypatch, tmp_path, *, acs_values=None):
+    """Materialize a three-household state_county fixture, with a fake engine."""
     from microcosm.build import ledger_artifact
     from microcosm.build.us_runtime import county_facts as county_facts_module
     from microcosm.calibrate import TargetRegistry
@@ -752,7 +750,10 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
     # The SOI rows plus every ACS county table, in the pinned row shape;
     # B01003 spans its two record sets and 01003 has no B19013 median.
     acs_rows = _production()._acs_rows(
-        ["01001", "01003"], without_median=["01003"], b01003_group_1=["01003"]
+        ["01001", "01003"],
+        values=acs_values,
+        without_median=["01003"],
+        b01003_group_1=["01003"],
     )
 
     def fake_county_facts(path, **_kwargs):
@@ -782,6 +783,27 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
         ledger_artifact, "load_ledger_consumer_artifact", feed_is_not_county_facts
     )
     module.do_materialize(args)
+    return SimpleNamespace(
+        module=module,
+        county=county,
+        args=args,
+        frame=frame,
+        parents=parents,
+        seen=seen,
+        county_reads=county_reads,
+        county_facts_file=county_facts_file,
+        county_pin=county_pin,
+    )
+
+
+def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
+    monkeypatch, tmp_path
+) -> None:
+    """A three-household smoke exercises real sparse checkpoints, without an engine."""
+    run = _materialize_county_fixture(monkeypatch, tmp_path)
+    module, county, args = run.module, run.county, run.args
+    parents, seen, county_reads = run.parents, run.seen, run.county_reads
+    county_facts_file, county_pin = run.county_facts_file, run.county_pin
     assert seen == parents
     # Read exactly once, from the resolved --county-facts path; attach_surface
     # reuses what prepare_run loaded.
@@ -856,6 +878,70 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
     assert (args.checkpoint_dir / "county_reliability.csv").read_text() == (
         county.reliability_csv(written)
     )
+
+
+def test_validation_values_change_no_loss_input_and_no_weight(
+    monkeypatch, tmp_path
+) -> None:
+    """The held-out ACS families never reach the registry, roles, matrix or solve.
+
+    Two materializations differ only in the four validation tables' public
+    values (earnings, households with earnings, household income and its
+    brackets). Every loss input is byte-identical and the solved weights are
+    equal; only the validation design file differs.
+    """
+    production = _production()
+    runs = []
+    for scale in (1, 7):
+        values = {}
+        for code in ("01001", "01003"):
+            data = production._county_values(code)
+            values[code] = {
+                **data,
+                "earning_households": data["earning_households"] // scale,
+                "earnings": data["earnings"] * scale,
+                "income": data["income"] * scale + scale,
+                "brackets": data["brackets"][::-1] if scale > 1 else data["brackets"],
+            }
+        run = _materialize_county_fixture(
+            monkeypatch, tmp_path / f"scale_{scale}", acs_values=values
+        )
+        identity = json.loads(
+            (run.args.checkpoint_dir / "run_identity.json").read_text()
+        )
+        runs.append((run, identity))
+    (first, first_identity), (second, second_identity) = runs
+    module = first.module
+    for name in ("target_registry.json", module.TARGET_ROLES_FILENAME):
+        assert (first.args.checkpoint_dir / name).read_bytes() == (
+            second.args.checkpoint_dir / name
+        ).read_bytes()
+    for key in ("target_registry_sha256", "target_roles_sha256", "target_matrix"):
+        assert first_identity[key] == second_identity[key]
+    assert (
+        first_identity["county_validation"]["design_sha256"]
+        != second_identity["county_validation"]["design_sha256"]
+    )
+    weights = []
+    for run, identity in runs:
+        frame, design, registry, roles, matrix = module.load_checkpoint_surface(
+            run.args.checkpoint_dir, identity
+        )
+        targets = module.cd_surface.calibration_target_set(
+            roles, matrix, frame.n("household"), specs=registry.specs
+        )
+        result, _done = module.calibrate_surface(
+            frame,
+            targets,
+            epochs=20,
+            epoch_batch=10,
+            max_weight_ratio=5.0,
+            target_loss_cap=10.0,
+            l2_lambda=0.0,
+            seed=0,
+        )
+        weights.append(np.asarray(result.weights))
+    np.testing.assert_array_equal(weights[0], weights[1])
 
 
 def test_county_loss_weights_share_a_state_concept_budget_without_changing_other_rows() -> (
