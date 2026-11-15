@@ -279,6 +279,7 @@ class UKBoundSpineKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
+        from microcosm.data import gate_signing_keys
         from microcosm.frame import materialize as frame_materialize
         from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
 
@@ -300,11 +301,14 @@ class UKBoundSpineKernel(KernelBase):
         # (gate_scopes), the create-frame normalisation it shares with the
         # spine's root (graph_frames, not the spine's kernel module, so an
         # edit there does not re-key the national line) and the canonical
-        # encoding of its artifacts (microcosm#931).
+        # encoding of its artifacts (microcosm#931), and the committed
+        # registry of gate signing keys the checkpoint's signed reports are
+        # held to (microcosm.data.gate_signing_keys).
         return source_hash(
             type(self),
             national_frame,
             calibration_run,
+            gate_signing_keys,
             gate_scopes,
             geographic_clones,
             release_certification,

@@ -859,8 +859,10 @@ class UKFullGateKernel(KernelBase):
         # enforcement and source registries it reads and the reports it
         # encodes; the battery, the gate registry and the shared gates'
         # evaluators; and what both phases' gates compute through, among it
-        # the release input coverage and the frame surface it reads, the
-        # target surfaces and their expected sets, the register loaders
+        # the release input coverage, the frame surface it reads, the cut's
+        # reference surface it requires and the true-source counts it
+        # withholds by (reference_surface, receipt_counts; microcosm#1095),
+        # the target surfaces and their expected sets, the register loaders
         # (terminal_gates), and the spine and local gate scopes (gate_scopes,
         # not the runner that re-exports them). What only one phase computes
         # through is that phase's own code, a node param that run checks
@@ -891,6 +893,8 @@ class UKFullGateKernel(KernelBase):
             local_targets,
             national_frame,
             parity_reference,
+            receipt_counts,
+            reference_surface,
             release_identity,
             release_input_coverage,
             terminal_gates,
@@ -911,6 +915,8 @@ class UKFullGateKernel(KernelBase):
                         graph_targets,
                         gate_scopes,
                         release_input_coverage,
+                        reference_surface,
+                        receipt_counts,
                         national_frame,
                         uk_engine_adapter,
                         frame_materialize,

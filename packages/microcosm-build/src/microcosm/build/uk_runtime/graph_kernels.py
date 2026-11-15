@@ -86,6 +86,7 @@ from . import (
     bus_fare_pricing,
     bus_support_pricing,
     bus_use_incidence,
+    carers_allowance_take_up,
     cgt_asset_type,
     cgt_imputation,
     cgt_structure,
@@ -333,15 +334,28 @@ _STAGE_HELPER_MODULES = {
     # The FRS stages that read raw tabs and normalise their ids through
     # frs_spine; the employment stage maps occupations to the shared codes, and
     # the disability flags resolve the benefit year's rules from the FRS
-    # release and annualise on frs_spine's week count (microcosm#931).
+    # release and annualise on frs_spine's week count (microcosm#931). The
+    # council tax stage levels Scotland's bills on CTAS's Band D, which it
+    # reads as vendored facts (microcosm#1095, S2(a)), and the disability
+    # stage's carer link places its outside carers through Carer's
+    # Allowance's balanced positions (microcosm#1095, A3).
     "frs_relationships": (*_PINNED_TAB_MODULES, stochastic_assignment),
     "frs_employment": (
         *_PINNED_TAB_MODULES,
         occupation_constants,
         stochastic_assignment,
     ),
-    "frs_council_tax": (*_PINNED_TAB_MODULES, stochastic_assignment),
-    "frs_disability": (frs_release, frs_spine, stochastic_assignment),
+    "frs_council_tax": (
+        *_PINNED_TAB_MODULES,
+        *_FEED_FACT_MODULES,
+        stochastic_assignment,
+    ),
+    "frs_disability": (
+        carers_allowance_take_up,
+        frs_release,
+        frs_spine,
+        stochastic_assignment,
+    ),
     "frs_education": (*_PINNED_TAB_MODULES, stochastic_assignment),
     # The leaves' employer pension contributions are drawn on keyed uniforms
     # through employer_pension_contributions, from the ASHE rates it reads as
@@ -499,11 +513,14 @@ _STAGE_HELPER_MODULES = {
     # evidence shares iterate HMRC's distributional inputs. It zeros a drawn
     # row's annuity and trust descriptor, whose name it reads from
     # annuity_trust_column, as the root does (microcosm#931, ruled 9 Nov
-    # (late)).
+    # (late)). It takes the carer link again on the copies by frs_disability's
+    # rule, whose outside carers are placed through Carer's Allowance's
+    # balanced positions (microcosm#1095, A3).
     "hmrc_spi_income_spine": (
         spi_income,
         spi_rank_transport,
         annuity_trust_column,
+        carers_allowance_take_up,
         copy_id_table,
         employer_pension_contributions,
         *_FEED_FACT_MODULES,
@@ -537,13 +554,16 @@ _STAGE_HELPER_MODULES = {
     # (microcosm#931). It writes the annuity and trust descriptor under the
     # name annuity_trust_column holds (microcosm#931, ruled 9 Nov (late)). It
     # reads each household's nation, for its IMD decile and its band flag,
-    # from the region tier through council_tax_constants (microcosm#931).
+    # from the region tier through council_tax_constants (microcosm#931). The
+    # LCWRA proxy reads the reported disability benefits frs_disability lists
+    # (microcosm#1095, Y1).
     "frs_spine": (
         uc_relationships,
         annuity_trust_column,
         copy_id_table,
         birth_month,
         council_tax_constants,
+        frs_disability,
         geography_constants,
         pension_coherence,
         receipt_counts,
@@ -847,11 +867,19 @@ _STAGE_HELPER_MODULES = {
     ),
     # Unavailable capital is frs_spine's sentinel (microcosm#931).
     "uc_capital_coherence": (uc_relationships, frs_spine, stochastic_assignment),
-    # The Universal Credit redraw reads the award through the adapter, the
     # One engine materialization of the proxy, the claimant role and carer
-    # status; the frs_spine carrier's codes; the receipt's support counts
-    # (microcosm#1095, Y1).
-    "uc_limited_capability": (uk_engine_adapter, frs_spine, receipt_counts),
+    # status, which runs as every engine call does (microcosm#931), with the
+    # year's rules from the FRS release; the frs_spine carrier's codes, whose
+    # module draws through the keyed-draw helpers; the receipt's support
+    # counts (microcosm#1095, Y1).
+    "uc_limited_capability": (
+        *_ENGINE_STAGE_MODULES,
+        frs_release,
+        frs_spine,
+        receipt_counts,
+        stochastic_assignment,
+    ),
+    # The Universal Credit redraw reads the award through the adapter, the
     # vendored DWP counts, the closure stage's rule and rates, the deduction
     # attributes, the take-up population and the family-type roles, and counts
     # its pools and receipt on the source lineage (microcosm#1334); the
@@ -948,9 +976,10 @@ _STAGE_HELPER_MODULES = {
         target_materialization,
         stochastic_assignment,
     ),
-    # The points draws are keyed on identity, read the vendored DWP tables and
-    # round their receipt's support (microcosm#1095, P1).
-    "pip_points": (receipt_counts, stochastic_assignment, ledger_fact_vendoring),
+    # The points draws are keyed on identity, read the vendored DWP tables
+    # through the vendored-fact reader and round their receipt's support
+    # (microcosm#1095, P1).
+    "pip_points": (receipt_counts, stochastic_assignment, *_FEED_FACT_MODULES),
     # The claimant draw is keyed on identity and its receipt rounds its
     # support (microcosm#1428).
     "trading_allowance_receipts": (receipt_counts, stochastic_assignment),
