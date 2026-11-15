@@ -734,6 +734,47 @@ class TestDeclaredOutputsAreWrittenColumns:
         assert stage.rewrites == UK_COUNCIL_TAX_LOCALISE_REWRITES
         assert not (set(stage.outputs) & set(stage.rewrites))
 
+    def test_the_housing_shell_declares_the_band_d_and_its_council_tax_derive(
+        self,
+    ) -> None:
+        # The housing shell declares the Scottish Band D resource's feed
+        # check as the council-tax localisation declares it, its imputation,
+        # and the derive of the council tax it rewrites on Great Britain's SPI
+        # copies, in that order, and the localisation's two Band D artifacts.
+        # It writes no new column (microcosm#931).
+        from microcosm.build.uk_runtime.spi_housing_council_tax import (
+            UK_SPI_HOUSING_COUNCIL_TAX_ARTIFACTS,
+            UK_SPI_HOUSING_COUNCIL_TAX_OUTPUT,
+        )
+
+        stages = load_country_spec("uk").sources.stage_map()
+        shell, localiser = stages["spi_housing_shell"], stages["council_tax_localise"]
+
+        assert [operation.kind for operation in shell.operations] == [
+            "verify_vendored_fact_resource",
+            "impute_spi_housing_shell",
+            "derive",
+        ]
+        verify, _, derive = shell.operations
+        (localiser_verify,) = (
+            operation
+            for operation in localiser.operations
+            if operation.kind == "verify_vendored_fact_resource"
+        )
+        assert dict(verify.parameters) == dict(localiser_verify.parameters)
+        assert derive.parameters["output"] == UK_SPI_HOUSING_COUNCIL_TAX_OUTPUT
+        assert derive.parameters["output"] in shell.rewrites
+        assert [dict(artifact) for artifact in shell.artifacts] == [
+            dict(artifact) for artifact in localiser.artifacts
+        ]
+        assert (
+            tuple(
+                (artifact["role"], artifact["resource"]) for artifact in shell.artifacts
+            )
+            == UK_SPI_HOUSING_COUNCIL_TAX_ARTIFACTS
+        )
+        assert shell.outputs == ()
+
     def test_e8_outputs_and_rewrites_are_backed_by_runtime_constants(self) -> None:
         from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
         from microcosm.build.uk_runtime.cgt_support import (

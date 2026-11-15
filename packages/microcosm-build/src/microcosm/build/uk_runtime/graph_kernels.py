@@ -141,6 +141,7 @@ from . import (
     rfdr_area_layer,
     rowwise_geography,
     spi_band_donors,
+    spi_housing_council_tax,
     spi_income,
     spi_rank_transport,
     spi_support,
@@ -945,18 +946,39 @@ _STAGE_HELPER_MODULES = {
     # whose year's rules come from the FRS release (microcosm#931).
     "private_school_attendance": (*_ENGINE_STAGE_MODULES, frs_release),
     # The housing shell keeps council tax bands within the nation, whose
-    # regions are microcosm.calibrate's UK region tier, and gates its fits;
-    # the deduction attributes map benefit units to households and
-    # judge their realisation by the shared tolerance; the salary sacrifice
-    # reads its bonus anchor as vendored facts and gates its fits; the
-    # student loans resolve their year's rules (microcosm#931).
+    # regions are microcosm.calibrate's UK region tier, and gates its fits.
+    # It prices the Great Britain bills of the support channel's copies
+    # through spi_housing_council_tax, which takes each copy's reference Band
+    # D through the shared draw-cell expectation, on atomic_area_conditioning's
+    # definition, systems and copy level over the decoded supports, which read
+    # the support profile, the band order and the FRS region map; the
+    # definition is encoded canonically and names microcosm.graph's stream.
+    # It reads the Band D and prices the statute through council_tax_band_d,
+    # Scotland's Band D a vendored fact checked against the pinned feed, and
+    # reads the authority code column (microcosm#931).
     "spi_housing_shell": (
+        atomic_geography,
+        atomic_support_conditioning,
+        atomic_support_expectations,
+        atomic_area_conditioning,
+        atomic_area_support,
+        council_tax_band_d,
         council_tax_constants,
+        local_authority_input,
+        rowwise_geography,
+        spi_housing_council_tax,
         geography_constants,
+        *_FEED_FACT_MODULES,
         *_QRF_MODULES,
         qrf_gates,
         stochastic_assignment,
+        graph_canonical,
+        graph_randomness,
     ),
+    # The deduction attributes map benefit units to households and judge
+    # their realisation by the shared tolerance; the salary sacrifice reads its
+    # bonus anchor as vendored facts and gates its fits; the student loans
+    # resolve their year's rules (microcosm#931).
     "uc_deduction_attributes": (frs_brma, stage_health, stochastic_assignment),
     "salary_sacrifice": (*_FEED_FACT_MODULES, qrf_gates, stochastic_assignment),
     "student_loans": (frs_release, stochastic_assignment),
@@ -1751,8 +1773,13 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 donor=aps,
                 boosted_max_iter=qrf_estimators,
             ),
+            # The Great Britain copies' bills at their region's expected Band
+            # D on the toy supports, at the committed 2024-25 Band D
+            # (microcosm#931).
             "spi_housing_shell": UKSPIHousingShellStageTransform(
-                stage=stages["spi_housing_shell"], n_estimators=qrf_estimators
+                stage=stages["spi_housing_shell"],
+                supports=supports,
+                n_estimators=qrf_estimators,
             ),
             "uc_reporter_redraw": UKUCReporterRedrawStageTransform(
                 stage=stages["uc_reporter_redraw"], engine=engine

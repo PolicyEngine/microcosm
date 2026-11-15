@@ -20,19 +20,51 @@ renting reporters only. A council-tax band its nation does not use (band I
 outside Wales, any band but the placeholder in Northern Ireland) is drawn again
 from the classifier's probabilities over that nation's bands. FRS base rows are
 never modified.
+
+Council tax stays a target of the chained QRF on every row. After the support
+rules, a Great Britain row's drawn bill is replaced by the 2024-25 statute at
+its reference Band D (``spi_housing_council_tax``): the expected Band D of the
+cell the SPI-copy area stage (``spi_copy_areas``) draws the row's area from,
+its region by households, for the row's nation and drawn band, less the
+single-adult discount where ``council_tax_single_adult_raw`` is 1. A Northern
+Ireland row keeps the chained draw (María's ruling of 2026-11-14), and every
+band and every other chained amount is the draw's. The drawn council tax
+benefit is then capped at the bill written, and the rebate set equal to it.
+The bill reads the row's region and no area column, so the council-tax
+localisation (``council_tax_localise``) localises it once. The stage refuses
+unless the bill's checks hold on what it writes, and its receipt carries the
+bill's method, inputs and checks under ``council_tax``, with no number.
+
+The stage declares the Scottish Band D resource's ``verify_vendored_fact_resource``
+operation, the imputation and a ``derive`` of ``council_tax``, and the two Band D
+artifacts. The transform takes the conditioned supports the area stages read,
+and runs the Scottish resource's runtime arm with the frame's period before it
+reads a row.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import HistGradientBoostingClassifier
 
+from microcosm.build.atomic_geography import AtomicSupport
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.uk_runtime.atomic_area_conditioning import (
+    uk_conditioned_assignment_definition,
+    uk_conditioned_supports,
+)
+from microcosm.build.uk_runtime.cgt_structure import _assert_closed_world_operations
+from microcosm.build.uk_runtime.council_tax_band_d import (
+    UKCouncilTaxBandD,
+    check_scotland_band_d_declaration,
+    load_uk_council_tax_band_d,
+)
 from microcosm.build.uk_runtime.council_tax_constants import (
     UK_COUNCIL_TAX_BANDS_BY_NATION,
     UK_COUNCIL_TAX_BANDS_BY_REGION,
@@ -48,6 +80,20 @@ from microcosm.build.uk_runtime.qrf_gates import (
     UK_GATE_OUTCOMES_EVIDENCE,
     declared_gate_calibration,
     gate_outcomes,
+)
+from microcosm.build.uk_runtime.spi_housing_council_tax import (
+    UK_SPI_HOUSING_COUNCIL_TAX_ARTIFACTS,
+    UK_SPI_HOUSING_COUNCIL_TAX_CHECKS,
+    UK_SPI_HOUSING_COUNCIL_TAX_DERIVE_KIND,
+    UK_SPI_HOUSING_COUNCIL_TAX_EVIDENCE,
+    UK_SPI_HOUSING_COUNCIL_TAX_VERIFY_KIND,
+    UKSPIHousingCouncilTaxInputs,
+    uk_spi_council_tax_bills,
+    uk_spi_housing_council_tax_checks,
+    uk_spi_housing_council_tax_derive_parameters,
+    uk_spi_housing_council_tax_evidence,
+    uk_spi_housing_council_tax_inputs,
+    uk_spi_housing_council_tax_verify_parameters,
 )
 
 __all__ = [
@@ -487,12 +533,18 @@ def fit_housing_model(
     return model
 
 
-def apply_structural_rules(
+def apply_support_rules(
     draws: pd.DataFrame,
     region: pd.Series,
     structural_zeros: Mapping[str, Mapping[str, tuple[str, ...]]],
 ) -> tuple[pd.DataFrame, dict[str, int]]:
-    """Force the learned structural zeros and the declared tenure rules."""
+    """Force the learned structural zeros and the declared tenure rules.
+
+    An amount is zero wherever training holds no positive value for the row's
+    tenure or region, mortgage payments need a mortgaged tenure and Housing
+    Benefit a rented one. Returns the ruled draws and, keyed as the receipt's
+    ``rule_firings``, the rows each rule changed.
+    """
 
     out = draws.copy()
     fired: dict[str, int] = {}
@@ -516,11 +568,138 @@ def apply_structural_rules(
     hb_hit = ~rented & (out["housing_benefit_head_unit"].to_numpy(dtype=float) > 0.0)
     fired["housing_benefit_head_unit:not_rented"] = int(hb_hit.sum())
     out.loc[~rented, "housing_benefit_head_unit"] = 0.0
+    return out, fired
+
+
+def cap_council_tax_benefit(
+    draws: pd.DataFrame,
+) -> tuple[pd.DataFrame, dict[str, int]]:
+    """Cap the drawn council tax benefit at the council tax the draws carry.
+
+    Returns the draws with ``council_tax_benefit_hrp`` at most ``council_tax``
+    on every row and, keyed ``council_tax_benefit_hrp:cap`` as the receipt's
+    ``rule_firings``, the rows whose benefit exceeded it.
+    """
+
+    out = draws.copy()
     ctb = out["council_tax_benefit_hrp"].to_numpy(dtype=float)
     cap = out["council_tax"].to_numpy(dtype=float)
-    fired["council_tax_benefit_hrp:cap"] = int((ctb > cap).sum())
+    fired = {"council_tax_benefit_hrp:cap": int((ctb > cap).sum())}
     out["council_tax_benefit_hrp"] = np.minimum(ctb, cap)
     return out, fired
+
+
+def apply_structural_rules(
+    draws: pd.DataFrame,
+    region: pd.Series,
+    structural_zeros: Mapping[str, Mapping[str, tuple[str, ...]]],
+) -> tuple[pd.DataFrame, dict[str, int]]:
+    """Force the learned structural zeros and the declared tenure rules, then
+    cap the council tax benefit at the drawn council tax.
+
+    :func:`apply_support_rules` then :func:`cap_council_tax_benefit`, their
+    firings in that order. The housing shell runs the two apart, with each
+    Great Britain row's statute bill written between them (microcosm#931).
+    """
+
+    supported, fired = apply_support_rules(draws, region, structural_zeros)
+    capped, cap_fired = cap_council_tax_benefit(supported)
+    return capped, {**fired, **cap_fired}
+
+
+#: Each council-tax check of the SPI-channel rows, and the fixed text the
+#: stage refuses with where it fails (microcosm#931).
+_COUNCIL_TAX_CHECK_REFUSALS: Mapping[str, str] = MappingProxyType(
+    {
+        "bill_at_statute_of_reference": (
+            "a Great Britain row's council_tax is not the 2024-25 statute at its "
+            "reference Band D"
+        ),
+        "northern_ireland_bill_as_chained": (
+            "a Northern Ireland row's council_tax is not its chained draw"
+        ),
+        "reduction_within_bill": (
+            "a row's council_tax or council tax reduction is not finite and "
+            "nonnegative, or the reduction exceeds the bill"
+        ),
+        "rebate_equals_reduction": (
+            "a row's council_tax_rebate is not its reference person's council tax "
+            "reduction"
+        ),
+    }
+)
+
+
+def _require_council_tax_inputs(
+    inputs: object, recipients: pd.DataFrame
+) -> UKSPIHousingCouncilTaxInputs:
+    """The council-tax inputs of exactly the SPI-channel rows, with their
+    regions, in table order: the bill's nation is the inputs' region's."""
+
+    if not isinstance(inputs, UKSPIHousingCouncilTaxInputs):
+        raise TypeError(
+            "Housing shell prices council tax with council_tax_inputs built by "
+            "uk_spi_housing_council_tax_inputs."
+        )
+    if list(inputs.household_ids) != recipients["household_id"].tolist():
+        raise ValueError(
+            "Housing shell prices council tax on its SPI-channel rows; "
+            "council_tax_inputs must hold their household_id values in table "
+            "order, and these do not."
+        )
+    if list(inputs.regions) != recipients["region"].astype(str).tolist():
+        raise ValueError(
+            "Housing shell prices council tax on its SPI-channel rows; "
+            "council_tax_inputs must hold their region values in table order, "
+            "and these do not."
+        )
+    return inputs
+
+
+def _written_council_tax_checks(
+    chained: pd.Series,
+    *,
+    inputs: UKSPIHousingCouncilTaxInputs,
+    draws: pd.DataFrame,
+    single_adult: pd.Series,
+    household_out: pd.DataFrame,
+    person_out: pd.DataFrame,
+    recipients: np.ndarray,
+    spi_people: np.ndarray,
+) -> dict[str, bool]:
+    """The bill's checks on what the stage wrote, each asserted.
+
+    The bill and the rebate are read from the household rows written, and the
+    reduction from the people written, summed per household (the reference
+    person's), each on the inputs' household ids in their order.
+    """
+
+    index = pd.Index(list(inputs.household_ids))
+    written = household_out.loc[recipients]
+    reduction = (
+        person_out.loc[spi_people]
+        .groupby("person_household_id")["council_tax_benefit_reported"]
+        .sum()
+        .reindex(written["household_id"].to_numpy())
+    )
+    checks = uk_spi_housing_council_tax_checks(
+        chained,
+        inputs=inputs,
+        bills=pd.Series(written["council_tax"].to_numpy(dtype=np.float64), index=index),
+        bands=draws["council_tax_band"],
+        single_adult=single_adult,
+        reduction=pd.Series(reduction.to_numpy(dtype=np.float64), index=index),
+        rebate=pd.Series(
+            written[COUNCIL_TAX_REBATE_COLUMN].to_numpy(dtype=np.float64), index=index
+        ),
+    )
+    for check in UK_SPI_HOUSING_COUNCIL_TAX_CHECKS:
+        if checks[check] is not True:
+            raise ValueError(
+                f"Housing shell's council tax failed its check {check!r}: "
+                f"{_COUNCIL_TAX_CHECK_REFUSALS[check]}."
+            )
+    return checks
 
 
 def impute_spi_housing_shell(
@@ -528,14 +707,34 @@ def impute_spi_housing_shell(
     household: pd.DataFrame,
     household_weights: np.ndarray,
     *,
+    council_tax_inputs: UKSPIHousingCouncilTaxInputs,
     seed: int = 0,
     n_estimators: int = 100,
     gate_calibration: str = UK_DEFAULT_GATE_CALIBRATION,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
     """Redraw every SPI-channel household's housing; FRS rows are untouched.
 
+    ``council_tax_inputs`` are the SPI-channel rows' council-tax inputs
+    (:func:`~microcosm.build.uk_runtime.spi_housing_council_tax.uk_spi_housing_council_tax_inputs`
+    on ``household``), required so that no path skips the statute. After the
+    support rules, each Great Britain row's ``council_tax`` becomes the
+    statute at its reference
+    (:func:`~microcosm.build.uk_runtime.spi_housing_council_tax.uk_spi_council_tax_bills`),
+    a Northern Ireland row's stays the chained draw, and the drawn council tax
+    benefit is then capped at the bill written. The household's bill, its
+    ``council_tax_rebate`` and the reference person's reduction carry them;
+    the bill's checks
+    (:func:`~microcosm.build.uk_runtime.spi_housing_council_tax.uk_spi_housing_council_tax_checks`)
+    must hold on what is written, and the receipt carries the bill's evidence
+    under ``council_tax``.
+
     When ``gate_calibration`` is not the in-sample gate, the receipt names each
     amount target's gate outcome.
+
+    Refused, naming no household: ``council_tax_inputs`` not built by
+    ``uk_spi_housing_council_tax_inputs``, or not holding the SPI-channel
+    rows' ``household_id`` and ``region`` values in table order; and a check
+    that fails, with its fixed message.
     """
 
     channel = household["household_support_channel"].astype(str).to_numpy()
@@ -576,6 +775,10 @@ def impute_spi_housing_shell(
     recipient_ids = household.loc[channel == SPI_CHANNEL, "household_id"]
     if training_ids.empty or recipient_ids.empty:
         raise ValueError("Housing shell needs FRS training rows and SPI recipients.")
+    _require_council_tax_inputs(
+        council_tax_inputs,
+        household.loc[channel == SPI_CHANNEL, ["household_id", "region"]],
+    )
 
     model = fit_housing_model(
         predictors.loc[training_ids],
@@ -587,9 +790,23 @@ def impute_spi_housing_shell(
     )
     band_redraws: dict[str, int] = {}
     raw = model.draw(predictors.loc[recipient_ids], firings=band_redraws)
-    draws, fired = apply_structural_rules(
+    supported, fired = apply_support_rules(
         raw, predictors["region"], model.structural_zeros
     )
+    # Each Great Britain row's bill by the statute at its reference Band D,
+    # after the learned zeros and the tenure rules; a Northern Ireland row
+    # keeps the chained draw (María's ruling of 2026-11-14). The cap then
+    # reads the bill written (microcosm#931).
+    chained = supported["council_tax"].copy()
+    single_adult = predictors.loc[recipient_ids, "single_adult"]
+    supported["council_tax"] = uk_spi_council_tax_bills(
+        chained,
+        inputs=council_tax_inputs,
+        bands=supported["council_tax_band"],
+        single_adult=single_adult,
+    )
+    draws, cap_fired = cap_council_tax_benefit(supported)
+    fired.update(cap_fired)
     fired.update(band_redraws)
 
     household_out = household.copy()
@@ -614,6 +831,16 @@ def impute_spi_housing_shell(
             .map(draws[target])
             .to_numpy(dtype=float)
         )
+    checks = _written_council_tax_checks(
+        chained,
+        inputs=council_tax_inputs,
+        draws=draws,
+        single_adult=single_adult,
+        household_out=household_out,
+        person_out=person_out,
+        recipients=recipients,
+        spi_people=spi_people,
+    )
 
     receipt = {
         "training_households": int(len(training_ids)),
@@ -634,6 +861,9 @@ def impute_spi_housing_shell(
             }
             for column in HOUSING_CATEGORICAL_COLUMNS
         },
+        UK_SPI_HOUSING_COUNCIL_TAX_EVIDENCE: uk_spi_housing_council_tax_evidence(
+            council_tax_inputs, checks=checks
+        ),
     }
     if gate_calibration != UK_DEFAULT_GATE_CALIBRATION:
         receipt[UK_GATE_OUTCOMES_EVIDENCE] = gate_outcomes(
@@ -689,38 +919,117 @@ UK_SPI_HOUSING_SHELL_REWRITES: tuple[str, ...] = (
 )
 
 
+#: The imputation's operation kind.
+_IMPUTE_KIND = "impute_spi_housing_shell"
+#: The seed the transform builds the area draw's definition at: the bill's
+#: references read the definition's systems, constraints and weight rules,
+#: never its stream, so no seed moves one.
+_DEFINITION_SEED = 0
+
+
+def _stage_operations() -> tuple[tuple[str, dict[str, Any]], ...]:
+    """The reviewed operations the stage must declare verbatim, in order: the
+    Scottish Band D resource's feed check, as the council-tax localisation
+    declares it; the imputation; and the ``derive`` of the Great Britain
+    rows' ``council_tax``."""
+
+    return (
+        (
+            UK_SPI_HOUSING_COUNCIL_TAX_VERIFY_KIND,
+            uk_spi_housing_council_tax_verify_parameters(),
+        ),
+        (_IMPUTE_KIND, dict(UK_SPI_HOUSING_SHELL_OPERATION)),
+        (
+            UK_SPI_HOUSING_COUNCIL_TAX_DERIVE_KIND,
+            uk_spi_housing_council_tax_derive_parameters(),
+        ),
+    )
+
+
 def _assert_stage_parameters(stage) -> None:
+    """The stage the transform runs as: its name, the reviewed operations
+    verbatim and in order, no new outputs, the housing rewrites, and exactly
+    the two Band D artifacts, each with ``runtime_sha256_required``."""
+
     if stage.stage != UK_SPI_HOUSING_SHELL_STAGE_NAME:
         raise ValueError(
             f"Housing shell received stage {stage.stage!r}, expected "
             f"{UK_SPI_HOUSING_SHELL_STAGE_NAME!r}."
         )
-    kinds = [operation.kind for operation in stage.operations]
-    if kinds != ["impute_spi_housing_shell"]:
-        raise ValueError(
-            f"spi_housing_shell operations drifted: expected "
-            f"['impute_spi_housing_shell'], got {kinds}."
-        )
-    actual = dict(stage.operations[0].parameters)
-    if actual != UK_SPI_HOUSING_SHELL_OPERATION:
-        raise ValueError(
-            "spi_housing_shell parameters drifted: expected "
-            f"{UK_SPI_HOUSING_SHELL_OPERATION}, got {actual}."
-        )
+    _assert_closed_world_operations(stage, _stage_operations())
     if stage.outputs != () or tuple(stage.rewrites) != UK_SPI_HOUSING_SHELL_REWRITES:
         raise ValueError(
             "spi_housing_shell must declare no new outputs and exactly the "
             f"housing rewrites {list(UK_SPI_HOUSING_SHELL_REWRITES)}."
         )
+    declared = sorted(
+        (str(artifact.get("role")), str(artifact.get("resource")))
+        for artifact in stage.artifacts
+        if artifact.get("runtime_sha256_required") is True
+    )
+    if len(stage.artifacts) != len(UK_SPI_HOUSING_COUNCIL_TAX_ARTIFACTS) or (
+        declared != sorted(UK_SPI_HOUSING_COUNCIL_TAX_ARTIFACTS)
+    ):
+        raise ValueError(
+            "spi_housing_shell reads the artifacts "
+            f"{list(UK_SPI_HOUSING_COUNCIL_TAX_ARTIFACTS)} (role, resource), each "
+            "with runtime_sha256_required: true, and no other; the stage declares "
+            "another, or lacks one of them or its flag."
+        )
 
 
-@dataclass
+def _operation(stage, kind: str) -> Mapping[str, Any]:
+    """The parameters of the stage's one operation of ``kind``."""
+
+    (operation,) = (op for op in stage.operations if op.kind == kind)
+    return operation.parameters
+
+
+@dataclass(frozen=True)
 class UKSPIHousingShellStageTransform:
-    """Whole-stage callable: impute the SPI support households' housing."""
+    """Whole-stage callable: impute the SPI support households' housing.
+
+    ``supports`` holds the three conditioned supports' bytes, keyed by
+    system, each held to canonical bytes, as the council-tax localisation's
+    transform takes them. ``band_d`` is the Band D the Great Britain bills
+    are priced at: the committed resources
+    (:func:`~microcosm.build.uk_runtime.council_tax_band_d.load_uk_council_tax_band_d`,
+    which checks the Scottish resource's feed against the pin) unless a test
+    supplies one. Constructing the transform checks the stage it runs as,
+    builds the area draw's definition at seed 0 and decodes the supports;
+    running it checks the stage again, runs the Scottish resource's runtime
+    arm with the frame's period before it reads a row, takes the SPI-channel
+    rows' council-tax inputs
+    (:func:`~microcosm.build.uk_runtime.spi_housing_council_tax.uk_spi_housing_council_tax_inputs`),
+    imputes (:func:`impute_spi_housing_shell`) and checks the housing
+    invariants. The receipt starts with the stage.
+    """
 
     stage: Any
+    supports: Mapping[str, bytes] = field(repr=False)
     n_estimators: int | None = None
-    last_receipt: dict[str, Any] | None = field(default=None, init=False)
+    band_d: UKCouncilTaxBandD | None = field(default=None, repr=False, compare=False)
+    definition: Mapping[str, object] = field(init=False, repr=False, compare=False)
+    decoded_supports: Mapping[str, AtomicSupport] = field(
+        init=False, repr=False, compare=False
+    )
+    last_receipt: dict[str, Any] | None = field(default=None, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        _assert_stage_parameters(self.stage)
+        if self.band_d is not None and not isinstance(self.band_d, UKCouncilTaxBandD):
+            raise TypeError("Housing shell prices council tax at a UKCouncilTaxBandD.")
+        # Building the definition holds every support to canonical bytes.
+        definition = uk_conditioned_assignment_definition(
+            self.supports, seed=_DEFINITION_SEED
+        )
+        decoded = uk_conditioned_supports(self.supports)
+        band_d = (
+            self.band_d if self.band_d is not None else load_uk_council_tax_band_d()
+        )
+        object.__setattr__(self, "definition", definition)
+        object.__setattr__(self, "decoded_supports", MappingProxyType(decoded))
+        object.__setattr__(self, "band_d", band_d)
 
     def __call__(self, frame):
         from microcosm.build.uk_runtime.national_frame import (
@@ -731,20 +1040,30 @@ class UKSPIHousingShellStageTransform:
         )
 
         _assert_stage_parameters(self.stage)
+        check_scotland_band_d_declaration(
+            _operation(self.stage, UK_SPI_HOUSING_COUNCIL_TAX_VERIFY_KIND),
+            stage=UK_SPI_HOUSING_SHELL_STAGE_NAME,
+            period=int(uk_time_period(frame)),
+        )
         validate_uk_national_frame(frame)
         household = frame.table("household")
         weights = np.asarray(frame.weights_for("household").values, dtype=float)
+        council_tax_inputs = uk_spi_housing_council_tax_inputs(
+            household,
+            definition=self.definition,
+            supports=self.decoded_supports,
+            band_d=self.band_d,
+        )
         person_out, household_out, receipt = impute_spi_housing_shell(
             frame.table("person"),
             household,
             weights,
+            council_tax_inputs=council_tax_inputs,
             seed=int(UK_SPI_HOUSING_SHELL_OPERATION["seed"]),
             n_estimators=int(
                 self.n_estimators or UK_SPI_HOUSING_SHELL_OPERATION["n_estimators"]
             ),
-            gate_calibration=declared_gate_calibration(
-                self.stage, "impute_spi_housing_shell"
-            ),
+            gate_calibration=declared_gate_calibration(self.stage, _IMPUTE_KIND),
         )
         _assert_invariants(frame.table("person"), household, person_out, household_out)
         result = uk_national_frame(
@@ -757,7 +1076,11 @@ class UKSPIHousingShellStageTransform:
             mass_log=frame.mass_log,
         )
         validate_uk_national_frame(result)
-        self.last_receipt = {"stage": UK_SPI_HOUSING_SHELL_STAGE_NAME, **receipt}
+        object.__setattr__(
+            self,
+            "last_receipt",
+            {"stage": UK_SPI_HOUSING_SHELL_STAGE_NAME, **receipt},
+        )
         return result
 
     @staticmethod

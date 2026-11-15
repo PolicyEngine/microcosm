@@ -3674,10 +3674,40 @@
   {
    "stage": "spi_housing_shell",
    "survey": "Family Resources Survey 2024-25",
-   "source": "Family Resources Survey 2024-25 base households' housing (tenure, dwelling type, bedrooms, council tax, housing costs and the housing-linked benefit reports), imputed onto the SPI support households from their own region, composition and post-SPI incomes.",
+   "source": "Family Resources Survey 2024-25 base households' housing (tenure, dwelling type, bedrooms, council tax, housing costs and the housing-linked benefit reports), imputed onto the SPI support households from their own region, composition and post-SPI incomes; for the council tax of Great Britain's SPI support households, each local authority's Band D council tax for 2024-25, keyed by April 2023 local authority code, England's from MHCLG's Council Tax levels set by local authorities in England 2024 to 2025 (Table 8) and Wales's from StatsWales (council_tax_band_d_england_wales_2024_25.json), and Scotland's from the Scottish Government's CTAS 2026 Council Tax Assumptions, vendored from the pinned Chronicle feed (scotgov_band_d_council_tax_2024_25.json); the statutory band proportions and single-adult discount (Local Government Finance Act 1992, as amended); and the conditioned atomic-area supports sources.yaml declares, on which each such household's reference Band D is taken over its region's areas, weighted by households.",
    "grain": "household",
-   "artifacts": [],
+   "artifacts": [
+    {
+     "format": "json",
+     "kind": "public_aggregate_reference",
+     "resource": "council_tax_band_d_england_wales_2024_25.json",
+     "role": "council_tax_band_d",
+     "runtime_sha256_required": true
+    },
+    {
+     "format": "json",
+     "kind": "public_aggregate_reference",
+     "resource": "scotgov_band_d_council_tax_2024_25.json",
+     "role": "scotland_band_d_facts",
+     "runtime_sha256_required": true
+    }
+   ],
    "operations": [
+    {
+     "artifact_role": "scotland_band_d_facts",
+     "fail_on_mismatch": true,
+     "feed_pin": "chronicle_feed.json",
+     "kind": "verify_vendored_fact_resource",
+     "mapped_build_period": 2024,
+     "period_mapping": "fiscal_year_2024_25_is_the_build_period",
+     "record_sets": [
+      "scotgov.ctas2026.band_d.fy2024"
+     ],
+     "require_before_source_read": true,
+     "resource": "scotgov_band_d_council_tax_2024_25.json",
+     "runtime_sha256_required": true,
+     "source_vintage": "2024-25 (ScotGov CTAS 2026)"
+    },
     {
      "kind": "impute_spi_housing_shell",
      "training_rows": "base_frs_channel_positive_weight",
@@ -3740,6 +3770,11 @@
      "n_estimators": 100,
      "seed": 0,
      "gate_calibration": "cross_fitted"
+    },
+    {
+     "formula": "After the band draw and the chained amounts, on the Great Britain rows the SPI support channel copied (SPI copies and income band donors): the 2024-25 statute (council_tax_band_d.uk_statutory_council_tax) at the copy's reference Band D, the exact expected 2024-25 Band D of the cell spi_copy_areas drew its area from (its region, by households, as council_tax_localise takes it), for its nation and drawn band, less the single-adult discount where council_tax_single_adult_raw is 1. Northern Ireland's rows keep the chained draw. The bill reads neither the drawn area nor its local authority, so council_tax_localise localises it once.",
+     "kind": "derive",
+     "output": "council_tax"
     }
    ],
    "outputs": [],
@@ -3762,7 +3797,7 @@
     "housing_benefit_reported",
     "council_tax_benefit_reported"
    ],
-   "notes": "Runs after the SPI income chain and before the income-conditioned donor stages, the household counterpart of the SPI stage-2 FRS-only fill. The support copies and income band donors are whole FRS households, so without this stage each kept its FRS parent's housing, drawn for the parent's income. Trained on the FRS base households (positive household weight) and drawn for every SPI-channel household from engine-free predictors (region, household type, adults, children, single-adult status, reference-person age and household income components). Tenure, dwelling type, bedrooms and council-tax band are drawn in that order by weighted multiclass classifiers with an inverse-CDF draw; the housing amounts and the head benefit unit's Housing Benefit and the reference person's council tax benefit by one chained regime-gated QRF conditioned on the drawn categories, clipped to the training range. The QRF's sign gates are cross-fitted (gate_calibration: cross_fitted; microcosm#1359), as lcfs_consumption's are: each is calibrated on the donors its fold gates left out, so a sign is drawn at its donor rate on households the gates were not fitted to. Every draw reads uniforms keyed on household_id. An amount is zero wherever the training households have no positive value for its tenure or region; mortgage payments need a mortgaged tenure (true of every FRS household); Housing Benefit needs a rented tenure (the engine pays it to renting reporters only); council tax benefit is capped at council tax and the household council_tax_rebate equals it, both on the reference person as the FRS holds them. Region, single-adult status, BRMA (region and the recipient's own LHA category), the flat-rate household draws and composition are kept; FRS base rows are byte-unchanged."
+   "notes": "Runs after the SPI income chain and before the income-conditioned donor stages, the household counterpart of the SPI stage-2 FRS-only fill. The support copies and income band donors are whole FRS households, so without this stage each kept its FRS parent's housing, drawn for the parent's income. Trained on the FRS base households (positive household weight) and drawn for every SPI-channel household from engine-free predictors (region, household type, adults, children, single-adult status, reference-person age and household income components). Tenure, dwelling type, bedrooms and council-tax band are drawn in that order by weighted multiclass classifiers with an inverse-CDF draw; the housing amounts and the head benefit unit's Housing Benefit and the reference person's council tax benefit by one chained regime-gated QRF conditioned on the drawn categories, clipped to the training range. The QRF's sign gates are cross-fitted (gate_calibration: cross_fitted; microcosm#1359), as lcfs_consumption's are: each is calibrated on the donors its fold gates left out, so a sign is drawn at its donor rate on households the gates were not fitted to. Every draw reads uniforms keyed on household_id. An amount is zero wherever the training households have no positive value for its tenure or region; mortgage payments need a mortgaged tenure (true of every FRS household); Housing Benefit needs a rented tenure (the engine pays it to renting reporters only); council tax benefit is capped at council tax and the household council_tax_rebate equals it, both on the reference person as the FRS holds them. Region, single-adult status, BRMA (region and the recipient's own LHA category), the flat-rate household draws and composition are kept; FRS base rows are byte-unchanged. Council tax stays a target of the chained QRF on every row, so every band and every other chained amount is the draw's. After the learned zeros and the tenure rules, a Great Britain row's drawn council tax is replaced by the 2024-25 statute at its reference Band D (the stage's derive of council_tax): the expected 2024-25 Band D of the cell spi_copy_areas draws the row's area from, its region by households, recomputed on the conditioned atomic-area supports as council_tax_localise recomputes it, for the row's nation and drawn band, less the single-adult discount where council_tax_single_adult_raw is 1. A Northern Ireland row keeps the chained draw (María's ruling of 2026-11-14). The bill reads neither the drawn area nor its local authority, so council_tax_localise localises it once. The council tax benefit is capped at the bill written. Loading the committed Band D holds Scotland's vendored resource to the pinned Chronicle feed, and before it reads a row the stage checks that its Scottish declaration maps the facts to the frame's period, as council_tax_localise does; it refuses unless the bill's checks hold on what it writes, and its receipt records the bill's method, inputs and checks under council_tax, with no number."
   },
   {
    "artifacts": [

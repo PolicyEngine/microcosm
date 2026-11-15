@@ -1,6 +1,6 @@
 """The clone-first UK spine at four geographic clones on the H2 fixture.
 
-microcosm#931 groups (b), (c) and (d). The H2 fixture's invented sources run the
+microcosm#931 groups (b) to (e). The H2 fixture's invented sources run the
 whole spine in this process twice, through the real engine: at one geographic
 clone, the fixture's own config, and at four, the same config with
 ``geographic_clones`` 4, so the graph's geographic_expand node, the transform
@@ -79,9 +79,13 @@ engine-uk-after-merge job on pushes to main.
   London and Scotland rows in region-level cells, SPI-channel rows among
   them. Household 12, a paying zero, and the households whose ids are
   multiples of 21, each a reduction of unknown size, all with observed
-  bands, take the 2024-25 statute, and no other row does. Every reduction and
-  rebate lies within its new bill, and the kept bill, which was_wealth's
-  council-tax predictor reads, is the paid bill from before the stage.
+  bands, take the 2024-25 statute, and no other row does. Every SPI-channel
+  row, whose bill the housing shell prices by the 2024-25 statute at its
+  region's expected Band D, holds after the stage the statute at its own
+  authority, nation and band within four units in the last place. Every
+  reduction and rebate lies within its new bill, and the kept bill, which
+  was_wealth's council-tax predictor reads, is the paid bill from before the
+  stage.
   Clone 0's FRS rows at four clones hold one clone's bill,
   rebate, reduction and kept bill, bit for bit (microcosm#931).
 
@@ -176,6 +180,9 @@ from microcosm.build.uk_runtime.spi_band_donors import (
     PERSON_IS_SPI_INCOME_BAND_CARRIER,
     SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN,
     UK_SPI_INCOME_BAND_DONORS_STAGE_NAME,
+)
+from microcosm.build.uk_runtime.spi_housing_council_tax import (
+    UK_SPI_HOUSING_COUNCIL_TAX_GREAT_BRITAIN_REGIONS,
 )
 from microcosm.build.uk_runtime.spi_support import (
     BASE_FRS_SUPPORT_CHANNEL,
@@ -1364,6 +1371,70 @@ def test_on_h2_council_tax_localise_prices_unobserved_gross_bills_at_the_statute
     new = after["council_tax"].to_numpy(dtype=np.float64)
     assert np.array_equal(new[statute].view(np.int64), expected.view(np.int64)), (
         f"After {COUNCIL_TAX} at K={clones} a statute row is off the statute."
+    )
+
+
+#: How far, in units in the last place, a Great Britain SPI-channel row's
+#: localised bill may lie from the statute at its own authority: the housing
+#: shell's statute at its region's expected Band D, times the localisation's
+#: ratio of the authority's Band D over that reference, rounds twice
+#: (microcosm#931).
+_STATUTE_ULPS = 4
+
+
+@pytest.mark.parametrize("clones", (1, _CLONES))
+def test_on_h2_every_spi_channel_bill_is_the_statute_at_its_own_authority(
+    runs, localiser, clones
+) -> None:
+    """The housing shell prices each Great Britain SPI-channel row's bill by
+    the 2024-25 statute at its region's expected Band D, and
+    council_tax_localise multiplies it by the row's drawn authority's Band D
+    over that reference. So after the localisation every such bill is the
+    statute at the row's own authority, nation and band, less the
+    single-adult discount where council_tax_single_adult_raw is 1, within
+    four units in the last place (microcosm#931). H2 holds no Northern
+    Ireland household, so every SPI-channel row is Great Britain's."""
+
+    run = runs[clones]
+    household = run.frames[COUNCIL_TAX].table("household")
+    spi = (
+        household[support_channel_column("household")]
+        .eq(SPI_SYNTHETIC_SUPPORT_CHANNEL)
+        .to_numpy()
+    )
+    assert spi.any(), f"K={clones}"
+    rows = household.loc[spi]
+    regions = rows["region"].astype(str)
+    assert regions.isin(UK_SPI_HOUSING_COUNCIL_TAX_GREAT_BRITAIN_REGIONS).all(), (
+        f"K={clones}"
+    )
+    band_d = localiser.band_d.band_d
+    expected = np.asarray(
+        [
+            float(
+                uk_statutory_council_tax(
+                    band_d[authority],
+                    UK_NATION_BY_REGION[region],
+                    band,
+                    single_adult=bool(adults == 1),
+                )
+            )
+            for authority, region, band, adults in zip(
+                rows["local_authority_code"].astype(str),
+                rows["region"].astype(str),
+                rows["council_tax_band"].astype(str),
+                rows["council_tax_single_adult_raw"],
+                strict=True,
+            )
+        ],
+        dtype=np.float64,
+    )
+    assert (expected > 0.0).all(), f"K={clones}"
+    bills = np.ascontiguousarray(rows["council_tax"].to_numpy(dtype=np.float64))
+    distance = np.abs(bills.view(np.int64) - expected.view(np.int64))
+    assert (distance <= _STATUTE_ULPS).all(), (
+        f"After {COUNCIL_TAX} at K={clones} an SPI-channel row's bill is off "
+        "the statute at its own authority."
     )
 
 

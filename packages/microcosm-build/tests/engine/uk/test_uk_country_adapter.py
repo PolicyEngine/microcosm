@@ -20,7 +20,8 @@ def test_country_adapter_compiles_the_same_full_graph_with_all_targets_default()
     # (microcosm#931): its clone count is the spine's, and it composes no
     # area draw and binds no atomic-area support of its own. The graph's only
     # support sources are the spine's three conditioned supports, which the
-    # spine's area stages and its council-tax localisation alone read.
+    # spine's area stages, its housing shell and its council-tax localisation
+    # alone read.
     assert built.config.n_clones == 1
     assert not any(kernel.startswith("geography.") for kernel in kernels)
     supports = {
@@ -34,5 +35,6 @@ def test_country_adapter_compiles_the_same_full_graph_with_all_targets_default()
         "atomic_area_assign",
         "rfdr",
         "spi_copy_areas",
+        "spi_housing_shell",
         "council_tax_localise",
     }

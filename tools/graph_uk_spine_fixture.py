@@ -2601,8 +2601,13 @@ def _build_implementations(
             donor=aps,
             boosted_max_iter=_QRF_ESTIMATORS,
         ),
+        # The Great Britain copies' bills at their region's expected Band D
+        # on the toy supports, at the committed 2024-25 Band D (microcosm#931),
+        # built as the graph registry's fixture implementations build it.
         "spi_housing_shell": UKSPIHousingShellStageTransform(
-            stage=stages["spi_housing_shell"], n_estimators=_QRF_ESTIMATORS
+            stage=stages["spi_housing_shell"],
+            supports=supports,
+            n_estimators=_QRF_ESTIMATORS,
         ),
         "uc_reporter_redraw": UKUCReporterRedrawStageTransform(
             stage=stages["uc_reporter_redraw"], engine=engine

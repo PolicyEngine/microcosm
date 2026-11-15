@@ -251,13 +251,14 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     "frs_annual_income_spells": ("frs",),
     "spi_income_band_donors": ("spi",),
     "hmrc_spi_income_spine": ("spi", "hmrc_income"),
-    # The area draw, the fuel-relief flag's roster, the SPI copies' own draw
-    # and the council-tax localisation's draw cells read the three
-    # conditioned atomic-area supports, whose bytes enter their nodes' keys
-    # (microcosm#931).
+    # The area draw, the fuel-relief flag's roster, the SPI copies' own draw,
+    # the council-tax localisation's draw cells and the housing shell's
+    # reference Band D for SPI copies read the three conditioned atomic-area
+    # supports, whose bytes enter their nodes' keys (microcosm#931).
     "atomic_area_assign": _ATOMIC_SUPPORT_SOURCES,
     "rfdr": _ATOMIC_SUPPORT_SOURCES,
     "spi_copy_areas": _ATOMIC_SUPPORT_SOURCES,
+    "spi_housing_shell": _ATOMIC_SUPPORT_SOURCES,
     "council_tax_localise": _ATOMIC_SUPPORT_SOURCES,
 }
 
@@ -556,7 +557,10 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # Engine-free: the housing predictors and the channel split. The rewritten
     # housing and benefit cells arrive as the rewrite's incumbents. The
     # lineage live here lets the model fold geographic clones into each survey
-    # household (microcosm#931).
+    # household, and names the support channel's copies, whose Great Britain
+    # bills the stage prices at their region's expected Band D on the
+    # conditioned supports it reads as graph sources. It reads no household
+    # area column (microcosm#931).
     "spi_housing_shell": frozenset(
         {
             ("household", "source_household_id"),

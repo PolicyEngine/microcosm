@@ -605,8 +605,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             help=(
                 f"Local {system} conditioned atomic-area support "
                 f"({CONDITIONED_SOURCES[system]} in sources.yaml) for "
-                "atomic_area_assign, rfdr, spi_copy_areas and "
-                "council_tax_localise, required when "
+                "atomic_area_assign, rfdr, spi_copy_areas, spi_housing_shell "
+                "and council_tax_localise, required when "
                 "atomic_area_assign is scheduled: its SHA-256 and size must be "
                 "the ones sources.yaml registers (microcosm#931)."
             ),
@@ -2401,9 +2401,15 @@ def prepare_uk_spine_execution(
                 aps_tab_path=sources["aps"],
             )
         )
+    # The housing shell prices Great Britain copies' bills at their region's
+    # expected Band D on the supports' graph sources, held to the geography
+    # block's pins before the stage is built (microcosm#931).
     if "spi_housing_shell" in stage_names:
-        implementations["spi_housing_shell"] = UKSPIHousingShellStageTransform(
-            stage=stages_by_name["spi_housing_shell"]
+        implementations["spi_housing_shell"] = _GraphSourceTransform(
+            lambda sources: UKSPIHousingShellStageTransform(
+                stage=stages_by_name["spi_housing_shell"],
+                supports=_source_supports(sources, support_pins),
+            )
         )
     # Great Britain private renters' rents off their BRMA's list; a sampled
     # rung takes the thin-region rule (microcosm#931).
