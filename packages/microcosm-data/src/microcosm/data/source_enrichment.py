@@ -592,36 +592,13 @@ def is_receipt_enrichment(release_dir: Path | str) -> bool:
     )
 
 
-def validate_source_enrichment_candidate(
+def _source_enrichment_inheritance(
     release_dir: Path | str,
     *,
     parent_h5: Path | str | None,
     artifact_root: Path | str | None,
-    require_compatibility: bool = False,
-    compatibility_wheels: tuple[Path | str, ...] = (),
 ) -> dict:
-    """Check the inheritance contract; pending candidates cannot be published.
-
-    Unlike the standard release contract, this never treats parent diagnostics
-    as measurements of the enriched model. Both actual H5 files are mandatory:
-    a hand-written preservation receipt is not sufficient evidence.
-
-    ``source_enrichment.json``'s ``operation`` selects the reviewed lineage:
-    the native SPM role added to Build P (every other value, so an unknown
-    operation is still judged, and refused, as the role lane), or
-    :data:`RECEIPT_OPERATION`, the reported-receipt inputs added to the pinned
-    national default. The gates are the same; only the pinned parent, the
-    evidence that proves the addition and the native inputs the loader
-    qualification checks differ.
-
-    A directory named after a build-folder release
-    (:func:`~microcosm.data.contract.publishes_to_build_folder`) is a build in
-    that layout: it must be the lineage's release, name its build and its
-    parent's folder (:func:`parent_reference`), declare that release's dataset
-    file, and give each artifact a role and no revision. Any other directory is
-    an enrichment that keeps only its tag, named after its build ID, whose
-    parent is named by tag.
-    """
+    """Shared actual inheritance predicates; no compatibility acceptance switch."""
     from microcosm.data.annual_projections import validate_annual_projection_extension
     from microcosm.data.h5_boolean_append import compare_boolean_append
     from microcosm.data.h5_enrichment import compare_h5_enrichment
@@ -957,6 +934,76 @@ def validate_source_enrichment_candidate(
         failures.append(
             "source enrichment must deliver exactly one native H5 microdata artifact"
         )
+    return {
+        "release_dir": release_dir,
+        "manifest": manifest,
+        "build": build,
+        "report": report,
+        "receipts": receipts,
+        "candidate": candidate,
+        "by_path": by_path,
+        "annual_extension": annual_extension,
+        "failures": failures,
+    }
+
+
+def validate_source_enrichment_candidate(
+    release_dir: Path | str,
+    *,
+    parent_h5: Path | str | None,
+    artifact_root: Path | str | None,
+    require_compatibility: bool = False,
+    compatibility_wheels: tuple[Path | str, ...] = (),
+) -> dict:
+    """Check the inheritance contract; pending candidates cannot be published.
+
+    Unlike the standard release contract, this never treats parent diagnostics
+    as measurements of the enriched model. Both actual H5 files are mandatory:
+    a hand-written preservation receipt is not sufficient evidence.
+
+    ``source_enrichment.json``'s ``operation`` selects the reviewed lineage:
+    the native SPM role added to Build P (every other value, so an unknown
+    operation is still judged, and refused, as the role lane), or
+    :data:`RECEIPT_OPERATION`, the reported-receipt inputs added to the pinned
+    national default. The gates are the same; only the pinned parent, the
+    evidence that proves the addition and the native inputs the loader
+    qualification checks differ.
+
+    A directory named after a build-folder release
+    (:func:`~microcosm.data.contract.publishes_to_build_folder`) is a build in
+    that layout: it must be the lineage's release, name its build and its
+    parent's folder (:func:`parent_reference`), declare that release's dataset
+    file, and give each artifact a role and no revision. Any other directory is
+    an enrichment that keeps only its tag, named after its build ID, whose
+    parent is named by tag.
+    """
+    state = _source_enrichment_inheritance(
+        release_dir, parent_h5=parent_h5, artifact_root=artifact_root
+    )
+    (
+        release_dir,
+        manifest,
+        build,
+        report,
+        receipts,
+        candidate,
+        by_path,
+        annual_extension,
+        failures,
+    ) = (
+        state[name]
+        for name in (
+            "release_dir",
+            "manifest",
+            "build",
+            "report",
+            "receipts",
+            "candidate",
+            "by_path",
+            "annual_extension",
+            "failures",
+        )
+    )
     compatibility = _mapping(report.get("compatibility"))
     if compatibility.get("status") == "pending":
         if require_compatibility:
@@ -1018,6 +1065,121 @@ def validate_source_enrichment_candidate(
     if failures:
         raise ReleaseContractError(release_dir, failures)
     return report
+
+
+def qualify_reviewed_source_parent(
+    release_dir: Path | str,
+    *,
+    parent_h5: Path | str,
+    artifact_root: Path | str,
+    compatibility_wheels: tuple[Path | str, ...],
+) -> dict:
+    """Fresh CURRENT evidence for the exact historical parent, separate from v1.
+
+    This does not replace the original-runtime replay. It uses every actual
+    current inheritance/native/register/claim/producer predicate and can refuse
+    a parent whose immutable historical receipt passed older predicates.
+    """
+    import subprocess
+
+    from microcosm.data.source_parent_replay import (
+        CURRENT_SOURCE_CHECKS,
+        SOURCE_PARENT_IMPLEMENTATION_FILES,
+        describe_source_parent_profile,
+    )
+
+    release_dir = Path(release_dir)
+    profile = describe_source_parent_profile(release_dir)
+    state = _source_enrichment_inheritance(
+        release_dir,
+        parent_h5=parent_h5,
+        artifact_root=artifact_root,
+    )
+    failures = state["failures"]
+    if state["receipts"] or state["annual_extension"] is not None:
+        failures.append("v2 replay supports only the reviewed native-role parent")
+    if failures:
+        raise ReleaseContractError(release_dir, failures)
+    actual = run_native_loader_compatibility(
+        state["candidate"],
+        require_wheels=True,
+        compatibility_wheels=compatibility_wheels,
+    )
+    original = _mapping(state["report"].get("compatibility"))
+    compatibility = {"status": "passed"}
+    if "publisher_claims" in original:
+        compatibility["publisher_claims"] = original["publisher_claims"]
+    claims = _mapping(original.get("publisher_claims"))
+    version = _mapping(_mapping(actual.get("packages")).get("policyengine-us")).get(
+        "version"
+    )
+    if claims.get(CLAIM_FIELD) is not None:
+        compatibility[CLAIM_MEASUREMENT_KEY] = claim_measurement_record(
+            claims,
+            measured_version=version,
+        )
+    _check_current_receipt_claims(
+        release_dir,
+        state["manifest"],
+        compatibility,
+        actual,
+        failures,
+    )
+    # Record current committed producer bytes separately. Never rewrite the
+    # original build's code record or its original runner hash.
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    checkout = Path(
+        subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    )
+    inventory = tuple(
+        dict.fromkeys((*PRODUCER_SOURCE_FILES, *SOURCE_PARENT_IMPLEMENTATION_FILES))
+    )
+    dirty = bool(
+        subprocess.run(
+            [
+                "git",
+                "--no-optional-locks",
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    )
+    code = {
+        "git_commit": commit,
+        "git_dirty": dirty,
+        "source_files_sha256": {
+            path: sha256_file(checkout / path) for path in inventory
+        },
+    }
+    try:
+        _check_producer_source_identity(code, inventory=inventory)
+    except (OSError, ValueError) as exc:
+        failures.append(f"current producer source identity failed: {exc}")
+    if failures:
+        raise ReleaseContractError(release_dir, failures)
+    return {
+        "schema_version": 2,
+        "kind": "source_parent_current_qualification",
+        "profile": profile,
+        "checks": list(CURRENT_SOURCE_CHECKS),
+        "native_receipt": actual,
+        "compatibility": compatibility,
+        "producer_code": code,
+    }
 
 
 def _check_producer_source_identity(
@@ -1601,89 +1763,14 @@ def _check_compatibility(
             failures.append(
                 "compatibility receipt differs from actual native loader tests/runtime"
             )
-        from microcosm.data.contract import _check_release_manifest
-
-        _check_release_manifest(
-            manifest, release_dir.name, failures, annual_revision=annual_revision
+        _check_current_receipt_claims(
+            release_dir,
+            manifest,
+            compatibility,
+            actual,
+            failures,
+            annual_revision=annual_revision,
         )
-        raw_claims = compatibility.get("publisher_claims")
-        claims = _mapping(raw_claims)
-        malformed_claims = raw_claims is not None and (
-            not isinstance(raw_claims, Mapping) or set(claims) != {CLAIM_FIELD}
-        )
-        if malformed_claims:
-            # Say only this. Falling through to the per-package branch below
-            # would add "no publisher compatibility claim was declared", which
-            # is the opposite of what happened.
-            failures.append(
-                f"publisher_claims must map {CLAIM_FIELD!r} to one declared "
-                "compatibility claim; Core stays pinned to the tested version"
-            )
-        validated_claims = {}
-        for package, field in (
-            ("policyengine-us", "model"),
-            ("policyengine-core", "core"),
-        ):
-            version = _mapping(actual.get("packages")).get(package, {}).get("version")
-            if _mapping(
-                _mapping(_release_build_details(manifest)).get(
-                    f"built_with_{field}_package"
-                )
-            ) != {"name": package, "version": version}:
-                failures.append(_built_with_mismatch(package))
-            if malformed_claims:
-                continue
-            declared = claims.get(field) if field == CLAIM_FIELD else None
-            if declared is None:
-                if manifest.get(f"compatible_{field}_packages") != [
-                    {"name": package, "specifier": f"=={version}"}
-                ]:
-                    failures.append(
-                        f"compatibility {package} must pin exactly the tested "
-                        "version unless the certified report declares a "
-                        "publisher compatibility claim"
-                    )
-                continue
-            # A claim widens the binding, so the report must carry it and the
-            # manifest must say exactly what the report says. The report is
-            # hash-bound by the manifest's own artifact entry, so a manifest
-            # widened after certification has no declaration to stand on.
-            try:
-                entry = compatibility_claim_entry(
-                    _mapping(declared).get("specifier"),
-                    package=package,
-                    version=version,
-                    declared_by=_mapping(declared).get("declared_by"),
-                )
-            except ValueError as exc:
-                failures.append(f"declared {package} compatibility claim: {exc}")
-                continue
-            validated_claims[field] = entry
-            if declared != entry:
-                failures.append(
-                    f"declared {package} compatibility claim must record only "
-                    "the validated name, specifier, basis and declarer"
-                )
-            if manifest.get(f"compatible_{field}_packages") != [entry]:
-                failures.append(
-                    f"compatibility {package} must match the declared publisher "
-                    "compatibility claim"
-                )
-        if not malformed_claims:
-            # Replayed from the probe that just ran, never read back from the
-            # receipt: the record must say what this runtime measured.
-            failures.extend(
-                _claim_measurement_failures(
-                    compatibility,
-                    validated_claims,
-                    # As the per-package branch reads it: a null model claim
-                    # is no claim, and leaves the exact pin in force.
-                    declared=claims.get(CLAIM_FIELD) is not None,
-                    measured_version=_mapping(
-                        _mapping(actual.get("packages")).get("policyengine-us")
-                    ).get("version"),
-                )
-            )
     except StoredInputRefusalError as exc:
         # The probe refused before it reported the runtime it tested, and its
         # refusal names the installed engine (microcosm#1026). If that is not
@@ -1694,6 +1781,101 @@ def _check_compatibility(
         failures.append(f"native loader compatibility failed: {exc}")
     except (ValueError, OSError, ImportError, KeyError, TypeError) as exc:
         failures.append(f"native loader compatibility failed: {exc}")
+
+
+def _check_current_receipt_claims(
+    release_dir,
+    manifest,
+    compatibility,
+    actual,
+    failures,
+    *,
+    annual_revision=None,
+):
+    """Current pure predicates, shared by real standalone and v2 probes."""
+    from microcosm.data.contract import _check_release_manifest
+
+    _check_release_manifest(
+        manifest, release_dir.name, failures, annual_revision=annual_revision
+    )
+    raw_claims = compatibility.get("publisher_claims")
+    claims = _mapping(raw_claims)
+    malformed_claims = raw_claims is not None and (
+        not isinstance(raw_claims, Mapping) or set(claims) != {CLAIM_FIELD}
+    )
+    if malformed_claims:
+        # Say only this. Falling through to the per-package branch below
+        # would add "no publisher compatibility claim was declared", which
+        # is the opposite of what happened.
+        failures.append(
+            f"publisher_claims must map {CLAIM_FIELD!r} to one declared "
+            "compatibility claim; Core stays pinned to the tested version"
+        )
+    validated_claims = {}
+    for package, field in (
+        ("policyengine-us", "model"),
+        ("policyengine-core", "core"),
+    ):
+        version = _mapping(actual.get("packages")).get(package, {}).get("version")
+        if _mapping(
+            _mapping(_release_build_details(manifest)).get(
+                f"built_with_{field}_package"
+            )
+        ) != {"name": package, "version": version}:
+            failures.append(_built_with_mismatch(package))
+        if malformed_claims:
+            continue
+        declared = claims.get(field) if field == CLAIM_FIELD else None
+        if declared is None:
+            if manifest.get(f"compatible_{field}_packages") != [
+                {"name": package, "specifier": f"=={version}"}
+            ]:
+                failures.append(
+                    f"compatibility {package} must pin exactly the tested "
+                    "version unless the certified report declares a "
+                    "publisher compatibility claim"
+                )
+            continue
+        # A claim widens the binding, so the report must carry it and the
+        # manifest must say exactly what the report says. The report is
+        # hash-bound by the manifest's own artifact entry, so a manifest
+        # widened after certification has no declaration to stand on.
+        try:
+            entry = compatibility_claim_entry(
+                _mapping(declared).get("specifier"),
+                package=package,
+                version=version,
+                declared_by=_mapping(declared).get("declared_by"),
+            )
+        except ValueError as exc:
+            failures.append(f"declared {package} compatibility claim: {exc}")
+            continue
+        validated_claims[field] = entry
+        if declared != entry:
+            failures.append(
+                f"declared {package} compatibility claim must record only "
+                "the validated name, specifier, basis and declarer"
+            )
+        if manifest.get(f"compatible_{field}_packages") != [entry]:
+            failures.append(
+                f"compatibility {package} must match the declared publisher "
+                "compatibility claim"
+            )
+    if not malformed_claims:
+        # Replayed from the probe that just ran, never read back from the
+        # receipt: the record must say what this runtime measured.
+        failures.extend(
+            _claim_measurement_failures(
+                compatibility,
+                validated_claims,
+                # As the per-package branch reads it: a null model claim
+                # is no claim, and leaves the exact pin in force.
+                declared=claims.get(CLAIM_FIELD) is not None,
+                measured_version=_mapping(
+                    _mapping(actual.get("packages")).get("policyengine-us")
+                ).get("version"),
+            )
+        )
 
 
 def _built_with_mismatch(package: str) -> str:

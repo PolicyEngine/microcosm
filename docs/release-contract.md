@@ -1407,3 +1407,18 @@ release and the tagged publisher joined the table on 2026-11-11.
 | microcosm-benchmarks, the calibration-diagnostics evaluation harness, policyengine-data's calibrate module | Each lives in another repository; proposed as a separate task (task_18c2af98) | Not read again |
 | cos d816 | Ruled 2026-10-09 (per-country Core pins, microcosm#1143) | The same |
 | cos d928 | Parked; its 2026-10-10 note records it resolved on main (the plan-2 exclusions renewed to 2026-11-03). Nothing to rule | Still parked. On main the plan-2 exclusions read approved on 2026-10-23 and expire on 2027-01-23 |
+
+
+### Source-parent recertification schema 2
+
+Operators supply a separate local replay context for the reviewed 20260915
+native-role source parent; [US recertification](us-compatibility-recertification.md#reviewed-source-parent-replay-schema-2)
+describes its inputs. The validators preserve historical evidence and require
+exact original-runtime replay plus every current source, native-loader,
+stored-input, claim and producer check. The artifact mapper preserves every
+ancestor key and filename through a complete reversible map. Consumers replay
+saved v2 evidence and retain current refusals and BASE, target, drift,
+publication and withdrawal requirements. Ordinary calibration schema 1 keeps
+its existing defaults. This lane never promotes a current or default build.
+Operators stage and authenticate the original runtime separately; the replay
+code downloads and installs nothing and accepts no alternate worker.

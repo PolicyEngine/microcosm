@@ -487,6 +487,7 @@ def prepare_build_folder_release(
     repository: str | None = None,
     parent_h5: Path | str | None = None,
     compatibility_wheels: tuple[Path | str, ...] = (),
+    source_parent_replay=None,
 ) -> BuildFolderRelease:
     """Check a build-folder release's build and list the files it publishes.
 
@@ -508,6 +509,12 @@ def prepare_build_folder_release(
     """
     release_dir = Path(release_dir)
     named_repository, release, build = build_folder_identity(release_dir)
+    if source_parent_replay is not None:
+        probe = json.loads((release_dir / "release_manifest.json").read_text())
+        if probe.get("release_type") != "compatibility_recertification":
+            raise ValueError(
+                "source-parent replay context requires a recertification child"
+            )
     _refuse_misplaced_parent_inputs(release_dir, parent_h5, compatibility_wheels)
     contract_warnings: list[str] = []
     if release == US_EVIDENCE_RELEASE_ID:
@@ -520,6 +527,7 @@ def prepare_build_folder_release(
             parent_h5=parent_h5,
             artifact_root=artifact_root,
             compatibility_wheels=tuple(compatibility_wheels),
+            source_parent_replay=source_parent_replay,
         )
         for contract_warning in contract_warnings:
             warnings.warn(f"release contract: {contract_warning}", stacklevel=2)
@@ -610,6 +618,7 @@ def prepare_release(
     update_latest: bool = True,
     tag_only: bool = False,
     evidence: bool = False,
+    source_parent_replay=None,
 ) -> PreparedRelease:
     """Run every local publisher guard and collect the files to upload.
 
@@ -620,6 +629,8 @@ def prepare_release(
     Publication must prepare again so preflight cannot authorize stale inputs.
     A release that publishes into build folders is refused first.
     """
+    if source_parent_replay is not None:
+        raise ValueError("source-parent v2 requires the build-folder publication lane")
     release_dir = Path(release_dir)
     _refuse_build_folder_release(release_dir.name)
     _refuse_misplaced_parent_inputs(release_dir, parent_h5, compatibility_wheels)
@@ -850,6 +861,7 @@ def publish_release(
     tag_only: bool = False,
     notify: bool = True,
     evidence: bool = False,
+    source_parent_replay=None,
 ) -> dict:
     """Publish a release directory and optionally point ``latest.json`` at it.
 
@@ -945,6 +957,7 @@ def publish_release(
         artifact_root=artifact_root,
         parent_h5=parent_h5,
         compatibility_wheels=compatibility_wheels,
+        source_parent_replay=source_parent_replay,
         create_tag=create_tag,
         tag_name=tag_name,
         extra_files=extra_files,

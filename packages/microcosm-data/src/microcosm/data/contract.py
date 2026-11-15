@@ -7395,6 +7395,7 @@ def validate_release_dir(
     parent_h5: Path | str | None = None,
     artifact_root: Path | str | None = None,
     compatibility_wheels: tuple[Path | str, ...] = (),
+    source_parent_replay=None,
 ) -> list[str]:
     """Check a local release directory against its dataset-role contract.
 
@@ -7464,11 +7465,23 @@ def validate_release_dir(
     manifest_probe_path = release_dir / "release_manifest.json"
     manifest_probe: object = None
     annual_extension = None
+    if source_parent_replay is not None and not manifest_probe_path.is_file():
+        raise ReleaseContractError(
+            release_dir, ["source-parent replay requires a recertification manifest"]
+        )
     if manifest_probe_path.is_file():
         try:
             manifest_probe = json.loads(manifest_probe_path.read_text())
         except (OSError, ValueError):
             manifest_probe = None
+        if source_parent_replay is not None and (
+            not isinstance(manifest_probe, Mapping)
+            or manifest_probe.get("release_type") != "compatibility_recertification"
+        ):
+            raise ReleaseContractError(
+                release_dir,
+                ["source-parent replay context requires a recertification child"],
+            )
         _refuse_misplaced_annual_years(release_dir, manifest_probe)
         _refuse_a_receipt_donor_that_is_not_an_enrichment(release_dir, manifest_probe)
         if isinstance(manifest_probe, Mapping) and "release_type" in manifest_probe:
@@ -7509,6 +7522,7 @@ def validate_release_dir(
                     artifact_root=artifact_root,
                     require_compatibility=True,
                     compatibility_wheels=compatibility_wheels,
+                    source_parent_replay=source_parent_replay,
                 )
                 return []
             if manifest_probe["release_type"] != "calibration":

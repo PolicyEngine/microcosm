@@ -100,11 +100,12 @@ those bytes as `parent_build_manifest.json`. The child does not declare its own
 build manifest either: the build-folder publisher uploads it and refuses a
 file named twice.
 
-The parent must be a US calibration release (`release_type` absent or
-`calibration`) with `dataset_role` `national_default`. A recertification of a
-recertification or of a source enrichment is refused, so every child is one
-hop from the build its calibration evidence describes. Recertify the
-calibration release again for a later engine.
+The schema-1 lane requires a US calibration parent (`release_type` absent or
+`calibration`) with `dataset_role` `national_default`. It refuses a
+recertification or source-enrichment parent, keeping each schema-1 child one
+hop from its calibration build. Recertify the calibration release again for a
+later engine. The [schema-2 lane](#reviewed-source-parent-replay-schema-2)
+handles the separately reviewed source parent.
 
 ### Parents that predate microcosm#1034
 
@@ -360,3 +361,72 @@ python3 tools/ci_test_plan.py verify
 
 These tests use invented releases and score documents. Passing them does not
 certify a real artifact.
+
+
+## Reviewed source-parent replay (schema 2)
+
+The ordinary calibration-parent lane retains schema 1. An explicit
+`SourceParentReplayContext` enables a separate lane for the immutable native
+SPM-role source parent `populace-us-2024-spm-20260915`. The lane refuses
+recursive recertifications and annual, reported-receipt or local-area parents.
+It also refuses an unknown lineage, missing context or context for an unrelated
+release. The historical dataset must still pass the current stored-input
+contract.
+
+The operator stages an original interpreter, a clean original Microcosm
+checkout, all four original wheel files and the exact calibration-ancestor H5.
+The context names those local inputs. `--source-parent-replay-config` reads
+their paths from JSON. The replay code accepts no worker callback, alternate
+worker, passed bit or portability flag. It downloads and installs nothing and
+never promotes a release.
+
+Before either worker starts, the validator checks the source metadata pins and
+complete artifact namespace. The mapper and its inverse preserve every
+original key, filename, kind and digest. It renames the source parent's
+`parent_*_manifest.json` files to `ancestor_*_manifest.json`, carries the source
+parent's own build manifest as the child's `parent_build_manifest.json`, and
+uses the child's dataset filename for the selected H5. The mapper rejects
+ambiguous keys, aliases, paths and destinations. Replay reconstructs the
+original names while preserving every original manifest and receipt byte.
+
+A fixed stdlib bootstrap starts a fresh isolated subprocess and output
+directory for each check, with a new bytecode-cache prefix. Before importing
+the model, it authenticates its helper and configuration bytes, the full
+original Data Python source closure and the six source preimages that the
+clean original commit declares. It then checks the four original wheel files,
+installed Python inventories, versions and complete installation-origin
+objects. Replay requires the original custom wrapper wheel and rejects a
+same-version PyPI substitute. It checks the original declarations for Python,
+NumPy, pandas, h5py, loaded HDF5, tables and microcosm-data. These declarations
+exclude operating-system and transitive binary provenance.
+
+The legacy worker runs the original full source-enrichment validator, then
+recomputes its native receipt. It requires every JSON field and value type,
+ordered check and `direct_url` object to match the immutable original receipt.
+It rejects origin relocation, field dropping and schema-1 relabeling. The
+separate current worker runs the shared current inheritance and exhaustive
+H5/source-evidence predicates, both current native loaders, the stored-input
+register, publisher-claim and measurement predicates, and committed
+producer-source checks. It writes a separate schema-2 qualification record.
+The current producer inventory also binds every v2 implementation path while
+preserving the ordinary v1 inventory.
+
+The child carries `source_parent_evidence_v2.json`, which its manifest binds
+by hash. Builder validation, certification, the strict release consumer,
+publication preflight and parent-publication verification rerun both workers;
+they never accept the saved `passed` field as proof. Fresh v2 evidence must
+match the complete saved evidence, including the qualifying current producer
+commit, so replay requires that same clean qualifying checkout. The legacy
+validator and the separate native receipt each run the old native probe.
+Operators must measure and obtain resources for those checks separately.
+
+The recertification still requires BASE and target scoring, newly-read-input
+counterfactuals, withheld metrics, complete drift recomputation and claim
+attribution. Publication still checks the published parent's artifact identity
+and refuses current/default promotion. Publication and signing require separate
+authorization. Integrate the independent withdrawal protections in
+[Microcosm PR 1594](https://github.com/PolicyEngine/microcosm/pull/1594) before
+adopting this lane; the implementation does not include that work. The current
+stored-input contract can still refuse historical columns. Address any refusal
+through a separately reviewed source/input contract; preserve historical
+evidence and check every stored column.

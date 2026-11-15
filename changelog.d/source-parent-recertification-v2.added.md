@@ -1,0 +1,1 @@
+Add an explicit local schema-2 replay lane for the reviewed historical US native-role source parent, preserving original evidence and ancestor artifact identities while retaining current validation and publication gates.
