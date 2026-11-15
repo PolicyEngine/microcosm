@@ -389,8 +389,11 @@ EXPECTED_HASHES = {
     # calibrate's shared option checks move both again; no US solve changes.
     # Its TANF ledger fix moves the protocol again: the site's recorded salt
     # becomes the takes_up_tanf_if_eligible its draw always used.
-    "seed_map": "270cf6498f8a2977993f969d0703be88fb930499dab42741a2111f57ffec4266",
-    "seed_protocol": "a696ad74bfa5743b63c65499e6f5a41ea913a96ca38a5e3b9882069284bfca47",
+    # microcosm#1387 moves both again: the ACS transfer's opt-in SEMP-covered
+    # partnership step changes acs_transfer's attested bytes. Off its flag no
+    # draw, RNG rule or QRF target changes.
+    "seed_map": "dc4e5675d73adb4ac385a86e9f8bd4dafbd6cf3f7adffaf570fd27932bd5361b",
+    "seed_protocol": "deaa56165bd46eb61b814abed73e9033d761db20a2aa4ea01337c43a5c76be69",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

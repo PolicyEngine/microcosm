@@ -5381,14 +5381,15 @@ def _require_ssi_take_up_handling(
 
 
 def _require_acs_self_employment_identity(frame):
-    """Refuse a frame whose ACS self-employment leaves add to SEMP (#1380).
+    """Refuse a frame whose ACS self-employment double-counts SEMP.
 
     Staging built before the ACS transfer zeroed donor self-employment
-    components carries them on top of SEMP, and so does any checkpoint
-    calibrated from it. Materialize and calibrate check the staging frame;
-    package checks the calibrated H5 it ships, so a historical checkpoint
-    cannot reach a release through qa and finalize alone. Returns the
-    passing gate.
+    components (#1380) carries them on top of SEMP, and staging built before
+    it kept partnership_income at zero where SEMP already holds it (#1387)
+    carries that on top too; so does any checkpoint calibrated from either.
+    Materialize and calibrate check the staging frame; package checks the
+    calibrated H5 it ships, so a historical checkpoint cannot reach a
+    release through qa and finalize alone. Returns the passing gate.
     """
 
     person = frame.table("person")
@@ -5410,7 +5411,11 @@ def _require_acs_self_employment_identity(frame):
     )
     if not gate.passed:
         raise SystemExit(
-            "ACS self-employment identity failed: " + "; ".join(gate.failures)
+            "ACS self-employment identity failed: "
+            + "; ".join(gate.failures)
+            + ". Staging, or a checkpoint calibrated from staging, built before "
+            "microcosm#1380 or #1387 must be rebuilt with the current ACS base "
+            "builder."
         )
     return gate
 
@@ -6296,8 +6301,9 @@ def do_package(args) -> dict:
     # release records as built-with.
     spm_measurement_gate = _require_spm_measurement(artifact_frame)
     package_hours_gate = _local_hours_gate(artifact_frame, staging_summary)
-    # microcosm#1380: a checkpoint calibrated from pre-fix staging stacks
-    # donor self-employment on SEMP; grade the bytes being packaged.
+    # microcosm#1380, #1387: a checkpoint calibrated from pre-fix staging
+    # stacks donor self-employment or partnership income on SEMP; grade the
+    # bytes being packaged.
     self_employment_gate = _require_acs_self_employment_identity(artifact_frame)
     del artifact_frame
     gc.collect()

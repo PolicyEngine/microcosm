@@ -24,6 +24,8 @@ from microcosm.build.us_runtime.acs_release_predictors import (
 )
 from microcosm.build.us_runtime.acs_transfer import (
     ACS_SELF_EMPLOYMENT_COMPONENT_INPUTS,
+    ACS_TAX_UNIT_ROLES,
+    acs_tax_unit_head_or_spouse,
 )
 from microcosm.build.us_runtime.spm_role_source import (
     NATIVE_SPM_ROLE,
@@ -671,6 +673,16 @@ _NON_ACS_COMPONENTS = tuple(
     for column in ACS_SELF_EMPLOYMENT_COMPONENT_INPUTS
     if column not in _SEMP_ROUTED_LEAVES
 )
+#: microcosm#1387: the line-32 leaves and the passive subset the gate grades,
+#: and the tax-unit columns its spouse clause reads. ACS SEMP includes
+#: own-partnership income but not S-corp profit, so only partnership_income
+#: must be zero where SEMP accounts for it.
+_PARTNERSHIP = "partnership_income"
+_S_CORP = "s_corp_income"
+_PASSIVE = "passive_partnership_s_corp_income"
+_TAX_UNIT = "person_tax_unit_id"
+_TAX_UNIT_ROLE = "tax_unit_role_input"
+_LINE_32_GATE_COLUMNS = (_PARTNERSHIP, _S_CORP, _PASSIVE, _TAX_UNIT, _TAX_UNIT_ROLE)
 
 
 def acs_self_employment_identity_gate(
@@ -695,6 +707,19 @@ def acs_self_employment_identity_gate(
     or infinite leaf or ``ADJINC`` on a row that reports SEMP fails, because
     the identity cannot be checked there, and so does an infinite SEMP,
     which is not a blank.
+
+    The gate also grades the line-32 leaves (microcosm#1387). ACS SEMP
+    includes own-partnership income, so ``partnership_income`` must be
+    exactly zero on a row that reports a finite nonzero SEMP, on a tax-unit
+    HEAD or SPOUSE row when a HEAD or SPOUSE of the same tax unit reports one
+    (the form puts jointly received income under one person), and on a row
+    with blank SEMP. ``s_corp_income`` is not constrained: ACS counts
+    incorporated owners as wage workers. The passive subset must be zero
+    wherever the person's or the tax unit's line 32 (partnership plus S-corp
+    income) is zero, and an infinite line-32 or passive value fails. A
+    tax-unit role outside HEAD/SPOUSE/DEPENDENT, or a missing role on a row
+    with a tax unit, fails rather than exempting its unit. Every column the
+    gate reads must be present; none is read as zero.
     """
 
     name = "acs_self_employment_identity"
@@ -703,7 +728,12 @@ def acs_self_employment_identity_gate(
         raise ValueError("rows must be a one-dimensional mask aligned to person.")
     missing = [
         column
-        for column in ("SEMP", "ADJINC", *_SELF_EMPLOYMENT_LEAVES)
+        for column in (
+            "SEMP",
+            "ADJINC",
+            *_SELF_EMPLOYMENT_LEAVES,
+            *_LINE_32_GATE_COLUMNS,
+        )
         if column not in person.columns
     ]
     if missing:
@@ -749,6 +779,44 @@ def acs_self_employment_identity_gate(
         [filled[:, position[column]] != 0.0 for column in _SEMP_ROUTED_LEAVES]
     ).all(axis=1)
 
+    # microcosm#1387: partnership income that SEMP already accounts for.
+    partnership = numeric(_PARTNERSHIP)
+    s_corp = numeric(_S_CORP)
+    passive = numeric(_PASSIVE)
+    partnership_zero = np.isfinite(partnership) & (partnership == 0.0)
+    own_semp = np.isfinite(semp) & (semp != 0.0)
+    units = subset[_TAX_UNIT]
+    head_or_spouse, malformed_role = acs_tax_unit_head_or_spouse(
+        subset[_TAX_UNIT_ROLE], units
+    )
+    unit_reports = (
+        pd.Series(own_semp & head_or_spouse, index=subset.index)
+        .groupby(units, sort=False)
+        .transform("any")
+        .astype("boolean")
+        .fillna(False)
+        .to_numpy(dtype=bool)
+    )
+    partnership_on_semp = own_semp & ~partnership_zero
+    partnership_on_spouse = (
+        head_or_spouse & unit_reports & ~own_semp & ~blank_semp & ~partnership_zero
+    )
+    partnership_on_blank = blank_semp & ~partnership_zero
+    line_32_values = np.column_stack([partnership, s_corp, passive])
+    infinite_line_32 = np.isinf(line_32_values).any(axis=1)
+    person_line_32 = pd.Series(
+        np.where(np.isnan(partnership), 0.0, partnership)
+        + np.where(np.isnan(s_corp), 0.0, s_corp),
+        index=subset.index,
+    )
+    unit_line_32 = person_line_32.groupby(units, sort=False).transform("sum")
+    no_line_32 = (person_line_32 == 0.0).to_numpy() | (unit_line_32 == 0.0).to_numpy(
+        dtype=bool, na_value=False
+    )
+    passive_without_line_32 = no_line_32 & (
+        np.where(np.isnan(passive), 0.0, passive) != 0.0
+    )
+
     failures: list[str] = []
     if not selected.any():
         failures.append("No ACS person rows were selected for the check.")
@@ -776,6 +844,42 @@ def acs_self_employment_identity_gate(
             f"{int(split_across_routed.sum())} ACS person row(s) reporting SEMP "
             "carry both base and SSTB self-employment; QBI reconciliation "
             "routes SEMP wholly to one of them."
+        )
+    if partnership_on_semp.any():
+        failures.append(
+            f"{int(partnership_on_semp.sum())} ACS person row(s) reporting a "
+            "nonzero SEMP carry partnership_income that is not exactly zero; "
+            "ACS SEMP already includes own-partnership income."
+        )
+    if partnership_on_spouse.any():
+        failures.append(
+            f"{int(partnership_on_spouse.sum())} ACS tax-unit head or spouse "
+            "row(s) carry partnership_income that is not exactly zero while "
+            "their tax unit's head or spouse reports a nonzero SEMP, which "
+            "may hold the couple's jointly received partnership income."
+        )
+    if partnership_on_blank.any():
+        failures.append(
+            f"{int(partnership_on_blank.sum())} ACS person row(s) with blank "
+            "SEMP carry partnership_income that is not exactly zero."
+        )
+    if passive_without_line_32.any():
+        failures.append(
+            f"{int(passive_without_line_32.sum())} ACS person row(s) carry "
+            "passive_partnership_s_corp_income where the person's or the tax "
+            "unit's partnership plus S-corp income is zero."
+        )
+    if malformed_role.any():
+        failures.append(
+            f"{int(malformed_role.sum())} ACS person row(s) have a "
+            f"tax_unit_role_input outside {list(ACS_TAX_UNIT_ROLES)}, or none "
+            "while in a tax unit, so their tax unit's partnership check "
+            "cannot run."
+        )
+    if infinite_line_32.any():
+        failures.append(
+            f"{int(infinite_line_32.sum())} ACS person row(s) have an infinite "
+            "partnership, S-corp or passive partnership/S-corp income."
         )
     if infinite_semp.any():
         failures.append(
@@ -809,6 +913,18 @@ def acs_self_employment_identity_gate(
             "infinite_semp_rows": int(infinite_semp.sum()),
             "nonfinite_leaf_rows": int(nonfinite_leaf.sum()),
             "nonfinite_adjinc_rows": int(nonfinite_adjinc.sum()),
+            "partnership_on_semp_rows": int(partnership_on_semp.sum()),
+            "partnership_on_positive_semp_rows": int(
+                (partnership_on_semp & (semp > 0.0)).sum()
+            ),
+            "partnership_on_negative_semp_rows": int(
+                (partnership_on_semp & (semp < 0.0)).sum()
+            ),
+            "partnership_on_spouse_rows": int(partnership_on_spouse.sum()),
+            "partnership_on_blank_semp_rows": int(partnership_on_blank.sum()),
+            "passive_without_line_32_rows": int(passive_without_line_32.sum()),
+            "infinite_line_32_rows": int(infinite_line_32.sum()),
+            "malformed_tax_unit_role_rows": int(malformed_role.sum()),
             "nonzero_rows_by_leaf": {
                 column: int((filled[:, index] != 0.0).sum())
                 for index, column in enumerate(_SELF_EMPLOYMENT_LEAVES)
