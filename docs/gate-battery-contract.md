@@ -322,7 +322,34 @@ local publication work in #146; they are evaluated in their own signed
 `local_candidate` report rather than silently disappearing from union
 accounting.
 
-US adoption is in progress (microcosm#1585 item 11).
+US adoption is in progress (microcosm#1585 item 11), in four steps, and
+`us/gates.json` now declares 143 entries, each US build tool's share of
+them a scope of its own (`us_runtime/gate_scopes.py`): `us_base` (Route
+A's base, 37), `us_pool` (the multispine pool's stacked path, 6),
+`us_national` (the national release, 76) and `us_local` (ACS local, 24). A
+scope owns the entries whose id starts with its name, checked
+closed-world. In this step the battery runs **in shadow**: each tool still
+gates as it did, and beside each gate it evaluates the declared entry
+through its scope's `GateBatteryRun` on the same evidence, with the
+record-without-enforce posture, then compares the verdicts
+(`us_runtime/gate_shadow.py`). Verdicts are compared, not enforcement: a
+gate an `--allow-*` flag waives today matches if it fails in both, a crash
+in today's code matches an `evaluation_error`, and a gate today's code did
+not evaluate matches `evidence_absent`. The shadow writes its scope's
+report and the comparison beside the tool's outputs (never inside a
+release directory), never raises while the tool runs, and fails a finished
+run on a verdict difference; today's own exception always propagates
+unchanged.
+
+Most US entries are `stage_health` entries whose `check` names the gate,
+and `us_runtime/battery_bindings.py` binds each check to the gate function
+its site calls, looked up in the tool's own globals or the runtime module
+where the site runs, so a test that patches one reaches both verdicts. A
+threshold the gate takes as a keyword is routed from the entry; one it
+reads from a module constant is declared at today's value and pinned equal
+to it until the flip, when the spec becomes the only source. The flip,
+signing, the verifier and head-to-head certification are the next three
+steps.
 
 ## The reference rule
 
