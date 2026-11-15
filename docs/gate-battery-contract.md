@@ -339,7 +339,15 @@ not evaluate matches `evidence_absent`. The shadow writes its scope's
 report and the comparison beside the tool's outputs (never inside a
 release directory), never raises while the tool runs, and fails a finished
 run on a verdict difference; today's own exception always propagates
-unchanged.
+unchanged. The national release's shadow is armed before its preflight
+gates, which run ahead of the refusal to reuse a certified release
+directory, so it holds its files until that refusal has passed: a refused
+rerun leaves the certified build's shadow files as they were, and each
+release keeps its own, in `<out>/gate_battery_shadow/<release>`. Real
+builds always arm the shadow. The test suite turns it off for every test
+(`MICROCOSM_US_GATE_SHADOW=off`, in `packages/microcosm-build/tests/conftest.py`),
+because its tests stand stubs in for whole stages, and the shadow's own
+tests turn it back on.
 
 Most US entries are `stage_health` entries whose `check` names the gate,
 and `us_runtime/battery_bindings.py` binds each check to the gate function
