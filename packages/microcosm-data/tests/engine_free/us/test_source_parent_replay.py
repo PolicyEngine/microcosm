@@ -1,17 +1,28 @@
 """US source-parent orchestration with explicit MOCK_METADATA_ONLY callouts.
 
-No fixture here contains a real dataset, wheel, interpreter or source checkout.
-Mock results certify only schema/dispatch/order; all real native runs are UNRUN.
+No fixture here contains a real dataset, wheel, original interpreter or original
+source checkout. Mock results certify only schema/dispatch/order. The boundary
+tests at the end run the real bootstrap under the test interpreter and stop at
+refusals; all real native and original-runtime runs are UNRUN.
 """
 
 from __future__ import annotations
 
+import ast
 import copy
+import dataclasses
+import importlib.machinery
 import json
+import subprocess
+import sys
+import sysconfig
+import tempfile
+from pathlib import Path
 
 import pytest
 
 from microcosm.data import source_parent_replay as replay
+from test_support.git_repositories import NO_BACKGROUND_MAINTENANCE
 from test_support.microcosm_data.source_parent_replay import (
     carry_mock_source_parent,
     file_sha,
@@ -19,6 +30,7 @@ from test_support.microcosm_data.source_parent_replay import (
     mock_current_record,
     write_json,
 )
+from test_support.paths import paths_for
 
 
 @pytest.fixture
@@ -779,3 +791,503 @@ def test_saved_claim_cannot_widen_or_change_what_fresh_mock_probe_returned(
         )
     assert calls == ["legacy", "current"]
     assert _snapshot(source) == source.original_bytes
+
+
+# --- Review-repair boundary cases (C1/A2/A3/A4) ------------------------------
+#
+# Unlike the MOCK_METADATA_ONLY orchestration tests above, nothing below
+# replaces _run_worker, subprocess.run, the profile, catalogs, certificates or
+# the current Data implementation. The workers still refuse here because no
+# authentic original interpreter, wheel, checkout or H5 is staged; real
+# original-runtime and current-qualification replay remains UNRUN/HOLD and
+# none of these tests qualifies a source parent.
+
+_REPOSITORY = paths_for("microcosm-data").repository
+_DATA_PREFIX = "packages/microcosm-data/src/"
+
+
+@pytest.mark.parametrize("alias_of", ["source_enrichment", "build_manifest"])
+def test_case_alias_of_a_parent_file_refuses_before_worker(
+    source_parent, monkeypatch, alias_of
+):
+    path = source_parent.release_dir / "release_manifest.json"
+    manifest = json.loads(path.read_text())
+    original = manifest["artifacts"][alias_of]
+    manifest["artifacts"]["mock_case_alias"] = {
+        **original,
+        "path": original["path"].replace(alias_of, alias_of.title()),
+    }
+    write_json(path, manifest)
+    _repin(source_parent, "release_manifest.json")
+    before = _snapshot(source_parent)
+    calls = _forbid_worker(monkeypatch)
+    with pytest.raises(ValueError):
+        replay.qualify_source_parent(
+            source_parent.release_dir,
+            artifact_root=source_parent.artifact_root,
+            context=source_parent.context,
+        )
+    assert calls == []
+    assert _snapshot(source_parent) == before
+
+
+def _git_run(repository, *args):
+    subprocess.run(
+        [
+            "git",
+            *NO_BACKGROUND_MAINTENANCE,
+            "-c",
+            "user.name=MOCK_METADATA_ONLY",
+            "-c",
+            "user.email=mock-metadata-only@invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-C",
+            str(repository),
+            *args,
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+
+def _staged_checkout(tmp_path, *, committed_links=()):
+    """A throwaway committed Data closure using the repository's ignore rules."""
+    checkout = tmp_path / "MOCK_METADATA_ONLY_checkout"
+    data = checkout / _DATA_PREFIX / "microcosm/data"
+    data.mkdir(parents=True)
+    (data / "__init__.py").write_text('"""MOCK_METADATA_ONLY data closure."""\n')
+    (data / "mock_module.py").write_text("VALUE = 'MOCK_METADATA_ONLY'\n")
+    (checkout / ".gitignore").write_bytes((_REPOSITORY / ".gitignore").read_bytes())
+    for relative, target in committed_links:
+        link = checkout / relative
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(target)
+    _git_run(checkout, "init", "-q")
+    _git_run(checkout, "add", "-A")
+    _git_run(checkout, "commit", "-q", "-m", "MOCK_METADATA_ONLY closure")
+    commit = subprocess.run(
+        ["git", "-C", str(checkout), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    return checkout, commit
+
+
+def _status_is_clean(checkout):
+    return not subprocess.run(
+        ["git", "-C", str(checkout), "status", "--porcelain", "--untracked-files=all"],
+        check=True,
+        capture_output=True,
+    ).stdout.strip()
+
+
+def test_clean_committed_data_closure_authenticates(tmp_path):
+    checkout, commit = _staged_checkout(tmp_path)
+    replay._authenticate_checkout(checkout, commit=commit, declared={})
+
+
+_SOURCELESS = (
+    # Gitignored (*.py[cod]) sourceless bytecode git status cannot report.
+    "microcosm/__init__.pyc",
+    "microcosm/data/mock_planted.pyc",
+    "microcosm/data/mock_planted.pyo",
+    "microcosm/data/mock_package/__init__.pyc",
+)
+
+
+@pytest.mark.parametrize("relative", _SOURCELESS)
+def test_ignored_sourceless_bytecode_refuses_checkout(tmp_path, relative):
+    import py_compile
+
+    checkout, commit = _staged_checkout(tmp_path)
+    source = tmp_path / "MOCK_METADATA_ONLY_planted.py"
+    source.write_text("raise SystemExit('MOCK_METADATA_ONLY planted bytecode')\n")
+    target = checkout / _DATA_PREFIX / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    py_compile.compile(str(source), cfile=str(target), doraise=True)
+    assert _status_is_clean(checkout)
+    with pytest.raises(ValueError):
+        replay._authenticate_checkout(checkout, commit=commit, declared={})
+
+
+@pytest.mark.parametrize("suffix", sorted(set(importlib.machinery.EXTENSION_SUFFIXES)))
+def test_ignored_native_extension_refuses_checkout(tmp_path, suffix):
+    checkout, commit = _staged_checkout(tmp_path)
+    name = f"mock_native{suffix}"
+    (checkout / ".git/info/exclude").write_text(f"{name}\n")
+    (checkout / _DATA_PREFIX / "microcosm/data" / name).write_bytes(
+        b"MOCK_METADATA_ONLY not a native module"
+    )
+    assert _status_is_clean(checkout)
+    with pytest.raises(ValueError):
+        replay._authenticate_checkout(checkout, commit=commit, declared={})
+
+
+def test_ignored_unrecorded_source_refuses_checkout(tmp_path):
+    checkout, commit = _staged_checkout(tmp_path)
+    (checkout / ".git/info/exclude").write_text("mock_unrecorded.py\n")
+    (checkout / _DATA_PREFIX / "microcosm/data/mock_unrecorded.py").write_text(
+        "VALUE = 'MOCK_METADATA_ONLY unrecorded'\n"
+    )
+    assert _status_is_clean(checkout)
+    with pytest.raises(ValueError):
+        replay._authenticate_checkout(checkout, commit=commit, declared={})
+
+
+@pytest.mark.parametrize("target", ["module_dir", "empty_dir", "tracked_module"])
+def test_committed_symlink_in_source_closure_refuses_checkout(tmp_path, target):
+    outside = tmp_path / "MOCK_METADATA_ONLY_outside"
+    outside.mkdir()
+    if target == "module_dir":
+        (outside / "mock_escape.py").write_text("VALUE = 'MOCK_METADATA_ONLY'\n")
+        link, destination = "mock_linked", outside
+    elif target == "empty_dir":
+        link, destination = "mock_linked_empty", outside
+    else:
+        link, destination = "mock_alias.py", Path("mock_module.py")
+    checkout, commit = _staged_checkout(
+        tmp_path,
+        committed_links=[(f"{_DATA_PREFIX}microcosm/data/{link}", destination)],
+    )
+    assert _status_is_clean(checkout)
+    with pytest.raises(ValueError):
+        replay._authenticate_checkout(checkout, commit=commit, declared={})
+
+
+@pytest.mark.parametrize("mutation", ["modified", "untracked", "wrong_commit"])
+def test_dirty_or_wrong_commit_checkout_still_refuses(tmp_path, mutation):
+    checkout, commit = _staged_checkout(tmp_path)
+    data = checkout / _DATA_PREFIX / "microcosm/data"
+    if mutation == "modified":
+        (data / "mock_module.py").write_text("VALUE = 'MOCK_METADATA_ONLY changed'\n")
+    elif mutation == "untracked":
+        (data / "mock_untracked.py").write_text("VALUE = 'MOCK_METADATA_ONLY'\n")
+    else:
+        commit = "0" * 40
+    with pytest.raises(ValueError):
+        replay._authenticate_checkout(checkout, commit=commit, declared={})
+
+
+def _staging_root(tmp_path, monkeypatch):
+    staging = tmp_path / "MOCK_METADATA_ONLY_staging"
+    staging.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(staging))
+    return staging
+
+
+@pytest.mark.parametrize("mode", ["legacy", "current"])
+def test_real_worker_subprocess_refuses_unreviewed_lineage_in_fixed_helper(
+    source_parent, monkeypatch, tmp_path, mode
+):
+    """Real transport, bootstrap and helper; the in-process profile patch does
+    not reach the child, so the fixed helper must refuse the mock lineage."""
+    staging = _staging_root(tmp_path, monkeypatch)
+    context = dataclasses.replace(
+        source_parent.context, original_python=Path(sys.executable)
+    )
+    with pytest.raises(ValueError) as refused:
+        replay._run_worker(
+            context,
+            mode=mode,
+            release_dir=source_parent.release_dir,
+            artifact_root=source_parent.artifact_root,
+        )
+    message = str(refused.value)
+    assert f"{mode} source-parent worker refused" in message
+    # The bootstrap accepted the real helper/worker/config digests and the
+    # fixed helper loaded without any model/data import before authentication.
+    assert "_worker_main" in message
+    assert "only the reviewed tagged source parent is supported" in message
+    assert "loaded before replay authentication" not in message
+    assert "ModuleNotFoundError" not in message
+    assert list(staging.iterdir()) == []
+    assert _snapshot(source_parent) == source_parent.original_bytes
+
+
+def _bootstrap_command(tmp_path, config_path, output, **digests):
+    helper = Path(replay.__file__)
+    worker = helper.with_name("source_parent_worker.py")
+    values = {
+        "config": file_sha(config_path),
+        "helper": file_sha(helper),
+        "worker": file_sha(worker),
+        **digests,
+    }
+    cache = tmp_path / "MOCK_METADATA_ONLY_bytecode"
+    cache.mkdir(exist_ok=True)
+    return [
+        sys.executable,
+        "-I",
+        "-X",
+        f"pycache_prefix={cache}",
+        str(worker),
+        "--config",
+        str(config_path),
+        "--config-sha256",
+        values["config"],
+        "--helper-sha256",
+        values["helper"],
+        "--worker-sha256",
+        values["worker"],
+        "--output",
+        str(output),
+    ]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "helper",
+        "worker",
+        "config",
+        "existing_output",
+        "symlink_output",
+        "symlink_config",
+    ],
+)
+def test_real_bootstrap_refuses_changed_inputs_or_reused_output(
+    source_parent, tmp_path, mutation
+):
+    work = tmp_path / "MOCK_METADATA_ONLY_bootstrap"
+    work.mkdir()
+    config = work / "config.json"
+    write_json(
+        config,
+        {
+            "context": source_parent.context.to_dict(),
+            "mode": "legacy",
+            "release_dir": str(source_parent.release_dir),
+            "artifact_root": str(source_parent.artifact_root),
+        },
+    )
+    output = work / "actual.json"
+    outside = tmp_path / "MOCK_METADATA_ONLY_unowned.json"
+    outside.write_bytes(b"MOCK_METADATA_ONLY:unowned\n")
+    digests = {}
+    if mutation in {"helper", "worker", "config"}:
+        digests[mutation] = "0" * 64
+    elif mutation == "existing_output":
+        output.write_bytes(b"MOCK_METADATA_ONLY:stale output\n")
+    elif mutation == "symlink_output":
+        output.symlink_to(outside)
+    else:
+        real = work / "real_config.json"
+        config.rename(real)
+        config.symlink_to(real)
+    # Digests read through the config symlink, so only the link itself differs.
+    command = _bootstrap_command(tmp_path, config, output, **digests)
+    before = output.read_bytes() if output.is_file() else None
+    result = subprocess.run(command, capture_output=True, text=True, timeout=120)
+    assert result.returncode != 0
+    assert "ValueError" in result.stderr
+    assert "_worker_main" not in result.stderr
+    if before is None and not output.is_symlink():
+        assert not output.exists()
+    elif output.is_symlink():
+        assert outside.read_bytes() == b"MOCK_METADATA_ONLY:unowned\n"
+    else:
+        assert output.read_bytes() == before
+    assert _snapshot(source_parent) == source_parent.original_bytes
+
+
+# --- C1: the current Data closure's first-party dependencies are bound -----
+
+
+def _committed(prefix):
+    listed = subprocess.run(
+        ["git", "-C", str(_REPOSITORY), "ls-files", "-z", "--", prefix],
+        check=True,
+        capture_output=True,
+    ).stdout
+    return {name for name in listed.decode().split("\0") if name}
+
+
+def _module_level_shards(path):
+    """First-party namespace shards a module imports while it is imported."""
+    shards = set()
+
+    def visit(body):
+        for node in body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            names = []
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and not node.level:
+                names = [node.module or ""]
+            else:
+                for field in ("body", "orelse", "finalbody"):
+                    child = getattr(node, field, None)
+                    if isinstance(child, list):
+                        visit(child)
+                for handler in getattr(node, "handlers", ()):
+                    visit(handler.body)
+            for name in names:
+                parts = name.split(".")
+                if parts[0] == "microcosm" and len(parts) > 1:
+                    shards.add(parts[1])
+
+    visit(ast.parse(path.read_bytes()).body)
+    return shards
+
+
+def test_current_data_closure_imports_diagnostics_at_module_level():
+    # Premise of C1 from committed source: importing current microcosm.data
+    # imports microcosm.diagnostics, which the original 743683b0 runtime lacks.
+    shards = set()
+    for name in _committed(_DATA_PREFIX):
+        if name.endswith(".py"):
+            shards |= _module_level_shards(_REPOSITORY / name)
+    assert "diagnostics" in shards
+
+
+def test_current_producer_inventory_binds_every_first_party_closure_it_imports():
+    """Every committed file of each first-party shard the current Data closure
+    imports at module level must be authenticated and bound in the current
+    producer inventory (SOURCE_PARENT_IMPLEMENTATION_FILES feeds
+    producer_code.source_files_sha256), including py.typed and JSON schemas."""
+    shards = set()
+    for name in _committed(_DATA_PREFIX):
+        if name.endswith(".py"):
+            shards |= _module_level_shards(_REPOSITORY / name)
+    bound = set(replay.SOURCE_PARENT_IMPLEMENTATION_FILES)
+    # The plan binds the complete committed current Data AND Diagnostics
+    # source/resource closures, not only the modules the replay names.
+    assert "diagnostics" in shards
+    for shard in sorted(shards | {"data"}):
+        committed = _committed(f"packages/microcosm-{shard}/src/")
+        assert committed, shard
+        assert committed <= bound, (shard, sorted(committed - bound))
+
+
+# --- C1: genuine committed current Data + Diagnostics import, one subprocess --
+#
+# The fixed helper under test runs in a fresh "-I -S" interpreter (the
+# bootstrap's file-location load) against a clean sparse clone of the
+# committed HEAD. "-S" keeps the test environment's editable first-party .pth
+# paths off sys.path; only third-party site directories are appended, so the
+# microcosm namespace can come only from roots the helper authenticated. It
+# stops after importing microcosm.data.source_enrichment: no model, H5,
+# original runtime or qualification runs, and nothing here is native evidence.
+# A missing third-party dependency fails as BLOCKED; it is never skipped.
+
+_CURRENT_IMPORT_PROBE = r"""
+import importlib.util, json, sys
+from pathlib import Path
+
+helper, checkout, commit, *dependency_paths = sys.argv[1:]
+sys.path.extend(dependency_paths)
+spec = importlib.util.spec_from_file_location("_source_parent_fixed_helper", helper)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+enrichment = module._import_authenticated_sources(
+    Path(checkout), commit=commit, declared={}, current=True
+)
+print(json.dumps({
+    "runner": enrichment.__file__,
+    "files": {
+        name: getattr(item, "__file__", None)
+        for name, item in sys.modules.items()
+        if name == "microcosm" or name.startswith("microcosm.")
+    },
+    "namespace": list(sys.modules["microcosm"].__path__),
+    "loaded": sorted(sys.modules),
+}))
+"""
+
+
+def _git_quiet(*args):
+    return subprocess.run(
+        ["git", *NO_BACKGROUND_MAINTENANCE, *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def _clean_committed_clone(tmp_path):
+    """Sparse, object-sharing clone of HEAD; reads the repository, never writes it."""
+    commit = _git_quiet("-C", str(_REPOSITORY), "rev-parse", "HEAD")
+    common = Path(
+        _git_quiet(
+            "-C",
+            str(_REPOSITORY),
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-common-dir",
+        )
+    )
+    clone = (tmp_path / "MOCK_METADATA_ONLY_current_clone").resolve()
+    _git_quiet("clone", "--quiet", "--shared", "--no-checkout", str(common), str(clone))
+    directories = sorted(
+        {str(Path(path).parent) for path in replay.SOURCE_PARENT_IMPLEMENTATION_FILES}
+        | {"packages/microcosm-data/src", "packages/microcosm-diagnostics/src"}
+    )
+    _git_quiet("-C", str(clone), "sparse-checkout", "set", "--cone", *directories)
+    _git_quiet("-C", str(clone), "checkout", "--quiet", "--detach", commit)
+    assert not _git_quiet(
+        "-C", str(clone), "status", "--porcelain", "--untracked-files=all"
+    )
+    return clone, commit
+
+
+def test_current_mode_imports_only_authenticated_data_and_diagnostics(tmp_path):
+    clone, commit = _clean_committed_clone(tmp_path)
+    cache = tmp_path / "MOCK_METADATA_ONLY_bytecode"
+    cache.mkdir()
+    paths = sysconfig.get_paths()
+    dependencies = list(dict.fromkeys((paths["purelib"], paths["platlib"])))
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-X",
+            f"pycache_prefix={cache}",
+            "-c",
+            _CURRENT_IMPORT_PROBE,
+            str(Path(replay.__file__)),
+            str(clone),
+            commit,
+            *dependencies,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    if (
+        result.returncode != 0
+        and "ModuleNotFoundError" in result.stderr
+        and ("microcosm" not in result.stderr.rsplit("ModuleNotFoundError", 1)[1])
+    ):
+        pytest.fail(
+            f"BLOCKED: third-party dependency unavailable: {result.stderr[-2000:]}"
+        )
+    assert result.returncode == 0, result.stderr[-4000:]
+    observed = json.loads(result.stdout.strip().splitlines()[-1])
+    data = clone / _DATA_PREFIX
+    diagnostics = clone / "packages/microcosm-diagnostics/src"
+    assert Path(observed["runner"]) == data / "microcosm/data/source_enrichment.py"
+    assert {Path(path) for path in observed["namespace"]} == {
+        data / "microcosm",
+        diagnostics / "microcosm",
+    }
+    files = observed["files"]
+    assert "microcosm.diagnostics" in files
+    for name, path in files.items():
+        if name == "microcosm":
+            continue
+        shard = name.split(".")[1]
+        assert shard in {"data", "diagnostics"}, name
+        root = data if shard == "data" else diagnostics
+        assert path is not None and Path(path).is_relative_to(root), (name, path)
+    country = {"policyengine", "policyengine_core", "policyengine_us", "spm_calculator"}
+    assert not [name for name in observed["loaded"] if name.split(".")[0] in country]
+    assert not _git_quiet(
+        "-C", str(clone), "status", "--porcelain", "--untracked-files=all"
+    )

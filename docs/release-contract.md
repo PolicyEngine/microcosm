@@ -1417,8 +1417,27 @@ describes its inputs. The validators preserve historical evidence and require
 exact original-runtime replay plus every current source, native-loader,
 stored-input, claim and producer check. The artifact mapper preserves every
 ancestor key and filename through a complete reversible map. Consumers replay
-saved v2 evidence and retain current refusals and BASE, target, drift,
-publication and withdrawal requirements. Ordinary calibration schema 1 keeps
-its existing defaults. This lane never promotes a current or default build.
-Operators stage and authenticate the original runtime separately; the replay
-code downloads and installs nothing and accepts no alternate worker.
+saved v2 evidence and retain current refusals and BASE, target, drift and
+publication requirements. Ordinary calibration schema 1 keeps its existing
+defaults. This lane never promotes a current or default build.
+
+Operators stage the original runtime separately. Replay compares the four
+original wheels with their installed package trees, apart from the declared
+cache and installation-bookkeeping exclusions. It requires complete original
+installation origins and authenticates the original Data source closure and
+fixed current Data and Diagnostics source/resource closures. The current
+closures share one clean commit and the producer inventory binds both. The
+seven declared runtime versions supplement these checks; they do not
+authenticate the full transitive pure-Python or native dependency environment
+or operating-system provenance. The replay code
+downloads and installs nothing and accepts no alternate worker. Engineering
+source-import tests supply no authentic original-runtime, native/H5 or data
+qualification.
+
+Consumers do not yet refuse withdrawn parents.
+[PR 1594](https://github.com/PolicyEngine/microcosm/pull/1594) remains open and
+unadopted; integrate its withdrawal protections before adopting this lane.
+Stored-input refusals, including `would_claim_wic` and
+`medicare_part_b_premiums`, still require a separately reviewed source/input
+contract. Publication and signing need separate authorization; this change
+grants neither.

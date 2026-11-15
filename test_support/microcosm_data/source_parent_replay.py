@@ -244,6 +244,12 @@ MOCK_PRODUCER_FILES = (
     "packages/microcosm-data/src/microcosm/data/release.py",
     "packages/microcosm-build/src/microcosm/build/release_publication.py",
 )
+# A mock worker's inventory names every path the current producer inventory
+# binds, including the committed current Data and Diagnostics closures. Only
+# the path list grows; every digest stays a MOCK_METADATA_ONLY label digest.
+MOCK_PRODUCER_FILES = tuple(
+    dict.fromkeys((*MOCK_PRODUCER_FILES, *replay.SOURCE_PARENT_IMPLEMENTATION_FILES))
+)
 
 
 def mock_current_record(source):

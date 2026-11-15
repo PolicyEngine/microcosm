@@ -15,6 +15,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -58,15 +59,56 @@ _ANCESTOR_NAMES = MappingProxyType(
     }
 )
 
-SOURCE_PARENT_IMPLEMENTATION_FILES = (
+_DATA_SOURCE_PREFIX = "packages/microcosm-data/src"
+_DIAGNOSTICS_SOURCE_PREFIX = "packages/microcosm-diagnostics/src"
+# Fixed first-party closures: changes require review, never operator configuration.
+_CURRENT_DATA_FILES = (
+    "packages/microcosm-data/src/microcosm/data/__init__.py",
+    "packages/microcosm-data/src/microcosm/data/annual_projections.py",
+    "packages/microcosm-data/src/microcosm/data/build_folder_manifests.py",
+    "packages/microcosm-data/src/microcosm/data/compatibility_recertification.py",
+    "packages/microcosm-data/src/microcosm/data/contract.py",
+    "packages/microcosm-data/src/microcosm/data/denied_pools.py",
+    "packages/microcosm-data/src/microcosm/data/gate_signing_keys.py",
+    "packages/microcosm-data/src/microcosm/data/h5_boolean_append.py",
+    "packages/microcosm-data/src/microcosm/data/h5_enrichment.py",
+    "packages/microcosm-data/src/microcosm/data/loader.py",
+    "packages/microcosm-data/src/microcosm/data/publish_cli.py",
+    "packages/microcosm-data/src/microcosm/data/registry.py",
+    "packages/microcosm-data/src/microcosm/data/release.py",
+    "packages/microcosm-data/src/microcosm/data/releases_record.py",
+    "packages/microcosm-data/src/microcosm/data/slack.py",
+    "packages/microcosm-data/src/microcosm/data/source_enrichment.py",
     "packages/microcosm-data/src/microcosm/data/source_parent_replay.py",
     "packages/microcosm-data/src/microcosm/data/source_parent_worker.py",
-    "packages/microcosm-data/src/microcosm/data/compatibility_recertification.py",
-    "packages/microcosm-data/src/microcosm/data/source_enrichment.py",
-    "tools/build_us_compatibility_recertification.py",
-    "packages/microcosm-data/src/microcosm/data/contract.py",
-    "packages/microcosm-data/src/microcosm/data/release.py",
-    "packages/microcosm-build/src/microcosm/build/release_publication.py",
+    "packages/microcosm-data/src/microcosm/data/stored_inputs.py",
+    "packages/microcosm-data/src/microcosm/data/us_critical_targets.py",
+)
+_CURRENT_DIAGNOSTICS_FILES = (
+    "packages/microcosm-diagnostics/src/microcosm/diagnostics/__init__.py",
+    "packages/microcosm-diagnostics/src/microcosm/diagnostics/catalogs.py",
+    "packages/microcosm-diagnostics/src/microcosm/diagnostics/json_schema.py",
+    "packages/microcosm-diagnostics/src/microcosm/diagnostics/py.typed",
+    "packages/microcosm-diagnostics/src/microcosm/diagnostics/schema.py",
+    "packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v8.schema.json",
+    "packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v9.schema.json",
+    "packages/microcosm-diagnostics/src/microcosm/diagnostics/writer.py",
+)
+SOURCE_PARENT_IMPLEMENTATION_FILES = tuple(
+    dict.fromkeys(
+        (
+            *_CURRENT_DATA_FILES,
+            *_CURRENT_DIAGNOSTICS_FILES,
+            "packages/microcosm-data/src/microcosm/data/source_parent_replay.py",
+            "packages/microcosm-data/src/microcosm/data/source_parent_worker.py",
+            "packages/microcosm-data/src/microcosm/data/compatibility_recertification.py",
+            "packages/microcosm-data/src/microcosm/data/source_enrichment.py",
+            "tools/build_us_compatibility_recertification.py",
+            "packages/microcosm-data/src/microcosm/data/contract.py",
+            "packages/microcosm-data/src/microcosm/data/release.py",
+            "packages/microcosm-build/src/microcosm/build/release_publication.py",
+        )
+    )
 )
 NATIVE_RECEIPT_FIELDS = frozenset(
     {
@@ -250,6 +292,11 @@ def _exact_keys(value, fields, label):
         raise ValueError(f"{label} must contain exactly {sorted(fields)}")
 
 
+def _name_identity(value: str) -> str:
+    """Compare aliases without changing any accepted evidence string."""
+    return unicodedata.normalize("NFC", unicodedata.normalize("NFC", value).casefold())
+
+
 def _bare_name(value) -> bool:
     return (
         isinstance(value, str)
@@ -385,11 +432,11 @@ class SourceParentEvidenceV2:
         for row in self.artifact_map:
             _exact_keys(row, ARTIFACT_MAP_FIELDS, "artifact-map row")
             for name, values in seen.items():
-                if not _bare_name(row[name]) or row[name] in values:
+                if not _bare_name(row[name]) or _name_identity(row[name]) in values:
                     raise ValueError(
                         "artifact map must be safe and injective in both directions"
                     )
-                values.add(row[name])
+                values.add(_name_identity(row[name]))
             if (
                 not _is_sha(row["sha256"])
                 or not isinstance(row["kind"], str)
@@ -550,7 +597,11 @@ def build_source_parent_artifact_map(
     if not isinstance(artifacts, Mapping):
         raise ValueError("parent artifacts must be an object")
     dataset_key = parent_manifest.get("default_datasets", {}).get("national")
-    rows, source_paths, keys, paths = [], set(), set(), set()
+    rows = []
+    seen = {
+        name: set()
+        for name in ("source_key", "source_path", "carried_key", "carried_path")
+    }
     reserved = {
         "release_manifest",
         "compatibility_recertification",
@@ -559,13 +610,48 @@ def build_source_parent_artifact_map(
         SOURCE_PARENT_EVIDENCE_KEY,
         *_ANCESTOR_NAMES.values(),
     }
+    special_keys = {*_ANCESTOR_NAMES, "build_manifest"}
+    reserved_paths = {name + ".json" for name in reserved | special_keys}
+    # A renamed dataset also reserves its destination in the original namespace.
+    reserved_source_keys = reserved | special_keys | {child_dataset_key}
+    reserved_source_paths = reserved_paths | {child_dataset_filename}
+    for value, forbidden in (
+        (child_dataset_key, reserved | special_keys),
+        (child_dataset_filename, reserved_paths),
+    ):
+        if _name_identity(value) in {_name_identity(name) for name in forbidden}:
+            raise ValueError("child dataset identifier aliases a reserved artifact")
+    if not _bare_name(dataset_key) or _name_identity(dataset_key) in {
+        _name_identity(name) for name in reserved | special_keys
+    }:
+        raise ValueError("selected source dataset aliases a reserved artifact")
     for key, entry in artifacts.items():
         if not _bare_name(key) or not isinstance(entry, Mapping):
             raise ValueError("parent artifact keys and entries must be explicit")
         path = entry.get("path")
-        if not _bare_name(path) or path in source_paths or key in reserved:
-            raise ValueError("unsafe, duplicated or reserved source artifact")
-        source_paths.add(path)
+        if not _bare_name(path):
+            raise ValueError("unsafe source artifact path")
+        for value, reserved_names, allowed in (
+            (
+                key,
+                reserved_source_keys,
+                key in special_keys
+                or (key == dataset_key and key == child_dataset_key),
+            ),
+            (
+                path,
+                reserved_source_paths,
+                (key in special_keys and path == key + ".json")
+                or (key == dataset_key and path == child_dataset_filename),
+            ),
+        ):
+            aliases = {
+                name
+                for name in reserved_names
+                if _name_identity(name) == _name_identity(value)
+            }
+            if aliases and (value not in aliases or not allowed):
+                raise ValueError("reserved source artifact alias")
         destination_key, destination_path = key, path
         if key in _ANCESTOR_NAMES:
             if path != key + ".json":
@@ -579,44 +665,33 @@ def build_source_parent_artifact_map(
                 "parent_build_manifest",
                 "parent_build_manifest.json",
             )
-        elif path in {
-            "parent_release_manifest.json",
-            "parent_build_manifest.json",
-            "build_manifest.json",
-        }:
-            raise ValueError("reserved file has an unknown artifact key")
         elif key == dataset_key:
             destination_key, destination_path = (
                 child_dataset_key,
                 child_dataset_filename,
             )
-        if (
-            destination_key in keys
-            or destination_path in paths
-            or (
-                destination_key in reserved
-                or destination_path == "release_manifest.json"
-            )
-        ):
-            # The two reviewed ancestor destinations are allowed only for their
-            # explicitly named source keys, never for another incoming artifact.
-            if not (
-                key in _ANCESTOR_NAMES
-                and destination_key not in keys
-                and destination_path not in paths
-            ):
-                raise ValueError("source-parent artifact mapping collides")
-        reserved_paths = {name + ".json" for name in reserved} | {
-            "build_manifest.json",
-            "parent_release_manifest.json",
-            "parent_build_manifest.json",
-        }
-        if path in reserved_paths and key not in {
-            "parent_release_manifest",
-            "parent_build_manifest",
-            "build_manifest",
-        }:
+        elif _name_identity(path) in {_name_identity(name) for name in reserved_paths}:
             raise ValueError("reserved filename has an unknown source key")
+        if (
+            _name_identity(destination_key)
+            in {_name_identity(name) for name in reserved | special_keys}
+            or _name_identity(destination_path)
+            in {_name_identity(name) for name in reserved_paths}
+        ) and key not in special_keys:
+            raise ValueError(
+                "source-parent artifact mapping collides with reserved identity"
+            )
+        row_names = dict(
+            source_key=key,
+            source_path=path,
+            carried_key=destination_key,
+            carried_path=destination_path,
+        )
+        for axis, value in row_names.items():
+            identity = _name_identity(value)
+            if identity in seen[axis]:
+                raise ValueError("source-parent artifact mapping collides")
+            seen[axis].add(identity)
         kind = entry.get("kind")
         if not isinstance(kind, str) or not kind:
             raise ValueError("artifact kind must be a nonempty string")
@@ -627,8 +702,6 @@ def build_source_parent_artifact_map(
             or any(c not in "0123456789abcdef" for c in sha)
         ):
             raise ValueError("artifact map requires an actual SHA-256")
-        keys.add(destination_key)
-        paths.add(destination_path)
         rows.append(
             {
                 "source_key": key,
@@ -850,9 +923,39 @@ def _git(checkout: Path, *args: str) -> bytes:
     ).stdout
 
 
-def _authenticate_checkout(checkout: Path, *, commit: str, declared: Mapping) -> Path:
-    """Authenticate full data-package Python closure, not merely six preimages."""
-    if not checkout.is_dir() or checkout.is_symlink():
+def _unlinked_under(path, root: Path) -> bool:
+    written = Path(os.path.abspath(path))
+    return written == Path(os.path.realpath(path)) and written.is_relative_to(root)
+
+
+def _tree_files(root: Path) -> set[Path]:
+    """Walk actual files, refusing links (including empty linked directories)."""
+    if not root.is_dir() or not _unlinked_under(root, root):
+        raise ValueError(
+            f"replay source/package root must be an unlinked directory: {root}"
+        )
+    files = set()
+    for directory, subdirectories, filenames in os.walk(root, followlinks=False):
+        for name in (*subdirectories, *filenames):
+            path = Path(directory) / name
+            if path.is_symlink():
+                raise ValueError(f"symlink in replay source/package tree: {path}")
+        for name in filenames:
+            path = Path(directory) / name
+            _regular_file(path)
+            files.add(path)
+    return files
+
+
+def _authenticate_checkout(
+    checkout: Path, *, commit: str, declared: Mapping, current=False
+) -> Path:
+    """Authenticate full committed source/resource closures before any import.
+
+    Legacy uses only original Data. Current uses fixed Data and Diagnostics
+    roots from one clean commit; no additional source root is configurable.
+    """
+    if not checkout.is_dir() or not _unlinked_under(checkout, checkout):
         raise ValueError("replay requires a locally staged original source checkout")
     if _git(checkout, "rev-parse", "HEAD").decode().strip() != commit:
         raise ValueError("replay checkout HEAD differs from its authenticated commit")
@@ -860,20 +963,63 @@ def _authenticate_checkout(checkout: Path, *, commit: str, declared: Mapping) ->
         raise ValueError(
             "replay source checkout must be clean, including untracked files"
         )
-    source = checkout / "packages/microcosm-data/src"
-    prefix = "packages/microcosm-data/src/"
-    tracked = (
-        _git(checkout, "ls-tree", "-r", "--name-only", commit, "--", prefix)
-        .decode()
-        .splitlines()
+    from importlib.machinery import BYTECODE_SUFFIXES, EXTENSION_SUFFIXES
+
+    prefixes = (
+        (_DATA_SOURCE_PREFIX, _DIAGNOSTICS_SOURCE_PREFIX)
+        if current
+        else (_DATA_SOURCE_PREFIX,)
     )
-    tracked_python = {name for name in tracked if name.endswith(".py")}
-    actual_python = {str(path.relative_to(checkout)) for path in source.rglob("*.py")}
-    if actual_python != tracked_python:
-        raise ValueError("replay data Python source closure is incomplete or extended")
-    if list(source.rglob("*.so")) or list(source.rglob("*.pyd")):
-        raise ValueError("unexpected native module in replay data source tree")
-    for relative in sorted(tracked_python | set(declared)):
+    tracked_all = set()
+    for prefix in prefixes:
+        source = checkout / prefix
+        tracked = set(
+            _git(
+                checkout,
+                "ls-tree",
+                "-r",
+                "--name-only",
+                "-z",
+                commit,
+                "--",
+                prefix + "/",
+            )
+            .decode()
+            .rstrip("\0")
+            .split("\0")
+        )
+        actual = {path.relative_to(checkout).as_posix() for path in _tree_files(source)}
+        if not tracked or actual != tracked:
+            raise ValueError("replay source/resource closure is incomplete or extended")
+        for relative in actual:
+            if relative.endswith(
+                (
+                    *BYTECODE_SUFFIXES,
+                    *EXTENSION_SUFFIXES,
+                    ".pyo",
+                    ".so",
+                    ".pyd",
+                    ".dll",
+                    ".dylib",
+                )
+            ):
+                raise ValueError(
+                    "unexpected bytecode/native module in replay source tree"
+                )
+        if current:
+            fixed = (
+                _CURRENT_DATA_FILES
+                if prefix == _DATA_SOURCE_PREFIX
+                else _CURRENT_DIAGNOSTICS_FILES
+            )
+            if tracked != set(fixed):
+                raise ValueError(
+                    "current replay source/resource closure differs from fixed inventory"
+                )
+        tracked_all.update(tracked)
+    for relative in sorted(tracked_all | set(declared)):
+        if Path(relative).is_absolute() or ".." in Path(relative).parts:
+            raise ValueError("unsafe declared replay source path")
         path = checkout / relative
         _regular_file(path)
         actual = _sha256(path)
@@ -884,10 +1030,324 @@ def _authenticate_checkout(checkout: Path, *, commit: str, declared: Mapping) ->
             relative in declared and actual != declared[relative]
         ):
             raise ValueError(f"replay committed/installed source differs: {relative}")
-    return source
+    return checkout / _DATA_SOURCE_PREFIX
 
 
-def _authenticate_runtime(context, receipt, runtime):
+def _namespace_module(module) -> bool:
+    from importlib.machinery import NamespaceLoader
+
+    spec = getattr(module, "__spec__", None)
+    return (
+        getattr(module, "__file__", None) is None
+        and spec is not None
+        and spec.origin is None
+        and isinstance(spec.loader, NamespaceLoader)
+        and bool(list(getattr(module, "__path__", ()) or ()))
+    )
+
+
+def _verify_loaded_trees(trees) -> None:
+    """Check named modules, synthetic file origins and namespace search paths.
+
+    Each private inventory is (package directory, source/site root, file set).
+    It never appears in the historical runtime or native receipt JSON.
+    """
+    for name, module in tuple(sys.modules.items()):
+        if module is None:
+            continue
+        origin = getattr(module, "__file__", None)
+        locations = list(getattr(module, "__path__", ()) or ())
+        named = next(
+            (
+                tree
+                for prefix, tree in trees.items()
+                if name == prefix or name.startswith(prefix + ".")
+            ),
+            None,
+        )
+        if named is not None:
+            root, _, _ = named
+            if not (
+                _unlinked_under(origin, root)
+                if isinstance(origin, str)
+                else _namespace_module(module)
+            ) or any(
+                not _unlinked_under(location, root) or not Path(location).is_dir()
+                for location in locations
+            ):
+                raise ValueError(
+                    f"replay import/namespace escaped authenticated tree: {name}"
+                )
+        if isinstance(origin, str):
+            for root, site, files in trees.values():
+                if not Path(origin).resolve().is_relative_to(root):
+                    continue
+                if not _unlinked_under(origin, root):
+                    raise ValueError(f"replay import followed a symlink: {name}")
+                relative = Path(os.path.abspath(origin)).relative_to(site).as_posix()
+                if Path(origin).suffix != ".py" or relative not in files:
+                    raise ValueError(f"replay imported unverified source: {name}")
+                # Synthetic Core modules can also be packages with search paths.
+                if any(not _unlinked_under(location, root) for location in locations):
+                    raise ValueError(
+                        f"replay synthetic namespace escaped authenticated tree: {name}"
+                    )
+
+
+def _source_trees(checkout: Path, *, current: bool) -> dict:
+    prefixes = (
+        (_DATA_SOURCE_PREFIX, _DIAGNOSTICS_SOURCE_PREFIX)
+        if current
+        else (_DATA_SOURCE_PREFIX,)
+    )
+    trees = {}
+    for prefix in prefixes:
+        source = checkout / prefix
+        package = "data" if prefix == _DATA_SOURCE_PREFIX else "diagnostics"
+        files = frozenset(
+            path.relative_to(source).as_posix() for path in _tree_files(source)
+        )
+        trees[f"microcosm.{package}"] = (source / "microcosm" / package, source, files)
+    return trees
+
+
+def _check_microcosm_namespace(trees, *, installed_namespace=None) -> None:
+    allowed = {root.parent for root, _, _ in trees.values()}
+    if installed_namespace is not None:
+        allowed.add(installed_namespace)
+    module = sys.modules.get("microcosm")
+    if module is None:
+        return
+    locations = list(getattr(module, "__path__", ()) or ())
+    if (
+        not _namespace_module(module)
+        or {Path(path) for path in locations} != allowed
+        or any(not _unlinked_under(path, Path(path)) for path in locations)
+    ):
+        raise ValueError("replay microcosm namespace has unauthenticated roots")
+    for name, loaded in tuple(sys.modules.items()):
+        origin = getattr(loaded, "__file__", None)
+        if (
+            installed_namespace is not None
+            and isinstance(origin, str)
+            and Path(origin).resolve().is_relative_to(installed_namespace)
+        ):
+            raise ValueError(
+                f"replay loaded installed Data instead of staged source: {name}"
+            )
+        if name.startswith("microcosm.") and not any(
+            name == prefix or name.startswith(prefix + ".") for prefix in trees
+        ):
+            raise ValueError(f"unexpected first-party replay import: {name}")
+
+
+def _import_authenticated_sources(
+    checkout: Path,
+    *,
+    commit: str,
+    declared: Mapping,
+    current=False,
+    installed_namespace=None,
+    verified_sources=None,
+):
+    """Genuine first-party import boundary, independently usable without H5/model work."""
+    from importlib import import_module
+    from importlib.util import find_spec
+
+    if any(
+        name == "microcosm" or name.startswith("microcosm.") for name in sys.modules
+    ):
+        raise ValueError(
+            "first-party package loaded before replay source authentication"
+        )
+    _authenticate_checkout(checkout, commit=commit, declared=declared, current=current)
+    trees = _source_trees(checkout, current=current)
+    if verified_sources is not None:
+        verified_sources.update(trees)
+    sources = tuple(site for _, site, _ in trees.values())
+    sys.path[:0] = [str(source) for source in sources]
+    # Resolve the PEP 420 root without executing any namespace __init__ code.
+    spec = find_spec("microcosm")
+    allowed = {root.parent for root, _, _ in trees.values()}
+    if installed_namespace is not None:
+        allowed.add(installed_namespace)
+    locations = list(getattr(spec, "submodule_search_locations", ()) or ())
+    if (
+        spec is None
+        or spec.origin is not None
+        or spec.loader is not None
+        or {Path(path) for path in locations} != allowed
+        or any(not _unlinked_under(path, Path(path)) for path in locations)
+    ):
+        raise ValueError(
+            "replay microcosm namespace resolves outside authenticated sources"
+        )
+    # This imports only the genuine, code-free PEP 420 namespace. Resolve
+    # children through the actual import machinery in its original path order.
+    import_module("microcosm")
+    _check_microcosm_namespace(trees, installed_namespace=installed_namespace)
+    for name, (root, _, files) in trees.items():
+        spec = find_spec(name)
+        if (
+            spec is None
+            or spec.origin != str(root / "__init__.py")
+            or list(spec.submodule_search_locations or ()) != [str(root)]
+            or not files
+        ):
+            raise ValueError(
+                f"replay first-party package resolves outside authenticated sources: {name}"
+            )
+    from microcosm.data import source_enrichment
+
+    _check_microcosm_namespace(trees, installed_namespace=installed_namespace)
+    _verify_loaded_trees(trees)
+    if (
+        Path(source_enrichment.__file__)
+        != checkout / _DATA_SOURCE_PREFIX / "microcosm/data/source_enrichment.py"
+    ):
+        raise ValueError("worker loaded a different data runner")
+    return source_enrichment
+
+
+def _runtime_identity_file(relative: str) -> bool:
+    # Match the ordinary replay lane's cache/bookkeeping exclusions without
+    # importing Data before its source and runtime have been authenticated.
+    parts = relative.split("/")
+    if ".." in parts:
+        return False
+    if len(parts) > 1 and parts[-2] == "__pycache__" and parts[-1].endswith(".pyc"):
+        return False
+    return not (
+        parts[0].endswith(".dist-info")
+        and parts[-1]
+        in {"RECORD", "INSTALLER", "REQUESTED", "direct_url.json", "uv_cache.json"}
+    )
+
+
+def _authenticate_installed_tree(dist, members: Mapping, *, import_name: str):
+    """Authenticate RECORD AND actual disk resources; resolve imports without loading."""
+    from importlib.util import find_spec
+
+    recorded = [
+        str(file) for file in (dist.files or ()) if _runtime_identity_file(str(file))
+    ]
+    if (
+        not recorded
+        or len(recorded) != len(set(recorded))
+        or set(recorded) != set(members)
+    ):
+        raise ValueError("original installed resource inventory differs from wheel")
+    metadata_roots = {
+        relative.split("/", 1)[0]
+        for relative in recorded
+        if relative.split("/", 1)[0].endswith(".dist-info")
+    }
+    for metadata_root in metadata_roots:
+        _tree_files(Path(dist.locate_file(metadata_root)))
+    for relative in recorded:
+        if (
+            not relative
+            or Path(relative).is_absolute()
+            or ".." in Path(relative).parts
+            or "\\" in relative
+        ):
+            raise ValueError("unsafe original wheel resource member")
+        path = Path(dist.locate_file(relative))
+        _regular_file(path)
+        if path.read_bytes() != members[relative]:
+            raise ValueError(f"original installed resource differs: {relative}")
+    roots = {
+        relative.split("/", 1)[0]
+        for relative in recorded
+        if "/" in relative and not relative.split("/", 1)[0].endswith(".dist-info")
+    }
+    if roots != {import_name}:
+        raise ValueError("original wheel must have exactly its expected package root")
+    root = Path(dist.locate_file(import_name))
+    site = Path(dist.locate_file(""))
+    actual = {
+        path.relative_to(site).as_posix()
+        for path in _tree_files(root)
+        if _runtime_identity_file(path.relative_to(site).as_posix())
+    }
+    expected = {
+        relative for relative in recorded if relative.startswith(import_name + "/")
+    }
+    if actual != expected:
+        raise ValueError(
+            "original installed disk tree differs from wheel/RECORD inventory"
+        )
+    # A legacy .pyc beside source can run without source; refuse even if recorded.
+    # Native files are authenticated as resources but may never supply Python code.
+    if any(relative.endswith((".pyc", ".pyo")) for relative in actual):
+        raise ValueError("unexpected sourceless bytecode in original package tree")
+    spec = find_spec(import_name)
+    if (
+        spec is None
+        or spec.origin != str(root / "__init__.py")
+        or list(spec.submodule_search_locations or ()) != [str(root)]
+    ):
+        raise ValueError(
+            f"original package import resolves outside authenticated tree: {import_name}"
+        )
+    return root, site, frozenset(recorded)
+
+
+def _authenticate_installed_data_namespace(context) -> Path:
+    """Authenticate the original wheel's inert PEP 420 namespace contribution.
+
+    Its Data code is never selected: both modes import the staged source.
+    Other shards or namespace-root executables are refused, not hidden by
+    changing the installed package or synthesizing a namespace module.
+    """
+    from importlib import metadata
+
+    dist = metadata.distribution("microcosm-data")
+    namespace = Path(dist.locate_file("microcosm"))
+    source = context.original_checkout / _DATA_SOURCE_PREFIX
+    original = source / "microcosm"
+    expected = {
+        path.relative_to(source).as_posix(): path for path in _tree_files(original)
+    }
+
+    def included(relative):
+        parts = relative.split("/")
+        return not (
+            len(parts) >= 4
+            and parts[:2] == ["microcosm", "data"]
+            and parts[-2] == "__pycache__"
+            and parts[-1].endswith(".pyc")
+        )
+
+    recorded = [
+        str(file)
+        for file in (dist.files or ())
+        if str(file).startswith("microcosm/") and included(str(file))
+    ]
+    actual = {
+        "microcosm/" + path.relative_to(namespace).as_posix(): path
+        for path in _tree_files(namespace)
+        if included("microcosm/" + path.relative_to(namespace).as_posix())
+    }
+    if (
+        len(recorded) != len(set(recorded))
+        or set(recorded) != set(expected)
+        or set(actual) != set(expected)
+    ):
+        raise ValueError(
+            "installed original Data namespace differs from committed source closure"
+        )
+    for relative, path in actual.items():
+        if path.read_bytes() != expected[relative].read_bytes():
+            raise ValueError(
+                f"installed original Data source/resource differs: {relative}"
+            )
+    return namespace
+
+
+def _authenticate_runtime(
+    context, receipt, runtime, *, verified_trees=None, verified_namespace=None
+):
     """Authenticate wheel bytes, installed inventories and original origins first."""
     import platform
     from email.parser import BytesParser
@@ -904,12 +1364,23 @@ def _authenticate_runtime(context, receipt, runtime):
     names = {"policyengine", "policyengine-core", "policyengine-us", "spm-calculator"}
     _exact_keys(packages, names, "original four package identities")
     wheels = {}
+    trees = {}
     for path in context.original_wheels:
         _regular_file(path)
         with ZipFile(path) as archive:
             members = archive.namelist()
             if len(members) != len(set(members)):
                 raise ValueError("wheel contains duplicate members")
+            for member in members:
+                relative = member.removesuffix("/")
+                if (
+                    not relative
+                    or Path(relative).is_absolute()
+                    or ".." in Path(relative).parts
+                    or "\\" in relative
+                    or Path(relative).as_posix() != relative
+                ):
+                    raise ValueError("unsafe original wheel member")
             meta = [name for name in members if name.endswith(".dist-info/METADATA")]
             if len(meta) != 1:
                 raise ValueError("original wheel must contain one METADATA")
@@ -919,14 +1390,25 @@ def _authenticate_runtime(context, receipt, runtime):
                 raise ValueError(
                     "original wheels must identify exactly four unique packages"
                 )
+            contents = {
+                member: archive.read(member)
+                for member in members
+                if not member.endswith("/") and _runtime_identity_file(member)
+            }
             files = {
-                name: archive.read(name) for name in members if name.endswith(".py")
+                member: data
+                for member, data in contents.items()
+                if member.endswith(".py")
             }
         dist = metadata.distribution(name)
         direct = dist.read_text("direct_url.json")
         origin = json.loads(direct) if direct else None
         if origin and origin.get("dir_info", {}).get("editable"):
             raise ValueError("editable original package is not an authenticated wheel")
+        import_name = name.replace("-", "_")
+        trees[import_name] = _authenticate_installed_tree(
+            dist, contents, import_name=import_name
+        )
         installed = sorted(
             str(file) for file in (dist.files or ()) if str(file).endswith(".py")
         )
@@ -955,6 +1437,12 @@ def _authenticate_runtime(context, receipt, runtime):
         wheels[name] = str(path)
     if set(wheels) != names:
         raise ValueError("original four wheel bytes are required")
+    namespace = _authenticate_installed_data_namespace(context)
+    if verified_namespace is not None:
+        verified_namespace.append(namespace)
+    if verified_trees is not None:
+        verified_trees.update(trees)
+    _verify_loaded_trees(trees)
     # These imports are permitted only inside this explicitly requested worker,
     # after all Python/package/source identities have been authenticated.
     import h5py
@@ -1000,13 +1488,21 @@ def _worker_main(payload: Mapping) -> dict:
     _regular_file(context.ancestor_h5)
     if _sha256(context.ancestor_h5) != profile["ancestor_dataset_sha256"]:
         raise ValueError("original calibration ancestor H5 differs")
-    actual_runtime = _authenticate_runtime(context, receipt, build["code"]["runtime"])
+    runtime_trees = {}
+    runtime_namespace = []
+    actual_runtime = _authenticate_runtime(
+        context,
+        receipt,
+        build["code"]["runtime"],
+        verified_trees=runtime_trees,
+        verified_namespace=runtime_namespace,
+    )
     if mode == "legacy":
         source, checkout = original_source, context.original_checkout
     else:
         checkout = Path(__file__).parents[5]
         commit = _git(checkout, "rev-parse", "HEAD").decode().strip()
-        source = _authenticate_checkout(checkout, commit=commit, declared={})
+        source = checkout / _DATA_SOURCE_PREFIX
     for name in subprocess.run(
         ["git", "rev-parse", "--local-env-vars"],
         capture_output=True,
@@ -1017,9 +1513,16 @@ def _worker_main(payload: Mapping) -> dict:
     os.environ["GIT_NO_LAZY_FETCH"] = "1"
     os.environ["GIT_TERMINAL_PROMPT"] = "0"
     os.chdir(checkout)
-    sys.path.insert(0, str(source))
-    from microcosm.data import source_enrichment
-
+    source_trees = {}
+    source_enrichment = _import_authenticated_sources(
+        checkout,
+        commit=profile["producer_commit"] if mode == "legacy" else commit,
+        declared=build["code"]["source_files_sha256"] if mode == "legacy" else {},
+        current=mode == "current",
+        installed_namespace=runtime_namespace[0],
+        verified_sources=source_trees,
+    )
+    _verify_loaded_trees(runtime_trees)
     expected_module = source / "microcosm/data/source_enrichment.py"
     if Path(source_enrichment.__file__) != expected_module:
         raise ValueError("worker loaded a different data runner")
@@ -1054,13 +1557,9 @@ def _worker_main(payload: Mapping) -> dict:
             artifact_root=artifact_root,
             compatibility_wheels=context.original_wheels,
         )
-    # No namespace package or subsequently imported data module may escape the
-    # authenticated Python closure. Model packages have exact wheel inventories.
-    for name, module in tuple(sys.modules.items()):
-        if name.startswith("microcosm.data") and getattr(module, "__file__", None):
-            path = Path(module.__file__)
-            if not path.is_relative_to(source):
-                raise ValueError(
-                    "replay data import escaped authenticated source closure"
-                )
+    # Check every loaded engine module (including Core synthetic names) and
+    # both first-party closures after the genuine validators/native loaders.
+    _verify_loaded_trees(runtime_trees)
+    _check_microcosm_namespace(source_trees, installed_namespace=runtime_namespace[0])
+    _verify_loaded_trees(source_trees)
     return result

@@ -465,3 +465,302 @@ def test_evidence_map_rows_do_not_drop_fields(tmp_path, monkeypatch, field):
     del record["artifact_map"][0][field]
     with pytest.raises(ValueError):
         replay.SourceParentEvidenceV2.from_dict(record)
+
+
+# --- A3: case/Unicode-normalization aliases (review finding A3) -------------
+#
+# Expected semantics come from the written repair plan: destination and source
+# identities collide when their NFC-normalized, casefolded forms are equal
+# (normalized again after casefolding), because case-insensitive or
+# normalization-insensitive filesystems such as APFS store them as one name.
+# Accepted names keep their exact original strings; nothing is renamed.
+# Every vector is MOCK_METADATA_ONLY metadata; no artifact bytes are read.
+
+_NFC_CAFE = "café"
+_NFD_CAFE = "café"
+
+
+def _with_artifacts(*entries):
+    manifest = _manifest()
+    for key, path in entries:
+        manifest["artifacts"][key] = {
+            "kind": "diagnostics",
+            "path": path,
+            "sha256": hashlib.sha256(
+                f"MOCK_METADATA_ONLY:{key}:{path}".encode()
+            ).hexdigest(),
+        }
+    return manifest
+
+
+@pytest.mark.parametrize(
+    "first,second",
+    [
+        ("Foo.json", "foo.json"),
+        ("MOCK_REPORT.json", "mock_report.json"),
+        (f"{_NFC_CAFE}.json", f"{_NFD_CAFE}.json"),
+        (f"{_NFC_CAFE.upper()}.json", f"{_NFD_CAFE}.json"),
+        ("straße.json", "STRASSE.json"),
+        ("Kelvin.json", "kelvin.json"),
+        ("ǰ.json", "J̌.json"),
+    ],
+    ids=["case", "upper", "nfc_nfd", "upper_nfd", "sharp_s", "kelvin", "j_caron"],
+)
+def test_map_refuses_source_path_case_and_normalization_aliases(first, second):
+    assert first != second
+    manifest = _with_artifacts(("mock_alias_a", first), ("mock_alias_b", second))
+    with pytest.raises(ValueError):
+        _map(manifest)
+
+
+@pytest.mark.parametrize(
+    "first,second",
+    [
+        ("mock_Extra", "mock_extra"),
+        (f"mock_{_NFC_CAFE}", f"mock_{_NFD_CAFE}"),
+        (f"MOCK_{_NFC_CAFE.upper()}", f"mock_{_NFD_CAFE}"),
+    ],
+    ids=["case", "nfc_nfd", "upper_nfd"],
+)
+def test_map_refuses_source_and_carried_key_aliases(first, second):
+    manifest = _with_artifacts(
+        (first, "mock_alias_a.json"), (second, "mock_alias_b.json")
+    )
+    with pytest.raises(ValueError):
+        _map(manifest)
+
+
+_RESERVED_KEY_ALIASES = (
+    "Release_Manifest",
+    "RELEASE_MANIFEST",
+    "Compatibility_Recertification",
+    "Compatibility_Recertification_Loader",
+    "Compatibility_Drift",
+    "Source_Parent_Evidence_V2",
+    "Ancestor_Release_Manifest",
+    "ANCESTOR_BUILD_MANIFEST",
+    # Carried key of the reviewed build_manifest row and the child dataset key.
+    "Parent_Build_Manifest",
+    CHILD_KEY.upper(),
+)
+
+
+@pytest.mark.parametrize("key", _RESERVED_KEY_ALIASES)
+def test_map_refuses_reserved_or_mapped_key_aliases(key):
+    manifest = _with_artifacts((key, "mock_reserved_key_alias.json"))
+    with pytest.raises(ValueError):
+        _map(manifest)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "Release_Manifest.json",
+        "RELEASE_MANIFEST.JSON",
+        "Ancestor_Release_Manifest.json",
+        "ancestor_build_manifest.JSON",
+        "Source_Parent_Evidence_V2.json",
+        "Compatibility_Recertification.json",
+        "Parent_Release_Manifest.json",
+        "PARENT_BUILD_MANIFEST.json",
+        "Build_Manifest.json",
+        CHILD_FILE.upper(),
+        "Mock_Source_Report.json",
+    ],
+)
+def test_map_refuses_reserved_or_mapped_path_aliases(path):
+    manifest = _with_artifacts(("mock_reserved_path_alias", path))
+    with pytest.raises(ValueError):
+        _map(manifest)
+
+
+@pytest.mark.parametrize(
+    "key,path",
+    [
+        ("MICROCOSM_US_2024", "mock_alias.json"),
+        ("mock_alias", "MICROCOSM_US_2024.h5"),
+        ("mock_alias", "Microcosm_US_2024.H5"),
+    ],
+)
+def test_production_child_dataset_identity_cannot_be_aliased(key, path):
+    manifest = _with_artifacts((key, path))
+    with pytest.raises(ValueError):
+        replay.build_source_parent_artifact_map(
+            manifest,
+            child_dataset_key="microcosm_us_2024",
+            child_dataset_filename="microcosm_us_2024.h5",
+        )
+
+
+@given(
+    st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=10),
+    st.data(),
+)
+@settings(max_examples=40, deadline=None)
+def test_any_case_variant_of_an_accepted_name_is_refused(stem, data):
+    base = f"mock_variant_{stem}"
+    flips = data.draw(
+        st.lists(st.booleans(), min_size=len(base), max_size=len(base)).filter(any)
+    )
+    variant = "".join(
+        char.upper() if flip else char for char, flip in zip(base, flips, strict=True)
+    )
+    if variant == base:
+        return
+    accepted = _with_artifacts((base, f"{base}.json"))
+    _map(accepted)
+    for entries in (
+        ((base, f"{base}.json"), (f"{base}_other", f"{variant}.json")),
+        ((base, f"{base}.json"), (variant, f"{base}_other.json")),
+    ):
+        with pytest.raises(ValueError):
+            _map(_with_artifacts(*entries))
+
+
+@pytest.mark.parametrize(
+    "key,path",
+    [
+        (f"mock_{_NFD_CAFE}", f"mock_{_NFD_CAFE}.json"),
+        (f"mock_{_NFC_CAFE}", f"MOCK_{_NFC_CAFE.upper()}.json"),
+        ("Mock_Mixed_Case", "Mock_Mixed_Case.json"),
+    ],
+)
+def test_distinct_non_ascii_or_mixed_case_names_are_kept_exactly(key, path):
+    manifest = _with_artifacts((key, path))
+    before = copy.deepcopy(manifest)
+    mapping = _map(manifest)
+    (row,) = [row for row in mapping if row["source_key"] == key]
+    # Evidence strings are carried byte-for-byte, never normalized or renamed.
+    assert row["source_path"].encode() == path.encode()
+    assert (row["carried_key"], row["carried_path"]) == (key, path)
+    assert row["carried_key"].encode() == key.encode()
+    _verify(manifest, mapping)
+    assert manifest == before
+
+
+# --- A1: installed package tree equals its authenticated wheel inventory -----
+#
+# A synthetic MOCK_METADATA_ONLY distribution on a test-local sys.path entry,
+# never a real or importable model package (nothing below imports it). Expected
+# semantics come from the written plan: the installed disk tree must equal the
+# wheel/RECORD inventory, symlinks anywhere are refused, sourceless bytecode is
+# refused even when recorded, and the import name must resolve to that tree.
+
+_MOCK_IMPORT = "mock_metadata_only_installed_pkg"
+_MOCK_DIST_INFO = f"{_MOCK_IMPORT}-0.0.0.dist-info"
+
+
+def _mock_installed_tree(tmp_path, monkeypatch, *, extra_members=()):
+    from importlib import metadata
+
+    site = tmp_path / "MOCK_METADATA_ONLY_site"
+    members = {
+        f"{_MOCK_IMPORT}/__init__.py": b"MOCK = 'MOCK_METADATA_ONLY'\n",
+        f"{_MOCK_IMPORT}/variables/__init__.py": b"",
+        f"{_MOCK_IMPORT}/variables/mock_variable.py": b"VALUE = 1\n",
+        f"{_MOCK_IMPORT}/mock_resource.yaml": b"mock: MOCK_METADATA_ONLY\n",
+        f"{_MOCK_DIST_INFO}/METADATA": (
+            b"Metadata-Version: 2.1\nName: mock-metadata-only-installed-pkg\n"
+            b"Version: 0.0.0\n"
+        ),
+        f"{_MOCK_DIST_INFO}/WHEEL": b"Wheel-Version: 1.0\nRoot-Is-Purelib: true\n",
+        **dict(extra_members),
+    }
+    for relative, content in members.items():
+        path = site / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+    record = [f"{relative},," for relative in members]
+    record += [f"{_MOCK_DIST_INFO}/RECORD,,", f"{_MOCK_DIST_INFO}/INSTALLER,,"]
+    (site / _MOCK_DIST_INFO / "RECORD").write_text("\n".join(record) + "\n")
+    (site / _MOCK_DIST_INFO / "INSTALLER").write_text("MOCK_METADATA_ONLY\n")
+    monkeypatch.syspath_prepend(str(site))
+    dist = metadata.PathDistribution(site / _MOCK_DIST_INFO)
+    return site, dist, members
+
+
+def test_installed_tree_matching_its_wheel_authenticates(tmp_path, monkeypatch):
+    site, dist, members = _mock_installed_tree(tmp_path, monkeypatch)
+    root, actual_site, recorded = replay._authenticate_installed_tree(
+        dist, members, import_name=_MOCK_IMPORT
+    )
+    assert (root, actual_site) == (site / _MOCK_IMPORT, site)
+    assert set(recorded) == set(members)
+
+
+_TREE_MUTATIONS = (
+    "unrecorded_module",
+    "unrecorded_resource",
+    "symlinked_subdirectory",
+    "symlinked_empty_directory",
+    "symlinked_recorded_file",
+    "symlinked_package_root",
+    "changed_recorded_bytes",
+    "missing_recorded_file",
+    "wheel_member_not_installed",
+    "sourceless_bytecode",
+    "second_top_level_root",
+    "shadowed_import_name",
+)
+
+
+@pytest.mark.parametrize("mutation", _TREE_MUTATIONS)
+def test_installed_tree_differences_refuse(tmp_path, monkeypatch, mutation):
+    import py_compile
+    import shutil
+
+    extra = {}
+    if mutation == "sourceless_bytecode":
+        source = tmp_path / "MOCK_METADATA_ONLY_planted.py"
+        source.write_text("VALUE = 'MOCK_METADATA_ONLY planted'\n")
+        compiled = tmp_path / "MOCK_METADATA_ONLY_planted.pyc"
+        py_compile.compile(str(source), cfile=str(compiled), doraise=True)
+        # Recorded and in the wheel: a sourceless module must still refuse.
+        extra[f"{_MOCK_IMPORT}/variables/mock_planted.pyc"] = compiled.read_bytes()
+    elif mutation == "second_top_level_root":
+        extra["mock_metadata_only_second_root/__init__.py"] = b""
+    site, dist, members = _mock_installed_tree(
+        tmp_path, monkeypatch, extra_members=extra
+    )
+    package = site / _MOCK_IMPORT
+    outside = tmp_path / "MOCK_METADATA_ONLY_outside"
+    outside.mkdir()
+    if mutation == "unrecorded_module":
+        (package / "variables/mock_unrecorded.py").write_text("VALUE = 2\n")
+    elif mutation == "unrecorded_resource":
+        (package / "variables/mock_unrecorded.yaml").write_text("mock: 2\n")
+    elif mutation == "symlinked_subdirectory":
+        (outside / "mock_escape.py").write_text("VALUE = 3\n")
+        (package / "mock_linked").symlink_to(outside)
+    elif mutation == "symlinked_empty_directory":
+        (package / "mock_linked_empty").symlink_to(outside)
+    elif mutation == "symlinked_recorded_file":
+        target = package / "variables/mock_variable.py"
+        (outside / "mock_variable.py").write_bytes(target.read_bytes())
+        target.unlink()
+        target.symlink_to(outside / "mock_variable.py")
+    elif mutation == "symlinked_package_root":
+        moved = outside / _MOCK_IMPORT
+        shutil.move(str(package), moved)
+        package.symlink_to(moved)
+    elif mutation == "changed_recorded_bytes":
+        (package / "variables/mock_variable.py").write_bytes(b"VALUE = 999\n")
+    elif mutation == "missing_recorded_file":
+        (package / "mock_resource.yaml").unlink()
+    elif mutation == "wheel_member_not_installed":
+        members = {**members, f"{_MOCK_IMPORT}/mock_wheel_only.py": b"VALUE = 4\n"}
+    elif mutation == "shadowed_import_name":
+        shadow = tmp_path / "MOCK_METADATA_ONLY_shadow"
+        (shadow / _MOCK_IMPORT).mkdir(parents=True)
+        (shadow / _MOCK_IMPORT / "__init__.py").write_text("SHADOW = True\n")
+        monkeypatch.syspath_prepend(str(shadow))
+    with pytest.raises(ValueError):
+        replay._authenticate_installed_tree(dist, members, import_name=_MOCK_IMPORT)
+
+
+def test_installed_tree_refuses_a_different_expected_import_name(tmp_path, monkeypatch):
+    _, dist, members = _mock_installed_tree(tmp_path, monkeypatch)
+    with pytest.raises(ValueError):
+        replay._authenticate_installed_tree(
+            dist, members, import_name="mock_metadata_only_other_pkg"
+        )

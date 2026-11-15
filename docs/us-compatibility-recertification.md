@@ -389,16 +389,35 @@ uses the child's dataset filename for the selected H5. The mapper rejects
 ambiguous keys, aliases, paths and destinations. Replay reconstructs the
 original names while preserving every original manifest and receipt byte.
 
-A fixed stdlib bootstrap starts a fresh isolated subprocess and output
-directory for each check, with a new bytecode-cache prefix. Before importing
-the model, it authenticates its helper and configuration bytes, the full
-original Data Python source closure and the six source preimages that the
-clean original commit declares. It then checks the four original wheel files,
-installed Python inventories, versions and complete installation-origin
-objects. Replay requires the original custom wrapper wheel and rejects a
-same-version PyPI substitute. It checks the original declarations for Python,
-NumPy, pandas, h5py, loaded HDF5, tables and microcosm-data. These declarations
-exclude operating-system and transitive binary provenance.
+A fixed stdlib bootstrap starts one fresh isolated subprocess for each worker
+mode, `legacy` and `current`, with a separate output directory and bytecode-cache
+prefix. Before importing model code, each worker authenticates its helper and
+configuration bytes, the full original Data source/resource closure and the
+six source preimages that the clean original commit declares. It also checks
+the four original wheels: policyengine, policyengine-core, policyengine-us and
+spm-calculator. For each package, replay compares installed resources and the
+actual disk inventory with the wheel, apart from the declared cache and
+installation-bookkeeping exclusions. It checks module origins and requires
+the complete original installation-origin object. Replay requires the
+original custom wrapper wheel and rejects a same-version PyPI substitute.
+
+The legacy worker imports the original Data closure. The current worker
+authenticates fixed Data and Diagnostics source/resource closures from the
+same clean current commit before importing them. Its producer inventory binds
+both closures. Source-tree checks reject symlinks, added or missing files,
+sourceless bytecode and native-module files; import checks reject modules and
+namespace roots outside the authenticated trees. These checks authenticate
+first-party sources, not their entire dependency environment.
+
+Runtime authentication also compares the seven original declarations for
+Python, NumPy, pandas, h5py, loaded HDF5, tables and microcosm-data. Beyond the
+four original package trees and these declared versions, replay does not
+authenticate transitive pure-Python packages or native dependencies. For
+example, it does not authenticate the `packaging` distribution used by the
+original validator. It does not establish operating-system provenance or full
+dependency reproduction. The staged interpreter must supply the dependencies
+that the original and current source closures import; a matching version
+declaration does not prove matching dependency bytes.
 
 The legacy worker runs the original full source-enrichment validator, then
 recomputes its native receipt. It requires every JSON field and value type,
@@ -409,7 +428,9 @@ H5/source-evidence predicates, both current native loaders, the stored-input
 register, publisher-claim and measurement predicates, and committed
 producer-source checks. It writes a separate schema-2 qualification record.
 The current producer inventory also binds every v2 implementation path while
-preserving the ordinary v1 inventory.
+preserving the ordinary v1 inventory. Source-import and refusal tests cover
+engineering contracts; they do not qualify an authentic original-runtime,
+native-loader or H5 replay.
 
 The child carries `source_parent_evidence_v2.json`, which its manifest binds
 by hash. Builder validation, certification, the strict release consumer,
@@ -424,9 +445,10 @@ The recertification still requires BASE and target scoring, newly-read-input
 counterfactuals, withheld metrics, complete drift recomputation and claim
 attribution. Publication still checks the published parent's artifact identity
 and refuses current/default promotion. Publication and signing require separate
-authorization. Integrate the independent withdrawal protections in
-[Microcosm PR 1594](https://github.com/PolicyEngine/microcosm/pull/1594) before
-adopting this lane; the implementation does not include that work. The current
-stored-input contract can still refuse historical columns. Address any refusal
+authorization. The consumers do not implement refusal of a withdrawn parent.
+[Microcosm PR 1594](https://github.com/PolicyEngine/microcosm/pull/1594) remains
+open and unadopted; integrate its withdrawal protections before adopting this
+lane. The current stored-input contract can still refuse historical columns,
+including `would_claim_wic` and `medicare_part_b_premiums`. Address any refusal
 through a separately reviewed source/input contract; preserve historical
 evidence and check every stored column.
