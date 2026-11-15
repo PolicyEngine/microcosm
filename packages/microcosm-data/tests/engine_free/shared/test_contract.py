@@ -60,6 +60,7 @@ US_LOCAL_RELEASE = "microcosm-us-2024-local"
 US_RECEIPT_DONOR_RELEASE = "microcosm-us-2024-receipt-donor"
 US_EVIDENCE_RELEASE = "microcosm-us-2024-evidence"
 US_ANNUAL_RELEASE = "microcosm-us-2024-annual"
+US_LOCAL_ANNUAL_RELEASE = "microcosm-us-2024-local-annual"
 UK_RECORD_COUNT = 535_080
 UK_TERMINAL_GATE_REPORT_FILE = "terminal_gates.json"
 UK_TERMINAL_GATE_PRODUCER = (
@@ -2511,6 +2512,7 @@ def test_uk_national_release_requires_policyengine_uk_model_pin(
         (US_RECEIPT_DONOR_RELEASE, True),
         (US_EVIDENCE_RELEASE, True),
         (US_ANNUAL_RELEASE, True),
+        (US_LOCAL_ANNUAL_RELEASE, True),
         # A US build ID names a build, not a release; its tagged layout stays
         # for the builds that keep only their tag.
         (RELEASE_ID, False),
@@ -2529,32 +2531,43 @@ def test_publishes_to_build_folder_names_the_uk_and_us_releases(
 
 
 def test_the_us_releases_have_their_roles_and_dataset_files() -> None:
-    """The US repository's five releases, each with its role in
+    """The US repository's six releases, each with its role in
     ``releases.json`` and the dataset file its new builds declare: national
     builds of every kind in the default release, ACS builds in the local
-    release, and receipt-qualified donors, evidence-tier builds and annual
-    projections of a national build in releases of their own, which are never
-    the default."""
+    release, and receipt-qualified donors, evidence-tier builds, annual
+    projections of a national build and annual projections of a local-area
+    build in releases of their own, which are never the default."""
     assert contract.US_RELEASES == {
         US_NATIONAL_RELEASE: "national",
         US_LOCAL_RELEASE: "local_area",
         US_RECEIPT_DONOR_RELEASE: "national",
         US_EVIDENCE_RELEASE: "national",
         US_ANNUAL_RELEASE: "national",
+        US_LOCAL_ANNUAL_RELEASE: "local_area",
     }
     assert contract.US_ANNUAL_RELEASE_ID == US_ANNUAL_RELEASE
+    assert contract.US_LOCAL_ANNUAL_RELEASE_ID == US_LOCAL_ANNUAL_RELEASE
+    assert contract.US_ANNUAL_BASE_RELEASES == {
+        US_ANNUAL_RELEASE: US_NATIONAL_RELEASE,
+        US_LOCAL_ANNUAL_RELEASE: US_LOCAL_RELEASE,
+    }
     assert contract.US_RELEASE_DATASET_FILES == {
         US_NATIONAL_RELEASE: "microcosm_us_2024.h5",
         US_LOCAL_RELEASE: "microcosm_us_2024_acs_local.h5",
         US_RECEIPT_DONOR_RELEASE: "microcosm_us_2024_receipt_qualified.h5",
         US_EVIDENCE_RELEASE: "microcosm_us_2024.h5",
         US_ANNUAL_RELEASE: "microcosm_us_2024.h5",
+        US_LOCAL_ANNUAL_RELEASE: "microcosm_us_2024_acs_local.h5",
     }
     # An annual build's base-year H5 keeps its base build's file name, which
     # is the old one for a build the switch moved.
     assert contract.US_ANNUAL_BASE_DATASET_FILES == (
         "microcosm_us_2024.h5",
         "populace_us_2024.h5",
+    )
+    assert contract.US_LOCAL_ANNUAL_BASE_DATASET_FILES == (
+        "microcosm_us_2024_acs_local.h5",
+        "populace_us_2024_acs_local.h5",
     )
     assert set(contract.US_RELEASES.values()) <= set(contract.RELEASE_ROLES.values())
     assert not hasattr(contract, "PROPOSED_US_RELEASES")
@@ -2568,6 +2581,7 @@ def test_the_us_releases_have_their_roles_and_dataset_files() -> None:
         (US_RECEIPT_DONOR_RELEASE, True),
         (US_EVIDENCE_RELEASE, True),
         (US_ANNUAL_RELEASE, True),
+        (US_LOCAL_ANNUAL_RELEASE, True),
         (RELEASE_ID, True),
         ("populace-us-2024-buildo-acs-local-abc1234-20260723T000000Z", True),
         ("microcosm-us-2024-stacked-abc1234-20261101T000000Z", False),

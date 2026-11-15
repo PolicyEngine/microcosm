@@ -95,11 +95,14 @@ __all__ = [
     "REQUIRED_RELEASE_FILES",
     "RETIRED_BUILD_FIELDS",
     "US_ANNUAL_BASE_DATASET_FILES",
+    "US_ANNUAL_BASE_RELEASES",
     "US_ANNUAL_RELEASE_ID",
     "US_EVIDENCE_RELEASE_ID",
     "US_FISCAL_STORED_INPUTS_STAGE",
     "US_LOCAL_AREA_SPM_MEASUREMENT_STAGE",
     "US_LOCAL_AREA_STORED_INPUTS_STAGE",
+    "US_LOCAL_ANNUAL_BASE_DATASET_FILES",
+    "US_LOCAL_ANNUAL_RELEASE_ID",
     "US_LOCAL_RELEASE_ID",
     "US_NATIONAL_RELEASE_ID",
     "US_RECEIPT_DONOR_RELEASE_ID",
@@ -122,6 +125,7 @@ __all__ = [
     "stored_input_evidence_manifest_block",
     "unregistered_uk_local_release",
     "us_engine_scopes_spm_universe",
+    "us_local_annual_projected_keys",
     "validate_evidence_release_dir",
     "validate_release_dir",
 ]
@@ -230,15 +234,21 @@ _ROLE_IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 #: repository's default, holds every national build however it was made
 #: (calibrated, SPM source enrichments, compatibility recertifications,
 #: exact-k builds); the local-area release holds the ACS builds; and
-#: receipt-qualified donors, evidence-tier builds and annual projections of a
-#: national build have releases of their own, which are never the default.
-#: Builds keep their ``populace-us-2024-…`` IDs; an annual build's ID is its
-#: base national build's ID followed by ``-annual-<YYYYMMDDTHHMMSSZ>-<hex8>``.
+#: receipt-qualified donors, evidence-tier builds, annual projections of a
+#: national build and annual projections of a local-area build (the County
+#: Files, microcosm#922) have releases of their own, which are never the
+#: default. Builds keep their ``populace-us-2024-…`` IDs; an annual build's
+#: ID is its base build's ID followed by ``-annual-<YYYYMMDDTHHMMSSZ>-<hex8>``.
 US_NATIONAL_RELEASE_ID = "microcosm-us-2024-national"
 US_LOCAL_RELEASE_ID = "microcosm-us-2024-local"
 US_RECEIPT_DONOR_RELEASE_ID = "microcosm-us-2024-receipt-donor"
 US_EVIDENCE_RELEASE_ID = "microcosm-us-2024-evidence"
 US_ANNUAL_RELEASE_ID = "microcosm-us-2024-annual"
+#: Annual projections of a local-area build (microcosm#922). It is a line of
+#: its own beside ``microcosm-us-2024-local``, not a kind of
+#: ``microcosm-us-2024-annual``: its base, its file names, its role
+#: (``local_area``) and its contract differ.
+US_LOCAL_ANNUAL_RELEASE_ID = "microcosm-us-2024-local-annual"
 US_RELEASES: Mapping[str, str] = MappingProxyType(
     {
         US_NATIONAL_RELEASE_ID: "national",
@@ -246,6 +256,14 @@ US_RELEASES: Mapping[str, str] = MappingProxyType(
         US_RECEIPT_DONOR_RELEASE_ID: "national",
         US_EVIDENCE_RELEASE_ID: "national",
         US_ANNUAL_RELEASE_ID: "national",
+        US_LOCAL_ANNUAL_RELEASE_ID: "local_area",
+    }
+)
+#: Each annual release and the release whose builds it projects.
+US_ANNUAL_BASE_RELEASES: Mapping[str, str] = MappingProxyType(
+    {
+        US_ANNUAL_RELEASE_ID: US_NATIONAL_RELEASE_ID,
+        US_LOCAL_ANNUAL_RELEASE_ID: US_LOCAL_RELEASE_ID,
     }
 )
 #: The dataset file a new build of each US release declares. Builds moved by
@@ -257,6 +275,7 @@ US_RELEASE_DATASET_FILES: Mapping[str, str] = MappingProxyType(
         US_RECEIPT_DONOR_RELEASE_ID: "microcosm_us_2024_receipt_qualified.h5",
         US_EVIDENCE_RELEASE_ID: "microcosm_us_2024.h5",
         US_ANNUAL_RELEASE_ID: "microcosm_us_2024.h5",
+        US_LOCAL_ANNUAL_RELEASE_ID: "microcosm_us_2024_acs_local.h5",
     }
 )
 #: The file names an annual build's base-year H5 may have. It is its base
@@ -265,6 +284,13 @@ US_RELEASE_DATASET_FILES: Mapping[str, str] = MappingProxyType(
 #: build the switch moved. Each projected year's H5 is
 #: ``microcosm_us_<year>.h5``.
 US_ANNUAL_BASE_DATASET_FILES = ("microcosm_us_2024.h5", "populace_us_2024.h5")
+#: The file names a local-annual build's base-year H5 may have: its base
+#: local-area build's dataset, byte for byte and under that build's file
+#: name. Each projected year's H5 is ``microcosm_us_<year>_acs_local.h5``.
+US_LOCAL_ANNUAL_BASE_DATASET_FILES = (
+    "microcosm_us_2024_acs_local.h5",
+    "populace_us_2024_acs_local.h5",
+)
 #: The prefix of every US build ID, and of every US release in the tagged
 #: layout, where the release was the build.
 _US_BUILD_ID_PREFIX = "populace-us-"
@@ -2114,10 +2140,14 @@ def _check_us_release_dataset_file(
     published into the national release, and new builds use the
     ``microcosm_`` names. An annual build (``manifest`` is its release
     manifest) declares its own files instead
-    (:func:`_check_us_annual_dataset_files`).
+    (:func:`_check_us_annual_dataset_files`), and so does a local-annual
+    build (:func:`_check_us_local_annual_dataset_files`).
     """
     if release_id == US_ANNUAL_RELEASE_ID:
         _check_us_annual_dataset_files(manifest or {}, artifacts, failures)
+        return
+    if release_id == US_LOCAL_ANNUAL_RELEASE_ID:
+        _check_us_local_annual_dataset_files(manifest or {}, artifacts, failures)
         return
     expected = US_RELEASE_DATASET_FILES.get(release_id)
     if expected is None:
@@ -2180,6 +2210,107 @@ def _check_us_annual_dataset_files(
             + " or ".join(repr(name) for name in US_ANNUAL_BASE_DATASET_FILES)
             + f"); it declares {base_files}."
         )
+
+
+def us_local_annual_projected_keys(manifest: object) -> dict[str, object]:
+    """A local-annual build's projected years, artifact key to year.
+
+    ``metadata.dataset_years`` maps each family, named by its base dataset's
+    key, to its years; every year whose key is not the family's own is a
+    projected year. Anything unreadable gives no projected year, which the
+    dataset-file check then refuses.
+    """
+    metadata = manifest.get("metadata") if isinstance(manifest, Mapping) else None
+    families = metadata.get("dataset_years") if isinstance(metadata, Mapping) else None
+    projected: dict[str, object] = {}
+    for family, years in families.items() if isinstance(families, Mapping) else ():
+        if isinstance(years, Mapping):
+            projected.update(
+                {
+                    key: year
+                    for year, key in years.items()
+                    if isinstance(key, str) and key != family
+                }
+            )
+    return projected
+
+
+def _check_us_local_annual_dataset_files(
+    manifest: Mapping, artifacts: Mapping, failures: list[str]
+) -> None:
+    """A local-annual build's H5 files: its base year's, and one per projected year.
+
+    The projected years are the years ``metadata.dataset_years`` maps to a
+    key other than its family's (:func:`us_local_annual_projected_keys`);
+    there must be at least one. Each is artifact
+    ``microcosm_us_<year>_acs_local`` in ``microcosm_us_<year>_acs_local.h5``.
+    The one other microdata artifact is the base local-area build's dataset,
+    under one of :data:`US_LOCAL_ANNUAL_BASE_DATASET_FILES`.
+    """
+    projected = us_local_annual_projected_keys(manifest)
+    if not projected:
+        failures.append(
+            f"release_manifest.json for release {US_LOCAL_ANNUAL_RELEASE_ID!r} "
+            "must declare at least one projected year in metadata.dataset_years."
+        )
+    for key, year in projected.items():
+        expected = f"microcosm_us_{year}_acs_local"
+        entry = artifacts.get(key)
+        path = entry.get("path") if isinstance(entry, Mapping) else None
+        kind = entry.get("kind") if isinstance(entry, Mapping) else None
+        if key != expected or path != f"{expected}.h5" or kind != "microdata":
+            failures.append(
+                f"release_manifest.json for release "
+                f"{US_LOCAL_ANNUAL_RELEASE_ID!r} must declare its {year} H5 as "
+                f"microdata artifact {expected!r} in {expected + '.h5'!r}; it "
+                f"declares artifact {key!r} in {path!r} of kind {kind!r}."
+            )
+    base_files = sorted(
+        str(entry.get("path"))
+        for key, entry in artifacts.items()
+        if isinstance(entry, Mapping)
+        and entry.get("kind") == "microdata"
+        and key not in projected
+    )
+    if len(base_files) != 1 or base_files[0] not in US_LOCAL_ANNUAL_BASE_DATASET_FILES:
+        failures.append(
+            f"release_manifest.json for release {US_LOCAL_ANNUAL_RELEASE_ID!r} "
+            "must declare one microdata artifact besides its projected years, "
+            "the base local-area build's dataset under that build's file name ("
+            + " or ".join(repr(name) for name in US_LOCAL_ANNUAL_BASE_DATASET_FILES)
+            + f"); it declares {base_files}."
+        )
+
+
+def _us_local_area_gated_microdata(
+    release_manifest: Mapping | None, release_id: str | None
+) -> list[Mapping]:
+    """The microdata artifacts a US local-area gate certifies.
+
+    The package stage grades one H5. In a local-annual build that is the
+    base build's dataset, which the build carries unchanged with its gates;
+    the projected years' H5s are certified by the annual acceptance report
+    instead. Every other local-area release has one microdata artifact.
+    """
+    artifacts = (
+        release_manifest.get("artifacts")
+        if isinstance(release_manifest, Mapping)
+        else None
+    )
+    if not isinstance(artifacts, Mapping):
+        return []
+    projected = (
+        us_local_annual_projected_keys(release_manifest)
+        if release_id == US_LOCAL_ANNUAL_RELEASE_ID
+        else {}
+    )
+    return [
+        entry
+        for key, entry in artifacts.items()
+        if isinstance(entry, Mapping)
+        and entry.get("kind") == "microdata"
+        and key not in projected
+    ]
 
 
 def _check_default_dataset_artifact(
@@ -5194,12 +5325,14 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
                     release_manifest=release_manifest,
                     build_manifest=build_manifest,
                     failures=failures,
+                    release_id=release_id,
                 )
                 _check_us_local_area_spm_measurement_gate(
                     gate_summary,
                     release_manifest=release_manifest,
                     build_manifest=build_manifest,
                     failures=failures,
+                    release_id=release_id,
                 )
 
     diagnostics_path = release_dir / "calibration_diagnostics.json"
@@ -6158,7 +6291,9 @@ def _check_local_area_release_manifest(
         for name, entry in artifacts.items()
         if isinstance(entry, Mapping) and entry.get("kind") == "microdata"
     ]
-    if len(microdata) != 1:
+    # A local-annual build declares its base H5 and one H5 per projected
+    # year; its dataset-file check below counts them.
+    if len(microdata) != 1 and release_id != US_LOCAL_ANNUAL_RELEASE_ID:
         failures.append(
             "release_manifest.json must declare exactly one microdata "
             f"artifact; found {sorted(microdata)!r}."
@@ -6166,7 +6301,9 @@ def _check_local_area_release_manifest(
     if build_folder:
         _check_build_folder_artifacts(artifacts, failures)
         # A new build of the US local-area release declares its dataset file.
-        _check_us_release_dataset_file(artifacts, release_id, failures)
+        _check_us_release_dataset_file(
+            artifacts, release_id, failures, manifest=manifest
+        )
         return
     for name, entry in artifacts.items():
         if not isinstance(entry, Mapping):
@@ -6219,8 +6356,10 @@ def _check_local_area_gates(gate_summary: Mapping, failures: list[str]) -> None:
 def _refuse_misplaced_annual_years(release_dir: Path, manifest: object) -> None:
     """Refuse a build-folder build whose release does not match its annual years.
 
-    In the build-folder layout only builds of :data:`US_ANNUAL_RELEASE_ID`
-    declare ``metadata.dataset_years``, and each of them must
+    In the build-folder layout only builds of the annual releases
+    (:data:`US_ANNUAL_BASE_RELEASES`: :data:`US_ANNUAL_RELEASE_ID` and
+    :data:`US_LOCAL_ANNUAL_RELEASE_ID`) declare ``metadata.dataset_years``,
+    and each of them must
     (:func:`microcosm.data.annual_projections.annual_release_refusal`). It
     runs before a release's contract chooses its validator, so a source
     enrichment, a recertification or an evidence-tier build is held to it
@@ -6368,6 +6507,7 @@ def _check_us_local_area_stored_inputs_gate(
     release_manifest: Mapping | None,
     build_manifest: Mapping | None,
     failures: list[str],
+    release_id: str | None = None,
 ) -> None:
     """Require the ACS package stage's stored-input gate, bound to the release.
 
@@ -6380,11 +6520,17 @@ def _check_us_local_area_stored_inputs_gate(
     microdata artifact; ``build_manifest.json`` must carry the same entry.
     Engine-free: the check reads JSON only.
 
+    In a local-annual build (``release_id`` is
+    :data:`US_LOCAL_ANNUAL_RELEASE_ID`) the gate is the base build's, carried
+    unchanged, and it certifies the base H5, the build's one microdata
+    artifact that is not a projected year (:func:`_us_local_area_gated_microdata`).
+
     No published release is exempt. The four US local-area releases on the Hub
     predate the gate. Nothing re-validates a published release automatically,
-    and a local-area release cannot be an annual-projection base, so only a
-    fresh publish of a local directory runs this; re-publishing one of them
-    means re-packaging it, which runs the check. One of them
+    so only a fresh publish of a local directory runs this; re-publishing one
+    of them means re-packaging it, which runs the check. A local-annual build
+    carries its base build's gate, so its base must be a build packaged with
+    the check. One of them
     (``populace-us-2024-buildo-acs-local-767312d60-20260923T074941Z``) stores
     two columns the check refuses.
     """
@@ -6417,16 +6563,7 @@ def _check_us_local_area_stored_inputs_gate(
         engine_label=_built_with_us_engine_label(release_manifest, failures),
         failures=failures,
     )
-    artifacts = (
-        release_manifest.get("artifacts")
-        if isinstance(release_manifest, Mapping)
-        else None
-    )
-    microdata = [
-        entry
-        for entry in (artifacts.values() if isinstance(artifacts, Mapping) else ())
-        if isinstance(entry, Mapping) and entry.get("kind") == "microdata"
-    ]
+    microdata = _us_local_area_gated_microdata(release_manifest, release_id)
     # More or fewer than one microdata artifact is already a manifest failure.
     if len(microdata) == 1 and gate.get("artifact_sha256") != microdata[0].get(
         "sha256"
@@ -6469,6 +6606,7 @@ def _check_us_local_area_spm_measurement_gate(
     release_manifest: Mapping | None,
     build_manifest: Mapping | None,
     failures: list[str],
+    release_id: str | None = None,
 ) -> None:
     """Require the ACS package stage's SPM measurement gate, bound to the release.
 
@@ -6528,16 +6666,7 @@ def _check_us_local_area_spm_measurement_gate(
         _check_spm_measurement_details(
             details, owner=owner, engine=gate.get("engine"), failures=failures
         )
-    artifacts = (
-        release_manifest.get("artifacts")
-        if isinstance(release_manifest, Mapping)
-        else None
-    )
-    microdata = [
-        entry
-        for entry in (artifacts.values() if isinstance(artifacts, Mapping) else ())
-        if isinstance(entry, Mapping) and entry.get("kind") == "microdata"
-    ]
+    microdata = _us_local_area_gated_microdata(release_manifest, release_id)
     # More or fewer than one microdata artifact is already a manifest failure.
     if len(microdata) == 1 and gate.get("artifact_sha256") != microdata[0].get(
         "sha256"

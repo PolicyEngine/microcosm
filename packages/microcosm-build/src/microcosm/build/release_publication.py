@@ -564,9 +564,10 @@ def publish_release_build(
     from microcosm.data import annual_projections
 
     if annual_projections.is_annual_build(prepared.release_dir):
-        # An annual build projects a published national build: the Hub must
-        # show that build with the same base-year H5 before anything is
-        # handed over.
+        # An annual build projects a published national build, and a
+        # local-annual build a published local-area build: the Hub must show
+        # that build with the same base-year H5 before anything is handed
+        # over.
         annual_projections.require_base_publication(
             _hub_api(), prepared.release_dir, repo_id=prepared.repository
         )
