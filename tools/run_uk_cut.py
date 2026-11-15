@@ -194,11 +194,54 @@ def committed_source_pins(uk_dir: Path = UK_DIR) -> dict[str, dict[str, Any]]:
     return pins
 
 
+#: The spine's flag for each system's conditioned atomic-area support, in the
+#: systems' order (microcosm#931). The spine requires all three whenever
+#: atomic_area_assign runs, which the packaged roster always schedules, and
+#: holds each file to the sha256 and size sources.yaml registers for it
+#: before any stage runs.
+CONDITIONED_SUPPORT_FLAGS: Mapping[str, str] = {
+    "uk_ew_output_area_2021": "--atomic-support-ew",
+    "uk_scotland_output_area_2022": "--atomic-support-scotland",
+    "uk_ni_data_zone_2021": "--atomic-support-ni",
+}
+#: The inputs directory the conditioned supports are installed in.
+CONDITIONED_SUPPORTS_DIRECTORY = "atomic_area_supports"
+
+
+def conditioned_support_file(system: str) -> str:
+    """The file a system's conditioned support is fetched as: its source id,
+    as ``tools/build_uk_conditioned_area_supports.py`` writes it."""
+
+    from microcosm.build.uk_runtime.atomic_area_support import CONDITIONED_SOURCES
+
+    return f"{CONDITIONED_SOURCES[system]}.npz"
+
+
+def conditioned_support_pins() -> dict[str, dict[str, Any]]:
+    """Each conditioned atomic-area support's pin, by the file it is fetched
+    as: the sha256 and size sources.yaml's conditioned register holds, the
+    register the spine holds each ``--atomic-support-*`` file to."""
+
+    from microcosm.build.uk_runtime.country_adapter import (
+        uk_atomic_support_register,
+    )
+
+    register = uk_atomic_support_register(conditioned=True)
+    return {
+        conditioned_support_file(system): {
+            "sha256": str(register[system]["sha256"]),
+            "size_bytes": int(register[system]["size_bytes"]),
+        }
+        for system in CONDITIONED_SUPPORT_FLAGS
+    }
+
+
 #: The ``*_pin`` selectors a source may carry, each naming the committed pin
 #: a field is read from. Any other ``*_pin`` is refused, never ignored.
 PIN_SELECTORS: Mapping[str, frozenset[str]] = {
     "archive_sha256_pin": frozenset({"frs_release"}),
     "path_in_repo_pin": frozenset({"chronicle_feed"}),
+    "members_pin": frozenset({"conditioned_atomic_supports"}),
 }
 
 
@@ -226,6 +269,7 @@ def load_input_sources(
     feed = json.loads((uk_dir / "chronicle_feed.json").read_text())
     frs_release = json.loads((uk_dir / "frs_release.json").read_text())
     extra = manifest.get("file_pins", {})
+    conditioned: dict[str, dict[str, Any]] | None = None
     sources: list[InputSource] = []
     for raw in manifest["sources"]:
         _check_pin_selectors(raw)
@@ -240,7 +284,17 @@ def load_input_sources(
         url = None
         files: list[PinnedFile] = []
         for member in raw["members"]:
-            if key == "chronicle_uk":
+            if raw.get("members_pin") == "conditioned_atomic_supports":
+                if conditioned is None:
+                    conditioned = conditioned_support_pins()
+                if member not in conditioned:
+                    raise CutError(
+                        f"{key}: {member} is not a conditioned atomic-area support "
+                        "sources.yaml registers."
+                    )
+                pin = conditioned[member]
+                files.append(PinnedFile(member, pin["sha256"], pin["size_bytes"]))
+            elif key == "chronicle_uk":
                 digest = {
                     "manifest.json": feed["manifest_sha256"],
                     "consumer_facts.jsonl": feed["facts_sha256"],
@@ -537,6 +591,13 @@ def _fetch_source(
     pending = [
         pin for pin in source.files if not verified.matches(paths[pin.name], pin)
     ]
+    if source.kind in {"hf_zip_members", "hf_files"} and source.repo_id is None:
+        # Its files are pinned, but where they are hosted is not named yet:
+        # files placed by hand are verified and kept above, never fetched.
+        raise CutError(
+            f"{source.key}: no repository is named for these files yet"
+            + (f"; {source.upload_note}" if source.upload_note else ".")
+        )
     if source.kind == "hf_zip_members":
         archive = downloader.hf_file(
             repo_id=source.repo_id,
@@ -694,6 +755,13 @@ def spine_argv(paths: CutPaths, *, python: str, staging_local_only: bool) -> lis
         "--release-candidate",
         "--spine-h5", str(paths.spine_h5),
     ]  # fmt: skip
+    # The conditioned atomic-area supports the area stages draw on
+    # (microcosm#931), held by the spine to sources.yaml's register.
+    for system, flag in CONDITIONED_SUPPORT_FLAGS.items():
+        argv += [
+            flag,
+            tab(CONDITIONED_SUPPORTS_DIRECTORY, conditioned_support_file(system)),
+        ]
     if staging_local_only:
         argv.append("--staging-local-only")
     return argv

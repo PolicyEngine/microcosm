@@ -46,6 +46,7 @@ def test_every_declared_input_resolves_to_a_committed_pin():
         "aps_2024_25",
         "hmrc_personal_incomes_ods",
         "chronicle_uk",
+        "atomic_area_supports",
     }
     for source in sources.values():
         assert source.files
@@ -93,6 +94,50 @@ def test_the_runner_pins_are_the_build_pins():
         for pin in sources[key].files:
             assert pin.sha256 == stage_pins[pin.name]["sha256"]
             assert pin.size_bytes == stage_pins[pin.name]["size_bytes"]
+
+
+def test_the_conditioned_supports_are_pinned_to_the_register_the_spine_reads():
+    """The spine requires the three conditioned atomic-area supports whenever
+    atomic_area_assign runs, which the packaged roster always schedules, and
+    holds each file to sources.yaml's conditioned register (microcosm#931).
+    The runner pins them to that register and passes each under its flag."""
+
+    from microcosm.build.uk_runtime import spine_build
+    from microcosm.build.uk_runtime.country_adapter import (
+        uk_atomic_support_register,
+    )
+
+    register = uk_atomic_support_register(conditioned=True)
+    supports = {s.key: s for s in cut.load_input_sources()}["atomic_area_supports"]
+    assert dict(cut.CONDITIONED_SUPPORT_FLAGS) == dict(
+        spine_build._ATOMIC_SUPPORT_FLAGS
+    )
+    assert [(pin.name, pin.sha256, pin.size_bytes) for pin in supports.files] == [
+        (
+            cut.conditioned_support_file(system),
+            register[system]["sha256"],
+            register[system]["size_bytes"],
+        )
+        for system in cut.CONDITIONED_SUPPORT_FLAGS
+    ]
+    paths = cut.CutPaths(Path("/w"), "t", "a" * 40)
+    args = spine_build._parse_args(
+        cut.spine_argv(paths, python="py", staging_local_only=True)[2:]
+    )
+    for system, flag in cut.CONDITIONED_SUPPORT_FLAGS.items():
+        assert getattr(
+            args, spine_build._atomic_support_argument(flag)
+        ) == paths.input_file(supports.directory, cut.conditioned_support_file(system))
+
+
+def test_a_member_outside_the_conditioned_register_is_refused(tmp_path):
+    manifest = json.loads(cut.CUT_INPUTS.read_text())
+    (raw,) = [s for s in manifest["sources"] if s["key"] == "atomic_area_supports"]
+    raw["members"] = [*raw["members"], "uk_ew_output_area_2021_support.npz"]
+    path = tmp_path / "uk_cut_inputs.json"
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(cut.CutError, match="not a conditioned atomic-area support"):
+        cut.load_input_sources(path)
 
 
 def test_the_chronicle_path_follows_the_feed_pin(tmp_path):
@@ -524,6 +569,40 @@ def test_a_missing_upload_is_reported_with_its_note(tmp_path):
     )
     assert result[0].status == "missing"
     assert "upload nts.zip" in result[0].detail
+
+
+def test_files_hosted_nowhere_yet_are_refused_unless_placed_by_hand(tmp_path):
+    """The conditioned supports have pins but no named hosting location
+    (microcosm#931): fetch refuses them with their note, and keeps files an
+    operator placed in the inputs once they match their pins."""
+
+    data = {"a.npz": b"alpha support", "b.npz": b"beta support"}
+    source = cut.InputSource(
+        key="atomic_area_supports",
+        kind="hf_files",
+        directory="atomic_area_supports",
+        files=tuple(
+            cut.PinnedFile(name, _sha(value), len(value))
+            for name, value in data.items()
+        ),
+        upload_note="the location is named later",
+    )
+    hub = FakeHub(tmp_path, {})
+    (refused,) = cut.fetch_inputs([source], tmp_path / "inputs", downloader=hub)
+    assert refused.status == "refused"
+    assert "no repository is named for these files yet" in refused.detail
+    assert "the location is named later" in refused.detail
+    assert hub.downloads == 0
+    placed = tmp_path / "inputs/atomic_area_supports"
+    placed.mkdir(parents=True)
+    (placed / "a.npz").write_bytes(data["a.npz"])
+    (placed / "b.npz").write_bytes(b"not the pinned support")
+    (still,) = cut.fetch_inputs([source], tmp_path / "inputs", downloader=hub)
+    assert still.status == "refused"
+    (placed / "b.npz").write_bytes(data["b.npz"])
+    (present,) = cut.fetch_inputs([source], tmp_path / "inputs", downloader=hub)
+    assert present.status == "present"
+    assert hub.downloads == 0
 
 
 def test_the_archive_digest_is_checked_when_pinned(tmp_path):
