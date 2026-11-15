@@ -4194,9 +4194,11 @@ def _resource_param(
             # The reference kernels refuse keys they do not read
             # (target_kernels.parse_reference_document); the file keeps them.
             # Every node that selects a whole reference document, whatever
-            # its kernel, receives this trimmed form; a node whose kernel
-            # needs a dropped key selects that key with a path. The
-            # activation checks read the untrimmed view (transport_resource).
+            # its kernel, receives this trimmed form. A kernel that needs
+            # another key of a raw reference file selects it with a path;
+            # the view reference_profiles resolves has already dropped those
+            # keys. Activation reads only target_references, which the trim
+            # keeps.
             document = {
                 key: item
                 for key, item in document.items()
