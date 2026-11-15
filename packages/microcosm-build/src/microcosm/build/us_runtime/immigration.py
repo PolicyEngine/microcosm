@@ -14,11 +14,14 @@ The stage writes three PolicyEngine-US person input columns:
 - ``immigration_status_str``: ``CITIZEN`` / ``LEGAL_PERMANENT_RESIDENT`` /
   ``CUBAN_HAITIAN_ENTRANT`` / ``DACA`` / ``UNDOCUMENTED``.
 - ``years_since_us_entry`` (microcosm#776): the clock the engine's five-year
-  bar (8 USC 1613), the Missouri SSP waiting period and the Washington
-  TANF/RCA windows read. For the foreign-born (``PRCITSHP`` 4/5) it is the
-  time period minus an arrival year drawn inside the person's ``PEINUSYR``
-  band, clipped at zero; for the US-born (``PRCITSHP`` 1-3) it is their age.
-  See :func:`_asec_years_since_us_entry` for the band rule.
+  bar (8 USC 1613) and the Washington TANF/RCA windows read. The locked
+  PolicyEngine-US 2.2.1 reads it only for Medicaid and those two Washington
+  programs; 2.125.1 also reads it for the Missouri SSP waiting period, CHIP
+  and the SNAP waiting period, among others. For the foreign-born
+  (``PRCITSHP`` 4/5) it is the time period minus an arrival year drawn inside
+  the person's ``PEINUSYR`` band, clipped at zero; for the US-born
+  (``PRCITSHP`` 1-3) it is their age. See :func:`_asec_years_since_us_entry`
+  for the band rule.
 
 Method — survey measurement first, published residual method second, and one
 narrowly-scoped control where the survey carries no signal at all:
