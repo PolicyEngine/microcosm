@@ -218,7 +218,9 @@ materialize saw.
 
 ## Minimum county support (microcosm#922)
 
-A sampled staging frame can leave a small county with no household. Before
+A sampled staging frame can leave a small county with no household, or with
+ACS group-quarters records only, which support no households-family target.
+Only households in the household universe count as support. Before
 calibration, `--county-min-support K` (default 3, 0 turns it off, at most 50)
 fills each such county with exactly K households from the same PUMA, or with
 none if K eligible households are not available (status
@@ -229,8 +231,8 @@ Within a PUMA, households are ranked by the SHA256 of the key
 choice does not depend on row order. An eligible household is in the household
 universe, carries no `tract_geoid` or `block_geoid` (finalize gates compare
 those with the county), has agreeing `county_fips` and `county_fips_2023`
-values, and comes from a county that keeps at least K households after the
-move. The step rewrites `county_fips` and `county_fips_2023` (whichever are
+values, and comes from a county that keeps at least K households in the
+household universe after the move. The step rewrites `county_fips` and `county_fips_2023` (whichever are
 present) and nothing else: state, PUMA, congressional district, weights and
 every other column stay as they were. Every move is recorded in
 `county_support.json` under `minimum_support`, and the run identity binds the

@@ -800,6 +800,46 @@ def test_minimum_support_is_all_or_nothing_and_names_the_county() -> None:
     assert receipt["counties"]["01003"]["moved"] == 0
 
 
+def test_group_quarters_records_are_not_county_support() -> None:
+    county = _county()
+    counties = [1001, 1003, 1003, 1003, 1003, 1007, 1007]
+    kinds = [1.0, 2.0, 1.0, 2.0, 2.0, 3.0, 2.0]
+    households = _support_households([(100001, code) for code in counties])
+    households["household_spine"] = "acs_2024_1yr"
+    households["TYPEHUGQ"] = kinds
+    # 01003 has one housing unit beside three group-quarters records; 01007
+    # has group quarters only; 01005 has nothing.
+    populations = {1001: 10.0, 1003: 40.0, 1005: 5.0, 1007: 8.0, 1009: 30.0}
+    overlaps = county.puma_overlaps(
+        [100001] * 5, sorted(populations), [10.0, 40.0, 5.0, 8.0, 30.0]
+    )
+    moves, receipt = county.plan_minimum_support(
+        households, populations, overlaps, per_county=1
+    )
+    assert receipt["unsupported_before"] == ["01005", "01007"]
+    # 01003's lone housing unit would leave it with group quarters only.
+    assert moves == []
+    assert {entry["status"] for entry in receipt["counties"].values()} == {
+        "insufficient_eligible_donors"
+    }
+    richer = pd.concat(
+        [
+            households,
+            _support_households([(100001, 1009)] * 3).assign(
+                household_id=[2001, 2002, 2003],
+                household_spine="acs_2024_1yr",
+                TYPEHUGQ=1.0,
+            ),
+        ],
+        ignore_index=True,
+    )
+    moves, receipt = county.plan_minimum_support(
+        richer, populations, overlaps, per_county=1
+    )
+    assert {move["to_county"] for move in moves} == {"01005", "01007"}
+    assert {move["from_county"] for move in moves} == {"01009"}
+
+
 def test_a_fully_supported_frame_is_returned_unchanged() -> None:
     county = _county()
     households = _support_households([(100001, 1001)] * 3 + [(100001, 1003)] * 3)
@@ -860,7 +900,10 @@ def test_minimum_support_invariants(layout) -> None:
         households, populations, overlaps, per_county=per_county
     )
     before = households.set_index("household_id")
-    supported = set(before["county_fips"].astype(int))
+    # Support is a household in the household universe: ACS group quarters
+    # (TYPEHUGQ 2 here) support no households-family target.
+    in_universe = households["TYPEHUGQ"].ne(2.0)
+    supported = set(households.loc[in_universe, "county_fips"].astype(int))
     destinations = {}
     for move in moves:
         destination = int(move["to_county"])
@@ -876,13 +919,23 @@ def test_minimum_support_invariants(layout) -> None:
         assert pd.isna(source["tract_geoid"])
         assert source["county_fips"] == source["county_fips_2023"]
         assert source["TYPEHUGQ"] != 2.0
-    # The count moved into a county is exact.
+    # The count moved into a county is exact, and the receipt says so.
     assert set(destinations.values()) <= {per_county}
+    for code, entry in receipt["counties"].items():
+        assert entry["moved"] == destinations.get(int(code), 0)
+        assert entry["status"] == (
+            "moved" if entry["moved"] else "insufficient_eligible_donors"
+        )
+    assert {int(code) for code in receipt["unsupported_before"]} == {
+        code
+        for code, population in populations.items()
+        if population > 0 and code not in supported
+    }
     after = county.apply_support_moves(households, moves)
-    counts = after["county_fips"].astype(int).value_counts()
-    for code in supported:
-        if code in {int(move["from_county"]) for move in moves}:
-            assert counts[code] >= per_county
+    # Donor counties keep at least per_county supporting households.
+    counts = after.loc[in_universe, "county_fips"].astype(int).value_counts()
+    for code in {int(move["from_county"]) for move in moves}:
+        assert counts[code] >= per_county
     for column in households.columns:
         if column not in {"county_fips", "county_fips_2023"}:
             pd.testing.assert_series_equal(after[column], households[column])

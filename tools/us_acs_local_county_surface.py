@@ -1965,6 +1965,32 @@ def _moves_digest(moves):
     ).hexdigest()
 
 
+def support_universe(households):
+    """Households that count as county support: those in the household universe.
+
+    An ACS group-quarters record supports no households-family target, so it
+    neither makes a county supported nor counts toward a donor county's floor.
+    Without the columns that identify group quarters every household counts.
+    """
+    if "household_spine" in households.columns and (
+        HOUSEHOLD_KIND_COLUMN in households.columns
+        or not (households["household_spine"].astype(str) == ACS_SPINE).any()
+    ):
+        return household_universe(households) > 0
+    return np.ones(len(households), dtype=bool)
+
+
+def unsupported_counties(households, county_populations, *, county_column):
+    """Counties with positive ladder population and no supporting household."""
+    codes = county_codes(households, county_column=county_column)
+    present = {int(code) for code in np.unique(codes[support_universe(households)])}
+    return sorted(
+        int(code)
+        for code, population in county_populations.items()
+        if float(population) > 0 and int(code) not in present
+    )
+
+
 def plan_minimum_support(
     households,
     county_populations,
@@ -1977,7 +2003,7 @@ def plan_minimum_support(
     """Choose ``per_county`` donor households for each unsupported county.
 
     A county is unsupported when its ladder population is positive and no
-    household names it. Its donors come from the PUMA that overlaps it most
+    household in the household universe names it (:func:`support_universe`). Its donors come from the PUMA that overlaps it most
     (then the next, by ladder population), ordered by
     :func:`support_rank` of ``(key, county, household_id)``. A donor must be
     in the household universe (not ACS group quarters), carry no tract or
@@ -1993,11 +2019,9 @@ def plan_minimum_support(
     ids = households["household_id"].to_numpy()
     if len(pd.unique(ids)) != len(ids):
         raise ValueError("Minimum county support needs unique household ids.")
-    present = {int(code) for code in np.unique(codes)}
-    unsupported = sorted(
-        int(code)
-        for code, population in county_populations.items()
-        if float(population) > 0 and int(code) not in present
+    universe = support_universe(households)
+    unsupported = unsupported_counties(
+        households, county_populations, county_column=county_column
     )
     receipt = {
         "households_per_county": int(per_county),
@@ -2009,7 +2033,7 @@ def plan_minimum_support(
             "same PUMA as the county (largest ladder overlap first); not ACS "
             "group quarters; no tract_geoid or block_geoid; county columns "
             "agree; the donor county keeps at least households_per_county "
-            "households"
+            "households in the household universe"
         ),
         "counties": {},
         "moves": [],
@@ -2020,12 +2044,7 @@ def plan_minimum_support(
     pumas = _household_pumas(households)
     if np.any(pumas // 100_000 != codes // 1000):
         raise ValueError("Household PUMA and county disagree on the state.")
-    eligible = np.ones(len(households), dtype=bool)
-    if "household_spine" in households.columns and (
-        HOUSEHOLD_KIND_COLUMN in households.columns
-        or not (households["household_spine"].astype(str) == ACS_SPINE).any()
-    ):
-        eligible &= household_universe(households) > 0
+    eligible = universe.copy()
     for column in COUNTY_DETERMINING_LOCATION_COLUMNS:
         if column in households.columns:
             eligible &= _blank(households[column])
@@ -2043,8 +2062,10 @@ def plan_minimum_support(
         if column in households.columns
     ]
     by_puma = _county_groups(pumas)
+    # The donor floor counts supporting households only, so a move never
+    # leaves a donor county with group-quarters records alone.
     counts = defaultdict(int)
-    for code in codes:
+    for code in codes[universe]:
         counts[int(code)] += 1
     moved = np.zeros(len(households), dtype=bool)
     moves = []
@@ -2388,11 +2409,10 @@ def check_support(frame, populations, args):
     codes = county_codes(households, county_column=column)
     unknown = sorted(set(codes) - set(populations["county"]))
     support = None
-    needed = any(
-        float(population) > 0 and int(code) not in set(codes.tolist())
-        for code, population in populations["county"].items()
-    )
     if per_county > 0 and not unknown:
+        needed = unsupported_counties(
+            households, populations["county"], county_column=column
+        )
         overlaps = county_puma_overlaps(args.ladder) if needed else {}
         moves, support = plan_minimum_support(
             households,
