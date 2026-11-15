@@ -1270,7 +1270,7 @@ class TestStageLevelEvaluation:
         # dev build would continue where the batch blocks.
         manifest = _manifest(
             [
-                _entry("pf_gate", gate="support", phase="preflight"),
+                _entry("pf_gate", gate="exported_nonzero", phase="preflight"),
                 _entry("t_gate", gate="exported_nonzero"),
             ]
         )
@@ -1282,9 +1282,10 @@ class TestStageLevelEvaluation:
         run.run_phase("preflight", EvidenceContext())
         with pytest.raises(ValueError, match="already been recorded"):
             run.evaluate_entries(["pf_gate"], EvidenceContext())
-        run.record_phase(assemble_phase_report(manifest, "terminal", [stage]))
         with pytest.raises(GateBatteryBlockedError):
-            run.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT)
+            run.enforce("preflight", mode=BlockingMode.BLOCKS_ARTIFACT)
+        # An entry of a later phase, which no recorded phase holds: only the
+        # block refuses it.
         with pytest.raises(ValueError, match="no later stage may run"):
             run.evaluate_entries(["t_gate"], EvidenceContext())
 
