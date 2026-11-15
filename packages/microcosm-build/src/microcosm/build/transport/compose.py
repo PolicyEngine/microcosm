@@ -4197,8 +4197,9 @@ def _resource_param(
             # its kernel, receives this trimmed form. A node whose kernel
             # needs another key of a raw reference file selects that key with
             # a path; the view reference_profiles resolves has already dropped
-            # those keys. Activation's reference checks read only
-            # target_references, which the trim keeps.
+            # those keys. Activation's gap, exemption and holdout checks read
+            # only target_references, which the trim keeps; its profile
+            # resolution reads the raw file, as composition's does.
             document = {
                 key: item
                 for key, item in document.items()
