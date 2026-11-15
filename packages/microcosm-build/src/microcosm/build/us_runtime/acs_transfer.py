@@ -72,6 +72,9 @@ __all__ = [
     "acs_transfer_donor_requirements",
     "acs_transfer_execution_contract_identity",
     "acs_adult_care_qualifying_rows",
+    "ACS_INCOME_UNIVERSE_MIN_AGE",
+    "acs_semp_age_counts",
+    "acs_semp_values",
     "acs_tax_unit_head_or_spouse",
     "assert_acs_transfer_targets_are_input_leaves",
     "declared_acs_transfer_target_families",
@@ -535,6 +538,15 @@ def acs_transfer_execution_contract_identity(
             "operation": "set_to_zero",
             "order": "before_passive_partnership_s_corp",
             "mutable_rows": ("newly_imputed_cells_where_recipient_total_not_imputed"),
+            "tax_unit_roles": list(ACS_TAX_UNIT_ROLES),
+            "role_decoding": "utf8_replace_then_ascii_upper",
+            "refuse": [
+                "missing_column",
+                "malformed_tax_unit_role",
+                "non_numeric_semp",
+                "semp_blank_on_every_person_aged_15_plus",
+            ],
+            "receipt": "discarded_draws_unweighted_and_household_weighted",
         }
     payload["sha256"] = hashlib.sha256(
         json.dumps(
@@ -890,23 +902,38 @@ def acs_tax_unit_head_or_spouse(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return ``(head_or_spouse, malformed)`` masks for tax-unit roles.
 
-    Bytes decode and case folds to upper, as the PUF tax-unit demographics
-    read roles. ``malformed`` marks a role outside HEAD/SPOUSE/DEPENDENT and a
+    Bytes decode as UTF-8 (an undecodable byte becomes U+FFFD) and ASCII
+    roles fold to upper case, as the PUF tax-unit demographics read roles.
+    ``malformed`` marks a role outside HEAD/SPOUSE/DEPENDENT, a non-ASCII
+    role (so a lookalike such as ``"ſpouſe"`` is not read as SPOUSE) and a
     missing role on a row that has a tax unit. The SEMP-covered partnership
     rule and its gate refuse those rows rather than read them as neither head
     nor spouse, which would skip their tax unit silently (microcosm#1387).
     """
 
     decoded = (
-        roles.map(lambda value: value.decode() if isinstance(value, bytes) else value)
+        roles.map(
+            lambda value: (
+                value.decode("utf-8", errors="replace")
+                if isinstance(value, bytes)
+                else value
+            )
+        )
         .astype("object")
         .astype("string")
-        .str.upper()
     )
+    ascii_only = (
+        decoded.map(lambda value: value.isascii(), na_action="ignore")
+        .astype("boolean")
+        .to_numpy(dtype=bool, na_value=False)
+    )
+    decoded = decoded.str.upper()
     present = decoded.notna().to_numpy(dtype=bool)
-    known = decoded.isin(ACS_TAX_UNIT_ROLES).to_numpy(dtype=bool, na_value=False)
+    known = ascii_only & decoded.isin(ACS_TAX_UNIT_ROLES).to_numpy(
+        dtype=bool, na_value=False
+    )
     has_unit = units.notna().to_numpy(dtype=bool)
-    head_or_spouse = decoded.isin(("HEAD", "SPOUSE")).to_numpy(
+    head_or_spouse = known & decoded.isin(("HEAD", "SPOUSE")).to_numpy(
         dtype=bool, na_value=False
     )
     malformed = (present & ~known) | (~present & has_unit)
@@ -920,6 +947,105 @@ def _require_semp_covered_columns(columns: Sequence[str]) -> None:
             "The SEMP-covered partnership rule needs person column(s) "
             f"{missing}; refusing to treat them as zero."
         )
+
+
+#: ACS asks the income questions of people aged 15 and over; SEMP is blank
+#: below that age (2024 ACS PUMS data dictionary).
+ACS_INCOME_UNIVERSE_MIN_AGE = 15
+
+
+def acs_semp_values(semp: pd.Series) -> tuple[np.ndarray, np.ndarray]:
+    """Return ``(values, non_numeric)`` for an ACS ``SEMP`` column.
+
+    ``values`` is float64 with blank cells as NaN. ``non_numeric`` marks a
+    cell that holds something (text, a blank string) that does not parse as
+    a number; reading it as blank would put the row outside the income
+    universe and zero its partnership draw silently (microcosm#1387).
+    """
+
+    values = pd.to_numeric(semp, errors="coerce").to_numpy(
+        dtype=np.float64, na_value=np.nan
+    )
+    non_numeric = semp.notna().to_numpy(dtype=bool) & np.isnan(values)
+    return values, non_numeric
+
+
+def acs_semp_age_counts(
+    person: pd.DataFrame, semp: np.ndarray
+) -> dict[str, int] | None:
+    """Count SEMP cells that disagree with the ACS income universe's age.
+
+    Returns ``None`` without an ``age`` column. ``blank_semp_age_15_plus_rows``
+    counts blank SEMP at age 15 or over and ``finite_semp_under_15_rows``
+    finite SEMP below it; real PUMS has neither, and
+    ``persons_aged_15_plus`` is the denominator.
+    """
+
+    if "age" not in person.columns:
+        return None
+    age = pd.to_numeric(person["age"], errors="coerce").to_numpy(
+        dtype=np.float64, na_value=np.nan
+    )
+    adult = age >= ACS_INCOME_UNIVERSE_MIN_AGE
+    child = age < ACS_INCOME_UNIVERSE_MIN_AGE
+    return {
+        "persons_aged_15_plus": int(adult.sum()),
+        "blank_semp_age_15_plus_rows": int((adult & np.isnan(semp)).sum()),
+        "finite_semp_under_15_rows": int((child & np.isfinite(semp)).sum()),
+    }
+
+
+def _check_semp_covered_inputs(
+    person: pd.DataFrame,
+) -> tuple[np.ndarray, np.ndarray, dict[str, int] | None]:
+    """Refuse inputs the SEMP-covered partnership rule cannot read honestly.
+
+    Returns ``(semp, head_or_spouse, age_counts)``. Refuses a missing column,
+    a malformed tax-unit role, a ``SEMP`` cell that is not a number, and a
+    frame with an ``age`` column in which every person aged 15 or over has
+    blank ``SEMP`` (an extract that lost SEMP would otherwise zero every
+    partnership draw as outside the income universe). Partial disagreement
+    with the income universe's age is counted, not refused.
+    """
+
+    _require_semp_covered_columns(person.columns)
+    semp, non_numeric = acs_semp_values(person[_ACS_SEMP])
+    if non_numeric.any():
+        examples = sorted(
+            {repr(value) for value in person[_ACS_SEMP].to_numpy()[non_numeric]}
+        )[:5]
+        raise ValueError(
+            f"The SEMP-covered partnership rule found {int(non_numeric.sum())} "
+            f"SEMP value(s) that are not numbers (examples {examples}); "
+            "refusing to read them as blank."
+        )
+    head_or_spouse, malformed = acs_tax_unit_head_or_spouse(
+        person[_ADULT_CARE_ROLE], person[_ADULT_CARE_UNIT]
+    )
+    if malformed.any():
+        examples = sorted(
+            {str(value) for value in person[_ADULT_CARE_ROLE].to_numpy()[malformed]}
+        )[:5]
+        raise ValueError(
+            "The SEMP-covered partnership rule found "
+            f"{int(malformed.sum())} person row(s) whose tax_unit_role_input is "
+            f"not one of {list(ACS_TAX_UNIT_ROLES)} (examples {examples}); "
+            "refusing to read them as neither head nor spouse."
+        )
+    age_counts = acs_semp_age_counts(person, semp)
+    if (
+        age_counts is not None
+        and age_counts["persons_aged_15_plus"] > 0
+        and age_counts["blank_semp_age_15_plus_rows"]
+        == age_counts["persons_aged_15_plus"]
+    ):
+        raise ValueError(
+            "SEMP is blank on every one of the "
+            f"{age_counts['persons_aged_15_plus']} person row(s) aged 15 or "
+            "over; the ACS extract has lost SEMP, and the SEMP-covered "
+            "partnership rule would zero every partnership draw."
+        )
+    return semp, head_or_spouse, age_counts
 
 
 def _acs_person_design_weights(recipient: Frame) -> np.ndarray | None:
@@ -1779,10 +1905,8 @@ def transfer_acs_inputs(
         for entity, _family, targets in active
     ):
         # Before any fit: partnership_income has cells to draw, so the rule
-        # will need these columns.
-        _require_semp_covered_columns(
-            recipient.table(recipient.schema.person_entity).columns
-        )
+        # will need these columns, numeric SEMP and well-formed roles.
+        _check_semp_covered_inputs(recipient.table(recipient.schema.person_entity))
     if selected_regime_evidence:
         requested_families = {
             (entity, family): targets for entity, family, targets in requested
@@ -2220,17 +2344,14 @@ def _apply_post_transfer_structure(
     # microcosm#1387: before the passive block, so a partnership draw this
     # step zeroes also clears the passive subset that rested on it.
     semp_contract = post_transfer_contract.get("semp_covered_partnership_income")
+    semp_counts: dict[str, int] | None = None
+    semp_discarded = np.zeros(len(person), dtype=bool)
     if isinstance(semp_contract, Mapping) and semp_contract["enabled"] is True:
-        semp_counts = keep_semp_covered_partnership_income(
+        semp_counts, semp_discarded = _keep_semp_covered_partnership_income(
             person,
             imputed_masks=imputed_masks,
             person_weights=person_weights,
         )
-        if semp_counts is not None:
-            for index, item in enumerate(provenance):
-                if item.column == _SEMP_COVERED_PARTNERSHIP and item.entity == "person":
-                    provenance[index] = replace(item, reconciliation=semp_counts)
-                    break
 
     passive_contract = post_transfer_contract.get("passive_partnership_s_corp")
     passive_mask = imputed_masks.get(("person", _PASSIVE_PARTNERSHIP_S_CORP))
@@ -2250,6 +2371,20 @@ def _apply_post_transfer_structure(
                 provenance[index] = replace(item, reconciliation=counts)
                 break
 
+    if semp_counts is not None:
+        # The passive step clears passive only where line 32 is zero. A row
+        # whose partnership draw the SEMP rule discarded but whose S-corp
+        # income is nonzero keeps a passive draw that was made jointly with
+        # the discarded partnership value; the identity gate cannot see it,
+        # so the receipt measures it (microcosm#1387).
+        semp_counts.update(
+            _passive_kept_on_discarded_rows(person, semp_discarded, person_weights)
+        )
+        for index, item in enumerate(provenance):
+            if item.column == _SEMP_COVERED_PARTNERSHIP and item.entity == "person":
+                provenance[index] = replace(item, reconciliation=semp_counts)
+                break
+
     component_contract = post_transfer_contract["self_employment_components"]
     assert isinstance(component_contract, Mapping)
     if component_contract["enabled"] is True:
@@ -2261,6 +2396,30 @@ def _apply_post_transfer_structure(
             counts = component_counts.get(item.column)
             if counts is not None and item.entity == "person":
                 provenance[index] = replace(item, reconciliation=counts)
+
+
+def _passive_kept_on_discarded_rows(
+    person: pd.DataFrame,
+    discarded: np.ndarray,
+    person_weights: np.ndarray | None,
+) -> dict[str, int]:
+    """Measure passive income left on rows whose partnership draw was discarded."""
+
+    if _PASSIVE_PARTNERSHIP_S_CORP not in person.columns:
+        return {}
+    passive = pd.to_numeric(
+        person[_PASSIVE_PARTNERSHIP_S_CORP], errors="coerce"
+    ).to_numpy(dtype=np.float64, na_value=np.nan)
+    kept = discarded & np.isfinite(passive) & (passive != 0.0)
+    counts = {
+        "passive_kept_on_discarded_rows": int(kept.sum()),
+        "passive_kept_on_discarded_rows_dollars": int(np.round(passive[kept].sum())),
+    }
+    if person_weights is not None:
+        counts["passive_kept_on_discarded_rows_household_weighted_dollars"] = int(
+            np.round((passive[kept] * person_weights[kept]).sum())
+        )
+    return counts
 
 
 def keep_measured_self_employment_totals(
@@ -2329,28 +2488,16 @@ def semp_covered_partnership_cells(person: pd.DataFrame) -> dict[str, np.ndarray
     The masks are disjoint. A missing ``SEMP``, ``person_tax_unit_id`` or
     ``tax_unit_role_input`` column raises ``ValueError``: none is read as zero.
     So does a role outside HEAD/SPOUSE/DEPENDENT, or a missing role on a row
-    with a tax unit (:func:`acs_tax_unit_head_or_spouse`).
+    with a tax unit (:func:`acs_tax_unit_head_or_spouse`), a ``SEMP`` value
+    that is not a number, and blank ``SEMP`` on every person aged 15 or over
+    (:func:`_check_semp_covered_inputs`). An infinite ``SEMP`` is in none of
+    the sets; the identity gate refuses it. Tax-unit rows are grouped over
+    the whole frame, so pass whole tax units.
     """
 
-    _require_semp_covered_columns(person.columns)
-    semp = pd.to_numeric(person[_ACS_SEMP], errors="coerce").to_numpy(
-        dtype=np.float64, na_value=np.nan
-    )
+    semp, head_or_spouse, _age_counts = _check_semp_covered_inputs(person)
     own = np.isfinite(semp) & (semp != 0.0)
     blank = np.isnan(semp)
-    head_or_spouse, malformed = acs_tax_unit_head_or_spouse(
-        person[_ADULT_CARE_ROLE], person[_ADULT_CARE_UNIT]
-    )
-    if malformed.any():
-        examples = sorted(
-            {str(value) for value in person[_ADULT_CARE_ROLE].to_numpy()[malformed]}
-        )[:5]
-        raise ValueError(
-            "The SEMP-covered partnership rule found "
-            f"{int(malformed.sum())} person row(s) whose tax_unit_role_input is "
-            f"not one of {list(ACS_TAX_UNIT_ROLES)} (examples {examples}); "
-            "refusing to read them as neither head nor spouse."
-        )
     reporter = pd.Series(own & head_or_spouse, index=person.index)
     # A row without a tax unit has no spouse to extend from.
     unit_reports = (
@@ -2365,6 +2512,17 @@ def semp_covered_partnership_cells(person: pd.DataFrame) -> dict[str, np.ndarray
         "tax_unit": head_or_spouse & unit_reports & ~own & ~blank,
         "blank_semp": blank,
     }
+
+
+def _aligned_bool_mask(mask: object, person: pd.DataFrame, name: str) -> np.ndarray:
+    if isinstance(mask, pd.Series | pd.Index) and not (
+        isinstance(mask, pd.Series) and mask.index.equals(person.index)
+    ):
+        raise ValueError(f"{name} must be a boolean array aligned to person.")
+    values = np.asarray(mask)
+    if values.dtype != np.bool_ or values.shape != (len(person),):
+        raise ValueError(f"{name} must be a boolean array aligned to person.")
+    return values
 
 
 def keep_semp_covered_partnership_income(
@@ -2389,32 +2547,51 @@ def keep_semp_covered_partnership_income(
     and negative parts in whole dollars, unweighted and, when
     ``person_weights`` is given, weighted by them. The discarded draws never
     reach the output, so these sums are the only measure of what the rule
-    removed.
+    removed. Each sum is rounded on its own, so the per-set sums can differ
+    from the total by up to a dollar per set.
+    ``household_design_weights_applied`` is 1 when the weighted sums are
+    present: they use the ACS household design
+    weights before pooling, not the staging or calibrated weights. With an
+    ``age`` column the receipt also counts SEMP cells that disagree with the
+    income universe's age (:func:`acs_semp_age_counts`).
     """
 
+    counts, _discarded = _keep_semp_covered_partnership_income(
+        person, imputed_masks=imputed_masks, person_weights=person_weights
+    )
+    return counts
+
+
+def _keep_semp_covered_partnership_income(
+    person: pd.DataFrame,
+    *,
+    imputed_masks: Mapping[tuple[str, str], np.ndarray],
+    person_weights: np.ndarray | None = None,
+) -> tuple[dict[str, int] | None, np.ndarray]:
+    """:func:`keep_semp_covered_partnership_income`, plus the discarded rows.
+
+    The second value marks the rows whose nonzero draw the rule discarded.
+    """
+
+    nothing = np.zeros(len(person), dtype=bool)
     drawn = imputed_masks.get(("person", _SEMP_COVERED_PARTNERSHIP))
     if drawn is None or _SEMP_COVERED_PARTNERSHIP not in person.columns:
-        return None
-    drawn = np.asarray(drawn, dtype=bool)
-    total_drawn = np.asarray(
-        imputed_masks.get(
-            ("person", _SELF_EMPLOYMENT_TOTAL), np.zeros(len(person), bool)
-        ),
-        dtype=bool,
+        return None, nothing
+    drawn = _aligned_bool_mask(drawn, person, "imputed masks")
+    total_drawn = _aligned_bool_mask(
+        imputed_masks.get(("person", _SELF_EMPLOYMENT_TOTAL), nothing),
+        person,
+        "imputed masks",
     )
-    if drawn.shape != (len(person),) or total_drawn.shape != (len(person),):
-        raise ValueError("imputed masks must be aligned to person.")
     if person_weights is not None:
         person_weights = np.asarray(person_weights, dtype=np.float64)
         if person_weights.shape != (len(person),):
             raise ValueError("person_weights must be aligned to person.")
     if not drawn.any():
-        return None
+        return None, nothing
     mutable = drawn & ~total_drawn
     cells = semp_covered_partnership_cells(person)
-    semp = pd.to_numeric(person[_ACS_SEMP], errors="coerce").to_numpy(
-        dtype=np.float64, na_value=np.nan
-    )
+    semp, _non_numeric = acs_semp_values(person[_ACS_SEMP])
     values = pd.to_numeric(person[_SEMP_COVERED_PARTNERSHIP], errors="coerce").to_numpy(
         dtype=np.float64, na_value=np.nan
     )
@@ -2451,8 +2628,12 @@ def keep_semp_covered_partnership_income(
     counts["cells_kept_at_zero"] = int(covered.sum())
     counts["nonzero_draws_discarded"] = int((covered & nonzero).sum())
     dollars("", covered, counts)
+    counts["household_design_weights_applied"] = int(person_weights is not None)
+    age_counts = acs_semp_age_counts(person, semp)
+    if age_counts is not None:
+        counts.update(age_counts)
     person.loc[covered, _SEMP_COVERED_PARTNERSHIP] = 0.0
-    return counts
+    return counts, covered & nonzero
 
 
 def _model_target_names(targets: Sequence[str]) -> tuple[str, ...]:

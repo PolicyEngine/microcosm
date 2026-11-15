@@ -28,7 +28,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # microcosm#1387's SEMP-covered partnership step moves acs_transfer's
     # attested bytes.
     assert first.spec_sha256 == (
-        "bf67d5d913958b6b7c7ba81ca6c59fd208ea09f8f9ac9209f2b65218eb4cf09a"
+        "a68579ad0903aeddb6b628f7cd67bb1345d94fcf31c495270c1e0b2f8154bd5c"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

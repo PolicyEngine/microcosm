@@ -1335,6 +1335,27 @@ def test_release_refuses_partnership_income_that_semp_already_holds() -> None:
         )
 
 
+def test_release_names_a_rebuild_only_for_income_counted_twice() -> None:
+    """A rebuild cures a double count, not an unmodeled cell (microcosm#1387)."""
+
+    module = _load_tool_module()
+    unmodeled = _self_employment_person(0.0)
+    # The ACS row that reports SEMP, with its partnership cell left blank.
+    unmodeled.loc[1, "partnership_income"] = np.nan
+
+    with pytest.raises(SystemExit) as refused:
+        module._require_acs_self_employment_identity(_SelfEmploymentFrame(unmodeled))
+
+    assert "never modeled" in str(refused.value)
+    assert "must be rebuilt" not in str(refused.value)
+    with pytest.raises(SystemExit, match="must be rebuilt"):
+        module._require_acs_self_employment_identity(
+            _SelfEmploymentFrame(
+                _self_employment_person(0.0, partnership_on_acs_semp=2_500.0)
+            )
+        )
+
+
 def test_release_checks_self_employment_wherever_it_loads_staging() -> None:
     module = _load_tool_module()
 

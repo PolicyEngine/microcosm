@@ -392,8 +392,8 @@ EXPECTED_HASHES = {
     # microcosm#1387 moves both again: the ACS transfer's opt-in SEMP-covered
     # partnership step changes acs_transfer's attested bytes. Off its flag no
     # draw, RNG rule or QRF target changes.
-    "seed_map": "dc4e5675d73adb4ac385a86e9f8bd4dafbd6cf3f7adffaf570fd27932bd5361b",
-    "seed_protocol": "deaa56165bd46eb61b814abed73e9033d761db20a2aa4ea01337c43a5c76be69",
+    "seed_map": "20304ea60c343b1d91a472a252f54c5a8aea64323b003f89391c11431eeaee87",
+    "seed_protocol": "eb35a3afd7df7121fa858866180d2ec3b4334e5552f0a9c8ea62fd53e611305c",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

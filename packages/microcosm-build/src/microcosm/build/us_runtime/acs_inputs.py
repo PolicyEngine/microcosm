@@ -25,6 +25,8 @@ from microcosm.build.us_runtime.acs_release_predictors import (
 from microcosm.build.us_runtime.acs_transfer import (
     ACS_SELF_EMPLOYMENT_COMPONENT_INPUTS,
     ACS_TAX_UNIT_ROLES,
+    acs_semp_age_counts,
+    acs_semp_values,
     acs_tax_unit_head_or_spouse,
 )
 from microcosm.build.us_runtime.spm_role_source import (
@@ -718,8 +720,21 @@ def acs_self_employment_identity_gate(
     wherever the person's or the tax unit's line 32 (partnership plus S-corp
     income) is zero, and an infinite line-32 or passive value fails. A
     tax-unit role outside HEAD/SPOUSE/DEPENDENT, or a missing role on a row
-    with a tax unit, fails rather than exempting its unit. Every column the
-    gate reads must be present; none is read as zero.
+    with a tax unit, fails rather than exempting its unit. A blank
+    ``partnership_income`` on one of those rows fails on its own, as an
+    unmodeled cell rather than a double count. Every column the gate reads
+    must be present; none is read as zero.
+
+    ``SEMP`` must be a number or blank: a value that does not parse fails
+    rather than being read as blank. With an ``age`` column, the gate
+    records how many persons aged 15 or over have blank SEMP and how many
+    under 15 have a finite one (real PUMS has neither: SEMP is asked from
+    age 15), and fails when every person aged 15 or over has blank SEMP,
+    which means the extract lost it. Tax units are grouped within the
+    selected rows, so select whole tax units. The gate cannot see passive
+    income left on a row whose partnership draw the transfer discarded while
+    its S-corp income is nonzero; the transfer's receipt measures that
+    (``passive_kept_on_discarded_rows``).
     """
 
     name = "acs_self_employment_identity"
@@ -754,7 +769,8 @@ def acs_self_employment_identity_gate(
             dtype=np.float64, na_value=np.nan
         )
 
-    semp = numeric("SEMP")
+    semp, non_numeric_semp = acs_semp_values(subset["SEMP"])
+    semp_age = acs_semp_age_counts(subset, semp)
     adjinc = numeric("ADJINC")
     leaves = np.column_stack([numeric(column) for column in _SELF_EMPLOYMENT_LEAVES])
     reported = np.isfinite(semp)
@@ -784,6 +800,9 @@ def acs_self_employment_identity_gate(
     s_corp = numeric(_S_CORP)
     passive = numeric(_PASSIVE)
     partnership_zero = np.isfinite(partnership) & (partnership == 0.0)
+    # A blank cell is unmodeled, not a double count: it fails on its own below.
+    partnership_blank = np.isnan(partnership)
+    partnership_nonzero = ~partnership_zero & ~partnership_blank
     own_semp = np.isfinite(semp) & (semp != 0.0)
     units = subset[_TAX_UNIT]
     head_or_spouse, malformed_role = acs_tax_unit_head_or_spouse(
@@ -797,11 +816,13 @@ def acs_self_employment_identity_gate(
         .fillna(False)
         .to_numpy(dtype=bool)
     )
-    partnership_on_semp = own_semp & ~partnership_zero
-    partnership_on_spouse = (
-        head_or_spouse & unit_reports & ~own_semp & ~blank_semp & ~partnership_zero
+    covered_spouse = head_or_spouse & unit_reports & ~own_semp & ~blank_semp
+    partnership_on_semp = own_semp & partnership_nonzero
+    partnership_on_spouse = covered_spouse & partnership_nonzero
+    partnership_on_blank = blank_semp & partnership_nonzero
+    partnership_blank_on_covered = partnership_blank & (
+        own_semp | covered_spouse | blank_semp
     )
-    partnership_on_blank = blank_semp & ~partnership_zero
     line_32_values = np.column_stack([partnership, s_corp, passive])
     infinite_line_32 = np.isinf(line_32_values).any(axis=1)
     person_line_32 = pd.Series(
@@ -848,20 +869,41 @@ def acs_self_employment_identity_gate(
     if partnership_on_semp.any():
         failures.append(
             f"{int(partnership_on_semp.sum())} ACS person row(s) reporting a "
-            "nonzero SEMP carry partnership_income that is not exactly zero; "
-            "ACS SEMP already includes own-partnership income."
+            "nonzero SEMP carry nonzero partnership_income; ACS SEMP already "
+            "includes own-partnership income."
         )
     if partnership_on_spouse.any():
         failures.append(
             f"{int(partnership_on_spouse.sum())} ACS tax-unit head or spouse "
-            "row(s) carry partnership_income that is not exactly zero while "
-            "their tax unit's head or spouse reports a nonzero SEMP, which "
-            "may hold the couple's jointly received partnership income."
+            "row(s) carry nonzero partnership_income while their tax unit's "
+            "head or spouse reports a nonzero SEMP, which may hold the couple's "
+            "jointly received partnership income."
         )
     if partnership_on_blank.any():
         failures.append(
             f"{int(partnership_on_blank.sum())} ACS person row(s) with blank "
-            "SEMP carry partnership_income that is not exactly zero."
+            "SEMP carry nonzero partnership_income."
+        )
+    if partnership_blank_on_covered.any():
+        failures.append(
+            f"{int(partnership_blank_on_covered.sum())} ACS person row(s) where "
+            "SEMP covers partnership income have a blank partnership_income; "
+            "the cell was never modeled."
+        )
+    if non_numeric_semp.any():
+        failures.append(
+            f"{int(non_numeric_semp.sum())} ACS person row(s) have a SEMP that "
+            "is not a number."
+        )
+    if (
+        semp_age is not None
+        and semp_age["persons_aged_15_plus"] > 0
+        and semp_age["blank_semp_age_15_plus_rows"] == semp_age["persons_aged_15_plus"]
+    ):
+        failures.append(
+            "SEMP is blank on every one of the "
+            f"{semp_age['persons_aged_15_plus']} ACS person row(s) aged 15 or "
+            "over; the extract has lost SEMP."
         )
     if passive_without_line_32.any():
         failures.append(
@@ -922,6 +964,11 @@ def acs_self_employment_identity_gate(
             ),
             "partnership_on_spouse_rows": int(partnership_on_spouse.sum()),
             "partnership_on_blank_semp_rows": int(partnership_on_blank.sum()),
+            "partnership_blank_on_covered_rows": int(
+                partnership_blank_on_covered.sum()
+            ),
+            "non_numeric_semp_rows": int(non_numeric_semp.sum()),
+            "semp_age": semp_age,
             "passive_without_line_32_rows": int(passive_without_line_32.sum()),
             "infinite_line_32_rows": int(infinite_line_32.sum()),
             "malformed_tax_unit_role_rows": int(malformed_role.sum()),

@@ -357,7 +357,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # attested bytes.
             # microcosm#1387's SEMP-covered partnership step moves it through
             # acs_transfer's attested bytes.
-            "spec_sha256": "3c21db4468d0c92f91cc03a21c8afa7dedf21863fa0cef0429238ee63d7d4896",
+            "spec_sha256": "34cee3b7498a41d0e1b3eb08c65bf84a312cf37942af8aa50ea0cc7a901cb06c",
         },
     }
 

@@ -5410,14 +5410,36 @@ def _require_acs_self_employment_identity(frame):
         ),
     )
     if not gate.passed:
+        double_counted = any(
+            gate.details.get(key, 0) for key in _SELF_EMPLOYMENT_DOUBLE_COUNT_DETAILS
+        )
         raise SystemExit(
             "ACS self-employment identity failed: "
             + "; ".join(gate.failures)
-            + ". Staging, or a checkpoint calibrated from staging, built before "
-            "microcosm#1380 or #1387 must be rebuilt with the current ACS base "
-            "builder."
+            + (
+                ". Staging, or a checkpoint calibrated from staging, built before "
+                "microcosm#1380 or #1387 must be rebuilt with the current ACS base "
+                "builder."
+                if double_counted
+                else "."
+            )
         )
     return gate
+
+
+#: Gate detail counts that mean income counted twice, which staging built
+#: before microcosm#1380 or #1387 carries; other failures (a malformed role,
+#: a blank or non-numeric value) need their input fixed, not a rebuild.
+_SELF_EMPLOYMENT_DOUBLE_COUNT_DETAILS = (
+    "mismatched_rows",
+    "blank_semp_nonzero_rows",
+    "non_acs_component_rows",
+    "base_and_sstb_rows",
+    "partnership_on_semp_rows",
+    "partnership_on_spouse_rows",
+    "partnership_on_blank_semp_rows",
+    "passive_without_line_32_rows",
+)
 
 
 def do_finalize(args) -> None:

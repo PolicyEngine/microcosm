@@ -53,6 +53,8 @@ from microcosm.build.us_runtime.acs_inputs import acs_self_employment_identity_g
 from microcosm.build.us_runtime.acs_transfer import (
     ACS_SELF_EMPLOYMENT_COMPONENT_INPUTS,
     ACS_SEMP_COVERED_LINE_32_INPUTS,
+    ACS_TAX_UNIT_ROLES,
+    acs_tax_unit_head_or_spouse,
     acs_transfer_execution_contract_identity,
     declared_acs_transfer_target_families,
     keep_semp_covered_partnership_income,
@@ -289,6 +291,27 @@ def test_case_and_bytes_fold_but_an_unknown_role_is_refused() -> None:
             semp_covered_partnership_cells(malformed)
 
 
+@pytest.mark.parametrize(
+    "bad",
+    (
+        "\u017fpou\u017fe",  # long s: upper-cases to "SPOUSE"
+        "\uff28\uff25\uff21\uff24",  # full-width HEAD
+        "HEAD\u200b",  # zero-width space
+        b"SP\xffOUSE",  # not UTF-8
+    ),
+)
+def test_a_lookalike_or_undecodable_role_is_refused(bad) -> None:
+    roles = pd.Series(["HEAD", bad], dtype=object)
+
+    head_or_spouse, malformed = acs_tax_unit_head_or_spouse(roles, pd.Series([1, 1]))
+
+    assert head_or_spouse.tolist() == [True, False]
+    assert malformed.tolist() == [False, True]
+    person = pd.DataFrame({"SEMP": [5_000.0, 0.0], _UNIT: [1, 1], _ROLE: roles})
+    with pytest.raises(ValueError, match="neither head nor spouse"):
+        semp_covered_partnership_cells(person)
+
+
 def test_a_missing_role_is_allowed_only_without_a_tax_unit() -> None:
     person = pd.DataFrame(
         {"SEMP": [5_000.0, 0.0], _UNIT: [1.0, np.nan], _ROLE: ["HEAD", None]}
@@ -324,6 +347,12 @@ def test_the_step_does_nothing_when_no_partnership_income_was_drawn() -> None:
     (
         {("person", _P): np.asarray([True, False])},
         {("person", _P): np.asarray([True]), ("person", _TOTAL): np.ones(2, bool)},
+        # An integer mask would select by label, not by row.
+        {("person", _P): np.asarray([1])},
+        {("person", _P): np.asarray([1.0])},
+        # A Series on another index would line up by label, not by row.
+        {("person", _P): pd.Series([True], index=[5])},
+        {("person", _P): pd.Index([True])},
     ),
 )
 def test_the_step_refuses_masks_not_aligned_to_person(masks) -> None:
@@ -358,6 +387,83 @@ def test_the_receipt_weights_the_discarded_draws() -> None:
     assert counts["household_weighted_discarded_positive_dollars"] == 1_900
     assert counts["household_weighted_discarded_negative_dollars"] == -600
     assert counts["tax_unit_household_weighted_discarded_negative_dollars"] == -600
+
+
+def test_the_step_accepts_a_series_mask_on_the_person_index() -> None:
+    person = pd.DataFrame(
+        {"SEMP": [500.0, 0.0], _UNIT: [1, 2], _ROLE: ["HEAD", "HEAD"], _P: [7.0, 9.0]},
+        index=[40, 41],
+    )
+
+    keep_semp_covered_partnership_income(
+        person, imputed_masks={("person", _P): pd.Series([True, True], index=[40, 41])}
+    )
+
+    assert person[_P].tolist() == [0.0, 9.0]
+
+
+@pytest.mark.parametrize("bad", ("5000x", "", " ", "NA "))
+def test_the_step_refuses_a_semp_that_is_not_a_number(bad: str) -> None:
+    person = pd.DataFrame(
+        {
+            "SEMP": pd.Series([500.0, bad], dtype=object),
+            _UNIT: [1, 2],
+            _ROLE: ["HEAD", "HEAD"],
+            _P: [7.0, 9.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="not numbers"):
+        keep_semp_covered_partnership_income(
+            person, imputed_masks={("person", _P): np.ones(2, dtype=bool)}
+        )
+    assert person[_P].tolist() == [7.0, 9.0]
+
+
+def test_the_step_refuses_an_extract_that_lost_semp() -> None:
+    person = pd.DataFrame(
+        {
+            "SEMP": [np.nan, np.nan, np.nan],
+            "age": [40.0, 38.0, 9.0],
+            _UNIT: [1, 1, 1],
+            _ROLE: ["HEAD", "SPOUSE", "DEPENDENT"],
+            _P: [7.0, 9.0, 0.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="lost SEMP"):
+        keep_semp_covered_partnership_income(
+            person, imputed_masks={("person", _P): np.ones(3, dtype=bool)}
+        )
+    assert person[_P].tolist() == [7.0, 9.0, 0.0]
+
+
+def test_the_receipt_counts_semp_that_disagrees_with_the_income_universe_age() -> None:
+    person = pd.DataFrame(
+        {
+            "SEMP": [500.0, np.nan, 0.0, 200.0, np.nan],
+            "age": [40.0, 30.0, 70.0, 12.0, 3.0],
+            _UNIT: [1, 2, 3, 4, 5],
+            _ROLE: ["HEAD"] * 5,
+            _P: [7.0, 9.0, 3.0, 4.0, 0.0],
+        }
+    )
+    masks = {("person", _P): np.ones(5, dtype=bool)}
+
+    counts = keep_semp_covered_partnership_income(person.copy(), imputed_masks=masks)
+    without_age = keep_semp_covered_partnership_income(
+        person.drop(columns=["age"]), imputed_masks=masks
+    )
+
+    assert counts is not None and without_age is not None
+    assert counts["persons_aged_15_plus"] == 3
+    assert counts["blank_semp_age_15_plus_rows"] == 1
+    assert counts["finite_semp_under_15_rows"] == 1
+    assert counts["household_design_weights_applied"] == 0
+    assert not any(
+        key.startswith(("persons_aged", "blank_semp_age", "finite_semp"))
+        for key in without_age
+    )
 
 
 @pytest.mark.parametrize("column", ("SEMP", _UNIT, _ROLE))
@@ -405,7 +511,10 @@ def _gate_tables(draw):
 def _oracle_gate_counts(person: pd.DataFrame) -> dict[str, int]:
     sets = _oracle_sets(person)
     partnership = person[_P].to_numpy(dtype=float)
-    not_zero = ~(np.isfinite(partnership) & (partnership == 0.0))
+    # A blank cell is unmodeled, counted on its own, not as a double count.
+    not_zero = np.isfinite(partnership) & (partnership != 0.0)
+    blank = np.isnan(partnership)
+    covered = sets["own_semp"] | sets["tax_unit"] | sets["blank_semp"]
     line_32 = (person[_P].fillna(0.0) + person[_S].fillna(0.0)).to_numpy()
     units = person[_UNIT].tolist()
     unit_line_32 = {
@@ -427,6 +536,7 @@ def _oracle_gate_counts(person: pd.DataFrame) -> dict[str, int]:
         "partnership_on_spouse_rows": int((sets["tax_unit"] & not_zero).sum()),
         "partnership_on_blank_semp_rows": int((sets["blank_semp"] & not_zero).sum()),
         "passive_without_line_32_rows": int((no_line_32 & (passive != 0.0)).sum()),
+        "partnership_blank_on_covered_rows": int((covered & blank).sum()),
     }
 
 
@@ -521,8 +631,9 @@ def test_the_gate_reads_a_tax_unit_whose_line_32_cancels_as_zero(index) -> None:
 @pytest.mark.parametrize(
     ("values", "violations"),
     (
-        # NaN partnership income on a SEMP row is not a finite zero.
-        ({"SEMP": [5_000.0], _P: [np.nan]}, {"partnership_on_semp_rows": 1}),
+        # NaN partnership income on a SEMP row is not a finite zero: an
+        # unmodeled cell, reported apart from a double count.
+        ({"SEMP": [5_000.0], _P: [np.nan]}, {"partnership_blank_on_covered_rows": 1}),
         # NaN line-32 leaves read as zero under a passive draw.
         ({_P: [np.nan], _PASSIVE: [300.0]}, {"passive_without_line_32_rows": 1}),
         # A NaN passive draw is not a passive amount.
@@ -534,12 +645,18 @@ def test_the_gate_reads_nan_line_32_leaves(values, violations) -> None:
         _gate_row(**values), rows=np.ones(1, dtype=bool)
     )
 
-    for key in ("partnership_on_semp_rows", "passive_without_line_32_rows"):
+    for key in (
+        "partnership_on_semp_rows",
+        "partnership_blank_on_covered_rows",
+        "passive_without_line_32_rows",
+    ):
         assert gate.details[key] == violations.get(key, 0), key
     assert gate.passed is (not violations)
 
 
-@pytest.mark.parametrize("bad", ("SPOUSE ", "OTHER", 2, None))
+@pytest.mark.parametrize(
+    "bad", ("SPOUSE ", "OTHER", 2, None, "\u017fpou\u017fe", b"SP\xffOUSE")
+)
 def test_the_gate_fails_a_malformed_role_instead_of_exempting_its_unit(bad) -> None:
     person = _gate_row(
         **{"SEMP": [5_000.0, 0.0], _UNIT: [1, 1], _ROLE: ["HEAD", bad], _P: [0.0, 9.0]}
@@ -571,6 +688,46 @@ def test_the_gate_leaves_s_corp_income_and_partnership_on_unreported_rows_alone(
     gate = acs_self_employment_identity_gate(person, rows=np.ones(3, dtype=bool))
 
     assert gate.passed, gate.failures
+
+
+def test_the_gate_fails_a_semp_that_is_not_a_number() -> None:
+    person = _gate_row(SEMP=[5_000.0, 0.0])
+    person["SEMP"] = pd.Series([5_000.0, "5000x"], dtype=object)
+
+    gate = acs_self_employment_identity_gate(person, rows=np.ones(2, dtype=bool))
+
+    assert not gate.passed
+    assert gate.details["non_numeric_semp_rows"] == 1
+    assert any("not a number" in failure for failure in gate.failures)
+
+
+def test_the_gate_records_semp_against_the_income_universe_age() -> None:
+    person = _gate_row(SEMP=[5_000.0, np.nan, 0.0, np.nan], age=[40.0, 30.0, 12.0, 6.0])
+
+    gate = acs_self_employment_identity_gate(person, rows=np.ones(4, dtype=bool))
+
+    # Partial disagreement is recorded, not failed.
+    assert gate.passed, gate.failures
+    assert gate.details["semp_age"] == {
+        "persons_aged_15_plus": 2,
+        "blank_semp_age_15_plus_rows": 1,
+        "finite_semp_under_15_rows": 1,
+    }
+    assert (
+        acs_self_employment_identity_gate(
+            person.drop(columns=["age"]), rows=np.ones(4, dtype=bool)
+        ).details["semp_age"]
+        is None
+    )
+
+
+def test_the_gate_fails_an_extract_that_lost_semp() -> None:
+    person = _gate_row(SEMP=[np.nan, np.nan], age=[40.0, 9.0])
+
+    gate = acs_self_employment_identity_gate(person, rows=np.ones(2, dtype=bool))
+
+    assert not gate.passed
+    assert any("lost SEMP" in failure for failure in gate.failures)
 
 
 @pytest.mark.parametrize("column", (_P, _S, _PASSIVE))
@@ -753,17 +910,39 @@ def test_the_lane_keeps_semp_covered_draws_at_zero_and_passes_the_gate(
         "discarded_negative_dollars": 0,
         "household_weighted_discarded_positive_dollars": 48_000,
         "household_weighted_discarded_negative_dollars": 0,
+        "household_design_weights_applied": 1,
+        # The blank-SEMP row is the nine-year-old: inside the ACS universe.
+        "persons_aged_15_plus": 6,
+        "blank_semp_age_15_plus_rows": 0,
+        "finite_semp_under_15_rows": 0,
+        # No S-corp income, so the passive step cleared every discarded row.
+        "passive_kept_on_discarded_rows": 0,
+        "passive_kept_on_discarded_rows_dollars": 0,
+        "passive_kept_on_discarded_rows_household_weighted_dollars": 0,
     }
 
 
 def test_the_lane_keeps_s_corp_income_on_every_row(monkeypatch) -> None:
-    person = _transfer(monkeypatch, lane=True, s_corp=1_000.0).frame.table("person")
+    result = _transfer(monkeypatch, lane=True, s_corp=1_000.0)
+    person = result.frame.table("person")
 
     assert np.allclose(person[_S], 250.0)
     assert (person.loc[_COVERED, _P] == 0.0).all()
     # Line 32 stays nonzero on every row, so every passive draw stands.
     assert np.allclose(person[_PASSIVE], 100.0)
     assert _gate(person).passed
+    # The gate cannot see the passive draws left on the five discarded rows;
+    # the receipt measures them. Household weights of those rows sum to 24.
+    receipt = next(item for item in result.imputed_inputs if item.column == _P)
+    assert receipt.reconciliation is not None
+    assert receipt.reconciliation["passive_kept_on_discarded_rows"] == 5
+    assert receipt.reconciliation["passive_kept_on_discarded_rows_dollars"] == 500
+    assert (
+        receipt.reconciliation[
+            "passive_kept_on_discarded_rows_household_weighted_dollars"
+        ]
+        == 2_400
+    )
 
 
 def test_off_the_lane_the_gate_fails_on_exactly_the_covered_rows(monkeypatch) -> None:
@@ -831,8 +1010,8 @@ def test_a_step_run_after_the_passive_reconciliation_fails_the_gate(
 
     monkeypatch.setattr(
         acs_transfer_module,
-        "keep_semp_covered_partnership_income",
-        lambda person, **_masks_and_weights: None,
+        "_keep_semp_covered_partnership_income",
+        lambda person, **_masks_and_weights: (None, np.zeros(len(person), bool)),
     )
     person = _transfer(monkeypatch, lane=True).frame.table("person")
     person.loc[_COVERED, _P] = 0.0
@@ -852,6 +1031,61 @@ def test_the_lane_refuses_a_plan_without_s_corp_income(monkeypatch) -> None:
 class _NoFitQRF(_DonorMeanQRF):
     def fit(self, frame, predictors, targets, *, weights):
         raise AssertionError("the refusal must come before any fit")
+
+
+@pytest.mark.parametrize(
+    ("column", "value", "message"),
+    (
+        ("SEMP", "5000x", "not numbers"),
+        (_ROLE, "\u017fpou\u017fe", "neither head nor spouse"),
+    ),
+)
+def test_the_lane_refuses_a_recipient_it_cannot_read_before_any_fit(
+    monkeypatch, column: str, value: str, message: str
+) -> None:
+    recipient = _recipient()
+    tables = {name: recipient.table(name) for name in recipient.entities}
+    person = tables["person"].astype({column: object})
+    person.loc[2, column] = value
+    tables["person"] = person
+    monkeypatch.setattr(acs_transfer_module, "QRF", _NoFitQRF)
+
+    with pytest.raises(ValueError, match=message):
+        acs_transfer_module.transfer_acs_inputs(
+            Frame(
+                tables,
+                recipient.schema,
+                {"household": recipient.weights_for("household")},
+            ),
+            _donor(0.0),
+            target_families={"person": {"pass_through": _PASS_THROUGH}},
+            donor_channel=None,
+            n_estimators=1,
+            semp_covers_partnership_income=True,
+        )
+
+
+def test_the_lane_refuses_an_extract_that_lost_semp_before_any_fit(
+    monkeypatch,
+) -> None:
+    recipient = _recipient()
+    tables = {name: recipient.table(name) for name in recipient.entities}
+    tables["person"] = tables["person"].assign(SEMP=np.nan)
+    monkeypatch.setattr(acs_transfer_module, "QRF", _NoFitQRF)
+
+    with pytest.raises(ValueError, match="lost SEMP"):
+        acs_transfer_module.transfer_acs_inputs(
+            Frame(
+                tables,
+                recipient.schema,
+                {"household": recipient.weights_for("household")},
+            ),
+            _donor(0.0),
+            target_families={"person": {"pass_through": _PASS_THROUGH}},
+            donor_channel=None,
+            n_estimators=1,
+            semp_covers_partnership_income=True,
+        )
 
 
 @pytest.mark.parametrize("column", ("SEMP", _ROLE))
@@ -900,6 +1134,39 @@ def test_the_contract_is_unchanged_off_the_lane(targets) -> None:
     ) == acs_transfer_execution_contract_identity(targets=sorted(targets))
 
 
+#: Off the lane, anchored to main before microcosm#1387: the declared plan
+#: (also pinned in test_us_acs_transfer.py) and the pass-through targets.
+_DECLARED_PLAN_CONTRACT_SHA256 = (
+    "e90a808a1218681a7084d16807f926d5522717556f2b97708e416082a876e0ca"
+)
+_PASS_THROUGH_CONTRACT_SHA256 = (
+    "5d9c94b6441a510093335ee66ea6006c3105d1c25bde7a55aaf0713852094ecd"
+)
+#: On the lane, the declared plan. Moving this is a contract change.
+_DECLARED_PLAN_LANE_CONTRACT_SHA256 = (
+    "77efd0fc5931ab0cdea12bc99c3d4c8627655304ead2fd3f435cbc990039e668"
+)
+
+
+def test_the_off_lane_contract_matches_main_and_the_lane_contract_is_pinned() -> None:
+    identity = acs_transfer_execution_contract_identity
+    for off in ({}, {"semp_covers_partnership_income": False}):
+        assert (
+            identity(targets=_DECLARED_TARGETS, **off)["sha256"]
+            == _DECLARED_PLAN_CONTRACT_SHA256
+        )
+        assert (
+            identity(targets=_PASS_THROUGH, **off)["sha256"]
+            == _PASS_THROUGH_CONTRACT_SHA256
+        )
+    assert (
+        identity(targets=_DECLARED_TARGETS, semp_covers_partnership_income=True)[
+            "sha256"
+        ]
+        == _DECLARED_PLAN_LANE_CONTRACT_SHA256
+    )
+
+
 def test_the_lane_binds_its_rule_into_the_contract() -> None:
     off = acs_transfer_execution_contract_identity(targets=_PASS_THROUGH)
     on = acs_transfer_execution_contract_identity(
@@ -914,6 +1181,17 @@ def test_the_lane_binds_its_rule_into_the_contract() -> None:
     assert rule["enabled"] is True
     assert rule["covered"] == list(ACS_SEMP_COVERED_LINE_32_INPUTS) == [_P]
     assert rule["order"] == "before_passive_partnership_s_corp"
+    # The rule's values, not only its labels: the roles it reads, how it
+    # decodes them, what it refuses and what its receipt holds.
+    assert rule["tax_unit_roles"] == list(ACS_TAX_UNIT_ROLES)
+    assert rule["role_decoding"] == "utf8_replace_then_ascii_upper"
+    assert rule["refuse"] == [
+        "missing_column",
+        "malformed_tax_unit_role",
+        "non_numeric_semp",
+        "semp_blank_on_every_person_aged_15_plus",
+    ]
+    assert rule["receipt"] == "discarded_draws_unweighted_and_household_weighted"
     assert on["sha256"] != off["sha256"]
     assert (
         without_partnership["post_transfer_structure"][
