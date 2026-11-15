@@ -1222,7 +1222,8 @@ class UKMeasureResolver:
         self.contract_targets = _uk_contract_targets()
         bound_cgt_periods = {}
         # The years a dated measure is computed at besides this one: an engine
-        # block's shares are corrected at each (microcosm#931).
+        # block corrects its shares at each one its scratch engine holds
+        # (microcosm#931).
         bound_years: set[int] = set()
         for target_id, target in self.contract_targets.items():
             binding = target["bindings"]["policyengine"]
@@ -1291,14 +1292,22 @@ class UKMeasureResolver:
         if engine_pool_shares is not None:
             # After the simulation is built and its roles validated, before
             # anything reads it: the dataset's year, this year and every
-            # dated measure's year are the periods the block computes at.
+            # dated measure's year up to this one are the periods the block
+            # computes at. Pool shares need a scratch engine, which holds no
+            # later year: a measure dated later is refused before it is
+            # computed (:meth:`_refuse_dated_measure_after_window`), so the
+            # block neither checks the engine's growth nor sets the pool's
+            # shares there.
             dataset_year = self._dataset_year()
+            held_years = {
+                bound_year for bound_year in bound_years if bound_year <= self.year
+            }
             self._engine_pool_block = EngineBlock(
                 self.simulation,
                 engine_pool_shares,
                 declaration=UK_ENGINE_POPULATION,
                 policy=MEASURE_PASS,
-                periods=(dataset_year, self.year, *bound_years),
+                periods=(dataset_year, self.year, *held_years),
                 dataset_year=dataset_year,
             )
             self._factory = self._engine_pool_block.wrap(self._factory)

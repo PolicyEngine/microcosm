@@ -8,6 +8,8 @@ A frame whose households carry more than one clone of the dense spine's
 geography (``UK_SPINE_ENGINE_BATCH_COLUMN``) is computed clone by clone, one
 simulation per clone, through the shared engine-block machinery
 (microcosm#931); every other frame takes one simulation, as it always has.
+Every simulation, a clone's too, holds no year after the one it reads
+(``PolicyEngineUKEngine._read_year_simulation``, microcosm#1615).
 
 policyengine-core stores the five id and membership columns as int32
 (``UK_ENGINE_IDENTIFIERS``). Each simulation is given the frame's ids where
