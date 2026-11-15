@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32609
+EXPECTED_AUTHORED_FIELD_COUNT = 32612
 EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_785
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42394
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42397
 
 
 class FieldUsageError(AssertionError):
@@ -369,8 +369,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "bdd9e79157590fade42d28cc2b5d5c8b58e13903af75375a0e3235c94d2a8339",
     ),
     "country_manifest": (
-        104,
-        "8a186065f5b8ffc59bc3f62fe927975e6f36bc1e913aa61761652c9a8aa67988",
+        107,
+        "2c2099d3d5ef3d664f74a2e732870391022a852cf49d5cf96810c9a984d2b20b",
     ),
     "generated_authorities": (
         8_614,
