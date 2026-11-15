@@ -118,7 +118,9 @@ donors each split into two clones have source ESS 200 (grade B at adequate fit)
 and row ESS 400; cloning cannot earn grade A. Missing or null source provenance
 makes source ESS unavailable and the grade U. The report binds the run identity,
 calibrated weights, and configured county column. Unsupported smoke counties
-remain explicit with zero support and grade `U`.
+remain explicit with zero support and grade `U`. ACS group-quarters records
+count toward neither household support nor household ESS; a county with only
+those records remains `no_support` and grade `U` in a smoke run.
 
 For each target, relative error is
 `abs(estimate - target) / max(abs(target), 1)`. The grade uses the maximum error
@@ -142,8 +144,9 @@ in the report.
 Rules are evaluated from A through C, then D; a county without holdout evidence
 receives U even if its training fit is good, as does a county without source
 identity. Without `--soi-mode state_county` there are no validation families,
-so a 10% block holdout can leave many counties ungraded. With it, only a
-county with no supporting household can be U. At fixed error, raising ESS cannot worsen a grade.
+so a 10% block holdout can leave many counties ungraded. With it and complete
+source identity, only a county with no supporting household can be U. At
+fixed error, raising ESS cannot worsen a grade.
 These are report-only evidence grades;
 Kish ESS is not a county standard error or a guarantee of unbiased estimates.
 

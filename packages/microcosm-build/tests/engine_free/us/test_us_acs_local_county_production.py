@@ -1502,3 +1502,100 @@ def test_acs_household_rows_have_their_own_state_budgets_in_the_loss() -> None:
     assert all(mapping.value_basis(spec) == "count" for spec in specs)
     weights = county.target_loss_weights(specs, {})
     assert np.isfinite(weights).all() and (weights > 0).all()
+
+
+@pytest.mark.parametrize("target_supported", [False, True])
+@_SETTINGS
+@given(
+    support_weights=st.lists(
+        st.floats(min_value=1.0, max_value=1_000.0), min_size=1, max_size=500
+    ),
+    group_quarters=st.lists(
+        st.tuples(
+            st.sampled_from([1001, 1003]),
+            st.sampled_from([2.0, 3.0]),
+            st.floats(min_value=1_000_000.0, max_value=1_000_000_000_000.0),
+        ),
+        min_size=1,
+        max_size=30,
+    ),
+    errors=st.tuples(*(st.floats(0.0, 1.0) for _ in range(4))),
+    minimum_support=st.booleans(),
+)
+def test_group_quarters_cannot_change_county_reliability(
+    target_supported, support_weights, group_quarters, errors, minimum_support
+) -> None:
+    county = _county()
+    # Keep another county supported even when the target county has no housing
+    # units. Every ACS baseline row is a housing unit with known provenance.
+    target_weights = support_weights if target_supported else []
+    weights = np.asarray([1.0, *target_weights])
+    baseline = pd.DataFrame(
+        {
+            "household_id": np.arange(len(weights)),
+            "county_fips": [1003, *([1001] * len(target_weights))],
+            "state_fips": 1,
+            "household_spine": "acs_2024_1yr",
+            "household_source_id": np.arange(len(weights)),
+            "TYPEHUGQ": 1.0,
+        }
+    )
+    gq_counties, gq_kinds, gq_weights = zip(*group_quarters, strict=True)
+    additions = pd.DataFrame(
+        {
+            "household_id": np.arange(len(weights), len(weights) + len(group_quarters)),
+            "county_fips": gq_counties,
+            "state_fips": 1,
+            "household_spine": "acs_2024_1yr",
+            # Missing identities on excluded rows must not invalidate a
+            # supported county's distinct-source ESS or reliability grade.
+            "household_source_id": np.nan,
+            "TYPEHUGQ": gq_kinds,
+        }
+    )
+    assert len(county.GRADED_VALIDATION_FAMILIES) == len(errors) == 4
+    validation = {
+        "counties": {
+            code: {
+                family: {"abs_rel_error": error}
+                for family, error in zip(
+                    county.GRADED_VALIDATION_FAMILIES, errors, strict=True
+                )
+            }
+            for code in ("01001", "01003")
+        }
+    }
+    options = {
+        "county_populations": {1001: 10.0, 1003: 10.0},
+        "validation": validation,
+        "minimum_support_counties": ["01001"] if minimum_support else [],
+    }
+    before = county.reliability_report(
+        baseline,
+        [],
+        sparse.csr_array((0, len(baseline))),
+        final_weights=weights,
+        **options,
+    )
+    with_gq = pd.concat([baseline, additions], ignore_index=True)
+    after = county.reliability_report(
+        with_gq,
+        [],
+        sparse.csr_array((0, len(with_gq))),
+        final_weights=np.concatenate([weights, np.asarray(gq_weights)]),
+        **options,
+    )
+    target = before["counties"]["01001"]
+    if target_supported:
+        assert target["grade"] in ("A", "B", "C", "D")
+    else:
+        assert target["grade"] == "U"
+    assert target["supporting_households"] == len(target_weights)
+    assert target["status"] == (
+        ("minimum_support" if minimum_support else "supported")
+        if target_supported
+        else "no_support"
+    )
+    # This compares support counts, distinct-source and physical-row ESS,
+    # grade and status for both the target and the fixed supported county.
+    assert after["counties"] == before["counties"]

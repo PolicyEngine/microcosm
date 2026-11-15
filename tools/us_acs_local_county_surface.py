@@ -1709,7 +1709,13 @@ def reliability_report(
         | {int(code) for code in (county_populations or {})}
         | {int(code) for code in validated}
     )
-    groups = _county_groups(codes)
+    # Precision and support must use the same household universe as the
+    # trained ACS households rows. Group-quarters records cannot supply
+    # household evidence or increase household ESS, even in a capped smoke.
+    universe = support_universe(households)
+    groups = {
+        code: rows[universe[rows]] for code, rows in _county_groups(codes).items()
+    }
     minimum = {int(code) for code in minimum_support_counties}
     names = county_names or {}
     result = {}
@@ -1807,8 +1813,8 @@ def reliability_report(
         "schema_version": 3,
         "county_column": county_column,
         "ess_basis": {
-            "kish_ess": "final weights summed within county by (household_spine, household_source_id)",
-            "kish_ess_rows": "final weights over physical household rows, including clones",
+            "kish_ess": "final weights summed within county by (household_spine, household_source_id), excluding ACS group quarters",
+            "kish_ess_rows": "final weights over physical household rows, including clones, excluding ACS group quarters",
         },
         "counties": result,
         "validation_families": {
