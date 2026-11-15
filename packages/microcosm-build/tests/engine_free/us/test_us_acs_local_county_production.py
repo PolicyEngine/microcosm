@@ -430,6 +430,35 @@ def test_acs_household_specs_share_one_label_per_geography_with_other_targets() 
     TargetRegistry((*county_population, *acs.specs, _state_spec()), country="us")
 
 
+def test_connecticut_planning_regions_are_county_equivalents() -> None:
+    county = _county()
+    regions = [f"091{index}0" for index in range(1, 10)]
+    populations = {int(code): 100.0 + index for index, code in enumerate(regions)}
+    surface = county.acs_household_surface(_acs_rows(regions), populations)
+    (parent,) = [
+        spec for spec in surface.specs if spec.metadata["geography_level"] == "state"
+    ]
+    assert parent.metadata["state_fips"] == "09"
+    children = [spec for spec in surface.specs if spec is not parent]
+    assert [child.metadata["county_fips"] for child in children] == regions
+    households = _households(
+        {"county_fips": code, "state_fips": 9, "household_spine": "asec_puf"}
+        for code in regions
+    )
+    rows = county.acs_household_rows(households, surface.specs).toarray()
+    at = surface.specs.index(parent)
+    child_rows = rows[[index for index in range(len(rows)) if index != at]]
+    np.testing.assert_array_equal(child_rows.sum(axis=0), rows[at])
+    np.testing.assert_array_equal(child_rows, np.eye(9))
+    # A legacy Connecticut county code is not in the planning-region inventory.
+    with pytest.raises(ValueError, match="09001"):
+        county.acs_county_values(
+            _acs_rows([*regions, "09001"]),
+            ["B11001_001E"],
+            required=populations,
+        )
+
+
 def _households(rows):
     frame = pd.DataFrame(rows)
     frame["household_id"] = np.arange(1, len(frame) + 1)
