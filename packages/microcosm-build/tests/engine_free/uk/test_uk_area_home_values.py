@@ -922,15 +922,24 @@ def test_a_repeated_declaration_is_refused() -> None:
 
 def test_the_dense_roster_names_the_localisers_operation() -> None:
     """The dense line builds only on a spine whose WAS stage runs this
-    operation (spine_posture), so the roster's name is the localiser's."""
+    operation, and whose housing shell runs its derive of council tax
+    (spine_posture), so the roster's names are the localiser's and the
+    shell's (microcosm#931)."""
 
     from microcosm.build.uk_runtime.geography_first_roster import (
         GEOGRAPHY_FIRST_OPERATIONS,
     )
+    from microcosm.build.uk_runtime.spi_housing_council_tax import (
+        UK_SPI_HOUSING_COUNCIL_TAX_DERIVE_KIND,
+    )
+    from microcosm.build.uk_runtime.spi_housing_shell import (
+        UK_SPI_HOUSING_SHELL_STAGE_NAME,
+    )
     from microcosm.build.uk_runtime.was_wealth import UK_WAS_WEALTH_STAGE_NAME
 
     assert dict(GEOGRAPHY_FIRST_OPERATIONS) == {
-        UK_WAS_WEALTH_STAGE_NAME: (ahv.AREA_HOME_VALUES_OPERATION_KIND,)
+        UK_SPI_HOUSING_SHELL_STAGE_NAME: (UK_SPI_HOUSING_COUNCIL_TAX_DERIVE_KIND,),
+        UK_WAS_WEALTH_STAGE_NAME: (ahv.AREA_HOME_VALUES_OPERATION_KIND,),
     }
 
 

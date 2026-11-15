@@ -1,7 +1,10 @@
 """The names that make a UK spine geography-first (microcosm#931).
 
 A geography-first spine runs every stage ``GEOGRAPHY_FIRST_STAGES`` names and
-``was_wealth``'s ``localise_main_residence_value`` operation, and its build
+every operation ``GEOGRAPHY_FIRST_OPERATIONS`` names inside a stage that is
+not one of them: ``spi_housing_shell``'s ``derive`` of the Great Britain
+council tax of the support channel's copies at their region's expected Band D,
+and ``was_wealth``'s ``localise_main_residence_value``. Its build
 sidecar records how its area draw was bound in a ``geography`` block under
 ``SIDECAR_GEOGRAPHY_KEYS``. The dense and national lines build only on such a
 spine, the national line at one clone
@@ -59,9 +62,15 @@ GEOGRAPHY_FIRST_STAGES: tuple[str, ...] = (
 )
 
 #: The operations a geography-first spine runs inside stages that are not its
-#: own, by stage: the main-residence localiser runs inside the WAS chain.
+#: own, by stage, in the spine's order: the housing shell's derive prices the
+#: Great Britain copies' council tax at their region's expected Band D, which
+#: the council-tax localisation then localises, and the main-residence
+#: localiser runs inside the WAS chain.
 GEOGRAPHY_FIRST_OPERATIONS: Mapping[str, tuple[str, ...]] = MappingProxyType(
-    {"was_wealth": ("localise_main_residence_value",)}
+    {
+        "spi_housing_shell": ("derive",),
+        "was_wealth": ("localise_main_residence_value",),
+    }
 )
 
 #: The keys of the build sidecar's ``geography`` block, in the order the

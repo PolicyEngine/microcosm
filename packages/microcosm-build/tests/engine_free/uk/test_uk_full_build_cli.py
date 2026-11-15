@@ -698,6 +698,7 @@ def test_national_preparation_refuses_a_spine_from_before_its_area_stages(
     lacking = "; ".join(
         (
             *(f"stage {stage}" for stage in GEOGRAPHY_FIRST_STAGES[2:]),
+            "operation derive in spi_housing_shell",
             "operation localise_main_residence_value in was_wealth",
             "geography block",
         )

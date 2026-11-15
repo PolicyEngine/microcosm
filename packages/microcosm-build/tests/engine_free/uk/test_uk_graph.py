@@ -248,13 +248,15 @@ def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> N
         "uk_ni_data_zone_2021_conditioned_support",
     }
     assert {source.codec for source in graph.sources} == {"csv-tables", "raw-bytes-v1"}
-    # The area draw, the fuel-relief flag's roster, the SPI copies' own draw
-    # and the council-tax localisation's draw cells read them, in the
-    # systems' order; no other node does.
+    # The area draw, the fuel-relief flag's roster, the SPI copies' own draw,
+    # the council-tax localisation's draw cells and the housing shell's
+    # reference Band D for SPI copies read them, in the systems' order; no
+    # other node does.
     support_readers = (
         "atomic_area_assign",
         "rfdr",
         "spi_copy_areas",
+        "spi_housing_shell",
         "council_tax_localise",
     )
     for stage in support_readers:

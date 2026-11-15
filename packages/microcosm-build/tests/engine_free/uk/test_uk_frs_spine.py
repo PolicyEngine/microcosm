@@ -3902,6 +3902,7 @@ def test_a_release_candidate_spine_takes_the_dense_k_only_on_a_geography_first_r
         "spec's roster lacks: stage atomic_area_assign; stage local_authority; "
         "stage rfdr; stage area_brma; stage spi_copy_areas; stage private_rent; "
         "stage council_tax_localise; "
+        "operation derive in spi_housing_shell; "
         "operation localise_main_residence_value in was_wealth."
     )
     with pytest.raises(SystemExit):
@@ -6995,9 +6996,9 @@ def test_the_spine_cli_holds_each_support_to_the_register_before_its_engine(
     by its flag and system alone, and no engine is built. Against
     sources.yaml's own register the toy supports are refused too. With the
     engine built, the preparation composes the sidecar's geography block from
-    those supports under sources.yaml's register, hands the area stages and
-    the council-tax localisation the three files as graph sources, which they
-    hold to the block's pins, and gives a full-scale spine's private rents the
+    those supports under sources.yaml's register, hands the area stages, the housing
+    shell and the council-tax localisation the three files as graph sources, which
+    they hold to the block's pins, and gives a full-scale spine's private rents the
     strict rule. The toy supports stand in for the register's; the other
     private inputs are named and never read."""
 
@@ -7114,16 +7115,22 @@ def test_the_spine_cli_holds_each_support_to_the_register_before_its_engine(
     for flag, system in zip(supports, payloads, strict=True):
         assert prepared.sources[tool.CONDITIONED_SOURCES[system]] == supports[flag]
     assert prepared.implementations["private_rent"].sampled_rung is False
-    # The area stages and the council-tax localisation hold the files they
-    # read to the block's pins: a support replaced after the spine was
-    # prepared is refused by its system and graph source alone, before the
-    # localisation builds anything (microcosm#931).
+    # The area stages, the housing shell and the council-tax localisation
+    # hold the files they read to the block's pins: a support replaced after
+    # the spine was prepared is refused by its system and graph source alone,
+    # before the shell or the localisation builds anything (microcosm#931).
     area_draw = prepared.implementations["atomic_area_assign"]
     area_draw.factory(prepared.sources)
+    from microcosm.build.uk_runtime.spi_housing_shell import (
+        UKSPIHousingShellStageTransform,
+    )
     from microcosm.build.uk_runtime.spine_council_tax import (
         UKCouncilTaxLocaliseStageTransform,
     )
 
+    shell = prepared.implementations["spi_housing_shell"].factory(prepared.sources)
+    assert isinstance(shell, UKSPIHousingShellStageTransform)
+    assert shell.stage.stage == "spi_housing_shell"
     localiser = prepared.implementations["council_tax_localise"].factory(
         prepared.sources
     )
@@ -7136,6 +7143,7 @@ def test_the_spine_cli_holds_each_support_to_the_register_before_its_engine(
         "atomic_area_assign",
         "rfdr",
         "spi_copy_areas",
+        "spi_housing_shell",
         "council_tax_localise",
     ):
         with pytest.raises(ValueError) as refused:

@@ -50,10 +50,10 @@ from test_support.microcosm_build.uk_full_build_cli import (
 )
 
 #: What a geography-first spine runs that a spine built from the packaged spec
-#: does not: nothing. The area stages, the council-tax localisation and the
-#: main-residence localiser inside the WAS chain are declared (microcosm#931),
-#: so the dense line builds on a packaged spine whose sidecar records its
-#: geography block.
+#: does not: nothing. The area stages, the council-tax localisation, the
+#: housing shell's derive and the main-residence localiser inside the WAS
+#: chain are declared (microcosm#931), so the dense line builds on a packaged
+#: spine whose sidecar records its geography block.
 _PACKAGED_ROSTER_LACKS: tuple[str, ...] = ()
 
 
@@ -76,8 +76,11 @@ def test_the_leaf_names_the_stages_the_operation_and_the_sidecar_keys():
     )
     assert isinstance(GEOGRAPHY_FIRST_OPERATIONS, MappingProxyType)
     assert dict(GEOGRAPHY_FIRST_OPERATIONS) == {
-        "was_wealth": ("localise_main_residence_value",)
+        "spi_housing_shell": ("derive",),
+        "was_wealth": ("localise_main_residence_value",),
     }
+    # In the spine's order, which the roster's failures follow.
+    assert tuple(GEOGRAPHY_FIRST_OPERATIONS) == ("spi_housing_shell", "was_wealth")
     assert SIDECAR_GEOGRAPHY_KEYS == (
         "assignment",
         "identity",
@@ -92,7 +95,8 @@ def test_the_leaf_names_the_stages_the_operation_and_the_sidecar_keys():
         *GEOGRAPHY_FIRST_OPERATIONS.values(),
     ):
         assert isinstance(names, tuple) and len(set(names)) == len(names)
-    # The localiser runs inside a stage that is not one of the roster's own.
+    # The housing shell's derive and the main-residence localiser run inside
+    # stages that are not the roster's own.
     assert not set(GEOGRAPHY_FIRST_OPERATIONS) & set(GEOGRAPHY_FIRST_STAGES)
     with pytest.raises(TypeError):
         GEOGRAPHY_FIRST_OPERATIONS["was_lisa"] = ()  # type: ignore[index]
@@ -175,14 +179,17 @@ def _toy_block(register: str = "synthetic") -> dict:
 
 
 def test_the_packaged_roster_is_geography_first(monkeypatch):
-    """A spine built on this code runs every area stage and the
-    main-residence localiser inside the WAS chain, and the sidecar the spine
-    build's own writer records for it carries the geography block: the dense
-    line accepts it (microcosm#931). A spine whose writer records no block
-    still fails, on that alone."""
+    """A spine built on this code runs every area stage, the housing shell's
+    derive and the main-residence localiser inside the WAS chain, and the
+    sidecar the spine build's own writer records for it carries the geography
+    block: the dense line accepts it (microcosm#931). A spine whose writer
+    records no block still fails, on that alone."""
     spec = load_country_spec("uk")
     stages, operations = spec_roster(spec)
-    assert set(GEOGRAPHY_FIRST_STAGES) | {"was_wealth"} <= set(stages)
+    assert set(GEOGRAPHY_FIRST_STAGES) | {"spi_housing_shell", "was_wealth"} <= set(
+        stages
+    )
+    assert "derive" in operations["spi_housing_shell"]
     assert "localise_main_residence_value" in operations["was_wealth"]
     assert roster_failures(stages, operations, from_sidecar=False) == (
         _PACKAGED_ROSTER_LACKS
@@ -483,6 +490,7 @@ def test_the_national_line_refuses_a_roster_that_is_not_geography_first():
     lacking = "; ".join(
         (
             *(f"stage {stage}" for stage in GEOGRAPHY_FIRST_STAGES[2:]),
+            "operation derive in spi_housing_shell",
             "operation localise_main_residence_value in was_wealth",
             "geography block",
         )
