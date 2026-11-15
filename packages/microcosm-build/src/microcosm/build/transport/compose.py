@@ -12,7 +12,11 @@ explicit selection:
   ``path`` (a list of object keys) inside the named spec resource. ``e`` is
   ``"value"`` (the JSON value, lists as tuples), ``"json"`` (an object as
   canonical JSON text) or ``"sha256"`` (the SHA-256 of the whole resource's
-  bytes, so the node's key moves with that one resource only).
+  bytes, so the node's key moves with that one resource only). A ``"json"``
+  selection of a whole target-reference document (one that carries
+  ``target_references``) keeps only ``REFERENCE_DOCUMENT_KEYS``, the keys the
+  reference kernels read (docs/transport-graph-kernels.md); the resource file
+  keeps its other keys, and its ``"sha256"`` stays the file's digest.
 - ``{"prepared": "engine_refs"}`` is the canonical JSON of the prepared
   binding-id -> engine reference map that preparation built.
 - ``{"prepared": "unit_entities"}`` is the canonical JSON of every declared
@@ -91,7 +95,10 @@ from microcosm.build.money_normalization import (
     money_concept_columns,
     validate_money_normalization,
 )
-from microcosm.build.reference_profiles import resolve_reference_profiles
+from microcosm.build.reference_profiles import (
+    REFERENCE_DOCUMENT_KEYS,
+    resolve_reference_profiles,
+)
 from microcosm.calibrate.ordered_kernels import OUTPUT_TYPES
 from microcosm.frame.concepts import ProvenanceClass, concept_for_column
 from microcosm.frame.kernels import missing_relation_inputs
@@ -4174,6 +4181,18 @@ def _resource_param(
             raise ValueError(
                 f"Resource {name!r} path {list(path)!r} json selection must be an object."
             )
+        if (
+            not path
+            and isinstance(document, Mapping)
+            and "target_references" in document
+        ):
+            # The reference kernels refuse keys they do not read
+            # (target_kernels.parse_reference_document); the file keeps them.
+            document = {
+                key: item
+                for key, item in document.items()
+                if key in REFERENCE_DOCUMENT_KEYS
+            }
         return canonical_json(document).decode("utf-8")
     if isinstance(document, Mapping):
         raise ValueError(
