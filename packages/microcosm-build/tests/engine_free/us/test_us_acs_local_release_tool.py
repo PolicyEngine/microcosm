@@ -7333,6 +7333,8 @@ def test_package_refuses_a_softmax_summary_from_before_the_exact_cap_step(
     cap rounds, and nothing under the key the manifest carries now. Packaging
     it would write null for that key: the value of a solve with no softmax
     cap step. A count of 0 is a softmax solve by the old step all the same.
+    The refusal leaves no release directory either, empty or not: packaging
+    the checkpoint once it is calibrated again would find it and stop.
     """
 
     module = _load_tool_module()
@@ -7361,7 +7363,8 @@ def test_package_refuses_a_softmax_summary_from_before_the_exact_cap_step(
     ):
         module.do_package(args)
     assert not (args.out / "package_result.json").exists()
-    assert not list((args.out / "releases").rglob("*.json"))
+    release_dir = args.out.joinpath(*module.RELEASE_DIR_PARTS)
+    assert not release_dir.exists(), "a refusal leaves no release directory"
 
 
 @pytest.mark.parametrize(
