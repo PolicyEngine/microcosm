@@ -560,7 +560,7 @@
    "status": "required"
   },
   "years_since_us_entry": {
-   "note": "Entry clock of the immigration stage (PolicyEngine/microcosm#776): the time period minus an arrival year drawn within the CPS PEINUSYR band for the foreign-born, age for the US-born. The engine's federal five-year bar (8 USC 1613) and the Washington TANF and RCA windows read it (PolicyEngine-US 2.2.1), and PolicyEngine-US 2.125.1 also reads it for the Missouri SSP waiting period; without it every person gets the PolicyEngine-US default of 5, past the bar, and PolicyEngine/policyengine-us#9732 removes that default. Required with NO reviewed exclusion; artifacts labelled before #776 do not persist it — the intended red gate until a national build carries it.",
+   "note": "Entry clock of the immigration stage (PolicyEngine/microcosm#776): the time period minus an arrival year drawn within the CPS PEINUSYR band for the foreign-born, age for the US-born. The engine's federal five-year bar (8 USC 1613), Washington TANF's five-year bar and the Washington RCA window read it (PolicyEngine-US 2.2.1), and PolicyEngine-US 2.125.1 also reads it for the Missouri SSP waiting period; without it every person gets the PolicyEngine-US default of 5, past the bar, and PolicyEngine/policyengine-us#9732 removes that default. Required with NO reviewed exclusion; artifacts labelled before #776 do not persist it — the intended red gate until a national build carries it.",
    "status": "required"
   }
  },
