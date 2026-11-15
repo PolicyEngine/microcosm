@@ -254,13 +254,15 @@ _DONOR_ROWS = 64
 _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
-#: certified-pair exclusions); moves whenever a spine stage is added. The
-#: area stages (atomic_area_assign, local_authority, rfdr, area_brma in
-#: frs_brma's place, spi_copy_areas) and private_rent made it 61, and
-#: regional_home_values' retirement 60: the WAS chain localises the home
-#: values; council_tax_localise, the council tax at each household's local
-#: authority just before the WAS chain, makes it 61 again (microcosm#931).
-UK_FIXTURE_STAGE_COUNT = 61
+#: certified-pair exclusions); moves whenever a spine stage is added. Main's
+#: uc_limited_capability and pip_points (microcosm#1095 Y1 and P1) made it
+#: 56, and geographic_expand and geographic_identity 58. The area stages
+#: (atomic_area_assign, local_authority, rfdr, area_brma in frs_brma's place,
+#: spi_copy_areas) and private_rent made it 63, and regional_home_values'
+#: retirement 62: the WAS chain localises the home values;
+#: council_tax_localise, the council tax at each household's local authority
+#: just before the WAS chain, makes it 63 again (microcosm#931).
+UK_FIXTURE_STAGE_COUNT = 63
 _QRF_ESTIMATORS = 4
 #: The fixture spine's geographic clone count K (microcosm#931). The config
 #: records it, the oracle builds geographic_expand and its engine with it, as

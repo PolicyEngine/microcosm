@@ -217,12 +217,13 @@ SPI = UK_SPI_SUPPORT_STAGE_NAME
 DONORS = UK_SPI_INCOME_BAND_DONORS_STAGE_NAME
 COPY_AREAS = SPI_COPY_AREAS_STAGE_NAME
 COUNCIL_TAX = COUNCIL_TAX_LOCALISE_STAGE_NAME
-#: The spine's stage count since the area stages (microcosm#931): 54, G1 and
-#: G1b, then atomic_area_assign, local_authority, rfdr, spi_copy_areas and
+#: The spine's stage count since the area stages (microcosm#931): 56, with
+#: main's uc_limited_capability and pip_points (microcosm#1095 Y1 and P1), G1
+#: and G1b, then atomic_area_assign, local_authority, rfdr, spi_copy_areas and
 #: private_rent, with area_brma in frs_brma's place, less regional_home_values,
 #: whose England and Wales home values the WAS chain now reads, and
 #: council_tax_localise after private_rent.
-_STAGE_COUNT = 61
+_STAGE_COUNT = 63
 #: The area stages before the draws, which key each row's area on its
 #: geography key, as G1b left it.
 _AREA_STAGES = (
