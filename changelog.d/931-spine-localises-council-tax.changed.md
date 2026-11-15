@@ -1,4 +1,4 @@
-Localise Great Britain council tax by each clone's local authority just before the UK spine's WAS chain, and carry each bill's provenance from stage 5 (#931). The council-tax localisation #931 group (d) added unwired is now declared: `council_tax_localise` runs after `private_rent` and before `was_wealth`, in a graph version of its own, so the packaged spine has 61 stages. Stage 5 (`frs_council_tax`) writes `council_tax_bill_provenance` beside the bill, and the localisation reads it. The localisation keeps the paid bill from before it as `council_tax_frs_bill`, which the WAS chain's bill predictor reads. The release boundary drops both columns.
+Localise Great Britain council tax by each clone's local authority just before the UK spine's WAS chain, and carry each bill's provenance from stage 5 (#931). The council-tax localisation #931 group (d) added unwired is now declared: `council_tax_localise` runs after `private_rent` and before `was_wealth`, in a graph version of its own, so the packaged spine has 63 stages. Stage 5 (`frs_council_tax`) writes `council_tax_bill_provenance` beside the bill, and the localisation reads it. The localisation keeps the paid bill from before it as `council_tax_frs_bill`, which the WAS chain's bill predictor reads. The release boundary drops both columns.
 
 - **Stages** (`sources.yaml`, then `source_stages.json` by the by-name merge):
   - `frs_council_tax` declares `derive` after `impute_cell_means`, as `frs_council_tax_provenance_operation_parameters()` returns it, and outputs `council_tax_bill_provenance` after `council_tax`. Its imputation and nonnegative outputs are unchanged, and its notes gain one sentence on the flag. The transform writes the flag (`StringDtype("python")`) from the same branches that choose the bill, which stays bit for bit as before. `checkpoint_metadata()` returns the provenance receipt, `council_tax_provenance_evidence`: distinct source households before the copies, through `rounded_count`. The stage's declaration check expects `read_tables`, `impute_cell_means` and `derive`, with both reviewed parameter sets.
@@ -19,7 +19,7 @@ Localise Great Britain council tax by each clone's local authority just before t
   - The geography-first roster gains `COUNCIL_TAX_LOCALISE_STAGE`, and `spine_council_tax` reads its stage name from there. So the dense line's posture check, the spine CLI's release candidate and the national line refuse every spine built before this change, naming the stage alone.
 - **The release boundary.** `UK_RELEASE_EXPORT_DROPPED_COLUMNS["household"]` gains `council_tax_bill_provenance` and `council_tax_frs_bill`, which no engine variable reads. Neither is a reviewed extra of the export surface (`UK_ALLOWED_EXTRA_EXPORT_COLUMNS`), so the dense and national exports carry neither.
 - **Tools.**
-  - `tools/graph_uk_spine_fixture.py` runs the localisation in its oracle (`UK_FIXTURE_STAGE_COUNT` 61).
+  - `tools/graph_uk_spine_fixture.py` runs the localisation in its oracle (`UK_FIXTURE_STAGE_COUNT` 63).
   - `tools/build_uk_release_input_coverage_manifest.py` gains the stage's family, in `private_rent`'s form.
   - `tools/verify_uk_identity_stability.py`'s scope docstring now names the stage's in-place rewrites, which no receipted recompute reads.
 - **Generated files.**
@@ -46,7 +46,7 @@ Localise Great Britain council tax by each clone's local authority just before t
     - No other NZ, AM, BE or US key moves. In those four countries' bundles, the schema edit moves only the spec engine's grammar receipt.
 - **Tests**, on invented data, the toy supports and H2.
   - Engine-free:
-    - the 61 stages and their order, the localisation right after `private_rent` and right before `was_wealth`;
+    - the 63 stages and their order, the localisation right after `private_rent` and right before `was_wealth`;
     - no stage from the area draw to the localisation writing a draw input but the housing shell's band, and no stage after it writing its columns;
     - stage 5's three operations and two outputs, the localisation's outputs, rewrites and mass receipt;
     - the packaged stages equal to the reviewed declarations, and stage 5's transform writing the flag and its receipt from a pinned invented tab;
@@ -62,7 +62,7 @@ Localise Great Britain council tax by each clone's local authority just before t
     - the driver's stage records leaving out both columns' shares;
     - `required_build_stages` and the adapter's support readers gaining the stage;
     - the localisation on all three systems at one clone and at two, after the real-engine BRMA and copy stages. Northern Ireland, an SPI copy among its rows, is left bit for bit. Great Britain's ratio rows take their cell's ratio. Reductions stay within the bill, and the kept bill is the paid bill from before the stage.
-  - After merge, H2's clone-first run at 61 stages:
+  - After merge, H2's clone-first run at 63 stages:
     - each ratio row's bill is its cell's ratio times its bill, with one where the cell holds one toy authority and other than one for some London and Scotland region-level rows, SPI-channel rows among them in each;
     - household 12 and the households whose ids are multiples of 21 take the statute, and no other row does;
     - every reduction lies within its bill, and the kept bill is the paid bill, which the WAS bill predictor reads, bit for bit, on the stage's output;
