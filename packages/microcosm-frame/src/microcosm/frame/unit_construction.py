@@ -922,8 +922,9 @@ def benefit_unit_diagnostics(
     households; reference placements count dependent children. Reference heads
     count parentless candidate children who head their own unit only because
     they are their household's reference person. Own-unit placement makes
-    every parentless candidate a head, so it counts none; the strict reference
-    flag refuses those frames before any count.
+    every parentless candidate a head, so it counts none; under the other
+    placements, the strict reference flag refuses those frames before any
+    count.
     """
     rows = _Pointers.read(person, household, rule)
     dependent = (
