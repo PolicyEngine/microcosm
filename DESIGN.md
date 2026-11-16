@@ -126,16 +126,18 @@ migrated to it yet.
   since 2026-07-01 without L0.** `calibrate()` defaults to `l0_lambda=0.0` and
   `target_records=None`, and it builds its hard-concrete L0 gates only when a
   caller sets a positive `l0_lambda` or any `target_records` (`solve.py`), so a
-  default solve keeps every record. It accepts `method="apg"` only as a
-  deprecated alias for Adam. By then PolicyEngine had tagged nine calibrations
-  of the US national file, `populace_us_2024.h5`, in the
-  `policyengine/populace-us` Hugging Face repository, and all nine came from
-  the US builder's `--dense-default-dataset` arm
-  (`tools/build_us_fiscal_refresh_release.py`). Their build manifests record
-  `dataset.default.method: dense_no_l0`, and the
+  default solve sets no weight to zero. It can still push weights far below
+  their starting values: Build P's calibration diagnostics count 48,096 of its
+  57,240 households above the threshold `n_nonzero` uses. `calibrate()`
+  accepts `method="apg"` only as a deprecated alias for Adam. By then
+  PolicyEngine had tagged nine calibrations of the US national file,
+  `populace_us_2024.h5`, in the `policyengine/populace-us` Hugging Face
+  repository, and all nine came from the US builder's `--dense-default-dataset`
+  arm (`tools/build_us_fiscal_refresh_release.py`). Their build manifests
+  record `dataset.default.method: dense_no_l0`, and the
   [US release build rule](docs/us-release-build-rule.md) lists the households
-  each one calibrated. Seven of them calibrated 57,240-household lists that
-  descend from one an earlier informed-L0 run chose (microcosm#328).
+  each one calibrated. Seven of them calibrated versions of a 57,240-household
+  list that an earlier informed-L0 run chose (microcosm#328).
   policyengine.py 6.19.0's bundle loads `populace-us-2024-spm-20260915` as the
   US default: the households and weights of Build P, one of the nine, plus one
   SPM variable. Under microcosm#578, PolicyEngine plans to publish every size
