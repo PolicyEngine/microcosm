@@ -1,7 +1,8 @@
 """Publish a release build into its own folder through the emitter.
 
-A release whose builds can publish into their own folders (the UK
-national, dense and local-area releases, which
+A release whose builds can publish into their own folders (the UK national
+and dense releases, each UK local-area release that the dataset registry
+names, and the US releases, which
 ``microcosm.data.contract.publishes_to_build_folder`` names) is handed to the
 separately installed emitter with the interface's ``publish_release`` call.
 Microcosm decides what the build contains and checks it with the release
@@ -21,10 +22,28 @@ it, that the file appeared after the switch and should be removed. The
 tagged publisher refuses these releases, and any repository that has
 ``releases.json``.
 
+``microcosm-withdraw-release-build`` (:func:`withdraw_release_build`) names a
+published build by its repository, release and build and hands its
+withdrawal to the same writer, which sets the build's ``withdrawn`` flag in
+``releases.json`` and leaves its folder as published. The writer refuses the
+current build (make another build current first) and a build the record does
+not list, and never makes a withdrawn build current. The loader loads a
+withdrawn build only when ``build=`` pins it, with a warning.
+
 A build is current only when the emitter's receipt says so: ``status`` is
 ``published`` and ``current`` is the build. A publication with
 ``make_current`` can land without making its build current, when a change to
 the release's current build requested after it landed first.
+
+A publication names its build for the collector (:func:`collector_provenance`),
+so the emitter, whose collector submissions are on, submits the build's
+calibration diagnostics, with its build and release manifests, to the
+collector after the release commit, under the build's folder
+``releases/<release>/<build>``. Once the publication has landed, the command
+waits for the collector to accept them before it closes its emitter, which
+starts no new submission once it is closing, and prints the collector's
+status; a collector that receives nothing or turns them down is a warning,
+and never fails the publication.
 
 The emitter finds its Hugging Face credential the way a build's emitter
 does: it is this command's child process and inherits its environment
@@ -44,12 +63,21 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
+import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
-from microcosm_emitter_interface import PromoteBuild, PublishRelease, ReleaseFile
+from microcosm_emitter_interface import (
+    CollectorProvenance,
+    PromoteBuild,
+    PublishRelease,
+    ReleaseFile,
+    WithdrawBuild,
+)
 from microcosm_emitter_interface.publication import (
     ReleaseChange,
     ReleaseReceipt,
@@ -57,14 +85,23 @@ from microcosm_emitter_interface.publication import (
 )
 from microcosm_emitter_interface.releases import is_pointer_file
 
+from microcosm.build.collector_submissions import (
+    COLLECTOR_RECEIPT_POLL_SECONDS,
+    COLLECTOR_SUBMISSION_WAIT_SECONDS,
+    UK_COLLECTOR_COUNTRY_CODE,
+    US_COLLECTOR_COUNTRY_CODE,
+    CollectorReceipts,
+    follow_collector_submissions,
+)
 from microcosm.build.staging_dataset import hub_offline, write_access_problem
 from microcosm.build.telemetry_emitter import start_bundle_emitter
-from microcosm.data.contract import publishes_to_build_folder
+from microcosm.data.contract import US_RELEASES, publishes_to_build_folder
 from microcosm.data.publish_cli import publication_refusal
 from microcosm.data.release import (
     TAGGED_RELEASE_ADVICE,
     BuildFolderRelease,
     build_folder_identity,
+    not_a_build_folder_release_reason,
     prepare_build_folder_release,
 )
 from microcosm.data.releases_record import RELEASES_RECORD_PATH
@@ -72,26 +109,38 @@ from microcosm.data.releases_record import RELEASES_RECORD_PATH
 if TYPE_CHECKING:
     from microcosm_emitter_interface import EmitterStartupError, RequestFailure
     from microcosm_emitter_interface.bundles import WriteAccess
+    from microcosm_emitter_interface.submissions import CollectorSubmissionReceipt
 
 __all__ = [
     "PROMOTION_WAIT_SECONDS",
     "PUBLICATION_WAIT_SECONDS",
     "ReleaseEmitter",
     "ReleasePublication",
+    "collector_provenance",
     "main",
     "promote_release_build",
+    "publication_request",
     "publish_release_build",
+    "withdraw_main",
+    "withdraw_release_build",
 ]
 
 #: How long the command waits for a publication to land or be refused. The
-#: emitter uploads a build's files in its one commit, and the largest UK
-#: build recorded (about 2.4 GB) takes about 16 minutes at 20 Mbit/s; the
-#: emitter refuses a change still pending an hour after it was handed over
-#: (``REQUEST_EXPIRED``), so the wait covers that hour and one long upload.
-PUBLICATION_WAIT_SECONDS = 2 * 3600.0
+#: emitter uploads a build's files in its one commit: the largest UK build
+#: recorded (about 2.4 GB) takes about 16 minutes at 20 Mbit/s, and a US ACS
+#: local-area build (about 10 GB) about 67 minutes. The emitter refuses a
+#: change still pending an hour after it was handed over
+#: (``REQUEST_EXPIRED``), so the wait covers that hour and the longest
+#: upload.
+PUBLICATION_WAIT_SECONDS = 3 * 3600.0
 #: How long the command waits for a promotion, which changes only
 #: ``releases.json``.
 PROMOTION_WAIT_SECONDS = 300.0
+#: How long the withdraw command waits; a withdrawal also changes only
+#: ``releases.json``.
+WITHDRAWAL_WAIT_SECONDS = PROMOTION_WAIT_SECONDS
+#: The three release changes a command hands to the emitter.
+type ReleaseChangeKind = Literal["publish", "promote", "withdraw"]
 #: What the emitter's refusal codes mean for the operator, where its own
 #: message does not say what to do next.
 _REFUSAL_ADVICE = {
@@ -111,9 +160,30 @@ _REFUSAL_ADVICE = {
         "landed first; run the command again if this build should still be "
         "current."
     ),
+    "WITHDRAWING_CURRENT_BUILD": (
+        "A release's current build cannot be withdrawn: make another build "
+        "current first (microcosm-publish-release-build <that build's release "
+        "directory> --promote), then withdraw this one."
+    ),
+    "CURRENT_WITHDRAWN": (
+        "The build has been withdrawn, so it cannot be made current."
+    ),
     "REQUEST_EXPIRED": (
         "The change was still waiting an hour after it was handed over, so "
         "the emitter dropped it; run the command again."
+    ),
+}
+#: Advice that depends on the change as well as the code.
+_CHANGE_ADVICE: dict[tuple[str, str], str] = {
+    ("withdraw", "BUILD_NOT_LISTED"): (
+        "The repository's releases.json does not list that build of that "
+        "release; check the names, which are its folder releases/<release>/"
+        "<build>/."
+    ),
+    ("promote", "BUILD_NOT_LISTED"): (
+        "The repository's releases.json does not list this build: it has not "
+        "been published, or its publication has not landed yet. Publish it "
+        "first, or run the publish command again to see whether it landed."
     ),
 }
 #: Why the command refuses with ``HF_HUB_OFFLINE`` or ``TRANSFORMERS_OFFLINE``
@@ -126,8 +196,11 @@ _OFFLINE_REFUSAL = (
 )
 
 
-class ReleaseEmitter(Protocol):
-    """The interface ``EmitterClient``'s release calls and state."""
+class ReleaseEmitter(CollectorReceipts, Protocol):
+    """The interface ``EmitterClient``'s release calls and state.
+
+    Its collector receipts come from ``CollectorReceipts``.
+    """
 
     startup_error: EmitterStartupError | None
     last_failure: RequestFailure | None
@@ -148,12 +221,48 @@ class ReleaseEmitter(Protocol):
         self, request: PromoteBuild, *, wait_seconds: float = 60.0
     ) -> ReleaseReceipt: ...
 
+    def withdraw_build(
+        self, request: WithdrawBuild, *, wait_seconds: float = 60.0
+    ) -> ReleaseReceipt: ...
+
     def close(self) -> None: ...
 
 
+#: The shape of an emitter's hand-over ID.
+_HANDOVER_ID = re.compile(r"^[0-9a-f]{32}$")
 #: Starts the short-lived emitter a publication uses (only its Hugging Face
 #: module); tests replace it.
 _start_release_emitter = start_bundle_emitter
+#: The clock and sleep of the wait for the collector; tests replace them.
+_clock = time.monotonic
+_sleep = time.sleep
+
+
+def collector_provenance(release: str, build: str) -> CollectorProvenance | None:
+    """The collector's provenance of a build of ``release``, or None.
+
+    It names the publication's own release and build, as the interface
+    requires, since the collector refuses a build folder whose provenance
+    names another. A UK build (the national and dense releases, and each
+    local-area release that the dataset registry names) used licensed
+    microdata, so the collector keeps its Orrery outputs private; a US build
+    is published in the public US repository, so it used none whose licence
+    keeps its outputs private. None for a release whose builds do not publish
+    into their own folders, a UK local-area release that the registry does
+    not name among them. The interface raises ``ValueError`` for a build ID
+    it does not accept.
+    """
+    if not publishes_to_build_folder(release):
+        return None
+    us_build = release in US_RELEASES
+    return CollectorProvenance(
+        country_code=US_COLLECTOR_COUNTRY_CODE
+        if us_build
+        else UK_COLLECTOR_COUNTRY_CODE,
+        build_id=build,
+        licensed_data=not us_build,
+        release=release,
+    )
 
 
 @dataclass(frozen=True)
@@ -161,9 +270,13 @@ class ReleasePublication:
     """What became of one release change: the emitter's receipt, read.
 
     ``wanted_current`` says whether the change asked for the build to become
-    current: a promotion, or a publication with ``make_current``.
-    ``problem`` says why nothing was handed over, when the emitter could not
-    take the change or its write-access check refused it.
+    current: a promotion, or a publication with ``make_current``. ``change``
+    is ``publish``, ``promote`` or ``withdraw``. ``problem`` says why nothing
+    was handed over, when the emitter could not take the change or its
+    write-access check refused it.
+    ``collector_receipt`` is the emitter's last collector receipt of a
+    publication, or None for a promotion, a withdrawal, a change handed
+    nothing, or a publication the emitter has no collector row for.
     """
 
     repository: str
@@ -172,6 +285,17 @@ class ReleasePublication:
     wanted_current: bool
     receipt: ReleaseReceipt
     problem: str | None = None
+    change: ReleaseChangeKind = "publish"
+    collector_receipt: CollectorSubmissionReceipt | None = None
+
+    @property
+    def withdrawn(self) -> bool:
+        """Whether this change was a withdrawal that landed.
+
+        A publication or promotion says nothing about whether the build was
+        withdrawn since; :meth:`as_json` reports that as unknown.
+        """
+        return self.change == "withdraw" and self.published
 
     @property
     def published(self) -> bool:
@@ -202,10 +326,18 @@ class ReleasePublication:
                 "again later to see whether it landed."
             )
         if status == "refused":
-            advice = _REFUSAL_ADVICE.get(str(code))
+            advice = _CHANGE_ADVICE.get(
+                (self.change, str(code)), _REFUSAL_ADVICE.get(str(code))
+            )
             reason = self.receipt.get("message") or code
             return f"The emitter refused it ({code}): {reason}" + (
                 f" {advice}" if advice else ""
+            )
+        if self.withdrawn:
+            return (
+                f"Build {self.build} of {self.release} is withdrawn: its folder "
+                "stays, it can no longer be made current, and it loads only "
+                "when build= pins it."
             )
         if self.wanted_current and not self.current:
             current = self.receipt.get("current")
@@ -221,16 +353,26 @@ class ReleasePublication:
     def as_json(self) -> dict[str, Any]:
         """The outcome as the command prints it."""
         return {
+            "change": self.change,
             "repository": self.repository,
             "release": self.release,
             "build": self.build,
             "status": self.receipt["status"],
+            "withdrawn": self.withdrawn if self.change == "withdraw" else None,
             "current": self.current,
             "current_build": self.receipt.get("current"),
             "error_code": self.receipt.get("error_code"),
             "message": self.receipt.get("message"),
             "commit": self.receipt.get("commit"),
             "handover_id": self.receipt.get("handover_id"),
+            "collector_submission": (
+                None
+                if self.collector_receipt is None
+                else {
+                    "status": self.collector_receipt.get("status"),
+                    "error_code": self.collector_receipt.get("error_code"),
+                }
+            ),
         }
 
 
@@ -240,9 +382,11 @@ def _hand_over(
     client: ReleaseEmitter | None,
     wait_seconds: float,
     wanted_current: bool,
+    collector_wait_seconds: float = COLLECTOR_SUBMISSION_WAIT_SECONDS,
 ) -> ReleasePublication:
     owned = client is None
     emitter: ReleaseEmitter = _start_release_emitter() if owned else client
+    collector_receipt: CollectorSubmissionReceipt | None = None
     try:
         # The staged-bundle hand-over's check: the emitter is running with its
         # Hugging Face module, and its credential can write the repository.
@@ -253,10 +397,36 @@ def _hand_over(
             emitter_task="the emitter, which commits it",
             proof="the change itself",
         )
+        kind: ReleaseChangeKind
+        if isinstance(change, PublishRelease):
+            kind = "publish"
+        elif isinstance(change, WithdrawBuild):
+            kind = "withdraw"
+        else:
+            kind = "promote"
         if problem is not None:
             receipt = unavailable_release_receipt(change)
         elif isinstance(change, PublishRelease):
             receipt = emitter.publish_release(change, wait_seconds=wait_seconds)
+            if change.collector is not None and receipt["status"] != "unavailable":
+                # Before the emitter closes: a closing emitter starts no new
+                # submission. The emitter keeps the collector row under the
+                # hand-over ID its receipt names.
+                collector_receipt = follow_collector_submissions(
+                    emitter,
+                    _receipt_handover_id(receipt) or change.handover_id(),
+                    subject=f"build {change.build} of {change.release}",
+                    wait_seconds=(
+                        collector_wait_seconds
+                        if receipt["status"] == "published"
+                        else None
+                    ),
+                    poll_seconds=COLLECTOR_RECEIPT_POLL_SECONDS,
+                    clock=_clock,
+                    sleep=_sleep,
+                )
+        elif isinstance(change, WithdrawBuild):
+            receipt = emitter.withdraw_build(change, wait_seconds=wait_seconds)
         else:
             receipt = emitter.promote_build(change, wait_seconds=wait_seconds)
     finally:
@@ -269,6 +439,18 @@ def _hand_over(
         wanted_current=wanted_current,
         receipt=receipt,
         problem=problem,
+        change=kind,
+        collector_receipt=collector_receipt,
+    )
+
+
+def _receipt_handover_id(receipt: ReleaseReceipt) -> str | None:
+    """The hand-over ID a release receipt names, when it has the emitter's shape."""
+    handover_id = receipt.get("handover_id")
+    return (
+        handover_id
+        if isinstance(handover_id, str) and _HANDOVER_ID.fullmatch(handover_id)
+        else None
     )
 
 
@@ -290,6 +472,15 @@ def _repository_files(repository: str) -> list[str]:
     token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN") or None
     api = huggingface_hub.HfApi(token=token)
     return list(api.list_repo_files(repository, repo_type="dataset"))
+
+
+def _hub_api() -> Any:
+    """A Hub client with the credential :func:`_repository_files` uses (test
+    seam), for the recertification parent check and the annual base check."""
+    import huggingface_hub
+
+    token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN") or None
+    return huggingface_hub.HfApi(token=token)
 
 
 def _listing_errors() -> tuple[type[BaseException], ...]:
@@ -349,7 +540,10 @@ def _refuse_pointer_files(repository: str) -> None:
 def publication_request(
     prepared: BuildFolderRelease, *, make_current: bool
 ) -> PublishRelease:
-    """The ``publish_release`` request for a checked build."""
+    """The ``publish_release`` request for a checked build.
+
+    It names the build for the collector (:func:`collector_provenance`).
+    """
     return PublishRelease(
         repository=prepared.repository,
         release=prepared.release,
@@ -366,7 +560,26 @@ def publication_request(
             )
             for item in prepared.files
         ],
+        collector=collector_provenance(prepared.release, prepared.build),
     )
+
+
+def _refuse_recertification_as_current(release_dir: Path | str) -> None:
+    """Refuse to make a compatibility recertification its release's current build.
+
+    A recertification republishes its parent's data under a wider
+    compatibility claim. As with the tagged publisher, which never moved
+    ``latest.json`` to one, it is published without becoming current, and
+    consumers load it with ``build=``.
+    """
+    from microcosm.data import compatibility_recertification
+
+    if compatibility_recertification.is_recertification(release_dir):
+        raise ValueError(
+            f"{Path(release_dir)} holds a compatibility recertification, which "
+            "is published without becoming its release's current build; "
+            "publish it without --make-current, and load it with build=."
+        )
 
 
 def publish_release_build(
@@ -377,6 +590,9 @@ def publish_release_build(
     make_current: bool = False,
     client: ReleaseEmitter | None = None,
     wait_seconds: float = PUBLICATION_WAIT_SECONDS,
+    parent_h5: Path | str | None = None,
+    compatibility_wheels: tuple[Path | str, ...] = (),
+    collector_wait_seconds: float = COLLECTOR_SUBMISSION_WAIT_SECONDS,
 ) -> ReleasePublication:
     """Check a build and hand it to the emitter to publish into its folder.
 
@@ -389,20 +605,49 @@ def publish_release_build(
     ``TRANSFORMERS_OFFLINE`` is set, then, before the build is checked or any
     emitter starts, when the repository still has ``latest*.json`` pointer
     files; it hands nothing over unless the emitter's write-access check
-    passes.
+    passes. A recertification is handed over only once the Hub shows its
+    parent published with the manifest it carries, as the tagged publisher
+    required, and never with ``make_current``. Once the publication has
+    landed, it waits at most ``collector_wait_seconds`` for the collector to
+    accept the build's submissions.
     """
     if client is None:
         _refuse_offline()
+    if make_current:
+        _refuse_recertification_as_current(release_dir)
     named_repository, _, _ = build_folder_identity(release_dir)
     _refuse_pointer_files(named_repository)
     prepared = prepare_build_folder_release(
-        release_dir, artifact_root=artifact_root, repository=repository
+        release_dir,
+        artifact_root=artifact_root,
+        repository=repository,
+        parent_h5=parent_h5,
+        compatibility_wheels=tuple(compatibility_wheels),
     )
+    from microcosm.data import compatibility_recertification
+
+    if compatibility_recertification.is_recertification(prepared.release_dir):
+        compatibility_recertification.require_parent_publication(
+            _hub_api(),
+            prepared.release_dir,
+            repo_id=prepared.repository,
+            artifact_root=artifact_root,
+        )
+    from microcosm.data import annual_projections
+
+    if annual_projections.is_annual_build(prepared.release_dir):
+        # An annual build projects a published national build: the Hub must
+        # show that build with the same base-year H5 before anything is
+        # handed over.
+        annual_projections.require_base_publication(
+            _hub_api(), prepared.release_dir, repo_id=prepared.repository
+        )
     return _hand_over(
         publication_request(prepared, make_current=make_current),
         client=client,
         wait_seconds=wait_seconds,
         wanted_current=make_current,
+        collector_wait_seconds=collector_wait_seconds,
     )
 
 
@@ -415,10 +660,12 @@ def promote_release_build(
 ) -> ReleasePublication:
     """Make a published build, named by its local manifest, the current build.
 
-    It refuses and checks write access as :func:`publish_release_build` does.
+    It refuses and checks write access as :func:`publish_release_build` does,
+    and refuses a compatibility recertification, which is never current.
     """
     if client is None:
         _refuse_offline()
+    _refuse_recertification_as_current(release_dir)
     named_repository, release, build = build_folder_identity(release_dir)
     if repository is not None and repository != named_repository:
         raise ValueError(
@@ -434,12 +681,89 @@ def promote_release_build(
     )
 
 
+def withdraw_release_build(
+    repository: str,
+    release: str,
+    build: str,
+    *,
+    client: ReleaseEmitter | None = None,
+    wait_seconds: float = WITHDRAWAL_WAIT_SECONDS,
+) -> ReleasePublication:
+    """Withdraw a published build: set its ``withdrawn`` flag in ``releases.json``.
+
+    The emitter's release writer makes the change and runs its checks: it
+    refuses the release's current build (``WITHDRAWING_CURRENT_BUILD``) and a
+    build the record does not list (``BUILD_NOT_LISTED``). The build's folder
+    and files stay as published. It refuses (``ValueError``) offline and while
+    the repository has ``latest*.json`` pointer files, before any emitter
+    starts, and hands nothing over unless the emitter's write-access check
+    passes, as :func:`publish_release_build` does.
+    """
+    request = WithdrawBuild(repository=repository, release=release, build=build)
+    if client is None:
+        _refuse_offline()
+    _refuse_pointer_files(repository)
+    return _hand_over(
+        request, client=client, wait_seconds=wait_seconds, wanted_current=False
+    )
+
+
+def _withdraw_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="microcosm-withdraw-release-build",
+        description=(
+            "Withdraw a published build of a release through the emitter: set "
+            "its withdrawn flag in the repository's releases.json. Its folder "
+            "stays; it can no longer be made current, and the loader loads it "
+            "only when build= pins it. The current build cannot be withdrawn: "
+            "make another build current first."
+        ),
+    )
+    parser.add_argument("repository", help="The Hugging Face dataset repository.")
+    parser.add_argument("release", help="The release, as releases.json names it.")
+    parser.add_argument("build", help="The build to withdraw: its folder's name.")
+    parser.add_argument(
+        "--wait-seconds",
+        type=float,
+        default=WITHDRAWAL_WAIT_SECONDS,
+        help=(
+            "How long to wait for the change to land or be refused (default "
+            f"{WITHDRAWAL_WAIT_SECONDS:.0f})."
+        ),
+    )
+    return parser
+
+
+def withdraw_main(argv: list[str] | None = None) -> int:
+    """``microcosm-withdraw-release-build``: 0 when the build is withdrawn.
+
+    A withdrawal refused before any emitter starts (offline, pointer files,
+    a name the interface refuses) prints the reason and returns 1, as does
+    one the write-access check or the release writer refuses.
+    """
+    args = _withdraw_parser().parse_args(argv)
+    try:
+        outcome = withdraw_release_build(
+            args.repository,
+            args.release,
+            args.build,
+            wait_seconds=args.wait_seconds,
+        )
+    except (ValueError, FileNotFoundError) as error:
+        print(f"refusing to withdraw: {error}", file=sys.stderr)
+        return 1
+    print(json.dumps(outcome.as_json(), indent=2))
+    print(outcome.explanation(), file=sys.stderr)
+    return 0 if outcome.withdrawn else 1
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="microcosm-publish-release-build",
         description=(
             "Publish a build of a release whose builds publish into their own "
-            "folders (the UK national, dense and local-area releases) through "
+            "folders (the UK national and dense releases, each UK local-area "
+            "release the dataset registry names, and the US releases) through "
             "the emitter, or make a published build current. " + TAGGED_RELEASE_ADVICE
         ),
     )
@@ -460,12 +784,18 @@ def _parser() -> argparse.ArgumentParser:
     action.add_argument(
         "--make-current",
         action="store_true",
-        help="Make the build the release's current build when it is published.",
+        help=(
+            "Make the build the release's current build when it is published "
+            "(refused for a compatibility recertification)."
+        ),
     )
     action.add_argument(
         "--promote",
         action="store_true",
-        help="Make this already published build the release's current build.",
+        help=(
+            "Make this already published build the release's current build "
+            "(refused for a compatibility recertification)."
+        ),
     )
     action.add_argument(
         "--preflight-only",
@@ -479,6 +809,29 @@ def _parser() -> argparse.ArgumentParser:
             "How long to wait for the change to land or be refused (default "
             f"{PUBLICATION_WAIT_SECONDS:.0f} for a publication, "
             f"{PROMOTION_WAIT_SECONDS:.0f} for a promotion)."
+        ),
+    )
+    parser.add_argument(
+        "--parent-h5",
+        type=Path,
+        help="A source enrichment's exact parent H5, which its contract replays.",
+    )
+    parser.add_argument(
+        "--compatibility-wheel",
+        action="append",
+        type=Path,
+        default=[],
+        help=(
+            "An exact tested wheel a source enrichment's or recertification's "
+            "contract replays its loader under; repeat for each package."
+        ),
+    )
+    parser.add_argument(
+        "--allow-incomplete-reform-validation",
+        action="store_true",
+        help=(
+            "Publish even if reform_validation.json records that out-of-sample "
+            "reforms were skipped (--skip-out-of-sample-reforms)."
         ),
     )
     parser.add_argument(
@@ -506,15 +859,55 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     release_dir: Path = args.release_dir
     if not publishes_to_build_folder(release_dir.name):
-        parser.error(
-            f"release {release_dir.name!r} does not publish into build folders. "
-            + TAGGED_RELEASE_ADVICE
-        )
+        parser.error(not_a_build_folder_release_reason(release_dir.name))
     try:
         return _run(args)
     except (ValueError, FileNotFoundError) as error:
         print(f"refusing to publish: {error}", file=sys.stderr)
         return 1
+
+
+def _claim_records(release_dir: Path) -> dict[str, Any]:
+    """The compatibility records a build carries for whoever publishes it.
+
+    ``narrowed_claims`` is a compatibility range an earlier certification
+    narrowed back to an exact pin; ``claim_measurement`` is the model
+    versions a declared compatibility range was measured against (a source
+    enrichment's, or a recertification's with its baseline and drift
+    summary). Only records the build has are returned. Reading them refuses
+    nothing: the release contract has already accepted or refused them.
+    """
+    from microcosm.data import compatibility_recertification, source_enrichment
+
+    narrowed = source_enrichment.recorded_narrowed_claims(release_dir)
+    measurement = source_enrichment.recorded_claim_measurement(
+        release_dir
+    ) or compatibility_recertification.recorded_claim_measurement(release_dir)
+    records: dict[str, Any] = {}
+    if narrowed:
+        records["narrowed_claims"] = narrowed
+    if measurement:
+        records["claim_measurement"] = measurement
+    return records
+
+
+def _print_claim_records(records: Mapping[str, Any]) -> None:
+    """Say a build's compatibility records on stderr, as the tagged command
+    did, on the preflight and on publication, which needs no preflight
+    first; the preflight's verdict on stdout carries them too."""
+    if "narrowed_claims" in records:
+        print(
+            "note: this build records a compatibility narrowing from an "
+            f"earlier certification: {json.dumps(records['narrowed_claims'])}",
+            file=sys.stderr,
+        )
+    if "claim_measurement" in records:
+        print(
+            "note: this build declares a publisher compatibility range that "
+            "certification measured against only the versions recorded here: "
+            f"{json.dumps(records['claim_measurement'], sort_keys=True)}",
+            file=sys.stderr,
+        )
 
 
 def _run(args: argparse.Namespace) -> int:
@@ -531,14 +924,22 @@ def _run(args: argparse.Namespace) -> int:
         )
     else:
         refusal = publication_refusal(
-            release_dir, allow_missing_staging=args.allow_missing_staging
+            release_dir,
+            allow_incomplete_reform_validation=args.allow_incomplete_reform_validation,
+            allow_missing_staging=args.allow_missing_staging,
         )
         if refusal is not None:
             print(refusal, file=sys.stderr)
             return 1
+        claim_records = _claim_records(release_dir)
+        _print_claim_records(claim_records)
         if args.preflight_only:
             prepared = prepare_build_folder_release(
-                release_dir, artifact_root=args.artifact_root, repository=args.repo_id
+                release_dir,
+                artifact_root=args.artifact_root,
+                repository=args.repo_id,
+                parent_h5=args.parent_h5,
+                compatibility_wheels=tuple(args.compatibility_wheel),
             )
             verdict: dict[str, Any] = {
                 "valid": True,
@@ -547,6 +948,7 @@ def _run(args: argparse.Namespace) -> int:
                 "build": prepared.build,
                 "repository": prepared.repository,
                 "release_role": prepared.release_role,
+                **claim_records,
             }
             if prepared.contract_warnings:
                 verdict["contract_warnings"] = list(prepared.contract_warnings)
@@ -557,6 +959,8 @@ def _run(args: argparse.Namespace) -> int:
             repository=args.repo_id,
             artifact_root=args.artifact_root,
             make_current=args.make_current,
+            parent_h5=args.parent_h5,
+            compatibility_wheels=tuple(args.compatibility_wheel),
             wait_seconds=(
                 PUBLICATION_WAIT_SECONDS
                 if args.wait_seconds is None

@@ -419,7 +419,7 @@ def test_image_installs_the_emitter_command_on_its_own(app) -> None:
     commands = plan_lib.image_build_commands(plan)
     sync = next(index for index, command in enumerate(commands) if "uv sync" in command)
     install_command = (
-        "UV_TOOL_BIN_DIR=/usr/local/bin uv tool install 'microcosm-emitter>=0.14.0'"
+        "UV_TOOL_BIN_DIR=/usr/local/bin uv tool install 'microcosm-emitter>=0.15.0'"
     )
     assert install_command in commands
     install = commands.index(install_command)

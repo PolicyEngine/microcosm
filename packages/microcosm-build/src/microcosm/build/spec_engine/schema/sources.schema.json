@@ -7176,7 +7176,10 @@
       "not_drawn",
       "young_people",
       "age_targets",
-      "age_fit"
+      "age_fit",
+      "lcwra_units",
+      "lcwra_targets",
+      "lcwra_fit"
      ],
      "properties": {
       "kind": {
@@ -7247,6 +7250,15 @@
        "type": "string"
       },
       "age_fit": {
+       "type": "string"
+      },
+      "lcwra_units": {
+       "type": "string"
+      },
+      "lcwra_targets": {
+       "type": "string"
+      },
+      "lcwra_fit": {
        "type": "string"
       }
      }
@@ -8418,6 +8430,12 @@
       "source_sampling_weight": {
        "type": "string"
       },
+      "sample_design": {
+       "enum": [
+        "fact_weighted_bootstrap",
+        "rare_carriers_certain"
+       ]
+      },
       "sample_size": {
        "type": "integer"
       },
@@ -8723,8 +8741,16 @@
       "gate_calibration": {
        "enum": [
         "in_sample",
-        "cross_fitted"
+        "cross_fitted",
+        "cross_fitted_balanced"
        ]
+      },
+      "gate_level_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       },
+       "uniqueItems": true
       }
      }
     },

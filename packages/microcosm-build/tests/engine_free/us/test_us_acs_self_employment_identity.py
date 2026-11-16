@@ -57,6 +57,27 @@ _SSTB = "sstb_self_employment_income_before_lsr"
 _NON_ACS = ("farm_operations_income", "partnership_self_employment_net_earnings")
 _LEAVES = (_TOTAL, *ACS_SELF_EMPLOYMENT_COMPONENT_INPUTS)
 _TOLERANCE = ACS_SELF_EMPLOYMENT_IDENTITY_TOLERANCE
+#: microcosm#1387: the line-32 and tax-unit columns the gate also reads.
+_LINE_32_COLUMNS = (
+    "partnership_income",
+    "s_corp_income",
+    "passive_partnership_s_corp_income",
+    "person_tax_unit_id",
+    "tax_unit_role_input",
+)
+
+
+def _line_32_defaults(rows: int) -> dict[str, object]:
+    """No line-32 income, each person a tax-unit head of their own unit."""
+
+    return {
+        "partnership_income": np.zeros(rows),
+        "s_corp_income": np.zeros(rows),
+        "passive_partnership_s_corp_income": np.zeros(rows),
+        "person_tax_unit_id": np.arange(1, rows + 1),
+        "tax_unit_role_input": ["HEAD"] * rows,
+    }
+
 
 _amounts = st.one_of(
     st.just(0.0),
@@ -142,6 +163,7 @@ def _person(**columns) -> pd.DataFrame:
     defaults = {
         "ADJINC": [1_000_000.0] * rows,
         **{column: [0.0] * rows for column in _LEAVES},
+        **_line_32_defaults(rows),
     }
     return pd.DataFrame({**defaults, **columns})
 
@@ -263,7 +285,7 @@ def test_gate_refuses_a_gap_that_overflows() -> None:
     assert gate.details["mismatched_rows"] == 1
 
 
-@pytest.mark.parametrize("column", ("SEMP", "ADJINC", *_LEAVES))
+@pytest.mark.parametrize("column", ("SEMP", "ADJINC", *_LEAVES, *_LINE_32_COLUMNS))
 def test_gate_fails_closed_on_a_missing_column(column: str) -> None:
     person = _person(SEMP=[100.0], self_employment_income_before_lsr=[100.0])
 
@@ -337,6 +359,7 @@ def _split_rows(draw):
             _TOTAL: np.where(on_sstb, 0.0, total),
             _SSTB: np.where(on_sstb, total, 0.0),
             **{column: np.zeros(rows) for column in _NON_ACS},
+            **_line_32_defaults(rows),
         }
     )
     return person
@@ -478,6 +501,9 @@ def _transfer_case():
             "SEMP": semp,
             "ADJINC": adjinc,
             _TOTAL: semp * adjinc / 1_000_000,
+            # microcosm#1387: measured line 32 (none), so the transfer draws
+            # no partnership_income here and the gate's line-32 clauses hold.
+            **_line_32_defaults(4),
         }
     )
     recipient = Frame(

@@ -55,6 +55,7 @@ from microcosm.data.release import (
     latest_release,
     line_pointer_path,
     missing_on_hub,
+    never_cached_offline,
 )
 from microcosm.data.releases_record import (
     RELEASES_RECORD_PATH,
@@ -473,10 +474,14 @@ def _certified_release_from_manifest(
             f"{artifact_repo_id!r} "
             f"does not match registry repo {spec.hf_repo!r}."
         )
-    if artifact_path != spec.filename:
+    accepted_paths = (
+        spec.dataset_filenames if build_folder_release else (spec.filename,)
+    )
+    if artifact_path not in accepted_paths:
+        expected = " or ".join(repr(name) for name in accepted_paths)
         raise ValueError(
             f"Release {release_id!r} {artifact_label} artifact path {artifact_path!r} "
-            f"does not match registry filename {spec.filename!r}."
+            f"does not match registry filename {expected}."
         )
     if not isinstance(artifact_sha256, str) or not _SHA256_PATTERN.fullmatch(
         artifact_sha256
@@ -554,20 +559,6 @@ def _pointer_for(
     )
 
 
-def _never_cached_offline(exc: BaseException) -> bool:
-    """Whether huggingface_hub is offline and the file was never cached.
-
-    Offline, the cache is all a load has, so a ``releases.json`` that was
-    never cached reads as absent, as the pointer files then do.
-    """
-    try:
-        from huggingface_hub import constants
-        from huggingface_hub.utils import LocalEntryNotFoundError
-    except ImportError:  # pragma: no cover - declared dependency
-        return False
-    return bool(constants.HF_HUB_OFFLINE) and isinstance(exc, LocalEntryNotFoundError)
-
-
 def _releases_record_bytes(
     spec: DatasetSpec, *, hub_download: _HubDownload
 ) -> bytes | None:
@@ -585,7 +576,7 @@ def _releases_record_bytes(
             repo_id=spec.hf_repo, filename=RELEASES_RECORD_PATH, repo_type="dataset"
         )
     except Exception as exc:
-        if missing_on_hub(exc) or _never_cached_offline(exc):
+        if missing_on_hub(exc) or never_cached_offline(exc):
             return None
         raise
     return Path(record_path).read_bytes()

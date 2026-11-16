@@ -409,6 +409,7 @@ class TestDeclaredOutputsAreWrittenColumns:
             FRS_COUNCIL_TAX_OUTPUT_COLUMNS,
         )
         from microcosm.build.uk_runtime.frs_disability import (
+            CARER_LINK_COLUMN,
             FRS_DISABILITY_OUTPUT_COLUMNS,
         )
         from microcosm.build.uk_runtime.frs_education import (
@@ -462,7 +463,12 @@ class TestDeclaredOutputsAreWrittenColumns:
 
         assert stages["frs_employment"].outputs == FRS_EMPLOYMENT_OUTPUT_COLUMNS
         assert stages["frs_council_tax"].outputs == FRS_COUNCIL_TAX_OUTPUT_COLUMNS
-        assert stages["frs_disability"].outputs == FRS_DISABILITY_OUTPUT_COLUMNS
+        # The carer link (A3) writes after the categories and flags, which the
+        # SPI refreshes re-derive row by row on their own.
+        assert stages["frs_disability"].outputs == (
+            *FRS_DISABILITY_OUTPUT_COLUMNS,
+            CARER_LINK_COLUMN,
+        )
         assert stages["frs_education"].outputs == FRS_EDUCATION_OUTPUT_COLUMNS
         assert stages["frs_legacy_proxies"].outputs == FRS_LEGACY_PROXY_OUTPUT_COLUMNS
         assert (
@@ -633,6 +639,7 @@ class TestE3ManifestLockstep:
             "level_scottish_council_tax",
         ]
         assert [op.kind for op in stages["frs_disability"].operations] == [
+            "derive",
             "derive",
             "derive",
         ]

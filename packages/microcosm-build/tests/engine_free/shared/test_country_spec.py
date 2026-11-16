@@ -523,6 +523,8 @@ class TestBelgianPackage:
             "spec/vintages.yaml",
             "source_stages.json",
             "geography_spine.json",
+            "axiom_input_closure.json",
+            "axiom_rules_bindings.json",
             "chronicle_feed.json",
             "target_references.json",
             "precal_references.json",
@@ -997,7 +999,7 @@ class TestCountryStagePlan:
         spec = load_country_spec("be")
         names = [stage.stage for stage in spec.sources.stages] + [
             spec.geography_spine.geography_spine.stage,
-            "load_populace_us_support_pool_fallback",
+            "load_microcosm_us_support_pool_fallback",
         ]
         with pytest.raises(ValueError, match="Unknown stage implementation"):
             country_stage_plan(spec, {name: (lambda frame: frame) for name in names})
@@ -1042,7 +1044,7 @@ class TestCountryStagePlan:
                 implementations,
                 stage_names=(
                     "load_populace_us_support_pool",
-                    "load_populace_us_support_pool_fallback",
+                    "load_microcosm_us_support_pool_fallback",
                 ),
             )
 
@@ -1083,6 +1085,8 @@ class TestUKCountryPackage:
             "dwp_uc_award_band_facts.json",
             # microcosm#1095 Y4: uc_take_up's age fit.
             "dwp_uc_people_by_age_facts.json",
+            # microcosm#1095 B3: uc_take_up's LCWRA fit.
+            "dwp_uc_lcwra_households_facts.json",
             # microcosm#1095 P1: pip_points' Pathways to Work tables.
             "dwp_pip_points_facts.json",
             "obr_hvcts_costing_facts.json",
@@ -1123,6 +1127,12 @@ class TestUKCountryPackage:
             "rfdr_area_layer.json",
             "rfdr_area_layer.provenance.json",
             "price_paid_property_support_bounds.json",
+            # microcosm#1524: the stock cells; the land side is post-solve.
+            "stock_cells_value.json",
+            "stock_cells_structure.json",
+            "la_land_shares.json",
+            "constituency_land_totals.json",
+            "stock_cells.provenance.json",
             "source_stages.json",
             "take_up_contract.json",
             "target_reference_signed_exclusions.json",
@@ -1261,6 +1271,8 @@ class TestExistingPackagesGeneralize:
             "dwp_uc_award_band_facts.json",
             # microcosm#1095 Y4: uc_take_up's age fit.
             "dwp_uc_people_by_age_facts.json",
+            # microcosm#1095 B3: uc_take_up's LCWRA fit.
+            "dwp_uc_lcwra_households_facts.json",
             # microcosm#1095 P1: pip_points' Pathways to Work tables.
             "dwp_pip_points_facts.json",
             "obr_hvcts_costing_facts.json",
@@ -1301,6 +1313,12 @@ class TestExistingPackagesGeneralize:
             "rfdr_area_layer.json",
             "rfdr_area_layer.provenance.json",
             "price_paid_property_support_bounds.json",
+            # microcosm#1524: the stock cells; the land side is post-solve.
+            "stock_cells_value.json",
+            "stock_cells_structure.json",
+            "la_land_shares.json",
+            "constituency_land_totals.json",
+            "stock_cells.provenance.json",
             "source_stages.json",
             "take_up_contract.json",
             "target_reference_signed_exclusions.json",
@@ -2419,7 +2437,7 @@ class TestRefusals:
             "version": 1,
             "country": "xx",
             "policy": "test",
-            "builder": "populace-xx",
+            "builder": "microcosm-xx",
             "hf": {
                 "artifact_repo": "policyengine/populace-xx",
                 "private": False,
@@ -2441,7 +2459,7 @@ class TestRefusals:
             "version": 1,
             "country": "xx",
             "policy": "test",
-            "builder": "populace-xx-v2",
+            "builder": "microcosm-xx-v2",
             "hf": {
                 "artifact_repo": "policyengine/populace-xx-private",
                 "private": True,
@@ -2463,7 +2481,7 @@ class TestRefusals:
             "version": 1,
             "country": "xx",
             "policy": "test",
-            "builder": "populace_xx_v2_staging",
+            "builder": "microcosm_xx_v2_staging",
             "hf": {
                 "artifact_repo": "policyengine/populace-xx-private",
                 "private": True,
@@ -2488,7 +2506,7 @@ class TestRefusals:
             "version": 1,
             "country": "xx",
             "policy": "test",
-            "builder": "populace-xx-sha-v2x",
+            "builder": "microcosm-xx-sha-v2x",
             "hf": {
                 "artifact_repo": "policyengine/populace-xx-private",
                 "private": True,

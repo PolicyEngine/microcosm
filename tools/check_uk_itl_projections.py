@@ -27,6 +27,16 @@ relative one, so a check that reads a cell differently from the solve shows.
         --h5 <national.h5> --out <report.json> [--diagnostics <json>] \
         [--itl-rows <rows>] [--strict]
 
+``--current-income-for-annual-measures`` reads a file built before the annual
+income descriptors existed (the incumbent). This tree's references say what a
+build of this tree binds, not what that file's calibration bound: they bind
+every band and area at 2025, so at the default ``--year`` every band and area
+cell of such a file would read ``in``. The tool refuses the option unless
+``--diagnostics`` or ``--references`` names the basis; a references file that
+lists no reference marks every cell out of sample. It refuses an empty reason
+too, since the resolver takes the route only with one, and the receipt
+records the reason (``current_income_for_annual_measures``).
+
 ``--itl-rows`` replaces the vendored ``hmrc_itl_taxpayer_counts.json`` with a
 vendored-format JSON or a JSONL of Chronicle consumer facts. The report holds
 aggregates only; keep it on the private lane with the run all the same.
@@ -228,10 +238,26 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--current-income-for-annual-measures",
         metavar="REASON",
-        help="For a file without annual income descriptors (the incumbent).",
+        help="For a file without annual income descriptors (the incumbent). "
+        "Needs --diagnostics or --references: this tree's target references "
+        "say what a build of this tree binds, not what that file bound.",
     )
     parser.add_argument("--strict", action="store_true", help="Exit 1 on any miss.")
     args = parser.parse_args(argv)
+    reason = args.current_income_for_annual_measures
+    if reason is not None and not reason.strip():
+        parser.error(
+            "--current-income-for-annual-measures needs a reason: the resolver "
+            "takes the current-income route only with one."
+        )
+    if reason is not None and args.diagnostics is None and args.references is None:
+        parser.error(
+            "--current-income-for-annual-measures needs --diagnostics or "
+            "--references: this tree's target references say what a build of "
+            "this tree binds, not what a file built before the annual income "
+            "descriptors bound. A references file that lists no reference marks "
+            "every cell out of sample."
+        )
 
     rows, rows_source = load_rows(args.itl_rows)
     if args.diagnostics is not None:
@@ -253,7 +279,7 @@ def main(argv: list[str] | None = None) -> int:
         args.h5,
         year=args.year,
         scratch=args.out.parent / f"scratch-{args.out.stem}",
-        reason=args.current_income_for_annual_measures,
+        reason=reason,
     )
     report = differential(cells, resolved_people(resolver))
     if args.diagnostics is not None:
@@ -264,6 +290,7 @@ def main(argv: list[str] | None = None) -> int:
         "year": args.year,
         "itl_rows": rows_source,
         "in_sample_basis": in_sample_basis,
+        "current_income_for_annual_measures": reason,
         **report,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)

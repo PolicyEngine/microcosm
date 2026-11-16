@@ -128,6 +128,22 @@ ENGINE_DERIVED_EXCLUSIONS: dict[str, dict[str, str]] = {
         "approved_by": "juaristi22",
         "approved_on": "2026-11-09",
     },
+    "is_severely_disabled_for_benefits": {
+        "reason": ENGINE_DERIVED_EXCLUSION_REASON,
+        "tracking_note": (
+            "microcosm#1095 (A4 of the November event-data plan's PR3): "
+            "policyengine-uk 2.177.7 derives is_severely_disabled_for_benefits "
+            "from the DLA care, PIP daily living and Attendance Allowance "
+            "categories and Armed Forces Independence Payment; frs_disability "
+            "no longer stores it, so a change to PIP's points thresholds "
+            "reaches the tax credit severe disability elements and the "
+            "working-age council tax reduction's child amounts, and the "
+            "release and calibration boundaries drop a stored copy should one "
+            "appear (María's signature of 2026-11-11)."
+        ),
+        "approved_by": "juaristi22",
+        "approved_on": "2026-11-11",
+    },
 }
 ENTITY_TABLES = ("person", "benunit", "household")
 READ_BATCH_SIZE = 12

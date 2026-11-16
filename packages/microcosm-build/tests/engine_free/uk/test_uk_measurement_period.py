@@ -822,6 +822,11 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "attends_private_school",
         "benefit_cap_reduction",
         "benunit_tenure_type",
+        # Engine-computed at the calibration period: B10's Scottish carer row
+        # (microcosm#1095) reads Carer Support Payment, which policyengine-uk
+        # pays from the stored care hours, the carer link and the take-up
+        # draw; the frame stores no copy.
+        "carer_support_payment",
         # Engine-computed at the calibration period: the High Income Child
         # Benefit Charge, which the HICBC count reads (microcosm#1426).
         "CB_HITC",
@@ -922,6 +927,12 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "uc_childcare_element",
         "uc_deductions",
         "uc_housing_costs_element",
+        # Engine-computed at the calibration period: B5's UC conditionality
+        # groups (microcosm#1095) read policyengine-uk's work-related
+        # requirement group apart from earnings, a formula of the stored
+        # limited capability flags, carer and child inputs and age; the frame
+        # stores no copy.
+        "uc_work_related_group_apart_from_earnings",
         "universal_credit",
         # The annual income measures: the frame stores none of them, and the
         # resolver computes each on its annual simulation at the calibration

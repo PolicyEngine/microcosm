@@ -456,8 +456,9 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
         if reference.family == "dwp_universal_credit"
     ]
     # microcosm#1095: less the five-or-more-children count, a diagnostic; plus
-    # Y4's three people-by-age rows (8 Nov 2026), held out of the solve.
-    assert len(monthly) == 120
+    # Y4's three people-by-age rows (8 Nov 2026) and B5's four rows by
+    # conditionality group (PR3, 12 Nov 2026), held out of the solve.
+    assert len(monthly) == 124
     calendar_2025 = [f"2025-{month:02}" for month in range(1, 13)]
     new_paid = {
         "dwp.uc.households",
@@ -491,11 +492,17 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
         ],
     }
     # Y4: DWP's people on UC by single year of age, every regime, on the four
-    # quarterly points of 2025, one operand per single year.
+    # quarterly points of 2025, one operand per single year. B5 splits the two
+    # age groups by conditionality regime: one operand per single year and
+    # regime, with DWP's "Unknown or missing regime" from age 18.
     people_by_age = {
         "dwp.uc.people_aged_16_to_24": 9,
         "dwp.uc.people_aged_16_to_21": 6,
         "dwp.uc.people_aged_22_to_24": 3,
+        "dwp.uc.people_aged_16_to_21_no_work_requirements": 6,
+        "dwp.uc.people_aged_16_to_21_other_regimes": 34,
+        "dwp.uc.people_aged_22_to_24_no_work_requirements": 3,
+        "dwp.uc.people_aged_22_to_24_other_regimes": 18,
     }
     for reference in monthly:
         if reference.name in people_by_age:
@@ -615,14 +622,29 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
         assert reference.period_match_policy == "source_window"
         assert json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS]) == esa_quarters
     # P3 of the November event-data plan: DWP's PIP cases on the cube's four
-    # quarter-end points inside calendar 2025. The award split binds (P2); the
-    # other rows are held out of the solve.
+    # quarter-end points inside calendar 2025. The award split binds (P2), and
+    # since PR3 so do England's five broad age bands (B2); the other rows are
+    # held out of the solve.
     pip_months = ["2025-01", "2025-04", "2025-07", "2025-10"]
     pip_cases = [reference for reference in references if reference.family == "dwp_pip"]
-    assert len(pip_cases) == 94
+    assert len(pip_cases) == 99
+    # B2's broad bands sum the thirteen fine bands' quarterly points, one
+    # operand per fine band.
+    pip_broad_bands = {
+        "dwp.pip.cases_england_aged_16_to_24": 2,
+        "dwp.pip.cases_england_aged_25_to_34": 2,
+        "dwp.pip.cases_england_aged_35_to_49": 3,
+        "dwp.pip.cases_england_aged_50_to_64": 3,
+        "dwp.pip.cases_england_aged_65_and_over": 3,
+    }
+    assert set(pip_broad_bands) <= {reference.name for reference in pip_cases}
     for reference in pip_cases:
         assert reference.ledger_selector["period_value"] == pip_months
-        assert reference.value_operation == "monthly_window_average"
+        if reference.name in pip_broad_bands:
+            assert reference.value_operation == "monthly_window_sum_average"
+            assert len(reference.value_operands) == pip_broad_bands[reference.name]
+        else:
+            assert reference.value_operation == "monthly_window_average"
         assert reference.period_match_policy == "source_window"
         assert json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS]) == pip_months
     assert not any(

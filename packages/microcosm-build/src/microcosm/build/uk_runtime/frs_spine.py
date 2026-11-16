@@ -29,11 +29,21 @@ from microcosm.build.uk_runtime.pension_coherence import (
     cap_net_pay_contributions,
     coherence_receipt,
 )
+from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
+    rounded_count,
+    support_band,
+)
 from microcosm.build.uk_runtime.uc_relationships import frs_uc_claimant_mask
 from microcosm.frame import Frame, WeightKind
 
 __all__ = [
+    "FRS_CARE_HELPER_BIT",
+    "FRS_CARE_LINE_HOURS",
+    "FRS_CARE_RECIPIENTS_COLUMN",
     "FRS_SPINE_TABLES",
+    "FRS_UC_CARER_ELEMENT_COLUMN",
     "OUTPUT_COLUMNS",
     "REGION_MAP",
     "TIME_PERIOD",
@@ -41,8 +51,11 @@ __all__ = [
     "WEEKS_IN_YEAR",
     "UKFRSSpineStageTransform",
     "artifact_by_table",
+    "benefits_by_recipient",
     "build_uk_frs_spine_frame",
+    "frs_care_recipients",
     "frs_claimant_or_partner",
+    "frs_lcwra_proxy",
     "map_codes",
     "normalize_ids",
     "number",
@@ -59,6 +72,7 @@ FRS_SPINE_TABLES = (
     "adult",
     "benefits",
     "benunit",
+    "care",
     "child",
     "chldcare",
     "extchild",
@@ -176,6 +190,110 @@ BENEFIT_CODES = {
     "pip_dl": (96, 117),
 }
 
+#: The disability benefits that move to the household member they are received
+#: for (A3a of the November event-data plan's PR3, microcosm#1095). The FRS
+#: records a benefit received for someone else on the receiving adult's
+#: BENEFITS row, with WHOREC1 to WHOREC5 naming the person it is for: 1 to 14 a
+#: household member's person number, 97 someone outside the household, negative
+#: values missing (FRS 2024-25 BENEFITS dictionary, UKDS SN 9563). Every Child
+#: Disability Payment row sits on an adult's row and names the child, while DLA
+#: for children sits on the child's own row, so without the move a Scottish
+#: child's payment counted as a parent's.
+BENEFIT_RECIPIENT_FAMILIES = (
+    "attendance_allowance",
+    "dla_sc",
+    "dla_m",
+    "pip_dl",
+    "pip_m",
+)
+BENEFIT_RECIPIENT_CODES = tuple(
+    sorted(code for name in BENEFIT_RECIPIENT_FAMILIES for code in BENEFIT_CODES[name])
+)
+BENEFIT_RECIPIENT_COLUMNS = tuple(f"whorec{number}" for number in range(1, 6))
+#: FRS person numbers within a household, and WHOREC's code for someone outside.
+FRS_PERSON_NUMBER_RANGE = (1, 14)
+FRS_NOT_A_HOUSEHOLD_MEMBER = 97
+BENEFIT_RECIPIENT_RULE = (
+    "a disability benefit row (Attendance Allowance, DLA and Child Disability "
+    "Payment, PIP and Adult Disability Payment) moves to the household members "
+    "its WHOREC1 to WHOREC5 name where they name anyone other than the row's "
+    "own person; a row naming two or more splits its amount evenly between "
+    "them (María's ruling of 2026-11-10); a row naming nobody, only its own "
+    "person, someone outside the household (97) or a person number the "
+    "household doesn't hold stays where it is; other benefits never move"
+)
+
+
+def benefits_by_recipient(
+    benefits: pd.DataFrame, person_ids: Collection[int]
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """The BENEFITS rows with each disability benefit on the person it is for.
+
+    ``benefits`` is the normalized table (``household_id`` and ``person_id``
+    built as :func:`normalize_ids` builds them); ``person_ids`` are the frame's
+    people. :data:`BENEFIT_RECIPIENT_RULE` says which rows move. The evidence
+    counts the rows that moved in the receipts' rounded counts and support
+    bands, never exactly.
+    """
+
+    frame = benefits.reset_index(drop=True)
+    columns = [column for column in BENEFIT_RECIPIENT_COLUMNS if column in frame]
+    code = _number(frame, "benefit").astype("int64").to_numpy()
+    candidates = np.flatnonzero(np.isin(code, BENEFIT_RECIPIENT_CODES))
+    moved: list[int] = []
+    split: list[int] = []
+    naming_outside = 0
+    naming_unheld = 0
+    pieces: list[pd.DataFrame] = []
+    if columns and len(candidates):
+        held = {int(person_id) for person_id in person_ids}
+        named = (
+            frame.loc[candidates, columns]
+            .apply(pd.to_numeric, errors="coerce")
+            .to_numpy(dtype=float)
+        )
+        household = _number(frame, "household_id").astype("int64").to_numpy()
+        own = _number(frame, "person_id").astype("int64").to_numpy()
+        amount = _number(frame, "benamt").to_numpy()
+        low, high = FRS_PERSON_NUMBER_RANGE
+        for position, row in enumerate(candidates):
+            numbers = named[position][np.isfinite(named[position])]
+            naming_outside += int((numbers == FRS_NOT_A_HOUSEHOLD_MEMBER).any())
+            members = numbers[(numbers >= low) & (numbers <= high)].astype(np.int64)
+            ids = list(dict.fromkeys((household[row] * 1000 + members).tolist()))
+            recipients = [person_id for person_id in ids if person_id in held]
+            naming_unheld += int(len(recipients) < len(ids))
+            if not recipients or recipients == [int(own[row])]:
+                continue
+            piece = frame.loc[[row] * len(recipients)].copy()
+            piece["person_id"] = np.asarray(recipients, dtype=np.int64)
+            piece["benamt"] = amount[row] / len(recipients)
+            pieces.append(piece)
+            (moved if len(recipients) == 1 else split).append(int(row))
+    changed = sorted(moved + split)
+    result = frame
+    if pieces:
+        result = pd.concat([frame.drop(index=changed), *pieces], ignore_index=True)
+    households = (
+        _number(frame, "household_id").to_numpy()[changed] if changed else np.array([])
+    )
+    evidence: dict[str, object] = {
+        "rule": BENEFIT_RECIPIENT_RULE,
+        "codes": list(BENEFIT_RECIPIENT_CODES),
+        # Record counts are rounded, never exact (UKDS CD137 cl. 8).
+        "rows_moved": rounded_count(len(moved)),
+        "rows_split": rounded_count(len(split)),
+        "households": support_band(len(set(households.tolist()))),
+        "by_code": {
+            str(benefit): rounded_count(int((code[changed] == benefit).sum()))
+            for benefit in BENEFIT_RECIPIENT_CODES
+        },
+        "rows_naming_someone_outside": rounded_count(naming_outside),
+        "rows_naming_a_person_number_not_held": rounded_count(naming_unheld),
+    }
+    return result, evidence
+
+
 # FRS adult HOURTOT: total hours of care provided per week, a banded derived
 # variable (FRS derived-variable specification). Each code maps to the lower
 # edge of its band in weekly hours; the engine's care_hours input is weekly
@@ -206,6 +324,38 @@ FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMNS = ("hourab", "hourah", "hourcb", "hourch")
 #: disabled household member (microcosm#1418). It is no engine input and
 #: leaves at the release boundary.
 FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN = "frs_care_hours_in_household"
+#: The FRS care tab holds one row per household and person helped. NEEDPER is
+#: the person helped: 1 to 14 a household member's person number, 15 to 22
+#: someone outside the household (a parent, another parent, a child, a spouse,
+#: another relative, a friend or neighbour, a voluntary organisation's client,
+#: or another). WHOLOO01 to WHOLOO14 (1 yes) mark which household members help
+#: them, and HOUR01 to HOUR14 give each helper's weekly band, coded as HOURTOT
+#: is (FRS 2024-25 CARE dictionary, UKDS SN 9563).
+FRS_CARE_HELPER_NUMBERS = tuple(range(1, 15))
+FRS_CARE_OUTSIDE_NEEDPER = tuple(range(15, 23))
+#: Each person's care recipients at Carer's Allowance's line as a bitmask: bit
+#: n for household member n whom the person gives at least
+#: FRS_CARE_LINE_HOURS a week, bit FRS_CARE_OUTSIDE_BIT for anyone outside the
+#: household given that, and bit FRS_CARE_HELPER_BIT for every person the care
+#: tab lists as helping someone; 0 for a person who helps nobody in the care
+#: tab. The line is per person cared for: the Social Security (Invalid Care
+#: Allowance) Regulations 1976 reg. 4(1) need 35 hours a week caring for that
+#: severely disabled person, and reg. 4(1A) counts care for two or more people
+#: only where one of them gets 35 hours, considered without reference to any
+#: other (Vahid's review of microcosm#1583, Should 1; María's decision of
+#: 2026-11-12). UC Regs 2013 reg. 30(1)(a) reads the same conditions into the
+#: carer element, and SSI 2023/302 reg. 5(2) into Carer Support Payment.
+#: frs_disability reads it to write cares_for_severely_disabled_person (A3 of
+#: the November event-data plan's PR3, microcosm#1095). It is no engine input
+#: and leaves at the release.
+FRS_CARE_RECIPIENTS_COLUMN = "frs_care_recipients"
+FRS_CARE_HELPER_BIT = 0
+FRS_CARE_OUTSIDE_BIT = 15
+#: Carer's Allowance's 35 hours a week, the lower edge of HOURTOT's code 5
+#: (35-49 hours): the bands that reach it are codes 5, 6, 7 and 10, so the
+#: line is exact at the care tab's bands. frs_disability refuses an engine
+#: minimum other than this one, which would need the bands read again.
+FRS_CARE_LINE_HOURS = 35.0
 #: DWP's limited capability for work status on a benefit unit's linked
 #: Universal Credit claim: BENEFITS.UCLCW on the UC row, "Limited Capability
 #: for Work Status (Admin UC)", coded 0 None, 1 LCFW Group and 2 LCFWRA Group
@@ -218,6 +368,48 @@ FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN = "frs_care_hours_in_household"
 FRS_UC_LCW_STATUS_COLUMN = "frs_uc_lcw_status"
 FRS_UC_LCW_STATUS_CODES = {0: "NONE", 1: "LCW", 2: "LCWRA"}
 FRS_UC_LCW_NOT_LINKED = "NOT_LINKED"
+#: DWP's carer element on a benefit unit's linked Universal Credit claim:
+#: BENEFITS.UCCAREEL on the UC row, "Weekly Carer Element Amount (Admin UC)"
+#: in SN 9563's UKDA data dictionary, which gives it no value labels. The
+#: 2024-25 end user licence file codes it 0 or 1 on every linked claim, read
+#: here as whether the claim's award holds a carer element (NONE or CARER)
+#: on a claim with a linked record, UCSTART present; any other claim is
+#: NOT_LINKED, whatever the column holds.
+#: Like the limited capability status it is the claim's, on the UC row's
+#: person, every other person carrying NOT_LINKED. frs_disability reads it
+#: only to check the carer link against DWP's record (A3 (f) of the November
+#: event-data plan's PR3, microcosm#1095, María's choices of 2026-11-10); it
+#: is no engine input and leaves at the release boundary.
+FRS_UC_CARER_ELEMENT_COLUMN = "frs_uc_carer_element"
+FRS_UC_CARER_ELEMENT_CODES = {0: "NONE", 1: "CARER"}
+#: B3 of the November event-data plan's PR3 (microcosm#1095; María's ruling of
+#: 2026-11-11): DWP pays the Universal Credit carer element only for caring at
+#: least 35 hours a week for a severely disabled person, so a linked claim whose
+#: award DWP records with the element has a carer in its benefit unit whatever
+#: the survey's care answers say. Where no claimant or partner of that unit
+#: reports 35 or more care hours or Carer's Allowance, the claimant or partner
+#: who reports more care hours takes the lower edge of the first band at that
+#: line (HOURTOT code 5, 35-49 hours), the UC row's person on a tie (Vahid's
+#: review of microcosm#1583, Should 2; María's decision of 2026-11-12). On a
+#: claim DWP also records with the LCWRA element, a carer with LCWRA gets only
+#: that element (UC Regs 2013 reg. 29(4)), so DWP's record says the carer isn't
+#: the claimant who holds it: a claimant or partner whom Y1's proxy
+#: (is_disabled_for_benefits, which uc_limited_capability keeps on such a claim)
+#: flags is passed over while another isn't. frs_disability then holds the
+#: unit's carers at the line caring for a severely disabled person. Claims with
+#: no linked record keep the survey's answers.
+FRS_DWP_CARER_CARE_HOURS = 35.0
+FRS_DWP_CARER_RULE = (
+    "on a linked Universal Credit claim whose award DWP records with a carer "
+    "element (frs_uc_carer_element CARER), where no claimant or partner of the "
+    "benefit unit reports 35 or more care hours (HOURTOT) or Carer's Allowance, "
+    "the claimant or partner who reports more care hours takes 35 care hours, "
+    "the lower edge of HOURTOT's first band at the line, the UC row's person on "
+    "a tie; on a claim DWP records with LCWRA (frs_uc_lcw_status), one whom the "
+    "LCWRA proxy (is_disabled_for_benefits: any reported disability benefit or "
+    "ESA) flags is passed over while another isn't; other claims and people "
+    "keep the survey's answers"
+)
 
 # FRS adult RENTPROF (question RentProf): whether the rent from other property
 # in ROYYR1 is a profit (1) or a loss (2). ROYYR1 itself is always positive.
@@ -271,6 +463,7 @@ OUTPUT_COLUMNS = (
     "hours_worked",
     "care_hours",
     FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN,
+    FRS_CARE_RECIPIENTS_COLUMN,
     "is_household_head",
     "is_benunit_head",
     "is_parent",
@@ -280,6 +473,7 @@ OUTPUT_COLUMNS = (
     "is_hbai_dependent_child",
     "uc_is_in_startup_period",
     FRS_UC_LCW_STATUS_COLUMN,
+    FRS_UC_CARER_ELEMENT_COLUMN,
     "uc_is_in_gainful_self_employment",
     "rent_paid_as_boarder",
     "rent_paid_as_lodger",
@@ -387,6 +581,9 @@ class UKFRSSpineStageTransform:
         self._sentinel_mapped_rows: int | None = None
         self._access_fund: dict[str, object] | None = None
         self._net_pay: dict[str, object] | None = None
+        self._benefit_recipients: dict[str, object] | None = None
+        self._care_recipients: dict[str, object] | None = None
+        self._dwp_carer_hours: dict[str, object] | None = None
 
     def __call__(self, frame: Frame) -> Frame:
         evidence: dict[str, object] = {}
@@ -397,6 +594,9 @@ class UKFRSSpineStageTransform:
         self._sentinel_mapped_rows = int((capital == UC_CAPITAL_UNAVAILABLE).sum())
         self._access_fund = dict(evidence["access_fund"])
         self._net_pay = dict(evidence["net_pay_contributions"])
+        self._benefit_recipients = dict(evidence["benefit_recipients"])
+        self._care_recipients = dict(evidence["care_recipients"])
+        self._dwp_carer_hours = dict(evidence["dwp_carer_hours"])
         return result
 
     @staticmethod
@@ -411,6 +611,9 @@ class UKFRSSpineStageTransform:
             self._sentinel_mapped_rows is None
             or self._access_fund is None
             or self._net_pay is None
+            or self._benefit_recipients is None
+            or self._care_recipients is None
+            or self._dwp_carer_hours is None
         ):
             raise RuntimeError("checkpoint metadata requires a completed stage run.")
         return {
@@ -422,6 +625,9 @@ class UKFRSSpineStageTransform:
                 },
                 "access_fund": dict(self._access_fund),
                 "net_pay_contributions": dict(self._net_pay),
+                "benefit_recipients": dict(self._benefit_recipients),
+                "care_recipients": dict(self._care_recipients),
+                "dwp_carer_hours": dict(self._dwp_carer_hours),
             }
         }
 
@@ -626,6 +832,10 @@ def _assemble_frame(
     pe_person["hours_worked"] = _positive(person, "tothours") * WEEKS_IN_YEAR
     pe_person["care_hours"] = frs_care_hours(person)
     pe_person[FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN] = frs_in_household_care_hours(person)
+    care_recipients, care_evidence = frs_care_recipients(frs["care"], person)
+    pe_person[FRS_CARE_RECIPIENTS_COLUMN] = care_recipients.to_numpy(dtype=np.int64)
+    if evidence is not None:
+        evidence["care_recipients"] = care_evidence
     pe_person["is_household_head"] = _number(person, "hrpid") == 1
     pe_person["is_benunit_head"] = _number(person, "uperson") == 1
     dependent_children = _dependent_children(benunit_raw, frs["child"])
@@ -667,7 +877,12 @@ def _assemble_frame(
     for column in FRS_COMPANY_CAR_CARRIER_COLUMNS:
         pe_person[column] = company_cars[column].to_numpy()
     _add_person_income(pe_person, person, household, frs["oddjob"], evidence=evidence)
-    _add_benefits(pe_person, person, frs["benefits"])
+    recipient_benefits, recipient_evidence = benefits_by_recipient(
+        frs["benefits"], person["person_id"]
+    )
+    if evidence is not None:
+        evidence["benefit_recipients"] = recipient_evidence
+    _add_benefits(pe_person, person, recipient_benefits)
     # The engine pays Carer's Allowance on hours or receipt; a dataset keeps it
     # on reported receipt so that care_hours qualifies carers for the UC carer
     # element without paying the allowance to every carer (#882).
@@ -740,6 +955,16 @@ def _assemble_frame(
         benefits=frs["benefits"],
     )
     pe_person[FRS_UC_LCW_STATUS_COLUMN] = frs_uc_lcw_status(frs["benefits"], pe_person)
+    pe_person[FRS_UC_CARER_ELEMENT_COLUMN] = frs_uc_carer_element(
+        frs["benefits"], pe_person
+    )
+    # Every column the LCWRA proxy reads is here after _add_benefits: strict,
+    # so a renamed one is refused rather than read as no benefit.
+    pe_person["care_hours"], dwp_carer_evidence = frs_dwp_carer_care_hours(
+        pe_person, strict=True
+    )
+    if evidence is not None:
+        evidence["dwp_carer_hours"] = dwp_carer_evidence
     pe_person["uc_is_in_gainful_self_employment"] = uc_gainful_self_employment(
         _number(person, "empstati").isin(FRS_SELF_EMPLOYED_EMPSTATI).to_numpy(),
         pe_person["self_employment_income"],
@@ -1774,6 +1999,134 @@ def frs_in_household_care_hours(person: pd.DataFrame) -> pd.Series:
     return pd.concat(bands, axis=1).max(axis=1).astype("float64")
 
 
+def frs_care_recipients(
+    care: pd.DataFrame, person: pd.DataFrame
+) -> tuple[pd.Series, dict[str, object]]:
+    """Each person's care recipients at the line, as :data:`FRS_CARE_RECIPIENTS_COLUMN`.
+
+    ``care`` is the normalized care tab (``household_id`` from SERNUM) and
+    ``person`` the spine's people. A helper's band for each person they help
+    maps to weekly hours as HOURTOT does; the recipients the helper gives at
+    least :data:`FRS_CARE_LINE_HOURS` are theirs at the line, and every helper
+    the tab lists carries :data:`FRS_CARE_HELPER_BIT`. A household member
+    helping themself, which the tab shouldn't hold, is left out. The evidence
+    counts carers by where their recipients at the line live, and the carers
+    the tab lists who give nobody the line, in the receipts' rounded counts
+    and support bands, never exactly.
+    """
+
+    people = person["person_id"].astype("int64")
+    result = pd.Series(np.zeros(len(person), dtype=np.int64), index=person.index)
+    links: list[pd.DataFrame] = []
+    if not care.empty and "needper" in care.columns:
+        household = _number(care, "household_id").astype("int64")
+        needper = _number(care, "needper").astype("int64")
+        for number in FRS_CARE_HELPER_NUMBERS:
+            helps = (_number(care, f"wholoo{number:02d}") == 1) & (needper != number)
+            if not helps.any():
+                continue
+            hours = _frs_care_band_hours(
+                care.loc[helps], f"hour{number:02d}", FRS_CARE_RECIPIENTS_COLUMN
+            )
+            links.append(
+                pd.DataFrame(
+                    {
+                        "person_id": household[helps] * 1000 + number,
+                        "household_id": household[helps],
+                        "needper": needper[helps],
+                        "hours": hours.to_numpy(),
+                    }
+                )
+            )
+    held = set(people.tolist())
+    evidence: dict[str, object] = {
+        "rule": (
+            "a helper's care recipients at the line are the people given at "
+            f"least {FRS_CARE_LINE_HOURS:g} hours a week by their weekly band "
+            "(CARE.HOUR01 to HOUR14, coded as HOURTOT), household members by "
+            "person number and anyone outside the household as one bit; every "
+            "helper the tab lists carries bit "
+            f"{FRS_CARE_HELPER_BIT}"
+        ),
+    }
+    if not links:
+        evidence.update(
+            {
+                "carers": 0,
+                "household_only": 0,
+                "outside_only": 0,
+                "both": 0,
+                "nobody_at_the_line": 0,
+                "helpers_not_held": 0,
+                "recipients_not_held": 0,
+            }
+        )
+        return result, evidence
+    frame = pd.concat(links, ignore_index=True)
+    frame = frame.loc[
+        frame["needper"].isin(FRS_CARE_HELPER_NUMBERS)
+        | frame["needper"].isin(FRS_CARE_OUTSIDE_NEEDPER)
+    ]
+    at_line = frame.loc[frame["hours"] >= FRS_CARE_LINE_HOURS]
+    inside = at_line["needper"].isin(FRS_CARE_HELPER_NUMBERS)
+    at_line = at_line.assign(
+        bit=np.where(inside, at_line["needper"], FRS_CARE_OUTSIDE_BIT)
+    )
+    line_masks = at_line.groupby("person_id")["bit"].agg(
+        lambda column: int(sum(1 << int(bit) for bit in set(column)))
+    )
+    helpers = pd.Index(frame["person_id"].unique())
+    # No recipient bit is the helper bit, so adding the two is their union.
+    masks = (
+        pd.Series(1 << FRS_CARE_HELPER_BIT, index=helpers, dtype="int64")
+        .add(line_masks, fill_value=0)
+        .astype("int64")
+    )
+    result = people.map(masks).fillna(0).astype("int64")
+    result.index = person.index
+    by_carer = frame.groupby("person_id").agg(household_id=("household_id", "first"))
+    line_routes = at_line.groupby("person_id").agg(
+        inside=("needper", lambda column: column.isin(FRS_CARE_HELPER_NUMBERS).any()),
+        outside=(
+            "needper",
+            lambda column: column.isin(FRS_CARE_OUTSIDE_NEEDPER).any(),
+        ),
+    )
+    by_carer = by_carer.join(line_routes).fillna({"inside": False, "outside": False})
+    by_carer = by_carer.astype({"inside": bool, "outside": bool})
+    held_carers = by_carer.loc[by_carer.index.isin(list(held))]
+    recipients = at_line.loc[at_line["needper"].isin(FRS_CARE_HELPER_NUMBERS)]
+    recipient_ids = recipients["household_id"] * 1000 + recipients["needper"]
+    evidence.update(
+        {
+            # Record counts are rounded, never exact (UKDS CD137 cl. 8).
+            "carers": rounded_count(len(held_carers)),
+            "carer_households": support_band(
+                int(held_carers["household_id"].nunique())
+            ),
+            "household_only": rounded_count(
+                int((held_carers["inside"] & ~held_carers["outside"]).sum())
+            ),
+            "outside_only": rounded_count(
+                int((~held_carers["inside"] & held_carers["outside"]).sum())
+            ),
+            "both": rounded_count(
+                int((held_carers["inside"] & held_carers["outside"]).sum())
+            ),
+            "nobody_at_the_line": rounded_count(
+                int((~held_carers["inside"] & ~held_carers["outside"]).sum())
+            ),
+            "helpers_not_held": rounded_count(
+                int((~by_carer.index.isin(list(held))).sum())
+            ),
+            "recipients_not_held": rounded_count(
+                int((~recipient_ids.isin(list(held))).sum())
+            ),
+        }
+    )
+    return result, evidence
+
+
 def _frs_care_band_hours(person: pd.DataFrame, column: str, label: str) -> pd.Series:
     codes = _raw_number(person, column).fillna(0)
     if not np.array_equal(codes.to_numpy(), np.floor(codes.to_numpy())):
@@ -2185,26 +2538,225 @@ def frs_uc_lcw_status(benefits: pd.DataFrame, pe_person: pd.DataFrame) -> np.nda
     refused rather than guessed (microcosm#1095, Y1).
     """
 
-    if "uclcw" not in benefits.columns:
-        raise KeyError(
-            "The UC limited capability carrier needs the FRS column benefits.uclcw."
-        )
+    return _frs_uc_admin_claim_status(
+        benefits,
+        pe_person,
+        column="uclcw",
+        codes=FRS_UC_LCW_STATUS_CODES,
+        carrier="UC limited capability",
+        known="the data dictionary's",
+    )
+
+
+def frs_uc_carer_element(benefits: pd.DataFrame, pe_person: pd.DataFrame) -> np.ndarray:
+    """Each person's carrier of DWP's carer element on a linked UC claim.
+
+    BENEFITS.UCCAREEL (``FRS_UC_CARER_ELEMENT_COLUMN``) comes from DWP's
+    administrative record of the claim, on the claim's single UC row, coded 0
+    or 1, and is read only where the claim has a linked record (UCSTART,
+    kept as ``ucstart_raw``, present). The UC row's person carries NONE or
+    CARER, or NOT_LINKED for a claim without one, and every other person
+    NOT_LINKED. A second UC row on one benefit unit, another code on a linked
+    claim, or a UC row whose person isn't on the spine is refused rather than
+    guessed (microcosm#1095, A3 (f)).
+    """
+
+    return _frs_uc_admin_claim_status(
+        benefits,
+        pe_person,
+        column="uccareel",
+        codes=FRS_UC_CARER_ELEMENT_CODES,
+        carrier="UC carer element",
+        known="the 0 and 1 the carrier reads",
+        linked_by_start=True,
+    )
+
+
+def frs_dwp_carer_care_hours(
+    pe_person: pd.DataFrame, *, strict: bool = False
+) -> tuple[np.ndarray, dict[str, object]]:
+    """``care_hours`` with DWP's UC carer element applied (:data:`FRS_DWP_CARER_RULE`).
+
+    ``pe_person`` carries ``care_hours``, ``carers_allowance_reported``,
+    ``is_claimant_or_partner``, the person's benefit unit and household,
+    :data:`FRS_UC_CARER_ELEMENT_COLUMN`, :data:`FRS_UC_LCW_STATUS_COLUMN` and
+    the reported benefits the LCWRA proxy reads (:func:`frs_lcwra_proxy`,
+    which ``strict`` makes refuse a missing one). The
+    evidence gives the claims and the people raised in rounded counts and
+    support bands, withheld where one or two households carry them, split by
+    whether the survey recorded no care or care below the line, with the
+    raises that went to the partner of the UC row's person and the LCWRA
+    claims where the proxy moved the raise or flags every claimant.
+    """
+
+    hours = pe_person["care_hours"].to_numpy(dtype=np.float64).copy()
+    benunits = pe_person["person_benunit_id"].to_numpy()
+    households = pe_person["person_household_id"].to_numpy()
+    adult = pe_person["is_claimant_or_partner"].to_numpy(dtype=bool)
+    reported = (
+        pd.to_numeric(pe_person["carers_allowance_reported"], errors="coerce")
+        .fillna(0.0)
+        .to_numpy()
+        > 0
+    )
+    carer_row = pe_person[FRS_UC_CARER_ELEMENT_COLUMN].astype(str).to_numpy() == "CARER"
+    lcwra_claim = carer_row & (
+        pe_person[FRS_UC_LCW_STATUS_COLUMN].astype(str).to_numpy() == "LCWRA"
+    )
+    proxy = frs_lcwra_proxy(pe_person, strict=strict)
+    at_line = adult & ((hours >= FRS_DWP_CARER_CARE_HOURS) | reported)
+    covered = np.isin(benunits, benunits[at_line])
+    claimants: dict[object, list[int]] = {}
+    for row in np.flatnonzero(adult):
+        claimants.setdefault(benunits[row], []).append(int(row))
+
+    def more_care(rows: list[int], uc_row: int) -> int:
+        # The one who reports more care hours; the UC row's person, then the
+        # first in row order, on a tie.
+        return max(rows, key=lambda row: (hours[row], row == uc_row))
+
+    raised = np.zeros(len(hours), dtype=bool)
+    proxy_moved = np.zeros(len(hours), dtype=bool)
+    proxy_flags_every_claimant = np.zeros(len(hours), dtype=bool)
+    for uc_row in np.flatnonzero(carer_row & ~covered):
+        uc_row = int(uc_row)
+        rows = claimants.get(benunits[uc_row]) or [uc_row]
+        chosen = more_care(rows, uc_row)
+        if lcwra_claim[uc_row]:
+            unflagged = [row for row in rows if not proxy[row]]
+            if not unflagged:
+                proxy_flags_every_claimant[uc_row] = True
+            elif proxy[chosen]:
+                chosen = more_care(unflagged, uc_row)
+                proxy_moved[uc_row] = True
+        raised[chosen] = True
+    before = hours[raised]
+    hours[raised] = FRS_DWP_CARER_CARE_HOURS
+
+    def counted(selected: np.ndarray) -> object:
+        held = len(set(households[selected].tolist()))
+        if 0 < held < UK_DISCLOSURE_FLOOR:
+            return UK_WITHHELD
+        return rounded_count(int(selected.sum()))
+
+    def cell(selected: np.ndarray) -> dict[str, object]:
+        return {
+            "people": counted(selected),
+            "support": support_band(len(set(households[selected].tolist()))),
+        }
+
+    no_care = np.zeros(len(hours), dtype=bool)
+    below = np.zeros(len(hours), dtype=bool)
+    no_care[np.flatnonzero(raised)[before == 0]] = True
+    below[np.flatnonzero(raised)[before > 0]] = True
+    evidence: dict[str, object] = {
+        "carrier": FRS_UC_CARER_ELEMENT_COLUMN,
+        "hours": FRS_DWP_CARER_CARE_HOURS,
+        "rule": FRS_DWP_CARER_RULE,
+        "carer_element_claims": cell(carer_row),
+        "raised": cell(raised),
+        "raised_from_no_care": cell(no_care),
+        "raised_from_below_the_line": cell(below),
+        "raised_the_partner_of_the_uc_rows_person": cell(raised & ~carer_row),
+        "lcwra_claims": cell(lcwra_claim & ~covered),
+        "lcwra_claims_the_proxy_moved": cell(proxy_moved),
+        "lcwra_claims_the_proxy_flags_every_claimant": cell(proxy_flags_every_claimant),
+    }
+    return hours, evidence
+
+
+def frs_lcwra_proxy(pe_person: pd.DataFrame, *, strict: bool = False) -> np.ndarray:
+    """policyengine-uk's ``uc_limited_capability_for_WRA`` proxy, on the spine's stored inputs.
+
+    The engine's formula: ``is_disabled_for_benefits``, which frs_disability
+    sets from any reported disability benefit or ESA, unless the person's own
+    ESA award lacks the support component (``esa_includes_support_component``
+    false; it is false only for a person with such an award). Y1
+    (uc_limited_capability) keeps this proxy for the claimants it flags on a
+    claim DWP records with LCWRA.
+
+    A reported column the frame lacks counts as no benefit, and a missing
+    ``esa_includes_support_component`` as an award with it, which suits a test's
+    partial frame. With ``strict`` (the spine's call, which has every column
+    once ``_add_benefits`` has run) a missing column is refused instead, as the
+    build refuses a missing VAR3, so a renamed column cannot quietly stop the
+    proxy's skip (microcosm#1583's review).
+    """
+
+    # frs_disability imports this module, so its columns are read here.
+    from microcosm.build.uk_runtime.frs_disability import (
+        UK_DISABILITY_FLAG_REPORTED_COLUMNS,
+    )
+
+    if strict:
+        missing = [
+            column
+            for column in (
+                *UK_DISABILITY_FLAG_REPORTED_COLUMNS,
+                "esa_includes_support_component",
+            )
+            if column not in pe_person
+        ]
+        if missing:
+            raise ValueError(
+                f"The LCWRA proxy needs the reported benefit columns {missing}, "
+                "which the spine's person table does not carry."
+            )
+    total = np.zeros(len(pe_person), dtype=np.float64)
+    for column in UK_DISABILITY_FLAG_REPORTED_COLUMNS:
+        if column in pe_person:
+            total += (
+                pd.to_numeric(pe_person[column], errors="coerce").fillna(0.0).to_numpy()
+            )
+    support = (
+        pe_person["esa_includes_support_component"].to_numpy(dtype=bool)
+        if "esa_includes_support_component" in pe_person
+        else np.ones(len(pe_person), dtype=bool)
+    )
+    return (total > 0) & support
+
+
+def _frs_uc_admin_claim_status(
+    benefits: pd.DataFrame,
+    pe_person: pd.DataFrame,
+    *,
+    column: str,
+    codes: Mapping[int, str],
+    carrier: str,
+    known: str,
+    linked_by_start: bool = False,
+) -> np.ndarray:
+    """One admin UC column of the claim's single UC row, as a person carrier.
+
+    With ``linked_by_start`` the column is read only on a claim whose UCSTART
+    (``ucstart_raw``) is present, the linked claims, and every other claim is
+    NOT_LINKED.
+    """
+
+    if column not in benefits.columns:
+        raise KeyError(f"The {carrier} carrier needs the FRS column benefits.{column}.")
+    if linked_by_start and "ucstart_raw" not in benefits.columns:
+        raise KeyError(f"The {carrier} carrier needs the FRS column benefits.ucstart.")
     uc_rows = benefits.loc[
         _number(benefits, "benefit").isin(BENEFIT_CODES["universal_credit"])
     ]
     if uc_rows["benunit_id"].duplicated().any():
         raise ValueError(
-            "A benefit unit has two FRS UC rows; UCLCW is read as one claim's status."
+            f"A benefit unit has two FRS UC rows; {column.upper()} is read as "
+            "one claim's status."
         )
-    codes = _raw_number(uc_rows, "uclcw")
-    unknown = codes.notna() & ~codes.isin(list(FRS_UC_LCW_STATUS_CODES))
+    values = _raw_number(uc_rows, column)
+    if linked_by_start:
+        start = pd.Series(uc_rows["ucstart_raw"], dtype="string").str.strip()
+        values = values.where((start.notna() & (start != "")).to_numpy())
+    unknown = values.notna() & ~values.isin(list(codes))
     if unknown.any():
         raise ValueError(
-            f"FRS UCLCW codes outside the data dictionary's: "
-            f"{sorted(codes[unknown].unique().tolist())}."
+            f"FRS {column.upper()} codes outside {known}: "
+            f"{sorted(values[unknown].unique().tolist())}."
         )
     status = pd.Series(
-        codes.map(FRS_UC_LCW_STATUS_CODES).fillna(FRS_UC_LCW_NOT_LINKED).to_numpy(),
+        values.map(codes).fillna(FRS_UC_LCW_NOT_LINKED).to_numpy(),
         index=uc_rows["person_id"].to_numpy(),
     )
     person_ids = pe_person["person_id"].to_numpy()

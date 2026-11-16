@@ -677,11 +677,12 @@ _BRIDGE_AND_REGION = {
 
 
 def _nz_composition_spec_and_config():
-    """Supply compiler-only toy engine pins and CREATE's inventory.
+    """Supply synthetic engine refs and CREATE's inventory.
 
-    The packaged graph declares every money producer, so the compiler checks
-    the complete packaged node and population structure with no synthetic
-    node. The toy pins certify no runtime result. CREATE's inventory holds
+    The packaged graph declares every money producer, and the packaged
+    bindings carry the engine pins, so the compiler checks the complete
+    packaged node and population structure with no synthetic node or pin. The
+    synthetic engine refs certify no runtime result. CREATE's inventory holds
     canonical concepts and unit outputs only: no bridge or region column
     enters as a root.
     """
@@ -689,9 +690,7 @@ def _nz_composition_spec_and_config():
 
     spec = _spec()
     resources = spec["resources"]
-    resources["axiom_rules_bindings"]["engine"].update(
-        commit="1" * 40, wheel_sha256="2" * 64
-    )
+    compose.validate_transport_activation(spec)
 
     rows = _instantiated_nz_rows(spec)
     produced = {
@@ -1630,10 +1629,13 @@ def test_the_income_evidence_readers_name_the_measurement_but_dont_declare_it():
 
     measurement_proofs counts every node upstream of a calibration that
     declares the measurement's id and needs exactly one. The three readers
-    name the stand-in's id under ``measurement``, and the register reads
-    the problem's household weights. The readers sit two boundary filters
-    after the reweight, and only stand-ins write the three proxy columns, so
-    nz.terminal holds what nz.income.standin wrote at nz.central.
+    name the stand-in's id under ``measurement``, selected from
+    income_measurements' own ``measurement_id``. The stand-in keeps the literal
+    that R2C-1's proof reads, and the composed readers resolve to it. The
+    register reads the problem's household weights and checks the frame's
+    against the fit's solution. The readers sit two boundary filters after the
+    reweight, and only stand-ins write the three proxy columns, so nz.terminal
+    holds what nz.income.standin wrote at nz.central.
     """
     spec = _spec()
     rows = spec["resources"]["transport_graph"]["nodes"]
@@ -1643,13 +1645,21 @@ def test_the_income_evidence_readers_name_the_measurement_but_dont_declare_it():
     ]
     assert declarers == ["nz.income.standin"]
     by_id = {row["id"]: row for row in rows}
+    assert by_id["nz.income.standin"]["params"]["measurement_id"] == _MEASUREMENT
+    selection = {
+        "resource": "income_measurements",
+        "path": ["measurement_id"],
+        "encoding": "value",
+    }
+    _, _, graph, _ = _nz_composed()
     for producer, _ in _INCOME_EVIDENCE.values():
-        assert by_id[producer]["params"]["measurement"] == _MEASUREMENT, producer
+        assert by_id[producer]["params"]["measurement"] == selection, producer
+        assert graph.node(producer).params["measurement"] == _MEASUREMENT, producer
     register = by_id["nz.evidence.omission_register"]
     assert register["params"]["weight_entity"] == "household"
     assert [
         (edge["name"], edge["producer"]) for edge in register["artifact_inputs"]
-    ] == [("problem", "nz.targets.problem")]
+    ] == [("problem", "nz.targets.problem"), ("solution", "nz.calibrate")]
     for name, base in (("nz.as", "nz.calibrate"), ("nz.terminal", "nz.as")):
         assert (by_id[name]["kernel"], by_id[name]["base"]) == (
             "transport.boundary@1",
@@ -1901,3 +1911,106 @@ def test_property_vsi_is_the_central_measure_less_its_four_transfers(rows):
         assert central[index] - vsi[index] == sum(transfers)
         for value, status in ((central, central_status), (vsi, vsi_status)):
             assert status[index] == ("included" if value[index] > 0 else "excluded")
+
+
+#: Kernels that parse their reference parameter with
+#: ``target_kernels.parse_reference_document``, which refuses any key outside
+#: ``REFERENCE_DOCUMENT_KEYS``.
+_STRICT_REFERENCE_PARAMS = {
+    "transport.create@1": "mass_reference",
+    "transport.create@2": "mass_reference",
+    "targets.compile@1": "references",
+    "takeup.compare@1": "references",
+    "takeup.gap@1": "references",
+}
+
+
+def _composed_param(spec, value, scenario):
+    return compose._resource_param(
+        spec,
+        value,
+        allow_json_sequences=scenario is not None,
+        profile_selection=None if scenario is None else scenario.get("knobs", {}),
+    )
+
+
+def test_every_strict_reference_parameter_parses_as_its_kernel_parses_it():
+    from microcosm.build.reference_profiles import REFERENCE_DOCUMENT_KEYS
+    from microcosm.build.transport.target_kernels import (
+        TARGET_COMPILATION_KERNELS,
+        parse_reference_document,
+    )
+
+    # A kernel added to TARGET_COMPILATION_KERNELS must join the table above,
+    # or this test skips it.
+    assert set(_STRICT_REFERENCE_PARAMS) == TARGET_COMPILATION_KERNELS
+
+    # NZ's mass, precal and holdout files carry description and reference_set
+    # (and the last two target_profile and allowed_value_operations); the
+    # composer drops them before a node receives the document.
+    spec = _pristine_spec()
+    checked = []
+    lenient = []
+    trimmed_lenient = []
+    for row, scenario in compose._instantiated_rows(spec):
+        if row.get("kernel") == "calibration.prepare@1":
+            # This kernel reads target_references (and, with a
+            # reference_resolution receipt, hashes the whole document to
+            # check it); it receives the same trimmed form as the strict
+            # kernels.
+            value = row["params"]["references"]
+            document = json.loads(_composed_param(spec, value, scenario))
+            assert set(document) <= REFERENCE_DOCUMENT_KEYS, row["id"]
+            lenient.append(row["id"])
+            raw = compose.transport_resource(
+                spec,
+                value["resource"],
+                profile_selection=(
+                    None if scenario is None else scenario.get("knobs", {})
+                ),
+            )
+            if not value.get("path") and set(raw) - REFERENCE_DOCUMENT_KEYS:
+                trimmed_lenient.append(row["id"])
+        name = _STRICT_REFERENCE_PARAMS.get(row.get("kernel"))
+        if name is None:
+            continue
+        document = json.loads(_composed_param(spec, row["params"][name], scenario))
+        parse_reference_document(document, country="nz")
+        checked.append(row["id"])
+    # At least one such node reads a file the trim changes, so the subset
+    # check above can fail.
+    assert trimmed_lenient, lenient
+    # CREATE, ten targets.compile nodes and thirteen takeup.gap nodes.
+    message = f"update this count when NZ changes a strict reference node: {checked}"
+    assert len(checked) == 24, message
+    # The CREATE probe builds its parameter through _param, the path the
+    # failed build took.
+    create = compose.skeleton_create_declaration(spec)
+    name = _STRICT_REFERENCE_PARAMS[create.kernel]
+    parse_reference_document(json.loads(create.params[name]), country="nz")
+
+
+def test_reference_parameters_keep_the_file_digest_and_the_effective_view():
+    from microcosm.build.reference_profiles import REFERENCE_DOCUMENT_KEYS
+    from microcosm.graph.canonical import canonical_json
+
+    spec = _pristine_spec()
+    hashes = spec["resource_hashes"]
+    for resource in ("mass_references", "precal_references", "holdout_references"):
+        raw = compose.transport_resource(spec, resource)
+        keys = set(raw)
+        assert keys - REFERENCE_DOCUMENT_KEYS, resource
+        whole = {"resource": resource, "path": [], "encoding": "json"}
+        trimmed = {key: raw[key] for key in keys & REFERENCE_DOCUMENT_KEYS}
+        expected = canonical_json(trimmed).decode("utf-8")
+        assert compose._resource_param(spec, whole) == expected
+        digest = {"resource": resource, "path": [], "encoding": "sha256"}
+        assert compose._resource_param(spec, digest) == hashes.get(
+            resource, hashes.get(f"{resource}.json")
+        )
+        # The trim builds a new mapping; the spec's resource keeps every key.
+        assert set(compose.transport_resource(spec, resource)) == keys
+    effective, _, _ = compose.reference_profile_view(spec, None)
+    whole = {"resource": "target_references", "path": [], "encoding": "json"}
+    expected = canonical_json(effective).decode("utf-8")
+    assert compose._resource_param(spec, whole) == expected

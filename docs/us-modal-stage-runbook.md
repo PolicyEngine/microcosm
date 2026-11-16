@@ -40,10 +40,13 @@ in `tools/ci_test_plan.py`'s `engine-contract-us` group. Importing the scorer
 loads the US engine through a sibling tool, so this regression runs in US
 engine CI.
 
-Nothing here uploads to the Hugging Face Hub, touches `latest.json` or
-notifies anyone. The furthest a stage goes is `package`, which writes a
-release directory onto the runs volume. Publication stays the human step in
-`tools/publish_release.sh`.
+Nothing here uploads to the Hugging Face Hub, changes `releases.json` or
+notifies anyone. The furthest a stage goes is `package`, which writes the
+release directory `releases/microcosm-us-2024-local/` onto the runs volume.
+Publication stays a human step: the two `microcosm-publish-release-build`
+commands that the stage's `package_result.json` records, one that publishes
+the build into its folder of the local-area release and one that makes it
+that release's current build.
 
 ## How a run works
 
@@ -97,7 +100,7 @@ release directory onto the runs volume. Publication stays the human step in
    and asserts `HEAD` equals the commit. It then runs
    `uv sync --all-packages --extra us --frozen` against that tree's own
    `uv.lock` into `/opt/venv`, installs the newest `microcosm-emitter`
-   release (0.14.0 or later, the oldest a build starts) on its own with
+   release (0.15.0 or later, the oldest a build starts) on its own with
    `uv tool install` into `/usr/local/bin`, checks that
    `microcosm-emitter version` runs, and asserts `git status --porcelain` is
    empty. Emitter releases from 0.10.0 on send telemetry to the collector's
@@ -115,7 +118,7 @@ release directory onto the runs volume. Publication stays the human step in
    (`/root/minimum_emitter_version.json`), and the copy reads that one: the
    check, which runs there, reports the install step the image was built
    with. The install step and its
-   `>=0.14.0` floor come from the checkout that launches the app
+   `>=0.15.0` floor come from the checkout that launches the app
    (`image_build_commands`, `image_emitter_requirement`), while the minimum
    the build enforces comes from the commit the plan pins, so a launch can
    combine an older checkout's floor with a newer commit's minimum, or the
@@ -364,8 +367,9 @@ release directory onto the runs volume. Publication stays the human step in
      the newest emitter release when Modal builds its install step, and
      Modal reuses that step for a commit while the step's command is the
      same. Since #1455 (merged 2026-11-03), the command asks for at least
-     0.11.9, since #1522 for `microcosm-emitter>=0.13.0`, and since #1556 for
-     `microcosm-emitter>=0.14.0`, so every image this runner builds has an
+     0.11.9, since #1522 for `microcosm-emitter>=0.13.0`, since #1556 for
+     `microcosm-emitter>=0.14.0`, and since #1599 for
+     `microcosm-emitter>=0.15.0`, so every image this runner builds has an
      emitter that reports a collector origin and has `status`. An image whose install step an
      older checkout built (with `>=0.7.0`, possibly before 0.11.0) is not
      reused: the changed command rebuilds that step, for each commit, at its
@@ -542,6 +546,16 @@ if you like, since only materialize reads it. Run steps 3 and 4 again. Run
 one stage of a run at a time, because two concurrent stages would race on the
 same state directory. The attempt ledger enforces this, best effort (see
 "Preemption and restarts").
+
+For `us-acs-local-release`, run package at the commit calibrate ran at.
+Calibrate records the code that wrote the calibrated H5 in
+`consumer_export.json`: it reads the commit when the stage starts, reads it
+again just before it writes the H5, and refuses to write if the commit or
+the tree's dirty state changed in between. The build's ID names the
+packaging code, so package refuses to give a build an ID that names any
+other commit (microcosm#1263). A commit landing between the two stages means
+re-running calibrate, qa and finalize at the new commit, or packaging at the
+old one.
 
 For a gated or private Hub input, set `MICROCOSM_MODAL_HF_SECRET` to the name
 of a Modal secret that holds `HF_TOKEN`, for example `huggingface-token` in
@@ -849,8 +863,9 @@ estimators, district seed 0, `--assign-congressional-districts`) are fixed
 in the registration, not plan options: a different setting is a different
 base, and changing it is a reviewed registry change. The tool's other flags
 (`--base-h5`, the smoke limit, the equivalence harness, the ladder escape
-hatches) are runner-owned, so no plan can pass them. A test refuses a
-registry option for each of the 26 owned flags, and another for every
+hatches, and the household-location flags that would switch the base off the
+certified `legacy` rule) are runner-owned, so no plan can pass them. A test
+refuses a registry option for each of the 29 owned flags, and another for every
 abbreviation of each withheld flag (argparse would read
 `--allow-geography` as `--allow-geography-ladder-gate-failures`) and for a
 flag with `=` in it.
@@ -1454,8 +1469,10 @@ existing network use; the tool runs with `HF_HUB_OFFLINE=1`, without
 credential-name environment values, and consumes the staged files.
 
 The runner owns `--base-h5`, `--donor-release-manifest`, `--source-manifest`,
-`--inputs-dir`, `--puma-ladder`, `--out-h5`, `--summary` and `--sipp-donor`,
-which it never passes. Plans may set
+`--inputs-dir`, `--puma-ladder`, `--out-h5`, `--summary`, `--sipp-donor` and
+the household-location flags (`--location-rule`, `--location-seed`,
+`--location-clones`, `--block-ladder`). It never passes the last five, so a
+staging run keeps the `legacy` location rule. Plans may set
 only the builder's tuning flags: `--acs-share`, `--n-estimators`,
 `--max-targets-per-fit`, `--seed`, `--geography-seed`, `--chunksize`,
 `--donor-channel`, `--hours-under15-policy`, `--max-households` and

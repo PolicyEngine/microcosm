@@ -915,8 +915,16 @@ def benefit_unit_diagnostics(
 
     Employment counts persons excluded by the hours limb who otherwise
     qualify as candidate children. Parent counts partition parents under the
-    child age limit at the declared parent-independence age. Co-parent counts
-    distinct households; reference placements count dependent children.
+    child age limit three ways: not dependent at or above the declared
+    parent-independence age, not dependent below it (for example a partner or
+    a parentless reference person), and dependent; with no declared age, every
+    parent who is not dependent is in the first. Co-parent counts distinct
+    households; reference placements count dependent children. Reference heads
+    count parentless candidate children who head their own unit only because
+    they are their household's reference person. Own-unit placement makes
+    every parentless candidate a head, so it counts none; under the other
+    placements, the strict reference flag refuses those frames before any
+    count.
     """
     rows = _Pointers.read(person, household, rule)
     dependent = (
@@ -931,16 +939,29 @@ def benefit_unit_diagnostics(
     both = dependent & (rows.parent_1 >= 0) & (rows.parent_2 >= 0)
     first, second = rows.parent_1[both], rows.parent_2[both]
     nonpartners = rows.partner[first] != second
+    is_reference = rows.reference == np.arange(len(rows.ids))
+    reference_head = (
+        _candidate_children(rows, rule)
+        & ~_hours_independent(rows, rule)
+        & (rows.parent_1 < 0)
+        & is_reference
+        & ~dependent
+        & (rule.unparented_child is not UnparentedChildPlacement.OWN_UNIT)
+    )
     return {
         "hours_independent_children": int(
             (_candidate_children(rows, rule) & _hours_independent(rows, rule)).sum()
         ),
         "independent_teen_parents": int(independent_parent.sum()),
+        "younger_independent_teen_parents": int(
+            (young_parent & ~dependent & ~independent_parent).sum()
+        ),
         "dependent_teen_parents": int((young_parent & dependent).sum()),
         "non_partnered_coparent_households": int(
             len(np.unique(rows.household_ids[both][nonpartners]))
         ),
         "children_with_reference_person": int((dependent & (rows.parent_1 < 0)).sum()),
+        "parentless_reference_person_heads": int(reference_head.sum()),
     }
 
 

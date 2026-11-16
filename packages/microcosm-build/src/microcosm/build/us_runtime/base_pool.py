@@ -9,6 +9,20 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
+from microcosm.build.us_runtime.block_location import (
+    LOCATION_CANDIDATE_BLOCKS_COLUMN,
+    LOCATION_CLONE_INDEX_COLUMN,
+    LOCATION_SOURCE_GEOGRAPHY_COLUMN,
+    SOURCE_GEOGRAPHY_PUMA,
+    US_LOCATION_RULE_BLOCK_V1,
+    US_LOCATION_RULE_CHOICES,
+    US_LOCATION_RULE_LEGACY,
+    UsLocationLadder,
+    derive_us_block_geography,
+    draw_us_block_locations,
+    location_geography_columns,
+    us_block_location_manifest,
+)
 from microcosm.build.us_runtime.county_vintage import (
     COUNTY_FIPS_2023_COLUMN,
     county_fips_2023_from_tracts,
@@ -32,13 +46,18 @@ from microcosm.frame import (
 
 __all__ = [
     "ACS_2024_1YR_SPINE",
+    "ACS_POOL_BLOCK_LOCATION_METADATA_KEY",
+    "ACS_POOL_LOCATION_CLONES_REFUSAL",
     "ASEC_PUF_SPINE",
     "DEFAULT_ACS_POOL_PEAK_LIMIT_BYTES",
     "DONOR_ASSIGNED_GEOGRAPHY_COLUMNS",
+    "ACS_POOL_DONOR_LOCATION_REFUSAL",
+    "DONOR_BLOCK_PRESERVED",
     "donor_assigned_geography_complete",
     "estimate_optional_acs_pool_peak_bytes",
     "preflight_pooled_ladder_geography",
     "spine_column",
+    "validate_pool_location_options",
     "with_optional_acs_spine",
 ]
 
@@ -64,6 +83,42 @@ _PEAK_ESTIMATE_FIXED_OVERHEAD_BYTES = 256 * 1024**2
 _ID_OVERLAP_CHUNK_ROWS = 65_536
 _PUMA_LADDER_ANCHOR_COLUMN = "__microcosm_puma_ladder_anchor"
 
+#: Frame-metadata key of the pooled ``block_v1`` location record (the
+#: :func:`~microcosm.build.us_runtime.block_location.us_block_location_manifest`
+#: record plus this line's donor-block accounting).
+ACS_POOL_BLOCK_LOCATION_METADATA_KEY = "acs_pool_block_location"
+#: Donor (ASEC-by-PUF) rows under ``block_v1`` keep the block their
+#: ``block_v1`` base drew within their CPS source geography, with no redraw.
+#: The line refuses a donor base located under any other rule, and any donor
+#: row without a block (:data:`ACS_POOL_DONOR_LOCATION_REFUSAL`).
+DONOR_BLOCK_PRESERVED = "preserved_donor_block"
+#: Why a ``block_v1`` ACS pool refuses a donor base its own rule did not
+#: locate. A legacy base draws a district by SOI return counts and then a
+#: block within it, so its blocks can leave the county the CPS identifies.
+ACS_POOL_DONOR_LOCATION_REFUSAL = (
+    "location_rule='block_v1' on the ACS pool keeps each donor's block, so "
+    "the donor base must have drawn those blocks under block_v1, each "
+    "household within its CPS source geography. Build the base with "
+    "tools/build_us_puf_support_base.py --location-rule block_v1."
+)
+#: Why this line refuses ``location_clones > 1`` today; admitting K > 1 end
+#: to end is the follow-up to microcosm#696.
+ACS_POOL_LOCATION_CLONES_REFUSAL = (
+    "location_clones > 1 is not yet admitted on the ACS local-release line. "
+    "(1) block_location.clone_frame_for_location adds an "
+    "'{entity}_location_clone_index' column to every entity table; those "
+    "names are model-named, are not policyengine-us variables and are not in "
+    "microcosm.data.stored_inputs.US_STORED_NON_VARIABLE_COLUMNS, so the "
+    "package stage's stored-inputs gate "
+    "(tools/build_us_acs_local_release.py:_require_stored_inputs -> "
+    "stored_inputs.require_h5_stored_inputs) refuses the release. "
+    "(2) base_pool._assign_pooled_block_location preserves each ASEC-by-PUF "
+    "donor's already-assigned block rather than redrawing it, so K copies of "
+    "a preserved donor would be K identical locations, not K draws; no rule "
+    "for redrawing preserved donor blocks per clone exists yet. "
+    "Use location_clones=1."
+)
+
 
 def spine_column(entity: str) -> str:
     """Return the entity-prefixed base-spine metadata column."""
@@ -82,6 +137,11 @@ def with_optional_acs_spine(
     puma_ladder: UsPumaLadder | None = None,
     geography_seed: int = 0,
     expected_congressional_district_vintage: str | None = None,
+    location_rule: str = US_LOCATION_RULE_LEGACY,
+    block_ladder: UsLocationLadder | None = None,
+    location_seed: int = 0,
+    location_clones: int = 1,
+    donor_location_rule: str | None = None,
 ) -> Frame:
     """Append an ACS frame while conserving the base's household mass.
 
@@ -111,11 +171,42 @@ def with_optional_acs_spine(
     inputs and the defensive copies made by :class:`~microcosm.frame.Frame`; it
     intentionally does not claim to account for unrelated objects already in
     the process.
+
+    ``location_rule`` selects the household location rule. ``"legacy"`` (the
+    default) is the PUMA-ladder behaviour above, byte for byte, and refuses
+    ``block_ladder``, a nonzero ``location_seed`` and ``location_clones != 1``.
+    ``"block_v1"`` (microcosm#696) replaces the PUMA-ladder draw with one 2020
+    census block per household from ``block_ladder`` (which must carry the
+    per-block ``puma``): ACS rows draw a block within their observed PUMA,
+    and ASEC-by-PUF donor rows keep the block their base drew (no redraw).
+    ``donor_location_rule`` is the rule the donor base recorded; ``block_v1``
+    requires it to be ``"block_v1"``, so every kept block lies in its CPS
+    source geography, and refuses a donor row without a block. Every
+    geography column then derives from the block (see
+    :func:`_assign_pooled_block_location`), and the location record is stored
+    in the result's metadata under :data:`ACS_POOL_BLOCK_LOCATION_METADATA_KEY`.
+    ``puma_ladder`` and ``geography_seed`` play no part in a ``block_v1``
+    assignment, so a ``puma_ladder`` or a nonzero ``geography_seed`` is
+    refused rather than ignored.
     """
 
     if acs is None:
         return base
 
+    validate_pool_location_options(
+        location_rule,
+        block_ladder=block_ladder,
+        location_seed=location_seed,
+        location_clones=location_clones,
+        geography_seed=geography_seed,
+        donor_location_rule=donor_location_rule,
+    )
+    if location_rule == US_LOCATION_RULE_BLOCK_V1 and puma_ladder is not None:
+        raise ValueError(
+            "puma_ladder assigns geography only under the legacy location "
+            "rule; a block_v1 pool derives every geography from block_ladder. "
+            "Refusing puma_ladder rather than ignoring it."
+        )
     share = _validated_acs_share(acs_share)
     limit = _validated_peak_limit(max_peak_bytes)
     _require_us_base_frame(base, label="base")
@@ -180,7 +271,19 @@ def with_optional_acs_spine(
         id_offsets=id_offsets,
         populate_acs_support_metadata=populate_acs_support_metadata,
     )
-    if puma_ladder is not None:
+    location_record: dict[str, Any] | None = None
+    if location_rule == US_LOCATION_RULE_BLOCK_V1:
+        assert block_ladder is not None  # validate_pool_location_options
+        location_record = _assign_pooled_block_location(
+            tables,
+            block_ladder,
+            seed=location_seed,
+            donor_location_rule=donor_location_rule,
+            expected_congressional_district_vintage=(
+                expected_congressional_district_vintage
+            ),
+        )
+    elif puma_ladder is not None:
         _assign_pooled_puma_ladder(
             tables,
             puma_ladder,
@@ -206,13 +309,23 @@ def with_optional_acs_spine(
         ],
         ignore_index=True,
     )
-    result = Frame(
-        tables,
-        base.schema,
-        {"household": household_weights},
-        strata,
-        mass_log=mass_log,
-    )
+    if location_record is None:
+        result = Frame(
+            tables,
+            base.schema,
+            {"household": household_weights},
+            strata,
+            mass_log=mass_log,
+        )
+    else:
+        result = Frame(
+            tables,
+            base.schema,
+            {"household": household_weights},
+            strata,
+            mass_log=mass_log,
+            metadata={ACS_POOL_BLOCK_LOCATION_METADATA_KEY: location_record},
+        )
     if not np.isclose(
         result.weights_for("household").total,
         original_mass,
@@ -561,7 +674,11 @@ def _preserved_donor_geography(
 def preflight_pooled_ladder_geography(
     base_household: pd.DataFrame,
     acs_household: pd.DataFrame,
-    ladder: UsPumaLadder,
+    ladder: UsPumaLadder | None,
+    *,
+    location_rule: str = US_LOCATION_RULE_LEGACY,
+    block_ladder: UsLocationLadder | None = None,
+    donor_location_rule: str | None = None,
 ) -> str:
     """Validate everything pooled ladder assignment needs, before transfer.
 
@@ -571,7 +688,35 @@ def preflight_pooled_ladder_geography(
     here, not after the fits have run. Returns the donor geography mode
     (``"preserved_assigned"`` or ``"ladder_drawn"``); raises ``ValueError``
     on any incompatibility, matching the assignment-time checks.
+
+    Under ``location_rule="block_v1"`` the checks are the block assignment's
+    instead (:func:`_assign_pooled_block_location`), against
+    ``block_ladder``; ``ladder`` is not consulted. ``donor_location_rule``
+    must then be ``"block_v1"``, every donor must carry a ladder block, and
+    the returned mode is :data:`DONOR_BLOCK_PRESERVED`.
     """
+
+    if location_rule != US_LOCATION_RULE_LEGACY:
+        if location_rule != US_LOCATION_RULE_BLOCK_V1:
+            raise ValueError(
+                f"location_rule must be one of {US_LOCATION_RULE_CHOICES}, got "
+                f"{location_rule!r}."
+            )
+        if block_ladder is None:
+            raise ValueError("location_rule='block_v1' requires a block_ladder.")
+        _require_block_v1_donor_rule(donor_location_rule)
+        return _preflight_pooled_block_location(
+            base_household, acs_household, block_ladder
+        )
+    if block_ladder is not None:
+        raise ValueError(
+            "block_ladder is only used by location_rule='block_v1'; the legacy "
+            "rule assigns geography from the PUMA ladder."
+        )
+    if donor_location_rule is not None:
+        raise ValueError(_LEGACY_DONOR_RULE_REFUSAL)
+    if ladder is None:
+        raise ValueError("The legacy location rule requires a PUMA ladder.")
 
     mode = "ladder_drawn"
     if len(base_household):
@@ -700,6 +845,393 @@ def _assign_pooled_puma_ladder(
         )
     assigned.drop(columns=[_PUMA_LADDER_ANCHOR_COLUMN], inplace=True)
     tables["household"] = assigned
+
+
+def validate_pool_location_options(
+    location_rule: str,
+    *,
+    block_ladder: UsLocationLadder | None,
+    location_seed: int,
+    location_clones: int,
+    geography_seed: int,
+    donor_location_rule: str | None = None,
+) -> None:
+    """Refuse location options the selected rule would silently ignore.
+
+    ``donor_location_rule`` is the rule the donor base recorded: ``block_v1``
+    requires ``"block_v1"`` (:data:`ACS_POOL_DONOR_LOCATION_REFUSAL`), and the
+    legacy rule, which never reads it, refuses any value.
+    """
+
+    if location_rule not in US_LOCATION_RULE_CHOICES:
+        raise ValueError(
+            f"location_rule must be one of {US_LOCATION_RULE_CHOICES}, got "
+            f"{location_rule!r}."
+        )
+    if isinstance(location_seed, bool) or not isinstance(
+        location_seed, (int, np.integer)
+    ):
+        raise ValueError(f"location_seed must be an integer, got {location_seed!r}.")
+    if isinstance(location_clones, bool) or not isinstance(
+        location_clones, (int, np.integer)
+    ):
+        raise ValueError(
+            f"location_clones must be an integer, got {location_clones!r}."
+        )
+    if location_rule == US_LOCATION_RULE_LEGACY:
+        if block_ladder is not None:
+            raise ValueError(
+                "block_ladder is only used by location_rule='block_v1'; the "
+                "legacy rule assigns geography from the PUMA ladder."
+            )
+        if int(location_seed) != 0 or int(location_clones) != 1:
+            raise ValueError(
+                "location_seed and location_clones apply only to "
+                "location_rule='block_v1'; the legacy rule takes its seed from "
+                f"geography_seed (got location_seed={location_seed!r}, "
+                f"location_clones={location_clones!r})."
+            )
+        if donor_location_rule is not None:
+            raise ValueError(_LEGACY_DONOR_RULE_REFUSAL)
+        return
+    if block_ladder is None:
+        raise ValueError("location_rule='block_v1' requires a block_ladder.")
+    _require_block_v1_donor_rule(donor_location_rule)
+    if block_ladder.puma is None:
+        raise ValueError(
+            "location_rule='block_v1' on the ACS pool needs a block ladder that "
+            "carries the per-block 'puma' array: ACS rows draw within their "
+            "observed PUMA."
+        )
+    if int(location_seed) < 0:
+        raise ValueError(f"location_seed must be non-negative, got {location_seed!r}.")
+    if int(location_clones) < 1:
+        raise ValueError(f"location_clones must be >= 1, got {location_clones!r}.")
+    if int(location_clones) > 1:
+        raise ValueError(ACS_POOL_LOCATION_CLONES_REFUSAL)
+    if int(geography_seed) != 0:
+        raise ValueError(
+            "geography_seed seeds only the legacy PUMA-ladder draw; under "
+            "location_rule='block_v1' the draw is seeded by location_seed. "
+            f"Refusing geography_seed={geography_seed!r} rather than ignoring it."
+        )
+
+
+def _acs_block_pumas(puma: pd.Series, ladder: UsLocationLadder) -> np.ndarray:
+    """Each ACS household's observed 2020 PUMA, validated against the ladder."""
+
+    parsed = pd.to_numeric(puma, errors="coerce")
+    invalid = parsed.isna() | ~np.isfinite(parsed) | (parsed <= 0)
+    if invalid.any():
+        examples = puma.loc[invalid].head().tolist()
+        raise ValueError(
+            "Every ACS household must carry its observed seven-digit PUMA "
+            f"geoid before block location; invalid value(s): {examples}."
+        )
+    values = parsed.astype(np.int64).to_numpy()
+    assert ladder.puma is not None  # validate_pool_location_options
+    known = np.isin(values, ladder.puma)
+    if not known.all():
+        examples = sorted(set(values[~known][:5].tolist()))
+        raise ValueError(
+            f"ACS PUMA geoid(s) absent from the block ladder's PUMA layer: {examples}."
+        )
+    return values
+
+
+def _donor_block_index(
+    donor: pd.DataFrame, ladder: UsLocationLadder
+) -> tuple[np.ndarray, np.ndarray]:
+    """Donor rows' already-assigned blocks as ladder indices.
+
+    Returns ``(has_block, block_index)``: a donor row whose ``block_geoid`` is
+    missing or blank has no block (``-1``), which the caller refuses
+    (:func:`_require_every_donor_block`). A present block must be a 15-digit code the ladder carries, in the row's
+    ``state_fips``; anything else fails loudly, because preserving an
+    unknown or mis-stated block would publish geography the ladder cannot
+    derive.
+    """
+
+    n = len(donor)
+    if "block_geoid" not in donor.columns or n == 0:
+        return np.zeros(n, dtype=bool), np.full(n, -1, dtype=np.int64)
+    raw = donor["block_geoid"]
+    if pd.api.types.is_numeric_dtype(raw):
+        # An integer-typed block geoid loses the leading zero of states 01-09.
+        text = pd.Series(
+            ["" if pd.isna(value) else f"{int(value):015d}" for value in raw.tolist()],
+            index=raw.index,
+            dtype=object,
+        )
+    else:
+        text = raw.astype(object).where(raw.notna(), "").astype(str).str.strip()
+    has_block = (text != "").to_numpy()
+    index = np.full(n, -1, dtype=np.int64)
+    if not has_block.any():
+        return has_block, index
+    present = text.to_numpy()[has_block].astype(np.str_)
+    malformed = ~((np.char.str_len(present) == 15) & np.char.isdigit(present))
+    if malformed.any():
+        examples = present[malformed][:5].tolist()
+        raise ValueError(
+            "Donor block_geoid values must be 15-digit 2020 block codes; "
+            f"invalid value(s): {examples}."
+        )
+    blocks = present.astype(np.int64)
+    position = np.clip(np.searchsorted(ladder.block_geoid, blocks), 0, len(ladder) - 1)
+    unknown = ladder.block_geoid[position] != blocks
+    if unknown.any():
+        examples = sorted(set(blocks[unknown][:5].tolist()))
+        raise ValueError(
+            "Donor block_geoid(s) absent from the block ladder: "
+            f"{[f'{value:015d}' for value in examples]}. The donor's block "
+            "vintage must match the ladder's 2020 tabulation blocks."
+        )
+    states = pd.to_numeric(donor["state_fips"], errors="coerce").to_numpy()[has_block]
+    mismatch = (blocks // 10**13) != states
+    if mismatch.any():
+        examples = sorted(
+            {
+                (f"{block:015d}", int(state))
+                for block, state in zip(
+                    blocks[mismatch][:5].tolist(),
+                    states[mismatch][:5].tolist(),
+                    strict=True,
+                )
+            }
+        )
+        raise ValueError(
+            f"Donor block_geoid state prefixes disagree with state_fips: {examples}."
+        )
+    index[has_block] = position
+    return has_block, index
+
+
+#: Why the legacy pool rule refuses a donor location rule it would ignore.
+_LEGACY_DONOR_RULE_REFUSAL = (
+    "donor_location_rule is only read by location_rule='block_v1'; the legacy "
+    "rule never reads the donor base's location rule."
+)
+
+
+def _require_block_v1_donor_rule(donor_location_rule: str | None) -> None:
+    """Refuse a ``block_v1`` pool whose donor base its own rule did not locate."""
+
+    if donor_location_rule != US_LOCATION_RULE_BLOCK_V1:
+        raise ValueError(
+            f"{ACS_POOL_DONOR_LOCATION_REFUSAL} The donor base records "
+            f"location rule {donor_location_rule!r}."
+        )
+
+
+def _require_every_donor_block(donor: pd.DataFrame, has_block: np.ndarray) -> None:
+    """Refuse donor rows without a block: this line never draws one itself."""
+
+    if has_block.all():
+        return
+    ids = (
+        donor["household_id"]
+        if "household_id" in donor.columns
+        else pd.Series(donor.index, index=donor.index)
+    )
+    examples = ids[~has_block].head(5).tolist()
+    raise ValueError(
+        f"{int((~has_block).sum())} donor household(s) carry no block_geoid "
+        f"(household_id {examples}). A block_v1 base gives every household a "
+        "block, and the ACS pool keeps each donor's block rather than drawing "
+        "one."
+    )
+
+
+def _preflight_pooled_block_location(
+    base_household: pd.DataFrame,
+    acs_household: pd.DataFrame,
+    ladder: UsLocationLadder,
+) -> str:
+    """The ``block_v1`` half of :func:`preflight_pooled_ladder_geography`."""
+
+    if ladder.puma is None:
+        raise ValueError(
+            "location_rule='block_v1' on the ACS pool needs a block ladder that "
+            "carries the per-block 'puma' array."
+        )
+    if len(base_household):
+        has_block, _ = _donor_block_index(base_household, ladder)
+        _require_every_donor_block(base_household, has_block)
+    if len(acs_household):
+        if "puma" not in acs_household.columns:
+            raise ValueError(
+                "ACS household table must carry canonical seven-digit puma "
+                "geoids before block location."
+            )
+        _acs_block_pumas(acs_household["puma"], ladder)
+    return DONOR_BLOCK_PRESERVED
+
+
+def _assign_pooled_block_location(
+    tables: dict[str, pd.DataFrame],
+    ladder: UsLocationLadder,
+    *,
+    seed: int,
+    donor_location_rule: str | None,
+    expected_congressional_district_vintage: str | None,
+) -> dict[str, Any]:
+    """Locate every pooled household on one 2020 block (``block_v1``).
+
+    - ACS rows (``household_spine == "acs_2024_1yr"``) draw one block within
+      their observed 2020 PUMA, proportional to block population
+      (:func:`~microcosm.build.us_runtime.block_location.draw_us_block_locations`,
+      keyed by the pooled ``household_id``).
+    - ASEC-by-PUF donor rows keep the ``block_geoid`` their base drew. The
+      base must record ``donor_location_rule == "block_v1"``, so it drew each
+      donor's block within the donor's CPS source geography. Each kept block
+      must exist in the ladder and lie in the row's state, and is never
+      redrawn. A donor row without a block is refused.
+
+    Every geography column (:func:`location_geography_columns`: block,
+    tract, county, place, SLDU/SLDL, CBSA, PUMA, primary CD and any attached
+    plan) is then written from the ladder's lookup of the block, for every
+    row, so no household carries a geography its block contradicts.
+    ``state_fips`` is never rewritten. Returns the manifest record.
+    """
+
+    _require_block_v1_donor_rule(donor_location_rule)
+    household = tables["household"]
+    tag = spine_column("household")
+    if tag not in household:
+        raise ValueError(f"Pooled household table lacks required spine tag {tag!r}.")
+    if "puma" not in household:
+        raise ValueError(
+            "ACS household table must carry canonical seven-digit puma geoids "
+            "before block location."
+        )
+    if expected_congressional_district_vintage is not None:
+        plan = ladder.primary_congressional_district_plan
+        if plan != expected_congressional_district_vintage:
+            raise ValueError(
+                f"US block ladder congressional-district vintage {plan!r} does "
+                "not match the vintage the caller expects "
+                f"({expected_congressional_district_vintage!r})."
+            )
+    n = len(household)
+    acs_rows = household[tag].eq(ACS_2024_1YR_SPINE).to_numpy()
+    donor_rows = ~acs_rows
+    household_key = pd.to_numeric(household["household_id"]).to_numpy(np.int64)
+    state = pd.to_numeric(household["state_fips"]).to_numpy(np.int64)
+
+    block_index = np.full(n, -1, dtype=np.int64)
+    source_geography = np.full(n, DONOR_BLOCK_PRESERVED, dtype=object)
+    donor_has_block, donor_index = _donor_block_index(household.loc[donor_rows], ladder)
+    _require_every_donor_block(household.loc[donor_rows], donor_has_block)
+    preserved = donor_rows.copy()
+    block_index[preserved] = donor_index
+
+    drawn = acs_rows
+    puma = np.zeros(n, dtype=np.int64)
+    if acs_rows.any():
+        puma[acs_rows] = _acs_block_pumas(household.loc[acs_rows, "puma"], ladder)
+    if drawn.any():
+        draw = draw_us_block_locations(
+            ladder,
+            household_key=household_key[drawn],
+            state_fips=state[drawn],
+            seed=seed,
+            clones=1,
+            puma=puma[drawn],
+        )
+        block_index[drawn] = draw.block_index
+        source_geography[drawn] = draw.source_geography
+    if (block_index < 0).any():
+        raise AssertionError("internal error: a pooled household received no block.")
+    if ((ladder.block_geoid[block_index] // 10**13) != state).any():
+        raise AssertionError("internal error: a pooled block left its state.")
+
+    derived = derive_us_block_geography(ladder, block_index)
+    columns = location_geography_columns(ladder)
+    changed = _rederived_donor_changes(household, derived, preserved, columns)
+    for column in columns:
+        household[column] = derived[column]
+    if acs_rows.any():
+        drawn_puma = pd.to_numeric(household.loc[acs_rows, "puma"]).to_numpy(np.int64)
+        if not np.array_equal(drawn_puma, puma[acs_rows]):
+            raise AssertionError("internal error: an ACS block left its PUMA.")
+    tables["household"] = household
+
+    record = us_block_location_manifest(
+        pd.DataFrame(
+            {
+                LOCATION_CLONE_INDEX_COLUMN: np.zeros(n, dtype=np.int64),
+                LOCATION_SOURCE_GEOGRAPHY_COLUMN: source_geography,
+                LOCATION_CANDIDATE_BLOCKS_COLUMN: np.zeros(n, dtype=np.int64),
+            }
+        ),
+        ladder,
+        seed=seed,
+        clones=1,
+        candidate_set_rule={
+            ACS_2024_1YR_SPINE: (
+                f"{SOURCE_GEOGRAPHY_PUMA}: the blocks of the record's observed "
+                "2020 PUMA (ACS PUMS ST+PUMA)"
+            ),
+            ASEC_PUF_SPINE: (
+                f"{DONOR_BLOCK_PRESERVED}: the block the donor base drew under "
+                "block_v1 within the donor's CPS source geography, kept (never "
+                "redrawn) and re-derived through this ladder"
+            ),
+        },
+    )
+    record.update(
+        {
+            "household_key": "pooled household_id (after ACS id remapping)",
+            "spine_households": {
+                ACS_2024_1YR_SPINE: int(acs_rows.sum()),
+                ASEC_PUF_SPINE: int(donor_rows.sum()),
+            },
+            "donor_blocks": {
+                "mode": DONOR_BLOCK_PRESERVED,
+                DONOR_BLOCK_PRESERVED: int(preserved.sum()),
+                "donor_location_rule": donor_location_rule,
+                "rederived_columns_changed": changed,
+            },
+        }
+    )
+    return record
+
+
+def _rederived_donor_changes(
+    household: pd.DataFrame,
+    derived: dict[str, np.ndarray],
+    preserved: np.ndarray,
+    columns: tuple[str, ...],
+) -> dict[str, int]:
+    """Preserved donor rows whose stored, non-empty column differs from the block.
+
+    Preserving a donor's block re-derives every other geography from this
+    ladder. A nonzero count means the donor was located against a ladder that
+    disagrees with this one on that column; it is recorded, not hidden. A
+    stored value that is missing or blank is filled, not changed, and is not
+    counted.
+    """
+
+    changes: dict[str, int] = {}
+    if not preserved.any():
+        return changes
+    for column in columns:
+        if column not in household.columns:
+            continue
+        want = derived[column][preserved]
+        stored = pd.Series(household[column].to_numpy()[preserved], dtype=object)
+        text = stored.where(stored.notna(), "").astype(str).str.strip()
+        present = (text != "").to_numpy()
+        if want.dtype.kind in "iu":
+            got = pd.to_numeric(stored, errors="coerce").to_numpy(dtype=np.float64)
+            differs = got != want.astype(np.float64)
+        else:
+            differs = text.to_numpy() != want.astype(str)
+        count = int((differs & present).sum())
+        if count:
+            changes[column] = count
+    return changes
 
 
 def _prepared_source_view(

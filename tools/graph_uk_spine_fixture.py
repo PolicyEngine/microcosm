@@ -260,6 +260,9 @@ _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # DWP's admin-linked UC limited capability status, the carrier the
         # uc_limited_capability stage reads (microcosm#1095, Y1).
         "frs_uc_lcw_status",
+        # DWP's admin-linked UC carer element, the carrier frs_disability
+        # checks the carer link against (microcosm#1095, A3 (f)).
+        "frs_uc_carer_element",
     ),
     "benunit": ("benunit_support_channel", "uc_deduction_combination"),
     "household": (
@@ -385,7 +388,7 @@ def _replace_operation(
 
 
 def _frs_tables() -> dict[str, pd.DataFrame]:
-    """Build 14 tiny FRS-shaped tabs with deterministic linked identities."""
+    """Build 15 tiny FRS-shaped tabs with deterministic linked identities."""
 
     households: list[dict[str, object]] = []
     adults: list[dict[str, object]] = []
@@ -399,6 +402,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
     oddjobs: list[dict[str, object]] = []
     maint: list[dict[str, object]] = []
     childcare: list[dict[str, object]] = []
+    care: list[dict[str, object]] = []
     extchild: list[dict[str, object]] = []
     mortgages: list[dict[str, object]] = []
     for household_id in range(1, _ROOT_HOUSEHOLDS + 1):
@@ -633,6 +637,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "BENAMT": amount,
                 "UCSTART": "",
                 "UCLCW": "",
+                "UCCAREEL": "",
                 "UCHOUSEL": "",
             }
             for benefit, variant, amount in (
@@ -659,6 +664,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                     "BENAMT": 81.9,
                     "UCSTART": "",
                     "UCLCW": "",
+                    "UCCAREEL": "",
                     "UCHOUSEL": "",
                 }
             )
@@ -677,6 +683,8 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                     "UCSTART": ("07/01/2024", "01/15/2022", "")[household_id % 9 // 3],
                     # DWP's limited capability status, blank where the claim is unlinked (Y1).
                     "UCLCW": (2, 0, "")[household_id % 9 // 3],
+                    # DWP's carer element, blank where the claim is unlinked (A3 (f)).
+                    "UCCAREEL": (1, 0, "")[household_id % 9 // 3],
                     "UCHOUSEL": 50.0 if household_id % 2 else "",
                 }
             )
@@ -839,6 +847,29 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "MRAMT": 9.0,
             }
         )
+        # The care tab: the adult cares for the household's child at 35-49
+        # hours a week, and in every seventh household for a parent outside
+        # it at 50-99 hours, the largest band (frs_spine.frs_care_recipients).
+        if has_child:
+            care.append(
+                {
+                    "SERNUM": household_id,
+                    "BENUNIT": 1,
+                    "NEEDPER": 2,
+                    "WHOLOO01": 1,
+                    "HOUR01": 5,
+                }
+            )
+        if household_id % 7 == 0:
+            care.append(
+                {
+                    "SERNUM": household_id,
+                    "BENUNIT": 1,
+                    "NEEDPER": 15,
+                    "WHOLOO01": 1,
+                    "HOUR01": 6,
+                }
+            )
         childcare.append(
             {
                 "SERNUM": household_id,
@@ -864,6 +895,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
         "adult": pd.DataFrame(adults),
         "benefits": pd.DataFrame(benefits),
         "benunit": pd.DataFrame(benunits),
+        "care": pd.DataFrame(care),
         "child": pd.DataFrame(children),
         "chldcare": pd.DataFrame(childcare),
         "extchild": pd.DataFrame(extchild),
@@ -2184,8 +2216,8 @@ def _normalize_legacy_strings(frame: Frame) -> Frame:
         for entity, columns in _NORMALIZED_STRING_COLUMNS.items()
         for column in columns
     ]
-    if observed != expected_order or len(observed) != 33:
-        raise RuntimeError("The legacy normalization audit is not exactly 33 cells.")
+    if observed != expected_order or len(observed) != 34:
+        raise RuntimeError("The legacy normalization audit is not exactly 34 cells.")
     return Frame(
         tables,
         frame.schema,

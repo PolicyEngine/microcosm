@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import inspect
 import json
 import os
 import random
 import sys
+from collections import Counter
 from decimal import Decimal
 from fractions import Fraction
 from hashlib import sha256
@@ -65,6 +67,7 @@ from microcosm.build.transport.measure_kernels import (
     MEASURE_COMBINE_REF,
 )
 from microcosm.calibrate import CalibrationProblem, Target
+from microcosm.calibrate import artifacts as calibrate_artifacts
 from microcosm.calibrate.artifacts import (
     PROBLEM_TYPE,
     SOLUTION_TYPE,
@@ -85,8 +88,10 @@ from microcosm.graph import (
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.executor import Population, _project_context
 from microcosm.graph.kernel import ArtifactValue, NumericScope
+from test_support.microcosm_build import static_reach, static_reach_cases
 from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
 from test_support.microcosm_build.first_party_imports import hashed_module_names
+from test_support.microcosm_build.static_reach import Cut, reach
 from test_support.microcosm_build.transport_graph import toy_fact
 from test_support.microcosm_build.transport_population import digest
 from test_support.paths import paths_for
@@ -254,7 +259,12 @@ def _identity_node(declaration, *, identities=IDENTITIES, columns=None):
 
 
 def _register_node(
-    declaration, *, register=REGISTER, columns=None, problem_type=PROBLEM_TYPE
+    declaration,
+    *,
+    register=REGISTER,
+    columns=None,
+    problem_type=PROBLEM_TYPE,
+    solution_type=SOLUTION_TYPE,
 ):
     names = columns or (
         *(row["column"] for row in declaration["components"]),
@@ -272,8 +282,20 @@ def _register_node(
         },
         artifact_inputs=(
             ArtifactInput("problem", "toy.problem", "problem", problem_type),
+            ArtifactInput("solution", "toy.calibrate", "solution", solution_type),
         ),
         artifact_outputs=(ArtifactOutput("omission_register", OMISSION_REGISTER_TYPE),),
+    )
+
+
+def _encoded_solution(problem, weights, *, entity_ids=None):
+    """A solution of ``problem`` at ``weights``, on its axis unless given one."""
+
+    decoded = decode_problem(problem)
+    return encode_solution(
+        np.asarray(weights, dtype=np.float64),
+        entity_ids=decoded.entity_ids if entity_ids is None else entity_ids,
+        problem_sha256=decoded.sha256,
     )
 
 
@@ -294,29 +316,43 @@ def _register_context(
     weights=None,
     *,
     problem=None,
+    solution=None,
     problem_type=PROBLEM_TYPE,
+    solution_type=SOLUTION_TYPE,
     edit=None,
     artifacts=None,
     **node,
 ):
-    """The register's context: ``_frame``'s households, and a problem on them.
+    """The register's context: ``_frame``'s households, a problem and its fit.
 
     By default the problem's pre-fit weights are the frame's own design
     weights, one household per person, so the register's totals equal
-    ``measure.combine@1``'s at the frame's weights. ``edit`` changes the node.
+    ``measure.combine@1``'s at the frame's weights. The default solution
+    gives each household on the problem's axis its frame weight (1.0 for one
+    the frame lacks), as the fit's own solution does where the register
+    runs. ``edit`` changes the node.
     """
 
     frame = _frame(person, weights)
+    households = frame.table("household")["household_id"].tolist()
+    frame_weights = frame.resolve_weights("household").values
     if problem is None:
-        problem = _encoded_problem(
-            frame.table("household")["household_id"].tolist(),
-            frame.resolve_weights("household").values,
+        problem = _encoded_problem(households, frame_weights)
+    if solution is None:
+        by_id = dict(zip(households, frame_weights, strict=True))
+        solution = _encoded_solution(
+            problem,
+            [by_id.get(value, 1.0) for value in decode_problem(problem).entity_ids],
         )
-    built = _register_node(declaration, problem_type=problem_type, **node)
+    built = _register_node(
+        declaration, problem_type=problem_type, solution_type=solution_type, **node
+    )
     return _context(
         built if edit is None else edit(built),
         frame,
-        _artifact_values({"problem": (problem, problem_type)})
+        _artifact_values(
+            {"problem": (problem, problem_type), "solution": (solution, solution_type)}
+        )
         if artifacts is None
         else artifacts,
     )
@@ -654,14 +690,18 @@ def test_the_register_binds_the_declared_items_verbatim() -> None:
     size = len(person)
     design = np.linspace(1, 2, size)
     problem = _encoded_problem(list(range(1, size + 1)), design)
-    payload, receipt = _register(person, TOY, problem=problem)
+    solution = _encoded_solution(problem, design)
+    payload, receipt = _register(person, TOY, problem=problem, solution=solution)
     document = json.loads(payload)
     assert document["kind"] == "transport_omission_register"
     assert document["register"] == REGISTER
     assert document["register_sha256"] == sha256(canonical_json(REGISTER)).hexdigest()
     assert document["income_measurements_sha256"] == "c" * 64
     assert document["measurement_id"] == "toy_measurement_v1"
-    assert document["inputs"]["artifacts"] == {"problem": sha256(problem).hexdigest()}
+    assert document["inputs"]["artifacts"] == {
+        "problem": sha256(problem).hexdigest(),
+        "solution": sha256(solution).hexdigest(),
+    }
     # boundary_diagnostics' two digests, over the people in record order.
     assert document["weights"] == {
         "entity": "person",
@@ -675,7 +715,8 @@ def test_the_register_binds_the_declared_items_verbatim() -> None:
 
 
 def test_the_register_reads_pre_fit_weights_from_the_problem() -> None:
-    # The frame's weights may already be calibrated where the register runs;
+    # Where the register runs, the frame's weights are the fit's solution
+    # (the default context's solution gives each household its frame weight);
     # the totals follow the problem's initial weights, not the frame's.
     person, receipt = _measured(TOY_COLUMNS, TOY)
     size = len(person)
@@ -697,12 +738,25 @@ def test_the_register_refuses_each_node_edit(edit) -> None:
 def test_the_register_refuses_a_problem_it_cant_broadcast() -> None:
     person, _ = _measured(TOY_COLUMNS, TOY)
     size = len(person)
-    with pytest.raises(ValueError, match="reads exactly \\['problem'\\] artifacts"):
+    exactly = "reads exactly \\['problem', 'solution'\\] artifacts"
+    with pytest.raises(ValueError, match=exactly):
         _register(
             person,
             TOY,
             edit=lambda node: dataclasses.replace(node, artifact_inputs=()),
             artifacts={},
+        )
+    # G8-x1's register read the problem alone; that node now refuses.
+    problem = _encoded_problem(list(range(1, size + 1)), np.linspace(1, 2, size))
+    with pytest.raises(ValueError, match=exactly):
+        _register(
+            person,
+            TOY,
+            problem=problem,
+            edit=lambda node: dataclasses.replace(
+                node, artifact_inputs=node.artifact_inputs[:1]
+            ),
+            artifacts=_artifact_values({"problem": (problem, PROBLEM_TYPE)}),
         )
     with pytest.raises(
         ValueError,
@@ -710,6 +764,12 @@ def test_the_register_refuses_a_problem_it_cant_broadcast() -> None:
         "microcosm.calibrate.ordered-solution@1",
     ):
         _register(person, TOY, problem_type=SOLUTION_TYPE)
+    with pytest.raises(
+        ValueError,
+        match="reads 'solution' as microcosm.calibrate.ordered-solution@1, not "
+        "microcosm.calibrate.ordered-problem@1",
+    ):
+        _register(person, TOY, solution_type=PROBLEM_TYPE)
     with pytest.raises(ValueError, match="but the problem calibrates 'household'"):
         _register(
             person,
@@ -721,6 +781,88 @@ def test_the_register_refuses_a_problem_it_cant_broadcast() -> None:
     short = _encoded_problem(list(range(1, size)), np.ones(size - 1))
     with pytest.raises(ValueError, match="outside the problem's household axis"):
         _register(person, TOY, problem=short)
+
+
+OFF_THE_SOLUTION = (
+    "frame person weights differ from the calibration solution's household weights"
+)
+
+
+def test_the_register_refuses_frame_weights_off_the_solution() -> None:
+    # #1563 N3: the frame carries the fit's weights where the register runs,
+    # so one household one ulp off its solution weight refuses.
+    person, _ = _measured(TOY_COLUMNS, TOY)
+    size = len(person)
+    design = np.linspace(1, 2, size)
+    problem = _encoded_problem(list(range(1, size + 1)), design)
+    fitted = design.copy()
+    fitted[2] = np.nextafter(fitted[2], np.inf)
+    with pytest.raises(ValueError, match=OFF_THE_SOLUTION):
+        _register(
+            person, TOY, problem=problem, solution=_encoded_solution(problem, fitted)
+        )
+
+
+def test_the_register_refuses_a_solution_of_another_problem_or_axis() -> None:
+    # #1563 N3: the solution must be the one solved from the problem it reads.
+    person, _ = _measured(TOY_COLUMNS, TOY)
+    size = len(person)
+    design = np.linspace(1, 2, size)
+    ids = list(range(1, size + 1))
+    problem = _encoded_problem(ids, design)
+    other = _encoded_problem(ids, design * 2)
+    with pytest.raises(ValueError, match="Solution belongs to a different problem"):
+        _register(
+            person, TOY, problem=problem, solution=_encoded_solution(other, design)
+        )
+    with pytest.raises(ValueError, match="different ordered entity axis"):
+        _register(
+            person,
+            TOY,
+            problem=problem,
+            solution=_encoded_solution(problem, design, entity_ids=ids[::-1]),
+        )
+
+
+def test_the_register_refuses_a_household_on_the_axis_with_no_person() -> None:
+    # #1563 N3: the frame's households are the problem's axis, so every
+    # household the fit weighted holds a record the register reads.
+    person, _ = _measured(TOY_COLUMNS, TOY)
+    size = len(person)
+    wide = _encoded_problem(list(range(1, size + 2)), np.ones(size + 1))
+    with pytest.raises(
+        ValueError, match="frame has a household on the problem's axis with no person"
+    ):
+        _register(person, TOY, problem=wide)
+
+
+_WEIGHT = st.floats(min_value=0.01, max_value=1e6, allow_nan=False)
+
+
+@PROPERTY
+@given(case=measures(), data=st.data())
+def test_property_the_register_reads_its_fits_frame_at_pre_fit_weights(
+    case, data
+) -> None:
+    # #1563 N3: at whatever solution the frame carries, the totals are the
+    # problem's pre-fit totals; one record's weight one ulp off refuses.
+    columns, declaration, design = case
+    person, receipt = _measured(columns, declaration, design)
+    size = len(person)
+    problem = _encoded_problem(list(range(1, size + 1)), design)
+    fitted = np.asarray(
+        data.draw(st.lists(_WEIGHT, min_size=size, max_size=size)), dtype=np.float64
+    )
+    solution = _encoded_solution(problem, fitted)
+    payload, _ = _register(
+        person, declaration, fitted, problem=problem, solution=solution
+    )
+    _included_matches_receipt(json.loads(payload)["included"], receipt)
+    off = fitted.copy()
+    index = data.draw(st.integers(min_value=0, max_value=size - 1))
+    off[index] = np.nextafter(off[index], np.inf)
+    with pytest.raises(ValueError, match=OFF_THE_SOLUTION):
+        _register(person, declaration, off, problem=problem, solution=solution)
 
 
 def test_the_register_refuses_a_measure_off_the_person_entity() -> None:
@@ -1753,6 +1895,430 @@ def test_the_native_report_runs_the_schema_module(kernel_traces) -> None:
     assert _unlisted(NATIVE_BAND_REPORT_REF, traced, shortened) == {
         "microcosm.frame.schema"
     }
+
+
+# ---------------------------------------------------------------------------
+# Each kernel hashes every module its run() can reach (#1563 O2): the
+# constants half of the module-list rule, which no trace can see
+# ---------------------------------------------------------------------------
+
+#: The one guarded branch the static walk leaves out. Target.__post_init__
+#: names microcosm.calibrate.hierarchy only for a target that carries a
+#: hierarchy, and _read_target, which builds every target a problem decodes
+#: to, passes none (test_no_decoded_target_carries_a_hierarchy).
+HIERARCHY_GUARD = Cut(
+    "microcosm.calibrate.target", "Target.__post_init__", "self.hierarchy is not None"
+)
+
+
+def _outside_graph(modules) -> set[str]:
+    # The lists leave out microcosm.graph.kernel and microcosm.graph.decl by
+    # rule, and the trace test checks microcosm.graph.canonical.
+    return {
+        name
+        for name in modules
+        if name != "microcosm.graph" and not name.startswith("microcosm.graph.")
+    }
+
+
+def _walk(ref, cuts=(HIERARCHY_GUARD,)):
+    kernel = type(KERNELS[ref])
+    return reach(kernel.__module__, f"{kernel.__qualname__}.run", cuts=cuts)
+
+
+@pytest.mark.parametrize("ref", sorted(KERNELS))
+def test_each_kernel_hashes_every_module_its_run_can_reach(ref) -> None:
+    # A static walk of run() and its class, which over-approximates what a
+    # run can reach (static_reach's docstring lists how), names exactly the
+    # listed modules outside microcosm.graph. The trace test sees only the
+    # modules one run executes, so a new constant read from an unlisted
+    # module would pass it and leave the hash short.
+    walked = _walk(ref)
+    listed = _outside_graph(INCOME_EVIDENCE_KERNEL_MODULES[ref])
+    reached = _outside_graph(walked.modules)
+    assert {name: walked.names(name) for name in reached - listed} == {}
+    assert listed - reached == set()
+
+
+def test_the_walk_cuts_only_the_hierarchy_guard() -> None:
+    # Without the cut, the register and the native report also reach
+    # microcosm.calibrate.hierarchy, and nothing else off their lists.
+    for ref in sorted(KERNELS):
+        extra = _outside_graph(_walk(ref, cuts=()).modules) - set(
+            INCOME_EVIDENCE_KERNEL_MODULES[ref]
+        )
+        decodes = ref != INCOME_IDENTITY_REF
+        assert extra == ({"microcosm.calibrate.hierarchy"} if decodes else set()), ref
+        assert _walk(ref).cuts_used == (
+            frozenset({HIERARCHY_GUARD}) if decodes else frozenset()
+        ), ref
+
+
+def test_no_decoded_target_carries_a_hierarchy() -> None:
+    # The cut's premise: _read_target passes no hierarchy, so every target a
+    # problem decodes to keeps the default None and the guard never opens.
+    assert "hierarchy" not in inspect.getsource(calibrate_artifacts._read_target)
+    problem = decode_problem(_encoded_problem([1, 2, 3], np.ones(3)))
+    assert [target.hierarchy for target in problem.problem.targets] == [None]
+
+
+def test_the_walk_sees_a_constant_the_trace_cant(kernel_traces) -> None:
+    # Mutant: the native report's list loses
+    # microcosm.build.transport.artifact_types, whose
+    # CALIBRATION_PREPARATION_TYPE its run() reads but never calls. The trace
+    # test still passes; the walk names the dropped module.
+    ref = NATIVE_BAND_REPORT_REF
+    dropped = "microcosm.build.transport.artifact_types"
+    shortened = dict(INCOME_EVIDENCE_KERNEL_MODULES)
+    shortened[ref] = tuple(name for name in shortened[ref] if name != dropped)
+    assert _unlisted(ref, kernel_traces[ref], shortened) == set()
+    assert _outside_graph(_walk(ref).modules) - set(shortened[ref]) == {dropped}
+
+
+@pytest.fixture(scope="module")
+def walk_case_tree(tmp_path_factory):
+    root = tmp_path_factory.mktemp("walk-cases")
+    return root, static_reach_cases.write(root)
+
+
+@pytest.fixture(scope="module")
+def walk_case_reads(walk_case_tree):
+    root, _ = walk_case_tree
+    return static_reach_cases.python_reads(root)
+
+
+_WALK_CASE_ROOTS = sorted(static_reach_cases.ROOTS)
+_WALK_CASE_IDS = [f"{module}:{qualname}" for module, qualname in _WALK_CASE_ROOTS]
+
+
+@pytest.mark.parametrize(("module", "qualname"), _WALK_CASE_ROOTS, ids=_WALK_CASE_IDS)
+def test_the_walk_reaches_each_way_code_names_a_module(
+    walk_case_tree, module, qualname
+) -> None:
+    # Each synthetic root reaches its targets one way the walk's docstring
+    # lists, and its walk reaches exactly those targets.
+    _, paths = walk_case_tree
+    walked = reach(f"{static_reach_cases.PACKAGE}.{module}", qualname, paths=paths)
+    assert (
+        static_reach_cases.targets(walked)
+        == static_reach_cases.ROOTS[(module, qualname)]
+    )
+
+
+@pytest.mark.parametrize(("module", "qualname"), _WALK_CASE_ROOTS, ids=_WALK_CASE_IDS)
+def test_a_run_reads_what_the_walk_reaches(walk_case_reads, module, qualname) -> None:
+    # The same root, run for real: Python reads exactly the targets its walk
+    # reaches, less the documented over-reach (OVER) and plus the reads that
+    # the walk's "What it can't see" list explains (BLIND). So ROOTS can't
+    # record a walk's mistake as the expected answer.
+    root = (module, qualname)
+    assert walk_case_reads[root] == static_reach_cases.expected_reads(root)
+
+
+def test_the_walk_cases_account_for_every_target() -> None:
+    # OVER only takes away targets a walk reaches, BLIND only adds targets it
+    # doesn't, and every target is some root's, BLIND's or a decoy.
+    roots = static_reach_cases.ROOTS
+    over = {
+        root: found - roots[root]
+        for root, found in static_reach_cases.OVER.items()
+        if found - roots[root]
+    }
+    blind = {
+        root: found & roots[root]
+        for root, found in static_reach_cases.BLIND.items()
+        if found & roots[root]
+    }
+    assert over == {}
+    assert blind == {}
+    used = set().union(*roots.values(), *static_reach_cases.BLIND.values())
+    assert set(static_reach_cases.TARGETS) - used == static_reach_cases.DECOYS
+    assert used <= set(static_reach_cases.TARGETS)
+
+
+@PROPERTY
+@given(
+    picked=st.lists(
+        st.sampled_from(_WALK_CASE_ROOTS), min_size=2, max_size=6, unique=True
+    )
+)
+def test_property_composing_roots_loses_no_target(walk_case_tree, picked) -> None:
+    # One run() that runs several roots in turn. Its walk reaches every target
+    # each part's walk reaches, and may reach more, since the attribute
+    # fallback spans the whole walk. Python reads exactly what the parts read.
+    # So no part's state in the walk hides another part's reach.
+    root, _ = walk_case_tree
+    composite, paths = static_reach_cases.compose(root, picked)
+    walked = reach(
+        f"{static_reach_cases.PACKAGE}.{composite[0]}", composite[1], paths=paths
+    )
+    parts = set().union(*(static_reach_cases.ROOTS[part] for part in picked))
+    assert parts <= static_reach_cases.targets(walked)
+    reads = static_reach_cases.python_reads(root, [composite])[composite]
+    assert reads == set().union(
+        *(static_reach_cases.expected_reads(part) for part in picked)
+    )
+
+
+_Lookup = tuple[object, ...]
+#: A run after a lookup's first: the logged cycle whose pass was under way
+#: (None outside one), the lookup, and how many items the run added to what
+#: the lookup held.
+_Rerun = tuple[int | None, _Lookup, int]
+
+
+def _counted(monkeypatch) -> tuple[Counter[_Lookup], set[_Lookup], list[_Rerun]]:
+    # Counts each lookup's runs, its first and each pass's, and records each
+    # lookup that a lookup met before it settled: one that had begun to run
+    # and that the memo didn't hold yet. For each run after a lookup's first,
+    # it records which cycle's pass was under way and how many items the run
+    # added to what the lookup held, as _cycle counts them. All three come
+    # from the calls, not from the walk's own pass log, and each walk starts
+    # with them cleared. It also checks that each lookup hands back each item
+    # once.
+    settled = static_reach._Walk._settled
+    cycle = static_reach._Walk._cycle
+    runs: Counter[_Lookup] = Counter()
+    met: set[_Lookup] = set()
+    reran: list[_Rerun] = []
+    under_way: list[int] = []
+
+    def counted(self, key, compute, cut=()):
+        if runs[key] and key not in self._done:
+            met.add(key)
+
+        def counting():
+            runs[key] += 1
+            if runs[key] == 1:
+                return compute()
+            found = list(compute())
+            held = self._cuts[key]
+            added = len(dict.fromkeys([*held, *found])) - len(held)
+            reran.append((under_way[-1] if under_way else None, key, added))
+            return found
+
+        found = settled(self, key, counting, cut)
+        assert len(found) == len(set(found)), key
+        return found
+
+    def cycling(self, members, start):
+        # _cycle logs its passes at the index the log's length gives now.
+        under_way.append(len(self.cycles))
+        try:
+            cycle(self, members, start)
+        finally:
+            under_way.pop()
+
+    monkeypatch.setattr(static_reach._Walk, "_settled", counted)
+    monkeypatch.setattr(static_reach._Walk, "_cycle", cycling)
+    return runs, met, reran
+
+
+def _check_runs(walk, counted, label) -> None:
+    # Every lookup the walk began settled. Each pass over a cycle ran each of
+    # its lookups once, in the order the log gives, and no other lookup of
+    # that cycle while it was under way. Each pass added items or lookups but
+    # the last, which added nothing: the test counts what each run added to
+    # what its lookup held and the lookups that joined the cycle, so a log
+    # that claims more or less than a pass added fails. Each logged cycle's
+    # lookups met each other before they settled: there were more than one,
+    # or the one met itself. No two logged cycles ran the same lookups, since
+    # a cycle runs its passes once and then settles or joins a larger one.
+    # And each lookup ran once, and once more for each pass that ran it, so
+    # the log accounts for every rerun and logs only what a cycle needs.
+    runs, met, reran = counted
+    assert runs, label
+    assert not walk._began and not walk._open, label
+    assert all(at is not None for at, _, _ in reran), label
+    logged = set()
+    for index, passes in enumerate(walk.cycles):
+        mine = [(key, added) for at, key, added in reran if at == index]
+        assert len(mine) == sum(len(ran) for ran, _ in passes), (label, passes)
+        for number, (ran, added) in enumerate(passes):
+            part, mine = mine[: len(ran)], mine[len(ran) :]
+            assert tuple(key for key, _ in part) == ran, (label, passes)
+            following = passes[number + 1][0] if number + 1 < len(passes) else ran
+            joined = len(following) - len(ran)
+            assert added == joined + sum(grown for _, grown in part), (label, passes)
+        assert all(added for _, added in passes[:-1]), (label, passes)
+        assert passes[-1][1] == 0, (label, passes)
+        assert all(len(set(ran)) == len(ran) for ran, _ in passes), (label, passes)
+        first = passes[0][0]
+        assert len(first) > 1 or first[0] in met, (label, first)
+        lookups = frozenset(key for ran, _ in passes for key in ran)
+        assert lookups not in logged, (label, passes)
+        logged.add(lookups)
+    reruns = walk.reruns
+    assert set(reruns) <= set(runs), label
+    for key, count in runs.items():
+        assert count == 1 + reruns[key], (label, key)
+
+
+def test_the_walk_runs_each_lookup_once_outside_a_cycle(
+    walk_case_tree, monkeypatch
+) -> None:
+    # A lookup outside a cycle runs once per walk, and a lookup in a cycle
+    # once more for each pass that runs the cycle again. Each pass adds items
+    # or lookups but the last, which adds nothing, so the passes stop at the
+    # fixpoint. Each lookup hands back each item once, and every lookup a walk
+    # begins settles, a lookup that joins a cycle during a pass too
+    # (r_alias_cycle_join and r_join_no_growth). The test counts the runs and
+    # the lookups met under way itself, so a walk that runs a lookup again
+    # outside a cycle fails here even when it logs the run as a pass. A walk
+    # that ran a lookup afresh wherever it met it would take time exponential
+    # in a diamond's depth, or factorial in a clique's size, on the Cost roots.
+    _, paths = walk_case_tree
+    counted = _counted(monkeypatch)
+    for module, qualname in _WALK_CASE_ROOTS:
+        for record in counted:
+            record.clear()
+        walk = static_reach._Walk(paths, ())
+        walk.run(f"{static_reach_cases.PACKAGE}.{module}", qualname)
+        _check_runs(walk, counted, (module, qualname))
+
+
+def _fresh_lookup(walk, key):
+    kind, *rest = key
+    if kind == "resolve":
+        return walk.resolve(*rest)
+    if kind == "alias":
+        return walk.aliased(*rest)
+    if kind == "match":
+        return walk.match_args(*rest)
+    # A package's lazy exports, which exported() looks up.
+    walk.exported(*rest)
+    return list(walk._done[key])
+
+
+def test_a_settled_lookup_holds_what_a_fresh_walk_finds(walk_case_tree) -> None:
+    # Each lookup in a cycle ends with what it finds once the others are
+    # complete, whichever the walk met first: r_star_clique, r_lazy_cycle and
+    # r_alias_cycle; r_alias_cycle_dotted and r_alias_cycle_dotted_first,
+    # where one lookup maps another's items through an attribute;
+    # r_alias_self_dotted, where a lookup waits on itself; r_getattr_cycle
+    # and r_getattr_cycle_first, where a module's __getattr__ answers inside a
+    # cycle of imports; r_alias_cycle_outer, r_alias_cycle_two_up,
+    # r_alias_cycle_sibling and r_outer_cycle_first, where a pass meets a
+    # lookup that began before the cycle and hasn't settled; and
+    # r_outer_cycle, which meets r_outer_cycle_first's lookups in the other
+    # order. So each lookup a root's walk settles holds what the same lookup
+    # finds first in a fresh walk.
+    _, paths = walk_case_tree
+    for module, qualname in _WALK_CASE_ROOTS:
+        walk = static_reach._Walk(paths, ())
+        walk.run(f"{static_reach_cases.PACKAGE}.{module}", qualname)
+        for key, items in walk._done.items():
+            fresh = static_reach._Walk(paths, ())
+            fresh.modules = walk.modules
+            assert set(_fresh_lookup(fresh, key)) == set(items), (module, key)
+
+
+#: Seeds of the random trees (static_reach_cases.random_tree) that the
+#: random-tree test walks.
+_RANDOM_TREE_SEEDS = range(300)
+
+
+def test_each_lookup_in_a_random_tree_settles_on_what_a_fresh_walk_finds(
+    tmp_path_factory, monkeypatch
+) -> None:
+    # Random trees of modules that import each other's names, star-import,
+    # bind names to modules, names and attributes, in branches that run and
+    # in ones that never do, define __getattr__, and define classes whose
+    # __match_args__ a class pattern reads, their own or a base's, so their
+    # lookups wait on each other in cycles of many shapes. In each tree,
+    # run() and run2() make the same reads in opposite orders. Each walk runs
+    # its lookups as the once test checks and settles each lookup on what the
+    # same lookup finds first in a fresh walk, and both walks reach the same
+    # items.
+    root = tmp_path_factory.mktemp("walk-random")
+    counted = _counted(monkeypatch)
+    package = static_reach_cases.RANDOM_PACKAGE
+    own = {(f"{package}.r", "function", name) for name in ("run", "run2")}
+    cyclic = matched = 0
+    for seed in _RANDOM_TREE_SEEDS:
+        sources = static_reach_cases.random_tree(random.Random(seed))
+        paths = static_reach_cases.write_tree(root / str(seed), sources)
+        reached = []
+        for qualname in ("run", "run2"):
+            for record in counted:
+                record.clear()
+            walk = static_reach._Walk(paths, ())
+            walk.run(f"{package}.r", qualname)
+            _check_runs(walk, counted, (seed, qualname))
+            cyclic += any(len(passes) > 1 for passes in walk.cycles)
+            matched += any(
+                key[0] == "match"
+                for passes in walk.cycles
+                for ran, _ in passes
+                for key in ran
+            )
+            for key, items in walk._done.items():
+                fresh = static_reach._Walk(paths, ())
+                fresh.modules = walk.modules
+                found = set(_fresh_lookup(fresh, key))
+                assert found == set(items), (seed, qualname, key)
+            reached.append(set(walk.reached) - own)
+        assert reached[0] == reached[1], seed
+    # More than half the walks run a cycle through two passes or more, and
+    # some run a class's __match_args__ lookup in a cycle, so the trees test
+    # the passes and those lookups.
+    assert cyclic > len(_RANDOM_TREE_SEEDS)
+    assert matched
+
+
+#: Cost roots on which a walk that ran each lookup afresh wherever it met it
+#: would make more than 300,000 calls: each diamond doubles its paths at each
+#: of its 22 levels, and the clique's grow factorially with its size. On
+#: r_star_maybe_diamond, so would a walk that asked afresh along each path of
+#: star imports whether a module binds a name for sure. The budget holds for
+#: these roots, not for every cycle: a cycle that gathers one module a pass,
+#: X = Y.sub and Y = X over N modules that each bind sub to the next, takes
+#: N + 3 passes, and 23,785 calls at N = 100. Nested cycles cost more where a
+#: pass of each meets the one around it: each then stays open and runs again
+#: in every pass of each cycle around it, and on one build of that shape, K
+#: such cycles make 12,080 calls at K = 10 and 53,750 at K = 20.
+_COST_ROOTS = [
+    ("r_alias_diamond", "run"),
+    ("r_alias_modules", "run"),
+    ("r_import_diamond", "run"),
+    ("r_match_diamond", "run"),
+    ("r_star_clique", "run"),
+    ("r_star_diamond", "run"),
+    ("r_star_maybe_diamond", "run"),
+]
+_LOOKUP_BUDGET = 10_000
+
+
+@pytest.mark.parametrize(
+    ("module", "qualname"), _COST_ROOTS, ids=[f"{m}:{q}" for m, q in _COST_ROOTS]
+)
+def test_the_walk_makes_few_lookups_on_the_cost_roots(
+    walk_case_tree, monkeypatch, module, qualname
+) -> None:
+    # Each lookup method counts every call, the memo's answers too, and so
+    # does each question whether a module binds a name for sure. So a lookup
+    # that skips _settled, or keys it more finely than what it looks up, or a
+    # question that walks each path of star imports, fails here at the budget
+    # instead of hanging. With the memo, the most any of these walks makes,
+    # on r_star_maybe_diamond, is under half the budget.
+    _, paths = walk_case_tree
+    calls = 0
+
+    def counting(method):
+        def counted(self, *args, **kwargs):
+            nonlocal calls
+            calls += 1
+            assert calls <= _LOOKUP_BUDGET, (module, method.__name__)
+            return method(self, *args, **kwargs)
+
+        return counted
+
+    for name in ("resolve", "exported", "aliased", "match_args", "_binds_for_sure"):
+        method = getattr(static_reach._Walk, name)
+        monkeypatch.setattr(static_reach._Walk, name, counting(method))
+    walk = static_reach._Walk(paths, ())
+    walk.run(f"{static_reach_cases.PACKAGE}.{module}", qualname)
+    assert calls, module
 
 
 def test_the_module_stays_outside_the_batterys_binding_closure() -> None:

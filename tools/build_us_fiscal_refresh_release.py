@@ -3,8 +3,17 @@
 This is a narrow release builder for the Issue #40 fiscal target surface. It
 starts from an existing Microcosm US H5, materializes the current structured
 fiscal target rows, recalibrates only the household weights, writes a fresh
-PolicyEngine-US H5, and emits the release contract files required by
-``microcosm-publish-release``.
+PolicyEngine-US H5, and emits the release contract files.
+
+Each run is one build of a release in ``policyengine/populace-us``
+(microcosm#1570): a certified or exact-k build of the national release,
+``microcosm-us-2024-national``, or an evidence-tier build of the evidence
+release, ``microcosm-us-2024-evidence``. The release directory is
+``<out>/releases/<release>/``; both manifests name the release and the build
+(the ``populace-us-2024-…`` build ID) in the build-folder layout; the run
+checks the directory against its tier's release contract and prints the
+``microcosm-publish-release-build`` commands that publish the build into its
+own folder of the release and then make it the release's current build.
 """
 
 from __future__ import annotations
@@ -64,10 +73,10 @@ from microcosm.build.gates import (
     GateResult,
     TargetFitRequirement,
     default_valued_columns_gate,
-    input_mass_parity_gate,
     nonconstant_columns_gate,
     observed_value_counts,
     parity_gate,
+    single_record_concentration,
     tail_concentration_gate,
     target_fit_gate,
     target_profile_coverage_gate,
@@ -287,7 +296,12 @@ from microcosm.build.us_runtime.h5_io import (
     require_authenticated_us_multispine_pool_h5,
     us_multispine_pool_release_receipt,
 )
-from microcosm.build.us_runtime.input_mass import us_input_mass_totals
+from microcosm.build.us_runtime.input_mass import (
+    us_input_mass_parity_gate,
+    us_input_mass_totals,
+    us_line_32_carriers,
+    us_line_32_on_reference_terms,
+)
 from microcosm.build.us_runtime.l0_refit_export import (
     attach_l0_refit_entity_weights,
     load_us_frame,
@@ -312,6 +326,7 @@ from microcosm.build.us_runtime.population_structure_holdout import (
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
     assert_puf_capital_gains_tail_survives_selection,
 )
+from microcosm.build.us_runtime.reform_coverage_smoke import RECORDS_REQUESTS_ONLY
 from microcosm.build.us_runtime.reform_validation import (
     US_RELEASE_SPM_SELECTION,
     default_baseline_level_specs,
@@ -398,10 +413,18 @@ from microcosm.calibrate.diagnostics import (
     target_surface_payload,
     write_calibration_diagnostics,
 )
+from microcosm.data import compatibility_recertification as recert
+from microcosm.data.build_folder_manifests import (
+    publication_commands,
+    rewrite_release_dir,
+)
 from microcosm.data.contract import (
     EVIDENCE_RELEASE_ID_SEGMENT,
     EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
+    US_EVIDENCE_RELEASE_ID,
     US_FISCAL_STORED_INPUTS_STAGE,
+    US_NATIONAL_RELEASE_ID,
+    US_RELEASES,
     US_STORED_INPUTS_EVIDENCE_KEY,
     US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION,
     stored_input_evidence_manifest_block,
@@ -433,6 +456,7 @@ from microcosm.frame import Frame, MassChange, WeightKind, Weights, read_frame_t
 from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSEngine,
     PolicyEngineUSVariableMetadataIndex,
+    us_dataset_through,
 )
 from microcosm.frame.units import US_SCHEMA
 
@@ -491,8 +515,13 @@ _DRY_RUN_MARGIN_FIELDS = (
     "l0_tail_share_rise",
     "l0_tail_share_fall",
 )
-DATASET_FILENAME = "populace_us_2024.h5"
-CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
+#: The release-manifest keys and file names of the dataset and calibration
+#: weights a run writes: the names new builds of the national and evidence
+#: releases declare (microcosm#1570).
+DATASET_KEY = "microcosm_us_2024"
+DATASET_FILENAME = "microcosm_us_2024.h5"
+CALIBRATION_KEY = "microcosm_us_2024_calibration"
+CALIBRATION_FILENAME = "microcosm_us_2024_calibration.npz"
 FINAL_HOUSEHOLD_WEIGHTS_FILENAME = "final_household_weights.npy"
 FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME = "final_household_weights.json"
 FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME = "final_household_weight_ids.npy"
@@ -508,10 +537,10 @@ POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
 # after recomputing again — the recompute moved 18-64 OUT of band while
 # improving 65+); that chain shape is now refused outright by the
 # chain-depth guard in ssi_take_up_prior_basis_from_artifact. The dense
-# diagnostic arm therefore FENCES its adult bands — the under-18 pattern
-# extended: the miss ships in the scorecard as a known boundary, never as
-# an enforced contract and never as saturation-as-success. The sparse
-# certified default passes no fences and keeps hard enforcement.
+# arm (--dense-default-dataset) therefore FENCES its adult bands — the
+# under-18 pattern extended: the miss ships in the scorecard as a known
+# boundary, never as an enforced contract and never as saturation-as-success.
+# The L0+refit and --exact-k arms pass no fences and keep hard enforcement.
 # RE-ADJUDICATES when microcosm#566's damped fixed-point protocol lands.
 _US_DENSE_SSI_FENCE_ADJUDICATION = (
     "Fenced for the dense diagnostic arm (microcosm#566/#567): "
@@ -1055,7 +1084,7 @@ US_ACA_REPORTED_SUBSIDIZED_ANCHOR = (
     "reported_has_subsidized_marketplace_health_coverage_at_interview"
 )
 US_ACA_REPORTED_MARKETPLACE_COVERAGE = "has_marketplace_health_coverage_at_interview"
-#: The SCF education-debt fit table (microcosm#1073), in the artifacts
+#: The SCF education-debt fit table (microcosm#1073), in the release
 #: directory of a ``--scf-education-debt`` build: at the staged frame's
 #: pre-calibration weights, and at the release's calibrated weights before any
 #: post-export scoring (microcosm#1074).
@@ -1063,6 +1092,17 @@ US_SCF_EDUCATION_DEBT_FIT_FILENAME = "us_scf_education_debt_fit.json"
 US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME = (
     "us_scf_education_debt_calibrated_fit.json"
 )
+#: Both fit tables, keyed by their release-manifest artifact key. Only a
+#: ``--scf-education-debt`` build writes them, so only its manifest lists
+#: them, and ``microcosm-publish-release-build`` publishes them into the
+#: build's folder (``releases/<release>/<build>/``) with the other
+#: diagnostics, without ``--extra-file``.
+US_SCF_EDUCATION_DEBT_FIT_ARTIFACTS: dict[str, str] = {
+    "us_scf_education_debt_fit": US_SCF_EDUCATION_DEBT_FIT_FILENAME,
+    "us_scf_education_debt_calibrated_fit": (
+        US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME
+    ),
+}
 US_ACA_APTC_TARGET_TABLE = "cms_aca_aptc_recipients_by_state"
 US_ACA_TARGET_ROLE_TABLES = {
     "aca_ptc_recipients": US_ACA_APTC_TARGET_TABLE,
@@ -1271,8 +1311,28 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "protection lifts when the concept gains a real Ledger fact."
         ),
     )
-    parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--release-id")
+    parser.add_argument(
+        "--out",
+        type=Path,
+        required=True,
+        help=(
+            "Output root: the H5 and calibration weights go in <out>/artifacts "
+            "and the release directory in <out>/releases/<release>, named "
+            "after the release the build belongs to (microcosm#1570). A "
+            "finished build's directory is never reused, so each build needs "
+            "its own --out."
+        ),
+    )
+    parser.add_argument(
+        "--release-id",
+        help=(
+            "The build ID (populace-us-2024-...), the name of the build's own "
+            "folder in its release: microcosm-us-2024-national, or "
+            "microcosm-us-2024-evidence with --evidence-release. Defaults to "
+            "an ID made from the base dataset's digest, the commit and the "
+            "time."
+        ),
+    )
     parser.add_argument(
         "--incumbent-diagnostics",
         type=Path,
@@ -1426,16 +1486,19 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "failure, continue to write the H5 and full manifests with the "
             "recorded failures carried verbatim in the release manifest's "
             "known_failures block (each with an owner issue), instead of "
-            "refusing to export. NOT a gate bypass: the release id carries an "
-            "'-evidence-' segment, the release manifest declares the evidence "
+            "refusing to export. It does not bypass the release checks: the build "
+            "ID carries an "
+            "'-evidence-' segment, the build belongs to the evidence release "
+            "microcosm-us-2024-evidence (never the US default), the release "
+            "manifest declares the evidence "
             "schema marker the certified contract structurally rejects, and a "
             "run whose terminal gates all pass is refused under this flag "
             "(rerun without it). Preflight and mid-build source-stage gates, "
             "artifact-integrity assertions (e.g. --audit-export-targets), and "
             "the dirty-worktree refusal still abort: the evidence tier "
             "relaxes terminal gate verdicts, never artifact auditability. "
-            "Incompatible with --exact-k (the ladder candidate lane has its "
-            "own tag-only publication contract)."
+            "Incompatible with --exact-k (an exact-k build is a build of the "
+            "national release under the certified contract)."
         ),
     )
     parser.add_argument(
@@ -1455,9 +1518,15 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=int,
         default=DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
         help=(
-            "Optimization epochs for each calibration stage. The default "
-            "matches the current L0+refit release run: L0 selection for 1,500 "
-            "epochs followed by a 1,500-epoch ordinary refit."
+            "Optimization epochs for each calibration stage (default "
+            f"{DEFAULT_US_FISCAL_CALIBRATION_EPOCHS:,}). "
+            "--dense-default-dataset and the full-pool --exact-k point run "
+            "one stage; the L0+refit arm and smaller --exact-k points run an "
+            "L0 selection stage and then a refit stage, and each stage runs "
+            "this many epochs. As of 2026-11-15, the US national calibrations "
+            "that PolicyEngine had tagged in policyengine/populace-us since "
+            "2026-07-01 ran the dense arm for 1,500 to 6,000 epochs; Build P, "
+            "the parent of populace-us-2024-spm-20260915, ran 6,000."
         ),
     )
     parser.add_argument("--learning-rate", type=float, default=0.02)
@@ -1482,11 +1551,18 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=float,
         default=DEFAULT_L0_REFIT_LAMBDA_SHARE,
         help=(
-            "Default national dataset sparsity control. The builder divides "
-            "this value by the candidate household count and uses the result "
-            "as the fixed L0 penalty before refitting ordinary calibration on "
-            "the selected support. The default 0.8 reproduces the current "
-            "57k-household US fiscal surface run from the 337k support."
+            f"L0 penalty share (default {DEFAULT_L0_REFIT_LAMBDA_SHARE}) for "
+            "the L0 selection stage of the L0+refit arm and of each --exact-k "
+            "point below the full pool. The L0+refit arm runs when the caller "
+            "sets neither --dense-default-dataset nor --exact-k. The builder "
+            "divides the share by the candidate household count and uses the "
+            "result as a fixed L0 penalty; the L0+refit arm then refits "
+            "ordinary calibration on the households its L0 gates keep. "
+            "--dense-default-dataset ignores it. As of 2026-11-15, none of "
+            "the US national calibrations that PolicyEngine had tagged in "
+            "policyengine/populace-us since 2026-07-01 ran an L0 stage; "
+            "docs/us-release-build-rule.md lists the households each one "
+            "calibrated."
         ),
     )
     parser.add_argument(
@@ -1507,29 +1583,45 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=float,
         default=None,
         help=(
-            "Override the L2 concentration penalty for the post-L0 refit "
-            "stage only — the stage that produces the shipped weights. "
-            "Defaults to --l2-lambda. Requires the sparse L0+refit default "
-            "dataset (incompatible with --dense-default-dataset, which has "
-            "no refit stage)."
+            "Override the L2 concentration penalty for the refit stage only. "
+            "The L0+refit arm and every --exact-k point write the refit "
+            "stage's weights, and at the full pool, --exact-k runs that stage "
+            "alone. Defaults to --l2-lambda. The builder refuses to combine "
+            "this flag with --dense-default-dataset, which has no refit "
+            "stage."
         ),
     )
     parser.add_argument(
         "--dense-default-dataset",
         action="store_true",
         help=(
-            "Diagnostic only: publish the dense no-L0 calibrated frame as the "
-            "default national dataset. Release builds should leave this unset "
-            "so populace_us_2024.h5 is the sparse L0+refit dataset that runs "
-            "on standard machines."
+            "Calibrate every candidate household in one solve with no L0 term "
+            "and write that frame as the default national dataset, "
+            "microcosm_us_2024.h5; the build manifest records "
+            "dataset.default.method: dense_no_l0. This arm also fences the "
+            "SSI take-up bands for ages 18-64 and 65+ (microcosm#566/#567), "
+            "so a delivery miss there ships in the scorecard. The other arms "
+            "count a miss of more than 5%% as a release-gate failure, which "
+            "fails the build unless the miss has an owner and "
+            "--evidence-release exports it. As of 2026-11-15, every US "
+            "national calibration that PolicyEngine had tagged in "
+            "policyengine/populace-us since 2026-07-01 came from this arm, "
+            "and docs/us-release-build-rule.md lists them. A selection source "
+            "(--selection-source-manifest or --selection-source-h5) first "
+            "cuts the candidates to the households it names; without one, the "
+            "solve covers every household the builder loads. The builder "
+            "refuses to combine this flag with --exact-k, and the L0+refit "
+            "arm runs when the caller sets neither."
         ),
     )
     parser.add_argument(
         "--warm-start-calibration-npz",
         type=Path,
         help=(
-            "Optional populace_us_2024_calibration.npz artifact from an earlier "
-            "run on the same base frame. The builder validates that the stored "
+            "Optional calibration weights artifact from an earlier run on the "
+            "same base frame (microcosm_us_2024_calibration.npz, or "
+            "populace_us_2024_calibration.npz from a build before "
+            "microcosm#1570). The builder validates that the stored "
             "initial_household_weight vector matches the current calibration "
             "frame before using household_weight as the optimizer start."
         ),
@@ -1996,7 +2088,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         )
     if args.refit_l2_lambda is not None and args.dense_default_dataset:
         parser.error(
-            "--refit-l2-lambda requires the sparse L0+refit default dataset; "
+            "--refit-l2-lambda sets the refit stage's penalty, but "
             "--dense-default-dataset has no refit stage (use --l2-lambda)."
         )
     if not args.no_staging and not args.staging_dir and not args.staging_repo_id:
@@ -2036,9 +2128,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             parser.error(f"{flag} must be exactly 64 lowercase hexadecimal characters.")
     if args.evidence_release and args.exact_k is not None:
         parser.error(
-            "--evidence-release is incompatible with --exact-k: ladder "
-            "candidates publish tag-only under their own contract; the "
-            "evidence tier (microcosm#506) covers the national artifact."
+            "--evidence-release is incompatible with --exact-k: an exact-k "
+            "build is a build of the national release under the certified "
+            "contract; the evidence tier (microcosm#506) covers the national "
+            "artifact."
         )
     ladder_values = (
         args.exact_k,
@@ -2484,23 +2577,55 @@ def _write_reform_income_tax_cache(
 
 
 def _refuse_certified_release_dir_reuse(release_dir: Path) -> None:
-    """Fail loud when --out/--release-id points at a certified release.
+    """Fail loud when --out points at a finished build's release directory.
 
     microcosm#568 round 3: a failed retry into a directory that already
     carries a certified release would write failed-attempt weight evidence
     beside the prior run's manifest and H5 — mixing attempts the manifest
-    knows nothing about. Release ids are immutable once certified; reruns
-    pick a new id (every launcher stamps a fresh UTC timestamp) or remove
-    the directory deliberately.
+    knows nothing about. A finished build is never changed. The directory is
+    named after the build's release (microcosm#1570), so every build of a
+    release under one --out would share it: each build needs its own --out,
+    or the directory removed deliberately.
     """
 
     manifest_path = Path(release_dir) / "release_manifest.json"
     if manifest_path.exists():
         raise RuntimeError(
             f"Release directory {release_dir} already carries a certified "
-            "release (release_manifest.json present). Choose a new "
-            "--release-id or deliberately remove the stale directory before "
+            "release (release_manifest.json present). Choose a new --out for "
+            "this build or deliberately remove the stale directory before "
             "rerunning."
+        )
+
+
+#: Files the release manifest declares whenever they exist, written only by
+#: a run that does not skip their check, with the option that skips it.
+_SKIPPABLE_CHECK_FILES = (
+    ("reform_validation.json", "skip_reform_validation", "--skip-reform-validation"),
+    ("demographics.json", "skip_demographics", "--skip-demographics"),
+)
+
+
+def _refuse_skipped_checks_left_files(release_dir: Path, args) -> None:
+    """Refuse a skipped check's file left in the release directory.
+
+    The directory is named after the build's release (microcosm#1570), so a
+    rerun into the same --out finds an earlier attempt's files, and the
+    release manifest declares these whenever they exist. A run that skips
+    the check never rewrites its file, so the earlier attempt's would be
+    published as this build's.
+    """
+
+    left = [
+        f"{name} ({option})"
+        for name, flag, option in _SKIPPABLE_CHECK_FILES
+        if getattr(args, flag, False) and (Path(release_dir) / name).exists()
+    ]
+    if left:
+        raise RuntimeError(
+            f"Release directory {release_dir} holds {', '.join(left)} from an "
+            "earlier attempt, which this run skips and so would not rewrite. "
+            "Remove those files or choose a new --out before rerunning."
         )
 
 
@@ -3257,15 +3382,16 @@ def _git_dirty() -> bool:
 
 
 def _download_base_h5() -> Path:
-    from huggingface_hub import hf_hub_download
+    """The base a run without ``--base-h5`` starts from: the US national
+    release's current build, SHA-verified by the loader (microcosm#1570).
 
-    return Path(
-        hf_hub_download(
-            repo_id=REPO_ID,
-            filename=DATASET_FILENAME,
-            repo_type="dataset",
-        )
-    )
+    It is read from ``releases.json`` once the repository has one and from
+    ``latest.json`` until then. The repository's root file stops changing at
+    the switch, since builds published into folders write no root files.
+    """
+    from microcosm.data import download
+
+    return Path(download("us", 2024))
 
 
 def _load_frame(path: Path, *, expected_sha256: str | None = None) -> Frame:
@@ -3876,6 +4002,7 @@ def _aca_source_tax_unit_table_batched(
                 dataset=_dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
+                    period_only=True,
                 )
             )
             batch_tax_unit = _aca_source_tax_unit_table_from_simulation(
@@ -4090,6 +4217,7 @@ def _medicaid_person_eligibility(
                 dataset=_dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
+                    period_only=True,
                 )
             )
             batch_eligible = (
@@ -4177,6 +4305,7 @@ def _ssi_person_uncapped_amount(
                 dataset=_dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
+                    period_only=True,
                 )
             )
             batch_uncapped = calculate(batch_simulation)
@@ -4392,6 +4521,7 @@ def _snap_spm_unit_eligibility(
                 dataset=_dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
+                    period_only=True,
                 )
             )
             batch_eligible = (
@@ -4478,7 +4608,22 @@ def _dataset_from_frame(
     zero_variables: Iterable[str] = (),
     system=None,
     assert_no_formula_owned_columns: bool = True,
+    period_only: bool = False,
 ):
+    """The frame as a policyengine-us dataset for ``PERIOD``.
+
+    By default the dataset is the one year, and policyengine-us projects it
+    as a user's load does: it adds an uprated copy of every later year to its
+    last CPI-U year, stores them all, and copies them again into each branch
+    it opens. A read at a later year then gets the engine's own projected
+    inputs; post-export scoring plans keys in later years.
+
+    ``period_only`` holds ``PERIOD`` alone (``us_dataset_through``), for an
+    in-build simulation that reads only ``PERIOD`` (``_calculate_array``, and
+    the December SSI month). A later read on that dataset is not refused: the
+    engine carries or uprates leaf inputs itself and reads a stored
+    formula-owned column as its default, so only such a caller may ask.
+    """
     if assert_no_formula_owned_columns:
         _assert_no_formula_owned_columns(frame)
 
@@ -4492,7 +4637,7 @@ def _dataset_from_frame(
         if entity is not None and variable_name in tables[entity]:
             tables[entity][variable_name] = 0
     tables["household"]["household_weight"] = frame.weights_for("household").values
-    return USSingleYearDataset(
+    dataset = USSingleYearDataset(
         person=tables["person"],
         household=tables["household"],
         tax_unit=tables["tax_unit"],
@@ -4501,6 +4646,9 @@ def _dataset_from_frame(
         marital_unit=tables["marital_unit"],
         time_period=PERIOD,
     )
+    if not period_only:
+        return dataset
+    return us_dataset_through(dataset, PERIOD)
 
 
 def _calculate_array(
@@ -4658,13 +4806,9 @@ PostExportKey = tuple[str, int, str | None]
 #: this list against the installed engine's variable sources; that pattern
 #: scan is a drift detector, not a proof of household locality
 #: (microcosm#956). ``test_us_post_export_scoring.py`` exercises the
-#: post-export Medicaid refusal on a written fixture H5.
-US_POPULATION_AGGREGATE_VARIABLES = (
-    "household_income_decile",
-    "medicaid_slcsp_state_average_cost_index",
-    "medicaid_slcsp_state_denominator",
-    "spm_unit_income_decile",
-)
+#: post-export Medicaid refusal on a written fixture H5. Shared with the
+#: recertification tool (microcosm#1585).
+US_POPULATION_AGGREGATE_VARIABLES = recert.POPULATION_AGGREGATE_VARIABLES
 
 #: policyengine-us formulas whose value reads the engine's ``baseline`` branch,
 #: which a batch reform engine does not have. ``medicaid_slcsp_state_denominator``
@@ -4827,7 +4971,10 @@ def _record_post_export_requests(
     logs every baseline request, and each ``simulate(reform)`` a recorder of
     its own. The consumers ask for the same keys whatever values they get
     back, and the served baseline refuses any key this dry run did not see,
-    so a value-dependent request cannot slip past the plan.
+    so a value-dependent request cannot slip past the plan. ``simulate``
+    carries ``RECORDS_REQUESTS_ONLY``, so the reform-coverage smoke gate hands
+    it each probe instead of building the probe's reform, and the dry run
+    resolves no list edit against an engine.
 
     When the consumer runs for real, each key a reformed simulation is first
     asked for is one batched pass (``_BatchedPostExportReform``), so the pass
@@ -4844,6 +4991,7 @@ def _record_post_export_requests(
         reform_keys.append({})
         return _RecordingPostExportSimulation(reform_keys[-1])
 
+    setattr(simulate, RECORDS_REQUESTS_ONLY, True)
     consumer(simulate)
     return _ascending_period_plan(keys), sum(len(asked) for asked in reform_keys)
 
@@ -5251,6 +5399,9 @@ class _HouseholdBatchedPostExportScorer:
         if dataset_from_frame is None:
 
             def dataset_from_frame(batch_frame: Frame):
+                # Consumer plans read years after PERIOD (reform validation
+                # reaches past 2025), so the scorer keeps the engine's
+                # projection: it does not ask for PERIOD alone.
                 return _dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
@@ -5650,6 +5801,7 @@ def _reform_household_income_tax(
                 zero_variables=(reform_spec.neutralized_variable,),
                 system=system,
                 assert_no_formula_owned_columns=False,
+                period_only=True,
             )
             reformed = microsimulation_cls(
                 tax_benefit_system=reform_system,
@@ -6284,21 +6436,7 @@ def _assert_supported_ledger_filter_metadata(
     )
 
 
-def _signed_component(values: np.ndarray, source_name: str) -> np.ndarray:
-    values = np.asarray(values, dtype=np.float64)
-    if source_name in {"adjusted_gross_income", "rent_and_royalty_net_income"}:
-        return values
-    if source_name == "capital_gains_losses":
-        return np.maximum(values, 0.0)
-    if source_name.endswith("_losses") or source_name in {
-        "business_net_losses",
-        "capital_gains_losses",
-        "estate_losses",
-        "partnership_and_s_corp_losses",
-        "rent_and_royalty_net_losses",
-    }:
-        return np.minimum(values, 0.0) * -1.0
-    return np.maximum(values, 0.0)
+_signed_component = recert.signed_component
 
 
 def _soi_component_row(
@@ -6837,40 +6975,7 @@ def _record_engine_branches(simulation):
                 release_engine_simulation(current)
 
 
-def _engine_known_periods(simulation, variables: Sequence[str]) -> set[tuple[str, str]]:
-    """The (variable, period) values an engine or any engine it reaches holds.
-
-    Batched target materialization and post-export scoring both read this. The
-    holder's ``get_known_periods`` includes memory and disk storage. The walk
-    covers live branches, branches target materialization recorded before they
-    were detached, and the ``baseline`` simulation a ``reform=`` engine keeps
-    (policyengine-core sets it only when a reform is passed, so the post-export
-    scorer's engines have none). The real-engine guard tests check that the
-    watched Medicaid computation leaves a known period visible through this
-    API.
-    """
-
-    known: set[tuple[str, str]] = set()
-    stack = [simulation]
-    seen: set[int] = set()
-    while stack:
-        current = stack.pop()
-        if id(current) in seen:
-            continue
-        seen.add(id(current))
-        for variable in variables:
-            known.update(
-                (variable, str(period))
-                for period in current.get_holder(variable).get_known_periods()
-            )
-        branches = getattr(current, "branches", None)
-        if isinstance(branches, dict):
-            stack.extend(branches.values())
-        stack.extend(getattr(current, "_target_materialization_branches", ()))
-        baseline = getattr(current, "baseline", None)
-        if baseline is not None:
-            stack.append(baseline)
-    return known
+_engine_known_periods = recert.engine_known_periods
 
 
 def _refuse_batch_population_aggregates(
@@ -7017,6 +7122,7 @@ def _materialize_base_simulation_columns(
                 dataset=_dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
+                    period_only=True,
                 )
             )
             try:
@@ -7840,9 +7946,11 @@ def _input_mass_reference_gate(
     if reference_h5 is None:
         return None
     input_variables = _engine_input_variables()
-    return input_mass_parity_gate(
+    reference_frame = load_us_frame(reference_h5)
+    return us_input_mass_parity_gate(
         us_input_mass_totals(base_frame, columns=input_variables),
-        us_input_mass_totals(load_us_frame(reference_h5), columns=input_variables),
+        us_input_mass_totals(reference_frame, columns=input_variables),
+        carriers=us_line_32_carriers(base_frame, reference_frame),
         candidate_name="base_frame",
         reference_name=reference_h5.name,
         relative_tolerance=relative_tolerance,
@@ -8180,7 +8288,8 @@ US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
         "(PolicyEngine/microcosm#299 Build H). That math holds only for the "
         "$98.434B reference. The build applies this entry for any reference, "
         "so re-adjudicate it if --export-input-mass-reference-h5 names a file "
-        "with a different level."
+        "with a different level, or if the flag is absent and the raw base "
+        "becomes the reference."
     ),
     "non_sch_d_capital_gains": (
         "Identified by SOI Table 1.4 capital gain distributions reported on "
@@ -8226,9 +8335,10 @@ def _export_input_mass_gate(
     """
     input_variables = _engine_input_variables()
     reference = reference_frame if reference_frame is not None else base_frame
-    return input_mass_parity_gate(
+    return us_input_mass_parity_gate(
         us_input_mass_totals(export_frame, columns=input_variables),
         us_input_mass_totals(reference, columns=input_variables),
+        carriers=us_line_32_carriers(export_frame, reference),
         candidate_name="export_frame",
         reference_name=reference_name,
         relative_tolerance=relative_tolerance,
@@ -8282,6 +8392,20 @@ def _qrf_tail_concentration_gate(
     absent, or non-numeric, and each numeric output's record nonzero share and
     finite nonzero record count, the numbers behind the dense/sparse split) for
     the release artifact and the ``--dry-run-gates-report`` certainty model.
+
+    The surface also measures every numeric output, dense and thin ones
+    included, with :func:`microcosm.build.gates.single_record_concentration`:
+    the largest single record's share of the column's weighted absolute mass
+    and that record's weight, next to the top-k share. The measurements cannot
+    change the gate's inputs, its verdict or the errors it raises: the loop
+    resolves weights only for sparse outputs, and the gate runs before any
+    measurement. A misaligned sparse output therefore still fails with the
+    gate's own message, which names the column. The loop stores a dense
+    output's entity and not its values, and the measurement reads the column
+    from the frame again.
+    :func:`_qrf_single_record_measurements` runs after the gate and turns
+    every ``Exception`` into an ``unmeasured`` entry, so no ``Exception``
+    from a measurement fails a run the gate would pass.
     """
     qrf_outputs = sorted(_qrf_imputed_source_outputs())
     values: dict[str, np.ndarray] = {}
@@ -8292,6 +8416,7 @@ def _qrf_tail_concentration_gate(
     nonzero_shares: dict[str, float] = {}
     nonzero_records: dict[str, int] = {}
     entity_weights: dict[str, np.ndarray] = {}
+    dense_entities: dict[str, str] = {}
     for column in qrf_outputs:
         try:
             entity = export_frame.column_entity(column)
@@ -8309,6 +8434,7 @@ def _qrf_tail_concentration_gate(
         nonzero_records[column] = int((np.isfinite(array) & (array != 0.0)).sum())
         if nonzero_share > US_QRF_SPARSE_NONZERO_SHARE_MAX:
             dense.append(column)
+            dense_entities[column] = entity
             continue
         if entity not in entity_weights:
             entity_weights[entity] = np.asarray(
@@ -8324,6 +8450,14 @@ def _qrf_tail_concentration_gate(
         min_nonzero_records=US_QRF_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS,
         reviewed_exclusions=reviewed_exclusions,
     )
+    single_record, unmeasured = _qrf_single_record_measurements(
+        export_frame,
+        qrf_outputs,
+        sparse_values=values,
+        sparse_weights=weights,
+        dense_entities=dense_entities,
+        entity_weights=entity_weights,
+    )
     surface: dict[str, object] = {
         "qrf_imputed_outputs": len(qrf_outputs),
         "checked_sparse_columns": sorted(values),
@@ -8333,8 +8467,86 @@ def _qrf_tail_concentration_gate(
         "sparse_nonzero_share_max": US_QRF_SPARSE_NONZERO_SHARE_MAX,
         "nonzero_shares": nonzero_shares,
         "nonzero_records": nonzero_records,
+        "single_record_concentration": {
+            "top_k": US_QRF_TAIL_CONCENTRATION_TOP_K,
+            "columns": single_record,
+            "unmeasured": unmeasured,
+        },
     }
     return gate, surface
+
+
+def _qrf_single_record_measurements(
+    export_frame: Frame,
+    qrf_outputs: Sequence[str],
+    *,
+    sparse_values: Mapping[str, np.ndarray],
+    sparse_weights: Mapping[str, np.ndarray],
+    dense_entities: Mapping[str, str],
+    entity_weights: Mapping[str, np.ndarray],
+) -> tuple[dict[str, dict[str, float | int | None]], dict[str, str]]:
+    """Each numeric QRF output's single-record measurements, after the gate.
+
+    A sparse output reuses the values and weights the gate checked. For a
+    dense output the gate loop stored only the entity, so this reads the
+    column from the frame again, with the loop's two conversion statements.
+    A dense column's converted values stay in local names: this stores them
+    in no mapping and returns none of them. A dense output resolves its
+    entity's weights here, since the gate never weighs one, and reuses
+    weights that a sparse output of the same entity already resolved. Any
+    ``Exception``, from reading a dense column, from resolving weights or
+    from measuring, lists the output under ``unmeasured`` with the reason
+    :func:`_unmeasured_reason` builds, so no ``Exception`` from an output
+    fails the run. Both mappings keep the order of ``qrf_outputs``.
+    """
+    resolved = dict(entity_weights)
+    columns: dict[str, dict[str, float | int | None]] = {}
+    unmeasured: dict[str, str] = {}
+    for column in qrf_outputs:
+        if column not in sparse_values and column not in dense_entities:
+            continue
+        try:
+            if column in sparse_values:
+                column_values = sparse_values[column]
+                column_weights = sparse_weights[column]
+            else:
+                entity = dense_entities[column]
+                series = export_frame.table(entity)[column]
+                numeric = pd.to_numeric(series, errors="coerce").fillna(0.0)
+                column_values = numeric.to_numpy(dtype=np.float64)
+                if entity not in resolved:
+                    resolved[entity] = np.asarray(
+                        export_frame.resolve_weights(entity).values,
+                        dtype=np.float64,
+                    )
+                column_weights = resolved[entity]
+            columns[column] = single_record_concentration(
+                column_values,
+                column_weights,
+                top_k=US_QRF_TAIL_CONCENTRATION_TOP_K,
+            )
+        except Exception as error:
+            unmeasured[column] = _unmeasured_reason(error)
+    return columns, unmeasured
+
+
+def _unmeasured_reason(error: Exception) -> str:
+    """Why an output went unmeasured: the error's type and text.
+
+    Formatting an error runs the error's own ``__str__`` or ``__format__``,
+    and reading its type's name can run a metaclass property; any of them
+    can raise. When one raises an ``Exception``, the reason falls back to
+    the type's name with ``unprintable error``, then to ``unprintable
+    error`` alone, so no ``Exception`` raised while formatting leaves this
+    function.
+    """
+    try:
+        return f"{type(error).__name__}: {error}"
+    except Exception:
+        try:
+            return f"{type(error).__name__}: unprintable error"
+        except Exception:
+            return "unprintable error"
 
 
 #: Failure-line prefix for a per-run QRF tail-concentration register that does
@@ -8434,9 +8646,9 @@ def _record_qrf_tail_concentration_gate(
     flag says) to ``terminal_gate_failures``, so the batched pre-export raise
     refuses the run with the #568 weight sidecar on disk. Whenever the gate
     evaluated, ``qrf_tail_concentration.json`` is written with the per-column
-    shares, carrier counts, and the mismatch. Only a genuine evaluation crash
-    escapes: it propagates on an otherwise-clean run and becomes one unowned
-    failure line under earlier failures.
+    shares, carrier counts, single-record shares, and the mismatch. Only a
+    genuine evaluation crash escapes: it propagates on an otherwise-clean run
+    and becomes one unowned failure line under earlier failures.
 
     Returns the register-mismatch failure lines (empty when the register
     matches) so --evidence-release can refuse them.
@@ -9160,7 +9372,7 @@ def _enforce_ssi_take_up_delivery(
     microcosm#507/#508: a miss beyond tolerance on release weights fails the
     build instead of shipping in the scorecard. ``enforcement_fences``
     (microcosm#566/#567) fences normally-enforced bands for the dense
-    diagnostic arm, where delivered-weight recomputes have not landed
+    arm (--dense-default-dataset), where delivered-weight recomputes have not landed
     the adult pair in band on either observed frame (P2's clean
     one-retry record; P3's refused delivered-basis chain) — fenced
     misses ship in the scorecard with their adjudication text instead
@@ -9337,7 +9549,9 @@ def _source_coverage_aliases(
     release calibrates to them. A surface that dropped every CD-classified
     target (``target_surface_selection`` is recorded only for such surfaces)
     lists them as reviewed exclusions naming the drop, so the coverage artifact
-    agrees with ``build.target_surface_selection`` in the manifests.
+    agrees with ``target_surface_selection`` in the manifests: at the release
+    manifest's top level and in the build manifest's ``calibration`` block
+    (microcosm#1570).
     """
 
     if target_surface_selection is None:
@@ -9348,7 +9562,8 @@ def _source_coverage_aliases(
         f"{target_surface_selection['mode']} dropped all {dropped:,} "
         "congressional-district-classified targets after the target-parity and "
         "profile-coverage gates ran on the full compiled surface; see "
-        "build.target_surface_selection in the manifests."
+        "release_manifest.json target_surface_selection and "
+        "build_manifest.json calibration.target_surface_selection."
     )
     return DIRECT_ACTIVE_ALIASES, {
         alias: reason for alias in CONGRESSIONAL_DISTRICT_SOURCE_ALIASES
@@ -10347,9 +10562,10 @@ def _artifact_entry(path: str, sha: str, *, kind: str, revision: str) -> dict[st
 
 
 #: Terminal gate verdicts written into the release directory, keyed by their
-#: release-manifest artifact key. ``prepare_release`` uploads only contract
-#: files, manifest artifacts and ``--extra-file`` entries, so a verdict that is
-#: not a manifest artifact never ships — including the QRF tail register a
+#: release-manifest artifact key. A build folder holds only the manifests,
+#: their checksum ledger and the manifest's artifacts
+#: (``prepare_build_folder_release``), so a verdict that is not a manifest
+#: artifact never ships — including the QRF tail register a
 #: certified waiver rests on (route A remediation PR-3). _main() clears these
 #: before the terminal gates run, so any present at manifest time are this
 #: run's own.
@@ -10387,6 +10603,35 @@ def _gate_evidence_artifacts(release_dir: Path, *, revision: str) -> dict[str, d
         )
         for key, filename in US_RELEASE_GATE_EVIDENCE_FILES.items()
         if (release_dir / filename).is_file()
+    }
+
+
+def _scf_education_debt_fit_artifacts(
+    release_dir: Path, *, revision: str
+) -> dict[str, dict]:
+    """Release-manifest entries for a ``--scf-education-debt`` build's fit tables.
+
+    The build writes both into the release directory before its manifests, so
+    a missing table fails the build instead of shipping without it.
+    """
+    missing = sorted(
+        filename
+        for filename in US_SCF_EDUCATION_DEBT_FIT_ARTIFACTS.values()
+        if not (release_dir / filename).is_file()
+    )
+    if missing:
+        raise RuntimeError(
+            "A --scf-education-debt build must write its fit tables before its "
+            f"manifests; {release_dir} is missing {missing}."
+        )
+    return {
+        key: _artifact_entry(
+            filename,
+            _sha256(release_dir / filename),
+            kind="diagnostics",
+            revision=revision,
+        )
+        for key, filename in US_SCF_EDUCATION_DEBT_FIT_ARTIFACTS.items()
     }
 
 
@@ -10805,9 +11050,9 @@ def _build_manifests(
     medicaid_enrollment_substitutions: Sequence[Mapping[str, object]] = (),
     staging: Mapping[str, object] | None = None,
     ledger_artifact: Mapping[str, object] | None = None,
-    dataset_key: str = "populace_us_2024",
+    dataset_key: str = DATASET_KEY,
     dataset_filename: str = DATASET_FILENAME,
-    calibration_key: str = "populace_us_2024_calibration",
+    calibration_key: str = CALIBRATION_KEY,
     calibration_filename: str = CALIBRATION_FILENAME,
     exact_k_ladder: Mapping[str, object] | None = None,
     base_pool: Mapping[str, object] | None = None,
@@ -10820,6 +11065,7 @@ def _build_manifests(
     post_export_scoring: Mapping[str, object] | None = None,
     diagnostics_outcome: DiagnosticsWriteOutcome | None = None,
     scf_wealth_signal: Mapping[str, object] | None = None,
+    scf_education_debt: bool = False,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
     calibration_path = artifact_root / calibration_filename
@@ -10860,6 +11106,13 @@ def _build_manifests(
     # rather than only in loose diagnostics that never ship. The same blocks
     # ride build_manifest.json and release_manifest.json's build section.
     gate_evidence_artifacts = _gate_evidence_artifacts(release_dir, revision=release_id)
+    # microcosm#1074: checked before either manifest is written, so a build
+    # missing a fit table writes neither manifest.
+    scf_education_debt_fit_artifacts = (
+        _scf_education_debt_fit_artifacts(release_dir, revision=release_id)
+        if scf_education_debt
+        else {}
+    )
     qrf_tail_register = _qrf_tail_register_manifest_block(release_dir)
     stored_inputs = _stored_inputs_manifest_block(
         release_dir, dataset_sha256=dataset_sha
@@ -11427,6 +11680,7 @@ def _build_manifests(
                 if (release_dir / "demographics.json").exists()
                 else {}
             ),
+            **scf_education_debt_fit_artifacts,
             **gate_evidence_artifacts,
         },
     }
@@ -11660,11 +11914,12 @@ def _default_release_id(
     commit: str,
     build_timestamp: datetime,
 ) -> str:
-    """The auto-generated release id for a run without --release-id.
+    """The auto-generated build ID for a run without --release-id.
 
-    Exact-k candidates carry the k segment; evidence-tier builds carry the
-    ``evidence`` segment (microcosm#506) so the tier is visible in every tag
-    and download path; certified national builds keep the historical shape.
+    Exact-k builds carry the k segment; evidence-tier builds carry the
+    ``evidence`` segment (microcosm#506) so the tier is visible in every
+    build folder's path; certified national builds keep the historical shape.
+    The release each one belongs to is :func:`_release_for_build`.
     """
     if args.exact_k is not None:
         return (
@@ -11698,7 +11953,74 @@ def _telemetry_run_id(args: argparse.Namespace, *, timestamp: datetime) -> str:
     )
 
 
+def _release_for_build(args: argparse.Namespace) -> str:
+    """The release a run's build belongs to (microcosm#1570).
+
+    Certified and exact-k builds are builds of the national release, the
+    repository's default; evidence-tier builds are builds of the evidence
+    release, which is never the default. The release directory is named
+    after it.
+    """
+    return US_EVIDENCE_RELEASE_ID if args.evidence_release else US_NATIONAL_RELEASE_ID
+
+
+def _promotion_note(release: str) -> str:
+    """What the promotion command does for a build of ``release``."""
+    if release == US_NATIONAL_RELEASE_ID:
+        return (
+            "Promoting makes this build the current build of "
+            f"{release}, the US default dataset."
+        )
+    return (
+        f"Promoting makes this build the current build of {release}, which is "
+        "never the US default; the release's current build takes the place of "
+        "the latest-evidence.json pointer file."
+    )
+
+
+def _finish_build_folder_release(
+    release_dir: Path,
+    *,
+    build: str,
+    artifact_root: Path,
+    evidence_release: bool,
+) -> dict[str, str]:
+    """Rewrite the release directory into the build-folder layout.
+
+    :func:`_build_manifests` writes both manifests in the tagged shape. This
+    names the release (the directory's name) and the build (``build``, the
+    build ID) in both, moves the build's details to the release manifest's
+    top level and drops each artifact's ``revision`` (microcosm#1570). The
+    release contract is left to ``microcosm-publish-release-build``, whose
+    preflight runs it (the evidence contract for an evidence-tier build), as
+    the tagged path left it to its publisher: a diagnostic run's output is
+    written, not refused at its end.
+
+    Returns:
+        The commands that publish the build into its own folder of the
+        release and then make it the release's current build.
+    """
+    del evidence_release  # The release is the directory's name.
+    rewrite_release_dir(release_dir, build=build)
+    return publication_commands(
+        release_dir, repo_id=REPO_ID, artifact_root=artifact_root
+    )
+
+
 def _assert_us_release_id(release_id: str, *, evidence_release: bool = False) -> None:
+    """Check the build ID ``--release-id`` gives, or the default one.
+
+    The ID names the build, not its release, and keeps the rules it had
+    before microcosm#1570: the US prefix, and the ``-evidence-`` segment
+    exactly for evidence-tier builds.
+    """
+    if release_id in US_RELEASES:
+        raise ValueError(
+            f"{release_id!r} is a release, not a build: --release-id gives the "
+            "build ID (populace-us-2024-...), and the build is published into "
+            f"its release, {US_NATIONAL_RELEASE_ID!r} or, with "
+            f"--evidence-release, {US_EVIDENCE_RELEASE_ID!r}."
+        )
     if not release_id.startswith("populace-us-"):
         raise ValueError(
             "US fiscal refresh release ids must start with 'populace-us-' so "
@@ -11709,7 +12031,7 @@ def _assert_us_release_id(release_id: str, *, evidence_release: bool = False) ->
             "--evidence-release ids must carry the "
             f"{EVIDENCE_RELEASE_ID_SEGMENT!r} segment (e.g. "
             "populace-us-2024-evidence-<sha>-<date>) so the tier is visible "
-            "in every tag and download path."
+            "in every build folder's path."
         )
     if not evidence_release and EVIDENCE_RELEASE_ID_SEGMENT in release_id:
         raise ValueError(
@@ -12447,15 +12769,23 @@ def _release_dry_run_checks(
         )
         input_variables = _engine_input_variables()
         candidate_totals = us_input_mass_totals(base_frame, columns=input_variables)
+        reference_totals = (
+            candidate_totals
+            if reference_frame is None
+            else us_input_mass_totals(reference_frame, columns=input_variables)
+        )
         check = export_input_mass_check(
             gate_failures=gate.failures,
             gate_details=gate.details,
-            candidate_totals=candidate_totals,
-            reference_totals=(
-                candidate_totals
-                if reference_frame is None
-                else us_input_mass_totals(reference_frame, columns=input_variables)
+            candidate_totals=us_line_32_on_reference_terms(
+                candidate_totals,
+                reference_totals,
+                us_line_32_carriers(
+                    base_frame,
+                    base_frame if reference_frame is None else reference_frame,
+                ),
             ),
+            reference_totals=reference_totals,
             candidate_nonzero_shares=us_nonzero_shares(
                 base_frame, columns=input_variables
             ),
@@ -12776,18 +13106,31 @@ class _TerminalBatchProgress:
 
 def _print_build_result(
     *,
-    release_id: str,
+    build: str,
     release_dir: Path,
     artifact_root: Path,
+    publication: Mapping[str, str],
 ) -> None:
-    """Print the legacy three-key builder result without widening its API."""
+    """Print the build, where it is, and the commands that publish it.
 
+    The release is the release directory's name. ``publication`` is
+    :func:`_finish_build_folder_release`'s result: ``publish_command`` lists
+    the build in its release without making it current, and
+    ``promote_command``, run after review, makes it the release's current
+    build, as ``promotion`` says.
+    """
+
+    release = release_dir.name
     print(
         json.dumps(
             {
-                "release_id": release_id,
+                "release": release,
+                "build": build,
                 "release_dir": str(release_dir),
                 "artifact_root": str(artifact_root),
+                "publish_command": publication["publish_command"],
+                "promote_command": publication["promote_command"],
+                "promotion": _promotion_note(release),
             },
             indent=2,
         )
@@ -13121,16 +13464,16 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     )
     timing: dict[str, float] = {}
 
-    if args.release_id:
-        # microcosm#568 round 4: when the id is known up front (every launcher
-        # passes one), refuse certified-dir reuse before ANY side effect —
-        # including the base download and cache writes below. The
-        # auto-generated-id path derives its id from the base digest, so its
-        # refusal necessarily runs later, but still before any output-dir
-        # creation.
-        _refuse_certified_release_dir_reuse(
-            args.out.resolve() / "releases" / args.release_id
-        )
+    # microcosm#568 round 4: refuse certified-dir reuse before ANY side
+    # effect, including the base download and cache writes below. The
+    # release directory is named after the build's release (microcosm#1570),
+    # so it is known here whether or not --release-id gives the build ID.
+    _refuse_certified_release_dir_reuse(
+        args.out.resolve() / "releases" / _release_for_build(args)
+    )
+    _refuse_skipped_checks_left_files(
+        args.out.resolve() / "releases" / _release_for_build(args), args
+    )
     pinned_incumbent_payload: dict[str, object] | None = None
     pinned_incumbent_sha256: str | None = None
     if args.exact_k is not None:
@@ -13209,18 +13552,13 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     _assert_us_release_id(release_id, evidence_release=args.evidence_release)
     if args.exact_k is not None:
         _assert_exact_k_release_id(release_id, args.exact_k)
-        # The immutable release id is the dataset's exact-count name. Keep the
-        # files at the registry's canonical paths so a later *manual* pointer
-        # flip remains loadable by microcosm-data.
-        dataset_key = "populace_us_2024"
-        dataset_filename = DATASET_FILENAME
-        calibration_key = "populace_us_2024_calibration"
-        calibration_filename = CALIBRATION_FILENAME
-    else:
-        dataset_key = "populace_us_2024"
-        dataset_filename = DATASET_FILENAME
-        calibration_key = "populace_us_2024_calibration"
-        calibration_filename = CALIBRATION_FILENAME
+    # Every build, exact-k builds included, writes its dataset and calibration
+    # weights under the names its release's new builds declare
+    # (microcosm#1570); the build ID carries the exact count.
+    dataset_key = DATASET_KEY
+    dataset_filename = DATASET_FILENAME
+    calibration_key = CALIBRATION_KEY
+    calibration_filename = CALIBRATION_FILENAME
     congressional_district_vintage_crosswalk = (
         load_congressional_district_vintage_crosswalk(
             args.congressional_district_vintage_crosswalk
@@ -13421,9 +13759,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     active_target_registry = TargetRegistry(target_specs, country="us")
     release_root = args.out.resolve()
     artifact_root = release_root / "artifacts"
-    release_dir = release_root / "releases" / release_id
+    release_dir = release_root / "releases" / _release_for_build(args)
     # Unconditional refusal BEFORE any output-directory creation: a hostile
-    # --checkpoint-root beneath releases/<id> must not mutate a certified
+    # --checkpoint-root beneath releases/<release> must not mutate a certified
     # directory before the raise (microcosm#568 round 4).
     _refuse_certified_release_dir_reuse(release_dir)
     checkpoint_root, target_materialization_cache_dir, target_frame_checkpoint_path = (
@@ -14711,7 +15049,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             args=args,
             telemetry=telemetry,
             fit_path=(
-                artifact_root / US_SCF_EDUCATION_DEBT_FIT_FILENAME
+                release_dir / US_SCF_EDUCATION_DEBT_FIT_FILENAME
                 if dry_run is None
                 else None
             ),
@@ -15634,7 +15972,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         # follows the export and cleanup statements, which
         # test_us_post_export_scoring runs on their own.
         _write_us_scf_education_debt_fit(
-            artifact_root / US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME,
+            release_dir / US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME,
             export_frame,
             weights="calibrated_household_weights",
         )
@@ -15704,9 +16042,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             targets=ssi_band_targets,
             release_dir=release_dir,
             telemetry=telemetry,
-            # The dense diagnostic arm fences its adult bands per the
-            # microcosm#566/#567 fence adjudication; the sparse certified
-            # arm passes no fences and keeps hard enforcement.
+            # The dense arm (--dense-default-dataset) fences its adult bands
+            # per the microcosm#566/#567 fence adjudication; the L0+refit and
+            # --exact-k arms pass no fences and keep hard enforcement.
             enforcement_fences=(
                 US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES
                 if args.dense_default_dataset
@@ -16905,6 +17243,16 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         post_export_scoring=post_export_scoring,
         diagnostics_outcome=diagnostics_outcome,
         scf_wealth_signal=scf_wealth_signal,
+        scf_education_debt=args.scf_education_debt,
+    )
+    # Both manifests name the release and this build, in the build-folder
+    # layout, before telemetry attaches them; the directory must then pass
+    # its tier's contract (microcosm#1570).
+    publication = _finish_build_folder_release(
+        release_dir,
+        build=release_id,
+        artifact_root=artifact_root,
+        evidence_release=args.evidence_release,
     )
     if telemetry is not None:
         telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")
@@ -16921,9 +17269,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         authenticated_pool_h5=authenticated_pool_h5,
     )
     _print_build_result(
-        release_id=release_id,
+        build=release_id,
         release_dir=release_dir,
         artifact_root=artifact_root,
+        publication=publication,
     )
 
 
