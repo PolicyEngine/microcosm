@@ -17,11 +17,11 @@ Hold dense engine blocks, release candidates and size evaluation to the spine's 
   - The result's `source_id_multiplier` and `source_id_multiplier_basis` give way to `source_household_basis` (`source_household_id` or `geographic_support_parent`), the spine-coverage refusal no longer prints a count, and spine weights that list a household twice are refused.
   - The copy-id guards now list `size_evaluation` among the table's readers, not among the users of the retired rule.
 - **What moves.** Keys and records only; no dataset value, and no spine node. No spine kernel or gate phase code hashes an edited module, and no spine stage calls edited code, so every spine node keeps its key and H2 is not regenerated.
-  - 12 of the 84 UK kernels change hash, none of the spine registry's 58:
+  - 12 of the 86 UK kernels change hash, none of the spine registry's 60:
     - the dense and gate kernels that hash `full_measure` or `graph_targets` (`uk.full.target_compilation@1`, `uk.full.target_selection@1`, `uk.full.measures@1`, `uk.full.problem@1`, `uk.full-gates.preflight@1`, `uk.full-gates@1` and `uk.full.rotated-holdout@1`);
     - the national kernels that hash `graph_national` (`uk.full.national_targets@1`, `uk.full.national_problem@1`, `uk.full.national-gates@1` and `uk.full.national-readback@1`);
     - `uk.full.bound_spine@1`, which hashes `graph_build`.
-  - So every node of the dense graph re-keys, on a composed spine (after its 84 spine nodes, whose keys hold) and on a bound one, and so does every node of the national graph. The measures node's key also takes its new `geographic_clones` parameter.
+  - So every node of the dense graph re-keys, on a composed spine (after its 86 spine nodes, whose keys hold) and on a bound one, and so does every node of the national graph. The measures node's key also takes its new `geographic_clones` parameter.
   - `full_build_cli`, `rowwise_cli`, `spine_build`, `country_adapter`, `size_evaluation` and the pre-flight tool are hashed by no kernel, and the gate phase codes do not move.
   - The NZ transport kernels' hashes, the US kernels and post-transfer graph keys, the spec engine's compiled bundles and the packaged specs are unchanged.
   - No declaration, generated file, `gates.json` or schema changes.
