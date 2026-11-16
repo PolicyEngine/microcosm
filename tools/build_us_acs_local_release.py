@@ -3062,6 +3062,36 @@ def do_calibrate(args) -> None:
             and _stamped_settings(previous.get("solver_settings")) == settings
             and previous.get("weights_sha256") == _weights_digest(warm)
         ):
+            # The summary's evidence must be what this code computes from the
+            # checkpoint and these weights. Otherwise the shortcut ships what
+            # an older build wrote, such as county reliability grades that
+            # counted group quarters as support from a checkpoint without
+            # TYPEHUGQ. Recomputing it refuses that checkpoint exactly as a
+            # fresh solve does (review of #1630).
+            evidence = calibration_evidence(
+                frame=frame,
+                roles=roles,
+                matrix=matrix,
+                design_weights=design_weights,
+                weights=np.asarray(warm, dtype=np.float64),
+                target_loss_cap=args.target_loss_cap,
+                checkpoint_dir=args.checkpoint_dir,
+                identity=identity,
+            )
+            stale = sorted(
+                key
+                for key, value in evidence.items()
+                if json.dumps(previous.get(key), sort_keys=True)
+                != json.dumps(value, sort_keys=True)
+            )
+            if stale:
+                raise SystemExit(
+                    f"calibration_summary.json records {stale} evidence that "
+                    "this code does not compute from the checkpoint and the "
+                    "weights_latest.npz weights, so another build wrote it. "
+                    "Delete weights_latest.npz or run without --resume to "
+                    "recalibrate."
+                )
             log(
                 f"calibration already complete at {done} epochs and "
                 "the calibration summary exists; nothing to do (delete "
