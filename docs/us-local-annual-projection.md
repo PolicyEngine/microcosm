@@ -88,12 +88,30 @@ schema, rather than mutating a hash-bound annual candidate in place.
 Static aging changes two things, as on the national line
 ([static aging](static-aging.md)):
 
-- **Household weights.** Each SSA age-by-sex cell grows from 2024 by SSA's
-  projected national growth for that cell. The target is anchored on the
-  frame, so the 2024 calibration is kept and only the growth is applied.
-- **Monetary amounts.** Each column that follows a national series (the
-  engine's uprating parameters) is multiplied by that series' growth. The
-  factor is national, the same for every county.
+- **Household weights.** The weights are recalibrated toward a target for
+  each SSA age-by-sex cell: its 2024 weighted count times SSA's projected
+  national growth for that cell. The target is anchored on the frame, so the
+  2024 calibration is kept and only the growth is applied. It is a
+  calibration target, not an identity: a cell's projected count can miss it,
+  within the calibration's fit and the weight cap below.
+- **Monetary amounts.** Each column that follows an engine uprating series
+  gets one national factor, the same for every county. The factor depends on
+  the kind of series:
+  - **A national total** (a CBO or IRS SOI aggregate). The factor is
+    `growth × base weighted total / reweighted total`: the column's 2024
+    values summed nationally under the 2024 weights, divided by the same
+    values summed under the new weights. The column's national weighted
+    total then grows by exactly the series' growth, and the factor absorbs
+    only what the reweighting did not. For example, a $100 amount whose
+    household weight moves from 1 to 1.1, under growth of 1.2, becomes
+    $100 × 1.2 / 1.1 = $109.09, not $120. A column with both positive
+    amounts and losses gets two such factors, one solved over its positive
+    amounts and one over its losses, so every value keeps its sign.
+  - **A per-person rate or a price index.** The factor is the index's ratio,
+    projected year over 2024.
+
+  A county's projected total for a column therefore moves with both its own
+  reweighting and the national factor.
 
 It imposes no state or county target. State and county totals and shares
 therefore move only through each household's age-sex composition. A county
@@ -180,6 +198,13 @@ step.
 
    This writes `$ASSEMBLY_DIR/releases/microcosm-us-2024-local-annual/`.
    It prints the build and the publish and promote commands.
+
+   The assembler copies the annual build's release and build manifest
+   claims (reviewed limitations, package versions, gates and the rest) from
+   the base build's local folder. Before the hand-over, the publish command
+   reads both manifests of the base build from the Hub, and it refuses the
+   annual build unless every claim it inherited equals the published one.
+   Assemble from an unedited copy of the published base build.
 
 **Memory.** Let S be the base frame's size in memory. The H5 is about 10 GB
 on disk, and fixed-format numeric blocks load at about their stored size, so

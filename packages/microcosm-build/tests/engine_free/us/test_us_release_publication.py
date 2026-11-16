@@ -563,11 +563,15 @@ def test_the_command_takes_the_incomplete_reform_validation_override(
 
 
 class _LocalBaseOnTheHub:
-    """A Hub serving a local-area base build's published release manifest."""
+    """A Hub serving a local-area base build's published release and build
+    manifests."""
 
-    def __init__(self, directory, manifest):
+    def __init__(self, directory, manifest, build_manifest):
         self.directory = directory
-        self.manifest = manifest
+        self.manifests = {
+            "release_manifest.json": manifest,
+            "build_manifest.json": build_manifest,
+        }
         self.requests = []
 
     def hf_hub_download(self, *, repo_id, filename, repo_type, revision):
@@ -576,7 +580,7 @@ class _LocalBaseOnTheHub:
         self.requests.append((repo_id, filename, repo_type, revision))
         local = self.directory / filename
         local.parent.mkdir(parents=True, exist_ok=True)
-        local.write_text(json.dumps(self.manifest))
+        local.write_text(json.dumps(self.manifests[local.name]))
         return str(local)
 
 
@@ -602,7 +606,9 @@ def test_a_local_annual_build_is_handed_over_only_once_its_local_base_is_publish
     if published_sha256 is not None:
         published["artifacts"][LOCAL_DATASET_KEY]["sha256"] = published_sha256
     release_dir = local_annual_build_folder_of(local, root)
-    hub = _LocalBaseOnTheHub(tmp_path / "hub", published)
+    hub = _LocalBaseOnTheHub(
+        tmp_path / "hub", published, read_json(local / "build_manifest.json")
+    )
     handed_over = []
     monkeypatch.setattr(
         release_publication, "_refuse_pointer_files", lambda _repo: None
@@ -629,18 +635,23 @@ def test_a_local_annual_build_is_handed_over_only_once_its_local_base_is_publish
             release_dir, artifact_root=root, client=object()
         )
 
+    def request(name):
+        return (
+            _US_REPOSITORY,
+            f"releases/microcosm-us-2024-local/{LOCAL_BUILD}/{name}",
+            "dataset",
+            "main",
+        )
+
     if published_sha256 is None:
         assert publish() == "handed over"
         assert len(handed_over) == 1
+        assert hub.requests == [
+            request("release_manifest.json"),
+            request("build_manifest.json"),
+        ]
     else:
         with pytest.raises(ValueError, match="published base build's bytes"):
             publish()
         assert handed_over == []
-    assert hub.requests == [
-        (
-            _US_REPOSITORY,
-            f"releases/microcosm-us-2024-local/{LOCAL_BUILD}/release_manifest.json",
-            "dataset",
-            "main",
-        )
-    ]
+        assert hub.requests == [request("release_manifest.json")]

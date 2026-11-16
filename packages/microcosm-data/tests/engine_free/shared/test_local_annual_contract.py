@@ -354,19 +354,41 @@ def test_a_national_annual_build_still_needs_every_year(
 
 
 class _LocalBaseOnTheHub:
-    """A Hub serving the local base build's release manifest from its folder."""
+    """A Hub serving the local base build's release and build manifests.
 
-    def __init__(self, directory: Path, manifest: dict) -> None:
+    A manifest given as ``None`` is absent from the Hub.
+    """
+
+    def __init__(
+        self, directory: Path, manifest: dict, build_manifest: dict | None = None
+    ) -> None:
         self.directory = directory
-        self.manifest = manifest
+        self.manifests = {
+            "release_manifest.json": manifest,
+            "build_manifest.json": build_manifest,
+        }
         self.requests: list[tuple] = []
 
     def hf_hub_download(self, *, repo_id, filename, repo_type, revision):
+        from test_support.microcosm_data.hub_errors import missing_on_hub
+
         self.requests.append((repo_id, filename, repo_type, revision))
+        document = self.manifests[Path(filename).name]
+        if document is None:
+            raise missing_on_hub(repo_id, filename, revision)
         local = self.directory / filename
         local.parent.mkdir(parents=True, exist_ok=True)
-        local.write_text(json.dumps(self.manifest))
+        local.write_text(json.dumps(document))
         return str(local)
+
+
+def _base_request(name: str) -> tuple:
+    return (
+        LOCAL_REPO,
+        f"releases/{US_LOCAL_RELEASE_ID}/{LOCAL_BUILD}/{name}",
+        "dataset",
+        "main",
+    )
 
 
 @pytest.mark.parametrize(
@@ -423,24 +445,95 @@ def test_a_local_annual_build_needs_its_published_local_base(
     annual_dir = local_annual_build_folder_of(folder, root)
     if change is not None:
         change(published)
-    hub = _LocalBaseOnTheHub(tmp_path / "hub", published)
+    hub = _LocalBaseOnTheHub(
+        tmp_path / "hub", published, read_json(folder / "build_manifest.json")
+    )
 
     def check():
         annual_projections.require_base_publication(hub, annual_dir, repo_id=LOCAL_REPO)
 
     if refusal is None:
         check()
+        assert hub.requests == [
+            _base_request("release_manifest.json"),
+            _base_request("build_manifest.json"),
+        ]
     else:
         with pytest.raises(ValueError, match=refusal):
             check()
-    assert hub.requests == [
-        (
-            LOCAL_REPO,
-            f"releases/{US_LOCAL_RELEASE_ID}/{LOCAL_BUILD}/release_manifest.json",
-            "dataset",
-            "main",
-        )
-    ]
+        assert hub.requests == [_base_request("release_manifest.json")]
+
+
+def _drop_limitations(manifest: dict) -> None:
+    assert manifest["reviewed_limitations"]
+    manifest["reviewed_limitations"] = []
+
+
+def _other_core(manifest: dict) -> None:
+    manifest["built_with_core_package"]["version"] = "3.99.9"
+
+
+def _add_metadata_note(manifest: dict) -> None:
+    manifest.setdefault("metadata", {})["note"] = "edited after publication"
+
+
+def _other_build_sha(manifest: dict) -> None:
+    manifest["build_sha"] = "fff0000"
+
+
+@pytest.mark.parametrize(
+    ("name", "edit", "claim"),
+    [
+        ("release_manifest.json", _drop_limitations, "reviewed_limitations"),
+        ("release_manifest.json", _other_core, "built_with_core_package"),
+        ("release_manifest.json", _add_metadata_note, "metadata.note"),
+        ("build_manifest.json", _other_build_sha, "build_sha"),
+    ],
+)
+def test_a_local_base_edited_after_publication_passes_no_claim_to_its_annual_build(
+    local, tmp_path, name, edit, claim
+) -> None:
+    """The assembler builds a local-annual build's manifests from its base
+    build's local folder, so an edit there, after the base was published,
+    would reach the annual build while every artifact digest still matches
+    (review of #1627). Each inherited claim must equal the published one."""
+    folder, root = local
+    published = read_json(folder / "release_manifest.json")
+    published_build = read_json(folder / "build_manifest.json")
+    rewrite_json(folder, root, name, edit)
+    annual_dir = local_annual_build_folder_of(folder, root)
+    hub = _LocalBaseOnTheHub(tmp_path / "hub", published, published_build)
+
+    with pytest.raises(ValueError, match=rf"published base build's \['{claim}'\]"):
+        annual_projections.require_base_publication(hub, annual_dir, repo_id=LOCAL_REPO)
+
+
+def test_a_claim_edited_into_the_annual_manifest_is_refused(annual, tmp_path) -> None:
+    """The same rule binds the annual build's own manifest: a claim it no
+    longer carries as published, however it changed, is refused."""
+    folder, root = annual
+    base = folder.with_name(US_LOCAL_RELEASE_ID)
+    hub = _LocalBaseOnTheHub(
+        tmp_path / "hub",
+        read_json(base / "release_manifest.json"),
+        read_json(base / "build_manifest.json"),
+    )
+    rewrite_json(folder, root, "release_manifest.json", _drop_limitations)
+
+    with pytest.raises(ValueError, match="reviewed_limitations"):
+        annual_projections.require_base_publication(hub, folder, repo_id=LOCAL_REPO)
+
+
+def test_an_unpublished_base_build_manifest_is_refused(local, tmp_path) -> None:
+    folder, root = local
+    annual_dir = local_annual_build_folder_of(folder, root)
+    hub = _LocalBaseOnTheHub(
+        tmp_path / "hub", read_json(folder / "release_manifest.json"), None
+    )
+
+    with pytest.raises(ValueError, match="build_manifest.json is absent"):
+        annual_projections.require_base_publication(hub, annual_dir, repo_id=LOCAL_REPO)
+    assert hub.requests[-1] == _base_request("build_manifest.json")
 
 
 def test_a_local_annual_build_naming_a_national_base_is_not_looked_up(annual) -> None:

@@ -10,9 +10,11 @@ operator unless a test says otherwise.
 
 from __future__ import annotations
 
+import gc
 import json
 import shutil
 import tempfile
+import weakref
 from dataclasses import replace
 from pathlib import Path
 
@@ -37,6 +39,7 @@ from test_support.microcosm_build.us_annual_local import (
     install_engine_stand_ins,
     local_build_kwargs,
     local_frame,
+    multi_year_export,
     read_tables,
     scaling_static_aging,
     sha256,
@@ -180,6 +183,161 @@ def test_without_years_a_local_build_writes_every_year_after_its_base(
     assert (
         _root_attributes(kwargs["output_dir"] / "microcosm_us_2025_acs_local.h5") == {}
     )
+
+
+def _cps_cell(age: int) -> int:
+    """The CPS age band, written out here rather than read from the builder."""
+    return 80 if 80 <= age <= 84 else min(age, 85)
+
+
+def _nonuniform_ssa(kwargs: dict) -> pd.DataFrame:
+    """Rewrite the fixture's SSA table so every cell grows at its own rate."""
+    ssa = pd.read_csv(kwargs["ssa_csv"])
+    for year in (2025, 2026, 2027):
+        rows = ssa.Year == year
+        age = ssa.loc[rows, "Age"].to_numpy()
+        ssa.loc[rows, "M Tot"] *= (1 + 0.001 + age % 11 / 1000) ** (year - 2024)
+        ssa.loc[rows, "F Tot"] *= (1 + 0.002 + age % 7 / 1000) ** (year - 2024)
+    ssa.to_csv(kwargs["ssa_csv"], index=False)
+    kwargs["ssa_sha256"] = sha256(kwargs["ssa_csv"])
+    return ssa
+
+
+def test_each_year_calibrates_the_base_to_its_own_cells_and_solves_total_factors(
+    tmp_path, monkeypatch
+):
+    """Nonuniform cell targets, total and index factors, base inputs, lifetimes.
+
+    Every expected value is computed here from the raw SSA table and the base
+    H5. Each year's calibration must start from the base's own weights and
+    values, not the previous year's, and no completed year's tables may
+    survive into the next year's work.
+    """
+    install_engine_stand_ins(monkeypatch)
+    kwargs = local_build_kwargs(tmp_path)
+    ssa = _nonuniform_ssa(kwargs)
+    base = read_tables(kwargs["base_artifact_root"] / LOCAL_FILE)
+    person, household = base["person"], base["household"]
+    base_weights = household["household_weight"].to_numpy()
+    base_wages = person["employment_income_before_lsr"].to_numpy()
+    member_of = person["person_household_id"].to_numpy() - 1
+    base_person_weights = base_weights[member_of]
+    ssa["cell"] = [_cps_cell(age) for age in ssa.Age]
+    ssa_cells = ssa.groupby(["Year", "cell"])[["M Tot", "F Tot"]].sum()
+    person_cells = np.array([_cps_cell(age) for age in person["age"]])
+    female = person["is_female"].to_numpy()
+
+    calibrated_tables: list = []
+    exported_tables: list = []
+    calls: list = []
+    real_static_aging = annual.static_aging
+
+    def checking_static_aging(frame, **options):
+        gc.collect()
+        assert all(ref() is None for ref in exported_tables), (
+            "the previous year's tables survived into the next calibration"
+        )
+        np.testing.assert_array_equal(
+            frame.weights_for("household").values, base_weights
+        )
+        np.testing.assert_array_equal(
+            frame.person["employment_income_before_lsr"], base_wages
+        )
+        calls.append(options["years"])
+        result = real_static_aging(frame, **options)
+        (year,) = options["years"]
+        calibrated_tables[:] = [weakref.ref(result.year(year).calibration.frame.person)]
+        return result
+
+    def checking_export(frame, base_year, years):
+        gc.collect()
+        assert all(ref() is None for ref in calibrated_tables), (
+            "the calibration's tables survived into the export"
+        )
+        result = multi_year_export(frame, base_year, years)
+        (year,) = years
+        exported_tables[:] = [
+            weakref.ref(getattr(result.datasets[year], entity))
+            for entity in frame.entities
+        ]
+        return result
+
+    monkeypatch.setattr(annual, "static_aging", checking_static_aging)
+    monkeypatch.setattr(annual, "multi_year_dataset", checking_export)
+
+    annual.build_annual_static_aging(**kwargs, years=[2026, 2027])
+
+    assert calls == [(2026,), (2027,)]
+    gc.collect()
+    assert all(ref() is None for ref in exported_tables)
+    growths = set()
+    for year in (2026, 2027):
+        output = kwargs["output_dir"]
+        receipt = json.loads((output / f"projection_{year}.json").read_text())
+        for cell in receipt["demographic_fit"]:
+            age, is_female = cell["_ssa_age_cell"], cell["is_female"]
+            chosen = (person_cells == age) & (female == is_female)
+            expected_base = base_person_weights[chosen].sum()
+            sex = "F Tot" if is_female else "M Tot"
+            growth = ssa_cells.loc[(year, age), sex] / ssa_cells.loc[(2024, age), sex]
+            growths.add(round(float(growth), 12))
+            np.testing.assert_allclose(cell["base"], expected_base, rtol=1e-13)
+            np.testing.assert_allclose(
+                cell["target"], expected_base * growth, rtol=1e-13
+            )
+        projected = read_tables(output / f"microcosm_us_{year}_acs_local.h5")
+        weights = projected["household"]["household_weight"].to_numpy()[member_of]
+        wage_growth = 1.04 ** (year - 2024)
+        base_total = (base_person_weights * base_wages).sum()
+        reweighted_total = (weights * base_wages).sum()
+        # The reweighting moved the total, so the factor is not the plain growth.
+        assert not np.isclose(reweighted_total, base_total)
+        np.testing.assert_allclose(
+            receipt["factors"]["employment_income_before_lsr"],
+            wage_growth * base_total / reweighted_total,
+            rtol=1e-13,
+        )
+        np.testing.assert_allclose(
+            (weights * projected["person"]["employment_income_before_lsr"]).sum(),
+            base_total * wage_growth,
+            rtol=1e-13,
+        )
+        np.testing.assert_allclose(
+            projected["person"]["self_employment_income_before_lsr"],
+            person["self_employment_income_before_lsr"] * 1.03 ** (year - 2024),
+            rtol=1e-13,
+        )
+    assert len(growths) > 2, "the cells must grow at different rates"
+
+
+def test_a_custom_weight_cap_reaches_the_calibration_and_binds(tmp_path, monkeypatch):
+    """A cap below every target's growth holds each weight at the cap, no higher."""
+    install_engine_stand_ins(monkeypatch)
+    kwargs = local_build_kwargs(tmp_path)
+    cap = 1.0001
+    caps: list = []
+    real_static_aging = annual.static_aging
+
+    def recording_static_aging(frame, **options):
+        caps.append(options["max_weight_ratio"])
+        return real_static_aging(frame, **options)
+
+    monkeypatch.setattr(annual, "static_aging", recording_static_aging)
+    base = read_tables(kwargs["base_artifact_root"] / LOCAL_FILE)
+    base_weights = base["household"]["household_weight"].to_numpy()
+
+    manifest = annual.build_annual_static_aging(
+        **kwargs, years=[2026, 2027], max_weight_ratio=cap
+    )
+
+    assert caps == [cap, cap]
+    assert manifest["settings"]["max_weight_ratio"] == cap
+    for year in (2026, 2027):
+        path = kwargs["output_dir"] / f"microcosm_us_{year}_acs_local.h5"
+        ratio = read_tables(path)["household"]["household_weight"].to_numpy()
+        ratio = ratio / base_weights
+        assert ratio.max() <= cap * (1 + 1e-6)
+        assert ratio.max() >= cap * (1 - 1e-6), "the cap must bind"
 
 
 # --- Properties -------------------------------------------------------------------
@@ -422,6 +580,34 @@ def test_share_drift_is_zero_under_uniform_scaling_and_shares_sum_to_one(
             pytest.approx(1.0)
         )
         assert summary["value_count"] == len(summary["values"])
+
+
+@pytest.mark.parametrize("vintage", ["county_fips_2023", "county_fips"])
+def test_share_drift_reports_each_county_s_change_under_nonuniform_weights(vintage):
+    """Two counties of one state, weights [1, 1] to [1, 3]."""
+    households = pd.DataFrame(
+        {
+            "state_fips": [6, 6],
+            "county_fips_2023": ["06001", "06003"],
+            "county_fips": ["06005", "06007"],
+        }
+    )
+    if vintage == "county_fips":
+        households = households.drop(columns="county_fips_2023")
+    drift = annual.geography_share_drift(
+        households, np.array([1.0, 1.0]), np.array([1.0, 3.0])
+    )
+    assert set(drift) == {"state_fips", vintage}
+    county = drift[vintage]
+    codes = households[vintage].tolist()
+    assert county["value_count"] == 2
+    assert county["max_abs_share_change"] == pytest.approx(0.25)
+    for code, projected in zip(codes, (0.25, 0.75), strict=True):
+        assert county["values"][code]["base_share"] == pytest.approx(0.5)
+        assert county["values"][code]["projected_share"] == pytest.approx(projected)
+    state = drift["state_fips"]
+    assert state["values"]["6"] == {"base_share": 1.0, "projected_share": 1.0}
+    assert state["max_abs_share_change"] == 0.0
 
 
 # --- Refusals ---------------------------------------------------------------------

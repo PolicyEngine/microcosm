@@ -42,8 +42,10 @@ from test_support.microcosm_data.annual_projections import (  # noqa: F401
 from test_support.microcosm_data.local_annual import (
     LOCAL_BUILD,
     LOCAL_DATASET_KEY,
+    LOCAL_REPO,
     acceptance_report,
     local_build_folder,
+    rewrite_json,
     write_local_candidate,
 )
 from test_support.microcosm_data.release import RELEASE_ID
@@ -589,3 +591,80 @@ def test_a_local_annual_build_that_fails_the_contract_is_not_moved_into_place(
 
     assert not (local_inputs["out"] / "releases").exists()
     assert not (local_inputs["out"] / "artifacts").exists()
+
+
+class _PublishedLocalBase:
+    """A Hub serving a local base build's two manifests as they were when it
+    was published, whatever happens to its local folder afterwards."""
+
+    def __init__(self, directory, base):
+        self.directory = directory
+        self.documents = {
+            name: _read(base / name)
+            for name in ("release_manifest.json", "build_manifest.json")
+        }
+
+    def hf_hub_download(self, *, repo_id, filename, repo_type, revision):
+        local = self.directory / filename
+        local.parent.mkdir(parents=True, exist_ok=True)
+        _write(local, self.documents[local.name])
+        return str(local)
+
+
+def _drop_limitations(manifest):
+    assert manifest["reviewed_limitations"]
+    manifest["reviewed_limitations"] = []
+
+
+def _other_core(manifest):
+    manifest["built_with_core_package"]["version"] = "3.99.9"
+
+
+@pytest.mark.parametrize(
+    ("edit", "claim"),
+    [
+        (None, None),
+        (_drop_limitations, "reviewed_limitations"),
+        (_other_core, "built_with_core_package"),
+    ],
+)
+def test_an_assembled_local_annual_build_hands_over_only_its_published_base_claims(
+    tmp_path, monkeypatch, capsys, edit, claim
+):
+    """The assembler takes the annual build's claims from the base build's
+    local folder. A folder edited after its base was published still
+    assembles and passes the contract, so the hand-over check must refuse it
+    (review of #1627); an unedited folder hands over."""
+    from microcosm.data import annual_projections
+
+    package = tmp_path / "package"
+    base = local_build_folder(package)
+    hub = _PublishedLocalBase(tmp_path / "hub", base)
+    if edit is not None:
+        rewrite_json(base, package, "release_manifest.json", edit)
+    candidate = write_local_candidate(base, package, tmp_path / "candidate")
+    acceptance = tmp_path / "acceptance.json"
+    _write(acceptance, acceptance_report(candidate / "annual_manifest.json"))
+    inputs = {
+        "base": base,
+        "root": package,
+        "candidate": candidate,
+        "acceptance": acceptance,
+        "out": tmp_path / "assembled",
+    }
+
+    assert _assemble_local(_load_tool(), inputs, monkeypatch) == 0
+
+    capsys.readouterr()
+    annual_dir = inputs["out"] / "releases" / US_LOCAL_ANNUAL_RELEASE_ID
+    artifacts = inputs["out"] / "artifacts"
+    assert validate_release_dir(annual_dir, artifact_root=artifacts) == []
+
+    def hand_over():
+        annual_projections.require_base_publication(hub, annual_dir, repo_id=LOCAL_REPO)
+
+    if claim is None:
+        hand_over()
+    else:
+        with pytest.raises(ValueError, match=claim):
+            hand_over()

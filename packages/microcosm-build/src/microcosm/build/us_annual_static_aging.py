@@ -30,12 +30,27 @@ work indicators, industry and occupation) is checked equal, values and dtype,
 to the base before the year is written; a factor on a geography or protected
 attribute column is refused.
 
-**What the projection changes.** Static aging reweights households so that
-each SSA age-by-sex cell grows from the base year by SSA's national projected
-growth (``anchor="frame"``: the base-year calibration is kept and only growth
-is applied), and multiplies the monetary columns that follow a national series
-by that series' growth (:mod:`microcosm.calibrate.static_aging`). It imposes no
-state or county target. State and county totals and shares therefore move only
+**What the projection changes.** Static aging (:mod:`microcosm.calibrate.static_aging`)
+recalibrates household weights toward a target for each SSA age-by-sex cell:
+the cell's base-year weighted count times SSA's national projected growth
+(``anchor="frame"``: the base-year calibration is kept and only growth is
+applied). The target is fitted, not imposed, so a cell's realized count can
+miss it, within the calibration's fit and the ``max_weight_ratio`` cap. It
+then scales each monetary column that follows an engine uprating series by
+one national factor per column:
+
+* A column whose series is a national total gets ``growth * base weighted
+  total / reweighted total``, where both totals are the column's base-year
+  values summed nationally, under the base and the new weights. The
+  column's national weighted total then grows by exactly the series' growth,
+  and the factor absorbs only what the reweighting did not. A $100 amount
+  whose weight moves from 1 to 1.1, under growth of 1.2, becomes $109.09, not
+  $120. A column with both positive amounts and losses gets two such factors,
+  one solved over each sign.
+* A column whose series is a per-person rate or a price index gets the
+  index's ratio directly.
+
+It imposes no state or county target. State and county totals and shares therefore move only
 through each household's age-sex composition, bounded by ``max_weight_ratio``
 (no household's weight moves above 5 times its base weight); they are not
 re-targeted, and county rows still sum to their state by construction because

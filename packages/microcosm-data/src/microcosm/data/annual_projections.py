@@ -75,6 +75,24 @@ _BASE_REFERENCE_FIELDS = frozenset({"repo_id", "release", "build", "path", "sha2
 _PUBLISHER_FILES = frozenset(
     {"release_manifest.json", "build_manifest.json", CHECKSUMS_FILE}
 )
+#: The release-manifest fields an annual build writes itself. It carries every
+#: other field of its base build's release manifest unchanged, and every
+#: ``metadata`` field but :data:`_ANNUAL_METADATA_FIELDS`
+#: (``tools/assemble_us_annual_release_dir.py``).
+_ANNUAL_RELEASE_FIELDS = frozenset(
+    {"release", "build", "metadata", "artifacts", "migrated_from"}
+)
+_ANNUAL_METADATA_FIELDS = frozenset(
+    {
+        "dataset_years",
+        "annual_projection_manifest",
+        "annual_projection_acceptance",
+        "annual_projection_base",
+    }
+)
+#: The build-manifest fields an annual build writes itself; it carries every
+#: other field of its base build's build manifest unchanged.
+_ANNUAL_BUILD_FIELDS = frozenset({"release", "build", "migrated_from"})
 
 
 @dataclass(frozen=True)
@@ -850,6 +868,43 @@ def is_annual_build(release_dir: Path | str) -> bool:
     return Path(release_dir).name in US_ANNUAL_BASE_RELEASES
 
 
+def inherited_release_claims(manifest: Mapping) -> dict[str, object]:
+    """The fields of a release manifest that an annual build carries unchanged.
+
+    Applied to a base build's release manifest, these are the claims its
+    annual build inherits; applied to the annual build's own, the claims it
+    carries. Each ``metadata`` field appears as ``metadata.<field>``.
+    """
+    claims: dict[str, object] = {
+        key: value
+        for key, value in manifest.items()
+        if key not in _ANNUAL_RELEASE_FIELDS
+    }
+    metadata = manifest.get("metadata")
+    for key, value in metadata.items() if isinstance(metadata, Mapping) else ():
+        if key not in _ANNUAL_METADATA_FIELDS:
+            claims[f"metadata.{key}"] = value
+    return claims
+
+
+def inherited_build_claims(manifest: Mapping) -> dict[str, object]:
+    """The fields of a build manifest that an annual build carries unchanged."""
+    return {
+        key: value for key, value in manifest.items() if key not in _ANNUAL_BUILD_FIELDS
+    }
+
+
+_ABSENT = object()
+
+
+def _differing_claims(carried: Mapping, published: Mapping) -> list[str]:
+    return sorted(
+        key
+        for key in {*carried, *published}
+        if carried.get(key, _ABSENT) != published.get(key, _ABSENT)
+    )
+
+
 def require_base_publication(
     api: object, release_dir: Path | str, *, repo_id: str
 ) -> None:
@@ -864,9 +919,19 @@ def require_base_publication(
     be the folder's base-year H5, with the same file name and SHA-256; and
     every other file it declares, apart from the manifests and the checksum
     ledger the emitter writes for each build, must be in the annual build's
-    manifest with the same path and SHA-256. An absent manifest refuses; any
-    other Hub failure, including one where the Hub could not be asked,
-    propagates. ``api`` needs ``hf_hub_download``.
+    manifest with the same path and SHA-256.
+
+    A local-annual build's release and build manifests are assembled from its
+    base build's local folder, so for one the base build's
+    ``build_manifest.json`` is read from the same folder as well, and every
+    claim the annual build inherits (:func:`inherited_release_claims`,
+    :func:`inherited_build_claims`) must equal the published one. A base
+    folder whose manifest was edited after publication, such as one with a
+    reviewed limitation removed, therefore cannot hand its edit to the annual
+    build.
+
+    An absent manifest refuses; any other Hub failure, including one where the
+    Hub could not be asked, propagates. ``api`` needs ``hf_hub_download``.
 
     A local-annual build's base is a build of the local-area release, read
     from ``releases/microcosm-us-2024-local/<base build>/``. Neither build
@@ -1013,4 +1078,43 @@ def require_base_publication(
             f"{differing} unchanged ({path_in_repo} declares their paths and "
             "SHA-256 values); an annual build carries every file of its base "
             "build as published"
+        )
+    if not local_annual:
+        return
+    release_claims = _differing_claims(
+        inherited_release_claims(manifest), inherited_release_claims(published)
+    )
+    if release_claims:
+        raise ValueError(
+            f"the local-annual build's release manifest does not carry the "
+            f"published base build's {release_claims} as {path_in_repo} "
+            "declares them; an annual build carries its base build's claims "
+            "as published"
+        )
+    build_in_repo = f"{location.folder}/build_manifest.json"
+    try:
+        downloaded_build = api.hf_hub_download(
+            repo_id=repo_id,
+            filename=build_in_repo,
+            repo_type="dataset",
+            revision=location.revision,
+        )
+    except Exception as exc:
+        if not (_is_absent_entry_error(exc) or _is_absent_revision_error(exc)):
+            raise
+        raise ValueError(
+            f"base build {base_build!r} is not published: {build_in_repo} is "
+            f"absent at {location.revision!r} in {repo_id} ({exc}). An annual "
+            "build is published only after the build it projects."
+        ) from exc
+    build_claims = _differing_claims(
+        inherited_build_claims(_read_json(Path(release_dir) / "build_manifest.json")),
+        inherited_build_claims(_read_json(Path(downloaded_build))),
+    )
+    if build_claims:
+        raise ValueError(
+            f"the local-annual build's build manifest does not carry the "
+            f"published base build's {build_claims} as {build_in_repo} "
+            "declares them; an annual build carries its base build's claims "
+            "as published"
         )
