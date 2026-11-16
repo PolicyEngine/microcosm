@@ -234,13 +234,15 @@ def categorical_scores(
             :data:`PROBABILITY_SUM_TOLERANCE`).
         labels: Each row's observed category.
         classes: The distinct categories in column order, sorted or not. The
-            scores take the columns in sorted class order, so the order the
-            classes come in changes no score.
+            scores take the columns in sorted class order, so permuting
+            ``classes`` together with ``proba``'s columns changes no score:
+            bit for bit when ``proba`` is C-ordered, while a permuted
+            Fortran-ordered ``proba`` can move the share gaps in the last bit.
         weights: Per-row weights: real, finite, non-negative, positive in total.
-        strata: Name -> one stratum label per row (only the count is
-            checked). Share gaps (total variation between the weighted
-            predicted and observed class shares) are reported within each
-            level.
+        strata: Name -> a 1-D array of one stratum label per row (only its
+            shape is checked). Share gaps (total variation between the
+            weighted predicted and observed class shares) are reported within
+            each level.
 
     Returns:
         ``log_loss`` (true-class probabilities floored at
