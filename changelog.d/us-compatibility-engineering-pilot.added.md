@@ -1,0 +1,1 @@
+Add a US compatibility engineering pilot that retains at most 32 complete source households and their original weights, with a distinct partial receipt and existing runtime, parent and reviewed-column checks.
