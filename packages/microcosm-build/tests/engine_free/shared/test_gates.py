@@ -1286,7 +1286,7 @@ class TestExportSurfaceGate:
         result = export_surface_gate(
             ["age", "employment_income", "household_id"],
             ["age", "employment_income"],
-            candidate_name="populace-uk",
+            candidate_name="microcosm-uk",
             reference_name="eFRS",
             allowed_extra_columns=["household_id"],
         )
@@ -1297,7 +1297,7 @@ class TestExportSurfaceGate:
         result = export_surface_gate(
             ["age"],
             ["age", "employment_income"],
-            candidate_name="populace-uk",
+            candidate_name="microcosm-uk",
             reference_name="eFRS",
         )
         assert not result.passed
@@ -1307,7 +1307,7 @@ class TestExportSurfaceGate:
         result = export_surface_gate(
             ["age", "employment_income", "raw_frs_serial"],
             ["age", "employment_income"],
-            candidate_name="populace-uk",
+            candidate_name="microcosm-uk",
             reference_name="eFRS",
         )
         assert not result.passed
@@ -1449,7 +1449,7 @@ class TestTargetSurfaceGate:
         result = target_surface_gate(
             ["ons/population", "hmrc/income_tax", "dwp/universal_credit"],
             ["ons/population", "hmrc/income_tax"],
-            candidate_name="populace-uk",
+            candidate_name="microcosm-uk",
             reference_name="eFRS",
         )
         assert result.passed
@@ -1459,7 +1459,7 @@ class TestTargetSurfaceGate:
         result = target_surface_gate(
             ["ons/population"],
             ["ons/population", "hmrc/income_tax"],
-            candidate_name="populace-uk",
+            candidate_name="microcosm-uk",
             reference_name="eFRS",
         )
         assert not result.passed
