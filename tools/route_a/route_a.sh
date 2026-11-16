@@ -187,11 +187,15 @@ check_commit() {  # $1 = build ref, $2 = preflight ref; fills COMMIT_BLOCKERS/CO
       || COMMIT_BLOCKERS+=("asec_sources.py at $full lacks canonical ASEC pin $s (the base would refuse the CLI pin)")
   done
   local crosswalk
-  crosswalk=$(git -C "$MAIN" show "$full:$CROSSWALK_REL" 2>/dev/null | openssl dgst -sha256 -r | cut -c1-64)
-  if [ "$crosswalk" = "$CROSSWALK_SHA" ]; then
-    COMMIT_NOTES+=("packaged CD vintage crosswalk at $full = $CROSSWALK_SHA")
+  if ! git -C "$MAIN" cat-file -e "$full:$CROSSWALK_REL" 2>/dev/null; then
+    COMMIT_BLOCKERS+=("no packaged CD vintage crosswalk at $full ($CROSSWALK_REL)")
   else
-    COMMIT_BLOCKERS+=("packaged CD vintage crosswalk at $full is $crosswalk, not $CROSSWALK_SHA: set CROSSWALK_SHA to it once the change is reviewed")
+    crosswalk=$(git -C "$MAIN" show "$full:$CROSSWALK_REL" | openssl dgst -sha256 -r | cut -c1-64)
+    if [ "$crosswalk" = "$CROSSWALK_SHA" ]; then
+      COMMIT_NOTES+=("packaged CD vintage crosswalk at $full = $CROSSWALK_SHA")
+    else
+      COMMIT_BLOCKERS+=("packaged CD vintage crosswalk at $full is $crosswalk, not $CROSSWALK_SHA: set CROSSWALK_SHA to it once the change is reviewed")
+    fi
   fi
   if git -C "$MAIN" show "$full:tools/build_us_fiscal_refresh_release.py" 2>/dev/null | grep -q '_check_committed_us_ledger_feed_pin'; then
     COMMIT_NOTES+=("release tool at $full holds the feed to the committed pin")
@@ -250,45 +254,18 @@ check_emitter() {  # $1 = full build sha; adds to COMMIT_NOTES/COMMIT_BLOCKERS
   # than the commit's minimum_emitter_version.json. With
   # MICROCOSM_TELEMETRY_REQUIRED=1 such an emitter stops the release before it
   # does any work; otherwise the release runs without telemetry.
-  local full=$1 floor cmd version verdict problem
-  case "${MICROCOSM_TELEMETRY_REQUIRED-0}" in
-    0|1) ;;
-    *) COMMIT_BLOCKERS+=("MICROCOSM_TELEMETRY_REQUIRED is '${MICROCOSM_TELEMETRY_REQUIRED}'; the release accepts only 1, 0 or unset and refuses anything else")
-       return ;;
-  esac
-  floor=$(git -C "$MAIN" show "$full:$EMITTER_FLOOR_REL" 2>/dev/null | \
-    "$PYTHON" -c 'import json, sys; print(json.load(sys.stdin)["minimum_emitter_version"])' 2>/dev/null)
-  if [ -z "$floor" ]; then
-    COMMIT_NOTES+=("no readable $EMITTER_FLOOR_REL at $full; emitter not checked")
+  # check_emitter.py repeats the release's checks without importing microcosm.
+  local full=$1 line
+  if ! git -C "$MAIN" cat-file -e "$full:$EMITTER_FLOOR_REL" 2>/dev/null; then
+    COMMIT_NOTES+=("no $EMITTER_FLOOR_REL at $full; emitter not checked")
     return
   fi
-  cmd=${MICROCOSM_EMITTER_COMMAND-}
-  cmd=${cmd#"${cmd%%[![:space:]]*}"}; cmd=${cmd%"${cmd##*[![:space:]]}"}
-  [ -n "$cmd" ] || cmd=$(command -v microcosm-emitter 2>/dev/null)
-  if [ -z "$cmd" ]; then
-    problem="no microcosm-emitter found (MICROCOSM_EMITTER_COMMAND, then PATH); the release needs $floor or later"
-  else
-    version=$("$cmd" version </dev/null 2>/dev/null | \
-      "$PYTHON" -c 'import json, sys; print(json.load(sys.stdin).get("emitter_version") or "")' 2>/dev/null)
-    verdict=$("$PYTHON" -c '
-import re, sys
-def release(text):
-    found = re.match(r"(\d+)\.(\d+)\.(\d+)", text)
-    return None if found is None else tuple(int(part) for part in found.groups())
-have, need = release(sys.argv[1]), release(sys.argv[2])
-print("unknown" if have is None or need is None else "ok" if have >= need else "old")
-' "$version" "$floor" 2>/dev/null)
-    case "$verdict" in
-      ok) COMMIT_NOTES+=("microcosm-emitter $version at $cmd meets the commit's floor $floor"); return ;;
-      old) problem="microcosm-emitter $version at $cmd is older than the commit's floor $floor (uv tool install --upgrade 'microcosm-emitter>=$floor', or point MICROCOSM_EMITTER_COMMAND at a newer one)" ;;
-      *) problem="microcosm-emitter at $cmd reported no release version (\`$cmd version\`); the release needs $floor or later" ;;
-    esac
-  fi
-  if [ "${MICROCOSM_TELEMETRY_REQUIRED:-0}" = 1 ]; then
-    COMMIT_BLOCKERS+=("$problem; MICROCOSM_TELEMETRY_REQUIRED=1, so the release would stop before any work")
-  else
-    COMMIT_NOTES+=("$problem; MICROCOSM_TELEMETRY_REQUIRED is not 1, so the release would run without collector telemetry or staging hand-overs")
-  fi
+  line=$(git -C "$MAIN" show "$full:$EMITTER_FLOOR_REL" | "$PYTHON" -I "$SCRIPT_DIR/check_emitter.py" 2>&1)
+  case "$line" in
+    "NOTE "*) COMMIT_NOTES+=("${line#NOTE }") ;;
+    "BLOCKER "*) COMMIT_BLOCKERS+=("${line#BLOCKER }") ;;
+    *) COMMIT_BLOCKERS+=("the emitter check at $full failed: ${line:-no output}") ;;
+  esac
 }
 
 refuse_bad_release_args() {

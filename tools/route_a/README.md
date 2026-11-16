@@ -75,14 +75,23 @@ first and set what its blockers name:
   `uv sync --python "$UV_SYNC_PYTHON"` (default `3.14`). Without it uv takes
   the newest installed CPython, and the lock's torch wheels stop at 3.14.
 - **Emitter.** `--resolve` reports the `microcosm-emitter` the release would
-  start (`MICROCOSM_EMITTER_COMMAND`, then `PATH`) against the commit's
-  `minimum_emitter_version.json`. With `MICROCOSM_TELEMETRY_REQUIRED=1` a
-  missing or older emitter is a blocker, because the release would stop
-  before any work. Otherwise it is a note: the release would run without
-  collector telemetry or staging hand-overs. A value other than `1`, `0` or
-  unset is a blocker, because the release refuses it. The driver exports both
-  settings when the settings file sets them. Publisher preflight starts no
-  emitter.
+  start against the commit's `minimum_emitter_version.json`.
+  `check_emitter.py` repeats the release's checks without importing
+  microcosm:
+  - the command is `MICROCOSM_EMITTER_COMMAND`, else `microcosm-emitter` on
+    `PATH`;
+  - `version` must exit 0 within 15 s and print a JSON object;
+  - the version must be a release at or above the floor;
+  - with telemetry required, the protocol list must hold version 1.
+
+  With `MICROCOSM_TELEMETRY_REQUIRED=1` a failed check is a blocker, because
+  the release would stop before any work. Otherwise it is a note: the release
+  would run without collector telemetry or staging hand-overs. A relative
+  command path is refused, because the stages run in the build worktree. A
+  `MICROCOSM_TELEMETRY_REQUIRED` other than `1`, `0` or unset is a blocker, and
+  so is a floor file without an `X.Y.Z` release, because the release refuses
+  both. The driver exports both settings when the settings file sets them.
+  Publisher preflight starts no emitter.
 
 The example retains the historical d122 dense whole-base national/state
 settings, batch size 2000, export-mass reference and d490 tail register from the

@@ -302,6 +302,26 @@ def test_stale_feed_and_crosswalk_blockers_name_the_commits_pins(
         and f"crosswalk at {sha} is {digest}, not {'b' * 64}" in line
         for line in lines
     ), lines
+    # check_commit ends with the emitter check (no floor file here).
+    assert f"NOTE no {_EMITTER_FLOOR_REL} at {sha}; emitter not checked" in lines
+
+
+def test_a_missing_crosswalk_blocks_without_naming_a_digest(tmp_path: Path) -> None:
+    main, sha = _tiny_main(
+        tmp_path,
+        {_FEED_PIN_REL: json.dumps({"facts_sha256": "c" * 64}) + "\n"},
+    )
+    result = _input_settings_result(
+        tmp_path,
+        {"MAIN": str(main), "FEED_SHA": "c" * 64},
+        _report_lines(f"\ncheck_commit {sha} {sha}\n"),
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    lines = result.stdout.decode().splitlines()
+    assert (
+        f"BLOCKER no packaged CD vintage crosswalk at {sha} ({_CROSSWALK_REL})" in lines
+    )
+    assert not [line for line in lines if "set CROSSWALK_SHA" in line]
 
 
 def test_matching_feed_and_crosswalk_pins_are_notes_not_blockers(
@@ -330,119 +350,250 @@ def test_matching_feed_and_crosswalk_pins_are_notes_not_blockers(
     assert not [line for line in blockers if "CD vintage crosswalk" in line], blockers
 
 
-def _emitter_stub(tmp_path: Path, answer: str) -> Path:
+def _emitter_stub(
+    where: Path, answer: str, status: int = 0, name: str = "emitter-stub"
+) -> Path:
     return write_executable(
-        tmp_path / "emitter-stub",
+        where / name,
         "#!/bin/bash\n"
-        '[ "$#" = 1 ] && [ "$1" = version ] || exit 7\n'
-        f"printf '%s\\n' {shlex.quote(answer)}\n",
+        '[ "$#" = 1 ] && [ "$1" = version ] || exit 64\n'
+        f"printf '%s\\n' {shlex.quote(answer)}\n"
+        f"exit {status}\n",
     )
+
+
+_FLOOR = '{"minimum_emitter_version": "0.16.0"}\n'
+_GOOD_EMITTER = '{"emitter_version": "0.16.0", "protocol_versions": [1]}'
+
+
+def _emitter_line(floor: str, env: dict[str, str], cwd: Path | None = None) -> str:
+    """The one line ``tools/route_a/check_emitter.py`` prints."""
+
+    result = subprocess.run(
+        [sys.executable, "-I", str(ROUTE_A_TOOLS / "check_emitter.py")],
+        input=floor,
+        env={"PATH": "/usr/bin:/bin", **env},
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.splitlines()
+    assert len(lines) == 1, lines
+    return lines[0]
+
+
+def _assert_problem(line: str, problem: str, required: bool) -> None:
+    assert problem in line, line
+    if required:
+        assert line.startswith("BLOCKER "), line
+        assert "would stop before any work" in line
+    else:
+        assert line.startswith("NOTE "), line
+        assert "without collector telemetry" in line
 
 
 @pytest.mark.parametrize("required", [False, True])
 @pytest.mark.parametrize(
-    ("answer", "expected"),
+    ("answer", "status", "problem"),
     [
-        ('{"emitter_version": "0.16.0", "protocol_versions": [1]}', "ok"),
-        ('{"emitter_version": "0.17.2"}', "ok"),
-        ('{"emitter_version": "0.13.0"}', "older than the commit's floor 0.16.0"),
-        ('{"emitter_version": "0.9.10"}', "older than the commit's floor 0.16.0"),
-        ("not json", "reported no release version"),
-        ('{"emitter_version": "dev"}', "reported no release version"),
-        (None, "no microcosm-emitter found"),
+        (_GOOD_EMITTER, 0, None),
+        ('{"emitter_version": "0.17.2rc1", "protocol_versions": [1, 2]}', 0, None),
+        (
+            '{"emitter_version": "0.13.0", "protocol_versions": [1]}',
+            0,
+            "older than the commit's floor 0.16.0",
+        ),
+        (
+            '{"emitter_version": "0.9.10", "protocol_versions": [1]}',
+            0,
+            "older than the commit's floor 0.16.0",
+        ),
+        ("not json", 0, "printed no JSON object"),
+        ('["0.16.0"]', 0, "printed no JSON object"),
+        ('{"emitter_version": "dev"}', 0, "reported no release version"),
+        (
+            '{"emitter_version": "v0.16.0", "protocol_versions": [1]}',
+            0,
+            "reported no release version",
+        ),
+        (_GOOD_EMITTER, 7, "exited 7"),
     ],
 )
-def test_emitter_is_held_to_the_commits_floor(
-    tmp_path: Path, answer: str | None, expected: str, required: bool
+def test_emitter_check_follows_the_releases_version_rules(
+    tmp_path: Path, answer: str, status: int, problem: str | None, required: bool
 ) -> None:
-    main, sha = _tiny_main(
-        tmp_path,
-        {_EMITTER_FLOOR_REL: '{\n  "minimum_emitter_version": "0.16.0"\n}\n'},
-    )
-    overrides = {"MAIN": str(main)}
-    if answer is None:
-        # No command configured and none on this PATH (system tools only).
-        overrides.update(MICROCOSM_EMITTER_COMMAND="", PATH="/usr/bin:/bin")
-    else:
-        overrides["MICROCOSM_EMITTER_COMMAND"] = str(_emitter_stub(tmp_path, answer))
+    """``check_emitter.py`` repeats ``telemetry_emitter._start_emitter``: the
+    version command must exit 0 with a JSON object whose ``emitter_version``
+    starts with a release at or above the floor."""
+
+    env = {"MICROCOSM_EMITTER_COMMAND": str(_emitter_stub(tmp_path, answer, status))}
     if required:
-        overrides["MICROCOSM_TELEMETRY_REQUIRED"] = "1"
+        env["MICROCOSM_TELEMETRY_REQUIRED"] = "1"
+    line = _emitter_line(_FLOOR, env)
+    if problem is None:
+        assert line.startswith("NOTE microcosm-emitter 0."), line
+        assert line.endswith("meets the commit's floor 0.16.0")
+        return
+    _assert_problem(line, problem, required)
+
+
+@pytest.mark.parametrize(
+    ("answer", "problem"),
+    [
+        ('{"emitter_version": "0.17.2"}', "printed no list of protocol versions"),
+        (
+            '{"emitter_version": "0.17.2", "protocol_versions": ["1"]}',
+            "printed no list of protocol versions",
+        ),
+        (
+            '{"emitter_version": "0.17.2", "protocol_versions": [2]}',
+            "not protocol version 1",
+        ),
+    ],
+)
+def test_a_required_build_also_needs_protocol_version_1(
+    tmp_path: Path, answer: str, problem: str
+) -> None:
+    command = str(_emitter_stub(tmp_path, answer))
+    required = _emitter_line(
+        _FLOOR,
+        {"MICROCOSM_EMITTER_COMMAND": command, "MICROCOSM_TELEMETRY_REQUIRED": "1"},
+    )
+    _assert_problem(required, problem, True)
+    # The release reads the protocol list only when telemetry is required.
+    optional = _emitter_line(_FLOOR, {"MICROCOSM_EMITTER_COMMAND": command})
+    assert optional.startswith("NOTE microcosm-emitter 0.17.2 at "), optional
+
+
+def test_emitter_command_lookup_follows_the_release(tmp_path: Path) -> None:
+    stub = _emitter_stub(tmp_path, _GOOD_EMITTER)
+    # Padding, Unicode whitespace included, is stripped as str.strip() does.
+    padded = _emitter_line(_FLOOR, {"MICROCOSM_EMITTER_COMMAND": f"\u0085 {stub}\t"})
+    assert (
+        padded
+        == f"NOTE microcosm-emitter 0.16.0 at {stub} meets the commit's floor 0.16.0"
+    )
+    # Unset, the default name on PATH.
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    on_path = _emitter_stub(bin_dir, _GOOD_EMITTER, name="microcosm-emitter")
+    found = _emitter_line(_FLOOR, {"PATH": f"{bin_dir}:/usr/bin:/bin"})
+    assert found.startswith(f"NOTE microcosm-emitter 0.16.0 at {on_path} "), found
+    missing = _emitter_line(_FLOOR, {})
+    _assert_problem(
+        missing, "no microcosm-emitter found (microcosm-emitter on PATH)", False
+    )
+    # A relative path resolves against the working directory, and the stages
+    # run in the build worktree, so it is refused even where it resolves.
+    relative = _emitter_line(
+        _FLOOR,
+        {
+            "MICROCOSM_EMITTER_COMMAND": "bin/microcosm-emitter",
+            "MICROCOSM_TELEMETRY_REQUIRED": "1",
+        },
+        cwd=tmp_path,
+    )
+    _assert_problem(relative, "is the relative path 'bin/microcosm-emitter'", True)
+
+
+def test_a_version_command_that_hangs_is_cut_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec = importlib.util.spec_from_file_location(
+        "route_a_check_emitter", ROUTE_A_TOOLS / "check_emitter.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.TIMEOUT_SECONDS == 15.0  # the release's STARTUP_TIMEOUT_SECONDS
+    monkeypatch.setattr(module, "TIMEOUT_SECONDS", 0.5)
+    hang = write_executable(tmp_path / "hang", "#!/bin/bash\nexec sleep 30\n")
+    monkeypatch.setenv("MICROCOSM_EMITTER_COMMAND", str(hang))
+    monkeypatch.setenv("MICROCOSM_TELEMETRY_REQUIRED", "1")
+    _assert_problem(module.check(_FLOOR), "did not answer within 0.5 s", True)
+
+
+@pytest.mark.parametrize(
+    "floor",
+    [
+        '{"minimum_emitter_version": "0.16.0junk"}',
+        '{"minimum_emitter_version": "0.16"}',
+        '{"minimum_emitter_version": ""}',
+        "{}",
+        "not json",
+    ],
+)
+def test_a_floor_the_release_cannot_read_blocks(tmp_path: Path, floor: str) -> None:
+    command = str(_emitter_stub(tmp_path, _GOOD_EMITTER))
+    line = _emitter_line(floor, {"MICROCOSM_EMITTER_COMMAND": command})
+    assert line.startswith("BLOCKER the commit's minimum_emitter_version.json"), line
+
+
+@pytest.mark.parametrize("setting", ["yes", "true", " 1", ""])
+def test_a_telemetry_setting_the_release_refuses_blocks(
+    tmp_path: Path, setting: str
+) -> None:
+    command = str(_emitter_stub(tmp_path, _GOOD_EMITTER))
+    line = _emitter_line(
+        _FLOOR,
+        {"MICROCOSM_EMITTER_COMMAND": command, "MICROCOSM_TELEMETRY_REQUIRED": setting},
+    )
+    assert line == (
+        f"BLOCKER MICROCOSM_TELEMETRY_REQUIRED is {setting!r}; the release "
+        "accepts only 1, 0 or unset and refuses anything else"
+    )
+
+
+def _driver_emitter(tmp_path: Path, overrides: dict[str, str], sha: str) -> list[str]:
     result = _input_settings_result(
         tmp_path,
         overrides,
-        _report_lines(f"\nCOMMIT_NOTES=(); COMMIT_BLOCKERS=()\ncheck_emitter {sha}\n"),
+        _report_lines(
+            f"\nSCRIPT_DIR={shlex.quote(str(ROUTE_A_TOOLS))}\n"
+            f"COMMIT_NOTES=(); COMMIT_BLOCKERS=()\ncheck_emitter {sha}\n"
+        ),
     )
     assert result.returncode == 0, result.stderr.decode()
-    lines = result.stdout.decode().splitlines()
-    assert len(lines) == 1, lines
-    if expected == "ok":
-        assert lines[0].startswith("NOTE microcosm-emitter "), lines
-        assert "meets the commit's floor 0.16.0" in lines[0]
-        return
-    assert expected in lines[0], lines
-    if required:
-        assert lines[0].startswith("BLOCKER "), lines
-        assert "would stop before any work" in lines[0]
-    else:
-        assert lines[0].startswith("NOTE "), lines
-        assert "without collector telemetry" in lines[0]
+    return result.stdout.decode().splitlines()
 
 
-def test_emitter_settings_reach_the_stages_and_bad_values_block(
-    tmp_path: Path,
-) -> None:
-    """The release reads both settings from its environment, so a value set
-    in the settings file is exported, and a value the release would refuse is
-    a blocker however the emitter looks."""
+def test_driver_settings_reach_the_emitter_check_and_the_stages(tmp_path: Path) -> None:
+    """Settings-file values are exported, so the check and the stages (which
+    inherit the driver's environment) see them."""
 
-    main, sha = _tiny_main(
-        tmp_path,
-        {_EMITTER_FLOOR_REL: '{"minimum_emitter_version": "0.16.0"}\n'},
-    )
-    emitter = str(_emitter_stub(tmp_path, '{"emitter_version": "0.16.0"}'))
+    main, sha = _tiny_main(tmp_path, {_EMITTER_FLOOR_REL: _FLOOR})
+    old = str(_emitter_stub(tmp_path, '{"emitter_version": "0.13.0"}'))
+    good = str(_emitter_stub(tmp_path, _GOOD_EMITTER, name="good-emitter"))
+    required = {"MAIN": str(main), "MICROCOSM_TELEMETRY_REQUIRED": "1"}
+    assert _driver_emitter(
+        tmp_path, {**required, "MICROCOSM_EMITTER_COMMAND": old}, sha
+    ) == [
+        f"BLOCKER microcosm-emitter 0.13.0 at {old} is older than the commit's floor "
+        "0.16.0 (uv tool install --upgrade 'microcosm-emitter>=0.16.0', or point "
+        "MICROCOSM_EMITTER_COMMAND at a newer one); MICROCOSM_TELEMETRY_REQUIRED=1, "
+        "so the release would stop before any work"
+    ]
+    assert _driver_emitter(
+        tmp_path, {**required, "MICROCOSM_EMITTER_COMMAND": good}, sha
+    ) == [f"NOTE microcosm-emitter 0.16.0 at {good} meets the commit's floor 0.16.0"]
     exported = _input_settings_result(
         tmp_path,
-        {
-            "MAIN": str(main),
-            "MICROCOSM_TELEMETRY_REQUIRED": "1",
-            "MICROCOSM_EMITTER_COMMAND": f"  {emitter} ",
-        },
-        "\nprintenv MICROCOSM_TELEMETRY_REQUIRED\nprintenv MICROCOSM_EMITTER_COMMAND\n"
-        + _report_lines(f"COMMIT_NOTES=(); COMMIT_BLOCKERS=()\ncheck_emitter {sha}\n"),
+        {**required, "MICROCOSM_EMITTER_COMMAND": good},
+        "\nprintenv MICROCOSM_TELEMETRY_REQUIRED\nprintenv MICROCOSM_EMITTER_COMMAND\n",
     )
-    assert exported.returncode == 0, exported.stderr.decode()
-    assert exported.stdout.decode().splitlines() == [
-        "1",
-        f"  {emitter} ",
-        f"NOTE microcosm-emitter 0.16.0 at {emitter} meets the commit's floor 0.16.0",
-    ]
-    refused = _input_settings_result(
-        tmp_path,
-        {
-            "MAIN": str(main),
-            "MICROCOSM_TELEMETRY_REQUIRED": "yes",
-            "MICROCOSM_EMITTER_COMMAND": emitter,
-        },
-        _report_lines(f"\nCOMMIT_NOTES=(); COMMIT_BLOCKERS=()\ncheck_emitter {sha}\n"),
-    )
-    assert refused.returncode == 0, refused.stderr.decode()
-    assert refused.stdout.decode().splitlines() == [
-        "BLOCKER MICROCOSM_TELEMETRY_REQUIRED is 'yes'; the release accepts only "
-        "1, 0 or unset and refuses anything else"
-    ]
+    assert exported.stdout.decode().splitlines() == ["1", good]
 
 
 def test_emitter_check_skips_a_commit_without_a_floor(tmp_path: Path) -> None:
     main, sha = _tiny_main(tmp_path, {"README.md": "fixture\n"})
-    result = _input_settings_result(
+    assert _driver_emitter(
         tmp_path,
         {"MAIN": str(main), "MICROCOSM_EMITTER_COMMAND": str(tmp_path / "never-run")},
-        _report_lines(f"\nCOMMIT_NOTES=(); COMMIT_BLOCKERS=()\ncheck_emitter {sha}\n"),
-    )
-    assert result.returncode == 0, result.stderr.decode()
-    assert result.stdout.decode().splitlines() == [
-        f"NOTE no readable {_EMITTER_FLOOR_REL} at {sha}; emitter not checked"
-    ]
+        sha,
+    ) == [f"NOTE no {_EMITTER_FLOOR_REL} at {sha}; emitter not checked"]
 
 
 @pytest.mark.parametrize("setting", [None, "3.13"])
