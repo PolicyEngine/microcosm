@@ -391,11 +391,15 @@ EXPECTED_HASHES = {
     # becomes the takes_up_tanf_if_eligible its draw always used.
     # microcosm#1096 moves both again: solve's opt-in softmax mass
     # parametrization projects exactly onto the capped simplex; the default
-    # projection parametrization is unchanged. microcosm#1641 moves both
-    # again: docstrings in solve and ssi_take_up name the builder's arms by
-    # flag; no draw, RNG rule, QRF target or solve changes.
-    "seed_map":"4082e6e5ca5199c0bd96fa4d954d09e368a0f5ff0f4ce8995b7173ff9e5ed5ad",
-    "seed_protocol": "54a913c973b1fbdf3510bc09e20b2f85f5297ebc32e833f8590a8891405a3ca3",
+    # projection parametrization is unchanged.
+    # microcosm#1387 moves both again: the ACS transfer's opt-in SEMP-covered
+    # partnership step changes acs_transfer's attested bytes. Off its flag no
+    # draw, RNG rule or QRF target changes.
+    # microcosm#1641 moves both again: docstrings in solve and ssi_take_up
+    # name the builder's arms by flag; no draw, RNG rule, QRF target or solve
+    # changes.
+    "seed_map": "ab72ea715a838a3d75fba710102dc1fb35e52124913ca3bb81abebbf7cc8a295",
+    "seed_protocol": "258166672c1360b1ebc73ecfb87992a8b578241dec58e0d7f2e9f535b971b533",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
