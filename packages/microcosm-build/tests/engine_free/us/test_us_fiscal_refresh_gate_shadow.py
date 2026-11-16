@@ -201,6 +201,82 @@ def test_a_verdict_difference_fails_a_finished_build(tmp_path, monkeypatch, rele
         release.main([])
 
 
+class _Recorder:
+    """A stand-in staging run or emitter that records each outcome it is told."""
+
+    available = True
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str | None]] = []
+
+    def complete(self) -> None:
+        self.calls.append(("complete", None))
+
+    def fail(self, error: BaseException, **_: object) -> None:
+        self.calls.append(("fail", type(error).__name__))
+
+
+@pytest.mark.parametrize("difference", [False, True])
+def test_a_finished_builds_staging_run_keeps_the_outcome_it_recorded(
+    tmp_path, monkeypatch, release, difference
+):
+    # Review of #1635: _main completes a finished build's staging run before
+    # main finishes the shadow. A difference raised there must not rewrite
+    # that run as failed. The program's emitter records one outcome.
+    args = _args(tmp_path)
+    _stand_in_gates(
+        monkeypatch, release, failing={"pregnancy_signal"} if difference else ()
+    )
+    passing = GateResult(name="pregnancy_signal", passed=True)
+    progress, emitter = _Recorder(), _Recorder()
+    monkeypatch.setattr(release, "_ACTIVE_EMITTER", emitter)
+
+    def build(argv):
+        release._start_national_gate_shadow(args, release_id="microcosm-us-test")
+        _observe_every_entry(
+            release,
+            legacy_override=(
+                {"us_national_pregnancy": lambda: passing} if difference else None
+            ),
+        )
+        release._ACTIVE_PROGRESS = progress
+        progress.complete()
+        return None
+
+    monkeypatch.setattr(release, "_main", build)
+    if difference:
+        with pytest.raises(
+            GateBatteryShadowMismatchError, match="us_national_pregnancy"
+        ):
+            release.main([])
+    else:
+        release.main([])
+    assert progress.calls == [("complete", None)]
+    assert emitter.calls == [
+        ("fail", "GateBatteryShadowMismatchError") if difference else ("complete", None)
+    ]
+
+
+def test_a_build_error_still_fails_the_staging_run_and_the_emitter(
+    tmp_path, monkeypatch, release
+):
+    # Today's handler is unchanged: an error inside _main fails both, once.
+    args = _args(tmp_path)
+    progress, emitter = _Recorder(), _Recorder()
+    monkeypatch.setattr(release, "_ACTIVE_EMITTER", emitter)
+
+    def refused(argv):
+        release._start_national_gate_shadow(args, release_id="microcosm-us-test")
+        release._ACTIVE_PROGRESS = progress
+        raise RuntimeError("Release gates failed: something upstream")
+
+    monkeypatch.setattr(release, "_main", refused)
+    with pytest.raises(RuntimeError, match="something upstream"):
+        release.main([])
+    assert progress.calls == [("fail", "RuntimeError")]
+    assert emitter.calls == [("fail", "RuntimeError")]
+
+
 def test_a_dry_run_stops_on_purpose_and_never_fails(tmp_path, monkeypatch, release):
     report = tmp_path / "dry" / "gates.json"
     args = _args(tmp_path, dry_run_gates_report=report)

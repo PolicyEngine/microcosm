@@ -13398,6 +13398,11 @@ def main(argv: Sequence[str] | None = None) -> None:
     A build returns ``None``. ``--dry-run-gates-report`` leaves through
     ``SystemExit`` with the report's exit code: 1 on any certain failure, 2 on
     AT-RISK only, 0 clean.
+
+    The gate battery's shadow (microcosm#1585 item 11) finishes after the
+    build's own handler. By then a finished build has completed its staging
+    run, so a verdict difference that the shadow raises fails the program's
+    emitter once and leaves the staging run as the build recorded it.
     """
 
     global _ACTIVE_DRY_RUN
@@ -13405,13 +13410,6 @@ def main(argv: Sequence[str] | None = None) -> None:
     _finish_national_gate_shadow(stopped_at="a previous run in this process")
     try:
         dry_run_exit = _main(argv)
-        _finish_national_gate_shadow(
-            stopped_at=(
-                "dry run: the release stops before target materialization"
-                if dry_run_exit is not None
-                else None
-            )
-        )
     except BaseException as error:
         _finish_national_gate_shadow(stopped_by=error)
         dry_run = _ACTIVE_DRY_RUN
@@ -13434,6 +13432,18 @@ def main(argv: Sequence[str] | None = None) -> None:
                     f"{type(telemetry_error).__name__}: {telemetry_error}",
                     file=sys.stderr,
                 )
+        if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+            _ACTIVE_EMITTER.fail(error)
+        raise
+    try:
+        _finish_national_gate_shadow(
+            stopped_at=(
+                "dry run: the release stops before target materialization"
+                if dry_run_exit is not None
+                else None
+            )
+        )
+    except BaseException as error:
         if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
             _ACTIVE_EMITTER.fail(error)
         raise
