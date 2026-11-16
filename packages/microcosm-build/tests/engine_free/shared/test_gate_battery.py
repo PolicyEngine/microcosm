@@ -1272,6 +1272,7 @@ class TestStageLevelEvaluation:
             [
                 _entry("pf_gate", gate="exported_nonzero", phase="preflight"),
                 _entry("t_gate", gate="exported_nonzero"),
+                _entry("t_later", gate="exported_nonzero"),
             ]
         )
         run = self._run(manifest, tmp_path, "terminal_gates.json")
@@ -1284,10 +1285,10 @@ class TestStageLevelEvaluation:
             run.evaluate_entries(["pf_gate"], EvidenceContext())
         with pytest.raises(GateBatteryBlockedError):
             run.enforce("preflight", mode=BlockingMode.BLOCKS_ARTIFACT)
-        # An entry of a later phase, which no recorded phase holds: only the
-        # block refuses it.
+        # An entry of a later phase that this run has not evaluated and no
+        # recorded phase holds: only the block refuses it.
         with pytest.raises(ValueError, match="no later stage may run"):
-            run.evaluate_entries(["t_gate"], EvidenceContext())
+            run.evaluate_entries(["t_later"], EvidenceContext())
 
     def test_evaluate_entries_refuses_an_undeclared_phase_and_a_stray_key(self):
         # Review of #1609: one case for each refusal before any gate runs.
@@ -1444,6 +1445,71 @@ class TestStageLevelEvaluation:
         )
         assert run.blocked_at_phase == "assembled"
         assert run.report_payload()["gates"]["a_first"]["status"] == "passed"
+
+    def test_the_run_evaluates_each_entry_once(self, tmp_path, signing_env):
+        # Review of #1609: a stage that could evaluate a gate again, with
+        # other evidence, could keep whichever outcome it preferred.
+        manifest = _manifest(
+            [
+                _entry("a_first", gate="support", phase="assembled"),
+                _entry("a_block", gate="exported_nonzero", phase="assembled"),
+            ],
+            ["assembled"],
+        )
+        run = self._run(manifest, tmp_path, "terminal_gates.json")
+        (failed,) = run.evaluate_entries(["a_block"], EvidenceContext())
+        assert failed.status is GateStatus.FAILED
+        other = EvidenceContext(artifacts={"exported": "other evidence"})
+        with pytest.raises(ValueError, match=r"already evaluated \['a_block'\];"):
+            run.evaluate_entries(["a_first", "a_block"], other)
+        # Nor may the batch evaluate the phase's entries again.
+        with pytest.raises(
+            ValueError, match=r"already evaluated \['a_block'\] at their stages"
+        ):
+            run.run_phase("assembled", other)
+        assert run.phases_evaluated == ()
+        # A refused call evaluates none of its entries, so a_first still runs.
+        (passed,) = run.evaluate_entries(["a_first"], EvidenceContext())
+        run.record_phase(assemble_phase_report(manifest, "assembled", [passed, failed]))
+        with pytest.raises(GateBatteryBlockedError):
+            run.enforce("assembled", mode=BlockingMode.BLOCKS_ARTIFACT)
+
+    def test_the_run_refuses_an_outcome_its_stage_did_not_produce(
+        self, tmp_path, signing_env
+    ):
+        # Review of #1609: a phase must carry the outcome the run's stage
+        # produced, not another evaluation, such as one under another registry.
+        manifest = _manifest(
+            [
+                _entry("a_first", gate="support", phase="assembled"),
+                _entry("a_block", gate="exported_nonzero", phase="assembled"),
+            ],
+            ["assembled"],
+        )
+        run = self._run(manifest, tmp_path, "terminal_gates.json")
+        produced = run.evaluate_entries(["a_first", "a_block"], EvidenceContext())
+        lenient = {**self._registry(), "exported_nonzero": _binding("exported_nonzero")}
+        (passing,) = evaluate_entries(
+            manifest, ["a_block"], EvidenceContext(), registry=lenient
+        )
+        assert passing.status is GateStatus.PASSED
+        swapped = assemble_phase_report(manifest, "assembled", [produced[0], passing])
+        with pytest.raises(
+            ValueError, match=r"carries outcomes for \['a_block'\] other than"
+        ):
+            run.record_phase(swapped)
+        assert run.phases_evaluated == ()
+        # The stages' own outcomes, carried through a phase payload and back,
+        # are compared by content and record.
+        carried = gate_phase_report_from_payload(
+            gate_phase_report_payload(
+                assemble_phase_report(manifest, "assembled", produced), gates=manifest
+            ),
+            gates=manifest,
+        )
+        assert carried.outcomes[1] is not produced[1]
+        run.record_phase(carried)
+        assert run.report_payload()["gates"]["a_block"]["status"] == "failed"
 
 
 class TestRecordWithoutEnforce:

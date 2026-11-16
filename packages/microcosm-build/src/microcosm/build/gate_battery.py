@@ -37,7 +37,7 @@ Three disciplines, held by construction rather than convention:
 A build may also evaluate a phase's gates at the stages where its evidence
 appears, rather than in one batch at the boundary:
 :meth:`GateBatteryRun.evaluate_entries` resolves named entries exactly as the
-batch would, with the run's registry, :func:`blocking_outcomes`
+batch would, once each and with the run's registry, :func:`blocking_outcomes`
 says whether they stop the build under its posture, and
 :func:`assemble_phase_report` gathers them into the phase's
 :class:`GatePhaseReport`, which :meth:`GateBatteryRun.record_phase` persists
@@ -727,18 +727,37 @@ def gate_phase_report_payload(
         "schema_version": 1,
         "gates_manifest_sha256": _canonical_sha256(_gates_manifest_payload(gates)),
         "phase": report.phase,
-        "outcomes": [
-            {
-                "id": outcome.entry.id,
-                **outcome.to_payload(),
-                "result_name": outcome.result.name
-                if outcome.result is not None
-                else None,
-                "evidence_sha256": outcome.evidence_sha256,
-            }
-            for outcome in report.outcomes
-        ],
+        "outcomes": [_outcome_record(outcome) for outcome in report.outcomes],
     }
+
+
+def _outcome_record(outcome: GateOutcome) -> dict[str, object]:
+    """One outcome as a phase payload carries it.
+
+    :func:`gate_phase_report_payload` writes it, and
+    :meth:`GateBatteryRun.record_phase` compares a stage's outcome by it
+    (:func:`_same_outcome`), so the comparison covers every field a phase
+    payload carries.
+    """
+
+    return {
+        "id": outcome.entry.id,
+        **outcome.to_payload(),
+        "result_name": outcome.result.name if outcome.result is not None else None,
+        "evidence_sha256": outcome.evidence_sha256,
+    }
+
+
+def _same_outcome(left: GateOutcome, right: GateOutcome) -> bool:
+    """Whether two outcomes carry the same verdict, as a phase payload holds it.
+
+    A comparison of content, not identity, so an outcome carried through
+    :func:`gate_phase_report_payload` and back is still the same outcome.
+    """
+
+    return _canonical_json_bytes(_outcome_record(left)) == _canonical_json_bytes(
+        _outcome_record(right)
+    )
 
 
 def gate_phase_report_from_payload(
@@ -1372,9 +1391,10 @@ class GateBatteryRun:
         )
         self._phase_reports: dict[str, GatePhaseReport] = {}
         self._blocked_at_phase: str | None = None
-        # Entries this run evaluated at their stages: their stages ran, so
-        # record_phase refuses a phase that marks one of them unreached.
-        self._stage_evaluated: set[str] = set()
+        # The outcome of each entry this run evaluated at its stage, by id.
+        # Each entry is evaluated once, and record_phase refuses a phase that
+        # marks one of them unreached or carries another outcome for it.
+        self._stage_outcomes: dict[str, GateOutcome] = {}
 
     @property
     def report_path(self) -> Path:
@@ -1428,7 +1448,9 @@ class GateBatteryRun:
         Raises:
             ValueError: If a phase runs out of declared order, re-runs, or
                 runs after a block — each would make the persisted
-                ``unreached`` placeholders a lie.
+                ``unreached`` placeholders a lie — or if this run has already
+                evaluated one of its entries at a stage, which the batch
+                would evaluate again.
         """
 
         if self._blocked_at_phase is not None:
@@ -1444,6 +1466,17 @@ class GateBatteryRun:
                 f"phase {phase!r} is out of order; expected {expected!r} "
                 f"(declared order {list(self._gates.phases)})."
             )
+        staged = sorted(
+            entry_id
+            for entry_id, outcome in self._stage_outcomes.items()
+            if outcome.entry.phase == phase
+        )
+        if staged:
+            raise ValueError(
+                f"this run has already evaluated {staged} at their stages; "
+                f"assemble phase {phase!r} from their outcomes "
+                "(assemble_phase_report) and record it with record_phase."
+            )
         report = evaluate_phase(self._gates, phase, context, registry=self._registry)
         self.record_phase(report)
         return report
@@ -1456,16 +1489,19 @@ class GateBatteryRun:
         The stage-level counterpart of :meth:`run_phase`: the module-level
         :func:`evaluate_entries` over this run's manifest and registry, so a
         stage cannot evaluate against another registry than the one the run
-        was armed with. It persists no outcome, but the run keeps the ids it
-        evaluated, and :meth:`record_phase` refuses a phase that marks one of
-        them ``unreached``. The phase's report is assembled with
+        was armed with. It persists no outcome, but the run keeps each one
+        and evaluates each entry once, so a stage cannot evaluate a gate
+        again and keep the outcome it prefers. :meth:`record_phase` refuses a
+        phase that marks one of these entries ``unreached`` or carries
+        another outcome for it. The phase's report is assembled with
         :func:`assemble_phase_report`, under this run's posture, and recorded
         with :meth:`record_phase`.
 
         Raises:
             ValueError: If the battery has blocked, an entry belongs to a
-                phase already recorded, or as :func:`evaluate_entries`
-                raises.
+                phase already recorded, this run has already evaluated an
+                entry, or as :func:`evaluate_entries` raises. A refused call
+                evaluates none of its entries.
         """
 
         if self._blocked_at_phase is not None:
@@ -1487,10 +1523,18 @@ class GateBatteryRun:
                     f"phase(s) {recorded} have already been recorded; their "
                     "entries cannot be evaluated again."
                 )
+            evaluated = sorted(
+                {entry_id for entry_id in entry_ids if entry_id in self._stage_outcomes}
+            )
+            if evaluated:
+                raise ValueError(
+                    f"this run has already evaluated {evaluated}; each entry is "
+                    "evaluated once, and its phase records that outcome."
+                )
         outcomes = evaluate_entries(
             self._gates, entry_ids, context, registry=self._registry
         )
-        self._stage_evaluated.update(outcome.entry.id for outcome in outcomes)
+        self._stage_outcomes.update((outcome.entry.id, outcome) for outcome in outcomes)
         return outcomes
 
     def record_phase(self, report: GatePhaseReport) -> None:
@@ -1510,18 +1554,22 @@ class GateBatteryRun:
         marks as usual. A phase whose entries are all unreached, the record a
         graph keeps when an earlier phase blocked it, is recorded as before.
 
-        No phase may mark ``unreached`` an entry this run evaluated at a stage
-        (:meth:`evaluate_entries`): that stage ran, so the phase must carry
-        the outcome it produced. The check sees only this run's stages; a
-        phase carried in from another process holds outcomes, not the ids its
-        stages evaluated.
+        Each entry this run evaluated at a stage (:meth:`evaluate_entries`)
+        must reach the phase with the outcome its stage produced: a phase
+        that marks one ``unreached``, or carries another outcome for it, is
+        refused, so a stage can neither drop a gate it evaluated nor keep a
+        second evaluation in its place. Outcomes are compared by content
+        (:func:`_same_outcome`), so the same outcome carried through a phase
+        payload and back is accepted. The check covers only the entries this
+        run evaluated; for any other entry, such as one in a phase carried in
+        from another process, the run has no outcome of its own to compare.
 
         Raises:
             ValueError: If the battery has blocked, the phase is out of
                 order, its outcomes differ from the declared manifest, it
-                marks unreached an entry this run evaluated, or it stopped
-                part way but names a blocker that does not block this run's
-                posture, or nothing in it does.
+                marks unreached or carries another outcome for an entry this
+                run evaluated, or it stopped part way but names a blocker
+                that does not block this run's posture, or nothing in it does.
         """
         if self._blocked_at_phase is not None:
             raise ValueError(f"battery blocked at phase {self._blocked_at_phase!r}.")
@@ -1530,16 +1578,26 @@ class GateBatteryRun:
                 f"phase {report.phase!r} is out of order; expected {self._next_phase()!r}."
             )
         gate_phase_report_payload(report, gates=self._gates)
-        evaluated_unreached = sorted(
-            outcome.entry.id
-            for outcome in report.outcomes
-            if outcome.status is GateStatus.UNREACHED
-            and outcome.entry.id in self._stage_evaluated
-        )
+        evaluated_unreached: list[str] = []
+        replaced: list[str] = []
+        for outcome in report.outcomes:
+            produced = self._stage_outcomes.get(outcome.entry.id)
+            if produced is None:
+                continue
+            if outcome.status is GateStatus.UNREACHED:
+                evaluated_unreached.append(outcome.entry.id)
+            elif not _same_outcome(outcome, produced):
+                replaced.append(outcome.entry.id)
         if evaluated_unreached:
             raise ValueError(
-                f"phase {report.phase!r} marks {evaluated_unreached} unreached, "
-                "but this run evaluated them at their stages; record the "
+                f"phase {report.phase!r} marks {sorted(evaluated_unreached)} "
+                "unreached, but this run evaluated them at their stages; record "
+                "the outcomes those stages produced."
+            )
+        if replaced:
+            raise ValueError(
+                f"phase {report.phase!r} carries outcomes for {sorted(replaced)} "
+                "other than the ones this run's stages produced; record the "
                 "outcomes those stages produced."
             )
         statuses = {outcome.status for outcome in report.outcomes}
