@@ -1650,38 +1650,38 @@ and the default on an older feed, so neither was fit to this register. The
 plan pins scorer commit `2cfe3043d747b929e349c8de2486acf80b5f17f2` on
 `main`, which carries #1171 (`--workers`, the per-slice release of Core's
 variable modules, and the recycling guard) and locks policyengine-us 2.2.1,
-the engine the d1386 manifest names. The runner registration comes from this checkout. A plan's
-pin is immutable: to pick up a later scorer change, update `source.commit`,
-then repeat the local validation and the Modal check.
+the engine the d1386 manifest names. The runner registration comes from this
+checkout. A plan's pin is immutable and freezes the yardstick: to pick up a
+later scorer change, update `source.commit`, then repeat the local
+validation and the Modal check.
 
-The stage runs the local comparison's argv with staged paths,
-`--workers 16` and `--worker-max-slices 6` added:
+The stage runs the local comparison's argv with staged paths and
+`--workers 16` added:
 
 ```text
---incumbent X --candidate Y --ledger-facts Z --out-prefix P --maximum-microsim-batch-size 2000 --worker-max-slices 6 --workers 16
+--incumbent X --candidate Y --ledger-facts Z --out-prefix P --maximum-microsim-batch-size 2000 --workers 16
 ```
 
 Only `workers`, `maximum_microsim_batch_size` and `worker_max_slices` are
-plan options. The d844 plan sets `worker_max_slices` to 6, so the stage adds
-`--worker-max-slices 6` and each worker is replaced after six slices. The
-local probe of 11 November 2026 ran six slices of chunk 5 on the d1386
-frame: its traced heap stepped up once at slice 3 and then grew 22 to 45 MB
-per slice, so six slices is the range it measured. The scorer refuses
-recycling on Python below 3.14.7, and the image pins only `3.14`; it
-refuses before it loads either frame, so a too-old image fails in minutes.
-Check mode's receipt records the image's Python in its runner identity:
-confirm 3.14.7 or later there before the paid run. Every
-path flag, `--out-prefix`, the candidate-manifest pin, both spellings of
-each boolean, and the alternative batch-size spelling are runner-owned.
-The builder omits `--age-targets` and `--allow-unaged-dollar-targets`, so
-the scorer uses the same defaults as the sequential run: `False` and
-`True`, respectively. The crosswalk and candidate pool/attestation flags
-are also omitted; the scorer chooses its normal bundled crosswalk.
-Changing this scoring yardstick requires a reviewed registration change.
-The plan sets the five native numerical thread counts to `1`, so sixteen
-spawned workers do not each start a sixteen-thread BLAS/OpenMP pool.
-That is an execution choice; the engine-free argv test does not prove
-numerical parity across platforms or thread counts.
+plan options. The d844 plan does not set `worker_max_slices`, so each
+worker lives for its artifact's whole pool. The scorer refuses recycling
+below Python 3.14.7, and the image's `3.14` resolves to 3.14.2 on Modal's
+2025.06 image builder (`modal/builder/base-images.json` in modal 1.3.0).
+Check mode reports the image venv's Python under `environment.python` and
+under the parser probe's `python`, and when a plan sets `worker_max_slices`
+it runs the scorer's own `_assert_worker_recycling_supported` in the image
+(`ToolSpec.option_preflights`), so a recycling plan fails the check instead
+of the paid run. Every path flag, `--out-prefix`, the candidate-manifest
+pin, both spellings of each boolean, and the alternative batch-size
+spelling are runner-owned. The builder omits `--age-targets` and
+`--allow-unaged-dollar-targets`, so the scorer uses the same defaults as the
+sequential run: `False` and `True`, respectively. The crosswalk and candidate
+pool/attestation flags are also omitted; the scorer chooses its normal
+bundled crosswalk. Changing this scoring yardstick requires a reviewed
+registration change. The plan sets the five native numerical thread counts
+to `1`, so sixteen spawned workers do not each start a sixteen-thread
+BLAS/OpenMP pool. That is an execution choice; the engine-free argv test
+does not prove numerical parity across platforms or thread counts.
 
 Both H5 inputs retain the filename `populace_us_2024.h5` in separate CAS
 directories and stage to `/work/inputs/incumbent_h5/populace_us_2024.h5`
@@ -1691,59 +1691,65 @@ and artifact identity. Do not upload either H5 under an extensionless hash.
 The incumbent is 826,917,837 bytes, the candidate 2,509,287,855 bytes and
 the ledger 164,603,204 bytes.
 
-**Resources and ceiling.** Class `head-to-head` requests 16 physical
-cores with CPU limit 16 and 224 GiB with memory limit 224 GiB: about 12 GiB
-per worker (the 10 October measurement: 5.45 GiB frame RSS and 2.17 GiB
-pickled) for 16 workers, plus 32 GiB for the parent, which retains the
-original and repaired frames, the runner and spawn serialization. The local
-probe's peak sampled RSS of 10.98 GB for one process sits inside that
-allowance. It was sampled on a loaded Mac, where compressed pages leave RSS
-low, so it is an indication, not a measured aggregate peak. The receipt's
-`peak_rss_bytes` is a child-process peak from `RUSAGE_CHILDREN`, not the
-sum of sixteen workers; use Modal's container memory measurements to assess
-the sizing after the run. Fewer workers reduce aggregate memory exposure
-but cannot prevent one worker exceeding the scorer's 20 GiB RSS guard.
+**What the run does.** The scorer compiles the register once (33,147
+specs in five chunks of up to 8,192; chunk 5 holds 379, among them the
+eleven JCT reform measures), then scores the incumbent in one pool of
+spawned workers and the candidate in a fresh pool. Each artifact has the
+same number of 2,000-household slices in every chunk: 29 for the
+incumbent and 177 for the candidate, so 145 and 885 slices. Each worker
+receives the repaired frame once, when it starts.
 
-October's sequential run averaged 5.2, 4.7, 6.2, 5.4 and 10.4 minutes per
-2,000-household slice in registry chunks 1 to 5, each of 206 slices (29
-incumbent and 177 candidate). On 16 workers that is about 24,640 seconds of
-scoring. Recycling after six slices respawns about 172 workers; at an
-allowance of 300 seconds each for the engine import and frame load, that
-adds about 3,220 seconds, for an estimate of about 27,860 seconds (7.7
-hours). The probe's own slice times ran under tracemalloc on a loaded host
-and do not measure speed.
+**Memory.** Class `head-to-head` requests 16 physical cores and 288 GiB,
+each limited at the request. Without recycling a candidate worker scores
+about 55 slices, so the class allows 16 GiB for each of 16 workers plus
+32 GiB for the parent, which retains the original and repaired frames.
+Nothing has measured a worker on the d1386 frame or on Modal. "About
+12 GiB per worker" is an inference from the September candidate's frame
+(5.45 GiB in-process and 2.17 GiB pickled, measured 10 October). October's
+sequential run grew 37 to 59 MB per slice in chunks 1 to 4 and died of a
+`MemoryError` at 20.3 GiB in chunk 5, under the older scorer. The local
+probe of 11 November, on the d1386 frame and the current scorer, saw the
+traced heap grow 22 to 45 MB per slice after a one-time step at slice 3,
+over six slices of chunk 5 only. The 23 September materialize acceptance
+attempt peaked at 66.3 to 74.5 GB on Modal against 51.0 GB on the Mac
+(1.30 to 1.46 times). The go/no-go step below measures each worker's peak
+from the run's own log and stops a run that would not fit. Exceeding the hard limit OOM-kills the container, which then
+writes **no final receipt and mirrors no output**: inspect the container
+logs and Modal's measurements, and do not assume the absence of a receipt
+means the attempt was free. The receipt's `peak_rss_bytes` is a
+child-process peak from `RUSAGE_CHILDREN`, not the sum of sixteen workers.
 
-The d844 plan runs on preemptible placement; both class runners have
-`retries=0`. Modal restarts a preempted attempt from zero, and the scorer
-has no resume, so the plan's 52,200-second budget (14 hours 30 minutes)
-spans attempts (see "Preemption and restarts"): a restart after up to about
-six and a half hours of a run still completes. The 53,400-second timeout
-(14 hours 50 minutes) adds the normal 900-second runner reserve and 300
-seconds for staging. The budget estimate including the reserve is $37.54.
+**Time.** October's sequential run averaged 5.2, 4.7, 6.2, 5.4 and 10.4
+minutes per slice in registry chunks 1 to 5. It scored only incumbent
+slices (29 in each of chunks 1 to 4 and 12 in chunk 5, when chunk 5 held 73
+specs) and died at chunk 5. Applying those means to all 1,030 slices gives
+about 6,580 slice-minutes, or about 24,700 seconds of scoring on 16
+workers, before loading both artifacts, two pool starts and the scorecards.
+That estimate is unvalidated. Chunk 5's mean rests on 12 slices at 73
+specs, and chunk 5 now holds 379. The only candidate timings are the
+11 November probe's six chunk-5 slices under `tracemalloc`, at 734 to
+1,849 seconds each (mean 1,188, 1.9 times October's chunk-5 mean), on a
+loaded Mac; tracing slows Python, so they do not bound the untraced time.
 
-Using the existing runbook formula and [Modal's list prices](https://modal.com/pricing)
-(checked 10 October 2026), CPU and memory compute through one attempt's
-timeout costs `(16 × $0.0000131 + 224 × $0.00000222) × 53,400 = $37.747392`,
-or **$37.75, below $40**. The same run non-preemptible costs three times
-as much, about $59 for the 7.7-hour estimate alone. The CPU and memory
-limits equal their requests, so memory over-use OOM-kills the container
-instead of increasing the billed memory allocation. The function timeout
-covers staging, tool initialization, scoring and runner cleanup. Startup
-and image work outside that interval, the uncharged part of each preempted
-attempt (up to about two minutes after its last ledger record, plus the
-restart's lock wait of up to 270 seconds), the check, storage and
-timeout-enforcement overshoot remain outside this compute ceiling; it is
-not a cap on total Modal account spend. The stage writes scorecards and
-logs, mirrors `h2h.json` and `h2h.md` first, and has no checkpoint/resume
-state or additional disk/write-probe requirement.
-
-A worker death or RSS-guard failure leaves a failed scorer exit. If the
-runner survives, it writes a **FAILED receipt and logs**; the scorer writes
-scorecards only after the comparison finishes. A whole-container OOM can
-leave a partial bill with **no final receipt or mirrored output**, because
-receipt creation and mirroring happen after the tool exits. Inspect the
-container logs and measurements when no receipt appears; do not assume the
-absence of a receipt means the attempt was free.
+**Placement and the cap.** The plan runs non-preemptible. The scorer has
+no resume, and at the preemption rate measured in "Preemption and restarts"
+(about 0.67 per hour) a preemptible attempt of seven to eight hours finishes
+under 1% of the time. `HEAD_TO_HEAD_COST_CAP_USD` sets the class timeout:
+the cap divided by the class's non-preemptible list price,
+`(16 × $0.0000131 + 288 × $0.00000222) × 3 = $0.00254688` per second
+($9.17 an hour). At Max's $40 cap (10 October) that is 15,705 seconds
+(4.4 hours), and the plan's `max_wall_seconds` of 14,505 leaves the
+runner's 900-second reserve and 300 seconds for staging. **At $40 the run
+cannot finish**: the estimate above needs about seven hours. A cap only
+Max can set must come first. Raising the cap is a change to
+`HEAD_TO_HEAD_COST_CAP_USD` alone; then set the plan's `max_wall_seconds`
+to the new timeout less 1,200. The CPU and memory limits equal their
+requests, so the timeout bounds one attempt's compute bill. Startup and
+image work outside the timeout, the check, storage and
+timeout-enforcement overshoot remain outside this ceiling; it is not a cap
+on total Modal account spend. A changed plan is a new plan sha256 with a
+fresh runner budget, so record every attempt's spend for this comparison
+in the run folder and keep the total inside Max's cap yourself.
 
 Stage the inputs in the `policyengine` workspace. Set these variables to
 the existing local files; the ledger path is the one used by Route A's
@@ -1767,7 +1773,7 @@ modal volume put microcosm-us-stage-inputs "$CANDIDATE_H5" \
 modal volume put microcosm-us-stage-inputs "$LEDGER_FACTS" \
   cas/sha256/b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801/consumer_facts_us_c5e5bf8.jsonl
 
-# Validate locally, then check on Modal after the reviewed scorer repin.
+# Validate locally, then check on Modal.
 python3 tools/modal_us_stage_plan.py validate docs/us-modal-stage-route-a-h2h-plan.json
 MICROCOSM_MODAL_PLAN=docs/us-modal-stage-route-a-h2h-plan.json \
   modal run tools/modal_us_stage.py
@@ -1777,30 +1783,87 @@ Require `CHECK OK`, including the pinned parser and all three volume
 digests, before the paid run. Launch the paid run under launchd, never from a
 session shell: a restart of the launching session kills a session-owned
 client, and Modal then cancels the paid input (this happened to Route A's
-base on 2026-09-29). From the checkout that holds this plan:
+base on 2026-09-29). Launch it with `--run --spawn`, which returns once the
+stage is spawned (see "Commands"), and record the launch time, the app id
+(`ap-…`) and the printed `function_call_id`. From the checkout that holds
+this plan:
 
 ```bash
-mkdir -p modal-runs/route-a-h2h-d844-d1386-r1
-cat > modal-runs/route-a-h2h-d844-d1386-r1/launch.sh <<SH
+R=route-a-h2h-d844-d1386-r1
+mkdir -p "modal-runs/$R"
+cat > "modal-runs/$R/launch.sh" <<SH
 #!/bin/bash
 set -euo pipefail
 cd "$PWD"
 export PATH="\$HOME/.local/bin:/opt/homebrew/bin:/usr/bin:/bin"
 export MICROCOSM_MODAL_PLAN=docs/us-modal-stage-route-a-h2h-plan.json
-exec modal run --detach tools/modal_us_stage.py --run
+date -u +%Y-%m-%dT%H:%M:%SZ > modal-runs/$R/started-at
+exec modal run --detach tools/modal_us_stage.py --run --spawn
 SH
-chmod +x modal-runs/route-a-h2h-d844-d1386-r1/launch.sh
+chmod +x "modal-runs/$R/launch.sh"
 ```
 
 Submit that script as a transient launchd job. On the build Mac the helper
 is `lsubmit.sh <label> <log> <cwd> /bin/bash <path to launch.sh>`; any
 launchd submission whose parent is launchd works. Do not run `launch.sh`
-directly in a session shell.
+directly in a session shell. Read the app id from the launch log
+(`modal app list` also shows it).
 
-Once the launch reports a receipt path, fetch that `score-<utc>.json` and
-the two scorecards. The receipt's `outputs` lists their relative paths,
-byte counts and sha256s. Fetch the tiny complete state, including the logs,
-so strict verification covers everything:
+**Go/no-go.** Start the watcher as a second launchd job as soon as the app
+id is known. It streams the app's log (`modal app logs` follows a live app)
+into a fresh file and, every ten minutes, runs
+`tools/us_head_to_head_projection.py`, which reads only that file and the
+plan. The projection answers `WAIT` until the incumbent has finished and
+the candidate's pool has started and scored a first round; at October's
+speeds that is about 70 to 90 minutes in (about $11 to $14). From then on
+it answers `GO` or `NO-GO`, and the watcher stops the app at the first
+`NO-GO`. It projects the time from the incumbent's measured slice work
+scaled by the candidate's measured first-slice speed, and each worker's
+peak memory from the highest peak in the log plus the steeper measured
+growth per slice. Both projections are conservative where the log cannot
+say which worker printed a line, and the module's docstring states the
+bounds its tests check. `NO-GO` names each limit: the tool's budget (5%
+inside it), the class's memory limit (10% inside it), or the scorer's
+20 GiB per-process limit (10% inside it).
+
+```bash
+cat > "modal-runs/$R/watch.sh" <<SH
+#!/bin/bash
+set -uo pipefail
+cd "$PWD"
+export PATH="\$HOME/.local/bin:/opt/homebrew/bin:/usr/bin:/bin"
+APP=\$1   # the ap-… id from the launch log
+STARTED=\$(cat modal-runs/$R/started-at)
+LOG=modal-runs/$R/app.log
+modal app logs "\$APP" > "\$LOG" 2>&1 &
+STREAM=\$!
+while kill -0 "\$STREAM" 2>/dev/null; do
+  sleep 600
+  OUT=\$(python3 tools/us_head_to_head_projection.py "\$LOG" \
+    --plan docs/us-modal-stage-route-a-h2h-plan.json --started-at "\$STARTED")
+  printf '%s %s\n' "\$(date -u +%FT%TZ)" "\$(printf '%s' "\$OUT" | tr -d '\n')" \
+    >> modal-runs/$R/go-no-go.log
+  if printf '%s' "\$OUT" | grep -q '"verdict": "NO-GO"'; then
+    modal app stop "\$APP"
+    exit 1
+  fi
+done
+SH
+chmod +x "modal-runs/$R/watch.sh"
+```
+
+Submit it with `lsubmit.sh <label> <log> <cwd> /bin/bash <path to
+watch.sh> <ap-id>`. If the log stream ends while the app still runs,
+restart the watcher: it writes a fresh file, the projection drops repeated
+slice lines, and it answers `WAIT` rather than projecting from a log with
+more worker starts than workers. Never test the watcher's stop against a
+live app; the projection's tests run it on simulated logs.
+
+Once the stage ends, read its receipt name from the runs volume
+(`runs/$R/receipts/`) and fetch that `score-<utc>.json` and the two
+scorecards. The receipt's `outputs` lists their relative paths, byte counts
+and sha256s. Fetch the tiny complete state, including the logs, so strict
+verification covers everything:
 
 ```bash
 R=route-a-h2h-d844-d1386-r1
@@ -1813,12 +1876,13 @@ python3 tools/modal_us_stage_plan.py verify-receipt "$RECEIPT" \
 ls -l "./modal-runs/$R/state/h2h.json" "./modal-runs/$R/state/h2h.md"
 ```
 
-Use the actual receipt name from the launch and confirm the downloaded
-directory layout (Modal CLI versions can add a level; see "Commands").
-Verification requires `COMPLETED` and no budget stop, and rehashes both
-scorecards and every other state file. Inspect `h2h.json` and `h2h.md`
-only after it passes. A successful receipt proves those bytes; Max's d844
-decision remains separate from running this comparison.
+Use the actual receipt name and confirm the downloaded directory layout
+(Modal CLI versions can add a level; see "Commands"). Verification requires
+`COMPLETED` and no budget stop, and rehashes both scorecards and every
+other state file. Inspect `h2h.json` and `h2h.md` only after it passes. A
+stage the watcher stopped writes no receipt; its attempt record under
+`runs/$R/attempts/` stops advancing. A successful receipt proves those
+bytes; Max's d844 decision remains separate from running this comparison.
 
 ## Preemption and restarts
 

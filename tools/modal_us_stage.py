@@ -429,8 +429,12 @@ def _check_input(ref: plan_lib.InputRef, work: Path) -> dict[str, object]:
     return row
 
 
+# argv: the tool script, its parse function, a comma-separated list of the
+# option preflights the plan's options call for ("" for none), then the
+# tool's argv. A preflight is a function of the tool's module, called with
+# no arguments after the parser accepts the argv; it raises to refuse.
 _PARSE_SNIPPET = """
-import importlib.util, json, sys
+import importlib.util, json, platform, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(sys.argv[1]).resolve().parent))
 spec = importlib.util.spec_from_file_location("stage_tool", sys.argv[1])
@@ -440,8 +444,15 @@ spec.loader.exec_module(module)
 parser = module
 for name in sys.argv[2].split("."):
     parser = getattr(parser, name)
-args = parser(sys.argv[3:])
-print(json.dumps({"stages": list(getattr(args, "stages", [])) or None}))
+args = parser(sys.argv[4:])
+preflights = [name for name in sys.argv[3].split(",") if name]
+for name in preflights:
+    getattr(module, name)()
+print(json.dumps({
+    "stages": list(getattr(args, "stages", [])) or None,
+    "python": platform.python_version(),
+    "preflights": preflights,
+}))
 """
 
 
@@ -453,10 +464,26 @@ def _parse_check(
     if plan.tool.script is None:
         return {"returncode": 0, "skipped": "inline tool; nothing to parse"}
     python, _, script, *tool_argv = argv
+    preflights = plan_lib.option_preflights(plan)
     if plan.tool.parse_function is None:
+        if preflights:
+            # Without the parse snippet nothing would call them.
+            return {
+                "returncode": 1,
+                "problem": f"option preflights {list(preflights)} need a "
+                "parse_function",
+            }
         cmd = [python, "-B", script, "--help"]
     else:
-        cmd = [python, "-B", "-c", _PARSE_SNIPPET, script, plan.tool.parse_function]
+        cmd = [
+            python,
+            "-B",
+            "-c",
+            _PARSE_SNIPPET,
+            script,
+            plan.tool.parse_function,
+            ",".join(preflights),
+        ]
         cmd += tool_argv
     proc = subprocess.run(
         cmd,
@@ -768,9 +795,9 @@ def check_stage(plan_data: dict) -> dict:
         [
             f"{plan_lib.IMAGE_VENV}/bin/python",
             "-c",
-            "import json, importlib.metadata as m; import microcosm.build; "
-            "print(json.dumps({p: m.version(p) for p in "
-            "('policyengine-us', 'policyengine-core', 'microcosm-build')}))",
+            "import json, platform, importlib.metadata as m; import microcosm.build; "
+            "print(json.dumps({'python': platform.python_version(), **{p: m.version(p) "
+            "for p in ('policyengine-us', 'policyengine-core', 'microcosm-build')}}))",
         ],
         cwd=plan_lib.IMAGE_REPO_ROOT,
         env=tool_env,

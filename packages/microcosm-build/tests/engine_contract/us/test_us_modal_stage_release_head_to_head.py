@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import sys
 
 import pytest
@@ -52,7 +53,13 @@ def test_registered_tool_parses_with_the_actual_subprocess_probe(
     result = app._parse_check(plan, argv, env)
 
     assert result["returncode"] == 0, result
-    assert json.loads(result["stdout_tail"].splitlines()[-1]) == {"stages": stages}
+    # None of these plans sets an option with a preflight (the d844 plan
+    # runs without --worker-max-slices).
+    assert json.loads(result["stdout_tail"].splitlines()[-1]) == {
+        "stages": stages,
+        "python": platform.python_version(),
+        "preflights": [],
+    }
 
 
 def test_inline_runner_smoke_still_skips_the_parser_probe(monkeypatch) -> None:

@@ -1856,10 +1856,11 @@ def test_every_valid_plan_has_a_runner_with_its_class_and_placement(app) -> None
         )
         assert options.get("nonpreemptible", False) is nonpreemptible
         assert options["retries"] == 0
-        # The scorer caps memory at its request to keep its compute cost under
-        # $40. Existing ACS/base/smoke requests retain their reviewed behavior.
+        # The scorer caps memory at its request so its timeout bounds its
+        # compute bill. Existing ACS/base/smoke requests retain their reviewed
+        # behavior.
         if name == "head-to-head":
-            assert options["memory"] == (224 * 1024, 224 * 1024)
+            assert options["memory"] == (288 * 1024, 288 * 1024)
         else:
             assert isinstance(options["memory"], int)
             assert resources.memory_limit_mib is None

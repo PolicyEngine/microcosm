@@ -23,8 +23,7 @@
   },
   "options": {
     "workers": 16,
-    "maximum_microsim_batch_size": 2000,
-    "worker_max_slices": 6
+    "maximum_microsim_batch_size": 2000
   },
   "env": {
     "PYTHONUNBUFFERED": "1",
@@ -34,6 +33,6 @@
     "NUMEXPR_NUM_THREADS": "1",
     "BLIS_NUM_THREADS": "1"
   },
-  "max_wall_seconds": 52200,
-  "nonpreemptible": false
+  "max_wall_seconds": 14505,
+  "nonpreemptible": true
 }

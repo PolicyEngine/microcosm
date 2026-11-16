@@ -443,31 +443,47 @@ LIGHT = Resources("light", cpu=2.0, memory_mib=48 * 1024, timeout_s=4 * 3600)
 BASE = Resources(
     "base", cpu=4.0, memory_mib=112 * 1024, timeout_s=16_500, cpu_limit=4.0
 )
-# Route A's head-to-head: each spawned worker retains a full repaired frame,
-# about 12 GiB per worker (5.45 GiB frame RSS and 2.17 GiB pickled, measured
-# 2026-10-10). 16 workers * 12 GiB plus 32 GiB for the parent and headroom
-# is 224 GiB. The local memory probe of 2026-11-11 (6 slices of chunk 5 on
-# the d1386 frame, tracemalloc) peaked at 10.98 GB sampled RSS; its traced
-# heap stepped up once at slice 3 and then grew 22-45 MB per slice, so plans
-# recycle each worker after 6 slices (--worker-max-slices), the range the
-# probe covered. October's sequential run averaged 5.2, 4.7, 6.2, 5.4 and
-# 10.4 minutes per slice in registry chunks 1-5, each of 206 slices: about
-# 24,600 s on 16 workers, plus about 3,200 s for 172 worker respawns at
-# 300 s each. The plan runs preemptible with a 52,200 s budget across
-# attempts (see "Preemption and restarts" in the runbook), so it can absorb
-# one restart after more than six hours. CPU and memory are limited to their
-# requests, so one attempt held to its timeout costs $37.75 at list price,
-# under the $40 cap. Exceeding the memory limit kills the container before
-# it can write a final receipt.
+# Route A's head-to-head (d844). The scorer scores the incumbent's slices in
+# one pool of spawned workers, then the candidate's in a fresh pool, and each
+# worker holds a full repaired frame. "About 12 GiB per worker" (5.45 GiB
+# frame RSS and 2.17 GiB pickled, measured 2026-10-10 on the September
+# candidate) is an inference: nothing has measured a worker on the d1386
+# frame or on Modal. The local probe of 2026-11-11 (6 slices of chunk 5 on
+# the d1386 frame, tracemalloc) saw the traced heap step up once at slice 3
+# and then grow 22-45 MB per slice. Plans run without worker recycling:
+# IMAGE_PYTHON_VERSION's series resolves to 3.14.2 on Modal's 2025.06 image
+# builder (modal 1.3.0 builder/base-images.json), below the 3.14.7 the
+# scorer requires before it recycles a worker. A candidate worker then
+# scores about 55 of the candidate's 885 slices, so the class allows 16 GiB
+# for each of 16 workers plus 32 GiB for the parent: 288 GiB, as a hard
+# limit. Exceeding it kills the container before it can write a final
+# receipt, so the runbook's go/no-go step (tools/us_head_to_head_projection.py)
+# projects each worker's memory from the run's own log and stops a run that
+# would not fit. Placement is non-preemptible: the scorer has no resume, and
+# the runbook's measured preemption rate (about 0.67 per hour) would let a
+# preemptible attempt of about 7.7 hours finish under 1% of the time.
+#
+# The class timeout is what bounds one attempt's bill, so it is derived from
+# the cost cap at the non-preemptible price; CPU and memory limits equal
+# their requests. Max set the $40 cap on 2026-10-10. At this class it buys
+# 15,705 s (4.4 h), less than October's slice means imply for the whole run
+# (about 7 h; see the runbook), so the plan cannot finish until he rules on
+# a cap. A new cap is a change to HEAD_TO_HEAD_COST_CAP_USD alone.
+HEAD_TO_HEAD_COST_CAP_USD = 40.0
+HEAD_TO_HEAD_CPU = 16.0
+HEAD_TO_HEAD_MEMORY_GIB = 288
+HEAD_TO_HEAD_USD_PER_SECOND = (
+    HEAD_TO_HEAD_CPU * CPU_USD_PER_CORE_SECOND
+    + HEAD_TO_HEAD_MEMORY_GIB * MEMORY_USD_PER_GIB_SECOND
+) * NONPREEMPTIBLE_PRICE_MULTIPLIER
 HEAD_TO_HEAD = Resources(
     "head-to-head",
-    cpu=16.0,
-    memory_mib=224 * 1024,
-    timeout_s=53_400,
-    cpu_limit=16.0,
-    memory_limit_mib=224 * 1024,
+    cpu=HEAD_TO_HEAD_CPU,
+    memory_mib=HEAD_TO_HEAD_MEMORY_GIB * 1024,
+    timeout_s=math.floor(HEAD_TO_HEAD_COST_CAP_USD / HEAD_TO_HEAD_USD_PER_SECOND),
+    cpu_limit=HEAD_TO_HEAD_CPU,
+    memory_limit_mib=HEAD_TO_HEAD_MEMORY_GIB * 1024,
 )
-HEAD_TO_HEAD_COST_CAP_USD = 40.0
 # full-staging-a3 (MEASURED): 103,104.6 CPU-s / 7,218.1 wall-s = 14.3
 # cores on average. ACS transfer fits use QRF n_jobs=-1 by default (qrf.py
 # _fit_n_jobs), so request 16 cores, with a limit of 16 to bound billed CPU.
@@ -745,6 +761,11 @@ class ToolSpec:
     # environment has none (read from the pinned tool), for the receipt's
     # hash-seed record; None when it sets none.
     stage_hash_seed_default: str | None = None
+    # Option name -> a function in the tool's module that the check calls,
+    # with no arguments, after the tool's parser accepts the argv, whenever
+    # the plan sets that option. It refuses (raises) an option the image
+    # cannot honour, so the check fails instead of the paid run.
+    option_preflights: Mapping[str, str] = field(default_factory=dict)
 
 
 ACS_LOCAL_RELEASE_ARTIFACT = "populace_us_2024_acs_local.h5"
@@ -1304,6 +1325,9 @@ US_RELEASE_HEAD_TO_HEAD = ToolSpec(
     ),
     argv_builder=_release_head_to_head_argv,
     parse_function="_parse_args",
+    # The scorer refuses recycling on an interpreter older than its fix
+    # before it loads a frame; the check runs the same refusal in the image.
+    option_preflights={"worker_max_slices": "_assert_worker_recycling_supported"},
 )
 
 TOOLS: dict[str, ToolSpec] = {
@@ -1904,6 +1928,16 @@ def build_stage_argv(
     tool_argv += option_argv(plan)
     script = [] if plan.tool.script is None else [plan.tool.script]
     return [python, "-B", *script, *tool_argv]
+
+
+def option_preflights(plan: Plan) -> tuple[str, ...]:
+    """The tool functions the check calls for the options this plan sets."""
+
+    return tuple(
+        name
+        for option, name in sorted(plan.tool.option_preflights.items())
+        if option in plan.options
+    )
 
 
 def planned_argv(plan: Plan, work_root: str | None = None) -> list[str]:

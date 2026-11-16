@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import argparse
 import ast
+import dataclasses
 import json
+import platform
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 from types import SimpleNamespace
@@ -122,13 +125,10 @@ def test_d844_plan_validates_with_digest_pinned_loader_filenames() -> None:
     )
     assert set(tool.stages) == {"score"}
     assert set(tool.inputs) == set(tool.stages["score"].required_inputs) == set(INPUTS)
-    assert plan.options == {
-        "maximum_microsim_batch_size": 2000,
-        "workers": 16,
-        "worker_max_slices": 6,
-    }
-    assert plan.nonpreemptible is False
-    assert plan.max_wall_seconds == 52_200
+    assert plan.options == {"maximum_microsim_batch_size": 2000, "workers": 16}
+    # Non-preemptible: the scorer has no resume (review COST-2 of d1776a051).
+    assert plan.nonpreemptible is True
+    assert plan.max_wall_seconds == 14_505
     for role, (filename, digest) in INPUTS.items():
         ref = plan.inputs[role]
         assert (ref.kind, ref.filename, ref.sha256) == ("volume", filename, digest)
@@ -159,7 +159,7 @@ def test_modal_argv_equals_the_local_d844_command_apart_from_paths_and_workers_o
             expected[index + 1] = plan_lib.input_local_path("/work", ref)
         elif item == "--out-prefix":
             expected[index + 1] = "/work/state/h2h"
-    assert argv[3:] == [*expected, "--worker-max-slices", "6", "--workers", "16"]
+    assert argv[3:] == [*expected, "--workers", "16"]
     local_args = vars(scorer_parser.parse(LOCAL_ARGV))
     modal_args = vars(scorer_parser.parse(argv[3:]))
     for flag in (*PATH_FLAGS, "--out-prefix"):
@@ -169,7 +169,7 @@ def test_modal_argv_equals_the_local_d844_command_apart_from_paths_and_workers_o
     assert local_args.pop("workers") == 1
     assert modal_args.pop("workers") == 16
     assert local_args.pop("worker_max_slices") is None
-    assert modal_args.pop("worker_max_slices") == 6
+    assert modal_args.pop("worker_max_slices") is None
     assert local_args == modal_args
     assert modal_args["age_targets"] is False
     assert modal_args["allow_unaged_dollar_targets"] is True
@@ -240,49 +240,114 @@ def test_workers_must_be_an_integer_in_the_plan(value) -> None:
         plan_lib.parse_plan(data)
 
 
-def test_head_to_head_timeout_covers_the_slice_estimate_and_cost_cap() -> None:
+def test_head_to_head_timeout_holds_one_attempt_inside_the_cost_cap() -> None:
     plan = _plan()
     resources = plan_lib.HEAD_TO_HEAD
     assert plan.resources is resources
-    assert (resources.cpu, resources.cpu_limit, resources.memory_gib) == (16, 16, 224)
-    assert resources.memory_limit_mib == resources.memory_mib == 224 * 1024
-    assert resources.timeout_s == 53_400
-    # October's sequential run: mean minutes per slice in registry chunks 1-5,
-    # each chunk 29 incumbent + 177 candidate slices.
-    chunk_minutes = (5.2, 4.7, 6.2, 5.4, 10.4)
-    slices = 5 * (29 + 177)
-    assert slices == 1030
-    workers = plan.options["workers"]
-    scoring_seconds = (slices // 5) * sum(chunk_minutes) * 60 / workers
-    respawns = slices / plan.options["worker_max_slices"]
-    respawn_seconds = respawns * 300 / workers
-    estimate = scoring_seconds + respawn_seconds
-    assert estimate == pytest.approx(27_861.5, abs=1)
-    # Preemptible: the budget spans attempts, so it holds a restart after
-    # more than six hours of a completed attempt's run.
-    assert plan.nonpreemptible is False
-    assert plan.max_wall_seconds >= 1.8 * estimate
-    assert resources.timeout_s > (
-        plan.max_wall_seconds + plan.stage_spec.runner_overhead_seconds
-    )
+    assert (resources.cpu, resources.cpu_limit, resources.memory_gib) == (16, 16, 288)
+    assert resources.memory_limit_mib == resources.memory_mib == 288 * 1024
+    # The class timeout is the cap at the non-preemptible price, so one
+    # attempt's compute bill cannot pass the cap, and a new cap moves it.
+    assert plan.price_multiplier == plan_lib.NONPREEMPTIBLE_PRICE_MULTIPLIER == 3.0
     per_second = (
         resources.cpu * plan_lib.CPU_USD_PER_CORE_SECOND
         + resources.memory_gib * plan_lib.MEMORY_USD_PER_GIB_SECOND
+    ) * plan.price_multiplier
+    assert per_second == pytest.approx(plan_lib.HEAD_TO_HEAD_USD_PER_SECOND)
+    assert resources.timeout_s == int(
+        plan_lib.HEAD_TO_HEAD_COST_CAP_USD // plan_lib.HEAD_TO_HEAD_USD_PER_SECOND
     )
-    assert plan.price_multiplier == 1.0
-    timeout_cost = per_second * resources.timeout_s * plan.price_multiplier
-    assert timeout_cost < plan_lib.HEAD_TO_HEAD_COST_CAP_USD
-    ceiling = round(timeout_cost, 2)
-    assert ceiling == pytest.approx(37.75, abs=0.005)
-    assert ceiling <= plan_lib.HEAD_TO_HEAD_COST_CAP_USD == 40
-    assert (
-        resources.estimated_usd(resources.timeout_s, plan.price_multiplier) == ceiling
+    assert resources.timeout_s == 15_705
+    assert per_second * resources.timeout_s <= plan_lib.HEAD_TO_HEAD_COST_CAP_USD
+    assert per_second * (resources.timeout_s + 1) > plan_lib.HEAD_TO_HEAD_COST_CAP_USD
+    assert plan_lib.HEAD_TO_HEAD_COST_CAP_USD == 40
+    assert plan_lib.estimated_usd_at_timeout(plan) <= 40
+    # The tool's budget leaves the runner's reserve and 300 s for staging.
+    assert plan.max_wall_seconds == (
+        resources.timeout_s - plan.stage_spec.runner_overhead_seconds - 300
     )
-    assert plan_lib.estimated_usd_at_timeout(plan) == ceiling
     summary = plan_lib.summarize(plan)
-    assert summary["estimated_usd_at_timeout"] == ceiling
-    assert summary["estimated_usd_at_max_wall"] == pytest.approx(37.54, abs=0.005)
+    assert summary["estimated_usd_at_timeout"] <= 40
     assert summary["resources"]["memory_limit_gib"] == resources.memory_gib
+    assert summary["resources"]["nonpreemptible"] is True
+
+
+@pytest.mark.parametrize("cap", [0.5, 39.99, 40.0, 75.0, 120.0])
+def test_a_cap_derived_timeout_never_bills_past_its_cap(cap: float) -> None:
+    rate = plan_lib.HEAD_TO_HEAD_USD_PER_SECOND
+    timeout = int(cap // rate)
+    assert timeout * rate <= cap < (timeout + 1) * rate
+
+
+def test_recycling_has_a_check_preflight_and_the_d844_plan_does_not_recycle() -> None:
+    tool = plan_lib.US_RELEASE_HEAD_TO_HEAD
+    assert dict(tool.option_preflights) == {
+        "worker_max_slices": "_assert_worker_recycling_supported"
+    }
+    assert set(tool.option_preflights) <= set(tool.options)
+    scorer_functions = {
+        node.name
+        for node in ast.parse(SCORER.read_text()).body
+        if isinstance(node, ast.FunctionDef)
+    }
+    assert set(tool.option_preflights.values()) <= scorer_functions
+    assert plan_lib.option_preflights(_plan()) == ()
+    data = _plan_data()
+    data["options"]["worker_max_slices"] = 6
+    assert plan_lib.option_preflights(plan_lib.parse_plan(data)) == (
+        "_assert_worker_recycling_supported",
+    )
+    # No other registered tool declares a preflight.
+    assert [
+        name for name, spec in plan_lib.TOOLS.items() if spec.option_preflights
+    ] == ["us-release-head-to-head"]
+
+
+def _synthetic_tool(tmp_path: Path) -> Path:
+    script = tmp_path / "synthetic_tool.py"
+    script.write_text(
+        "import argparse\n"
+        "def _parse_args(argv):\n"
+        "    parser = argparse.ArgumentParser()\n"
+        "    parser.add_argument('--workers', type=int, default=1)\n"
+        "    return parser.parse_args(argv)\n"
+        "def _refuse():\n"
+        "    raise RuntimeError('this image cannot honour the option')\n"
+        "def _accept():\n"
+        "    return None\n"
+    )
+    return script
+
+
+@pytest.mark.parametrize(
+    ("preflight", "returncode"), [("_accept", 0), ("_refuse", 1), (None, 0)]
+)
+def test_check_parse_probe_runs_the_preflights_the_plan_options_call_for(
+    tmp_path: Path, monkeypatch, preflight: str | None, returncode: int
+) -> None:
+    app = load_app(monkeypatch)
+    script = _synthetic_tool(tmp_path)
+    plan = _plan()
+    tool = dataclasses.replace(
+        plan.tool,
+        script=str(script),
+        parse_function="_parse_args",
+        option_preflights={} if preflight is None else {"workers": preflight},
+    )
+    plan = dataclasses.replace(plan, tool=tool)
+    monkeypatch.setattr(plan_lib, "IMAGE_REPO_ROOT", str(tmp_path))
+    argv = [sys.executable, "-B", str(script), "--workers", "16"]
+    result = app._parse_check(plan, argv, {})
+    assert result["returncode"] == returncode, result
+    if returncode == 0:
+        payload = json.loads(result["stdout_tail"].splitlines()[-1])
+        assert payload == {
+            "stages": None,
+            "python": platform.python_version(),
+            "preflights": [] if preflight is None else [preflight],
+        }
+    else:
+        assert "cannot honour the option" in result["stderr_tail"]
 
 
 def test_head_to_head_registers_its_modal_functions_without_retries(
@@ -294,14 +359,14 @@ def test_head_to_head_registers_its_modal_functions_without_retries(
         options = app.RUNNERS[(resources.name, nonpreemptible)].modal_options
         assert (options["cpu"], options["memory"], options["timeout"]) == (
             (16, 16),
-            (224 * 1024, 224 * 1024),
-            53_400,
+            (288 * 1024, 288 * 1024),
+            15_705,
         )
         assert options.get("nonpreemptible", False) is nonpreemptible
         assert options["retries"] == 0
     plan = _plan()
     runner = app.RUNNERS[(plan.resources.name, plan.nonpreemptible)]
-    assert runner is app.run_stage_head_to_head
+    assert runner is app.run_stage_head_to_head_nonpreemptible
     calls = []
     monkeypatch.setattr(
         app, "_run_stage", lambda data: calls.append(data) or {"ok": True}
@@ -316,7 +381,7 @@ def test_a_memory_limit_below_the_request_is_refused() -> None:
         plan_lib.Resources(
             "x", cpu=1, memory_mib=1024, timeout_s=60, memory_limit_mib=512
         )
-    assert plan_lib.HEAD_TO_HEAD.modal_memory == (224 * 1024, 224 * 1024)
+    assert plan_lib.HEAD_TO_HEAD.modal_memory == (288 * 1024, 288 * 1024)
     for resources in (plan_lib.CHECK, plan_lib.HEAVY, plan_lib.LIGHT, plan_lib.BASE):
         assert resources.modal_memory == resources.memory_mib
         assert resources.memory_limit_mib is None
