@@ -9,7 +9,7 @@ will pin the constellation.
 |---|---|---|---|
 | `microcosm-frame` | `microcosm.frame` | the kernel: Frame, typed weights, strata, links, weighted accounting, unit structure, rules-engine protocol | microdf, microunit |
 | `microcosm-fit` | `microcosm.fit` | conditional models (weight-aware by construction) | ad hoc imputation scripts |
-| `microcosm-calibrate` | `microcosm.calibrate` | representation: targets → calibrated weights (APG / L0) | microcalibrate |
+| `microcosm-calibrate` | `microcosm.calibrate` | representation: targets → calibrated weights (Adam; optional L0 pruning or proximal L1 selection) | microcalibrate |
 | `microcosm-build` | `microcosm.build` | population build plans, donor graphs, release gates, and country build stages | one-off build drivers |
 | `microcosm-data` | `microcosm.data` | published population registry and lazy engine loaders | country-specific data packages |
 
@@ -518,8 +518,9 @@ each build into its own folder, and no release publishes with tags. The US
 side of this holds from the US repository's switch commit: Microcosm's US
 change (microcosm#1570) merges straight after that commit.
 
-**Each build is published into its own folder.** The UK national, dense and
-local-area releases and the US releases below
+**Each build is published into its own folder.** The UK national and dense
+releases, each UK local-area release that the registry names, and the US
+releases below
 (`microcosm.data.contract.publishes_to_build_folder`) hand each build to the
 separately installed emitter, whose release writer puts it in
 `releases/<release>/<build>/` and records it in the repository's

@@ -6351,196 +6351,196 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 561.168,
+   "ledger_value": 492.631,
    "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000001",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 7260.132,
+   "ledger_value": 6373.435,
    "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000002",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 2749.871,
+   "ledger_value": 2414.022,
    "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000003",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 2969.626,
+   "ledger_value": 2606.938,
    "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000004",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 4734.944,
+   "ledger_value": 4156.654,
    "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000005",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 25742.084,
+   "ledger_value": 22598.141,
    "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000006",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 117626.39,
+   "ledger_value": 103260.397,
    "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000007",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 70261.709,
+   "ledger_value": 61680.478,
    "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000008",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 15568.651,
+   "ledger_value": 13667.214,
    "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000009",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 898.854,
+   "ledger_value": 789.075,
    "name": "microcosm.high_value_homes.over_1_5m_by_region@W92000004",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 2508.423,
+   "ledger_value": 2202.063,
    "name": "microcosm.high_value_homes.over_1m_by_region@E12000001",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 27590.583,
+   "ledger_value": 24220.879,
    "name": "microcosm.high_value_homes.over_1m_by_region@E12000002",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 13978.44,
+   "ledger_value": 12271.22,
    "name": "microcosm.high_value_homes.over_1m_by_region@E12000003",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 14399.878,
+   "ledger_value": 12641.186,
    "name": "microcosm.high_value_homes.over_1m_by_region@E12000004",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 22286.116,
+   "ledger_value": 19564.26,
    "name": "microcosm.high_value_homes.over_1m_by_region@E12000005",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 87553.535,
+   "ledger_value": 76860.411,
    "name": "microcosm.high_value_homes.over_1m_by_region@E12000006",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 272832.635,
+   "ledger_value": 239510.93,
    "name": "microcosm.high_value_homes.over_1m_by_region@E12000007",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 213894.568,
+   "ledger_value": 187771.111,
    "name": "microcosm.high_value_homes.over_1m_by_region@E12000008",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 56970.627,
+   "ledger_value": 50012.667,
    "name": "microcosm.high_value_homes.over_1m_by_region@E12000009",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 5536.777,
+   "ledger_value": 4860.557,
    "name": "microcosm.high_value_homes.over_1m_by_region@W92000004",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 2887.107,
+   "ledger_value": 2534.498,
    "name": "microcosm.high_value_homes.over_2m_by_region@E12000002",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 906.521,
+   "ledger_value": 795.805,
    "name": "microcosm.high_value_homes.over_2m_by_region@E12000003",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 962.333,
+   "ledger_value": 844.801,
    "name": "microcosm.high_value_homes.over_2m_by_region@E12000004",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 1482.074,
+   "ledger_value": 1301.065,
    "name": "microcosm.high_value_homes.over_2m_by_region@E12000005",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 9847.844,
+   "ledger_value": 8645.103,
    "name": "microcosm.high_value_homes.over_2m_by_region@E12000006",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 63281.388,
+   "ledger_value": 55552.68,
    "name": "microcosm.high_value_homes.over_2m_by_region@E12000007",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 29996.104,
+   "ledger_value": 26332.608,
    "name": "microcosm.high_value_homes.over_2m_by_region@E12000008",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 6354.494,
+   "ledger_value": 5578.404,
    "name": "microcosm.high_value_homes.over_2m_by_region@E12000009",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."

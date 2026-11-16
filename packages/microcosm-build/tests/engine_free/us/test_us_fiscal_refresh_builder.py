@@ -407,7 +407,7 @@ def test_dense_ssi_fences_cover_the_enforced_bands_and_cite_the_adjudication() -
 
 
 def test_ssi_delivery_fences_are_passed_on_the_dense_arm_only() -> None:
-    """The sparse certified arm must keep hard enforcement: structurally,
+    """The L0+refit and --exact-k arms must keep hard enforcement: structurally,
     main()'s single _enforce_ssi_take_up_delivery call may pass the fence
     table only under args.dense_default_dataset, with None otherwise (the
     #443 AST-guard pattern)."""
@@ -11190,7 +11190,10 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
         zero_variables=(),
         system=None,
         assert_no_formula_owned_columns=True,
+        period_only=False,
     ):
+        # The base simulation and the reform read PERIOD alone.
+        assert period_only
         datasets.append(
             (
                 frame_arg,
@@ -15541,6 +15544,7 @@ def _install_multi_reform_fakes(
         zero_variables=(),
         system=None,
         assert_no_formula_owned_columns=True,
+        period_only=False,
     ):
         return {"frame": frame_arg, "zero_variables": tuple(zero_variables)}
 
