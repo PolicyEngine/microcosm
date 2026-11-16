@@ -210,11 +210,13 @@ step.
    role included, equals the published entry. It also refuses any artifact
    that neither the published base build nor the annual projection declares
    (the projection manifest, the acceptance report, and the H5 and receipt
-   of each year `metadata.dataset_years` declares), such as a file added to
-   the base folder after publication. Last, it refuses a base build that
-   the repository's `releases.json` has withdrawn or does not list, as for
-   a national base. Assemble from an unedited copy of the published base
-   build.
+   of each projected year `metadata.dataset_years` declares), such as a
+   file added to the base folder after publication. Last, it refuses a base
+   build that the repository's `releases.json` has withdrawn or does not
+   list, as for a national base, reading `releases.json` into a new, empty
+   cache as well, so a copy cached before a withdrawal cannot stand in for
+   it when the Hub cannot be asked. Assemble from an unedited copy of the
+   published base build.
 
 **Memory.** Let S be the base frame's size in memory. The H5 is about 10 GB
 on disk, and fixed-format numeric blocks load at about their stored size, so

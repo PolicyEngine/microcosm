@@ -708,8 +708,9 @@ def test_a_local_annual_build_is_handed_over_only_once_its_local_base_is_publish
             request("build_manifest.json"),
             (_US_REPOSITORY, "releases.json", "dataset", "main"),
         ]
-        # Both manifests are read afresh, not from the client's cache.
-        assert hub.fresh == [True, True, False]
+        # Both manifests and releases.json are read afresh, not from the
+        # client's cache.
+        assert hub.fresh == [True, True, True]
     else:
         with pytest.raises(ValueError, match="published base build's bytes"):
             publish()

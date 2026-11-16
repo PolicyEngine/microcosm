@@ -1070,7 +1070,9 @@ def require_base_publication(
     names a default dataset there: the base build's dataset is its one
     microdata artifact, and the annual build's base-year H5 is the artifact
     ``metadata.annual_projection_base`` names by file name. Its
-    ``releases.json`` entry is read last, once both manifests check out.
+    ``releases.json`` entry is read last, once both manifests check out, and
+    also into a new, empty cache, so a record cached before a withdrawal
+    cannot offer the base when the Hub cannot be asked.
     """
     from functools import partial
 
@@ -1290,4 +1292,4 @@ def require_base_publication(
             "declares them; an annual build carries its base build's claims "
             "as published"
         )
-    require_offered_base()
+    require_offered_base(fresh=True)

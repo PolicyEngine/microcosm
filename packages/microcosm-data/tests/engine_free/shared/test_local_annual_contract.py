@@ -501,8 +501,8 @@ def test_a_local_annual_build_needs_its_published_local_base(
             _base_request("build_manifest.json"),
             _RECORD_REQUEST,
         ]
-        # Both manifest reads bypass the client's cache.
-        assert hub.fresh == [True, True, False]
+        # The manifest and releases.json reads bypass the client's cache.
+        assert hub.fresh == [True, True, True]
     else:
         with pytest.raises(ValueError, match=refusal):
             check()
@@ -720,6 +720,87 @@ def test_a_local_annual_build_is_not_handed_over_from_a_withdrawn_base(
         _base_request("build_manifest.json"),
         _RECORD_REQUEST,
     ]
+
+
+def _stale_listing(tmp_path: Path) -> Path:
+    """The client's cached releases.json, saved while the base was listed."""
+    stale = tmp_path / "client-cache" / "releases.json"
+    stale.parent.mkdir(parents=True)
+    stale.write_text(json.dumps(local_releases_record("listed")))
+    return stale
+
+
+def test_a_record_cached_before_a_withdrawal_does_not_offer_the_base(
+    local, tmp_path
+) -> None:
+    """releases.json is read into a new, empty cache, as both manifests are,
+    so a copy the client cached while the base was listed cannot offer it
+    once the repository has withdrawn it (review of #1627)."""
+    folder, root = local
+    annual_dir = local_annual_build_folder_of(folder, root)
+    hub = _LocalBaseOnTheHub(
+        tmp_path / "hub",
+        read_json(folder / "release_manifest.json"),
+        read_json(folder / "build_manifest.json"),
+        cached={"releases.json": _stale_listing(tmp_path)},
+        base_build="withdrawn",
+    )
+
+    with pytest.raises(ValueError, match="has been withdrawn"):
+        annual_projections.require_base_publication(hub, annual_dir, repo_id=LOCAL_REPO)
+    assert hub.fresh == [True, True, True]
+
+
+class _RecordUnaskableHub(_LocalBaseOnTheHub):
+    """Serves both base manifests but cannot be asked for releases.json. Like
+    huggingface_hub, it answers a plain request from its cached copy, which
+    still lists the base, and fails a forced one."""
+
+    def hf_hub_download(
+        self,
+        *,
+        repo_id,
+        filename,
+        repo_type,
+        revision,
+        cache_dir=None,
+        force_download=False,
+    ):
+        from test_support.microcosm_data.hub_errors import hub_unreachable
+
+        if Path(filename).name == "releases.json" and force_download:
+            self.requests.append((repo_id, filename, repo_type, revision))
+            raise hub_unreachable(repo_id, filename, revision, status_code=504)
+        return super().hf_hub_download(
+            repo_id=repo_id,
+            filename=filename,
+            repo_type=repo_type,
+            revision=revision,
+            cache_dir=cache_dir,
+            force_download=force_download,
+        )
+
+
+def test_a_local_base_is_not_offered_by_a_cached_record_when_the_hub_cannot_be_asked(
+    local, tmp_path
+) -> None:
+    """When the Hub cannot be asked for releases.json, the hand-over fails
+    rather than reading the client's cached copy (review of #1627)."""
+    from huggingface_hub.errors import LocalEntryNotFoundError
+
+    folder, root = local
+    annual_dir = local_annual_build_folder_of(folder, root)
+    hub = _RecordUnaskableHub(
+        tmp_path / "hub",
+        read_json(folder / "release_manifest.json"),
+        read_json(folder / "build_manifest.json"),
+        cached={"releases.json": _stale_listing(tmp_path)},
+        base_build="withdrawn",
+    )
+
+    with pytest.raises(LocalEntryNotFoundError):
+        annual_projections.require_base_publication(hub, annual_dir, repo_id=LOCAL_REPO)
+    assert hub.requests[-1] == _RECORD_REQUEST
 
 
 def test_an_unpublished_base_build_manifest_is_refused(local, tmp_path) -> None:
