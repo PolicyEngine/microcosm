@@ -122,18 +122,19 @@ migrated to it yet.
   compilation + L0 (`target_records`) pruning as the core, not an option
   — generate-big-then-prune is the intended asymptotic design (300k → 3M → 30M
   pools).
-- **US national releases since 2026-07-01 have calibrated without L0.**
-  `calibrate()` defaults to `l0_lambda=0.0` and `target_records=None`, and it
-  builds its hard-concrete L0 gates only when a caller sets a positive
-  `l0_lambda` or any `target_records` (`solve.py`), so a default solve keeps
-  every record. `method="apg"` survives only as a deprecated alias for Adam.
-  PolicyEngine has tagged nine calibrations of the US national file,
-  `populace_us_2024.h5`, in the `policyengine/populace-us` Hugging Face
-  repository since 2026-07-01, and all nine came from the US builder's
-  `--dense-default-dataset` arm (`tools/build_us_fiscal_refresh_release.py`).
-  Their build manifests record `dataset.default.method: dense_no_l0`, and the
+- **PolicyEngine calibrated its US national releases without L0 from
+  2026-07-01 through 2026-11-15.** `calibrate()` defaults to `l0_lambda=0.0`
+  and `target_records=None`, and it builds its hard-concrete L0 gates only
+  when a caller sets a positive `l0_lambda` or any `target_records`
+  (`solve.py`), so a default solve keeps every record. `method="apg"` survives
+  only as a deprecated alias for Adam. In that period PolicyEngine tagged nine
+  calibrations of the US national file, `populace_us_2024.h5`, in the
+  `policyengine/populace-us` Hugging Face repository, and all nine came from
+  the US builder's `--dense-default-dataset` arm
+  (`tools/build_us_fiscal_refresh_release.py`). Their build manifests record
+  `dataset.default.method: dense_no_l0`, and the
   [US release build rule](docs/us-release-build-rule.md) lists the households
-  each one calibrated. policyengine.py's bundle loads
+  each one calibrated. On 2026-11-15, policyengine.py's bundle loaded
   `populace-us-2024-spm-20260915` as the US default: the households and
   weights of Build P, one of the nine, plus one SPM variable. Under
   microcosm#578, PolicyEngine plans to publish every size from one pool with

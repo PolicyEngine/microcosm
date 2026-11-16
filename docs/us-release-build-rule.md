@@ -186,20 +186,20 @@ stable source IDs, and their outputs are compared with or merged into the
 original assembled table. This lets historical source kernels consume the
 projection without treating intentionally removed provenance as corruption.
 
-PolicyEngine has tagged nine calibrations of the US national file in
-`policyengine/populace-us` since 1 July 2026: the 1 July release, Builds I, J,
-M, N, O and P, and the 30 September and 24 October builds. All nine came from
-`--dense-default-dataset`, and each build manifest records
-`dataset.default.method: dense_no_l0`. The first seven, from 1 July to 28 July
-2026, calibrated 57,240 households each. An unpublished run, the informed-L0
-step in microcosm#328, chose the list of households the 1 July release
-calibrated. Builds I, J, M, N, O and P matched later versions of that list onto
-a 337,704-household pool by source identity
+From 1 July to 15 November 2026, PolicyEngine tagged nine calibrations of the
+US national file in `policyengine/populace-us`: the 1 July release, Builds I,
+J, M, N, O and P, and the 30 September and 24 October builds. All nine came
+from `--dense-default-dataset`, and each build manifest records
+`dataset.default.method: dense_no_l0`. PolicyEngine calibrated 57,240
+households in each of the first seven, from 1 July to 28 July 2026. An
+unpublished run, the informed-L0 step in microcosm#328, chose the list of
+households the 1 July release calibrated. Builds I, J, M, N, O and P matched
+later versions of that list onto a 337,704-household pool by source identity
 (`calibration.selection_source.mode: frozen_support`). For Builds I and J,
 PolicyEngine swapped 100 households in the list for others (microcosm#359), and
-for Builds M, N, O and P it swapped 9 more (microcosm#434). The 30 September
-and 24 October builds ran without a selection source and calibrated all
-352,932 households in their pools.
+for Builds M, N, O and P it swapped 9 more (microcosm#434). PolicyEngine ran
+the 30 September and 24 October builds without a selection source and
+calibrated all 352,932 households in their pools.
 
 Decided 23 September 2026 (microcosm#956): route A's first certified release,
 which is not the default, calibrates the whole base dense

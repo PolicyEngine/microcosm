@@ -1523,9 +1523,9 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "and the full-pool --exact-k point run one stage; the L0+refit arm "
             "and smaller --exact-k points run an L0 selection stage and then a "
             "refit stage, each this long. The US national calibrations "
-            "PolicyEngine has tagged in policyengine/populace-us since "
-            "2026-07-01 ran the dense arm for 1,500 to 6,000 epochs; Build P, "
-            "the parent of populace-us-2024-spm-20260915, ran 6,000."
+            "PolicyEngine tagged in policyengine/populace-us from 2026-07-01 "
+            "through 2026-11-15 ran the dense arm for 1,500 to 6,000 epochs; "
+            "Build P, the parent of populace-us-2024-spm-20260915, ran 6,000."
         ),
     )
     parser.add_argument("--learning-rate", type=float, default=0.02)
@@ -1557,10 +1557,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "by the candidate household count and uses the result as a fixed L0 "
             "penalty; the L0+refit arm then refits ordinary calibration on the "
             "households the gates keep. --dense-default-dataset ignores it. "
-            "None of the US national builds PolicyEngine has tagged in "
-            "policyengine/populace-us since 2026-07-01 ran an L0 stage; "
-            "docs/us-release-build-rule.md lists the households each one "
-            "calibrated."
+            "None of the US national builds PolicyEngine tagged in "
+            "policyengine/populace-us from 2026-07-01 through 2026-11-15 ran "
+            "an L0 stage; docs/us-release-build-rule.md lists the households "
+            "each one calibrated."
         ),
     )
     parser.add_argument(
@@ -1598,13 +1598,13 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "dataset.default.method: dense_no_l0. This arm also fences the SSI "
             "take-up bands for ages 18-64 and 65+ (microcosm#566/#567), so a "
             "delivery miss there ships in the scorecard; the other arms fail "
-            "the build on it. Every US national calibration PolicyEngine has "
-            "tagged in policyengine/populace-us since 2026-07-01 came from "
-            "this arm. A selection source (--selection-source-manifest or "
-            "--selection-source-h5) first cuts the candidates to the households "
-            "it names, 57,240 in Builds I, J, M, N, O and P. Without one, the "
-            "solve covers every household the builder loads: 352,932 in the "
-            "2026-09-30 and 2026-10-24 builds. The builder refuses it together "
+            "the build on it. Every US national calibration PolicyEngine "
+            "tagged in policyengine/populace-us from 2026-07-01 through "
+            "2026-11-15 came from this arm, and docs/us-release-build-rule.md "
+            "lists them. A selection source (--selection-source-manifest or "
+            "--selection-source-h5) first cuts the candidates to the "
+            "households it names; without one, the solve covers every "
+            "household the builder loads. The builder refuses it together "
             "with --exact-k, and the L0+refit arm runs when the caller sets "
             "neither."
         ),
