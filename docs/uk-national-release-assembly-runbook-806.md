@@ -75,6 +75,13 @@ uv run --no-sync python tools/build_uk_full.py --release-role national \
   --out <candidate-dir>
 ```
 
+The national role builds only on a geography-first spine of one geographic
+clone whose households carry their areas. It refuses every build until the
+degenerate-surface register's `household.atomic_area_basis` exclusion applies
+on the national line and is in force on the build's review date
+(microcosm#931). The [UK full-build graph](uk-full-build-graph.md#the-national-role)
+describes the refusals.
+
 `--reference-h5` with `--reference-record` makes the build compare the
 finished candidate with the reference after the bundle is staged:
 `score_vs_reference.json` lands beside the outputs. It is a report with no
@@ -148,6 +155,11 @@ names another build than `--reference-record`, and the certification records
 the reference in its `reference` block.
 
 The spine is stage evidence for the family build-state gates, so `--spine-sha256` must be the parent the calibration recorded (`build_record.input_posture.sha256`, `source_pins.input_h5.sha256`, the signed diagnostics' `build.input_posture`); a spine that pins correctly but is not that parent is refused before any gate runs, and the certification records it as `parent_spine`.
+
+The certifier also requires the spine's build sidecar to be the one the build
+record names. Before any gate runs, it checks that sidecar's geography binding
+at one clone, with the helper the dense pre-flight uses. It refuses a candidate
+that carries a clone index (microcosm#931).
 
 With the default paths, this writes
 `microcosm_uk_2024_25.release_cut_gates.json` and

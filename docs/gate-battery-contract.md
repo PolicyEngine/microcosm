@@ -229,9 +229,9 @@ stretches on declaration alone:
 | | BE | UK |
 | --- | --- | --- |
 | phases | `terminal` | `preflight`, `assembled`, `transferred`, `terminal` |
-| entries | 9 | 73 (64 national-build entries, 7 local-candidate entries and 2 local diagnostics) |
+| entries | 9 | 99 (91 national-build entries, 6 local-candidate entries and 2 local diagnostics) |
 | incumbent posture | none — incumbent-comparison gates deliberately not selected; external oracles replace self-parity | full — export surface, input coverage and input mass against the current build of the cut's own line (microcosm#1095; until then the pinned enhanced-FRS incumbent) |
-| criticality mix | 8 blocking + 1 diagnostic | 71 blocking + 2 local diagnostics |
+| criticality mix | 8 blocking + 1 diagnostic | 97 blocking + 2 local diagnostics |
 
 The differences are entirely in the two country inputs — the spec file
 and the registry — which is the point. The UK national build is the
@@ -242,7 +242,7 @@ remains spec-only.
 
 UK evaluates the declaration through four producer scopes: spine,
 calibration seam, national release cut, and local candidate. The first three
-compose the national release certification. The seven local-candidate entries
+compose the national release certification. The six local-candidate entries
 are explicitly classified as excluded from that certification until the
 local publication work in #146; they are evaluated in their own signed
 `local_candidate` report rather than silently disappearing from union
