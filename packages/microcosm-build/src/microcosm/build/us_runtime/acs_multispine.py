@@ -121,6 +121,7 @@ def build_optional_acs_multispine(
     work_disability_inputs: bool = False,
     income_transfer: bool = False,
     native_receipt_anchors: bool = False,
+    semp_covers_partnership_income: bool = False,
     donor_spine: str = ASEC_PUF_DONOR_SPINE,
     donor_channel: str | None = ACS_DONOR_CHANNEL_AUTO,
     seed: int = 0,
@@ -164,6 +165,13 @@ def build_optional_acs_multispine(
     public-assistance counts it records against ``receives_tanf``) is
     ``provenance["acs_local_receipt_anchors"]``. The source is checked before
     any fit.
+    ``semp_covers_partnership_income`` (the ACS local lane, microcosm#1387)
+    tells the shared transfer that ACS ``SEMP`` already includes
+    own-partnership income, so a ``partnership_income`` draw is kept at zero
+    where the row's or its tax unit's SEMP accounts for it (see
+    :func:`~microcosm.build.us_runtime.acs_transfer.keep_semp_covered_partnership_income`).
+    Only the shared call receives it; the hours and income passes do not
+    draw ``partnership_income``.
 
     Large intermediate frames are released as soon as the next stage has
     materialized its own frame.  This cannot make the final dense pool small,
@@ -363,6 +371,11 @@ def build_optional_acs_multispine(
         seed=seed,
         n_estimators=n_estimators,
         max_targets_per_fit=max_targets_per_fit,
+        **(
+            {"semp_covers_partnership_income": True}
+            if semp_covers_partnership_income
+            else {}
+        ),
     )
     del mapped_frame
     adult_care_gate = _require_recipient_adult_care_structure(transferred.frame)

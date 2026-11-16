@@ -9,7 +9,7 @@ will pin the constellation.
 |---|---|---|---|
 | `microcosm-frame` | `microcosm.frame` | the kernel: Frame, typed weights, strata, links, weighted accounting, unit structure, rules-engine protocol | microdf, microunit |
 | `microcosm-fit` | `microcosm.fit` | conditional models (weight-aware by construction) | ad hoc imputation scripts |
-| `microcosm-calibrate` | `microcosm.calibrate` | representation: targets → calibrated weights (APG / L0) | microcalibrate |
+| `microcosm-calibrate` | `microcosm.calibrate` | representation: targets → calibrated weights (Adam; optional L0 pruning or proximal L1 selection) | microcalibrate |
 | `microcosm-build` | `microcosm.build` | population build plans, donor graphs, release gates, and country build stages | one-off build drivers |
 | `microcosm-data` | `microcosm.data` | published population registry and lazy engine loaders | country-specific data packages |
 
@@ -574,6 +574,30 @@ exact commands; the UK
 [dense](docs/uk-dense-release-assembly-runbook-762.md) runbooks describe them.
 `microcosm.data.load` reads the current build of such a release from
 `releases.json`, or the listed build `build=` names.
+
+**Withdrawing a build.** A published build that should no longer be used is
+withdrawn, not deleted:
+
+```bash
+uv run microcosm-withdraw-release-build <repository> <release> <build>
+```
+
+The command hands the withdrawal to the emitter's release writer, which sets
+the build's `withdrawn` flag in `releases.json` and leaves its folder as
+published. The writer refuses the release's current build (make another
+build current first: `--promote` with that build's release directory) and a
+build `releases.json` does not list, and never makes a withdrawn build
+current: `--promote` is refused, and publishing it again with
+`--make-current` reports it published but not current. The command refuses
+offline and while a `latest*.json` file exists, before it starts an emitter,
+checks the emitter's write access first, waits up to five minutes, prints
+the receipt as JSON with `"change": "withdraw"` and `"withdrawn"`, and exits
+1 unless the build is withdrawn. The publish and promote commands' JSON
+carries `"change"` too, and `"withdrawn": null`: they cannot tell. `microcosm.data.load` loads a withdrawn build only when `build=`
+pins it, with a warning. A compatibility recertification or an annual
+projection whose parent or base is a build-folder build is refused before
+anything is handed over when `releases.json` withdrew or no longer lists that
+build, and the UK cut reference refuses a withdrawn build.
 
 **The US releases.** `policyengine/populace-us` has five releases
 (`microcosm.data.contract.US_RELEASES`):
