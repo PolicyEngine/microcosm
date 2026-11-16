@@ -1,27 +1,23 @@
-"""Per-clone home value and council-tax band from the assigned area (microcosm#1240).
+"""Owner ranks, home-value knots and band mixes by area (microcosm#1240, microcosm#931).
 
-The UK spine imputes ``main_residence_value`` from WAS and carries
-``council_tax_band`` from the FRS before any household has an area, so every
-geographic clone of a household used to carry the same value and band
-wherever it landed. Two post-geography nodes in the dense graph fix that:
+The spine's WAS chain reads each England and Wales owner's main residence off
+its assigned constituency's knots (``uk/high_value_home_value_knots.json``,
+winsorised at the declared cap), at the owner's weighted mid-rank within its
+FRS region (``area_home_values``, G8). This module holds what that step reads:
+the knots loader, the owner mask, the ranks with their keyed tie-breaks
+(:func:`owner_uniforms`) and the read itself
+(:func:`localise_main_residence_values`). ``high_value_home_support`` takes its
+stratum from :data:`SUPPORT_STRATUM_LOWER`, and ``tools/uk_private_rent_pool.py``
+keys households with :func:`spine_household_keys`.
 
-- ``uk.full.property.value`` keeps each owner household's rank among the
-  owner households of its FRS region (a weighted mid-rank of the stored
-  value, ties broken by an identity-keyed uniform; the same uniform for every
-  pool clone of one spine household) and reads the clone's value off its
-  assigned constituency's uprated latest-sale distribution
-  (``uk/high_value_home_value_knots.json``, winsorised at the declared cap).
-  Non-owner rows and rows outside England and Wales keep their value.
-- ``uk.full.property.band`` draws the clone's band from its assigned LSOA's
-  VOA band mix (``uk/voa_council_tax_band_mix_lsoa.json``) at the same
-  uniform, so value and band agree by construction. A Scottish owner clone
-  draws from its council area's chargeable dwellings by band, A to H, at
-  September 2025 (``uk/scotgov_chargeable_dwellings_by_band.json``, vendored
-  from Chronicle) at the same uniform, its rank among Scotland's owners
-  (microcosm#1095 B12). Northern Ireland's rows keep their band.
+These functions first served the dense line's two post-geography nodes,
+``uk.full.property.value`` and ``uk.full.property.band`` (microcosm#1240), which
+microcosm#931 retired. No stage reads the band mixes or the band draw now
+(:func:`load_band_mix`, :func:`load_scotland_band_mix`, :func:`localise_bands`),
+nor :func:`localise_values`.
 
-Everything here is pure: the kernels in ``graph_population`` hand these
-functions arrays and resources and write the results back.
+Everything here is pure: callers hand these functions arrays and resources and
+write the results back.
 """
 
 from __future__ import annotations
@@ -93,8 +89,9 @@ COUNCIL_TAX_BANDS: tuple[str, ...] = ("A", "B", "C", "D", "E", "F", "G", "H", "I
 KNOTS_KIND = "uk_high_value_home_value_knots"
 BAND_MIX_KIND = "uk_voa_council_tax_band_mix_lsoa"
 _OWNER_CATEGORIES = frozenset({UK_TENURE_OWNED_OUTRIGHT, UK_TENURE_OWNED_WITH_MORTGAGE})
-#: The pool clones of one spine household share one draw: the key is the
-#: spine path, never the geographic clone branch.
+#: The process name of the owners' keyed tie-break draw. Rows that share a
+#: key share its draw, and the spine keys each row on its own id
+#: (``area_home_values``, microcosm#931).
 _TIE_BREAK = "tie_break"
 _IDENTITY = "identity"
 _SUPPORT = "support"
@@ -253,7 +250,12 @@ def load_scotland_band_mix(payload: bytes) -> BandMix:
 def spine_household_keys(
     household: pd.DataFrame, *, source: str, source_vintage: str
 ) -> np.ndarray:
-    """One key per spine household, shared by all of its pool clones."""
+    """Each household's key over its clone path without the geographic
+    branch, so a record's geographic clones share one.
+
+    ``tools/uk_private_rent_pool.py`` matches the pool rows of dense runs
+    built before microcosm#931 to their spine households with it.
+    """
     source_ids, paths = uk_household_clone_paths(household)
     spine_paths = without_geographic_branch(paths)
     keys = [
@@ -290,17 +292,20 @@ def owner_uniforms(
     support_copy: np.ndarray | None = None,
     support_stratum_lower: float = 0.95,
 ) -> tuple[np.ndarray, dict[str, object]]:
-    """The uniform each pool row maps its home value and band through.
+    """The uniform each row maps its home value through.
 
     Owner rows with a positive stored value take their spine household's
     weighted mid-rank among the owner spine households of the same FRS
-    region (clone weights summed per spine household; ties broken by a keyed
+    region (row weights summed per spine key; ties broken by a keyed
     uniform). Every other row takes an identity-keyed uniform. High-value
     support copies (microcosm#1240 fix 1) take a keyed uniform inside the top
     stratum ``[support_stratum_lower, 1)`` instead of their rank, so the copies
     of one tail household spread across the stratum rather than share one
-    rank. The uniform is a function of the spine key alone, so it is identical
-    for every pool clone of one spine household and never depends on K.
+    rank. Rows that share a spine key share its uniform, whatever the row order.
+
+    ``area_home_values`` reads each owner's value at this rank. It keys rows
+    on their own ``household_id``, so every clone and copy ranks on its own
+    (microcosm#931).
     """
     spine_key = np.asarray(spine_key, dtype=object)
     region = np.asarray(region).astype(str)
@@ -515,8 +520,9 @@ def localise_bands(
 
     Renters keep the spine's band: the VOA and CTAXBASE mixes count every
     dwelling, and drawing a social tenant from them would hand the owners' share
-    of the high bands to households the value node leaves untouched. Without
+    of the high bands to households the retired value node left untouched. Without
     ``scotland_mix`` Scotland keeps its bands, as Northern Ireland always does.
+    No stage has called this function since microcosm#931.
     """
     u = np.asarray(u, dtype=float)
     codes = np.asarray(lsoa_code).astype(str)

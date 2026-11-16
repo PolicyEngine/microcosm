@@ -139,8 +139,8 @@ def uk_household_clone_paths(
     with the copy index when it is a CGT support copy, ``high_value_support``
     with the copy index when it is a high-value home support copy,
     ``cgt_incidence_clone`` (ordinal 1) from its flag, ``cgt_residential_split``
-    with the arm index, and ``geographic_support`` with the pool clone index
-    when it is not the original copy. The shared reader
+    with the arm index, and ``geographic_support`` with the geographic clone
+    index when it is not clone 0. The shared reader
     (``microcosm.build.source_lineage.copy_paths``) reads it on
     :data:`UK_COPY_LINEAGE`; malformed lineage fails by name.
     """
@@ -298,7 +298,8 @@ def geographic_fold_receipt(
 def without_geographic_branch(
     paths: Sequence[tuple[tuple[str, int], ...]],
 ) -> list[tuple[tuple[str, int], ...]]:
-    """The same paths with the pool clone branch removed (one per spine household)."""
+    """The same paths with the geographic branch removed, so a record's
+    geographic clones share one."""
     return [
         tuple(branch for branch in path if branch[0] != GEOGRAPHIC_SUPPORT_BRANCH)
         for path in paths

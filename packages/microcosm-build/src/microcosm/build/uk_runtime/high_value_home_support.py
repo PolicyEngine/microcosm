@@ -4,7 +4,8 @@ households (microcosm#1240, fix 1).
 This stage copies every owner household in the top stratum of its FRS region
 ``m`` times at equal weight, each copy carrying its index in
 ``high_value_support_copy_index`` (0 on roots and unsplit households), the
-explicit lineage the geography identity keys on. Since microcosm#931 the
+explicit lineage the copy readers read (``household_lineage.UK_COPY_LINEAGE``).
+Since microcosm#931 the
 stratum ranks England and Wales owners on the values ``was_wealth`` reads off
 their constituency's knots, which the regional property uprating returns them
 to, and every copy keeps its parent's value, area and geography key

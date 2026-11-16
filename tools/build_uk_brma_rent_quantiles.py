@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 """Build the rent quantiles by BRMA and category from the lists of rents (microcosm#1262).
 
-The post-geography rent node reads each private renter's rent off its BRMA's
-distribution of rents for homes of its size. This tool writes those
+The spine's ``private_rent`` stage reads each Great Britain private rent off
+its BRMA's distribution of rents for homes of its size (microcosm#931; first
+built for the dense line's rent node, microcosm#1262). This tool writes those
 distributions, ``uk/brma_rent_quantiles.json``: for every Great Britain BRMA
 and Local Housing Allowance category B to E (one to four or more bedrooms;
 category A, a room in shared accommodation, is never used), 25 quantile
@@ -20,7 +21,7 @@ knots of the weekly rent and the mean they imply.
 
 A cell with fewer than 50 lets takes its own median and its nation and
 category's pooled shape; under 20, a log-additive BRMA plus category median
-fitted on its nation's cells. No uprating is applied: the rent node scales
+fitted on its nation's cells. No uprating is applied: ``private_rent`` scales
 each region to its FRS level, so a factor common to a nation's list cancels
 within that nation. It does not cancel for the 16 LSOAs whose BRMA crosses
 the border: West Cheshire's 11 Welsh LSOAs read England's list under the

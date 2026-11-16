@@ -286,13 +286,13 @@ def test_driver_dry_run_writes_plan_only(monkeypatch, tmp_path) -> None:
     assert plan["source_lineage"]["explicit"] is None
 
 
-def test_driver_dry_run_refuses_dense_clones_of_a_table_minted_spine(
+def test_driver_dry_run_refuses_rowwise_clones_of_a_table_minted_spine(
     monkeypatch, tmp_path
 ) -> None:
     """A plan refuses what the build would (microcosm#931).
 
     Every synthetic id sits at a residential arm plus a twin of the copy-id
-    table, so a second dense clone has no int64 room.
+    table, so a second row-wise clone has no int64 room.
     """
     pytest.importorskip("tables")
     pytest.importorskip("h5py")

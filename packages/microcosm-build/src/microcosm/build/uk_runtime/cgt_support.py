@@ -14,7 +14,8 @@ column, doubled for the clone split and scaled by the declared headroom of
 identical copies at equal weight, ``K`` the frame's geographic clone count
 (1 on a national spine; microcosm#931), each carrying its index ``k`` in
 ``cgt_support_copy_index`` (0 on roots and unsplit households), the explicit
-lineage the geography identity kernel keys on. No value moves, and every
+lineage the copy readers read (``household_lineage.UK_COPY_LINEAGE``); each copy
+keeps its parent's geography key and area (microcosm#931). No value moves, and every
 household's mass and the total household mass are conserved exactly; the
 one draw is the walk's tie-break, a uniform keyed on each household's own id
 that orders households tied on wealth (microcosm#931). The incidence clone

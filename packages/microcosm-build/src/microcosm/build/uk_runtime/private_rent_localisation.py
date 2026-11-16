@@ -430,8 +430,9 @@ def localise_rents(
     """Each Great Britain private renter's rent off its assigned BRMA's list.
 
     The rent is ``WEEKS_IN_YEAR * s_r * Q_bc(u)``: ``u`` the household's rank
-    among its region and category's FRS renters (shared by every pool clone
-    of a spine household), ``Q_bc`` its assigned BRMA and category's weekly
+    among its region and category's FRS renters (the spine's ``private_rent``
+    stage keys each row on its own ``geography_household_key``, so every clone
+    and copy ranks on its own), ``Q_bc`` its assigned BRMA and category's weekly
     quantiles, ``s_r`` its region's scale. Every other row keeps its rent bit
     for bit. Returns exact counts; callers round them before any receipt.
 
