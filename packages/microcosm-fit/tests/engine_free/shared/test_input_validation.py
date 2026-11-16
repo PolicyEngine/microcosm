@@ -8,8 +8,7 @@ at ``52aea147`` most fail for the defect they name. A few fail there only
 because main lacks a new keyword or helper (``unseen_categories``,
 ``validated_integer``) or raised a less specific error: ``float()``'s own
 ``TypeError`` for ``zero_atol=None``, a matmul shape error for too few
-weights, an unknown label it did not name, the weighted bootstrap's
-"Probabilities contain NaN" for a sign without weight. The guards pass there: they pin
+weights, an unknown label it did not name. The guards pass there: they pin
 what the fixes keep, such as integer seeds, a partly weighted sign, the
 checkpoint's refusal of a boolean or string tolerance, ``predict_from_uniforms``
 on an empty batch, exact integer tolerances and NumPy label equality. The
@@ -520,10 +519,13 @@ def test_an_unsorted_order_main_scored_now_scores_as_sorted() -> None:
     """Main scored these classes in the order given; they now score sorted.
 
     Main's sorted search over ``[0, 2, 1]`` happens to find label 2 in place,
-    so main scored this input with the calibration offset fixed on class 0's
-    column in the order given and reported a slope of about 0.849. With one
-    observed class the slope is ill-posed, and in sorted order it is about
-    0.875. The changelog lists this as a valid-input change.
+    so main scored this input in the order given. Both orders fix class 0's
+    offset, but with one observed class the calibration is ill-posed, and the
+    order of the other two columns tips where its fit stops: on arm64 main
+    reported a slope of about 0.849, and the sorted order gives about 0.875.
+    That stop point is not portable, so the test pins only that the input
+    scores exactly as its sorted columns do, which main's did not. The
+    changelog lists this as a valid-input change.
     """
     proba = np.array(
         [
@@ -545,8 +547,6 @@ def test_an_unsorted_order_main_scored_now_scores_as_sorted() -> None:
         np.ascontiguousarray(proba[:, order]), labels, classes[order], weights
     )
     assert scores == in_order
-    assert scores["calibration_outcome"] == GateOutcome.CROSS_FITTED
-    assert scores["calibration_slope"] == pytest.approx(0.8754, abs=1e-4)
 
 
 @st.composite
@@ -751,8 +751,9 @@ def test_an_empty_batch_consumes_no_draws(seed, calibration) -> None:
     """The next batch draws exactly as if the empty one had never run.
 
     The examples pin both cross-fitted calibrations, at a seed whose gates all
-    calibrate out of fold (7) and at one where a gate falls back to the class
-    rates (14), so the generated draws need not reach them.
+    calibrate out of fold here (7) and at one where a gate falls back to the
+    class rates here (14), so the generated draws need not reach them. Both
+    outcomes are the cross-fitted gate, and both take its zero-row return.
     """
     used, fresh = _fit_gated(seed, calibration), _fit_gated(seed, calibration)
     used.predict(EMPTY_BATCH)
