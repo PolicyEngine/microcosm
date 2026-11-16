@@ -1863,3 +1863,103 @@ def test_the_twin_check_reaches_every_clones_copies(monkeypatch, tmp_path) -> No
     _impute_recording_transport(monkeypatch, mutated, donor_path, translate=False)
     with pytest.raises(ValueError, match="differs from its twin's"):
         _impute_recording_transport(monkeypatch, mutated, donor_path)
+
+
+def _with_one_differing_clone(support):
+    """``support`` with clone 1 of its first FRS record reporting more dividends.
+
+    Dividends are a forest input that moves no fold-key cell and keeps the
+    row a reference row, so the record's two clones differ only on what the
+    forests read, as a stage run per area could leave them. Returns the
+    support and the transport key of the clone that differs.
+    """
+
+    person = support.person.copy()
+    clone = person["person_household_id"].map(
+        support.household.set_index("household_id")["household_clone_index"]
+    )
+    frs = person[support_channel_column("person")].eq(
+        spi_income.BASE_FRS_SUPPORT_CHANNEL
+    )
+    clone_one = frs & clone.eq(1)
+    first = person.loc[clone_one, "person_id"].min()
+    varied = clone_one & person["person_id"].eq(first)
+    person.loc[varied, "dividend_income"] += 1.0
+    key = person.loc[varied, "person_source_id"].item()
+    return _replace(support, person=person), key
+
+
+def test_differing_clones_with_spine_keys_train_apart_under_their_own_keys(
+    monkeypatch, tmp_path
+) -> None:
+    """On the clone-first spine geographic_expand mints each clone's ids
+    before the support channel keys every row on its own id, so each clone's
+    FRS rows carry their own transport key. Two clones of one record that
+    differ on what the forests read stay training rows of their own after the
+    fold, each under its own key, and the stage runs; clone 1's copies of the
+    record find their twin on clone 1's row (microcosm#931)."""
+
+    support = _dead_support()
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+    two = _clone_first_support(support, 2)
+    agreeing_result, agreeing, _ = _impute_recording_transport(
+        monkeypatch, two, donor_path
+    )
+    differing_support, key = _with_one_differing_clone(two)
+    folded_keys = agreeing["training_identities"].tolist()
+    assert key not in folded_keys
+
+    differing_result, differing, _ = _impute_recording_transport(
+        monkeypatch, differing_support, donor_path
+    )
+    keys = differing["training_identities"]
+    assert pd.Index(keys).is_unique
+    assert sorted(keys.tolist()) == sorted([*folded_keys, key])
+    assert key in differing["twin_identities"].tolist()
+    assert agreeing_result.geographic_fold["varied_records"] == 0
+    assert differing_result.geographic_fold["varied_records"] != 0
+
+
+def test_differing_clones_that_share_a_key_are_refused_before_the_transport(
+    monkeypatch, tmp_path
+) -> None:
+    """Clones made after the support channel, as the dense pool makes them,
+    keep their record's transport key. Two that differ on what the forests
+    read stay training rows of their own after the fold, so the stage refuses
+    the frame by its cause before the transport meets the repeated key
+    (microcosm#931)."""
+
+    support = _dead_support()
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+    pooled, key = _with_one_differing_clone(_geographic_clones_of(support))
+    frs = pooled.person[support_channel_column("person")].eq(
+        spi_income.BASE_FRS_SUPPORT_CHANNEL
+    )
+    assert int((frs & pooled.person["person_source_id"].eq(key)).sum()) == 2
+
+    calls = []
+    monkeypatch.setattr(
+        spi_income,
+        "cross_fit_transport",
+        lambda *args, **kwargs: calls.append(kwargs),
+    )
+    with pytest.raises(
+        ValueError, match="made after the support channel share its key"
+    ):
+        impute_uk_spi_income_support(
+            pooled,
+            donor_path,
+            seed=9,
+            n_estimators=3,
+            donor_sample_size=None,
+            state_pension_age=66,
+            allow_in_sample_reference=True,
+            stage1_gate_calibration="cross_fitted",
+        )
+    assert not calls
