@@ -72,7 +72,7 @@ PER_MODULE = {
 #: rely on that: neither the registry nor the adapter refuses a scheme that
 #: runs behind another's column. The variables are the choice each binding's
 #: notes state, and an outside value keeps its output's type: 0.0 for Money and
-#: 0 for a Count. The surface's engine (04315d94) gives a Count a decimal
+#: 0 for a Count. The surface's engine (753ce7d9) gives a Count a decimal
 #: dtype, which takes either, but ``_outside_values`` refuses a float for an
 #: integer output, so an integer 0 stays valid if a Count becomes one (the
 #: bindings' views_note).
@@ -553,19 +553,29 @@ class TestBindings:
         }
         assert all(len(text) > 40 for text in payload["selectors"].values())
 
-    def test_the_engine_pins_await_the_surface_refresh(self) -> None:
+    def test_the_engine_pin_is_the_engine_that_generated_the_surface(
+        self,
+    ) -> None:
+        # The bindings pin the engine commit the committed surface and the
+        # closure record, so every root input above is the pinned engine's.
+        # axiom_engine_ref records the wheel digest as declared; no test here
+        # can hash a wheel.
         engine = _bindings_payload()["engine"]
-        assert engine["commit"] is None
-        assert engine["wheel_sha256"] is None
+        assert engine["commit"] == SURFACE.engine_commit
+        assert (
+            engine["commit"] == _closure_payload()["input_surface"]["engine"]["commit"]
+        )
+        assert re.fullmatch(r"[0-9a-f]{64}", engine["wheel_sha256"])
         assert engine["status"]
 
     def test_the_rulespec_pin_names_the_surface_commit_it_was_checked_against(
         self,
     ) -> None:
-        # The surface was generated at an ancestor of the pin. While the two
-        # commits differ, the verification note must name the surface's, since
-        # the sha256 values above were compared at both. The byte check itself
-        # needs a rulespec-be tree, which this test doesn't have.
+        # The surface is generated at the pin or at an ancestor of it. While
+        # the two commits differ, the verification note must name the
+        # surface's, since the sha256 values above were compared at both. The
+        # byte check itself needs a rulespec-be tree, which this test doesn't
+        # have.
         payload = _bindings_payload()
         if payload["rulespec"]["commit"] != SURFACE.rulespec_commit:
             assert SURFACE.rulespec_commit in payload["rulespec"]["verification"]
