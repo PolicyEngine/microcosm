@@ -125,7 +125,8 @@ selection mask is household-level, so those donors' tax units are dropped)
 (`assert_puf_capital_gains_tail_survives_selection`,
 `us_runtime/puf_capital_gains_tail.py:465`). The release tool does not require a
 selection source; when the caller passes one, `select_frozen_support`
-(`tools/build_us_fiscal_refresh_release.py`) cuts the base to the source's
+(`us_runtime/warm_start_selection.py`, called from
+`tools/build_us_fiscal_refresh_release.py`) cuts the base to the source's
 households. Without one, calibration runs on the full base of about 353,000
 households. July's run on about 57,000 households took 2 hours 42 minutes at
 85 GB.
@@ -193,10 +194,11 @@ nine came from `--dense-default-dataset`, and each build manifest records
 households in each of the first seven, from 1 July to 28 July 2026. An
 unpublished run, the informed-L0 step in microcosm#328, chose the list of
 households the 1 July release calibrated. Builds I, J, M, N, O and P matched
-later versions of that list onto a 337,704-household pool by source identity
-(`calibration.selection_source.mode: frozen_support`). For Builds I and J,
-PolicyEngine swapped 100 households in the list for others (microcosm#359), and
-for Builds M, N, O and P it swapped 9 more (microcosm#434). PolicyEngine ran
+later versions of that list by source identity onto pools of 337,704
+households (`calibration.selection_source.mode: frozen_support`). For Builds I
+and J, PolicyEngine swapped 100 households in the list for others
+(microcosm#359), and for Builds M, N, O and P it swapped 9 more
+(microcosm#434). PolicyEngine ran
 the 30 September and 24 October builds without a selection source and
 calibrated all 352,932 households in their pools. Their build manifests record
 calibration stages of 55 and 95 minutes (`timing.calibration_seconds`) and

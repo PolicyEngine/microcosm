@@ -134,13 +134,14 @@ migrated to it yet.
   (`tools/build_us_fiscal_refresh_release.py`). Their build manifests record
   `dataset.default.method: dense_no_l0`, and the
   [US release build rule](docs/us-release-build-rule.md) lists the households
-  each one calibrated. policyengine.py 6.19.0's bundle loads
-  `populace-us-2024-spm-20260915` as the US default: the households and
-  weights of Build P, one of the nine, plus one SPM variable. Under
-  microcosm#578, PolicyEngine plans to publish every size from one pool with
-  the builder's `--exact-k` arm. That arm calibrates the full pool without L0
-  for the k = N file and draws each smaller file from the pool by exact-k L0
-  selection.
+  each one calibrated. Seven of them calibrated 57,240-household lists that
+  descend from one an earlier informed-L0 run chose (microcosm#328).
+  policyengine.py 6.19.0's bundle loads `populace-us-2024-spm-20260915` as the
+  US default: the households and weights of Build P, one of the nine, plus one
+  SPM variable. Under microcosm#578, PolicyEngine plans to publish every size
+  from one pool with the builder's `--exact-k` arm. That arm calibrates the
+  full pool without L0 for the k = N file and draws each smaller file from the
+  pool by exact-k L0 selection.
 - **Longitudinal rule: one weight per trajectory.** Multi-period targets stack
   as (target, period) constraint rows over the same weight vector. Calibrating
   cross-sections independently destroys panels and is a kernel-level error.
