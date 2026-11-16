@@ -16,9 +16,9 @@ main enforces is microcosm#578's: the candidate beats the incumbent on the
 frozen comparison register, both rescored on it, with strict improvement
 (`_exact_k_frozen_register_fit_gate` in
 `tools/build_us_fiscal_refresh_release.py`). That gate runs on the `--exact-k`
-arm only, and that arm takes a pool manifest, which the builder refuses
-together with `--base-h5`. A `--base-h5` release runs no improvement
-gate. Main has no US held-out test: the rotated-fold holdout in
+arm only, and that arm takes a pool manifest, which the release tool refuses
+to combine with `--base-h5`. A `--base-h5` release runs no improvement gate.
+Main has no US held-out test: the rotated-fold holdout in
 `microcosm.build.holdout` is imported by the UK runtime and UK tools only. So a
 US release says it beats the incumbent on the frozen register, and says it beats
 it on held-out cells only once a US holdout exists and has run.
@@ -124,12 +124,11 @@ frozen July identity list does not name (the list names households, and the
 selection mask is household-level, so those donors' tax units are dropped)
 (`assert_puf_capital_gains_tail_survives_selection`,
 `us_runtime/puf_capital_gains_tail.py:465`). The release tool does not require a
-selection source, and `select_frozen_support`
-(`tools/build_us_fiscal_refresh_release.py`), which cuts the base to the
-source's households, runs only when the caller passes one.
-Without one, calibration runs on the full base of about 353,000 households. The
-only measured comparator is July's run on about 57,000 households: 2 hours 42
-minutes at 85 GB. Nothing has been measured at full-base size.
+selection source; when the caller passes one, `select_frozen_support`
+(`tools/build_us_fiscal_refresh_release.py`) cuts the base to the source's
+households. Without one, calibration runs on the full base of about 353,000
+households. July's run on about 57,000 households took 2 hours 42 minutes at
+85 GB.
 
 A dataset built this way is a new lineage, not a replay of Build P: no frozen
 support, a different capital-gains tail stratum, a different congressional
@@ -186,10 +185,10 @@ stable source IDs, and their outputs are compared with or merged into the
 original assembled table. This lets historical source kernels consume the
 projection without treating intentionally removed provenance as corruption.
 
-From 1 July to 15 November 2026, PolicyEngine tagged nine calibrations of the
-US national file in `policyengine/populace-us`: the 1 July release, Builds I,
-J, M, N, O and P, and the 30 September and 24 October builds. All nine came
-from `--dense-default-dataset`, and each build manifest records
+By 15 November 2026, PolicyEngine had tagged nine calibrations of the US
+national file in `policyengine/populace-us` since 1 July: the 1 July release,
+Builds I, J, M, N, O and P, and the 30 September and 24 October builds. All
+nine came from `--dense-default-dataset`, and each build manifest records
 `dataset.default.method: dense_no_l0`. PolicyEngine calibrated 57,240
 households in each of the first seven, from 1 July to 28 July 2026. An
 unpublished run, the informed-L0 step in microcosm#328, chose the list of
@@ -199,7 +198,10 @@ later versions of that list onto a 337,704-household pool by source identity
 PolicyEngine swapped 100 households in the list for others (microcosm#359), and
 for Builds M, N, O and P it swapped 9 more (microcosm#434). PolicyEngine ran
 the 30 September and 24 October builds without a selection source and
-calibrated all 352,932 households in their pools.
+calibrated all 352,932 households in their pools. Their build manifests record
+calibration stages of 55 and 95 minutes (`timing.calibration_seconds`) and
+whole builds of 33 and 57 hours (`timing.total_build_seconds`), but no peak
+memory.
 
 Decided 23 September 2026 (microcosm#956): route A's first certified release,
 which is not the default, calibrates the whole base dense
