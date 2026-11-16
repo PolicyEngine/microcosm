@@ -62,7 +62,7 @@ change:
 ```bash
 uv tool install microcosm-emitter   # once per machine
 uv tool upgrade microcosm-emitter   # to take a new release
-microcosm-emitter version           # the installed release; builds need 0.15.0 or later
+microcosm-emitter version           # the installed release; builds need 0.16.0 or later
 ```
 
 The build finds the `microcosm-emitter` command through
@@ -75,12 +75,15 @@ no remote staging, and measures no Orrery publication inventory; a UK build give
 its dataset bundle remotely, as it is by default, is refused before it
 starts, since the emitter uploads the bundle. Before it starts the emitter,
 the build reads its version from `microcosm-emitter version` and does not
-start one older than 0.15.0. That release adds the setting that switches
-the Hugging Face module's collector submissions on, which every emitter a
-build starts sets, so staged bundles and release publications that name
-their build reach the collector; collector provenance on a release
-publication; and a `skipped` collector receipt when the emitter refuses its
-collector settings. 0.14.0 added the build machine's
+start one older than 0.16.0. That release adds collector provenance on a
+promotion or withdrawal, so the emitter submits the `releases.json` the
+change wrote once it lands; 0.15.0 accepts that provenance but drops it.
+0.15.0 added the setting that switches the Hugging Face module's collector
+submissions on, which every emitter a build starts sets, so staged bundles
+and release publications that name their build reach the collector;
+collector provenance on a release publication; and a `skipped` collector
+receipt when the emitter refuses its collector settings. 0.14.0 added the
+build machine's
 readings: each heartbeat carries the machine's memory, CPU and disk use and
 the build's processes, a heartbeat after the machine wakes carries the sleep,
 the run's first event describes the machine, each stage's end says how long
@@ -94,12 +97,12 @@ which builds read as package data and the Modal image's install step reads
 from the launching checkout. Releases before 0.10.0 send telemetry to the
 collector's Cloud Run address, which changes when the collector moves to
 another Google Cloud project; from 0.10.0 on, releases send to the
-collector's hostname, which stays the same. 0.13.0, 0.14.0 and 0.15.0 were
-each the newest release when practically no machine ran the emitter yet, so
+collector's hostname, which stays the same. 0.13.0, 0.14.0, 0.15.0 and 0.16.0
+were each the newest release when practically no machine ran the emitter yet, so
 requiring them cost nothing (see
 [graph publication](docs/orrery-publication.md#emitter-dependency)). The
 build prints the installed and required versions, what it loses and the
-upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.15.0'`,
+upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.16.0'`,
 and continues as it does without the command. `uv tool upgrade` keeps any
 version constraint given at install time, such as `==0.7.0`; that
 `uv tool install --upgrade` command replaces it. Microcosm supplies build
@@ -122,7 +125,7 @@ if the emitter cannot be prepared or is missing, its
 `microcosm-emitter version` times out or fails, it is older than the
 minimum, it lists no protocol version 1, its `hello` fails, it exits or
 times out before it is ready, or it starts without its telemetry module.
-Every emitter a build starts (0.15.0 and later, the minimum) reads a given
+Every emitter a build starts (0.16.0 and later, the minimum) reads a given
 collector token, and exits at that point when the collector-token
 variables it inherits (`MICROCOSM_COLLECTOR_TOKEN`,
 `MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT`, `MICROCOSM_COLLECTOR_ORIGIN`) are set
@@ -566,7 +569,23 @@ to accept them before it closes the emitter. The printed outcome's
 submissions not yet accepted when the wait ends, are warnings and never fail
 the command. Once the collector has accepted them, its own processing decides
 whether it builds a tree from them or rejects them (for example
-`provenance_mismatch`); the command doesn't wait for that. The calibration diagnostics dashboard posts
+`provenance_mismatch`); the command doesn't wait for that. A promotion names
+its build for the collector in the same way, so once it has landed the
+emitter submits `releases.json` at the commit its receipt reports, naming the
+build now current, and the command waits for the collector to accept it,
+with the same `collector_submission` output and warnings, less the advice
+about files on disk (the emitter keeps the `releases.json` it sends). A
+change that writes nothing, such as promoting the build already current,
+sends the same record as the change that last wrote `releases.json`; when
+another Hugging Face user sent that one, the collector refuses the copy and
+the command warns `COLLECTOR_REFUSED_403`, although the collector already
+holds the record. For a promotion
+that has not landed the command says nothing of the collector: a refused one
+sends nothing, and a pending one is sent by the emitter that lands it later. The collector then reads `releases.json` at the repository's
+head and points the country's latest calibration tree at the current build
+of its default release, older or newer, when it has that build's tree.
+`--make-current` needs no separate record: the publication's calibration
+diagnostics already name the build it made current. The calibration diagnostics dashboard posts
 these releases' Slack alerts from changes to `releases.json`. The UK
 assemblers, the US national builder and the US ACS package stage print the
 exact commands; the UK
@@ -592,7 +611,12 @@ current: `--promote` is refused, and publishing it again with
 offline and while a `latest*.json` file exists, before it starts an emitter,
 checks the emitter's write access first, waits up to five minutes, prints
 the receipt as JSON with `"change": "withdraw"` and `"withdrawn"`, and exits
-1 unless the build is withdrawn. The publish and promote commands' JSON
+1 unless the build is withdrawn. Like a promotion, the withdrawal names its
+build for the collector: once it has landed, the emitter submits
+`releases.json`, naming the release's current build, and the command waits
+for the collector to accept it (`collector_submission`). A release left with
+no current build sends nothing (`NO_CURRENT_BUILD`), which the command
+reports as a warning. The publish and promote commands' JSON
 carries `"change"` too, and `"withdrawn": null`: they cannot tell. `microcosm.data.load` loads a withdrawn build only when `build=`
 pins it, with a warning. A compatibility recertification or an annual
 projection whose parent or base is a build-folder build is refused before

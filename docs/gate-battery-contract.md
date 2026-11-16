@@ -303,9 +303,9 @@ the tree show how far the same executor stretches on declaration alone:
 | | BE | UK |
 | --- | --- | --- |
 | phases | `terminal` | `preflight`, `assembled`, `transferred`, `terminal` |
-| entries | 9 | 94 (85 national-line entries, 7 local-candidate entries and 2 local diagnostics) |
-| incumbent posture | none — incumbent-comparison gates deliberately not selected; external oracles replace self-parity | full — export surface, input coverage and input mass against the current build of the cut's own line (microcosm#1095; until then the pinned enhanced-FRS incumbent) |
-| criticality mix | 8 blocking + 1 diagnostic | 92 blocking + 2 local diagnostics |
+| entries | 10 (2 declared not applicable) | 94 (85 national-line entries, 7 local-candidate entries and 2 local diagnostics) |
+| incumbent posture | none — incumbent-comparison gates deliberately not selected; external oracles, planned in microcosm#264, are to replace self-parity | full — export surface, input coverage and input mass against the current build of the cut's own line (microcosm#1095; until then the pinned enhanced-FRS incumbent) |
+| criticality mix | 9 blocking + 1 diagnostic | 92 blocking + 2 local diagnostics |
 
 The differences are entirely in the two country inputs — the spec file
 and the registry — which is the point. The UK national build is the

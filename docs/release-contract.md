@@ -1370,7 +1370,7 @@ fixtures:
   roles or retired fields;
 - the emitter interface's `add_build`, `make_current` or
   `ReleasesRecord.serialize` (the repository requires
-  `microcosm-emitter-interface>=0.14.0,<1`);
+  `microcosm-emitter-interface>=0.16.0,<1`);
 - the registry;
 - the generator's `WRITERS` table, or one of its synthetic inputs, such as a
   build name, the fixture instant or a runtime version. A change of that kind

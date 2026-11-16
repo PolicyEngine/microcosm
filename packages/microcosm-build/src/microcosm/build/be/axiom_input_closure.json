@@ -7,20 +7,20 @@
   "work_package": "PR 4a (Child bindings and input closure); PR 4b adds the graph that runs them",
   "mapping": {
     "engine": "axiom:be",
-    "engine_version": "b105e2b3a3086ddd2de447d58a9b951346870dd1"
+    "engine_version": "632e1da1110ba881c68165e0cd3c2287b5b8ab08"
   },
   "input_surface": {
     "fixture": "packages/microcosm-frame/tests/fixtures/axiom_input_surfaces/be.json",
-    "rulespec_commit": "b105e2b3a3086ddd2de447d58a9b951346870dd1",
+    "rulespec_commit": "632e1da1110ba881c68165e0cd3c2287b5b8ab08",
     "engine": {
       "repository": "TheAxiomFoundation/axiom-rules-engine",
-      "commit": "04315d94d04efd61e27665ab3aa300d64fdf3a66"
+      "commit": "753ce7d9ac4cfb161f6aa4f281f5a3980e67a57d"
     }
   },
   "rulespec_pin": {
     "commit": "632e1da1110ba881c68165e0cd3c2287b5b8ab08",
     "method_card_row": "BE-MC0",
-    "note": "The input-surface generator used b105e2b3a3086ddd2de447d58a9b951346870dd1, an ancestor of the pin 632e1da1110ba881c68165e0cd3c2287b5b8ab08. Each listed module has the same bytes at both commits, and its SHA-256 below matches at both."
+    "note": "The input surface was generated at the pin, and each listed module's SHA-256 below is its SHA-256 there."
   },
   "rulespec_paths": {
     "be-bru/statutes/family_benefits/basic_amounts.yaml": "6dab96b7260c8a38d06eee900a8e2192d1ec8654a9f11011ba901f7f76cc27fa",
@@ -45,28 +45,28 @@
     "The routing bridge's region code defaults to a code outside the four regions, so the bridge pays nothing until a node supplies each child's code. Until then no routing copy of a regional scheme's default changes the bridge's result; most copies keep the reason of the regional module they repeat.",
     "A flag whose value is fixed wherever its one reader can change a result takes that value, and its reason shows why (the German-speaking no_current_article_9_entitlement, true)."
   ],
-  "engine_optional_evidence": "The axiom-rules-engine commit named in input_surface.engine (the engine that generated the committed input surface) gives these modules no optional inputs. A RuleSpec document holds no inputs section at that commit (RulesDocument, src/rulespec.rs:361-374), and none of the twelve modules carries a top-level inputs key at the pin. The engine rejects a rule-level default (RuleSpecError::UnsupportedDefault, src/rulespec.rs:91-94 and src/rulespec.rs:2411-2418), and the dense batch call collects only the inputs the caller supplies (python-ext/src/lib.rs:458-466). A plain read of an absent input fails every row whose evaluation reaches it with EvalError::MissingInput (src/dense.rs:2790-2803). The internal input_or_else node that would read a default (src/dense.rs:2805-2811) never comes from RuleSpec text: formula lowering turns a name that no parameter or rule defines into a plain input read (src/formula.rs:1400-1413), and src/formula.rs names no input_or_else node. So no root input of these modules can be verified engine-optional, and this closure classes none as such: it defaults, with a reason, every input the mapping doesn't encode.",
+  "engine_optional_evidence": "The axiom-rules-engine commit named in input_surface.engine (the engine that generated the committed input surface) gives these modules no optional inputs. A RuleSpec inputs block gives no input a default: the engine keeps the block only to check only_related and selected-year reads and to read elections, and every other key stays inert (RulesDocument, src/rulespec.rs:664-668; declared_elections, src/rulespec.rs:1569-1611). None of the twelve modules carries a top-level inputs key at the pin, and nor does any other module the committed input surface covers. The engine rejects a rule-level default (RuleSpecError::UnsupportedDefault, src/rulespec.rs:274-277 and src/rulespec.rs:3619-3627), and the dense batch call collects only the inputs the caller supplies (python-ext/src/lib.rs:552-563). A plain read of an absent input fails every row whose evaluation reaches it with EvalError::MissingInput (src/dense.rs:5154-5168), and the first row error fails the whole request (src/dense.rs:1539, python-ext/src/lib.rs:404-409). The internal input_or_else node that would read a default (src/dense.rs:5169-5175) never comes from RuleSpec text: formula lowering turns a name that no parameter or rule defines into a plain input read (src/formula.rs:1833-1851), and src/formula.rs names no input_or_else node. So no root input of these modules can be verified engine-optional, and this closure classes none as such: it defaults, with a reason, every input the mapping doesn't encode.",
   "engine_source_pins": {
     "note": "The axiom-rules-engine source files that engine_optional_evidence cites by line, pinned at input_surface.engine.commit so each line citation names one exact file version.",
     "pins": [
       {
         "repository": "TheAxiomFoundation/axiom-rules-engine",
-        "commit": "04315d94d04efd61e27665ab3aa300d64fdf3a66",
+        "commit": "753ce7d9ac4cfb161f6aa4f281f5a3980e67a57d",
         "path": "python-ext/src/lib.rs"
       },
       {
         "repository": "TheAxiomFoundation/axiom-rules-engine",
-        "commit": "04315d94d04efd61e27665ab3aa300d64fdf3a66",
+        "commit": "753ce7d9ac4cfb161f6aa4f281f5a3980e67a57d",
         "path": "src/dense.rs"
       },
       {
         "repository": "TheAxiomFoundation/axiom-rules-engine",
-        "commit": "04315d94d04efd61e27665ab3aa300d64fdf3a66",
+        "commit": "753ce7d9ac4cfb161f6aa4f281f5a3980e67a57d",
         "path": "src/formula.rs"
       },
       {
         "repository": "TheAxiomFoundation/axiom-rules-engine",
-        "commit": "04315d94d04efd61e27665ab3aa300d64fdf3a66",
+        "commit": "753ce7d9ac4cfb161f6aa4f281f5a3980e67a57d",
         "path": "src/rulespec.rs"
       }
     ]
