@@ -361,6 +361,48 @@ def test_no_option_maps_to_a_runner_owned_flag() -> None:
             ), (tool.name, key)
 
 
+def test_a_release_plan_cannot_pass_the_county_facts(app, monkeypatch) -> None:
+    """microcosm#922: county materialize runs are local.
+
+    No staged input or plan option of the release tool reaches
+    ``--county-facts`` or ``--county-facts-sha256``, so a ``state_county``
+    materialize plan builds an argv without them. The check stage hands that
+    argv to the tool's registered parser, whose own argument check
+    (``county_surface._validate_county_facts``) refuses it; without the
+    registration the check would only run ``--help`` and pass.
+    """
+
+    tool = plan_lib.US_ACS_LOCAL_RELEASE
+    assert not [name for name in tool.inputs if "county" in name]
+    assert not [
+        option.flag
+        for option in tool.options.values()
+        if option.flag.startswith("--county-facts")
+    ]
+    data = _plan_data()
+    data["options"] = {
+        **data.get("options", {}),
+        "soi_mode": "state_county",
+        "geographies": "state,cd,county",
+    }
+    plan = plan_lib.parse_plan(data)
+    argv = plan_lib.planned_argv(plan)
+    assert argv[argv.index("--soi-mode") + 1] == "state_county"
+    assert not [item for item in argv if item.startswith("--county-facts")]
+
+    # Run the check stage's parse in this checkout instead of the image.
+    local_argv = [sys.executable, *argv[1:]]
+    monkeypatch.setattr(app.plan_lib, "IMAGE_REPO_ROOT", str(ROOT))
+    parse = app._parse_check(
+        plan, local_argv, dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    )
+    assert parse["returncode"] == 2, parse
+    assert (
+        "--soi-mode state_county needs --county-facts and --county-facts-sha256"
+        in parse["stderr_tail"]
+    ), parse
+
+
 def test_build_stage_argv_requires_every_staged_path() -> None:
     plan = plan_lib.parse_plan(_plan_data())
     with pytest.raises(plan_lib.PlanError, match="no staged path"):
