@@ -18,10 +18,19 @@ frozen comparison register, both rescored on it, with strict improvement
 `tools/build_us_fiscal_refresh_release.py`). That gate runs on the `--exact-k`
 arm only, and that arm takes a pool manifest, which the release tool refuses
 to combine with `--base-h5`. A `--base-h5` release runs no improvement gate.
-Main has no US held-out test: the rotated-fold holdout in
-`microcosm.build.holdout` is imported by the UK runtime and UK tools only. So a
-US release says it beats the incumbent on the frozen register, and says it beats
-it on held-out cells only once a US holdout exists and has run.
+Main has no held-out test that compares a US national candidate with the
+incumbent. The rotated folds in `microcosm.build.holdout` run only in the UK
+runtime (`uk_runtime/local_rowwise.py`). US code imports only the module's
+keyed-hash helpers. The ACS local-area tools (`tools/us_acs_local_cd_surface.py`
+and `tools/us_acs_local_county_surface.py`) use them to keep blocks of district
+and county SOI targets out of the local-area solve, then score those blocks
+against a pro-rata baseline; the scores are marked report-only and refuse
+nothing. `us_runtime/support_mix.py` uses them to split targets for the
+support-mix bake-off. The national builder imports neither helper. Its three
+`*_holdout.json` reports compare one build with outside benchmarks and never
+refuse a release. So a US national release says it beats the incumbent on the
+frozen register, and says it beats it on held-out cells only once a national
+holdout exists and has run.
 
 Publication stays a human step. Since the US repository's switch to
 `releases.json`, the release tool writes each build to

@@ -392,8 +392,8 @@ EXPECTED_HASHES = {
     # microcosm#1096 moves both again: solve's opt-in softmax mass
     # parametrization projects exactly onto the capped simplex; the default
     # projection parametrization is unchanged.
-    "seed_map": "8d0542f7b83f030772e6e53b5742d0f13bcad82325a4e9b66d5d999a3fbb5276",
-    "seed_protocol": "3ab23e82779263dabe8da210de55ce7f12fdc0464e8145ca2c18649426b7f976",
+    "seed_map": "4082e6e5ca5199c0bd96fa4d954d09e368a0f5ff0f4ce8995b7173ff9e5ed5ad",
+    "seed_protocol": "54a913c973b1fbdf3510bc09e20b2f85f5297ebc32e833f8590a8891405a3ca3",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
