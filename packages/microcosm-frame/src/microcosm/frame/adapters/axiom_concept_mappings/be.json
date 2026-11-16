@@ -212,6 +212,34 @@
    }
   },
   {
+   "canonical_input": "be-bru:statutes/family_benefits/eligibility#input.brussels_family_benefits_child_in_qualifying_education_training_or_stage",
+   "concepts": [
+    "fact:person.education_enrollment"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "brussels_family_benefits_child_in_qualifying_education_training_or_stage",
+   "group_rule": "person_role",
+   "module": "be-bru/statutes/family_benefits/eligibility.yaml",
+   "note": "Consumed in be-bru/statutes/family_benefits/eligibility.yaml by brussels_family_benefits_article_25_age_or_status_condition_met (Month; ordinance of 25 April 2019 article 25). With the brussels_family_benefits_ prefix dropped from every name, the rule returns 1 when child_age_on_august_31_years is below 18. Otherwise, while child_age_years is below 25, it returns 1 when child_is_apprentice, child_in_qualifying_education_training_or_stage, child_prepares_higher_education_thesis or child_registered_jobseeker_after_studies_or_apprenticeship holds, and 0 otherwise. child_entitlement adds the article 4 conditions and the article 26 alternative, and the routing bridge reads the result through its import of brussels_family_benefits_eligible_monthly_amount. The input carries article 25 section 2(b): a child who 'suit des cours', does a stage 'pour pouvoir être nommé à une charge', or takes bachelor-master credit training with no required courses. Section 2 grants the extension 'aux conditions fixées par le Collège réuni', and 2(b) leaves the trainings that count to the Collège réuni. The module summary says 'Delegated proof rules and Article 26 detail remain supplied inputs', and the module does not encode those conditions. The binding reads the input as current enrollment in any ISCED programme at the reference date, not in the benefit month. Part-time enrollment counts. The concept does not observe whatever intensity or programme conditions the Collège réuni sets, or the gainful activities that it rules out. It does not see an appointment stage or credit training without courses unless the source records it as enrollment. The sibling inputs child_is_apprentice, child_prepares_higher_education_thesis and child_registered_jobseeker_after_studies_or_apprenticeship stay uncovered. An apprentice or thesis writer recorded as enrolled lands here, which the OR in the rule makes harmless to the result but not to the input's meaning. A school leaver registered as a jobseeker is not enrolled, so this binding leaves them to child_registered_jobseeker_after_studies_or_apprenticeship. The binding of brussels_family_benefits_child_enrolled_in_higher_education reads the tertiary band, one of the bands read here, so a child that input marks always meets this one. Each Child row takes that child's own enrollment.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:person.education_enrollment",
+      [
+       "early_childhood",
+       "primary",
+       "lower_secondary",
+       "upper_secondary",
+       "post_secondary_non_tertiary",
+       "tertiary"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
    "canonical_input": "be-bru:statutes/family_benefits/social_supplements#input.brussels_family_benefits_social_supplement_child_age_years",
    "concepts": [
     "fact:person.age"
@@ -477,6 +505,34 @@
    "relation": "approximate",
    "transform": {
     "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-vlg:statutes/family_benefits/eligibility#input.flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver",
+   "concepts": [
+    "fact:person.education_enrollment"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver",
+   "group_rule": "person_role",
+   "module": "be-vlg/statutes/family_benefits/eligibility.yaml",
+   "note": "Consumed in be-vlg/statutes/family_benefits/eligibility.yaml by flanders_family_benefits_age_or_status_condition_met (Month; Groeipakket decree of 27 April 2018, article 8 section 2 item 3). With the flanders_family_benefits_ prefix dropped from every name, the third branch reads 'child_is_pupil_student_intern_or_school_leaver and (child_age_years < student_age_limit_years or child_in_month_turning_25)', with the limit 25. That branch is reached only after two earlier branches fail: age under 18 or the month of the 18th birthday, and a specific support need up to the month of the 21st birthday. It is the module's only reader of this input, and it reaches be/statutes/family_benefits/regional_routing.yaml through that module's import of flanders_family_benefits_eligible_monthly_amount. The module summary says 'Delegated proof and implementing conditions remain supplied inputs'. Article 8 section 2 item 3 extends entitlement to a 'leerling, student, stagiair of schoolverlater' on conditions the Flemish Government sets, and the module does not encode those conditions. The binding reads the input as current enrollment in any ISCED programme at the reference date, not in the benefit month. The concept does not observe an internship or traineeship outside an education programme, an apprenticeship or dual-learning track that the survey does not record as enrollment, or a school leaver's period after studies end, so those children read false. It does not say where the programme is, so a child taught outside Belgium, whom article 8 section 3 excludes unless the Government exempts them, reads as enrolled here. That exclusion is flanders_family_benefits_outside_belgium_exclusion_applies, which reads the separate input flanders_family_benefits_child_raised_or_studies_outside_belgium; that input stays uncovered and the input closure defaults it to false, so nothing in the model applies the exclusion. It also does not observe whatever minimum intensity, programme or earnings conditions the Government's rules impose, and part-time enrollment counts as enrolled here. The companion input flanders_family_benefits_child_in_month_turning_25 needs a birth month and stays uncovered. Each Child row takes that child's own enrollment.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:person.education_enrollment",
+      [
+       "early_childhood",
+       "primary",
+       "lower_secondary",
+       "upper_secondary",
+       "post_secondary_non_tertiary",
+       "tertiary"
+      ]
+     ]
+    ],
+    "kind": "predicate"
    }
   },
   {
@@ -886,6 +942,34 @@
    }
   },
   {
+   "canonical_input": "be-bru:statutes/family_benefits/eligibility#input.brussels_family_benefits_child_in_qualifying_education_training_or_stage",
+   "concepts": [
+    "fact:person.education_enrollment"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "brussels_family_benefits_child_in_qualifying_education_training_or_stage",
+   "group_rule": "person_role",
+   "module": "be/statutes/family_benefits/regional_routing.yaml",
+   "note": "Consumed in be-bru/statutes/family_benefits/eligibility.yaml by brussels_family_benefits_article_25_age_or_status_condition_met (Month; ordinance of 25 April 2019 article 25). With the brussels_family_benefits_ prefix dropped from every name, the rule returns 1 when child_age_on_august_31_years is below 18. Otherwise, while child_age_years is below 25, it returns 1 when child_is_apprentice, child_in_qualifying_education_training_or_stage, child_prepares_higher_education_thesis or child_registered_jobseeker_after_studies_or_apprenticeship holds, and 0 otherwise. child_entitlement adds the article 4 conditions and the article 26 alternative, and the routing bridge reads the result through its import of brussels_family_benefits_eligible_monthly_amount. The input carries article 25 section 2(b): a child who 'suit des cours', does a stage 'pour pouvoir être nommé à une charge', or takes bachelor-master credit training with no required courses. Section 2 grants the extension 'aux conditions fixées par le Collège réuni', and 2(b) leaves the trainings that count to the Collège réuni. The module summary says 'Delegated proof rules and Article 26 detail remain supplied inputs', and the module does not encode those conditions. The binding reads the input as current enrollment in any ISCED programme at the reference date, not in the benefit month. Part-time enrollment counts. The concept does not observe whatever intensity or programme conditions the Collège réuni sets, or the gainful activities that it rules out. It does not see an appointment stage or credit training without courses unless the source records it as enrollment. The sibling inputs child_is_apprentice, child_prepares_higher_education_thesis and child_registered_jobseeker_after_studies_or_apprenticeship stay uncovered. An apprentice or thesis writer recorded as enrolled lands here, which the OR in the rule makes harmless to the result but not to the input's meaning. A school leaver registered as a jobseeker is not enrolled, so this binding leaves them to child_registered_jobseeker_after_studies_or_apprenticeship. The binding of brussels_family_benefits_child_enrolled_in_higher_education reads the tertiary band, one of the bands read here, so a child that input marks always meets this one. Each Child row takes that child's own enrollment.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:person.education_enrollment",
+      [
+       "early_childhood",
+       "primary",
+       "lower_secondary",
+       "upper_secondary",
+       "post_secondary_non_tertiary",
+       "tertiary"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
    "canonical_input": "be-bru:statutes/family_benefits/social_supplements#input.brussels_family_benefits_social_supplement_child_age_years",
    "concepts": [
     "fact:person.age"
@@ -928,6 +1012,34 @@
    "relation": "approximate",
    "transform": {
     "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-vlg:statutes/family_benefits/eligibility#input.flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver",
+   "concepts": [
+    "fact:person.education_enrollment"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver",
+   "group_rule": "person_role",
+   "module": "be/statutes/family_benefits/regional_routing.yaml",
+   "note": "Consumed in be-vlg/statutes/family_benefits/eligibility.yaml by flanders_family_benefits_age_or_status_condition_met (Month; Groeipakket decree of 27 April 2018, article 8 section 2 item 3). With the flanders_family_benefits_ prefix dropped from every name, the third branch reads 'child_is_pupil_student_intern_or_school_leaver and (child_age_years < student_age_limit_years or child_in_month_turning_25)', with the limit 25. That branch is reached only after two earlier branches fail: age under 18 or the month of the 18th birthday, and a specific support need up to the month of the 21st birthday. It is the module's only reader of this input, and it reaches be/statutes/family_benefits/regional_routing.yaml through that module's import of flanders_family_benefits_eligible_monthly_amount. The module summary says 'Delegated proof and implementing conditions remain supplied inputs'. Article 8 section 2 item 3 extends entitlement to a 'leerling, student, stagiair of schoolverlater' on conditions the Flemish Government sets, and the module does not encode those conditions. The binding reads the input as current enrollment in any ISCED programme at the reference date, not in the benefit month. The concept does not observe an internship or traineeship outside an education programme, an apprenticeship or dual-learning track that the survey does not record as enrollment, or a school leaver's period after studies end, so those children read false. It does not say where the programme is, so a child taught outside Belgium, whom article 8 section 3 excludes unless the Government exempts them, reads as enrolled here. That exclusion is flanders_family_benefits_outside_belgium_exclusion_applies, which reads the separate input flanders_family_benefits_child_raised_or_studies_outside_belgium; that input stays uncovered and the input closure defaults it to false, so nothing in the model applies the exclusion. It also does not observe whatever minimum intensity, programme or earnings conditions the Government's rules impose, and part-time enrollment counts as enrolled here. The companion input flanders_family_benefits_child_in_month_turning_25 needs a birth month and stays uncovered. Each Child row takes that child's own enrollment.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:person.education_enrollment",
+      [
+       "early_childhood",
+       "primary",
+       "lower_secondary",
+       "upper_secondary",
+       "post_secondary_non_tertiary",
+       "tertiary"
+      ]
+     ]
+    ],
+    "kind": "predicate"
    }
   },
   {

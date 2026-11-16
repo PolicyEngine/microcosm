@@ -882,6 +882,7 @@ def target_references_resource(
                         "monthly_window_average",
                         "monthly_window_sum_average",
                         "monthly_window_count_x_mean",
+                        "quarterly_window_average",
                         "linear_combination",
                         "scaled_by_ratio",
                         "rolled_forward_by_ratio",

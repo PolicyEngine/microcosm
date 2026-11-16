@@ -94,6 +94,93 @@ def test_spi_carer_take_up_refresh_follows_the_refilled_receipt() -> None:
     )
 
 
+def test_spi_carer_link_is_taken_again_from_the_channels_benefits() -> None:
+    """A3 (microcosm#1095): the copies' re-imputed disability benefits decide
+    their carers' link by frs_disability's rule, outside carers drawn at the
+    FRS channel's share; the FRS rows keep their values."""
+
+    from microcosm.build.uk_runtime.frs_spine import (
+        FRS_CARE_HELPER_BIT,
+        FRS_CARE_OUTSIDE_BIT,
+    )
+
+    column = frs_disability.CARER_LINK_COLUMN
+    # The carriers the twin hands its copies: the care tab lists each carer,
+    # and member 2 or someone outside gets their 35 hours.
+    member = (1 << FRS_CARE_HELPER_BIT) | (1 << 2)
+    outside = (1 << FRS_CARE_HELPER_BIT) | (1 << FRS_CARE_OUTSIDE_BIT)
+    rows = [
+        # FRS household 1: the share's only base carer, whose member qualifies,
+        # so the survey's share is one.
+        (1001, 1, member, 35.0, "NONE", True),
+        (1002, 1, 0, 0.0, "STANDARD", False),
+        # FRS household 2: a stale value the refresh leaves alone.
+        (2001, 2, outside, 35.0, "NONE", False),
+        # A copy whose member's re-imputed benefit no longer qualifies.
+        (101001, 101, member, 35.0, "NONE", True),
+        (101002, 101, 0, 0.0, "NONE", False),
+        # A copy's outside carer, drawn at the share of one.
+        (102001, 102, outside, 35.0, "NONE", False),
+        # A copy whose member's re-imputed benefit now qualifies.
+        (103001, 103, member, 35.0, "NONE", False),
+        (103002, 103, 0, 0.0, "ENHANCED", False),
+        # Care hours and no link in the care tab keep the engine's default.
+        (104001, 104, 0, 10.0, "NONE", False),
+    ]
+    person = pd.DataFrame(
+        rows,
+        columns=[
+            "person_id",
+            "person_household_id",
+            "frs_care_recipients",
+            "care_hours",
+            "pip_dl_category",
+            column,
+        ],
+    ).assign(aa_category="NONE", dla_sc_category="NONE", carers_allowance_reported=0.0)
+    household = pd.DataFrame(
+        {
+            "household_id": [1, 2, 101, 102, 103, 104],
+            "household_weight": [10.0, 10.0, 1.0, 1.0, 1.0, 1.0],
+            "household_source_id": [1, 2, 1, 2, 3, 4],
+        }
+    )
+    spi_channel = person["person_household_id"].ge(100)
+
+    result, receipt = spi_income._refresh_carer_link(
+        person.copy(), household, spi_channel=spi_channel, min_hours=35.0
+    )
+
+    by_id = dict(zip(result["person_id"], result[column], strict=True))
+    assert by_id == {
+        1001: True,
+        1002: False,
+        2001: False,
+        101001: False,
+        101002: False,
+        102001: True,
+        103001: True,
+        103002: False,
+        104001: True,
+    }
+    assert result[column].dtype == bool
+    # The share rests on one survey household, so the receipt withholds it.
+    assert receipt["share"] == "<3"
+    assert receipt["changed_support"] == "3-9"
+    # The refresh rides the SPI stage's QRF evidence into the HMRC replay
+    # report, whose freeze refuses row-data keys such as "records".
+    from microcosm.build.uk_runtime.hmrc_replay import _freeze_evidence_mapping
+
+    _freeze_evidence_mapping({"carer_link_refresh": receipt}, label="qrf_evidence")
+    # A frame without the link (an older synthetic manifest) passes through.
+    bare = person.drop(columns=[column])
+    passed, none = spi_income._refresh_carer_link(
+        bare, household, spi_channel=spi_channel, min_hours=35.0
+    )
+    assert none is None
+    assert column not in passed
+
+
 def test_spi_esa_group_returns_to_the_engines_default_on_redrawn_rows() -> None:
     """A redrawn row's ESA comes from another donor, so its group is reset."""
 

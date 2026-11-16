@@ -103,10 +103,17 @@ class HierarchyGeography(HierarchyNode):
 
 
 class HierarchyDimension(DiagnosticsModel):
+    """A dimension and the value a target selects.
+
+    ``value_rank`` is the position, from 0, of the value's row among its
+    source table's rows; absent when the source gives none.
+    """
+
     id: NonBlankText
     label: NonBlankText
     value_id: NonBlankText
     value_label: NonBlankText
+    value_rank: NonNegativeInt | None = None
 
 
 class CalibrationHierarchy(DiagnosticsModel):
@@ -845,8 +852,21 @@ class HierarchyGeographyEntry(DiagnosticsModel):
 
 
 class HierarchyDimensionValueEntry(DiagnosticsModel):
+    """One value of a catalog dimension.
+
+    ``rank`` is the rows' ``value_rank`` for the value: the position, from 0,
+    of its row among its source table's rows. It is absent when no row ranks
+    the value, and for every value of a dimension whose rows rank a value two
+    ways or give two values in one category the same rank
+    (``catalog_calibration_diagnostics``). Ranks order values within one
+    category: a reader sorts the values that category's rows select by
+    ``rank``, with unranked values last. Values from different categories
+    can share a rank, so ranks do not order a dimension's whole list.
+    """
+
     id: NonBlankText
     label: NonBlankText
+    rank: NonNegativeInt | None = None
 
 
 class HierarchyDimensionEntry(DiagnosticsModel):

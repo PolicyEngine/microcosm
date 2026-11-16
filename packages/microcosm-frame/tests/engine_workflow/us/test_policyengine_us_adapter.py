@@ -683,6 +683,29 @@ class TestTakeUpContract:
         assert dead == [], f"unexpected dead take-up flags: {dead}"
 
 
+def _held_through(simulation, last_year: int) -> dict[tuple[str, str, str], object]:
+    """Every array a simulation and its branches hold for a period up to
+    ``last_year``, by branch, variable and period."""
+
+    from policyengine_core import periods
+
+    held = {}
+    pending = [("", simulation)]
+    while pending:
+        path, current = pending.pop()
+        for population in current.populations.values():
+            for name, holder in population._holders.items():
+                for key, array in holder._memory_storage._arrays.items():
+                    branch, period_text = key.split(":", 1)
+                    if periods.period(period_text).start.year > last_year:
+                        continue
+                    held[(f"{path}{branch}", name, period_text)] = np.asarray(array)
+        pending.extend(
+            (f"{path}{name}/", branch) for name, branch in current.branches.items()
+        )
+    return held
+
+
 class _RecordingMicrosimulation:
     """Stands in for ``policyengine_us.Microsimulation`` and records kwargs."""
 
@@ -742,3 +765,70 @@ class TestSpmSelection:
         first, second = _RecordingMicrosimulation.calls
         assert first["spm"] == second["spm"] == {"geography_kind": "national"}
         assert first["spm"] is not second["spm"]
+
+
+class TestReadYearWindow:
+    """The engine holds the read year alone, not its projection to later years.
+
+    Given a single-year dataset, ``Microsimulation`` adds an uprated copy of
+    each year up to the last CPI-U year and stores all of them. ``materialize``
+    reads only the dataset's own year, so the adapter stops the extension there.
+    """
+
+    @pytest.mark.parametrize("period", [2024, 2026])
+    def test_the_engine_receives_the_read_year_alone(
+        self, adapter, us_bundle, monkeypatch, period
+    ) -> None:
+        import policyengine_us
+        from policyengine_us.data import USMultiYearDataset
+
+        _RecordingMicrosimulation.calls = []
+        monkeypatch.setattr(
+            policyengine_us, "Microsimulation", _RecordingMicrosimulation
+        )
+
+        adapter.materialize(us_bundle, ["household_net_income"], period=period)
+
+        (call,) = _RecordingMicrosimulation.calls
+        dataset = call["dataset"]
+        assert isinstance(dataset, USMultiYearDataset)
+        assert dataset.years == [period]
+
+    def test_values_match_the_engine_default_window(self, adapter, us_bundle) -> None:
+        from policyengine_us import Microsimulation
+
+        variables = [
+            "employment_income",
+            "ssi",
+            "snap",
+            "income_tax",
+            "state_income_tax",
+            "household_net_income",
+        ]
+        tables = adapter._engine_tables(us_bundle)
+        default = Microsimulation(dataset=adapter._build_dataset(tables, 2024))
+        # The comparison is only meaningful while the engine still extends.
+        assert len(default.get_holder("age").get_known_periods()) > 1
+
+        results = adapter.materialize(us_bundle, variables, period=2024)
+
+        for name in variables:
+            np.testing.assert_array_equal(
+                results[name],
+                np.asarray(default.calculate(name, period=2024)),
+                err_msg=name,
+            )
+
+        # Every array both engines hold through 2024, in every branch, is the
+        # same: a formula that read a later year's data, or core filling 2024
+        # from a later year, would show here and not only in the six outputs.
+        cut = Microsimulation(dataset=adapter._read_year_dataset(tables, 2024))
+        for name in variables:
+            cut.calculate(name, period=2024)
+        held_cut = _held_through(cut, 2024)
+        held_default = _held_through(default, 2024)
+        assert held_cut.keys() == held_default.keys()
+        for key in sorted(held_default):
+            np.testing.assert_array_equal(
+                held_cut[key], held_default[key], err_msg=str(key)
+            )

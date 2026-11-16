@@ -50,10 +50,15 @@ Run from the repository root. `AXIOM` is the directory holding the
 `git fetch origin` in each first. Everything is built from `git archive`
 output in a scratch directory, never inside a checkout.
 
+Each snapshot names its own engine commit: `nz.json` records 753ce7d9 and
+`be.json` 04315d94. Set `ENGINE` to the `engine.commit` of the snapshot you
+regenerate, and `CC` to that snapshot's country.
+
 ```bash
 W=<empty scratch dir>
 AXIOM=<dir with axiom-rules-engine, rulespec-nz, rulespec-be checkouts>
-ENGINE=04315d94d04efd61e27665ab3aa300d64fdf3a66
+ENGINE=<the snapshot's engine.commit>
+CC=<nz or be: the country whose snapshot records ENGINE>
 NZ=6fe181fc4c65763150fe97501ef3443774e64869
 BE=b105e2b3a3086ddd2de447d58a9b951346870dd1
 mkdir -p $W/engine $W/rulespec-nz $W/rulespec-be
@@ -67,21 +72,20 @@ VIRTUAL_ENV=$W/dense-venv uv pip install maturin
   $W/dense-venv/bin/maturin build --release --manifest-path python-ext/Cargo.toml \
   -i $W/dense-venv/bin/python --out $W/wheels)
 VIRTUAL_ENV=$W/dense-venv uv pip install $W/wheels/*.whl $W/engine/python
-for CC in nz be; do
-  SHA=$([ $CC = nz ] && echo $NZ || echo $BE)
-  uv run --no-sync python tools/refresh_axiom_input_surface.py \
-    --country $CC --rulespec-root $W/rulespec-$CC --rulespec-commit $SHA \
-    --rulespec-git-dir $AXIOM/rulespec-$CC \
-    --engine-bin $W/engine/target/release/axiom-rules-engine \
-    --engine-commit $ENGINE --dense-python $W/dense-venv/bin/python
-done
+SHA=$([ $CC = nz ] && echo $NZ || echo $BE)
+uv run --no-sync python tools/refresh_axiom_input_surface.py \
+  --country $CC --rulespec-root $W/rulespec-$CC --rulespec-commit $SHA \
+  --rulespec-git-dir $AXIOM/rulespec-$CC \
+  --engine-bin $W/engine/target/release/axiom-rules-engine \
+  --engine-commit $ENGINE --dense-python $W/dense-venv/bin/python
 ```
 
 Add `--check` to compare a fresh run with the checked-in file without
 writing. It exits 1 and summarizes the differences when they differ.
 
-`maturin build` runs without `--locked` for one reason. At the pinned engine
-commit, `python-ext/Cargo.lock` still records the path crate
-`axiom-rules-engine` as 0.1.0, and the crate is 0.2.2. The extension must be
-built for the interpreter that loads it: a wheel built for free-threaded 3.14t
-does not import on GIL-enabled 3.14.
+At 04315d94, `maturin build` runs without `--locked` for one reason:
+`python-ext/Cargo.lock` there still records the path crate
+`axiom-rules-engine` as 0.1.0, and the crate is 0.2.2. At 753ce7d9 the lock
+records 0.2.2, and `maturin build --locked` builds the wheel. The extension
+must be built for the interpreter that loads it: a wheel built for
+free-threaded 3.14t does not import on GIL-enabled 3.14.

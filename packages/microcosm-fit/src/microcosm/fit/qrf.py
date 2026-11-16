@@ -86,6 +86,8 @@ __all__ = [
     "Regime",
     "GateCalibration",
     "GateOutcome",
+    "GateLevelFit",
+    "gate_level_settings",
     "DEFAULT_N_ESTIMATORS",
     "DEFAULT_ZERO_ATOL",
 ]
@@ -125,11 +127,24 @@ class GateCalibration:
     #: A target that cannot be cross-fitted keeps the in-sample gate, and
     #: :meth:`FittedRegimeGatedQRF.gate_outcomes` says which (:class:`GateOutcome`).
     CROSS_FITTED = "cross_fitted"
+    #: Cross-fitted as above, with each fold gate fitted on class-balanced
+    #: weights: every class's weights are scaled to the same total, so a class
+    #: that holds a hundredth of a percent of the weight still shapes the
+    #: gate's ranking of rows. The calibration is unchanged and is fitted on
+    #: the rows' own weights, so the mapped out-of-fold probabilities' weighted
+    #: mean still equals each class's weighted rate: the fold gates say which
+    #: rows, the calibration says how many (microcosm#1276). Scored on its own
+    #: training rows, as a sampled rung's or a synthetic fixture's in-sample
+    #: location may score it, a balanced gate draws a rare class well under its
+    #: rate, further under than a ``cross_fitted`` one: the rate holds out of
+    #: fold and on fresh rows, not on the rows the fold gates were fitted to.
+    CROSS_FITTED_BALANCED = "cross_fitted_balanced"
 
 
-_GATE_CALIBRATIONS = frozenset(
-    {GateCalibration.IN_SAMPLE, GateCalibration.CROSS_FITTED}
+_CROSS_FITTED_CALIBRATIONS = frozenset(
+    {GateCalibration.CROSS_FITTED, GateCalibration.CROSS_FITTED_BALANCED}
 )
+_GATE_CALIBRATIONS = frozenset({GateCalibration.IN_SAMPLE}) | _CROSS_FITTED_CALIBRATIONS
 
 
 class GateOutcome:
@@ -155,6 +170,25 @@ class GateOutcome:
     CLASS_RATES = "cross_fitted_class_rates"
 
 
+class GateLevelFit:
+    """What a cross-fitted gate's level calibration (``gate_level_columns``) came to.
+
+    :meth:`FittedRegimeGatedQRF.gate_level_reports` names one per target whose
+    gate was cross-fitted with level columns, beside the levels it offset or
+    tried, each column's reference level and the levels too thin for offsets of
+    their own, so a receipt shows a level fit that was tried and dropped.
+    """
+
+    #: Every supported level holds offsets of its own.
+    OFFSETS = "offsets"
+    #: No declared level has enough rows of every sign class: the calibration
+    #: without levels.
+    NO_SUPPORTED_LEVEL = "no_supported_level"
+    #: The fit with levels missed its balance, or its slope fell below zero:
+    #: the calibration without levels, so no level is offset.
+    BALANCE_NOT_MET = "balance_not_met"
+
+
 #: Largest gap, in probability, between a calibrated class's weighted
 #: out-of-fold mean and its weighted rate that the balance check accepts.
 _GATE_BALANCE_TOLERANCE = 1e-6
@@ -164,6 +198,34 @@ _GATE_CROSS_FIT_FOLDS = 5
 
 #: The smallest positive float, so a class probability of zero has a finite log.
 _TINY = np.finfo(np.float64).tiny
+
+#: Rows of every sign class a predictor level needs before a cross-fitted
+#: gate's calibration gives it offsets of its own (``gate_level_columns``); a
+#: thinner level keeps its column's reference offsets.
+_GATE_LEVEL_MIN_ROWS = 30
+
+#: Ridge on the level offsets, in units of the calibration's mean-one weights.
+#: Each column's heaviest level is the reference (a one-hot categorical's
+#: columns count as one column), so the offsets are identified without it. It
+#: only keeps the solve finite where levels of two columns mark the same rows,
+#: and it is far below any level's weight, so each level's balance holds to
+#: well within :data:`_GATE_LEVEL_BALANCE_TOLERANCE`.
+_GATE_LEVEL_RIDGE = 1e-10
+
+#: Largest gap, in probability, between a calibrated class's weighted
+#: out-of-fold mean and its weighted rate within one offset level that the
+#: level calibration's balance check accepts (the ridge leaves a small gap).
+_GATE_LEVEL_BALANCE_TOLERANCE = 1e-5
+
+
+def gate_level_settings() -> dict[str, float | int]:
+    """The level calibration's fixed settings, for a receipt beside its outcomes."""
+
+    return {
+        "min_rows_per_sign_class": _GATE_LEVEL_MIN_ROWS,
+        "ridge": _GATE_LEVEL_RIDGE,
+        "balance_tolerance": _GATE_LEVEL_BALANCE_TOLERANCE,
+    }
 
 
 class Regime:
@@ -320,11 +382,57 @@ def _calibrated_proba(
     return scaled / scaled.sum(axis=1, keepdims=True)
 
 
+@dataclass(frozen=True)
+class _GateLevels:
+    """The predictor levels a cross-fitted gate's calibration offsets on their own.
+
+    Indicator ``k`` marks rows whose feature column ``positions[k]`` equals
+    ``values[k]``. Every other value of that column, the reference level and
+    any level too thin for an offset of its own, takes no level offset, and so
+    does a value the fit never saw. A one-hot categorical's level is its
+    column at ``1``. ``references`` and ``thin`` name, as ``(position,
+    value)`` pairs, each column's reference level and the levels too thin for
+    offsets of their own, for the receipt.
+    """
+
+    positions: tuple[int, ...]
+    values: tuple[float, ...]
+    references: tuple[tuple[int, float], ...] = ()
+    thin: tuple[tuple[int, float], ...] = ()
+
+    def design(self, x: np.ndarray) -> np.ndarray:
+        """The rows' level indicators, one column per offset level."""
+        if not self.positions:
+            return np.zeros((len(x), 0))
+        return np.column_stack(
+            [x[:, p] == v for p, v in zip(self.positions, self.values, strict=True)]
+        ).astype(np.float64)
+
+
+@dataclass(frozen=True)
+class _GateLevelFit:
+    """What a gate's level calibration came to (a :class:`GateLevelFit` name).
+
+    ``levels`` holds the supported levels: offset under
+    :attr:`GateLevelFit.OFFSETS`, tried and dropped under
+    :attr:`GateLevelFit.BALANCE_NOT_MET`, none under
+    :attr:`GateLevelFit.NO_SUPPORTED_LEVEL`. Its references and thin levels are
+    recorded under every outcome.
+    """
+
+    status: str
+    levels: _GateLevels
+
+
 class _CrossFittedGate:
     """Fold gates mapped by one out-of-fold calibration, their probabilities averaged.
 
     Exposes the two members the draws read from a gate, ``classes_`` and
     ``predict_proba``, so every draw path takes it in place of the classifier.
+    With ``levels`` the calibration's class offsets also move by the offsets of
+    the levels each row sits in (``level_offsets``, one row per level, the
+    first class's column zero). ``level_fit`` records what a level calibration
+    came to, for a gate fitted with level columns.
     """
 
     def __init__(
@@ -332,20 +440,43 @@ class _CrossFittedGate:
         folds: Sequence[HistGradientBoostingClassifier],
         slope: float,
         offsets: np.ndarray,
+        levels: _GateLevels | None = None,
+        level_offsets: np.ndarray | None = None,
+        level_fit: _GateLevelFit | None = None,
     ) -> None:
         self.folds = tuple(folds)
         self.slope = float(slope)
         self.offsets = np.asarray(offsets, dtype=np.float64)
+        self.level_fit = level_fit
+        has_levels = levels is not None and bool(levels.positions)
+        self.levels = levels if has_levels else None
+        self.level_offsets = (
+            np.asarray(level_offsets, dtype=np.float64) if has_levels else None
+        )
+        if self.levels is not None and (
+            self.level_offsets is None
+            or self.level_offsets.shape
+            != (len(self.levels.positions), len(self.offsets))
+        ):
+            raise ValueError(
+                "A cross-fitted gate's level offsets must match its levels."
+            )
 
     @property
     def classes_(self) -> np.ndarray:
         return self.folds[0].classes_
 
+    def _row_offsets(self, x: np.ndarray) -> np.ndarray:
+        if self.levels is None:
+            return self.offsets
+        return self.offsets[None, :] + self.levels.design(x) @ self.level_offsets
+
     def predict_proba(self, x: np.ndarray) -> np.ndarray:
+        offsets = self._row_offsets(x)
         total = np.zeros((len(x), len(self.offsets)))
         for gate in self.folds:
             total += _calibrated_proba(
-                _log_proba(gate.predict_proba(x)), self.slope, self.offsets
+                _log_proba(gate.predict_proba(x)), self.slope, offsets
             )
         return total / len(self.folds)
 
@@ -496,6 +627,205 @@ def _fit_gate_calibration(
     return slope, offsets, GateOutcome.CROSS_FITTED
 
 
+def _select_gate_levels(
+    features: np.ndarray,
+    labels: np.ndarray,
+    weights: np.ndarray | None,
+    positions: Sequence[int | Sequence[int]],
+) -> _GateLevels:
+    """The levels of the declared feature columns that get offsets of their own.
+
+    Each entry of ``positions`` is one feature column, whose levels are its
+    distinct values, or a one-hot categorical's columns as a group, whose
+    levels are its columns at ``1`` (a row marks at most one of them). In each
+    column or group the level holding the most weight is the reference, so the
+    offsets are identified without the ridge. Every other level gets an offset
+    when it holds at least :data:`_GATE_LEVEL_MIN_ROWS` rows, with positive
+    weight, of every sign class; a thinner level shares the reference's
+    offsets. The references and the thin levels are kept for the receipt.
+    """
+    classes = np.unique(labels)
+    w = (
+        np.ones(len(labels))
+        if weights is None
+        else np.asarray(weights, dtype=np.float64)
+    )
+
+    def supported(member: np.ndarray) -> bool:
+        return all(
+            int((member & (labels == c)).sum()) >= _GATE_LEVEL_MIN_ROWS
+            and float(w[member & (labels == c)].sum()) > 0.0
+            for c in classes
+        )
+
+    chosen: list[tuple[int, float]] = []
+    references: list[tuple[int, float]] = []
+    thin: list[tuple[int, float]] = []
+    for entry in positions:
+        group = (
+            (int(entry),)
+            if isinstance(entry, (int, np.integer))
+            else tuple(int(position) for position in entry)
+        )
+        if len(group) == 1:
+            column = features[:, group[0]]
+            values = np.unique(column)
+            if len(values) < 2:
+                continue
+            candidates = [(group[0], float(value), column == value) for value in values]
+        else:
+            block = features[:, list(group)]
+            if not np.isin(block, (0.0, 1.0)).all() or (block.sum(axis=1) > 1.0).any():
+                raise ValueError(
+                    "A one-hot level group must hold 0/1 columns that mark at most "
+                    f"one level on each row; feature columns {list(group)} do not."
+                )
+            candidates = [
+                (position, 1.0, block[:, k] == 1.0)
+                for k, position in enumerate(group)
+                if (block[:, k] == 1.0).any()
+            ]
+            if not candidates:
+                continue
+        masses = [float(w[member].sum()) for _, _, member in candidates]
+        reference = int(np.argmax(masses))
+        references.append(candidates[reference][:2])
+        for k, (position, value, member) in enumerate(candidates):
+            if k != reference:
+                (chosen if supported(member) else thin).append((position, value))
+    return _GateLevels(
+        tuple(position for position, _ in chosen),
+        tuple(value for _, value in chosen),
+        references=tuple(references),
+        thin=tuple(thin),
+    )
+
+
+def _fit_gate_level_calibration(
+    log_proba: np.ndarray,
+    label_index: np.ndarray,
+    weights: np.ndarray,
+    design: np.ndarray,
+) -> tuple[float, np.ndarray, np.ndarray, bool]:
+    """Fit the gate calibration with an offset per class for each level as well.
+
+    ``p_c ∝ exp(slope * log_proba_c + offset_c + Σ_k design_k * level_offset_kc)``
+    by weighted likelihood, the first class's offsets fixed at zero and a
+    small ridge (:data:`_GATE_LEVEL_RIDGE`) on the level offsets. At the
+    optimum each level offset's score equation makes the weighted mean of the
+    calibrated probabilities within its level equal its class's weighted rate
+    there, to within the ridge, as the class offsets do over all rows
+    (:func:`_fit_gate_calibration`): the calibration then holds the rate within
+    every offset level, not only over the whole frame (microcosm#1276). Newton
+    steps halved until the loss does not rise, then damped steps if the
+    balance is not met, as there.
+
+    Returns:
+        ``(slope, offsets, level_offsets, ok)``: ``offsets`` with
+        ``offsets[0] == 0``, ``level_offsets`` of shape ``(levels, classes)``
+        with its first column zero, and ``ok`` false when the slope is negative
+        or a class's balance, over all rows or within a level, is not met.
+    """
+    n, k = log_proba.shape
+    m = design.shape[1]
+    w = np.asarray(weights, dtype=np.float64) / float(np.mean(weights))
+    onehot = np.zeros((n, k))
+    rows = np.arange(n)
+    onehot[rows, label_index] = 1.0
+    size = 1 + (k - 1) * (1 + m)
+    # One feature vector per row and class: the shared slope's log-probability,
+    # then, for each class after the first, its offset and its level indicators.
+    x = np.zeros((n, k, size))
+    x[:, :, 0] = log_proba
+    for c in range(1, k):
+        x[:, c, c] = 1.0
+        start = k + (c - 1) * m
+        x[:, c, start : start + m] = design
+    penalty = np.zeros(size)
+    penalty[k:] = _GATE_LEVEL_RIDGE
+    members = [design[:, j] > 0.0 for j in range(m)]
+
+    def proba_of(theta: np.ndarray) -> np.ndarray:
+        logits = np.einsum("ncd,d->nc", x, theta)
+        logits -= logits.max(axis=1, keepdims=True)
+        scaled = np.exp(logits)
+        return scaled / scaled.sum(axis=1, keepdims=True)
+
+    def loss(theta: np.ndarray) -> float:
+        logits = np.einsum("ncd,d->nc", x, theta)
+        top = logits.max(axis=1)
+        log_total = top + np.log(np.exp(logits - top[:, None]).sum(axis=1))
+        return float(
+            w @ (log_total - logits[rows, label_index]) + 0.5 * penalty @ theta**2
+        )
+
+    def derivatives(theta: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        proba = proba_of(theta)
+        gradient = np.einsum("n,nc,ncd->d", w, proba - onehot, x) + penalty * theta
+        mean = np.einsum("nc,ncd->nd", proba, x)
+        hessian = -((mean * w[:, None]).T @ mean)
+        for c in range(k):
+            xc = x[:, c, :]
+            hessian += (xc * (w * proba[:, c])[:, None]).T @ xc
+        return gradient, hessian + np.diag(penalty)
+
+    def balanced(theta: np.ndarray) -> bool:
+        proba = proba_of(theta)
+        gaps = [np.abs(w @ (proba - onehot) / w.sum())]
+        for member in members:
+            wm = w[member]
+            gaps.append(np.abs(wm @ (proba[member] - onehot[member]) / wm.sum()))
+        gap = np.concatenate(gaps)
+        return bool(
+            np.all(np.isfinite(gap)) and gap.max() <= _GATE_LEVEL_BALANCE_TOLERANCE
+        )
+
+    theta = np.zeros(size)
+    theta[0] = 1.0
+    current = loss(theta)
+    for _ in range(100):
+        gradient, hessian = derivatives(theta)
+        step = np.linalg.solve(hessian + 1e-12 * np.eye(size), gradient)
+        scale = 1.0
+        trial_theta = theta - step
+        trial = loss(trial_theta)
+        while trial > current and scale > 1e-10:
+            scale /= 2.0
+            trial_theta = theta - scale * step
+            trial = loss(trial_theta)
+        if trial > current:
+            break
+        theta, previous, current = trial_theta, current, trial
+        if previous - current <= 1e-13 * max(1.0, abs(current)):
+            break
+    if not balanced(theta):
+        damping = 1e-6
+        for _ in range(500):
+            gradient, hessian = derivatives(theta)
+            scale = max(float(np.abs(np.diag(hessian)).max()), 1e-12)
+            while damping <= 1e12:
+                trial_theta = theta - np.linalg.solve(
+                    hessian + damping * scale * np.eye(size), gradient
+                )
+                trial = loss(trial_theta)
+                if np.isfinite(trial) and trial <= current:
+                    break
+                damping *= 10.0
+            else:
+                break
+            theta, current = trial_theta, trial
+            damping = max(damping / 10.0, 1e-12)
+            if balanced(theta):
+                break
+    slope = float(theta[0])
+    offsets = np.concatenate([[0.0], theta[1:k]])
+    level_offsets = np.zeros((m, k))
+    for c in range(1, k):
+        start = k + (c - 1) * m
+        level_offsets[:, c] = theta[start : start + m]
+    return slope, offsets, level_offsets, bool(slope >= 0.0 and balanced(theta))
+
+
 def _can_cross_fit(labels: np.ndarray, groups: np.ndarray | None = None) -> bool:
     """Whether every class can have a row in every fold of a cross-fitted gate.
 
@@ -524,12 +854,35 @@ def _folds_carry_every_class(
     return True
 
 
+def _class_balanced_weights(
+    labels: np.ndarray, weights: np.ndarray | None
+) -> np.ndarray:
+    """Row weights rescaled so every class carries the same total weight.
+
+    A row keeps its weight relative to the rows of its own class. The result
+    averages one, so the classifier's fit is on the scale of an unweighted one.
+    """
+    base = (
+        np.ones(len(labels), dtype=np.float64)
+        if weights is None
+        else np.asarray(weights, dtype=np.float64)
+    )
+    balanced = np.empty(len(labels), dtype=np.float64)
+    for value in np.unique(labels):
+        members = labels == value
+        balanced[members] = base[members] / base[members].sum()
+    return balanced * (len(labels) / balanced.sum())
+
+
 def _cross_fit_gate(
     features: np.ndarray,
     labels: np.ndarray,
     weights: np.ndarray | None,
     seed: int,
     groups: np.ndarray | None = None,
+    *,
+    balanced: bool = False,
+    level_positions: Sequence[int | Sequence[int]] = (),
 ) -> tuple[_CrossFittedGate | None, str]:
     """Fit a gate per fold and calibrate them on their out-of-fold probabilities.
 
@@ -539,7 +892,15 @@ def _cross_fit_gate(
     gate. The fold assignment and the fold gates' seeds derive from ``seed``,
     the one the in-sample gate would take, so nothing else in the fit's RNG
     stream moves. Every class must have a row in every fold
-    (:func:`_can_cross_fit`).
+    (:func:`_can_cross_fit`). With ``balanced`` each fold gate is fitted on
+    its training rows' class-balanced weights (:func:`_class_balanced_weights`);
+    the calibration always takes the rows' own weights. With
+    ``level_positions`` (feature columns, or a one-hot categorical's columns
+    as a group) the calibration also gives each supported level of those
+    columns offsets of its own (:func:`_select_gate_levels`,
+    :func:`_fit_gate_level_calibration`); where no level is supported, or that
+    fit's balance fails, the calibration is the one without levels. Either
+    way the gate records what the level fit came to (``level_fit``).
 
     Returns:
         ``(gate, outcome)``. ``gate`` is ``None``, with outcome
@@ -562,11 +923,10 @@ def _cross_fit_gate(
     for fold in range(_GATE_CROSS_FIT_FOLDS):
         held = folds == fold
         gate = _make_gate(int(gate_seeds[fold]))
-        gate.fit(
-            features[~held],
-            labels[~held],
-            sample_weight=None if weights is None else weights[~held],
-        )
+        fold_weights = None if weights is None else weights[~held]
+        if balanced:
+            fold_weights = _class_balanced_weights(labels[~held], fold_weights)
+        gate.fit(features[~held], labels[~held], sample_weight=fold_weights)
         if not np.array_equal(np.asarray(gate.classes_), classes):
             raise ValueError(
                 "A cross-fitted fold gate lost a sign class although every "
@@ -574,12 +934,30 @@ def _cross_fit_gate(
             )
         log_proba[held] = _log_proba(gate.predict_proba(features[held]))
         gates.append(gate)
+    label_index = np.searchsorted(classes, labels)
+    calibration_weights = np.ones(len(labels)) if weights is None else weights
+    level_fit: _GateLevelFit | None = None
+    if level_positions:
+        levels = _select_gate_levels(features, labels, weights, level_positions)
+        if levels.positions:
+            slope, offsets, level_offsets, ok = _fit_gate_level_calibration(
+                log_proba, label_index, calibration_weights, levels.design(features)
+            )
+            if ok:
+                fitted = _GateLevelFit(GateLevelFit.OFFSETS, levels)
+                return (
+                    _CrossFittedGate(
+                        gates, slope, offsets, levels, level_offsets, level_fit=fitted
+                    ),
+                    GateOutcome.CROSS_FITTED,
+                )
+            level_fit = _GateLevelFit(GateLevelFit.BALANCE_NOT_MET, levels)
+        else:
+            level_fit = _GateLevelFit(GateLevelFit.NO_SUPPORTED_LEVEL, levels)
     slope, offsets, outcome = _fit_gate_calibration(
-        log_proba,
-        np.searchsorted(classes, labels),
-        np.ones(len(labels)) if weights is None else weights,
+        log_proba, label_index, calibration_weights
     )
-    return _CrossFittedGate(gates, slope, offsets), outcome
+    return _CrossFittedGate(gates, slope, offsets, level_fit=level_fit), outcome
 
 
 def _interp_rows(
@@ -1727,9 +2105,24 @@ class RegimeGatedQRF:
             rare class is drawn at its rate on rows the gate was not fitted to.
             The forests and every draw uniform are the same either way; only
             the gates' probabilities move.
+        gate_level_columns: Predictor columns whose levels a cross-fitted
+            gate's calibration offsets on their own, so the calibrated
+            probabilities' weighted mean equals each class's weighted rate
+            within each supported level of each column, not only over all rows
+            (microcosm#1276). An entry is a column, whose levels are its
+            values, or a one-hot categorical's columns as a group (a sequence
+            of names), whose levels are its categories. In each the heaviest
+            level is the reference, so the offsets are identified, and a level
+            with fewer than 30 rows of some sign class shares the reference's
+            offsets. :meth:`FittedRegimeGatedQRF.gate_level_reports` records
+            what each gate's level fit came to. Empty (the default) leaves the
+            calibration as it is. Only with a cross-fitted calibration, and
+            not yet in the checkpointed chain (:meth:`start_chain`).
 
     Raises:
-        ValueError: If ``gate_calibration`` names no :class:`GateCalibration`.
+        ValueError: If ``gate_calibration`` names no :class:`GateCalibration`,
+            or ``gate_level_columns`` names a column twice, holds an empty
+            group or comes without a cross-fitted calibration.
     """
 
     def __init__(
@@ -1740,17 +2133,46 @@ class RegimeGatedQRF:
         max_samples_leaf: int | float | None = None,
         seed: int = 0,
         gate_calibration: str = GateCalibration.IN_SAMPLE,
+        gate_level_columns: Sequence[str | Sequence[str]] = (),
     ) -> None:
         if gate_calibration not in _GATE_CALIBRATIONS:
             raise ValueError(
                 f"gate_calibration {gate_calibration!r} is not one of "
                 f"{sorted(_GATE_CALIBRATIONS)}."
             )
+        groups = tuple(
+            (entry,) if isinstance(entry, str) else tuple(entry)
+            for entry in gate_level_columns
+        )
+        if any(
+            not group or any(not isinstance(column, str) for column in group)
+            for group in groups
+        ):
+            raise ValueError(
+                "gate_level_columns must name columns as strings, and a one-hot "
+                "categorical's columns as a non-empty group of them."
+            )
+        names = [column for group in groups for column in group]
+        if len(set(names)) != len(names):
+            raise ValueError(
+                f"gate_level_columns repeats a column: {list(gate_level_columns)}."
+            )
+        level_columns = tuple(
+            group[0] if isinstance(entry, str) else group
+            for entry, group in zip(gate_level_columns, groups, strict=True)
+        )
+        if level_columns and gate_calibration not in _CROSS_FITTED_CALIBRATIONS:
+            raise ValueError(
+                "gate_level_columns needs a cross-fitted gate_calibration, got "
+                f"{gate_calibration!r}."
+            )
         self.n_estimators = int(n_estimators)
         self.zero_atol = float(zero_atol)
         self.max_samples_leaf = max_samples_leaf
         self.seed = int(seed)
         self.gate_calibration = gate_calibration
+        self.gate_level_columns = level_columns
+        self._gate_level_groups = groups
 
     def fit(
         self,
@@ -1786,6 +2208,17 @@ class RegimeGatedQRF:
         """
         predictors = list(predictors)
         targets = list(targets)
+        missing_levels = [
+            column
+            for group in self._gate_level_groups
+            for column in group
+            if column not in predictors
+        ]
+        if missing_levels:
+            raise ValueError(
+                f"gate_level_columns {missing_levels} are not among the predictors "
+                f"{predictors}."
+            )
         resolved = _resolve_qrf_fit_input(frame_or_df, predictors, targets, weights)
         group_codes = _resolve_groups(resolved.table, groups)
 
@@ -1841,6 +2274,11 @@ class RegimeGatedQRF:
         into immutable JSON-roundtrippable state. No model is fit until
         :meth:`fit_draw_next`.
         """
+        if self.gate_level_columns:
+            raise ValueError(
+                "The checkpointed QRF chain does not carry gate_level_columns yet; "
+                "fit the whole chain with fit() instead."
+            )
         predictors = list(predictors)
         targets = list(targets)
         resolved = _resolve_qrf_fit_input(frame_or_df, predictors, targets, weights)
@@ -2004,6 +2442,11 @@ class RegimeGatedQRF:
 
     def _validate_chain_config(self, state: QRFChainState) -> None:
         """Refuse any model configuration drift across subprocesses."""
+        if self.gate_level_columns:
+            raise ValueError(
+                "The checkpointed QRF chain does not carry gate_level_columns yet; "
+                "fit the whole chain with fit() instead."
+            )
         actual = (
             self.n_estimators,
             self.zero_atol,
@@ -2147,7 +2590,13 @@ class RegimeGatedQRF:
         # sample_weight (not by bootstrap), so every sign class survives even
         # when one is vanishingly rare under the weights.
         labels = self._sign_labels(y)
-        gate, outcome = self._fit_gate(features, labels, weights, rng, groups)
+        level_positions = tuple(
+            tuple(columns.index(column) for column in group)
+            for group in self._gate_level_groups
+        )
+        gate, outcome = self._fit_gate(
+            features, labels, weights, rng, groups, level_positions=level_positions
+        )
         pos_mask = y > self.zero_atol
         neg_mask = y < -self.zero_atol
         positive = forest(pos_mask) if pos_mask.any() else None
@@ -2168,6 +2617,8 @@ class RegimeGatedQRF:
         weights: np.ndarray | None,
         rng: np.random.Generator,
         groups: np.ndarray | None = None,
+        *,
+        level_positions: Sequence[int | Sequence[int]] = (),
     ) -> tuple[HistGradientBoostingClassifier | _CrossFittedGate, str]:
         """Fit the sign-gate classifier, weighting it directly by sample_weight.
 
@@ -2187,7 +2638,8 @@ class RegimeGatedQRF:
         ``classes_``. If sklearn ever dropped a class, drawing it at probability
         zero would silently lose that sign, so we raise instead.
 
-        Under :attr:`GateCalibration.CROSS_FITTED` the gate is instead a gate
+        Under :attr:`GateCalibration.CROSS_FITTED` (or its class-balanced
+        form, :attr:`GateCalibration.CROSS_FITTED_BALANCED`) the gate is instead a gate
         per fold, calibrated on their out-of-fold probabilities
         (:func:`_cross_fit_gate`, with whole ``groups`` dealt to folds), unless
         a class is too thin to have a row in every fold or a fold's training
@@ -2203,6 +2655,9 @@ class RegimeGatedQRF:
             rng: Seeded generator supplying the gate's ``random_state`` (kept
                 for fit reproducibility even though no resample is drawn).
             groups: Fold-grouping codes, one per row, or ``None``.
+            level_positions: Feature columns, or one-hot groups of them, whose
+                levels the cross-fitted calibration offsets on their own
+                (``gate_level_columns``).
 
         Returns:
             ``(gate, outcome)``: the fitted sign-gate classifier, cross-fitted
@@ -2215,9 +2670,19 @@ class RegimeGatedQRF:
         seed = int(rng.integers(0, 2**31 - 1))
         gate: HistGradientBoostingClassifier | _CrossFittedGate | None = None
         outcome = GateOutcome.IN_SAMPLE
-        if self.gate_calibration == GateCalibration.CROSS_FITTED:
+        if self.gate_calibration in _CROSS_FITTED_CALIBRATIONS:
             if _can_cross_fit(labels, groups):
-                gate, outcome = _cross_fit_gate(features, labels, weights, seed, groups)
+                gate, outcome = _cross_fit_gate(
+                    features,
+                    labels,
+                    weights,
+                    seed,
+                    groups,
+                    balanced=(
+                        self.gate_calibration == GateCalibration.CROSS_FITTED_BALANCED
+                    ),
+                    level_positions=level_positions,
+                )
             else:
                 outcome = GateOutcome.THIN_CLASS
         if gate is None:
@@ -2255,6 +2720,58 @@ class ConditionalUniforms:
     sign_uniforms: dict[str, np.ndarray]
     degenerate: tuple[str, ...]
     ungated: tuple[str, ...]
+
+
+def _gate_level_names(model: _TargetModel) -> tuple[str, ...]:
+    """``"<column>=<value>"`` for each level a target's gate offsets on its own."""
+
+    levels = getattr(model.gate, "levels", None)
+    if levels is None:
+        return ()
+    return tuple(
+        f"{model.columns[position]}={value:g}"
+        for position, value in zip(levels.positions, levels.values, strict=True)
+    )
+
+
+#: Thin levels a gate's level report names one by one; past this many (a
+#: continuous column declared as a level column) it gives their count.
+_GATE_LEVEL_REPORTED_THIN = 50
+
+
+def _gate_level_report(model: _TargetModel) -> dict[str, object] | None:
+    """What a target's level calibration came to, or ``None`` without one.
+
+    ``fit`` is a :class:`GateLevelFit` name; ``levels`` are the supported
+    levels, offset under ``offsets`` and tried and dropped under
+    ``balance_not_met``; ``reference_levels`` are each column's heaviest level
+    and ``thin_levels`` the levels with too few rows of some sign class, which
+    share the reference's offsets.
+    """
+
+    fit = getattr(model.gate, "level_fit", None)
+    if fit is None:
+        return None
+
+    def name(position: int, value: float) -> str:
+        return f"{model.columns[position]}={value:g}"
+
+    thin = [name(position, value) for position, value in fit.levels.thin]
+    return {
+        "fit": fit.status,
+        "levels": [
+            name(position, value)
+            for position, value in zip(
+                fit.levels.positions, fit.levels.values, strict=True
+            )
+        ],
+        "reference_levels": [
+            name(position, value) for position, value in fit.levels.references
+        ],
+        "thin_levels": (
+            thin if len(thin) <= _GATE_LEVEL_REPORTED_THIN else {"count": len(thin)}
+        ),
+    }
 
 
 class FittedRegimeGatedQRF:
@@ -2306,6 +2823,14 @@ class FittedRegimeGatedQRF:
             name: getattr(model, "gate_outcome", None)
             for name, model in target_models.items()
         }
+        self._gate_levels = {
+            name: _gate_level_names(model) for name, model in target_models.items()
+        }
+        self._gate_level_reports = {
+            name: report
+            for name, model in target_models.items()
+            if (report := _gate_level_report(model)) is not None
+        }
 
     @property
     def weight_kind(self) -> str:
@@ -2324,6 +2849,28 @@ class FittedRegimeGatedQRF:
         in-sample gate or fell back to the class rates.
         """
         return dict(self._gate_outcomes)
+
+    def gate_levels(self) -> dict[str, tuple[str, ...]]:
+        """The predictor levels each target's gate calibration offsets on its own.
+
+        One ``"<column>=<value>"`` per level that holds offsets of its own
+        (``gate_level_columns``), and an empty tuple for a target whose gate
+        has none: no level columns, none supported, or the level-free
+        calibration kept. Every other level takes the reference.
+        """
+        return dict(self._gate_levels)
+
+    def gate_level_reports(self) -> dict[str, dict[str, object]]:
+        """What each target's level calibration came to, for its receipt.
+
+        One entry per target whose gate was cross-fitted with level columns:
+        its :class:`GateLevelFit` (``fit``), the supported levels it offset or
+        tried (``levels``), each column's reference level and the levels too
+        thin for offsets of their own. :func:`gate_level_settings` gives the
+        fixed settings behind them. A target with an in-sample gate, or no
+        level columns, has no entry.
+        """
+        return {name: dict(report) for name, report in self._gate_level_reports.items()}
 
     def sign_classes(self, target: str) -> tuple[int, ...]:
         """The sign classes of ``target``, ascending.

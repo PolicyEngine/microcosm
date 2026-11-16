@@ -31,7 +31,11 @@ database or network request:
   ``hub_files`` as the emitter's release writer documents it: the build
   folder and ``releases.json`` in one commit, after the interface's shared
   checks, or a ``refused`` receipt naming the first broken rule.
-  ``release_receipts`` scripts the answers instead.
+  ``release_receipts`` scripts the answers instead;
+- ``collector_submission_receipt`` answers ``None``, as an emitter does
+  whose collector submissions are off, unless ``collector_receipts`` scripts
+  the answers for every hand-over (each ask takes the next one; the last one
+  repeats; ``None`` stands for an emitter that does not answer).
 
 The emitter's own tests cover the process, its queues and the Hub.
 """
@@ -178,7 +182,7 @@ class FakeEmitterClient:
     as the interface does after a timeout.
     """
 
-    emitter_version = "0.13.0"
+    emitter_version = "0.15.0"
 
     def __init__(
         self,
@@ -194,6 +198,7 @@ class FakeEmitterClient:
         deliver: bool = True,
         answer_receipts: bool = True,
         release_receipts: Sequence[Mapping[str, Any]] | None = None,
+        collector_receipts: Sequence[Mapping[str, Any] | None] | None = None,
     ) -> None:
         self._modules = frozenset(modules)
         self.accept_run_files = accept_run_files
@@ -237,6 +242,13 @@ class FakeEmitterClient:
         #: Each release change handed over, and its latest receipt by ID.
         self.release_requests: list[ReleaseChange] = []
         self._release_answers: dict[str, list[dict[str, Any]]] = {}
+        #: Scripted collector receipts, each hand-over's in turn (the last one
+        #: repeats), and the hand-over ID of every collector receipt asked for.
+        self.collector_receipts = (
+            None if collector_receipts is None else list(collector_receipts)
+        )
+        self.collector_receipt_requests: list[str] = []
+        self._collector_answers: dict[str, list[dict[str, Any]]] = {}
         self._committed: dict[tuple[str, str], tuple[str, str]] = {}
         self._deliveries: dict[tuple[str, str], dict[str, Any]] = {}
         self.telemetry = TelemetryRecorder(self)
@@ -756,6 +768,33 @@ class FakeEmitterClient:
         self.hub_files[(repository, RELEASES_RECORD_PATH)] = after.serialize()
         commit = hashlib.sha1(str(len(self.release_requests)).encode()).hexdigest()
         return {"commit": commit, "current": after.releases[request.release].current}
+
+    # Collector submissions -----------------------------------------------------
+
+    def collector_submission_receipt(self, handover_id: str) -> dict[str, Any] | None:
+        self.calls.append("collector_submission_receipt")
+        self.collector_receipt_requests.append(handover_id)
+        if "huggingface" not in self.modules or self.collector_receipts is None:
+            return None
+        answers = self._collector_answers.setdefault(
+            handover_id,
+            [
+                None
+                if receipt is None
+                else {
+                    "handover_id": handover_id,
+                    "destination": "collector",
+                    "status": "pending",
+                    "error_code": None,
+                    "attempts": 0,
+                    "submissions": [],
+                    **dict(receipt),
+                }
+                for receipt in self.collector_receipts
+            ],
+        )
+        answer = answers.pop(0) if len(answers) > 1 else answers[0]
+        return None if answer is None else dict(answer)
 
     def close(self) -> None:
         self.calls.append("close")

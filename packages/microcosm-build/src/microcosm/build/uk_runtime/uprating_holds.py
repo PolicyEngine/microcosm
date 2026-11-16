@@ -39,6 +39,7 @@ from typing import Any
 from microcosm.build.ledger_targets import (
     MONTHLY_WINDOW_COUNT_X_MEAN,
     MONTHLY_WINDOW_OPERATIONS,
+    QUARTERLY_WINDOW_OPERATIONS,
     ROLLED_FORWARD_BY_RATIO,
     _period_key_from_value,
 )
@@ -56,6 +57,7 @@ _WINDOW_VALUE_OPERATIONS = frozenset(
         "calendar_year_window_scaled_by_ratio",
         MONTHLY_WINDOW_COUNT_X_MEAN,
         *MONTHLY_WINDOW_OPERATIONS,
+        *QUARTERLY_WINDOW_OPERATIONS,
     )
 )
 UK_HOLD_KINDS = (

@@ -1,12 +1,16 @@
-"""UK release input-column coverage: the enhanced-FRS surface as a hard gate.
+"""UK release input-column coverage against the cut's reference build.
 
-Every populated effective loader input extracted from the immutable enhanced
-FRS reference is declared in ``release_input_coverage_manifest.json`` as either
-``required`` or ``reviewed_exclusion``. Required columns must be present on the
-final export tables and carry non-default signal on rows with enough effective
-population mass to clear the reviewed manifest floor. A reviewed exclusion
-that later carries effective signal is stale and fails, so the debt ledger can
-only shrink deliberately.
+Every loader input the current build of the cut's line carries must reach the
+release export with non-default signal on rows carrying at least the reviewed
+share of effective population mass, unless ``release_input_coverage_manifest.json``
+declares it a reviewed exclusion (microcosm#1095). The reference carries an
+input by the same rule the gate applies to the candidate
+(:func:`uk_effective_input_signal`), and the cut's reference step records
+which inputs those are (:mod:`.reference_surface`); until microcosm#1095 the
+required inputs were the populated inputs of the frozen enhanced-FRS
+reference. The manifest may also declare an input required whatever the
+reference carries. A reviewed exclusion that later carries effective signal
+is stale and fails, so the debt ledger can only shrink deliberately.
 
 The UK loader calls ``set_input`` for every engine-known persisted H5 column,
 including formula-owned variables. Those persisted overrides are therefore
@@ -29,11 +33,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import GateResult, input_column_coverage_gate
-from microcosm.build.uk_runtime.parity_reference import (
-    load_efrs_engine_derived_exclusions,
-    load_efrs_parity_known_gaps,
-    load_efrs_parity_reference,
-)
+from microcosm.build.uk_runtime.reference_surface import UKReferenceSurface
 from microcosm.build.uk_runtime.release_identity import (
     UK_RELEASE_TIER_FRS,
     validate_uk_release_tier,
@@ -41,6 +41,7 @@ from microcosm.build.uk_runtime.release_identity import (
 
 __all__ = [
     "RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS",
+    "UK_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION",
     "UKEffectiveMassCoveragePolicy",
     "UK_FAMILY_MASS_CHANGE_SEMANTICS",
     "UK_LOADER_INPUT_ALIASES",
@@ -51,12 +52,18 @@ __all__ = [
     "assert_uk_release_input_coverage_build_stages",
     "assert_uk_release_input_coverage_manifest_current",
     "load_uk_release_input_coverage_manifest",
+    "uk_effective_input_signal",
     "uk_release_input_coverage_gate",
     "uk_release_input_coverage_required_columns",
     "uk_release_input_coverage_reviewed_exclusions",
 ]
 
 UK_RELEASE_INPUT_COVERAGE_RESOURCE = "release_input_coverage_manifest.json"
+#: Schema 4 (microcosm#1095): the required inputs come from the cut's
+#: reference build at gate time, so the manifest declares the reviewed
+#: exclusions, the effective-mass policy and the stage-family contracts.
+UK_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION = 4
+_REFERENCE_KIND = "current_build"
 UK_LOADER_INPUT_ALIASES: Mapping[str, str] = {
     "capital_gains": "capital_gains_before_response",
     "employee_pension_contributions": ("employee_pension_contributions_reported"),
@@ -76,7 +83,6 @@ _DISTRIBUTIONAL_REQUIRED_STATUS = "distributional_required"
 #: mass record conserves the total and declares factor one.
 UK_FAMILY_MASS_CHANGE_SEMANTICS = "mass_conserving"
 _UK_PACKAGE = "microcosm.build.uk"
-_EFRS_PARITY_REFERENCE_RESOURCE = "efrs_parity_reference.json"
 
 DEFAULT_MINIMUM_NONDEFAULT_MASS_SHARE = 1e-6
 
@@ -433,10 +439,24 @@ def load_uk_release_input_coverage_manifest(
 ) -> UKReleaseInputCoverageManifest:
     """Load the non-vacuous UK manifest and validate exclusion metadata."""
     payload = _resource_payload(resource)
+    schema_version = payload.get("schema_version")
+    if schema_version != UK_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION:
+        raise ValueError(
+            f"{resource}: schema_version must be "
+            f"{UK_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION}, got {schema_version!r}; "
+            "the required inputs now come from the cut's reference build "
+            "(microcosm#1095)."
+        )
     raw_reference = payload.get("reference")
     raw_candidate = payload.get("candidate_evidence")
     if not isinstance(raw_reference, Mapping):
         raise ValueError(f"{resource}: 'reference' must be a JSON object.")
+    if raw_reference.get("kind") != _REFERENCE_KIND:
+        raise ValueError(
+            f"{resource}: reference.kind must be {_REFERENCE_KIND!r}; the "
+            "coverage contract compares a cut with the current build of its "
+            "own line."
+        )
     if not isinstance(raw_candidate, Mapping):
         raise ValueError(f"{resource}: 'candidate_evidence' must be a JSON object.")
     try:
@@ -461,11 +481,10 @@ def load_uk_release_input_coverage_manifest(
     )
 
     raw_columns = payload.get("columns")
-    if not isinstance(raw_columns, Mapping) or not raw_columns:
-        raise ValueError(
-            f"{resource}: 'columns' must be a non-empty JSON object; a silently "
-            "empty manifest would make the coverage gate vacuous."
-        )
+    if not isinstance(raw_columns, Mapping):
+        # Empty is allowed: the required inputs come from the reference, and
+        # the gate itself refuses a vacuous required set.
+        raise ValueError(f"{resource}: 'columns' must be a JSON object.")
     columns: list[UKReleaseInputColumn] = []
     for name, entry in sorted(raw_columns.items()):
         if not isinstance(entry, Mapping):
@@ -479,9 +498,6 @@ def load_uk_release_input_coverage_manifest(
                 note=str(entry.get("note", "")),
             )
         )
-    schema_version = payload.get("schema_version", 1)
-    if not isinstance(schema_version, int):
-        raise ValueError(f"{resource}: 'schema_version' must be an integer.")
     return UKReleaseInputCoverageManifest(
         reference={str(key): str(value) for key, value in raw_reference.items()},
         candidate_evidence={
@@ -499,6 +515,8 @@ def load_uk_release_input_coverage_manifest(
 
 
 def uk_release_input_coverage_required_columns() -> frozenset[str]:
+    """Inputs the committed manifest requires whatever the reference carries."""
+
     return load_uk_release_input_coverage_manifest().required_columns
 
 
@@ -872,6 +890,78 @@ def _effective_mass_diagnostics(
     return diagnostics
 
 
+def _source_households_by_entity(
+    tables: Mapping[str, pd.DataFrame],
+) -> dict[str, np.ndarray] | None:
+    """Each entity's rows' source household, or None without lineage.
+
+    A benefit unit takes its first member's household's source. Every built
+    frame carries ``household_source_id`` (the input-mass gate fails closed
+    without it); a hand-made fixture may not.
+    """
+
+    from microcosm.build.uk_runtime.receipt_counts import SOURCE_HOUSEHOLD_COLUMN
+
+    household = tables["household"]
+    if SOURCE_HOUSEHOLD_COLUMN not in household.columns:
+        return None
+    sources = household[SOURCE_HOUSEHOLD_COLUMN].to_numpy()
+    by_household = pd.Series(sources, index=household["household_id"].to_numpy())
+    person = tables["person"]
+    person_sources = by_household.reindex(
+        person["person_household_id"].to_numpy()
+    ).to_numpy()
+    first_member = (
+        pd.DataFrame(
+            {
+                "benunit": person["person_benunit_id"].to_numpy(),
+                "source": person_sources,
+            }
+        )
+        .drop_duplicates("benunit")
+        .set_index("benunit")["source"]
+    )
+    return {
+        "household": sources,
+        "person": person_sources,
+        "benunit": first_member.reindex(
+            tables["benunit"]["benunit_id"].to_numpy()
+        ).to_numpy(),
+    }
+
+
+def _columns_on_fewer_than_floor_sources(
+    column_values: Mapping[str, tuple[str, Any]],
+    *,
+    defaults: Mapping[str, object],
+    effective_weights: Mapping[str, np.ndarray],
+    sources: Mapping[str, np.ndarray] | None,
+) -> frozenset[str]:
+    """Columns whose effective signal one or two source households carry.
+
+    Their per-column figures would rest on fewer cases than the UKDS floor
+    of three, so the report withholds them (zero carriers is no cell).
+    """
+
+    if sources is None:
+        return frozenset()
+    from microcosm.build.uk_runtime.receipt_counts import (
+        UK_DISCLOSURE_FLOOR,
+        distinct_count,
+    )
+
+    thin: set[str] = set()
+    for name, (entity, values) in column_values.items():
+        if name not in defaults or entity not in sources:
+            continue
+        weights = np.asarray(effective_weights[entity], dtype=np.float64)
+        signal = _nondefault_signal_mask(values, defaults[name]) & (weights > 0.0)
+        carriers = distinct_count(sources[entity], signal)
+        if 0 < carriers < UK_DISCLOSURE_FLOOR:
+            thin.add(name)
+    return frozenset(thin)
+
+
 def _family_effective_mass_diagnostics(
     manifest: UKReleaseInputCoverageManifest,
     *,
@@ -1058,14 +1148,69 @@ def _valid_mass_record(record: object) -> bool:
     return bool(np.isclose(old, new, rtol=1e-9, atol=0.0) and factor == 1.0)
 
 
+def uk_effective_input_signal(
+    frame: Any,
+    engine: Any,
+    *,
+    minimum_nondefault_mass_share: float,
+) -> dict[str, tuple[str, np.ndarray]]:
+    """Each loader input ``frame`` carries, by the coverage gate's own rule.
+
+    An input is carried when its non-default signal (against the live engine
+    default) sits on at least ``minimum_nondefault_mass_share`` of its
+    entity's effective population mass: the floor the gate applies to a
+    candidate. The cut's reference step measures the reference build with
+    this, so a candidate is required to carry exactly what the reference
+    carries under the rule it is judged by (microcosm#1095). Returns each
+    carried input's entity and its row mask of signal on positive mass.
+    """
+
+    floor = float(minimum_nondefault_mass_share)
+    loadable = set(engine.variables())
+    table_items = _entity_tables(frame)
+    tables = {entity: table for entity, table in table_items}
+    effective_weights = _effective_weights_by_entity(frame, tables)
+    present: dict[str, tuple[str, Any]] = {}
+    for entity, table in table_items:
+        for column in table.columns:
+            if column not in loadable:
+                continue
+            if column in present:
+                raise ValueError(
+                    f"UK coverage column {column!r} occurs on both "
+                    f"{present[column][0]!r} and {entity!r} tables."
+                )
+            present[column] = (entity, table[column].to_numpy())
+    defaults = engine.default_values(sorted(present))
+    carried: dict[str, tuple[str, np.ndarray]] = {}
+    for name, (entity, values) in sorted(present.items()):
+        if name not in defaults:
+            continue
+        weights = np.asarray(effective_weights[entity], dtype=np.float64)
+        positive = weights > 0.0
+        signal = _nondefault_signal_mask(values, defaults[name]) & positive
+        total_mass = float(weights[positive].sum())
+        share = float(weights[signal].sum()) / total_mass if total_mass > 0 else 0.0
+        if share >= floor:
+            carried[name] = (entity, signal)
+    return carried
+
+
 def uk_release_input_coverage_gate(
     frame: Any,
     engine: Any,
     *,
+    reference_surface: UKReferenceSurface,
     manifest: UKReleaseInputCoverageManifest | None = None,
     build_state_frame: Any | None = None,
 ) -> GateResult:
     """Enforce required signal on rows carrying reviewed effective mass.
+
+    The required inputs are the ones the reference build carries
+    (``reference_surface``, measured by :func:`uk_effective_input_signal`)
+    among the live engine's loader inputs, plus any the manifest declares
+    required, less the manifest's reviewed exclusions (microcosm#1095). The
+    reference must have been measured at the manifest's effective-mass floor.
 
     The column-coverage and effective-mass halves read ``frame``, the
     release frame. The family build-state half (each stage family's typed
@@ -1077,8 +1222,24 @@ def uk_release_input_coverage_gate(
     half on it fails every family on the kind alone.
     """
     manifest = manifest or load_uk_release_input_coverage_manifest()
-    required = manifest.required_columns
     reviewed = manifest.reviewed_exclusions
+    floor = manifest.effective_mass_coverage.minimum_nondefault_mass_share
+    if reference_surface.minimum_nondefault_mass_share != floor:
+        raise ValueError(
+            f"The reference surface of {reference_surface.label} was measured at "
+            f"an effective-mass floor of "
+            f"{reference_surface.minimum_nondefault_mass_share!r}, not the "
+            f"manifest's {floor!r}; re-run the cut's reference step."
+        )
+    loadable = set(engine.variables())
+    from_reference = frozenset(reference_surface.carried_inputs & loadable)
+    required = (from_reference | manifest.required_columns) - set(reviewed)
+    if not required:
+        raise ValueError(
+            f"UK input coverage has no required input: the reference "
+            f"{reference_surface.label} carries no live loader input and the "
+            "manifest declares none, so the gate would be vacuous."
+        )
     relevant = required | set(reviewed)
     expected_entities = _engine_variable_entities(engine, relevant)
     table_items = _entity_tables(frame)
@@ -1120,37 +1281,48 @@ def uk_release_input_coverage_gate(
         for name, (_entity, values) in present_values.items()
         if not _nondefault_signal_mask(values, defaults[name]).any()
     }
-    floor = manifest.effective_mass_coverage.minimum_nondefault_mass_share
     insufficient_effective_mass = {
         name
         for name, details in diagnostics.items()
         if float(details["effective_signal_mass_share"]) < floor
     }
     degenerate = raw_degenerate | insufficient_effective_mass
+    # The UKDS floor: figures for a column one or two source households carry
+    # are withheld from the report; the verdict still stands on them.
+    withheld = _columns_on_fewer_than_floor_sources(
+        present_values,
+        defaults=defaults,
+        effective_weights=effective_weights,
+        sources=_source_households_by_entity(tables),
+    )
     base = input_column_coverage_gate(
         present_values.keys(),
         required_columns=required,
         degenerate_columns=degenerate,
         reviewed_exclusions=reviewed,
         name="uk_release_input_coverage",
-        reference_label="enhanced-FRS",
+        reference_label="reference",
     )
     failures = list(base.failures)
     for name, mismatch in wrong_entities.items():
         failures.append(
-            f"{name}: enhanced-FRS input column is stored on "
+            f"{name}: reference input column is stored on "
             f"{mismatch['actual']!r}, but PolicyEngine-UK owns it on "
             f"{mismatch['expected']!r}; a same-named column on the wrong table "
             "does not satisfy loader coverage."
         )
     for name in sorted((insufficient_effective_mass - raw_degenerate) & required):
-        prefix = f"{name}: required enhanced-FRS input column is present but every "
+        prefix = f"{name}: required reference input column is present but every "
         failures = [failure for failure in failures if not failure.startswith(prefix)]
         column_details = diagnostics[name]
+        share = (
+            "withheld (fewer than three source households carry it)"
+            if name in withheld
+            else f"{float(column_details['effective_signal_mass_share']):.12g}"
+        )
         failures.append(
-            f"{name}: required enhanced-FRS input column carries non-default "
-            f"signal on effective population mass share "
-            f"{float(column_details['effective_signal_mass_share']):.12g}, below "
+            f"{name}: required reference input column carries non-default "
+            f"signal on effective population mass share {share}, below "
             f"the reviewed floor {floor:.12g}; zero-weight support or numerical "
             "dust is not release coverage. Rebuild the source channel with a "
             "reviewed positive population-mass allocation."
@@ -1168,8 +1340,30 @@ def uk_release_input_coverage_gate(
         manifest,
     )
     failures.extend(family_build_failures)
+    since_baseline = None
+    if reference_surface.baseline_label is not None:
+        # Which of the inputs the fixed baseline carried this build no longer
+        # carries, by this gate's rule: names only, a record with no verdict
+        # (the review of microcosm#1574).
+        carried_now = uk_effective_input_signal(
+            frame, engine, minimum_nondefault_mass_share=floor
+        )
+        since_baseline = {
+            "baseline": reference_surface.baseline_label,
+            "inputs": sorted(reference_surface.baseline_inputs),
+            "dropped": sorted(
+                set(reference_surface.baseline_inputs) - set(carried_now)
+            ),
+        }
     details = {
         **dict(base.details),
+        **({"since_baseline": since_baseline} if since_baseline else {}),
+        # Names only: which build the required inputs came from, and which
+        # of them it carries on fewer than three source households ("<3").
+        "reference": reference_surface.label,
+        "required_from_reference": len(from_reference - set(reviewed)),
+        "required_by_manifest": sorted(manifest.required_columns),
+        "required_thin_in_reference": sorted(required & reference_surface.thin_inputs),
         "effective_mass_policy": {
             "weight_source": manifest.effective_mass_coverage.weight_source,
             "minimum_nondefault_mass_share": floor,
@@ -1177,7 +1371,18 @@ def uk_release_input_coverage_gate(
             "rationale": manifest.effective_mass_coverage.rationale,
         },
         "insufficient_effective_mass": sorted(insufficient_effective_mass),
-        "effective_mass_by_column": diagnostics,
+        "effective_mass_by_column": {
+            name: (
+                {
+                    "entity": column_details["entity"],
+                    "source_households": "<3",
+                    "figures": "withheld",
+                }
+                if name in withheld
+                else column_details
+            )
+            for name, column_details in diagnostics.items()
+        },
         "wrong_entity_columns": wrong_entities,
         "family_effective_mass": family_diagnostics,
         "family_build_state": family_build_state,
@@ -1200,31 +1405,21 @@ def _coverage_engine() -> PolicyEngineUKCoverageEngine | None:
     return engine
 
 
-def _efrs_reference_payload() -> Mapping[str, Any]:
-    return _resource_payload(_EFRS_PARITY_REFERENCE_RESOURCE)
-
-
-def _efrs_populated_layers() -> frozenset[str]:
-    shares = _efrs_reference_payload().get("nonzero_shares")
-    if not isinstance(shares, Mapping) or not shares:
-        raise ValueError(
-            f"{_EFRS_PARITY_REFERENCE_RESOURCE}: 'nonzero_shares' must be a "
-            "non-empty JSON object."
-        )
-    return frozenset(str(name) for name, share in shares.items() if float(share) > 0.0)
-
-
-def _efrs_input_entities() -> dict[str, str]:
-    reference = load_efrs_parity_reference()
-    return dict(reference.input_entities)
-
-
 def assert_uk_release_input_coverage_manifest_current(
     *,
     engine: Any | None = None,
     manifest: UKReleaseInputCoverageManifest | None = None,
 ) -> None:
-    """Fail before a build if the UK contract has narrowed or graph-rotted."""
+    """Fail before a build if the UK contract has drifted from its sources.
+
+    The required inputs come from the cut's reference build at gate time
+    (microcosm#1095), so this preflight checks only what does not depend on
+    the reference: the effective-mass policy, the candidate and family
+    tiers, the restored inputs, the stage-family contracts and their source
+    hashes, and that every declared column is a live PolicyEngine-UK loader
+    input with an owning entity. Until then it also held the manifest to the
+    frozen enhanced-FRS surface and its known-gaps ledger.
+    """
     manifest = manifest or load_uk_release_input_coverage_manifest()
     failures: list[str] = []
     if manifest.effective_mass_coverage != UKEffectiveMassCoveragePolicy():
@@ -1246,31 +1441,11 @@ def assert_uk_release_input_coverage_manifest_current(
             f"UKDS-licensed candidate, got {candidate_tier!r}."
         )
     declared = set(manifest.declared_columns)
-    surface = set(_efrs_populated_layers())
-    reference_entities = _efrs_input_entities()
-    missing = sorted(surface - declared)
-    extra = sorted(declared - surface)
-    if missing:
-        failures.append(
-            "manifest is missing enhanced-FRS populated loader input(s) "
-            f"{missing}; regenerate with "
-            "tools/build_uk_release_input_coverage_manifest.py."
-        )
-    if extra:
-        failures.append(
-            "manifest declares column(s) outside the enhanced-FRS populated "
-            f"loader-input surface: {extra}."
-        )
-
     for name in sorted(RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS):
         if name in manifest.reviewed_exclusions:
             failures.append(
-                f"{name}: restored enhanced-FRS reference input cannot return "
-                "to a reviewed exclusion."
-            )
-        elif name not in manifest.required_columns:
-            failures.append(
-                f"{name}: restored enhanced-FRS reference input must remain required."
+                f"{name}: a restored reference input cannot return to a "
+                "reviewed exclusion."
             )
 
     for family_name, family in sorted(manifest.family_coverage.items()):
@@ -1321,11 +1496,11 @@ def assert_uk_release_input_coverage_manifest_current(
         for column, requirement in sorted(requirements.items()):
             if (
                 family_status == _REQUIRED_AT_BUILD_STATUS
-                and column not in manifest.required_columns
+                and column in manifest.reviewed_exclusions
             ):
                 failures.append(
-                    f"{family_name}: distributional requirement {column!r} must "
-                    "be a required release input while the family is "
+                    f"{family_name}: distributional requirement {column!r} "
+                    "cannot be a reviewed exclusion while the family is "
                     "required_at_build."
                 )
             if (
@@ -1346,63 +1521,6 @@ def assert_uk_release_input_coverage_manifest_current(
                     "with the reviewed UK release policy."
                 )
 
-    known_gaps = {gap.variable: gap for gap in load_efrs_parity_known_gaps()}
-    # Engine-derived exclusions (microcosm#1106) are a separate section of the
-    # same ledger: reference inputs the engine computes from persisted inputs,
-    # which the release must therefore not persist. They are never parity debt.
-    engine_derived = {
-        gap.variable: gap for gap in load_efrs_engine_derived_exclusions()
-    }
-    both = sorted(set(known_gaps) & set(engine_derived))
-    if both:
-        failures.append(
-            "efrs_parity_known_gaps.json names column(s) both as a parity known "
-            f"gap and as an engine-derived exclusion: {both}."
-        )
-    known_gaps = {**known_gaps, **engine_derived}
-    gaps_outside_surface = sorted(set(known_gaps) - surface)
-    if gaps_outside_surface:
-        failures.append(
-            "efrs_parity_known_gaps.json declares column(s) outside the "
-            f"enhanced-FRS populated surface: {gaps_outside_surface}."
-        )
-    for name in sorted(surface & declared):
-        column = manifest._by_name[name]
-        gap = known_gaps.get(name)
-        if gap is None:
-            if column.status != REQUIRED_STATUS:
-                failures.append(
-                    f"{name}: efrs_parity_known_gaps.json has no gap, so the "
-                    "manifest status must remain required."
-                )
-            continue
-        if column.status != REVIEWED_EXCLUSION_STATUS:
-            failures.append(
-                f"{name}: committed known gap must be a reviewed_exclusion in "
-                "the manifest."
-            )
-            continue
-        if column.reason != gap.reason:
-            failures.append(
-                f"{name}: manifest exclusion reason disagrees with "
-                "efrs_parity_known_gaps.json."
-            )
-        if column.tracking_note != gap.tracking_note:
-            failures.append(
-                f"{name}: manifest exclusion tracking note disagrees with "
-                "efrs_parity_known_gaps.json."
-            )
-
-    raw_engine = _efrs_reference_payload().get("engine")
-    raw_aliases = (
-        raw_engine.get("h5_input_aliases") if isinstance(raw_engine, Mapping) else None
-    )
-    if raw_aliases != dict(UK_LOADER_INPUT_ALIASES):
-        failures.append(
-            "efrs_parity_reference.json h5_input_aliases disagree with the "
-            "live UK coverage adapter; regenerate or update both together."
-        )
-
     if engine is None:
         engine = _coverage_engine()
     if engine is not None:
@@ -1418,23 +1536,9 @@ def assert_uk_release_input_coverage_manifest_current(
             )
         if not non_inputs:
             try:
-                live_entities = _engine_variable_entities(engine, declared)
+                _engine_variable_entities(engine, declared)
             except ValueError as exc:
                 failures.append(str(exc))
-            else:
-                entity_drift = {
-                    name: {
-                        "reference": reference_entities[name],
-                        "live": live_entities[name],
-                    }
-                    for name in sorted(surface & declared)
-                    if reference_entities[name] != live_entities[name]
-                }
-                if entity_drift:
-                    failures.append(
-                        "enhanced-FRS input owning entities disagree with the "
-                        f"live PolicyEngine-UK graph: {entity_drift}."
-                    )
 
     if failures:
         raise ValueError(

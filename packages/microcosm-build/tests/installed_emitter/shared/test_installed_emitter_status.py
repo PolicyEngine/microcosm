@@ -184,6 +184,8 @@ def test_the_runner_records_the_events_the_installed_emitter_still_holds(
     receipt = app._run_stage(_opted_out_plan())
 
     assert receipt["status"] == "COMPLETED"
+    # The run's start, its two stages, the end of each stage when the run
+    # completes (microcosm-emitter 0.14.0 and later) and the completion.
     undelivered = receipt["runner"]["telemetry"]["undelivered_events"]
     assert undelivered == {
         "runs": [
@@ -192,7 +194,7 @@ def test_the_runner_records_the_events_the_installed_emitter_still_holds(
                 "producer_id": PRODUCER_ID,
                 "upload_state": "local_only",
                 "reason": "missing_huggingface_credential",
-                "undelivered_events": 4,
+                "undelivered_events": 6,
             }
         ],
         "problem": None,
@@ -253,8 +255,9 @@ def test_the_runner_asks_for_status_only_once_the_build_s_emitter_has_exited(
 
     assert receipt["status"] == "COMPLETED"
     assert host_running_when_asked == [False]
-    # The run's start, its two stages and the failure the emitter records
-    # once it notices the build has gone.
+    # The run's start, its two stages, the failure the emitter records once it
+    # notices the build has gone, and before it the end of each open stage
+    # (microcosm-emitter 0.14.0 and later).
     assert receipt["runner"]["telemetry"]["undelivered_events"] == {
         "runs": [
             {
@@ -262,7 +265,7 @@ def test_the_runner_asks_for_status_only_once_the_build_s_emitter_has_exited(
                 "producer_id": PRODUCER_ID,
                 "upload_state": "local_only",
                 "reason": "missing_huggingface_credential",
-                "undelivered_events": 4,
+                "undelivered_events": 6,
             }
         ],
         "problem": None,

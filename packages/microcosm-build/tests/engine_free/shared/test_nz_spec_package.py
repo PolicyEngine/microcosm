@@ -985,17 +985,60 @@ def resolve_dotted_symbol(dotted: str) -> object:
     raise ModuleNotFoundError(dotted, name=dotted)
 
 
+@cache
+def _transport_artifact_types() -> frozenset[tuple[str, int]]:
+    """Each ``(name, schema_version)`` an artifact type in the transport declares."""
+
+    from microcosm.build.transport import (
+        artifact_types,
+        evidence_contract,
+        income_evidence_kernels,
+        takeup_kernels,
+    )
+    from microcosm.graph import ArtifactType
+
+    return frozenset(
+        (value.name, value.schema_version)
+        for module in (
+            artifact_types,
+            evidence_contract,
+            income_evidence_kernels,
+            takeup_kernels,
+        )
+        for value in vars(module).values()
+        if isinstance(value, ArtifactType)
+    )
+
+
+def _serialized_identifier(key: object, child: object) -> bool:
+    """A format ID, or a declared artifact type in the form compose reads.
+
+    ``compose._artifact_type`` reads a node's output type as a mapping of
+    exactly ``name`` and ``schema_version``. Its hyphenated name isn't a
+    Python symbol, so a declared type under ``type`` cites nothing.
+    """
+
+    if key == "format":
+        return child in {INPUT_CLOSURE_FORMAT, MAPPING_FORMAT}
+    return (
+        key == "type"
+        and isinstance(child, Mapping)
+        and set(child) == {"name", "schema_version"}
+        and isinstance(child["name"], str)
+        and type(child["schema_version"]) is int
+        and (child["name"], child["schema_version"]) in _transport_artifact_types()
+    )
+
+
 def dotted_symbol_citations(value: object) -> set[str]:
-    """Find Python symbols, distinguishing the existing serialized format ID."""
+    """Find Python symbols, distinguishing serialized format and type IDs."""
 
     if isinstance(value, Mapping):
         return {
             dotted
             for key, child in value.items()
             for nested in (
-                [str(key)]
-                if key == "format" and child in {INPUT_CLOSURE_FORMAT, MAPPING_FORMAT}
-                else [str(key), child]
+                [str(key)] if _serialized_identifier(key, child) else [str(key), child]
             )
             for dotted in dotted_symbol_citations(nested)
         }
@@ -1028,6 +1071,13 @@ def resolve_json_pointer(file: str, pointer: str) -> object:
         for candidate in _repository_files()
         if candidate == relative or candidate.endswith("/" + relative)
     }
+    if len(candidates) > 1:
+        # Another country's package may hold a resource of the same name
+        # (Belgium's axiom_input_closure.json). A name in an NZ document
+        # cites NZ's own file when NZ's package has one at that path.
+        own = (NZ_ROOT / relative).resolve()
+        if own in candidates:
+            candidates = {own}
     if len(candidates) != 1:
         raise ValueError(f"JSON citation needs one checkout file: {file}: {candidates}")
     (path,) = candidates
@@ -1271,8 +1321,8 @@ class TestReferenceSets:
                 compile_ledger_target_references([], [reference], country="nz")
         assert (
             sum(row.metadata["activation_status"] == "active" for row in references)
-            # G8-r2c E activates the 235 P1 wage rows.
-            == {"calibration": 77, "precal": 315, "holdout": 2}[reference_set]
+            # G8-r2c E activates the 235 P1 wage rows and G8-x0 adds 133 rent rows.
+            == {"calibration": 77, "precal": 448, "holdout": 2}[reference_set]
         )
 
     def test_pre_calibration_rows_are_not_weight_calibration_targets(self) -> None:
@@ -3198,6 +3248,32 @@ class TestSourceCitations:
         with pytest.raises(IndexError):
             resolve_json_pointer("records.json", "/values/2")
 
+    @pytest.mark.parametrize(
+        ("owners", "expected"),
+        [
+            (("nz", "be"), "nz"),
+            (("be", "uk"), None),
+            (("nz/extra", "be"), None),
+            (("be",), "be"),
+        ],
+        ids=["nz-and-foreign", "two-foreign", "nz-only-in-a-subfolder", "foreign-only"],
+    )
+    def test_a_name_other_packages_share_cites_nz_own_file(
+        self, citation_checkout, monkeypatch, tmp_path, owners, expected
+    ) -> None:
+        # Belgium's package also holds an axiom_input_closure.json. A bare name
+        # that several packages share cites NZ's own file when NZ's package has
+        # one at that path, and otherwise still needs exactly one file.
+        build = "packages/microcosm-build/src/microcosm/build"
+        monkeypatch.setattr(__name__ + ".NZ_ROOT", tmp_path / build / "nz")
+        for owner in owners:
+            citation_checkout(f"{build}/{owner}/closure.json", {"owner": owner})
+        if expected is None:
+            with pytest.raises(ValueError, match="needs one checkout file"):
+                resolve_json_pointer("closure.json", "/owner")
+        else:
+            assert resolve_json_pointer("closure.json", "/owner") == expected
+
     def test_keyed_selector_is_independent_of_record_position(
         self, citation_checkout
     ) -> None:
@@ -3291,6 +3367,36 @@ class TestSourceCitations:
         assert dotted_symbol_citations({"note": INPUT_CLOSURE_FORMAT}) == {
             INPUT_CLOSURE_FORMAT
         }
+
+    def test_a_declared_artifact_type_is_not_a_python_symbol(self) -> None:
+        from microcosm.build.transport.income_evidence_kernels import (
+            OMISSION_REGISTER_TYPE,
+        )
+
+        declared = {
+            "name": OMISSION_REGISTER_TYPE.name,
+            "schema_version": OMISSION_REGISTER_TYPE.schema_version,
+        }
+        assert dotted_symbol_citations({"type": declared}) == set()
+        # Only that exact form, under "type", for a declared type: the regex
+        # reads the hyphenated name up to its first hyphen.
+        cited = {"microcosm.transport.omission"}
+        assert dotted_symbol_citations({"note": declared["name"]}) == cited
+        assert dotted_symbol_citations({"type": {**declared, "schema_version": 2}}) == (
+            cited
+        )
+        assert dotted_symbol_citations({"type": {**declared, "extra": 1}}) == cited
+        assert (
+            dotted_symbol_citations(
+                {
+                    "type": {
+                        "name": "microcosm.transport.omission-x",
+                        "schema_version": 1,
+                    }
+                }
+            )
+            == cited
+        )
 
     def test_nested_dotted_attributes_resolve_after_the_module_prefix(self) -> None:
         assert (
