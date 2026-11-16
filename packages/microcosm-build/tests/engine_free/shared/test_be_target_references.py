@@ -2545,10 +2545,15 @@ def test_a_changed_b1_fact_refuses_generation(artifact):
         generator._b1_checks(generator.Inventory(facts))
 
 
-def test_shared_series_check_accepts_a_mismatched_fpb_row_that_ours_refuses(
+def test_shared_series_check_refuses_a_mismatched_fpb_row_as_ours_does(
     artifact, by_record_set
 ):
-    """Documents a shared limitation: every T07 row shares one series key."""
+    """Chronicle #403 gave each FPB row its own source concept.
+
+    Before it, every T07 row shared one series key, so the shared roll-forward
+    check accepted a numerator and denominator from different rows; only ours
+    refused. Now each row's concept enters the series key, and both refuse.
+    """
 
     row = copy.deepcopy(
         next(row for row in _rows() if row["name"] == "statbel_b4_declarations__joint")
@@ -2564,7 +2569,7 @@ def test_shared_series_check_accepts_a_mismatched_fpb_row_that_ours_refuses(
         **generator._selector(working_age),
         "assertion": "observation",
     }
-    assert "row" in _pair_violations(row)
+    assert {"row", "source_concept"} <= set(_pair_violations(row))
     (reference,) = _parsed(
         [_executable(row)], _document("target_references.json")["hierarchy"]
     )
@@ -2573,7 +2578,8 @@ def test_shared_series_check_accepts_a_mismatched_fpb_row_that_ours_refuses(
         for selector in reference_fact_selectors(reference)
         for fact in _matched(selector, by_record_set)
     }
-    compile_ledger_target_references(needed.values(), [reference], country="be")
+    with pytest.raises(ValueError, match="not one series at two periods"):
+        compile_ledger_target_references(needed.values(), [reference], country="be")
 
 
 def test_factor_receipts_replay_against_the_feed(artifact):
