@@ -516,6 +516,39 @@ def test_the_order_of_the_classes_moves_no_calibration_score() -> None:
     assert base["calibration_outcome"] == GateOutcome.CLASS_RATES
 
 
+def test_an_unsorted_order_main_scored_now_scores_as_sorted() -> None:
+    """Main scored these classes in the order given; they now score sorted.
+
+    Main's sorted search over ``[0, 2, 1]`` happens to find label 2 in place,
+    so main scored this input with the calibration offset fixed on class 0's
+    column in the order given and reported a slope of about 0.849. With one
+    observed class the slope is ill-posed, and in sorted order it is about
+    0.875. The changelog lists this as a valid-input change.
+    """
+    proba = np.array(
+        [
+            [0.28, 0.33, 0.39],
+            [0.38, 0.44, 0.18],
+            [0.36, 0.45, 0.19],
+            [0.44, 0.33, 0.23],
+            [0.44, 0.44, 0.12],
+            [0.38, 0.54, 0.08],
+            [0.47, 0.41, 0.12],
+        ]
+    )
+    classes = np.array([0, 2, 1])
+    labels = np.full(len(proba), 2)
+    weights = np.ones(len(proba))
+    scores = categorical_scores(proba, labels, classes, weights)
+    order = np.argsort(classes)
+    in_order = categorical_scores(
+        np.ascontiguousarray(proba[:, order]), labels, classes[order], weights
+    )
+    assert scores == in_order
+    assert scores["calibration_outcome"] == GateOutcome.CROSS_FITTED
+    assert scores["calibration_slope"] == pytest.approx(0.8754, abs=1e-4)
+
+
 @st.composite
 def _scorer_inputs(draw):
     """Valid scorer input: rows of probabilities, labels, weights."""
