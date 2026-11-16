@@ -627,7 +627,6 @@ def test_group_quarters_stay_out_of_reliability_after_a_checkpoint_reload(
         }
     )
     tables = {
-        "household": households,
         "person": pd.DataFrame(
             {
                 "person_id": ids,
@@ -639,10 +638,13 @@ def test_group_quarters_stay_out_of_reliability_after_a_checkpoint_reload(
             group: pd.DataFrame({f"{group}_id": ids})
             for group in US_SCHEMA.group_entities
         },
+        # After the group tables, which include an ids-only household table.
+        "household": households,
     }
     frame = Frame(
         tables, US_SCHEMA, {"household": Weights(np.ones(n), WeightKind.DESIGN)}
     )
+    assert list(frame.table("household").columns) == list(households.columns)
     matrix = sparse.csr_array(np.ones((1, n), dtype=np.float32))
     specs = [county.population_spec("pop_county_01001", 400.0)]
     records = [
@@ -703,8 +705,22 @@ def test_group_quarters_stay_out_of_reliability_after_a_checkpoint_reload(
 @pytest.mark.skipif(
     importlib.util.find_spec("tables") is None, reason="requires pytables"
 )
-def _materialize_county_fixture(monkeypatch, tmp_path, *, acs_values=None):
-    """Materialize a three-household state_county fixture, with a fake engine."""
+def _materialize_county_fixture(
+    monkeypatch,
+    tmp_path,
+    *,
+    acs_values=None,
+    households=None,
+    county_column="planning_region",
+    overlaps=None,
+):
+    """Materialize a state_county fixture, with a fake engine.
+
+    By default three households and no county support move. ``households``
+    replaces the household table (one person each, design weight 10), and
+    ``overlaps`` stands in for the ladder's county-PUMA overlaps that minimum
+    support reads.
+    """
     from microcosm.build import ledger_artifact
     from microcosm.build.us_runtime import county_facts as county_facts_module
     from microcosm.calibrate import TargetRegistry
@@ -712,37 +728,54 @@ def _materialize_county_fixture(monkeypatch, tmp_path, *, acs_values=None):
 
     module = _release()
     county = _county()
-    ids = np.arange(1, 4)
+    if households is None:
+        ids = np.arange(1, 4)
+        incomes = {
+            "employment_income_before_lsr": [30_000.0, 50_000.0, 0.0],
+            "self_employment_income_before_lsr": [0.0, 5_000.0, 0.0],
+        }
+        household_table = pd.DataFrame(
+            {
+                "household_id": ids,
+                "state_fips": [1, 1, 1],
+                "county_fips": [99999, 99999, 99999],
+                "planning_region": [1001, 1003, 1001],
+                "household_spine": ["asec_puf"] * 3,
+                "household_source_id": [7, 8, 7],
+            }
+        )
+        design = np.asarray([10.0, 20.0, 30.0])
+    else:
+        ids = households["household_id"].to_numpy()
+        incomes = {
+            "employment_income_before_lsr": 10_000.0 * (np.arange(len(ids)) + 1),
+            "self_employment_income_before_lsr": np.zeros(len(ids)),
+        }
+        household_table = households
+        design = np.full(len(ids), 10.0)
+    zeros = np.zeros(len(ids))
     person = pd.DataFrame(
         {
             "person_id": ids,
             "person_household_id": ids,
             **{f"person_{group}_id": ids for group in US_SCHEMA.group_entities},
             # The held-out ACS validation families read household earnings.
-            "employment_income_before_lsr": [30_000.0, 50_000.0, 0.0],
-            "self_employment_income_before_lsr": [0.0, 5_000.0, 0.0],
-            "sstb_self_employment_income_before_lsr": [0.0, 0.0, 0.0],
-            "farm_operations_income": [0.0, 0.0, 0.0],
+            **incomes,
+            "sstb_self_employment_income_before_lsr": zeros,
+            "farm_operations_income": zeros,
         }
     )
     tables = {"person": person}
     for group in US_SCHEMA.group_entities:
         tables[group] = pd.DataFrame({f"{group}_id": ids})
-    tables["household"] = pd.DataFrame(
-        {
-            "household_id": ids,
-            "state_fips": [1, 1, 1],
-            "county_fips": [99999, 99999, 99999],
-            "planning_region": [1001, 1003, 1001],
-            "household_spine": ["asec_puf"] * 3,
-            "household_source_id": [7, 8, 7],
-        }
-    )
+    tables["household"] = household_table
     frame = Frame(
         tables,
         US_SCHEMA,
-        {"household": Weights(np.asarray([10.0, 20.0, 30.0]), WeightKind.DESIGN)},
+        {"household": Weights(design, WeightKind.DESIGN)},
     )
+    if overlaps is not None:
+        monkeypatch.setattr(county, "county_puma_overlaps", lambda _path: overlaps)
     staging, feed, ladder, county_facts_file = (
         tmp_path / name
         for name in ("staging.h5", "feed.json", "ladder.npz", "county_facts.jsonl")
@@ -776,7 +809,9 @@ def _materialize_county_fixture(monkeypatch, tmp_path, *, acs_values=None):
             "--geographies",
             "state,county",
             "--county-column",
-            "planning_region",
+            county_column,
+            "--county-min-support",
+            "3",
             "--sample-fraction",
             "0.01",
             "--county-holdout-fraction",
@@ -838,14 +873,19 @@ def _materialize_county_fixture(monkeypatch, tmp_path, *, acs_values=None):
     )
     materialized = SimpleNamespace(
         compiled_specs=parents,
-        matrix=sparse.csr_array(np.asarray([[1, 1, 1], [10, 10, 10]], np.float32)),
+        matrix=sparse.csr_array(
+            np.asarray([[1] * len(ids), [10] * len(ids)], np.float32)
+        ),
         chunk_stats=[],
         carrier_check={},
     )
     seen = []
+    materialized_frames = []
 
     def fake_materialize(current, specs, **_kwargs):
-        assert current is frame
+        if households is None:
+            assert current is frame
+        materialized_frames.append(current)
         seen.extend(specs)
         return materialized
 
@@ -893,6 +933,7 @@ def _materialize_county_fixture(monkeypatch, tmp_path, *, acs_values=None):
         county=county,
         args=args,
         frame=frame,
+        materialized_frames=materialized_frames,
         parents=parents,
         seen=seen,
         county_reads=county_reads,
@@ -983,6 +1024,153 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
     assert (args.checkpoint_dir / "county_reliability.csv").read_text() == (
         county.reliability_csv(written)
     )
+
+
+def _export_county_fixture(module, monkeypatch, run, out_h5, weights):
+    """Run the consumer export on a materialized fixture, its heavy steps stubbed.
+
+    Staging reloads as the fixture's original frame, so the export sees the
+    counties staging stores, not the ones materialize moved.
+    """
+    monkeypatch.setattr(
+        module, "project_input_only", lambda base, period=None: (base, {})
+    )
+    monkeypatch.setattr(module, "fill_reviewed_nulls", lambda *a, **k: ([], None))
+    # The fixture's take-up stub records the digest "stub" for every seed.
+    monkeypatch.setattr(
+        module,
+        "_recorded_take_up",
+        lambda identity: {"seed": 0, "assigned_sha256": "stub"},
+    )
+    monkeypatch.setattr(
+        module,
+        "_recorded_ssi_medicaid_take_up",
+        lambda *a, **k: ({"assigned_sha256": "", "assignment_file": ""}, None),
+    )
+    monkeypatch.setattr(
+        module, "_resample_like_materialize", lambda frame, identity: frame
+    )
+    monkeypatch.setattr(
+        module, "_with_recorded_ssi_medicaid_take_up", lambda frame, *a: frame
+    )
+    monkeypatch.setattr(
+        module,
+        "_with_live_stored_inputs",
+        lambda frame: SimpleNamespace(frame=frame, provenance={}),
+    )
+    identity = json.loads((run.args.checkpoint_dir / "run_identity.json").read_text())
+    run.args.out_h5 = out_h5
+    module._write_calibrated_artifact(
+        run.args,
+        weights,
+        identity,
+        {},
+        code=module._repo_code_identity(allow_dirty=True),
+    )
+    return pd.read_hdf(out_h5, "household")
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("tables") is None, reason="requires pytables"
+)
+def test_support_moves_reach_materialize_the_checkpoint_and_the_export(
+    monkeypatch, tmp_path
+) -> None:
+    """Minimum support through the driver (microcosm#922 review).
+
+    Eight eligible households and one group-quarters record sit in 01001 and
+    none in 01003, which overlaps the same PUMA. With K=3, exactly three
+    households move. The engine pass must see the moved frame, the lean
+    checkpoint must carry the moved counties, reliability after the reload
+    must count them in 01003, and the export, which reloads unmoved staging,
+    must publish them there too.
+    """
+    county = _county()
+    ids = np.arange(1, 10)
+    acs = ids % 2 == 1
+    households = pd.DataFrame(
+        {
+            "household_id": ids,
+            "state_fips": 1,
+            "county_fips": 1001,
+            "county_fips_2023": 1001,
+            "puma": 100100,
+            "household_spine": np.where(acs, "acs_2024_1yr", "asec_puf"),
+            "household_source_id": ids + 100,
+            # Household 9 is an ACS group-quarters record: it supports no
+            # county and never moves.
+            "TYPEHUGQ": np.where(acs, np.where(ids == 9, 3.0, 1.0), np.nan),
+        }
+    )
+    staged = households.copy()
+    populations = {1001: 80.0, 1003: 120.0}
+    overlaps = county.puma_overlaps([100100, 100100], [1001, 1003], [80.0, 120.0])
+    moves, receipt = county.plan_minimum_support(
+        staged, populations, overlaps, county_column="county_fips", per_county=3
+    )
+    moved_ids = sorted(move["household_id"] for move in moves)
+    assert len(moved_ids) == 3 and 9 not in moved_ids
+    expected = np.where(np.isin(ids, moved_ids), 1003, 1001)
+
+    run = _materialize_county_fixture(
+        monkeypatch,
+        tmp_path,
+        households=households,
+        county_column="county_fips",
+        overlaps=overlaps,
+    )
+    module, args = run.module, run.args
+    # Staging is untouched; the engine pass saw the moved frame.
+    pd.testing.assert_frame_equal(run.frame.table("household"), staged)
+    (seen_frame,) = run.materialized_frames
+    for column in ("county_fips", "county_fips_2023"):
+        np.testing.assert_array_equal(
+            seen_frame.table("household")[column].to_numpy(), expected
+        )
+    np.testing.assert_array_equal(seen_frame.table("household")["puma"], 100100)
+    np.testing.assert_array_equal(seen_frame.table("household")["state_fips"], 1)
+
+    support = json.loads((args.checkpoint_dir / county.SUPPORT_FILENAME).read_text())
+    assert support["unsupported_counties"] == []
+    assert support["counties"]["01003"]["supporting_households"] == 3
+    assert support["counties"]["01001"]["supporting_households"] == 5
+    assert support["minimum_support"]["moves"] == receipt["moves"]
+    identity = json.loads((args.checkpoint_dir / "run_identity.json").read_text())
+    assert identity["county_support"]["moves"] == 3
+    assert identity["county_support"]["moves_sha256"] == receipt["moves_sha256"]
+    assert identity["county_support"]["moved_counties"] == ["01003"]
+
+    loaded, design, _registry, records, matrix = module.load_checkpoint_surface(
+        args.checkpoint_dir, identity
+    )
+    lean = loaded.table("household")
+    np.testing.assert_array_equal(lean["household_id"], ids)
+    np.testing.assert_array_equal(lean["county_fips"].to_numpy(), expected)
+    for record in records:
+        if record.get("state_county_parent_target_name"):
+            record["role"] = "holdout"
+    weights = np.full(len(ids), 10.0)
+    evidence = module.calibration_evidence(
+        frame=loaded,
+        roles=records,
+        matrix=matrix,
+        design_weights=design,
+        weights=weights,
+        target_loss_cap=1.0,
+        checkpoint_dir=args.checkpoint_dir,
+        identity=identity,
+    )
+    graded = evidence["county_reliability"]["counties"]
+    assert graded["01003"]["supporting_households"] == 3
+    assert graded["01001"]["supporting_households"] == 5
+
+    exported = _export_county_fixture(
+        module, monkeypatch, run, tmp_path / "calibrated.h5", weights
+    )
+    np.testing.assert_array_equal(exported["household_id"], ids)
+    for column in ("county_fips", "county_fips_2023"):
+        np.testing.assert_array_equal(exported[column].to_numpy(), expected)
+    np.testing.assert_array_equal(exported["puma"], 100100)
 
 
 def test_validation_values_change_no_loss_input_and_no_weight(
