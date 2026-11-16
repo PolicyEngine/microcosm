@@ -1739,15 +1739,19 @@ TARGET_MATRIX_FILENAME = "target_matrix.npz"
 TARGET_ROLES_FILENAME = "target_roles.json"
 
 
-def extract_struct_tables(frame, *, county_column="county_fips"):
-    """Small structural/geography copies so the big frame can be freed early."""
+def extract_struct_tables(frame, *, county_column="county_fips", county_run=False):
+    """Small structural/geography copies so the big frame can be freed early.
+
+    ``county_run`` keeps what county reliability needs after a reload
+    (:func:`us_acs_local_county_surface.struct_columns`).
+    """
 
     households = frame.table("household")
     struct_columns = [
         column for column in LEAN_HOUSEHOLD_COLUMNS if column in households.columns
     ]
     struct_columns += county_surface.struct_columns(
-        households, struct_columns, county_column=county_column
+        households, struct_columns, county_column=county_column, county_run=county_run
     )
     person_columns = [
         column for column in PERSON_STRUCT if column in frame.table("person").columns
@@ -2381,7 +2385,9 @@ def do_materialize(args) -> None:
     matrix = sparse.vstack([admin_matrix, pop_matrix], format="csr")
     del admin_matrix, pop_matrix
     struct = extract_struct_tables(
-        frame, county_column=getattr(args, "county_column", "county_fips")
+        frame,
+        county_column=getattr(args, "county_column", "county_fips"),
+        county_run=any(role.get("geography_level") == "county" for role in roles),
     )
     n_households = frame.n("household")
     del frame

@@ -595,6 +595,111 @@ def test_missing_source_identity_cannot_produce_a_row_based_reliability_grade(
     assert cell["grade"] == "U"
 
 
+_RELIABILITY_KEYS = ("supporting_households", "kish_ess", "grade", "status")
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("tables") is None, reason="requires pytables"
+)
+@pytest.mark.parametrize("real_households", [40, 0])
+def test_group_quarters_stay_out_of_reliability_after_a_checkpoint_reload(
+    tmp_path, real_households
+) -> None:
+    """A county of 40 households and 360 group-quarters records grades C on
+    the full frame. Its lean checkpoint once dropped TYPEHUGQ, so the reload
+    counted all 400 records and graded A; a county of group quarters alone
+    went from U to A (review of #1630). A county run now keeps TYPEHUGQ and
+    grades the same after the reload; a run without county targets writes the
+    columns it always did, and a checkpoint without TYPEHUGQ is refused."""
+    module, county = _release(), _county()
+    from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+
+    n = 400
+    ids = np.arange(1, n + 1)
+    households = pd.DataFrame(
+        {
+            "household_id": ids,
+            "county_fips": np.full(n, 1001),
+            "state_fips": np.ones(n, dtype=int),
+            "household_spine": [county.ACS_SPINE] * n,
+            "household_source_id": ids,
+            "TYPEHUGQ": [1.0] * real_households + [3.0] * (n - real_households),
+        }
+    )
+    tables = {
+        "household": households,
+        "person": pd.DataFrame(
+            {
+                "person_id": ids,
+                "person_household_id": ids,
+                **{f"person_{group}_id": ids for group in US_SCHEMA.group_entities},
+            }
+        ),
+        **{
+            group: pd.DataFrame({f"{group}_id": ids})
+            for group in US_SCHEMA.group_entities
+        },
+    }
+    frame = Frame(
+        tables, US_SCHEMA, {"household": Weights(np.ones(n), WeightKind.DESIGN)}
+    )
+    matrix = sparse.csr_array(np.ones((1, n), dtype=np.float32))
+    specs = [county.population_spec("pop_county_01001", 400.0)]
+    records = [
+        {
+            "name": "pop_county_01001",
+            "value": 400.0,
+            "role": "train",
+            "geography_level": "county",
+            "county_fips": "01001",
+        }
+    ]
+    validation = {
+        "counties": {
+            "01001": {
+                name: {"abs_rel_error": 0.0}
+                for name in county.GRADED_VALIDATION_FAMILIES
+            }
+        }
+    }
+
+    def graded(table):
+        cell = county.reliability_report(
+            table,
+            records,
+            matrix,
+            final_weights=np.ones(n),
+            validation=validation,
+            household_universe_mask=county.reliability_universe(table),
+        )["counties"]["01001"]
+        return {key: cell[key] for key in _RELIABILITY_KEYS}
+
+    full = graded(households)
+    assert full["supporting_households"] == real_households
+    assert full["grade"] == ("C" if real_households else "U")
+
+    plain = module.extract_struct_tables(frame)
+    assert list(plain["household_struct"].columns) == [
+        "household_id",
+        "state_fips",
+        "county_fips",
+        "household_spine",
+        "household_source_id",
+    ]
+    struct = module.extract_struct_tables(frame, county_run=True)
+    assert "TYPEHUGQ" in struct["household_struct"].columns
+    module.write_lean_checkpoint(struct, matrix, specs, records, tmp_path / "county")
+    lean, weights = module.load_lean_frame(tmp_path / "county" / "target_frame_lean.h5")
+    assert graded(lean.table("household")) == full
+
+    module.write_lean_checkpoint(plain, matrix, specs, records, tmp_path / "old")
+    old, _ = module.load_lean_frame(tmp_path / "old" / "target_frame_lean.h5")
+    with pytest.raises(ValueError, match="TYPEHUGQ"):
+        county.reliability_universe(old.table("household"))
+    with pytest.raises(SystemExit, match="materialize again"):
+        county.calibration_evidence(old, records, matrix, weights, np.ones(n), 1.0)
+
+
 @pytest.mark.skipif(
     importlib.util.find_spec("tables") is None, reason="requires pytables"
 )

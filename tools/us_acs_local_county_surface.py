@@ -1684,6 +1684,7 @@ def reliability_report(
     validation=None,
     minimum_support_counties=(),
     county_names=None,
+    household_universe_mask=None,
 ):
     """One reliability cell per county: support, ESS, errors and a grade.
 
@@ -1693,6 +1694,11 @@ def reliability_report(
     U only without any held-out evidence (no household support) or without
     source identity. ``minimum_support_counties`` mark counties whose only
     households came from the minimum-support step.
+
+    ``household_universe_mask`` is the households that count toward support
+    and ESS; without it, :func:`support_universe` decides. The build passes
+    :func:`reliability_universe`, which refuses a frame that cannot tell group
+    quarters apart instead of counting every record.
     """
     codes = county_codes(households, county_column=county_column)
     weights = np.asarray(final_weights, float)
@@ -1720,7 +1726,15 @@ def reliability_report(
     # Precision and support must use the same household universe as the
     # trained ACS households rows. Group-quarters records cannot supply
     # household evidence or increase household ESS, even in a capped smoke.
-    universe = support_universe(households)
+    if household_universe_mask is None:
+        universe = support_universe(households)
+    else:
+        universe = np.asarray(household_universe_mask)
+        if universe.dtype != bool or universe.shape != (len(households),):
+            raise ValueError(
+                "The county reliability household universe must be one boolean "
+                "per household."
+            )
     groups = {
         code: rows[universe[rows]] for code, rows in _county_groups(codes).items()
     }
@@ -2022,6 +2036,20 @@ def support_universe(households):
     ):
         return household_universe(households) > 0
     return np.ones(len(households), dtype=bool)
+
+
+def reliability_universe(households):
+    """The households county reliability counts, refusing to guess.
+
+    Unlike :func:`support_universe`, a frame that names its spines but whose
+    ACS records lack ``TYPEHUGQ`` is refused rather than counted whole. A lean
+    checkpoint written before county runs kept ``TYPEHUGQ`` is such a frame:
+    every group-quarters record would otherwise count toward a county's
+    support, distinct sources and ESS.
+    """
+    if "household_spine" in households.columns:
+        return household_universe(households) > 0
+    return support_universe(households)
 
 
 def unsupported_counties(households, county_populations, *, county_column):
@@ -2699,14 +2727,29 @@ def run_metadata(args, county_holdout):
     return metadata
 
 
-def struct_columns(households, existing_columns, *, county_column=COUNTY_COLUMN):
-    # Preserve configured county columns through the structure-only checkpoint.
-    return [
+def struct_columns(
+    households, existing_columns, *, county_column=COUNTY_COLUMN, county_run=False
+):
+    """The household columns the structure-only checkpoint adds for counties.
+
+    Every configured county column survives. A run with county targets also
+    keeps ``TYPEHUGQ``, so reliability after a reload can still exclude group
+    quarters. A run without county targets keeps exactly the columns it kept
+    before, and so writes the same checkpoint bytes.
+    """
+    columns = [
         column
         for column in households.columns
         if (column.startswith("county_fips") or column == county_column)
         and column not in existing_columns
     ]
+    if (
+        county_run
+        and HOUSEHOLD_KIND_COLUMN in households.columns
+        and HOUSEHOLD_KIND_COLUMN not in existing_columns
+    ):
+        columns.append(HOUSEHOLD_KIND_COLUMN)
+    return columns
 
 
 def calibration_evidence(
@@ -2743,6 +2786,14 @@ def calibration_evidence(
         COUNTY_COLUMN,
     )
     households = frame.table("household")
+    try:
+        universe = reliability_universe(households)
+    except ValueError as error:
+        raise SystemExit(
+            "County reliability cannot exclude group quarters from these "
+            f"households: {error} A lean checkpoint written before county runs "
+            "kept TYPEHUGQ needs --stage materialize again."
+        ) from error
     receipt = (identity or {}).get("county_validation")
     validation = design = None
     if receipt:
@@ -2761,6 +2812,15 @@ def calibration_evidence(
             cap=target_loss_cap,
             county_column=column,
         )
+        # The validation measures are bound to the run identity and aligned
+        # with these households (score_county_validation checked the ids).
+        bound = np.asarray(measures["in_household_universe"], dtype=np.float64) > 0
+        if not np.array_equal(bound, universe):
+            raise SystemExit(
+                f"{int((bound != universe).sum())} checkpoint household(s) "
+                "disagree with the run's validation measures about the "
+                "household universe; refusing to grade county reliability."
+            )
     support = (identity or {}).get("county_support") or {}
     evidence = {
         "county_holdout": score_county_holdout(
@@ -2780,6 +2840,7 @@ def calibration_evidence(
             county_populations=None if design is None else design["county_populations"],
             minimum_support_counties=support.get("moved_counties", []),
             county_names=None if design is None else design["county_names"],
+            household_universe_mask=universe,
         ),
     }
     if validation is not None:
