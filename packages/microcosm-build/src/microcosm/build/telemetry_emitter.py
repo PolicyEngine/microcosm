@@ -138,14 +138,19 @@ def _packaged_minimum_emitter_version() -> str:
     return version
 
 
-#: The oldest emitter release a build starts: 0.15.0 since 2026-11-13, the
-#: newest release then. 0.15.0 adds the Hugging Face module's setting that
-#: switches collector submissions on (``hugging_face_settings``), collector
-#: provenance on a release publication, which it submits after the release
-#: commit, and a ``skipped`` collector receipt with an error code when it
-#: refuses its collector settings. An older emitter accepts the setting but
-#: drops a publication's provenance, so it would submit no release, and its
-#: hand-over ID differs from the interface's. 0.14.0, from 2026-11-09, added
+#: The oldest emitter release a build starts: 0.16.0 since 2026-11-16, the
+#: newest release then. 0.16.0 adds collector provenance on a promotion or
+#: withdrawal, which it submits as the ``releases.json`` the change wrote
+#: once its commit lands, so the collector's latest calibration tree follows
+#: the build now current. 0.15.0 accepts that provenance but drops it, so it
+#: would submit no ``releases.json``. 0.15.0, from 2026-11-13, added the
+#: Hugging Face module's setting that switches collector submissions on
+#: (``hugging_face_settings``), collector provenance on a release
+#: publication, which it submits after the release commit, and a
+#: ``skipped`` collector receipt with an error code when it refuses its
+#: collector settings; an emitter before it accepts the setting but drops a
+#: publication's provenance, and its hand-over ID differs from the
+#: interface's. 0.14.0, from 2026-11-09, added
 #: the build machine's readings. 0.13.0, from 2026-11-05, added
 #: ``microcosm-emitter status``, which the Modal stage runner runs in the
 #: container after a stage's tool to record how many telemetry events each
@@ -912,10 +917,11 @@ class LocalTelemetryEmitter:
         )
 
 
-#: Whether the emitters a build starts submit described staged bundles and
-#: release publications to the collector. On since emitter 0.15.0
-#: (2026-11-13), whose default leaves them off: switching them off again is
-#: this change, not an emitter release.
+#: Whether the emitters a build starts submit described staged bundles,
+#: release publications, promotions and withdrawals to the collector. On
+#: since emitter 0.15.0 (2026-11-13), whose default leaves them off, and for
+#: promotions and withdrawals since 0.16.0 (2026-11-16): switching them off
+#: again is this change, not an emitter release.
 COLLECTOR_SUBMISSIONS = True
 
 

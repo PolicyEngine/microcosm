@@ -62,7 +62,7 @@ change:
 ```bash
 uv tool install microcosm-emitter   # once per machine
 uv tool upgrade microcosm-emitter   # to take a new release
-microcosm-emitter version           # the installed release; builds need 0.15.0 or later
+microcosm-emitter version           # the installed release; builds need 0.16.0 or later
 ```
 
 The build finds the `microcosm-emitter` command through
@@ -75,12 +75,15 @@ no remote staging, and measures no Orrery publication inventory; a UK build give
 its dataset bundle remotely, as it is by default, is refused before it
 starts, since the emitter uploads the bundle. Before it starts the emitter,
 the build reads its version from `microcosm-emitter version` and does not
-start one older than 0.15.0. That release adds the setting that switches
-the Hugging Face module's collector submissions on, which every emitter a
-build starts sets, so staged bundles and release publications that name
-their build reach the collector; collector provenance on a release
-publication; and a `skipped` collector receipt when the emitter refuses its
-collector settings. 0.14.0 added the build machine's
+start one older than 0.16.0. That release adds collector provenance on a
+promotion or withdrawal, so the emitter submits the `releases.json` the
+change wrote once it lands; 0.15.0 accepts that provenance but drops it.
+0.15.0 added the setting that switches the Hugging Face module's collector
+submissions on, which every emitter a build starts sets, so staged bundles
+and release publications that name their build reach the collector;
+collector provenance on a release publication; and a `skipped` collector
+receipt when the emitter refuses its collector settings. 0.14.0 added the
+build machine's
 readings: each heartbeat carries the machine's memory, CPU and disk use and
 the build's processes, a heartbeat after the machine wakes carries the sleep,
 the run's first event describes the machine, each stage's end says how long
@@ -94,12 +97,12 @@ which builds read as package data and the Modal image's install step reads
 from the launching checkout. Releases before 0.10.0 send telemetry to the
 collector's Cloud Run address, which changes when the collector moves to
 another Google Cloud project; from 0.10.0 on, releases send to the
-collector's hostname, which stays the same. 0.13.0, 0.14.0 and 0.15.0 were
-each the newest release when practically no machine ran the emitter yet, so
+collector's hostname, which stays the same. 0.13.0, 0.14.0, 0.15.0 and 0.16.0
+were each the newest release when practically no machine ran the emitter yet, so
 requiring them cost nothing (see
 [graph publication](docs/orrery-publication.md#emitter-dependency)). The
 build prints the installed and required versions, what it loses and the
-upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.15.0'`,
+upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.16.0'`,
 and continues as it does without the command. `uv tool upgrade` keeps any
 version constraint given at install time, such as `==0.7.0`; that
 `uv tool install --upgrade` command replaces it. Microcosm supplies build
@@ -122,7 +125,7 @@ if the emitter cannot be prepared or is missing, its
 `microcosm-emitter version` times out or fails, it is older than the
 minimum, it lists no protocol version 1, its `hello` fails, it exits or
 times out before it is ready, or it starts without its telemetry module.
-Every emitter a build starts (0.15.0 and later, the minimum) reads a given
+Every emitter a build starts (0.16.0 and later, the minimum) reads a given
 collector token, and exits at that point when the collector-token
 variables it inherits (`MICROCOSM_COLLECTOR_TOKEN`,
 `MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT`, `MICROCOSM_COLLECTOR_ORIGIN`) are set
