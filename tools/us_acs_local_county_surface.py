@@ -92,7 +92,57 @@ def county_codes(households, *, county_column=COUNTY_COLUMN) -> np.ndarray:
     return counties
 
 
-def with_county_populations(ladder, populations, geographies):
+#: The household column whose county-equivalents are the 2023 boundaries
+#: (Connecticut's nine planning regions). The PUMA ladder's county overlaps
+#: are 2020 counties, so this column takes its overlaps from the ladder's
+#: tract overlaps instead (:func:`ladder_county_overlaps`).
+COUNTY_COLUMN_2023 = "county_fips_2023"
+
+
+def ladder_county_overlaps(ladder, county_column=COUNTY_COLUMN):
+    """``(pumas, counties, populations)`` on the boundaries of ``county_column``.
+
+    The PUMA ladder records ``(PUMA, county)`` overlaps on 2020 counties, which
+    name Connecticut's eight legacy counties. For ``county_fips_2023`` the
+    overlaps are the ladder's ``(PUMA, tract)`` overlaps regrouped by each
+    tract's 2023 county-equivalent
+    (:func:`microcosm.build.us_runtime.county_vintage.county_fips_2023_from_tracts`):
+    a Connecticut tract takes its planning region and every other tract keeps
+    its county, so each PUMA's population is conserved and every county
+    outside Connecticut keeps its 2020 overlaps. Any other column reads the
+    2020 overlaps unchanged.
+    """
+    if county_column != COUNTY_COLUMN_2023:
+        return (
+            np.asarray(ladder.county_overlap_puma),
+            np.asarray(ladder.county_overlap_county),
+            np.asarray(ladder.county_overlap_population, dtype=float),
+        )
+    from microcosm.build.us_runtime.county_vintage import (
+        county_fips_2023_from_tracts,
+    )
+
+    tracts = np.asarray(ladder.tract_overlap_tract)
+    pumas = _codes(ladder.tract_overlap_puma, column="tract_overlap_puma")
+    values = np.asarray(ladder.tract_overlap_population, dtype=float)
+    if not len(tracts) or len(tracts) != len(pumas) or len(tracts) != len(values):
+        raise ValueError(
+            f"{COUNTY_COLUMN_2023} needs the ladder's tract overlaps, and this "
+            "ladder has none or misaligned ones."
+        )
+    counties = _codes(county_fips_2023_from_tracts(tracts), column=COUNTY_COLUMN_2023)
+    cells = pd.DataFrame({"puma": pumas, "county": counties, "population": values})
+    grouped = cells.groupby(["puma", "county"], sort=True)["population"].sum()
+    return (
+        grouped.index.get_level_values("puma").to_numpy(np.int64),
+        grouped.index.get_level_values("county").to_numpy(np.int64),
+        grouped.to_numpy(float),
+    )
+
+
+def with_county_populations(
+    ladder, populations, geographies, *, county_column=COUNTY_COLUMN
+):
     """Aggregate ladder overlaps, then reconcile counties to state levels."""
     if "county" not in geographies:
         return populations
@@ -103,8 +153,15 @@ def with_county_populations(ladder, populations, geographies):
             int(state): float(np.asarray(ladder.puma_population)[states == state].sum())
             for state in np.unique(states)
         }
-    counties = _codes(ladder.county_overlap_county, column="county_overlap_county")
-    values = np.asarray(ladder.county_overlap_population, dtype=float)
+    if county_column == COUNTY_COLUMN_2023:
+        _pumas, overlap_counties, overlap_values = ladder_county_overlaps(
+            ladder, county_column
+        )
+    else:
+        overlap_counties = ladder.county_overlap_county
+        overlap_values = ladder.county_overlap_population
+    counties = _codes(overlap_counties, column="county_overlap_county")
+    values = np.asarray(overlap_values, dtype=float)
     if (
         len(counties) != len(values)
         or not np.isfinite(values).all()
@@ -1966,16 +2023,15 @@ COUNTY_FIPS_COLUMNS = ("county_fips", "county_fips_2023")
 COUNTY_DETERMINING_LOCATION_COLUMNS = ("tract_geoid", "block_geoid")
 
 
-def county_puma_overlaps(ladder_path):
-    """``{county: [(puma, population), ...]}``, largest overlap first."""
+def county_puma_overlaps(ladder_path, county_column=COUNTY_COLUMN):
+    """``{county: [(puma, population), ...]}``, largest overlap first.
+
+    Counties are on ``county_column``'s boundaries (:func:`ladder_county_overlaps`).
+    """
     from microcosm.build.us_runtime.puma_ladder import load_us_puma_ladder
 
     ladder = load_us_puma_ladder(ladder_path)
-    return puma_overlaps(
-        ladder.county_overlap_puma,
-        ladder.county_overlap_county,
-        ladder.county_overlap_population,
-    )
+    return puma_overlaps(*ladder_county_overlaps(ladder, county_column))
 
 
 def puma_overlaps(pumas, counties, populations):
@@ -2485,7 +2541,7 @@ def check_support(frame, populations, args):
         needed = unsupported_counties(
             households, populations["county"], county_column=column
         )
-        overlaps = county_puma_overlaps(args.ladder) if needed else {}
+        overlaps = county_puma_overlaps(args.ladder, column) if needed else {}
         moves, support = plan_minimum_support(
             households,
             populations["county"],

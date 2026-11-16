@@ -135,6 +135,107 @@ def test_ladder_county_population_is_scaled_to_each_state() -> None:
     assert sum(v for k, v in only_counties["county"].items() if k // 1000 == 1) == 100.0
 
 
+def _split_connecticut_tracts():
+    """Two real tracts of one legacy Connecticut county in different regions."""
+    from microcosm.build.us_runtime.county_vintage import (
+        load_ct_planning_region_by_tract,
+    )
+
+    by_county: dict[int, dict[int, int]] = {}
+    for tract, region in sorted(load_ct_planning_region_by_tract().items()):
+        regions = by_county.setdefault(int(str(tract)[:5]), {})
+        regions.setdefault(int(region), int(tract))
+    legacy, regions = next(
+        (legacy, regions)
+        for legacy, regions in sorted(by_county.items())
+        if len(regions) >= 2
+    )
+    (first_region, first_tract), (second_region, second_tract) = sorted(
+        regions.items()
+    )[:2]
+    return legacy, (first_tract, first_region), (second_tract, second_region)
+
+
+def _vintage_ladder():
+    legacy, (tract_a, _), (tract_b, _) = _split_connecticut_tracts()
+    return SimpleNamespace(
+        puma=np.asarray([100001, 900101]),
+        puma_population=np.asarray([50.0, 50.0]),
+        county_overlap_puma=np.asarray([100001, 900101]),
+        county_overlap_county=np.asarray([1001, legacy]),
+        county_overlap_population=np.asarray([50.0, 50.0]),
+        tract_overlap_puma=np.asarray([100001, 900101, 900101]),
+        tract_overlap_tract=np.asarray([1001020100, tract_a, tract_b]),
+        tract_overlap_population=np.asarray([50.0, 30.0, 20.0]),
+    )
+
+
+def test_county_fips_2023_takes_planning_regions_from_tract_overlaps() -> None:
+    county = _county()
+    legacy, (_, region_a), (_, region_b) = _split_connecticut_tracts()
+    ladder = _vintage_ladder()
+    legacy_populations = county.with_county_populations(ladder, {}, ["county"])
+    assert legacy_populations["county"] == {1001: 50.0, legacy: 50.0}
+    populations = county.with_county_populations(
+        ladder, {}, ["county"], county_column="county_fips_2023"
+    )
+    assert populations["county"] == {1001: 50.0, region_a: 30.0, region_b: 20.0}
+    assert populations["state"] == legacy_populations["state"]
+    pumas, counties, values = county.ladder_county_overlaps(ladder, "county_fips_2023")
+    # Every PUMA keeps its population; Alabama keeps its 2020 overlap.
+    for puma, total in zip(ladder.puma, ladder.puma_population, strict=True):
+        assert values[pumas == puma].sum() == total
+    assert counties[pumas == 100001].tolist() == [1001]
+    overlaps = county.puma_overlaps(pumas, counties, values)
+    assert overlaps[region_a] == [(900101, 30.0)]
+    assert overlaps[region_b] == [(900101, 20.0)]
+    # Any other column reads the 2020 overlaps unchanged.
+    same = county.ladder_county_overlaps(ladder, "county_fips")
+    assert same[1].tolist() == [1001, legacy]
+
+
+def test_county_fips_2023_refuses_a_ladder_without_tract_overlaps() -> None:
+    county = _county()
+    ladder = _vintage_ladder()
+    ladder.tract_overlap_tract = np.asarray([], dtype=np.int64)
+    ladder.tract_overlap_puma = np.asarray([], dtype=np.int64)
+    ladder.tract_overlap_population = np.asarray([], dtype=float)
+    with pytest.raises(ValueError, match="tract overlaps"):
+        county.with_county_populations(
+            ladder, {}, ["county"], county_column="county_fips_2023"
+        )
+
+
+def test_an_existing_national_ladder_declares_3144_county_equivalents_in_2023() -> None:
+    """Read-only check of a built national PUMA ladder (skipped without one).
+
+    Set ``MICROCOSM_US_PUMA_LADDER_ARTIFACT`` to the NPZ that
+    ``tools/build_us_puma_ladder_artifact.py`` writes.
+    """
+    import os
+    from pathlib import Path
+
+    artifact = os.environ.get("MICROCOSM_US_PUMA_LADDER_ARTIFACT")
+    if not artifact:
+        pytest.skip("MICROCOSM_US_PUMA_LADDER_ARTIFACT is not set")
+    release = _release()
+    geographies = ["state", "cd", "county"]
+    legacy = release.ladder_population(Path(artifact), geographies)
+    current = release.ladder_population(
+        Path(artifact), geographies, county_column="county_fips_2023"
+    )
+    assert len(current["county"]) == _county().REQUIRED_COUNTY_COUNT
+    assert sorted(code for code in current["county"] if code // 1000 == 9) == list(
+        range(9110, 9200, 10)
+    )
+    assert math.isclose(
+        math.fsum(current["county"].values()), math.fsum(legacy["county"].values())
+    )
+    for code, value in legacy["county"].items():
+        if code // 1000 != 9:
+            assert math.isclose(current["county"][code], value)
+
+
 def test_population_rows_partition_households_and_accept_an_alternate_county_column() -> (
     None
 ):
@@ -775,7 +876,11 @@ def _materialize_county_fixture(
         {"household": Weights(design, WeightKind.DESIGN)},
     )
     if overlaps is not None:
-        monkeypatch.setattr(county, "county_puma_overlaps", lambda _path: overlaps)
+        monkeypatch.setattr(
+            county,
+            "county_puma_overlaps",
+            lambda _path, _column="county_fips": overlaps,
+        )
     staging, feed, ladder, county_facts_file = (
         tmp_path / name
         for name in ("staging.h5", "feed.json", "ladder.npz", "county_facts.jsonl")

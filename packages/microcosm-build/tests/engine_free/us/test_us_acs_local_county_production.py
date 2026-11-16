@@ -1120,7 +1120,7 @@ def test_check_support_applies_minimum_support_before_refusing(
     monkeypatch.setattr(
         county,
         "county_puma_overlaps",
-        lambda _path: county.puma_overlaps(
+        lambda _path, _column="county_fips": county.puma_overlaps(
             [100001, 100001], [1001, 1003], [90.0, 10.0]
         ),
     )

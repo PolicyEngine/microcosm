@@ -326,10 +326,22 @@ The inspected Chronicle publisher inputs have two concrete issues:
   `15005,15009`. Any other county missing from SOI, a declared cell whose
   host is missing too, or a declaration across states is refused.
 - **Connecticut:** both packages use the nine planning-region codes `09110`
-  through `09190`. The household county column and ladder must use those same
-  boundaries. Select `--county-column county_fips_2023` when the parallel
-  planning-region work supplies that column, and use its matching ladder.
-  Changing the column name alone cannot translate legacy county targets.
+  through `09190`. The household county column and the ladder's county
+  populations must use those same boundaries, so a full run selects
+  `--county-column county_fips_2023`. The PUMA ladder's own county overlaps are
+  2020 counties (Connecticut's eight legacy counties, 3,143 in all). Under
+  `county_fips_2023` the rung therefore takes its county populations, and the
+  PUMA overlaps the minimum support step draws from, from the ladder's tract
+  overlaps instead: each tract's 2023 county-equivalent
+  (`county_fips_2023_from_tracts`) is its planning region in Connecticut and
+  its own county elsewhere, so every PUMA's population is conserved and every
+  county outside Connecticut keeps its 2020 overlaps
+  (`ladder_county_overlaps`). A ladder without tract overlaps is refused under
+  that column. Read against a national ladder that
+  `tools/build_us_puma_ladder_artifact.py` built on 2026-11-16, this gives 3,144
+  county-equivalents with the nine regions and the same national total; set
+  `MICROCOSM_US_PUMA_LADDER_ARTIFACT` to rerun that check. Any other county
+  column reads the 2020 overlaps unchanged.
 
 SOI facts carry `geography.level = "county"` and Census-style IDs such as
 `0500000US01001`; the row geography is authoritative even though the record
@@ -346,11 +358,12 @@ for `co-est2024-alldata.csv`.
 A full run needs the pinned main feed and its SHA256, the pinned county facts
 file and its SHA256,
 a staging H5 and summary with household support in every county (after the
-minimum support step), and a matching county-boundary PUMA ladder. The
+minimum support step), and the PUMA ladder the staging was built with (its
+tract overlaps supply the 2023 county populations; see Connecticut above). The
 historical staging file was approximately 10.7 GB. The historical ladder was
 446,791 bytes with SHA256
 `39a2ab2abeab07a88362af7ab2940e0e1d50a297c919e4bbc6fb65bab51147d8`;
-that old digest is reference evidence, not an approved planning-region ladder.
+that old digest is reference evidence only.
 
 At 3,144 counties, the county increment is 3,144 population rows, 3,143 rows
 for each of the two SOI concepts (Kalawao shares Maui's cell), 3,144 ACS

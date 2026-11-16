@@ -1557,7 +1557,9 @@ PERSON_STRUCT = [
 ]
 
 
-def ladder_population(ladder_path: Path, geographies: list[str]):
+def ladder_population(
+    ladder_path: Path, geographies: list[str], *, county_column: str = "county_fips"
+):
     from microcosm.build.us_runtime.puma_ladder import load_us_puma_ladder
 
     ladder = load_us_puma_ladder(ladder_path)
@@ -1575,7 +1577,9 @@ def ladder_population(ladder_path: Path, geographies: list[str]):
             )
             for cd in np.unique(ladder.cd_overlap_cd)
         }
-    return county_surface.with_county_populations(ladder, populations, geographies)
+    return county_surface.with_county_populations(
+        ladder, populations, geographies, county_column=county_column
+    )
 
 
 def household_sizes(frame) -> np.ndarray:
@@ -2248,7 +2252,11 @@ def do_materialize(args) -> None:
         f"admin specs: {len(registry)} ({families}, soi_mode={args.soi_mode}); "
         f"RI substitution records={len(surface.ri_substitutions)}"
     )
-    populations = ladder_population(args.ladder, sorted(set(geographies) | {"cd"}))
+    populations = ladder_population(
+        args.ladder,
+        sorted(set(geographies) | {"cd"}),
+        county_column=getattr(args, "county_column", "county_fips"),
+    )
     county_surface.prepare_run(args, geographies, populations, surface=surface)
     require_one_label_per_geography(registry, populations, geographies)
     summary_path = _staging_summary_path(args)
