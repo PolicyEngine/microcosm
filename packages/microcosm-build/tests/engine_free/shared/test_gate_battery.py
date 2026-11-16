@@ -672,9 +672,17 @@ class TestBelgianCompatibility:
         run.run_phase("terminal", EvidenceContext())
         report = json.loads((tmp_path / "terminal_gates.json").read_text())
         assert set(report["gates"]) == {gate.id for gate in spec.gates.gates}
+        declared = {gate.id: gate.not_applicable for gate in spec.gates.gates}
         assert all(
-            gate["status"] == "evidence_absent" for gate in report["gates"].values()
-        ), "unimplemented BE gates are named gaps, never crashes or passes"
+            gate["status"] == "evidence_absent"
+            or (
+                gate["status"] == "not_applicable"
+                and gate["reason"] == declared[gate_id]
+            )
+            for gate_id, gate in report["gates"].items()
+        ), (
+            "unbound BE gates are named gaps or declared exclusions, never crashes or passes"
+        )
         assert report["shippable"] is False
         assert len(report["gates_manifest_sha256"]) == 64
         assert (
