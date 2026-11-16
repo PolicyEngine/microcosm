@@ -45,8 +45,15 @@ from microcosm.build.us_runtime.geography_ladder import (
     GEOGRAPHY_LADDER_ARTIFACT_SHA256_ATTR,
     GEOGRAPHY_LADDER_VINTAGES_ATTR,
 )
+from microcosm.build.us_runtime.local_jurisdictions import (
+    BLOCK_GEOGRAPHY_RUNGS,
+    us_local_jurisdiction_flag_failures,
+)
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from test_support.microcosm_build.us_block_location import (
+    assert_local_jurisdiction_flags_follow_geography,
+    expected_local_jurisdiction_flags,
+    local_jurisdiction_blocks,
     synthetic_blocks,
     write_location_ladder,
 )
@@ -79,6 +86,25 @@ _ASEC_HOUSEHOLDS = (
 # Frame households: every ASEC row once (the native copy), plus PUF-support
 # style copies of three rows that share their native row's source key.
 _COPIED_SOURCE_ROWS = (0, 3, 6)
+# The same columns over test_support's local_jurisdiction_blocks ladder: an
+# ASEC row identified in each registry jurisdiction's county (Denver 08031,
+# Philadelphia 42101, Yonkers' 36003, Wilmington's 10003), one in each
+# place-code decoy's county (36047, 10001) and one unidentified row each in
+# Colorado, Pennsylvania and New York.
+_JURISDICTION_ASEC_HOUSEHOLDS = (
+    (2023, 11, 8, 31, 0),
+    (2023, 12, 8, 0, 0),
+    (2023, 13, 42, 101, 0),
+    (2023, 14, 42, 0, 0),
+    (2023, 15, 36, 3, 0),
+    (2023, 16, 36, 47, 0),
+    (2023, 17, 36, 0, 0),
+    (2023, 18, 10, 3, 0),
+    (2023, 19, 10, 1, 0),
+)
+# PUF-support style copies of the Denver, Philadelphia, Yonkers and
+# Wilmington rows: each copy draws its own block in the same county.
+_JURISDICTION_COPIED_SOURCE_ROWS = (0, 2, 4, 7)
 
 
 def _load_builder():
@@ -95,10 +121,10 @@ def builder():
     return _load_builder()
 
 
-def _write_asec_h5s(tmp_path: Path) -> dict[int, Path]:
+def _write_asec_h5s(tmp_path: Path, households=_ASEC_HOUSEHOLDS) -> dict[int, Path]:
     paths: dict[int, Path] = {}
-    for year in sorted({row[0] for row in _ASEC_HOUSEHOLDS}):
-        rows = [row for row in _ASEC_HOUSEHOLDS if row[0] == year]
+    for year in sorted({row[0] for row in households}):
+        rows = [row for row in households if row[0] == year]
         household = pd.DataFrame(
             {
                 "H_SEQ": [row[1] for row in rows],
@@ -115,8 +141,10 @@ def _write_asec_h5s(tmp_path: Path) -> dict[int, Path]:
     return paths
 
 
-def _located_source_frame() -> Frame:
-    rows = [*_ASEC_HOUSEHOLDS, *(_ASEC_HOUSEHOLDS[i] for i in _COPIED_SOURCE_ROWS)]
+def _located_source_frame(
+    households=_ASEC_HOUSEHOLDS, copied=_COPIED_SOURCE_ROWS
+) -> Frame:
+    rows = [*households, *(households[i] for i in copied)]
     n = len(rows)
     household_ids = np.arange(1, n + 1, dtype=np.int64) * 10
     sizes = np.array([1 + (i % 2) for i in range(n)])
@@ -433,6 +461,89 @@ def test_block_v1_location_writes_consistent_geography_from_the_asec_row(
 
     again, _ = builder._block_v1_household_location(args, frame)
     pd.testing.assert_frame_equal(again.table("household"), household)
+
+
+def test_block_v1_location_derives_the_flags_from_the_drawn_block(
+    builder, tmp_path: Path
+) -> None:
+    """The flags follow the block this stage draws (microcosm#1453).
+
+    The legacy block-ladder stage wrote all four flags with its geography;
+    ``block_v1`` replaces that stage, so its draw must write them too, after
+    the block is drawn, and the stage's receipt must name the block rungs.
+    """
+
+    args = _location_args(tmp_path)
+    args.block_ladder_artifact = write_location_ladder(
+        tmp_path / "jurisdictions.npz", local_jurisdiction_blocks(3)
+    )
+    asec_dir = tmp_path / "jurisdiction_asec"
+    asec_dir.mkdir()
+    args.asec_h5 = [
+        f"{year}={path}"
+        for year, path in sorted(
+            _write_asec_h5s(asec_dir, _JURISDICTION_ASEC_HOUSEHOLDS).items()
+        )
+    ]
+    frame = _located_source_frame(
+        _JURISDICTION_ASEC_HOUSEHOLDS, _JURISDICTION_COPIED_SOURCE_ROWS
+    )
+    # Flags from before the draw, all wrong for some household: the draw must
+    # replace them, never carry them.
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    for flag in ("in_denver", "in_yonkers", "in_wilmington"):
+        tables["household"][flag] = True
+    tables["person"]["pa_philadelphia_wage_tax_resident"] = True
+    frame = Frame(
+        tables,
+        US_SCHEMA,
+        {"household": frame.weights_for("household")},
+        frame.strata,
+        metadata=frame.metadata,
+    )
+
+    located, record = builder._block_v1_household_location(args, frame)
+
+    household, person = located.table("household"), located.table("person")
+    ladder = load_us_location_ladder(args.block_ladder_artifact)
+    assert us_block_location_gate(household, ladder).passed
+    assert_local_jurisdiction_flags_follow_geography(household, person)
+    assert (
+        us_local_jurisdiction_flag_failures(
+            household, person=person, required_rungs=BLOCK_GEOGRAPHY_RUNGS
+        )
+        == []
+    )
+    # Each identified row, and each copy of it, sits in its county, so each
+    # flag is true somewhere and false somewhere.
+    expected = expected_local_jurisdiction_flags(household)
+    assert expected["in_denver"].sum() >= 2
+    assert expected["pa_philadelphia_wage_tax_resident"].sum() >= 2
+    assert expected["in_yonkers"].sum() >= 2
+    assert expected["in_wilmington"].sum() == 2
+    county = household["county_fips"].astype(str)
+    assert not household.loc[county == "10001", "in_yonkers"].any()
+    assert not household.loc[county == "36047", "in_wilmington"].any()
+    assert (county == "10001").sum() == 1 and (county == "36047").sum() >= 1
+
+    # The legacy geography-ladder gate this stage also runs requires the
+    # flags; none of its failures on this small ladder is about one.
+    assert not [
+        failure
+        for failure in record["geography_ladder_gate"]["failures"]
+        if any(flag in failure for flag in expected)
+    ]
+    # The receipt says the block rungs decided all four, with these counts.
+    receipt = record["coverage"]["local_jurisdiction_flags"]
+    assert receipt["rungs"] == ["county", "place"]
+    weights = located.weights_for("household").values
+    for flag, values in expected.items():
+        assert receipt["flags"][flag]["status"] == "derived", flag
+        assert receipt["flags"][flag]["households_in_jurisdiction"] == values.sum()
+        assert receipt["flags"][flag]["weighted_households_in_jurisdiction"] == (
+            pytest.approx(weights[values].sum())
+        )
+    json.dumps(record)
 
 
 def test_block_v1_location_gate_failure_aborts_unless_allowed(

@@ -25,7 +25,11 @@ Column names follow the policyengine-us household input surface
 (``block_geoid``, ``tract_geoid``, ``county_fips``, ``place_fips``, ``sldu``,
 ``sldl``, ``cbsa_code``): the exported artifact carries engine inputs, never
 formula outputs, so ``in_nyc``/``nyc_income_tax`` recompute from the county
-rung instead of being persisted (the #34 regression).
+rung instead of being persisted (the #34 regression). The few local flags the
+engine declares as plain inputs (``in_denver``, ``in_yonkers``,
+``in_wilmington``, ``pa_philadelphia_wage_tax_resident``) have no formula to
+recompute them, so the frame wrapper derives them from the assigned county and
+place through the pinned registry in :mod:`.local_jurisdictions`.
 """
 
 from __future__ import annotations
@@ -47,6 +51,13 @@ from microcosm.build.us_runtime.county_vintage import (
     COUNTY_FIPS_2023_COLUMN,
     county_fips_2023_assignment_failures,
     county_fips_2023_from_blocks,
+)
+from microcosm.build.us_runtime.local_jurisdictions import (
+    BLOCK_GEOGRAPHY_RUNGS,
+    apply_us_local_jurisdiction_flags,
+    us_local_jurisdiction_flag_failures,
+    us_local_jurisdiction_flag_receipt,
+    us_local_jurisdiction_flag_values,
 )
 from microcosm.frame import Frame
 
@@ -384,7 +395,12 @@ def with_household_us_geography_ladder(
     seed: int = 0,
     expected_congressional_district_vintage: str | None = None,
 ) -> Frame:
-    """Return ``frame`` with the household geography ladder assigned."""
+    """Return ``frame`` with the household geography ladder assigned.
+
+    The block fixes county and place together, so every registry
+    local-jurisdiction flag is derived from them and written as an engine
+    input (person flags through ``person_household_id``).
+    """
 
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     tables["household"] = assign_us_geography_ladder(
@@ -395,6 +411,7 @@ def with_household_us_geography_ladder(
             expected_congressional_district_vintage
         ),
     )
+    tables, _ = apply_us_local_jurisdiction_flags(tables, rungs=BLOCK_GEOGRAPHY_RUNGS)
     for link_name in frame.links:
         tables[link_name] = frame.link(link_name).copy()
     weights = {entity: frame.weights_for(entity) for entity in frame.weighted_entities}
@@ -455,6 +472,11 @@ def us_geography_ladder_assignment_summary(
     nyc = np.isin(county, US_NYC_COUNTY_FIPS)
     summary["nyc_weighted_household_share"] = (
         float(weights[nyc].sum() / total) if total > 0 else 0.0
+    )
+    summary["local_jurisdiction_flags"] = us_local_jurisdiction_flag_receipt(
+        us_local_jurisdiction_flag_values(household, rungs=BLOCK_GEOGRAPHY_RUNGS),
+        rungs=BLOCK_GEOGRAPHY_RUNGS,
+        household_weights=weights,
     )
     return summary
 
@@ -562,6 +584,14 @@ def us_geography_ladder_gate(
             f"{cd_column}: {int(cd_mismatch.sum())}/{len(block)} row(s) "
             "have a state prefix disagreeing with block_geoid"
         )
+    # The block decides every household flag, so each must be present and
+    # match its county or place rule. A base H5 built before the flags
+    # existed fails here; rederive_us_local_jurisdiction_flags repairs it.
+    failures.extend(
+        us_local_jurisdiction_flag_failures(
+            household, required_rungs=BLOCK_GEOGRAPHY_RUNGS
+        )
+    )
 
     total = float(weights.sum())
     if total <= 0:

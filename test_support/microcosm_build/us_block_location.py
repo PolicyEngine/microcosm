@@ -90,6 +90,104 @@ def synthetic_blocks(seed: int = 0, *, states=(1, 2, 36)) -> dict[str, np.ndarra
     }
 
 
+#: The states of :func:`local_jurisdiction_blocks`: Colorado, Delaware, New
+#: York and Pennsylvania.
+LOCAL_JURISDICTION_STATES = (8, 10, 36, 42)
+
+
+def local_jurisdiction_blocks(seed: int = 0) -> dict[str, np.ndarray]:
+    """``synthetic_blocks`` over CO, DE, NY and PA with every geography the
+    local-jurisdiction registry names, and a decoy for each place code.
+
+    The codes are written here, not read from the registry, so a test's
+    expectation does not come from the code under test:
+
+    - Colorado's county 001 becomes 031 (Denver) and Pennsylvania's becomes
+      101 (Philadelphia): the two county-rule flags;
+    - New York's county 003 is all place 84000 (Yonkers) and Delaware's
+      county 003 is all place 77580 (Wilmington): the two place-rule flags;
+    - place codes repeat across states, so Delaware's county 001 is all place
+      84000 and New York's county 001 is all place 77580. Neither is Yonkers
+      or Wilmington. That New York county is renamed 047 (Kings), a New York
+      City county, which the PUMA-ladder gate's NYC checks need.
+
+    Every other block keeps its synthetic place. Each state keeps at least a
+    county 003, so every jurisdiction has blocks at every seed.
+    """
+
+    arrays = synthetic_blocks(seed, states=LOCAL_JURISDICTION_STATES)
+    block = arrays["block_geoid"].astype(np.int64)
+    state = block // 10**13
+    county = block // 10**10 % 1000
+    renamed = block.copy()
+    for state_fips, old, new in ((8, 1, 31), (42, 1, 101), (36, 1, 47)):
+        renamed[(state == state_fips) & (county == old)] += (new - old) * 10**10
+    place = arrays["place_fips"].copy()
+    for state_fips, county_code, place_code in (
+        (36, 3, 84000),
+        (10, 3, 77580),
+        (10, 1, 84000),
+        (36, 1, 77580),
+    ):
+        place[(state == state_fips) & (county == county_code)] = place_code
+    order = np.argsort(renamed, kind="stable")
+    located = {name: values[order] for name, values in arrays.items()}
+    located["block_geoid"] = renamed[order]
+    located["place_fips"] = place[order]
+    return located
+
+
+def expected_local_jurisdiction_flags(household) -> dict[str, np.ndarray]:
+    """Each registry flag for each household row, from the row's own
+    ``county_fips`` and ``place_fips``.
+
+    The four rules are written out here (Denver is county 08031; Philadelphia
+    county 42101; Yonkers New York place 84000; Wilmington Delaware place
+    77580), so a test compares the build's flags with an expectation the
+    registry and its module had no part in. The person flag
+    ``pa_philadelphia_wage_tax_resident`` is given per household; a test maps
+    it to persons itself.
+    """
+
+    county = household["county_fips"].astype(str).to_numpy()
+    place = household["place_fips"].astype(str).to_numpy()
+    state = np.array([value[:2] for value in county.tolist()])
+    return {
+        "in_denver": county == "08031",
+        "pa_philadelphia_wage_tax_resident": county == "42101",
+        "in_yonkers": (state == "36") & (place == "84000"),
+        "in_wilmington": (state == "10") & (place == "77580"),
+    }
+
+
+def assert_local_jurisdiction_flags_follow_geography(household, person) -> None:
+    """Every flag column equals :func:`expected_local_jurisdiction_flags`.
+
+    All four must be present as boolean columns: the three household flags on
+    ``household`` and the Philadelphia flag on ``person``, each person taking
+    its household's value.
+    """
+
+    expected = expected_local_jurisdiction_flags(household)
+    for flag in ("in_denver", "in_yonkers", "in_wilmington"):
+        assert flag in household.columns, flag
+        assert household[flag].dtype == bool, (flag, household[flag].dtype)
+        np.testing.assert_array_equal(
+            household[flag].to_numpy(), expected[flag], err_msg=flag
+        )
+    flag = "pa_philadelphia_wage_tax_resident"
+    assert flag in person.columns, flag
+    assert person[flag].dtype == bool, (flag, person[flag].dtype)
+    by_household = dict(
+        zip(household["household_id"].tolist(), expected[flag].tolist(), strict=True)
+    )
+    np.testing.assert_array_equal(
+        person[flag].to_numpy(),
+        np.array([by_household[key] for key in person["person_household_id"].tolist()]),
+        err_msg=flag,
+    )
+
+
 def write_location_ladder(
     path: Path,
     arrays: dict[str, np.ndarray] | None = None,

@@ -15,6 +15,9 @@ from microcosm.build.us_runtime.l0_refit_export import (
     export_us_l0_refit_h5,
     load_l0_refit_npz,
 )
+from microcosm.build.us_runtime.local_jurisdictions import (
+    rederive_us_local_jurisdiction_flags,
+)
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
@@ -1214,3 +1217,282 @@ def test_export_us_l0_refit_h5_records_geography_ladder_gate_when_allowed(
         "household_vehicles_value",
         "tenure_type",
     ]
+
+
+def _frame_with_yonkers_household(**household_extra: object) -> Frame:
+    """The fixture frame with household 20 moved onto a Yonkers block."""
+
+    frame = _us_frame()
+    household = frame.table("household").copy()
+    yonkers = {
+        "state_fips": 36,
+        "congressional_district_geoid": 3616,
+        "block_geoid": "361190001001000",
+        "tract_geoid": "36119000100",
+        "county_fips": "36119",
+        "county_fips_2023": "36119",
+        "place_fips": "84000",
+    }
+    for column, value in yonkers.items():
+        household.loc[1, column] = value
+    for column, values in household_extra.items():
+        household[column] = values
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["household"] = household
+    return Frame(tables, frame.schema, {"household": frame.weights_for("household")})
+
+
+def test_export_derives_local_jurisdiction_flags_a_pre_flag_base_lacks(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    base_h5 = tmp_path / "base.h5"
+    base_h5.write_text("base")
+    output = tmp_path / "populace_us_2024.h5"
+    written: dict[str, Frame] = {}
+
+    monkeypatch.setattr(
+        l0_refit_export, "load_us_frame", lambda path: _frame_with_yonkers_household()
+    )
+    monkeypatch.setattr(
+        l0_refit_export, "copy_microcosm_root_attrs", lambda source, destination: ()
+    )
+
+    class FakeEngine:
+        def write_dataset(self, bundle, path, period):
+            written["bundle"] = bundle
+            Path(path).write_text("sentinel")
+
+    monkeypatch.setattr(l0_refit_export, "PolicyEngineUSEngine", FakeEngine)
+
+    summary = export_us_l0_refit_h5(
+        base_h5=base_h5,
+        weights_npz=_l0_refit_npz(tmp_path),
+        output_h5=output,
+        input_mass_relative_tolerance=1.0,
+        # A single kept household cannot satisfy national NYC-share bounds.
+        require_geography_ladder=False,
+    )
+
+    household = written["bundle"].table("household")
+    person = written["bundle"].table("person")
+    assert household["household_id"].tolist() == [20]
+    assert household["in_yonkers"].tolist() == [True]
+    assert household["in_wilmington"].tolist() == [False]
+    assert household["in_denver"].tolist() == [False]
+    assert person["pa_philadelphia_wage_tax_resident"].tolist() == [False, False]
+    receipt = summary["local_jurisdiction_flags"]
+    assert receipt["carried_flags"] == []
+    assert receipt["rungs"] == ["county", "place"]
+    assert receipt["flags"]["in_yonkers"]["status"] == "derived"
+    assert receipt["flags"]["in_yonkers"]["weighted_households_in_jurisdiction"] == (
+        pytest.approx(333.0)
+    )
+    # The gate ran on the derived flags: no flag failure is recorded.
+    assert not any(
+        failure.startswith(("in_", "pa_"))
+        for failure in summary["geography_ladder_gate"]["failures"]
+    )
+    manifest = json.loads(
+        output.with_suffix(".l0_refit_export_summary.json").read_text()
+    )
+    assert manifest["local_jurisdiction_flags"] == receipt
+
+
+def test_export_refuses_a_base_whose_carried_flag_disagrees_with_its_geography(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    base_h5 = tmp_path / "base.h5"
+    base_h5.write_text("base")
+    output = tmp_path / "populace_us_2024.h5"
+
+    monkeypatch.setattr(
+        l0_refit_export,
+        "load_us_frame",
+        lambda path: _frame_with_yonkers_household(in_yonkers=[False, False]),
+    )
+    monkeypatch.setattr(
+        l0_refit_export,
+        "PolicyEngineUSEngine",
+        lambda: pytest.fail("a corrupt base must not reach the writer"),
+    )
+
+    with pytest.raises(ValueError, match="disagree with its own geography: in_yonkers"):
+        export_us_l0_refit_h5(
+            base_h5=base_h5,
+            weights_npz=_l0_refit_npz(tmp_path),
+            output_h5=output,
+            input_mass_relative_tolerance=1.0,
+            require_geography_ladder=False,
+        )
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("carried", [{}, {"in_yonkers": [False, True]}])
+def test_export_refuses_a_base_whose_block_lies_outside_its_county(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    carried: dict[str, list[bool]],
+) -> None:
+    # The kept household's county is the Bronx while its block and place are
+    # still Yonkers': what a PUMA redraw that kept the block columns would
+    # leave. Deriving from it would export in_yonkers on a Bronx household.
+    base_h5 = tmp_path / "base.h5"
+    base_h5.write_text("base")
+    output = tmp_path / "populace_us_2024.h5"
+
+    monkeypatch.setattr(
+        l0_refit_export,
+        "load_us_frame",
+        lambda path: _frame_with_yonkers_household(
+            county_fips=["36061", "36005"],
+            county_fips_2023=["36061", "36005"],
+            **carried,
+        ),
+    )
+    monkeypatch.setattr(
+        l0_refit_export,
+        "PolicyEngineUSEngine",
+        lambda: pytest.fail("a base with a stale block must not reach the writer"),
+    )
+
+    with pytest.raises(
+        ValueError, match="block_geoid must begin with the row's county_fips"
+    ) as refused:
+        export_us_l0_refit_h5(
+            base_h5=base_h5,
+            weights_npz=_l0_refit_npz(tmp_path),
+            output_h5=output,
+            input_mass_relative_tolerance=1.0,
+            require_geography_ladder=False,
+        )
+    # The export judges the base its weights were fit on, both households.
+    assert "1/2 household row(s) do not" in str(refused.value)
+    assert "[('361190001001000', '36005')]" in str(refused.value)
+    assert not output.exists()
+
+
+def _frame_with_a_wilmington_donor_beside_an_acs_row() -> Frame:
+    """Two New Castle County households: a block-line donor and an ACS row.
+
+    Household 20 sits on a Wilmington block. Household 10 has a county but no
+    block, tract or place, as a legacy pool's ACS rows have, so the table's
+    own geography decides only the county-rule flags.
+    """
+
+    frame = _us_frame()
+    household = frame.table("household").copy()
+    household["state_fips"] = np.asarray([10, 10], dtype="int64")
+    household["congressional_district_geoid"] = np.asarray([1000, 1000], dtype="int64")
+    household["block_geoid"] = [None, "100030001001000"]
+    household["tract_geoid"] = [None, "10003000100"]
+    household["county_fips"] = ["10003", "10003"]
+    household["county_fips_2023"] = ["10003", "10003"]
+    household["place_fips"] = [None, "77580"]
+    household["sldu"] = [None, "001"]
+    household["sldl"] = [None, "001"]
+    household["cbsa_code"] = ["37980", "37980"]
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["household"] = household
+    return Frame(tables, frame.schema, {"household": frame.weights_for("household")})
+
+
+def _export_the_wilmington_donor(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, **options: object
+) -> tuple[dict[str, object], dict[str, Frame]]:
+    base_h5 = tmp_path / "base.h5"
+    base_h5.write_text("base")
+    written: dict[str, Frame] = {}
+    monkeypatch.setattr(
+        l0_refit_export,
+        "load_us_frame",
+        lambda path: _frame_with_a_wilmington_donor_beside_an_acs_row(),
+    )
+    monkeypatch.setattr(
+        l0_refit_export, "copy_microcosm_root_attrs", lambda source, destination: ()
+    )
+
+    class FakeEngine:
+        def write_dataset(self, bundle, path, period):
+            written["bundle"] = bundle
+            Path(path).write_text("sentinel")
+
+    monkeypatch.setattr(l0_refit_export, "PolicyEngineUSEngine", FakeEngine)
+    # The saved weights keep household 20, the Wilmington donor, only.
+    summary = export_us_l0_refit_h5(
+        base_h5=base_h5,
+        weights_npz=_l0_refit_npz(tmp_path),
+        output_h5=tmp_path / "populace_us_2024.h5",
+        input_mass_relative_tolerance=1.0,
+        **options,
+    )
+    return summary, written
+
+
+def test_export_writes_no_flag_the_base_its_weights_were_fit_on_did_not_decide(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # Review round 3 of the adopted microcosm#1453. The saved weights were fit
+    # on the loaded base, whose ACS row withholds the place rung, and keep
+    # only the Wilmington donor. The donor's own block decides in_wilmington,
+    # and writing it would change the donor's local tax, and through SALT an
+    # itemizer's federal income tax, after the fit. So the export writes the
+    # base's flags on the rows it keeps, and records the place-rule flags as
+    # unavailable, with the reason.
+    summary, written = _export_the_wilmington_donor(
+        monkeypatch,
+        tmp_path,
+        # Two households cannot satisfy national NYC-share bounds.
+        require_geography_ladder=False,
+    )
+
+    # Input parity with the frame the weights were fit on: each written table
+    # is the kept row of the loaded base with the flags its own geography
+    # decides, column for column.
+    fitted, fitted_receipt = rederive_us_local_jurisdiction_flags(
+        _frame_with_a_wilmington_donor_beside_an_acs_row()
+    )
+    kept = fitted.select(fitted.table("person")["person_household_id"].eq(20))
+    for entity in kept.entities:
+        pd.testing.assert_frame_equal(
+            written["bundle"].table(entity), kept.table(entity)
+        )
+    assert "in_wilmington" not in written["bundle"].table("household")
+    receipt = summary["local_jurisdiction_flags"]
+    assert receipt["rungs"] == ["county"] == fitted_receipt["rungs"]
+    for flag in ("in_wilmington", "in_yonkers"):
+        assert receipt["flags"][flag]["status"] == "unavailable"
+        assert receipt["flags"][flag]["reason"].startswith(
+            "this artifact's own geography (rungs ['county', 'place']) decides "
+            "it, but its inputs were fixed on a support with the rungs ['county']"
+        )
+    assert receipt["flags"]["in_denver"]["status"] == "derived"
+    # The flags the loaded base held: none.
+    assert receipt["carried_flags"] == []
+    # The input-mass gate does not fail a column only the export carries, so
+    # it would not have caught a written flag either.
+    assert summary["input_mass_parity"]["passed"] is True
+
+
+def test_export_says_which_flags_it_withholds_when_the_geography_gate_refuses(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # The kept donor sits on a block, so the geography-ladder gate requires
+    # every flag the block decides, and the export withholds the two its
+    # base did not decide. The gate refuses by default, and the refusal says
+    # why those flags are absent.
+    with pytest.raises(ValueError, match="failed the geography-ladder gate") as refused:
+        _export_the_wilmington_donor(monkeypatch, tmp_path)
+
+    message = str(refused.value)
+    assert "in_wilmington: absent, but this table's place rung decides it" in message
+    assert (
+        "the export writes only the local-jurisdiction flags its whole base's "
+        "geography decides (rungs ['county']), so it does not write "
+        "in_wilmington, in_yonkers, which only the selected households' own "
+        "geography decides" in message
+    )
+    assert not (tmp_path / "populace_us_2024.h5").exists()

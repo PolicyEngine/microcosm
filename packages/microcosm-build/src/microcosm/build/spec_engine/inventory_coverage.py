@@ -350,7 +350,7 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "bf681aedc859fd6398ef72da68f584069b7d25b3085c549bf99f82e8324c4eef",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "ecf64f2bfbb59ffaaa717d8a09d38e56a38d6d43c1aa0a209d57492b038fb19a",
+    "full_checkpoint": "47d4474df59d47ad5e2fd9a4663002c1c34761862c679e3059bbb83687f17fba",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
     "graph_nodes": "1b208fff4f6d878c522147fee617177544bda8963c940f98a4bfc37507cb955f",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
@@ -392,8 +392,11 @@ EXPECTED_HASHES = {
     # microcosm#1096 moves both again: solve's opt-in softmax mass
     # parametrization projects exactly onto the capped simplex; the default
     # projection parametrization is unchanged.
-    "seed_map": "8d0542f7b83f030772e6e53b5742d0f13bcad82325a4e9b66d5d999a3fbb5276",
-    "seed_protocol": "3ab23e82779263dabe8da210de55ce7f12fdc0464e8145ca2c18649426b7f976",
+    # microcosm#1444 moves both: housing_inputs puts each ACS rent draw on its
+    # own household's head. microcosm#1453 moves both again: geography_ladder
+    # and puma_ladder write the local-jurisdiction flags.
+    "seed_map": "5230ab2f01d1ffbc841eb58b5eb8e452e470bcc3c6ea077b9678f432fc4dd8e4",
+    "seed_protocol": "4ac422f9c40e6bb61b27f31a22bdd31e001e0ce9062fcb62c5906b571ef9f19d",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

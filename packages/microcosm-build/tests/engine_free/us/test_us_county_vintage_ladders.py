@@ -150,6 +150,7 @@ def test_puma_gate_checks_retained_donor_tracts_with_tractless_acs_rows(
             "county_fips": ["09013", "36061", "09013", "36001"],
             COUNTY_FIPS_2023_COLUMN: [donor_region, "36061", "09110", "36001"],
             "tract_geoid": [donor_tract, "36061000100", empty_tract, empty_tract],
+            "in_denver": [False] * 4,
         },
         index=[1000, 2000, 3000, 4000],
     )

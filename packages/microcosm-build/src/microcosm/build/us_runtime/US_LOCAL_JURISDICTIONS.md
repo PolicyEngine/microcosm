@@ -1,0 +1,220 @@
+# US local-jurisdiction flags
+
+policyengine-us 2.2.1 (and 2.60.4) declares four local-tax jurisdictions as
+plain inputs with no formula. A flag stays `False` unless the dataset writes
+it:
+
+| Flag | Entity | Rule | 2020 geography | Population | Engine consumer |
+| --- | --- | --- | --- | ---: | --- |
+| `in_denver` | household | county | county 08031 (same blocks as Denver city, 08/20000) | 715,522 | Denver property-tax relief eligibility |
+| `in_yonkers` | household | place | NY place 84000 (Yonkers city) | 211,569 | `ny_yonkers_income_tax` |
+| `in_wilmington` | household | place | DE place 77580 (Wilmington city) | 70,898 | `de_wilmington_earned_income_tax` |
+| `pa_philadelphia_wage_tax_resident` | person | county | county 42101 (same blocks as Philadelphia city, 42/60000) | 1,603,797 | `pa_philadelphia_wage_tax` |
+
+Local flags that have a formula on `county_fips` (`in_nyc`, `in_la` and the
+rest) need nothing: the engine computes them from the county the geography
+line writes.
+
+## Registry
+
+`microcosm/build/us_local_jurisdictions.json` holds the table above, and
+`microcosm/build/us_local_jurisdictions.py` pins its SHA-256. Both sit outside
+`us_runtime`, whose package import asserts the engine ABI lock wherever
+policyengine-us is installed; `us_runtime/local_jurisdictions.py` re-exports
+the module's names for the `us_runtime` importers and three tools. A county
+rule holds when
+`county_fips` equals the registry county. A place rule holds when the first two
+digits of `county_fips` equal the registry state and `place_fips` equals the
+registry place code; place codes repeat across states, so the state is part of
+the match. A person flag takes its household's value.
+
+`tools/verify_us_local_jurisdiction_registry.py` checks the registry against
+three Census sources:
+
+- the 2020 Gazetteer place and county files (GEOID, ANSI code, name, land and
+  water area; a county-rule jurisdiction's county and city have identical
+  areas);
+- the 2020 P.L. 94-171 `P1_001N` count for each place and county; and
+- any block ladder: the blocks whose household would get a flag sum to the
+  registry population, and a county-rule flag covers the same blocks as its
+  city.
+
+`block_ladder_checks` records the result for ladders `7ba39b95` and `6840b990`.
+With `--record` the tool writes a ladder's counts into the registry and prints
+the new SHA-256 to pin.
+
+## Geography lines
+
+- **Block ladder** (`with_household_us_geography_ladder`): one block fixes
+  county and place, so the line writes all four flags.
+- **PUMA ladder** (`with_household_us_puma_ladder`, the stacked pool): the
+  ladder draws a county but no place. The line writes `in_denver` and the
+  Philadelphia flag and never writes `in_yonkers` or `in_wilmington`; it also
+  removes a stale column of either. The assignment summary records those two
+  as `unavailable`, and the engine ABI lock lists them as
+  `unavailable_place_jurisdiction_input`. The wrapper draws every household's
+  district and county again, so it first removes each column that only a
+  block decides, where an earlier block line left one: `block_geoid`,
+  `tract_geoid`, `place_fips`, `sldu`, `sldl`, `cbsa_code` and any
+  `congressional_district_geoid__<plan>` column. A kept block could lie
+  outside the new county, and the place beside it would no longer be the
+  household's. `assign_us_puma_ladder`, which the pooled ACS line
+  calls, keeps those columns: that line restores a block-line donor's own
+  district and county, so the donor's block still sits in its county.
+- **Pooled ACS line** (`with_optional_acs_spine`): donor rows arrive with
+  block-line flags and ACS rows without. The pool re-derives the county-rule
+  flags for every row from the final county and removes the place-rule flags.
+  Without a PUMA ladder it removes every flag, because ACS rows then have no
+  county. `build_optional_acs_multispine` records the pool's receipt as
+  `provenance["local_jurisdiction_flags"]` on both paths.
+
+Missing, null or malformed geography raises; no line writes `False` for a
+household whose county or place it does not know.
+
+A 2020 block geoid begins with the five digits of its 2020 county, and every
+line writes `county_fips` as a 2020 county (in Connecticut too, whose planning
+regions go in `county_fips_2023`). A place-rule flag is therefore derived only
+from a table in which every row that carries a 15-digit `block_geoid` has it
+inside the row's `county_fips`. On any other table the derivation raises and
+names the count and the first few (block, county) pairs.
+
+### Under `--location-rule block_v1`
+
+The opt-in block-location rule (microcosm#1047, `docs/us-location-v1.md`) puts
+every household on one drawn block and looks county and place up from it. The
+default `legacy` rule is the list above, unchanged. Under `block_v1` every
+line that draws derives all four flags with `BLOCK_GEOGRAPHY_RUNGS`, after the
+draw, and overwrites any flag the frame carried before it:
+
+- **Base-h5 line and stacked pool** (`with_household_us_block_location`): the
+  draw writes the flags with the block's geography, as the block ladder does.
+  The base-h5 line records the receipt in its summary, at
+  `household_location.coverage.local_jurisdiction_flags`, and its
+  geography-ladder gate requires the household flags. The stacked pool
+  records it in its geography-assignment receipt, at
+  `summary.local_jurisdiction_flags`, and its PUMA-ladder gate requires
+  `in_denver`.
+- **Pooled ACS line** (`with_optional_acs_spine`): ACS rows draw a block and
+  donors keep theirs, so `acs_pool_local_jurisdiction_rungs` returns the block
+  rungs and the pool re-derives all four flags for every row after the block
+  assignment. `build_optional_acs_multispine` records that receipt as
+  `provenance["local_jurisdiction_flags"]` and again inside
+  `provenance["geography_ladder"]`, whatever PUMA ladder staging also holds.
+
+The engine ABI lock's `unavailable_place_jurisdiction_input` rows describe the
+default rule. The pool's remaining-stage manifest is static, so it still
+lists `in_yonkers` and `in_wilmington` that way for a `block_v1` pool, which
+writes them; the fallback those rows name does not apply to it.
+
+## Existing artifacts
+
+A base H5 built before this registry carries no flags. Two steps start from
+an existing artifact rather than a geography line, and both call
+`rederive_us_local_jurisdiction_flags`:
+
+- the L0/refit export (`export_us_l0_refit_h5`) calls it on the loaded base,
+  before it applies the saved weights, and the rows the weights keep must
+  carry exactly the base's flags (see below). It records the export's receipt
+  as `local_jurisdiction_flags` in its summary, with the flags the base H5
+  itself held as `carried_flags`; and
+- the fiscal refresh release builder calls it on the loaded base or prepared
+  pool, and again on the frozen support when a selection source reduces it,
+  both before it materializes its targets. Its export support, the rows the L0
+  or full-pool weights keep, is not derived again: it must carry exactly the
+  flags of the last support derived before it (see below). The builder
+  records each receipt, keyed `base`, `frozen_support` and `export`, under
+  `support_value_repairs.local_jurisdiction_flags` in the calibration
+  diagnostics.
+
+A third step, the annual static-aging lane (`us_annual_static_aging`), keeps its
+parent's columns and base-year bytes, so it cannot write the flags. It calls
+`us_local_jurisdiction_artifact_receipt` instead, which refuses a parent that
+lacks a flag its geography decides, carries one that disagrees with it, or
+carries one its geography cannot decide, and records the receipt as
+`base.local_jurisdiction_flags` in the candidate manifest. A parent built
+before the flags existed therefore cannot seed annual files until a rebuild
+adds them, where its geography decides at least one flag: that is, where
+every household has a `county_fips`. A parent with no `county_fips` column,
+or with a null county on some household, decides no flag; the lane accepts
+it when it carries none, and its receipt records no rung and no carried
+flag. The lane imports the helper from
+`microcosm.build.us_local_jurisdictions`, so the check loads no `us_runtime`
+module, never loads the module that asserts the engine ABI lock
+(`spec_engine.engine_abi`) and runs before `policyengine_us` is imported
+(`test_us_annual_static_aging_gate_imports.py` pins all three).
+
+The helper reads the rungs from the artifact's own geography
+(`us_local_jurisdiction_rungs_present`): the county rung when `county_fips` is
+on every row, and the place rung only when every row also has `place_fips` and
+a 15-digit `block_geoid`. A pooled artifact whose ACS rows have no block
+therefore gets the county-rule flags only. A flag the artifact already carries
+must agree with its geography (household and person flags both), or the step
+fails.
+
+The helper refuses an artifact in which any household's `block_geoid` does not
+begin with that household's `county_fips`, whatever flags it carries and
+whether or not every row has a block. Such a household kept its block from
+before its county was redrawn, so the place beside the block is not the
+county's, and nothing in the table says which of the two is right. All three
+steps stop on such an artifact: the L0/refit export, the release builder and
+the annual lane. The L0/refit export judges the whole loaded base, so it stops
+even when the saved weights drop that household.
+
+The rungs belong to the whole table, so removing rows can add one: a frozen
+support or L0 support that keeps only block-anchored donors decides
+`in_yonkers` and `in_wilmington` even though the pooled base did not. Frozen
+selection comes before the builder materializes its targets, so the builder
+derives the flags again on the frozen support, and the targets see them.
+Deriving a support that already carries exactly the flags it decides returns
+the same frame, so that call copies no tables.
+
+L0 selection comes after: the builder fits its weights to targets computed
+from the calibrated support's flags, and its fit gates report those fitted
+values. Writing `in_wilmington` on a retained Wilmington household at that
+point would change its local tax, and through SALT an itemizer's federal
+income tax, so the written H5 would no longer give the fitted targets. The
+export step therefore writes nothing. It calls
+`us_local_jurisdiction_artifact_receipt` with the calibrated support's rungs:
+the export must carry exactly those flags, and the receipt records each flag
+its own geography decides beyond them as unavailable, with that reason. Such a
+release carries the flags of an ordinary pooled release. Its own geography
+still decides the place-rule flags, so the annual lane refuses it as a parent.
+
+The L0/refit export follows the same rule. It assumes that a fit on the base it
+loads produced its saved weights, so it writes no flag that only the rows those
+weights keep decide. `load_l0_refit_npz` checks that assumption by household
+count alone. The export derives the flags on that whole base before it applies
+the weights, then calls `us_local_jurisdiction_artifact_receipt` on the kept
+rows with the base's rungs. A base H5 that predates the flags carries none,
+and a fit that reads it unchanged sees the engine default, `False`. On such a
+base the flags the export derives can change a value the fit computed, such
+as a Wilmington itemizer's federal income tax. When the weights keep only the
+block-anchored rows of a pooled base, those rows decide `in_yonkers` and
+`in_wilmington`, but the export writes neither and its receipt records both as
+unavailable, with that reason. The geography-ladder gate requires every flag a
+block decides, so by default it refuses that export, and the refusal names the
+two flags and says why the export withholds them. With
+`--allow-geography-ladder-gate-failures` the export writes the kept rows with
+the base's flags and records the gate failure in its summary.
+
+## Gates
+
+Both ladder gates fail:
+
+- a flag column that disagrees with its rule;
+- a null or non-boolean flag;
+- a place-rule flag on a table with no complete `place_fips`;
+- a place-rule flag on a table in which a row's block lies outside the row's
+  county (the block-ladder gate also fails that table on its own check of
+  `county_fips` against the block's first five digits); and
+- a missing flag that the line's own rung decides. The block-ladder gate
+  requires `in_denver`, `in_yonkers` and `in_wilmington`; the PUMA-ladder gate
+  requires `in_denver`.
+
+The gates see only the household table, so they check the household flags.
+`us_local_jurisdiction_flag_failures(household, person=...)` also checks that
+each person carries its household's value.
+
+The Philadelphia flag records residence only. `pa_philadelphia_wage_tax` also
+needs `pa_philadelphia_wage_tax_taxable_wages`, which no line supplies yet, so
+the tax stays zero in built datasets.

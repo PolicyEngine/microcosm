@@ -100,7 +100,12 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
     # The post-transfer adult-care gate probes the transferred frame's person
     # table; an empty table means "columns absent", so the gate scopes out.
     transferred_acs = SimpleNamespace(table=lambda entity: pd.DataFrame())
-    pooled = object()
+    # Without a PUMA ladder the pool decides no local-jurisdiction flag, so
+    # its receipt reads no geography.
+    pooled = SimpleNamespace(
+        table=lambda entity: pd.DataFrame(),
+        weights_for=lambda entity: SimpleNamespace(values=np.ones(0)),
+    )
     source = AcsPumsSource(
         tmp_path / "csv_hus.zip",
         tmp_path / "csv_pus.zip",
@@ -197,7 +202,22 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
     ]
     assert result.frame is pooled
     assert result.fit_records == (fit_record,)
-    assert result.provenance == {
+    provenance = dict(result.provenance)
+    local_jurisdiction_flags = provenance.pop("local_jurisdiction_flags")
+    assert local_jurisdiction_flags["rungs"] == []
+    assert {
+        flag: (entry["status"], entry["reason"].split(";")[0])
+        for flag, entry in local_jurisdiction_flags["flags"].items()
+    } == {
+        "in_denver": ("unavailable", "the line supplies no county rung"),
+        "in_wilmington": ("unavailable", "the line supplies no place rung"),
+        "in_yonkers": ("unavailable", "the line supplies no place rung"),
+        "pa_philadelphia_wage_tax_resident": (
+            "unavailable",
+            "the line supplies no county rung",
+        ),
+    }
+    assert provenance == {
         "enabled": True,
         "acs_share": 0.4,
         "loader": {
@@ -296,9 +316,16 @@ def test__given_receipt_anchors__then_fs_overrides_the_transfer_before_pooling(
         events.append(("anchor", frame))
         return anchored_acs, receipt
 
+    # Without a PUMA ladder the pool decides no local-jurisdiction flag, so
+    # its receipt reads no geography.
+    pooled = SimpleNamespace(
+        table=lambda entity: pd.DataFrame(),
+        weights_for=lambda entity: SimpleNamespace(values=np.ones(0)),
+    )
+
     def fake_pool(actual_base, actual_acs, **kwargs):
         events.append(("pool", actual_base, actual_acs))
-        return object()
+        return pooled
 
     monkeypatch.setattr(
         acs_multispine, "require_acs_receipt_anchor_sources", fake_check
@@ -327,6 +354,8 @@ def test__given_receipt_anchors__then_fs_overrides_the_transfer_before_pooling(
         "issue": "microcosm#1022",
         "snap": {"units_anchored": 4},
     }
+    assert result.frame is pooled
+    assert result.provenance["local_jurisdiction_flags"]["rungs"] == []
     json.dumps(result.provenance, allow_nan=False)
 
 
@@ -714,6 +743,21 @@ def test__given_ladder__then_multispine_records_geography_assignment(
         "block_geoid",
         "tract_geoid",
     ]
+    # With the ladder every row has a county: the county-rule flags are
+    # derived, the place-rule flags recorded unavailable.
+    statuses = {
+        flag: entry["status"]
+        for flag, entry in result.provenance["local_jurisdiction_flags"][
+            "flags"
+        ].items()
+    }
+    assert statuses == {
+        "in_denver": "derived",
+        "in_wilmington": "unavailable",
+        "in_yonkers": "unavailable",
+        "pa_philadelphia_wage_tax_resident": "derived",
+    }
+    assert result.provenance["local_jurisdiction_flags"]["rungs"] == ["county"]
 
 
 def _test_puma_ladder() -> UsPumaLadder:

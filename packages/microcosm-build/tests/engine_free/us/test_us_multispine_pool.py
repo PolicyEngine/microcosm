@@ -1036,9 +1036,11 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
             "declared_deferred_null_input": 3,
             "assembled_native_engine_input": 5,
             "frame_structural_engine_input": 10,
-            "preserved_stacked_engine_input": 4,
+            "preserved_stacked_engine_input": 6,
+            "geography_derived_jurisdiction_input": 2,
+            "unavailable_place_jurisdiction_input": 2,
             "derived_schedule_d_input": 1,
-            "declared_absent_engine_input": 762,
+            "declared_absent_engine_input": 756,
             "unprovisioned_source_input": 1,
         }
     )
@@ -1048,6 +1050,16 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
         if entry.provision == "preserved_stacked_engine_input"
     }
     assert preserved == {
+        (
+            "household",
+            "congressional_district_geoid",
+            "ephemeral_simulation_projection_engine_default_if_present_null",
+        ),
+        (
+            "household",
+            "county_fips",
+            "ephemeral_simulation_projection_engine_default_if_present_null",
+        ),
         (
             "person",
             "is_related_to_head_or_spouse",
@@ -1067,6 +1079,44 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
             "household",
             "state_fips",
             "ephemeral_simulation_projection_engine_default_if_present_null",
+        ),
+    }
+    # The stacked pool draws county from the PUMA ladder but no place: the
+    # county-rule jurisdiction flags are derived with it at assembly, the
+    # place-rule ones are never written (local_jurisdictions).
+    jurisdiction = {
+        (entry.entity, entry.variable): (
+            entry.provision,
+            entry.available_by,
+            entry.fallback,
+        )
+        for entry in projection
+        if entry.provision
+        in {
+            "geography_derived_jurisdiction_input",
+            "unavailable_place_jurisdiction_input",
+        }
+    }
+    assert jurisdiction == {
+        ("household", "in_denver"): (
+            "geography_derived_jurisdiction_input",
+            "assembled",
+            "ephemeral_simulation_projection_engine_default_if_present_null",
+        ),
+        ("person", "pa_philadelphia_wage_tax_resident"): (
+            "geography_derived_jurisdiction_input",
+            "assembled",
+            "ephemeral_simulation_projection_engine_default_if_present_null",
+        ),
+        ("household", "in_wilmington"): (
+            "unavailable_place_jurisdiction_input",
+            "simulate",
+            "policyengine_default_no_place_rung",
+        ),
+        ("household", "in_yonkers"): (
+            "unavailable_place_jurisdiction_input",
+            "simulate",
+            "policyengine_default_no_place_rung",
         ),
     }
     assert all(entry.fallback is not None for entry in projection)

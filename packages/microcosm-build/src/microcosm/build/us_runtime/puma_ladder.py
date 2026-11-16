@@ -41,7 +41,16 @@ Column names follow the policyengine-us household input surface
 input, exactly as the UK ladder carries ``*_code`` columns policyengine-uk has
 no input for). The exported artifact carries engine inputs, never formula
 outputs, so ``in_nyc``/``nyc_income_tax`` recompute from the county rung
-instead of being persisted (the #34 regression).
+instead of being persisted (the #34 regression). Of the local flags the engine
+declares as plain inputs, the county-rule ones (``in_denver``,
+``pa_philadelphia_wage_tax_resident``) are derived from the drawn county. The
+ladder has no place rung, so the place-rule flags (``in_yonkers``,
+``in_wilmington``) are unavailable: they are never written, and the summary
+records why (:mod:`.local_jurisdictions`). The frame wrapper redraws every
+household's county, so it also removes the block, tract, place,
+state-legislative-district and CBSA columns an earlier block line left
+(:data:`US_PUMA_LADDER_BLOCK_ANCHORED_COLUMNS`) and any per-plan
+``congressional_district_geoid__<plan>`` column.
 """
 
 from __future__ import annotations
@@ -64,8 +73,16 @@ from microcosm.build.us_runtime.county_vintage import (
     county_fips_2023_assignment_failures,
 )
 from microcosm.build.us_runtime.geography_ladder import (
+    US_GEOGRAPHY_LADDER_COLUMNS,
     US_NYC_COUNTY_FIPS,
     non_text_county_fips_failure,
+)
+from microcosm.build.us_runtime.local_jurisdictions import (
+    PUMA_GEOGRAPHY_RUNGS,
+    apply_us_local_jurisdiction_flags,
+    us_local_jurisdiction_flag_failures,
+    us_local_jurisdiction_flag_receipt,
+    us_local_jurisdiction_flag_values,
 )
 from microcosm.build.us_runtime.puma_county_vintage import (
     county_fips_2023_for_puma_assignment,
@@ -95,6 +112,22 @@ US_PUMA_LADDER_COLUMNS = (
 
 #: The finer tract rung, written only when ``assign_tract=True``.
 US_PUMA_LADDER_TRACT_COLUMN = "tract_geoid"
+
+#: Household columns a block line writes that this ladder does not: the block
+#: and what only a block decides (tract, place, state-legislative districts,
+#: CBSA). :func:`with_household_us_puma_ladder` redraws every household's
+#: district and county, so a kept block would belong to the county the redraw
+#: replaced and the rest would describe that block; the wrapper removes them.
+#: A tract comes back only when ``assign_tract`` draws one.
+US_PUMA_LADDER_BLOCK_ANCHORED_COLUMNS = tuple(
+    column
+    for column in US_GEOGRAPHY_LADDER_COLUMNS
+    if column not in US_PUMA_LADDER_COLUMNS
+)
+#: Prefix of the per-plan district columns a ``block_v1`` draw looks up from
+#: its block (``block_location.US_CD_PLAN_COLUMN_PREFIX``; a test pins the
+#: equality). The wrapper removes those columns for the same reason.
+US_PUMA_LADDER_BLOCK_PLAN_COLUMN_PREFIX = f"{CONGRESSIONAL_DISTRICT_GEOID_COLUMN}__"
 
 US_PUMA_LADDER_SCHEMA_VERSION = 1
 US_PUMA_LADDER_KIND = "us_puma_ladder"
@@ -413,9 +446,29 @@ def with_household_us_puma_ladder(
     assign_tract: bool = False,
     expected_congressional_district_vintage: str | None = None,
 ) -> Frame:
-    """Return ``frame`` with the household PUMA ladder assigned."""
+    """Return ``frame`` with the household PUMA ladder assigned.
+
+    The county-rule local-jurisdiction flags are derived from the drawn county
+    and written as engine inputs; the place-rule flags are left unwritten
+    (any stale column is removed) because the ladder assigns no place.
+
+    Every household's district and county are drawn again here, so a frame an
+    earlier block line located loses each column only its block decided
+    (:data:`US_PUMA_LADDER_BLOCK_ANCHORED_COLUMNS` and the per-plan district
+    columns) before the draw: none of them describes the county the household
+    now has. :func:`assign_us_puma_ladder` itself keeps them, for the pooled
+    ACS line, which restores a block-line donor's own district and county.
+    """
 
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    block_anchored = [
+        column
+        for column in tables["household"].columns
+        if column in US_PUMA_LADDER_BLOCK_ANCHORED_COLUMNS
+        or str(column).startswith(US_PUMA_LADDER_BLOCK_PLAN_COLUMN_PREFIX)
+    ]
+    if block_anchored:
+        tables["household"] = tables["household"].drop(columns=block_anchored)
     tables["household"] = assign_us_puma_ladder(
         tables["household"],
         ladder,
@@ -425,6 +478,7 @@ def with_household_us_puma_ladder(
             expected_congressional_district_vintage
         ),
     )
+    tables, _ = apply_us_local_jurisdiction_flags(tables, rungs=PUMA_GEOGRAPHY_RUNGS)
     for link_name in frame.links:
         tables[link_name] = frame.link(link_name).copy()
     weights = {entity: frame.weights_for(entity) for entity in frame.weighted_entities}
@@ -484,6 +538,11 @@ def us_puma_ladder_assignment_summary(
     nyc = np.isin(county, US_NYC_COUNTY_FIPS)
     summary["nyc_weighted_household_share"] = (
         float(weights[nyc].sum() / total) if total > 0 else 0.0
+    )
+    summary["local_jurisdiction_flags"] = us_local_jurisdiction_flag_receipt(
+        us_local_jurisdiction_flag_values(household, rungs=PUMA_GEOGRAPHY_RUNGS),
+        rungs=PUMA_GEOGRAPHY_RUNGS,
+        household_weights=weights,
     )
     return summary
 
@@ -594,6 +653,14 @@ def us_puma_ladder_gate(
                 f"{label}: {int(mismatched.sum())}/{len(values)} row(s) "
                 "disagree with the expected state/county prefix"
             )
+    # The drawn county decides the county-rule flags, so each must be present
+    # and match. A place-rule flag fails here unless the table carries a
+    # complete place rung to decide it.
+    failures.extend(
+        us_local_jurisdiction_flag_failures(
+            household, required_rungs=PUMA_GEOGRAPHY_RUNGS
+        )
+    )
 
     total = float(weights.sum())
     if total <= 0:
@@ -933,6 +1000,8 @@ def _household_cd_state(values: Any) -> np.ndarray:
 __all__ = [
     "PUMA_LADDER_ARTIFACT_SHA256_ATTR",
     "PUMA_LADDER_VINTAGES_ATTR",
+    "US_PUMA_LADDER_BLOCK_ANCHORED_COLUMNS",
+    "US_PUMA_LADDER_BLOCK_PLAN_COLUMN_PREFIX",
     "US_PUMA_LADDER_COLUMNS",
     "US_PUMA_LADDER_DERIVED_LAYERS",
     "US_PUMA_LADDER_KIND",

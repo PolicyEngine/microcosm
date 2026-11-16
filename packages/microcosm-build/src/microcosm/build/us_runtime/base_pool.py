@@ -27,6 +27,11 @@ from microcosm.build.us_runtime.county_vintage import (
     COUNTY_FIPS_2023_COLUMN,
     county_fips_2023_from_tracts,
 )
+from microcosm.build.us_runtime.local_jurisdictions import (
+    BLOCK_GEOGRAPHY_RUNGS,
+    PUMA_GEOGRAPHY_RUNGS,
+    apply_us_local_jurisdiction_flags,
+)
 from microcosm.build.us_runtime.puf_support import (
     support_channel_column,
     support_clone_index_column,
@@ -53,6 +58,7 @@ __all__ = [
     "DONOR_ASSIGNED_GEOGRAPHY_COLUMNS",
     "ACS_POOL_DONOR_LOCATION_REFUSAL",
     "DONOR_BLOCK_PRESERVED",
+    "acs_pool_local_jurisdiction_rungs",
     "donor_assigned_geography_complete",
     "estimate_optional_acs_pool_peak_bytes",
     "preflight_pooled_ladder_geography",
@@ -120,6 +126,27 @@ ACS_POOL_LOCATION_CLONES_REFUSAL = (
 )
 
 
+def acs_pool_local_jurisdiction_rungs(
+    puma_ladder: UsPumaLadder | None,
+    *,
+    location_rule: str = US_LOCATION_RULE_LEGACY,
+) -> tuple[str, ...]:
+    """The local-jurisdiction rungs :func:`with_optional_acs_spine` supplies.
+
+    Under the legacy location rule: with a PUMA ladder every row has a final
+    county, so the county-rule flags are derived; without one the ACS rows
+    have no county and no flag is. Under ``block_v1`` every pooled row sits
+    on one block (drawn for an ACS row, kept for a donor), which fixes its
+    county and place, so every flag is derived; that rule takes no PUMA
+    ladder. A caller records the pool's receipt with these rungs, passing
+    the same ``location_rule`` it gave the pool.
+    """
+
+    if location_rule == US_LOCATION_RULE_BLOCK_V1:
+        return BLOCK_GEOGRAPHY_RUNGS
+    return PUMA_GEOGRAPHY_RUNGS if puma_ladder is not None else ()
+
+
 def spine_column(entity: str) -> str:
     """Return the entity-prefixed base-spine metadata column."""
 
@@ -165,6 +192,17 @@ def with_optional_acs_spine(
     newly assembled household table before the one final
     :class:`~microcosm.frame.Frame` construction, avoiding a second copy of
     every entity table.
+
+    A block-line base carries local-jurisdiction flags that the ACS rows lack.
+    With ``puma_ladder`` the county-rule flags are re-derived for every row
+    from the final county and the place-rule flags are removed (ACS rows have
+    no place); without it every flag is removed, since ACS rows then have no
+    county either. Under ``block_v1`` (below) every row has a block, so all
+    four flags are re-derived for every row from the county and place of its
+    block, after the block assignment. A flag column is never left half-null
+    for the engine default to fill. :func:`acs_pool_local_jurisdiction_rungs`
+    names the rungs used, so a caller can record which flags were derived and
+    which were left unavailable.
 
     ``max_peak_bytes`` is a fail-fast bound on estimated frame-resident peak
     memory. Pass ``None`` to disable the preflight. The estimate includes both
@@ -292,6 +330,16 @@ def with_optional_acs_spine(
                 expected_congressional_district_vintage
             ),
         )
+    # After the assignment above, whichever rule made it: the flags follow
+    # each row's final county and, under block_v1, the place of its block.
+    tables.update(
+        apply_us_local_jurisdiction_flags(
+            tables,
+            rungs=acs_pool_local_jurisdiction_rungs(
+                puma_ladder, location_rule=location_rule
+            ),
+        )[0]
+    )
     if household_order is not None:
         reordered = household_weights.values[household_order]
         household_weights = Weights(reordered, household_weights.kind)
