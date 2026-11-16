@@ -914,9 +914,13 @@ def _annual_addition_keys(
     """The artifact keys a local-annual build adds to its base build's.
 
     These are its projection manifest and acceptance report, each projected
-    year's H5 and each year's projection receipt, found as
+    year's H5 that ``metadata.dataset_years`` declares, and the one receipt
+    the projection manifest names for each of those years, found as
     :func:`validate_annual_projection_extension` finds them. That function
     checks each one before the build is handed over; this only names them.
+    A receipt named by any other record of the projection manifest, such as
+    one for an undeclared year or for the base year, is not an addition
+    (review of #1627).
     """
     metadata = _object(manifest.get("metadata"), "release metadata")
     artifacts = _object(manifest.get("artifacts"), "release artifacts")
@@ -931,26 +935,34 @@ def _annual_addition_keys(
     )
     evidence = _read_json(evidence_path)
     base_key = _object(evidence.get("base"), "projection base").get("dataset")
-    keys = {evidence_key, acceptance_key}
-    for years in _object(
-        metadata.get("dataset_years"), "metadata.dataset_years"
-    ).values():
-        keys.update(
-            key for key in _object(years, "annual family").values() if key != base_key
-        )
-    for record in _object(evidence.get("artifacts"), "projection artifacts").values():
+    projected = {
+        key
+        for years in _object(
+            metadata.get("dataset_years"), "metadata.dataset_years"
+        ).values()
+        for key in _object(years, "annual family").values()
+        if key != base_key
+    }
+    records = _object(evidence.get("artifacts"), "projection artifacts")
+    receipts: set[str] = set()
+    for key in projected:
+        record = records.get(key)
         receipt = (
             record.get("projection_receipt") if isinstance(record, Mapping) else None
         )
         filename = receipt.get("path") if isinstance(receipt, Mapping) else None
-        keys.update(
-            key
-            for key, entry in artifacts.items()
+        matches = [
+            receipt_key
+            for receipt_key, entry in artifacts.items()
             if isinstance(filename, str)
             and isinstance(entry, Mapping)
             and entry.get("path") == filename
-        )
-    return frozenset(keys)
+        ]
+        # The contract refuses a receipt that names no artifact or several;
+        # name none here then, so nothing extra is exempted.
+        if len(matches) == 1:
+            receipts.add(matches[0])
+    return frozenset({evidence_key, acceptance_key, *projected, *receipts})
 
 
 _ABSENT = object()

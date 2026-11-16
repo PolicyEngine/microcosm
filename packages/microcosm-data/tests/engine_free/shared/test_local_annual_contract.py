@@ -578,13 +578,19 @@ def test_a_local_base_edited_after_publication_passes_no_claim_to_its_annual_bui
     ],
     ids=["diagnostics", "calibration-weights"],
 )
+@pytest.mark.parametrize(
+    "named_as_receipt", [None, "undeclared-year", "base-year"], ids=str
+)
 def test_a_file_added_to_the_local_base_after_publication_is_not_handed_over(
-    local, tmp_path, name, content, kind, role
+    local, tmp_path, name, content, kind, role, named_as_receipt
 ) -> None:
     """The assembler carries every artifact the base folder declares. One
     added after the base was published is in neither the published manifest
     nor the annual projection, so the hand-over refuses it, whatever kind or
-    role it claims (review of #1627)."""
+    role it claims (review of #1627). Naming it as the receipt of a
+    projection record the release does not declare, for 2028 or for the base
+    year, does not make it part of the projection either (round 3)."""
+    import copy
     import hashlib
 
     folder, root = local
@@ -605,6 +611,19 @@ def test_a_file_added_to_the_local_base_after_publication_is_not_handed_over(
     rewrite_json(folder, root, "release_manifest.json", add)
     annual_dir = local_annual_build_folder_of(folder, root)
     assert key in read_json(annual_dir / "release_manifest.json")["artifacts"]
+    receipt = {"path": name, "sha256": hashlib.sha256(content).hexdigest()}
+
+    def name_as_receipt(evidence: dict) -> None:
+        records = evidence["artifacts"]
+        if named_as_receipt == "base-year":
+            records[LOCAL_DATASET_KEY]["projection_receipt"] = receipt
+        else:
+            record = copy.deepcopy(records[projected_key(2027)])
+            record.update(year=2028, projection_receipt=receipt)
+            records[projected_key(2028)] = record
+
+    if named_as_receipt is not None:
+        rewrite_local_annual_evidence(annual_dir, root, name_as_receipt)
     hub = _LocalBaseOnTheHub(tmp_path / "hub", published, published_build)
 
     with pytest.raises(ValueError, match=rf"declares \['{key}'\], which neither"):
