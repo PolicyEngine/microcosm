@@ -351,7 +351,8 @@ _K_INVARIANT_FIELDS = (
 
 def _clone_base(households: int = 90) -> tuple[pd.DataFrame, np.ndarray]:
     """Invented people aged 18 to 30 of the four statuses in households of
-    one to three, each with its household's weight."""
+    one to three, none in full-time education, each with its household's
+    weight."""
 
     rows = [
         (
@@ -366,6 +367,7 @@ def _clone_base(households: int = 90) -> tuple[pd.DataFrame, np.ndarray]:
     person = pd.DataFrame(
         rows, columns=["person_id", "person_household_id", "age", "employment_status"]
     )
+    person["is_in_full_time_education"] = False
     household_weights = np.random.default_rng(931).uniform(100.0, 3000.0, households)
     return person, household_weights[person["person_household_id"].to_numpy() - 1]
 
@@ -525,15 +527,18 @@ def _walk_before_clones(
     person: pd.DataFrame, *, rate: float, weights: np.ndarray
 ) -> tuple[np.ndarray, dict[str, object]]:
     """The flags and the receipt's figures as derive_is_apprentice took them
-    before the target was met within each clone: one walk over every row."""
+    before the target was met within each clone: one walk over every row,
+    whose full-time students are never flagged."""
 
     age = pd.to_numeric(person["age"], errors="coerce").to_numpy(dtype=float)
     in_ages = (age >= 21) & (age < 25)
-    eligible = in_ages & (
-        person["employment_status"]
+    eligible = (
+        in_ages
+        & person["employment_status"]
         .astype(str)
         .isin(("FT_EMPLOYED", "PT_EMPLOYED"))
         .to_numpy()
+        & ~person["is_in_full_time_education"].to_numpy(dtype=bool)
     )
     draws = stable_identity_uniforms(
         person["person_id"].to_numpy(), seed=0, salt=APPRENTICE_OUTPUT
@@ -566,11 +571,12 @@ def test_one_clone_walks_bit_for_bit_as_before(seed: int) -> None:
     the flags and the receipt's masses, target, cap_bound, realized mass and
     deviation are, bit for bit and type for type, the walk's over every row
     as before the count was taken within each clone, on invented frames of
-    every size up to eighty people, with zero weights among them, at random
-    rates."""
+    every size up to eighty people, with zero weights and full-time students
+    among them, at random rates."""
 
     rng = np.random.default_rng(seed)
     compared: dict[str, int] = {}
+    students = 0
     for _ in range(50):
         n = int(rng.integers(0, 81))
         ids = rng.choice(10**6, size=n, replace=False) + 1
@@ -580,7 +586,17 @@ def test_one_clone_walks_bit_for_bit_as_before(seed: int) -> None:
                 "person_household_id": ids,
                 "age": rng.integers(18, 31, size=n),
                 "employment_status": rng.choice(_STATUSES, size=n),
+                # Keyed on the id, so the frames take the generator's draws
+                # as they did before the flag.
+                "is_in_full_time_education": ids % 5 == 0,
             }
+        )
+        students += bool(
+            (
+                person["age"].between(21, 24)
+                & person["employment_status"].isin(("FT_EMPLOYED", "PT_EMPLOYED"))
+                & person["is_in_full_time_education"]
+            ).any()
         )
         weights = rng.uniform(0.0, 3000.0, size=n)
         weights[rng.random(n) < 0.1] = 0.0
@@ -609,6 +625,9 @@ def test_one_clone_walks_bit_for_bit_as_before(seed: int) -> None:
                 assert type(got) is type(value), key
                 assert _bits(got) == _bits(value), key
     assert set(compared) == set(before) and min(compared.values()) > 50, compared
+    # The premise: some frames hold an employee aged 21 to 24 in full-time
+    # education, whom neither walk may flag.
+    assert students
 
 
 def test_the_stage_walks_each_geographic_clone(no_engine) -> None:

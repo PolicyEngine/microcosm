@@ -3906,6 +3906,9 @@ def _e4_raw_frame(n_households: int = 16):
     )
     person["person_household_id"] = person["person_benunit_id"] // 100
     person["months_since_last_birthday"] = 0.0
+    # frs_education's flag, which the apprentice draw reads: nobody here is
+    # in full-time education.
+    person["is_in_full_time_education"] = False
     for column in ("person_id", "person_benunit_id", "person_household_id"):
         person[column] = person[column].astype("int64")
     ids = np.arange(1, n_households + 1, dtype="int64")
@@ -4529,6 +4532,7 @@ class TestTheApprenticeWalkToRounding:
                 "person_id": np.arange(1, n + 1, dtype="int64"),
                 "age": [22] * n,
                 "employment_status": ["FT_EMPLOYED"] * n,
+                "is_in_full_time_education": [False] * n,
             }
         )
 
@@ -4589,6 +4593,46 @@ class TestTheApprenticeWalkToRounding:
         older.loc[order[0], "age"] = 30
         assert not tool._apprentice_walk_holds(
             older, prefix, person_weights=weights, rate=0.5
+        )
+
+    def test_a_full_time_student_is_skipped_as_the_stage_skips_them(self) -> None:
+        # Four employees of weight 1 at a rate of a half: the target, 2,
+        # counts all four, and frs_person_draws walks only those outside
+        # full-time education, so with the first in draw order a full-time
+        # student it flags the second and third. Those flags hold. Read
+        # without the exclusion they do not, since the student's uniform lies
+        # below the largest flagged one's; nor do flags that take the
+        # student, whom the stage cannot flag.
+        from microcosm.build.uk_runtime.frs_person_draws import derive_is_apprentice
+
+        tool = _load_tool()
+        person = self._people(4)
+        order = self._in_draw_order(person)
+        person.loc[order[0], "is_in_full_time_education"] = True
+        weights = np.ones(4)
+        stage = derive_is_apprentice(
+            person,
+            rate=0.5,
+            person_weights=weights,
+            person_sources=person["person_id"].to_numpy(),
+        ).flags
+        # The premise: the stage skips the student and flags the next two.
+        expected = np.zeros(4, dtype=bool)
+        expected[order[1:3]] = True
+        assert stage.tolist() == expected.tolist()
+        assert tool._apprentice_walk_holds(
+            person, stage, person_weights=weights, rate=0.5
+        )
+        assert not tool._apprentice_walk_holds(
+            person.assign(is_in_full_time_education=False),
+            stage,
+            person_weights=weights,
+            rate=0.5,
+        )
+        with_student = np.zeros(4, dtype=bool)
+        with_student[order[:2]] = True
+        assert not tool._apprentice_walk_holds(
+            person, with_student, person_weights=weights, rate=0.5
         )
 
     def test_the_tolerance_is_relative_to_the_people_aged_21_to_24(self) -> None:

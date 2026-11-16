@@ -502,11 +502,12 @@ def _apprentice_walk_holds(
 ) -> bool:
     """Whether stored ``is_apprentice`` flags are the stage's walk, to rounding.
 
-    ``frs_person_draws`` flags the eligible employees aged 21 to 24 of each
-    geographic clone (``clone_index``, aligned with ``person``; everyone in
-    one clone when not given) in the order of their identity-keyed uniform
-    until their weight lies nearest ``rate`` times the weight of the clone's
-    people aged 21 to 24 (``derive_is_apprentice``). ``person_weights`` are
+    ``frs_person_draws`` flags the employees aged 21 to 24 outside full-time
+    education (``APPRENTICE_EXCLUDED_FLAG``) of each geographic clone
+    (``clone_index``, aligned with ``person``; everyone in one clone when not
+    given) in the order of their identity-keyed uniform until their weight
+    lies nearest ``rate`` times the weight of the clone's people aged 21 to
+    24 (``derive_is_apprentice``). ``person_weights`` are
     each person's household weight restored to the stage's to rounding
     (``_frame_as_draw_stages_saw``), so where a clone's target lies within
     rounding of the midpoint between two consecutive prefixes of its walk a
@@ -520,6 +521,7 @@ def _apprentice_walk_holds(
 
     from microcosm.build.uk_runtime.frs_person_draws import (
         APPRENTICE_EMPLOYEE_STATUSES,
+        APPRENTICE_EXCLUDED_FLAG,
         APPRENTICE_MAX_AGE_EXCLUSIVE,
         APPRENTICE_MIN_AGE,
         APPRENTICE_OUTPUT,
@@ -532,11 +534,14 @@ def _apprentice_walk_holds(
     weights = np.asarray(person_weights, dtype=float)
     age = pd.to_numeric(person["age"], errors="coerce").to_numpy(dtype=float)
     in_ages = (age >= APPRENTICE_MIN_AGE) & (age < APPRENTICE_MAX_AGE_EXCLUSIVE)
-    eligible = in_ages & (
-        person["employment_status"]
+    # The stage's eligible employees, without a full-time student among them.
+    eligible = (
+        in_ages
+        & person["employment_status"]
         .astype(str)
         .isin(APPRENTICE_EMPLOYEE_STATUSES)
         .to_numpy()
+        & ~person[APPRENTICE_EXCLUDED_FLAG].to_numpy(dtype=bool)
     )
     uniforms = _draws(person["person_id"].to_numpy(), APPRENTICE_OUTPUT)
     if (flags & ~eligible).any():

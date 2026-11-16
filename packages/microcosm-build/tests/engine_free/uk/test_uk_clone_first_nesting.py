@@ -107,6 +107,7 @@ from microcosm.build.uk_runtime.frs_household_draws import (
 )
 from microcosm.build.uk_runtime.frs_person_draws import (
     APPRENTICE_EMPLOYEE_STATUSES,
+    APPRENTICE_EXCLUDED_FLAG,
     APPRENTICE_MAX_AGE_EXCLUSIVE,
     APPRENTICE_MIN_AGE,
     APPRENTICE_OUTPUT,
@@ -1216,6 +1217,7 @@ def _take_up_frame() -> Frame:
                     "person_household_id": sernum,
                     "age": age,
                     "employment_status": status,
+                    "is_in_full_time_education": False,
                     "months_since_last_birthday": 6.0,
                     "is_uc_claimant": claimant,
                     "child_benefit_reported": cb,
@@ -1289,13 +1291,14 @@ def _apprentice_ages_and_employees(
     person: pd.DataFrame,
 ) -> tuple[np.ndarray, np.ndarray]:
     """The people aged 21 to 24, and the employees among them the walk can
-    flag."""
+    flag: those outside full-time education."""
 
     age = person["age"].to_numpy()
     in_ages = (age >= APPRENTICE_MIN_AGE) & (age < APPRENTICE_MAX_AGE_EXCLUSIVE)
     eligible = (
         in_ages
         & person["employment_status"].isin(APPRENTICE_EMPLOYEE_STATUSES).to_numpy()
+        & ~person[APPRENTICE_EXCLUDED_FLAG].to_numpy(dtype=bool)
     )
     return in_ages, eligible
 
@@ -1478,6 +1481,7 @@ def _draws_frame() -> Frame:
                     "person_household_id": sernum,
                     "age": age,
                     "employment_status": status,
+                    "is_in_full_time_education": False,
                     "months_since_last_birthday": 6.0,
                     "is_uc_claimant": claimant,
                     "child_benefit_reported": 0,
