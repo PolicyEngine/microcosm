@@ -1660,6 +1660,25 @@ def impute_uk_spi_income_support(
             "the person table (the support lineage column the manifest declares)."
         )
     identity_column = SPI_TRANSPORT_KEY_COLUMN
+    # The transport keys its training rows on this column and refuses a key
+    # it meets twice. On the clone-first spine every clone carries its own:
+    # geographic_expand mints each clone's ids before the support channel
+    # keys every row on its own id, so clones that the fold above keeps
+    # apart, as they differ on what the forests read, train under keys of
+    # their own. Clones made after the support channel (the dense pool's)
+    # share their record's key, so a frame whose differing clones would meet
+    # the transport under one key is refused here, by its cause
+    # (microcosm#931).
+    training_identities = person.loc[reference_people, identity_column].to_numpy()
+    if not pd.Index(training_identities).is_unique:
+        raise ValueError(
+            "The SPI income stage's transport training rows repeat a "
+            f"{identity_column} after the geographic fold: clones of one survey "
+            "record made after the support channel share its key, and clones "
+            "that differ on what the forests read stay training rows of their "
+            "own. On the clone-first spine each clone carries its own key "
+            "(microcosm#931)."
+        )
     recipient_identities = person.loc[spi_people, identity_column].to_numpy()
     transport = cross_fit_transport(
         fit_reference,
@@ -1667,7 +1686,7 @@ def impute_uk_spi_income_support(
         encoded_training=encoded_reference,
         training_observed=observed_analogues(person.loc[reference_people]),
         training_folds=training_folds,
-        training_identities=person.loc[reference_people, identity_column].to_numpy(),
+        training_identities=training_identities,
         used=used_folds,
         recipient_predictors=recipient_predictors,
         encoded_recipients=encoded_recipient,
