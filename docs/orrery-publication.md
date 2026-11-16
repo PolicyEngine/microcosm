@@ -176,9 +176,11 @@ accepts only a loopback address, and reaches telemetry, Orrery graph
 publication and the Hugging Face module's collector submissions alike.
 
 The minimum is 0.16.0, the newest release on 2026-11-16. 0.16.0 adds
-collector provenance on a promotion or withdrawal, which it submits as the
-`releases.json` the change wrote once its commit lands, so the collector's
-latest calibration tree follows the build now current; 0.15.0 accepts that
+collector provenance on a promotion or withdrawal: once the change lands,
+it submits `releases.json` at the commit its receipt reports (for a change
+that writes nothing, the commit that last changed the file), and the
+collector points the country's latest calibration tree at its default
+release's current build when it has that build's tree. 0.15.0 accepts that
 provenance but drops it, so it would submit no `releases.json`. The minimum
 before it, 0.15.0, from 2026-11-13, added the Hugging Face module's setting
 that switches collector submissions on, which every emitter a build starts

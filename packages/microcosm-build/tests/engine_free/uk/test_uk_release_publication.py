@@ -571,14 +571,28 @@ def test_the_promote_command_asks_the_collector_before_closing_its_emitter(
     monkeypatch,
     capsys,
 ) -> None:
-    """A collector that turns the submission down is a warning; the
-    promotion, which landed, still succeeds."""
+    """A collector that turns the submission down is a warning naming its
+    kind; the promotion, which landed, still succeeds."""
     started, _ = _start_emitters(
         monkeypatch,
         {},
         {
             "collector_receipts": [
-                {"status": "rejected", "error_code": "invalid_submission"}
+                {
+                    "status": "rejected",
+                    "error_code": "invalid_submission",
+                    "attempts": 1,
+                    # As emitter 0.16.0 lists a promotion's one submission.
+                    "submissions": [
+                        {
+                            "kind": "releases-record",
+                            "status": "rejected",
+                            "error_code": "invalid_submission",
+                            "submission_id": "submission-one",
+                            "collector_status": "rejected",
+                        }
+                    ],
+                }
             ]
         },
     )
@@ -593,10 +607,11 @@ def test_the_promote_command_asks_the_collector_before_closing_its_emitter(
         "error_code": "invalid_submission",
     }
     assert (
-        "warning: the collector rejected the submissions of releases.json with "
-        f"build {UK_NATIONAL_BUILD} current in {UK_NATIONAL_RELEASE_ID} "
-        "(invalid_submission)." in error
+        "warning: the collector rejected the releases-record submission of "
+        f"releases.json with build {UK_NATIONAL_BUILD} current in "
+        f"{UK_NATIONAL_RELEASE_ID} (invalid_submission)." in error
     )
+    assert "rejected the submissions of" not in error
     promoter = started[1]
     assert promoter.calls.index("collector_submission_receipt") < (
         promoter.calls.index("close")

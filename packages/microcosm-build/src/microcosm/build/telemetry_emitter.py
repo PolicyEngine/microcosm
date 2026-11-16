@@ -140,9 +140,11 @@ def _packaged_minimum_emitter_version() -> str:
 
 #: The oldest emitter release a build starts: 0.16.0 since 2026-11-16, the
 #: newest release then. 0.16.0 adds collector provenance on a promotion or
-#: withdrawal, which it submits as the ``releases.json`` the change wrote
-#: once its commit lands, so the collector's latest calibration tree follows
-#: the build now current. 0.15.0 accepts that provenance but drops it, so it
+#: withdrawal: once the change lands, it submits ``releases.json`` at the
+#: commit its receipt reports (for a change that writes nothing, the commit
+#: that last changed the file), and the collector points the country's
+#: latest calibration tree at its default release's current build when it
+#: has that build's tree. 0.15.0 accepts that provenance but drops it, so it
 #: would submit no ``releases.json``. 0.15.0, from 2026-11-13, added the
 #: Hugging Face module's setting that switches collector submissions on
 #: (``hugging_face_settings``), collector provenance on a release
