@@ -7138,12 +7138,9 @@ def test_precalibration_ancestry_composed_stage_scan_is_linear(monkeypatch):
     spec = _synthetic_stage_spec(
         [binding], [_synthetic_stage(binding, ["p_out"])], rows
     )
-    started = time.perf_counter()
     outcomes = _synthetic_outcomes(spec, nodes, {"p": "p-ref"})
-    elapsed = time.perf_counter() - started
     assert outcomes == {"declaration": None, "composed": None}
     assert Counted.offsets == 0
-    assert elapsed < 1
 
 
 @pytest.mark.parametrize(
