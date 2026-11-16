@@ -62,8 +62,17 @@ from microcosm.build.us_runtime.acs_transfer import (
     transfer_acs_inputs,
 )
 from microcosm.build.us_runtime.base_pool import (
+    ACS_POOL_BLOCK_LOCATION_METADATA_KEY,
     preflight_pooled_ladder_geography,
+    validate_pool_location_options,
     with_optional_acs_spine,
+)
+from microcosm.build.us_runtime.block_location import (
+    US_BLOCK_LOCATION_RULE_ID,
+    US_LOCATION_RULE_BLOCK_V1,
+    US_LOCATION_RULE_LEGACY,
+    UsLocationLadder,
+    location_geography_columns,
 )
 from microcosm.build.us_runtime.congressional_district_vintage import (
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
@@ -123,6 +132,11 @@ def build_optional_acs_multispine(
         CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
     ),
     drop_group_quarters_children: bool = False,
+    location_rule: str = US_LOCATION_RULE_LEGACY,
+    block_ladder: UsLocationLadder | None = None,
+    location_seed: int = 0,
+    location_clones: int = 1,
+    donor_location_rule: str | None = None,
 ) -> AcsMultispineResult:
     """Optionally build, transfer, and append the ACS 2024 1-year spine.
 
@@ -155,12 +169,38 @@ def build_optional_acs_multispine(
     materialized its own frame.  This cannot make the final dense pool small,
     but it avoids retaining the raw, mapped, transferred, and pooled versions
     together for the rest of the build.
+
+    ``location_rule`` defaults to ``"legacy"``: the PUMA-ladder assignment
+    above, unchanged. ``"block_v1"`` (microcosm#696) locates every pooled
+    household on one 2020 block from ``block_ladder`` instead
+    (:func:`~microcosm.build.us_runtime.base_pool.with_optional_acs_spine`);
+    its record lands in ``provenance["household_location"]``.
+    ``donor_location_rule`` is the location rule ``base`` recorded;
+    ``block_v1`` keeps each donor's block, so it refuses a base located under
+    any other rule. The location options are validated before the ACS spine
+    is loaded.
     """
 
     if source is None:
         return AcsMultispineResult(
             frame=base,
             provenance={"enabled": False},
+        )
+    block_location = location_rule != US_LOCATION_RULE_LEGACY
+    if (
+        block_location
+        or block_ladder is not None
+        or location_seed != 0
+        or location_clones != 1
+        or donor_location_rule is not None
+    ):
+        validate_pool_location_options(
+            location_rule,
+            block_ladder=block_ladder,
+            location_seed=location_seed,
+            location_clones=location_clones,
+            geography_seed=geography_seed,
+            donor_location_rule=donor_location_rule,
         )
 
     raw_acs, loader_metadata = build_acs_pums_unit_frame(
@@ -225,7 +265,16 @@ def build_optional_acs_multispine(
     # tract, incoherent preserved geography, or an unknown ACS PUMA must
     # fail here, not after the QRF fits have run.
     donor_geography: str | None = None
-    if puma_ladder is not None:
+    if block_location:
+        donor_geography = preflight_pooled_ladder_geography(
+            base.table("household"),
+            mapped_frame.table("household"),
+            puma_ladder,
+            location_rule=location_rule,
+            block_ladder=block_ladder,
+            donor_location_rule=donor_location_rule,
+        )
+    elif puma_ladder is not None:
         donor_geography = preflight_pooled_ladder_geography(
             base.table("household"),
             mapped_frame.table("household"),
@@ -324,7 +373,15 @@ def build_optional_acs_multispine(
         hours_imputed_inputs + income_imputed_inputs + tuple(transferred.imputed_inputs)
     )
     deferred_inputs = tuple(transferred.deferred_inputs)
-    if puma_ladder is not None:
+    if block_location:
+        # The block resolves every geography the transfer defers (block,
+        # tract, county, congressional district).
+        assert block_ladder is not None
+        located = set(location_geography_columns(block_ladder))
+        deferred_inputs = tuple(
+            column for column in deferred_inputs if column not in located
+        )
+    elif puma_ladder is not None:
         deferred_inputs = tuple(
             column
             for column in deferred_inputs
@@ -346,7 +403,21 @@ def build_optional_acs_multispine(
         )
 
     pool_options: dict[str, Any] = {"acs_share": acs_share}
-    if puma_ladder is not None:
+    if block_location:
+        pool_options.update(
+            {
+                "geography_seed": geography_seed,
+                "expected_congressional_district_vintage": (
+                    expected_congressional_district_vintage
+                ),
+                "location_rule": location_rule,
+                "block_ladder": block_ladder,
+                "location_seed": location_seed,
+                "location_clones": location_clones,
+                "donor_location_rule": donor_location_rule,
+            }
+        )
+    elif puma_ladder is not None:
         pool_options.update(
             {
                 "puma_ladder": puma_ladder,
@@ -399,7 +470,22 @@ def build_optional_acs_multispine(
                 work_disability, imputed_provenance
             )
         )
-    if puma_ladder is not None:
+    if block_location:
+        assert block_ladder is not None
+        provenance["household_location"] = _json_ready_mapping(
+            _thawed_metadata(pooled.metadata[ACS_POOL_BLOCK_LOCATION_METADATA_KEY])
+        )
+        provenance["geography_ladder"] = _block_geography_provenance(
+            pooled,
+            block_ladder,
+            puma_ladder,
+            location_seed=location_seed,
+            donor_geography=donor_geography,
+            expected_congressional_district_vintage=(
+                expected_congressional_district_vintage
+            ),
+        )
+    elif puma_ladder is not None:
         geography = us_puma_ladder_assignment_summary(
             pooled.table("household"),
             puma_ladder,
@@ -437,6 +523,58 @@ def build_optional_acs_multispine(
     )
 
 
+def _block_geography_provenance(
+    pooled: Frame,
+    block_ladder: UsLocationLadder,
+    puma_ladder: UsPumaLadder | None,
+    *,
+    location_seed: int,
+    donor_geography: str | None,
+    expected_congressional_district_vintage: str | None,
+) -> dict[str, Any]:
+    """The ``geography_ladder`` provenance of a ``block_v1`` pool.
+
+    It keeps the legacy record's shape (coverage of the PUMA-ladder columns,
+    which ``block_v1`` still writes, from
+    :func:`~microcosm.build.us_runtime.puma_ladder.us_puma_ladder_assignment_summary`
+    when a PUMA ladder is supplied) and states the block rule: every
+    geography column is resolved from the drawn or preserved block, so no
+    sub-PUMA input stays unresolved.
+    """
+
+    household = pooled.table("household")
+    columns = list(location_geography_columns(block_ladder))
+    if puma_ladder is not None:
+        geography = us_puma_ladder_assignment_summary(
+            household,
+            puma_ladder,
+            weight_values=pooled.weights_for("household").values,
+        )
+    else:
+        geography = {
+            "applied": all(column in household.columns for column in columns),
+            "household_rows": int(len(household)),
+        }
+    geography.update(
+        {
+            "location_rule": US_LOCATION_RULE_BLOCK_V1,
+            "assignment_rule": US_BLOCK_LOCATION_RULE_ID,
+            "seed": location_seed,
+            "block_ladder_sha256": block_ladder.sha256,
+            "block_layer_vintages": block_ladder.layer_vintages,
+            "expected_congressional_district_vintage": (
+                expected_congressional_district_vintage
+            ),
+            # ACS rows draw a block within their observed PUMA; donor rows
+            # keep the block their block_v1 base drew.
+            "donor_geography": donor_geography,
+            "resolved_model_inputs": columns,
+            "unresolved_sub_puma_inputs": [],
+        }
+    )
+    return _json_ready_mapping(geography)
+
+
 def _require_recipient_adult_care_structure(
     frame: Frame,
 ) -> dict[str, Any] | None:
@@ -464,6 +602,20 @@ def _require_recipient_adult_care_structure(
             "gate:\n  " + "\n  ".join(gate.failures)
         )
     return {"passed": True, "details": dict(gate.details)}
+
+
+def _thawed_metadata(value: Any) -> Any:
+    """A plain-container copy of frozen :class:`Frame` metadata.
+
+    Frame metadata freezes mappings and sequences into its own immutable
+    types; the manifest wants plain dicts and lists.
+    """
+
+    if isinstance(value, Mapping):
+        return {key: _thawed_metadata(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_thawed_metadata(item) for item in value]
+    return value
 
 
 def _json_ready_mapping(value: Mapping[str, Any]) -> dict[str, Any]:

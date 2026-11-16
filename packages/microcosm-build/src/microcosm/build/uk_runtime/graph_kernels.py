@@ -126,6 +126,7 @@ _STAGE_MODULES = {
     "uc_reporter_redraw": "uc_reporter_redraw",
     "spi_benefit_coherence": "spi_benefit_coherence",
     "uc_capital_coherence": "uc_capital_coherence",
+    "uc_limited_capability": "uc_limited_capability",
     "uc_take_up": "uc_take_up",
     "uc_legacy_closure_take_up": "legacy_closure_take_up",
     "pension_credit_take_up": "pension_credit_take_up",
@@ -144,6 +145,7 @@ _STAGE_MODULES = {
     "student_loans": "student_loans",
     "private_school_attendance": "private_school_attendance",
     "isa_subscriptions": "isa_subscriptions",
+    "pip_points": "pip_points",
     "trading_allowance_receipts": "trading_allowance_receipts",
     "company_cars": "company_cars",
     "childcare_copy_take_up": "childcare_copy_take_up",
@@ -206,6 +208,10 @@ _STAGE_HELPER_MODULES = {
     ),
     "uc_capital_coherence": (uc_relationships,),
     # The Universal Credit redraw reads the award through the adapter, the
+    # One engine materialization of the proxy, the claimant role and carer
+    # status; the frs_spine carrier's codes; the receipt's support counts
+    # (microcosm#1095, Y1).
+    "uc_limited_capability": (uk_engine_adapter, frs_spine, receipt_counts),
     # vendored DWP counts, the closure stage's rule and rates, the deduction
     # attributes, the take-up population and the family-type roles, and counts
     # its pools and receipt on the source lineage (microcosm#1334).
@@ -247,6 +253,9 @@ _STAGE_HELPER_MODULES = {
         hmrc_isa_statistics,
         receipt_counts,
     ),
+    # The points draws are keyed on identity, read the vendored DWP tables and
+    # round their receipt's support (microcosm#1095, P1).
+    "pip_points": (receipt_counts, stochastic_assignment, ledger_fact_vendoring),
     # The claimant draw is keyed on identity and its receipt rounds its
     # support (microcosm#1428).
     "trading_allowance_receipts": (receipt_counts, stochastic_assignment),
@@ -625,6 +634,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .legacy_closure_take_up import UKLegacyClosureTakeUpStageTransform
     from .nts_bus_travel import UKNTSBusTravelStageTransform
     from .pension_credit_take_up import UKPensionCreditTakeUpStageTransform
+    from .pip_points import UKPIPPointsStageTransform
     from .private_school_attendance import UKPrivateSchoolAttendanceStageTransform
     from .property_components import UKPropertyComponentsStageTransform
     from .property_purchases import (
@@ -648,6 +658,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .trading_allowance_receipts import UKTradingAllowanceReceiptsStageTransform
     from .uc_capital_coherence import UKUCCapitalCoherenceStageTransform
     from .uc_deduction_attributes import UKUCDeductionAttributesStageTransform
+    from .uc_limited_capability import UKUCLimitedCapabilityStageTransform
     from .uc_reporter_redraw import UKUCReporterRedrawStageTransform
     from .uc_take_up import UKUCTakeUpStageTransform
     from .was_lisa import UKWASLISAStageTransform
@@ -861,6 +872,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
                 stage=stages["uc_capital_coherence"]
             ),
+            "uc_limited_capability": UKUCLimitedCapabilityStageTransform(
+                stage=stages["uc_limited_capability"], engine=engine
+            ),
             "uc_take_up": UKUCTakeUpStageTransform(
                 stage=stages["uc_take_up"], engine=engine
             ),
@@ -927,6 +941,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 donor_household=was,
                 donor_person=was_person,
             ),
+            "pip_points": UKPIPPointsStageTransform(stage=stages["pip_points"]),
             "trading_allowance_receipts": UKTradingAllowanceReceiptsStageTransform(
                 stage=stages["trading_allowance_receipts"]
             ),

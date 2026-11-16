@@ -1,0 +1,1 @@
+The Tests workflow runs every job on `ubuntu-24.04` and sets `UV_MANAGED_PYTHON=1`, so uv downloads its own Python. A job that GitHub placed on an `ubuntu-26.04` runner took that image's Python 3.14.4 and failed the head-to-head scorer's worker-recycling test, which needs 3.14.7.

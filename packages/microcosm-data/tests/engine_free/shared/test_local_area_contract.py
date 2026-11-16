@@ -4,6 +4,11 @@ A US local-area release must also carry the ACS package stage's stored-input
 gate (microcosm#1026, #1034). Its tests are examples plus Hypothesis
 properties; the wheels job installs no test extras, so the properties skip
 there.
+
+New US local-area builds publish into build folders of the release
+``microcosm-us-2024-local`` (microcosm#1570); a US build that keeps only its
+tag still validates in the tagged layout, in a directory named after the
+build, which most of these tests use.
 """
 
 from __future__ import annotations
@@ -12,19 +17,24 @@ import copy
 import hashlib
 import json
 import re
+import sys
 from pathlib import Path
 
 import pytest
 
 from microcosm.data import contract
+from microcosm.data.build_folder_manifests import rewrite_release_dir
 from microcosm.data.contract import (
     NON_DEFAULT_LOCAL_AREA_DATASET_ROLE,
     US_LOCAL_AREA_SPM_MEASUREMENT_STAGE,
     US_LOCAL_AREA_STORED_INPUTS_STAGE,
+    US_LOCAL_RELEASE_ID,
+    US_RECEIPT_DONOR_RELEASE_ID,
     US_SPM_MEASUREMENT_EVIDENCE_KEY,
     US_STORED_INPUTS_EVIDENCE_KEY,
     ReleaseContractError,
     release_dataset_role,
+    validate_evidence_release_dir,
     validate_release_dir,
 )
 from microcosm.data.release import prepare_release, publish_release
@@ -33,10 +43,28 @@ from test_support.microcosm_data.build_folders import (
     UK_LOCAL_BUILD,
     build_folder_build_manifest,
     build_folder_release_manifest,
+    register_uk_local_release,
 )
 from test_support.paths import REPOSITORY_ROOT
 
+#: A US local-area build's ID. In the tagged layout it is also its release's
+#: name; in the build-folder layout it is the build of US_LOCAL_RELEASE_ID.
 RELEASE_ID = "populace-us-2024-buildo-acs-local-abc1234-20260723T000000Z"
+US_LOCAL_BUILD = RELEASE_ID
+#: The dataset a new US local-area build declares, by its key.
+US_LOCAL_DATASET_KEY = "microcosm_us_2024_acs_local"
+#: A donor that keeps only its tag, named by its ID and revision.
+TAG_DONOR = {
+    "repo_id": "policyengine/populace-us",
+    "release_id": "populace-us-2024-buildo-sparse-x",
+    "revision": "populace-us-2024-buildo-sparse-x",
+}
+#: A donor published into a build folder, named by its release and build.
+FOLDER_DONOR = {
+    "repo_id": "policyengine/populace-us",
+    "release": US_RECEIPT_DONOR_RELEASE_ID,
+    "build": "populace-us-2024-spm-receipts-20261201",
+}
 UK_LOCAL_RELEASE_ID = "microcosm-uk-2024-25-local-k55000"
 REPO_ROOT = REPOSITORY_ROOT
 ARTIFACT_BYTES = b"not-a-real-h5-but-hash-stable"
@@ -109,22 +137,39 @@ def _write_local_bundle(
     extra_gates: dict | None = None,
     spm_measurement_gate: object = _DEFAULT,
     build_manifest_spm_measurement_gate: object = _DEFAULT,
-    build_folder: bool = False,
+    donor_release: object = _DEFAULT,
+    dataset_key: str | None = None,
 ) -> Path:
     """A local-area release directory the contract accepts by default.
 
     A US id gets the package stage's stored-input and SPM measurement gates in
     ``gate_summary.json`` and ``build_manifest.json`` and the built-with
     engine they name; a UK id gets none of them, as the UK lanes write none.
-    ``None`` omits a piece, and a value replaces it. With ``build_folder``,
-    a UK local-area bundle is written in the build-folder layout the
-    emitter's publication uses: its manifests name the release and the build
-    (``UK_LOCAL_BUILD``) and record its UK built-with packages at the top
-    level.
+    ``None`` omits a piece, and a value replaces it. A UK local-area release
+    publishes each build into its own folder, so its manifests name the
+    release and the build (``UK_LOCAL_BUILD``) and record its UK built-with
+    packages at the top level.
+
+    ``US_LOCAL_RELEASE_ID`` gives a US local-area build in the build-folder
+    layout, as the ACS package stage writes it: the manifests are written in
+    the tagged shape for build ``US_LOCAL_BUILD`` and rewritten by
+    :func:`rewrite_release_dir`, and the dataset is
+    ``microcosm_us_2024_acs_local.h5``. ``donor_release`` replaces the source
+    coverage's donor reference (by default the tag form, ``TAG_DONOR``), and
+    ``dataset_key`` the dataset's key and file name.
     """
     release_dir = root / "releases" / release_id
     release_dir.mkdir(parents=True)
-    us = release_id.startswith("populace-us-")
+    us_build_folder = release_id == US_LOCAL_RELEASE_ID
+    us = release_id.startswith("populace-us-") or us_build_folder
+    build_id = US_LOCAL_BUILD if us_build_folder else release_id
+    if dataset_key is None:
+        dataset_key = (
+            US_LOCAL_DATASET_KEY if us_build_folder else "populace_us_2024_acs_local"
+        )
+    dataset_file = f"{dataset_key}.h5"
+    if donor_release is _DEFAULT:
+        donor_release = dict(TAG_DONOR)
     if stored_inputs_gate is _DEFAULT:
         stored_inputs_gate = _stored_inputs_gate() if us else None
     if build_manifest_stored_inputs_gate is _DEFAULT:
@@ -190,9 +235,9 @@ def _write_local_bundle(
         "acs_sources": {"manifest": "pinned"},
         "geography_ladder": {"sha256": "f" * 64},
         "transfer_coverage": {"targets": 91},
-        "donor_release": {"release_id": "populace-us-2024-buildo-sparse-x"},
+        "donor_release": donor_release,
     }
-    build_manifest = {"build_id": release_id, "build_sha": "abc1234"}
+    build_manifest = {"build_id": build_id, "build_sha": "abc1234"}
     build_manifest_gates = {}
     if build_manifest_stored_inputs_gate is not None:
         build_manifest_gates[US_STORED_INPUTS_EVIDENCE_KEY] = (
@@ -218,9 +263,9 @@ def _write_local_bundle(
         (release_dir / name).write_bytes(payload)
 
     artifact_bytes = ARTIFACT_BYTES
-    (root / "populace_us_2024_acs_local.h5").write_bytes(artifact_bytes)
+    (root / dataset_file).write_bytes(artifact_bytes)
 
-    revision = release_id if pin_revisions else "some-other-revision"
+    revision = build_id if pin_revisions else "some-other-revision"
     manifest = {
         "schema_version": 1,
         "data_package": {"name": "microcosm-data", "version": "0.1.0"},
@@ -229,7 +274,20 @@ def _write_local_bundle(
         "is_default": False,
         "namespace": "buildo_acs_local",
         "build": {
-            "build_id": release_id,
+            "build_id": build_id,
+            # The build-folder layout requires when the build was made and
+            # its core package too, as the package stage records them.
+            **(
+                {
+                    "built_at": "2026-07-23T00:00:00+00:00",
+                    "built_with_core_package": {
+                        "name": "policyengine-core",
+                        "version": "3.33.3",
+                    },
+                }
+                if us_build_folder
+                else {}
+            ),
             **(
                 {"built_with_model_package": built_with_model_package}
                 if built_with_model_package is not None
@@ -237,9 +295,9 @@ def _write_local_bundle(
             ),
         },
         "artifacts": {
-            "populace_us_2024_acs_local": {
+            dataset_key: {
                 "kind": "microdata",
-                "path": "populace_us_2024_acs_local.h5",
+                "path": dataset_file,
                 "repo_id": "policyengine/populace-us",
                 "revision": revision,
                 "sha256": _sha256_bytes(artifact_bytes),
@@ -254,7 +312,7 @@ def _write_local_bundle(
         },
         "reviewed_limitations": [{"id": "cd_population_marginal_vintage_2020"}],
     }
-    if build_folder:
+    if release_id.startswith("microcosm-uk-2024-25-"):
         manifest = _as_uk_build_folder(manifest, release_id=release_id)
         payloads["build_manifest.json"] = json.dumps(
             build_folder_build_manifest(
@@ -269,11 +327,33 @@ def _write_local_bundle(
     (release_dir / "release_manifest.json").write_text(manifest_text)
     ledger = {name: _sha256_bytes(payload) for name, payload in payloads.items()}
     ledger["release_manifest.json"] = _sha256_bytes(manifest_text.encode())
-    ledger["populace_us_2024_acs_local.h5"] = _sha256_bytes(artifact_bytes)
+    ledger[dataset_file] = _sha256_bytes(artifact_bytes)
     (release_dir / "sha256sums.txt").write_text(
         "".join(f"{digest}  {name}\n" for name, digest in sorted(ledger.items()))
     )
+    if us_build_folder:
+        rewrite_release_dir(release_dir, build=US_LOCAL_BUILD)
     return release_dir
+
+
+def _edit_release_manifest(release_dir: Path, edit) -> None:
+    """Change ``release_manifest.json`` in place and refresh its ledger digest."""
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    edit(manifest)
+    manifest_text = json.dumps(manifest, indent=1)
+    manifest_path.write_text(manifest_text)
+    ledger_path = release_dir / "sha256sums.txt"
+    ledger = {
+        name: digest
+        for digest, name in (
+            line.split(maxsplit=1) for line in ledger_path.read_text().splitlines()
+        )
+    }
+    ledger["release_manifest.json"] = _sha256_bytes(manifest_text.encode())
+    ledger_path.write_text(
+        "".join(f"{digest}  {name}\n" for name, digest in sorted(ledger.items()))
+    )
 
 
 def _as_uk_build_folder(manifest: dict, *, release_id: str) -> dict:
@@ -295,12 +375,22 @@ def _as_uk_build_folder(manifest: dict, *, release_id: str) -> dict:
     )
 
 
+@pytest.fixture
+def uk_local_k_registered(monkeypatch) -> None:
+    """Name ``UK_LOCAL_RELEASE_ID`` in the registry for one test.
+
+    The contract gives a UK local-area release the build-folder layout only
+    once a registry entry names it (microcosm#1586), and the shipped registry
+    names none, so each test of that layout registers its release first.
+    """
+    register_uk_local_release(monkeypatch, UK_LOCAL_RELEASE_ID)
+
+
+@pytest.mark.usefixtures("uk_local_k_registered")
 def test_uk_local_area_bundle_publishes_in_the_build_folder_layout(
     tmp_path: Path,
 ) -> None:
-    release_dir = _write_local_bundle(
-        tmp_path, release_id=UK_LOCAL_RELEASE_ID, build_folder=True
-    )
+    release_dir = _write_local_bundle(tmp_path, release_id=UK_LOCAL_RELEASE_ID)
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
 
@@ -315,12 +405,9 @@ def test_uk_local_area_bundle_publishes_in_the_build_folder_layout(
     validate_release_dir(release_dir)
 
 
-def test_uk_local_area_build_folder_refuses_a_retired_build_field(
-    tmp_path: Path,
-) -> None:
-    release_dir = _write_local_bundle(
-        tmp_path, release_id=UK_LOCAL_RELEASE_ID, build_folder=True
-    )
+@pytest.mark.usefixtures("uk_local_k_registered")
+def test_uk_local_area_bundle_refuses_the_tagged_layout(tmp_path: Path) -> None:
+    release_dir = _write_local_bundle(tmp_path, release_id=UK_LOCAL_RELEASE_ID)
     build_manifest_path = release_dir / "build_manifest.json"
     build_manifest = json.loads(build_manifest_path.read_text())
     build_manifest["build_id"] = UK_LOCAL_RELEASE_ID
@@ -332,11 +419,192 @@ def test_uk_local_area_build_folder_refuses_a_retired_build_field(
     )
 
 
-def test_valid_local_area_bundle_passes(tmp_path: Path) -> None:
-    release_dir = _write_local_bundle(tmp_path)
+def _write_tagged_uk_local_bundle(root: Path, monkeypatch) -> Path:
+    """A UK local-area bundle in the tagged layout: the build is the release
+    id, and each artifact is pinned to that id as its revision."""
+
+    def keep_tagged(manifest: dict, *, release_id: str) -> dict:
+        for artifact in manifest["artifacts"].values():
+            artifact["repo_id"] = "policyengine/populace-uk-private"
+        return manifest
+
+    module = sys.modules[__name__]
+    monkeypatch.setattr(module, "_as_uk_build_folder", keep_tagged)
+    monkeypatch.setattr(
+        module,
+        "build_folder_build_manifest",
+        lambda manifest, *, release, build: manifest,
+    )
+    return _write_local_bundle(root, release_id=UK_LOCAL_RELEASE_ID)
+
+
+@pytest.mark.parametrize("layout", ["build-folder", "tagged"])
+def test_no_layout_of_an_unregistered_uk_local_area_release_validates(
+    tmp_path: Path, monkeypatch, layout: str
+) -> None:
+    """The registry names no UK local-area release, so the contract refuses
+    the name itself, in either layout and at either tier. Without that
+    refusal the tagged layout would validate (microcosm#1586)."""
+    if layout == "tagged":
+        release_dir = _write_tagged_uk_local_bundle(tmp_path, monkeypatch)
+    else:
+        release_dir = _write_local_bundle(tmp_path, release_id=UK_LOCAL_RELEASE_ID)
+
+    failures = _failures(release_dir)
+
+    assert len(failures) == 1, failures
+    assert "the dataset registry" in failures[0]
+    assert "no layout of it validates" in failures[0]
+    with pytest.raises(ReleaseContractError, match="no layout of it validates"):
+        validate_evidence_release_dir(release_dir)
+
+
+def test_a_registered_uk_local_area_release_refuses_the_tagged_bundle(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The tagged bundle above is a real tagged layout: once the registry
+    names the release, the contract refuses it for its layout."""
+    release_dir = _write_tagged_uk_local_bundle(tmp_path, monkeypatch)
+    register_uk_local_release(monkeypatch, UK_LOCAL_RELEASE_ID)
+
+    failures = _failures(release_dir)
+
+    assert any(
+        "build_manifest.json carries 'build_id'" in failure for failure in failures
+    )
+    assert not any("no layout of it validates" in failure for failure in failures)
+
+
+@pytest.mark.usefixtures("uk_local_k_registered")
+def test_uk_local_area_bundle_refuses_a_tagged_release_manifest(
+    tmp_path: Path,
+) -> None:
+    """A tagged release manifest describes the build in an object and pins
+    each artifact to the build's tag; a UK local-area build publishes into
+    its own folder, so the contract refuses both."""
+    release_dir = _write_local_bundle(tmp_path, release_id=UK_LOCAL_RELEASE_ID)
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    tag = f"{UK_LOCAL_RELEASE_ID}-20260920T120000Z-deadbeef"
+    manifest["build"] = {"build_id": UK_LOCAL_RELEASE_ID, "cut_tag": tag}
+    for artifact in manifest["artifacts"].values():
+        artifact["revision"] = tag
+    manifest_path.write_text(json.dumps(manifest))
+
+    failures = _failures(release_dir)
+
+    assert any("'build' must be the build's name" in failure for failure in failures)
+    assert any(
+        f"pins revision {tag!r}; a build folder's files are found through "
+        "releases.json" in failure
+        for failure in failures
+    )
+
+
+@pytest.mark.parametrize(
+    "release_id", [RELEASE_ID, US_LOCAL_RELEASE_ID], ids=["tagged", "build-folder"]
+)
+def test_valid_local_area_bundle_passes(tmp_path: Path, release_id: str) -> None:
+    release_dir = _write_local_bundle(tmp_path, release_id=release_id)
 
     assert release_dataset_role(release_dir) == NON_DEFAULT_LOCAL_AREA_DATASET_ROLE
     validate_release_dir(release_dir)
+
+
+def test_a_us_local_area_build_validates_in_its_build_folder(tmp_path: Path) -> None:
+    """A new ACS build: its directory is named after the release, both
+    manifests name the release and the build, its dataset is
+    microcosm_us_2024_acs_local.h5, and no artifact pins a revision."""
+    release_dir = _write_local_bundle(tmp_path, release_id=US_LOCAL_RELEASE_ID)
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+
+    assert release_dir.name == "microcosm-us-2024-local"
+    for document in (manifest, build_manifest):
+        assert (document["release"], document["build"]) == (
+            US_LOCAL_RELEASE_ID,
+            US_LOCAL_BUILD,
+        )
+        assert "build_id" not in document
+    assert manifest["artifacts"][US_LOCAL_DATASET_KEY]["path"] == (
+        "microcosm_us_2024_acs_local.h5"
+    )
+    assert not any("revision" in entry for entry in manifest["artifacts"].values())
+    validate_release_dir(release_dir)
+
+
+def test_a_us_local_area_build_declares_its_release_dataset_file(
+    tmp_path: Path,
+) -> None:
+    """A new build of the local-area release declares
+    microcosm_us_2024_acs_local.h5, not the name its tagged builds had."""
+    release_dir = _write_local_bundle(
+        tmp_path,
+        release_id=US_LOCAL_RELEASE_ID,
+        dataset_key="populace_us_2024_acs_local",
+    )
+
+    assert _failures(release_dir) == [
+        "release_manifest.json for release 'microcosm-us-2024-local' must "
+        "declare one microdata artifact, 'microcosm_us_2024_acs_local.h5'; it "
+        "declares ['populace_us_2024_acs_local.h5']."
+    ]
+
+
+@pytest.mark.parametrize(
+    "donor", [FOLDER_DONOR, TAG_DONOR], ids=["build-folder", "tagged"]
+)
+@pytest.mark.parametrize(
+    "release_id", [RELEASE_ID, US_LOCAL_RELEASE_ID], ids=["tagged", "build-folder"]
+)
+def test_the_donor_is_named_by_its_build_folder_or_its_tag(
+    tmp_path: Path, release_id: str, donor: dict
+) -> None:
+    """A donor published into a build folder is named by its release and
+    build, and a donor that keeps only its tag by its ID and revision; a
+    local-area build in either layout may name either."""
+    release_dir = _write_local_bundle(
+        tmp_path, release_id=release_id, donor_release=dict(donor)
+    )
+
+    validate_release_dir(release_dir)
+
+
+@pytest.mark.parametrize(
+    "donor",
+    [
+        {"repo_id": "policyengine/populace-us"},
+        {key: value for key, value in TAG_DONOR.items() if key != "release_id"},
+        {key: value for key, value in TAG_DONOR.items() if key != "revision"},
+        {key: value for key, value in FOLDER_DONOR.items() if key != "build"},
+        {**FOLDER_DONOR, "revision": "populace-us-2024-spm-receipts-20261201"},
+        {key: value for key, value in FOLDER_DONOR.items() if key != "repo_id"},
+    ],
+    ids=[
+        "nothing",
+        "tag-without-id",
+        "tag-without-revision",
+        "folder-without-build",
+        "folder-with-revision",
+        "without-repository",
+    ],
+)
+def test_a_donor_reference_that_names_no_build_is_refused(
+    tmp_path: Path, donor: dict
+) -> None:
+    """The source coverage must say where the donor's files are: by release
+    and build, or by ID and revision, in a named repository."""
+    release_dir = _write_local_bundle(
+        tmp_path, release_id=US_LOCAL_RELEASE_ID, donor_release=donor
+    )
+
+    failures = _failures(release_dir)
+
+    assert len(failures) == 1, failures
+    assert failures[0].startswith(
+        "us_source_coverage.json donor_release must name the donor build "
+        "(stage with --donor-release-manifest): "
+    ), failures
 
 
 def test_explicit_diagnostics_failure_does_not_block_local_release(
@@ -417,10 +685,30 @@ def test_default_dataset_claim_blocks_local_area_publish(tmp_path: Path) -> None
 def test_unpinned_artifact_revision_blocks_local_area_publish(
     tmp_path: Path,
 ) -> None:
+    """A US build that keeps only its tag pins every artifact to it."""
     release_dir = _write_local_bundle(tmp_path, pin_revisions=False)
 
     with pytest.raises(ReleaseContractError, match="not pinned to the release id"):
         validate_release_dir(release_dir)
+
+
+def test_an_artifact_revision_blocks_a_build_folder_local_area_publish(
+    tmp_path: Path,
+) -> None:
+    """A US local-area build in a build folder has no tag, so an artifact that
+    still pins a revision is refused."""
+    release_dir = _write_local_bundle(tmp_path, release_id=US_LOCAL_RELEASE_ID)
+
+    def pin_dataset(manifest: dict) -> None:
+        manifest["artifacts"][US_LOCAL_DATASET_KEY]["revision"] = US_LOCAL_BUILD
+
+    _edit_release_manifest(release_dir, pin_dataset)
+
+    assert _failures(release_dir) == [
+        f"release_manifest.json artifact {US_LOCAL_DATASET_KEY!r} pins revision "
+        f"{US_LOCAL_BUILD!r}; a build folder's files are found through "
+        "releases.json, and the build has no tag."
+    ]
 
 
 def test_incomplete_target_row_blocks_local_area_publish(tmp_path: Path) -> None:
@@ -558,13 +846,19 @@ def _stored_input_failures(failures: list[str]) -> list[str]:
     ]
 
 
+@pytest.mark.parametrize(
+    "release_id", [RELEASE_ID, US_LOCAL_RELEASE_ID], ids=["tagged", "build-folder"]
+)
 def test_us_local_area_release_requires_the_stored_input_gate(
-    tmp_path: Path,
+    tmp_path: Path, release_id: str
 ) -> None:
     """A US bundle whose gate summary does not list the gate is refused, even
     though every gate it does list passed (the hole microcosm#1034 closes)."""
     release_dir = _write_local_bundle(
-        tmp_path, stored_inputs_gate=None, build_manifest_stored_inputs_gate=None
+        tmp_path,
+        release_id=release_id,
+        stored_inputs_gate=None,
+        build_manifest_stored_inputs_gate=None,
     )
 
     failures = _failures(release_dir)
@@ -666,6 +960,7 @@ def test_the_gate_is_graded_against_a_recorded_built_with_engine(
     assert "build.built_with_model_package" in failures[0]
 
 
+@pytest.mark.usefixtures("uk_local_k_registered")
 def test_uk_local_k_bundle_needs_no_stored_input_gate(tmp_path: Path) -> None:
     """The requirement is scoped to US ids: UK local-k (and UK dense, which
     shares _check_local_area_gates) releases have no stored-input seam."""
@@ -757,6 +1052,7 @@ def test_the_build_manifest_copy_of_the_spm_gate_must_match(tmp_path: Path) -> N
     ), failures
 
 
+@pytest.mark.usefixtures("uk_local_k_registered")
 def test_uk_local_k_bundle_needs_no_spm_measurement_gate(tmp_path: Path) -> None:
     release_dir = _write_local_bundle(tmp_path, release_id=UK_LOCAL_RELEASE_ID)
     gate_summary = json.loads((release_dir / "gate_summary.json").read_text())
@@ -956,6 +1252,7 @@ def test_property_the_requirement_only_adds_failures(tmp_path_factory) -> None:
     check()
 
 
+@pytest.mark.usefixtures("uk_local_k_registered")
 def test_property_uk_local_k_verdicts_ignore_the_stored_input_gate(
     tmp_path_factory,
 ) -> None:

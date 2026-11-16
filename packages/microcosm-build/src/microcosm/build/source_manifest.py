@@ -56,11 +56,15 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "assign_family_claims_by_child_age",
         "assign_opt_out_by_charge_income",
         "assign_period_constant",
+        # microcosm#1095 (P1): PIP points within the stored award, by age.
+        "assign_pip_points_by_award",
         "assign_student_loan_plan_cohorts",
         "assign_main_asset_type",
         "assign_trips_from_band_means",
         # microcosm#1428: the self-employed's gross receipts.
         "assign_trading_allowance_receipts",
+        # microcosm#1095 (Y1): DWP's admin-linked UC limited capability status.
+        "assign_uc_limited_capability_from_admin_status",
         "assign_uniform_draw",
         "aggregate_person_to_benunit",
         "allocate_per_capita_from_cell_table",
@@ -178,6 +182,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "iterative_proportional_fit",
         "level_road_fuel",
         "level_excise_quantities",
+        "level_scottish_council_tax",
         "redraw_zero_road_fuel",
         "recompose_from_remainder",
         "pair_clone_households_to_originals",

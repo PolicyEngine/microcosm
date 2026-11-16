@@ -283,12 +283,14 @@ def test_council_tax_band_cells_activate_and_defer_as_measured() -> None:
     floor = _SMALL_CELLS if _floor_rule_is_signed() else {}
     expected = {
         "mhclg": ("abcdefgh", 296, {"g": 294 - floor.get("mhclg_g", 0), "h": 0}, 294),
+        # Carmarthenshire band I has no band-I clone at K=15 on the spine of
+        # microcosm#1535's merge (support deferral).
         "welshgov": (
             "abcdefghi",
             22,
             {
                 "h": 22 - floor.get("welshgov_h", 0),
-                "i": 22 - floor.get("welshgov_i", 0),
+                "i": 21 - floor.get("welshgov_i", 0),
             },
             22,
         ),
@@ -336,6 +338,7 @@ def test_council_tax_signed_deferrals_pin_exact_gaps() -> None:
     # publishes the City's band A.
     assert set(by_reason) == {
         "council_tax_band_h_spine_support_absent",
+        "council_tax_band_i_spine_support_absent",
         *(["council_tax_band_household_floor"] if _floor_rule_is_signed() else []),
     }
     floor = by_reason.get("council_tax_band_household_floor", [])
@@ -386,9 +389,18 @@ def test_council_tax_signed_deferrals_pin_exact_gaps() -> None:
         "76 of the 296 authorities draw no band-H household" in band_h[0]["rationale"]
     )
     assert "84 of 296 at K=10" in band_h[0]["rationale"]
+    band_i = by_reason["council_tax_band_i_spine_support_absent"]
+    # Wales defers the one council the rowwise support check refuses at K=15
+    # on the spine of microcosm#1535's merge (Carmarthenshire); the other
+    # band-I cells above the dwelling floor bind.
+    assert [(row["target_id"], row["area_ids"]) for row in band_i] == [
+        ("welshgov.council_tax_stock.by_area.band_i", ["W06000010"])
+    ]
+    assert band_i[0]["defer_if_compiles"] is True
+    assert "zero household support" in band_i[0]["rationale"]
 
 
-def test_council_tax_activation_binds_2511_references_less_the_small_cells() -> None:
+def test_council_tax_activation_binds_2510_references_less_the_small_cells() -> None:
     membership = _membership()
     active = 0
     for target_id, payload in membership["targets"].items():
@@ -399,13 +411,14 @@ def test_council_tax_activation_binds_2511_references_less_the_small_cells() -> 
         candidates = payload["geography_levels"]["local_authority"]["candidates"]
         active += sum(row["status"] == "active" for row in candidates)
     # The band cells (the single adult discount cells are counted below):
-    # 2,058 English A-G cells (microcosm#762) + 198 Welsh A-I + 255 Scottish
-    # A-H (microcosm#929; Shetland band H is a support deferral); the 296
-    # English band-H cells stay deferred, and the 16 cells below the
-    # small-cell floor defer by rule once it is signed (microcosm#1123 item 7).
+    # 2,058 English A-G cells (microcosm#762) + 197 Welsh A-I + 255 Scottish
+    # A-H (microcosm#929; Shetland band H and, on the spine of microcosm#1535's
+    # merge, Carmarthenshire band I are support deferrals); the 296 English
+    # band-H cells stay deferred, and the 16 cells below the small-cell floor
+    # defer by rule once it is signed (microcosm#1123 item 7).
     deferred = sum(_SMALL_CELLS.values()) if _floor_rule_is_signed() else 0
     assert sum(_SMALL_CELLS.values()) == 16
-    assert active == 2_511 - deferred
+    assert active == 2_510 - deferred
 
 
 def test_barnsley_and_sheffield_bind_their_2025_rows_through_the_code_aliases() -> None:

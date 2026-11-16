@@ -23,6 +23,7 @@ from microcosm_emitter_interface import (
 from microcosm_emitter_interface import client as interface_client
 from microcosm_emitter_interface import launcher as interface_launcher
 from microcosm_emitter_interface.launcher import StartupFailureReason
+from microcosm_emitter_interface.telemetry import OuterProgress
 
 from microcosm.build import telemetry_emitter as adapter
 from test_support.microcosm_build.emitter import FakeEmitterClient
@@ -84,9 +85,12 @@ def test_starts_one_emitter_with_telemetry_graph_and_hugging_face_modules(
     assert options["orrery"].development_collector_url is None
     hugging_face = options["hugging_face"]
     assert isinstance(hugging_face, HuggingFaceSettings)
-    # The hand-over tables stay in their own SQLite file beside the spool.
+    # The hand-over tables stay in their own SQLite file beside the spool,
+    # and the build switches the emitter's collector submissions on, with
+    # the production collector.
     assert hugging_face.configuration(path) == {
-        "handover_database_path": str(tmp_path / "jobs.handovers.sqlite3")
+        "handover_database_path": str(tmp_path / "jobs.handovers.sqlite3"),
+        "collector_submissions": True,
     }
     assert emitter.client is client
     assert emitter.run is telemetry.run
@@ -94,6 +98,55 @@ def test_starts_one_emitter_with_telemetry_graph_and_hugging_face_modules(
     # sends no second start request, and opens no database itself.
     assert client.telemetry_messages == []
     assert not path.exists()
+
+
+def test_a_development_collector_receives_every_modules_requests(monkeypatch, tmp_path):
+    """A loopback collector given for telemetry takes the submissions too."""
+    starts = _record_starts(monkeypatch)
+    monkeypatch.setattr(adapter, "runtime_identity", lambda: {"commit": "synthetic"})
+    collector = "http://127.0.0.1:9"
+
+    START(
+        adapter.LocalTelemetryEmitter,
+        run_id="run-one",
+        country_code="uk",
+        pipeline="full",
+        spool_path=tmp_path / "events.sqlite3",
+        development_collector_url=collector,
+    )
+
+    (options,) = starts
+    assert options["telemetry"].development_collector_url == collector
+    assert options["orrery"].development_collector_url == collector
+    assert options["hugging_face"] == HuggingFaceSettings(
+        collector_submissions=True, development_collector_url=collector
+    )
+
+
+@pytest.mark.parametrize(
+    "development_collector_url",
+    [None, "http://127.0.0.1:9"],
+    ids=["production", "loopback"],
+)
+def test_the_short_lived_bundle_emitter_switches_collector_submissions_on(
+    monkeypatch, development_collector_url
+):
+    """The re-stage and release commands' emitter submits as a build's does."""
+    starts = _record_starts(monkeypatch)
+    options = (
+        {}
+        if development_collector_url is None
+        else {"development_collector_url": development_collector_url}
+    )
+
+    adapter.start_bundle_emitter(**options)
+
+    (started,) = starts
+    assert set(started) == {"hugging_face", "startup_timeout"}
+    assert started["hugging_face"] == HuggingFaceSettings(
+        collector_submissions=True,
+        development_collector_url=development_collector_url,
+    )
 
 
 def test_telemetry_requests_reach_the_interface_with_their_fields():
@@ -273,7 +326,14 @@ def _start_build_emitter(monkeypatch, tmp_path):
 @pytest.mark.parametrize(
     ("version_answer", "reported"),
     [
-        # The release just before the minimum, 0.13.0.
+        # The minimum until 2026-11-13 and the release just before 0.15.0,
+        # without the setting that switches collector submissions on,
+        # collector provenance on a release publication, or skipped
+        # collector receipts.
+        (_version_answer("0.14.0"), "reports version 0.14.0"),
+        # Without heartbeat readings, sleeps or stage spans, which 0.14.0 added.
+        (_version_answer("0.13.0"), "reports version 0.13.0"),
+        # The minimum until 2026-11-09.
         (_version_answer("0.12.5"), "reports version 0.12.5"),
         # The minimum until 2026-11-05, without the `status` command.
         (_version_answer("0.11.9"), "reports version 0.11.9"),
@@ -289,6 +349,8 @@ def _start_build_emitter(monkeypatch, tmp_path):
         ("not JSON", "reports no version"),
     ],
     ids=[
+        "0.14.0",
+        "0.13.0",
         "0.12.5",
         "0.11.9",
         "0.9.0",
@@ -317,7 +379,7 @@ def test_an_emitter_older_than_the_minimum_is_never_started_and_the_build_contin
     assert not emitter.available
     warning = capsys.readouterr().err
     assert f"The installed microcosm-emitter {reported};" in warning
-    assert "this build needs 0.13.0 or later" in warning
+    assert "this build needs 0.15.0 or later" in warning
     # The warning says what the build loses without the emitter, including
     # the one option that then fails the build.
     assert (
@@ -325,7 +387,7 @@ def test_an_emitter_older_than_the_minimum_is_never_started_and_the_build_contin
         "and queues no Orrery graph publication; a UK build given "
         "--staging-read-back will fail at the read-back." in warning
     )
-    assert "uv tool install --upgrade 'microcosm-emitter>=0.13.0'" in warning
+    assert "uv tool install --upgrade 'microcosm-emitter>=0.15.0'" in warning
     # It also says that a remote stage of the dataset bundle is refused, so
     # the pre-flight's later refusal does not contradict it.
     assert "will continue without it" not in warning
@@ -350,8 +412,8 @@ def test_the_fake_client_reports_a_release_builds_start():
 @pytest.mark.parametrize(
     "installed_version",
     # Compared by number, not as text: as text, 0.9.0, which is refused,
-    # sorts after 0.13.0.
-    ["0.13.0", "0.13.10", "0.14.0", "1.0.0"],
+    # sorts after 0.15.0.
+    ["0.15.0", "0.15.10", "0.16.0", "1.0.0"],
 )
 def test_an_emitter_from_the_minimum_on_starts(
     monkeypatch, capsys, tmp_path, installed_version
@@ -390,7 +452,7 @@ def test_a_short_lived_graph_emitter_older_than_the_minimum_is_never_started(
     assert starts == []
     assert not started.exists()
     assert client.calls == []
-    assert "this build needs 0.13.0 or later" in capsys.readouterr().err
+    assert "this build needs 0.15.0 or later" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("failure", ["default_spool_path", "runtime_identity"])
@@ -1054,3 +1116,42 @@ def test_the_shell_s_telemetry_settings_never_reach_a_test():
         "MICROCOSM_COLLECTOR_ORIGIN",
     ):
         assert name not in os.environ
+
+
+def test_progress_reaches_the_interface_with_its_outer_counter():
+    client = FakeEmitterClient()
+    emitter = adapter.LocalTelemetryEmitter(
+        run=adapter.TelemetryRun("run-one", "us", "fiscal"),
+        client=client,
+        close_service_on_finish=False,
+    )
+
+    emitter.progress(
+        "post_export_scoring",
+        done=74,
+        total=177,
+        unit="scoring_batch",
+        outer=OuterProgress(57, 101, "reform_pass"),
+        pass_name="reform_validation reform income_tax@2026",
+    )
+    emitter.progress("solve", done=1, total=2)
+
+    assert client.telemetry_messages == [
+        {
+            "command": "progress",
+            "stage_id": "post_export_scoring",
+            "done": 74,
+            "total": 177,
+            "unit": "scoring_batch",
+            "details": {"pass_name": "reform_validation reform income_tax@2026"},
+            "outer": {"done": 57, "total": 101, "unit": "reform_pass"},
+        },
+        {
+            "command": "progress",
+            "stage_id": "solve",
+            "done": 1,
+            "total": 2,
+            "unit": None,
+            "details": {},
+        },
+    ]

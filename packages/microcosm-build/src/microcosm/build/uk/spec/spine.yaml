@@ -5,6 +5,7 @@ channels:
   - frs_adult
   - frs_benefits
   - frs_benunit
+  - frs_care
   - frs_child
   - frs_chldcare
   - frs_extchild

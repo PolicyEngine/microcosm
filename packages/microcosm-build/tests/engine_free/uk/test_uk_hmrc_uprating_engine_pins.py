@@ -238,5 +238,6 @@ def test_the_build_and_the_certifier_refuse_an_unpinned_engine(monkeypatch) -> N
             parity_evidence=None,
             fit_weight_records=None,
             input_mass_reference={},
+            reference_surface=None,
             exclusions_evaluated_on=date(2026, 10, 18),
         )

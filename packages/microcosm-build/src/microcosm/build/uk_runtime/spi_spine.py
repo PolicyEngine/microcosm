@@ -50,8 +50,10 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
 )
 from microcosm.build.uk_runtime.qrf_gates import (
+    UK_GATE_LEVELS_EVIDENCE,
     UK_GATE_OUTCOMES_EVIDENCE,
     declared_gate_calibration,
+    declared_gate_level_columns,
 )
 from microcosm.build.uk_runtime.release_input_coverage import (
     DEFAULT_MINIMUM_NONDEFAULT_MASS_SHARE,
@@ -66,6 +68,9 @@ from microcosm.build.uk_runtime.spi_income import (
     SPI_DONOR_AGE_DRAW_METHOD,
     SPI_DONOR_AGE_POPULATION_PERIOD,
     SPI_DONOR_AGE_POPULATION_RESOURCE,
+    SPI_DONOR_FRAME_DESIGNS,
+    SPI_DONOR_FRAME_FACT_BOOTSTRAP,
+    SPI_DONOR_FRAME_FIT_WEIGHT,
     SPI_DONOR_INCOME_YEAR,
     SPI_EMPLOYMENT_PAY_FLOOR_ANNUAL_RULE,
     SPI_EMPLOYMENT_PAY_FLOOR_EMPLOYEE_STATUSES,
@@ -468,6 +473,7 @@ class UKSPIIncomeSpineResult:
             "gainful_self_employment_refresh": (
                 self.imputation.gainful_self_employment_refresh
             ),
+            "carer_link_refresh": self.imputation.carer_link_refresh,
             "pension_coherence": self.imputation.pension_coherence,
             "gift_anchor": self.imputation.gift_anchor,
             "state_pension_age_guard": list(self.imputation.state_pension_age_guard),
@@ -490,6 +496,10 @@ class UKSPIIncomeSpineResult:
         }
         if self.imputation.gate_outcomes:
             evidence[UK_GATE_OUTCOMES_EVIDENCE] = dict(self.imputation.gate_outcomes)
+        if self.imputation.donor_frame:
+            evidence["donor_frame"] = dict(self.imputation.donor_frame)
+        if self.imputation.gate_levels:
+            evidence[UK_GATE_LEVELS_EVIDENCE] = dict(self.imputation.gate_levels)
         return evidence
 
 
@@ -898,6 +908,10 @@ class UKSPIIncomeSpineStageTransform:
             stage2_gate_calibration=declared_gate_calibration(
                 self.stage, "fit_weighted_qrf_stage2"
             ),
+            donor_frame_design=declared_donor_frame_design(self.stage),
+            stage1_gate_level_columns=declared_gate_level_columns(
+                self.stage, "fit_weighted_qrf_stage1"
+            ),
         )
         result_frame = uk_national_frame(
             person=imputation.person,
@@ -1132,6 +1146,7 @@ def _build_spine_replay_report(
         "bridge_validation": imputation.bridge_validation,
         "recipient_domain": imputation.recipient_domain,
         "gainful_self_employment_refresh": imputation.gainful_self_employment_refresh,
+        "carer_link_refresh": imputation.carer_link_refresh,
         "pension_coherence": imputation.pension_coherence,
         "post_draw_identity": {
             "formula": SPI_SOURCE_TI_FORMULA,
@@ -1247,6 +1262,23 @@ def uk_spi_support_mass_change_reason(stage: SourceStageSpec) -> str:
     )
 
 
+def declared_donor_frame_design(stage: SourceStageSpec) -> str:
+    """The stage-1 donor frame design the manifest declares (microcosm#1276).
+
+    An undeclared ``sample_design`` is the FACT-weighted bootstrap.
+    """
+
+    design = _operation(stage, "fit_weighted_qrf_stage1").parameters.get(
+        "sample_design", SPI_DONOR_FRAME_FACT_BOOTSTRAP
+    )
+    if design not in SPI_DONOR_FRAME_DESIGNS:
+        raise ValueError(
+            f"SPI income stage-1 sample_design {design!r} is not one of "
+            f"{SPI_DONOR_FRAME_DESIGNS}."
+        )
+    return str(design)
+
+
 def _assert_income_stage_parameters(
     stage: SourceStageSpec,
     *,
@@ -1276,10 +1308,30 @@ def _assert_income_stage_parameters(
         raise ValueError("SPI income stage-2 estimator count drifted.")
     if stage1.parameters.get("sample_size") != donor_sample_size:
         raise ValueError("SPI income donor sample size drifted.")
-    if stage1.parameters.get("post_sample_fit_weight") != "uniform":
-        raise ValueError("SPI income donor bootstrap must refit at uniform weight.")
+    design = declared_donor_frame_design(stage)
+    if (
+        stage1.parameters.get("post_sample_fit_weight")
+        != SPI_DONOR_FRAME_FIT_WEIGHT[design]
+    ):
+        raise ValueError(
+            f"SPI income donor frame {design!r} must fit at "
+            f"{SPI_DONOR_FRAME_FIT_WEIGHT[design]!r} weight."
+        )
+    if stage1.parameters.get("sample_with_replacement") is not (
+        design == SPI_DONOR_FRAME_FACT_BOOTSTRAP
+    ):
+        raise ValueError(
+            "SPI income donor frame: only the FACT-weighted bootstrap samples "
+            "with replacement."
+        )
     if tuple(stage1.parameters.get("predictors", ())) != SPI_SPINE_STAGE1_PREDICTORS:
         raise ValueError("SPI income stage-1 predictors drifted.")
+    level_columns = declared_gate_level_columns(stage, "fit_weighted_qrf_stage1")
+    if not set(level_columns) <= set(SPI_SPINE_STAGE1_PREDICTORS):
+        raise ValueError(
+            "SPI income stage-1 gate_level_columns must be stage-1 predictors, got "
+            f"{list(level_columns)}."
+        )
     if (
         tuple(stage1.parameters.get("categorical_predictors", ()))
         != SPI_SPINE_STAGE1_CATEGORICAL_PREDICTORS

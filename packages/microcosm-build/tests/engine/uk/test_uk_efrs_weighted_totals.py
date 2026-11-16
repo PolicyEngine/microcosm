@@ -1,7 +1,8 @@
 """Weighted-totals extraction from the pinned enhanced-FRS incumbent (#609).
 
-This is the reference side of the UK input_mass_parity gate: the frozen totals
-a candidate is measured against. The licensed artifact is never in CI, so the
+This was the reference side of the UK input_mass_parity gate until
+microcosm#1095 moved the gate to the current build of the cut's own line; the
+extraction stays as the measurement of the frozen enhanced-FRS reference. The licensed artifact is never in CI, so the
 sha pin is stubbed and the extraction runs against a synthetic H5 with the same
 shape — enough to prove the plumbing (table reading, engine-variable
 classification, weight broadcast, key format) before a licensed run pays for it.
@@ -137,59 +138,6 @@ def test_payload_pins_the_reference_identity_the_gate_records(
         "sha256": TOOL.SOURCE_SHA256,
         "vintage": TOOL.SOURCE_VINTAGE,
     }
-
-
-def test_payload_loads_as_a_gate_reference(
-    synthetic_efrs,
-    tmp_path,
-    monkeypatch,
-) -> None:
-    """The emitted file is exactly what the gate's loader accepts."""
-
-    from microcosm.build.uk_runtime import weighted_integrity
-    from microcosm.build.uk_runtime.weighted_integrity import (
-        UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
-        UK_INPUT_MASS_REFERENCE_REGISTRY,
-        UKInputMassParityPolicy,
-        load_uk_input_mass_reference,
-        uk_input_mass_parity_gate,
-    )
-
-    payload = TOOL.build_weighted_totals(synthetic_efrs)
-    path = tmp_path / "efrs_weighted_totals.json"
-    path.write_text(json.dumps(payload), encoding="utf-8")
-
-    # This synthetic source deliberately stubs the licensed artifact sha.
-    # The reviewed 131-column digest is covered by the runtime regressions.
-    monkeypatch.setattr(
-        weighted_integrity,
-        "_input_mass_reference_evidence_sha256",
-        lambda _reference: UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
-    )
-    descriptor = UK_INPUT_MASS_REFERENCE_REGISTRY["efrs-post-calibration"]
-    reference = load_uk_input_mass_reference(path)
-    identical = uk_input_mass_parity_gate(
-        dict(reference.totals),
-        reference,
-        descriptor=descriptor,
-        policy=UKInputMassParityPolicy(
-            relative_tolerance=0.0,
-            minimum_reference_total=0.0,
-        ),
-    )
-    zeroed = uk_input_mass_parity_gate(
-        {name: 0.0 for name in reference.totals},
-        reference,
-        descriptor=descriptor,
-        policy=UKInputMassParityPolicy(
-            relative_tolerance=0.0,
-            minimum_reference_total=0.0,
-        ),
-    )
-
-    assert reference.filename == TOOL.SOURCE_FILENAME
-    assert identical.passed
-    assert not zeroed.passed
 
 
 def test_emitting_totals_never_rewrites_the_committed_reference(

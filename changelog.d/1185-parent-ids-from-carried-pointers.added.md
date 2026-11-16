@@ -1,0 +1,1 @@
+US frames built before `parent_1_id` and `parent_2_id` existed (a `--base-h5` release input, an existing pool) now gain the two ids from the CPS parent pointers they still carry, keyed on the frame's own household so support clones resolve inside their own copy; ACS rows and every other carried column are left as they were.

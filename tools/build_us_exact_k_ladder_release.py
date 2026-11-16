@@ -1,10 +1,17 @@
-"""Launch one immutable US exact-record-count ladder release.
+"""Launch one US exact-record-count ladder build of the national release.
 
 The launcher owns only strict configuration, artifact pins, ladder-point
 resolution, and the non-publishing package receipt.  Target materialization,
 checkpointing, calibration gates, diagnostics, and release manifests remain in
 ``build_us_fiscal_refresh_release.py`` so the ladder cannot drift from the
 incumbent's frozen-register release path.
+
+An exact-k build is a build of the national release,
+``microcosm-us-2024-national`` (microcosm#1570): the builder writes it to
+``<out>/releases/microcosm-us-2024-national/``, and the receipt records the
+``microcosm-publish-release-build`` commands that publish it into its own
+folder of the release and then make it the release's current build, which
+makes it the US default. The launcher runs neither.
 
 Example::
 
@@ -35,6 +42,9 @@ Schema-v1 configuration (paths are resolved relative to the config file)::
                   "repo_id": "policyengine/populace-us"}
     }
 
+``release.id`` is the build ID; the build's release is always the national
+one.
+
 ``ladder.k`` accepts exactly ``"N"``, ``57240``, or ``20000``. ``targets``
 may additionally carry the paired
 ``ssi_take_up_prior_weight_basis`` and
@@ -52,9 +62,7 @@ import argparse
 import hashlib
 import json
 import math
-import os
 import re
-import shlex
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -68,6 +76,8 @@ import build_us_fiscal_refresh_release as fiscal_release
 from microcosm.build.us_runtime.h5_io import (
     load_simulation_ready_us_multispine_pool_manifest,
 )
+from microcosm.data.build_folder_manifests import publication_commands
+from microcosm.data.contract import US_NATIONAL_RELEASE_ID
 
 CONFIG_SCHEMA_VERSION = 1
 RATIFIED_SPARSE_K = fiscal_release.RATIFIED_EXACT_K_COUNTS
@@ -462,7 +472,12 @@ def launch(
     out: Path,
     release_builder: Callable[[Sequence[str] | None], object] = fiscal_release.main,
 ) -> dict[str, object]:
-    """Validate pins, run the house release path, and write a publish receipt."""
+    """Validate pins, run the house release path, and write a publish receipt.
+
+    The receipt names the build and its release, the national one, and
+    carries the commands that publish the build and make it current; the
+    launcher runs neither.
+    """
 
     config = _read_config(config_path)
     resolved_pool_manifest = pool_manifest.resolve()
@@ -479,44 +494,25 @@ def launch(
             k=config.requested_k,
         )
     )
-    build = {
-        "release_id": config.release_id,
-        "release_dir": str(resolved_out / "releases" / config.release_id),
-        "artifact_root": str(resolved_out / "artifacts"),
-    }
-
-    publish_argv = [
-        "tools/publish_release.sh",
-        build["release_dir"],
-        "--repo-id",
-        config.repo_id,
-        "--artifact-root",
-        build["artifact_root"],
-        "--create-tag",
-        "--no-latest",
-        "--tag-only",
-    ]
+    release_dir = resolved_out / "releases" / US_NATIONAL_RELEASE_ID
+    artifact_root = resolved_out / "artifacts"
+    commands = publication_commands(
+        release_dir, repo_id=config.repo_id, artifact_root=artifact_root
+    )
     result: dict[str, object] = {
-        **build,
+        "release": US_NATIONAL_RELEASE_ID,
+        "build": config.release_id,
+        "release_dir": str(release_dir),
+        "artifact_root": str(artifact_root),
         "k": k,
         "seed": config.seed,
+        # Publishing lists the build in the release; promoting, after review,
+        # makes it current. The launcher does neither.
         "automatic_publish": False,
-        "pointer_update": False,
-        "pointer_updates": {
-            "production": {
-                "repo_id": config.repo_id,
-                "pointer_update": False,
-            },
-            "staging": {
-                "repo_id": os.environ.get(
-                    "POPULACE_STAGING_REPO_ID",
-                    "policyengine/populace-us-staging",
-                ),
-                "pointer_update": False,
-            },
-        },
-        "publish_argv": publish_argv,
-        "publish_command": shlex.join(publish_argv),
+        "makes_current": False,
+        "publish_command": commands["publish_command"],
+        "promote_command": commands["promote_command"],
+        "promotion": fiscal_release._promotion_note(US_NATIONAL_RELEASE_ID),
     }
     resolved_out.mkdir(parents=True, exist_ok=True)
     package_result = resolved_out / "package_result.json"

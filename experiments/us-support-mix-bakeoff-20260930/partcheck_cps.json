@@ -1,0 +1,62 @@
+{
+ "concept_specs_sha256": "ffedf394b91dafd353102a358ef7cf374eb518eb9f9164b8907e206b1bd60ab0",
+ "max_scaled_abs_diff": 5.745301478087966e-08,
+ "parts": {
+  "shard_000.npz": {
+   "columns_over_tolerance": [],
+   "households": 200,
+   "max_scaled_abs_diff": 4.852139807865107e-08,
+   "n_columns_over_tolerance": 0
+  },
+  "shard_001.npz": {
+   "columns_over_tolerance": [],
+   "households": 200,
+   "max_scaled_abs_diff": 4.4159883064629645e-08,
+   "n_columns_over_tolerance": 0
+  },
+  "shard_002.npz": {
+   "columns_over_tolerance": [],
+   "households": 200,
+   "max_scaled_abs_diff": 4.814175938007279e-08,
+   "n_columns_over_tolerance": 0
+  },
+  "shard_003.npz": {
+   "columns_over_tolerance": [],
+   "households": 200,
+   "max_scaled_abs_diff": 5.3810296320387365e-08,
+   "n_columns_over_tolerance": 0
+  },
+  "shard_004.npz": {
+   "columns_over_tolerance": [],
+   "households": 200,
+   "max_scaled_abs_diff": 5.623471786395348e-08,
+   "n_columns_over_tolerance": 0
+  },
+  "shard_005.npz": {
+   "columns_over_tolerance": [],
+   "households": 200,
+   "max_scaled_abs_diff": 5.745301478087966e-08,
+   "n_columns_over_tolerance": 0
+  },
+  "shard_006.npz": {
+   "columns_over_tolerance": [],
+   "households": 200,
+   "max_scaled_abs_diff": 5.002892922832628e-08,
+   "n_columns_over_tolerance": 0
+  },
+  "shard_007.npz": {
+   "columns_over_tolerance": [],
+   "households": 200,
+   "max_scaled_abs_diff": 2.9203917845757813e-08,
+   "n_columns_over_tolerance": 0
+  }
+ },
+ "peak_rss_gb": 6.7,
+ "per_part": 200,
+ "shards": "/Users/maxghenis/PolicyEngine/_bakeoff-support-mix/partcheck/cps-shards/shards/cps",
+ "source": "cps",
+ "source_h5_sha256": "f7b46f4b83cb83f48ebe2a262a42495fcc18af85e96d4e5b52a63d2fe89d947b",
+ "summary_sha256": null,
+ "tolerance": 1e-05,
+ "wall_s": 2020.5
+}

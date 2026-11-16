@@ -14,6 +14,14 @@ import pytest
 from microcosm.data.annual_projections import validate_annual_projection_extension
 from microcosm.data.contract import ReleaseContractError, validate_release_dir
 
+from .build_folders import to_build_folder_layout
+from .release import (
+    RELEASE_ID,
+    _bind_stored_input_evidence,
+    artifact_root,
+    release_dir,
+)
+
 
 def _sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -299,6 +307,241 @@ def add_annual_extension(release, root):
         artifact["revision"] = tag
     (release / "release_manifest.json").write_text(json.dumps(manifest))
     return tag
+
+
+#: The US releases an annual build folder involves (microcosm#1570).
+US_NATIONAL_RELEASE = "microcosm-us-2024-national"
+US_ANNUAL_RELEASE = "microcosm-us-2024-annual"
+#: The annual build the build-folder fixture names: its base build's ID, the
+#: time it was assembled and eight hex digits.
+ANNUAL_BUILD = f"{RELEASE_ID}-annual-20261110T120000Z-a1b2c3d4"
+_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marital_unit")
+_ACCEPTANCE_CHECKS = (
+    "schema",
+    "source_identity",
+    "year",
+    "demographics",
+    "input_aggregates",
+    "runtime",
+)
+
+
+def _read(path):
+    return json.loads(path.read_text())
+
+
+def _write(path, document):
+    path.write_text(json.dumps(document))
+
+
+def national_build_folder(tagged_dir, root, *, prefix="microcosm"):
+    """The US calibration fixture as a build of the national release.
+
+    Its dataset is a native single-year H5 for 2024 that an annual build can
+    project, under ``<prefix>_us_2024.h5``: ``microcosm`` for a new build,
+    ``populace`` for one of the builds the switch moved. The calibration
+    weights take the same prefix, and the stored-input evidence is bound to
+    the new H5.
+    """
+    dataset_key = f"{prefix}_us_2024"
+    calibration_key = f"{dataset_key}_calibration"
+    (root / "populace_us_2024.h5").unlink()
+    dataset = root / f"{dataset_key}.h5"
+    _h5(dataset, 2024)
+    (root / "populace_us_2024_calibration.npz").rename(root / f"{calibration_key}.npz")
+    build_path = tagged_dir / "build_manifest.json"
+    build = _read(build_path)
+    build["dataset"] = {"filename": dataset.name, "sha256": _sha(dataset)}
+    build["calibration"]["filename"] = f"{calibration_key}.npz"
+    _write(build_path, build)
+    manifest_path = tagged_dir / "release_manifest.json"
+    manifest = _read(manifest_path)
+    renamed = {
+        "populace_us_2024": dataset_key,
+        "populace_us_2024_calibration": calibration_key,
+    }
+    manifest["artifacts"] = {
+        renamed.get(key, key): (
+            {
+                **entry,
+                "path": entry["path"].replace("populace_", f"{prefix}_"),
+            }
+            if key in renamed
+            else entry
+        )
+        for key, entry in manifest["artifacts"].items()
+    }
+    manifest["artifacts"][dataset_key]["sha256"] = _sha(dataset)
+    manifest["default_datasets"] = {"national": dataset_key}
+    _write(manifest_path, manifest)
+    _bind_stored_input_evidence(tagged_dir)
+    national = tagged_dir.with_name(US_NATIONAL_RELEASE)
+    tagged_dir.rename(national)
+    return to_build_folder_layout(national, build=RELEASE_ID)
+
+
+def annual_build_folder_of(national, root, *, build=ANNUAL_BUILD):
+    """An annual build of the national build folder ``national``.
+
+    The annual release's folder carries every file of the national build but
+    its two manifests, a projected H5 for 2025 in ``root``, the
+    candidate manifest, its passing acceptance report and the 2025 receipt.
+    Both manifests name the annual release and ``build``, and the release
+    manifest names the national build in ``metadata.annual_projection_base``.
+    """
+    annual = national.with_name(US_ANNUAL_RELEASE)
+    annual.mkdir()
+    for path in national.iterdir():
+        if path.name not in {"release_manifest.json", "build_manifest.json"}:
+            shutil.copyfile(path, annual / path.name)
+    manifest = _read(national / "release_manifest.json")
+    base_build = manifest["build"]
+    base_key = manifest["default_datasets"]["national"]
+    base = manifest["artifacts"][base_key]
+    repo_id = base["repo_id"]
+    with h5py.File(root / base["path"], "r") as store:
+        rows = {entity: len(store[f"{entity}/table"]) for entity in _ENTITIES}
+    projected_key = "microcosm_us_2025"
+    mapping = {base_key: {"2024": base_key, "2025": projected_key}}
+    runtime = {
+        "policyengine-us": manifest["built_with_model_package"]["version"],
+        "policyengine-core": manifest["built_with_core_package"]["version"],
+    }
+    model = {
+        "version": runtime["policyengine-us"],
+        "commit": "a" * 40,
+        "source_tree_sha256": "b" * 64,
+    }
+    projected = root / f"{projected_key}.h5"
+    _h5(projected, 2025)
+    receipt = annual / "projection_2025.json"
+    receipt.write_text(json.dumps({"base_year": 2024, "year": 2025, "factors": {}}))
+    evidence = {
+        "schema_version": 1,
+        "kind": "us_annual_static_aging_candidate",
+        "status": "complete",
+        "base": {
+            "dataset": base_key,
+            "year": 2024,
+            "parent_release": base_build,
+            "path": base["path"],
+            "sha256": base["sha256"],
+        },
+        "metadata": {"dataset_years": mapping},
+        "model": model,
+        "runtime": {"versions": runtime},
+        "artifacts": {
+            base_key: {"year": 2024, "sha256": base["sha256"], "rows": rows},
+            projected_key: {
+                "year": 2025,
+                "sha256": _sha(projected),
+                "rows": rows,
+                "projection_receipt": {"path": receipt.name, "sha256": _sha(receipt)},
+            },
+        },
+    }
+    acceptance = {
+        "schema_version": 1,
+        "kind": "us_annual_projection_acceptance",
+        "status": "passed",
+        "model": model,
+        "runtime": runtime,
+        "years": {
+            year: {
+                "dataset": key,
+                "sha256": evidence["artifacts"][key]["sha256"],
+                "checks": {name: "passed" for name in _ACCEPTANCE_CHECKS},
+            }
+            for year, key in mapping[base_key].items()
+        },
+    }
+
+    def declared(key, kind, path):
+        return {
+            "kind": kind,
+            "path": path.name,
+            "repo_id": repo_id,
+            "sha256": _sha(path),
+            "role": "dataset" if kind == "microdata" else key,
+        }
+
+    evidence_path = annual / "annual_manifest.json"
+    _write(evidence_path, evidence)
+    acceptance["projection_manifest_sha256"] = _sha(evidence_path)
+    acceptance_path = annual / "annual_acceptance.json"
+    _write(acceptance_path, acceptance)
+    manifest["release"] = US_ANNUAL_RELEASE
+    manifest["build"] = build
+    manifest["metadata"] = {
+        **manifest.get("metadata", {}),
+        "dataset_years": mapping,
+        "annual_projection_manifest": "annual_manifest",
+        "annual_projection_acceptance": "annual_acceptance",
+        "annual_projection_base": {
+            "repo_id": repo_id,
+            "release": US_NATIONAL_RELEASE,
+            "build": base_build,
+            "path": base["path"],
+            "sha256": base["sha256"],
+        },
+    }
+    manifest["artifacts"].update(
+        {
+            projected_key: declared(projected_key, "microdata", projected),
+            "projection_2025": declared("projection_2025", "diagnostics", receipt),
+            "annual_manifest": declared(
+                "annual_manifest", "diagnostics", evidence_path
+            ),
+            "annual_acceptance": declared(
+                "annual_acceptance", "diagnostics", acceptance_path
+            ),
+        }
+    )
+    _write(annual / "release_manifest.json", manifest)
+    build_manifest = _read(national / "build_manifest.json")
+    build_manifest.update(release=US_ANNUAL_RELEASE, build=build)
+    _write(annual / "build_manifest.json", build_manifest)
+    return annual
+
+
+def rewrite_annual_release_manifest(annual, mutate):
+    """Change an annual folder's release manifest; nothing records its digest."""
+    path = annual / "release_manifest.json"
+    manifest = _read(path)
+    mutate(manifest)
+    _write(path, manifest)
+
+
+def rewrite_annual_evidence(annual, mutate):
+    """Change an annual folder's candidate manifest and reseal what binds it:
+    the acceptance report's ``projection_manifest_sha256`` and both files'
+    digests in the release manifest."""
+    evidence_path = annual / "annual_manifest.json"
+    evidence = _read(evidence_path)
+    mutate(evidence)
+    _write(evidence_path, evidence)
+    acceptance_path = annual / "annual_acceptance.json"
+    acceptance = _read(acceptance_path)
+    acceptance["projection_manifest_sha256"] = _sha(evidence_path)
+    _write(acceptance_path, acceptance)
+
+    def reseal(manifest):
+        manifest["artifacts"]["annual_manifest"]["sha256"] = _sha(evidence_path)
+        manifest["artifacts"]["annual_acceptance"]["sha256"] = _sha(acceptance_path)
+
+    rewrite_annual_release_manifest(annual, reseal)
+
+
+@pytest.fixture
+def national_build(release_dir, artifact_root):  # noqa: F811
+    """A build of the US national release in its build folder."""
+    return national_build_folder(release_dir, artifact_root)
+
+
+@pytest.fixture
+def annual_build_folder(national_build, artifact_root):  # noqa: F811
+    """An annual build of :func:`national_build` in the annual release."""
+    return annual_build_folder_of(national_build, artifact_root)
 
 
 __all__ = [name for name in globals() if not name.startswith("__")]

@@ -43,9 +43,10 @@
       }
     },
     "precal_references.json": {
-      "total": 318,
+      "total": 451,
       "by_contract": {
         "ird_wage_salary_people_by_band": 235,
+        "stats_nz_census_households_by_weekly_rent_region": 133,
         "mbie_bond_rents_by_territorial_authority": 1,
         "stats_nz_household_financial_net_worth_distribution": 1,
         "stats_nz_population_by_territorial_authority": 67,
@@ -54,7 +55,7 @@
         "msd_veterans_pension_recipients": 1
       },
       "by_activation_status": {
-        "active": 315,
+        "active": 448,
         "requires_rent_band_frequencies": 1,
         "requires_all_household_liquid_asset_histogram": 1,
         "requires_unsupported_veterans_pension": 1

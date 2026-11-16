@@ -1,0 +1,112 @@
+{
+ "clone0_weight_share": 0.5,
+ "clone0_items_used": [
+  "employment_income_before_lsr",
+  "self_employment_income_before_lsr",
+  "taxable_interest_income",
+  "qualified_dividend_income",
+  "non_qualified_dividend_income",
+  "short_term_capital_gains",
+  "long_term_capital_gains_before_response",
+  "taxable_private_pension_income",
+  "taxable_ira_distributions",
+  "rental_income",
+  "miscellaneous_income"
+ ],
+ "variants": {
+  "current": {
+   "bands": {
+    "1m_to_1_5m": {
+     "returns": 701147.4560873657,
+     "soi_returns": 368931,
+     "agi_bn": 820.1167999742612,
+     "soi_agi_bn": 443.658,
+     "records": 1751,
+     "clone1_returns": 417016.76188669726
+    },
+    "1_5m_to_2m": {
+     "returns": 123041.63164029716,
+     "soi_returns": 147290,
+     "agi_bn": 210.17016121755844,
+     "soi_agi_bn": 252.903,
+     "records": 289,
+     "clone1_returns": 99921.38839026116
+    },
+    "2m_to_5m": {
+     "returns": 119112.43471266434,
+     "soi_returns": 203229,
+     "agi_bn": 314.19123083447545,
+     "soi_agi_bn": 602.653,
+     "records": 284,
+     "clone1_returns": 100370.2883022731
+    },
+    "5m_to_10m": {
+     "returns": 11800.218136098976,
+     "soi_returns": 49262,
+     "agi_bn": 81.29907128772709,
+     "soi_agi_bn": 336.335,
+     "records": 31,
+     "clone1_returns": 11800.218136098976
+    },
+    "10m_plus": {
+     "returns": 4093.195927116907,
+     "soi_returns": 30382,
+     "agi_bn": 92.27042532710882,
+     "soi_agi_bn": 907.901,
+     "records": 9,
+     "clone1_returns": 4093.195927116907
+    }
+   },
+   "colorado_income_above_1m_bn": 20.21137092030577,
+   "colorado_soi_bn": 31.7,
+   "colorado_largest_record_share": 0.28371840606041343
+  },
+  "demographic_midrank6_earn": {
+   "bands": {
+    "1m_to_1_5m": {
+     "returns": 482653.3947451953,
+     "soi_returns": 368931,
+     "agi_bn": 565.6567147347971,
+     "soi_agi_bn": 443.658,
+     "records": 1221,
+     "clone1_returns": 198522.7005445268
+    },
+    "1_5m_to_2m": {
+     "returns": 96760.34899440594,
+     "soi_returns": 147290,
+     "agi_bn": 164.41986705107027,
+     "soi_agi_bn": 252.903,
+     "records": 243,
+     "clone1_returns": 73640.10574436994
+    },
+    "2m_to_5m": {
+     "returns": 125304.60878687656,
+     "soi_returns": 203229,
+     "agi_bn": 353.22466083387354,
+     "soi_agi_bn": 602.653,
+     "records": 318,
+     "clone1_returns": 106562.4623764853
+    },
+    "5m_to_10m": {
+     "returns": 24314.73234462075,
+     "soi_returns": 49262,
+     "agi_bn": 156.12486777592076,
+     "soi_agi_bn": 336.335,
+     "records": 52,
+     "clone1_returns": 24314.73234462075
+    },
+    "10m_plus": {
+     "returns": 16959.818039246165,
+     "soi_returns": 30382,
+     "agi_bn": 518.7226807804055,
+     "soi_agi_bn": 907.901,
+     "records": 38,
+     "clone1_returns": 16959.818039246165
+    }
+   },
+   "colorado_income_above_1m_bn": 66.3266036367742,
+   "colorado_soi_bn": 31.7,
+   "colorado_largest_record_share": 0.8131946934821087
+  }
+ }
+}

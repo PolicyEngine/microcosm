@@ -1,0 +1,97 @@
+{
+  "release": "microcosm-us-2024-national",
+  "build": "populace-us-2024-0000000-20260101",
+  "build_sha": "a8fe1b9",
+  "created_at": "2026-01-01T00:00:00+00:00",
+  "staging": {
+    "enabled": true,
+    "run_id": "us-national-release-contract-fixture",
+    "repo_id": "policyengine/populace-us-staging",
+    "uploads_succeeded": true
+  },
+  "code": {
+    "repository": "PolicyEngine/microcosm",
+    "git_commit": "a8fe1b954d0d42c1a6b10d663024d11201717a50",
+    "git_dirty": false
+  },
+  "runtime": {
+    "python": "3.13.0",
+    "microcosm-build": "0.1.0",
+    "microcosm-calibrate": "0.1.0",
+    "microcosm-data": "0.1.0",
+    "microcosm-frame": "0.1.0",
+    "policyengine-core": "3.0.0",
+    "policyengine-us": "1.0.0",
+    "numpy": "2.0.0",
+    "pandas": "2.0.0",
+    "torch": "2.0.0"
+  },
+  "timing": {},
+  "ledger_artifact": null,
+  "gate_evidence": {
+    "esi_premiums": "not_evaluated",
+    "input_coverage": "not_evaluated",
+    "input_mass_parity": "not_evaluated",
+    "qrf_tail_concentration": "not_evaluated",
+    "reform_coverage_smoke": "not_evaluated",
+    "stored_inputs": "not_evaluated"
+  },
+  "fiscal_target_exclusion_receipt": {
+    "artifact": "us_source_coverage",
+    "path": "us_source_coverage.json",
+    "sha256": "2a4c5ce460a7c63b0c4bdfe379a1c91497d6eaf5f6286affe2b98984bfa8890e",
+    "key": "fiscal_target_exclusion_receipt",
+    "present": false,
+    "receipt_sha256": null
+  },
+  "dataset": {
+    "filename": "microcosm_us_2024.h5",
+    "sha256": "e5df1650192da1659359652a6f1218a18a07cba38bdb1e4f754a248e0ea6d40b",
+    "default": null
+  },
+  "calibration": {
+    "filename": "microcosm_us_2024_calibration.npz",
+    "sha256": "d1356e9ae3fb9baea7e7860931eeb274874f5ac61fc0b87277fc8245eac0801f",
+    "warm_start": {
+      "enabled": false
+    },
+    "selection_source": {
+      "enabled": false
+    },
+    "target_surface": {
+      "sha256": "48b07537f3af196a534c7591ef2638babeb38c3d8dcfef910512b457ee5f2de8",
+      "n_targets": 1
+    },
+    "target_registry": {
+      "version": "release-contract-fixture-v1",
+      "n_specs": 1
+    },
+    "medicaid_enrollment_substitutions": []
+  },
+  "gates": {
+    "calibration": {
+      "passed": true,
+      "failures": [],
+      "initial_loss": 2.0,
+      "final_loss": 1.0,
+      "fraction_within_10pct": 1.0
+    },
+    "target_compilation": {
+      "dropped_target_names": []
+    },
+    "target_profile_coverage": {
+      "passed": true,
+      "failures": [],
+      "details": {
+        "requirements_checked": 1
+      }
+    },
+    "documented_absent_inputs": {
+      "is_homeless": "No ASEC source: the CPS samples the housed population, so the pre-HR1 SNAP ABAWD homeless exemption cannot fire (PolicyEngine/microcosm#351).",
+      "was_in_foster_care": "No ASEC item for foster-care history, so the pre-HR1 former-foster-youth ABAWD exemption (7 CFR 273.24(c)(9)) cannot fire (PolicyEngine/microcosm#351).",
+      "is_snap_work_program_participant": "No ASEC item measures SNAP E&T or qualifying work-program participation, so compliance via program participation never fires; USDA reports E&T reaches a small minority of participants, so the always-False default understates compliance only modestly (PolicyEngine/microcosm#249).",
+      "weekly_snap_work_program_hours": "No ASEC item measures qualifying work-program hours, so combined work-plus-program hours toward the 20-hour ABAWD test omit program hours (PolicyEngine/microcosm#249).",
+      "is_snap_workfare_participant": "No ASEC item measures workfare participation under 7 CFR 273.7(m), which satisfies the ABAWD requirement regardless of hours; defaults False (PolicyEngine/microcosm#249)."
+    }
+  }
+}

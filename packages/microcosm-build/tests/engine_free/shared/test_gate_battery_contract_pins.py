@@ -31,9 +31,7 @@ from microcosm.build.gates import GateResult
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.weighted_integrity import (
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
-    UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
     UK_INPUT_MASS_REFERENCE_REGISTRY,
-    uk_default_input_mass_reviewed_exclusions,
 )
 from microcosm.data import contract as data_contract
 from test_support.paths import paths_for
@@ -165,26 +163,12 @@ class TestMirrorConstants:
             _canonical_sha256(payload)
         )
 
-    def test_input_mass_evidence_pin_mirrors_the_wrapped_reference(self) -> None:
-        from microcosm.build.gate_battery import _canonical_sha256
+    def test_the_input_mass_evidence_is_not_pinned(self) -> None:
+        """Its digest covers the reference build's own totals, which change
+        with every cut (microcosm#1095); the report names the build."""
 
-        reference = "efrs-post-calibration"
-        records = uk_default_input_mass_reviewed_exclusions()[reference]
-        assert data_contract._UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 == (
-            _canonical_sha256(
-                {
-                    "reference": reference,
-                    "reference_evidence_sha256": (
-                        UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256
-                    ),
-                    "exclusions_policy": "committed",
-                    "reviewed_exclusions": {
-                        name: record.policy_payload()
-                        for name, record in sorted(records.items())
-                    },
-                }
-            )
-        )
+        assert not hasattr(data_contract, "_UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256")
+        assert not hasattr(data_contract, "_UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256")
 
     def test_numeric_threshold_mirrors_match_the_committed_spec(self) -> None:
         spec = load_country_spec("uk")
@@ -205,14 +189,7 @@ class TestMirrorConstants:
             == (params["uk_target_fit"]["max_abs_relative_error"])
         )
         assert data_contract._UK_INPUT_MASS_ACTIVE_REFERENCE == reference
-        assert (
-            data_contract._UK_INPUT_MASS_REFERENCE_IDENTITY
-            == input_mass["reference_registry"][reference]["identity"]
-        )
-        assert (
-            data_contract._UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256
-            == (input_mass["reference_registry"][reference]["totals_sha256"])
-        )
+        assert input_mass["reference_registry"][reference]["kind"] == "current_build"
         assert input_mass["reviewed_exclusions_resource"] == (
             UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE
         )
@@ -377,6 +354,24 @@ class TestCertificationMirrors:
 
         assert data_contract._UK_NATIONAL_RELEASE_ID == UK_NATIONAL_RELEASE_ID
 
+    def test_since_baseline_record_mirrors_the_build_shard(self) -> None:
+        """Round 2 of the review of microcosm#1574: where the national chain
+        starts, and why a column leaves it."""
+
+        from microcosm.build.uk_runtime.cut_reference import (
+            UK_NATIONAL_SINCE_BASELINE_ORIGIN,
+        )
+        from microcosm.build.uk_runtime.weighted_integrity import (
+            UK_SINCE_BASELINE_LEFT_REASONS,
+        )
+
+        assert data_contract._UK_NATIONAL_SINCE_BASELINE_ORIGIN == (
+            UK_NATIONAL_SINCE_BASELINE_ORIGIN
+        )
+        assert data_contract._UK_SINCE_BASELINE_LEFT_REASONS == (
+            UK_SINCE_BASELINE_LEFT_REASONS
+        )
+
 
 class TestDenseLineMirrors:
     """The dense joint line's contract mirrors (microcosm#762 A18)."""
@@ -385,10 +380,9 @@ class TestDenseLineMirrors:
         from microcosm.build.uk_runtime.release_identity import UK_DENSE_RELEASE_ID
 
         assert data_contract._UK_DENSE_RELEASE_ID == UK_DENSE_RELEASE_ID
-        assert data_contract._UK_DENSE_CUT_TAG_RE.fullmatch(
-            f"{UK_DENSE_RELEASE_ID}-20260903T105422Z-ca611e43"
-        )
-        assert data_contract._UK_DENSE_CUT_TAG_RE.fullmatch(UK_DENSE_RELEASE_ID) is None
+        # Its builds publish into their own folders, with no tag to match.
+        assert data_contract.publishes_to_build_folder(UK_DENSE_RELEASE_ID)
+        assert not hasattr(data_contract, "_UK_DENSE_CUT_TAG_RE")
 
     def test_dataset_filename_mirrors_the_assembler(self) -> None:
         import importlib.util
