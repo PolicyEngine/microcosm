@@ -990,6 +990,7 @@ def test__legacy_tool__block_v1_main_records_rule_seed_gate_and_attributes(
         "location_seed": 5,
         "location_clones": 1,
         "donor_location_rule": "block_v1",
+        "semp_covers_partnership_income": True,
     }
 
     location = summary["household_location"]

@@ -581,6 +581,8 @@ def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
         work_disability_inputs=True,
         income_transfer=True,
         native_receipt_anchors=True,
+        # microcosm#1387: ACS SEMP already includes own-partnership income.
+        semp_covers_partnership_income=True,
         donor_channel=args.donor_channel,
         seed=args.seed,
         n_estimators=args.n_estimators,
@@ -1239,7 +1241,7 @@ def _require_benefit_participation_transfer(result: AcsMultispineResult) -> None
 
 
 def _require_acs_self_employment_identity(frame: Frame) -> GateResult:
-    """Refuse staging whose ACS self-employment leaves add to SEMP (#1380)."""
+    """Refuse staging whose ACS self-employment double-counts SEMP (#1380, #1387)."""
 
     person = frame.table("person")
     tag = spine_column("person")

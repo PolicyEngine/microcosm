@@ -97,7 +97,7 @@ evidence, shared evaluators, and ex-ante steward-reviewed tolerances.
 
 The community spine mirrors Belgium's clone-and-assign contract, constrained to
 the target-assigned marz. The shared operator still lives in UK runtime modules;
-`populace#263` must promote and bind that country-neutral implementation before
+`microcosm#263` must promote and bind that country-neutral implementation before
 Armenia can execute. Belgium's walking-skeleton fanout is not Armenia policy.
 `clones_per_record: 1` is the provisional compile-safe minimum: it declares no
 fanout and is not an observed Armenian quantity. Any collision-avoiding fanout
@@ -106,7 +106,7 @@ roster/distribution and donor support are harvested; it must not be tuned to a
 candidate release.
 
 The public release must carry the country-neutral `source_coverage.json`
-contract tracked by `populace#265`, plus calibration diagnostics, validation
+contract tracked by `microcosm#265`, plus calibration diagnostics, validation
 bands, build/release manifests, and an explicit donor-provenance banner.
 `latest.json` is an atomic pointer uploaded last; nothing in this spec-only
 package publishes an artifact.
@@ -163,7 +163,7 @@ tax-benefit quantities into targets.
    tolerances, and which shared evaluators will receipt them?
 5. What is the complete 2022-census marz/community roster and assignment table,
    and when will the country-neutral clone-and-assign runtime land under
-   `populace#263`?
+   `microcosm#263`?
 6. Which rules repository/corpus will own `rulespec-am`, and which verified
    effective-date surface should its first Axiom-adapter run cover?
 7. Which CEQ, World Bank, and Central Bank comparisons are conceptually suitable

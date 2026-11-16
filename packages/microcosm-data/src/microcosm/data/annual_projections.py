@@ -1041,7 +1041,8 @@ def require_base_publication(
     be the folder's base-year H5, with the same file name and SHA-256; and
     every other file it declares, apart from the manifests and the checksum
     ledger the emitter writes for each build, must be in the annual build's
-    manifest with the same path and SHA-256.
+    manifest with the same path and SHA-256; and ``releases.json`` must list
+    it and not have withdrawn it.
 
     A local-annual build's release and build manifests are assembled from its
     base build's local folder, so for one the base build's
@@ -1060,8 +1061,8 @@ def require_base_publication(
     relabelled or a file added, therefore cannot hand its edit to the annual
     build, even when that folder is the client's cached snapshot.
 
-    An absent manifest refuses; any other Hub failure, including one where the
-    Hub could not be asked, propagates. ``api`` needs ``hf_hub_download``; for
+    An absent manifest or ``releases.json`` refuses; any other Hub failure,
+    including one where the Hub could not be asked, propagates. ``api`` needs ``hf_hub_download``; for
     a local-annual build it must take ``cache_dir`` and ``force_download``.
 
     A local-annual build's base is a build of the local-area release, read
@@ -1070,7 +1071,12 @@ def require_base_publication(
     microdata artifact, and the annual build's base-year H5 is the artifact
     ``metadata.annual_projection_base`` names by file name.
     """
-    from microcosm.data.build_folder_manifests import referenced_build
+    from functools import partial
+
+    from microcosm.data.build_folder_manifests import (
+        referenced_build,
+        require_offered_build,
+    )
 
     manifest = _read_json(Path(release_dir) / "release_manifest.json")
     reference = _object(
@@ -1198,7 +1204,18 @@ def require_base_publication(
             "SHA-256 values); an annual build carries every file of its base "
             "build as published"
         )
+    # A base build its repository has withdrawn, or no longer lists, is not
+    # one to project.
+    require_offered_base = partial(
+        require_offered_build,
+        api,
+        repo_id=repo_id,
+        release=str(reference.get("release")),
+        build=str(base_build),
+        label="the annual build's base build",
+    )
     if not local_annual:
+        require_offered_base()
         return
     # The assembler copies each carried entry whole, so its kind, role and
     # every other field must be the published one too.

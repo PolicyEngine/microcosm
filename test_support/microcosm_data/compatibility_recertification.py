@@ -497,17 +497,53 @@ class PathsInfoHub(FakeHub):
         return str(local)
 
 
-def seed_published_parent(hub, parent_dir: Path, artifact_root: Path) -> None:
+def seed_published_parent(
+    hub,
+    parent_dir: Path,
+    artifact_root: Path,
+    *,
+    listed: bool = True,
+    withdrawn: bool = False,
+) -> None:
     """Publish the parent's files on the fake Hub, as its publisher did.
 
     A parent that keeps only its tag has its release files under
     ``releases/<id>/`` and its root artifacts at their paths, at its tag; a
     build-folder parent has every file in ``releases/<release>/<build>/`` at
-    ``main``.
+    ``main``, and ``releases.json`` lists it (unless ``listed`` is false),
+    withdrawn when ``withdrawn`` says so.
     """
 
     manifest = json.loads((parent_dir / "release_manifest.json").read_text())
     if isinstance(manifest.get("build"), str):
+        from microcosm_emitter_interface.releases import (
+            ReleasesRecord,
+            add_build,
+        )
+        from microcosm_emitter_interface.releases import (
+            withdraw_build as withdraw,
+        )
+
+        record = ReleasesRecord.empty()
+        if listed:
+            # Another build is current, so the parent can be withdrawn.
+            for build, current in (
+                ("an-earlier-national-build", True),
+                (manifest["build"], False),
+            ):
+                record = add_build(
+                    record,
+                    release=manifest["release"],
+                    build=build,
+                    release_role="national",
+                    published_at="2026-11-01T00:00:00+00:00",
+                    make_current=current,
+                )
+            if withdrawn:
+                record = withdraw(
+                    record, release=manifest["release"], build=manifest["build"]
+                )
+        hub.seed_main_file("releases.json", record.serialize())
         folder = f"releases/{manifest['release']}/{manifest['build']}"
         for name in ("release_manifest.json", "build_manifest.json"):
             hub.seed_main_file(f"{folder}/{name}", (parent_dir / name).read_bytes())

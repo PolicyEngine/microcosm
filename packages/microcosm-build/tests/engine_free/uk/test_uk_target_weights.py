@@ -436,6 +436,51 @@ def test_a_floored_family_off_the_surface_is_recorded_absent() -> None:
         assert_uk_family_loss_share_floors(rows, np.zeros(2))
 
 
+def _bus_surface(n_region_families: int):
+    """Four grains; bus journeys one of ``n_region_families`` at nation/region."""
+
+    return _rows(
+        _local(
+            "c1/hh",
+            "constituency",
+            "E14000001",
+            "households",
+            "census_households",
+            4.0e4,
+        ),
+        _local("l1/gas", "la", "E06000001", "energy/gas_kwh", "domestic_energy", 1.0e6),
+        _national("obr/it", "obr", "K02000001", "gbp", 2.0e11),
+        _national("bus/ne", "dft_bus_journeys", "E12000001", "count", 1.4e8),
+        *(
+            _national(f"r{i}", f"region_family_{i}", "E92000001", "count", 1.0e6)
+            for i in range(n_region_families - 1)
+        ),
+    )
+
+
+def test_the_bus_floor_admits_21_region_families_and_refuses_22() -> None:
+    """María, 2026-11-16: binding PIP made the dense surface's 21st region family.
+
+    Under the doctrine's rule the bus journeys take a twenty-first of the
+    nation/region grain's quarter (about 1.19 %), which meets the 1.15 % floor;
+    a twenty-second family (about 1.14 %) comes back for a ruling.
+    """
+
+    rule = UK_LOCAL_SOLVE_DOCTRINE.target_weight_rule
+    rows = _bus_surface(21)
+    weights = uk_target_loss_weights_for_rows(rows, rule=rule)
+    bus = assert_uk_family_loss_share_floors(rows, weights)["families"][
+        "dft_bus_journeys"
+    ]
+    assert bus["status"] == "met"
+    assert bus["loss_share"] == pytest.approx(0.25 / 21)
+    rows = _bus_surface(22)
+    with pytest.raises(ValueError, match=r"dft_bus_journeys \(1\.1364% < 1\.1500%\)"):
+        assert_uk_family_loss_share_floors(
+            rows, uk_target_loss_weights_for_rows(rows, rule=rule)
+        )
+
+
 def test_a_share_equal_to_its_floor_meets_it() -> None:
     """One family in forty (2.5 %) meets a 2.5 % floor despite rounding."""
 

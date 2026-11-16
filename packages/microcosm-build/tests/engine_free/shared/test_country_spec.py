@@ -999,7 +999,7 @@ class TestCountryStagePlan:
         spec = load_country_spec("be")
         names = [stage.stage for stage in spec.sources.stages] + [
             spec.geography_spine.geography_spine.stage,
-            "load_populace_us_support_pool_fallback",
+            "load_microcosm_us_support_pool_fallback",
         ]
         with pytest.raises(ValueError, match="Unknown stage implementation"):
             country_stage_plan(spec, {name: (lambda frame: frame) for name in names})
@@ -1044,7 +1044,7 @@ class TestCountryStagePlan:
                 implementations,
                 stage_names=(
                     "load_populace_us_support_pool",
-                    "load_populace_us_support_pool_fallback",
+                    "load_microcosm_us_support_pool_fallback",
                 ),
             )
 
@@ -2437,7 +2437,7 @@ class TestRefusals:
             "version": 1,
             "country": "xx",
             "policy": "test",
-            "builder": "populace-xx",
+            "builder": "microcosm-xx",
             "hf": {
                 "artifact_repo": "policyengine/populace-xx",
                 "private": False,
@@ -2459,7 +2459,7 @@ class TestRefusals:
             "version": 1,
             "country": "xx",
             "policy": "test",
-            "builder": "populace-xx-v2",
+            "builder": "microcosm-xx-v2",
             "hf": {
                 "artifact_repo": "policyengine/populace-xx-private",
                 "private": True,
@@ -2481,7 +2481,7 @@ class TestRefusals:
             "version": 1,
             "country": "xx",
             "policy": "test",
-            "builder": "populace_xx_v2_staging",
+            "builder": "microcosm_xx_v2_staging",
             "hf": {
                 "artifact_repo": "policyengine/populace-xx-private",
                 "private": True,
@@ -2506,7 +2506,7 @@ class TestRefusals:
             "version": 1,
             "country": "xx",
             "policy": "test",
-            "builder": "populace-xx-sha-v2x",
+            "builder": "microcosm-xx-sha-v2x",
             "hf": {
                 "artifact_repo": "policyengine/populace-xx-private",
                 "private": True,

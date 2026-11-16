@@ -406,7 +406,7 @@ def test_dense_ssi_fences_cover_the_enforced_bands_and_cite_the_adjudication() -
 
 
 def test_ssi_delivery_fences_are_passed_on_the_dense_arm_only() -> None:
-    """The sparse certified arm must keep hard enforcement: structurally,
+    """The L0+refit and --exact-k arms must keep hard enforcement: structurally,
     main()'s single _enforce_ssi_take_up_delivery call may pass the fence
     table only under args.dense_default_dataset, with None otherwise (the
     #443 AST-guard pattern)."""

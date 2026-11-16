@@ -4,7 +4,7 @@
 family-benefit modules whose programs run on the engine entity ``Child``, and
 ``build/be/axiom_input_closure.json`` decides how each of their 277 ``Child``
 root inputs is fed: a ``person_role`` binding of the ``axiom:be`` concept
-mapping encodes 35, and the other 242 take a default with a reason and a
+mapping encodes 39, and the other 238 take a default with a reason and a
 citation. No frame entity maps to ``Child``, so each binding declares a
 binding-local view on it (``docs/transport-declared-units.md``).
 
@@ -32,8 +32,8 @@ from microcosm.build.transport.evidence_contract import (
 )
 from microcosm.frame.adapters.axiom import BE_SCHEMA, axiom_concept_mapping
 from microcosm.frame.adapters.axiom_input_surface import load_axiom_input_surface
-from microcosm.frame.concept_mapping import GroupRule
-from microcosm.frame.concepts import ContentBasis
+from microcosm.frame.concept_mapping import GroupRule, Predicate
+from microcosm.frame.concepts import AlignmentRelation, ContentBasis
 from microcosm.frame.input_closure import ClosureClass, EncodedBy, InputClosure
 from test_support.paths import paths_for
 
@@ -48,22 +48,22 @@ SURFACE_PATH = _FRAME.tests / "fixtures/axiom_input_surfaces/be.json"
 LOGICAL_ENTITY = "Child"
 MODULES = 12
 ROOTS = 277
-ENCODED = 35
-DEFAULTED = 242
+ENCODED = 39
+DEFAULTED = 238
 #: Roots, encoded and defaulted per module, in rulespec_path order.
 PER_MODULE = {
     "be-bru/statutes/family_benefits/basic_amounts.yaml": (3, 2, 1),
-    "be-bru/statutes/family_benefits/eligibility.yaml": (19, 4, 15),
+    "be-bru/statutes/family_benefits/eligibility.yaml": (19, 5, 14),
     "be-bru/statutes/family_benefits/selected_amount.yaml": (8, 3, 5),
     "be-bru/statutes/family_benefits/social_supplements.yaml": (5, 1, 4),
     "be-dg/statutes/family_benefits/amounts.yaml": (12, 0, 12),
     "be-dg/statutes/family_benefits/eligibility.yaml": (31, 2, 29),
     "be-vlg/statutes/family_benefits/amounts.yaml": (7, 1, 6),
-    "be-vlg/statutes/family_benefits/eligibility.yaml": (23, 2, 21),
+    "be-vlg/statutes/family_benefits/eligibility.yaml": (23, 3, 20),
     "be-wal/statutes/family_benefits/amounts.yaml": (11, 2, 9),
     "be-wal/statutes/family_benefits/eligibility.yaml": (33, 4, 29),
     "be/statutes/family_benefits/lgaf_amounts.yaml": (18, 2, 16),
-    "be/statutes/family_benefits/regional_routing.yaml": (107, 12, 95),
+    "be/statutes/family_benefits/regional_routing.yaml": (107, 14, 93),
 }
 
 #: Each binding's module, the selector column of its Child view, and the
@@ -72,7 +72,7 @@ PER_MODULE = {
 #: rely on that: neither the registry nor the adapter refuses a scheme that
 #: runs behind another's column. The variables are the choice each binding's
 #: notes state, and an outside value keeps its output's type: 0.0 for Money and
-#: 0 for a Count. The surface's engine (04315d94) gives a Count a decimal
+#: 0 for a Count. The surface's engine (753ce7d9) gives a Count a decimal
 #: dtype, which takes either, but ``_outside_values`` refuses a float for an
 #: integer output, so an integer 0 stays valid if a Count becomes one (the
 #: bindings' views_note).
@@ -395,6 +395,53 @@ class TestClosure:
         assert encoded == bound
         assert len(encoded) == ENCODED
 
+    def test_the_post_18_education_flags_read_one_enrolment_predicate(self) -> None:
+        # Each scheme extends entitlement past 18 for a child in education
+        # (Brussels article 25, Flanders article 8 section 2 item 3, the
+        # German-speaking Community and Wallonia). Each flag is bound in its
+        # scheme's eligibility module and in the routing bridge, which imports
+        # that module, and every binding counts the same enrolled bands.
+        flags = {
+            "brussels_family_benefits_child_in_qualifying_education_training_or_stage": "be-bru",
+            "flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver": "be-vlg",
+            "german_speaking_community_family_benefits_child_in_training": "be-dg",
+            "wallonia_family_benefits_child_in_qualifying_courses_or_stage": "be-wal",
+        }
+        enrolment = "fact:person.education_enrollment"
+        enrolled = (
+            "early_childhood",
+            "primary",
+            "lower_secondary",
+            "upper_secondary",
+            "post_secondary_non_tertiary",
+            "tertiary",
+        )
+        bindings = [
+            binding for binding in MAPPING.bindings if binding.engine_input in flags
+        ]
+        assert sorted((b.engine_input, b.module) for b in bindings) == sorted(
+            (name, module)
+            for name, unit in flags.items()
+            for module in (
+                f"{unit}/statutes/family_benefits/eligibility.yaml",
+                "be/statutes/family_benefits/regional_routing.yaml",
+            )
+        )
+        for binding in bindings:
+            assert binding.engine_entity == LOGICAL_ENTITY
+            assert binding.group_rule is GroupRule.PERSON_ROLE
+            assert binding.relation is AlignmentRelation.APPROXIMATE
+            assert binding.concepts == (enrolment,)
+            assert isinstance(binding.transform, Predicate)
+            assert binding.transform.clauses == ((enrolment, enrolled),)
+        closure = InputClosure.from_dict(_closure_payload())
+        classes = {
+            (entry.input, entry.closure_class)
+            for entry in closure.entries
+            if entry.input in flags
+        }
+        assert classes == {(name, ClosureClass.ENCODED) for name in flags}
+
     def test_a_name_keeps_one_default_across_modules(self) -> None:
         # The routing module reads the four regional schemes' roots through
         # its imports, so one name must not take two values.
@@ -506,19 +553,29 @@ class TestBindings:
         }
         assert all(len(text) > 40 for text in payload["selectors"].values())
 
-    def test_the_engine_pins_await_the_surface_refresh(self) -> None:
+    def test_the_engine_pin_is_the_engine_that_generated_the_surface(
+        self,
+    ) -> None:
+        # The bindings pin the engine commit the committed surface and the
+        # closure record, so every root input above is the pinned engine's.
+        # axiom_engine_ref records the wheel digest as declared; no test here
+        # can hash a wheel.
         engine = _bindings_payload()["engine"]
-        assert engine["commit"] is None
-        assert engine["wheel_sha256"] is None
+        assert engine["commit"] == SURFACE.engine_commit
+        assert (
+            engine["commit"] == _closure_payload()["input_surface"]["engine"]["commit"]
+        )
+        assert re.fullmatch(r"[0-9a-f]{64}", engine["wheel_sha256"])
         assert engine["status"]
 
     def test_the_rulespec_pin_names_the_surface_commit_it_was_checked_against(
         self,
     ) -> None:
-        # The surface was generated at an ancestor of the pin. While the two
-        # commits differ, the verification note must name the surface's, since
-        # the sha256 values above were compared at both. The byte check itself
-        # needs a rulespec-be tree, which this test doesn't have.
+        # The surface is generated at the pin or at an ancestor of it. While
+        # the two commits differ, the verification note must name the
+        # surface's, since the sha256 values above were compared at both. The
+        # byte check itself needs a rulespec-be tree, which this test doesn't
+        # have.
         payload = _bindings_payload()
         if payload["rulespec"]["commit"] != SURFACE.rulespec_commit:
             assert SURFACE.rulespec_commit in payload["rulespec"]["verification"]
