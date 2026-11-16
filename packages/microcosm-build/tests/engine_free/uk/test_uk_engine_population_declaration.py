@@ -123,7 +123,8 @@ class _ClonedCallRecorder(PolicyEngineUKEngine):
 
 
 class _UCEngine:
-    """Every unit is paid an award; nobody is a child."""
+    """Every unit is paid an award without the LCWRA element; nobody is a
+    child."""
 
     country = "uk"
 
@@ -135,6 +136,7 @@ class _UCEngine:
             "is_child_or_qualifying_young_person_for_universal_credit": np.zeros(
                 len(frame.table("person")), dtype=bool
             ),
+            "uc_LCWRA_element": np.zeros(units),
         }
         return {name: values[name] for name in variables}
 
