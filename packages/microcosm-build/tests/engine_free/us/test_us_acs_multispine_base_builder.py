@@ -309,12 +309,23 @@ def test_staging_refuses_self_employment_stacked_on_semp() -> None:
             "sstb_self_employment_income_before_lsr": [0.0, 1_000.0],
             "farm_operations_income": [0.0, 0.0],
             "partnership_self_employment_net_earnings": [0.0, 0.0],
+            # microcosm#1387: line 32 and the tax-unit columns the gate grades.
+            "partnership_income": [0.0, 6_000.0],
+            "s_corp_income": [900.0, 0.0],
+            "passive_partnership_s_corp_income": [0.0, 0.0],
+            "person_tax_unit_id": [1, 2],
+            "tax_unit_role_input": ["HEAD", "HEAD"],
         }
     )
 
     gate = legacy._require_acs_self_employment_identity(_SelfEmploymentFrame(person))
     assert gate.passed
     assert gate.details["acs_person_rows"] == 1
+
+    stacked = person.copy()
+    stacked.loc[0, "partnership_income"] = 700.0
+    with pytest.raises(SystemExit, match="ACS SEMP already includes"):
+        legacy._require_acs_self_employment_identity(_SelfEmploymentFrame(stacked))
 
     person.loc[0, "farm_operations_income"] = -1_200.0
     with pytest.raises(SystemExit, match="counts that income twice"):
