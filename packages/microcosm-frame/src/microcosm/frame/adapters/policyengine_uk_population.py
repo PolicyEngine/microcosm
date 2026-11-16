@@ -6,7 +6,7 @@ total, a weighted rank or median, or records spread by weight. Over an engine
 block or batch that holds part of the pool they read the part, not the pool
 (microcosm#931). :data:`UK_ENGINE_POPULATION` classifies each one for the
 shared machinery in :mod:`microcosm.frame.adapters.engine_population`,
-reviewed against policyengine-uk 2.174.1:
+reviewed against policyengine-uk 2.177.7:
 
 - corrected: ``shareholding``, ``corporate_land_value`` and
   ``consumption_shareholding`` allocate by ``x / sum(x * w)``, so a block's
@@ -96,7 +96,7 @@ def _as_baseline(path: str) -> ParameterTest:
 UK_ENGINE_POPULATION = PopulationDeclaration(
     engine="policyengine_uk",
     distribution="policyengine-uk",
-    reviewed_version="2.174.1",
+    reviewed_version="2.177.7",
     list_source="policyengine_uk.utils.household_subset:WHOLE_POPULATION_VARIABLES",
     weight_variable="household_weight",
     corrected={
@@ -140,10 +140,11 @@ UK_ENGINE_POPULATION = PopulationDeclaration(
     },
     inert={
         # Attendance reaches household taxes only through
-        # private_school_vat_change (household_tax.py), pupils times fees
-        # times the difference between private_school_vat_rate under the
-        # policy and under its baseline (private_school_vat.py); the rate
-        # reads these three parameters. gov_tax adds the level.
+        # private_school_vat_change (a tax term of programs.yaml, which
+        # household_tax adds), pupils times fees times the difference
+        # between private_school_vat_rate under the policy and under its
+        # baseline (private_school_vat.py); the rate reads these three
+        # parameters. gov_tax adds the level.
         "attends_private_school": InertRule(
             sink="private_school_vat_change",
             levels=("private_school_vat", "baseline_private_school_vat"),

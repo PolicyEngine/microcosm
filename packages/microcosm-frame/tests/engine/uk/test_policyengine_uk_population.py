@@ -337,7 +337,11 @@ def test_the_window_starts_at_the_rebalancing_years():
 
 def _readers(names: set[str]) -> dict[str, set[str]]:
     """Where each name appears as a string constant or is called, by the
-    module and outermost definition (outside the engine's own tests)."""
+    module and outermost definition (outside the engine's own tests), and
+    which budget total of the programme registry adds it (``programs.yaml``:
+    household_tax adds its tax terms, household_benefits its benefit terms)."""
+
+    from policyengine_uk.programs import budget_programs
 
     root = _package_root()
     found: dict[str, set[str]] = {name: set() for name in names}
@@ -360,6 +364,9 @@ def _readers(names: set[str]) -> dict[str, set[str]]:
                     value = node.func.id
                 if value in found:
                     found[value].add(where)
+    for term in budget_programs():
+        if term.variable in found:
+            found[term.variable].add(f"programs.yaml:{term.budget}")
     return found
 
 
@@ -392,8 +399,11 @@ def test_attendance_reaches_household_taxes_only_through_the_vat_change():
         "variables/gov/hmrc/private_school_vat_change.py:private_school_vat_change",
     }
     assert readers["private_school_vat_change"] == {
-        "variables/gov/hmrc/household_tax.py:HOUSEHOLD_TAX_VARIABLES",
+        # A tax term of the programme registry, which household_tax adds
+        # (HOUSEHOLD_TAX_VARIABLES is the registry's tax terms).
+        "programs.yaml:tax",
     }
+    assert "private_school_vat_change" in _household_tax_variables()
 
 
 #: Formulas outside the engine's list with an axis-free reduction (a sum,
@@ -404,10 +414,12 @@ AXIS_FREE_REDUCTIONS = {
     "brma": [".any()"],
     "capital_gains_tax": ["np.any(", "np.max("],
     "ebr_council_tax_rebate": ["np.any("],
+    "esa_income_eligible": [".any()"],
     "is_cared_for_by_carer_benefit_recipient": ["np.max("],
     "legacy_means_test_uncounted_income_tax_without_earnings": [".any()"],
     "pension_credit_income_tax_without_earnings": [".any()"],
     "pension_credit_income_tax_without_employment_income": [".any()"],
+    "rent_a_room_income_tax_without_earnings": [".any()"],
     "uc_award_carries_deductions": [".any()"],
     "uc_deduction_combination": [".sum()", "np.cumsum("],
     "uc_latent_deduction_rate": [".sum()", "np.cumsum("],
@@ -582,6 +594,11 @@ WHOLE_ARRAY_BRANCHES = {
     "data/isa_income.py:validate_contract": [
         'not all( isinstance(contract[key], str) for key in ("representation", "projection") )',
     ],
+    # The programme registry household_tax and household_benefits read: a
+    # check that raises.
+    "programs.py:build_budget_programs": [
+        "len(set(listed)) != len(listed)",
+    ],
     # Where every couple is the claimant and partner, np.where gives each the
     # same award.
     "utils/benefit_unit.py:award_of_couple": [
@@ -630,6 +647,42 @@ WHOLE_ARRAY_BRANCHES = {
     "utils/income_tax.py:first_extended_scottish_threshold": [
         "len(scale.thresholds) == 3",
     ],
+    # The least-tax search sets reliefs and allowances against each person's
+    # income components. A Marriage Allowance recipient's line repeats x = 0
+    # for everyone else, so the search finds them the same share whoever else
+    # it searches. The lines for an exclusion from earned income are never
+    # added at current law, whose exclusions are the ones the search sets
+    # itself; under a reform that lists another, a person without one gets
+    # lines along which their tax does not bend, so their least tax is the
+    # same, and only a tie the search breaks within its tolerance can fall on
+    # another share.
+    "utils/income_tax_allocation.py:_candidates": [
+        "not c.other_first and np.any(c.earned_exclusions > 0)",
+        "np.any(c.marriage_allowance_reduction > 0)",
+    ],
+    # Parameter rates and thresholds.
+    "utils/income_tax_allocation.py:_old_order_is_least": [
+        "not ( all(step >= 0 for _, steps in scales for step in steps) and low <= 0 and c.phase_out >= 0 )",
+    ],
+    # Parameter scales.
+    "utils/income_tax_allocation.py:_paired_limits": [
+        "i < len(other)",
+        "i < len(scottish)",
+    ],
+    # With nobody to search, everyone keeps the order the search leaves
+    # anyone it does not search.
+    "utils/income_tax_allocation.py:least_tax_deductions": [
+        "not search.any()",
+    ],
+    # Without a reduction at stake anywhere, the reduction takes nothing.
+    "utils/income_tax_allocation.py:tax_after_marriage_allowance": [
+        "not np.any(c.marriage_allowance_reduction > 0)",
+    ],
+    # The year and a parameter scale.
+    "utils/marriage_allowance.py:marriage_allowance_rate_limits": [
+        "len(scottish.rates) == 3",
+        "period.start.year < 2017 or len(scottish.rates) < 3",
+    ],
     # Rows without net pay and a trading loss take net income either way (net
     # income is floored at zero).
     "utils/pensions.py:annual_allowance_net_income": [
@@ -657,6 +710,17 @@ WHOLE_ARRAY_BRANCHES = {
     "variables/gov/dwp/carers_allowance_pre_overlap.py:carers_allowance_pre_overlap.formula": [
         "len(parts) == 1",
     ],
+    # Where no couple's claim passes the other tests, or no couple is on
+    # Pension Credit, the shortcut gives every unit the screen's own answer.
+    "variables/gov/dwp/esa_income_eligible.py:esa_income_eligible.formula": [
+        "not couple_passes.any()",
+        "on_pension_credit.any()",
+    ],
+    # Whether a reform or a supplied input replaces Pension Credit's
+    # definitions: the system, and which inputs the data supplies.
+    "variables/gov/dwp/esa_income_eligible.py:pension_credit_follows_model_formulas": [
+        "any( replaces_definition(benunit, variable, period) for variable in PENSION_CREDIT_VARIABLES )",
+    ],
     # Segments of the year from parameters, and whether an input overrides the
     # income.
     "variables/gov/dwp/housing_benefit/entitlement/housing_benefit_entitlement.py:housing_benefit_entitlement.formula": [
@@ -675,6 +739,12 @@ WHOLE_ARRAY_BRANCHES = {
         'not (person("self_employment_income", period) != 0).any()',
     ],
     "variables/gov/dwp/pension_credit/pension_credit_earnings_income_tax.py:pension_credit_income_tax_without_employment_income.formula": [
+        "not any((person(source, period) != 0).any() for source in sources)",
+    ],
+    # Without rent-a-room income nobody's tax on it is above nil, on any
+    # branch; zeroing earnings nobody has changes nobody's tax.
+    "variables/gov/dwp/rent_a_room_income_tax_without_earnings.py:rent_a_room_income_tax_without_earnings.formula": [
+        'not (person("taxable_rent_a_room_income", period) > 0).any()',
         "not any((person(source, period) != 0).any() for source in sources)",
     ],
     # Without a changed baseline or an award, every unit carries its
@@ -702,6 +772,14 @@ WHOLE_ARRAY_BRANCHES = {
     # Only a claimant can take the allowance.
     "variables/gov/hmrc/income_tax/allowances/uses_trading_allowance.py:uses_trading_allowance.formula": [
         "not claimant.any()",
+    ],
+    # A parameter list.
+    "variables/gov/hmrc/income_tax/bracketized_earned_income/earned_taxable_income.py:earned_taxable_income.formula": [
+        "all(variable in exclusion_list for variable in NON_SAVINGS_BASE)",
+    ],
+    # A parameter scale.
+    "variables/gov/hmrc/income_tax/bracketized_liability/tax_band.py:scottish_tax_band": [
+        "len(scale.thresholds) == 3",
     ],
     # Parameter thresholds.
     "variables/gov/hmrc/pensions/private_pension_contributions_tax.py:_top_slice_charge": [
