@@ -2550,9 +2550,10 @@ def test_shared_series_check_refuses_a_mismatched_fpb_row_as_ours_does(
 ):
     """Chronicle #403 gave each FPB row its own source concept.
 
-    Before it, every T07 row shared one series key, so the shared roll-forward
-    check accepted a numerator and denominator from different rows; only ours
-    refused. Now each row's concept enters the series key, and both refuse.
+    Before it, T07's nine level rows shared one roll-forward series key (the
+    rate row's aggregation kept it apart), so the shared check accepted a
+    numerator and denominator from different level rows; only ours refused.
+    Now each row's concept enters the series key, and both refuse.
     """
 
     row = copy.deepcopy(
