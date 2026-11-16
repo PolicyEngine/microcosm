@@ -13,6 +13,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from test_support.microcosm_build.us_modal_stage_plan_tool import (
     ROOT,
@@ -254,8 +256,8 @@ def test_head_to_head_timeout_holds_one_attempt_inside_the_cost_cap() -> None:
         + resources.memory_gib * plan_lib.MEMORY_USD_PER_GIB_SECOND
     ) * plan.price_multiplier
     assert per_second == pytest.approx(plan_lib.HEAD_TO_HEAD_USD_PER_SECOND)
-    assert resources.timeout_s == int(
-        plan_lib.HEAD_TO_HEAD_COST_CAP_USD // plan_lib.HEAD_TO_HEAD_USD_PER_SECOND
+    assert resources.timeout_s == plan_lib.timeout_for_cap(
+        plan_lib.HEAD_TO_HEAD_COST_CAP_USD, plan_lib.HEAD_TO_HEAD_USD_PER_SECOND
     )
     assert resources.timeout_s == 15_705
     assert per_second * resources.timeout_s <= plan_lib.HEAD_TO_HEAD_COST_CAP_USD
@@ -272,11 +274,28 @@ def test_head_to_head_timeout_holds_one_attempt_inside_the_cost_cap() -> None:
     assert summary["resources"]["nonpreemptible"] is True
 
 
-@pytest.mark.parametrize("cap", [0.5, 39.99, 40.0, 75.0, 120.0])
+@pytest.mark.parametrize("cap", [0.5, 39.99, 40.0, 75.0, 100.0, 120.0])
 def test_a_cap_derived_timeout_never_bills_past_its_cap(cap: float) -> None:
     rate = plan_lib.HEAD_TO_HEAD_USD_PER_SECOND
-    timeout = int(cap // rate)
+    timeout = plan_lib.timeout_for_cap(cap, rate)
     assert timeout * rate <= cap < (timeout + 1) * rate
+
+
+@given(
+    st.floats(0.01, 10_000, allow_nan=False),
+    st.floats(1e-6, 1.0, allow_nan=False),
+)
+def test_timeout_for_cap_is_the_longest_whole_second_inside_any_cap(
+    cap: float, rate: float
+) -> None:
+    timeout = plan_lib.timeout_for_cap(cap, rate)
+    assert timeout * rate <= cap < (timeout + 1) * rate
+
+
+def test_timeout_for_cap_refuses_a_zero_cap_or_price() -> None:
+    for cap, rate in ((0.0, 1.0), (1.0, 0.0), (-1.0, 1.0)):
+        with pytest.raises(ValueError, match="positive"):
+            plan_lib.timeout_for_cap(cap, rate)
 
 
 def test_recycling_has_a_check_preflight_and_the_d844_plan_does_not_recycle() -> None:

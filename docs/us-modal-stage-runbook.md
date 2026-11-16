@@ -423,7 +423,7 @@ local wall times in this table understate Modal's wall and cost.
 | check | n/a | check | 2 cores, 8 GiB, 30 min timeout | cents |
 | PUF-support base (`all`) | 72.5 GB, 2,788 s wall, 6,238 CPU-s | base | 4 cores (limit 4), 112 GiB, 4 h 35 min timeout | about $0.84 ($2.52 non-preemptible) |
 | ACS multispine staging (`all`) | 42.4 GB, 7,218 s wall, 103,105 CPU-s | acs-staging | 16 cores (limit 16), 80 GiB, 17 h timeout | about $2.79 ($8.38 non-preemptible) |
-| Route A head-to-head (`score`) | 10.98 GB peak sampled RSS in a 6-slice local probe of one worker; about 7.7 h estimated on 16 workers | head-to-head | 16 cores (limit 16), 224 GiB (limit 224), 14 h 50 min timeout | $37.75 preemptible compute through the timeout |
+| Route A head-to-head (`score`) | Mac only: 10.4 GiB peak sampled RSS for one process holding both frames, 8.10 GiB peak printed by 3 incumbent workers; no candidate worker measured; time on Modal not measured | head-to-head | 16 cores (limit 16), 288 GiB (limit 288), 15,705 s (4 h 22 min) timeout from the $40 cap | $40.00 non-preemptible compute through the timeout |
 
 The prices are Modal's list prices for standard compute, read from
 [modal.com/pricing](https://modal.com/pricing) on 22 September 2026 and
@@ -1700,63 +1700,112 @@ incumbent and 177 for the candidate, so 145 and 885 slices. Each worker
 receives the repaired frame once, when it starts.
 
 **Memory.** Class `head-to-head` requests 16 physical cores and 288 GiB,
-each limited at the request. Without recycling a candidate worker scores
-about 55 slices, so the class allows 16 GiB for each of 16 workers plus
-32 GiB for the parent, which retains the original and repaired frames.
-Nothing has measured a worker on the d1386 frame or on Modal. "About
-12 GiB per worker" is an inference from the September candidate's frame
-(5.45 GiB in-process and 2.17 GiB pickled, measured 10 October). October's
-sequential run grew 37 to 59 MB per slice in chunks 1 to 4 and died of a
-`MemoryError` at 20.3 GiB in chunk 5, under the older scorer. The local
-probe of 11 November, on the d1386 frame and the current scorer, saw the
-traced heap grow 22 to 45 MB per slice after a one-time step at slice 3,
-over six slices of chunk 5 only. The 23 September materialize acceptance
-attempt peaked at 66.3 to 74.5 GB on Modal against 51.0 GB on the Mac
-(1.30 to 1.46 times). The go/no-go step below measures each worker's peak
-from the run's own log and stops a run that would not fit. Exceeding the hard limit OOM-kills the container, which then
-writes **no final receipt and mirrors no output**: inspect the container
-logs and Modal's measurements, and do not assume the absence of a receipt
-means the attempt was free. The receipt's `peak_rss_bytes` is a
+each limited at the request: 16 GiB for each of 16 workers plus 32 GiB for
+the parent, which retains the original and repaired frames. Two limits bound
+it, and the go/no-go watcher below judges neither. The class's hard limit
+OOM-kills the container. The scorer's own guard (`MAX_RSS_BYTES`, 20 GiB)
+raises `MemoryError` in any process whose peak RSS reaches it at a logged
+boundary. What has been measured, all on the Mac
+(`docs/evidence/us-h2h-speed`):
+
+- One process holding both frames peaked at 10.4 GiB, sampled every half
+  second.
+- In a three-worker pool run of the pinned scorer, incumbent workers printed
+  4.38 to 8.10 GiB and the parent 3.66 to 5.01 GiB.
+- No candidate worker has run. "About 12 GiB per candidate worker" is an
+  inference from the September candidate's frame (5.45 GiB in-process and
+  2.17 GiB pickled, measured 10 October).
+
+Earlier runs and probes:
+
+- October's sequential run, under the older scorer, grew 37 to 60 MiB per
+  slice in chunks 2 to 4 (166 MiB per slice in chunk 1, from the loaded
+  frame) and died of a `MemoryError` at 20.3 GiB in chunk 5.
+- The local probe of 11 November, on the d1386 frame and the current scorer,
+  saw the traced heap grow 22 to 45 MB per slice after a one-time step at
+  slice 3, over six slices of chunk 5 only.
+- The 23 September materialize acceptance attempt peaked at 66.3 to 74.5 GB
+  on Modal against 51.0 GB on the Mac (1.30 to 1.46 times).
+
+An OOM-kill writes **no final receipt and mirrors no output**. Inspect the
+container logs and Modal's measurements, and do not assume the absence of a
+receipt means the attempt was free. The receipt's `peak_rss_bytes` is a
 child-process peak from `RUSAGE_CHILDREN`, not the sum of sixteen workers.
 
-**Time.** October's sequential run averaged 5.2, 4.7, 6.2, 5.4 and 10.4
-minutes per slice in registry chunks 1 to 5. It scored only incumbent
-slices (29 in each of chunks 1 to 4 and 12 in chunk 5, when chunk 5 held 73
-specs) and died at chunk 5. Applying those means to all 1,030 slices gives
-about 6,580 slice-minutes, or about 24,700 seconds of scoring on 16
-workers, before loading both artifacts, two pool starts and the scorecards.
-That estimate is unvalidated. Chunk 5's mean rests on 12 slices at 73
-specs, and chunk 5 now holds 379. The only candidate timings are the
-11 November probe's six chunk-5 slices under `tracemalloc`, at 734 to
-1,849 seconds each (mean 1,188, 1.9 times October's chunk-5 mean), on a
-loaded Mac; tracing slows Python, so they do not bound the untraced time.
+**Time.** All of the timing below comes from the Mac
+(`docs/evidence/us-h2h-speed`).
 
-**Placement and the cap.** The plan runs non-preemptible. The scorer has
-no resume, and at the preemption rate measured in "Preemption and restarts"
-(about 0.67 per hour) a preemptible attempt of seven to eight hours finishes
-under 1% of the time. `HEAD_TO_HEAD_COST_CAP_USD` sets the class timeout:
-the cap divided by the class's non-preemptible list price,
+One process scored a slice in these times:
+
+| Artifact | Chunks 1 to 4 | Chunk 5 |
+|---|---|---|
+| Candidate | 34 to 42 s | about 200 s |
+| Incumbent | 33 to 50 s | 226 to 232 s |
+
+All 1,030 slices then come to about 74,100 s of slice work, or 4,631 s on
+16 workers.
+
+The scorer's pool starts workers on demand, one at a time. A submit that
+finds no result token free starts a worker. Each start blocks the parent
+while the child imports the scorer and reads the frame. On the Mac,
+incumbent worker starts took 42, 36 and 44 s.
+
+Nothing has timed this scorer on Modal, or a candidate worker's start
+anywhere. A simulation of 16-worker runs from the Mac times (not a
+measurement: `projection-grid.txt` there) shows when the run fits the $40
+budget. Let f be Modal's time per slice over the Mac's:
+
+- at f up to 1, if a worker starts in 300 s or less;
+- at f up to 1.5, if a worker starts in 175 s or less;
+- at f up to 2, if a worker starts in 100 s or less;
+- at f of 3 or more, never.
+
+The runbook's measured Modal slowdown for single-core materialize work, 3.3
+to 7.6 times per chunk, would not fit. October's sequential run, under an
+older scorer on free-threaded CPython, took 5 to 10 minutes per slice. That
+is 6 to 9 times the Mac times above in chunks 1 to 4, for reasons not
+tested.
+
+**Placement and the cap.** The plan runs non-preemptible. The scorer has no
+resume. At the preemption rate measured in "Preemption and restarts" (about
+0.67 per hour), a preemptible attempt of two to four hours, the span of
+the simulated runs that fit, would finish only 26% to 7% of the time.
+
+`HEAD_TO_HEAD_COST_CAP_USD` sets the class timeout: the cap divided by the
+class's non-preemptible list price,
 `(16 × $0.0000131 + 288 × $0.00000222) × 3 = $0.00254688` per second
 ($9.17 an hour). At Max's $40 cap (10 October) that is 15,705 seconds
-(4.4 hours), and the plan's `max_wall_seconds` of 14,505 leaves the
-runner's 900-second reserve and 300 seconds for staging. **At $40 the run
-cannot finish**: the estimate above needs about seven hours. A cap only
-Max can set must come first. Raising the cap is a change to
-`HEAD_TO_HEAD_COST_CAP_USD` alone; then set the plan's `max_wall_seconds`
-to the new timeout less 1,200. The CPU and memory limits equal their
-requests, so the timeout bounds one attempt's compute bill. Startup and
-image work outside the timeout, the check, storage and
-timeout-enforcement overshoot remain outside this ceiling; it is not a cap
-on total Modal account spend. A changed plan is a new plan sha256 with a
-fresh runner budget, so record every attempt's spend for this comparison
-in the run folder and keep the total inside Max's cap yourself.
+(4.4 hours). The plan's `max_wall_seconds` of 14,505 leaves the runner's
+900-second reserve and 300 seconds for staging. Whether $40 is enough
+depends on Modal's speed for this scorer, which only a run can measure. The
+watcher below stops a run that will not fit.
+
+Raising the cap changes `HEAD_TO_HEAD_COST_CAP_USD`, the plan's
+`max_wall_seconds` (the new timeout less 1,200) and the figures the plan
+tests pin. The CPU and
+memory limits equal their requests, so the timeout bounds one attempt's
+compute bill. This ceiling is not a cap on total Modal account spend. These
+stay outside it:
+
+- startup and image work outside the timeout;
+- the check;
+- storage;
+- timeout-enforcement overshoot.
+
+A changed plan is a new plan sha256 with a fresh runner budget. Record every
+attempt's spend for this comparison in the run folder, and keep the total
+inside Max's cap yourself.
 
 Stage the inputs in the `policyengine` workspace. Set these variables to
 the existing local files; the ledger path is the one used by Route A's
 base. `upload-commands` only hashes files and prints commands: it performs
 no upload. Run it first to refuse a digest mismatch before uploading.
 If a CAS file already exists (the base may have staged the ledger), skip
-that `put` and let check mode verify its digest; do not overwrite it.
+that `put` and let check mode verify its digest; do not overwrite it. Both
+H5s are in the `policyengine/populace-us` Hugging Face dataset under the
+revisions named for their releases. A download of each, or the local
+Hugging Face cache's copy, serves as the local file: `upload-commands`
+rehashes whatever it is given.
 
 ```bash
 INCUMBENT_H5=/path/to/populace-us-2024-spm-20260915/populace_us_2024.h5
@@ -1809,55 +1858,71 @@ launchd submission whose parent is launchd works. Do not run `launch.sh`
 directly in a session shell. Read the app id from the launch log
 (`modal app list` also shows it).
 
-**Go/no-go.** Start the watcher as a second launchd job as soon as the app
-id is known. It streams the app's log (`modal app logs` follows a live app)
-into a fresh file and, every ten minutes, runs
-`tools/us_head_to_head_projection.py`, which reads only that file and the
-plan. The projection answers `WAIT` until the incumbent has finished and
-the candidate's pool has started and scored a first round; at October's
-speeds that is about 70 to 90 minutes in (about $11 to $14). From then on
-it answers `GO` or `NO-GO`, and the watcher stops the app at the first
-`NO-GO`. It projects the time from the incumbent's measured slice work
-scaled by the candidate's measured first-slice speed, and each worker's
-peak memory from the highest peak in the log plus the steeper measured
-growth per slice. Both projections are conservative where the log cannot
-say which worker printed a line, and the module's docstring states the
-bounds its tests check. `NO-GO` names each limit: the tool's budget (5%
-inside it), the class's memory limit (10% inside it), or the scorer's
-20 GiB per-process limit (10% inside it).
+**Go/no-go.** As soon as the app id is known, start
+`tools/us_head_to_head_watch.sh` as a second launchd job, from the same
+checkout:
 
 ```bash
-cat > "modal-runs/$R/watch.sh" <<SH
-#!/bin/bash
-set -uo pipefail
-cd "$PWD"
-export PATH="\$HOME/.local/bin:/opt/homebrew/bin:/usr/bin:/bin"
-APP=\$1   # the ap-… id from the launch log
-STARTED=\$(cat modal-runs/$R/started-at)
-LOG=modal-runs/$R/app.log
-modal app logs "\$APP" > "\$LOG" 2>&1 &
-STREAM=\$!
-while kill -0 "\$STREAM" 2>/dev/null; do
-  sleep 600
-  OUT=\$(python3 tools/us_head_to_head_projection.py "\$LOG" \
-    --plan docs/us-modal-stage-route-a-h2h-plan.json --started-at "\$STARTED")
-  printf '%s %s\n' "\$(date -u +%FT%TZ)" "\$(printf '%s' "\$OUT" | tr -d '\n')" \
-    >> modal-runs/$R/go-no-go.log
-  if printf '%s' "\$OUT" | grep -q '"verdict": "NO-GO"'; then
-    modal app stop "\$APP"
-    exit 1
-  fi
-done
-SH
-chmod +x "modal-runs/$R/watch.sh"
+lsubmit.sh <label> <log> "$PWD" /bin/bash tools/us_head_to_head_watch.sh \
+  <ap-id> "modal-runs/$R" docs/us-modal-stage-route-a-h2h-plan.json \
+  docs/evidence/us-h2h-speed/chunk-weights.json
 ```
 
-Submit it with `lsubmit.sh <label> <log> <cwd> /bin/bash <path to
-watch.sh> <ap-id>`. If the log stream ends while the app still runs,
-restart the watcher: it writes a fresh file, the projection drops repeated
-slice lines, and it answers `WAIT` rather than projecting from a log with
-more worker starts than workers. Never test the watcher's stop against a
-live app; the projection's tests run it on simulated logs.
+The watcher streams `modal app logs` into `modal-runs/$R/app-N.log`, one
+file per stream. A stream that ends while the app runs is restarted. Every
+ten minutes the watcher runs `tools/us_head_to_head_projection.py` on those
+files, the plan, `started-at` and the chunk weights. The projection:
+
+- rebuilds both pools from the scorer's lines, under the on-demand model
+  above;
+- measures each chunk's seconds per slice, the start cost and the extra
+  cost of a worker's first slice;
+- replays the rest of the run: the incumbent's remainder, the candidate's
+  whole pool, then 600 s for the comparison and scorecards.
+
+It answers one of three verdicts:
+
+- `WAIT` until a chunk has three measured slices. In the simulated grid,
+  that is 600 to 3,000 s in.
+- `NO-GO` when the estimated end is past the tool's budget, or the log has
+  stalled. The budget is the plan's 14,505 s from `started-at`, or less
+  when the runner's `ATTEMPTS:` or `BUDGET:` line says so. A stall is no
+  scorer line for an hour, or for four times the slowest slice if that is
+  longer.
+- `GO` otherwise.
+
+How the estimate has done so far:
+
+- On the one real pool log (three workers, Mac), it came 0.4% to 10% early.
+- In the simulated grid, every run that does not fit got `NO-GO` by
+  3,000 s ($7.64). When chunk 5 ran 1.5 times slower than the weights say,
+  that took up to 5,400 s ($13.75).
+- No simulated run that fits got a `NO-GO`.
+
+Memory is reported in each verdict but never judged; the class limit and
+the scorer's 20 GiB guard bound it. The estimate is not a bound either: the
+class timeout and the runner's budget bound the spend.
+
+On `NO-GO` the watcher runs `modal app stop`, confirms the stop in
+`modal app list`, and retries up to `WATCH_STOP_TRIES` times (default 5).
+Every poll and action goes to `go-no-go.log`. Its exit codes:
+
+- 0: the app finished on its own.
+- 3: stopped on `NO-GO`.
+- 4: stopped because the projection failed three polls in a row.
+- 5: a stop it could not confirm. It has written `modal-runs/$R/ALARM`;
+  stop the app by hand.
+- 2: bad arguments, or an app that is not running.
+
+It detects and uses Modal CLI 1.4's `--follow` and 1.4.2's `--yes`. Its
+tests run it against a fake `modal` only: never test its stop on a live
+app.
+
+If the watcher dies, start it again on the same run directory. It numbers
+new streams after the files it finds, and the projection counts each record
+once across streams. A stopped or failed attempt writes no receipt; record
+its spend in the run folder. Another attempt is a new spend against Max's
+cap and needs his go.
 
 Once the stage ends, read its receipt name from the runs volume
 (`runs/$R/receipts/`) and fetch that `score-<utc>.json` and the two

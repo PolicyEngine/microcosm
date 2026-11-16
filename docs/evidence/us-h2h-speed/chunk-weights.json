@@ -1,0 +1,34 @@
+{
+  "source": "slices-2cfe3043d.json (two timed slices per artifact and chunk; warm-up slices excluded)",
+  "slices_per_chunk": {
+    "incumbent": 29,
+    "candidate": 177
+  },
+  "candidate_mean_slice_seconds": [
+    38.91,
+    41.23,
+    38.06,
+    34.66,
+    199.68
+  ],
+  "incumbent_mean_slice_seconds": [
+    41.59,
+    46.05,
+    42.11,
+    44.33,
+    229.01
+  ],
+  "candidate_relative_chunk_seconds": [
+    1.0,
+    1.0596,
+    0.9782,
+    0.8905,
+    5.1312
+  ],
+  "slice_seconds_one_process": {
+    "candidate": 62401,
+    "incumbent": 11690,
+    "total": 74091,
+    "over_16_workers": 4631
+  }
+}

@@ -443,6 +443,24 @@ LIGHT = Resources("light", cpu=2.0, memory_mib=48 * 1024, timeout_s=4 * 3600)
 BASE = Resources(
     "base", cpu=4.0, memory_mib=112 * 1024, timeout_s=16_500, cpu_limit=4.0
 )
+
+
+def timeout_for_cap(cap_usd: float, usd_per_second: float) -> int:
+    """The longest whole-second timeout whose bill at ``usd_per_second``
+    stays within ``cap_usd``."""
+
+    if not (cap_usd > 0 and usd_per_second > 0):
+        raise ValueError("a cap and a price must both be positive")
+    seconds = math.floor(cap_usd / usd_per_second)
+    # The division can round across a whole second either way; settle it on
+    # the bill itself.
+    while seconds > 0 and seconds * usd_per_second > cap_usd:
+        seconds -= 1
+    while (seconds + 1) * usd_per_second <= cap_usd:
+        seconds += 1
+    return seconds
+
+
 # Route A's head-to-head (d844). The scorer scores the incumbent's slices in
 # one pool of spawned workers, then the candidate's in a fresh pool, and each
 # worker holds a full repaired frame. "About 12 GiB per worker" (5.45 GiB
@@ -457,18 +475,21 @@ BASE = Resources(
 # scores about 55 of the candidate's 885 slices, so the class allows 16 GiB
 # for each of 16 workers plus 32 GiB for the parent: 288 GiB, as a hard
 # limit. Exceeding it kills the container before it can write a final
-# receipt, so the runbook's go/no-go step (tools/us_head_to_head_projection.py)
-# projects each worker's memory from the run's own log and stops a run that
-# would not fit. Placement is non-preemptible: the scorer has no resume, and
-# the runbook's measured preemption rate (about 0.67 per hour) would let a
-# preemptible attempt of about 7.7 hours finish under 1% of the time.
+# receipt; the scorer's own 20 GiB per-process guard stops a process first.
+# The runbook's watcher (tools/us_head_to_head_watch.sh) reports memory from
+# the run's log but stops a run only on time or a stall. Placement is
+# non-preemptible: the scorer has no resume, and the runbook's measured
+# preemption rate (about 0.67 per hour) would interrupt most attempts of two
+# hours or more.
 #
-# The class timeout is what bounds one attempt's bill, so it is derived from
-# the cost cap at the non-preemptible price; CPU and memory limits equal
-# their requests. Max set the $40 cap on 2026-10-10. At this class it buys
-# 15,705 s (4.4 h), less than October's slice means imply for the whole run
-# (about 7 h; see the runbook), so the plan cannot finish until he rules on
-# a cap. A new cap is a change to HEAD_TO_HEAD_COST_CAP_USD alone.
+# The class timeout is what bounds one attempt's bill, so timeout_for_cap
+# derives it from the cost cap at the non-preemptible price; CPU and memory
+# limits equal their requests. Max set the $40 cap on 2026-10-10. At this
+# class it buys 15,705 s (4 h 22 min). One process on a shared Mac scored
+# the run's 1,030 slices' worth in 74,091 s, which is 4,631 s on 16 workers
+# (docs/evidence/us-h2h-speed); Modal's speed and the serial worker starts
+# are not measured. A new cap changes HEAD_TO_HEAD_COST_CAP_USD, the plan's
+# max_wall_seconds and the figures the plan tests pin.
 HEAD_TO_HEAD_COST_CAP_USD = 40.0
 HEAD_TO_HEAD_CPU = 16.0
 HEAD_TO_HEAD_MEMORY_GIB = 288
@@ -480,7 +501,7 @@ HEAD_TO_HEAD = Resources(
     "head-to-head",
     cpu=HEAD_TO_HEAD_CPU,
     memory_mib=HEAD_TO_HEAD_MEMORY_GIB * 1024,
-    timeout_s=math.floor(HEAD_TO_HEAD_COST_CAP_USD / HEAD_TO_HEAD_USD_PER_SECOND),
+    timeout_s=timeout_for_cap(HEAD_TO_HEAD_COST_CAP_USD, HEAD_TO_HEAD_USD_PER_SECOND),
     cpu_limit=HEAD_TO_HEAD_CPU,
     memory_limit_mib=HEAD_TO_HEAD_MEMORY_GIB * 1024,
 )
