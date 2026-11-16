@@ -916,9 +916,11 @@ def _evaluate_support(
         "uc_deduction_support_bounds.json",
         "nts_bus_travel_support_bounds.json",
         "was_lisa_support_bounds.json",
-        # microcosm#1240: the post-geography value map's declared cap replaces the
-        # WAS donor bound for the two columns it rewrites; it is listed after the
-        # WAS resource so its bounds win.
+        # The WAS stage's area home values (microcosm#931) read main residences
+        # off the knots, up to their declared cap, past the WAS donor bound for
+        # main_residence_value and property_wealth. The price-paid bounds, first
+        # built for microcosm#1240, are listed after the WAS resource so they win
+        # for both.
         "price_paid_property_support_bounds.json",
     }
     if set(resource_names) - allowed:

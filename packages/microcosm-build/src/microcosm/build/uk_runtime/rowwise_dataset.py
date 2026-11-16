@@ -99,7 +99,7 @@ UK_SINGLE_YEAR_TABLES = ("person", "benunit", "household", "time_period")
 _INT64_MAX = int(np.iinfo(np.int64).max)
 
 
-def refuse_dense_clone_id_overflow(
+def refuse_rowwise_clone_id_overflow(
     *,
     n_clones: int,
     id_multiplier: int,
@@ -269,7 +269,7 @@ def clone_uk_dataset_tables_with_rowwise_geography(
             person_frame["person_benunit_id"],
             benunit_frame["benunit_id"],
         )
-    refuse_dense_clone_id_overflow(
+    refuse_rowwise_clone_id_overflow(
         n_clones=n_clones,
         id_multiplier=id_multiplier,
         ids=(
@@ -474,7 +474,7 @@ def expand_uk_geographic_pool(
             person_frame["person_benunit_id"],
             benunit_frame["benunit_id"],
         )
-    refuse_dense_clone_id_overflow(
+    refuse_rowwise_clone_id_overflow(
         n_clones=n_clones,
         id_multiplier=id_multiplier,
         ids=(

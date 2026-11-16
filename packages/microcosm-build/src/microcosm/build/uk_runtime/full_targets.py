@@ -385,9 +385,9 @@ def load_uk_national_target_inputs(
     diagnostic run; the compiled register less the measure exclusions is the
     solve surface and the full compiled register keeps the band edges;
     ``register_json`` requires the re-derived scoring surface to be the frozen
-    one. No local registry and no ladder: the national line has neither. The
-    references whose contract target binds on the local line only
-    (``calibration_lines``) compile but leave the surface before
+    one. It reads no local registry and no ladder, which only the local line's
+    targets need. The references whose contract target binds on the local line
+    only (``calibration_lines``) compile but leave the surface before
     reconciliation; ``register_completeness.calibration_line`` receipts them.
     """
 

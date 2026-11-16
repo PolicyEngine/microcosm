@@ -11,8 +11,9 @@ unit postcodes and excluded units, with its sources.
 The tool reads the ONS National Statistics Postcode Lookup's best-fit 2021
 output area of every postcode (Scotland's 2022 output areas under the same
 column) and writes ``uk/rfdr_area_layer.json``: the output areas more than
-half of whose postcodes lie in the scheme, which the post-geography node
-``uk.full.geography.rfdr`` reads. Its provenance records the inputs' digests,
+half of whose postcodes lie in the scheme, which the spine's ``rfdr`` and
+``spi_copy_areas`` stages read (microcosm#931), as the retired dense node
+``uk.full.geography.rfdr`` did. Its provenance records the inputs' digests,
 the definition and the counts.
 
     uv run --no-sync python tools/build_uk_rfdr_area_layer.py \\

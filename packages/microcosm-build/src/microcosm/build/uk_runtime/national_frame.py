@@ -1155,12 +1155,12 @@ def uk_published_release_frame(frame: Frame) -> Frame:
     """A published release file read back, through today's export boundary.
 
     A cut compares with the current build of its line (microcosm#1095), whose
-    file already left through the export boundary of its own build: a dense
-    file carries the consumers' area-code names (microcosm#1114), which
-    :func:`uk_release_export_frame` refuses on a frame it is to rename. Those
-    names go back to the ladder's first, so the boundary writes them again and
-    the reference leaves with today's drops and names, exactly as the
-    candidate does. A national file carries none and only takes the drops.
+    file already left through the export boundary of its own build. A dense
+    file carries the consumers' area-code names (microcosm#1114), and so does
+    a national file built since microcosm#931. Those names go back to the
+    ladder's first, so the boundary writes them again and the reference leaves
+    with today's drops and names, exactly as the candidate does. A national
+    file built before microcosm#931 carries none and only takes the drops.
     """
 
     from .geography_ladder import UK_EXPORT_AREA_CODE_COLUMNS

@@ -160,8 +160,8 @@ UK_EXPORT_AREA_CODE_COLUMNS: Mapping[str, str] = MappingProxyType(
 def export_area_code_columns(household: pd.DataFrame) -> pd.DataFrame:
     """Rename the three area codes to their consumer names at the export boundary.
 
-    Renames only the ladder columns present, so a table without geography (the
-    national line) passes unchanged, and refuses a table that already carries
+    Renames only the ladder columns present, so a table without geography
+    passes unchanged, and refuses a table that already carries
     a consumer name: a stale ``*_oa`` column riding through would shadow the
     ladder's own code.
     """

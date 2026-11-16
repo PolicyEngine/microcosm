@@ -50,7 +50,7 @@ from microcosm.build.uk_runtime.household_lineage import UK_COPY_LINEAGE
 from microcosm.build.uk_runtime.rowwise_dataset import (
     clone_uk_dataset_tables_with_rowwise_geography,
     expand_uk_geographic_pool,
-    refuse_dense_clone_id_overflow,
+    refuse_rowwise_clone_id_overflow,
 )
 from microcosm.build.uk_runtime.spi_band_donors import (
     SPI_INCOME_BAND_DONOR_CLONE_INDEX,
@@ -960,7 +960,7 @@ def test_row_wise_clones_of_a_table_minted_spine_are_refused_in_one_message(
     assert "n_clones=2" in message
     assert str(int(spine.household["household_id"].max())) not in message
     with pytest.raises(ValueError, match="clone-first spine"):
-        refuse_dense_clone_id_overflow(
+        refuse_rowwise_clone_id_overflow(
             n_clones=15, id_multiplier=10**18, ids=(spine.ids("household"),)
         )
 

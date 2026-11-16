@@ -81,7 +81,7 @@ from microcosm.build.uk_runtime.rowwise_dataset import (
     _refuse_preassigned_geography,
     _require_person_links,
     _require_unique,
-    refuse_dense_clone_id_overflow,
+    refuse_rowwise_clone_id_overflow,
 )
 from microcosm.frame import engine_tables
 
@@ -839,7 +839,7 @@ def _dry_run_plan(
         benunit_ids["benunit_id"],
     )
     # A plan must refuse what the build would (microcosm#931).
-    refuse_dense_clone_id_overflow(
+    refuse_rowwise_clone_id_overflow(
         n_clones=max((args.n_clones, *(args.candidate_clone_counts or ()))),
         id_multiplier=id_multiplier,
         ids=(
@@ -1206,7 +1206,7 @@ def _ladder_dry_run_plan(
         benunit_ids["benunit_id"],
     )
     # A plan must refuse what the build would (microcosm#931).
-    refuse_dense_clone_id_overflow(
+    refuse_rowwise_clone_id_overflow(
         n_clones=max((args.n_clones, *(args.candidate_clone_counts or ()))),
         id_multiplier=id_multiplier,
         ids=(

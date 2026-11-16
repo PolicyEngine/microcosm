@@ -459,13 +459,13 @@ def test_driver_ladder_dry_run_matches_real_assignment(
     assert manifest["rowwise_dataset"]["source_lineage"]["explicit"] is None
 
 
-def test_driver_ladder_dry_run_refuses_dense_clones_of_a_table_minted_spine(
+def test_driver_ladder_dry_run_refuses_rowwise_clones_of_a_table_minted_spine(
     monkeypatch, toy_ladder, tmp_path
 ):
     """A plan refuses what the build would (microcosm#931).
 
     Every synthetic id sits at a residential arm plus a twin of the copy-id
-    table, so a second dense clone has no int64 room; one clone plans.
+    table, so a second row-wise clone has no int64 room; one clone plans.
     """
     pytest.importorskip("tables")
     pytest.importorskip("h5py")

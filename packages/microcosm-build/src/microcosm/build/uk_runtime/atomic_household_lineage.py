@@ -4,6 +4,10 @@ This is a pure descriptive adapter, not a source owner or graph admission gate.
 The host must bind roots, every before/after axis, EXPAND parent receipt and
 explicit ordinal to its actual retained observations before and after use.
 No identifier is reconstructed from offsets, weights, financial flags or order.
+
+No build calls it: the spine's stages key households from their lineage
+columns (microcosm#931). It takes steps in path order, so it cannot describe a
+spine's history, which clones first.
 """
 
 from __future__ import annotations

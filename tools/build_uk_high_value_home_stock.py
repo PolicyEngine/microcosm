@@ -13,8 +13,9 @@ three committed resources under the UK country package:
   nation, in consumer-fact row shape under the Microcosm-owned
   ``microcosm.derived_fact.`` key namespace;
 - ``high_value_home_value_knots.json``: weighted quantile knots of the
-  basis value per constituency, region and nation, for the post-geography
-  value map;
+  basis value per constituency, region and nation; the spine's WAS stage
+  reads home values off the constituency knots (``area_home_values``,
+  microcosm#931);
 - ``high_value_home_stock.provenance.json``: inputs, parameters and receipts.
 
 The deduplicated dwelling table is cached under ``--cache-dir`` keyed by the
