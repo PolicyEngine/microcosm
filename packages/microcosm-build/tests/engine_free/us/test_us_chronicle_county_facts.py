@@ -125,6 +125,28 @@ def test_the_county_pin_is_not_the_main_pin() -> None:
     assert county.scope_sha256 != main.scope_sha256
 
 
+#: The main feed pin's Chronicle commit when the county facts were pinned on
+#: their own, at 3e9d3a0 (docs/us-chronicle-feed-repin.md).
+_MAIN_PIN_WHEN_THE_COUNTY_PIN_SPLIT = "41b2fb2b864a28c0eda03322b77a97ef147dfa3c"
+
+
+def test_the_county_pin_moves_with_the_next_main_pin() -> None:
+    """The two pins move together. The main feed may stay at the commit it
+    had when the county facts were pinned separately; once a change re-pins it
+    anywhere else, the same change re-pins the county facts to that commit, so
+    a US build reads one Chronicle base."""
+
+    main = load_us_chronicle_feed()
+    county = load_us_chronicle_county_facts_pin()
+    assert main.source_commit in (
+        _MAIN_PIN_WHEN_THE_COUNTY_PIN_SPLIT,
+        county.source_commit,
+    ), (
+        f"The main Chronicle feed pin moved to {main.source_commit}; re-pin the "
+        "county facts to the same commit in the same change."
+    )
+
+
 def test_the_feed_builder_accepts_the_county_scope() -> None:
     scope = _builder().load_scope(
         _US_PACKAGE / US_CHRONICLE_COUNTY_FACTS_SCOPE_RESOURCE
