@@ -389,10 +389,13 @@ EXPECTED_HASHES = {
     # calibrate's shared option checks move both again; no US solve changes.
     # Its TANF ledger fix moves the protocol again: the site's recorded salt
     # becomes the takes_up_tanf_if_eligible its draw always used.
+    # microcosm#1096 moves both again: solve's opt-in softmax mass
+    # parametrization projects exactly onto the capped simplex; the default
+    # projection parametrization is unchanged.
     # microcosm#1543's fit input checks (the microimpute bug-parity audit)
     # move both again; no valid input's draw changes.
-    "seed_map": "d91d6afcf1578a03cd64c70901393cd82a1386c090ed6f4aaf55021c19bf35d6",
-    "seed_protocol": "b8fa3bc3ad69fcd2d7d7f29dc1dda7953ec026bd11d78748a031de5f09f7fc3d",
+    "seed_map": "b9e0b783cb3fd01bdb0255e726768b5a363c98753f3989a1cd88be906087fdc9",
+    "seed_protocol": "b67c3a25fd7bc90017d78e4653929176a945a8fd4c173dafe74ed2c162ddd3d3",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
