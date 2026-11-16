@@ -115,12 +115,12 @@ def out_of_fold_proba(
     A fold whose training rows hold a single class fits no learner, and the
     model gives that fold's rows the class with certainty. Each learner's rows
     in that fold take the model's probabilities, so none is left at zero, and
-    the model, the learners and the constant are scored on the same rows,
-    differing only where a learner was fitted. When ``table[target]`` holds two classes or
-    more, folds from :func:`stratified_folds` after :func:`can_deal_folds`
-    reach this only when they deal whole groups into exactly two folds. A
-    learner that no fold fitted, as when ``table[target]`` holds one class,
-    stays out of the result.
+    the model, the learners and the constant are scored on the same rows; the
+    model and the learners differ only where a learner was fitted. When
+    ``table[target]`` holds two classes or more, folds from
+    :func:`stratified_folds` after :func:`can_deal_folds` reach this only when
+    they deal whole groups into exactly two folds. A learner that no fold
+    fitted, as when ``table[target]`` holds one class, stays out of the result.
     """
     weights = np.asarray(weights, dtype=np.float64)
     folds = np.asarray(folds)
