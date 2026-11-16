@@ -5,18 +5,20 @@ When those rows hold a single class the model fits no learner, and each
 learner's rows in that fold used to stay at zero, which
 ``categorical_scores`` now refuses (microcosm#1543); before that it scored
 them at the log-loss floor. Those rows now take the model's probabilities:
-certainty of the one class, as the constant gives too. ``_class_balanced_weights``
+certainty of the one class. ``_class_balanced_weights``
 divides each class's weights by that class's total, so a class with no
 weight gave NaN; it now refuses the class by name. The cross-fitted gate never
 passed it such weights, because it falls back to the in-sample gate first
 (``GateOutcome.WEIGHTLESS_FOLD``), testing the same totals; the guards below
 pin that. A class whose total overflows to infinity does carry weight, so a
 fit can pass it to the helper; the helper leaves it as it was (its rows weigh
-zero), and a guard pins that such a fit is unchanged.
+zero, and if every class overflows every row's weight is NaN), and a guard
+pins that such a fit is unchanged.
 
 The example tests that name a refusal or a filled row fail before the fixes;
-the guards pass on both sides. The properties check that every array
-``out_of_fold_proba`` returns is a distribution in every row, that the fix
+the guards pass on both sides. The properties check that, on the small
+tables they draw, every array ``out_of_fold_proba`` returns is a distribution
+in every row, that the fix
 moves only rows that were all zeros, that folds dealt by household put the
 rarest class in every fold and, with three or more folds, leave two classes in
 every training fold, and that the balanced weights keep the previous formula's

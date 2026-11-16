@@ -921,7 +921,9 @@ def _class_balanced_weights(
     test on the same totals); otherwise the whole gate falls back to the
     in-sample gate (:attr:`GateOutcome.WEIGHTLESS_FOLD`), so no fit meets the
     refusal below. A class whose total overflows to infinity does carry
-    weight: its rows weigh zero here, and a fit can reach that.
+    weight, and a fit can reach that. Its rows weigh zero here, as before;
+    if every class's total overflows, the rescale divides by a zero sum and
+    every row's weight is NaN, as before.
 
     Raises:
         ValueError: If a class's rows carry no weight (a total that is not

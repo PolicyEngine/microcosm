@@ -355,7 +355,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # through the bundle's source stages.
             # The hierarchy value ranks move it through medicaid_take_up's
             # attested bytes.
-            "spec_sha256": "86326796d9b2569fa1d1d2be67fa936c8a5b5dc96e3999c57f9a9a9083a13364",
+            "spec_sha256": "25988583b169a3d17dc0fc59988d52b88252b92cc6669caa5d74ea425d03ffd6",
         },
     }
 

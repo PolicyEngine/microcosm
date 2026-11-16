@@ -113,12 +113,10 @@ def out_of_fold_proba(
     ``table[target]``.
 
     A fold whose training rows hold a single class fits no learner, and the
-    model gives that fold's rows the class with certainty, as the training
-    folds' shares do. Each learner's rows in that fold take the model's
-    probabilities, so every array holds a distribution in every row a fold
-    scores (:func:`categorical_scores` takes each one), and the model, the
-    learners and the constant are scored on the same rows, differing only
-    where a learner was fitted. When ``table[target]`` holds two classes or
+    model gives that fold's rows the class with certainty. Each learner's rows
+    in that fold take the model's probabilities, so none is left at zero, and
+    the model, the learners and the constant are scored on the same rows,
+    differing only where a learner was fitted. When ``table[target]`` holds two classes or
     more, folds from :func:`stratified_folds` after :func:`can_deal_folds`
     reach this only when they deal whole groups into exactly two folds. A
     learner that no fold fitted, as when ``table[target]`` holds one class,

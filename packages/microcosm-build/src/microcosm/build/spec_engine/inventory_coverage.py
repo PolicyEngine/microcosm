@@ -393,8 +393,8 @@ EXPECTED_HASHES = {
     # move both again; no valid input's draw changes. microcosm#1617's refusal
     # of a weightless class in the balanced gate's weights moves both again;
     # no fit reached it, and no draw changes.
-    "seed_map": "4e1c7d0aa93105ce8ad3c05bbc4a102938ba2b8ae373744dc5c0736ec75b2de8",
-    "seed_protocol": "7bdcdd7db2278c54c38cb87a825bfab675230cd406ebc406ea439f809ead3f37",
+    "seed_map": "e143f29b4d6954214521d705bb8447a6e86ff033bfc793f09d28fe9278c7668d",
+    "seed_protocol": "4c1f3bbb4ef21d8a527732421efa55241878f7189cbdfd8ad9d2a9e1a32ca963",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
