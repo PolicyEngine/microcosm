@@ -242,7 +242,7 @@ def build_annual_static_aging(
     model_version: str,
     output_dir: str | Path,
     base_year: int = 2024,
-    end_year: int = 2035,
+    end_year: int = 2036,
     epochs: int = 300,
     seed: int = 0,
     max_weight_ratio: float = 5.0,
@@ -499,7 +499,7 @@ def command_parser() -> argparse.ArgumentParser:
     ):
         parser.add_argument(f"--{argument}", required=True)
     parser.add_argument("--base-year", type=int, default=2024)
-    parser.add_argument("--end-year", type=int, default=2035)
+    parser.add_argument("--end-year", type=int, default=2036)
     parser.add_argument("--epochs", type=int, default=300)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--max-weight-ratio", type=float, default=5.0)
