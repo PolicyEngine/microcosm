@@ -898,8 +898,10 @@ repository that has no `releases.json`.
      (`prepare_build_folder_release`);
   8. a recertification whose parent the Hub does not serve as the child
      carries it (`require_parent_publication`), and an annual build whose
-     base national build the Hub does not serve
-     (`require_base_publication`);
+     base build the Hub does not serve as the annual build carries it
+     (`require_base_publication`; for a local-annual build, every carried
+     artifact entry and inherited manifest claim, read from the Hub into a
+     new cache);
   9. an emitter whose credential cannot write the repository
      (`write_access_problem`).
 

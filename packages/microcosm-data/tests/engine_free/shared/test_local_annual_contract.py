@@ -356,27 +356,51 @@ def test_a_national_annual_build_still_needs_every_year(
 class _LocalBaseOnTheHub:
     """A Hub serving the local base build's release and build manifests.
 
-    A manifest given as ``None`` is absent from the Hub.
+    A manifest given as ``None`` is absent from the Hub. ``cached`` maps a
+    manifest's name to the client's cached copy of it: like the Hub client
+    for a file whose ETag is unchanged, a download into the default cache
+    returns that copy without reading the server or hashing it. A forced
+    download into its own ``cache_dir`` reads the server's document.
     """
 
     def __init__(
-        self, directory: Path, manifest: dict, build_manifest: dict | None = None
+        self,
+        directory: Path,
+        manifest: dict,
+        build_manifest: dict | None = None,
+        *,
+        cached: dict[str, Path] | None = None,
     ) -> None:
         self.directory = directory
         self.manifests = {
             "release_manifest.json": manifest,
             "build_manifest.json": build_manifest,
         }
+        self.cached = dict(cached or {})
         self.requests: list[tuple] = []
+        self.fresh: list[bool] = []
 
-    def hf_hub_download(self, *, repo_id, filename, repo_type, revision):
+    def hf_hub_download(
+        self,
+        *,
+        repo_id,
+        filename,
+        repo_type,
+        revision,
+        cache_dir=None,
+        force_download=False,
+    ):
         from test_support.microcosm_data.hub_errors import missing_on_hub
 
         self.requests.append((repo_id, filename, repo_type, revision))
-        document = self.manifests[Path(filename).name]
+        self.fresh.append(bool(force_download) and cache_dir is not None)
+        name = Path(filename).name
+        if name in self.cached and cache_dir is None and not force_download:
+            return str(self.cached[name])
+        document = self.manifests[name]
         if document is None:
             raise missing_on_hub(repo_id, filename, revision)
-        local = self.directory / filename
+        local = Path(cache_dir or self.directory) / filename
         local.parent.mkdir(parents=True, exist_ok=True)
         local.write_text(json.dumps(document))
         return str(local)
@@ -431,6 +455,13 @@ def _base_request(name: str) -> tuple:
             ),
             "projects exactly the published base build's bytes",
         ),
+        (
+            # Same path and SHA-256, another kind and role (review of #1627).
+            lambda m: m["artifacts"]["county_reliability"].update(
+                kind="calibration", role="calibration_weights"
+            ),
+            r"\['county_reliability'\] artifact entries",
+        ),
     ],
 )
 def test_a_local_annual_build_needs_its_published_local_base(
@@ -458,6 +489,8 @@ def test_a_local_annual_build_needs_its_published_local_base(
             _base_request("release_manifest.json"),
             _base_request("build_manifest.json"),
         ]
+        # Both reads bypass the client's cache.
+        assert hub.fresh == [True, True]
     else:
         with pytest.raises(ValueError, match=refusal):
             check()
@@ -481,31 +514,55 @@ def _other_build_sha(manifest: dict) -> None:
     manifest["build_sha"] = "fff0000"
 
 
-@pytest.mark.parametrize(
-    ("name", "edit", "claim"),
-    [
-        ("release_manifest.json", _drop_limitations, "reviewed_limitations"),
-        ("release_manifest.json", _other_core, "built_with_core_package"),
-        ("release_manifest.json", _add_metadata_note, "metadata.note"),
-        ("build_manifest.json", _other_build_sha, "build_sha"),
-    ],
-)
+def _relabel_reliability(manifest: dict) -> None:
+    manifest["artifacts"]["county_reliability"].update(
+        kind="calibration", role="calibration_weights"
+    )
+
+
+_BASE_EDITS = [
+    ("release_manifest.json", _drop_limitations, "reviewed_limitations"),
+    ("release_manifest.json", _other_core, "built_with_core_package"),
+    ("release_manifest.json", _add_metadata_note, "metadata.note"),
+    ("release_manifest.json", _relabel_reliability, "county_reliability"),
+    ("build_manifest.json", _other_build_sha, "build_sha"),
+]
+
+
+@pytest.mark.parametrize("cached", [False, True], ids=["folder", "cached-folder"])
+@pytest.mark.parametrize(("name", "edit", "claim"), _BASE_EDITS)
 def test_a_local_base_edited_after_publication_passes_no_claim_to_its_annual_build(
-    local, tmp_path, name, edit, claim
+    local, tmp_path, name, edit, claim, cached
 ) -> None:
     """The assembler builds a local-annual build's manifests from its base
     build's local folder, so an edit there, after the base was published,
     would reach the annual build while every artifact digest still matches
-    (review of #1627). Each inherited claim must equal the published one."""
+    (review of #1627). Each inherited claim and each carried artifact entry
+    must equal the published one. When the folder is the Hub client's cached
+    snapshot, a cached read would return the edit itself, so both manifests
+    must be read from the Hub afresh."""
     folder, root = local
     published = read_json(folder / "release_manifest.json")
     published_build = read_json(folder / "build_manifest.json")
     rewrite_json(folder, root, name, edit)
     annual_dir = local_annual_build_folder_of(folder, root)
-    hub = _LocalBaseOnTheHub(tmp_path / "hub", published, published_build)
+    hub = _LocalBaseOnTheHub(
+        tmp_path / "hub",
+        published,
+        published_build,
+        cached=(
+            {
+                manifest: folder / manifest
+                for manifest in ("release_manifest.json", "build_manifest.json")
+            }
+            if cached
+            else None
+        ),
+    )
 
     with pytest.raises(ValueError, match=rf"published base build's \['{claim}'\]"):
         annual_projections.require_base_publication(hub, annual_dir, repo_id=LOCAL_REPO)
+    assert hub.fresh and all(hub.fresh)
 
 
 def test_a_claim_edited_into_the_annual_manifest_is_refused(annual, tmp_path) -> None:

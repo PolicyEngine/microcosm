@@ -200,11 +200,15 @@ step.
    It prints the build and the publish and promote commands.
 
    The assembler copies the annual build's release and build manifest
-   claims (reviewed limitations, package versions, gates and the rest) from
-   the base build's local folder. Before the hand-over, the publish command
-   reads both manifests of the base build from the Hub, and it refuses the
-   annual build unless every claim it inherited equals the published one.
-   Assemble from an unedited copy of the published base build.
+   claims (reviewed limitations, package versions, gates and the rest) and
+   every artifact entry from the base build's local folder. Before the
+   hand-over, the publish command downloads both manifests of the base
+   build from the Hub into a new, empty cache, never from the Hub client's
+   own cache, which returns a cached file whose ETag is unchanged without
+   hashing it. It refuses the annual build unless every claim it inherited
+   equals the published one and every artifact entry it carries, kind and
+   role included, equals the published entry. Assemble from an unedited
+   copy of the published base build.
 
 **Memory.** Let S be the base frame's size in memory. The H5 is about 10 GB
 on disk, and fixed-format numeric blocks load at about their stored size, so

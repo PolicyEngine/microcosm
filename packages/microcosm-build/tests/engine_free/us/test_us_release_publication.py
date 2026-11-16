@@ -8,6 +8,7 @@ tests never start an emitter or reach the Hub.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from microcosm_emitter_interface import CollectorProvenance
@@ -573,12 +574,23 @@ class _LocalBaseOnTheHub:
             "build_manifest.json": build_manifest,
         }
         self.requests = []
+        self.fresh = []
 
-    def hf_hub_download(self, *, repo_id, filename, repo_type, revision):
+    def hf_hub_download(
+        self,
+        *,
+        repo_id,
+        filename,
+        repo_type,
+        revision,
+        cache_dir=None,
+        force_download=False,
+    ):
         import json
 
         self.requests.append((repo_id, filename, repo_type, revision))
-        local = self.directory / filename
+        self.fresh.append(bool(force_download) and cache_dir is not None)
+        local = Path(cache_dir or self.directory) / filename
         local.parent.mkdir(parents=True, exist_ok=True)
         local.write_text(json.dumps(self.manifests[local.name]))
         return str(local)
@@ -650,6 +662,8 @@ def test_a_local_annual_build_is_handed_over_only_once_its_local_base_is_publish
             request("release_manifest.json"),
             request("build_manifest.json"),
         ]
+        # Both manifests are read afresh, not from the client's cache.
+        assert hub.fresh == [True, True]
     else:
         with pytest.raises(ValueError, match="published base build's bytes"):
             publish()

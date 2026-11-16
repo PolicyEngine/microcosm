@@ -17,6 +17,7 @@ import importlib.util
 import json
 import shutil
 from datetime import UTC, datetime
+from pathlib import Path
 
 import h5py
 import pytest
@@ -595,19 +596,39 @@ def test_a_local_annual_build_that_fails_the_contract_is_not_moved_into_place(
 
 class _PublishedLocalBase:
     """A Hub serving a local base build's two manifests as they were when it
-    was published, whatever happens to its local folder afterwards."""
+    was published, whatever happens to its local folder afterwards.
 
-    def __init__(self, directory, base):
+    With ``cache`` set, the base folder is the Hub client's cached snapshot:
+    a download into the default cache returns the folder's file, edited or
+    not, as the client does for a cached file whose ETag is unchanged. A
+    forced download into its own ``cache_dir`` reads the published bytes.
+    """
+
+    def __init__(self, directory, base, *, cache=False):
         self.directory = directory
+        self.base = base
+        self.cache = cache
         self.documents = {
             name: _read(base / name)
             for name in ("release_manifest.json", "build_manifest.json")
         }
 
-    def hf_hub_download(self, *, repo_id, filename, repo_type, revision):
-        local = self.directory / filename
+    def hf_hub_download(
+        self,
+        *,
+        repo_id,
+        filename,
+        repo_type,
+        revision,
+        cache_dir=None,
+        force_download=False,
+    ):
+        name = Path(filename).name
+        if self.cache and cache_dir is None and not force_download:
+            return str(self.base / name)
+        local = Path(cache_dir or self.directory) / filename
         local.parent.mkdir(parents=True, exist_ok=True)
-        _write(local, self.documents[local.name])
+        _write(local, self.documents[name])
         return str(local)
 
 
@@ -620,26 +641,35 @@ def _other_core(manifest):
     manifest["built_with_core_package"]["version"] = "3.99.9"
 
 
+def _relabel_reliability(manifest):
+    manifest["artifacts"]["county_reliability"].update(
+        kind="calibration", role="calibration_weights"
+    )
+
+
+@pytest.mark.parametrize("cache", [False, True], ids=["folder", "cached-folder"])
 @pytest.mark.parametrize(
     ("edit", "claim"),
     [
         (None, None),
         (_drop_limitations, "reviewed_limitations"),
         (_other_core, "built_with_core_package"),
+        (_relabel_reliability, "county_reliability"),
     ],
 )
 def test_an_assembled_local_annual_build_hands_over_only_its_published_base_claims(
-    tmp_path, monkeypatch, capsys, edit, claim
+    tmp_path, monkeypatch, capsys, edit, claim, cache
 ):
-    """The assembler takes the annual build's claims from the base build's
-    local folder. A folder edited after its base was published still
-    assembles and passes the contract, so the hand-over check must refuse it
-    (review of #1627); an unedited folder hands over."""
+    """The assembler takes the annual build's claims and artifact entries
+    from the base build's local folder. A folder edited after its base was
+    published still assembles and passes the contract, so the hand-over
+    check must refuse it (review of #1627), including when the folder is the
+    Hub client's cached snapshot; an unedited folder hands over."""
     from microcosm.data import annual_projections
 
     package = tmp_path / "package"
     base = local_build_folder(package)
-    hub = _PublishedLocalBase(tmp_path / "hub", base)
+    hub = _PublishedLocalBase(tmp_path / "hub", base, cache=cache)
     if edit is not None:
         rewrite_json(base, package, "release_manifest.json", edit)
     candidate = write_local_candidate(base, package, tmp_path / "candidate")

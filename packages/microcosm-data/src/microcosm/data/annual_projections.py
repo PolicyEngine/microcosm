@@ -41,6 +41,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -905,6 +906,53 @@ def _differing_claims(carried: Mapping, published: Mapping) -> list[str]:
     )
 
 
+def _published_document(
+    api: object,
+    *,
+    repo_id: str,
+    path_in_repo: str,
+    revision: str,
+    base_build: object,
+    fresh: bool,
+) -> dict:
+    """One manifest of the base build as the Hub serves it.
+
+    With ``fresh``, the file is downloaded into a new, empty cache directory.
+    The Hub client otherwise returns its cached copy of a file whose ETag is
+    unchanged, without hashing it, so a base build folder that is itself the
+    client's cached snapshot, edited after download, would be read back as
+    the published manifest (review of #1627).
+    """
+    from microcosm.data.release import (
+        _is_absent_entry_error,
+        _is_absent_revision_error,
+    )
+
+    def download(**fresh_options) -> dict:
+        try:
+            downloaded = api.hf_hub_download(
+                repo_id=repo_id,
+                filename=path_in_repo,
+                repo_type="dataset",
+                revision=revision,
+                **fresh_options,
+            )
+        except Exception as exc:
+            if not (_is_absent_entry_error(exc) or _is_absent_revision_error(exc)):
+                raise
+            raise ValueError(
+                f"base build {base_build!r} is not published: {path_in_repo} is "
+                f"absent at {revision!r} in {repo_id} ({exc}). An annual build "
+                "is published only after the build it projects."
+            ) from exc
+        return _read_json(Path(downloaded))
+
+    if not fresh:
+        return download()
+    with tempfile.TemporaryDirectory(prefix="microcosm-base-manifest-") as cache:
+        return download(cache_dir=cache, force_download=True)
+
+
 def require_base_publication(
     api: object, release_dir: Path | str, *, repo_id: str
 ) -> None:
@@ -925,13 +973,18 @@ def require_base_publication(
     base build's local folder, so for one the base build's
     ``build_manifest.json`` is read from the same folder as well, and every
     claim the annual build inherits (:func:`inherited_release_claims`,
-    :func:`inherited_build_claims`) must equal the published one. A base
-    folder whose manifest was edited after publication, such as one with a
-    reviewed limitation removed, therefore cannot hand its edit to the annual
-    build.
+    :func:`inherited_build_claims`) must equal the published one. Every
+    artifact entry it carries must equal the published entry whole, not only
+    in path and SHA-256, so a carried file keeps its published kind and role.
+    Both manifests are downloaded into a new, empty cache, never served from
+    the Hub client's cache. A base folder whose manifest was edited after
+    publication, such as one with a reviewed limitation removed or an
+    artifact relabelled, therefore cannot hand its edit to the annual build,
+    even when that folder is the client's cached snapshot.
 
     An absent manifest refuses; any other Hub failure, including one where the
-    Hub could not be asked, propagates. ``api`` needs ``hf_hub_download``.
+    Hub could not be asked, propagates. ``api`` needs ``hf_hub_download``; for
+    a local-annual build it must take ``cache_dir`` and ``force_download``.
 
     A local-annual build's base is a build of the local-area release, read
     from ``releases/microcosm-us-2024-local/<base build>/``. Neither build
@@ -940,10 +993,6 @@ def require_base_publication(
     ``metadata.annual_projection_base`` names by file name.
     """
     from microcosm.data.build_folder_manifests import referenced_build
-    from microcosm.data.release import (
-        _is_absent_entry_error,
-        _is_absent_revision_error,
-    )
 
     manifest = _read_json(Path(release_dir) / "release_manifest.json")
     reference = _object(
@@ -992,22 +1041,14 @@ def require_base_publication(
     )
     base_build = reference.get("build")
     path_in_repo = f"{location.folder}/release_manifest.json"
-    try:
-        downloaded = api.hf_hub_download(
-            repo_id=repo_id,
-            filename=path_in_repo,
-            repo_type="dataset",
-            revision=location.revision,
-        )
-    except Exception as exc:
-        if not (_is_absent_entry_error(exc) or _is_absent_revision_error(exc)):
-            raise
-        raise ValueError(
-            f"base build {base_build!r} is not published: {path_in_repo} is "
-            f"absent at {location.revision!r} in {repo_id} ({exc}). An annual "
-            "build is published only after the build it projects."
-        ) from exc
-    published = _read_json(Path(downloaded))
+    published = _published_document(
+        api,
+        repo_id=repo_id,
+        path_in_repo=path_in_repo,
+        revision=location.revision,
+        base_build=base_build,
+        fresh=local_annual,
+    )
     if (published.get("release"), published.get("build")) != (
         reference.get("release"),
         base_build,
@@ -1081,6 +1122,22 @@ def require_base_publication(
         )
     if not local_annual:
         return
+    # The assembler copies each carried entry whole, so its kind, role and
+    # every other field must be the published one too.
+    relabelled = sorted(
+        key
+        for key, entry in published_artifacts.items()
+        if isinstance(entry, Mapping)
+        and PurePosixPath(str(entry.get("path", ""))).name not in _PUBLISHER_FILES
+        and carried.get(key) != entry
+    )
+    if relabelled:
+        raise ValueError(
+            f"the local-annual build does not carry the published base build's "
+            f"{relabelled} artifact entries as {path_in_repo} declares them "
+            "(kind, role and every other field, not only path and SHA-256); an "
+            "annual build carries its base build's files as published"
+        )
     release_claims = _differing_claims(
         inherited_release_claims(manifest), inherited_release_claims(published)
     )
@@ -1092,24 +1149,17 @@ def require_base_publication(
             "as published"
         )
     build_in_repo = f"{location.folder}/build_manifest.json"
-    try:
-        downloaded_build = api.hf_hub_download(
-            repo_id=repo_id,
-            filename=build_in_repo,
-            repo_type="dataset",
-            revision=location.revision,
-        )
-    except Exception as exc:
-        if not (_is_absent_entry_error(exc) or _is_absent_revision_error(exc)):
-            raise
-        raise ValueError(
-            f"base build {base_build!r} is not published: {build_in_repo} is "
-            f"absent at {location.revision!r} in {repo_id} ({exc}). An annual "
-            "build is published only after the build it projects."
-        ) from exc
+    published_build = _published_document(
+        api,
+        repo_id=repo_id,
+        path_in_repo=build_in_repo,
+        revision=location.revision,
+        base_build=base_build,
+        fresh=True,
+    )
     build_claims = _differing_claims(
         inherited_build_claims(_read_json(Path(release_dir) / "build_manifest.json")),
-        inherited_build_claims(_read_json(Path(downloaded_build))),
+        inherited_build_claims(published_build),
     )
     if build_claims:
         raise ValueError(
