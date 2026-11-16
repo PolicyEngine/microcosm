@@ -1486,8 +1486,8 @@ _KERNEL_UNBOUND_NAMES: dict[tuple[str, str], str] = {
         "frame's, which the gates' keys chain on: on a composed spine "
         "geographic_expand's, which writes and declares the column (the "
         "stage table's reason), and on a bound one the checkpoint's. So no "
-        "gate can replay a count of another column under a renamed constant "
-        "(microcosm#931)"
+        "gate can serve a stale count of another column under a renamed "
+        "constant (microcosm#931)"
     ),
 }
 #: Where the kernel rule stops, each with why a kernel that names the
