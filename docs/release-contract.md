@@ -902,7 +902,9 @@ repository that has no `releases.json`.
      (`require_base_publication`; for a local-annual build, every carried
      artifact entry and inherited manifest claim, read from the Hub into a
      new cache, and no artifact the published base and the annual projection
-     do not declare);
+     do not declare); for either, a build-folder parent or base build that
+     `releases.json` has withdrawn or does not list, or a repository with no
+     `releases.json` (`require_offered_build`);
   9. an emitter whose credential cannot write the repository
      (`write_access_problem`).
 
