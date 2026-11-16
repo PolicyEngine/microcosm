@@ -42,8 +42,10 @@ fingerprint into its implementation hash.
   country's `target_references.json` the node needs. Its rows are parsed by
   the country-spec loader's own validator, so a row parses to the reference
   `load_country_spec` would build. Any other key (`description`,
-  `target_profile`, `allowed_value_operations`) is refused, so the composer
-  strips them.
+  `reference_set`, `target_profile`, `allowed_value_operations`) is refused,
+  so the composer strips them from a whole-document selection (a `json`
+  selection with no path). A selection with a path keeps every field it
+  selects, and the resource's `sha256` selection is unchanged.
 - `gates` is a `gates.json` document. The kernel hands a gate its parameters
   only from this document; a binding that carries values of its own binds
   them into the kernel's hash (see "Gates").

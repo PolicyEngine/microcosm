@@ -41,7 +41,7 @@ it as its only and current build. An entry whose repository has no
 `latest-<name>.json`) and reads the manifest at the build's tag; no
 registered entry's repository is still in that state. `available()` lists
 the default-variant `(country, year)` pairs (the ones a bare ``load(country, year)``
-resolves); `available_variants()` lists every published
+resolves); `available_variants()` lists every registered
 `(country, year, variant)`, non-default lines included.
 
 The old mutable-root behavior is an unsafe escape hatch,
@@ -50,7 +50,8 @@ it bypasses the release pointer, manifest, digest, and engine compatibility
 checks. The loader refuses it for an entry whose repository records its builds
 in `releases.json`, which every registered entry's repository does since the
 UK and US switches. Builds published into folders write no root file, so the
-US repository's root `populace_us_2024.h5` stopped changing at its switch.
+US repository's root `populace_us_2024.h5` stopped changing at its switch,
+and the switch tool's `delete-old-layout` step deletes it.
 
 ## Why a shard, not a repo per country
 

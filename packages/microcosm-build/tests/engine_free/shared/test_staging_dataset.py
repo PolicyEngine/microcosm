@@ -270,7 +270,27 @@ def test_sidecars_list_every_file_and_verify_themselves(tmp_path):
         ("dataset", "dataset"),
         ("calibration_diagnostics", "calibration_diagnostics"),
         ("local_registry", "local_registry"),
-        ("orrery/graph.schema.json", "orrery_graph_schema_json"),
+        # The Orrery inputs take the interface's roles, so the emitter submits
+        # them to the collector as an ``orrery-inputs`` submission, whether
+        # the build registers them under ``orrery/`` (a dataset bundle) or
+        # by name (a failed build's graph evidence).
+        ("orrery/graph.schema.json", "orrery_schema"),
+        ("graph.schema.json", "orrery_schema"),
+        ("orrery/graph.execution.json", "execution_overlay"),
+        ("graph.execution.json", "execution_overlay"),
+        (
+            "orrery/upstream-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.json",
+            "orrery_upstream",
+        ),
+        (
+            "upstream-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.json",
+            "orrery_upstream",
+        ),
+        # Only an upstream file named by a full SHA-256 is an Orrery input;
+        # the projection and the native evidence keep their key's role.
+        ("orrery/upstream-0123456789abcdef.json", "orrery_upstream_json"),
+        ("orrery/graph.orrery.json", "orrery_graph_orrery_json"),
+        ("orrery/execution.evidence.json", "orrery_execution_evidence_json"),
         (
             "orrery/evidence-0e07dea6cca04063a47a8166793d9a0c-6f8356b6990586505573"
             "13f43b8875214a46246d990ce7e3f574d8af6dd52e9f-binding.json",
@@ -802,6 +822,180 @@ def test_a_submission_the_collector_turned_down_is_a_warning(
 
     assert staged.delivery["status"] == "uploaded"
     assert f"warning: {warned}" in capsys.readouterr().err
+
+
+def _submission(kind: str, status: str, code: str | None = None) -> dict:
+    return {
+        "kind": kind,
+        "status": status,
+        "error_code": code,
+        "submission_id": None,
+        "collector_status": None,
+    }
+
+
+def test_a_submission_turned_down_beside_one_awaiting_its_status_is_a_warning(
+    tmp_path, capsys
+):
+    """A UK bundle makes two submissions. The emitter sums them up as
+    ``awaiting_final_status`` while one awaits the collector's final status,
+    even when the other has already failed, so the build reads each one."""
+    bundle = _bundle(tmp_path)
+    emitter = FakeEmitterClient(
+        hub_api=FakeHub(tmp_path),
+        collector_receipts=[
+            {
+                "status": "awaiting_final_status",
+                "attempts": 1,
+                "submissions": [
+                    _submission("calibration-diagnostics", "awaiting_final_status"),
+                    _submission("orrery-inputs", "failed", "COLLECTOR_REFUSED_422"),
+                ],
+            }
+        ],
+    )
+
+    staged = _stage(bundle, emitter, collector=PROVENANCE)
+
+    assert staged.delivery["status"] == "uploaded"
+    assert staged.collector_receipt["status"] == "awaiting_final_status"
+    warning = capsys.readouterr().err
+    assert (
+        f"warning: the orrery-inputs submission of the staged dataset bundle "
+        f"staged/{RUN_ID} to the collector failed (COLLECTOR_REFUSED_422)." in warning
+    )
+    assert "calibration-diagnostics" not in warning
+
+
+def test_each_settled_submission_is_reported_by_its_own_outcome(tmp_path, capsys):
+    """Once both have settled, the summed status is one submission's; the
+    warning names the one that was turned down, not both."""
+    bundle = _bundle(tmp_path)
+    emitter = FakeEmitterClient(
+        hub_api=FakeHub(tmp_path),
+        collector_receipts=[
+            {
+                "status": "rejected",
+                "error_code": "content_mismatch",
+                "attempts": 1,
+                "submissions": [
+                    _submission("calibration-diagnostics", "succeeded"),
+                    _submission("orrery-inputs", "rejected", "content_mismatch"),
+                ],
+            }
+        ],
+    )
+
+    _stage(bundle, emitter, collector=PROVENANCE)
+
+    warning = capsys.readouterr().err
+    assert (
+        f"warning: the collector rejected the orrery-inputs submission of the "
+        f"staged dataset bundle staged/{RUN_ID} (content_mismatch)." in warning
+    )
+    assert "the submissions of" not in warning
+    assert "calibration-diagnostics" not in warning
+
+
+def test_a_submission_turned_down_beside_one_still_being_sent_is_a_warning(
+    tmp_path, capsys
+):
+    """The emitter sums a hand-over up as ``pending`` while one submission is
+    still being sent, even when the other was refused and is never sent
+    again; the build names the refused one and says the rest stay queued."""
+    bundle = _bundle(tmp_path)
+    waiting = "WAITING_FOR_HUGGING_FACE"
+    emitter = FakeEmitterClient(
+        hub_api=FakeHub(tmp_path),
+        collector_receipts=[
+            {
+                "status": "pending",
+                "error_code": waiting,
+                "attempts": 1,
+                "submissions": [
+                    _submission("calibration-diagnostics", "pending", waiting),
+                    _submission("orrery-inputs", "pending", waiting),
+                ],
+            },
+            {
+                "status": "pending",
+                "error_code": "UPLOAD_FAILED",
+                "attempts": 2,
+                "submissions": [
+                    _submission(
+                        "calibration-diagnostics", "failed", "COLLECTOR_REFUSED_422"
+                    ),
+                    _submission("orrery-inputs", "pending", "UPLOAD_FAILED"),
+                ],
+            },
+        ],
+    )
+
+    _stage(bundle, emitter, collector=PROVENANCE)
+
+    warning = capsys.readouterr().err
+    assert (
+        f"warning: the calibration-diagnostics submission of the staged dataset "
+        f"bundle staged/{RUN_ID} to the collector failed (COLLECTOR_REFUSED_422)."
+        in warning
+    )
+    assert (
+        f"warning: the collector had not accepted the rest of the submissions of "
+        f"the staged dataset bundle staged/{RUN_ID} when the wait ended "
+        "(UPLOAD_FAILED); the emitter keeps them queued on this machine" in warning
+    )
+
+
+def test_a_malformed_submission_entry_is_never_raised_into_the_build(tmp_path, capsys):
+    """``stage_bundle`` records and never raises. A turned-down receipt whose
+    entries explain nothing is reported as a whole."""
+    bundle = _bundle(tmp_path)
+    malformed = {"kind": "orrery-inputs", "status": {"unexpected": "object"}}
+    emitter = FakeEmitterClient(
+        hub_api=FakeHub(tmp_path),
+        collector_receipts=[
+            {"status": "failed", "attempts": 1, "submissions": [malformed, "text"]}
+        ],
+    )
+
+    try:
+        staged = _stage(bundle, emitter, collector=PROVENANCE)
+    except TypeError as error:
+        raised: TypeError | None = error
+    else:
+        raised = None
+    assert raised is None, f"stage_bundle raised {raised!r}"
+    assert staged.delivery["status"] == "uploaded"
+    assert (
+        f"warning: the submissions of the staged dataset bundle staged/{RUN_ID} to "
+        "the collector failed (no code)." in capsys.readouterr().err
+    )
+
+
+def test_a_submission_of_an_unrecognised_kind_is_named_as_a_submission(
+    tmp_path, capsys
+):
+    bundle = _bundle(tmp_path)
+    emitter = FakeEmitterClient(
+        hub_api=FakeHub(tmp_path),
+        collector_receipts=[
+            {
+                "status": "timed_out",
+                "error_code": "FINAL_STATUS_TIMED_OUT",
+                "attempts": 1,
+                "submissions": [
+                    _submission("Not A Kind!", "timed_out", "FINAL_STATUS_TIMED_OUT")
+                ],
+            }
+        ],
+    )
+    _stage(bundle, emitter, collector=PROVENANCE)
+
+    assert (
+        f"warning: the collector gave no final status for a submission of the "
+        f"staged dataset bundle staged/{RUN_ID} within a day of accepting it "
+        "(FINAL_STATUS_TIMED_OUT)." in capsys.readouterr().err
+    )
 
 
 @pytest.mark.parametrize("status", ["succeeded", "skipped"])

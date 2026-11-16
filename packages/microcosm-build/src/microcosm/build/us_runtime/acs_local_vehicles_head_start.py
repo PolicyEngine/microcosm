@@ -46,12 +46,12 @@ passes the spine masks.
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Callable, Sequence
 
 import numpy as np
 import pandas as pd
 
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
 from microcosm.build.us_runtime.sipp_head_start import (
     _ELIGIBLE_MAX_AGE,
@@ -137,22 +137,7 @@ def _head_start_ages(age: np.ndarray) -> np.ndarray:
 
 def _keyed_uniforms(keys: Sequence[str], *, seed: int) -> np.ndarray:
     """Seeded blake2b uniforms in ``[0, 1)``, one per key."""
-    denominator = float(2**64)
-    return np.fromiter(
-        (
-            int.from_bytes(
-                hashlib.blake2b(
-                    f"{seed}:{_HEAD_START_DRAW_SALT}:{key}".encode(), digest_size=8
-                ).digest(),
-                byteorder="big",
-                signed=False,
-            )
-            / denominator
-            for key in keys
-        ),
-        dtype=np.float64,
-        count=len(keys),
-    )
+    return stable_identity_uniforms(keys, seed=seed, salt=_HEAD_START_DRAW_SALT)
 
 
 def vehicles_available_summary(

@@ -380,8 +380,23 @@ EXPECTED_HASHES = {
     # microcosm#1259's recipient-share bound in puf_support moves both again.
     # microcosm#1261 moves both again: the PUF donor carries partnership and
     # S-corp line-32 shares as separate leaves.
-    "seed_map": "bcb012edd7fdd11af328df17ff2ce530912e903514691d330c604c09854c7e0a",
-    "seed_protocol": "e1f88676b849f78e198f2e4dffecf9a380015d0061e24f39e518cb7bc13d26c0",
+    # The hierarchy value ranks move both again: medicaid_take_up, an
+    # attested kernel module, gives a substituted enrollment spec's value no
+    # rank. No draw, RNG rule or QRF target changes. microcosm#1585 moves both
+    # again: the US keyed draws call stochastic_assignment's
+    # stable_identity_uniforms, and that module joins the attested kernel
+    # modules; no draw changes. #1585's public solve_constraint_system and
+    # calibrate's shared option checks move both again; no US solve changes.
+    # Its TANF ledger fix moves the protocol again: the site's recorded salt
+    # becomes the takes_up_tanf_if_eligible its draw always used.
+    # microcosm#1096 moves both again: solve's opt-in softmax mass
+    # parametrization projects exactly onto the capped simplex; the default
+    # projection parametrization is unchanged.
+    # microcosm#1387 moves both again: the ACS transfer's opt-in SEMP-covered
+    # partnership step changes acs_transfer's attested bytes. Off its flag no
+    # draw, RNG rule or QRF target changes.
+    "seed_map": "f3a295ea68b894d4f4e38d13edb9aeb3313138f394d9ff67e4dfdb22f4b63f71",
+    "seed_protocol": "05b0bc3cb82fdfe6919efb09b15e800206425a0d041336f50818b2da277aea78",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

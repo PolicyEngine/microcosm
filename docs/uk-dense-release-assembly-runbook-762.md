@@ -154,8 +154,10 @@ households, nor of the rows that would give them back by difference
 (microcosm#1262, #1383). Every row is judged by the fit gates and carries its
 figures in the diagnostics, the targets table and the gate reports, so a
 release goes only to the licensed private repository. The graph's evidence
-summaries carry them too, which is why a build publishes to the public Orrery
-only on `--publish-orrery`.
+summaries do not: the export stops if a summary carries a row's estimates or
+a failure line. No build publishes its graph to the public Orrery; its staged
+bundle submits the graph's inputs to the collector, which keeps a licensed
+build's graph private ([UK graph publication](orrery-publication.md)).
 
 ### Sized release (microcosm#1124)
 

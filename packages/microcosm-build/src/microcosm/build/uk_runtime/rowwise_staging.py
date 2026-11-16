@@ -14,8 +14,9 @@ module makes no Hugging Face call. A build whose environment switches the Hub
 off (``HF_HUB_OFFLINE``, as on Modal) keeps its bundle local. The bundle's
 hand-over names the build for the collector (:func:`collector_provenance`),
 so the emitter, whose collector submissions are on, submits its calibration
-diagnostics there once the bundle's commit lands, and the build waits for the
-collector to accept them (``collector_submissions.follow_collector_submissions``).
+diagnostics and Orrery inputs there once the bundle's commit lands, and the
+build waits for the collector to accept them
+(``collector_submissions.follow_collector_submissions``).
 """
 
 from __future__ import annotations
@@ -80,6 +81,7 @@ __all__ = [
     "block_staging_run_bundle",
     "UK_COLLECTOR_COUNTRY_CODE",
     "bundle_emitter",
+    "bundle_provenance",
     "collector_provenance",
     "create_staging_run_bundle",
     "emit_calibration_progress",
@@ -653,7 +655,7 @@ def collector_provenance(
     )
 
 
-def _bundle_provenance(
+def bundle_provenance(
     manifest: Mapping[str, Any], *, build_id: str
 ) -> CollectorProvenance | None:
     """:func:`collector_provenance`, or None with a warning when it is refused."""
@@ -754,7 +756,7 @@ def stage_dataset(
             emitter=bundle_emitter(),
             repository=repository,
             prefix=UK_STAGED_DATASET_PREFIX,
-            collector=_bundle_provenance(manifest, build_id=build_id),
+            collector=bundle_provenance(manifest, build_id=build_id),
         )
     delivery = handover.delivery
     print(_staged_dataset_line(delivery), file=sys.stderr, flush=True)

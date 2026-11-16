@@ -259,6 +259,7 @@ def _install_fake_engine(
         zero_variables=(),
         system=None,
         assert_no_formula_owned_columns=True,
+        period_only=False,
     ):
         return {"frame": frame_arg, "zero_variables": tuple(zero_variables)}
 
@@ -747,6 +748,79 @@ def _engine_population_aggregate_sources(
     return found
 
 
+# A period offset whose amount is not negative (a later month or year), and a
+# holder lookup, which can read any stored period.
+_FORWARD_PERIOD_READ = re.compile(r"\.offset\(\s*(?!-)[\w.]+")
+_HOLDER_LOOKUP = re.compile(r"\b(?:get_known_periods|get_holder|get_array)\(|\b_holders\b")
+
+
+def _engine_forward_read_sources(
+    root: Path | None = None,
+    *,
+    source_digests: dict[str, str] | None = None,
+) -> dict[str, list[str]]:
+    """Scan package Variable classes and module helpers for later-period reads.
+
+    A forward offset or a holder lookup marks a formula to inspect: it may read
+    a year after the one asked, which a dataset cut at that year does not hold.
+    A match proves nothing either way, and a formula can build a later period
+    in other ways.
+    """
+    if root is None:
+        spec = importlib.util.find_spec("policyengine_us")
+        root = Path(next(iter(spec.submodule_search_locations)))
+    modules = []
+    for path in sorted(root.rglob("*.py")):
+        relative = path.relative_to(root)
+        if "tests" in relative.parts or path.name.startswith("test_"):
+            continue
+        source = path.read_text()
+        modules.append((source, ast.parse(source)))
+
+    def markers(body: str) -> list[str]:
+        return [
+            match.group(0)
+            for pattern in (_FORWARD_PERIOD_READ, _HOLDER_LOOKUP)
+            for match in pattern.finditer(body)
+        ]
+
+    helpers: dict[str, list[str]] = {}
+    for source, tree in modules:
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                helpers.setdefault(node.name, []).append(
+                    ast.get_source_segment(source, node)
+                )
+    reaching = {name for name, bodies in helpers.items() if any(map(markers, bodies))}
+    grew = True
+    while grew:
+        grew = False
+        for name, bodies in helpers.items():
+            if name not in reaching and any(
+                re.search(rf"\b{other}\(", body) for body in bodies for other in reaching
+            ):
+                reaching.add(name)
+                grew = True
+
+    found: dict[str, list[str]] = {}
+    for source, tree in modules:
+        for node in ast.walk(tree):
+            if not _is_variable_class(node):
+                continue
+            body = ast.get_source_segment(source, node)
+            called = sorted(
+                helper for helper in reaching if re.search(rf"\b{helper}\(", body)
+            )
+            evidence = markers(body) + [f"{helper}()" for helper in called]
+            if not evidence:
+                continue
+            found[node.name] = evidence
+            if source_digests is not None:
+                sources = [body] + [text for helper in called for text in helpers[helper]]
+                source_digests[node.name] = hashlib.sha256(
+                    "\n".join(sorted(sources)).encode()
+                ).hexdigest()
+    return found
 
 
 # These inspected 2.2.1 formulas compare a record's status or geography with

@@ -37,11 +37,11 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "packages/microcosm-calibrate/src"))
 
+from microcosm.build import pinned_inputs  # noqa: E402
 from microcosm.calibrate.geography_constants import (  # noqa: E402
     UK_GEOGRAPHY_ID_TO_LABEL,
 )
@@ -145,14 +145,12 @@ MEASURES: Mapping[str, dict[str, str]] = {
         "tenure_label": "All tenures except social rented",
     },
 }
-#: Feed selectors (record set spec ids) the owner-occupied adjustment reads.
-TENURE_OWNER_SPEC_IDS = (
-    "uk.local_geography.tenure.owned_outright.v1",
-    "uk.local_geography.tenure.owned_mortgage.v1",
-)
-TENURE_SPEC_PREFIX = "uk.local_geography.tenure."
-TENURE_ALL_SPEC_ID = "uk.local_geography.tenure.all_households.v1"
-TENURE_SOCIAL_SPEC_ID = "uk.local_geography.tenure.social_rent.v1"
+#: Feed selectors (record set spec ids) the owner-occupied adjustment reads;
+#: the library holds them, shared with the stock cell builder (microcosm#1524).
+TENURE_OWNER_SPEC_IDS = hv.TENURE_OWNER_SPEC_IDS
+TENURE_SPEC_PREFIX = hv.TENURE_SPEC_PREFIX
+TENURE_ALL_SPEC_ID = hv.TENURE_ALL_SPEC_ID
+TENURE_SOCIAL_SPEC_ID = hv.TENURE_SOCIAL_SPEC_ID
 OBR_SHARE_CONCEPT = "obr.hvcts_costing.non_owner_occupied_share"
 HPSSA_SALES_CONCEPT = "ons.hpssa.residential_property_sales"
 HPSSA_MEDIAN_CONCEPT = "ons.hpssa.median_price_paid"
@@ -233,63 +231,44 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 
 # ----------------------------------------------------------------------------
-# Pins
+# Pins (microcosm.build.pinned_inputs; the private names are kept for tests)
 
-
-def _manifest_files(manifest_path: Path) -> tuple[dict, dict[str, dict]]:
-    manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
-    files = manifest.get("files")
-    if not isinstance(files, dict) or not files:
-        raise ValueError(f"{manifest_path} declares no files.")
-    return manifest, {str(key): dict(value) for key, value in files.items()}
-
-
-def _verify_pin(
-    path: Path, entry: Mapping[str, object], *, skip: bool
-) -> dict[str, object]:
-    if path.is_symlink() or not path.is_file():
-        raise ValueError(f"{path} must be a regular local file.")
-    size = path.stat().st_size
-    if size != int(entry["size_bytes"]):
-        raise ValueError(
-            f"{path}: size {size} differs from the registered {entry['size_bytes']}."
-        )
-    if not skip:
-        digest = hv.sha256_of_file(path)
-        if digest != str(entry["sha256"]):
-            raise ValueError(f"{path}: sha256 differs from the registered pin.")
-    return {
-        "filename": str(entry["filename"]),
-        "sha256": str(entry["sha256"]),
-        "size_bytes": int(entry["size_bytes"]),
-        "source_url": str(entry.get("source_url", "")),
-        "r2_key": str(((entry.get("storage") or {}).get("r2") or {}).get("key", "")),
-    }
-
-
-def _registration(
-    manifest: Mapping[str, object], files: Mapping[str, Mapping[str, object]]
-) -> dict:
-    return {
-        "chronicle_source_id": manifest.get("source_id"),
-        "chronicle_package_id": manifest.get("package_id"),
-        "registration_kind": manifest.get("registration_kind", "committed"),
-        "files": {key: files[key] for key in sorted(files)},
-    }
+_manifest_files = pinned_inputs.manifest_files
+_verify_pin = pinned_inputs.verify_pinned_file
+_registration = pinned_inputs.registration
 
 
 # ----------------------------------------------------------------------------
 # Stage A: the dwelling table
 
 
+def _committed_nspl_sha256() -> str | None:
+    """The NSPL the committed stock was built on, which its cache indexes."""
+    if not DEFAULT_PROVENANCE_OUT.is_file():
+        return None
+    provenance = json.loads(DEFAULT_PROVENANCE_OUT.read_text(encoding="utf-8"))
+    nspl = ((provenance.get("inputs") or {}).get("registrations") or {}).get("nspl")
+    files = (nspl or {}).get("files") or {}
+    if len(files) != 1:
+        return None
+    return str(next(iter(files.values()))["sha256"])
+
+
 def _dwelling_cache_path(
-    cache_dir: Path, ppd_files: Mapping[str, Mapping[str, object]], stock_yyyymm: int
-) -> Path:
-    digest = hashlib.sha256()
-    for key in sorted(ppd_files):
-        digest.update(f"{key}:{ppd_files[key]['sha256']}\n".encode())
-    digest.update(f"stock:{stock_yyyymm}\nmethod:{METHOD_VERSION}\n".encode())
-    return cache_dir / f"dwellings-{digest.hexdigest()[:16]}.parquet"
+    cache_dir: Path,
+    ppd_files: Mapping[str, Mapping[str, object]],
+    stock_yyyymm: int,
+    *,
+    nspl_sha256: str,
+) -> tuple[Path, str]:
+    return hv.resolve_dwelling_cache(
+        cache_dir,
+        ppd_files,
+        stock_yyyymm=stock_yyyymm,
+        method=METHOD_VERSION,
+        nspl_sha256=nspl_sha256,
+        legacy_nspl_sha256=_committed_nspl_sha256(),
+    )
 
 
 def _read_nspl(nspl_zip: Path) -> tuple[pd.DataFrame, dict[str, str]]:
@@ -309,24 +288,10 @@ def _build_dwellings(
     *,
     stock_yyyymm: int,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
-    frames = []
-    receipts: dict[str, object] = {"transfers_by_year": {}}
-    for key in sorted(ppd_files, key=int):
-        path = ppd_dir / str(ppd_files[key]["filename"])
-        frame = hv.read_price_paid_file(path, postcode_index=postcode_index)
-        receipts["transfers_by_year"][key] = {
-            "residential_category_a": int(len(frame)),
-            "bulk_transfers": int(frame["batch"].sum()),
-            "postcode_unmatched": int((frame["postcode_row"] < 0).sum()),
-            "new_build_first_registrations": int(frame["newbuild"].sum()),
-        }
-        _log(f"  {path.name}: {len(frame):,} residential category A transfers")
-        frames.append(frame)
-    transfers = pd.concat(frames, ignore_index=True)
-    del frames
-    receipts["transfers_total"] = int(len(transfers))
-    dwellings = hv.latest_valuations(transfers, stock_yyyymm=stock_yyyymm)
-    return dwellings, receipts
+    """Stage A, the library's (shared with the stock cell builder)."""
+    return hv.build_dwelling_table(
+        ppd_dir, ppd_files, postcode_index, stock_yyyymm=stock_yyyymm, log=_log
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -380,8 +345,8 @@ def _read_facts(path: Path) -> list[dict]:
     return rows
 
 
-def _spec_id(fact: Mapping) -> str:
-    return str((fact.get("layout") or {}).get("record_set_spec_id") or "")
+#: Moved to the library, shared with the stock cell builder (microcosm#1524).
+_spec_id = hv.fact_spec_id
 
 
 def _tenure_shares(
@@ -389,50 +354,10 @@ def _tenure_shares(
 ) -> tuple[dict[str, float], dict[str, float], dict[str, object]]:
     """Private-sector stock share and owner-occupied share per local authority.
 
-    Price Paid Data records market transfers, so its dwellings are the
-    private-sector stock: social rented dwellings are never in it. Both the
-    coverage correction and the owner-occupied share therefore refer to the
-    census households net of social renting (TS054 by local authority).
-    Returns ``(private_share, owner_share_of_private, receipt)``.
+    The library's :func:`tenure_shares` at its default level, local
+    authorities (Census 2021 TS054).
     """
-    totals: dict[str, float] = {}
-    owner: dict[str, float] = {}
-    social: dict[str, float] = {}
-    spec_ids: set[str] = set()
-    for fact in facts:
-        spec = _spec_id(fact)
-        if not spec.startswith(TENURE_SPEC_PREFIX):
-            continue
-        geography = fact.get("geography") or {}
-        if geography.get("level") != "local_authority":
-            continue
-        code = str(geography.get("id"))
-        spec_ids.add(spec)
-        value = float(fact["value"])
-        if spec == TENURE_ALL_SPEC_ID:
-            totals[code] = value
-        elif spec in TENURE_OWNER_SPEC_IDS:
-            owner[code] = owner.get(code, 0.0) + value
-        elif spec == TENURE_SOCIAL_SPEC_ID:
-            social[code] = value
-    private_share: dict[str, float] = {}
-    owner_share: dict[str, float] = {}
-    for code, total in totals.items():
-        if total <= 0:
-            continue
-        private = total - social.get(code, 0.0)
-        private_share[code] = private / total
-        owner_share[code] = owner.get(code, 0.0) / private if private > 0 else 0.0
-    receipt = {
-        "tenure_record_set_spec_ids": sorted(spec_ids),
-        "local_authorities_with_tenure": len(owner_share),
-        "basis": (
-            "Census 2021 TS054 by local authority: private-sector stock is all "
-            "households less social rented; the owner-occupied share is owned "
-            "outright plus owned with a mortgage over that private stock"
-        ),
-    }
-    return private_share, owner_share, receipt
+    return hv.tenure_shares(facts)
 
 
 def _obr_non_owner_share(facts: Iterable[Mapping]) -> tuple[float, str]:
@@ -750,10 +675,12 @@ def main(argv: list[str] | None = None) -> int:
     postcodes, seat_names = _read_nspl(args.nspl_zip)
     postcode_index = pd.Index(postcodes["postcode"])
 
-    cache_path = _dwelling_cache_path(args.cache_dir, ppd_files, stock_yyyymm)
+    cache_path, cache_status = _dwelling_cache_path(
+        args.cache_dir, ppd_files, stock_yyyymm, nspl_sha256=str(nspl_entry["sha256"])
+    )
     receipts_path = cache_path.with_suffix(".receipts.json")
-    if cache_path.is_file() and receipts_path.is_file():
-        _log(f"Reading cached dwellings from {cache_path.name} ...")
+    if cache_status != "absent":
+        _log(f"Reading cached dwellings from {cache_path.name} ({cache_status}) ...")
         dwellings = pd.read_parquet(cache_path)
         dwelling_receipts = json.loads(receipts_path.read_text(encoding="utf-8"))
     else:

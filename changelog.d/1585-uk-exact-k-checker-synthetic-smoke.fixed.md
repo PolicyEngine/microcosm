@@ -1,0 +1,1 @@
+The exact-k UK schema-4 gate-report checker now accepts the `synthetic_smoke` field the executor writes into every report's body and attestation, which made it refuse every report the executor writes, and requires that field to be false (microcosm#1585 item 11).

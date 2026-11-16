@@ -29,7 +29,6 @@ from typing import Any
 from microcosm_emitter_interface.orrery import (
     PublicationFileRole,
     PublicationInventory,
-    PublicationReceipt,
 )
 
 from microcosm.build.telemetry_emitter import LocalTelemetryEmitter, TelemetryRun
@@ -65,21 +64,6 @@ def fake_publication_inventory(
 ) -> PublicationInventory:
     """Measure only synthetic test files without starting an emitter."""
     return _measured_inventory(directory, roles, uuid.uuid4().hex)
-
-
-def fake_publish_graph(
-    directory: Path,
-    inventory: PublicationInventory,
-    *,
-    wait_seconds: float = 30.0,
-) -> PublicationReceipt:
-    """Return an in-memory receipt without persistence, credentials or HTTP."""
-    return {
-        "version": 1,
-        "publication_id": inventory["publication_id"],
-        "status": "pending",
-        "error_code": None,
-    }
 
 
 class _Lifecycle:

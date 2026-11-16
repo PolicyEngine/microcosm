@@ -2,7 +2,15 @@
 
 Only the graph, declarations, digest-bound native receipts, and reviewed
 aggregate summaries are eligible. Population files and content-store payloads
-are never uploaded to the public visualization service.
+are never exported.
+
+A build uploads no graph to the runs application. Its staged bundle carries
+the Orrery inputs (``graph.schema.json``, ``graph.execution.json`` and the
+``upstream-<sha256>.json`` files) under the interface's Orrery roles
+(:func:`microcosm.build.staging_dataset.output_role`), and the emitter submits
+them to the collector, which builds the Orrery graph files and keeps a
+licensed build's private. ``graph.orrery.json`` is still projected, for
+viewing the graph offline.
 """
 
 from __future__ import annotations
@@ -22,7 +30,7 @@ from microcosm_emitter_interface.orrery import (
 
 from microcosm.build.artifact_files import file_artifact, materialize_bytes
 from microcosm.build.staging_dataset import StagedDatasetDelivery
-from microcosm.build.telemetry_emitter import publication_inventory, publish_graph
+from microcosm.build.telemetry_emitter import publication_inventory
 from microcosm.graph import ContentStore
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.evidence import collect_execution_evidence, load_run_evidence
@@ -37,8 +45,6 @@ EVIDENCE_MANIFEST_NAME = "orrery.evidence-manifest.json"
 EXECUTION_OVERLAY_NAME = "graph.execution.json"
 FAILURE_MARKER_NAME = "orrery.failure.json"
 FAILURE_BUNDLE_DIRECTORY = "orrery-failure"
-# How long a build waits for a first upload result after the durable enqueue.
-GRAPH_PUBLICATION_WAIT_SECONDS = 30.0
 
 
 class GraphEvidenceOutput(TypedDict):
@@ -55,17 +61,6 @@ class GraphFinalization:
 
     files: tuple[str, ...]
     receipt: PublicationReceipt
-
-
-def publication_enabled(args: Namespace) -> bool:
-    """Whether the saved graph goes to the public Orrery: only on request.
-
-    A UK build keeps its graph evidence local unless ``--publish-orrery`` asks
-    for the submission (María's ruling of 2026-10-26), whatever its staging;
-    staging to the private repositories does not depend on it.
-    """
-
-    return getattr(args, "publish_orrery", None) is True
 
 
 def _urls(value: object) -> Iterator[str]:
@@ -94,16 +89,16 @@ def finalize_graph(
     *,
     manifest: MutableMapping[str, Any] | None,
     published_root: Path | None = None,
-    wait_seconds: float = GRAPH_PUBLICATION_WAIT_SECONDS,
 ) -> GraphFinalization:
     """Freeze bytes and a receipt snapshot; retry never rewrites that snapshot.
 
     This runs inside the temporary build directory, including on exceptions.
     A dataset ``manifest``, when the build produced one, registers the graph
-    files and receipt. Graph publication failure does not replace a dataset's
+    files and receipt. A graph export failure does not replace a dataset's
     scientific verdict. ``published_root`` is where the registered files will
-    be published, by default the build's output directory. ``wait_seconds``
-    bounds the wait for a first upload result after the job is durably queued.
+    be published, by default the build's output directory. Nothing is
+    uploaded: the receipt stays ``skipped`` (``local_only``), and the staged
+    bundle submits the Orrery inputs to the collector.
     """
     from . import rowwise_staging
 
@@ -151,10 +146,10 @@ def finalize_graph(
             payload = orrery_json_from_schema(schema, execution=execution).encode()
             materialize_bytes(payload, output / "graph.orrery.json")
             # The overlay is the projection's only input besides the schema,
-            # so a later projection can start from these two files. It is a
-            # registered build output but not part of the Orrery publication:
-            # the emitter's file roles and the runs service's contract do not
-            # admit it yet.
+            # so the collector projects the Orrery graph file from these two
+            # files and the upstream files. It is a registered build output,
+            # which the staged bundle submits under its Orrery role; it is not
+            # in the emitter's publication inventory, which nothing uploads.
             unpublished: list[str] = []
             if execution is not None:
                 materialize_bytes(
@@ -191,6 +186,8 @@ def finalize_graph(
             materialize_bytes(canonical_json(inventory), preserved / INVENTORY_NAME)
             materialize_bytes(canonical_json(inventory), output / INVENTORY_NAME)
             names = [*roles, *unpublished, INVENTORY_NAME]
+            # No upload to the runs application: the collector builds the
+            # Orrery graph files from the inputs the staged bundle submits.
             receipt = {
                 "version": 1,
                 "publication_id": inventory["publication_id"],
@@ -200,17 +197,6 @@ def finalize_graph(
                 "preserved_directory": str(preserved),
                 "recorded_execution": execution is not None,
             }
-            if publication_enabled(args):
-                if emitter is None:
-                    # Durable enqueue is still possible without a running
-                    # emitter; the retry command requires no telemetry run.
-                    receipt.update(publish_graph(preserved, inventory, wait_seconds=0))
-                else:
-                    receipt.update(
-                        emitter.publish_graph(
-                            preserved, inventory, wait_seconds=wait_seconds
-                        )
-                    )
     except Exception:
         # No credential, exception text, paths to raw input data, or signed URL
         # is copied from an exception into public evidence or telemetry.
@@ -249,9 +235,14 @@ def finalize_graph(
 
 
 def stage_graph_evidence(
-    args: Namespace, output: Path, *, run_id: str
+    args: Namespace, output: Path, *, run_id: str, build_id: str | None = None
 ) -> StagedDatasetDelivery | None:
-    """Stage failure evidence as a bundle, through the build's emitter."""
+    """Stage failure evidence as a bundle, through the build's emitter.
+
+    The hand-over names the build for the collector (``build_id``, the build's
+    attempt ID, by default ``run_id``; no candidate release), so the emitter
+    submits the evidence's Orrery inputs once the bundle's commit lands.
+    """
     from microcosm.build.staging_dataset import (
         StagedDatasetBundle,
         disabled_staged_dataset,
@@ -284,4 +275,5 @@ def stage_graph_evidence(
         emitter=rowwise_staging.bundle_emitter(),
         repository=repository,
         prefix=UK_STAGED_DATASET_PREFIX,
+        collector=rowwise_staging.bundle_provenance({}, build_id=build_id or run_id),
     ).delivery

@@ -224,8 +224,13 @@ verified from disk against the manifest's own digests, then handed to the
 build's emitter (`stage_dataset_bundle`): every file by path, with its SHA-256,
 its size and its role. An output's role is its `outputs` key as a role name
 (`dataset` for the H5, `calibration_diagnostics`, `local_registry`, ...; digests
-in a key are left out), and the manifest, `staged_manifest.json` and
-`sha256sums.txt` are `build_manifest`, `staged_manifest` and `checksums`. The
+in a key are left out), except the Orrery inputs: `graph.schema.json`,
+`graph.execution.json` and each `upstream-<sha256>.json` are `orrery_schema`,
+`execution_overlay` and `orrery_upstream`, the interface's roles, so the
+emitter submits them to the collector (see
+[UK graph publication](orrery-publication.md)). The manifest,
+`staged_manifest.json` and `sha256sums.txt` are `build_manifest`,
+`staged_manifest` and `checksums`. The
 emitter writes the bundle in one commit with the build's own credential, and
 its receipt becomes the bundle's `staged_dataset` record, with the commit as
 its revision. `releases/` and `latest.json` are never touched, no tag is
@@ -245,7 +250,9 @@ The hand-over also names the build for the collector, with the interface's
 With that, the emitter submits the bundle's calibration diagnostics (with the
 build manifest as `build_manifest`) to the collector once the Hugging Face
 commit lands, as a `calibration-diagnostics` submission whose folder is
-`staged/<run_id>`, with the build's Hugging Face credential. Every emitter a
+`staged/<run_id>`, and its Orrery inputs as an `orrery-inputs` submission
+([UK graph publication](orrery-publication.md)), with the build's Hugging
+Face credential. Every emitter a
 build or the re-stage command starts has its collector submissions switched
 on (`telemetry_emitter.COLLECTOR_SUBMISSIONS`, through the setting emitter
 0.15.0 added; the emitter's own default leaves them off, so switching them
@@ -263,11 +270,14 @@ not waited for. The build carries on in every case, with a warning when:
   unset those variables), the bundle's Hugging Face upload failed or was
   refused (`NOT_STAGED_ON_HUGGING_FACE`), or its folder is longer than the
   collector accepts (`COLLECTOR_FOLDER_TOO_LONG`);
-- the collector refused the submissions at intake (`rejected` or `failed`),
-  with the code the receipt gives. Once it has accepted them, its own
-  processing decides whether it builds a tree or rejects them, and the build
-  doesn't wait for that; a re-stage that resumes an older hand-over can show
-  that later result, or `timed_out`;
+- the collector refused a submission at intake (`rejected` or `failed`),
+  with the code the receipt gives. The warning names the submission's kind
+  (`calibration-diagnostics` or `orrery-inputs`), and a refused submission is
+  reported even while the bundle's other submission is still being sent or
+  awaits its final status. Once the collector has accepted a submission, the
+  collector's own processing decides whether it builds a tree or rejects the
+  submission, and the build doesn't wait for that; a re-stage that resumes an
+  older hand-over can show that later result, or `timed_out`;
 - the emitter had no credential for them (`CREDENTIAL_MISSING`): it was given
   a collector token, which only sends telemetry, or found no Hugging Face
   credential;
