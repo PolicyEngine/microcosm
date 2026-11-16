@@ -551,12 +551,14 @@ def uk_support_family_weights(
     clone side, its clone and the copies' clones) sum to one weight, so the
     max-to-median ratio and the ESS fraction read the quantity the June
     certification measured on a frame without copies, not the number of
-    copies. The key is the explicit lineage the geography identity keys on,
-    less the copy flag and index: on a geographically expanded frame the
-    clone-index column is part of it, so the K clones of a household stay
-    apart and only their own copies fold onto each. A table without the copy
-    flag, or with no copy, folds to itself. A table with copies but without
-    the family key columns refuses.
+    copies. The key is the household lineage columns
+    (``household_lineage.UK_HOUSEHOLD_LINEAGE_COLUMNS``) less the support
+    split's copy flag and index and the residential split's arm flag and
+    index: on a geographically expanded frame the clone-index column is part
+    of it, so the K clones of a household stay apart and only their own
+    copies fold onto each. A table without the copy flag, or with no copy,
+    folds to itself. A table with copies but without the family key columns
+    refuses.
     """
 
     weights = pd.to_numeric(household["household_weight"], errors="coerce").to_numpy(

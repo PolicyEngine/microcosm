@@ -21,13 +21,15 @@ a copy in this field") and its radix:
 - ``geographic_support``: the geographic clones the spine's
   ``geographic_expand`` stage mints before any other copy layer runs (K at
   most 100).
-- ``spi_support_channel``: the SPI support copy (ordinal 1, stage 16) and the
-  income band donor (ordinal 2, stage 17).
-- ``high_value_support``: the high-value home copies (stage 26).
-- ``cgt_support_split``: the CGT support copies (stage 42), four digits.
-- ``cgt_incidence_clone``: the CGT incidence twin (stage 43).
-- ``cgt_residential_split``: the residential arms (stage 46), the top field,
-  so arms follow every incumbent in id order.
+- ``spi_support_channel``: the SPI support copy (ordinal 1, made by
+  ``spi_support_channel``) and the income band donor (ordinal 2, made by
+  ``spi_income_band_donors``).
+- ``high_value_support``: the high-value home copies
+  (``high_value_home_support``).
+- ``cgt_support_split``: the CGT support copies, four digits.
+- ``cgt_incidence_clone``: the CGT incidence twin.
+- ``cgt_residential_split``: the residential arms, the top field, so arms
+  follow every incumbent in id order.
 
 A field must sit above every field filled before it runs, which keeps a copy's
 parent below the field's radix: a copy's ordinal is then ``id // radix``

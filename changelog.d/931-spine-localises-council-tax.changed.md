@@ -1,4 +1,4 @@
-Localise Great Britain council tax by each clone's local authority just before the UK spine's WAS chain, and carry each bill's provenance from stage 5 (#931). The council-tax localisation #931 group (d) added unwired is now declared: `council_tax_localise` runs after `private_rent` and before `was_wealth`, in a graph version of its own, so the packaged spine has 63 stages. Stage 5 (`frs_council_tax`) writes `council_tax_bill_provenance` beside the bill, and the localisation reads it. The localisation keeps the paid bill from before it as `council_tax_frs_bill`, which the WAS chain's bill predictor reads. The release boundary drops both columns.
+Localise Great Britain council tax by each clone's local authority just before the UK spine's WAS chain, and carry each bill's provenance from `frs_council_tax` (#931). The council-tax localisation #931 group (d) added unwired is now declared: `council_tax_localise` runs after `private_rent` and before `was_wealth`, in a graph version of its own, so the packaged spine has 63 stages. `frs_council_tax` writes `council_tax_bill_provenance` beside the bill, and the localisation reads it. The localisation keeps the paid bill from before it as `council_tax_frs_bill`, which the WAS chain's bill predictor reads. The release boundary drops both columns.
 
 - **Stages** (`sources.yaml`, then `source_stages.json` by the by-name merge):
   - `frs_council_tax` declares `derive` after `impute_cell_means`, as `frs_council_tax_provenance_operation_parameters()` returns it, and outputs `council_tax_bill_provenance` after `council_tax`. Its imputation and nonnegative outputs are unchanged, and its notes gain one sentence on the flag. The transform writes the flag (`StringDtype("python")`) from the same branches that choose the bill, which stays bit for bit as before. `checkpoint_metadata()` returns the provenance receipt, `council_tax_provenance_evidence`: distinct source households before the copies, through `rounded_count`. The stage's declaration check expects `read_tables`, `impute_cell_means` and `derive`, with both reviewed parameter sets.
@@ -13,7 +13,7 @@ Localise Great Britain council tax by each clone's local authority just before t
 - **The WAS read.** `was_wealth.recipient_predictors`, which `was_lisa` calls, now takes its council-tax predictor from `council_tax_frs_bill`. That is the paid bill the localisation keeps from before it localises: `max(council_tax - council_tax_rebate, 0)` on the FRS bill, the expression the predictor computed before. The predictor frame keeps its columns and their order. A frame without the kept bill is refused, naming the column. So the bill predictor is bit for bit as before, and the drawn area does not enter it. The HBAI net income both stages read from the engine sees the localised bill and reduction.
 - **The graph and the spine build.**
   - `council_tax_localise` opens its own graph version (`_READER_ISOLATION_BOUNDARIES`). It rewrites the housing shell's person council tax reduction, which `private_rent`'s finite reader anchors on, so without a version of its own the compile would close a cycle between the two. `private_rent` reads the shell's cells, and `was_wealth` and `was_lisa` read the localisation's. The spine graph gains the stage and `council_tax_localise.boundary`.
-  - The stage consumes each household's draw inputs (geography key, region, IMD decile, council-tax band and band flag), its drawn area, system and local authority, the bill's provenance and the single-adult flag. It also consumes the support channel's branch of the copy lineage and its true source and clone index. Like the area draw, it reads the three conditioned supports as graph sources. Its cells are the kept bill and the three rewrites, all float64; stage 5's cells gain the flag, a string cell.
+  - The stage consumes each household's draw inputs (geography key, region, IMD decile, council-tax band and band flag), its drawn area, system and local authority, the bill's provenance and the single-adult flag. It also consumes the support channel's branch of the copy lineage and its true source and clone index. Like the area draw, it reads the three conditioned supports as graph sources. Its cells are the kept bill and the three rewrites, all float64; `frs_council_tax`'s cells gain the flag, a string cell.
   - In `graph_kernels`, the stage's module is `spine_council_tax`. It is bound with the helpers its transform computes through, among them `atomic_support_expectations`, `bounded_amounts` and `council_tax_band_d`, and counts as a counting stage. It runs on the bitwise stage kernel every spine stage runs on (F10 is open with Max). The H2 fixture's registry builds it on the toy supports at the committed Band D.
   - `spine_build` builds the stage on the supports the area stages read, holding them to the spine's support pins first. So a support replaced after the spine was prepared is refused with the area stages' message before the stage builds anything. The support flags' help names the stage. The sidecar's stage records report no nonzero share of the flag or of the kept bill (`_UNREPORTED_SHARE_COLUMNS`), as for the root's area carriers.
   - The geography-first roster gains `COUNCIL_TAX_LOCALISE_STAGE`, and `spine_council_tax` reads its stage name from there. So the dense line's posture check, the spine CLI's release candidate and the national line refuse every spine built before this change, naming the stage alone.
@@ -23,16 +23,16 @@ Localise Great Britain council tax by each clone's local authority just before t
   - `tools/build_uk_release_input_coverage_manifest.py` gains the stage's family, in `private_rent`'s form.
   - `tools/verify_uk_identity_stability.py`'s scope docstring now names the stage's in-place rewrites, which no receipted recompute reads.
 - **Generated files.**
-  - `source_stages.json` regenerates by the by-name merge. Stage 5's unchanged operations keep their committed key order.
+  - `source_stages.json` regenerates by the by-name merge. `frs_council_tax`'s unchanged operations keep their committed key order.
   - The H2 fixture regenerates through the engine slot, and `--check` passes. Three files change:
     - `uk_spine.json` gains the stage and its boundary;
-    - `sources/fixture.json` gains stage 5's new operation, output and notes sentence and the new stage;
+    - `sources/fixture.json` gains `frs_council_tax`'s new operation, output and notes sentence and the new stage;
     - `sources/cgt_asset_type_facts.json` changes, because the tool sizes it to the oracle's frame before `cgt_residential_split`, which reads the stages the localised bill reaches.
 
     `property_rental_facts.json`, `property_purchase_targets.json`, `NORMALIZATION.md` and `PRODUCED_BY.txt` are unchanged.
   - `release_input_coverage_manifest.json` regenerates without an H5, and `--check` passes. It gains the new family, and every family's source-manifest digest moves.
 - **What moves.**
-  - Values, at one clone. Before `council_tax_localise` every existing column keeps its values: stage 5's bill is as before, and the flag is a new column.
+  - Values, at one clone. Before `council_tax_localise` every existing column keeps its values: `frs_council_tax`'s bill is as before, and the flag is a new column.
     - Great Britain's council tax, the reported council tax reduction and the rebate move by each household's ratio: its authority's 2024-25 Band D over the expected Band D of its own draw cell.
     - Missing bills, and bills netted of a reduction of unknown size, take the 2024-25 statute where the band was observed.
     - A reduction or rebate above the new bill is capped at it.
@@ -48,8 +48,8 @@ Localise Great Britain council tax by each clone's local authority just before t
   - Engine-free:
     - the 63 stages and their order, the localisation right after `private_rent` and right before `was_wealth`;
     - no stage from the area draw to the localisation writing a draw input but the housing shell's band, and no stage after it writing its columns;
-    - stage 5's three operations and two outputs, the localisation's outputs, rewrites and mass receipt;
-    - the packaged stages equal to the reviewed declarations, and stage 5's transform writing the flag and its receipt from a pinned invented tab;
+    - `frs_council_tax`'s operations, which now end with the derive, and its two outputs, the localisation's outputs, rewrites and mass receipt;
+    - the packaged stages equal to the reviewed declarations, and `frs_council_tax`'s transform writing the flag and its receipt from a pinned invented tab;
     - the reader isolation and the cells each reader binds, the support readers, the consumes, and the counting stages;
     - a pin that the housing shell's consumes hold no household area column;
     - the roster refusing a spine without the stage, on the dense and the national lines;

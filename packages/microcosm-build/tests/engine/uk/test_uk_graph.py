@@ -98,8 +98,9 @@ def test_driver_projects_a_stage_record_for_every_graph_stage_on_the_fixture(
         ), stage.stage
         assert by_stage[stage.stage].rewrote == stage.rewrites, stage.stage
     assert set(FRS_AREA_CONDITIONING_COLUMNS) <= set(by_stage["frs_spine"].produced)
-    # Each bill's provenance and the kept paid bill are produced, by stage 5
-    # and the localisation, and neither stage reports a share of either.
+    # Each bill's provenance and the kept paid bill are produced, by
+    # frs_council_tax and council_tax_localise, and neither stage reports a
+    # share of either.
     carriers = {FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN, COUNCIL_TAX_FRS_BILL_COLUMN}
     assert carriers <= driver._UNREPORTED_SHARE_COLUMNS
     for stage, carrier in (

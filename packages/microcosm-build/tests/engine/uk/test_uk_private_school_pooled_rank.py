@@ -2,10 +2,10 @@
 
 policyengine-uk's ``attends_private_school`` ranks household net income over
 the people a simulation holds. Once a dense spine's engine calls run clone by
-clone, one clone's simulation would rank that clone alone, so stage 52
-restates the formula's last step over the whole frame from engine values each
-household's own records decide, the engine's own parameters and microdf's
-weighted percentile rank.
+clone, one clone's simulation would rank that clone alone, so
+private_school_attendance restates the formula's last step over the whole
+frame from engine values each household's own records decide, the engine's own
+parameters and microdf's weighted percentile rank.
 
 The pool here is three clones of twelve made-up households: five alike in
 every clone, whose incomes tie across clones, and the rest drawing their own

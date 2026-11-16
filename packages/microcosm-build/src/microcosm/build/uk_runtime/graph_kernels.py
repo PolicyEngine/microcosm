@@ -482,10 +482,10 @@ _STAGE_HELPER_MODULES = {
     # cell's expected Band D through the shared draw-cell expectation, reads
     # the Band D and prices the statute through council_tax_band_d,
     # Scotland's Band D a vendored fact checked against the pinned feed, reads
-    # stage 5's bill provenance, the authority code column and the nations of
-    # the regions, and holds the reductions within their bills through the
-    # shared bounded amounts. Like every geography-first stage, it reads its
-    # name from the roster leaf (microcosm#931).
+    # frs_council_tax's bill provenance, the authority code column and the
+    # nations of the regions, and holds the reductions within their bills
+    # through the shared bounded amounts. Like every geography-first stage, it
+    # reads its name from the roster leaf (microcosm#931).
     "council_tax_localise": (
         atomic_geography,
         atomic_support_conditioning,
@@ -1111,8 +1111,8 @@ _COUNTING_STAGES = frozenset(
         # The council-tax stage's module counts its bill provenance's receipt
         # in true source households (microcosm#931).
         "frs_council_tax",
-        # spi_spine, stage 14's module, rounds the support channel's receipt
-        # (microcosm#931).
+        # spi_spine, frs_hmrc_spine_leaves' module, rounds the support
+        # channel's receipt (microcosm#931).
         "frs_hmrc_spine_leaves",
         "frs_annual_income_spells",
         # The geographic clones and their keys count their evidence in true

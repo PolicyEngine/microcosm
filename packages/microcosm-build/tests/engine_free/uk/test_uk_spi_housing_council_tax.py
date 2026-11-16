@@ -632,7 +632,7 @@ def test_the_formula_names_the_statute_and_live_stages() -> None:
 
 def test_the_module_imports_no_stage_module() -> None:
     """The shell is to import the module, so the module imports no stage's
-    module: not the shell, the localisation, nor stage 5's."""
+    module: not the shell, the localisation, nor frs_council_tax's."""
 
     tree = ast.parse(inspect.getsource(shell_council_tax))
     imported = {

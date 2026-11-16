@@ -1,16 +1,18 @@
 """The clone-first spine nests, stage by stage (microcosm#931, O10).
 
 Invented households go through the real geographic expansion (G1,
-``geographic_expand``), then the SPI support channel (stage 16), the SPI income
-band donors (stage 17) and the CGT support split (stage 42), each run by its
-stage transform under the packaged stage declaration, G1's included. Other
-invented households go through G1, then frs_take_up and frs_person_draws, the
-same way. Each frame runs at K = 1, 2, 3, 7 and 15 geographic clones; they are
-small, so K = 15 takes well under a second. Each K is held to K = 1:
+``geographic_expand``), then the SPI support channel (``spi_support_channel``),
+the SPI income band donors (``spi_income_band_donors``) and the CGT support
+split (``cgt_support_split``), each run by its stage transform under the
+packaged stage declaration, G1's included. Other invented households go
+through G1, then frs_take_up and frs_person_draws, the same way. Each frame
+runs at K = 1, 2, 3, 7 and 15 geographic clones; they are small, so K = 15
+takes well under a second. Each K is held to K = 1:
 
-- **Reported first:** stage 17's mass scale at K = 1 and at each K. Clone 0's
-  stage-17 weights nest on K = 1's only while the scale is the one a one-clone
-  spine takes. On this frame it is one at every K, and the test asserts it.
+- **Reported first:** ``spi_income_band_donors``' mass scale at K = 1 and at
+  each K. Clone 0's ``spi_income_band_donors`` weights nest on K = 1's only
+  while the scale is the one a one-clone spine takes. On this frame it is one
+  at every K, and the test asserts it.
 - **Exact:**
   - clone 0 of G1's output is the one-clone frame, ids and G1's columns
     included;
@@ -21,25 +23,28 @@ small, so K = 15 takes well under a second. Each K is held to K = 1:
     exactly at K = 2; on this frame it stops far from any near-tie, so it is
     exact at every K. Counted once over every clone instead, each of the
     four draws would move clone 0 at some K;
-  - stage 16 copies, and stage 17 seats, K = 1's households in clone 0;
+  - ``spi_support_channel`` copies, and ``spi_income_band_donors`` seats,
+    K = 1's households in clone 0;
   - every table of every frame carries its clone index with exactly K values,
     and every copy carries its parent's.
-- **K x each clone-0 weight against K = 1's**, at G1, stage 16 and stage 17:
+- **K x each clone-0 weight against K = 1's**, at G1, ``spi_support_channel``
+  and ``spi_income_band_donors``:
   - Rows an exact-total correction moved, at K or at K = 1, are within
     ``rows x K x 2.2e-16`` of K = 1's, relative. ``rows`` counts the one-clone
     frame's households at that stage.
-  - At stage 17, the other incumbents of a funding stratum whose stage-16
-    mass holds a moved row are within one ulp per weight-setting step on
-    their two paths (:data:`_STEP_ULPS`) at every K: the stratum's funding
-    factor reads that mass, so they need not be bitwise at K = 2.
+  - At ``spi_income_band_donors``, the other incumbents of a funding stratum
+    whose mass after ``spi_support_channel`` holds a moved row are within one
+    ulp per weight-setting step on their two paths (:data:`_STEP_ULPS`) at
+    every K: the stratum's funding factor reads that mass, so they need not
+    be bitwise at K = 2.
   - Every other row is bitwise at K = 2, a power of two, which scales every
     operation exactly.
   - At K = 3, 7 and 15, every other row is within one ulp where the 1/K split
     is its weight's only rounding. Elsewhere it is within one ulp per
     weight-setting step on its two paths (:data:`_STEP_ULPS`).
-- **Stage 42, approximately only:**
+- **``cgt_support_split``, approximately only:**
   - The walk can stop inside a household's clones.
-  - Ties are keyed per row (since b8bd45336), so clone 0 need not win them.
+  - Ties are keyed per row (since cca9a16a6), so clone 0 need not win them.
   - The K-ulp snap can count one copy fewer.
   - Rule B's exact-total correction moves at most one row, by the corrected
     rows' tolerance. On the CGT nesting scenario it lands on a copy at 7 and 13
@@ -192,13 +197,15 @@ _EPSILON = float(np.finfo(np.float64).eps)
 #: where something besides the 1/K split rounds its weight: one per
 #: weight-setting step on its two paths. At K, a row passes through the split
 #: and each stage up to this one; at one clone, through those stages. So a
-#: stage-16 row passes 2 + 1 steps and a stage-17 row 3 + 2. One ulp holds
-#: only where the split alone rounds (:func:`_split_only`). Elsewhere the
-#: rounding repeats at K and at one clone: stage 16's pension-age share (0.8
-#: kept, 0.2 moved) and its strata's mass sums, and stage 17's funding
-#: factors, each computed from a stratum's summed mass. Stage 17's budget
-#: also holds, at every K, the incumbents of a stratum whose mass holds a
-#: corrected row (:func:`_in_a_reached_stratum`).
+#: row of ``spi_support_channel`` passes 2 + 1 steps and one of
+#: ``spi_income_band_donors`` 3 + 2. One ulp holds only where the split alone
+#: rounds (:func:`_split_only`). Elsewhere the rounding repeats at K and at
+#: one clone: ``spi_support_channel``'s pension-age share (0.8 kept, 0.2
+#: moved) and its strata's mass sums, and ``spi_income_band_donors``' funding
+#: factors, each computed from a stratum's summed mass.
+#: ``spi_income_band_donors``' budget also holds, at every K, the incumbents
+#: of a stratum whose mass holds a corrected row
+#: (:func:`_in_a_reached_stratum`).
 _STEP_ULPS = {G1: 1, SPI: 3, DONORS: 5}
 
 # --- the invented frame -----------------------------------------------------------
@@ -206,14 +213,15 @@ _STEP_ULPS = {G1: 1, SPI: 3, DONORS: 5}
 _HOUSEHOLDS = 90
 _PERIOD = "2024"
 #: Invented design weights' seed. The test asserts the premise this seed
-#: gives, that stage 16's and stage 17's exact-total corrections both move a
-#: row of the one-clone frame, so the corrected rows' class is exercised.
+#: gives, that ``spi_support_channel``'s and ``spi_income_band_donors``'
+#: exact-total corrections both move a row of the one-clone frame, so the
+#: corrected rows' class is exercised.
 _WEIGHT_SEED = 4
-#: Given to stage 16, so no engine is needed.
+#: Given to ``spi_support_channel``, so no engine is needed.
 _STATE_PENSION_AGE = 66
-#: Stage 16's declared count times this is the share's expected copies: half
-#: of the frame's households, so every clone's region and pension-age strata
-#: keep copies at K = 15.
+#: ``spi_support_channel``'s declared count times this is the share's expected
+#: copies: half of the frame's households, so every clone's region and
+#: pension-age strata keep copies at K = 15.
 _SAMPLE_FRACTION = 0.0045
 #: The invented tape's two regions.
 _REGIONS = ("SOUTH_EAST", "LONDON")
@@ -238,19 +246,21 @@ _TAPE_PAY = (30_000.0, 80_000.0, 260_000.0, 620_000.0, 1_300_000.0, 2_600_000.0)
 
 
 def _base_frame() -> Frame:
-    """Invented FRS-shaped households with what stages 16, 17 and 42 read, and
-    no lineage.
+    """Invented FRS-shaped households with what ``spi_support_channel``,
+    ``spi_income_band_donors`` and ``cgt_support_split`` read, and no lineage.
 
     - **Ids** are ``base_id_tables``': sernums 1 to 90, with one to four people
       in one or two benefit units.
     - **Members.** The first member is the oldest adult. In every third
-      household they are 70, so stage 16 has pension-age strata in both
-      regions. Elsewhere they are 45 to 54, the tape's age band, so stage 17
-      has candidates in every clone. The second member is a 44-year-old adult,
-      the rest are children, and the first two are claimants or partners.
+      household they are 70, so ``spi_support_channel`` has pension-age strata
+      in both regions. Elsewhere they are 45 to 54, the tape's age band, so
+      ``spi_income_band_donors`` has candidates in every clone. The second
+      member is a 44-year-old adult, the rest are children, and the first two
+      are claimants or partners.
     - **Bands and wealth.** The first member's pay puts the household in one of
       three Table 3 income bands. Each household has wealth of its own, so in
-      stage 42's walk only a household's own clones and copies tie.
+      ``cgt_support_split``'s walk only a household's own clones and copies
+      tie.
     """
 
     tables = base_id_tables(_HOUSEHOLDS)
@@ -416,8 +426,9 @@ def _run(base: Frame, clones: int, handed: Mapping[str, list[np.ndarray]]) -> _R
 
 @pytest.fixture(scope="module")
 def runs() -> dict[int, _Run]:
-    """The invented frame through G1 and stages 16, 17 and 42 at K = 1 and at
-    every K of :data:`_CLONE_COUNTS`, each exact-total correction recorded."""
+    """The invented frame through G1, ``spi_support_channel``,
+    ``spi_income_band_donors`` and ``cgt_support_split`` at K = 1 and at every
+    K of :data:`_CLONE_COUNTS`, each exact-total correction recorded."""
 
     handed: dict[str, list[np.ndarray]] = {stage: [] for stage in _CORRECTIONS}
     with pytest.MonkeyPatch.context() as patch:
@@ -446,10 +457,11 @@ def _clone_zero_ids(frame: Frame) -> set[int]:
 
 
 def _mass_scale_report(runs: Mapping[int, _Run]) -> str:
-    """Stage 17's mass scale at each K, as booleans: equal to K = 1's, and one."""
+    """``spi_income_band_donors``' mass scale at each K, as booleans: equal to
+    K = 1's, and one."""
 
     one = runs[1].results[DONORS].mass_scale
-    return "stage 17's mass scale: " + "; ".join(
+    return "spi_income_band_donors' mass scale: " + "; ".join(
         f"K={clones} equal to K=1's {run.results[DONORS].mass_scale == one}, "
         f"one {run.results[DONORS].mass_scale == 1.0}"
         for clones, run in runs.items()
@@ -457,8 +469,8 @@ def _mass_scale_report(runs: Mapping[int, _Run]) -> str:
 
 
 def _funding_strata(frame: Frame) -> dict[int, str]:
-    """Each household's stage-17 funding stratum (its region within its
-    clone), as the stage labels it."""
+    """Each household's funding stratum in ``spi_income_band_donors`` (its
+    region within its clone), as the stage labels it."""
 
     household = frame.table("household")
     labels = spi_band_donors._funding_strata(household)
@@ -480,9 +492,10 @@ def _reached(one: _Run, many: _Run, stage: str) -> frozenset[int]:
 
 
 def _in_a_reached_stratum(one: _Run, many: _Run, stage: str) -> frozenset[int]:
-    """From stage 17 on, the one-clone incumbents of a funding stratum whose
-    stage-16 mass holds a row stage 16's correction moved, at one clone or at
-    K, that no correction moved themselves (:func:`_reached`).
+    """From ``spi_income_band_donors`` on, the one-clone incumbents of a
+    funding stratum whose mass after ``spi_support_channel`` holds a row
+    ``spi_support_channel``'s correction moved, at one clone or at K, that no
+    correction moved themselves (:func:`_reached`).
 
     The stratum's funding factor reads that mass, so their weights need not
     be bitwise at K = 2; the factor rounds once at K and once at one clone,
@@ -514,10 +527,10 @@ def _split_only(one: _Run, stage: str) -> frozenset[int]:
     the 1/K split's one rounding, every later step exact.
 
     - At G1, every household.
-    - At stage 16, the base households without a member at or over State
-      Pension age, whose share of 0.5 halves exactly.
-    - At stage 17, the donors, whose planned weight over K is scaled by a mass
-      scale of one.
+    - At ``spi_support_channel``, the base households without a member at or
+      over State Pension age, whose share of 0.5 halves exactly.
+    - At ``spi_income_band_donors``, the donors, whose planned weight over K
+      is scaled by a mass scale of one.
     """
 
     frame = one.frames[stage]
@@ -571,9 +584,10 @@ def _clone_index_problems(frame: Frame, clones: int) -> list[str]:
 def _copies_off_their_parents_clone(before: Frame, after: Frame, stage: str) -> int:
     """How many households new at ``stage`` carry another clone index than
     the household they copy. The parent is found by the copy's lineage
-    columns, never by id arithmetic: stages 16 and 17 write its id in the
-    copy's ``household_source_id``. At stage 42 the parent is the household
-    whose support lineage the copy restates."""
+    columns, never by id arithmetic: ``spi_support_channel`` and
+    ``spi_income_band_donors`` write its id in the copy's
+    ``household_source_id``. At ``cgt_support_split`` the parent is the
+    household whose support lineage the copy restates."""
 
     index = ladder_clone_index_column("household")
     parents = before.table("household")
@@ -595,7 +609,8 @@ def _copies_off_their_parents_clone(before: Frame, after: Frame, stage: str) -> 
 
 
 def _copied(frame: Frame, clone: int) -> set[int]:
-    """The households stage 16 copied in ``clone``, by the copies' source ids."""
+    """The households ``spi_support_channel`` copied in ``clone``, by the
+    copies' source ids."""
 
     household = frame.table("household")
     rows = household[support_channel_column("household")].eq(
@@ -605,7 +620,8 @@ def _copied(frame: Frame, clone: int) -> set[int]:
 
 
 def _seating(frame: Frame, clone: int) -> dict[int, float]:
-    """Stage 17's seats in ``clone``: each donor's source household, and its band."""
+    """``spi_income_band_donors``' seats in ``clone``: each donor's source
+    household, and its band."""
 
     household = frame.table("household")
     donors = household.loc[
@@ -622,7 +638,8 @@ def _seating(frame: Frame, clone: int) -> dict[int, float]:
 
 
 def _carriers(frame: Frame, clone: int) -> set[int]:
-    """Stage 17's carriers in ``clone``, by the person each copy was made from."""
+    """``spi_income_band_donors``' carriers in ``clone``, by the person each
+    copy was made from."""
 
     person = frame.table("person")
     carriers = person.loc[
@@ -633,9 +650,9 @@ def _carriers(frame: Frame, clone: int) -> set[int]:
 
 
 def _families(frame: Frame) -> pd.DataFrame:
-    """Stage 42's households, each with the root of its family: itself for a
-    root or an undivided household, else the household it copies, found by
-    its support lineage."""
+    """``cgt_support_split``'s households, each with the root of its family:
+    itself for a root or an undivided household, else the household it
+    copies, found by its support lineage."""
 
     household = frame.table("household")
     keys = [
@@ -671,16 +688,17 @@ def _band_row(result, band: int) -> dict[str, object]:
 
 
 def test_stage_17_mass_scale_is_reported_first_and_is_one_at_every_k(runs) -> None:
-    """Reported first: stage 17's mass scale at K = 1 and at each K.
+    """Reported first: ``spi_income_band_donors``' mass scale at K = 1 and at
+    each K.
 
-    Stage 17 funds every clone's donors at one scale, the smallest any clone's
-    region allows. So clone 0's weights and funding factors are K = 1's over K
-    only while that scale is the one a one-clone spine takes: one at both, or
-    bound by a region of clone 0. On this frame every clone's regions fund
-    their donors in full, so the scale is exactly one at K = 1 and at every K.
-    The weight classes below rest on that. The seats are counted on the
-    eligible households in distinct sources, so the seating scale is exactly
-    K = 1's.
+    ``spi_income_band_donors`` funds every clone's donors at one scale, the
+    smallest any clone's region allows. So clone 0's weights and funding
+    factors are K = 1's over K only while that scale is the one a one-clone
+    spine takes: one at both, or bound by a region of clone 0. On this frame
+    every clone's regions fund their donors in full, so the scale is exactly
+    one at K = 1 and at every K. The weight classes below rest on that. The
+    seats are counted on the eligible households in distinct sources, so the
+    seating scale is exactly K = 1's.
     """
 
     report = _mass_scale_report(runs)
@@ -815,16 +833,18 @@ def test_stage_17_seats_the_one_clone_households_in_clone_zero(
 
 def test_the_corrections_reach_rows_the_weight_classes_compare(runs) -> None:
     """The premise that keeps the corrected rows' class from passing empty: on
-    this frame stage 16's and stage 17's exact-total corrections each move a
-    row of the one-clone frame, which every K's clone 0 is held to. A change
-    to either stage's arithmetic can move the corrections elsewhere; then pick
-    another :data:`_WEIGHT_SEED` at which this holds."""
+    this frame ``spi_support_channel``'s and ``spi_income_band_donors``'
+    exact-total corrections each move a row of the one-clone frame, which
+    every K's clone 0 is held to. A change to either stage's arithmetic can
+    move the corrections elsewhere; then pick another :data:`_WEIGHT_SEED` at
+    which this holds."""
 
     one = runs[1]
     for stage in (SPI, DONORS):
         assert one.moved[stage] & _clone_zero_ids(one.frames[stage]), stage
-    # And stage 17 holds incumbents of a stratum stage 16's correction
-    # reached that no correction moved, so their class is exercised too.
+    # And spi_income_band_donors holds incumbents of a stratum
+    # spi_support_channel's correction reached that no correction moved, so
+    # their class is exercised too.
     for clones in _CLONE_COUNTS:
         assert _in_a_reached_stratum(one, runs[clones], DONORS), clones
 
@@ -841,9 +861,9 @@ def test_k_times_clone_zero_weights_nest_on_the_one_clone_weights(
       household count at the stage. On a row of average weight the bound is
       about K ulps of the total: a correction moves its row by about an ulp of
       the total, and K x a clone-0 weight scales that by K.
-    - **Stage 17's other incumbents of a stratum a correction reached**
-      (:func:`_in_a_reached_stratum`): within the stage's :data:`_STEP_ULPS`
-      ulps at every K, K = 2 included.
+    - **``spi_income_band_donors``' other incumbents of a stratum a
+      correction reached** (:func:`_in_a_reached_stratum`): within the
+      stage's :data:`_STEP_ULPS` ulps at every K, K = 2 included.
     - **Every other row at K = 2**: bitwise, since halving is exact.
     - **Every other row at K = 3, 7 and 15**: within one ulp where the 1/K split
       alone rounds (:func:`_split_only`), and within :data:`_STEP_ULPS` ulps
@@ -899,15 +919,16 @@ def test_k_times_clone_zero_weights_nest_on_the_one_clone_weights(
     assert uncorrected, f"No uncorrected row was compared after {stage}."
 
 
-# --- stage 42, approximately ------------------------------------------------------
+# --- cgt_support_split, approximately ---------------------------------------------
 
 
 @pytest.mark.parametrize("clones", _CLONE_COUNTS)
 def test_stage_42_nests_only_approximately(runs, clones: int) -> None:
-    """Stage 42 nests only approximately; these are the checks that hold.
+    """``cgt_support_split`` nests only approximately; these are the checks
+    that hold.
 
-    - **Roots.** Every row stage 17 wrote stays a root, so clone 0's roots are
-      K = 1's.
+    - **Roots.** Every row ``spi_income_band_donors`` wrote stays a root, so
+      clone 0's roots are K = 1's.
     - **Family mass.** Each household's family (root and copies) keeps its
       mass. So K x a clone-0 family's mass is K = 1's within the corrected
       rows' class, wherever the walk stopped and however the family was

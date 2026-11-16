@@ -2118,11 +2118,13 @@ def _e8_band_donors(
     weights and their mass left the incumbent households of each donor's
     region in proportion; where the frame carries geographic clones, the
     region within the donor's clone, and each clone seats its own donors
-    (microcosm#931). ``frame`` is the artifact as built. Stage 17 saw none of
-    the rows minted after it: the high-value home copies of stage 26 and the
-    CGT support copies, incidence twins and residential arms of stages 42,
-    43 and 46, the households whose ids hold an ordinal in a copy-id field
-    above ``spi_support_channel``. Dropping them with their people and
+    (microcosm#931). ``frame`` is the artifact as built.
+    ``spi_income_band_donors`` saw none of the rows minted after it: the
+    high-value home copies of ``high_value_home_support`` and the CGT support
+    copies, incidence twins and residential arms of ``cgt_support_split``,
+    ``cgt_incidence_clone`` and ``cgt_residential_split``, the households
+    whose ids hold an ordinal in a copy-id field above
+    ``spi_support_channel``. Dropping them with their people and
     benefit units, each one's mass folded back onto the row it came from
     (``_frame_as_stage_saw``), gives the frame the stage wrote at the weights
     it left, to rounding, and the stored seats, carriers and band weights are
@@ -2551,9 +2553,10 @@ def e8_identity_receipt(
     stored arms, indices, weights, probabilities and residential gains. The
     clone-pair and support-split checks run on the frame with the arms folded
     onto their sources, the state those layers were written in; the
-    band-donor check runs on the frame stage 17 wrote, every row minted after
-    it (the high-value home copies of stage 26 too) folded onto the row it
-    came from (``_frame_as_stage_saw``).
+    band-donor check runs on the frame ``spi_income_band_donors`` wrote, every
+    row minted after it (the high-value home copies of
+    ``high_value_home_support`` too) folded onto the row it came from
+    (``_frame_as_stage_saw``).
     Every CGT layer ran before ``salary_sacrifice``, whose conversion
     rewrites a converted record's pay in place, so the recomputes first
     reverse it from the stage's pre-conversion pay carrier
@@ -2633,10 +2636,11 @@ def e8_identity_receipt(
     )
 
     # (4) SPI income band donors: the seating reconstructed from ids, on the
-    # frame stage 17 wrote. The check scopes the artifact itself to it
-    # (``_frame_as_stage_saw``), every layer stacked after stage 17 folded
-    # away; that scoping reverses the salary-sacrifice conversion on its own,
-    # so it takes ``frame``, not the reversed ``cgt_frame``.
+    # frame spi_income_band_donors wrote. The check scopes the artifact itself
+    # to it (``_frame_as_stage_saw``), every layer stacked after
+    # spi_income_band_donors folded away; that scoping reverses the
+    # salary-sacrifice conversion on its own, so it takes ``frame``, not the
+    # reversed ``cgt_frame``.
     propensity, band_taxpayers = _band_donor_seating_inputs(frame, spi_tab)
     band_donors = _e8_band_donors(
         frame,
@@ -3579,9 +3583,10 @@ def _support_copy_lineage(household: pd.DataFrame) -> _SupportCopyLineage:
     the copy flag but is not a pre-clone row). A copy without a root, or with
     index zero, fails closed. An artifact that carries the split's explicit
     ``cgt_support_copy_index`` (0 on roots and unsplit households, ``k`` on
-    copy ``k``; the lineage the geography identity keys on) must agree with
-    the id on every copy, or the lineage fails closed too. The refusals print
-    counts, never an id.
+    copy ``k``; the lineage the copy readers read,
+    ``household_lineage.UK_COPY_LINEAGE``) must agree with the id on every
+    copy, or the lineage fails closed too. The refusals print counts, never
+    an id.
     """
 
     from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE

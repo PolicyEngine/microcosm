@@ -8,7 +8,7 @@ on test_support's toy conditioned supports
 
 - :data:`COUNCIL_TAX_CASES`: invented households, one source each (position
   + 1). Each holds its draw inputs (a ``ToyHousehold``; the first 28 are
-  ``TOY_HOUSEHOLDS``, in order), the bill provenance stage 5 gives it, its
+  ``TOY_HOUSEHOLDS``, in order), the bill provenance ``frs_council_tax`` gives it, its
   council tax, the reported council tax reduction its household reference
   person carries (the rebate equals it, as the root writes both), its
   adults, and the path the localisation takes its FRS rows by. Every Great
@@ -115,11 +115,12 @@ _REDUCTION = "council_tax_benefit_reported"
 class ToyCouncilTax:
     """An invented household's draw inputs and council tax.
 
-    ``provenance`` is stage 5's ``council_tax_bill_provenance``; ``bill`` its
-    ``council_tax``; ``reduction`` the reported council tax reduction its
-    household reference person carries, which its ``council_tax_rebate``
-    equals; ``adults`` its ``council_tax_single_adult_raw``; and ``path`` the
-    path the localisation takes its FRS rows by.
+    ``provenance`` is ``frs_council_tax``'s ``council_tax_bill_provenance``;
+    ``bill`` its ``council_tax``; ``reduction`` the reported council tax
+    reduction its household reference person carries, which its
+    ``council_tax_rebate`` equals; ``adults`` its
+    ``council_tax_single_adult_raw``; and ``path`` the path the localisation
+    takes its FRS rows by.
     """
 
     household: ToyHousehold
@@ -304,7 +305,8 @@ def with_spi_copies_placed(frame: Frame) -> Frame:
 def with_toy_council_tax(
     frame: Frame, cases: Sequence[ToyCouncilTax] = COUNCIL_TAX_CASES
 ) -> Frame:
-    """``frame`` with the cases' council tax, as stage 5 and the shell leave it.
+    """``frame`` with the cases' council tax, as ``frs_council_tax`` and the
+    housing shell leave it.
 
     ``frame`` holds the cases' households (source = position + 1) with the
     support channel's lineage. Every row takes its case's provenance and

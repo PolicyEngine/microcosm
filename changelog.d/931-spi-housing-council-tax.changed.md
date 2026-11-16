@@ -30,7 +30,7 @@ Price Great Britain SPI copies' council tax by the statute after the housing she
     - the fitted chain's targets, written out in the test, keep `council_tax` first;
     - the bill is written after the learned zeros, the capped reduction is the reference person's and the rebate, and `apply_structural_rules` is the support rules then the cap, bit for bit;
     - the receipt's block has no number leaf and is the same at one clone and at three, each check's fixed message names no household, and a chained Great Britain bill fails the statute check;
-    - the inputs are required and must be the SPI rows, with their regions, in table order, the transform checks Scotland's Band D period before it reads a row and checks the housing invariants once, a drifted stage is refused when the transform is built and when it runs, and the shell imports neither the localisation's module nor stage 5's;
+    - the inputs are required and must be the SPI rows, with their regions, in table order, the transform checks Scotland's Band D period before it reads a row and checks the housing invariants once, a drifted stage is refused when the transform is built and when it runs, and the shell imports neither the localisation's module nor `frs_council_tax`'s;
     - the committed smoke fixture's descriptor passes the stage's check;
     - the H2 fixture's registry and `tools/graph_uk_spine_fixture.py`'s oracle both build the shell on the toy supports.
   - `tests/engine_free/uk/test_uk_source_stages.py`: the shell's operations, in order, and its artifacts, the localisation's.

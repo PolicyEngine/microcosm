@@ -1475,7 +1475,8 @@ def test_the_support_channel_writes_no_source_column_of_its_own() -> None:
 def _income_stage_evidence(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, frame
 ) -> dict[str, object]:
-    """Stage 18's checkpoint evidence on ``frame``, after the support channel.
+    """``hmrc_spi_income_spine``'s checkpoint evidence on ``frame``, after the
+    support channel.
 
     The forests, the uprating and the engine reads are the engine-free
     fixtures of test_spi_spine_parsed_inputs_match_the_path_resolution, and

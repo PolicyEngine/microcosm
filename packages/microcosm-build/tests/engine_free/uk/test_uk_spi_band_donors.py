@@ -263,7 +263,8 @@ def _clone_first_support_frame(
     tables: tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame] | None = None,
     **options,
 ):
-    """``_support_frame``'s households as geographic clones before stage 16.
+    """``_support_frame``'s households as geographic clones before
+    ``spi_support_channel``.
 
     The spine's geographic expansion (``geographic_expand``) repeats every
     row as clone ``k`` at ``id + k x 10**9`` and an equal share of its
@@ -1257,11 +1258,11 @@ _SMALL_GATE_PARAMETERS = {
     "maximum_relative_mass_deviation": 1e-9,
     "band_lower_bounds": list(BANDS),
 }
-#: ``uk_frame_content_identity`` of the frames stage 17 reads and writes below,
-#: computed with the stage at 50b6e629b, before it seated per geographic clone
-#: (microcosm#931). On one clone the stage keeps every value, weight and mass
-#: record, so the identities hold. Identities compare within the pinned
-#: environment only (``content_identity``).
+#: ``uk_frame_content_identity`` of the frames ``spi_income_band_donors``
+#: reads and writes below, computed with the stage at c64c2b378, before it
+#: seated per geographic clone (microcosm#931). On one clone the stage keeps
+#: every value, weight and mass record, so the identities hold. Identities
+#: compare within the pinned environment only (``content_identity``).
 _ONE_CLONE_STAGE_17_INPUT_IDENTITIES = {
     200: "129e44480d4409444baf231a25477d50a8c2dbcb2e525af5f13a53a353908e50",
     60: "13ab2b40acb59e04cfd902f83dc0f0bdc69924adbc0c834315ac5610fc404ddd",
@@ -2100,14 +2101,15 @@ def test_e8_receipt_replays_the_seating_of_every_clone() -> None:
 
 
 # The E8 receipt on the artifact as built (microcosm#931). Every layer stacked
-# after stage 17 copies rows the stage wrote, donors among them, and mints its
-# copies in a copy-id field above the one the donors take. A rerun on a frame
-# that kept those rows seated them as households the stage saw, and the donors
-# it appended sorted below their ids, which the frame refuses. The receipt
-# reruns the stage on the frame the stage wrote, every later row folded onto
-# the row it came from.
+# after spi_income_band_donors copies rows the stage wrote, donors among them,
+# and mints its copies in a copy-id field above the one the donors take. A
+# rerun on a frame that kept those rows seated them as households the stage
+# saw, and the donors it appended sorted below their ids, which the frame
+# refuses. The receipt reruns the stage on the frame the stage wrote, every
+# later row folded onto the row it came from.
 
-#: The copy-id fields minted after stage 17, in the order the spine mints them.
+#: The copy-id fields minted after ``spi_income_band_donors``, in the order the
+#: spine mints them.
 _LATER_FIELDS = (
     "high_value_support",
     "cgt_support_split",
@@ -2171,19 +2173,21 @@ def _framed(previous, tables, weights):
 
 
 def _through_the_later_layers(stacked) -> SimpleNamespace:
-    """Stage 17's output carried through every layer stacked after it.
+    """``spi_income_band_donors``' output carried through every layer stacked after it.
 
-    The high-value home support (stage 26) runs as built, every household an
-    owner valued on its true source, at a stratum that divides donors, SPI
-    copies and base households alike; regional_home_values, which
-    rewrote owners' values in place after it, retired (microcosm#931). The
+    The high-value home support (``high_value_home_support``) runs as built,
+    every household an owner valued on its true source, at a stratum that
+    divides donors, SPI copies and base households alike; regional_home_values,
+    which rewrote owners' values in place after it, retired (microcosm#931). The
     CGT layers are replayed by hand with ``copy_households``: the support
-    split (42) divides the households of one source in four into two or
-    three rows at equal shares, the incidence twin (43) copies every
-    household, the anchor (45) moves an eighth of the mass of two pairs in
-    three, one way or the other, and the residential split (46) divides the
-    twins of one source in five into two or four arms at product weights.
-    Salary sacrifice (48) then converts the best-paid record's pay in place.
+    split (``cgt_support_split``) divides the households of one source in four
+    into two or three rows at equal shares, the incidence twin
+    (``cgt_incidence_clone``) copies every household, the anchor
+    (``cgt_incidence_anchor``) moves an eighth of the mass of two pairs in
+    three, one way or the other, and the residential split
+    (``cgt_residential_split``) divides the twins of one source in five into
+    two or four arms at product weights.
+    ``salary_sacrifice`` then converts the best-paid record's pay in place.
     Every layer keeps each household's mass. All values are invented.
     """
 
@@ -2305,8 +2309,8 @@ def test_e8_receipt_reruns_stage_17_on_the_frame_it_wrote(n_clones: int) -> None
         assert (support_copies & household[copied].to_numpy()).any()
     assert household[HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE].any()
 
-    # its scope to stage 17 is the frame the stage wrote, row for row, at the
-    # weights it left,
+    # its scope to spi_income_band_donors is the frame the stage wrote, row
+    # for row, at the weights it left,
     scoped = tool._frame_as_stage_saw(built.artifact, "spi_income_band_donors")
     for entity in ("person", "benunit", "household"):
         assert sorted(scoped.table(entity)[f"{entity}_id"]) == sorted(
@@ -2366,8 +2370,8 @@ def test_e8_receipt_reads_each_donor_through_its_later_copies() -> None:
         "band_taxpayers": TAXPAYERS,
         "permutation_seed": 123,
     }
-    # The donor the later layers divided into the most rows: its stage-17
-    # row and every row made from it.
+    # The donor the later layers divided into the most rows: the row
+    # spi_income_band_donors wrote for it and every row made from it.
     household = built.artifact.table("household")
     stems = _stage_17_ids(household)
     rows = pd.Series(stems).value_counts()
@@ -2380,7 +2384,7 @@ def test_e8_receipt_reads_each_donor_through_its_later_copies() -> None:
     weights = _weights_by_id(built.artifact).to_numpy().copy()
 
     # Mass moved between the rows of a donor's family is no defect: the fold
-    # gives back the weight stage 17 left.
+    # gives back the weight spi_income_band_donors left.
     moved = weights.copy()
     moved[family[0]] += moved[family[-1]] / 2
     moved[family[-1]] /= 2
@@ -2400,8 +2404,8 @@ def test_e8_receipt_reads_each_donor_through_its_later_copies() -> None:
 def test_e8_receipt_refuses_a_later_row_its_scope_leaves_in_place() -> None:
     # Given an artifact whose high-value copies have lost the lineage the
     # scope reads them by, those copies stay in scope; their ids still hold
-    # an ordinal in a field minted after stage 17, so the receipt refuses by
-    # count rather than seat them.
+    # an ordinal in a field minted after spi_income_band_donors, so the
+    # receipt refuses by count rather than seat them.
     tool = _identity_tool()
     propensity = _propensity()
     _, built = _stage_17_and_artifact(1, propensity)
@@ -2703,9 +2707,9 @@ def test_two_capped_frames_whose_seats_differ_by_one_give_one_receipt_and_verdic
 
 
 def test_the_capped_gate_reads_each_seat_once_through_every_later_copy() -> None:
-    # Given stage 17's capped seating on three clones, carried through every
-    # layer stacked after it, which copies donors in copy-id fields above the
-    # band donors' own,
+    # Given spi_income_band_donors' capped seating on three clones, carried
+    # through every layer stacked after it, which copies donors in copy-id
+    # fields above the band donors' own,
     propensity = _propensity()
     stage_17, built = _stage_17_and_artifact(3, propensity)
     evidence = {**stage_17.evidence(), "sample_fraction": 0.01}
@@ -2727,7 +2731,7 @@ def test_the_capped_gate_reads_each_seat_once_through_every_later_copy() -> None
 
     # then the gate reads each band's seats as the stage wrote them, evenly
     # split and each holding its one carrier, on the artifact as on the
-    # frame stage 17 wrote.
+    # frame spi_income_band_donors wrote.
     for frame in (stage_17.frame, built.artifact):
         gate = _capped_gate(evidence, frame)
         assert gate.passed, gate.failures

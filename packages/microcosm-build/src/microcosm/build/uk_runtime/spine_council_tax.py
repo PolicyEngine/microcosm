@@ -47,14 +47,14 @@ capped at the bill outside Northern Ireland):
   pays domestic rates, keeps every row as it is, with no cap. A Great
   Britain row the SPI support channel copied takes the ratio at its L3 cell,
   whatever bill provenance it inherited. A Great Britain row of the FRS
-  channel follows stage 5's ``council_tax_bill_provenance``:
+  channel follows ``frs_council_tax``'s ``council_tax_bill_provenance``:
   ``observed_gross`` takes the ratio; ``missing`` and ``unknown_reduction``
   take the 2024-25 statute where ``council_tax_band_observed``
   (:func:`~microcosm.build.uk_runtime.council_tax_band_d.uk_statutory_council_tax`
   at the household's authority, nation and band, with the single-adult
   discount where ``council_tax_single_adult_raw`` is 1), and the ratio on
-  stage 5's bill where the band was not observed; ``not_levied`` is refused.
-  The ratio multiplies the bill in float64.
+  ``frs_council_tax``'s bill where the band was not observed; ``not_levied``
+  is refused. The ratio multiplies the bill in float64.
 - **Reductions.** On every Great Britain row the rebate and the one person's
   reported council tax reduction are scaled by the same ratio and then capped
   at the new bill: ``min(r x amount, bill)``. Since the cap repeats one
@@ -572,7 +572,7 @@ def _texts(values: object) -> np.ndarray:
 
 
 def _provenance(household: pd.DataFrame) -> np.ndarray:
-    """Stage 5's bill provenance, one of its four values on every row."""
+    """``frs_council_tax``'s bill provenance, one of its four values on every row."""
 
     values = household[FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN].to_numpy(dtype=object)
     allowed = set(FRS_COUNCIL_TAX_BILL_PROVENANCE_VALUES)
@@ -973,7 +973,7 @@ def localise_uk_council_tax(
     bill, rebate or reduction that is not float64, or not finite and
     nonnegative on every row; a household with more than one positive
     reduction; a person whose household is absent; a provenance outside
-    stage 5's four values, ``not_levied`` in Great Britain or another value
+    ``frs_council_tax``'s four values, ``not_levied`` in Great Britain or another value
     on a Northern Ireland FRS row; a statute row whose band its nation does
     not price; and every refusal of :func:`uk_council_tax_references`.
     """

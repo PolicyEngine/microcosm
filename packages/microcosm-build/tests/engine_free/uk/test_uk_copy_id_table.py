@@ -436,7 +436,8 @@ def _spi_support_on_clone_first_tables(base: IdTables, n_clones: int):
 
 
 def test_the_spi_stage_mints_clone_zero_copies_at_their_k1_ids() -> None:
-    """Stage 16, where the retired rule grew with K, run on clone-first frames.
+    """``spi_support_channel``, where the retired rule grew with K, run on
+    clone-first frames.
 
     Clone 0's rows and SPI copies keep the K=1 ids exactly, and clone ``k``'s
     are K=1's plus ``k x 10**9``. An offset sized from the ids the stage sees

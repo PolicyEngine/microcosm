@@ -1231,7 +1231,7 @@ def test_a_drifted_stage_is_refused_before_the_transform_runs(drift) -> None:
 def test_the_shell_imports_no_council_tax_stage_module() -> None:
     """The council-tax localisation stays the one step that localises the
     bill: the shell imports the bill's module, not the localisation's or
-    stage 5's."""
+    frs_council_tax's."""
 
     tree = ast.parse(inspect.getsource(housing_shell))
     imported = {

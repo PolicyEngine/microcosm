@@ -86,8 +86,9 @@ HOUSEHOLD_IS_CGT_SUPPORT_COPY = "household_is_cgt_support_copy"
 #: included; 1 on every household the stage left alone.
 CGT_SUPPORT_COPIES_COLUMN = "cgt_support_copies"
 #: The copy's index ``k`` (from 1) on every copy this stage creates, 0 on
-#: roots and unsplit households: the explicit lineage the geography identity
-#: kernel keys on (microcosm#932), so no consumer recovers ``k`` from ids.
+#: roots and unsplit households: the explicit lineage the copy readers read
+#: (``household_lineage.UK_COPY_LINEAGE``), so no consumer recovers ``k`` from
+#: ids. Each copy keeps its parent's geography key (microcosm#931).
 CGT_SUPPORT_COPY_INDEX_COLUMN = "cgt_support_copy_index"
 #: The incidence clone stage (``cgt_incidence_clone``) halves every household
 #: and only the clone twin gains.

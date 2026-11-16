@@ -766,8 +766,8 @@ class TestRosterOrderedScoping:
     def test_the_high_value_copies_are_stripped_from_the_stages_before_them(
         self,
     ) -> None:
-        # Stage 26's copies (microcosm#1240) are stacked after the wealth
-        # stages and before the travel block.
+        # high_value_home_support's copies (microcosm#1240) are stacked after
+        # the wealth stages and before the travel block.
         tool = _load_tool()
         household = pd.DataFrame(
             {
@@ -1334,15 +1334,16 @@ def _held_families(frame, scenario) -> tuple[dict, dict, int, int]:
 
 
 def _through_the_residential_split(twinned):
-    """A split-then-cloned frame through stages 44 to 46, arms folded away.
+    """A split-then-cloned frame through hmrc_cgt_gains_spine,
+    cgt_incidence_anchor and cgt_residential_split, arms folded away.
 
-    A hand redraw stands in for stage 44: each clone carrier the clone stage
-    gave a prior takes, by its person id, a liable gain, a gain below the
-    annual exempt amount, a loss or nothing, so the #970 anchor (45) finds
-    all four of its groups. The residential split (46) runs on
-    Table 8 totals sized to the frame's liable mass, as in
-    ``_residentially_split``, and its arms are then folded onto their
-    sources, the frame the E8 entry receipts the support split on.
+    A hand redraw stands in for hmrc_cgt_gains_spine: each clone carrier the
+    clone stage gave a prior takes, by its person id, a liable gain, a gain
+    below the annual exempt amount, a loss or nothing, so the #970 anchor
+    (cgt_incidence_anchor) finds all four of its groups. The residential split
+    (cgt_residential_split) runs on Table 8 totals sized to the frame's liable
+    mass, as in ``_residentially_split``, and its arms are then folded onto
+    their sources, the frame the E8 entry receipts the support split on.
     """
 
     import dataclasses
@@ -2801,14 +2802,17 @@ class TestCopyIdsAtTheDeclaredTable:
 
 # --- the receipts on frames the CGT stages built (microcosm#931) -----------------
 #
-# The split scenario above run through the support split (42), the incidence
-# twin (43), a redraw by hand (44: each twin's carrier takes a liable gain),
-# the anchor (45) and the residential split (46), with Table 8 totals sized to
-# the frame's liable mass. Every value is synthetic.
+# The split scenario above run through the support split (cgt_support_split),
+# the incidence twin (cgt_incidence_clone), a redraw by hand (for
+# hmrc_cgt_gains_spine: each twin's carrier takes a liable gain), the anchor
+# (cgt_incidence_anchor) and the residential split (cgt_residential_split),
+# with Table 8 totals sized to the frame's liable mass. Every value is
+# synthetic.
 
 
 def _residentially_split():
-    """The split scenario after stages 42 to 46, and the Table 8 facts it used."""
+    """The split scenario after the CGT stages from cgt_support_split to
+    cgt_residential_split, and the Table 8 facts it used."""
 
     import dataclasses
 

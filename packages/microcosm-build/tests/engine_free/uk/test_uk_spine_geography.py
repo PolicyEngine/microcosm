@@ -1495,7 +1495,7 @@ class _GuardedEngine(_RecordingEngine):
 def test_the_copy_stages_engine_call_is_one_simulation_at_every_clone_count(
     payloads, runs, clones
 ) -> None:
-    """Stage 16 draws its SPI share per clone, so a later clone may hold no
+    """spi_support_channel draws its SPI share per clone, so a later clone may hold no
     Northern Ireland copy. The adapter refuses a call over part of its pool,
     so the call over the copies alone carries no clone index and runs as one
     simulation over every clone's copies, as at one clone (C-9)."""

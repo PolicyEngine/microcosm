@@ -5584,7 +5584,7 @@ def test_the_sidecar_reports_no_share_of_the_council_tax_carriers() -> None:
         "council_tax_benefit_reported": 0.5,
     }
 
-    # The graph route: stage 5's node exposes the bill's artifact alone.
+    # The graph route: frs_council_tax's node exposes the bill's artifact alone.
     manifest = SimpleNamespace(
         nodes={
             "frs_council_tax": SimpleNamespace(

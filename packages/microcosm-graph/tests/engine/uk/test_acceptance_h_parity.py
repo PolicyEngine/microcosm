@@ -14,13 +14,13 @@ def test_h2_uk_spine_parity(tmp_path: Path) -> None:
     engine tier (``requires_uk``) and skips in the engine-free fast lane.
 
     Expects ``packages/microcosm-graph/tests/fixtures/parity/uk_spine/`` with
-    ``uk_spine.json`` and ``sources/``; both sides run the 32 transforms from
-    those sources in this process, root included, because the root weights
-    differ at the last bit between machines. Stage order comes
-    from declared ``consumes``: the assertion below is that the compiled
-    topological order is derived, so the hand-maintained ``_STAGE_NAMES`` tuple
-    in ``tools/build_uk_frs_spine.py`` — the 30 names intersected with a
-    34-stage packaged manifest, kept in step by hand — can be deleted.
+    ``uk_spine.json`` and ``sources/``; both sides run the root and every spine
+    stage from those sources in this process, because the root weights differ
+    at the last bit between machines. Stage order comes from declared
+    ``consumes``: the assertion below is that the compiled topological order
+    is derived, so the ``_STAGE_NAMES`` tuple that
+    ``tools/build_uk_frs_spine.py`` kept in step with the packaged roster by
+    hand is gone, which the test's last assertion holds.
     """
     _require(UK_SPINE_PARITY, "the UK migration lane (charter H2, María reviews)")
 
@@ -44,7 +44,7 @@ def test_h2_uk_spine_parity(tmp_path: Path) -> None:
     graph = uk_spine_graph()
     assert graph_from_json((UK_SPINE_PARITY / "uk_spine.json").read_text()) == graph
     compiled = compile_graph(graph)
-    assert len(compiled.order) >= 32, "a CREATE node plus the 32 spine stages"
+    assert len(compiled.order) >= 32, "a CREATE node plus the spine's stages"
     assert all(
         set(compiled.predecessors[node_id]) <= set(compiled.order[:index])
         for index, node_id in enumerate(compiled.order)

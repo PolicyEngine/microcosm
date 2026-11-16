@@ -132,8 +132,8 @@ def _pool(*, differ: bool):
                         "self_employment_income": (
                             float(pay.uniform(2_000, 30_000)) if self_employed else 0.0
                         ),
-                        # Stored as the spine stores them (the root stage and
-                        # stage 52).
+                        # Stored as the spine stores them (frs_spine and
+                        # private_school_attendance).
                         "months_since_last_birthday": float(shared.integers(0, 12)),
                         "attends_private_school": False,
                         "attends_private_school_random_draw": float(shared.uniform()),

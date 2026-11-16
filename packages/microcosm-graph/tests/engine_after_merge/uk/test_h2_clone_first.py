@@ -1262,8 +1262,8 @@ def _frs_rows(household: pd.DataFrame) -> np.ndarray:
 
 
 def _statute_rows(household: pd.DataFrame) -> np.ndarray:
-    """The FRS-channel rows whose gross bill stage 5 did not observe, a
-    missing bill or a reduction of unknown size, and whose band it did: the
+    """The FRS-channel rows whose gross bill frs_council_tax did not observe,
+    a missing bill or a reduction of unknown size, and whose band it did: the
     rows council_tax_localise prices at the statute (microcosm#931)."""
 
     provenance = household[FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN].astype(str)
@@ -1507,11 +1507,11 @@ def test_on_h2_council_tax_localise_keeps_the_paid_bill_and_bounds_reductions(
 
 
 def test_clone_zero_s_frs_rows_take_the_one_clone_council_tax(runs) -> None:
-    """council_tax_localise prices an FRS row from its stage-5 bill, its
-    provenance and its draw cell, which clone 0 shares with one clone, so
-    clone 0's FRS rows at K = 4 hold one clone's bill, rebate, kept bill and
-    reported reductions, bit for bit (microcosm#931). The SPI-channel rows,
-    whose council tax the housing shell draws, nest only to the share
+    """council_tax_localise prices an FRS row from the bill frs_council_tax
+    gave it, its provenance and its draw cell, which clone 0 shares with one
+    clone, so clone 0's FRS rows at K = 4 hold one clone's bill, rebate, kept
+    bill and reported reductions, bit for bit (microcosm#931). The SPI-channel
+    rows, whose council tax the housing shell draws, nest only to the share
     class."""
 
     one, many = runs[1].frames[COUNCIL_TAX], runs[_CLONES].frames[COUNCIL_TAX]
