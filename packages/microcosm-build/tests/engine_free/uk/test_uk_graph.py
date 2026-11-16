@@ -808,8 +808,8 @@ def test_every_stage_that_draws_through_stochastic_assignment_binds_it() -> None
         if stochastic_assignment in helpers
     }
     assert binding == set(reach) - set(_STOCHASTIC_ASSIGNMENT_UNBOUND)
-    # Stage 14's module imports the employer pension draw, which draws through
-    # the helpers; the stage binds the draw's module as well.
+    # frs_hmrc_spine_leaves' module imports the employer pension draw, which
+    # draws through the helpers; the stage binds the draw's module as well.
     spi_spine = graph_kernels._stage_module("frs_hmrc_spine_leaves").__name__
     employer = "microcosm.build.uk_runtime.employer_pension_contributions"
     drawing = _drawing_names([spi_spine])[employer]
@@ -837,7 +837,8 @@ def test_stochastic_assignment_changes_invalidate_every_stage_that_draws(
         for stage, helpers in graph_kernels._STAGE_HELPER_MODULES.items()
         if stochastic_assignment in helpers
     )
-    # Stage 14 draws through the employer pension helper, which it binds too.
+    # frs_hmrc_spine_leaves draws through the employer pension helper, which
+    # it binds too.
     assert "frs_hmrc_spine_leaves" in stages
     # The CGT redraw and the asset types key their walk offsets on labels
     # through the helpers (microcosm#931).
@@ -4139,8 +4140,8 @@ def test_council_tax_localise_is_bitwise_and_declares_its_cells() -> None:
     """microcosm#931: the council-tax localisation's stage kernel is BITWISE,
     like every spine stage (F10, the platform-bitwise class, is Max's
     question). It writes the kept paid bill and rewrites the bill, the rebate
-    and the person council tax reduction, all float64; stage 5 writes the
-    bill and its provenance, a string cell."""
+    and the person council tax reduction, all float64; frs_council_tax writes
+    the bill and its provenance, a string cell."""
     from microcosm.build.uk_runtime.graph_kernels import UKStageKernel
     from microcosm.graph import Numeric
 

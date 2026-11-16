@@ -20,11 +20,11 @@ The UK spine gets its geographic clones after its source stages (#931). `frs_hmr
   The root refuses a household tab without one of the four IMD variables, naming it. Both carriers leave at the release boundary and stay out of every receipt and of the spine sidecar's nonzero shares. The root binds `calibrate.geography_constants`, from which both read the household's nation. The area assignment of #931 group (c) is their first reader.
 - **microdf.** microdf-python's version joins every spine node's numerical dependencies (`not-installed` when absent), and the sidecar records it as `microdf_python` beside `engine_batches` when a call batches (decision 2). `pyproject.toml` and `uv.lock` are unchanged; the next lock bump declares it.
 - **Texts.**
-  - The `copy_rule` of both support splits, `high_value_home_support` (stage 26) and `cgt_support_split` (stage 42), names the order the exact-total candidates are tried in.
-  - The notes of `isa_subscriptions` (stage 53) say tied balances share one weighted mid-rank and the Lifetime ISA reuses `balance_rank_weight` (decision 1), and `docs/uk-isa-subscriptions-1415.md` steps 3, 5 and 6 follow the code.
-  - The weight rule of `spi_income_band_donors` (stage 17) names one clone's donor count, and its draw a spine without the clone index.
-  - The bonus draw of `salary_sacrifice` (stage 48) draws within the adult's own clone from cells pooled over every clone, and says the lowest cell joins the one above.
-  - The source and notes of `spi_support_channel` (stage 16) and `private_school_attendance` (stage 52), the notes of `spi_income_band_donors`, `cgt_support_split`, `salary_sacrifice` and `uc_capital_coherence`, and `frs_spine`'s notes (the two carriers) say what each does on a clone-first spine.
+  - The `copy_rule` of both support splits, `high_value_home_support` and `cgt_support_split`, names the order the exact-total candidates are tried in.
+  - The notes of `isa_subscriptions` say tied balances share one weighted mid-rank and the Lifetime ISA reuses `balance_rank_weight` (decision 1), and `docs/uk-isa-subscriptions-1415.md` steps 3, 5 and 6 follow the code.
+  - The weight rule of `spi_income_band_donors` names one clone's donor count, and its draw a spine without the clone index.
+  - The bonus draw of `salary_sacrifice` draws within the adult's own clone from cells pooled over every clone, and says the lowest cell joins the one above.
+  - The source and notes of `spi_support_channel` and `private_school_attendance`, the notes of `spi_income_band_donors`, `cgt_support_split`, `salary_sacrifice` and `uc_capital_coherence`, and `frs_spine`'s notes (the two carriers) say what each does on a clone-first spine.
   - `childcare_copy_take_up`'s notes say `frs_take_up` draws each geographic clone on its own ids before any other copy exists, and that geographic clones keep those draws.
   - Earlier #931 fragments that said G1 was unwired, or that no spine carries a clone index, now say what this change does.
 - **Bindings.** The national gates hash `geographic_clones`, since their support-family fold reads the clone index on the national frame of a clone-first spine. The copy-id readers gain G1. The stage table keeps only the source column's name, with its reason rewritten, and the kernel table's clone-index reason no longer covers the national gates.

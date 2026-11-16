@@ -292,9 +292,9 @@ def _write_staging_h5(
                 f"2023:{source_id}" for source_id in source_household_ids
             ],
             "household_source_id": source_household_ids,
-            # The support channel the identity kernel keys on (microcosm#932)
-            # agrees with the support clone index: a non-zero index is an
-            # SPI support copy.
+            # The support channel, the SPI support branch's marker in the copy
+            # lineage (household_lineage.UK_COPY_LINEAGE), agrees with the
+            # support clone index: a non-zero index is an SPI support copy.
             "household_support_channel": pd.array(
                 ["spi" if index else "frs" for index in support_clone_indices],
                 dtype="string",

@@ -188,8 +188,7 @@ def test_tied_clones_enter_the_stratum_at_their_share() -> None:
     # three geographic clones, tied on value at the top: the stratum takes
     # one clone a region. The rank by id took the last clone every time;
     # keyed on each clone's own id, clone 0 enters at about a third of the
-    # regions, inside the four-sigma binomial band (design verifier P10;
-    # microcosm#931).
+    # regions, inside the four-sigma binomial band (microcosm#931).
     families, clone_count = 60, 3
     parts: list[dict[str, np.ndarray]] = []
     clone_index: list[np.ndarray] = []

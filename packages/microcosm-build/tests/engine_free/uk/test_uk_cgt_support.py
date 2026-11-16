@@ -573,7 +573,7 @@ def test_clone_zero_is_taken_from_tied_clones_at_its_share():
     # band at a support mass one clone's weight covers: every band takes one
     # clone. The walk by id took clone 0 every time; keyed on each clone's own
     # id, clone 0 is taken at about a third of the bands, inside the four-sigma
-    # binomial band (design verifier P10; microcosm#931).
+    # binomial band (microcosm#931).
     families, clone_count = 60, 3
     sources = np.arange(1, families + 1, dtype=np.int64)
     ids = np.concatenate(
@@ -1028,7 +1028,7 @@ def _in_frs_id_spaces(frame):
     Households keep their ids, benefit units take household x 100 + slot and
     people household x 1000 + member, so no two id columns share values; an
     SPI-channel household and its members and units move up 10**11, as the
-    SPI copies sit after stage 16.
+    SPI copies sit after ``spi_support_channel``.
     """
 
     person = frame.table("person").copy()

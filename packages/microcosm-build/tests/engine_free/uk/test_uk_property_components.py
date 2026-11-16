@@ -550,7 +550,7 @@ class TestReceiptsWalk:
         # weight tied on profit, among the synthetic landlords. Walked by id,
         # clone 0 took the highest receipt of its family every time; keyed on
         # each clone's own id, at about a third of the families, inside the
-        # four-sigma binomial band (design verifier P10; microcosm#931).
+        # four-sigma binomial band (microcosm#931).
         ids, profit, weights = _landlords()
         families, clone_count = 60, 3
         sources = np.arange(1, families + 1, dtype=np.int64) * 7 + 900_000

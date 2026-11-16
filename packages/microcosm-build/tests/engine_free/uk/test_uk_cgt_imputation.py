@@ -1888,7 +1888,7 @@ class TestRankTies:
         # Sixty source gainers, each as three geographic clones tied on the
         # rank key: by person id, clone 0 ranked first in every family; keyed
         # on each clone's own id, in about a third of them, inside the
-        # four-sigma binomial band (design verifier P10).
+        # four-sigma binomial band.
         families, clone_count = 60, 3
         sources = np.arange(1, families + 1, dtype=np.int64) * 1_000 + 1
         person_id = np.concatenate(

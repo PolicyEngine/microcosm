@@ -16,7 +16,7 @@ run on the real engine. private_rent then reads the rents of the frame the
 two left, with the housing spi_housing_shell would give it invented: H2's
 root households all own their homes, so this stand-in is where the spine's
 rent re-draw meets the BRMAs its own stages drew. council_tax_localise then
-prices the council tax of the frame private_rent left, invented as stage 5
+prices the council tax of the frame private_rent left, invented as frs_council_tax
 and the housing shell would leave it (``with_toy_council_tax``), at the
 committed 2024-25 Band D: H2 has no Northern Ireland household, so this
 stand-in is where the localisation meets Northern Ireland's households and
