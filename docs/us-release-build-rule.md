@@ -123,13 +123,12 @@ on the rebuilt base: 15,228 capital-gains own-tail donors sit in households the
 frozen July identity list does not name (the list names households, and the
 selection mask is household-level, so those donors' tax units are dropped)
 (`assert_puf_capital_gains_tail_survives_selection`,
-`us_runtime/puf_capital_gains_tail.py:465`). The release tool does not require a
-selection source; when the caller passes one, `select_frozen_support`
-(`us_runtime/warm_start_selection.py`, called from
-`tools/build_us_fiscal_refresh_release.py`) cuts the base to the source's
+`us_runtime/puf_capital_gains_tail.py:465`). The release tool
+(`tools/build_us_fiscal_refresh_release.py`) does not require a selection
+source; when the caller passes one, the tool calls `select_frozen_support`
+(`us_runtime/warm_start_selection.py`), which cuts the base to the source's
 households. Without one, calibration runs on the full base of about 353,000
-households. July's run on about 57,000 households took 2 hours 42 minutes at
-85 GB.
+households.
 
 A dataset built this way is a new lineage, not a replay of Build P: no frozen
 support, a different capital-gains tail stratum, a different congressional
@@ -194,16 +193,17 @@ nine came from `--dense-default-dataset`, and each build manifest records
 households in each of the first seven, from 1 July to 28 July 2026. An
 unpublished run, the informed-L0 step in microcosm#328, chose the list of
 households the 1 July release calibrated. Builds I, J, M, N, O and P matched
-later versions of that list by source identity onto pools of 337,704
-households (`calibration.selection_source.mode: frozen_support`). For Builds I
+later versions of that list onto pools of 337,704 households by source
+identity (`calibration.selection_source.mode: frozen_support`). For Builds I
 and J, PolicyEngine swapped 100 households in the list for others
 (microcosm#359), and for Builds M, N, O and P it swapped 9 more
 (microcosm#434). PolicyEngine ran
 the 30 September and 24 October builds without a selection source and
 calibrated all 352,932 households in their pools. Their build manifests record
 calibration stages of 55 and 95 minutes (`timing.calibration_seconds`) and
-whole builds of 33 and 57 hours (`timing.total_build_seconds`), but no peak
-memory.
+whole builds of 33 and 57 hours (`timing.total_build_seconds`); the 1 July
+release's manifest records 10 minutes and 3.5 hours for 57,240 households.
+None of the three manifests records peak memory.
 
 Decided 23 September 2026 (microcosm#956): route A's first certified release,
 which is not the default, calibrates the whole base dense
