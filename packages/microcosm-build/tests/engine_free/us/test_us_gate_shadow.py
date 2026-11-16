@@ -681,6 +681,85 @@ def test_the_run_refuses_a_stopped_phase_that_drops_an_entry_it_evaluated(
     assert "marks ['us_test_first'] unreached, but this run evaluated" in error
 
 
+def test_a_gate_reached_twice_keeps_the_outcome_the_run_produced(tmp_path) -> None:
+    # Review of #1609: the run evaluates each entry once and records the
+    # outcome its stage produced. The shadow observes each entry once, so a
+    # site reached again never asks the run for a second evaluation: the
+    # first outcome stays, and its phase records it.
+    shadow = _shadow(tmp_path, _two_phase_gates())
+    shadow.gate(
+        "us_test_alpha",
+        lambda: ALPHA(0.5),
+        EvidenceContext(artifacts={"alpha_value": 0.5}),
+    )
+    first = shadow.outcome("us_test_alpha")
+    # Reached again, on evidence that fails the gate.
+    assert not shadow.gate(
+        "us_test_alpha",
+        lambda: ALPHA(2.0),
+        EvidenceContext(artifacts={"alpha_value": 2.0}),
+    ).passed
+    assert shadow.outcome("us_test_alpha") is first
+    shadow.gate(
+        "us_test_beta",
+        lambda: BETA(0.5),
+        EvidenceContext(artifacts={"beta_value": 0.5}),
+    )
+    shadow.gate(
+        "us_test_final",
+        lambda: ALPHA(0.1),
+        EvidenceContext(artifacts={"alpha_value": 0.1}),
+    )
+    with pytest.raises(GateBatteryShadowMismatchError, match="more than once"):
+        shadow.finish()
+    payload = json.loads(shadow.comparison_path.read_text())
+    assert payload["phases_recorded"] == ["assembled", "terminal"]
+    (error,) = payload["shadow_errors"]
+    assert "[us_test_alpha]" in error and "more than once" in error
+    report = json.loads(shadow.report_path.read_text())
+    assert report["gates"]["us_test_alpha"]["status"] == "passed"
+
+
+def test_the_run_refuses_a_second_evaluation_and_the_shadow_records_it(
+    tmp_path,
+) -> None:
+    # The run's own refusal (#1609) backs the shadow up: an entry the run
+    # evaluated outside the shadow (a wiring fault) is not evaluated again
+    # when its site is reached. The shadow records the refusal, never raises,
+    # and does not retry, so the entry stays unobserved and fails the run.
+    shadow = _shadow(tmp_path, _two_phase_gates())
+    shadow.run.evaluate_entries(
+        ("us_test_alpha",), EvidenceContext(artifacts={"alpha_value": 0.5})
+    )
+    assert shadow.gate(
+        "us_test_alpha",
+        lambda: ALPHA(0.5),
+        EvidenceContext(artifacts={"alpha_value": 0.5}),
+    ).passed
+    assert shadow.outcome("us_test_alpha") is None
+    shadow.gate(
+        "us_test_beta",
+        lambda: BETA(0.5),
+        EvidenceContext(artifacts={"beta_value": 0.5}),
+    )
+    shadow.gate(
+        "us_test_final",
+        lambda: ALPHA(0.1),
+        EvidenceContext(artifacts={"alpha_value": 0.1}),
+    )
+    with pytest.raises(GateBatteryShadowMismatchError):
+        shadow.finish()
+    payload = json.loads(shadow.comparison_path.read_text())
+    assert payload["phases_recorded"] == []
+    assert payload["not_observed"] == ["us_test_alpha"]
+    refusal, unwired = payload["shadow_errors"]
+    assert (
+        "this run has already evaluated ['us_test_alpha']; each entry is "
+        "evaluated once" in refusal
+    )
+    assert "[us_test_alpha] today's run finished without observing" in unwired
+
+
 def test_the_shadow_never_raises_while_the_tool_runs(tmp_path) -> None:
     gates = _two_phase_gates()
     shadow = _shadow(tmp_path, gates)
