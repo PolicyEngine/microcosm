@@ -356,7 +356,9 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # The hierarchy value ranks move it through medicaid_take_up's
             # attested bytes.
             # microcosm#1096's exact softmax cap projection in solve moves it.
-            "spec_sha256": "f58dc9a843f3291eb7d944658f673cd7121d20a8c807ef65df5cafc4a00b4745",
+            # microcosm#1641 moves it again: docstrings in solve and
+            # ssi_take_up, and the calibration contract's renamed modes.
+            "spec_sha256":"f58dc9a843f3291eb7d944658f673cd7121d20a8c807ef65df5cafc4a00b4745",
         },
     }
 
