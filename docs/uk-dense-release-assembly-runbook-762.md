@@ -1,8 +1,9 @@
 # UK dense line release assembly runbook (#762)
 
-The dense line `microcosm-uk-2024-25-dense` is the spine cloned K=15 times
-through the atomic output-area assignment and calibrated to the national and local
-target surfaces in one solve (`microcosm-build-uk --release-role dense`, the
+The dense line `microcosm-uk-2024-25-dense` is built on a spine of 15
+geographic clones of every FRS household, each clone drawing its own small
+area in the spine's own stages (microcosm#931), and calibrated to the national
+and local target surfaces in one solve (`microcosm-build-uk --release-role dense`, the
 graph driver `tools/build_uk_full.py`; `tools/build_uk_rowwise_candidate.py`
 is a stub over it). It ships
 as its own release, never the default one: a constant release id,
@@ -44,7 +45,14 @@ the gates stood on. See [Optional diagnostics](#optional-diagnostics-microcosm13
   diagnostics to the collector. These come from your shell: the command does not read
   `tools/release.env`, so if you keep the values there, `source
   tools/release.env` first.
-- The Ledger consumer artifact, the spine H5 with its sidecar, the OA ladder.
+- The Ledger consumer artifact, the OA ladder, and the spine H5 with its
+  sidecars: a geography-first spine of the doctrine's 15 geographic clones,
+  unsampled, built as a release candidate on the three conditioned atomic-area
+  supports `sources.yaml` registers (`tools/build_uk_frs_spine.py
+  --release-candidate --n-clones 15 --atomic-support-ew <file>
+  --atomic-support-scotland <file> --atomic-support-ni <file>`, with the
+  licensed inputs). The build refuses any other spine before it solves
+  (microcosm#931).
 - Optionally, the incumbent extraction
   (`tools/extract_uk_local_incumbent_surface.py`), only for the opt-in
   incumbent comparison.
@@ -119,15 +127,19 @@ which is also its file name), the new tail of the `uk/local` chain, as for
 build 2 below.
 
 `--release-role dense` is required (microcosm#823): the role supplies the
-solve defaults (K=15, seed 42, 2,000 epochs, learning rate 0.15,
+solve defaults (seed 42, 2,000 epochs, learning rate 0.15,
 `nation_grain_family_equal_sqrt_count`), names the outputs `microcosm_uk_2024_25_local.h5` and
 `microcosm_uk_2024_25_local.local_gates.json`, records itself in the
-manifest, and refuses the national role's flags. `--release-candidate` pins
-the doctrine (bound 10, `nation_grain_family_equal_sqrt_count`, K=15, 2000
-epochs). The rotated holdout runs only with `--rotated-holdout` (an opt-in,
+manifest, and refuses the national role's flags. The clone count K is the
+bound spine's; `--n-clones` only asserts it. `--release-candidate` pins
+the doctrine (bound 10, `nation_grain_family_equal_sqrt_count`, 2000
+epochs) and builds only on an unsampled spine of 15 clones, built as a
+release candidate, whose geography binding is a release's (microcosm#931).
+The rotated holdout runs only with `--rotated-holdout` (an opt-in,
 report-only diagnostic; `--skip-holdout` no longer exists, and the national
 role refuses `--rotated-holdout`). The engine may resolve in a single block or
-per clone (`--engine-blocks K`). Per clone, each block's engine weights are
+per clone (`--engine-blocks K`, K the spine's clone count; any other count is
+refused). Per clone, each block's engine weights are
 scaled to the pool's mass, and in every simulation the block builds,
 policyengine-uk's share formulas (`shareholding`, `corporate_land_value`,
 `consumption_shareholding`) are corrected to the pool's denominator. A guard
@@ -161,7 +173,8 @@ candidate directory also holds `candidate.json`, `certification.json`,
 `operations.json` and the `build.json` completion marker, the graph store sits
 at `<candidate-dir>/.graph-store` unless `--graph-store` says otherwise, and
 `--input-h5` must be a spine whose gate manifest matches the branch's gate
-declarations.
+declarations and that is geography-first: the build refuses any other spine
+before it pins an input (microcosm#931).
 
 **Every row's figures ship (María's ruling of 2026-10-26).** The build no
 longer withholds the model figures of rows resting on fewer than ten source
@@ -470,7 +483,10 @@ the contract will demand: release posture attested, shippable, every
 release-blocking gate passed, an exact engine population (a single block, or
 one block per clone that the build recorded exact), the doctrine values (for a
 sized run, the size doctrine, a realized count equal to the request and the
-size search's L0 bracket), the A15 census household uprating and A17 tenure
+size search's L0 bracket), the spine's geography binding (`geography.assignment`:
+the atomic law on exactly the conditioned supports `sources.yaml` registers,
+on the spine's area stream, at the doctrine's 15 clones, the run's `n_clones`),
+the A15 census household uprating and A17 tenure
 application, the measure exclusions and their windows, the holdout (recorded
 as not requested, or, when `--rotated-holdout` asked for it, measured with
 five folds and a finite mean, and in agreement with the request), the Logbook

@@ -52,16 +52,23 @@ with `agent-secret get microcosm/uk-gate-signing-key-team maxghenis`, and
 2. `preflight`
 3. `reference`: the current national build the cut compares with
    ([The reference build](#the-reference-build))
-4. spine
+4. spine (one geographic clone, built as a release candidate on the three
+   conditioned supports)
 5. national dry run, then the national calibration
 6. re-score, only when the build's comparison with the reference is missing
    or names another candidate or reference
-7. certify
+7. certify (the certifier checks the spine's geography binding before any
+   gate runs)
 8. stage-1 comparison, against the reference (`--previous-h5` names another
    file)
 9. assemble
 10. publish preflight
 11. publish (with `--publish`)
+
+The national step refuses to build until the degenerate-surface register's
+reviewed exclusion of `household.atomic_area_basis` applies on the national
+line and is in force on the build's review date (microcosm#931). The certify
+step reads the register again on the day it runs.
 
 Every step first checks whether its outputs already exist and verify, and
 skips itself if they do. So when a run stops, fix the cause and run the same
@@ -472,8 +479,11 @@ its two-build sign-off longer, so a national cut can move to a newer
 policyengine-uk before a dense cut on that version exists. There are four
 routes:
 
-1. **Ship together.** Build a dense cut on the same version. This is correct
-   but slow, and it needs the atomic-support files that only María holds.
+1. **Ship together.** Build a dense cut on the same version, from a spine of
+   15 clones built as a release candidate (the
+   [dense runbook](uk-dense-release-assembly-runbook-762.md)). This is correct
+   but slow. Like every cut since microcosm#931, it needs the three
+   conditioned atomic-area supports (see [Inputs](#inputs)).
    The policyengine-uk 2.151.0 pair (national `a6299504`, dense `c9df4b86`)
    went this way.
 2. **Accept the older dense cut, recorded as a mismatch.** policyengine.py

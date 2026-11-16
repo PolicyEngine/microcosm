@@ -96,9 +96,11 @@ Repeat with another positive household count and a fresh output directory to
 compare sizes. These are requested counts, not certified presets. Omit
 `--dataset-households` to retain the existing dense path. Add `--dry-run` to
 inspect input binding and parameters without solving or writing a candidate.
-Never reduce `--n-clones` to request a smaller output. Full builds still need
-the dense build's peak memory and add L0/refit work; the reduction is in the
-exported dataset's storage and downstream loading/simulation footprint.
+Never build on a spine of fewer clones to request a smaller output: the dense
+driver's `--n-clones` only asserts the bound spine's clone count
+(microcosm#931). Full builds still need the dense build's peak memory and add
+L0/refit work; the reduction is in the exported dataset's storage and
+downstream loading/simulation footprint.
 
 Every run stages by default (see [UK staging operations](uk-staging-operations.md)):
 telemetry to `runs/<run_id>/` in `policyengine/populace-uk-staging` while it

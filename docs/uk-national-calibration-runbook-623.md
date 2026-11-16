@@ -10,8 +10,9 @@ Run only after one of these is true:
 - WS-E spine is complete through E8 (#684) and E10 (#686).
 - Maria explicitly names a different base spine for this run.
 
-The input posture is a non-certified staging candidate at pre-clone grain,
-matching the published national surface. The seam records that
+The input posture is a non-certified staging candidate: a geography-first
+spine of one geographic clone, whose households carry their areas
+(microcosm#931), matching the published national surface. The seam records that
 posture itself and marks its artifact `shippable: false`: release certification
 is the release-cut producer's job, not calibration's.
 
