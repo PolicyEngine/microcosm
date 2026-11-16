@@ -78,6 +78,36 @@ def projected_key(year: int) -> str:
     return f"microcosm_us_{year}_acs_local"
 
 
+def local_releases_record(base_build: str | None = "listed") -> dict | None:
+    """The repository's ``releases.json``, recording LOCAL_BUILD as
+    ``base_build`` says (``"listed"``, ``"withdrawn"`` or ``"unlisted"``)
+    beside the local release's current build; ``None`` for no record."""
+    if base_build is None:
+        return None
+    builds = {
+        "an-earlier-local-build": {
+            "published_at": "2026-11-01T00:00:00+00:00",
+            "withdrawn": False,
+        }
+    }
+    if base_build != "unlisted":
+        builds[LOCAL_BUILD] = {
+            "published_at": "2026-11-02T00:00:00+00:00",
+            "withdrawn": base_build == "withdrawn",
+        }
+    return {
+        "schema_version": 1,
+        "default": None,
+        "releases": {
+            US_LOCAL_RELEASE_ID: {
+                "role": "local_area",
+                "current": "an-earlier-local-build",
+                "builds": builds,
+            }
+        },
+    }
+
+
 def local_tables(
     households: int = 3,
     *,

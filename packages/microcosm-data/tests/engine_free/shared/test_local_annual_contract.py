@@ -41,6 +41,7 @@ from test_support.microcosm_data.local_annual import (
     LOCAL_REPO,
     local_annual_build_folder_of,
     local_build_folder,
+    local_releases_record,
     local_tables,
     projected_key,
     read_json,
@@ -354,13 +355,17 @@ def test_a_national_annual_build_still_needs_every_year(
 
 
 class _LocalBaseOnTheHub:
-    """A Hub serving the local base build's release and build manifests.
+    """A Hub serving the local base build's release and build manifests and
+    the repository's ``releases.json``.
 
     A manifest given as ``None`` is absent from the Hub. ``cached`` maps a
     manifest's name to the client's cached copy of it: like the Hub client
     for a file whose ETag is unchanged, a download into the default cache
     returns that copy without reading the server or hashing it. A forced
     download into its own ``cache_dir`` reads the server's document.
+    ``base_build`` says how ``releases.json`` records the base build:
+    ``"listed"``, ``"withdrawn"`` or ``"unlisted"``; ``None`` leaves
+    ``releases.json`` absent.
     """
 
     def __init__(
@@ -370,11 +375,13 @@ class _LocalBaseOnTheHub:
         build_manifest: dict | None = None,
         *,
         cached: dict[str, Path] | None = None,
+        base_build: str | None = "listed",
     ) -> None:
         self.directory = directory
         self.manifests = {
             "release_manifest.json": manifest,
             "build_manifest.json": build_manifest,
+            "releases.json": local_releases_record(base_build),
         }
         self.cached = dict(cached or {})
         self.requests: list[tuple] = []
@@ -404,6 +411,10 @@ class _LocalBaseOnTheHub:
         local.parent.mkdir(parents=True, exist_ok=True)
         local.write_text(json.dumps(document))
         return str(local)
+
+
+#: The read of ``releases.json``, at main at the repository's root.
+_RECORD_REQUEST = (LOCAL_REPO, "releases.json", "dataset", "main")
 
 
 def _base_request(name: str) -> tuple:
@@ -488,9 +499,10 @@ def test_a_local_annual_build_needs_its_published_local_base(
         assert hub.requests == [
             _base_request("release_manifest.json"),
             _base_request("build_manifest.json"),
+            _RECORD_REQUEST,
         ]
-        # Both reads bypass the client's cache.
-        assert hub.fresh == [True, True]
+        # Both manifest reads bypass the client's cache.
+        assert hub.fresh == [True, True, False]
     else:
         with pytest.raises(ValueError, match=refusal):
             check()
@@ -676,6 +688,38 @@ def test_a_claim_edited_into_the_annual_manifest_is_refused(annual, tmp_path) ->
 
     with pytest.raises(ValueError, match="reviewed_limitations"):
         annual_projections.require_base_publication(hub, folder, repo_id=LOCAL_REPO)
+
+
+@pytest.mark.parametrize(
+    ("base_build", "refusal"),
+    [
+        ("withdrawn", "has been withdrawn"),
+        ("unlisted", "does not list build"),
+        (None, "has no releases.json"),
+    ],
+)
+def test_a_local_annual_build_is_not_handed_over_from_a_withdrawn_base(
+    local, tmp_path, base_build, refusal
+) -> None:
+    """A local base build that releases.json withdrew, or no longer lists, is
+    not one to project, as for a national base (microcosm#1594). It is read
+    last, once both of the base build's manifests check out."""
+    folder, root = local
+    annual_dir = local_annual_build_folder_of(folder, root)
+    hub = _LocalBaseOnTheHub(
+        tmp_path / "hub",
+        read_json(folder / "release_manifest.json"),
+        read_json(folder / "build_manifest.json"),
+        base_build=base_build,
+    )
+
+    with pytest.raises(ValueError, match=refusal):
+        annual_projections.require_base_publication(hub, annual_dir, repo_id=LOCAL_REPO)
+    assert hub.requests == [
+        _base_request("release_manifest.json"),
+        _base_request("build_manifest.json"),
+        _RECORD_REQUEST,
+    ]
 
 
 def test_an_unpublished_base_build_manifest_is_refused(local, tmp_path) -> None:

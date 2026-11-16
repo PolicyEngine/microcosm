@@ -1069,7 +1069,8 @@ def require_base_publication(
     from ``releases/microcosm-us-2024-local/<base build>/``. Neither build
     names a default dataset there: the base build's dataset is its one
     microdata artifact, and the annual build's base-year H5 is the artifact
-    ``metadata.annual_projection_base`` names by file name.
+    ``metadata.annual_projection_base`` names by file name. Its
+    ``releases.json`` entry is read last, once both manifests check out.
     """
     from functools import partial
 
@@ -1205,7 +1206,7 @@ def require_base_publication(
             "build as published"
         )
     # A base build its repository has withdrawn, or no longer lists, is not
-    # one to project.
+    # one to project, whether national or local.
     require_offered_base = partial(
         require_offered_build,
         api,
@@ -1289,3 +1290,4 @@ def require_base_publication(
             "declares them; an annual build carries its base build's claims "
             "as published"
         )
+    require_offered_base()

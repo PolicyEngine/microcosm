@@ -46,6 +46,7 @@ from test_support.microcosm_data.local_annual import (
     LOCAL_REPO,
     acceptance_report,
     local_build_folder,
+    local_releases_record,
     rewrite_json,
     write_local_candidate,
 )
@@ -602,6 +603,7 @@ class _PublishedLocalBase:
     a download into the default cache returns the folder's file, edited or
     not, as the client does for a cached file whose ETag is unchanged. A
     forced download into its own ``cache_dir`` reads the published bytes.
+    It also serves the repository's ``releases.json``, listing the base build.
     """
 
     def __init__(self, directory, base, *, cache=False):
@@ -612,6 +614,7 @@ class _PublishedLocalBase:
             name: _read(base / name)
             for name in ("release_manifest.json", "build_manifest.json")
         }
+        self.documents["releases.json"] = local_releases_record()
 
     def hf_hub_download(
         self,
@@ -624,7 +627,8 @@ class _PublishedLocalBase:
         force_download=False,
     ):
         name = Path(filename).name
-        if self.cache and cache_dir is None and not force_download:
+        cached = name != "releases.json"
+        if self.cache and cached and cache_dir is None and not force_download:
             return str(self.base / name)
         local = Path(cache_dir or self.directory) / filename
         local.parent.mkdir(parents=True, exist_ok=True)

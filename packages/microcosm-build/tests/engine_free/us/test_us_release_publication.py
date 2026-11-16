@@ -607,13 +607,16 @@ def test_the_command_takes_the_incomplete_reform_validation_override(
 
 class _LocalBaseOnTheHub:
     """A Hub serving a local-area base build's published release and build
-    manifests."""
+    manifests, and the ``releases.json`` that lists it."""
 
     def __init__(self, directory, manifest, build_manifest):
+        from test_support.microcosm_data.local_annual import local_releases_record
+
         self.directory = directory
         self.manifests = {
             "release_manifest.json": manifest,
             "build_manifest.json": build_manifest,
+            "releases.json": local_releases_record(),
         }
         self.requests = []
         self.fresh = []
@@ -703,9 +706,10 @@ def test_a_local_annual_build_is_handed_over_only_once_its_local_base_is_publish
         assert hub.requests == [
             request("release_manifest.json"),
             request("build_manifest.json"),
+            (_US_REPOSITORY, "releases.json", "dataset", "main"),
         ]
         # Both manifests are read afresh, not from the client's cache.
-        assert hub.fresh == [True, True]
+        assert hub.fresh == [True, True, False]
     else:
         with pytest.raises(ValueError, match="published base build's bytes"):
             publish()
