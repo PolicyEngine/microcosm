@@ -355,10 +355,12 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # through the bundle's source stages.
             # The hierarchy value ranks move it through medicaid_take_up's
             # attested bytes.
+            # microcosm#1096's exact softmax cap projection in solve moves it.
+            # microcosm#1387's SEMP-covered partnership step moves it through
+            # acs_transfer's attested bytes.
             # microcosm#922's county facts pin, two declared legacy resources,
             # moves it.
-            # microcosm#1096's exact softmax cap projection in solve moves it.
-            "spec_sha256": "1e727e1ca69287fccacc0f7e4402ebf449472c9103daf92a8287bc49dbd5db15",
+            "spec_sha256": "3fd1a3840bd8769b5fa674ab51d3db9a92450e40bf09d5cf9894add726c4c4b8",
         },
     }
 

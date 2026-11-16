@@ -375,7 +375,9 @@ release that the dataset registry names, and the US releases
 through the emitter (`microcosm-publish-release-build`, from
 `microcosm.build.release_publication`), which records it in the repository's
 `releases.json`; making a published build current is a separate deliberate
-call to the same command with `--promote`. Each US builder writes its build to
+call to the same command with `--promote`, and withdrawing one is
+`microcosm-withdraw-release-build <repository> <release> <build>`, which sets
+its `withdrawn` flag through the same release writer. Each US builder writes its build to
 `releases/<release>/`; the national builder and the ACS package stage also
 print both commands.
 `tools/preflight_us_release_gates.py` runs the US national release checks that
@@ -590,6 +592,10 @@ configurable with `--county-target-loss-cap` and `--county-max-weight-ratio`
 (the pilot also tested 20). Later calibration stages resolve this profile from
 the checkpoint's recorded county surface. Ordinary runs retain their historical
 solver settings. County grades use source-household ESS; row ESS is diagnostic.
+Each delivered County Files year also gets a household measures sidecar
+(`tools/us_household_measures.py`) and a schema manifest
+(`tools/us_release_schema_manifest.py`); see
+[the County Files schema note](us-county-files-schema.md).
 
 The independent US annual static-aging candidate builder lives in
 `microcosm.build.us_annual_static_aging`; it consumes a pinned published parent
