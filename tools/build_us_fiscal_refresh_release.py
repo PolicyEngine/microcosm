@@ -490,10 +490,10 @@ POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
 # after recomputing again — the recompute moved 18-64 OUT of band while
 # improving 65+); that chain shape is now refused outright by the
 # chain-depth guard in ssi_take_up_prior_basis_from_artifact. The dense
-# diagnostic arm therefore FENCES its adult bands — the under-18 pattern
-# extended: the miss ships in the scorecard as a known boundary, never as
-# an enforced contract and never as saturation-as-success. The sparse
-# certified default passes no fences and keeps hard enforcement.
+# arm (--dense-default-dataset) therefore FENCES its adult bands — the
+# under-18 pattern extended: the miss ships in the scorecard as a known
+# boundary, never as an enforced contract and never as saturation-as-success.
+# The L0+refit and --exact-k arms pass no fences and keep hard enforcement.
 # RE-ADJUDICATES when microcosm#566's damped fixed-point protocol lands.
 _US_DENSE_SSI_FENCE_ADJUDICATION = (
     "Fenced for the dense diagnostic arm (microcosm#566/#567): "
@@ -1419,9 +1419,9 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "and the full-pool --exact-k point run one stage; the L0+refit arm "
             "and smaller --exact-k points run an L0 selection stage and then a "
             "refit stage, each this long. The US national calibrations "
-            "PolicyEngine has tagged on Hugging Face since 2026-07-01 ran the "
-            "dense arm for 1,500 to 6,000 epochs; Build P, the parent of "
-            "populace-us-2024-spm-20260915, ran 6,000."
+            "PolicyEngine has tagged in policyengine/populace-us since "
+            "2026-07-01 ran the dense arm for 1,500 to 6,000 epochs; Build P, "
+            "the parent of populace-us-2024-spm-20260915, ran 6,000."
         ),
     )
     parser.add_argument("--learning-rate", type=float, default=0.02)
@@ -1446,21 +1446,17 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=float,
         default=DEFAULT_L0_REFIT_LAMBDA_SHARE,
         help=(
-            "L0 penalty share for the L0+refit arm, which runs when the caller "
-            "sets neither --dense-default-dataset nor --exact-k, and for the "
-            "selection stage of an --exact-k point below the full pool "
-            f"(default {DEFAULT_L0_REFIT_LAMBDA_SHARE}). The builder divides "
-            "it by the candidate household count and uses the result as a "
-            "fixed L0 penalty; the L0+refit arm then refits ordinary "
-            "calibration on the households the gates keep. "
-            "--dense-default-dataset ignores it. None of the US national builds "
-            "PolicyEngine has tagged on Hugging Face since 2026-07-01 ran an L0 "
-            "stage. The 2026-07-01 release calibrated 57,240 households that "
-            "an unpublished run chose (microcosm#328). Builds I through P "
-            "matched that list by source identity with "
-            "--selection-source-manifest; Build I's list swaps 100 of those "
-            "households (microcosm#359), and Build M's swaps 9 more "
-            "(microcosm#434)."
+            f"L0 penalty share (default {DEFAULT_L0_REFIT_LAMBDA_SHARE}) for the "
+            "L0+refit arm, which runs when the caller sets neither "
+            "--dense-default-dataset nor --exact-k, and for the selection stage "
+            "of an --exact-k point below the full pool. The builder divides it "
+            "by the candidate household count and uses the result as a fixed L0 "
+            "penalty; the L0+refit arm then refits ordinary calibration on the "
+            "households the gates keep. --dense-default-dataset ignores it. "
+            "None of the US national builds PolicyEngine has tagged in "
+            "policyengine/populace-us since 2026-07-01 ran an L0 stage; "
+            "docs/us-release-build-rule.md lists the households each one "
+            "calibrated."
         ),
     )
     parser.add_argument(
@@ -1481,11 +1477,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=float,
         default=None,
         help=(
-            "Override the L2 concentration penalty for the post-L0 refit "
-            "stage only — the stage that produces the shipped weights. "
-            "Defaults to --l2-lambda. Requires the sparse L0+refit default "
-            "dataset (incompatible with --dense-default-dataset, which has "
-            "no refit stage)."
+            "Override the L2 concentration penalty for the refit stage only, "
+            "the stage whose weights the L0+refit arm and every --exact-k point "
+            "write; at the full pool, --exact-k runs that stage alone. Defaults "
+            "to --l2-lambda. The builder refuses it with --dense-default-dataset, "
+            "which has no refit stage."
         ),
     )
     parser.add_argument(
@@ -1495,14 +1491,18 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "Calibrate every candidate household in one solve with no L0 term "
             "and write that frame as the default national dataset, "
             "populace_us_2024.h5; the build manifest records "
-            "dataset.default.method: dense_no_l0. Every US national calibration "
-            "PolicyEngine has tagged on Hugging Face since 2026-07-01 came from "
+            "dataset.default.method: dense_no_l0. This arm also fences the SSI "
+            "take-up bands for ages 18-64 and 65+ (microcosm#566/#567), so a "
+            "delivery miss there ships in the scorecard; the other arms fail "
+            "the build on it. Every US national calibration PolicyEngine has "
+            "tagged in policyengine/populace-us since 2026-07-01 came from "
             "this arm. A selection source (--selection-source-manifest or "
             "--selection-source-h5) first cuts the candidates to the households "
-            "it names, 57,240 in Builds I through P. Without one, the solve "
-            "covers every household the builder loads: 352,932 in the "
-            "2026-09-30 and 2026-10-24 builds. Leave it unset for the L0+refit "
-            "arm; the builder refuses it together with --exact-k."
+            "it names, 57,240 in Builds I, J, M, N, O and P. Without one, the "
+            "solve covers every household the builder loads: 352,932 in the "
+            "2026-09-30 and 2026-10-24 builds. The builder refuses it together "
+            "with --exact-k, and the L0+refit arm runs when the caller sets "
+            "neither."
         ),
     )
     parser.add_argument(
@@ -1977,7 +1977,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         )
     if args.refit_l2_lambda is not None and args.dense_default_dataset:
         parser.error(
-            "--refit-l2-lambda requires the sparse L0+refit default dataset; "
+            "--refit-l2-lambda sets the refit stage's penalty, and "
             "--dense-default-dataset has no refit stage (use --l2-lambda)."
         )
     if not args.no_staging and not args.staging_dir and not args.staging_repo_id:
@@ -8947,7 +8947,7 @@ def _enforce_ssi_take_up_delivery(
     microcosm#507/#508: a miss beyond tolerance on release weights fails the
     build instead of shipping in the scorecard. ``enforcement_fences``
     (microcosm#566/#567) fences normally-enforced bands for the dense
-    diagnostic arm, where delivered-weight recomputes have not landed
+    arm (--dense-default-dataset), where delivered-weight recomputes have not landed
     the adult pair in band on either observed frame (P2's clean
     one-retry record; P3's refused delivered-basis chain) — fenced
     misses ship in the scorecard with their adjudication text instead
@@ -15320,9 +15320,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             targets=ssi_band_targets,
             release_dir=release_dir,
             telemetry=telemetry,
-            # The dense diagnostic arm fences its adult bands per the
-            # microcosm#566/#567 fence adjudication; the sparse certified
-            # arm passes no fences and keeps hard enforcement.
+            # The dense arm (--dense-default-dataset) fences its adult bands
+            # per the microcosm#566/#567 fence adjudication; the L0+refit and
+            # --exact-k arms pass no fences and keep hard enforcement.
             enforcement_fences=(
                 US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES
                 if args.dense_default_dataset

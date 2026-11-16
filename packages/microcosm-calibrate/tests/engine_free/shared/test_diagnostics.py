@@ -1045,10 +1045,10 @@ def test_payload_reports_weight_concentration(feasible_frame) -> None:
 
 
 def test_payload_accepts_l0_refit_result(feasible_frame) -> None:
-    """Regression: the default sparse build hands an L0RefitResult to the writer.
+    """Regression: the builder's L0+refit arm hands an L0RefitResult to the writer.
 
     ``fraction_within_10pct`` was never delegated to the refit stage, so the
-    payload raised AttributeError on the production default (L0+refit) path.
+    payload raised AttributeError on the L0+refit path.
     """
     frame, truths = feasible_frame()
     targets = TargetSet(

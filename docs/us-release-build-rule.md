@@ -14,10 +14,10 @@ build as a standing check afterwards.
 A dataset earns default status separately, by beating the incumbent. The rule
 main enforces is microcosm#578's: the candidate beats the incumbent on the
 frozen comparison register, both rescored on it, with strict improvement
-(`_exact_k_frozen_register_fit_gate`,
-`tools/build_us_fiscal_refresh_release.py:6897`). That gate runs on the
-`--exact-k` arm only (`:11149`), and that arm takes a pool manifest, which is
-mutually exclusive with `--base-h5`. A `--base-h5` release runs no improvement
+(`_exact_k_frozen_register_fit_gate` in
+`tools/build_us_fiscal_refresh_release.py`). That gate runs on the `--exact-k`
+arm only, and that arm takes a pool manifest, which the builder refuses
+together with `--base-h5`. A `--base-h5` release runs no improvement
 gate. Main has no US held-out test: the rotated-fold holdout in
 `microcosm.build.holdout` is imported by the UK runtime and UK tools only. So a
 US release says it beats the incumbent on the frozen register, and says it beats
@@ -121,8 +121,9 @@ frozen July identity list does not name (the list names households, and the
 selection mask is household-level, so those donors' tax units are dropped)
 (`assert_puf_capital_gains_tail_survives_selection`,
 `us_runtime/puf_capital_gains_tail.py:465`). The release tool does not require a
-selection source (`--selection-source-manifest` is optional, and the reduction
-at `tools/build_us_fiscal_refresh_release.py:9019` runs only when one is given).
+selection source, and `select_frozen_support`
+(`tools/build_us_fiscal_refresh_release.py`), which cuts the base to the
+source's households, runs only when the caller passes one.
 Without one, calibration runs on the full base of about 353,000 households. The
 only measured comparator is July's run on about 57,000 households: 2 hours 42
 minutes at 85 GB. Nothing has been measured at full-base size.
@@ -180,12 +181,21 @@ stable source IDs, and their outputs are compared with or merged into the
 original assembled table. This lets historical source kernels consume the
 projection without treating intentionally removed provenance as corruption.
 
-Every US national calibration PolicyEngine has tagged on Hugging Face since
-1 July 2026 came from `--dense-default-dataset`, and each build manifest records
-`dataset.default.method: dense_no_l0`. Through Build P (28 July 2026), those
-builds calibrated a 57,240-household support that an earlier run chose
-(microcosm#328) and two later swaps adjusted (microcosm#359, microcosm#434).
-The default therefore stayed the sparse dataset that runs on standard machines.
+PolicyEngine has tagged nine calibrations of the US national file in
+`policyengine/populace-us` since 1 July 2026: the 1 July release, Builds I, J,
+M, N, O and P, and the 30 September and 24 October builds. All nine came from
+`--dense-default-dataset`, and each build manifest records
+`dataset.default.method: dense_no_l0`. The first seven, from 1 July to 28 July
+2026, calibrated 57,240 households each. An unpublished run, the informed-L0
+step in microcosm#328, chose the list of households the 1 July release
+calibrated. Builds I, J, M, N, O and P matched later versions of that list onto
+a 337,704-household pool by source identity
+(`calibration.selection_source.mode: frozen_support`). For Builds I and J,
+PolicyEngine swapped 100 households in the list for others (microcosm#359), and
+for Builds M, N, O and P it swapped 9 more (microcosm#434). The 30 September
+and 24 October builds ran without a selection source and calibrated all
+352,932 households in their pools.
+
 Decided 23 September 2026 (microcosm#956): route A's first certified release,
 which is not the default, calibrates the whole base dense
 (`--dense-default-dataset`) on the national and state target surface
