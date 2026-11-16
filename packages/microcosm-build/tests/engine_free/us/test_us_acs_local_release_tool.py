@@ -76,6 +76,10 @@ _PACKAGE_ENGINE = stored_inputs.CertifiedEngine(
             "sstb_self_employment_income_before_lsr",
             "farm_operations_income",
             "partnership_self_employment_net_earnings",
+            # microcosm#1387: the line-32 leaves the self-employment gate reads.
+            "partnership_income",
+            "s_corp_income",
+            "passive_partnership_s_corp_income",
             *US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
         }
     ),
@@ -1275,7 +1279,9 @@ class _SelfEmploymentFrame:
         return self._person
 
 
-def _self_employment_person(sstb_on_acs: float) -> pd.DataFrame:
+def _self_employment_person(
+    sstb_on_acs: float, partnership_on_acs_semp: float = 0.0
+) -> pd.DataFrame:
     return pd.DataFrame(
         {
             "person_spine": ["acs_2024_1yr", "acs_2024_1yr", "asec_puf"],
@@ -1285,6 +1291,13 @@ def _self_employment_person(sstb_on_acs: float) -> pd.DataFrame:
             "sstb_self_employment_income_before_lsr": [sstb_on_acs, 0.0, 9_000.0],
             "farm_operations_income": [0.0, 0.0, 700.0],
             "partnership_self_employment_net_earnings": [0.0, 0.0, 300.0],
+            # microcosm#1387: the ASEC row's partnership income is outside
+            # the ACS selection, so it never affects the verdict.
+            "partnership_income": [2_000.0, partnership_on_acs_semp, 4_000.0],
+            "s_corp_income": [0.0, 3_000.0, 0.0],
+            "passive_partnership_s_corp_income": [0.0, 0.0, 0.0],
+            "person_tax_unit_id": [1, 2, 3],
+            "tax_unit_role_input": ["HEAD", "HEAD", "HEAD"],
         }
     )
 
@@ -1303,6 +1316,55 @@ def test_release_refuses_staging_that_stacks_self_employment_on_semp() -> None:
         module._require_acs_self_employment_identity(
             _SelfEmploymentFrame(
                 _self_employment_person(0.0).drop(columns=["person_spine"])
+            )
+        )
+
+
+def test_release_refuses_partnership_income_that_semp_already_holds() -> None:
+    """An ACS row's SEMP includes its partnership income (microcosm#1387).
+
+    A partnership draw on the ACS row that reports SEMP is refused; the same
+    amount on the ASEC row, and S-corp income on the ACS row, pass.
+    """
+
+    module = _load_tool_module()
+
+    with pytest.raises(SystemExit, match="ACS SEMP already includes"):
+        module._require_acs_self_employment_identity(
+            _SelfEmploymentFrame(
+                _self_employment_person(0.0, partnership_on_acs_semp=2_500.0)
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    ("partnership", "failure"),
+    (
+        (np.nan, "never modeled"),
+        (np.inf, "an infinite partnership"),
+        (-np.inf, "an infinite partnership"),
+    ),
+)
+def test_release_names_a_rebuild_only_for_income_counted_twice(
+    partnership: float, failure: str
+) -> None:
+    """A rebuild cures a double count, not a blank or infinite cell (#1387)."""
+
+    module = _load_tool_module()
+    person = _self_employment_person(0.0)
+    # The ACS row that reports SEMP: a blank partnership cell is unmodeled and
+    # an infinite one is not a dollar amount, so neither is counted twice.
+    person.loc[1, "partnership_income"] = partnership
+
+    with pytest.raises(SystemExit) as refused:
+        module._require_acs_self_employment_identity(_SelfEmploymentFrame(person))
+
+    assert failure in str(refused.value)
+    assert "must be rebuilt" not in str(refused.value)
+    with pytest.raises(SystemExit, match="must be rebuilt"):
+        module._require_acs_self_employment_identity(
+            _SelfEmploymentFrame(
+                _self_employment_person(0.0, partnership_on_acs_semp=2_500.0)
             )
         )
 
@@ -4022,6 +4084,11 @@ def _plausible_hours_frame():
         sstb_self_employment_income_before_lsr=0.0,
         farm_operations_income=0.0,
         partnership_self_employment_net_earnings=0.0,
+        # microcosm#1387: the line-32 leaves the gate also grades.
+        partnership_income=0.0,
+        s_corp_income=0.0,
+        passive_partnership_s_corp_income=0.0,
+        tax_unit_role_input="HEAD",
     )
     return Frame(
         {
@@ -5549,8 +5616,10 @@ def test_package_records_the_stored_input_gate_bound_to_the_packaged_bytes(
             "failures": [],
             "engine": "policyengine-us 2.2.1",
             "register_sha256": stored_inputs.register_sha256(),
-            # The ACS rows' base-spine tag, a reviewed register entry.
-            "registered_non_variables": ["person_spine"],
+            # The ACS rows' base-spine tag and the tax-unit role the
+            # self-employment gate reads (microcosm#1387), both reviewed
+            # register entries.
+            "registered_non_variables": ["person_spine", "tax_unit_role_input"],
             "artifact_sha256": result["root_artifact"]["sha256"],
             "checked_at_stage": "package",
         }

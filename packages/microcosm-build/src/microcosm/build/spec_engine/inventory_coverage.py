@@ -392,8 +392,11 @@ EXPECTED_HASHES = {
     # microcosm#1096 moves both again: solve's opt-in softmax mass
     # parametrization projects exactly onto the capped simplex; the default
     # projection parametrization is unchanged.
-    "seed_map": "8d0542f7b83f030772e6e53b5742d0f13bcad82325a4e9b66d5d999a3fbb5276",
-    "seed_protocol": "3ab23e82779263dabe8da210de55ce7f12fdc0464e8145ca2c18649426b7f976",
+    # microcosm#1387 moves both again: the ACS transfer's opt-in SEMP-covered
+    # partnership step changes acs_transfer's attested bytes. Off its flag no
+    # draw, RNG rule or QRF target changes.
+    "seed_map": "f3a295ea68b894d4f4e38d13edb9aeb3313138f394d9ff67e4dfdb22f4b63f71",
+    "seed_protocol": "05b0bc3cb82fdfe6919efb09b15e800206425a0d041336f50818b2da277aea78",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

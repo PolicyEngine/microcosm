@@ -218,6 +218,13 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     combined.table("person")["sstb_self_employment_income_before_lsr"] = [0.0, 2_042.0]
     combined.table("person")["farm_operations_income"] = [0.0, 0.0]
     combined.table("person")["partnership_self_employment_net_earnings"] = [0.0, 0.0]
+    # microcosm#1387: the ACS row reports SEMP, so its partnership income is
+    # zero; its S-corp income and the ASEC row's partnership income stand.
+    combined.table("person")["partnership_income"] = [3_000.0, 0.0]
+    combined.table("person")["s_corp_income"] = [0.0, 1_500.0]
+    combined.table("person")["passive_partnership_s_corp_income"] = [0.0, 0.0]
+    combined.table("person")["person_tax_unit_id"] = [1, 2]
+    combined.table("person")["tax_unit_role_input"] = ["HEAD", "HEAD"]
     # What the ACS local immigration stage returns (microcosm#1020): the
     # null audit, hours gate and export must all see this frame, not the
     # unlabelled pool.
@@ -601,6 +608,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "work_disability_inputs": True,
         "income_transfer": True,
         "native_receipt_anchors": True,
+        "semp_covers_partnership_income": True,
         "donor_channel": builder.ACS_DONOR_CHANNEL_AUTO,
         "seed": 11,
         "n_estimators": 32,
@@ -696,6 +704,10 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     assert self_employment["details"]["mismatched_rows"] == 0
     assert self_employment["details"]["non_acs_component_rows"] == 0
     assert self_employment["details"]["base_and_sstb_rows"] == 0
+    assert self_employment["details"]["partnership_on_semp_rows"] == 0
+    assert self_employment["details"]["partnership_on_spouse_rows"] == 0
+    assert self_employment["details"]["partnership_on_blank_semp_rows"] == 0
+    assert self_employment["details"]["passive_without_line_32_rows"] == 0
     assert "pending_engine_input_nulls" not in summary
     assert summary["staging_export_peak_estimate_bytes"] == 123_456
     assert summary["geography_ladder"] == {
