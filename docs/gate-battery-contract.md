@@ -181,7 +181,7 @@ Five statuses, one per declared entry per report:
 | `failed` | Evaluated and failed — including evaluator crashes, wrong-name results, and unattestable evidence, all failed closed. |
 | `evidence_absent` | Declared, but a required artifact, frame, or binding was missing; the gap is named. |
 | `not_applicable` | Declared with a reviewed reason not to run. Reported even if its phase never ran. |
-| `unreached` | Its phase never ran because an earlier phase blocked, or, in a phase evaluated stage by stage, an earlier stage of the same phase blocked before this entry's stage ran. Its reason then names the entry that blocked, and `blocked_at_phase` is that phase. |
+| `unreached` | Its phase never ran because an earlier phase blocked, or, in a phase evaluated stage by stage, an earlier stage of the same phase blocked before this entry's stage ran. Its reason then names the entry that blocked, and `blocked_at_phase` is that phase. An entry the run itself evaluated at its stage is never `unreached`. |
 
 `passed` and `not_applicable` are the only shippable statuses.
 
@@ -211,7 +211,8 @@ written downstream of a block) or returns the verdict while the artifact
 is written and marked (`MARKS_ARTIFACT` — intermediates: an artifact with
 a failed gate can be worth keeping; it just is not ready). Once a phase
 blocks, later phases refuse to run and their entries stay `unreached` —
-which is the truth.
+which is the truth — except an entry the run had already evaluated at its
+stage, which keeps that outcome (below).
 
 A phase evaluated somewhere else is recorded, not re-run.
 `gate_phase_report_payload` turns a phase report into plain data bound to the
@@ -240,7 +241,10 @@ and any other entry without an outcome is still refused. `record_phase` takes
 such a phase only if the named entry blocks under the run's own posture,
 recording `blocked_at_phase` in the same write. The run keeps the outcome of
 each entry it evaluates at a stage, and refuses a second `evaluate_entries`
-for that entry and a `run_phase` for its phase. `record_phase` refuses a
+for that entry and a `run_phase` for its phase. Until that entry's phase is
+recorded, the report carries the outcome in place of `unreached`, so a block
+in an earlier phase cannot sign the gate as never reached; the outcome counts
+toward `shippable` only once its phase is recorded. `record_phase` refuses a
 phase that marks one of those entries `unreached` or carries another outcome
 for it. Outcomes are compared by content, so the same outcomes carried
 through a phase payload and back still record. These checks see only the

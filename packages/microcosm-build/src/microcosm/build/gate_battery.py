@@ -1326,10 +1326,11 @@ class GateBatteryRun:
     :meth:`run_phase` (which persists the full report before returning) and
     then :meth:`enforce` (which blocks — or marks — strictly after
     persistence). Once a phase blocks, no later phase may run: the remaining
-    entries stay ``unreached`` in the report, which is the truth. A phase
-    evaluated elsewhere — at its stages (:meth:`evaluate_entries`), or in
-    another process — is persisted with :meth:`record_phase` instead of
-    :meth:`run_phase`.
+    entries stay ``unreached`` in the report, which is the truth, except any
+    this run had already evaluated at its stage, which keeps the outcome that
+    stage produced. A phase evaluated elsewhere — at its stages
+    (:meth:`evaluate_entries`), or in another process — is persisted with
+    :meth:`record_phase` instead of :meth:`run_phase`.
 
     A posture that must keep going past failed gates (an evidence build, a
     dry run) runs every phase and never calls :meth:`enforce`: nothing is
@@ -1394,6 +1395,8 @@ class GateBatteryRun:
         # The outcome of each entry this run evaluated at its stage, by id.
         # Each entry is evaluated once, and record_phase refuses a phase that
         # marks one of them unreached or carries another outcome for it.
+        # Until its phase is recorded, the report carries it in place of
+        # unreached.
         self._stage_outcomes: dict[str, GateOutcome] = {}
 
     @property
@@ -1489,13 +1492,16 @@ class GateBatteryRun:
         The stage-level counterpart of :meth:`run_phase`: the module-level
         :func:`evaluate_entries` over this run's manifest and registry, so a
         stage cannot evaluate against another registry than the one the run
-        was armed with. It persists no outcome, but the run keeps each one
-        and evaluates each entry once, so a stage cannot evaluate a gate
-        again and keep the outcome it prefers. :meth:`record_phase` refuses a
-        phase that marks one of these entries ``unreached`` or carries
-        another outcome for it. The phase's report is assembled with
-        :func:`assemble_phase_report`, under this run's posture, and recorded
-        with :meth:`record_phase`.
+        was armed with. It writes no report itself, but the run keeps each
+        outcome and evaluates each entry once, so a stage cannot evaluate a
+        gate again and keep the outcome it prefers. Until the entry's phase is
+        recorded, the report the run writes carries that outcome in place of
+        ``unreached``, so a block in an earlier phase cannot sign the gate as
+        never reached; it counts toward ``shippable`` only once its phase is
+        recorded. :meth:`record_phase` refuses a phase that marks one of
+        these entries ``unreached`` or carries another outcome for it. The
+        phase's report is assembled with :func:`assemble_phase_report`, under
+        this run's posture, and recorded with :meth:`record_phase`.
 
         Raises:
             ValueError: If the battery has blocked, an entry belongs to a
@@ -1693,6 +1699,11 @@ class GateBatteryRun:
         }
         for entry in self._gates.gates:
             outcome = evaluated.get(entry.id)
+            if outcome is None:
+                # No recorded phase holds the entry. If this run's stage
+                # evaluated it, the report carries that outcome: its phase
+                # may still be recorded, or, after an earlier block, never.
+                outcome = self._stage_outcomes.get(entry.id)
             if outcome is not None:
                 yield outcome
             elif entry.not_applicable is not None:
@@ -1746,8 +1757,15 @@ class GateBatteryRun:
         except RuntimeError as exc:
             signing_key = None
             signing_error = exc
+        recorded = set(self._phase_reports)
         blocking_ok = all(
             outcome.status in _SHIPPABLE_STATUSES
+            # A stage's outcome counts only once its phase is recorded; a
+            # declared excuse holds whether or not its phase ran.
+            and (
+                outcome.entry.phase in recorded
+                or outcome.entry.not_applicable is not None
+            )
             for outcome in outcomes
             if outcome.entry.criticality == "release_blocking"
         )

@@ -1511,6 +1511,54 @@ class TestStageLevelEvaluation:
         run.record_phase(carried)
         assert run.report_payload()["gates"]["a_block"]["status"] == "failed"
 
+    def test_the_report_carries_a_stage_outcome_its_phase_never_recorded(
+        self, tmp_path, signing_env
+    ):
+        # Review of #1609: a terminal stage that ran before preflight blocked
+        # was signed unreached, since the blocked run never records its phase.
+        manifest = _manifest(
+            [
+                _entry("pf_gate", gate="exported_nonzero", phase="preflight"),
+                _entry("t_gate", gate="exported_nonzero"),
+                _entry("t_later", gate="support"),
+            ]
+        )
+        run = self._run(manifest, tmp_path, "terminal_gates.json")
+        (stage,) = run.evaluate_entries(["t_gate"], EvidenceContext())
+        assert stage.status is GateStatus.FAILED
+        run.run_phase("preflight", EvidenceContext())
+        with pytest.raises(GateBatteryBlockedError):
+            run.enforce("preflight", mode=BlockingMode.BLOCKS_ARTIFACT)
+        written = json.loads(run.report_path.read_text())
+        assert written == run.report_payload()
+        assert written["blocked_at_phase"] == "preflight"
+        assert written["phases_evaluated"] == ["preflight"]
+        assert written["gates"]["t_gate"] == stage.to_payload()
+        # An entry the run never evaluated is still unreached.
+        assert written["gates"]["t_later"]["status"] == "unreached"
+        assert written["shippable"] is False
+
+    def test_a_stage_outcome_ships_only_once_its_phase_is_recorded(
+        self, tmp_path, signing_env
+    ):
+        # The report shows a stage's outcome before its phase is recorded,
+        # but a run whose last phase has passed only at its stages has not
+        # finished, so it cannot ship until that phase is recorded.
+        manifest = _manifest(
+            [
+                _entry("pf_gate", gate="support", phase="preflight"),
+                _entry("t_gate", gate="support"),
+            ]
+        )
+        run = self._run(manifest, tmp_path, "terminal_gates.json")
+        run.run_phase("preflight", EvidenceContext())
+        assert run.enforce("preflight", mode=BlockingMode.BLOCKS_ARTIFACT) is False
+        (passed,) = run.evaluate_entries(["t_gate"], EvidenceContext())
+        assert passed.status is GateStatus.PASSED
+        assert run.report_payload()["shippable"] is False
+        run.record_phase(assemble_phase_report(manifest, "terminal", [passed]))
+        assert run.report_payload()["shippable"] is True
+
 
 class TestRecordWithoutEnforce:
     """The keep-going posture: run every phase, never enforce (#1585 item 11).
