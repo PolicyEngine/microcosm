@@ -207,8 +207,11 @@ step.
    own cache, which returns a cached file whose ETag is unchanged without
    hashing it. It refuses the annual build unless every claim it inherited
    equals the published one and every artifact entry it carries, kind and
-   role included, equals the published entry. Assemble from an unedited
-   copy of the published base build.
+   role included, equals the published entry. It also refuses any artifact
+   that neither the published base build nor the annual projection declares
+   (the projection manifest, the acceptance report, each year's H5 and
+   receipt), such as a file added to the base folder after publication.
+   Assemble from an unedited copy of the published base build.
 
 **Memory.** Let S be the base frame's size in memory. The H5 is about 10 GB
 on disk, and fixed-format numeric blocks load at about their stored size, so

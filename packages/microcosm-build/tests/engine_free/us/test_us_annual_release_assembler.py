@@ -647,6 +647,20 @@ def _relabel_reliability(manifest):
     )
 
 
+#: Weights added to the base folder after publication, unlike the H5's.
+_UNPUBLISHED_WEIGHTS = b"weights [1, 2, 3] beside the H5's [10, 20, 30]"
+
+
+def _add_unpublished_weights(manifest):
+    manifest["artifacts"]["unpublished_weights"] = {
+        "kind": "calibration",
+        "path": "unpublished_weights.npz",
+        "repo_id": LOCAL_REPO,
+        "sha256": hashlib.sha256(_UNPUBLISHED_WEIGHTS).hexdigest(),
+        "role": "calibration_weights",
+    }
+
+
 @pytest.mark.parametrize("cache", [False, True], ids=["folder", "cached-folder"])
 @pytest.mark.parametrize(
     ("edit", "claim"),
@@ -655,6 +669,7 @@ def _relabel_reliability(manifest):
         (_drop_limitations, "reviewed_limitations"),
         (_other_core, "built_with_core_package"),
         (_relabel_reliability, "county_reliability"),
+        (_add_unpublished_weights, r"declares \['unpublished_weights'\]"),
     ],
 )
 def test_an_assembled_local_annual_build_hands_over_only_its_published_base_claims(
@@ -670,6 +685,8 @@ def test_an_assembled_local_annual_build_hands_over_only_its_published_base_clai
     package = tmp_path / "package"
     base = local_build_folder(package)
     hub = _PublishedLocalBase(tmp_path / "hub", base, cache=cache)
+    if edit is _add_unpublished_weights:
+        (base / "unpublished_weights.npz").write_bytes(_UNPUBLISHED_WEIGHTS)
     if edit is not None:
         rewrite_json(base, package, "release_manifest.json", edit)
     candidate = write_local_candidate(base, package, tmp_path / "candidate")
@@ -691,7 +708,10 @@ def test_an_assembled_local_annual_build_hands_over_only_its_published_base_clai
     assert validate_release_dir(annual_dir, artifact_root=artifacts) == []
 
     def hand_over():
-        annual_projections.require_base_publication(hub, annual_dir, repo_id=LOCAL_REPO)
+        # As the publisher calls it, with the folder's artifact root.
+        annual_projections.require_base_publication(
+            hub, annual_dir, repo_id=LOCAL_REPO, artifact_root=artifacts
+        )
 
     if claim is None:
         hand_over()

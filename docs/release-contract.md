@@ -901,7 +901,8 @@ repository that has no `releases.json`.
      base build the Hub does not serve as the annual build carries it
      (`require_base_publication`; for a local-annual build, every carried
      artifact entry and inherited manifest claim, read from the Hub into a
-     new cache);
+     new cache, and no artifact the published base and the annual projection
+     do not declare);
   9. an emitter whose credential cannot write the repository
      (`write_access_problem`).
 

@@ -869,30 +869,88 @@ def is_annual_build(release_dir: Path | str) -> bool:
     return Path(release_dir).name in US_ANNUAL_BASE_RELEASES
 
 
+def _pointer(*fields: object) -> str:
+    """The JSON Pointer (RFC 6901) of a manifest field."""
+    return "".join(
+        "/" + str(field).replace("~", "~0").replace("/", "~1") for field in fields
+    )
+
+
 def inherited_release_claims(manifest: Mapping) -> dict[str, object]:
     """The fields of a release manifest that an annual build carries unchanged.
 
     Applied to a base build's release manifest, these are the claims its
     annual build inherits; applied to the annual build's own, the claims it
-    carries. Each ``metadata`` field appears as ``metadata.<field>``.
+    carries. Each claim is keyed by its JSON Pointer: ``/<field>``, and
+    ``/metadata/<field>`` for a ``metadata`` field. A top-level field named
+    ``metadata.note`` is therefore ``/metadata.note``, never the same claim as
+    the metadata field ``note`` (review of #1627).
     """
     claims: dict[str, object] = {
-        key: value
+        _pointer(key): value
         for key, value in manifest.items()
         if key not in _ANNUAL_RELEASE_FIELDS
     }
     metadata = manifest.get("metadata")
     for key, value in metadata.items() if isinstance(metadata, Mapping) else ():
         if key not in _ANNUAL_METADATA_FIELDS:
-            claims[f"metadata.{key}"] = value
+            claims[_pointer("metadata", key)] = value
     return claims
 
 
 def inherited_build_claims(manifest: Mapping) -> dict[str, object]:
-    """The fields of a build manifest that an annual build carries unchanged."""
+    """The fields of a build manifest that an annual build carries unchanged,
+    each keyed by its JSON Pointer, ``/<field>``."""
     return {
-        key: value for key, value in manifest.items() if key not in _ANNUAL_BUILD_FIELDS
+        _pointer(key): value
+        for key, value in manifest.items()
+        if key not in _ANNUAL_BUILD_FIELDS
     }
+
+
+def _annual_addition_keys(
+    release_dir: Path, manifest: Mapping, artifact_root: Path | None
+) -> frozenset[str]:
+    """The artifact keys a local-annual build adds to its base build's.
+
+    These are its projection manifest and acceptance report, each projected
+    year's H5 and each year's projection receipt, found as
+    :func:`validate_annual_projection_extension` finds them. That function
+    checks each one before the build is handed over; this only names them.
+    """
+    metadata = _object(manifest.get("metadata"), "release metadata")
+    artifacts = _object(manifest.get("artifacts"), "release artifacts")
+    evidence_key = metadata.get("annual_projection_manifest")
+    acceptance_key = metadata.get("annual_projection_acceptance")
+    if not isinstance(evidence_key, str) or not isinstance(acceptance_key, str):
+        raise ValueError(
+            "annual releases require projection manifest and acceptance artifact keys"
+        )
+    evidence_path, _ = _artifact(
+        evidence_key, artifacts, release_dir, artifact_root, build_folder=True
+    )
+    evidence = _read_json(evidence_path)
+    base_key = _object(evidence.get("base"), "projection base").get("dataset")
+    keys = {evidence_key, acceptance_key}
+    for years in _object(
+        metadata.get("dataset_years"), "metadata.dataset_years"
+    ).values():
+        keys.update(
+            key for key in _object(years, "annual family").values() if key != base_key
+        )
+    for record in _object(evidence.get("artifacts"), "projection artifacts").values():
+        receipt = (
+            record.get("projection_receipt") if isinstance(record, Mapping) else None
+        )
+        filename = receipt.get("path") if isinstance(receipt, Mapping) else None
+        keys.update(
+            key
+            for key, entry in artifacts.items()
+            if isinstance(filename, str)
+            and isinstance(entry, Mapping)
+            and entry.get("path") == filename
+        )
+    return frozenset(keys)
 
 
 _ABSENT = object()
@@ -954,7 +1012,11 @@ def _published_document(
 
 
 def require_base_publication(
-    api: object, release_dir: Path | str, *, repo_id: str
+    api: object,
+    release_dir: Path | str,
+    *,
+    repo_id: str,
+    artifact_root: Path | str | None = None,
 ) -> None:
     """Refuse unless the annual build's base national build is published.
 
@@ -976,11 +1038,15 @@ def require_base_publication(
     :func:`inherited_build_claims`) must equal the published one. Every
     artifact entry it carries must equal the published entry whole, not only
     in path and SHA-256, so a carried file keeps its published kind and role.
-    Both manifests are downloaded into a new, empty cache, never served from
-    the Hub client's cache. A base folder whose manifest was edited after
-    publication, such as one with a reviewed limitation removed or an
-    artifact relabelled, therefore cannot hand its edit to the annual build,
-    even when that folder is the client's cached snapshot.
+    It may declare no other artifact than those, its own projection files
+    (the projection manifest and acceptance report, each projected year's H5
+    and its receipt; the projection manifest is read from the build folder or
+    else from ``artifact_root``) and the files the emitter writes. Both
+    manifests are downloaded into a new, empty cache, never served from the
+    Hub client's cache. A base folder whose manifest was edited after
+    publication, such as one with a reviewed limitation removed, an artifact
+    relabelled or a file added, therefore cannot hand its edit to the annual
+    build, even when that folder is the client's cached snapshot.
 
     An absent manifest refuses; any other Hub failure, including one where the
     Hub could not be asked, propagates. ``api`` needs ``hf_hub_download``; for
@@ -1137,6 +1203,32 @@ def require_base_publication(
             f"{relabelled} artifact entries as {path_in_repo} declares them "
             "(kind, role and every other field, not only path and SHA-256); an "
             "annual build carries its base build's files as published"
+        )
+    # The assembler also copies every artifact the base folder declares, so
+    # one added there after publication would be handed over unless the
+    # annual build declares nothing but the published files, its own
+    # projection files and the files the emitter writes (review of #1627).
+    additions = _annual_addition_keys(
+        Path(release_dir),
+        manifest,
+        Path(artifact_root) if artifact_root is not None else None,
+    )
+    unpublished = sorted(
+        key
+        for key, entry in carried.items()
+        if key not in published_artifacts
+        and key not in additions
+        and not (
+            isinstance(entry, Mapping)
+            and PurePosixPath(str(entry.get("path", ""))).name in _PUBLISHER_FILES
+        )
+    )
+    if unpublished:
+        raise ValueError(
+            f"the local-annual build declares {unpublished}, which neither the "
+            f"published base build ({path_in_repo}) nor its annual projection "
+            "declares; an annual build adds only its projected years, their "
+            "receipts and its projection evidence to its base build's files"
         )
     release_claims = _differing_claims(
         inherited_release_claims(manifest), inherited_release_claims(published)

@@ -569,7 +569,10 @@ def publish_release_build(
         # that build with the same base-year H5 before anything is handed
         # over.
         annual_projections.require_base_publication(
-            _hub_api(), prepared.release_dir, repo_id=prepared.repository
+            _hub_api(),
+            prepared.release_dir,
+            repo_id=prepared.repository,
+            artifact_root=artifact_root,
         )
     return _hand_over(
         publication_request(prepared, make_current=make_current),

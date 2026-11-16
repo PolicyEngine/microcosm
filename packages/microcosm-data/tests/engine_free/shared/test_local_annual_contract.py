@@ -521,11 +521,11 @@ def _relabel_reliability(manifest: dict) -> None:
 
 
 _BASE_EDITS = [
-    ("release_manifest.json", _drop_limitations, "reviewed_limitations"),
-    ("release_manifest.json", _other_core, "built_with_core_package"),
-    ("release_manifest.json", _add_metadata_note, "metadata.note"),
+    ("release_manifest.json", _drop_limitations, "/reviewed_limitations"),
+    ("release_manifest.json", _other_core, "/built_with_core_package"),
+    ("release_manifest.json", _add_metadata_note, "/metadata/note"),
     ("release_manifest.json", _relabel_reliability, "county_reliability"),
-    ("build_manifest.json", _other_build_sha, "build_sha"),
+    ("build_manifest.json", _other_build_sha, "/build_sha"),
 ]
 
 
@@ -563,6 +563,84 @@ def test_a_local_base_edited_after_publication_passes_no_claim_to_its_annual_bui
     with pytest.raises(ValueError, match=rf"published base build's \['{claim}'\]"):
         annual_projections.require_base_publication(hub, annual_dir, repo_id=LOCAL_REPO)
     assert hub.fresh and all(hub.fresh)
+
+
+@pytest.mark.parametrize(
+    ("name", "content", "kind", "role"),
+    [
+        ("county_targets_extra.json", b'{"targets": []}', "diagnostics", "extra"),
+        (
+            "unpublished_weights.npz",
+            b"weights [1, 2, 3] beside the H5's [10, 20, 30]",
+            "calibration",
+            "calibration_weights",
+        ),
+    ],
+    ids=["diagnostics", "calibration-weights"],
+)
+def test_a_file_added_to_the_local_base_after_publication_is_not_handed_over(
+    local, tmp_path, name, content, kind, role
+) -> None:
+    """The assembler carries every artifact the base folder declares. One
+    added after the base was published is in neither the published manifest
+    nor the annual projection, so the hand-over refuses it, whatever kind or
+    role it claims (review of #1627)."""
+    import hashlib
+
+    folder, root = local
+    published = read_json(folder / "release_manifest.json")
+    published_build = read_json(folder / "build_manifest.json")
+    (folder / name).write_bytes(content)
+    key = Path(name).stem
+
+    def add(manifest: dict) -> None:
+        manifest["artifacts"][key] = {
+            "kind": kind,
+            "path": name,
+            "repo_id": LOCAL_REPO,
+            "sha256": hashlib.sha256(content).hexdigest(),
+            "role": role,
+        }
+
+    rewrite_json(folder, root, "release_manifest.json", add)
+    annual_dir = local_annual_build_folder_of(folder, root)
+    assert key in read_json(annual_dir / "release_manifest.json")["artifacts"]
+    hub = _LocalBaseOnTheHub(tmp_path / "hub", published, published_build)
+
+    with pytest.raises(ValueError, match=rf"declares \['{key}'\], which neither"):
+        annual_projections.require_base_publication(hub, annual_dir, repo_id=LOCAL_REPO)
+
+
+@pytest.mark.parametrize("published_top_level", [None, "published top level"])
+def test_a_dotted_claim_is_not_the_metadata_field_it_spells(
+    local, tmp_path, published_top_level
+) -> None:
+    """A top-level field named ``metadata.note`` and the metadata field
+    ``note`` are two claims. Keyed as one, the metadata value would hide a
+    top-level field added or edited after publication (review of #1627)."""
+    folder, root = local
+    rewrite_json(
+        folder,
+        root,
+        "release_manifest.json",
+        lambda m: m.setdefault("metadata", {}).update(note="published metadata"),
+    )
+    published = read_json(folder / "release_manifest.json")
+    if published_top_level is not None:
+        published["metadata.note"] = published_top_level
+    published_build = read_json(folder / "build_manifest.json")
+
+    def edit(manifest: dict) -> None:
+        manifest["metadata.note"] = "added or edited after publication"
+
+    rewrite_json(folder, root, "release_manifest.json", edit)
+    annual_dir = local_annual_build_folder_of(folder, root)
+    hub = _LocalBaseOnTheHub(tmp_path / "hub", published, published_build)
+
+    with pytest.raises(
+        ValueError, match=r"published base build's \['/metadata\.note'\]"
+    ):
+        annual_projections.require_base_publication(hub, annual_dir, repo_id=LOCAL_REPO)
 
 
 def test_a_claim_edited_into_the_annual_manifest_is_refused(annual, tmp_path) -> None:
