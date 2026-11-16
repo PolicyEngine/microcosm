@@ -587,6 +587,10 @@ configurable with `--county-target-loss-cap` and `--county-max-weight-ratio`
 (the pilot also tested 20). Later calibration stages resolve this profile from
 the checkpoint's recorded county surface. Ordinary runs retain their historical
 solver settings. County grades use source-household ESS; row ESS is diagnostic.
+Each delivered County Files year also gets a household measures sidecar
+(`tools/us_household_measures.py`) and a schema manifest
+(`tools/us_release_schema_manifest.py`); see
+[the County Files schema note](us-county-files-schema.md).
 
 The independent US annual static-aging candidate builder lives in
 `microcosm.build.us_annual_static_aging`; it consumes a pinned published parent

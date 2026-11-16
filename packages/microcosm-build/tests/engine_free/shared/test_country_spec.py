@@ -523,6 +523,8 @@ class TestBelgianPackage:
             "spec/vintages.yaml",
             "source_stages.json",
             "geography_spine.json",
+            "axiom_input_closure.json",
+            "axiom_rules_bindings.json",
             "chronicle_feed.json",
             "target_references.json",
             "precal_references.json",
