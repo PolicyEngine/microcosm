@@ -7,6 +7,21 @@ area using identified, versioned mappings. Distinct clones may receive different
 areas subject to their observed source constraints. The assigned location then
 remains fixed through subsequent enrichment, calibration and analysis views.
 
+Amended for the UK on 4 November 2026 (microcosm#931): for the UK, assignment
+comes before enrichment. Once the spine's source stages have run, every FRS
+household gets K geographic clones, and each clone draws one small census area
+within its FRS region. The draw keeps to the address's deprivation (IMD)
+decile and samples areas by their households in the household's council-tax
+band. Where an input is missing or its cell is empty, the draw falls back,
+level by level, to the region alone. Every later stage runs on the clones and
+sees each clone's area. The SPI support channel's copies and its income band
+donors draw an area of their own in `spi_copy_areas`, once both stages have
+made them. Every later copy keeps its parent's area. Each household's area then
+stays fixed through enrichment, calibration and export. The dense line builds
+on a spine of K clones and the national line on a spine of one, and both ship
+the areas (María's rulings of 4 and 6 November 2026). For the UK this order
+replaces the one above. [The UK spine](#the-uk-spine) gives its stages.
+
 > These US passages describe the work of PolicyEngine/microcosm#893, which
 > closed unmerged on 9 October 2026. Its modules, graphs and receipts never
 > reached main.
@@ -31,9 +46,13 @@ remain pending. The older results below retain their original source scope.
 
 Geography is a declarative country capability backed by shared graph operators.
 A country declares its atomic area type, code system and vintage, source mapping
-artifacts, observed-geography constraints and sampling-weight convention. The UK
-declaration can select an area system by nation. Adding a country should not
-require writing a country-specific assignment or derivation kernel.
+artifacts, observed constraints and sampling-weight convention. An observed
+constraint can be a place, such as the FRS region, or a recorded attribute of
+the address, such as its deprivation decile. The weight can be chosen per
+household (`weight_by`), and a draw whose constraint cells can be empty declares
+a fallback ladder. The UK declaration can select an area system by nation.
+Adding a country should not require writing a country-specific assignment or
+derivation kernel.
 
 The shared assignment operator selects the atomic area using the declared
 support and stable household identity. Shared lookup/join operations derive
@@ -52,15 +71,18 @@ The existing country-spec geography declaration is a starting point, but its
 legacy clone-and-assign contract and country-specific runtime references do not
 yet implement this shared atomic-area contract. Preserve those compatibility
 paths while the shared operators and country adapters receive their own checks.
+The UK full build no longer keeps the legacy ladder draw (microcosm#931): the
+spine declares its area stages in `uk/spec/sources.yaml`, and
+`uk/spec/geography.yaml` still attests the ladder draw, at `phase: legacy`.
 
 ```mermaid
 flowchart LR
-  S[Complete survey multispine including clones] --> A[Assign one small area per resulting household]
+  S["Survey households and the clones made before the draw"] --> A[Assign one small area per resulting household]
   C[Observed survey geography constraints] --> A
   L[Versioned small-area support] --> A
   A --> D[Derive larger geographies]
   M[Versioned geographic mappings] --> D
-  D --> E[Subsequent enrichment retains location]
+  D --> E["Enrichment keeps each location. Later copies inherit it or draw their own"]
   E --> R[Rules and calibration]
   R --> P[Pruned analysis file retains location]
 ```
@@ -99,9 +121,11 @@ the [Census PUMA guidance](https://www.census.gov/programs-surveys/geography/gui
 
 ## Required behavior
 
-- Respect observed source constraints, such as ACS PUMA and FRS region. Record
-  inferred geographic detail as modeled. Preserve observed source geography
-  separately from the assigned location.
+- Respect observed source constraints, such as ACS PUMA, FRS region and the FRS
+  IMD decile. A recorded attribute of the address that is not a place, such as
+  the FRS council-tax band, may weight the draw instead. Record inferred
+  geographic detail as modeled. Preserve observed source geography separately
+  from the assigned location.
 - Bind each draw to a stable household identity, seed and assignment definition.
   Reordering rows or selecting an existing household must not redraw its location.
   Changed source support or boundary mappings produce a new identified revision.
@@ -109,9 +133,16 @@ the [Census PUMA guidance](https://www.census.gov/programs-surveys/geography/gui
   clones have distinct draw identities and may receive different anchors.
   Materialized county, district and other fields must agree with that household's
   selected anchor. Source geography remains a separate observed constraint.
-- Show assignment and derivation as separate operations in the graph. Expose the
-  source constraints, support, sampling weights, mapping conventions and judgment
-  annotations in the inspector.
+  In the UK, Northern Ireland's BRMA is not read off its area: with no open BRMA
+  geography, the spine draws it from census counts, as the retired `frs_brma`
+  stage did.
+- Show assignment and derivation as separate operations: as graph nodes, or as
+  declared parts of one stage. The UK spine's `atomic_area_assign` declares its
+  constraints, weight rule, fallback ladder and derived layers in one operation,
+  and a gate of its own checks the derived mappings
+  (`uk_atomic_area_mapping_integrity`). Expose the source constraints, support,
+  sampling weights, mapping conventions and judgment annotations in the
+  inspector.
 - Refuse missing, ambiguous or incompatible mappings unless an explicit,
   source-supported resolution rule is part of the assignment definition.
 - Verify inheritance and mapping consistency again on every pruned export.
@@ -126,6 +157,21 @@ The shared implementation now lives in `microcosm.build.atomic_geography` and
 normalized, pinned support files. The graph interfaces and legacy country
 operators are unchanged. Country configuration and native support integration
 remain necessary before these nodes can assign locations in a release build.
+
+The UK spine does not compose these nodes. Its `atomic_area_assign` and
+`spi_copy_areas` stages call the operator's assignment, derivation and
+validation in process, and the UK's release lines take their areas from the
+spine (microcosm#931). The same work added country-neutral pieces beside the
+operator:
+
+- `microcosm.build.clone_expansion` makes K clones of every record, each at an
+  equal share of its weight.
+- `atomic_support_conditioning.choose_fallback_levels` gives each household the
+  first level of a declared fallback ladder whose cell has mass.
+- `atomic_support_expectations.draw_cell_expectations` gives a draw cell's exact
+  expected value under the draw's own weights.
+- `copy_agreement` checks that copies still equal their parents on declared
+  columns.
 
 The support contract uses deterministic NPZ bytes with no object arrays. It has
 one unique string code per atomic area; every mapping column identifies its
@@ -180,23 +226,141 @@ acceptance. The separate atomic survey graph now provides that block assignment
 and derivation connection before enrichment. Its population-only national block
 support and source review are recorded below.
 
-The UK full build assigns geography with the shared operators on three
-support artifacts (E&W 2021 Output Areas, Scotland 2022 Output Areas, NI 2021
-Data Zones) rebuilt from published ONS/NRS/NISRA lookups and pinned in
-`uk/spec/sources.yaml` and `uk/uk_atomic_area_supports.provenance.json`; every
-mapping column carries its publisher relation (`exact`, `best_fit`,
-`official_tabulation`) and vintage. The draw is single-stage, one atomic area
-by census household count within the household's FRS region, keyed by the
-post-clone household identity (`uk.full.identity`, `household_draw_key`), so
-assignment is stable under row reordering, subsets and pool growth. The
-previous area-based ladder in `uk_runtime/geography_ladder.py` (constituency
-within region by household counts, then OA within constituency by population,
-on a shared seeded stream) remains available as `--geography-assignment
-legacy` for measurement builds only, and still supplies the rosters and
-dispersion checks used by target compilation.
+### The UK spine
 
-Each support also has a conditioned form for the geography-first draw
-(microcosm#931), which only that move binds. It is declared in
+The UK spine assigns geography (microcosm#931). It draws on three atomic-area
+supports: England and Wales 2021 Output Areas, Scotland 2022 Output Areas and
+Northern Ireland 2021 Data Zones. They are rebuilt from published ONS, NRS and
+NISRA lookups and pinned in `uk/spec/sources.yaml` and
+`uk/uk_atomic_area_supports.provenance.json`. Every mapping column carries its
+publisher relation (`exact`, `best_fit`, `official_tabulation`) and vintage.
+The draw reads their conditioned forms (below). These spine stages run in this
+order:
+
+1. The source stages, from `frs_spine` to `frs_annual_income_spells`, run on
+   the survey households, before any clone exists. `frs_spine` writes two
+   inputs of the draw. `imd_decile` is the address's IMD decile within its own
+   nation, or 0 where the survey gives none. `council_tax_band_observed` says
+   whether the household's council-tax band is one the survey gives and its
+   region uses.
+2. `geographic_expand` gives every FRS household K geographic clones, each with
+   an equal share of its design weight. The spine build's `--n-clones` sets K,
+   one by default. A dense release builds on the local doctrine's K, 15, and the
+   national line on one clone.
+3. `geographic_identity` keys each clone. Its `geography_household_key` is
+   `household_draw_key` over the FRS source, the household's FRS vintage, its
+   true source and its clone path, read from the lineage columns, never from
+   ids, weights or values.
+4. `atomic_area_assign` draws one atomic area for each clone with the shared
+   operator, and derives the ladder columns from the support's mappings. Every
+   level of the draw keeps the household's FRS region. A household takes the
+   first level whose inputs it has and whose cell has mass in the weight it
+   samples by:
+   - L0: its decile, sampling areas by their households in its band;
+   - L1: its decile, sampling by all households;
+   - L2: no decile, sampling by households in its band;
+   - L3: no decile, sampling by all households.
+
+   Northern Ireland, which has domestic rates, samples by all households, at L1
+   or L3. The draw reads the band and never changes it.
+5. `local_authority` resolves the engine's `local_authority` from the drawn
+   authority code, fail-closed. `rfdr` sets `in_rural_fuel_duty_relief_area`
+   from the drawn output area.
+6. `frs_take_up`, `frs_person_draws` and `frs_household_draws` run on every
+   clone. `area_brma`, in the place `frs_brma` held, reads each Great Britain
+   household's BRMA off its drawn area through the area-to-BRMA layer. Northern
+   Ireland has no open BRMA geography, so its households draw a BRMA from census
+   counts, as `frs_brma` did.
+7. `spi_support_channel` and `spi_income_band_donors` copy FRS households whose
+   incomes the SPI income stage then draws from SPI taxpayers' records.
+   `spi_copy_areas` gives each such copy a key over its own copy path and an
+   area of its own. The area is drawn within the copy's region by all
+   households (L3), not by its parent's decile or band (María's ruling of
+   6 November 2026). The stage then sets the copy's local authority, BRMA and
+   rural fuel duty relief flag as the stages above do. Northern Ireland's
+   copies draw their BRMA from census counts on their own benefit units
+   (María's ruling of 11 November 2026).
+8. Later stages price or place by area:
+   - `spi_housing_shell` prices the Great Britain copies' council tax by the
+     2024-25 statute at their region's expected Band D, for the band the shell
+     draws for them.
+   - `private_rent` reads each Great Britain private rent off its BRMA's list of
+     rents, at its rank among the FRS private rents of its region and size.
+   - `council_tax_localise`, just before the WAS chain, takes each Great Britain
+     household's council tax to its drawn local authority (María's rulings of
+     6, 13 and 14 November 2026).
+   - In `was_wealth`, each England and Wales owner with a positive drawn main
+     residence reads its value off its constituency's sale-price distribution,
+     at the owner's rank within its FRS region, and the chain's later wealth
+     draws condition on it (María's ruling of 6 November 2026).
+9. Copies made after `spi_copy_areas`, by `high_value_home_support`,
+   `cgt_support_split`, `cgt_incidence_clone` and `cgt_residential_split`, keep
+   their parent's key, area, ladder, local authority, BRMA, rural fuel duty
+   relief flag, council tax and rebate.
+
+A clone's draw keys on its geography key, on the stage's own stream
+(`uk-spine-atomic-area-v1`, seed 0), and its level depends only on its own
+inputs and the support. So its area does not depend on row order, on the
+sample or on any other household, and clone k draws the same area at every K
+above k. The engine reads each clone's local authority, BRMA and rural fuel
+duty relief flag. The decile and the band flag are not engine inputs, so the
+release boundary drops both.
+
+The dense and national lines draw no areas of their own. Each builds only on a
+spine whose stages assign areas (`uk_runtime.spine_posture`), and takes that
+spine's clones and areas as they stand. The ladder in
+`uk_runtime/geography_ladder.py` no longer draws areas in the full build:
+`--geography-assignment` and its legacy mode retired with the dense line's own
+expansion, identity and geography nodes. The dense role still reads the ladder
+(`--ladder`) for the rosters and dispersion checks that target compilation
+uses.
+
+The national line builds on a spine of one geographic clone whose households
+carry their areas (María's rulings of 4 and 6 November 2026). Its release drops
+the clone indices, which are constant at one clone, and ships the three area
+codes under the consumers' names, as the dense release does.
+[UK full-build graph](uk-full-build-graph.md) describes the national role.
+
+Copy ids do not depend on K (María's ruling of 7 November 2026). Each UK copy
+layer owns a fixed decimal field of the id (`uk_runtime.copy_id_table`). Copy k
+of a row takes the row's id plus k times its layer's radix, on all five id
+columns. Clone 0 keeps the survey's ids, and every copy id depends only on its
+source id and its copy path. Draws keyed on a row's own id or key, and counts
+taken within each clone, give clone 0 what the one-clone spine draws. Through
+`area_brma` only `frs_person_draws`' apprentice walk reads summed weights, and
+a near-tie of those sums can move clone 0 at a K that is not a power of two.
+The tests hold clone 0 to the one-clone spine on their invented frames. Clone
+0's SPI copies take the same keys and areas at every K, for the copies both
+spines make. Later stages that fit, rank, rake or scale over the whole frame
+pool the clones, so their outputs nest only approximately.
+[UK household identity after cloning](uk-atomic-household-lineage.md#ids)
+gives the id fields.
+
+FRS-trained fits see each survey record once (María's ruling of 6 November
+2026). A fit folds a record's geographic clones into one training row, at their
+summed weight, where the clones agree on what the fit reads. Clones that differ,
+through an area or a draw of their own, stay rows of their own, each variant at
+the summed weight of the clones that share it. Other copies are not folded.
+Receipt counts and their floors count a household's clones and copies once, as
+one source household.
+[UK household identity after cloning](uk-atomic-household-lineage.md#shared-lineage-readers)
+lists the readers and the fits that fold.
+
+The spine checks its areas at its gate boundaries. At the assembled boundary,
+`uk_atomic_area_mapping_integrity` checks the base draw's derived mappings. At
+the transferred boundary, gates check the copies' draw, each copy's agreement
+with its parent and the engine's area domains.
+[UK full-build graph](uk-full-build-graph.md) describes the build's gates.
+
+Two pieces are later work (microcosm#931). Area predictors for the
+donor-survey stages, such as an area classification, come one stage at a time.
+Seating the SPI copies by area would weight their area draw by area incomes,
+and any tilt of their drawn band toward the area's band mix waits for it
+(María's ruling of 14 November 2026). Today the copies draw within their region
+by households alone.
+
+Each support also has a conditioned form, which the spine's area draw reads
+(microcosm#931). It is declared in
 `uk/spec/sources.yaml` with role `uk_atomic_area_conditioned_support`, beside
 the support it extends, and recorded in
 `uk/uk_atomic_area_conditioned_supports.provenance.json`;
@@ -223,18 +387,32 @@ adds two kinds of column:
   - Northern Ireland has domestic rates, so its support carries no bands.
 
 The provenance lists every zero-mass draw cell (FRS region by decile, and
-region alone, for each weight column), so the move can choose a draw's fallback
-ahead of time instead of meeting an empty cell. `spine.yaml` declares the FRS
-channel's `observed_constraints: [imd_decile]`, and the UK country adapter
-refuses a spec in which the supports, their conditioned forms and that
-declaration disagree. The shared pieces (`atomic_support_conditioning`: modal
-codes, exact apportionment and zero-mass cells) name no country's columns.
+region alone, for each weight column). The spine's draw never meets one: before
+it draws, the shared chooser
+(`atomic_support_conditioning.choose_fallback_levels`) gives each household the
+first level of its ladder whose cell has mass in the weight it samples by there,
+and refuses a household no level takes. `spine.yaml` declares the FRS channel's
+`observed_constraints: [imd_decile]`, and the UK country adapter refuses a spec
+in which the supports, their conditioned forms and that declaration disagree.
+The shared pieces (`atomic_support_conditioning`: modal codes, exact
+apportionment, zero-mass cells and the fallback chooser;
+`atomic_support_expectations`: a draw cell's exact expected value under the
+draw's own weights) name no country's columns.
+
+The spine build takes the three conditioned supports and, before any stage
+runs, holds each file to the SHA-256 and size `uk/spec/sources.yaml` registers
+for it. Its sidecar records the binding in a `geography` block, and a dense
+release candidate's spine must carry a release's binding
+(`country_adapter.uk_spine_geography_binding_failures`).
+[UK full-build graph](uk-full-build-graph.md) describes the build's flags.
 
 The Northern Ireland source builder currently infers Data Zone constituencies
 using the modal active-postcode constituency. Review the official
 [NISRA constituency aggregation and lookup resources](https://www.nisra.gov.uk/publications/census-2021-output-geography-information-papers)
 before choosing or replacing that approximation. Source existence is not
 acceptance of a particular lookup or its application to the population.
+
+### US atomic survey work (microcosm#893)
 
 > These US passages describe the work of PolicyEngine/microcosm#893, which
 > closed unmerged on 9 October 2026. Its modules, graphs and receipts never
