@@ -11,8 +11,15 @@ explicit selection:
 - ``{"resource": name, "path": [...], "encoding": e}`` reads the value at
   ``path`` (a list of object keys) inside the named spec resource. ``e`` is
   ``"value"`` (the JSON value, lists as tuples), ``"json"`` (an object as
-  canonical JSON text) or ``"sha256"`` (the SHA-256 of the whole resource's
-  bytes, so the node's key moves with that one resource only).
+  canonical JSON text) or ``"sha256"`` (the SHA-256 of the whole resource, as
+  below, so the node's key moves with that one resource only). A ``"json"``
+  selection of a whole target-reference document (one that carries
+  ``target_references``) keeps only ``REFERENCE_DOCUMENT_KEYS``, the keys the
+  reference kernels read (docs/transport-graph-kernels.md); the resource file
+  keeps its other keys, and its ``"sha256"`` selection is unchanged: the
+  digest ``resource_hashes`` records for the resource (its canonical JSON's
+  digest when none is recorded), or the effective view's digest for the
+  reference and interval resources that ``reference_profiles`` resolves.
 - ``{"prepared": "engine_refs"}`` is the canonical JSON of the prepared
   binding-id -> engine reference map that preparation built.
 - ``{"prepared": "unit_entities"}`` is the canonical JSON of every declared
@@ -91,7 +98,10 @@ from microcosm.build.money_normalization import (
     money_concept_columns,
     validate_money_normalization,
 )
-from microcosm.build.reference_profiles import resolve_reference_profiles
+from microcosm.build.reference_profiles import (
+    REFERENCE_DOCUMENT_KEYS,
+    resolve_reference_profiles,
+)
 from microcosm.calibrate.ordered_kernels import OUTPUT_TYPES
 from microcosm.frame.concepts import ProvenanceClass, concept_for_column
 from microcosm.frame.kernels import missing_relation_inputs
@@ -4138,7 +4148,9 @@ def _resource_param(
 
     Selected roots cannot be null; skeleton JSON roots must be objects.
     Entitlement JSON may also select lists. Value roots must not be objects.
-    Optional JSON fields remain unchanged.
+    Optional JSON fields remain unchanged, except that a whole-resource JSON
+    selection of a reference document keeps only ``REFERENCE_DOCUMENT_KEYS``;
+    a selection with a path keeps every field.
     """
 
     if set(value) - {"resource", "path", "encoding"} or "resource" not in value:
@@ -4174,6 +4186,25 @@ def _resource_param(
             raise ValueError(
                 f"Resource {name!r} path {list(path)!r} json selection must be an object."
             )
+        if (
+            not path
+            and isinstance(document, Mapping)
+            and "target_references" in document
+        ):
+            # The reference kernels refuse keys they do not read
+            # (target_kernels.parse_reference_document); the file keeps them.
+            # Every node that selects a whole reference document, whatever
+            # its kernel, receives this trimmed form. A node whose kernel
+            # needs another key of a raw reference file selects that key with
+            # a path; the view reference_profiles resolves has already dropped
+            # those keys. Activation's gap, exemption and holdout checks read
+            # only target_references, which the trim keeps; its profile
+            # resolution reads the raw file, as composition's does.
+            document = {
+                key: item
+                for key, item in document.items()
+                if key in REFERENCE_DOCUMENT_KEYS
+            }
         return canonical_json(document).decode("utf-8")
     if isinstance(document, Mapping):
         raise ValueError(

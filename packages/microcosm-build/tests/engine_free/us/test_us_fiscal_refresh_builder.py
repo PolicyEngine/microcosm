@@ -11178,7 +11178,10 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
         zero_variables=(),
         system=None,
         assert_no_formula_owned_columns=True,
+        period_only=False,
     ):
+        # The base simulation and the reform read PERIOD alone.
+        assert period_only
         datasets.append(
             (
                 frame_arg,
@@ -15529,6 +15532,7 @@ def _install_multi_reform_fakes(
         zero_variables=(),
         system=None,
         assert_no_formula_owned_columns=True,
+        period_only=False,
     ):
         return {"frame": frame_arg, "zero_variables": tuple(zero_variables)}
 
