@@ -59,6 +59,31 @@ nonzero for failed fetches or input problems; commit blockers are reported in
 `resolve.log` and do not alone change that mode's exit status. A real run refuses
 both input problems and commit blockers.
 
+### A build from main
+
+The feed and crosswalk defaults are the published run's, so a build from a
+newer main commit usually needs settings beyond `COMMIT`. Run `--resolve`
+first and set what its blockers name:
+
+- **Feed.** When `us/chronicle_feed.json` at the commit pins another
+  `facts_sha256`, the blocker names it. Set `FEED` to that feed's file,
+  `FEED_SHA` to the digest and `FEED_BYTES` to the file's size.
+- **Crosswalk.** When the packaged congressional-district vintage crosswalk
+  changed, the blocker gives the commit's digest. Set `CROSSWALK_SHA` to it
+  once the change is reviewed.
+- **Interpreter.** A fresh worktree syncs with
+  `uv sync --python "$UV_SYNC_PYTHON"` (default `3.14`). Without it uv takes
+  the newest installed CPython, and the lock's torch wheels stop at 3.14.
+- **Emitter.** `--resolve` reports the `microcosm-emitter` the release would
+  start (`MICROCOSM_EMITTER_COMMAND`, then `PATH`) against the commit's
+  `minimum_emitter_version.json`. With `MICROCOSM_TELEMETRY_REQUIRED=1` a
+  missing or older emitter is a blocker, because the release would stop
+  before any work. Otherwise it is a note: the release would run without
+  collector telemetry or staging hand-overs. A value other than `1`, `0` or
+  unset is a blocker, because the release refuses it. The driver exports both
+  settings when the settings file sets them. Publisher preflight starts no
+  emitter.
+
 The example retains the historical d122 dense whole-base national/state
 settings, batch size 2000, export-mass reference and d490 tail register from the
 published run. Those are operator settings, not a new waiver. The driver permits

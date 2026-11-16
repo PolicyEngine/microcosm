@@ -209,6 +209,288 @@ printf '%s\\n' "${#INPUT_PROBLEMS[@]}"
     )
 
 
+def _tiny_main(tmp_path: Path, files: dict[str, str]) -> tuple[Path, str]:
+    """A throwaway local repository standing in for ``$MAIN`` at one commit."""
+
+    main = tmp_path / "main-repo"
+    for relative, text in files.items():
+        path = main / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    git = [
+        "git",
+        "-C",
+        str(main),
+        "-c",
+        "user.name=fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        "-c",
+        "core.hooksPath=/dev/null",
+    ]
+    for args in (
+        ["init", "-q"],
+        ["add", "-A"],
+        ["commit", "-q", "-m", "fixture"],
+        # check_commit looks for the commit on origin's branches.
+        ["update-ref", "refs/remotes/origin/main", "HEAD"],
+    ):
+        subprocess.run([*git, *args], check=True, capture_output=True, timeout=20)
+    sha = subprocess.run(
+        [*git, "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    ).stdout.strip()
+    return main, sha
+
+
+_FEED_PIN_REL = "packages/microcosm-build/src/microcosm/build/us/chronicle_feed.json"
+_CROSSWALK_REL = (
+    "packages/microcosm-build/src/microcosm/build/us_runtime/data/"
+    "congressional_district_vintage_crosswalk.csv"
+)
+_EMITTER_FLOOR_REL = (
+    "packages/microcosm-build/src/microcosm/build/minimum_emitter_version.json"
+)
+
+
+def _report_lines(commands: str) -> str:
+    return (
+        commands
+        + """
+for x in ${COMMIT_NOTES[@]+"${COMMIT_NOTES[@]}"}; do printf 'NOTE %s\\n' "$x"; done
+for x in ${COMMIT_BLOCKERS[@]+"${COMMIT_BLOCKERS[@]}"}; do printf 'BLOCKER %s\\n' "$x"; done
+"""
+    )
+
+
+def test_stale_feed_and_crosswalk_blockers_name_the_commits_pins(
+    tmp_path: Path,
+) -> None:
+    """The driver keeps the published run's pins by default; a commit that
+    moved them gets blockers naming the commit's own values, so a rerun's
+    settings can copy them."""
+
+    crosswalk = "state,district\nCT,1\n"
+    main, sha = _tiny_main(
+        tmp_path,
+        {
+            _FEED_PIN_REL: json.dumps({"facts_sha256": "c" * 64}, indent=2) + "\n",
+            _CROSSWALK_REL: crosswalk,
+        },
+    )
+    result = _input_settings_result(
+        tmp_path,
+        {"MAIN": str(main), "FEED_SHA": "a" * 64, "CROSSWALK_SHA": "b" * 64},
+        _report_lines(f"\ncheck_commit {sha} {sha}\n"),
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    lines = result.stdout.decode().splitlines()
+    digest = hashlib.sha256(crosswalk.encode()).hexdigest()
+    assert any(
+        line.startswith("BLOCKER ")
+        and f"does not pin facts_sha256 {'a' * 64}" in line
+        and f"it pins {'c' * 64}" in line
+        for line in lines
+    ), lines
+    assert any(
+        line.startswith("BLOCKER ")
+        and f"crosswalk at {sha} is {digest}, not {'b' * 64}" in line
+        for line in lines
+    ), lines
+
+
+def test_matching_feed_and_crosswalk_pins_are_notes_not_blockers(
+    tmp_path: Path,
+) -> None:
+    crosswalk = "state,district\nCT,1\n"
+    digest = hashlib.sha256(crosswalk.encode()).hexdigest()
+    main, sha = _tiny_main(
+        tmp_path,
+        {
+            _FEED_PIN_REL: json.dumps({"facts_sha256": "c" * 64}, indent=2) + "\n",
+            _CROSSWALK_REL: crosswalk,
+        },
+    )
+    result = _input_settings_result(
+        tmp_path,
+        {"MAIN": str(main), "FEED_SHA": "c" * 64, "CROSSWALK_SHA": digest},
+        _report_lines(f"\ncheck_commit {sha} {sha}\n"),
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    lines = result.stdout.decode().splitlines()
+    assert f"NOTE us/chronicle_feed.json at {sha} pins facts_sha256 {'c' * 64}" in lines
+    assert f"NOTE packaged CD vintage crosswalk at {sha} = {digest}" in lines
+    blockers = [line for line in lines if line.startswith("BLOCKER ")]
+    assert not [line for line in blockers if "chronicle_feed.json" in line], blockers
+    assert not [line for line in blockers if "CD vintage crosswalk" in line], blockers
+
+
+def _emitter_stub(tmp_path: Path, answer: str) -> Path:
+    return write_executable(
+        tmp_path / "emitter-stub",
+        "#!/bin/bash\n"
+        '[ "$#" = 1 ] && [ "$1" = version ] || exit 7\n'
+        f"printf '%s\\n' {shlex.quote(answer)}\n",
+    )
+
+
+@pytest.mark.parametrize("required", [False, True])
+@pytest.mark.parametrize(
+    ("answer", "expected"),
+    [
+        ('{"emitter_version": "0.16.0", "protocol_versions": [1]}', "ok"),
+        ('{"emitter_version": "0.17.2"}', "ok"),
+        ('{"emitter_version": "0.13.0"}', "older than the commit's floor 0.16.0"),
+        ('{"emitter_version": "0.9.10"}', "older than the commit's floor 0.16.0"),
+        ("not json", "reported no release version"),
+        ('{"emitter_version": "dev"}', "reported no release version"),
+        (None, "no microcosm-emitter found"),
+    ],
+)
+def test_emitter_is_held_to_the_commits_floor(
+    tmp_path: Path, answer: str | None, expected: str, required: bool
+) -> None:
+    main, sha = _tiny_main(
+        tmp_path,
+        {_EMITTER_FLOOR_REL: '{\n  "minimum_emitter_version": "0.16.0"\n}\n'},
+    )
+    overrides = {"MAIN": str(main)}
+    if answer is None:
+        # No command configured and none on this PATH (system tools only).
+        overrides.update(MICROCOSM_EMITTER_COMMAND="", PATH="/usr/bin:/bin")
+    else:
+        overrides["MICROCOSM_EMITTER_COMMAND"] = str(_emitter_stub(tmp_path, answer))
+    if required:
+        overrides["MICROCOSM_TELEMETRY_REQUIRED"] = "1"
+    result = _input_settings_result(
+        tmp_path,
+        overrides,
+        _report_lines(f"\nCOMMIT_NOTES=(); COMMIT_BLOCKERS=()\ncheck_emitter {sha}\n"),
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    lines = result.stdout.decode().splitlines()
+    assert len(lines) == 1, lines
+    if expected == "ok":
+        assert lines[0].startswith("NOTE microcosm-emitter "), lines
+        assert "meets the commit's floor 0.16.0" in lines[0]
+        return
+    assert expected in lines[0], lines
+    if required:
+        assert lines[0].startswith("BLOCKER "), lines
+        assert "would stop before any work" in lines[0]
+    else:
+        assert lines[0].startswith("NOTE "), lines
+        assert "without collector telemetry" in lines[0]
+
+
+def test_emitter_settings_reach_the_stages_and_bad_values_block(
+    tmp_path: Path,
+) -> None:
+    """The release reads both settings from its environment, so a value set
+    in the settings file is exported, and a value the release would refuse is
+    a blocker however the emitter looks."""
+
+    main, sha = _tiny_main(
+        tmp_path,
+        {_EMITTER_FLOOR_REL: '{"minimum_emitter_version": "0.16.0"}\n'},
+    )
+    emitter = str(_emitter_stub(tmp_path, '{"emitter_version": "0.16.0"}'))
+    exported = _input_settings_result(
+        tmp_path,
+        {
+            "MAIN": str(main),
+            "MICROCOSM_TELEMETRY_REQUIRED": "1",
+            "MICROCOSM_EMITTER_COMMAND": f"  {emitter} ",
+        },
+        "\nprintenv MICROCOSM_TELEMETRY_REQUIRED\nprintenv MICROCOSM_EMITTER_COMMAND\n"
+        + _report_lines(f"COMMIT_NOTES=(); COMMIT_BLOCKERS=()\ncheck_emitter {sha}\n"),
+    )
+    assert exported.returncode == 0, exported.stderr.decode()
+    assert exported.stdout.decode().splitlines() == [
+        "1",
+        f"  {emitter} ",
+        f"NOTE microcosm-emitter 0.16.0 at {emitter} meets the commit's floor 0.16.0",
+    ]
+    refused = _input_settings_result(
+        tmp_path,
+        {
+            "MAIN": str(main),
+            "MICROCOSM_TELEMETRY_REQUIRED": "yes",
+            "MICROCOSM_EMITTER_COMMAND": emitter,
+        },
+        _report_lines(f"\nCOMMIT_NOTES=(); COMMIT_BLOCKERS=()\ncheck_emitter {sha}\n"),
+    )
+    assert refused.returncode == 0, refused.stderr.decode()
+    assert refused.stdout.decode().splitlines() == [
+        "BLOCKER MICROCOSM_TELEMETRY_REQUIRED is 'yes'; the release accepts only "
+        "1, 0 or unset and refuses anything else"
+    ]
+
+
+def test_emitter_check_skips_a_commit_without_a_floor(tmp_path: Path) -> None:
+    main, sha = _tiny_main(tmp_path, {"README.md": "fixture\n"})
+    result = _input_settings_result(
+        tmp_path,
+        {"MAIN": str(main), "MICROCOSM_EMITTER_COMMAND": str(tmp_path / "never-run")},
+        _report_lines(f"\nCOMMIT_NOTES=(); COMMIT_BLOCKERS=()\ncheck_emitter {sha}\n"),
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    assert result.stdout.decode().splitlines() == [
+        f"NOTE no readable {_EMITTER_FLOOR_REL} at {sha}; emitter not checked"
+    ]
+
+
+@pytest.mark.parametrize("setting", [None, "3.13"])
+def test_worktree_sync_names_its_interpreter(
+    tmp_path: Path, setting: str | None
+) -> None:
+    """A fresh worktree's uv sync names an interpreter the lock has wheels
+    for; without one uv takes the newest installed CPython."""
+
+    recorded = tmp_path / "uv-args"
+    uv = write_executable(
+        tmp_path / "uv-stub",
+        "#!/bin/bash\n"
+        f'printf "%s\\n" "$@" > {shlex.quote(str(recorded))}\n'
+        "mkdir -p .venv/bin\n"
+        "printf '#!/bin/bash\\nexit 0\\n' > .venv/bin/python\n"
+        "chmod +x .venv/bin/python\n",
+    )
+    commands = (
+        "\ngit() {\n"
+        '  case "$3" in\n'
+        '    worktree) mkdir -p "$6" ;;\n'
+        "    status) : ;;\n"
+        '    rev-parse) printf "%s\\n" "$FIXTURE_SHA" ;;\n'
+        "  esac\n"
+        "}\n"
+        f"FIXTURE_SHA={'d' * 40}\n"
+        + _function("ensure_worktree")
+        + '\nensure_worktree "$FIXTURE_SHA"\n'
+    )
+    run_root = tmp_path / "run-root"
+    run_root.mkdir()
+    overrides = {"UV": str(uv), "RUN_ROOT": str(run_root)}
+    if setting is not None:
+        overrides["UV_SYNC_PYTHON"] = setting
+    result = _input_settings_result(tmp_path, overrides, commands)
+    assert result.returncode == 0, result.stderr.decode()
+    assert recorded.read_text(encoding="utf-8").splitlines() == [
+        "sync",
+        "--python",
+        setting or "3.14",
+        "--all-packages",
+        "--locked",
+        "--extra",
+        "us",
+    ]
+
+
 def test_shell_scripts_are_valid_bash() -> None:
     scripts = _shell_sources()
     assert scripts
