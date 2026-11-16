@@ -124,6 +124,18 @@ housing households. See the [Census 2024 ASEC dictionary and Appendix D](https:/
 Carrying this field leaves the CPS SPM universe unchanged: its sample includes
 these noninstitutional group-quarters residents, unlike the ACS SPM sample.
 
+A frame that carries `HRHTYPE` leaves no household to the roster alone. A
+missing code refuses on any household on the ASEC arm, and on any household
+without `TYPEHUGQ`. The arm comes from the first tag present,
+`household_spine` before `household_support_channel`, as the SPM universe
+producer reads it. ACS households carry `TYPEHUGQ` and need no `HRHTYPE`, so stacked
+ACS rows pass. A household that carries both codes refuses. The pooled ASEC
+frame cannot trip these checks. `_remap_source_year` refuses a missing code in
+each source year whose household table carries the field.
+`build_pooled_asec_unit_frame` refuses a household whose persons disagree or
+all lack the code, so a pool in which only some years carry the field refuses
+too. Each PUF support clone copies its native household row with the code.
+
 Today's certified frame was built before this carry and lacks `HRHTYPE`.
 The re-solve receipt can still run on it: when that field is absent, ASEC
 records use the existing roster classification. **The receipt therefore
@@ -136,6 +148,26 @@ re-solve cannot recover this missing distinction. A fresh source build carries
 the field and excludes their weighted contributions from household cells while
 retaining their persons and positive weights. The 2024 survey archive is
 income year 2023 (`asecpub24csv.zip`), not the income-2024 processed H5.
+
+The release records this limit rather than leaving it to the documentation.
+When any household carries neither `TYPEHUGQ` nor `HRHTYPE`, the materializer
+emits `HouseholdUniverseFallbackWarning` (a `UserWarning`). The release tool
+also prints a warning with the number of those households and their initial
+weight: the target frame's household weights before the solve, not the solved
+release weights. Its calibration diagnostics carry a
+household-universe receipt at `build.target_compilation.household_universe`,
+and its build manifest carries the same receipt at
+`gates.target_compilation.household_universe`. The release computes it on the
+target frame it calibrates, whether materialized fresh or reloaded from its
+checkpoint. The receipt counts households (unweighted rows) and their initial
+weight classified by `TYPEHUGQ`, by `HRHTYPE` and by the roster fallback. For
+each compiled household-type target, it gives the initially weighted value and
+the part that fallback households supply. On today's frame every ASEC household
+falls back, so those parts bound the fallback's reach rather than isolating
+the 59 group-quarters records. A run without household-type targets records no
+receipt. The scorers and the release's post-export audit materialize their own
+frames: they emit the materializer's warning but record no receipt, so a
+scorer's household slices still compile alike.
 
 For every valid roster, each result is zero or one. Married-couple family,
 other family with a male householder, other family with a female householder

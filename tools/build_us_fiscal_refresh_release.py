@@ -298,7 +298,9 @@ from microcosm.build.us_runtime.h5_io import (
 )
 from microcosm.build.us_runtime.household_type_targets import (
     HOUSEHOLD_TYPE_MATERIALIZER,
+    ROSTER_FALLBACK,
     household_type_household_values,
+    household_universe_receipt,
 )
 from microcosm.build.us_runtime.input_mass import (
     us_input_mass_parity_gate,
@@ -6498,6 +6500,76 @@ def _compile_materialized_target_registry(
     }
 
 
+def _with_household_universe(
+    target_frame: Frame,
+    registry: TargetRegistry,
+    compilation: Mapping[str, object],
+) -> tuple[Frame, TargetRegistry, dict[str, object]]:
+    """Attach the household-universe receipt to the release's compilation.
+
+    Only :func:`_load_or_materialize_target_frame` calls this, on the frame
+    the release calibrates, whether materialized fresh or reloaded from its
+    checkpoint. :func:`_materialize_target_frame` does not: the scorers and
+    the post-export audit run it too, and a scorer's household slice would
+    otherwise record that slice's households under the scored artifact's
+    weights and carry them into the slice's compilation digest.
+    """
+    compilation = dict(compilation)
+    household_universe = _household_universe_compilation(target_frame, registry.specs)
+    if household_universe is not None:
+        compilation["household_universe"] = household_universe
+    return target_frame, registry, compilation
+
+
+def _household_universe_compilation(
+    target_frame: Frame, compiled_specs: Iterable
+) -> dict[str, object] | None:
+    """Record which field classified the household-type targets' households.
+
+    Counts the target frame's households, and their initial weights, by
+    TYPEHUGQ, HRHTYPE or the roster fallback, and gives each compiled
+    household-type target the weighted part that fallback households supply
+    (microcosm#880). A frame built before the HRHTYPE carry classifies its
+    ASEC households by the roster alone, so its ASEC group quarters count as
+    housing households; that fallback prints a warning and stays on record in
+    the calibration diagnostics. Without a household-type target there is
+    nothing to record.
+    """
+    household = target_frame.table("household")
+    specs = [
+        spec
+        for spec in compiled_specs
+        if spec.metadata.get("materializer") == HOUSEHOLD_TYPE_MATERIALIZER
+        and spec.measure in household.columns
+    ]
+    if not specs:
+        return None
+    weights = target_frame.weights_for("household")
+    receipt = household_universe_receipt(
+        target_frame,
+        weights=weights.values,
+        indicators={spec.name: household[spec.measure].to_numpy() for spec in specs},
+    )
+    fallback_households = receipt["households"][ROSTER_FALLBACK]
+    if fallback_households:
+        fallback_weight = receipt["weighted_households"][ROSTER_FALLBACK]
+        print(
+            "WARNING: household-type targets classified "
+            f"{fallback_households:,} household(s) with initial weight "
+            f"{fallback_weight:,.0f} by the roster fallback: they carry neither "
+            "TYPEHUGQ nor HRHTYPE, so any ASEC group quarters among them count "
+            "as housing households. calibration_diagnostics.json records them "
+            "under build.target_compilation.household_universe.",
+            file=sys.stderr,
+            flush=True,
+        )
+    return {
+        "weight_basis": "initial_household_weights",
+        "weight_kind": weights.kind.value,
+        **receipt,
+    }
+
+
 def _load_or_materialize_target_frame(
     base_frame: Frame,
     target_specs: tuple,
@@ -6537,7 +6609,7 @@ def _load_or_materialize_target_frame(
             gate_congressional_district_targets=gate_congressional_district_targets,
         )
         if loaded is not None:
-            return loaded
+            return _with_household_universe(*loaded)
 
     target_frame, registry, compilation = _materialize_target_frame(
         base_frame,
@@ -6567,7 +6639,8 @@ def _load_or_materialize_target_frame(
         **dict(compilation),
         "target_frame_checkpoint": checkpoint_payload,
     }
-    return target_frame, registry, compilation
+    # After the checkpoint write, so the stored compilation carries no receipt.
+    return _with_household_universe(target_frame, registry, compilation)
 
 
 def _base_simulation_household_columns(

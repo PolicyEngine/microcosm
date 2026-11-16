@@ -130,9 +130,10 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # stage validators can inspect them; no graph kernel reads or mutates
         # them, and the stage kernels stay under the operator guard below.
         "graph.py",
-        # Reads source provenance only to require ACS TYPEHUGQ before
-        # excluding native group quarters from household target indicators.
-        # It measures the roster and never changes population inputs.
+        # Reads source provenance only to require ACS TYPEHUGQ, and ASEC
+        # HRHTYPE once a frame carries it, before excluding native group
+        # quarters from household target indicators. It measures the roster
+        # and never changes population inputs.
         "household_type_targets.py",
         # Enumerates provenance columns only to reject preassembled source frames.
         "operator_boundary.py",
