@@ -917,7 +917,7 @@ def test_l0_refit_returns_refit_on_selected_support(feasible_frame) -> None:
     assert result.frame.n("household") == result.selection.n_nonzero
     assert len(result.selected_entity_ids) == result.selection.n_nonzero
     assert result.n_nonzero == result.selection.n_nonzero
-    # The production weights are the ordinary no-L0 refit on the L0-selected
+    # The returned weights are the ordinary no-L0 refit on the L0-selected
     # support, not the raw gated selection weights.
     assert result.final_loss <= result.selection.final_loss + 0.02
 
@@ -1750,9 +1750,9 @@ def test_refit_design_anchor_uses_pre_selection_weights() -> None:
 
     Provenance must show the refit ran with an explicit anchor labelled
     'design' while the selection stage recorded the equivalent 'initial'
-    anchor, so a design-weighted production run can regularize the shipped
-    weights toward the survey design rather than toward the selection
-    stage's concentrated output.
+    anchor, so a design-weighted run can regularize the returned weights
+    toward the survey design rather than toward the selection stage's
+    concentrated output.
     """
     frame, targets, _ = _l2_concentration_fixture()
     result = calibrate_l0_refit(
@@ -1775,7 +1775,7 @@ def test_refit_design_anchor_uses_pre_selection_weights() -> None:
 
 
 def test_l0_refit_result_delegates_summary_metrics_to_refit() -> None:
-    """The two-stage result reports the refit's (shipped) summary metrics."""
+    """The two-stage result reports the refit's summary metrics."""
     frame, targets, _ = _l2_concentration_fixture()
     result = calibrate_l0_refit(
         frame,

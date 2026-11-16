@@ -51,7 +51,8 @@ Declared options, each a real feature (and each its own test):
   ``mass="conserve"``; ``max_weight_ratio`` remains the hard safety bound.
   This penalty is only implemented by ``method="adam"``. In the two-stage
   :func:`calibrate_l0_refit` path it applies to both stages unless
-  ``refit_l2_lambda`` overrides the refit stage — the stage whose weights ship.
+  ``refit_l2_lambda`` overrides the refit stage, whose weights that function
+  returns.
 - ``l2_basis`` selects the penalty's functional form. ``"record"`` (default)
   is the record-weighted ``mean(r ** 2)`` above, ``r = w / anchor``. Under
   ``mass="conserve"`` its target-free minimizer is ``w ∝ anchor ** 2``, and
@@ -548,7 +549,7 @@ class L0RefitResult:
 
     @property
     def effective_sample_size(self) -> float:
-        """Kish ESS of the post-L0 refit weights (the shipped vector)."""
+        """Kish ESS of the post-L0 refit weights (the returned vector)."""
         return self.refit.effective_sample_size
 
     @property
@@ -568,7 +569,7 @@ class L0RefitResult:
 
     @property
     def options(self) -> Mapping[str, object]:
-        """Combined production options and selection provenance."""
+        """Combined refit options and selection provenance."""
         return {
             **dict(self.refit.options),
             "post_l0_refit": True,

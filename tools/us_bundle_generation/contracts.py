@@ -1498,9 +1498,10 @@ def build_calibration_contract() -> dict[str, object]:
         # l0_refit when the caller sets neither --exact-k nor
         # --dense-default-dataset, and dense_no_l0 for
         # --dense-default-dataset. The third is the --exact-k arm. Every
-        # mode shares the solver block; its kernel is the l0_refit arm's
-        # because _fiscal_release_cli_defaults reads the parse with neither
-        # flag set.
+        # mode shares the solver block. Its kernel and l0_contract.default_mode
+        # are set by hand to the l0_refit arm's, and
+        # _fiscal_release_cli_defaults reads its other defaults from a builder
+        # parse with neither flag set.
         "release_modes": {
             "l0_refit": {
                 "kernel": _kernel_ref(solve.calibrate_l0_refit),

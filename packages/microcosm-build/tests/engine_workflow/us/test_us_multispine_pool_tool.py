@@ -360,7 +360,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # acs_transfer's attested bytes.
             # microcosm#1641 moves it again: docstrings in solve and
             # ssi_take_up, and the calibration contract's renamed modes.
-            "spec_sha256": "c3d44edaebef397c191b19741c74a283a2bae2a6451842857bee3e9e73b4e838",
+            "spec_sha256": "33cf0b1ee55ae59ce8f5f159ef2d683f4b2a36321c3c82f177cdb5de92979bf4",
         },
     }
 
