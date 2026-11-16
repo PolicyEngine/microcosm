@@ -2114,7 +2114,7 @@
     },
     {
       "resource": "scotgov_chargeable_dwellings_by_band.json",
-      "purpose": "The Scottish Government's chargeable dwellings by council-tax band, A to H, for each of the 32 council areas at September 2025 (CTAXBASE 2025). Consumed by the post-geography band node, which draws each Scottish owner clone's band from its council area's mix at the clone's rank among Scotland's owners (microcosm#1095 B12).",
+      "purpose": "The Scottish Government's chargeable dwellings by council-tax band, A to H, for each of the 32 council areas at September 2025 (CTAXBASE 2025). The stock-cell build (tools/build_uk_stock_cells.py) reads its all-band totals for Scotland, and no spine stage reads its mix by band.",
       "consumers": [
         "uk_runtime.property_localisation"
       ],
