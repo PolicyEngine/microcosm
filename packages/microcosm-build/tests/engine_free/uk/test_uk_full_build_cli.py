@@ -8,10 +8,18 @@ import shutil
 import signal
 import weakref
 from datetime import date
+from importlib.resources import files
 from types import SimpleNamespace
 
 import test_support.microcosm_build.uk_full_build_cli as support  # noqa: E402
 from microcosm.build import staging_dataset
+from microcosm.build.country_spec import load_country_spec
+from microcosm.build.uk_runtime.geographic_expand import (
+    GEOGRAPHIC_EXPAND_STAGE_NAME,
+    UK_GEOGRAPHIC_CLONES,
+    geographic_expand_operation_parameters,
+)
+from microcosm.frame import WeightKind
 from test_support.microcosm_build.uk_full_build_cli import *
 
 #: The dense line's own geography and lineage flags, retired with its area
@@ -1728,6 +1736,60 @@ def test_dense_run_projects_the_rowwise_candidate_manifest(tmp_path):
         path = Path(entry["path"])
         assert path.parent == out and path.is_file()
         assert hashlib.sha256(path.read_bytes()).hexdigest() == entry["sha256"]
+
+
+def _spine_weight_kinds_in_graph_order() -> tuple[str, str]:
+    """The kinds the spine's household weights take before and after its SPI
+    support channel, read from its declarations (microcosm#931): the spine
+    samples its root, its first stage, and makes its geographic clones on
+    design weights, the only kind geographic_expand takes and gives, before
+    the channel, whose packaged gate holds its weights to importance
+    weights."""
+
+    roster = [stage.stage for stage in load_country_spec("uk").sources.stages]
+    assert roster[0] == "frs_spine"
+    assert roster.index(GEOGRAPHIC_EXPAND_STAGE_NAME) < roster.index(
+        "spi_support_channel"
+    )
+    assert UK_GEOGRAPHIC_CLONES.weight_kinds == frozenset({WeightKind.DESIGN})
+    ((_, operation),) = geographic_expand_operation_parameters()
+    assert operation["weight_kind_out"] == WeightKind.DESIGN.value
+    gates = json.loads(files("microcosm.build.uk").joinpath("gates.json").read_text())
+    (channel,) = (
+        gate["parameters"]
+        for gate in gates["gates"]
+        if gate["id"] == "uk_stage_spi_support_channel_mass"
+    )
+    return WeightKind.DESIGN.value, channel["household_weight_kind"]
+
+
+@pytest.mark.parametrize("fraction", [1.0, 0.1])
+def test_the_dense_manifest_chains_the_weight_kinds_in_graph_order(tmp_path, fraction):
+    """The dense candidate manifest's household weight kind chain lists the
+    spine's sample (below f100) and geographic clones first, on design
+    weights, then the staged spine's importance weights and the calibration
+    (microcosm#931): both run at the start of the spine, before its SPI
+    support channel, and the dense line samples and clones nothing of its
+    own."""
+
+    pytest.importorskip("tables")
+    design, importance = _spine_weight_kinds_in_graph_order()
+    assert (design, importance) == ("design", "importance")
+    args = arguments(tmp_path)
+    build = prepared(tmp_path, spine_fraction=fraction)
+    bind_synthetic_spine(args, build)
+    assert cli.execute_full_build(build, args) == 0
+    manifest = json.loads((args.out / "rowwise_candidate_manifest.json").read_text())
+
+    weights = manifest["weights"]
+    assert weights["household_weight_kind"] == WeightKind.CALIBRATED.value
+    assert weights["household_weight_kind_chain"] == [
+        *([] if fraction == 1.0 else [{"stage": "sample", "kind": design}]),
+        {"stage": GEOGRAPHIC_EXPAND_STAGE_NAME, "kind": design},
+        {"stage": "staging", "kind": importance},
+        {"stage": "rowwise_calibration", "kind": WeightKind.CALIBRATED.value},
+    ]
+    assert manifest["sampling"]["fraction"] == fraction
 
 
 def test_release_candidate_holdout_is_opt_in(tmp_path, monkeypatch):
