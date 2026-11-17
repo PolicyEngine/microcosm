@@ -919,7 +919,7 @@
           "uk_ni_data_zone_2021"
         ]
       },
-      "notes": "Stage-time gate over the spine's area draw (microcosm#931). atomic_area_assign validates every drawn ladder through the shared operator's mapping-integrity check and refuses to finish unless it passes; the gate reads the record the stage keeps: an accepted outcome (pass), the declared scope, and SHA-256 digests of the assignment definition and of each declared support system's conditioned support. Evaluated at the assembled boundary, which closes after area_brma, so a record that fails stops the spine there, before any stage after area_brma runs. Its texts name the field, never a count or a value."
+      "notes": "Stage-time gate over the spine's area draw (microcosm#931). atomic_area_assign validates every drawn ladder through the shared operator's mapping-integrity check and refuses to finish unless it passes; the gate reads the record the stage keeps: an accepted outcome (pass), the declared scope, and SHA-256 digests of the assignment definition and of each declared support system's conditioned support, which must equal the definition and support pins of the spine's geography block. It then holds the conditioned supports it is handed to those pins, rebuilds the draw's definition on them, re-derives each placed household's fallback level from its stored draw inputs and runs the shared validation on the stored assignment and ladder columns, so a ladder column overwritten after the draw, or a draw at a coarser level than the stored inputs give, fails. Without the block, the supports or the frame the gate is evidence_absent. Evaluated at the assembled boundary, which closes after area_brma, so a record or frame that fails stops the spine there, before any stage after area_brma runs. Its texts name the field, never a count or a value."
     },
     {
       "id": "uk_spi_copy_area_mapping_integrity",
@@ -941,7 +941,7 @@
           "not_run"
         ]
       },
-      "notes": "The mapping-integrity record of spi_copy_areas, which draws the area and ladder of every SPI copy and income band donor with the area draw's definition (microcosm#931). On a frame without a copy neither the draw's validation nor the RFDR layer's roster check runs and the stage records not_run, so the gate accepts pass or not_run. Evaluated at the transferred boundary: spi_copy_areas runs after the assembled boundary closes."
+      "notes": "The mapping-integrity record of spi_copy_areas, which draws the area and ladder of every SPI copy and income band donor with the area draw's definition (microcosm#931). On a frame without a copy neither the draw's validation nor the RFDR layer's roster check runs and the stage records not_run, so the gate accepts pass or not_run. As the area draw's gate does, it holds the record's digests to the spine's geography block and re-derives the areas of the phase's frame on the pinned supports, here over every row: the FRS households, the SPI copies and band donors, and the later copies. Evaluated at the transferred boundary: spi_copy_areas runs after the assembled boundary closes."
     },
     {
       "id": "uk_copy_area_agreement",
