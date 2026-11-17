@@ -4342,20 +4342,11 @@ def _mapping_parameters(stage: str = "atomic_area_assign", **extra) -> dict:
     }
 
 
-def _mapping_evidence(**overrides) -> dict:
-    from microcosm.build.uk_runtime.atomic_area_support import SYSTEMS
+def _mapping_gate(evidence: dict, *, frame, geography, supports, **extra):
+    """The area mapping check on ``evidence``, ``frame``, the spine's
+    ``geography`` block and the ``supports``' bytes, with the check's
+    parameters for the receipt's stage and ``extra`` (microcosm#931)."""
 
-    evidence = {
-        "stage": "atomic_area_assign",
-        "validation": {"outcome": "pass", "scope": _SCOPE},
-        "definition_sha256": "a" * 64,
-        "support_sha256": {system: "b" * 64 for system in SYSTEMS},
-    }
-    evidence.update(overrides)
-    return evidence
-
-
-def _mapping_gate(evidence: dict, **extra):
     parameters = _mapping_parameters(
         evidence.get("stage", "atomic_area_assign"), **extra
     )
@@ -4364,46 +4355,317 @@ def _mapping_gate(evidence: dict, **extra):
         stage=parameters["stage"],
         check=parameters["check"],
         parameters=parameters,
+        frame=frame,
+        geography=geography,
+        supports=supports,
     )
 
 
-def test_atomic_mapping_integrity_reads_the_area_draws_own_record() -> None:
-    """The real area draw's evidence, on the toy conditioned supports, passes;
-    the scope is the one the draw records."""
+class _InventedLHAEngine:
+    """A stand-in for the UK rules engine: each benefit unit's
+    ``LHA_category`` is invented from its own id, modulo five, so a copy,
+    whose ids add whole multiples of the copy-id table's radices, takes its
+    parent's."""
 
-    from dataclasses import replace
+    country = "uk"
 
-    from microcosm.build.source_manifest import SourceOperationSpec, SourceStageSpec
-    from microcosm.build.uk_runtime import spine_geography
+    def materialize(self, frame, variables, period):
+        ids = frame.table("benunit")["benunit_id"].to_numpy(dtype=np.int64)
+        return {
+            "LHA_category": np.asarray(["ABCDE"[int(i) % 5] for i in ids], dtype=object)
+        }
+
+
+@functools.cache
+def _toy_area_runs(clones: int) -> dict:
+    """The packaged area stages on the invented households at ``clones``
+    clones, on the toy conditioned supports, through the SPI-copy area stage
+    on invented SPI copies: the area draw's frame and receipt, G4's frame,
+    the copy stage's frame and receipt, the toys' bytes, and the spine's
+    geography block over them, as a synthetic fixture's build sidecar
+    records it. G4 and the copy stage read an invented ``LHA_category``.
+    The frames are shared between tests, so a test copies what it changes
+    (microcosm#931)."""
+
+    from microcosm.build import load_country_spec
+    from microcosm.build.uk_runtime import spine_geography as areas
+    from microcosm.build.uk_runtime.country_adapter import (
+        UK_SYNTHETIC_SUPPORT_REGISTER,
+        uk_spine_geography_binding,
+    )
     from test_support.microcosm_build.uk_conditioned_support_fixtures import (
         toy_conditioned_support_payloads,
         toy_spine_frame,
+        with_invented_support_channel,
     )
+
+    stages = load_country_spec("uk").sources.stage_map()
+    payloads = toy_conditioned_support_payloads()
+    draw = areas.UKAtomicAreaAssignStageTransform(
+        stage=stages[areas.ATOMIC_AREA_ASSIGN_STAGE_NAME], supports=payloads
+    )
+    placed = draw(toy_spine_frame(clones=clones))
+    resolved = areas.UKLocalAuthorityStageTransform(
+        stage=stages[areas.LOCAL_AUTHORITY_STAGE_NAME]
+    )(placed)
+    flagged = areas.UKRFDRStageTransform(
+        stage=stages[areas.RFDR_STAGE_NAME], supports=payloads
+    )(resolved)
+    brma = areas.UKAreaBRMAStageTransform(
+        stage=stages[areas.AREA_BRMA_STAGE_NAME], engine=_InventedLHAEngine()
+    )(flagged)
+    copies = areas.UKSPICopyAreasStageTransform(
+        stage=stages[areas.SPI_COPY_AREAS_STAGE_NAME],
+        engine=_InventedLHAEngine(),
+        supports=payloads,
+    )
+    copied = copies(with_invented_support_channel(brma))
+    return {
+        "placed": placed,
+        "draw": draw.checkpoint_metadata()["evidence"],
+        "brma": brma,
+        "copied": copied,
+        "copies": copies.checkpoint_metadata()["evidence"],
+        "supports": payloads,
+        "geography": uk_spine_geography_binding(
+            payloads, register=UK_SYNTHETIC_SUPPORT_REGISTER
+        ),
+    }
+
+
+#: Each area stage's frame and receipt in a toy run, and the parameters its
+#: gate adds: the copy stage's accepts the not_run it records on a frame
+#: without a copy.
+_AREA_STAGES = {
+    "atomic_area_assign": ("placed", "draw", {}),
+    "spi_copy_areas": ("copied", "copies", {"accepted_outcomes": ["pass", "not_run"]}),
+}
+
+
+def _toy_gate(stage: str, *, clones: int = 2, **changes):
+    """The mapping check on ``stage``'s frame and receipt in the toy run at
+    ``clones`` clones, with the run's geography block and supports, each of
+    which ``changes`` may replace (``evidence``, ``frame``, ``geography``,
+    ``supports``)."""
+
+    run = _toy_area_runs(clones)
+    at, receipt, extra = _AREA_STAGES[stage]
+    inputs = {
+        "evidence": run[receipt],
+        "frame": run[at],
+        "geography": run["geography"],
+        "supports": run["supports"],
+        **changes,
+    }
+    return _mapping_gate(inputs.pop("evidence"), **inputs, **extra)
+
+
+def _copied(value):
+    """A deep copy of a receipt or a geography block."""
+
+    return json.loads(json.dumps(value))
+
+
+@pytest.mark.parametrize("clones", [1, 2])
+@pytest.mark.parametrize("stage", sorted(_AREA_STAGES))
+def test_the_area_mapping_check_passes_each_area_stages_frame_on_its_binding(
+    stage, clones
+) -> None:
+    """The area draw's receipt and frame pass on the toy supports and the
+    geography block over them, at one clone and at two, and so do the
+    SPI-copy area stage's: each record gives the block's digests, and every
+    row of the frame, the copies' among them, holds the area and ladder the
+    block's supports give it (microcosm#931)."""
+
+    from microcosm.build.uk_runtime import spine_geography
 
     assert spine_geography._VALIDATION_SCOPE == _SCOPE
-    stage = SourceStageSpec(
-        stage=spine_geography.ATOMIC_AREA_ASSIGN_STAGE_NAME,
-        survey="Family Resources Survey 2024-25",
-        source="Microcosm structural operator (microcosm#931)",
-        grain="household",
-        artifacts=(),
-        operations=tuple(
-            SourceOperationSpec(kind=kind, parameters=dict(parameters))
-            for kind, parameters in (
-                spine_geography.atomic_area_assign_operation_parameters()
-            )
-        ),
-        outputs=spine_geography.UK_ATOMIC_AREA_ASSIGN_OUTPUT_COLUMNS,
-    )
-    transform = spine_geography.UKAtomicAreaAssignStageTransform(
-        stage=replace(stage), supports=toy_conditioned_support_payloads()
-    )
-    transform(toy_spine_frame(clones=2))
-    evidence = transform.checkpoint_metadata()["evidence"]
-
-    result = _mapping_gate(evidence)
+    result = _toy_gate(stage, clones=clones)
     assert _passed(result), result.failures
     assert result.details["outcome"] == "pass"
+    assert result.details["agrees_with_binding"] is True
+    assert result.details["frame_holds"] is True
+
+
+@pytest.mark.parametrize("invented", ["definition", "every support", "one support"])
+def test_the_area_mapping_check_fails_a_receipt_with_invented_digests(
+    invented,
+) -> None:
+    """A receipt whose digests are well formed but invented fails, though it
+    records a passed validation: the check holds them to the spine's
+    geography block. The frame still holds, and the text gives no digest
+    (microcosm#931)."""
+
+    receipt = _copied(_toy_area_runs(2)["draw"])
+    if invented == "definition":
+        receipt["definition_sha256"] = "a" * 64
+        fragment = "definition_sha256 is not the spine's geography binding's."
+    else:
+        systems = sorted(receipt["support_sha256"])
+        for system in systems if invented == "every support" else systems[:1]:
+            receipt["support_sha256"][system] = "b" * 64
+        fragment = (
+            "support_sha256 is not, for each declared support system, the SHA-256 "
+            "the spine's geography binding pins."
+        )
+    assert receipt["validation"]["outcome"] == "pass"
+
+    result = _toy_gate("atomic_area_assign", evidence=receipt)
+    assert not _passed(result)
+    assert result.failures == (
+        f"atomic_area_assign: atomic_mapping_integrity: {fragment}",
+    )
+    assert result.details["agrees_with_binding"] is False
+    assert result.details["frame_holds"] is True
+
+
+@pytest.mark.parametrize("column", ["lsoa_code", "msoa_code", "constituency_code"])
+@pytest.mark.parametrize("stage", sorted(_AREA_STAGES))
+def test_the_area_mapping_check_fails_a_ladder_column_overwritten_after_the_draw(
+    stage, column
+) -> None:
+    """A frame whose ``column`` was overwritten on one row after the area
+    stages wrote it fails, though its record and digests are the stage's
+    own: the check re-derives every row's ladder from its stored area on the
+    block's supports. On the copy stage's frame, as at the transferred
+    boundary, an SPI copy's row fails as an FRS household's does
+    (microcosm#931)."""
+
+    run = _toy_area_runs(2)
+    at, _, _ = _AREA_STAGES[stage]
+    household = run[at].table("household")
+    rows = [0]
+    if stage == "spi_copy_areas":
+        copies = np.flatnonzero(
+            household["household_support_channel"].eq("spi").to_numpy(dtype=bool)
+        )
+        assert copies.size and 0 not in copies
+        rows.append(int(copies[0]))
+    for row in rows:
+        overwritten = household.copy()
+        values = overwritten[column].tolist()
+        other = next(value for value in values if value != values[row])
+        overwritten.iloc[row, overwritten.columns.get_loc(column)] = other
+        result = _toy_gate(stage, frame=_with_tables(run[at], household=overwritten))
+        assert not _passed(result), (column, row)
+        assert result.failures == (
+            f"{stage}: atomic_mapping_integrity: the phase's frame fails the shared "
+            "mapping-integrity check: Atomic geography: derived geography differs "
+            "from atomic mapping",
+        )
+        assert result.details["agrees_with_binding"] is True
+        assert result.details["frame_holds"] is False
+
+
+def test_the_area_mapping_check_fails_a_draw_that_took_every_household_at_l3(
+    monkeypatch,
+) -> None:
+    """An area draw that took every household at L3, its region by
+    households, passes its own validation, which checks the frame it drew
+    at the levels it took, and records a pass with the block's digests. The
+    check re-derives each household's level from its stored inputs, so a
+    household whose decile the toys hold, drawn without it, fails
+    (microcosm#931)."""
+
+    from microcosm.build import load_country_spec
+    from microcosm.build.uk_runtime import spine_geography as areas
+    from test_support.microcosm_build.uk_conditioned_support_fixtures import (
+        toy_spine_frame,
+    )
+
+    run = _toy_area_runs(2)
+    draw = areas.UKAtomicAreaAssignStageTransform(
+        stage=load_country_spec("uk").sources.stage_map()[
+            areas.ATOMIC_AREA_ASSIGN_STAGE_NAME
+        ],
+        supports=run["supports"],
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            areas,
+            "uk_draw_levels",
+            lambda inputs, definition, supports: np.full(len(inputs), "L3"),
+        )
+        placed = draw(toy_spine_frame(clones=2))
+    receipt = draw.checkpoint_metadata()["evidence"]
+    assert receipt["validation"]["outcome"] == "pass"
+    assert not placed.table("household")["atomic_area_code"].equals(
+        run["placed"].table("household")["atomic_area_code"]
+    )
+
+    result = _toy_gate("atomic_area_assign", evidence=receipt, frame=placed)
+    assert not _passed(result)
+    assert result.failures == (
+        "atomic_area_assign: atomic_mapping_integrity: the phase's frame fails the "
+        "shared mapping-integrity check: Atomic geography: assigned area violates "
+        "observed geography",
+    )
+    assert result.details["agrees_with_binding"] is True
+    assert result.details["frame_holds"] is False
+
+
+def _flipped(payload: bytes) -> bytes:
+    """``payload`` with its last byte flipped: its size, another SHA-256."""
+
+    tampered = bytearray(payload)
+    tampered[-1] ^= 0xFF
+    return bytes(tampered)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "no geography block",
+        "a pin short",
+        "a support changed",
+        "no supports",
+        "no frame",
+        "another definition",
+    ],
+)
+def test_the_area_mapping_check_holds_its_inputs_to_the_binding(case) -> None:
+    """Run without the spine's geography block, or with one that does not pin
+    each declared support system, the check fails; so it does with supports
+    that are not the bytes the block pins, without the phase's frame, and
+    with a block whose definition the pinned supports do not give, though
+    the record names the same one. Each text names the input, never a value
+    or a digest (microcosm#931)."""
+
+    run = _toy_area_runs(2)
+    receipt = _copied(run["draw"])
+    changes: dict[str, object] = {}
+    if case == "no geography block":
+        changes["geography"] = None
+        fragment = "the spine's geography binding is absent"
+    elif case == "a pin short":
+        geography = _copied(run["geography"])
+        geography["support_pins"].pop(sorted(geography["support_pins"])[0])
+        changes["geography"] = geography
+        fragment = "the spine's geography binding is absent"
+    elif case == "a support changed":
+        supports = dict(run["supports"])
+        first = sorted(supports)[0]
+        supports[first] = _flipped(supports[first])
+        changes["supports"] = supports
+        fragment = "the supports the check reads are not those"
+    elif case == "no supports":
+        changes["supports"] = None
+        fragment = "the supports the check reads are not those"
+    elif case == "no frame":
+        changes["frame"] = None
+        fragment = "the check reads the phase's frame, which is absent."
+    else:
+        geography = _copied(run["geography"])
+        geography["definition_sha256"] = receipt["definition_sha256"] = "c" * 64
+        changes["geography"] = geography
+        fragment = "is not the one the spine's geography binding names."
+
+    result = _toy_gate("atomic_area_assign", evidence=receipt, **changes)
+    assert not _passed(result)
+    (failure,) = result.failures
+    assert fragment in failure, failure
+    assert _no_digit_beyond(failure)
+    assert result.details["frame_holds"] is not True
 
 
 @pytest.mark.parametrize(
@@ -4420,7 +4682,9 @@ def test_atomic_mapping_integrity_reads_the_area_draws_own_record() -> None:
     ],
 )
 def test_atomic_mapping_integrity_fails_closed(override, fragment) -> None:
-    result = _mapping_gate(_mapping_evidence(**override))
+    result = _toy_gate(
+        "atomic_area_assign", evidence={**_toy_area_runs(2)["draw"], **override}
+    )
 
     assert not _passed(result)
     assert any(fragment in failure for failure in result.failures), result.failures
@@ -4428,14 +4692,103 @@ def test_atomic_mapping_integrity_fails_closed(override, fragment) -> None:
 
 
 def test_the_copy_stage_may_accept_a_record_without_copies() -> None:
-    evidence = _mapping_evidence(
-        stage="spi_copy_areas", validation={"outcome": "not_run", "scope": _SCOPE}
+    """The copy stage records not_run on a frame without a copy; its gate
+    accepts that where it declares so, and holds the record's digests and
+    the frame as for any record (microcosm#931)."""
+
+    from microcosm.build import load_country_spec
+    from microcosm.build.uk_runtime import spine_geography as areas
+    from test_support.microcosm_build.uk_conditioned_support_fixtures import (
+        with_invented_support_channel,
     )
 
-    assert not _passed(_mapping_gate(evidence))
-    accepted = _mapping_gate(evidence, accepted_outcomes=["pass", "not_run"])
+    run = _toy_area_runs(2)
+    copies = areas.UKSPICopyAreasStageTransform(
+        stage=load_country_spec("uk").sources.stage_map()[
+            areas.SPI_COPY_AREAS_STAGE_NAME
+        ],
+        engine=_InventedLHAEngine(),
+        supports=run["supports"],
+    )
+    frame = copies(with_invented_support_channel(run["brma"], lambda source, clone: ()))
+    evidence = copies.checkpoint_metadata()["evidence"]
+    assert evidence["validation"] == {"outcome": "not_run", "scope": _SCOPE}
+    inputs = {
+        "frame": frame,
+        "geography": run["geography"],
+        "supports": run["supports"],
+    }
+
+    assert not _passed(_mapping_gate(evidence, **inputs))
+    accepted = _mapping_gate(evidence, **inputs, accepted_outcomes=["pass", "not_run"])
     assert _passed(accepted), accepted.failures
     assert accepted.details["accepted_outcomes"] == ["pass", "not_run"]
+    assert accepted.details["frame_holds"] is True
+
+
+@pytest.mark.parametrize(
+    "gate_id",
+    ["uk_atomic_area_mapping_integrity", "uk_spi_copy_area_mapping_integrity"],
+)
+def test_the_packaged_mapping_gates_read_their_binding_through_the_battery(
+    gate_id,
+) -> None:
+    """Through the battery's registry, each packaged mapping gate passes, at
+    its declared phase, on its stage's receipt and frame with the spine's
+    geography block and the supports it pins. Without the block, the
+    supports or the frame it is evidence_absent, which blocks it in a
+    development build too, since it declares evidence_absent_blocks
+    (microcosm#931)."""
+
+    from microcosm.build import load_country_spec
+    from microcosm.build.gate_battery import (
+        EvidenceContext,
+        GateStatus,
+        evaluate_phase,
+    )
+    from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
+    from microcosm.build.uk_runtime.stage_health import (
+        ATOMIC_AREA_SUPPORTS_ARTIFACT,
+        SPINE_GEOGRAPHY_ARTIFACT,
+    )
+
+    (entry,) = [
+        entry for entry in load_country_spec("uk").gates.gates if entry.id == gate_id
+    ]
+    assert entry.evidence_absent_blocks is True
+    stage = str(entry.parameters["stage"])
+    run = _toy_area_runs(2)
+    at, receipt, _ = _AREA_STAGES[stage]
+    artifacts = {
+        "stage_evidence": {stage: run[receipt]},
+        SPINE_GEOGRAPHY_ARTIFACT: run["geography"],
+        ATOMIC_AREA_SUPPORTS_ARTIFACT: run["supports"],
+    }
+
+    def evaluated(frame, artifacts):
+        report = evaluate_phase(
+            _one_gate(entry),
+            entry.phase,
+            EvidenceContext(frame=frame, artifacts=artifacts),
+            registry=UK_GATE_REGISTRY,
+        )
+        (outcome,) = report.outcomes
+        return outcome, report.blocking_outcomes(release_candidate=False)
+
+    outcome, blocking = evaluated(run[at], artifacts)
+    assert outcome.status is GateStatus.PASSED, outcome.result.failures
+    assert blocking == ()
+    for missing in (SPINE_GEOGRAPHY_ARTIFACT, ATOMIC_AREA_SUPPORTS_ARTIFACT):
+        outcome, blocking = evaluated(
+            run[at], {key: value for key, value in artifacts.items() if key != missing}
+        )
+        assert outcome.status is GateStatus.EVIDENCE_ABSENT
+        assert outcome.reason == f"missing evidence: {missing}"
+        assert blocking == (outcome,)
+    outcome, blocking = evaluated(None, artifacts)
+    assert outcome.status is GateStatus.EVIDENCE_ABSENT
+    assert outcome.reason == "missing evidence: frame"
+    assert blocking == (outcome,)
 
 
 def _area_home_values_parameters() -> dict:
@@ -4597,7 +4950,7 @@ def test_a_bare_string_where_a_list_is_declared_fails_closed(declare, fragment) 
     evidence = (
         _area_home_values_receipt()
         if parameters["check"] == "area_home_values"
-        else _mapping_evidence(stage=parameters["stage"])
+        else {**_toy_area_runs(2)["draw"], "stage": parameters["stage"]}
     )
     result = uk_stage_health_gate(
         evidence=evidence,
@@ -4791,16 +5144,33 @@ def test_the_packaged_mapping_gates_read_the_area_stages_records() -> None:
     assert "accepted_outcomes" not in base
     assert copies["accepted_outcomes"] == ["pass", spine_geography._CHECKS_NOT_RUN]
 
-    assert _passed(_gate("uk_atomic_area_mapping_integrity", _mapping_evidence()))
+    # On the area draw's toy frame, with the geography block and supports.
+    run = _toy_area_runs(2)
+
+    def packaged(gate_id: str, evidence: dict):
+        parameters = _packaged_parameters(gate_id)
+        return uk_stage_health_gate(
+            evidence=evidence,
+            stage=parameters["stage"],
+            check=parameters["check"],
+            parameters=parameters,
+            frame=run["placed"],
+            geography=run["geography"],
+            supports=run["supports"],
+        )
+
+    assert _passed(packaged("uk_atomic_area_mapping_integrity", run["draw"]))
     not_run = {"outcome": spine_geography._CHECKS_NOT_RUN, "scope": _SCOPE}
     assert _passed(
-        _gate(
+        packaged(
             "uk_spi_copy_area_mapping_integrity",
-            _mapping_evidence(stage="spi_copy_areas", validation=not_run),
+            {**run["draw"], "stage": "spi_copy_areas", "validation": not_run},
         )
     )
     assert not _passed(
-        _gate("uk_atomic_area_mapping_integrity", _mapping_evidence(validation=not_run))
+        packaged(
+            "uk_atomic_area_mapping_integrity", {**run["draw"], "validation": not_run}
+        )
     )
 
 

@@ -2640,12 +2640,16 @@ def prepare_uk_spine_execution(
     engine_identity = hashlib.sha256(
         canonical_json_bytes(_rules_engine_provenance())
     ).hexdigest()
+    # Each gate phase whose stages place areas holds the area stages' records
+    # to the geography block and re-derives the areas on the supports it pins
+    # (microcosm#931).
     graph = add_uk_spine_gate_nodes(
         graph,
         spec=spec,
         engine_identity=engine_identity,
         release_candidate=args.release_candidate,
         synthetic_smoke=args.synthetic_fixture_dir is not None,
+        geography=geography,
     )
     # The spine and the full build read each stage's evidence from the store,
     # never from a live transform, so each stage frees its result once its

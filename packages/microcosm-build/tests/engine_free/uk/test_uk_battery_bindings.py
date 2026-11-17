@@ -3057,17 +3057,23 @@ def _capped_band_donor_receipt() -> dict[str, object]:
     }
 
 
-def test_the_stage_health_binding_reads_the_frame_for_its_three_frame_checks_only(
+def test_the_stage_health_binding_reads_the_frame_for_its_four_frame_checks_only(
     uk_gates,
 ) -> None:
     """Of the packaged stage-health gates, only the band donor check, the
-    copy area check (uk_copy_area_agreement) and the council-tax check
-    (uk_council_tax_reduction_within_bill) read the phase's frame
+    copy area check (uk_copy_area_agreement), the council-tax check
+    (uk_council_tax_reduction_within_bill) and the area mapping check (the
+    area draw's and the SPI-copy area stage's gates) read the phase's frame
     (microcosm#931)."""
 
     binding = UK_GATE_REGISTRY["stage_health"]
     entries = [entry for entry in uk_gates.gates if entry.gate == "stage_health"]
-    frame_checks = {_BAND_DONOR_CHECK, "copy_area_agreement", _COUNCIL_TAX_CHECK}
+    frame_checks = {
+        _BAND_DONOR_CHECK,
+        "copy_area_agreement",
+        _COUNCIL_TAX_CHECK,
+        "atomic_mapping_integrity",
+    }
     assert any(entry.parameters["check"] not in frame_checks for entry in entries)
     for entry in entries:
         assert binding.requires_frame(entry.parameters) is (
@@ -3076,27 +3082,47 @@ def test_the_stage_health_binding_reads_the_frame_for_its_three_frame_checks_onl
     assert sorted(
         entry.id for entry in entries if binding.requires_frame(entry.parameters)
     ) == [
+        "uk_atomic_area_mapping_integrity",
         "uk_copy_area_agreement",
         "uk_council_tax_reduction_within_bill",
+        "uk_spi_copy_area_mapping_integrity",
         "uk_stage_spi_income_band_donors_support",
     ]
-    # All three run at the spine's transferred boundary, whose battery hands
-    # every gate the phase's frame.
+    # Every one runs at a spine boundary, whose battery hands every gate the
+    # phase's frame: the area draw's mapping gate at the assembled boundary,
+    # the others at the transferred boundary.
     assert {
-        entry.phase for entry in entries if entry.parameters["check"] in frame_checks
-    } == {"transferred"}
+        entry.id: entry.phase
+        for entry in entries
+        if entry.parameters["check"] in frame_checks and entry.phase != "transferred"
+    } == {"uk_atomic_area_mapping_integrity": "assembled"}
 
 
 def test_the_copy_area_check_reads_the_phase_frame_and_the_new_keys_route() -> None:
     """The copy area check compares each copy with its parent on the phase's
-    frame, so the stage-health binding hands it the frame; the spine
-    geography checks' parameter keys route through the binding
-    (microcosm#931)."""
+    frame, and the area mapping check re-derives every household's area and
+    ladder from it, so the stage-health binding hands both the frame. The
+    mapping check alone also reads the spine's geography block and the
+    supports it pins, which the binding declares for it, so a battery
+    without them reports its gate evidence_absent. The spine geography
+    checks' parameter keys route through the binding (microcosm#931)."""
+
+    from microcosm.build.uk_runtime.stage_health import (
+        ATOMIC_AREA_SUPPORTS_ARTIFACT,
+        SPINE_GEOGRAPHY_ARTIFACT,
+    )
 
     binding = UK_GATE_REGISTRY["stage_health"]
     assert binding.requires_frame({"check": "copy_area_agreement"}) is True
-    for check in ("atomic_mapping_integrity", "area_home_values"):
-        assert binding.requires_frame({"check": check}) is False
+    assert binding.requires_frame({"check": "atomic_mapping_integrity"}) is True
+    assert binding.requires_frame({"check": "area_home_values"}) is False
+    assert binding.required_artifacts({"check": "atomic_mapping_integrity"}) == {
+        "stage_evidence",
+        SPINE_GEOGRAPHY_ARTIFACT,
+        ATOMIC_AREA_SUPPORTS_ARTIFACT,
+    }
+    for check in ("copy_area_agreement", "area_home_values", _COUNCIL_TAX_CHECK):
+        assert binding.required_artifacts({"check": check}) == {"stage_evidence"}
     assert {
         "knots_level",
         "accepted_outcomes",

@@ -655,6 +655,97 @@ def test_each_spine_gate_node_carries_its_own_phase_code() -> None:
             assert params[f"{phase}_code"] == code(), phase
 
 
+def _toy_geography():
+    """The toy conditioned supports' bytes and the spine's geography block
+    over them, as a synthetic fixture's build sidecar records it."""
+    from microcosm.build.uk_runtime.country_adapter import (
+        UK_SYNTHETIC_SUPPORT_REGISTER,
+        uk_spine_geography_binding,
+    )
+    from test_support.microcosm_build.uk_conditioned_support_fixtures import (
+        toy_conditioned_support_payloads,
+    )
+
+    payloads = toy_conditioned_support_payloads()
+    return payloads, uk_spine_geography_binding(
+        payloads, register=UK_SYNTHETIC_SUPPORT_REGISTER
+    )
+
+
+def test_the_spine_gates_carry_the_geography_block_and_read_the_supports():
+    """Given the spine's geography block, each spine gate phase whose stages
+    include the area draw carries the block as its ``spine_geography``
+    parameter and reads the three conditioned supports as graph sources, as
+    the area draw does, so the area mapping gates hold the area stages'
+    records to it and re-derive the areas on those supports; without it the
+    nodes are as before. A graph that does not declare the supports as
+    sources is refused the block (microcosm#931)."""
+    from microcosm.build.uk_runtime.graph_evidence import SPINE_GEOGRAPHY_PARAM
+
+    country = load_country_spec("uk")
+    _, block = _toy_geography()
+    split = uk_spine_graph(country, source_mode="split")
+    bound = add_uk_spine_gate_nodes(
+        split, spec=country, engine_identity="test-engine", geography=block
+    )
+    unbound = add_uk_spine_gate_nodes(
+        split, spec=country, engine_identity="test-engine"
+    )
+    supports = split.node("atomic_area_assign").sources
+    assert len(supports) == 3
+    for phase in ("assembled", "transferred"):
+        node, bare = (graph.node(f"spine.gates.{phase}") for graph in (bound, unbound))
+        assert node.sources == supports, phase
+        assert json.loads(node.params[SPINE_GEOGRAPHY_PARAM]) == block, phase
+        assert bare.sources == () and SPINE_GEOGRAPHY_PARAM not in bare.params
+        assert dict(node.params) == {
+            **bare.params,
+            SPINE_GEOGRAPHY_PARAM: node.params[SPINE_GEOGRAPHY_PARAM],
+        }
+    compile_graph(bound)
+    with pytest.raises(ValueError, match="does not declare as sources"):
+        add_uk_spine_gate_nodes(
+            uk_spine_graph(country),
+            spec=country,
+            engine_identity="test-engine",
+            geography=block,
+        )
+
+
+def test_the_spine_gate_kernel_hands_the_block_and_the_supports_to_its_gates(
+    tmp_path,
+):
+    """The kernel hands the gates of a node that carries the geography block
+    the block and the bytes of the supports its graph sources name, under
+    the names the area mapping check reads, and a node without the block
+    neither (microcosm#931)."""
+    from microcosm.build.uk_runtime.atomic_area_support import CONDITIONED_SOURCES
+    from microcosm.build.uk_runtime.graph_evidence import (
+        SPINE_GEOGRAPHY_PARAM,
+        uk_spine_geography_artifacts,
+    )
+    from microcosm.build.uk_runtime.stage_health import (
+        ATOMIC_AREA_SUPPORTS_ARTIFACT,
+        SPINE_GEOGRAPHY_ARTIFACT,
+    )
+
+    payloads, block = _toy_geography()
+    sources = {}
+    for system, payload in payloads.items():
+        path = tmp_path / f"{CONDITIONED_SOURCES[system]}.npz"
+        path.write_bytes(payload)
+        sources[CONDITIONED_SOURCES[system]] = path
+    context = SimpleNamespace(
+        params={SPINE_GEOGRAPHY_PARAM: json.dumps(block, sort_keys=True)},
+        sources=sources,
+    )
+    assert uk_spine_geography_artifacts(context) == {
+        SPINE_GEOGRAPHY_ARTIFACT: block,
+        ATOMIC_AREA_SUPPORTS_ARTIFACT: payloads,
+    }
+    assert uk_spine_geography_artifacts(SimpleNamespace(params={}, sources={})) == {}
+
+
 def test_the_spine_gate_kernel_keys_on_its_checks_not_the_energy_level(monkeypatch):
     # The re-review of microcosm#1420, E: one kernel hash serves both phases,
     # so it covers the modules both read and not energy_pricing, which only

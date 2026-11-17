@@ -77,30 +77,31 @@ def uk_spine_transferred_only_code_hash() -> str:
     asset type domain (``cgt_asset_type``), and its geography ladder gate
     (``uk_geography_ladder``, microcosm#931) computes through the ladder's
     evaluator (``geography_ladder``), the local-authority resolution it
-    checks each row against (``local_authority_input``), the FRS region codes
-    (``rowwise_geography``), the household weights it reads
-    (``terminal_gates``) and the engine tables of the gate surface it is
-    handed (``microcosm.frame.materialize``).
+    checks each row against (``local_authority_input``), the household
+    weights it reads (``terminal_gates``) and the engine tables of the gate
+    surface it is handed (``microcosm.frame.materialize``). The FRS region
+    codes it reads too (``rowwise_geography``) are in the spine gate kernel's
+    own hash, since the area mapping check both phases declare computes
+    through them (microcosm#931).
 
     The assembled gate's own key, on which every later spine stage's chains,
     therefore carries none of them (the re-review of microcosm#1420, E;
     microcosm#931 ruling 6). An edit to one still re-keys the assembled gate
     wherever a stage before it hashes the module. Stages at or before
     ``area_brma``, the assembled phase's last since it took ``frs_brma``'s
-    place, hash ten of them: ``copy_id_table``, which the root stage binds;
+    place, hash nine of them: ``copy_id_table``, which the root stage binds;
     ``stochastic_assignment`` and ``take_up_contract``;
     ``frs_annual_income``, the module of ``frs_annual_income_spells``; the
     vendored-fact reader, the chronicle feed and its schema epochs, which
     ``frs_hmrc_spine_leaves`` binds; ``microcosm.frame.materialize``, which
-    ``frs_legacy_proxies`` binds; and ``rowwise_geography`` and
-    ``local_authority_input``, which the area stages before ``area_brma``
-    bind (``atomic_area_assign`` and ``local_authority``; microcosm#931).
-    So an edit to any of the ten re-keys every spine node from the first
-    stage that hashes it onwards, the assembled gate included. No stage
-    before that gate hashes the other fifteen, so an edit to one of those
-    re-keys the stages that hash it, those after them and the transferred
-    gate, never the assembled gate. Hashed once per process, as the assembled
-    phase's own code is.
+    ``frs_legacy_proxies`` binds; and ``local_authority_input``, which the
+    local-authority stage before ``area_brma`` binds (``local_authority``;
+    microcosm#931). So an edit to any of the nine re-keys every spine node
+    from the first stage that hashes it onwards, the assembled gate
+    included. No stage before that gate hashes the other fifteen, so an edit
+    to one of those re-keys the stages that hash it, those after them and the
+    transferred gate, never the assembled gate. Hashed once per process, as
+    the assembled phase's own code is.
     """
     import microcosm.frame.materialize as frame_materialize
 
@@ -128,7 +129,6 @@ def uk_spine_transferred_only_code_hash() -> str:
         ledger_fact_vendoring,
         local_authority_input,
         nts_bus_travel,
-        rowwise_geography,
         take_up_contract,
         terminal_gates,
     )
@@ -156,7 +156,6 @@ def uk_spine_transferred_only_code_hash() -> str:
         bounded_amounts,
         geography_ladder,
         local_authority_input,
-        rowwise_geography,
         terminal_gates,
         frame_materialize,
     )
