@@ -78,7 +78,8 @@ first and set what its blockers name:
   stops rather than keep the old venv silently. A worktree synced before the
   marker recorded it keeps its venv whatever the setting, with a log line
   saying so, so an in-flight chain is not re-synced under it; remove the
-  marker to re-sync.
+  marker to re-sync. The sync drops `UV_FROZEN`: uv refuses `--locked`
+  beside `UV_FROZEN=1`, which a profile shell may export.
 - **Emitter.** `--resolve` reports the `microcosm-emitter` the release would
   start against the commit's `minimum_emitter_version.json`.
   `check_emitter.py` repeats the release's checks without importing

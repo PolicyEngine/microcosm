@@ -382,7 +382,9 @@ ensure_worktree() {  # $1 = full sha; sets WT
   local marker=$WT/.venv/.route_a_synced synced
   if [ ! -f "$marker" ]; then
     log "uv sync --python $UV_SYNC_PYTHON --all-packages --locked --extra us in $WT"
-    (cd "$WT" && "$UV" sync --python "$UV_SYNC_PYTHON" --all-packages --locked --extra us) >>"$LOG" 2>&1 || fail "uv sync in $WT"
+    # uv refuses --locked beside UV_FROZEN=1, which a profile shell may export,
+    # so the sync drops it, as supervise.py does for the stages.
+    (cd "$WT" && unset UV_FROZEN && "$UV" sync --python "$UV_SYNC_PYTHON" --all-packages --locked --extra us) >>"$LOG" 2>&1 || fail "uv sync in $WT"
     "$WT/.venv/bin/python" -c 'import psutil, policyengine_us' >>"$LOG" 2>&1 || fail "venv in $WT lacks psutil/policyengine_us"
     printf '%s\npython=%s\n' "$(date '+%F %T')" "$UV_SYNC_PYTHON" > "$marker"
   else

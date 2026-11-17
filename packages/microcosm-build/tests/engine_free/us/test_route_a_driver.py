@@ -683,15 +683,29 @@ _SYNC_SHA = "d" * 40
 
 
 def _ensure_worktree(
-    tmp_path: Path, overrides: dict[str, str], marker: str | None = None
+    tmp_path: Path,
+    overrides: dict[str, str],
+    marker: str | None = None,
+    environment: str = "",
 ) -> tuple[subprocess.CompletedProcess[bytes], Path]:
     """Run ``ensure_worktree`` with stub ``git`` and ``uv``; ``marker`` is an
-    earlier sync's ``.route_a_synced`` in a worktree that already exists."""
+    earlier sync's ``.route_a_synced`` in a worktree that already exists, and
+    ``environment`` is shell run first (exports a caller's shell would hand
+    down). The stub refuses ``--locked`` whenever ``UV_FROZEN`` is set; uv
+    0.11 refuses it beside a true value and fails to parse an empty one."""
 
     recorded = tmp_path / "uv-args"
     uv = write_executable(
         tmp_path / "uv-stub",
         "#!/bin/bash\n"
+        'if [ -n "${UV_FROZEN+set}" ]; then\n'
+        '  for a in "$@"; do\n'
+        '    [ "$a" != --locked ] || {\n'
+        "      echo 'error: the argument `--locked` cannot be used with `UV_FROZEN`' >&2\n"
+        "      exit 2\n"
+        "    }\n"
+        "  done\n"
+        "fi\n"
         f'printf "%s\\n" "$@" > {shlex.quote(str(recorded))}\n'
         "mkdir -p .venv/bin\n"
         "printf '#!/bin/bash\\nexit 0\\n' > .venv/bin/python\n"
@@ -710,6 +724,8 @@ def _ensure_worktree(
         "  esac\n"
         "}\n"
         f"FIXTURE_SHA={_SYNC_SHA}\n"
+        + environment
+        + "\n"
         + _function("ensure_worktree")
         + '\nensure_worktree "$FIXTURE_SHA"\n'
     )
@@ -743,6 +759,21 @@ def test_worktree_sync_names_its_interpreter(
     marker = tmp_path / "wt_root" / f"microcosm-route-a-{_SYNC_SHA[:12]}"
     synced = (marker / ".venv" / ".route_a_synced").read_text(encoding="utf-8")
     assert synced.splitlines()[1] == f"python={setting or '3.14'}"
+
+
+@pytest.mark.parametrize("frozen", ["1", ""])
+def test_worktree_sync_drops_an_inherited_uv_frozen(
+    tmp_path: Path, frozen: str
+) -> None:
+    """A driver started from a shell that exports UV_FROZEN=1 (as a profile
+    may) still syncs: uv refuses --locked beside a true UV_FROZEN and fails on
+    an empty one, so the sync drops it."""
+
+    result, recorded = _ensure_worktree(
+        tmp_path, {}, environment=f"export UV_FROZEN={shlex.quote(frozen)}"
+    )
+    assert result.returncode == 0, result.stdout.decode() + result.stderr.decode()
+    assert "--locked" in recorded.read_text(encoding="utf-8").splitlines()
 
 
 @pytest.mark.parametrize(
