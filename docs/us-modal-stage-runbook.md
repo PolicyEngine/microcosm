@@ -1821,6 +1821,8 @@ Hugging Face cache's copy, serves as the local file: `upload-commands`
 rehashes whatever it is given.
 
 ```bash
+# Pin the workspace for every Modal command here (see below).
+export MODAL_PROFILE=policyengine MODAL_ENVIRONMENT=main
 INCUMBENT_H5=/path/to/populace-us-2024-spm-20260915/populace_us_2024.h5
 CANDIDATE_H5=/path/to/populace-us-2024-b5db384-8b0c1950b65f-20261024T083103Z/populace_us_2024.h5
 LEDGER_FACTS=/path/to/consumer_facts_us_c5e5bf8.jsonl
@@ -1855,11 +1857,14 @@ plan's run id, and so `runs/$R` on the volume, stays the same across
 attempts, but the watcher must not read an earlier attempt's streams. It
 refuses a folder whose streams hold scorer lines from before `started-at`.
 
-Pin the Modal workspace and environment for the launch and the watcher.
-Another session can switch the active profile (`modal profile activate`,
+Pin the Modal workspace and environment for every Modal command of the
+attempt: the uploads and the check above, the launch, the watcher and the
+fetch below. Another session can switch the active profile (`modal profile activate`,
 `modal token new` or `modal token set`) or environment (`modal config
 set-environment`) mid-run; the app list and the stop would then read
-another workspace. `~/.modal.toml` on the build Mac sets no environment
+another workspace, and uploads would land where the pinned launch cannot
+read them, using up the attempt on a failed start. `~/.modal.toml` on the
+build Mac sets no environment
 (checked 2026-11-16), so the workspace's default, `main`, is inferred:
 confirm it with `modal environment list` before the launch. The watcher
 refuses to start unless both are set.
@@ -1884,8 +1889,14 @@ chmod +x "$A/launch.sh"
 Submit that script as a transient launchd job. On the build Mac the helper
 is `lsubmit.sh <label> <log> <cwd> /bin/bash <path to launch.sh>`; any
 launchd submission whose parent is launchd works. Do not run `launch.sh`
-directly in a session shell. Read the app id from the launch log
-(`modal app list` also shows it).
+directly in a session shell. Read the app id (`ap-…`) from this attempt's
+launch log, where `modal run` prints it in its "View run at" line. Do not
+take it from `modal app list`: every stage is the app `microcosm-us-stage`,
+so another session's running stage is listed beside this one with the same
+name, and the watcher would stop it on a `NO-GO`. The watcher refuses an app
+created more than `WATCH_CREATED_SLACK` seconds (60) before `started-at`, or
+one whose creation time it cannot read, but it cannot tell this attempt's
+app from another session's launched after `started-at`.
 
 **Go/no-go.** As soon as the app id is known, start
 `tools/us_head_to_head_watch.sh` as a second launchd job, from the same
@@ -1896,9 +1907,15 @@ lsubmit.sh <label> <log> "$PWD" /usr/bin/env \
   PYTHON="$(command -v python3.14)" MODAL="$HOME/.local/bin/modal" \
   MODAL_PROFILE=policyengine MODAL_ENVIRONMENT=main \
   /bin/bash tools/us_head_to_head_watch.sh \
-  <ap-id> "$A" docs/us-modal-stage-route-a-h2h-plan.json \
+  <ap-id> modal-runs/route-a-h2h-d844-d1386-r1/attempt-1 \
+  docs/us-modal-stage-route-a-h2h-plan.json \
   docs/evidence/us-h2h-speed/chunk-weights.json
 ```
+
+Write the attempt folder literally, as here, rather than `"$A"`: this line
+may run in a fresh shell, where `$A` is empty and the watcher refuses to
+start (exit 2), leaving the run unwatched though still bounded by the
+runner's budget.
 
 Pin `PYTHON` and `MODAL` too: launchd's `PATH` is short, and macOS's `/usr/bin/python3` (3.9)
 cannot run the projection, which needs CPython 3.11 or later and only its
@@ -1908,7 +1925,10 @@ watches, and refuses to start (exit 2) if it does not answer.
 The watcher streams `modal app logs` into `$A/app-N.log`, one
 file per stream. A stream that ends while the app runs is restarted within
 `WATCH_STEP` seconds the first time between two polls; a second end before
-the next poll waits for that poll, up to ten minutes. Whether a fresh stream
+the next poll waits for that poll, up to ten minutes. Each poll also
+restarts a stream that has ended before it reads the files, so a dead
+stream is never read as a quiet scorer: the new file starts empty, which
+holds the estimate until it delivers. Whether a fresh stream
 replays what the app printed before it is not known (it has not been tried
 against a live app), so start the watcher as soon as the app id is known,
 before the runner has pulled and staged its inputs. Slice lines a restart
@@ -1925,14 +1945,23 @@ reads as a straggler before any `log_gap` shows, so after a hole the
 verdict is `WAIT` while a slice that began before the hole ended has no
 line (`hole_suspects`); a slice that is really running clears it when its
 line arrives, a lost one becomes `log_gap` when the parent takes its
-result. A start line lost there merges two starts into one that reads
-twice as long, so a start whose span holds the hole is left out of the
-start cost (`starts_across_holes`); the rebuild then reads early until the
-missing worker becomes `log_gap`: a missed early stop, never a false one
-in the simulated searches. A newest stream with nothing in it yet beside an earlier one
-with records counts as a hole ending now (`newest_stream_empty`). The
-projection reads `app-2.log` before `app-10.log`. `log_gap` raises a
-separate alarm, once, so a lost line found after a hole is still reported. The runner prints its `BUDGET:` line just
+result. A start line lost there leaves the rebuild a worker short and its
+start cost off, which makes the estimate read late, the false-stop
+direction, until the rebuild needs the missing worker and shows `log_gap`.
+No later line tells that from a restart that lost nothing, but each worker
+prints its start line once, so a pool that has logged a start for every
+worker has lost none. Until then, after a hole that could hold the pool's
+start lines (one ending once the pool opened and beginning before its
+release line), a time `NO-GO` is held as `WAIT` (`starts_unconfirmed`); a
+stall still stops the run. A newest stream with nothing in it yet beside an
+earlier one with records may be a hole that has not ended: the estimate and
+the stall check wait for its first record (`newest_stream_empty`). A
+stream that begins in the very second the earlier ones reached and repeats
+records from it is reported as `restart_overlaps`; each record there is
+counted once, so that second may be short. The projection reads
+`app-2.log` before `app-10.log`. `log_gap` raises a separate alarm, once,
+so a lost line found after a hole is still reported. The runner prints its
+`BUDGET:` line just
 before it starts the tool, every time, so streams with scorer lines but no
 `BUDGET:` line began late or lost it and may have missed a shorter budget:
 that is `log_gap` too (`"runner"`). An `ATTEMPTS:` line, printed before
@@ -1956,7 +1985,8 @@ It answers one of three verdicts:
   missing, a pool's lines came without its opening line, or the rebuild
   does not fit the log), because the rebuilt pool is then wrong in an
   unknown direction; after a hole while a slice from before it has no
-  line; and while the streams began late (no `BUDGET:`
+  line, or in place of a time `NO-GO` while a pool the hole could reach has
+  not logged a start for every worker; and while the streams began late (no `BUDGET:`
   line), when it is `GO` only once the candidate has scored every slice
   (stopping then would throw the scores away) but a `NO-GO` against the
   shortest budget seen still holds. The watcher raises `ALARM` once when
@@ -2030,7 +2060,9 @@ Every poll and action goes to `go-no-go.log`. Its exit codes:
   stop the app by hand.
 - 2: bad arguments, or a refused start: `MODAL_PROFILE` or
   `MODAL_ENVIRONMENT` is unset, the folder holds an earlier attempt's
-  streams, the app is not running, `modal app list` could not be read or
+  streams, the app is not running, it was created more than
+  `WATCH_CREATED_SLACK` seconds before `started-at` or its creation time
+  cannot be read, `modal app list` could not be read or
   did not list the app in three tries, or the projection did not answer
   its trial run. A refused start is written to `go-no-go.log` and `ALARM`.
 
@@ -2044,14 +2076,27 @@ list cannot be read is restarted, not taken as the app's end. Settings
 between checks that the stream is alive, 10), `WATCH_MAX_FAILURES` (3),
 `WATCH_WAIT_GRACE` (1800), `WATCH_STOP_TRIES` (5), `WATCH_STOP_WAIT`
 (seconds after each stop request, 30), `WATCH_START_TRIES` (3),
-`WATCH_START_WAIT` (10), `MODAL`, `PYTHON`, and the required
+`WATCH_START_WAIT` (10), `WATCH_CREATED_SLACK` (60), `WATCH_SETTLE`
+(120), `MODAL`, `PYTHON`, and the required
 `MODAL_PROFILE` and `MODAL_ENVIRONMENT`.
 
 `ALARM` is only a file. Nothing notices it, or a watcher that has died, and
 a launchd job does not survive a reboot. Whoever launches the run checks
-`go-no-go.log` and `ALARM` while it runs. The watcher's Modal calls and the
-projection have no timeouts, so a hung call would freeze its loop; none has
-been seen to hang.
+`go-no-go.log` and `ALARM` while it runs.
+
+A `modal app logs` stream can hang while its process lives on: the
+modal 1.3 client sets no deadline or keepalive on it (read from its source;
+not seen to happen). A hung stream reads as a scorer that has gone quiet,
+which the time rule or the stall check would stop. So before acting on a
+`NO-GO` the watcher checks that the newest stream's file grew since the
+last poll; if not, it restarts the stream, once until the file grows again,
+and leaves the verdict to the next poll. It also does not act on a `NO-GO`
+read from a stream started less than `WATCH_SETTLE` seconds (120) earlier,
+which may still be replaying an old stretch. A run that really has stopped
+printing is then stopped a poll later, about $1.53 more. The watcher's
+other Modal calls (`app list`, `app stop`) and the projection have no
+timeouts, so a hung one would freeze its loop, leaving only the runner's
+budget to end the run; none has been seen to hang.
 
 It detects and uses Modal CLI 1.4's `--follow` and 1.4.2's `--yes`. Its
 tests run it against a fake `modal` only: never test its stop on a live
@@ -2059,9 +2104,14 @@ app.
 
 If the watcher dies, start it again on the same attempt folder. It numbers
 new streams after the files it finds, and the projection counts each record
-once across streams. A relaunch gets a new attempt folder. A stopped or failed attempt writes no receipt; record
-its spend in the run folder. Another attempt is a new spend against Max's
-cap and needs his go.
+once across streams. A relaunch gets a new attempt folder. An attempt
+ended from outside the runner (the watcher's or a hand `modal app stop`,
+the class timeout or a container crash) writes no receipt;
+record its spend in the run folder. One the runner ends itself (a scorer
+failure, or its own budget stop) still pushes its state and writes a
+receipt, which `verify-receipt` rejects as not completed but which holds
+its logs. Another attempt is a new spend against Max's cap and needs his
+go.
 
 Once the stage ends, read its receipt name from the runs volume
 (`runs/$R/receipts/`) and fetch that `score-<utc>.json` and the two
@@ -2070,6 +2120,7 @@ and sha256s. Fetch the tiny complete state, including the logs, so strict
 verification covers everything:
 
 ```bash
+export MODAL_PROFILE=policyengine MODAL_ENVIRONMENT=main
 R=route-a-h2h-d844-d1386-r1
 mkdir -p "modal-runs/$R"
 modal volume get microcosm-us-stage-runs "runs/$R/receipts" "./modal-runs/$R/"
