@@ -154,8 +154,12 @@ first and set what its blockers name:
     Rebuild the ladder with it and set the three settings to the new file.
 
 The example retains the historical d122 dense whole-base national/state
-settings, batch size 2000, export-mass reference and d490 tail register from the
-published run. Those are operator settings, not a new waiver. The driver permits
+settings, batch size 2000 and export-mass reference from the published run.
+Those are operator settings, not a new waiver. It no longer sets the d490 tail
+register: since 17 November 2026 the release decides the QRF tail gate at base
+(pre-calibration) weights, so a register measured at final weights would read
+as stale. Pass `QRF_TAIL_EXCLUSIONS` only for a register measured at base
+weights on the base that ships. The driver permits
 `--dense-default-dataset` only with `DENSE_RELEASE_D122=1`, and refuses the
 release-defeating, selection, evidence, exact-k, staging and driver-owned
 overrides listed in `refuse_bad_release_args`, including `--flag=value` forms.

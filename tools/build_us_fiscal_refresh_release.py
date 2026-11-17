@@ -1316,7 +1316,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Optional JSON object of export column -> reason for sparse "
             "QRF-imputed columns allowed past the tail-concentration "
-            "top-share threshold (microcosm#464 gate). Stale entries fail the "
+            "top-share threshold (microcosm#464 gate), measured at base "
+            "(pre-calibration) weights. Stale entries fail the "
             "gate; the file path, sha256, entries and any mismatch are "
             "recorded in qrf_tail_concentration.json and bound into both "
             "manifests as qrf_tail_register, with that file a release "
@@ -8520,7 +8521,9 @@ def _qrf_tail_concentration_gate(
     Runs :func:`microcosm.build.gates.tail_concentration_gate` on every
     QRF-imputed source-stage output the export persists that is sparse
     (nonzero share at most :data:`US_QRF_SPARSE_NONZERO_SHARE_MAX` of its
-    entity's records), at the export's calibrated weights. Returns the gate
+    entity's records), at ``export_frame``'s weights: the release passes its
+    pre-calibration base frame for the verdict and reports the calibrated
+    export beside it (:func:`_qrf_tail_final_weight_report`). Returns the gate
     result plus the surface metadata (which QRF outputs were checked, dense,
     absent, or non-numeric, and each numeric output's record nonzero share and
     finite nonzero record count, the numbers behind the dense/sparse split) for
@@ -8763,9 +8766,67 @@ def _qrf_tail_gate_lines(
     return gate_lines, _qrf_tail_register_failures(mismatch)
 
 
+#: Schema of ``qrf_tail_concentration.json``. Version 2 (17 Nov 2026) decides
+#: at base weights and adds ``weight_basis`` and ``final_weight_report``.
+US_QRF_TAIL_CONCENTRATION_SCHEMA_VERSION = 2
+
+
+def _qrf_tail_final_weight_report(
+    export_frame: Frame, checked_columns: Sequence[str]
+) -> dict[str, object]:
+    """The checked columns' tail shares at the export's weights, reported only.
+
+    Calibration moves weight onto few carriers by design, so the share at
+    final weights is a diagnostic: it decides no verdict and joins no register
+    (ruled 17 Nov 2026; root fix #481). It measures the columns the base-weight
+    gate checked, with the gate's own parameters. Any ``Exception`` becomes an
+    ``unmeasured`` entry, so the report can never fail a run.
+    """
+
+    try:
+        values: dict[str, np.ndarray] = {}
+        weights: dict[str, np.ndarray] = {}
+        entity_weights: dict[str, np.ndarray] = {}
+        for column in checked_columns:
+            entity = export_frame.column_entity(column)
+            series = export_frame.table(entity)[column]
+            values[column] = (
+                pd.to_numeric(series, errors="coerce")
+                .fillna(0.0)
+                .to_numpy(dtype=np.float64)
+            )
+            if entity not in entity_weights:
+                entity_weights[entity] = np.asarray(
+                    export_frame.resolve_weights(entity).values, dtype=np.float64
+                )
+            weights[column] = entity_weights[entity]
+        gate = tail_concentration_gate(
+            values,
+            weights,
+            top_k=US_QRF_TAIL_CONCENTRATION_TOP_K,
+            max_top_share=US_QRF_TAIL_CONCENTRATION_MAX_TOP_SHARE,
+            min_nonzero_records=US_QRF_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS,
+        )
+    except Exception as error:
+        return {"weight_basis": "calibrated", "unmeasured": _unmeasured_reason(error)}
+    top_share = dict(gate.details.get("top_share", {}))
+    threshold = US_QRF_TAIL_CONCENTRATION_MAX_TOP_SHARE
+    return {
+        "weight_basis": "calibrated",
+        "decides_verdict": False,
+        "max_top_share": threshold,
+        "top_share": top_share,
+        "carrier_counts": dict(gate.details.get("carrier_counts", {})),
+        "above_threshold": sorted(
+            column for column, share in top_share.items() if share > threshold
+        ),
+    }
+
+
 def _record_qrf_tail_concentration_gate(
     export_frame: Frame,
     *,
+    base_frame: Frame,
     exclusions_path: Path | None,
     allow_concentration: bool,
     terminal_gate_failures: list[str],
@@ -8773,6 +8834,12 @@ def _record_qrf_tail_concentration_gate(
     telemetry: _TerminalBatchProgress,
 ) -> list[str]:
     """Evaluate the terminal QRF tail gate and record everything it measured.
+
+    The verdict and the per-run register are measured on ``base_frame``, the
+    released columns at their pre-calibration weights: the QRF draw artifact
+    the gate exists for (microcosm#462) lives there, while calibration's own
+    weight concentration is reported at final weights in
+    ``final_weight_report`` and decides nothing (ruled 17 Nov 2026).
 
     Appends the gate's failures (unless ``allow_concentration``) and any
     register-mismatch line (always — the register must match whatever the
@@ -8793,11 +8860,11 @@ def _record_qrf_tail_concentration_gate(
         gate, surface = shadow_value(
             "us_national_qrf_tail_concentration",
             lambda: _qrf_tail_concentration_gate(
-                export_frame,
+                base_frame,
                 reviewed_exclusions=register,
             ),
             lambda: EvidenceContext(
-                frame=export_frame,
+                frame=base_frame,
                 artifacts={"qrf_tail_reviewed_exclusions": register},
             ),
             verdict=lambda value: LegacyVerdict.from_result(value[0]),
@@ -8846,8 +8913,12 @@ def _record_qrf_tail_concentration_gate(
     qrf_tail_path.write_text(
         json.dumps(
             {
-                "schema_version": 1,
+                "schema_version": US_QRF_TAIL_CONCENTRATION_SCHEMA_VERSION,
                 "enforced": not allow_concentration,
+                "weight_basis": "base",
+                "final_weight_report": _qrf_tail_final_weight_report(
+                    export_frame, surface.get("checked_sparse_columns", ())
+                ),
                 "surface": surface,
                 "tail_concentration": {
                     "passed": gate.passed,
@@ -17496,7 +17567,8 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 force_upload=True,
             )
     # microcosm#462: tail-concentration gate over the sparse QRF-imputed dollar
-    # columns at the export's calibrated weights. The Build M defect — 89% of
+    # columns at base (pre-calibration) weights, with the calibrated-weight
+    # shares reported beside it (ruled 17 Nov 2026). The Build M defect — 89% of
     # the shipped non_sch_d_capital_gains mass in 100 records via a repeated
     # $594,484 donor-ceiling value — is invisible to support clipping (every
     # draw inside donor range), count targets (carrier count exact), and mass
@@ -17506,6 +17578,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # measured tail evidence and the #568 weight sidecar survive it.
     qrf_tail_register_failures = _record_qrf_tail_concentration_gate(
         export_frame,
+        base_frame=base_frame,
         exclusions_path=args.qrf_tail_concentration_exclusions,
         allow_concentration=args.allow_qrf_tail_concentration,
         terminal_gate_failures=terminal_gate_failures,

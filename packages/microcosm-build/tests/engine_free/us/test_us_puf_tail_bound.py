@@ -207,25 +207,64 @@ def test_active_tail_bound_requires_diagnostics_sink() -> None:
         )
 
 
-def test_tail_bound_rejects_overlap_with_snapped_outputs(
+def test_tail_bound_rejects_signed_mass_calibrated_outputs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
         puf_support_module,
-        "_PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS",
-        puf_support_module._PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS | {_TARGET},
+        "_PUF_TAX_DETAIL_SIGNED_MASS_CALIBRATED_PERSON_OUTPUTS",
+        puf_support_module._PUF_TAX_DETAIL_SIGNED_MASS_CALIBRATED_PERSON_OUTPUTS
+        | {_TARGET},
     )
     frame = _expanded_recipient_frame()
 
     with pytest.raises(
         ValueError,
-        match="tail bound is defined for passthrough outputs only",
+        match="passthrough and sparse snapped amount outputs only",
     ):
         _finalize(
             frame,
             _tail_donor(),
             pd.DataFrame({_TARGET: [1.0] * 4}, index=_recipient_index(frame)),
         )
+
+
+def test_sparse_snapped_tail_bound_keeps_every_value_on_the_grid_below_it() -> None:
+    # Collectibles is a sparse snapped output: its bound is lowered onto the
+    # donor grid, so the snap after it cannot carry a value past the bound.
+    collectibles = "long_term_capital_gains_on_collectibles"
+    assert collectibles in puf_support_module._PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS
+    assert (
+        puf_support_module.puf_tax_detail_tail_bound_quantiles_identity()[collectibles]
+        == 0.999
+    )
+    frame = _expanded_recipient_frame()
+    donor = pd.DataFrame(
+        {collectibles: [100.0, 200.0, 300.0], "weight": [999.0, 0.5, 0.5]}
+    )
+    diagnostics: list[dict[str, object]] = []
+
+    finalized = _finalize(
+        frame,
+        donor,
+        pd.DataFrame(
+            {collectibles: [150.0, 250.0, 1_000.0, 5_000.0]},
+            index=_recipient_index(frame),
+        ),
+        person_outputs=(collectibles,),
+        diagnostics=diagnostics,
+        tail_bound_quantiles={collectibles: 0.999},
+    )
+
+    quantile_rows = [
+        row for row in diagnostics if row["rule"] == "weighted_positive_donor_quantile"
+    ]
+    assert len(quantile_rows) == 1
+    bound = float(quantile_rows[0]["bound_value"])
+    assert bound in {100.0, 200.0, 300.0}
+    values = _puf_person_values(finalized, collectibles)
+    assert np.all(values <= bound)
+    assert set(np.unique(values[values > 0.0])) <= {100.0, 200.0, 300.0}
 
 
 def test_tail_bound_rejects_no_positive_donor_support() -> None:

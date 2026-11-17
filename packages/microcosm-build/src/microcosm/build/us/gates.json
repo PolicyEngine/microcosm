@@ -2213,7 +2213,7 @@
         "us_qrf_tail_concentration_min_nonzero_records": 500,
         "us_qrf_sparse_nonzero_share_max": 0.05
       },
-      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): tail concentration over the sparse QRF-imputed export columns, with the run's reviewed exclusions. Joins the terminal batch, which raises before the H5 write. --allow-qrf-tail-concentration waives it."
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): tail concentration over the sparse QRF-imputed columns at base (pre-calibration) weights, with the run's reviewed exclusions; the calibrated-weight shares are reported, not graded. Joins the terminal batch, which raises before the H5 write. --allow-qrf-tail-concentration waives it."
     },
     {
       "id": "us_national_stored_inputs_written",

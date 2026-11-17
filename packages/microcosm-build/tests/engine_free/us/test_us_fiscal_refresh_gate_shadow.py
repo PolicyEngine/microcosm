@@ -428,6 +428,7 @@ def test_a_tail_register_that_never_loads_records_its_gate_not_run(
     assert (
         release._record_qrf_tail_concentration_gate(
             object(),
+            base_frame=object(),
             exclusions_path=register,
             allow_concentration=False,
             terminal_gate_failures=failures,

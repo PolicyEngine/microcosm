@@ -17389,6 +17389,7 @@ def _record_qrf_tail(builder, tmp_path, frame, *, register, allow, failures):
     recorder = _RecordingTelemetry()
     register_failures = builder._record_qrf_tail_concentration_gate(
         frame,
+        base_frame=frame,
         exclusions_path=register,
         allow_concentration=allow,
         terminal_gate_failures=failures,
@@ -17396,6 +17397,62 @@ def _record_qrf_tail(builder, tmp_path, frame, *, register, allow, failures):
         telemetry=builder._TerminalBatchProgress(recorder, failures),
     )
     return register_failures, recorder
+
+
+def test_qrf_tail_gate_decides_at_base_weights_and_reports_final_weights(
+    tmp_path,
+) -> None:
+    # Ruled 17 Nov 2026: calibration concentrating weight on few carriers is
+    # reported, not failed. The base frame is dispersed (top-100 share 20%);
+    # the export puts 1,000x weight on the first 100 carriers.
+    builder = _load_builder_module()
+    base = _qrf_export_frame(builder, _qrf_dispersed_values())
+    weights = np.ones(base.n("household"))
+    weights[:100] = 1_000.0
+    export = base.with_weights(
+        "household",
+        builder.Weights(weights, builder.WeightKind.CALIBRATED),
+        mass=builder.MassChange(
+            factor=weights.sum() / base.weights_for("household").total,
+            reason="test calibration",
+        ),
+    )
+    failures: list[str] = []
+    recorder = _RecordingTelemetry()
+
+    register_failures = builder._record_qrf_tail_concentration_gate(
+        export,
+        base_frame=base,
+        exclusions_path=None,
+        allow_concentration=False,
+        terminal_gate_failures=failures,
+        release_dir=tmp_path,
+        telemetry=builder._TerminalBatchProgress(recorder, failures),
+    )
+
+    assert register_failures == []
+    assert failures == []
+    payload = json.loads((tmp_path / "qrf_tail_concentration.json").read_text())
+    assert payload["schema_version"] == 2
+    assert payload["weight_basis"] == "base"
+    assert payload["tail_concentration"]["passed"] is True
+    assert payload["tail_concentration"]["details"]["top_share"][
+        "non_sch_d_capital_gains"
+    ] == pytest.approx(0.2)
+    report = payload["final_weight_report"]
+    assert report["weight_basis"] == "calibrated"
+    assert report["decides_verdict"] is False
+    assert report["above_threshold"] == ["non_sch_d_capital_gains"]
+    assert report["top_share"]["non_sch_d_capital_gains"] > 0.99
+
+
+def test_qrf_tail_final_weight_report_never_fails_the_run() -> None:
+    builder = _load_builder_module()
+
+    report = builder._qrf_tail_final_weight_report(object(), ["estate_income"])
+
+    assert report["weight_basis"] == "calibrated"
+    assert report["unmeasured"].startswith("AttributeError")
 
 
 def test_qrf_tail_register_mismatch_splits_stale_and_unused_entries() -> None:
