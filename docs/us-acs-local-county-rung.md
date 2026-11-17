@@ -3,9 +3,11 @@
 This implements microcosm#922 item 1: an optional county rung on the US
 ACS local release line. County logic lives in
 `tools/us_acs_local_county_surface.py`; the release driver and district helper
-only call its hooks. The initial surface uses ladder population and public IRS
-county shares. Future ACS county families can use the same county row,
-holdout, and reliability interfaces.
+only call its hooks. The production surface (`--geographies state,cd,county
+--soi-mode state_county`) trains on ladder population, public IRS SOI county
+shares and ACS county households, scores four held-out ACS county families,
+gives every county a reliability grade, and moves a few same-PUMA households
+into any county the staging frame leaves empty.
 
 ## Plan and invariants
 
@@ -21,6 +23,15 @@ holdout, and reliability interfaces.
   Only an explicitly capped smoke may continue with missing support.
 - Holdout roles are deterministic given their salt. Scoring compares held-out
   county targets with state target times county population share.
+- ACS household county rows sum to new ACS state household targets. The four
+  ACS validation families never enter the loss, the target registry, the
+  matrix or the weights.
+- Minimum support never moves a household into a county that already has
+  one, never changes a household's state or PUMA, rewrites only the county
+  columns, moves exactly the configured number of households into each
+  county it fills (or none), and is deterministic.
+- Kalawao (`15005`) shares one declared SOI cell with Maui (`15009`) for the
+  SOI families only; any other county missing from SOI is refused.
 - Reliability reports show supporting rows, distinct source households, Kish
   ESS, training and holdout error. At fixed error, increasing ESS cannot worsen
   the grade. Missing holdout evidence is explicit.
@@ -94,8 +105,10 @@ are also reported and refused outside that smoke exception. The exception
 does not excuse missing source facts or mismatched county boundaries, and
 development samples cannot be packaged as releases.
 
-Calibration writes schema-2 `county_reliability.json` next to its calibration
-outputs and includes it in the packaged evidence. Each county reports its
+Calibration writes schema-3 `county_reliability.json` and a flat
+`county_reliability.csv` next to its calibration outputs, and packaging
+publishes both (the CSV is refused unless it is the flattening of the bound
+JSON report). Each county reports its
 supporting household rows, distinct `(household_spine, household_source_id)`
 pairs when available, and training/holdout target counts and mean/maximum
 absolute relative errors. `kish_ess` aggregates final weights by those source pairs within each
@@ -105,12 +118,20 @@ donors each split into two clones have source ESS 200 (grade B at adequate fit)
 and row ESS 400; cloning cannot earn grade A. Missing or null source provenance
 makes source ESS unavailable and the grade U. The report binds the run identity,
 calibrated weights, and configured county column. Unsupported smoke counties
-remain explicit with zero support and grade `U`.
+remain explicit with zero support and grade `U`. ACS group-quarters records
+count toward neither household support nor household ESS; a county with only
+those records remains `no_support` and grade `U` in a smoke run.
 
 For each target, relative error is
 `abs(estimate - target) / max(abs(target), 1)`. The grade uses the maximum error
-across all of the county's training and holdout targets. The A/B/C/D thresholds
-are **provisional** and recorded as such in the report.
+across all of the county's training and holdout targets and, in a
+`state_county` run, its four ACS validation errors (see below), so every
+county with households has holdout evidence. Each cell records the
+validation errors beside the pro-rata baseline errors, the error that set the
+grade (`grade_error`, `grade_driver`) and a `status`: `supported`,
+`minimum_support` (a county filled by the support step, graded normally) or
+`no_support`. The A/B/C/D thresholds are **provisional** and recorded as such
+in the report.
 
 | Grade | Minimum source Kish ESS | Maximum error |
 |---|---:|---:|
@@ -122,10 +143,123 @@ are **provisional** and recorded as such in the report.
 
 Rules are evaluated from A through C, then D; a county without holdout evidence
 receives U even if its training fit is good, as does a county without source
-identity. Thus a 10% block holdout can leave many counties ungraded when only
-two concepts are available. At fixed error, raising ESS cannot worsen a grade.
+identity. Without `--soi-mode state_county` there are no validation families,
+so a 10% block holdout can leave many counties ungraded. With it and complete
+source identity, only a county with no supporting household can be U. At
+fixed error, raising ESS cannot worsen a grade.
 These are report-only evidence grades;
 Kish ESS is not a county standard error or a guarantee of unbiased estimates.
+
+## ACS county families (microcosm#922)
+
+A `state_county` run reads the ACS 2020-2024 5-year county tables from the
+county facts rows already loaded for SOI (`surface.county_facts.rows`); it
+never reopens `--feed` or the county facts file. Every family trains or scores
+on estimates (`..._E`, `dimensions.statistic = "estimate"`) only. A margin of
+error row (`..._M`) is carried beside its estimate in receipts when it exists
+and is never required: B01003 has 3,014 counties with estimates only in record
+set `group_0` and 130 counties with estimates and margins in `group_1`. Each
+table must name every county exactly once; duplicates, negative or nonfinite
+estimates, a statistic that does not match the measure ID, a layout county
+that differs from the row geography, a Puerto Rico row (state `72`) and
+incomplete or unexpected county inventories are refused by name. Every
+B19001 estimate and margin row must carry the expected income-bracket label,
+including rows after the first county.
+
+**Trained: `acs_households`.** Each state gets a new households target equal
+to the sum of its counties' B11001_001E estimates, and each county a child
+target that splits it by its public share, with largest-residual rounding so
+the children sum exactly to the parent. These state rows are new state
+targets: they move state household counts to ACS 5-year levels (the county
+pilot, microcosm#1377, found the release 6.0% under ACS B11001 nationally).
+The receipt records this as `new_state_targets`. The measure is 1 per
+household in ACS's household universe, so ACS group-quarters records
+(`TYPEHUGQ` 2 or 3) count as no household, as in the pilot
+(`experiments/us-county-pilot-20261024/county_targets.py`,
+`GROUP_QUARTERS_TYPES`). An ACS household without `TYPEHUGQ` 1, 2 or 3 is
+refused, and so is a donor household that carries one. State rows each have
+their own loss budget; county rows share one budget per state, as the SOI
+county rows do (loss mapping `us_acs_local_county.v2`).
+
+**Held out: four validation families.** These are scored after calibration
+and never enter the loss, the target registry, its digest, the matrix or the
+weights:
+
+| Family | ACS estimates | Household measure |
+|---|---|---|
+| `acs_earnings` | B19061_001E | wages plus all self-employment, summed over the household's people |
+| `acs_earning_households` | B19051_002E | households with nonzero earnings |
+| `acs_household_income` (approximate) | B19025_001E | earnings plus the stored income inputs |
+| `acs_household_income_distribution` (approximate) | B19001_002E-017E | households by approximate income bracket |
+
+Earnings sum `employment_income_before_lsr`,
+`self_employment_income_before_lsr`, `sstb_self_employment_income_before_lsr`
+and `farm_operations_income` on every record. The pilot zeroed the last two
+on ACS records because staging then stacked donor draws on SEMP
+(microcosm#1380); materialize now refuses such staging, and the gate it runs
+lets an ACS row's SEMP sit wholly on the SSTB leaf, so summing all four counts
+SEMP once. Donor records also add `partnership_self_employment_net_earnings`,
+which ACS SEMP counts (the gate keeps it zero on ACS rows). The income
+approximation starts from the four leaves, not from earnings, and adds the
+pilot's 22 other income inputs that staging stores plus `partnership_income`
+and `s_corp_income` on donor records only, so donor partnership earnings,
+mostly inside `partnership_income`, are not counted twice. The receipt lists
+any input staging lacks. B19013 (median
+household income) is a diagnostic only, never a target or a share; De Baca
+County (`35011`) has no B19013 row and is listed as missing.
+
+Each county is scored as a within-state share:
+
+```text
+target(c)   = M_s * public(c) / sum of public over the state's counties
+pro_rata(c) = M_s * ladder population(c) / state population
+```
+
+where `M_s` is the state's total of the household measure under the final
+weights. The design-weight diagnostic uses its own state total, so it also
+measures within-state shares. The report gives each county's calibrated,
+design-weight and pro-rata errors per family; the bracket family's graded
+error is the L1 error over its 16 brackets divided by the county's bracket target total (at
+least 1). Materialize
+writes the public values (`county_validation.json`) and the household
+measures (`county_validation_measures.npz`), and the run identity binds their
+SHA256 under `county_validation`, so calibration scores exactly what
+materialize saw.
+
+## Minimum county support (microcosm#922)
+
+A sampled staging frame can leave a small county with no household, or with
+ACS group-quarters records only, which support no households-family target.
+Only households in the household universe count as support. Before
+calibration, `--county-min-support K` (default 3, 0 turns it off, at most 50)
+fills each such county with exactly K households from the same PUMA, or with
+none if K eligible households are not available (status
+`insufficient_eligible_donors`, which the support check then refuses as
+before). PUMAs are tried in order of their population overlap with the county.
+Within a PUMA, households are ranked by the SHA256 of the key
+`acs-local-county-support-v1`, the county and the household ID, so the
+choice does not depend on row order. An eligible household is in the household
+universe, carries no `tract_geoid` or `block_geoid` (finalize gates compare
+those with the county), has agreeing `county_fips` and `county_fips_2023`
+values, and comes from a county that keeps at least K households in the
+household universe after the move. The step rewrites `county_fips` and `county_fips_2023` (whichever are
+present) and nothing else: state, PUMA, congressional district, weights and
+every other column stay as they were. Every move is recorded in
+`county_support.json` under `minimum_support`, and the run identity binds the
+moves' SHA256; the export stage re-applies the recorded moves to the reloaded
+staging frame and refuses moves that no longer match. Filled counties are
+graded normally with status `minimum_support`.
+
+The step is for legacy-location staging. Under `--location-rule block_v1`
+([US household location](us-location-v1.md)) every household carries a
+`block_geoid` and `tract_geoid`, so no household is eligible: an empty county
+stays unsupported (status `insufficient_eligible_donors`) and a full build
+refuses as before. Filling counties there needs a block redrawn inside the
+PUMA and county, with every block-derived geography (tract, both county
+columns, place, legislative districts, CBSA and congressional districts)
+looked up again; that is not implemented. The receipt's
+`location_columns_present` names the columns that made households
+ineligible.
 
 ## County facts input (microcosm#922)
 
@@ -162,8 +296,11 @@ is loaded or any target row is materialized (the state administrative targets
 are compiled from `--feed` earlier). On the build machine the loader reads the pinned file in about 5 s and
 holds about 0.9 GB of rows, measured apart from importing the US runtime. The
 rows stay on the surface for the rest of the materialize stage; today only the
-SOI county split reads them, in `prepare_run`. No county step reads `--feed`,
-and nothing reopens the county facts file after `prepare_run`. The
+SOI county split, the ACS households family and the validation design read
+them, all in `prepare_run`. No county step reads `--feed`, and nothing reopens
+the county facts file after `prepare_run`. If the prepared facts are missing,
+`attach_surface` records a refusal in `county_surface.json` and stops, even
+when derived surfaces are cached. The
 run identity and `materialize_rss.json` record the county facts receipt under
 `county_facts`. The refresh recipe carries both flags. It names placeholder files
 (`<county-facts.jsonl>`, like `--feed`'s) and never the build machine's path;
@@ -171,22 +308,40 @@ the county digest it carries is the pinned one, while `--feed-sha256` stays a
 `<sha>` placeholder. A run without county
 facts records nothing new, so its run identity keeps its pre-county bytes.
 
-The inspected Chronicle publisher inputs have two concrete blockers:
+The inspected Chronicle publisher inputs have two concrete issues:
 
 - **Kalawao:** the SOI CSV has 3,143 counties and omits `15005` Kalawao County.
   PEP and five ACS tables carry all 3,144. B19013 has 3,143 (it has no De Baca
   County, `35011`), and B01003 reaches 3,144 only across its two record sets.
-  The IRS 2022 county users guide (`22incydocguide.docx`) says items with fewer
-  than 20 returns for a county were excluded, so Kalawao's SOI value is
-  missing, not zero. The guide does not say whether Kalawao's returns are
-  counted in another county's row. Until the rung declares a reviewed treatment (a
-  combined SOI cell {15005, 15009}, planned in the production county rung's own change),
-  a complete county SOI block still fails with that county named.
+  The [IRS 2022 county users guide](https://www.irs.gov/pub/irs-soi/22incydocguide.docx)
+  says items with fewer than 20 returns for a county were excluded, so
+  Kalawao's SOI value is missing, not zero. The guide does not say whether
+  Kalawao's returns are counted in another county's row. The rung therefore
+  declares one combined SOI cell, {15005, 15009} with Maui as host
+  (`DECLARED_SOI_COMBINED_CELLS`), for the SOI families only. The cell's
+  share is Maui's published value over the state's published county sum, and
+  its households are those in either county. Kalawao keeps its own
+  population row (from the ladder, like every county's) and ACS rows. The SOI receipt records the merge under
+  `combined_cells`, and each Maui row carries `state_county_cell_members`
+  `15005,15009`. Any other county missing from SOI, a declared cell whose
+  host is missing too, or a declaration across states is refused.
 - **Connecticut:** both packages use the nine planning-region codes `09110`
-  through `09190`. The household county column and ladder must use those same
-  boundaries. Select `--county-column county_fips_2023` when the parallel
-  planning-region work supplies that column, and use its matching ladder.
-  Changing the column name alone cannot translate legacy county targets.
+  through `09190`. The household county column and the ladder's county
+  populations must use those same boundaries, so a full run selects
+  `--county-column county_fips_2023`. The PUMA ladder's own county overlaps are
+  2020 counties (Connecticut's eight legacy counties, 3,143 in all). Under
+  `county_fips_2023` the rung therefore takes its county populations, and the
+  PUMA overlaps the minimum support step draws from, from the ladder's tract
+  overlaps instead: each tract's 2023 county-equivalent
+  (`county_fips_2023_from_tracts`) is its planning region in Connecticut and
+  its own county elsewhere, so every PUMA's population is conserved and every
+  county outside Connecticut keeps its 2020 overlaps
+  (`ladder_county_overlaps`). A ladder without tract overlaps is refused under
+  that column. Read against a national ladder that
+  `tools/build_us_puma_ladder_artifact.py` built on 2026-11-16, this gives 3,144
+  county-equivalents with the nine regions and the same national total; set
+  `MICROCOSM_US_PUMA_LADDER_ARTIFACT` to rerun that check. Any other county
+  column reads the 2020 overlaps unchanged.
 
 SOI facts carry `geography.level = "county"` and Census-style IDs such as
 `0500000US01001`; the row geography is authoritative even though the record
@@ -202,24 +357,30 @@ for `co-est2024-alldata.csv`.
 
 A full run needs the pinned main feed and its SHA256, the pinned county facts
 file and its SHA256,
-a staging H5 and summary with household support in every county, a matching
-county-boundary PUMA ladder, and resolution of the Kalawao SOI gap. The
+a staging H5 and summary with household support in every county (after the
+minimum support step), and the PUMA ladder the staging was built with (its
+tract overlaps supply the 2023 county populations; see Connecticut above). The
 historical staging file was approximately 10.7 GB. The historical ladder was
 446,791 bytes with SHA256
 `39a2ab2abeab07a88362af7ab2940e0e1d50a297c919e4bbc6fb65bab51147d8`;
-that old digest is reference evidence, not an approved planning-region ladder.
+that old digest is reference evidence only.
 
-At 3,144 counties and the current two SOI concepts, the county increment is
-`3,144 × (population + returns + AGI) = 9,432` rows. With the pinned 4,380 state
-administrative rows, 51 state population rows and 436 district population
-rows, this is approximately **14,299 rows** including holdouts. The exact
+At 3,144 counties, the county increment is 3,144 population rows, 3,143 rows
+for each of the two SOI concepts (Kalawao shares Maui's cell), 3,144 ACS
+household rows and 51 new ACS state household rows: **12,625 rows**. With the
+pinned 4,380 state administrative rows, 51 state population rows and 436
+district population rows, this is approximately **17,492 rows** including
+holdouts. The validation families add no row. The exact
 count depends on the pinned county facts and the ladder; an incomplete SOI county block
 is refused rather than reducing that count silently.
 
 For the historical 1,588,854-household staging population, each household can
-contribute to at most three added county rows. That gives at most **4,766,562
-added nnz**, approximately **38.2 MB** of raw float32/int32 CSR data and indices,
-plus about 38 KB of row pointers. Zero measures reduce nnz. Temporary matrix
+contribute to at most four added county rows and one added state households
+row. That gives at most **7,944,270 added nnz**, approximately **63.6 MB** of
+raw float32/int32 CSR data and indices, plus about 50 KB of row pointers. The
+validation measures file holds four 64-bit arrays per household (the
+household ID and three float64 measures), about 51 MB. Zero measures reduce
+nnz. Temporary matrix
 copies and Python overhead add memory, and existing state rows and the
 engine/frame dominate the total. Historical full materialization peaked at
 75.6–93.9 GB; calibration was about 67.6 GB. Allocate **128 GiB** and start with
@@ -233,7 +394,8 @@ check (`check_stage`) refuses a `state_county` materialize before any compute.
 A `--run` that skips that check stages its inputs first and is then refused by
 the release tool's own argument check.
 
-Once the input blockers are resolved, set these paths and the two pinned
+Once a staging frame and ladder on the county facts' boundaries (see
+Connecticut above) are available, set these paths and the two pinned
 digests in the execution environment. This example uses the planning-region
 column; use `county_fips` only with a ladder matching that column.
 The following is documentation only and has not been executed:
@@ -279,6 +441,7 @@ uv run python tools/build_us_acs_local_release.py \
   --families snap,medicaid,soi --geographies state,cd,county \
   --soi-mode state_county --county-column "$COUNTY_COLUMN" \
   --county-holdout-fraction 0.1 --county-holdout-salt acs-local-county-v1 \
+  --county-min-support 3 \
   --county-target-loss-cap 10 --county-max-weight-ratio 5 \
   --sample-fraction 1.0 --hh-chunk 20000 \
   --checkpoint-dir "$COUNTY_RUN/checkpoints" \
@@ -290,7 +453,8 @@ uv run python tools/build_us_acs_local_release.py \
 It does not publish. The command deliberately omits the partial-geography
 escape hatch. Run setup first with `uv sync --all-packages --extra us` in the
 intended numerical environment. The recorded refresh recipe preserves the
-geographies, county column, holdout fraction and salt.
+geographies, county column, holdout fraction and salt, and the minimum
+support count (0 for a run that recorded no support receipt).
 
 The driver fixes `PERIOD = 2024` and has no `--year` switch. The command builds
 a **2024 base candidate**, not the contracted 2026/2027 files. Those years need
