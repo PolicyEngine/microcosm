@@ -18,6 +18,7 @@ the one it mirrors.
 from __future__ import annotations
 
 import importlib.metadata
+import inspect
 import pickle
 import random
 import tomllib
@@ -375,11 +376,12 @@ def test_fit_forest_truncates_leaves_over_the_production_cap(monkeypatch) -> Non
 
 
 def test_public_fit_and_predict_match_the_library(monkeypatch) -> None:
-    """A chained, regime-gated fit draws the same values with either class.
+    """A chained public fit draws the same values with either class.
 
-    The targets cover a positive continuous amount, a sign-mixed amount (one
-    positive and one negative forest behind a gate) and a near-discrete ratio
-    (the 4,096 cap), each chained on the ones before it.
+    The targets cover a positive continuous amount, an amount of either sign
+    (a classifier picks the sign, then one forest gives positive and another
+    negative amounts) and a near-discrete ratio (the 4,096 cap), each fitted
+    on the predictors and the targets before it.
     """
     generator = np.random.default_rng(9)
     rows = 1200
@@ -432,6 +434,14 @@ def test_public_fit_and_predict_match_the_library(monkeypatch) -> None:
 # ----------------------------------------------------------------------------
 # The subclass behaves as an ordinary estimator
 # ----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("method", ["fit", "_get_y_train_leaves"])
+def test_overrides_keep_the_library_signatures(method) -> None:
+    """Callers that pass the library's argument names by keyword still work."""
+    assert inspect.signature(getattr(qrf._InPlaceLeafQRF, method)) == (
+        inspect.signature(getattr(RandomForestQuantileRegressor, method))
+    )
 
 
 def test_subclass_pickles_and_clones_like_the_library_class() -> None:
@@ -510,6 +520,19 @@ def test_fit_refuses_another_quantile_forest_version(monkeypatch, installed) -> 
     assert qrf._SUPPORTED_QUANTILE_FOREST_VERSION in message
     # The refusal comes before any tree is grown.
     assert not hasattr(model, "estimators_")
+
+
+def test_library_fit_on_the_subclass_refuses_another_version(monkeypatch) -> None:
+    """Calling quantile-forest's own ``fit`` still reaches the version check.
+
+    The copied leaf-array code runs only inside ``_get_y_train_leaves``, so the
+    check there covers callers that skip the subclass's ``fit``.
+    """
+    monkeypatch.setattr(quantile_forest, "__version__", "1.4.3")
+    predictors, target = _continuous_donors(seed=14, rows=60)
+    model = qrf._InPlaceLeafQRF(n_estimators=2, max_samples_leaf=None, random_state=0)
+    with pytest.raises(RuntimeError, match="1.4.3"):
+        RandomForestQuantileRegressor.fit(model, predictors, target)
 
 
 def test_fit_forest_refuses_another_quantile_forest_version(monkeypatch) -> None:

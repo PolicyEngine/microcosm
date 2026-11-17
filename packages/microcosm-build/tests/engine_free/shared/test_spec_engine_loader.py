@@ -34,7 +34,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # moves it again.
     # The in-place QRF leaf array moves the fit kernels' bytes again.
     assert first.spec_sha256 == (
-        "dda333cf1ccbad20d8d9b26ad2a73925675f4dd171256832ca2cae09153d4953"
+        "8093e4c0b8fd45d73378e75af2a82672ee0bc42114c2870e9c76dcd47094d880"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")
