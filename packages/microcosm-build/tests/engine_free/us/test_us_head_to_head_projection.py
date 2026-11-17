@@ -228,6 +228,56 @@ def test_a_run_that_fits_is_never_stopped(params) -> None:
         assert _judge(run, limits, at)["verdict"] != "NO-GO"
 
 
+#: What only a damaged log should raise.
+_DAMAGE = (
+    "log_gap",
+    "stream_holes",
+    "hole_suspects",
+    "hole_start_suspects",
+    "starts_across_holes",
+    "newest_stream_empty",
+    "restart_overlaps",
+    "records_before_start",
+)
+
+
+@settings(max_examples=60, deadline=None)
+@given(_runs(16))
+def test_an_intact_log_raises_no_damage_flag_at_any_poll(params) -> None:
+    # Review r6, N10: the claims that no intact log gives a log gap or a hole
+    # flag were tested at one cut per example. Here every record time is a
+    # poll, through the whole verdict, on one stream and on the same log
+    # replayed whole by a second stream.
+    run = _run(**params)
+    limits = _limits(
+        workers=params["workers"], prior=_prior(run), budget_line_required=False
+    )
+    times = run.times()
+    for at in times[:: max(1, len(times) // 60)]:
+        log = run.log(at)
+        for parsed in (projection.parse_log(log), projection.parse_logs([log, log])):
+            report = projection.project(parsed, limits, at)
+            assert not set(_DAMAGE) & set(report), (at, report)
+
+
+def test_the_fixtures_raise_no_damage_flag_at_any_record_time() -> None:
+    for path, workers in ((REAL_LOG, 3), (TOY_LOG, 12), (TIE_LOG, 16)):
+        lines = path.read_text().splitlines()
+        stamps = [projection.parse_log([line]).record_times for line in lines]
+        every = sorted({t for times in stamps for t in times})
+        limits = _limits(
+            workers=workers, started_at=every[0], budget_line_required=False
+        )
+        for at in every:
+            log = [
+                line
+                for line, times in zip(lines, stamps, strict=True)
+                if not times or max(times) <= at
+            ]
+            report = projection.project(projection.parse_log(log), limits, at)
+            assert not set(_DAMAGE) & set(report), (path.name, at, report)
+
+
 def test_the_real_local_run_is_consistent_with_the_model() -> None:
     # The pinned scorer on this Mac (CPython 3.14.7, spawn), three workers:
     # every logged start is explained, every rebuilt slice ends after it
@@ -630,8 +680,10 @@ def test_a_restarted_stream_that_does_not_replay_leaves_a_hole() -> None:
     assert replayed["verdict"] == _judge(run, limits, at)["verdict"]
 
 
-def _d844(f: float = 1.0, start_cost: int = 300) -> sim.Run:
-    """A d844-shaped pool: the measured slice times scaled by ``f``."""
+def _d844(f: float = 1.0, start_cost: int | list[int] = 300) -> sim.Run:
+    """A d844-shaped pool: the measured slice times scaled by ``f``, with
+    ``start_cost`` per worker start (a list gives each start its own; the
+    last repeats)."""
 
     weights = json.loads(WEIGHTS.read_text())
     return _run(
@@ -719,15 +771,18 @@ def _cut(
     return log, _lose(log, start, end)
 
 
-def test_a_slice_line_lost_in_a_hole_waits_rather_than_reading_as_a_straggler() -> None:
+def test_lines_lost_before_a_new_stream_delivers_wait_rather_than_read_as_stragglers() -> (
+    None
+):
     # Before review r6, from a search of random pools: a restart at
     # +6,066 s that does not replay loses a minute of the candidate's
     # chunk-3 lines. The parent has taken those results, but the lines show
     # no gap: their receipts were lost too. The slices read as running far
     # past their pace, which the replay doubles: NO-GO at 7,793 s for a run
     # whose estimate from the intact log is 7,458 s, inside the 7,600 s
-    # budget. A slice that began before a hole ended and has no line now
-    # holds the verdict, and here nothing else does.
+    # budget. The new stream has delivered nothing by the poll, which holds
+    # the verdict on its own (review r6: this test once credited the slice
+    # suspects, which no longer count from an empty stream).
     run = _run(
         workers=8,
         incumbent_seconds=[27, 223, 170],
@@ -748,11 +803,14 @@ def test_a_slice_line_lost_in_a_hole_waits_rather_than_reading_as_a_straggler() 
         projection.parse_log([*streams[0], *streams[1]]), limits, at
     )
     assert joined["verdict"] == "NO-GO" and "log_gap" not in joined
+    assert streams[1] == []
     report = projection.project(projection.parse_logs(streams), limits, at)
     assert report["verdict"] == "WAIT", report
-    assert report["hole_suspects"] == {"candidate": [71, 72, 73, 74, 75]}
-    assert "log_gap" not in report
-    assert any("began before it ended" in reason for reason in report["reasons"])
+    assert report["newest_stream_empty"] is True
+    assert "hole_suspects" not in report and "log_gap" not in report
+    assert report["reasons"] == [
+        reason for reason in report["reasons"] if "delivered nothing yet" in reason
+    ]
     # A stream that replays leaves no hole and no hold.
     replayed = projection.parse_logs([streams[0], log[len(streams[0]) :]])
     assert projection.project(replayed, limits, at)["verdict"] == "GO"
@@ -760,13 +818,21 @@ def test_a_slice_line_lost_in_a_hole_waits_rather_than_reading_as_a_straggler() 
 
 def test_a_d844_slice_line_lost_in_a_hole_is_held_twice_over() -> None:
     # The d844 shape at +3,600 s, a restart at +2,850 s losing one incumbent
-    # slice line: as one stream, a straggler and NO-GO at 14,596 s for a run
-    # that ends at 14,240 s. The slice is a hole suspect, and the lost line
-    # also leaves a submit the rebuild cannot explain.
+    # slice line. Commit 6057e6f28 read it from one stream as a straggler,
+    # NO-GO at 14,596 s for a run that ends at 14,240 s. The lost line also
+    # leaves a submit the rebuild cannot explain, so one stream now gives a
+    # log gap with the hole unseen; with it seen, the slice is a hole suspect.
     run, limits, at = _d844(), _d844_limits(), START + 3600
     log, streams = _cut(run, at, 2850, 2860)
     assert len(streams[0]) + len(streams[1]) == len(log) - 1
     assert projection.project(projection.parse_log(log), limits, at)["verdict"] == "GO"
+    joined = projection.project(
+        projection.parse_log([*streams[0], *streams[1]]), limits, at
+    )
+    assert (
+        joined["verdict"] == "WAIT"
+        and "took no token" in joined["log_gap"]["incumbent"]
+    )
     report = projection.project(projection.parse_logs(streams), limits, at)
     assert report["verdict"] == "WAIT", report
     assert report["hole_suspects"] == {"incumbent": [54]}
@@ -806,10 +872,63 @@ def test_a_start_whose_span_holds_a_hole_is_left_out_of_the_start_cost() -> None
     assert report["verdict"] == "GO", report
     assert report["starts_across_holes"] == {"candidate": 1}
     assert report["estimate"]["start_seconds"]["candidate"] == 121
+    # The rebuild is a start short, so it reads late by about a start
+    # (review r6, SF-4): 3,793 s against the intact log's 3,672 s. The
+    # margin after a hole, the merged start's span of two starts, holds a
+    # budget the late reading alone would fail.
+    assert report["estimate"]["estimated_tool_seconds_from_start"] == 3793
+    assert report["hole_margin_seconds"] == 242
+    for budget, intact_verdict, verdict in (
+        (3750, "GO", "WAIT"),
+        (3700, "GO", "WAIT"),
+        (3550, "NO-GO", "NO-GO"),
+    ):
+        tight = _limits(workers=9, max_wall_seconds=budget, prior=_prior(run))
+        intact = projection.project(projection.parse_log(log), tight, at)
+        damaged = projection.project(projection.parse_logs(streams), tight, at)
+        assert (intact["verdict"], damaged["verdict"]) == (intact_verdict, verdict)
+        if verdict == "WAIT":
+            assert "a start for each one lost (242 s here)" in damaged["reasons"][0]
     later = START + 2684
     log, streams = _cut(run, later, 2259, 2264)
     report = projection.project(projection.parse_logs(streams), limits, later)
     assert report["verdict"] == "WAIT" and "candidate" in report["log_gap"]
+
+
+def test_a_lossless_restart_never_reads_slower_starts_than_it_saw() -> None:
+    # Review r6 (Sol, S1): the d844 shape with the first worker start of each
+    # pool taking 100 s and every later one 320 s, and a stream that restarts
+    # at +64 s, as the incumbent's pool opens, without replaying but losing
+    # nothing. The first start's span (+64 s to +164 s) holds that boundary,
+    # so it was left out, and the start cost became the later starts' 320 s
+    # instead of the logged mean: NO-GO at 14,684 s for a run that fits. The
+    # start cost is now the lesser of the two means, which never reads later
+    # than the intact log on a restart that lost nothing.
+    run, limits = _d844(start_cost=[100] + [320] * 15), _d844_limits()
+    for poll in (600, 1200, 2400):
+        at = START + poll
+        log = run.log(at)
+        offsets = [_offset(line) for line in log]
+        streams = [
+            [
+                line
+                for line, t in zip(log, offsets, strict=True)
+                if t is None or t <= 64
+            ],
+            [
+                line
+                for line, t in zip(log, offsets, strict=True)
+                if t is not None and t > 64
+            ],
+        ]
+        assert sum(map(len, streams)) == len(log)
+        intact = projection.project(projection.parse_log(log), limits, at)
+        report = projection.project(projection.parse_logs(streams), limits, at)
+        assert intact["verdict"] == report["verdict"] == "GO", (poll, report)
+        assert report["estimate"] == intact["estimate"], poll
+        assert len(report["stream_holes"]) == 1
+        assert report["starts_across_holes"] == {"incumbent": 1}
+    assert intact["estimate"]["estimated_tool_seconds_from_start"] < 14_505
 
 
 def test_a_restart_that_loses_nothing_holds_the_verdict_one_poll() -> None:
@@ -836,9 +955,12 @@ def test_a_restart_that_loses_nothing_holds_the_verdict_one_poll() -> None:
         assert intact["verdict"] == "GO"
         if held:
             assert report["verdict"] == "WAIT" and report["newest_stream_empty"]
-            assert report["hole_suspects"]
+            assert "hole_suspects" not in report
         else:
             assert report["verdict"] == "GO" and "hole_suspects" not in report
+            # Nothing was lost, so nothing reads late; the margin is reported.
+            assert report["estimate"] == intact["estimate"]
+            assert report["hole_margin_seconds"] == 300
 
 
 def test_a_restarted_stream_that_has_delivered_nothing_holds_the_estimate() -> None:
@@ -852,10 +974,183 @@ def test_a_restarted_stream_that_has_delivered_nothing_holds_the_estimate() -> N
     report = projection.project(projection.parse_logs([first, second]), limits, at)
     assert report["verdict"] == "WAIT", report
     assert report["newest_stream_empty"] is True and "stream_holes" not in report
-    assert len(report["hole_suspects"]["candidate"]) == 5
+    assert "hole_suspects" not in report and "estimate" not in report
     # One stream with nothing new is only a quiet scorer.
     quiet = projection.project(projection.parse_log(first), limits, at)
     assert "newest_stream_empty" not in quiet and "hole_suspects" not in quiet
+    # An hour on, the silence is still the stream's: the stall check waits
+    # with the estimate (review r6), where one quiet stream is a stall.
+    later = at + 3700
+    held = projection.project(projection.parse_logs([first, second]), limits, later)
+    assert held["verdict"] == "WAIT"
+    assert not any(reason.startswith("stall:") for reason in held["reasons"])
+    stalled = projection.project(projection.parse_log(first), limits, later)
+    assert stalled["verdict"] == "NO-GO"
+    assert any(reason.startswith("stall:") for reason in stalled["reasons"])
+
+
+def test_an_empty_new_stream_holds_between_pools_and_during_a_start() -> None:
+    # Review r6, SF-2. The d844 shape at 265 s spare. (A) A restart that does
+    # not replay loses only the candidate's opening line at +5,104 s, and the
+    # new stream holds nothing until the first candidate worker start at
+    # +5,404 s: no slice runs, so no suspect held it, and the replay's
+    # blocked start pushed the estimate a second a second, NO-GO from 273 s
+    # after the opening. (B) A stream ends at P - x and its restart has
+    # delivered nothing by the poll P, during a worker start.
+    run, limits = _d844(), _d844_limits()
+    for poll in (5377, 5386, 5403):
+        at = START + poll
+        log, streams = _cut(run, at, 5104, 5105)
+        assert len(log) - sum(map(len, streams)) == 1 and streams[1] == []
+        assert (
+            projection.project(projection.parse_log(log), limits, at)["verdict"] == "GO"
+        )
+        report = projection.project(projection.parse_logs(streams), limits, at)
+        assert report["verdict"] == "WAIT" and report["newest_stream_empty"], report
+        assert "estimate" not in report
+    # Once the new stream delivers, the lost opening line is a log gap.
+    at = START + 5450
+    report = projection.project(
+        projection.parse_logs(_cut(run, at, 5104, 5105)[1]), limits, at
+    )
+    assert report["verdict"] == "WAIT" and report["log_gap"] == {
+        "candidate": "no opening line"
+    }
+    for poll, x in ((5700, 360), (6000, 480), (3000, 590)):
+        at = START + poll
+        log = run.log(at)
+        first = [line for line in log if (t := _offset(line)) is None or t < poll - x]
+        assert (
+            projection.project(projection.parse_log(log), limits, at)["verdict"] == "GO"
+        )
+        report = projection.project(projection.parse_logs([first, []]), limits, at)
+        assert report["verdict"] == "WAIT" and report["newest_stream_empty"], (
+            poll,
+            report,
+        )
+
+
+def test_a_worker_start_lost_before_a_new_stream_delivers_waits() -> None:
+    # Review r6 (Sol, S2): a restart at +7,045 s that does not replay loses
+    # the candidate's worker start there and 27 of the parent's receive
+    # lines, and the new stream has printed nothing by the +7,200 s poll.
+    # Before the fix the rebuild ran a worker short: NO-GO at 10,665 s
+    # against a 10,600 s budget, where the intact log says 10,510 s.
+    run = _run(
+        workers=13,
+        incumbent_seconds=[297, 73, 128],
+        candidate_seconds=[156, 165, 83],
+        incumbent_slices=5,
+        candidate_slices=124,
+        start_cost=328,
+        first_slice_extra=123,
+        load_seconds=625,
+    )
+    limits = _limits(workers=13, max_wall_seconds=10_600, prior=_prior(run))
+    at = START + 7200
+    log, streams = _cut(run, at, 7045, 7050)
+    lost = [line for line in log if line not in streams[0]]
+    assert streams[1] == [] and len(lost) == 28
+    assert "initializing candidate" in lost[0]
+    intact = projection.project(projection.parse_log(log), limits, at)
+    assert intact["verdict"] == "GO"
+    assert intact["estimate"]["estimated_tool_seconds_from_start"] == 10_510
+    report = projection.project(projection.parse_logs(streams), limits, at)
+    assert report["verdict"] == "WAIT" and report["newest_stream_empty"], report
+    assert "estimate" not in report
+
+
+def test_slice_suspects_after_a_real_hole_hold_on_their_own() -> None:
+    # Review r6, SF-5: no test pinned a real hole's slice suspects as the only
+    # hold. A restart at +2,068 s loses one candidate line; at +2,148 s the
+    # new stream has a record (a hole, not an empty stream), there is no log
+    # gap and no start under way, and two candidate slices that began before
+    # the hole ended have no line.
+    run = _run(
+        workers=14,
+        incumbent_seconds=[101],
+        candidate_seconds=[41],
+        incumbent_slices=20,
+        candidate_slices=8,
+        start_cost=138,
+        first_slice_extra=121,
+    )
+    limits = _limits(workers=14, max_wall_seconds=2950, prior=_prior(run))
+    at = START + 2148
+    log, streams = _cut(run, at, 2068, 2088)
+    assert len(log) - sum(map(len, streams)) == 1 and streams[1]
+    intact = projection.project(projection.parse_log(log), limits, at)
+    assert intact["verdict"] == "GO"
+    assert intact["estimate"]["estimated_tool_seconds_from_start"] == 2920
+    report = projection.project(projection.parse_logs(streams), limits, at)
+    assert report["verdict"] == "WAIT", report
+    assert report["hole_suspects"] == {"candidate": [2, 3]}
+    assert len(report["stream_holes"]) == 1
+    for other in ("newest_stream_empty", "hole_start_suspects", "log_gap", "estimate"):
+        assert other not in report, other
+    assert len(report["reasons"]) == 1
+    assert "2 of the candidate's slices began before it ended" in report["reasons"][0]
+
+
+def test_suspects_count_from_the_end_of_the_hole() -> None:
+    # Review r6, SF-5 (M3): slices that began in the hole's first second are
+    # suspects too. A restart at +4,853 s loses seven candidate slice lines.
+    run = _run(
+        workers=16,
+        incumbent_seconds=[164],
+        candidate_seconds=[91],
+        incumbent_slices=11,
+        candidate_slices=39,
+        start_cost=358,
+        first_slice_extra=10,
+    )
+    limits = _limits(workers=16, max_wall_seconds=6145, prior=_prior(run))
+    at = START + 4993
+    log, streams = _cut(run, at, 4853, 4873)
+    assert len(log) - sum(map(len, streams)) == 7
+    report = projection.project(projection.parse_logs(streams), limits, at)
+    assert report["verdict"] == "WAIT", report
+    assert report["hole_suspects"] == {"candidate": [28, 29, 30, 31, 32]}
+    assert "7 of the candidate's slices" in report["reasons"][0]
+
+
+def test_a_start_under_way_across_a_hole_waits_for_its_line() -> None:
+    # Review r6, scenario C: a restart that does not replay loses the
+    # candidate's worker-start line at +4,477 s. The rebuild still has that
+    # start under way and no slice running, so nothing else holds, and the
+    # estimate climbs a second a second: NO-GO from +4,700 s against a
+    # 9,900 s budget, where the intact log says 9,731 s. A start that began
+    # before the hole ended and has no line now holds, until the rebuild
+    # stops fitting the log (a log gap) at +4,800 s.
+    run = _run(
+        workers=14,
+        incumbent_seconds=[157],
+        candidate_seconds=[262],
+        incumbent_slices=39,
+        candidate_slices=100,
+        start_cost=366,
+        first_slice_extra=109,
+    )
+    limits = _limits(workers=14, max_wall_seconds=9900, prior=_prior(run))
+    for poll in (4500, 4700, 4743):
+        at = START + poll
+        log, streams = _cut(run, at, 4477, 4478)
+        lost = [line for line in log if line not in streams[0] + streams[1]]
+        assert len(lost) == 1 and "initializing candidate" in lost[0]
+        intact = projection.project(projection.parse_log(log), limits, at)
+        assert intact["verdict"] == "GO"
+        assert intact["estimate"]["estimated_tool_seconds_from_start"] == 9731
+        report = projection.project(projection.parse_logs(streams), limits, at)
+        assert report["verdict"] == "WAIT", report
+        assert set(report["hole_start_suspects"]) == {"candidate"}
+        for other in ("newest_stream_empty", "hole_suspects", "log_gap", "estimate"):
+            assert other not in report, other
+        assert "worker start under way" in report["reasons"][0]
+    at = START + 4800
+    report = projection.project(
+        projection.parse_logs(_cut(run, at, 4477, 4478)[1]), limits, at
+    )
+    assert report["verdict"] == "WAIT" and "candidate" in report["log_gap"]
 
 
 def test_a_rebuild_that_cannot_explain_a_submit_is_a_log_gap() -> None:
@@ -1167,6 +1462,10 @@ def test_a_log_the_model_cannot_explain_is_reported() -> None:
     assert any(
         "starts a worker did not" in note for note in report["estimator_notes"]
     ), report
+    # Review r6, SF-5 (M15): no intact log gives it, so it is a log gap and
+    # holds the verdict, not only a note.
+    assert report["verdict"] == "WAIT"
+    assert "starts a worker did not" in report["log_gap"]["candidate"]
 
 
 def test_a_scored_candidate_is_never_stopped() -> None:
@@ -1317,6 +1616,54 @@ def test_parsing_counts_every_record_and_merges_streams_by_the_most() -> None:
     assert "counted once" in merged.notes[0]
 
 
+def test_a_restart_inside_a_second_of_repeated_lines_is_reported_not_guessed() -> None:
+    # Review r6 (Sol, S3): the toy log split between lines 31 and 32, inside a
+    # second in which the parent printed the same line five times, one before
+    # the split. A restart that does not replay and a replay begun inside that
+    # second look the same, so the shared line counts once and one receive is
+    # short: the rebuild does not fit, and the verdict waits. The second is
+    # reported, so the gap is not read as lines proven lost.
+    toy = TOY_LOG.read_text().splitlines()
+    assert "after receiving" in toy[30] and "after initializing" in toy[31]
+    assert toy[30][:26] == toy[31][:26] == toy[32][:26]
+    one = projection.parse_log(toy)
+    two = projection.parse_logs([toy[:31], toy[31:]])
+    assert (len(one.events), len(two.events)) == (161, 160)
+    assert one.overlaps == [] and len(two.overlaps) == 1
+    limits = _limits(workers=12, budget_line_required=False)
+    end = max(one.record_times)
+    assert "log_gap" not in projection.project(one, limits, end)
+    report = projection.project(two, limits, end)
+    assert report["verdict"] == "WAIT" and "incumbent" in report["log_gap"]
+    assert report["restart_overlaps"] == ["2026-11-16T21:27:22Z"]
+    assert any("cannot tell apart" in reason for reason in report["reasons"])
+    # A replay begun inside that second counts every record once.
+    replay = projection.parse_logs([toy[:31], toy[30:]])
+    assert sorted(replay.events, key=repr) == sorted(one.events, key=repr)
+    assert len(replay.overlaps) == 1
+
+
+def test_a_replay_from_inside_the_last_second_counts_nothing_twice() -> None:
+    # Before the r7 fix a stream that began in the second the last one ended
+    # summed that second's records with it. Where the restart replays from
+    # inside that second, here only the incumbent's worker start at +664 s,
+    # that counts a start twice: NO-GO at +1,200 s for the d844 shape at
+    # 265 s spare. Counting each record as often as one stream shows it, the
+    # verdict is the intact log's.
+    run, limits, at = _d844(), _d844_limits(), START + 1200
+    log = run.log(at)
+    last = max(i for i, line in enumerate(log) if _offset(line) == 664)
+    assert "initializing incumbent" in log[last]
+    intact = projection.project(projection.parse_log(log), limits, at)
+    report = projection.project(
+        projection.parse_logs([log[: last + 1], log[last:]]), limits, at
+    )
+    assert intact["verdict"] == report["verdict"] == "GO", report
+    assert report["estimate"] == intact["estimate"]
+    assert report["restart_overlaps"] == [projection._utc(START + 664)]
+    assert "log_gap" not in report
+
+
 def test_more_worker_starts_than_workers_waits_instead_of_estimating() -> None:
     run = _run(
         workers=4,
@@ -1389,6 +1736,42 @@ def test_cli_reads_the_d844_plan_and_exits_three_only_on_no_go(
     code = projection.main([str(first), *argv[2:-1], sim.stamp(START + 60)])
     assert json.loads(capsys.readouterr().out)["verdict"] == "WAIT"
     assert code == 0
+
+
+def test_the_cli_reads_ten_streams_in_the_watchers_order(tmp_path, capsys) -> None:
+    # Review r6, N9: the watcher passes its streams in shell-glob order,
+    # app-10.log before app-2.log. The d844 shape at +12,000 s, nine streams
+    # that each hold the log to a restart at +11,820 s, and the tenth, the
+    # newest, restarted and empty: read in the watcher's order the verdict
+    # waits for it; read as given, app-9 is the newest, the minute lost
+    # before the restart reads as stragglers, and the run would be stopped.
+    run, at = _d844(), START + 12_000
+    first, _ = _lose(run.log(at), 11_820, 11_880)
+    paths = [tmp_path / f"app-{n}.log" for n in range(1, 11)]
+    for path in paths[:-1]:
+        path.write_text("\n".join(first) + "\n")
+    paths[-1].write_text("")
+    globbed = sorted(str(path) for path in paths)
+    assert Path(globbed[1]).name == "app-10.log"
+    argv = [
+        *globbed,
+        "--plan",
+        str(PLAN),
+        "--started-at",
+        sim.stamp(START),
+        "--chunk-weights",
+        str(WEIGHTS),
+        "--now",
+        sim.stamp(at),
+    ]
+    code = projection.main(argv)
+    report = json.loads(capsys.readouterr().out)
+    assert code == 0 and report["verdict"] == "WAIT", report
+    assert report["newest_stream_empty"] is True
+    as_given = projection.parse_logs(
+        [Path(p).read_text().splitlines() for p in globbed]
+    )
+    assert projection.project(as_given, _d844_limits(), at)["verdict"] == "NO-GO"
 
 
 def test_a_log_the_estimate_cannot_read_raises_rather_than_answering() -> None:

@@ -26,8 +26,10 @@
 #   5 a stop was asked for but not confirmed;
 #   2 bad arguments, or a refused start: MODAL_PROFILE or MODAL_ENVIRONMENT
 #     is unset, RUN_DIR holds an earlier attempt's streams, the app is not
-#     running, the app list could not be read in WATCH_START_TRIES tries, or
-#     the projection cannot run. A refused start is also written to
+#     running, the app was created more than WATCH_CREATED_SLACK seconds
+#     before started-at (another session's app, not this attempt's) or its
+#     creation time cannot be read, the app list could not be read in
+#     WATCH_START_TRIES tries, or the projection cannot run. A refused start is also written to
 #     go-no-go.log and ALARM whenever RUN_DIR exists.
 #
 # The cap and the runner's budget bound the spend; this only saves part of it.
@@ -38,8 +40,18 @@
 # (seconds between checks that the log stream is alive, 10),
 # WATCH_MAX_FAILURES (3), WATCH_WAIT_GRACE (1800), WATCH_STOP_TRIES (5),
 # WATCH_STOP_WAIT (seconds after each stop request, 30), WATCH_START_TRIES
-# (3), WATCH_START_WAIT (seconds between start checks, 10), MODAL (modal),
-# PYTHON (python3; it runs the projection, so it must be the build's Python).
+# (3), WATCH_START_WAIT (seconds between start checks, 10),
+# WATCH_CREATED_SLACK (60), WATCH_SETTLE (seconds a log stream must have run
+# before a NO-GO read from it is acted on, 120), MODAL (modal), PYTHON
+# (python3; it runs the projection, so it must be the build's Python).
+#
+# Before acting on a NO-GO the watcher checks that the log it read is
+# current. A stream started less than WATCH_SETTLE seconds earlier may still
+# be replaying, so the files hold an old stretch of the log; and a stream
+# whose file has not grown since the last poll may have hung while its
+# process lives on, which `kill -0` cannot see (review r6). Either way it
+# notes why and lets the next poll decide; for a file that has not grown it
+# first restarts the stream, once until the file grows again.
 set -uo pipefail
 
 if [ $# -lt 3 ] || [ $# -gt 4 ]; then
@@ -58,6 +70,8 @@ STOP_TRIES=${WATCH_STOP_TRIES:-5}
 STOP_WAIT=${WATCH_STOP_WAIT:-30}
 START_TRIES=${WATCH_START_TRIES:-3}
 START_WAIT=${WATCH_START_WAIT:-10}
+CREATED_SLACK=${WATCH_CREATED_SLACK:-60}
+SETTLE=${WATCH_SETTLE:-120}
 MODAL=${MODAL:-modal}
 PYTHON=${PYTHON:-python3}
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -95,7 +109,12 @@ case $HELP in *--yes*) YES=(--yes) ;; esac
 
 # 0 when the app is listed and not stopped; 1 when the list was read and
 # lists the app as stopped; 2 when the list could not be read, is not the
-# shape this expects, or does not list the app. `modal app list` lists
+# shape this expects, or does not list the app. With `start`, also 3 when the
+# app was created more than WATCH_CREATED_SLACK seconds before started-at
+# (every stage is the app microcosm-us-stage, so another session's running
+# stage is listed beside this one and an id copied from the list can be
+# theirs), and 4 when its "Created at" is missing or not a timestamp with an
+# offset. `modal app list` lists
 # running and recently stopped apps, so an app missing from it is more
 # likely a list from another workspace than an app that ended unseen. Only
 # the two deliberate codes from the check count; any other exit, a crash
@@ -133,12 +152,30 @@ def stamp(value):
 if not isinstance(state, str) or not (at is None or stamp(at)):
     sys.exit(2)
 stopped = at is not None or state == "stopped"
+if sys.argv[2] == "start" and not stopped:
+    # Both need an offset: a naive time cannot be set against started-at.
+    def moment(value):
+        if not isinstance(value, str) or not re.fullmatch(
+            r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d+)?([+-]\d{2}:\d{2}|Z)", value
+        ):
+            return None
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            return None
+    created, started = moment(app.get("Created at")), moment(sys.argv[3])
+    if created is None or started is None:
+        sys.exit(13)
+    if created < started - float(sys.argv[4]):
+        sys.exit(12)
 sys.exit(11 if stopped else 10)
-' "$APP" 2>/dev/null
+' "$APP" "${1:-poll}" "$STARTED" "$CREATED_SLACK" 2>/dev/null
   rc=$?
   case $rc in
     10) return 0 ;;
     11) return 1 ;;
+    12) return 3 ;;
+    13) return 4 ;;
     *) return 2 ;;
   esac
 }
@@ -165,6 +202,7 @@ stop_app() {
 # the file even before the stream prints anything.
 STREAMS=0
 STREAM=
+STREAM_SINCE=0
 stream() {
   local next=$((STREAMS + 1))
   until ( set -C; : > "$DIR/app-$next.log" ) 2>/dev/null; do
@@ -177,12 +215,18 @@ stream() {
   STREAMS=$next
   "$MODAL" app logs ${FOLLOW[@]+"${FOLLOW[@]}"} "$APP" >> "$DIR/app-$next.log" 2>&1 &
   STREAM=$!
+  STREAM_SINCE=$(date +%s)
 }
+
+size_of() { local n; n=$(wc -c < "$1" 2>/dev/null | tr -d ' '); printf '%s' "${n:-0}"; }
 
 # A stream that ended while the app runs is restarted at once the first
 # time in a poll interval; a second end in the same interval waits for the
 # poll, up to WATCH_INTERVAL, so a stream that keeps failing does not spin.
-# Ends the watcher when the app has finished.
+# The poll restarts it before it projects, so a dead stream is never read
+# as a quiet scorer (review r6): the new file starts empty, which holds the
+# estimate until the stream delivers. Ends the watcher when the app has
+# finished.
 RESTARTED=0
 UNREADABLE=0
 check_stream() {
@@ -246,7 +290,7 @@ print(verdict, gap, hole, int(report.get("records_before_start") or 0))
 # (macOS's /bin/bash).
 state=2
 for try in $(seq 1 "$START_TRIES"); do
-  app_state
+  app_state start
   state=$?
   [ "$state" -ne 2 ] && break
   [ "$try" -lt "$START_TRIES" ] && sleep "$START_WAIT"
@@ -254,6 +298,8 @@ done
 case $state in
   0) ;;
   1) refuse "$APP is not a running app in \`$MODAL app list\`" ;;
+  3) refuse "$APP was created more than ${CREATED_SLACK}s before started-at $STARTED, so it is not this attempt's app (every stage is microcosm-us-stage); take the id from this attempt's launch log" ;;
+  4) refuse "\`$MODAL app list --json\` gives no \"Created at\" with an offset for $APP, so it cannot be tied to this attempt" ;;
   *) refuse "\`$MODAL app list --json\` could not be read, or does not list $APP, in $START_TRIES tries" ;;
 esac
 # The projection must answer before the run is left to it: an interpreter
@@ -283,6 +329,9 @@ stream
 failures=0
 gap_alarmed=0
 hole_alarmed=0
+LAST_FILE=
+LAST_SIZE=0
+STALE_RESTARTED=0
 while true; do
   RESTARTED=0
   waited=0
@@ -293,21 +342,40 @@ while true; do
     waited=$((waited + step))
     check_stream between-polls
   done
+  check_stream at-poll
   project "$DIR"/app-*.log
+  NEWEST=$DIR/app-$STREAMS.log
+  GREW=0
+  if [ "$NEWEST" = "$LAST_FILE" ] && [ "$(size_of "$NEWEST")" -gt "$LAST_SIZE" ]; then
+    GREW=1
+    STALE_RESTARTED=0
+  fi
   note "rc=$RC verdict=$VERDICT $(printf '%s' "$OUT" | tr -d '\n')"
   if [ "$GAP" = gap ] && [ "$gap_alarmed" -eq 0 ]; then
     gap_alarmed=1
-    alarm "the log streams lost lines or began late (log_gap in go-no-go.log): after a late start the estimate gives no GO, after lost slice, opening or worker-start lines no estimate at all; the stall check and the runner's budget still bound the run"
+    alarm "the log streams lost lines or began late (log_gap in go-no-go.log): after a late start the estimate gives no GO, after lost slice, opening or worker-start lines no estimate at all; with restart_overlaps in the report the gap may instead come from a restart that repeated a second's records, which are counted once; the stall check and the runner's budget still bound the run"
   fi
   if [ "$HOLE" = hole ] && [ "$hole_alarmed" -eq 0 ]; then
     hole_alarmed=1
-    alarm "a restarted log stream did not replay what the app printed before it (stream_holes in go-no-go.log): the estimate waits while a slice that began before the hole has no line (hole_suspects) and leaves out the cost of a start whose span holds the hole (starts_across_holes); a lost line the estimate can prove raises the gap alarm on its own and keeps it waiting for good; the stall check and the runner's budget still bound the run"
+    alarm "a restarted log stream did not replay what the app printed before it (stream_holes in go-no-go.log): the estimate waits while a slice or worker start that began before the hole ended has no line (hole_suspects, hole_start_suspects), takes the start cost without a start whose span holds the hole when that is less (starts_across_holes), and holds a NO-GO until the estimate is past the line by more than hole_margin_seconds; a lost line the estimate can prove raises the gap alarm on its own and keeps it waiting for good; the stall check and the runner's budget still bound the run"
   fi
   if [ "$RC" -eq 3 ] && [ "$VERDICT" = "NO-GO" ]; then
-    if stop_app; then exit 3; fi
-    exit 5
-  fi
-  if [ "$RC" -ne 0 ] || { [ "$VERDICT" != "GO" ] && [ "$VERDICT" != "WAIT" ]; }; then
+    AGE=$(( $(date +%s) - STREAM_SINCE ))
+    if [ "$AGE" -lt "$SETTLE" ]; then
+      note "NO-GO not acted on: the log stream started ${AGE}s ago and may still be replaying, so the files can hold an old stretch of the log; the next poll decides"
+    elif [ "$GREW" -eq 0 ] && [ "$STALE_RESTARTED" -eq 0 ]; then
+      note "NO-GO not acted on: $NEWEST has not grown since the last poll, so its stream may have hung; restarting it, and the next poll decides"
+      kill "$STREAM" 2>/dev/null
+      wait "$STREAM" 2>/dev/null
+      STALE_RESTARTED=1
+      stream
+    else
+      if stop_app; then exit 3; fi
+      exit 5
+    fi
+    # A NO-GO left to the next poll is a verdict, not a failed poll.
+    failures=0
+  elif [ "$RC" -ne 0 ] || { [ "$VERDICT" != "GO" ] && [ "$VERDICT" != "WAIT" ]; }; then
     failures=$((failures + 1))
     if [ "$VERDICT" = "WAIT-OVERDUE" ]; then
       alarm "still WAIT more than ${WAIT_GRACE}s past the budget's deadline, $failures poll(s) in a row"
@@ -322,5 +390,6 @@ while true; do
   else
     failures=0
   fi
-  check_stream at-poll
+  LAST_FILE=$DIR/app-$STREAMS.log
+  LAST_SIZE=$(size_of "$LAST_FILE")
 done

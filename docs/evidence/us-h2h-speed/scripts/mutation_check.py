@@ -13,6 +13,7 @@ Run from the repository root:
 
 ``--runner`` replaces ``python -m pytest`` with another command that takes
 pytest's arguments (a wrapper that sets up an engine-free environment, say).
+``--only TEXT`` (repeatable) seeds only the faults whose name contains TEXT.
 """
 
 from __future__ import annotations
@@ -87,8 +88,8 @@ MUTATIONS = {
         '            "end": last,\n',
     ),
     "NO-GO comes 600 s late": (
-        "    if end > time_line:\n",
-        "    if end > time_line + 600:\n",
+        "    elif end > time_line:\n",
+        "    elif end > time_line + 600:\n",
     ),
     "an unexplained start is never put back on its submit": (
         "            while (\n"
@@ -97,10 +98,7 @@ MUTATIONS = {
         "            while False:\n",
     ),
     "candidate starts count only after its first slice": (
-        "        costs = _costs_clear_of(history, holes)\n"
-        "        return Timing(\n"
-        "            {}, {}, [], sum(costs) / len(costs) if costs else None, list(history.notes)\n"
-        "        )\n",
+        "        return Timing({}, {}, [], _start_cost(history, holes), list(history.notes))\n",
         "        return Timing({}, {}, [], None, list(history.notes))\n",
     ),
     "an overdue running slice ends now": (
@@ -116,8 +114,8 @@ MUTATIONS = {
         "                pass\n",
     ),
     "streams that began late can still say GO": (
-        '    verdict = "NO-GO" if reasons else "WAIT" if budget_unseen else "GO"\n',
-        '    verdict = "NO-GO" if reasons else "GO"\n',
+        '    verdict = "NO-GO" if reasons else "WAIT" if held or budget_unseen else "GO"\n',
+        '    verdict = "NO-GO" if reasons else "WAIT" if held else "GO"\n',
     ),
     "a start logged in its submit's second is taken as an earlier submit's": (
         "inits[spawns] <= ready and taken\n",
@@ -167,9 +165,69 @@ MUTATIONS = {
         "    reopened = len(kept) > 1 and not kept[-1] and any(kept[:-1])\n",
         "    reopened = False\n",
     ),
+    "slices from before a hole with no line yet hold nothing": (
+        "            waiting.append(\n"
+        '                "a log stream restarted without replaying (a hole), and "\n'
+        '                + ", ".join(\n'
+        '                    f"{len(t)} of the {name}\'s slices"',
+        "            [].append(\n"
+        '                "a log stream restarted without replaying (a hole), and "\n'
+        '                + ", ".join(\n'
+        '                    f"{len(t)} of the {name}\'s slices"',
+    ),
+    "suspects count from the start of the hole, not its end": (
+        "    hole_end = holes[-1][1] if holes else None\n",
+        "    hole_end = holes[-1][0] if holes else None\n",
+    ),
+    "a start under way across a hole is no suspect": (
+        "        if starting:\n",
+        "        if False:\n",
+    ),
+    "an empty newest stream holds nothing": (
+        '        report["newest_stream_empty"] = True\n        waiting.append(\n',
+        '        report["newest_stream_empty"] = True\n        [].append(\n',
+    ),
+    "the stall check runs while the newest stream is empty": (
+        "    stall = None if reopened else _stall(seen, candidate, slowest, limits, now)\n",
+        "    stall = _stall(seen, candidate, slowest, limits, now)\n",
+    ),
+    "after a hole the estimate is taken to read exact": (
+        '    margin = _hole_margin(histories, holes, estimate["start_seconds"]) if holes else 0.0\n',
+        "    margin = 0.0\n",
+    ),
+    "a hole that held several start lines reads late by one start": (
+        "    return max([across, *costs])\n",
+        "    return max(costs, default=0.0)\n",
+    ),
+    "the start cost is the clear starts' mean even when it is more": (
+        "    return min(sum(clear) / len(clear), sum(every) / len(every))\n",
+        "    return sum(clear) / len(clear)\n",
+    ),
+    "a stream beginning in the second the log reached adds that second up": (
+        "            best[text] = max(best.get(text, 0), count)\n",
+        "            best[text] = (\n"
+        "                best.get(text, 0) + count\n"
+        "                if begins == reach\n"
+        "                else max(best.get(text, 0), count)\n"
+        "            )\n",
+    ),
+    "a restart repeating the last second's records is not reported": (
+        "            parsed.overlaps.append(begins)\n",
+        "            pass\n",
+    ),
+    "an opening submit that started no logged worker is explained": (
+        "                unexplained.append(\n"
+        '                    "an opening submit the model says starts a worker did not"\n',
+        "                [].append(\n"
+        '                    "an opening submit the model says starts a worker did not"\n',
+    ),
     "streams are read in glob order, app-10 before app-2": (
         '        return sorted(paths, key=lambda path: int(path.stem.removeprefix("app-")))\n',
         "        return list(paths)\n",
+    ),
+    "the command line reads the streams in the order given": (
+        "            for path in _stream_order(args.logs)\n",
+        "            for path in args.logs\n",
     ),
     "an ATTEMPTS: line stands in for the BUDGET line": (
         "        and not parsed.budget_lines\n",
@@ -185,7 +243,18 @@ def main() -> int:
         default=f"{shlex.quote(sys.executable)} -m pytest",
         help="command that runs pytest with the arguments after it",
     )
+    parser.add_argument(
+        "--only",
+        action="append",
+        default=[],
+        help="seed only the faults whose name contains this text",
+    )
     args = parser.parse_args()
+    chosen = {
+        name: edit
+        for name, edit in MUTATIONS.items()
+        if not args.only or any(text in name for text in args.only)
+    }
     head = subprocess.run(
         ["git", "-C", str(ROOT), "show", f"HEAD:{MODULE.relative_to(ROOT)}"],
         capture_output=True,
@@ -202,7 +271,7 @@ def main() -> int:
             return 2
     survived = []
     try:
-        for name, (old, new) in MUTATIONS.items():
+        for name, (old, new) in chosen.items():
             MODULE.write_text(original.replace(old, new))
             with tempfile.TemporaryDirectory() as store:
                 env = {**os.environ, "HYPOTHESIS_STORAGE_DIRECTORY": store}
@@ -238,7 +307,7 @@ def main() -> int:
                 survived.append(name)
     finally:
         MODULE.write_text(original)
-    print(f"{len(MUTATIONS) - len(survived)} of {len(MUTATIONS)} faults caught")
+    print(f"{len(chosen) - len(survived)} of {len(chosen)} faults caught")
     return 1 if survived else 0
 
 

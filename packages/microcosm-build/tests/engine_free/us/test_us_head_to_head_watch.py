@@ -13,7 +13,7 @@ import stat
 import subprocess
 import sys
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -47,6 +47,9 @@ case "$1 $2" in
     n=$(( $(cat "$D/logs-count" 2>/dev/null || echo 0) + 1 ))
     echo "$n" > "$D/logs-count"
     if [ -e "$D/stream-$n.log" ]; then cat "$D/stream-$n.log"; else cat "$D/stream.log"; fi
+    # FAKE_HANG: the stream prints its log, then hangs without ending, as a
+    # half-open connection can (review r6, SF-7).
+    if [ -n "${FAKE_HANG:-}" ]; then exec sleep "$FAKE_HANG"; fi
     exit 0 ;;
   "app stop")
     if [ "$3" = "--help" ]; then
@@ -107,7 +110,7 @@ case "$1 $2" in
     fi
     printf '[{"App ID": "ap-other", "State": "deployed", "Stopped at": null},'
     printf ' {"App ID": "%s", "Description": "d844", "State": "%s",' "${FAKE_APP:-ap-test}" "$state"
-    printf ' "Tasks": "1", "Created at": "2026-11-16 08:00:00+00:00", "Stopped at": %s}]\n' "$at"
+    printf ' "Tasks": "1", "Created at": %s, "Stopped at": %s}]\n' "${FAKE_CREATED:-null}" "$at"
     exit 0 ;;
 esac
 exit 64
@@ -119,6 +122,14 @@ RUNNER_BUDGET = "BUDGET: the tool may run 14505s (limited by max_wall_seconds)"
 
 def _stamp(epoch: float) -> str:
     return datetime.fromtimestamp(int(epoch), UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _created(epoch: float) -> str:
+    """``Created at`` as modal 1.3's ``app list --json`` prints it: local time
+    with a colon offset (here UTC-5), as a JSON string."""
+
+    when = datetime.fromtimestamp(int(epoch), timezone(timedelta(hours=-5)))
+    return f'"{when.isoformat(sep=" ", timespec="seconds")}"'
 
 
 def _line(epoch: float, text: str, rss: float = 11.0) -> str:
@@ -153,15 +164,21 @@ def _watch(
     (fake / "stream.log").write_text("".join(f"{line}\n" for line in lines))
     for number, text in (streams or {}).items():
         (fake / f"stream-{number}.log").write_text("".join(f"{x}\n" for x in text))
-    (run / "started-at").write_text(_stamp(time.time() - started_ago) + "\n")
+    started = time.time() - started_ago
+    (run / "started-at").write_text(_stamp(started) + "\n")
     environment = {
         **os.environ,
         "FAKE_DIR": str(fake),
         "MODAL": str(modal),
         "PYTHON": sys.executable,
+        # The app is created just after started-at is written.
+        "FAKE_CREATED": _created(started + 5),
         "WATCH_INTERVAL": "0",
         "WATCH_STOP_WAIT": "0",
         "WATCH_START_WAIT": "0",
+        # The fake's streams end at once, so each poll restarts one; the
+        # settle wait has its own test.
+        "WATCH_SETTLE": "0",
         # The watcher refuses to run without a pinned workspace.
         "MODAL_PROFILE": "test-profile",
         "MODAL_ENVIRONMENT": "test-env",
@@ -309,6 +326,45 @@ def test_an_unconfirmed_stop_is_retried_then_raised(tmp_path) -> None:
     assert result.returncode == 5, result.stderr
     assert _calls(fake).count(f"app stop {APP}") == 2
     assert "stop it by hand" in (run / "ALARM").read_text()
+
+
+@pytest.mark.parametrize(
+    ("created", "says"),
+    [
+        # Another session's stage, launched an hour before this attempt.
+        ("before", "is not this attempt's app"),
+        ("null", 'no "Created at"'),
+        ('"garbage"', 'no "Created at"'),
+        # No offset: it cannot be set against started-at.
+        ("naive", 'no "Created at"'),
+    ],
+)
+def test_an_app_not_created_by_this_attempt_is_refused_at_the_start(
+    tmp_path, created, says
+) -> None:
+    # Review r6, SF-6: the watcher stopped whatever running app id it was
+    # given; every stage is the app microcosm-us-stage, so an id copied from
+    # `modal app list` can be another session's run.
+    started = time.time() - 3 * 3600
+    value = {
+        "before": _created(started - 3600),
+        "naive": f'"{datetime.fromtimestamp(int(started), UTC):%Y-%m-%d %H:%M:%S}"',
+    }.get(created, created)
+    result, fake, run = _watch(tmp_path, _stalled(), FAKE_CREATED=value)
+    assert result.returncode == 2
+    assert says in result.stderr
+    assert "did not start" in (run / "ALARM").read_text()
+    calls = _calls(fake)
+    assert not any(call.startswith(("app logs ap-", "app stop ap-")) for call in calls)
+
+
+def test_an_app_created_just_before_started_at_is_watched(tmp_path) -> None:
+    # Clocks differ by a few seconds; up to WATCH_CREATED_SLACK is allowed.
+    started = time.time() - 3 * 3600
+    result, fake, run = _watch(
+        tmp_path, _stalled(), FAKE_CREATED=_created(started - 30)
+    )
+    assert result.returncode == 3, result.stderr
 
 
 def test_an_app_that_is_not_running_is_refused_at_the_start(tmp_path) -> None:
@@ -613,12 +669,16 @@ def test_a_log_gap_alarms_once_and_waits(tmp_path) -> None:
         _line(t0 + 35, "after scoring candidate chunk 1/1 slice 3/40", 4.0),
         _line(t0 + 35, "after receiving candidate slice result", 4.0),
     ]
-    result, fake, run = _watch(tmp_path, log, started_ago=900, FAKE_LIVE_LISTS="3")
+    # Each poll restarts the fake's stream (it ends at once) before it
+    # projects, unless the stream is still printing; the list shows the app
+    # finished after four reads, so the polls number three or four.
+    result, fake, run = _watch(tmp_path, log, started_ago=900, FAKE_LIVE_LISTS="4")
     assert result.returncode == 0, result.stderr
     alarms = (run / "ALARM").read_text().splitlines()
     assert len(alarms) == 1 and "lost lines" in alarms[0]
     verdicts = (run / "go-no-go.log").read_text()
-    assert verdicts.count("verdict=WAIT") == 3 and '"log_gap"' in verdicts
+    assert verdicts.count("verdict=WAIT") >= 3 and '"log_gap"' in verdicts
+    assert verdicts.count("verdict=") == verdicts.count("verdict=WAIT")
     assert not any(call.startswith("app stop ap-") for call in _calls(fake))
 
 
@@ -638,23 +698,84 @@ def test_a_stream_begun_after_the_runners_budget_line_alarms_once(tmp_path) -> N
     assert not any(call.startswith("app stop ap-") for call in _calls(fake))
 
 
-def test_a_dead_stream_is_restarted_before_the_next_poll(tmp_path) -> None:
+def test_a_second_stream_end_in_one_interval_is_restarted_before_the_poll(
+    tmp_path,
+) -> None:
     # Polls every 2 s, stream checks every 1 s. The fake's stream ends at
-    # once, so the first restart comes before the first poll; a second death
-    # in the same interval waits for the poll.
+    # once, so the first restart comes at the first check; the second end in
+    # the same interval waits for the poll, which restarts it before it
+    # projects (review r6, SF-1: it used to project the dead stream first,
+    # reading its stale file as a quiet scorer).
     result, fake, run = _watch(
         tmp_path,
         _live(),
         started_ago=900,
         WATCH_INTERVAL="2",
         WATCH_STEP="1",
-        FAKE_LIVE_LISTS="2",
+        FAKE_LIVE_LISTS="3",
     )
     assert result.returncode == 0, result.stderr
     lines = (run / "go-no-go.log").read_text().splitlines()
     first_poll = next(i for i, line in enumerate(lines) if " rc=" in line)
-    assert any("restarting it" in line for line in lines[:first_poll])
-    assert _calls(fake).count(f"app logs {APP}") == 2
+    assert sum("restarting it" in line for line in lines[:first_poll]) == 2
+    assert _calls(fake).count(f"app logs {APP}") == 3
+
+
+def test_a_no_go_from_a_stream_that_just_started_waits_for_the_next_poll(
+    tmp_path,
+) -> None:
+    # Every poll restarts the fake's stream (it ends at once), so the stream
+    # the projection reads is always seconds old and may still be replaying:
+    # its NO-GO is never acted on (review r6, SF-1's limit).
+    result, fake, run = _watch(
+        tmp_path, _stalled(), WATCH_SETTLE="3600", FAKE_LIVE_LISTS="4"
+    )
+    assert result.returncode == 0, result.stderr
+    verdicts = (run / "go-no-go.log").read_text()
+    assert verdicts.count("verdict=NO-GO") >= 3
+    assert verdicts.count("may still be replaying") == verdicts.count("verdict=NO-GO")
+    assert not (run / "ALARM").exists()
+    assert not any(call.startswith("app stop ap-") for call in _calls(fake))
+
+
+def test_a_hung_stream_is_restarted_once_before_a_no_go_is_acted_on(
+    tmp_path,
+) -> None:
+    # The stream prints its log and hangs, alive: `kill -0` sees nothing
+    # wrong. The first NO-GO restarts it instead of stopping the app (review
+    # r6, SF-7); the restarted stream shows the same stall, its file does not
+    # grow, and the second NO-GO stops the app.
+    result, fake, run = _watch(tmp_path, _stalled(), FAKE_HANG="20")
+    assert result.returncode == 3, result.stderr
+    verdicts = (run / "go-no-go.log").read_text()
+    assert verdicts.count("has not grown since the last poll") == 1
+    assert verdicts.index("has not grown") < verdicts.index(f"stopped {APP}")
+    calls = _calls(fake)
+    assert calls.count(f"app logs {APP}") == 2
+    assert calls.count(f"app stop {APP}") == 1
+
+
+def test_a_stream_that_grows_again_resets_the_hang_restart(tmp_path) -> None:
+    # Stream 1 hangs on a stall; the restart (stream 2) delivers a fresh
+    # slice line, so the file grows and the estimate moves on: the earlier
+    # restart does not license stopping on a later stale read.
+    then = time.time() - 2 * 3600
+    stalled = _stalled()
+    fresh = [
+        *stalled,
+        _line(time.time() - 5, "after scoring candidate chunk 1/5 slice 2/177"),
+    ]
+    result, fake, run = _watch(
+        tmp_path,
+        stalled,
+        streams={1: stalled, 2: fresh},
+        FAKE_HANG="6",
+        FAKE_LIVE_LISTS="3",
+    )
+    assert then and result.returncode == 0, result.stderr
+    verdicts = (run / "go-no-go.log").read_text()
+    assert verdicts.count("has not grown since the last poll") == 1
+    assert not any(call.startswith("app stop ap-") for call in _calls(fake))
 
 
 def test_help_is_read_whole_so_a_long_help_keeps_its_flags(tmp_path) -> None:

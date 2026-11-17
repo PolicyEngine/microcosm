@@ -11,7 +11,8 @@ timing:
   token, or else starts a worker if fewer than ``workers`` have started;
 * a start blocks the parent for ``start_cost`` seconds (the child imports
   the scorer and reads the frame); results still arrive meanwhile, but the
-  parent consumes and submits nothing;
+  parent consumes and submits nothing. ``start_cost`` may be one cost per
+  worker, in start order (the last repeats), for starts that differ;
 * workers take queued tasks in submission order, the longest-idle first;
 * a worker's first slice carries a one-time cost.
 
@@ -24,6 +25,7 @@ from __future__ import annotations
 
 import heapq
 from collections import deque
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -72,12 +74,14 @@ def pool(
     *,
     start: float,
     workers: int,
-    start_cost: int,
+    start_cost: int | Sequence[int],
     chunk_seconds: list[int],
     slices_per_chunk: int,
     first_slice_extra: int = 0,
     rss: float = 4.0,
 ) -> Pool:
+    costs = [start_cost] if isinstance(start_cost, int) else list(start_cost)
+
     out = Pool(opened=start)
     out.lines.append(
         (start, line(start, f"before starting {artifact} slice workers", 9.0))
@@ -134,7 +138,7 @@ def pool(
         if tokens:
             tokens -= 1
         elif len(out.inits) < workers:
-            advance(now + start_cost)
+            advance(now + costs[min(len(out.inits), len(costs) - 1)])
             out.inits.append(now)
             text = f"after initializing {artifact} slice worker"
             out.lines.append((now, line(now, text, rss)))
@@ -205,11 +209,12 @@ def run(
     candidate_seconds: list[int],
     incumbent_slices: int,
     candidate_slices: int,
-    start_cost: int,
+    start_cost: int | Sequence[int],
     first_slice_extra: int = 0,
     load_seconds: int = LOAD_SECONDS,
     candidate_load_seconds: int = CANDIDATE_LOAD_SECONDS,
     scorecard_seconds: int = SCORECARD_SECONDS,
+    candidate_start_cost: int | Sequence[int] | None = None,
 ) -> Run:
     incumbent = pool(
         "incumbent",
@@ -225,7 +230,7 @@ def run(
         "candidate",
         start=incumbent.released + candidate_load_seconds,
         workers=workers,
-        start_cost=start_cost,
+        start_cost=start_cost if candidate_start_cost is None else candidate_start_cost,
         chunk_seconds=candidate_seconds,
         slices_per_chunk=candidate_slices,
         first_slice_extra=first_slice_extra,
