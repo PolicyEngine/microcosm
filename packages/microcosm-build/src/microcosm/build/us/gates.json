@@ -1,0 +1,2521 @@
+{
+  "version": 1,
+  "country": "us",
+  "policy": "US gates declared as data for the shared battery (microcosm#1585 item 11, microcosm#611), one scope per build tool. PR 2 of 4 runs them in shadow: each US tool still gates as it did, evaluates the declared entry beside each gate on the same evidence, and fails the run on a verdict difference. A threshold the gate reads from a module constant is declared at today's value and pinned equal to that constant until the flip makes this file the only source; one the gate takes as a keyword is routed from here. Waivers stay the tools' --allow-* flags, which the shadow records by entry id. Gate names and phases are the shared vocabulary's, pending Max's Step 0 answer.",
+  "phases": [
+    "preflight",
+    "assembled",
+    "transferred",
+    "terminal"
+  ],
+  "gates": [
+    {
+      "id": "us_base_relationship_inputs",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "relationship_inputs_signal",
+        "household_head_share_band": [
+          0.3,
+          0.55
+        ],
+        "separated_share_band": [
+          0.003,
+          0.04
+        ],
+        "surviving_spouse_share_band": [
+          0.02,
+          0.08
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): relationship inputs on the ASEC frame before support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_spm_independence_role",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "spm_independence_role_signal",
+        "role_share_band": [
+          0.4,
+          0.75
+        ],
+        "minor_role_share_band": [
+          0.003,
+          0.06
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): SPM independence role on the ASEC frame before support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_medicare_take_up_pre_clone",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "medicare_take_up_input_signal",
+        "weighted_enrolled_share_band": [
+          0.15,
+          0.24
+        ],
+        "channel_enrolled_share_band": [
+          0.15,
+          0.24
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): Medicare enrollment input on the ASEC frame before support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_housing_inputs_pre_clone",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "housing_inputs_signal",
+        "rent_share_band": [
+          0.05,
+          0.25
+        ],
+        "housing_assistance_share_band": [
+          0.005,
+          0.08
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): housing inputs before support cloning: the source frame's verdict, or the verdict after the pinned ACS restore when the source frame is not green. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_eligibility_inputs",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "eligibility_inputs_signal",
+        "disabled_share_band": [
+          0.05,
+          0.2
+        ],
+        "full_time_student_share_band": [
+          0.01,
+          0.08
+        ],
+        "parent_share_band": [
+          0.12,
+          0.4
+        ],
+        "veterans_benefits_share_band": [
+          0.002,
+          0.04
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): eligibility inputs on the ASEC frame before support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_pregnancy",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "pregnancy_signal",
+        "pregnant_share_band": [
+          0.002,
+          0.02
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): pregnancy input on the ASEC frame before support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_wic_claim_pre_clone",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "wic_claim_input_signal",
+        "weighted_claim_share_band": [
+          0.015,
+          0.06
+        ],
+        "category_weighted_claim_share_bands": {
+          "pregnant": [
+            0.25,
+            0.67
+          ],
+          "postpartum": [
+            0.45,
+            0.9
+          ],
+          "infant": [
+            0.55,
+            0.96
+          ],
+          "child": [
+            0.3,
+            0.63
+          ],
+          "none": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): WIC claims on the ASEC frame before support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_esi_premiums_pre_clone",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "esi_premiums_signal",
+        "positive_share_band": [
+          0.15,
+          0.32
+        ],
+        "raw_mean_band": [
+          6000.0,
+          20000.0
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): ESI employer premiums on the ASEC frame before support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_weights_audit",
+      "gate": "weights_audit",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "notes": "Route A base (tools/build_us_puf_support_base.py): every fit the PUF-support QRF finalization ran resolved a weight. Raises at once today."
+    },
+    {
+      "id": "us_base_wic_claim_post_clone",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "wic_claim_input_signal",
+        "weighted_claim_share_band": [
+          0.015,
+          0.06
+        ],
+        "category_weighted_claim_share_bands": {
+          "pregnant": [
+            0.25,
+            0.67
+          ],
+          "postpartum": [
+            0.45,
+            0.9
+          ],
+          "infant": [
+            0.55,
+            0.96
+          ],
+          "child": [
+            0.3,
+            0.63
+          ],
+          "none": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): WIC claims after support cloning, with the channel checks live. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_medicare_take_up_post_clone",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "medicare_take_up_input_signal",
+        "weighted_enrolled_share_band": [
+          0.15,
+          0.24
+        ],
+        "channel_enrolled_share_band": [
+          0.15,
+          0.24
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): Medicare enrollment input after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_prior_year_income",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "prior_year_income_signal",
+        "previous_year_available_share_band": [
+          0.05,
+          0.5
+        ],
+        "self_employment_nonzero_share_band": [
+          0.01,
+          0.25
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): prior-year income inputs after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_prior_year_income_source_reconciliation",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "prior_year_income_source_reconciliation"
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): exact recomputation of the ASEC prior-year carry after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_housing_inputs_post_clone",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "housing_inputs_signal",
+        "rent_share_band": [
+          0.05,
+          0.25
+        ],
+        "housing_assistance_share_band": [
+          0.005,
+          0.08
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): housing inputs after PUF-support imputation. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_qbi_inputs",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "qbi_inputs_signal",
+        "boolean_share_bands": {
+          "business_is_sstb": [
+            0.001,
+            0.25
+          ],
+          "estate_income_would_be_qualified": [
+            0.01,
+            0.9999
+          ],
+          "farm_operations_income_would_be_qualified": [
+            0.01,
+            0.9999
+          ],
+          "farm_rent_income_would_be_qualified": [
+            0.01,
+            0.9999
+          ],
+          "partnership_s_corp_income_would_be_qualified": [
+            0.01,
+            0.9999
+          ],
+          "rental_income_would_be_qualified": [
+            0.01,
+            0.9999
+          ],
+          "self_employment_income_would_be_qualified": [
+            0.01,
+            0.9999
+          ],
+          "sstb_self_employment_income_would_be_qualified": [
+            0.0001,
+            0.25
+          ]
+        },
+        "numeric_nonzero_share_bands": {
+          "qualified_bdc_income": [
+            0.0001,
+            0.15
+          ],
+          "qualified_reit_and_ptp_income": [
+            0.001,
+            0.35
+          ],
+          "sstb_self_employment_income_before_lsr": [
+            0.0001,
+            0.25
+          ],
+          "sstb_unadjusted_basis_qualified_property": [
+            0.0001,
+            0.25
+          ],
+          "sstb_w2_wages_from_qualified_business": [
+            0.0001,
+            0.2
+          ],
+          "unadjusted_basis_qualified_property": [
+            0.001,
+            0.45
+          ],
+          "w2_wages_from_qualified_business": [
+            0.001,
+            0.35
+          ]
+        },
+        "invariant_atol": 1e-08
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): QBI inputs after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_farm_business_income",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "farm_business_income_signal",
+        "nonzero_share_bands": {
+          "farm_operations_income": [
+            0.0001,
+            0.2
+          ],
+          "farm_rent_income": [
+            1e-05,
+            0.2
+          ]
+        }
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): farm business income after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_domestic_production_ald",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "domestic_production_ald_signal",
+        "domestic_production_ald_positive_share_band": [
+          0.0001,
+          0.02
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): domestic production deduction after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_child_support",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "child_support_inputs_signal",
+        "nonzero_share_bands": {
+          "child_support_received": [
+            0.005,
+            0.15
+          ],
+          "child_support_expense": [
+            0.003,
+            0.15
+          ]
+        },
+        "channel_nonzero_share_band": [
+          0.002,
+          0.15
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): child support inputs after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_disability_benefits",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "disability_benefits_signal",
+        "nonzero_share_band": [
+          0.003,
+          0.15
+        ],
+        "channel_nonzero_share_bands": {
+          "asec": [
+            0.003,
+            0.02
+          ],
+          "puf_tax_detail": [
+            0.002,
+            0.15
+          ]
+        }
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): disability benefits after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_workers_compensation",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "workers_compensation_signal",
+        "nonzero_share_band": [
+          0.0005,
+          0.05
+        ],
+        "channel_nonzero_share_bands": {
+          "asec": [
+            0.001,
+            0.01
+          ],
+          "puf_tax_detail": [
+            0.0002,
+            0.1
+          ]
+        }
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): workers' compensation after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_weeks_unemployed",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "weeks_unemployed_signal",
+        "channel_positive_share_bands": {
+          "asec": [
+            0.015,
+            0.1
+          ],
+          "puf_tax_detail": [
+            0.001,
+            0.03
+          ]
+        },
+        "channel_weighted_mean_weeks_bands": {
+          "asec": [
+            0.2,
+            2.0
+          ],
+          "puf_tax_detail": [
+            0.01,
+            0.5
+          ]
+        }
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): weeks unemployed after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_educator_expense",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "educator_expense_signal",
+        "overall_positive_share_band": [
+          0.002,
+          0.04
+        ],
+        "puf_positive_share_band": [
+          0.005,
+          0.08
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): educator expenses after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_form_4952_election",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "form_4952_election_signal",
+        "overall_positive_share_band": [
+          5e-05,
+          0.02
+        ],
+        "puf_positive_share_band": [
+          0.0001,
+          0.04
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): Form 4952 election after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_salt_refund_income",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "salt_refund_income_signal",
+        "overall_positive_share_band": [
+          0.005,
+          0.2
+        ],
+        "puf_positive_share_band": [
+          0.01,
+          0.4
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): SALT refund income after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_capital_gain_details",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "capital_gain_details_signal",
+        "signal_bands": {
+          "long_term_capital_gains_on_collectibles": {
+            "overall": [
+              1e-05,
+              0.005
+            ],
+            "puf": [
+              2e-05,
+              0.01
+            ]
+          },
+          "unrecaptured_section_1250_gain": {
+            "overall": [
+              0.0005,
+              0.03
+            ],
+            "puf": [
+              0.001,
+              0.06
+            ]
+          }
+        }
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): capital gain details after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_childcare",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "childcare_inputs_signal",
+        "nonzero_share_band": [
+          0.005,
+          0.5
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): childcare inputs after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_adult_care",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "adult_care_inputs_signal",
+        "flag_share_band": [
+          0.002,
+          0.12
+        ],
+        "expense_plausibility_ceiling": 250000.0
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): adult care inputs after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_energy_subsidy",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "energy_subsidy_signal",
+        "overall_positive_share_band": [
+          0.01,
+          0.2
+        ],
+        "channel_positive_share_bands": {
+          "asec": [
+            0.025,
+            0.045
+          ],
+          "puf_tax_detail": [
+            0.002,
+            0.2
+          ]
+        }
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): energy subsidy after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_alimony",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "alimony_inputs_signal",
+        "nonzero_share_band": [
+          1e-05,
+          0.02
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): alimony after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_casualty_loss",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "casualty_loss_signal",
+        "casualty_loss_nonzero_share_band": [
+          0.0001,
+          0.02
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): casualty losses after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_misc_itemized",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "misc_itemized_signal",
+        "misc_itemized_nonzero_share_band": [
+          0.05,
+          0.55
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): miscellaneous itemized deductions after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_retirement_contributions",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "retirement_contributions_signal",
+        "nonzero_share_band": [
+          0.0001,
+          0.75
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): retirement contributions after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_retirement_distributions",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "retirement_distributions_signal",
+        "nonzero_share_bands": {
+          "taxable_401k_distributions": [
+            0.001,
+            0.2
+          ],
+          "taxable_403b_distributions": [
+            5e-05,
+            0.05
+          ],
+          "tax_exempt_ira_distributions": [
+            0.0001,
+            0.05
+          ],
+          "taxable_ira_distributions": [
+            0.001,
+            0.25
+          ],
+          "keogh_distributions": [
+            1e-07,
+            0.005
+          ],
+          "taxable_sep_distributions": [
+            1e-05,
+            0.05
+          ]
+        }
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): retirement distributions after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_education_inputs",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "education_inputs_signal",
+        "tuition_share_band": [
+          0.001,
+          0.05
+        ],
+        "assistance_share_band": [
+          0.005,
+          0.08
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): education inputs after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_esi_premiums_post_clone",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "esi_premiums_signal",
+        "positive_share_band": [
+          0.15,
+          0.32
+        ],
+        "raw_mean_band": [
+          6000.0,
+          20000.0
+        ]
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): ESI employer premiums after support cloning. Raises at once today, in the single-process run and in the checkpointed stage alike."
+    },
+    {
+      "id": "us_base_geography_ladder",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "geography_ladder",
+        "nyc_share_bounds": [
+          0.005,
+          0.06
+        ],
+        "nyc_share_of_new_york_bounds": [
+          0.2,
+          0.65
+        ],
+        "place_share_bounds": [
+          0.4,
+          0.95
+        ],
+        "cbsa_share_bounds": [
+          0.75,
+          0.99
+        ],
+        "sld_min_share": 0.95
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): the household geography ladder before the H5 write. Runs with --block-ladder-artifact on the legacy location rule and on every block_v1 run; --allow-geography-ladder-gate-failures waives its raise today. Its thresholds are the gate's keyword defaults."
+    },
+    {
+      "id": "us_base_block_location",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "block_location"
+      },
+      "notes": "Route A base (tools/build_us_puf_support_base.py): every written geography equals the block ladder's lookup of its block. Runs on block_v1 runs only, where its failures and the ladder's share one raise."
+    },
+    {
+      "id": "us_pool_puma_ladder",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "puma_ladder",
+        "assign_tract": false,
+        "nyc_share_bounds": [
+          0.005,
+          0.06
+        ],
+        "nyc_share_of_new_york_bounds": [
+          0.2,
+          0.65
+        ]
+      },
+      "notes": "US multispine pool (tools/build_us_multispine_pool.py), stacked path: the household PUMA ladder right after assembly, on a cold run; with block_v1 it runs beside the block draw's gate and shares its raise. Raises at once today. A resumed run re-reads its checkpointed receipt instead."
+    },
+    {
+      "id": "us_pool_block_location",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "block_location"
+      },
+      "notes": "US multispine pool (tools/build_us_multispine_pool.py), stacked path: every written geography equals the block ladder's lookup of its block. Runs on block_v1 cold runs only, where it shares one raise with the PUMA ladder."
+    },
+    {
+      "id": "us_pool_hours_worked",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "hours_worked_signal",
+        "worked_share_band": [
+          0.35,
+          0.62
+        ],
+        "mean_weekly_hours_band": [
+          30.0,
+          45.0
+        ]
+      },
+      "notes": "US multispine pool (tools/build_us_multispine_pool.py), stacked path: hours worked on the CPS evidence projection, inside the pool runtime's source preparation. Raises at once today. Skipped on a resume from the transferred or simulated checkpoint, which carries its receipt."
+    },
+    {
+      "id": "us_pool_weights_audit",
+      "gate": "weights_audit",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "notes": "US multispine pool (tools/build_us_multispine_pool.py), stacked path: every gap-fill, primary-QRF and late-DAG fit resolved a weight, before the transferred checkpoint. Raises at once today; skipped as the hours gate is on a resume."
+    },
+    {
+      "id": "us_pool_stacked_completeness",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "stacked_completeness"
+      },
+      "notes": "US multispine pool (tools/build_us_multispine_pool.py), stacked path: the terminal completeness gate over the declared surface. It marks today: a failure publishes a gate_failed pool and the tool returns 1. Its GateReport(...).to_manifest() seal and the manifest shape are today's and unchanged; the battery re-evaluates it on its own."
+    },
+    {
+      "id": "us_pool_by_origin_battery",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "by_origin_battery",
+        "battery_incidence_ratio_bounds": [
+          0.8,
+          1.25
+        ],
+        "battery_quantiles": [
+          0.1,
+          0.25,
+          0.5,
+          0.75,
+          0.9
+        ],
+        "battery_quantile_envelope_tolerance": 0.25,
+        "battery_categorical_tvd_tolerance": 0.25,
+        "mass_rtol": 1e-09
+      },
+      "notes": "US multispine pool (tools/build_us_multispine_pool.py), stacked path: the terminal by-origin battery. It marks today, as the completeness gate does. Its first four thresholds are the ones us/spec/battery.yaml mirrors."
+    },
+    {
+      "id": "us_national_validation_input_coverage",
+      "gate": "stage_health",
+      "phase": "preflight",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "validation_input_coverage"
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): every validation provision's input leaves are produced by a source stage. Raises at once today, before any stage."
+    },
+    {
+      "id": "us_national_register_consistency",
+      "gate": "stage_health",
+      "phase": "preflight",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "register_consistency"
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): the reviewed registers agree with each other. Raises at once today."
+    },
+    {
+      "id": "us_national_esi_anchor_feed",
+      "gate": "stage_health",
+      "phase": "preflight",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "esi_anchor_feed"
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): the ESI premium anchor equals the Chronicle feed's facts. Exits at once today unless --allow-unpinned-feed or --allow-esi-premium-gaps waives it."
+    },
+    {
+      "id": "us_national_target_parity",
+      "gate": "stage_health",
+      "phase": "preflight",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "target_parity"
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): the compiled target registry covers the parity manifest. Raises at once today."
+    },
+    {
+      "id": "us_national_target_profile_coverage",
+      "gate": "stage_health",
+      "phase": "preflight",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "target_profile_coverage"
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): the target surface meets its coverage requirements, before the --target-surface narrowing. Raises at once today."
+    },
+    {
+      "id": "us_national_capital_gains_tail_presence",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "capital_gains_tail_survives_selection"
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): the PUF capital-gains own-tail is present in the base, before any selection. Its refusal raises at once today."
+    },
+    {
+      "id": "us_national_weeks_unemployed",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "weeks_unemployed_signal",
+        "channel_positive_share_bands": {
+          "asec": [
+            0.015,
+            0.1
+          ],
+          "puf_tax_detail": [
+            0.001,
+            0.03
+          ]
+        },
+        "channel_weighted_mean_weeks_bands": {
+          "asec": [
+            0.2,
+            2.0
+          ],
+          "puf_tax_detail": [
+            0.01,
+            0.5
+          ]
+        }
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): weeks unemployed after its stage (computed on a non-pool base). Raises at once today."
+    },
+    {
+      "id": "us_national_capital_gains_tail_retention",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "capital_gains_tail_survives_selection"
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): frozen-support selection keeps the PUF capital-gains tail and its weights. Runs only with a selection source; its refusal raises at once."
+    },
+    {
+      "id": "us_national_weeks_unemployed_post_selection",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "weeks_unemployed_signal",
+        "channel_positive_share_bands": {
+          "asec": [
+            0.015,
+            0.1
+          ],
+          "puf_tax_detail": [
+            0.001,
+            0.03
+          ]
+        },
+        "channel_weighted_mean_weeks_bands": {
+          "asec": [
+            0.2,
+            2.0
+          ],
+          "puf_tax_detail": [
+            0.01,
+            0.5
+          ]
+        }
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): weeks unemployed again after frozen-support selection, when one runs. Raises at once today."
+    },
+    {
+      "id": "us_national_base_population_scale",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "base_population_scale",
+        "us_base_person_population_max_abs_relative_error": 0.25
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): the base's person population against the Census benchmark, after the mass repair. Raises at once today."
+    },
+    {
+      "id": "us_national_qbi_inputs",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "qbi_inputs_signal",
+        "boolean_share_bands": {
+          "business_is_sstb": [
+            0.001,
+            0.25
+          ],
+          "estate_income_would_be_qualified": [
+            0.01,
+            0.9999
+          ],
+          "farm_operations_income_would_be_qualified": [
+            0.01,
+            0.9999
+          ],
+          "farm_rent_income_would_be_qualified": [
+            0.01,
+            0.9999
+          ],
+          "partnership_s_corp_income_would_be_qualified": [
+            0.01,
+            0.9999
+          ],
+          "rental_income_would_be_qualified": [
+            0.01,
+            0.9999
+          ],
+          "self_employment_income_would_be_qualified": [
+            0.01,
+            0.9999
+          ],
+          "sstb_self_employment_income_would_be_qualified": [
+            0.0001,
+            0.25
+          ]
+        },
+        "numeric_nonzero_share_bands": {
+          "qualified_bdc_income": [
+            0.0001,
+            0.15
+          ],
+          "qualified_reit_and_ptp_income": [
+            0.001,
+            0.35
+          ],
+          "sstb_self_employment_income_before_lsr": [
+            0.0001,
+            0.25
+          ],
+          "sstb_unadjusted_basis_qualified_property": [
+            0.0001,
+            0.25
+          ],
+          "sstb_w2_wages_from_qualified_business": [
+            0.0001,
+            0.2
+          ],
+          "unadjusted_basis_qualified_property": [
+            0.001,
+            0.45
+          ],
+          "w2_wages_from_qualified_business": [
+            0.001,
+            0.35
+          ]
+        },
+        "invariant_atol": 1e-08
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): QBI inputs after their reconciliation. Raises at once today."
+    },
+    {
+      "id": "us_national_farm_business_income",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "farm_business_income_signal",
+        "nonzero_share_bands": {
+          "farm_operations_income": [
+            0.0001,
+            0.2
+          ],
+          "farm_rent_income": [
+            1e-05,
+            0.2
+          ]
+        }
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): farm business income on the base. Raises at once today."
+    },
+    {
+      "id": "us_national_domestic_production_ald",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "domestic_production_ald_signal",
+        "domestic_production_ald_positive_share_band": [
+          0.0001,
+          0.02
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): domestic production deduction. Raises at once today."
+    },
+    {
+      "id": "us_national_child_support",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "child_support_inputs_signal",
+        "nonzero_share_bands": {
+          "child_support_received": [
+            0.005,
+            0.15
+          ],
+          "child_support_expense": [
+            0.003,
+            0.15
+          ]
+        },
+        "channel_nonzero_share_band": [
+          0.002,
+          0.15
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): child support inputs. Raises at once today."
+    },
+    {
+      "id": "us_national_disability_benefits",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "disability_benefits_signal",
+        "nonzero_share_band": [
+          0.003,
+          0.15
+        ],
+        "channel_nonzero_share_bands": {
+          "asec": [
+            0.003,
+            0.02
+          ],
+          "puf_tax_detail": [
+            0.002,
+            0.15
+          ]
+        }
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): disability benefits. Raises at once today."
+    },
+    {
+      "id": "us_national_workers_compensation",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "workers_compensation_signal",
+        "nonzero_share_band": [
+          0.0005,
+          0.05
+        ],
+        "channel_nonzero_share_bands": {
+          "asec": [
+            0.001,
+            0.01
+          ],
+          "puf_tax_detail": [
+            0.0002,
+            0.1
+          ]
+        }
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): workers' compensation. Raises at once today."
+    },
+    {
+      "id": "us_national_educator_expense",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "educator_expense_signal",
+        "overall_positive_share_band": [
+          0.002,
+          0.04
+        ],
+        "puf_positive_share_band": [
+          0.005,
+          0.08
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): educator expenses. Raises at once today."
+    },
+    {
+      "id": "us_national_form_4952_election",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "form_4952_election_signal",
+        "overall_positive_share_band": [
+          5e-05,
+          0.02
+        ],
+        "puf_positive_share_band": [
+          0.0001,
+          0.04
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): Form 4952 election. Raises at once today."
+    },
+    {
+      "id": "us_national_salt_refund_income",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "salt_refund_income_signal",
+        "overall_positive_share_band": [
+          0.005,
+          0.2
+        ],
+        "puf_positive_share_band": [
+          0.01,
+          0.4
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): SALT refund income. Raises at once today."
+    },
+    {
+      "id": "us_national_capital_gain_details",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "capital_gain_details_signal",
+        "signal_bands": {
+          "long_term_capital_gains_on_collectibles": {
+            "overall": [
+              1e-05,
+              0.005
+            ],
+            "puf": [
+              2e-05,
+              0.01
+            ]
+          },
+          "unrecaptured_section_1250_gain": {
+            "overall": [
+              0.0005,
+              0.03
+            ],
+            "puf": [
+              0.001,
+              0.06
+            ]
+          }
+        }
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): capital gain details. Raises at once today."
+    },
+    {
+      "id": "us_national_childcare",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "childcare_inputs_signal",
+        "nonzero_share_band": [
+          0.005,
+          0.5
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): childcare inputs after their stage. Raises at once today."
+    },
+    {
+      "id": "us_national_energy_subsidy",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "energy_subsidy_signal",
+        "overall_positive_share_band": [
+          0.01,
+          0.2
+        ],
+        "channel_positive_share_bands": {
+          "asec": [
+            0.025,
+            0.045
+          ],
+          "puf_tax_detail": [
+            0.002,
+            0.2
+          ]
+        }
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): energy subsidy after its stage. Raises at once today."
+    },
+    {
+      "id": "us_national_alimony",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "alimony_inputs_signal",
+        "nonzero_share_band": [
+          1e-05,
+          0.02
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): alimony. Raises at once today."
+    },
+    {
+      "id": "us_national_casualty_loss",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "casualty_loss_signal",
+        "casualty_loss_nonzero_share_band": [
+          0.0001,
+          0.02
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): casualty losses. Raises at once today."
+    },
+    {
+      "id": "us_national_misc_itemized",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "misc_itemized_signal",
+        "misc_itemized_nonzero_share_band": [
+          0.05,
+          0.55
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): miscellaneous itemized deductions. Raises at once today."
+    },
+    {
+      "id": "us_national_retirement_contributions",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "retirement_contributions_signal",
+        "nonzero_share_band": [
+          0.0001,
+          0.75
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): retirement contributions after their stage. Raises at once today."
+    },
+    {
+      "id": "us_national_immigration_composition",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "immigration_composition",
+        "non_citizen_share_band": [
+          0.03,
+          0.12
+        ],
+        "undocumented_anchor_relative_band": [
+          0.5,
+          1.6
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): immigration composition after its stage. Raises at once today."
+    },
+    {
+      "id": "us_national_take_up",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "take_up_signal",
+        "us_take_up_share_band": {
+          "takes_up_tanf_if_eligible": [
+            0.1,
+            0.4
+          ],
+          "takes_up_eitc": [
+            0.6,
+            0.92
+          ]
+        }
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): seeded take-up after its stage. Raises at once today."
+    },
+    {
+      "id": "us_national_hours_worked",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "hours_worked_signal",
+        "worked_share_band": [
+          0.35,
+          0.62
+        ],
+        "mean_weekly_hours_band": [
+          30.0,
+          45.0
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): hours worked after its stage. Raises at once today."
+    },
+    {
+      "id": "us_national_snap_take_up",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "snap_take_up_signal",
+        "take_up_share_band": [
+          0.7,
+          0.95
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): SNAP take-up after its stage, in every arm. Raises at once today."
+    },
+    {
+      "id": "us_national_relationship_inputs",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "relationship_inputs_signal",
+        "household_head_share_band": [
+          0.3,
+          0.55
+        ],
+        "separated_share_band": [
+          0.003,
+          0.04
+        ],
+        "surviving_spouse_share_band": [
+          0.02,
+          0.08
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): relationship inputs after their stage. Raises at once today."
+    },
+    {
+      "id": "us_national_spm_independence_role",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "spm_independence_role_signal",
+        "role_share_band": [
+          0.4,
+          0.75
+        ],
+        "minor_role_share_band": [
+          0.003,
+          0.06
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): SPM independence role. Raises at once today."
+    },
+    {
+      "id": "us_national_medicare_take_up",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "medicare_take_up_input_signal",
+        "weighted_enrolled_share_band": [
+          0.15,
+          0.24
+        ],
+        "channel_enrolled_share_band": [
+          0.15,
+          0.24
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): Medicare enrollment input. Raises at once today."
+    },
+    {
+      "id": "us_national_prior_year_income",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "prior_year_income_signal",
+        "previous_year_available_share_band": [
+          0.05,
+          0.5
+        ],
+        "self_employment_nonzero_share_band": [
+          0.01,
+          0.25
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): prior-year income inputs. Raises at once today."
+    },
+    {
+      "id": "us_national_housing_inputs",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "housing_inputs_signal",
+        "rent_share_band": [
+          0.05,
+          0.25
+        ],
+        "housing_assistance_share_band": [
+          0.005,
+          0.08
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): housing and tenure inputs. Raises at once today."
+    },
+    {
+      "id": "us_national_retirement_distributions",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "retirement_distributions_signal",
+        "nonzero_share_bands": {
+          "taxable_401k_distributions": [
+            0.001,
+            0.2
+          ],
+          "taxable_403b_distributions": [
+            5e-05,
+            0.05
+          ],
+          "tax_exempt_ira_distributions": [
+            0.0001,
+            0.05
+          ],
+          "taxable_ira_distributions": [
+            0.001,
+            0.25
+          ],
+          "keogh_distributions": [
+            1e-07,
+            0.005
+          ],
+          "taxable_sep_distributions": [
+            1e-05,
+            0.05
+          ]
+        }
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): retirement distributions after their stage. Its failures join the terminal batch rather than raising here."
+    },
+    {
+      "id": "us_national_eligibility_inputs",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "eligibility_inputs_signal",
+        "disabled_share_band": [
+          0.05,
+          0.2
+        ],
+        "full_time_student_share_band": [
+          0.01,
+          0.08
+        ],
+        "parent_share_band": [
+          0.12,
+          0.4
+        ],
+        "veterans_benefits_share_band": [
+          0.002,
+          0.04
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): eligibility inputs after their stage. Raises at once today."
+    },
+    {
+      "id": "us_national_education_inputs",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "education_inputs_signal",
+        "tuition_share_band": [
+          0.001,
+          0.05
+        ],
+        "assistance_share_band": [
+          0.005,
+          0.08
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): education inputs after their stage. Raises at once today."
+    },
+    {
+      "id": "us_national_pregnancy",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "pregnancy_signal",
+        "pregnant_share_band": [
+          0.002,
+          0.02
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): pregnancy input after its stage. Raises at once today."
+    },
+    {
+      "id": "us_national_reported_coverage_vintage",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "reported_coverage_vintage_signal",
+        "us_reported_coverage_vintage_gate_min_rows": 5000
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): reported coverage carries its source vintage. Writes its failure receipt, then raises at once today."
+    },
+    {
+      "id": "us_national_wic_claim",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "wic_claim_input_signal",
+        "weighted_claim_share_band": [
+          0.015,
+          0.06
+        ],
+        "category_weighted_claim_share_bands": {
+          "pregnant": [
+            0.25,
+            0.67
+          ],
+          "postpartum": [
+            0.45,
+            0.9
+          ],
+          "infant": [
+            0.55,
+            0.96
+          ],
+          "child": [
+            0.3,
+            0.63
+          ],
+          "none": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): WIC claims after their stage. Raises at once today."
+    },
+    {
+      "id": "us_national_snap_discretionary_exemption",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "snap_discretionary_exemption_signal",
+        "exempt_share_band": [
+          0.015,
+          0.09
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): SNAP discretionary exemption, in every arm. Raises at once today."
+    },
+    {
+      "id": "us_national_scf_wealth",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "scf_wealth_signal",
+        "bank_nonzero_share_band": [
+          0.25,
+          0.85
+        ],
+        "stock_nonzero_share_band": [
+          0.03,
+          0.4
+        ],
+        "bond_nonzero_share_band": [
+          0.001,
+          0.12
+        ],
+        "net_worth_nonzero_share_band": [
+          0.9,
+          1.0
+        ],
+        "net_worth_positive_share_band": [
+          0.75,
+          1.0
+        ],
+        "net_worth_negative_share_band": [
+          0.001,
+          0.25
+        ],
+        "scf_source_share_band": [
+          0.4,
+          0.6
+        ],
+        "bank_low_tail_threshold": 2000.0
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): SCF wealth after its stage, with the SIPP blend required. Raises at once today."
+    },
+    {
+      "id": "us_national_ssi_disability_criteria",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "ssi_disability_criteria_signal",
+        "true_share_band": [
+          0.001,
+          0.25
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): SSI disability criteria. Raises at once today."
+    },
+    {
+      "id": "us_national_sipp_head_start",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "sipp_head_start_signal",
+        "eligible_take_up_share_band": [
+          0.005,
+          0.25
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): SIPP Head Start. Raises at once today."
+    },
+    {
+      "id": "us_national_ssi_take_up",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "ssi_take_up"
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): the SSI take-up stage's diagnostics against the registry's band targets. Raises at once today."
+    },
+    {
+      "id": "us_national_scf_auto_loans",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "scf_auto_loans_signal",
+        "auto_loan_nonzero_share_band": [
+          0.1,
+          0.6
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): SCF auto loans. Raises at once today."
+    },
+    {
+      "id": "us_national_scf_education_debt",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "scf_education_debt_signal",
+        "borrower_household_share_band": [
+          0.08,
+          0.35
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): SCF education debt, with --scf-education-debt only. Raises at once today."
+    },
+    {
+      "id": "us_national_sipp_vehicles",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "sipp_vehicles_signal",
+        "owned_nonzero_share_band": [
+          0.4,
+          0.99
+        ],
+        "value_nonzero_share_band": [
+          0.25,
+          0.99
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): SIPP vehicles. Raises at once today."
+    },
+    {
+      "id": "us_national_voluntary_filing",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "voluntary_filing_signal",
+        "true_share_band": [
+          0.45,
+          0.95
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): voluntary filing. Raises at once today."
+    },
+    {
+      "id": "us_national_sipp_tips",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "sipp_tips_signal",
+        "tipped_occupation_share_band": [
+          0.02,
+          0.15
+        ],
+        "tip_income_nonzero_share_band": [
+          0.001,
+          0.03
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): SIPP tips. Raises at once today."
+    },
+    {
+      "id": "us_national_org_wages",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "org_wages_signal",
+        "share_bands": {
+          "cps_race": [
+            0.95,
+            1.0
+          ],
+          "is_hispanic": [
+            0.05,
+            0.3
+          ],
+          "detailed_occupation_recode": [
+            0.65,
+            0.95
+          ],
+          "detailed_industry_recode": [
+            0.7,
+            0.92
+          ],
+          "major_industry_recode": [
+            0.7,
+            0.92
+          ],
+          "worked_last_year": [
+            0.4,
+            0.62
+          ],
+          "has_never_worked": [
+            0.15,
+            0.35
+          ],
+          "is_military": [
+            0.0005,
+            0.01
+          ],
+          "is_computer_scientist": [
+            0.005,
+            0.05
+          ],
+          "is_executive_administrative_professional": [
+            0.2,
+            0.4
+          ],
+          "is_farmer_fisher": [
+            0.001,
+            0.015
+          ],
+          "hourly_wage": [
+            0.4,
+            0.7
+          ],
+          "is_paid_hourly": [
+            0.15,
+            0.4
+          ],
+          "is_union_member_or_covered": [
+            0.02,
+            0.12
+          ],
+          "fsla_overtime_premium": [
+            0.01,
+            0.15
+          ]
+        }
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): CPS ORG and FLSA wages. Raises at once today."
+    },
+    {
+      "id": "us_national_health_input",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "health_input_signal"
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): the health inputs are not constant, on the base. Raises at once today."
+    },
+    {
+      "id": "us_national_medicaid_take_up",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "medicaid_take_up",
+        "tolerance": 0.02
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): Medicaid take-up against the state enrollment targets. Raises at once today."
+    },
+    {
+      "id": "us_national_snap_state_take_up",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "snap_state_take_up",
+        "tolerance": 0.02
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): SNAP state take-up against the state caseloads. Raises at once today."
+    },
+    {
+      "id": "us_national_other_health_insurance",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "other_health_insurance_premiums_signal",
+        "positive_share_band": [
+          0.15,
+          0.65
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): other health insurance premiums. Raises at once today."
+    },
+    {
+      "id": "us_national_esi_premiums",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "esi_premiums_signal",
+        "positive_share_band": [
+          0.15,
+          0.32
+        ],
+        "raw_mean_band": [
+          6000.0,
+          20000.0
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): ESI premiums on the base. Raises at once today unless --allow-esi-premium-gaps waives it."
+    },
+    {
+      "id": "us_national_input_mass_reference",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "input_mass_parity",
+        "relative_tolerance": 0.5,
+        "minimum_reference_total": 1000000000.0
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): the base's input mass against --input-mass-reference-h5, when one is given. Raises unless --allow-input-mass-drift waives it, or joins the batch when earlier failures are on record. Its two thresholds are flags; the entry declares their defaults."
+    },
+    {
+      "id": "us_national_degenerate_input",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "degenerate_input_signal"
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): no persisted input column sits at the engine default without a reviewed exclusion. Raises at once today, or joins the batch when earlier failures are on record."
+    },
+    {
+      "id": "us_national_ecps_parity",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "ecps_parity"
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): the base populates every layer the incumbent eCPS does, or a reviewed gap names it. Raises unless --allow-ecps-parity-gaps waives it."
+    },
+    {
+      "id": "us_national_exact_k_puf_capital_gains_tail",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "exact_k_puf_capital_gains_tail"
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): the exact-k selection keeps the PUF capital-gains tail. Exact-k arm only. Joins the terminal batch, which raises before the H5 write."
+    },
+    {
+      "id": "us_national_ssi_take_up_final",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "ssi_take_up"
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): the SSI take-up law on the export frame. Joins the terminal batch, which raises before the H5 write."
+    },
+    {
+      "id": "us_national_ssi_take_up_delivery",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "ssi_take_up_delivery",
+        "us_ssi_take_up_band_delivery_relative_tolerance": 0.05
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): the enforced SSI bands are delivered on release weights (with the dense default's fences under --dense-default-dataset). Joins the terminal batch, which raises before the H5 write."
+    },
+    {
+      "id": "us_national_health_input_export",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "health_input_signal"
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): the health inputs again, on the export frame. Joins the terminal batch, which raises before the H5 write."
+    },
+    {
+      "id": "us_national_reported_coverage_vintage_export",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "reported_coverage_vintage_signal",
+        "us_reported_coverage_vintage_gate_min_rows": 5000
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): reported coverage vintage again, on the export frame. Joins the terminal batch, which raises before the H5 write."
+    },
+    {
+      "id": "us_national_other_health_insurance_export",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "other_health_insurance_premiums_signal",
+        "positive_share_band": [
+          0.15,
+          0.65
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): other health insurance premiums on the export frame. Joins the terminal batch, which raises before the H5 write."
+    },
+    {
+      "id": "us_national_esi_premiums_export",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "esi_premiums_signal",
+        "positive_share_band": [
+          0.15,
+          0.32
+        ],
+        "raw_mean_band": [
+          6000.0,
+          20000.0
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): ESI premiums on the export frame. Joins the terminal batch, which raises before the H5 write. --allow-esi-premium-gaps waives it."
+    },
+    {
+      "id": "us_national_exact_k_frozen_register_fit",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "exact_k_frozen_register_fit",
+        "us_fiscal_target_loss_cap": 1.0
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): an exact-k candidate beats the incumbent on the frozen register. Exact-k arm only. Joins the terminal batch, which raises before the H5 write."
+    },
+    {
+      "id": "us_national_release_gates",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "release_gate_failures"
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): the calibration's own gates (critical target fits, the SOI Table 1.4 fit, finite and falling loss) with the pre-solve gates they re-read; build_manifest gates.calibration records them. Joins the terminal batch, which raises before the H5 write."
+    },
+    {
+      "id": "us_national_spm_composition",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "spm_composition"
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): every SPM unit on the export frame classifies. Joins the terminal batch, which raises before the H5 write."
+    },
+    {
+      "id": "us_national_stored_inputs",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "stored_inputs"
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): every stored column is a model input the recorded engine defines. Joins the terminal batch, which raises before the H5 write."
+    },
+    {
+      "id": "us_national_release_input_coverage",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "release_input_coverage"
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): the export frame covers the release input-coverage manifest. Joins the terminal batch, which raises before the H5 write. --allow-input-coverage-gaps waives it."
+    },
+    {
+      "id": "us_national_esi_premiums_anchor",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "esi_premiums_anchor",
+        "anchor_relative_tolerance": 0.05,
+        "employed_share_band": [
+          0.8,
+          0.95
+        ],
+        "raw_mean_band": [
+          6000.0,
+          20000.0
+        ]
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): ESI premiums against the MEPS anchor on the export frame. Joins the terminal batch, which raises before the H5 write. --allow-esi-premium-gaps waives it."
+    },
+    {
+      "id": "us_national_export_input_mass",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "export_input_mass_parity",
+        "relative_tolerance": 0.5,
+        "minimum_reference_total": 1000000000.0
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): the export's input mass against the base or --export-input-mass-reference-h5. Joins the terminal batch, which raises before the H5 write. --allow-input-mass-drift waives it. Its thresholds are the same flags as the base-frame gate's."
+    },
+    {
+      "id": "us_national_qrf_tail_concentration",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "qrf_tail_concentration",
+        "us_qrf_tail_concentration_top_k": 100,
+        "us_qrf_tail_concentration_max_top_share": 0.75,
+        "us_qrf_tail_concentration_min_nonzero_records": 500,
+        "us_qrf_sparse_nonzero_share_max": 0.05
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): tail concentration over the sparse QRF-imputed export columns, with the run's reviewed exclusions. Joins the terminal batch, which raises before the H5 write. --allow-qrf-tail-concentration waives it."
+    },
+    {
+      "id": "us_national_stored_inputs_written",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "stored_inputs_written"
+      },
+      "notes": "US national release (tools/build_us_fiscal_refresh_release.py): the written H5's stored inputs are the ones the pre-export gate graded. Raises at once today, after the H5 write."
+    },
+    {
+      "id": "us_local_hours_materialize",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "local_hours_staging"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): local hours on the staging frame as materialize loads it. Its refusal exits at once."
+    },
+    {
+      "id": "us_local_self_employment_identity_materialize",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "self_employment_identity"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the ACS self-employment leaves add to SEMP on the staging frame. Its refusal exits at once."
+    },
+    {
+      "id": "us_local_ssi_medicaid_take_up_materialize",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "ssi_medicaid_take_up_signal",
+        "residual_relative_tolerance": 1e-09,
+        "saturated_relative_tolerance": 1e-06,
+        "acs_local_ssi_band_relative_tolerance": 0.05
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): ACS SSI and Medicaid take-up after materialize assigns them; the verdict is recorded in run_identity.json. Exits at once on failure."
+    },
+    {
+      "id": "us_local_hours_calibrate",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "local_hours_staging"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): local hours again on a fresh staging frame, when calibrate writes the calibrated artifact. Its refusal exits at once."
+    },
+    {
+      "id": "us_local_self_employment_identity_calibrate",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "self_employment_identity"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the self-employment identity again, when calibrate writes the calibrated artifact. Its refusal exits at once."
+    },
+    {
+      "id": "us_local_hours_finalize",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "local_hours_signal"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): local hours on the calibrated H5. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
+    },
+    {
+      "id": "us_local_puma_ladder",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "puma_ladder",
+        "assign_tract": false,
+        "nyc_share_bounds": [
+          0.005,
+          0.06
+        ],
+        "nyc_share_of_new_york_bounds": [
+          0.2,
+          0.65
+        ]
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the PUMA ladder on the calibrated households. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure. Its gate_summary.json key is us_puma_ladder_gate."
+    },
+    {
+      "id": "us_local_block_location",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "block_location"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): every geography equals its block's ladder lookup, on block_v1 staging only. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
+    },
+    {
+      "id": "us_local_hours_worked",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "hours_worked_signal",
+        "worked_share_band": [
+          0.35,
+          0.62
+        ],
+        "mean_weekly_hours_band": [
+          30.0,
+          45.0
+        ]
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): hours worked over the two pool hours columns. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
+    },
+    {
+      "id": "us_local_take_up",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "take_up_signal",
+        "medicare_aged_share_floor": 0.8,
+        "share_bands": {
+          "takes_up_snap_if_eligible": [
+            0.7,
+            0.95
+          ],
+          "takes_up_tanf_if_eligible": [
+            0.1,
+            0.4
+          ]
+        },
+        "discretionary_share_factors": [
+          0.5,
+          1.5
+        ]
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): SNAP and TANF take-up on both spines. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
+    },
+    {
+      "id": "us_local_immigration",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "immigration_signal"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): immigration labels and entry clocks. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
+    },
+    {
+      "id": "us_local_work_disability",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "work_disability_signal"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the native ACS disability items, with their staging receipt. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
+    },
+    {
+      "id": "us_local_income_transfer",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "income_transfer_signal",
+        "acs_local_income_review_band": [
+          0.5,
+          2.0
+        ]
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the transferred ACS income leaves, with their staging receipt. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
+    },
+    {
+      "id": "us_local_ssi_disability",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "ssi_disability_signal",
+        "acs_local_ssi_disability_review_band": [
+          0.5,
+          2.0
+        ]
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the ACS SSI disability criteria, with their staging receipt. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
+    },
+    {
+      "id": "us_local_ssi_medicaid_take_up_finalize",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "ssi_medicaid_take_up_signal",
+        "residual_relative_tolerance": 1e-09,
+        "saturated_relative_tolerance": 1e-06,
+        "acs_local_ssi_band_relative_tolerance": 0.05
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): ACS SSI and Medicaid take-up on the calibrated bytes. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
+    },
+    {
+      "id": "us_local_receipt_anchors",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "receipt_anchor_signal",
+        "acs_snap_household_share_band": [
+          0.09,
+          0.15
+        ]
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): SNAP reporters are the native household FS. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
+    },
+    {
+      "id": "us_local_reviewed_fill_consumers_finalize",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "reviewed_fill_consumers"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): every reviewed default fill both engine passes applied has its register entry and consumer notes. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
+    },
+    {
+      "id": "us_local_district_ess_collapse",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "diagnostic",
+      "parameters": {
+        "check": "district_ess_collapse",
+        "relative_floor": 0.25,
+        "absolute_floor": 15.0
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): congressional districts keep their Kish ESS against the design weights. Report-only unless --district-ess-gate-blocking, which the shadow passes to the battery as the run's own; its floors are flags, and the entry declares their defaults."
+    },
+    {
+      "id": "us_local_stored_inputs",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "stored_inputs"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the artifact stores no model input the installed engine lacks. Package re-grades the bytes it packages and raises at once."
+    },
+    {
+      "id": "us_local_work_experience_inputs",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "work_experience_inputs"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the occupation and work-experience inputs are complete. Package re-grades the bytes it packages and raises at once."
+    },
+    {
+      "id": "us_local_spm_measurement",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "spm_measurement"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the engine the release records can measure SPM on the bytes. Package re-grades the bytes it packages and raises at once."
+    },
+    {
+      "id": "us_local_hours_package",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "local_hours_signal"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): local hours on the packaged bytes. Package re-grades the bytes it packages and raises at once."
+    },
+    {
+      "id": "us_local_self_employment_identity_package",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "self_employment_identity"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the self-employment identity on the packaged bytes. Package re-grades the bytes it packages and raises at once."
+    },
+    {
+      "id": "us_local_reviewed_fill_consumers_package",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "reviewed_fill_consumers"
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the reviewed fills against the packaged register. Package re-grades the bytes it packages and raises at once."
+    }
+  ]
+}

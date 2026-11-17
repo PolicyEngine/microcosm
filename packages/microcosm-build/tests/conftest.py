@@ -219,6 +219,22 @@ def allow_logbook_network(
     monkeypatch.setattr(logbook._NO_REDIRECT_OPENER, "open", _isolate_logbook["open"])
 
 
+# The US build tools evaluate their gates through the shared gate battery in
+# shadow (microcosm#1585 item 11). A finished shadow fails the run on any
+# entry it did not observe, and the tests here stand stubs in for whole
+# stages, whose gate sites a stub skips; so every test runs the tools with
+# their shadows off. The shadow's own tests turn them back on with
+# ``arm_us_tool_gate_shadows`` (test_support.microcosm_build.us_gate_shadow).
+# The name is ``microcosm.build.us_runtime.gate_shadow.US_GATE_SHADOW_SWITCH``,
+# spelled out so that this file imports nothing from the US runtime.
+_US_GATE_SHADOW_SWITCH = "MICROCOSM_US_GATE_SHADOW"
+
+
+@pytest.fixture(autouse=True)
+def _us_tool_gate_shadows_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(_US_GATE_SHADOW_SWITCH, "off")
+
+
 @pytest.fixture(scope="session")
 def _session_primary_qrf_worker_identities():
     """Attest the real installed worker once; retain pristine identities by key.
