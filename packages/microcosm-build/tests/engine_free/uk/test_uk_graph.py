@@ -3562,7 +3562,7 @@ def test_the_frame_totals_the_uk_corrections_target_are_numpys_sums() -> None:
 
     rng = np.random.default_rng(11)
     differing = 0
-    for size in (7, 129, 1_000, 78_188):
+    for size in (7, 129, 1_000, 100_003):
         values = rng.lognormal(3.0, 2.0, size)
         total = Weights(values, WeightKind.IMPORTANCE).total
         assert total == float(values.sum())
