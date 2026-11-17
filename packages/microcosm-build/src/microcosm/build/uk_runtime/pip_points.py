@@ -66,6 +66,7 @@ from microcosm.build.uk_runtime.receipt_counts import (
     UK_DISCLOSURE_FLOOR,
     UK_WITHHELD,
     distinct_count,
+    record_clone_zero_rows,
     rounded_count,
     small_cell_share,
     source_household_ids,
@@ -398,11 +399,13 @@ def draw_pip_points(
     age_group: np.ndarray,
     uniforms: np.ndarray,
     distributions: Mapping[str, tuple[np.ndarray, np.ndarray]],
-) -> tuple[np.ndarray, int]:
-    """One component's points for each person, and how many fell back.
+) -> tuple[np.ndarray, np.ndarray]:
+    """One component's points for each person, and which people fell back.
 
     A recipient draws within the range their stored ``category`` allows from
     their age group's distribution; anyone else keeps ``PIP_NOT_ASSESSED``.
+    A recipient whose age group prints no share in that range falls back to
+    the all-ages row.
     """
 
     category = np.asarray(category).astype(object)
@@ -410,7 +413,7 @@ def draw_pip_points(
     if unknown:
         raise ValueError(f"PIP categories are unknown: {unknown!r}.")
     points = np.full(len(category), PIP_NOT_ASSESSED, dtype=np.int64)
-    fallbacks = 0
+    fallbacks = np.zeros(len(category), dtype=bool)
     for group in [name for name, _, _ in PIP_AGE_GROUPS]:
         for award, (low, high) in PIP_AWARD_RANGES.items():
             mask = recipient & (age_group == group) & (category == award)
@@ -428,7 +431,8 @@ def draw_pip_points(
                         candidate_weights[allowed],
                     )
                     break
-                fallbacks += int(mask.sum()) if source == group else 0
+                if source == group:
+                    fallbacks |= mask
             if values is None:
                 values, weights = np.asarray([low], dtype=np.int64), np.asarray([1.0])
             cumulative = np.cumsum(weights) / float(weights.sum())
@@ -536,13 +540,15 @@ def _recipients_by_country(
     country: np.ndarray,
     weights: np.ndarray,
     sources: np.ndarray,
+    counted: np.ndarray,
 ) -> dict[str, dict[str, object]]:
     """Each UK country's recipients: the records, their support and the weighted count.
 
     Weighted at the stage's household weights. A country resting on fewer than
     three source households shows its weighted count as "<3" (UKDS disclosure
-    control), and the records are rounded as every count here is. Recipients
-    in a region no country lists are counted apart, as "unassigned".
+    control), and the records are its distinct source households among the
+    ``counted`` rows (geographic clone 0's), rounded as every count here is.
+    Recipients in a region no country lists are counted apart, as "unassigned".
     """
 
     names = [*PIP_POINTS_COUNTRY_REGIONS]
@@ -553,7 +559,7 @@ def _recipients_by_country(
         mask = recipient & (country == name)
         support = distinct_count(sources, mask, weights)
         out[name] = {
-            "records": rounded_count(int(mask.sum())),
+            "records": rounded_count(distinct_count(sources, mask & counted)),
             "support": support_band(support),
             "weighted": (
                 UK_WITHHELD
@@ -629,6 +635,15 @@ def store_pip_points(
     )
     weights = person["person_household_id"].map(weight_by_household).to_numpy(float)
     sources = person["person_household_id"].map(source_by_household).to_numpy()
+    # Counts of people are distinct source households among geographic clone
+    # 0's rows, a household's copies once (microcosm#931).
+    counted = record_clone_zero_rows(
+        {"person": person, "household": household}, "person"
+    )
+
+    def records(mask: np.ndarray) -> int | str:
+        return rounded_count(distinct_count(sources, mask & counted))
+
     in_tables = ~person["person_household_id"].map(region_by_household).isin(
         PIP_OUTSIDE_TABLES
     ).to_numpy(bool)
@@ -650,11 +665,16 @@ def store_pip_points(
         "scope": PIP_POINTS_SCOPE,
         "fallback": PIP_POINTS_FALLBACK,
         "age_rule": PIP_POINTS_AGE_RULE,
-        # Record counts are rounded, never exact (UKDS CD137 cl. 8).
-        "recipients": rounded_count(int(recipient.sum())),
+        # Record counts are source households, rounded, never exact (UKDS
+        # CD137 cl. 8).
+        "recipients": records(recipient),
         "recipients_support": support_band(distinct_count(sources, recipient, weights)),
         "recipients_by_country": _recipients_by_country(
-            recipient=recipient, country=country, weights=weights, sources=sources
+            recipient=recipient,
+            country=country,
+            weights=weights,
+            sources=sources,
+            counted=counted,
         ),
         "recipients_by_country_note": PIP_POINTS_COUNTRY_NOTE,
         "components": {},
@@ -681,11 +701,9 @@ def store_pip_points(
             "category": category,
             # Zero exact, as the check reads it.
             "category_mismatches": 0,
-            "fallbacks": rounded_count(fallbacks),
+            "fallbacks": records(fallbacks),
             "by_award": {
-                award: rounded_count(
-                    int((recipient & (categories[name] == award)).sum())
-                )
+                award: records(recipient & (categories[name] == award))
                 for award in PIP_AWARD_RANGES
             },
             "dwp_share_totals": (

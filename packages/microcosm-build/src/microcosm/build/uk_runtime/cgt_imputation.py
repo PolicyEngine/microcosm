@@ -137,6 +137,12 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
+    distinct_count,
+    record_source_households,
+)
 from microcosm.calibrate.geography_constants import UK_REGION_TIER_ENUM
 from microcosm.frame import Frame, MassChangeRecord
 
@@ -1487,22 +1493,36 @@ def _allocation_rank_key(
 
 
 def _within_band_spearman(
-    values: np.ndarray, wealth: np.ndarray, band: np.ndarray, weights: np.ndarray
+    values: np.ndarray,
+    wealth: np.ndarray,
+    band: np.ndarray,
+    weights: np.ndarray,
+    sources: np.ndarray,
 ) -> dict[str, object]:
-    """Spearman of drawn gains against wealth inside each income band, and its mass-weighted mean."""
+    """Spearman of drawn gains against wealth inside each income band, and its mass-weighted mean.
 
-    rows: dict[str, float | None] = {}
+    A band's correlation is given only where its persons rest on at least the
+    disclosure floor of distinct source households (``sources``, a household's
+    copies and geographic clones once; ``receipt_counts.UK_DISCLOSURE_FLOOR``),
+    else it reads "<3" and stays out of the mean: the rows of one household's
+    clones would otherwise meet a floor counted in rows (microcosm#931). A
+    band whose gains or wealth do not vary has none.
+    """
+
+    rows: dict[str, float | str | None] = {}
     total = 0.0
     mass = 0.0
     for lower in np.unique(band):
         inside = band == lower
-        correlation = None
-        if int(inside.sum()) >= 3:
+        correlation: float | str | None = None
+        if distinct_count(sources, inside) < UK_DISCLOSURE_FLOOR:
+            correlation = UK_WITHHELD
+        else:
             ranks = pd.DataFrame({"g": values[inside], "w": wealth[inside]}).rank()
             if ranks["g"].std() > 0 and ranks["w"].std() > 0:
                 correlation = float(np.corrcoef(ranks["g"], ranks["w"])[0, 1])
         rows[str(int(lower))] = correlation
-        if correlation is not None:
+        if isinstance(correlation, float):
             band_mass = float(weights[inside].sum())
             total += correlation * band_mass
             mass += band_mass
@@ -2100,6 +2120,14 @@ def impute_uk_capital_gains_with_report(
                 investable_wealth[liable_after],
                 income_band[liable_after],
                 person_weight[liable_after],
+                # A frame without the source column (a unit fixture) is one
+                # clone before any copy: each household is its own source.
+                record_source_households(
+                    {"person": person, "household": household},
+                    "person",
+                    stage=UK_CGT_SPINE_STAGE_NAME,
+                    before_copies=True,
+                )[liable_after],
             ),
         },
         band_rows=band_rows,

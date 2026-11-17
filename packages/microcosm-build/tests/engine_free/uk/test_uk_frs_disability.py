@@ -562,3 +562,43 @@ def test_a_dwp_carer_at_the_line_is_linked_whatever_the_care_tab_says() -> None:
         evidence["dwp_carer_element"]["set_true_by_it"]
         == evidence["dwp_carer_element"]["carers"]
     )
+
+
+def test_the_carer_link_counts_source_households_in_clone_zero_at_any_k() -> None:
+    """Given source households, as the SPI channel's refresh passes them on the
+    clone-first spine, the evidence counts each route's carers in distinct
+    source households among geographic clone 0's rows: three clones of every
+    household give the one-clone counts, where counts of rows would read three
+    times as many (microcosm#931)."""
+
+    from microcosm.build.uk_runtime import frs_disability
+
+    people = _carer_link_people()
+    evidences = {}
+    for clones in (1, 3):
+        cloned = pd.concat(
+            [
+                people.assign(
+                    person_id=people["person_id"] + k * 10**9,
+                    person_household_id=people["person_household_id"] + k * 10**9,
+                )
+                for k in range(clones)
+            ],
+            ignore_index=True,
+        )
+        _, evidences[clones] = frs_disability.derive_carer_link(
+            cloned,
+            weights=np.full(len(cloned), 1.0 / clones),
+            min_hours=35.0,
+            share=(0.5, 4),
+            support_keys=np.tile(people["person_household_id"].to_numpy(), clones),
+            counted=np.arange(len(cloned)) < len(people),
+        )
+    one, three = evidences[1], evidences[3]
+    for name, route in one["routes_at_the_line"].items():
+        cloned_route = three["routes_at_the_line"][name]
+        assert cloned_route["carers"] == route["carers"], name
+        assert cloned_route["support"] == route["support"], name
+        if name != "outside_drawn":
+            assert cloned_route["true"] == route["true"], name
+    assert one["routes_at_the_line"]["outside_drawn"]["carers"] == "3-9"

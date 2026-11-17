@@ -234,7 +234,13 @@ def _frame(
                 "support_copies needs one count of at least 1 per household."
             )
         household[CGT_SUPPORT_COPIES_COLUMN] = copies
-        household[HOUSEHOLD_IS_CGT_SUPPORT_COPY] = _support_copy_flags(copies)
+        flags = _support_copy_flags(copies)
+        household[HOUSEHOLD_IS_CGT_SUPPORT_COPY] = flags
+        # Every copy keeps its root's survey household as its true source,
+        # which the redraw's receipts count by (microcosm#931).
+        household["source_household_id"] = np.maximum.accumulate(
+            np.where(flags, 0, np.arange(person_rows, dtype="int64"))
+        )
     benunit = pd.DataFrame({"benunit_id": np.arange(person_rows, dtype="int64")})
     return uk_national_frame(
         person=person,

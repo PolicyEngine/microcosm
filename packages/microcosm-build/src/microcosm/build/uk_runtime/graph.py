@@ -766,8 +766,10 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # the income proxy (microcosm#725), ranks gainers on household investable
     # wealth (microcosm#1014) and keys its placement receipts on the support
     # split's family count (microcosm#1045); all are context carriers,
-    # declared here so the ownership record names them.
-    "hmrc_cgt_gains_spine": frozenset(
+    # declared here so the ownership record names them. Its rank-key receipt
+    # counts a band's persons in true source households (microcosm#931).
+    "hmrc_cgt_gains_spine": _GEOGRAPHIC_CLONE_LINEAGE
+    | frozenset(
         {
             ("household", "household_is_cgt_support_copy"),
             ("household", "cgt_support_copies"),
@@ -860,8 +862,10 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     "company_cars": None,
     # Subscribers are cells of age, sex, region and the CGT income proxy; the
     # balance split reads the household ISA totals and the payments the LISA
-    # holding (microcosm#1415).
-    "isa_subscriptions": frozenset(
+    # holding (microcosm#1415). The receipts count true source households
+    # among geographic clone 0's rows (microcosm#931).
+    "isa_subscriptions": _GEOGRAPHIC_CLONE_LINEAGE
+    | frozenset(
         {
             *(
                 ("person", column)
@@ -889,29 +893,26 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     ),
     # The points are drawn within each person's stored PIP awards, by their
     # age group, and the receipt counts support by source household
-    # (microcosm#1095, P1).
+    # (microcosm#1095, P1), its records among geographic clone 0's rows
+    # (microcosm#931).
     "pip_points": frozenset(
         {
             ("person", "pip_dl_category"),
             ("person", "pip_m_category"),
-            ("household", "source_household_id"),
         }
-    ),
+    )
+    | _GEOGRAPHIC_CLONE_LINEAGE,
     # The claim statuses are drawn on each person's final self-employment
     # profit, the full-relief group leaves the SPI rows out, and the receipt
-    # counts support by source household (microcosm#1428, microcosm#1439).
+    # counts support by source household (microcosm#1428, microcosm#1439),
+    # its counts among geographic clone 0's rows (microcosm#931).
     "trading_allowance_receipts": frozenset(
         {
             ("person", "self_employment_income"),
-            ("household", "source_household_id"),
             ("household", "household_is_spi_synthetic"),
         }
-    ),
-    # One engine materialization of the Universal Credit award and its LCWRA
-    # element over the whole frame, beside the claim recency carrier, the
-    # claimants' ages and the source lineage its pools and receipt count by:
-    # an open surface (microcosm#1095).
-    "uc_new_claimant_draw": None,
+    )
+    | _GEOGRAPHIC_CLONE_LINEAGE,
     # The copies' childcare re-draw reads every household's clone path (the
     # lineage columns of each copy stage) and keeps the native units' cells:
     # an open surface, like the other take-up redraws.

@@ -25,6 +25,7 @@ from microcosm.build.uk_runtime.hmrc_isa_statistics import (
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.frame import WeightKind
+from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
 from test_support.microcosm_build.uk_isa_statistics import (
     isa_stage_spec,
     synthetic_isa_statistics_payload,
@@ -239,6 +240,96 @@ def test_person_balances_sum_exactly_to_the_household_draws(spec, donor):
     minors = person["age"].to_numpy(float) < 18
     has_adult = person.groupby("person_household_id")["age"].transform("max") >= 18
     assert not ((cash > 0) & minors & has_adult.to_numpy()).any()
+
+
+def _cloned_tables(household: pd.DataFrame, person: pd.DataFrame, clones: int):
+    """``clones`` geographic clones of every household and person, clone 0's
+    ids the tables' own, each clone keeping its household's source."""
+
+    households, people = [], []
+    for k in range(clones):
+        clone = household.assign(
+            source_household_id=household["household_id"].to_numpy(),
+            household_clone_index=k,
+        )
+        members = person.copy()
+        if k:
+            clone["household_id"] = copy_id_table.mint(
+                clone["household_id"], "geographic_support", k
+            )
+            for column in ("person_id", "person_household_id"):
+                members[column] = copy_id_table.mint(
+                    members[column], "geographic_support", k
+                )
+        households.append(clone)
+        people.append(members)
+    return (
+        pd.concat(households, ignore_index=True),
+        pd.concat(people, ignore_index=True),
+    )
+
+
+def test_the_split_and_scale_counts_are_clone_zero_source_households(spec, donor):
+    """At K = 3 the balance split and the build-year scaling count households
+    and records as at K = 1: in distinct source households among geographic
+    clone 0's rows, where counts of rows would read three times as many
+    (microcosm#931)."""
+
+    household, person, _ = _population()
+    splits = {}
+    for clones in (1, 3):
+        cloned_household, cloned_person = _cloned_tables(household, person, clones)
+        *_, splits[clones] = stage.split_household_isa_balances(
+            person=cloned_person,
+            household=cloned_household,
+            donor=donor,
+            seed=0,
+            salt="split",
+            minimum_age=18,
+            maximum_adults=4,
+        )
+    assert splits[3] == splits[1]
+    assert splits[1]["households_split"] != 0
+
+    cash = np.asarray([19_000.0, 5_000.0, 0.0, 10_000.0, 8_000.0, 19_000.0] * 5)
+    stocks = np.asarray([1_000.0, 0.0, 8_000.0, 5_000.0, 2_000.0, 0.0] * 5)
+    sources = np.repeat(np.arange(15), 2)
+    counts = {}
+    for clones in (1, 3):
+        *_, receipt = stage.scale_to_build_year_amounts(
+            np.tile(cash, clones),
+            np.tile(stocks, clones),
+            np.full(len(cash) * clones, 1.0 / clones),
+            cash_target=150_000.0,
+            stocks_target=60_000.0,
+            limit=20_000.0,
+            taper_from=18_000.0,
+            sources=np.tile(sources, clones),
+            counted=np.arange(len(cash) * clones) < len(cash),
+        )
+        counts[clones] = {
+            key: value for key, value in receipt.items() if "records" in key
+        }
+    assert counts[3] == counts[1]
+    assert set(counts[1]) == {
+        "held_at_overall_limit_records",
+        "tapered_records",
+        "at_overall_limit_records",
+    }
+
+
+def test_the_recipients_carry_their_source_and_clone_zero_rows(statistics):
+    """The recipient table names each person's true source household and
+    whether its row is clone 0's, which every record count reads
+    (microcosm#931)."""
+
+    frame = _stage_frame()
+    one = stage.recipient_table(frame)
+    three = stage.recipient_table(clone_first_frame(frame, 3))
+    rows = len(one)
+    assert three["clone_zero"].tolist() == [True] * rows + [False] * (2 * rows)
+    assert one["clone_zero"].all()
+    assert three["source_household"].tolist() == one["source_household"].tolist() * 3
 
 
 def test_the_imputation_keeps_every_invariant(spec, donor, statistics):

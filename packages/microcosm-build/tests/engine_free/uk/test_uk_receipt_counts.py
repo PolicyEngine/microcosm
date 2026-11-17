@@ -385,6 +385,10 @@ def test_a_cell_is_counted_by_the_same_rule() -> None:
 _ROW_IDENTITY_COLUMNS = frozenset(
     {"household_id", "person_household_id", "household_source_id"}
 )
+#: Attributes that hold such a column's values: a field named for the rows'
+#: households, as the carer link's routes hold each person's household
+#: (``frs_disability._CarerRoutes.households``), so a count of it counts rows.
+_ROW_IDENTITY_ATTRIBUTES = frozenset({"households"})
 #: Counts of those columns that are no floor: structural checks over rows,
 #: that every benefit unit sits in one household and every SPI band donor
 #: holds exactly one carrier. Each entry names the phrase holding the count
@@ -463,11 +467,16 @@ def _row_identity(
                 return True
             node = node.value
         elif isinstance(node, ast.Attribute):
-            if node.attr in _ROW_IDENTITY_COLUMNS:
+            if node.attr in _ROW_IDENTITY_COLUMNS | _ROW_IDENTITY_ATTRIBUTES:
                 return True
             if node.attr not in _VALUE_KEEPING_ATTRIBUTES:
                 return False
             node = node.value
+        elif isinstance(node, ast.IfExp):
+            # Either branch's values can reach the count.
+            return _row_identity(node.body, names, constants) or _row_identity(
+                node.orelse, names, constants
+            )
         elif isinstance(node, ast.Call):
             name = _call_name(node)
             if isinstance(node.func, ast.Attribute) and name in _VALUE_KEEPING_METHODS:
@@ -601,9 +610,10 @@ def test_no_uk_floor_counts_rows_by_their_household_ids() -> None:
     household's copies as sources of their own. Over the UK runtime and the UK
     tools, a distinct count (``distinct_count``, ``distinct_carriers``,
     ``nunique``, ``value_counts``, or ``len`` of a ``set`` or ``unique``) of
-    such a column, or of a name holding one, must be named in
-    ``_KEPT_ROW_COUNTS``; floors count through
-    ``receipt_counts.record_source_households`` instead.
+    such a column, or of a name, a ``households`` field or either branch of a
+    conditional holding one, must be named in ``_KEPT_ROW_COUNTS``; floors
+    count through ``receipt_counts.record_source_households`` instead, or,
+    before the first copying step, ``receipt_counts.own_source_households``.
     """
 
     import ast
@@ -678,6 +688,9 @@ def test_no_uk_floor_counts_rows_by_their_household_ids() -> None:
         'KEY = "household_source_id"\nn = households[KEY].nunique()',
         'KEY = "household_id"\nn = households.groupby(KEY).ngroups',
         'ids = households["household_id"].to_numpy()\nn = distinct_count(ids)',
+        "n = len(set(routes.households.tolist()))",
+        "keys = routes.households if keys is None else keys\n"
+        "n = len(set(keys[base].tolist()))",
     ],
 )
 def test_the_static_scan_sees_every_form_of_a_row_count(source) -> None:
@@ -695,6 +708,8 @@ def test_the_static_scan_sees_every_form_of_a_row_count(source) -> None:
         'n = len(households.drop_duplicates("region"))',
         'n = distinct_count(record_source_households(tables, "household", stage=s))',
         'KEY = "household_id"\nn = len(households)',
+        "keys = own_source_households(person) if keys is None else keys\n"
+        "n = len(set(keys[base].tolist()))",
     ],
 )
 def test_the_static_scan_passes_counts_of_other_keys(source) -> None:

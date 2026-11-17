@@ -75,6 +75,7 @@ from microcosm.build.uk_runtime.receipt_counts import (
     distinct_count,
     extreme_count,
     floored_share,
+    record_clone_zero_rows,
     record_source_households,
     rounded_count,
     small_cell_share,
@@ -1080,7 +1081,11 @@ def _floor_employment_pay_at_minimum_wage(
         * floor.weeks_in_year
         * floor.hourly_rate(reference["age"].to_numpy(dtype=np.float64))
     )
-    below_their_floor = int((eligible & (floored_pay < minimum * (1.0 - 1e-12))).sum())
+    # The source households whose eligible rows stay below their floor, over
+    # every clone: zero exactly when no row does (microcosm#931).
+    below_their_floor = distinct_count(
+        sources, eligible & (floored_pay < minimum * (1.0 - 1e-12))
+    )
     hourly_pay_check = {
         "spi_drawn_employees": {
             "source_households": rounded_count(eligible_sources),
@@ -1765,6 +1770,9 @@ def impute_uk_spi_income_support(
             "(microcosm#931)."
         )
     recipient_identities = person.loc[spi_people, identity_column].to_numpy()
+    # The transport's uniformity receipt reads geographic clone 0's recipients
+    # and counts them in true source households (microcosm#931).
+    recipient_rows = spi_people.to_numpy(dtype=bool)
     transport = cross_fit_transport(
         fit_reference,
         training_predictors=reference_predictors,
@@ -1791,6 +1799,10 @@ def impute_uk_spi_income_support(
             fold.representative,
             recipient_identities,
         ),
+        sources=record_source_households(
+            lineage_tables, "person", stage="The SPI income stage"
+        )[recipient_rows],
+        counted=record_clone_zero_rows(lineage_tables, "person")[recipient_rows],
     )
     # The tape forest reads a located sign uniform as the reference's gate
     # wrote it only when both gates order the same classes (microcosm#840): a
@@ -4227,6 +4239,11 @@ def _refresh_carer_link(
         min_hours=float(min_hours),
         share=share,
         support_keys=sources[channel],
+        # The evidence counts the channel's carers in true source households
+        # among geographic clone 0's rows (microcosm#931).
+        counted=record_clone_zero_rows(
+            {"person": person, "household": household}, "person"
+        )[channel],
     )
     before = person.loc[channel, column].to_numpy(dtype=bool)
     changed = sources[channel][before != link]

@@ -20,6 +20,7 @@ from microcosm.build.uk_runtime.trading_allowance_receipts import (
     assign_trading_allowance_claim_status,
     claimant_rates,
 )
+from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
 
 
 def _stage():
@@ -206,6 +207,55 @@ def test_the_receipt_rounds_counts_and_bands_shares() -> None:
     small = transform.checkpoint_metadata()["evidence"]
     assert small["traders"] == rounded_count(5)
     assert small["bands"][0]["weighted_traders"] == small_cell_share(10.0, 5)
+
+
+def _pair_frame(profit: np.ndarray):
+    """Two traders in each household, both at ``profit``: one source per pair."""
+
+    households = np.arange(1, len(profit) + 1, dtype=np.int64)
+    household = pd.DataFrame(
+        {
+            "household_id": households,
+            "source_household_id": households,
+            "household_weight": 2.0,
+            "region": "LONDON",
+            "household_is_spi_synthetic": np.zeros(len(households), dtype=bool),
+        }
+    )
+    person = pd.DataFrame(
+        {
+            "person_id": np.r_[households * 1000 + 1, households * 1000 + 2],
+            "person_benunit_id": np.r_[households * 100 + 1, households * 100 + 1],
+            "person_household_id": np.r_[households, households],
+            "age": 40,
+            "self_employment_income": np.r_[profit, profit].astype(np.float64),
+        }
+    )
+    benunit = pd.DataFrame({"benunit_id": households * 100 + 1})
+    return uk_national_frame(
+        person=person, benunit=benunit, household=household, time_period="2024"
+    )
+
+
+def test_the_receipt_counts_source_households_in_clone_zero_at_any_k() -> None:
+    """The receipt counts traders, claimants and the full-relief group in
+    distinct source households among geographic clone 0's rows: two traders of
+    one household count once, and at K = 3 the receipt is K = 1's, where a
+    count of rows would read three times as many (microcosm#931)."""
+
+    frame = _pair_frame(np.tile([500.0, 6_000.0, 20_000.0, 0.0], 15))
+    evidence = {}
+    for clones in (1, 3):
+        transform = UKTradingAllowanceReceiptsStageTransform(stage=_stage())
+        transform(frame if clones == 1 else clone_first_frame(frame, clones))
+        evidence[clones] = transform.checkpoint_metadata()["evidence"]
+    # 45 trading households, 90 trading people.
+    assert evidence[1]["traders"] == rounded_count(45)
+    for key in ("traders", "claimants", "full_relief"):
+        assert evidence[3][key] == evidence[1][key], key
+    assert [band["support"] for band in evidence[3]["bands"]] == [
+        band["support"] for band in evidence[1]["bands"]
+    ]
 
 
 def test_the_stage_refuses_drifted_parameters_and_a_second_writer() -> None:

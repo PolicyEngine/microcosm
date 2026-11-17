@@ -839,7 +839,12 @@ def _household_values_on_rows(
 
 @dataclass(frozen=True)
 class _TakeUpSignal:
-    """One flag's weighted share over its draw's population."""
+    """One flag's weighted share over its draw's population.
+
+    ``nested_rows`` marks the units that claim the extended hours without the
+    universal hours, and ``nested_violations`` counts them, for the nested
+    flag only.
+    """
 
     share: float
     target: float
@@ -847,6 +852,7 @@ class _TakeUpSignal:
     population: np.ndarray
     weights: np.ndarray
     nested_violations: int | None
+    nested_rows: np.ndarray | None = None
 
 
 def _measure_take_up_signal(
@@ -900,6 +906,7 @@ def _measure_take_up_signal(
     else:
         target = _target_share(table, key, contract, weights)
     nested = None
+    nested_rows = None
     if (
         output == UK_UNIVERSAL_CHILDCARE_OUTPUT
         and UK_UNIVERSAL_CHILDCARE_NESTED_UNDER in table.columns
@@ -907,7 +914,8 @@ def _measure_take_up_signal(
         # Nested draw: P(universal | extended) = 1, so no benefit unit
         # claims the extended hours without the universal ones.
         extended = np.asarray(table[UK_UNIVERSAL_CHILDCARE_NESTED_UNDER], dtype=bool)
-        nested = int((extended & ~values).sum())
+        nested_rows = extended & ~values
+        nested = int(nested_rows.sum())
     return _TakeUpSignal(
         share=share,
         target=target,
@@ -915,6 +923,7 @@ def _measure_take_up_signal(
         population=population,
         weights=weights,
         nested_violations=nested,
+        nested_rows=nested_rows,
     )
 
 
@@ -982,9 +991,11 @@ def uk_take_up_signal_receipt(
         row["target"] = small_cell_share(measured.target, withheld_on)
         row["weighted_share"] = small_cell_share(measured.share, withheld_on)
         row["distinct_values"] = measured.unique_count
-        if measured.nested_violations is not None:
+        if measured.nested_rows is not None:
+            # The source households whose units break the nesting, over every
+            # clone: zero exactly when no unit does (microcosm#931).
             row["extended_without_universal_units"] = extreme_count(
-                measured.nested_violations
+                distinct_count(sources[entity], measured.nested_rows)
             )
         flags.append(row)
     return {

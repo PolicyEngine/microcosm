@@ -305,10 +305,12 @@ K_SENSITIVE_CONSTANTS: tuple[KSensitiveConstant, ...] = (
         read=lambda: spi_rank_transport.SPI_TRANSPORT_GROUP_MINIMUM_ROWS,
         value=10,
         counts="rows",
-        treatment="kept",
+        treatment="clone 0",
         reason=(
             "a statistical floor of a uniformity diagnostic only the receipt "
-            "reports; at K clones it reports more groups"
+            "reports, which measures geographic clone 0's recipients, since "
+            "each clone draws its own copies; a group also needs the "
+            "disclosure floor's source households among them"
         ),
     ),
     KSensitiveConstant(
@@ -938,3 +940,12 @@ def test_the_scaled_and_clone_zero_treatments_are_the_codes() -> None:
         '"eligible_child_rows": int((of_age & counted).sum())',
     )
     assert not _source_names(stage_health._child_benefit_take_up_gate, "clone_count")
+    # The SPI transport's uniformity receipt reads geographic clone 0's
+    # recipients, and its groups the statistical floor of those rows beside
+    # the disclosure floor of their source households (microcosm#931).
+    assert _source_names(
+        spi_rank_transport._uniformity_by_group,
+        "counted",
+        "SPI_TRANSPORT_GROUP_MINIMUM_ROWS",
+        "UK_DISCLOSURE_FLOOR",
+    )

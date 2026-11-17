@@ -1408,8 +1408,8 @@ def _take_up_signal_gate(
         nested = row.get("extended_without_universal_units")
         if nested is not None and nested != 0:
             failures.append(
-                f"{stage}: {output}: {nested} benefit unit(s) claim the extended "
-                "hours without the universal hours."
+                f"{stage}: {output}: benefit units of {nested} source "
+                "household(s) claim the extended hours without the universal hours."
             )
         share = row.get("weighted_share")
         target = row.get("target")
@@ -4681,8 +4681,8 @@ def _gambling_participation_gate(
             continue
         if entry.get("added_without_stake") != 0:
             failures.append(
-                f"{stage}: {entry.get('added_without_stake')!r} households added to "
-                f"{key} carry no stake."
+                f"{stage}: households of {entry.get('added_without_stake')!r} "
+                f"source household(s) added to {key} carry no stake."
             )
         propensity = entry.get("propensity")
         support = (
@@ -6357,7 +6357,9 @@ def _company_cars_gate(
         failures.append(f"{stage}: the receipt counts no invariant.")
     for name, count in violations.items():
         if count != 0:
-            failures.append(f"{stage}: {count} record(s) break {name}.")
+            failures.append(
+                f"{stage}: rows of {count} source household(s) break {name}."
+            )
     carve = _mapping(evidence.get("spi_carve_out"), label=f"{stage}.spi_carve_out")
     error = _finite_number(
         carve.get("max_abs_pay_identity_error_gbp"),

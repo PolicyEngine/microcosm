@@ -1997,3 +1997,35 @@ class TestRankTies:
             cgt_imputation, "keyed_tie_uniforms", lambda *args, **kwargs: None
         )
         pd.testing.assert_series_equal(_redrawn(frame), keyed, check_exact=True)
+
+
+def test_the_gains_wealth_correlation_rests_on_source_households_at_any_k() -> None:
+    """A band's correlation is given where three or more source households
+    carry its persons, counted once however many geographic clones repeat
+    them: one household's clones, whose rows would meet a floor of three rows,
+    read "<3", and three clones give the one-clone receipt (microcosm#931)."""
+
+    rng = np.random.default_rng(11)
+    persons = 42
+    values = rng.lognormal(9.0, 1.0, persons)
+    wealth = values * rng.lognormal(0.0, 0.3, persons)
+    band = np.r_[np.full(40, 20_000), np.full(2, 150_000)]
+    sources = np.r_[np.repeat(np.arange(20), 2), np.full(2, 99)]
+    weights = np.full(persons, 30.0)
+    receipts = {
+        clones: cgt_imputation._within_band_spearman(
+            np.tile(values, clones),
+            np.tile(wealth, clones),
+            np.tile(band, clones),
+            np.tile(weights / clones, clones),
+            np.tile(sources, clones),
+        )
+        for clones in (1, 3)
+    }
+    one, three = receipts[1], receipts[3]
+    assert one["by_income_band"]["150000"] == three["by_income_band"]["150000"] == "<3"
+    assert three["by_income_band"]["20000"] == pytest.approx(
+        one["by_income_band"]["20000"]
+    )
+    assert three["mass_weighted"] == pytest.approx(one["mass_weighted"])
+    assert one["mass_weighted"] == pytest.approx(one["by_income_band"]["20000"])

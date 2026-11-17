@@ -1177,7 +1177,7 @@ class UKLCFSConsumptionStageTransform:
             ),
         )
         household_draws, shares_outside = clip_excise_shares(
-            clip_result.clipped, shares
+            clip_result.clipped, shares, sources=sources
         )
         prepayment = lcfs_prepayment_meter(
             self.stage,
@@ -5498,18 +5498,26 @@ def excise_spending(draws: pd.DataFrame) -> pd.DataFrame:
 def clip_excise_shares(
     draws: pd.DataFrame,
     shares: Mapping[str, tuple[str, tuple[str, ...], tuple[str, ...]]],
+    *,
+    sources: np.ndarray | None = None,
 ) -> tuple[pd.DataFrame, dict[str, int | str]]:
     """Hold each drawn share to [0, 1], counting the draws held.
 
     The stage copies each share from its mix donor, whose shares lie in the
-    interval, so the count is zero unless the draw stops doing so.
+    interval, so the count is zero unless the draw stops doing so. It counts
+    the distinct source households whose draws were held, over every clone
+    (``sources``, one per row when omitted), so it is zero exactly when no
+    draw was.
     """
 
     held = draws.copy()
+    sources = np.arange(len(held)) if sources is None else np.asarray(sources)
     outside: dict[str, int | str] = {}
     for name in shares:
         values = held[name].to_numpy(dtype=float)
-        outside[name] = extreme_count(int(((values < 0.0) | (values > 1.0)).sum()))
+        outside[name] = extreme_count(
+            distinct_count(sources, (values < 0.0) | (values > 1.0))
+        )
         held[name] = np.clip(values, 0.0, 1.0)
     return held, outside
 

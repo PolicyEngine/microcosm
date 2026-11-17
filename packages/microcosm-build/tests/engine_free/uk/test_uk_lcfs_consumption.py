@@ -1080,6 +1080,38 @@ def test_clip_holds_drawn_shares_to_the_unit_interval() -> None:
     }
 
 
+def test_clip_counts_held_draws_in_source_households_at_any_k() -> None:
+    """The draws the clip holds count by source household over every clone:
+    one household's draw held in three clones reads as in one, where a count
+    of rows would leave the small cell (microcosm#931)."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_EXCISE_SHARES,
+        clip_excise_shares,
+    )
+
+    draws = pd.DataFrame(
+        {
+            TOBACCO_SHARE: [0.2, 1.2, 0.3, 0.4],
+            ON_TRADE_SHARE: [0.5] * 4,
+            GAMBLING_SHARE: [0.1] * 4,
+            LOTTERY_SHARE: [0.4] * 4,
+            BETTING_SHARE: [1.0] * 4,
+        }
+    )
+    sources = np.arange(4)
+    outside = {
+        clones: clip_excise_shares(
+            pd.concat([draws] * clones, ignore_index=True),
+            UK_LCFS_EXCISE_SHARES,
+            sources=np.tile(sources, clones),
+        )[1]
+        for clones in (1, 3)
+    }
+    assert outside[3] == outside[1]
+    assert outside[3][TOBACCO_SHARE] == "<3"
+
+
 def test_energy_split_sums_each_fuels_labelled_parts() -> None:
     # microcosm#1164: b226 is the gas component of a combined bill and b227 the
     # electricity one; b489 is the electricity account less its rebate (b175

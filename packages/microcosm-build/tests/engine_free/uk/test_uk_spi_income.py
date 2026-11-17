@@ -1466,6 +1466,34 @@ def test_spi_pay_floor_receipt_counts_source_households_not_copies() -> None:
     )
 
 
+def test_spi_pay_floor_counts_are_source_households_at_three_clones() -> None:
+    """Three geographic clones of every row, each at a third of its weight,
+    give the one-clone receipt's counts: support and the rows left below their
+    floor count distinct source households (microcosm#931)."""
+
+    rows = [
+        {"age": 40, "weekly_hours": 35, "pay": pay, "source": 100 + index // 2}
+        for index, pay in enumerate([1_000.0] * 12 + [90_000.0] * 10)
+    ]
+    receipts = {}
+    for clones in (1, 3):
+        cloned = [
+            {**row, "weight": 100.0 / clones} for _ in range(clones) for row in rows
+        ]
+        receipts[clones] = _floor(*_pay_floor_frames(cloned))[1]
+    for receipt in receipts.values():
+        assert receipt["eligible"]["source_households"] == 10
+        assert receipt["floored"]["source_households"] == "3-9"
+    check = {
+        clones: receipt["hourly_pay_check"] for clones, receipt in receipts.items()
+    }
+    assert check[3]["eligible_rows_below_their_floor_after"] == 0
+    assert (
+        check[3]["spi_drawn_employees"]["source_households"]
+        == (check[1]["spi_drawn_employees"]["source_households"])
+    )
+
+
 def test_spi_pay_floor_compares_the_drawn_rows_with_frs_employees() -> None:
     # Ten FRS employees on the minimum wage and ten below it beside twelve
     # drawn rows the floor lifts: half the FRS rows are below the minimum wage.

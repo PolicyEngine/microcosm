@@ -181,6 +181,44 @@ def test_transport_locates_twins_and_keys_the_rest_on_identity(reference) -> Non
     assert result.receipt["recipients_sharing_a_twin"] == 0
 
 
+def test_the_uniformity_receipt_reads_clone_zero_in_source_households(
+    reference,
+) -> None:
+    """Three geographic clones that repeat clone 0's recipients give clone 0's
+    uniformity receipt: it measures clone 0's rows, counts their positive rows
+    in distinct source households, and reports a group only on the statistical
+    floor of clone 0's rows and the disclosure floor of source households
+    (microcosm#931)."""
+
+    predictors, observed = _synthetic_frs(120, seed=5)
+    identities = np.arange(1_000, 1_120)
+    groups = np.where(predictors["has_pay"].to_numpy() > 0, "pay", "other")
+    # Twelve rows of one source household: past the statistical floor of
+    # rows, under the disclosure floor of households.
+    groups[:12] = "trade"
+    sources = np.r_[np.zeros(12, dtype=np.int64), np.arange(1, 109) // 2 + 1]
+    receipts = {}
+    for clones in (1, 3):
+        receipts[clones] = transport_uniforms(
+            reference,
+            encoded_recipients=pd.concat([predictors] * clones, ignore_index=True),
+            observed=pd.concat([observed] * clones, ignore_index=True),
+            identities=np.tile(identities, clones),
+            groups=np.tile(groups, clones),
+            seed=42,
+            sources=np.tile(sources, clones),
+            counted=np.arange(120 * clones) < 120,
+        ).receipt
+    pay = {clones: receipts[clones]["targets"]["hmrc_spi_pay"] for clones in (1, 3)}
+    assert pay[3]["kolmogorov"] == pay[1]["kolmogorov"]
+    assert pay[3]["by_group"] == pay[1]["by_group"]
+    assert pay[1]["by_group"]["trade"] is None
+    positive = observed["hmrc_spi_pay"].to_numpy() > 0
+    assert pay[1]["kolmogorov"]["positive_rows"] == rounded_count(
+        len(set(sources[positive].tolist()))
+    )
+
+
 def test_transport_is_row_order_invariant_and_shares_twins(reference) -> None:
     predictors, observed = _synthetic_frs(40, seed=6)
     identities = np.arange(100, 140)

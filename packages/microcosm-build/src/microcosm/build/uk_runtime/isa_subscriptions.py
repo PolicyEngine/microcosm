@@ -48,7 +48,10 @@ read the whole population.
    equals Table 9.4's Lifetime ISA amount and ranked like step 3, within each
    person's room under GBP 20,000; a holder with no room pays nothing.
 
-Receipts carry weighted aggregates and rounded counts only (microcosm#1164).
+Receipts carry weighted aggregates and rounded counts only (microcosm#1164). A
+count of records or households is a count of distinct source households among
+geographic clone 0's rows, a household's copies once, since each clone draws
+its own subscribers and amounts (microcosm#931).
 """
 
 from __future__ import annotations
@@ -94,7 +97,12 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
-from microcosm.build.uk_runtime.receipt_counts import rounded_count
+from microcosm.build.uk_runtime.receipt_counts import (
+    distinct_count,
+    record_clone_zero_rows,
+    record_source_households,
+    rounded_count,
+)
 from microcosm.calibrate.geography_constants import UK_REGION_TIER_ENUM
 from microcosm.frame import Frame
 from microcosm.frame.rules import assert_rules_engine_country
@@ -612,6 +620,12 @@ def split_household_isa_balances(
     proportion to donor weight; with none, the adult count steps down. The donor's
     shares go to the recipient's adults oldest first; any remainder lands on the
     adult with the largest share, so person values sum to the household value.
+
+    The receipt counts households in distinct source households among
+    geographic clone 0's rows (``receipt_counts.record_clone_zero_rows``), a
+    household's copies once, since each clone splits its own draws; a
+    household table without the source column (a unit fixture) counts each
+    household as its own source.
     """
 
     person_ids = person["person_id"].to_numpy()
@@ -624,6 +638,13 @@ def split_household_isa_balances(
     if (cash_total < 0).any() or (stock_total < 0).any():
         raise ISASubscriptionsError("household ISA totals must be non-negative.")
     household_ids = household["household_id"].to_numpy()
+    sources = record_source_households(
+        {"household": household},
+        "household",
+        stage=UK_ISA_SUBSCRIPTIONS_STAGE_NAME,
+        before_copies=True,
+    )
+    counted = record_clone_zero_rows({"household": household}, "household")
     uniforms = stable_identity_uniforms(household_ids, seed=seed, salt=salt)
     cash = np.zeros(len(person), dtype=float)
     stocks = np.zeros(len(person), dtype=float)
@@ -639,10 +660,10 @@ def split_household_isa_balances(
                     & (donor.holds_stocks_and_shares == holds_stocks)
                 )
                 pools[(count, holds_cash, holds_stocks)] = np.flatnonzero(mask)
-    stepped_down = 0
-    without_adult = 0
-    without_donor = 0
-    split = 0
+    stepped_down = np.zeros(len(household_ids), dtype=bool)
+    without_adult = np.zeros(len(household_ids), dtype=bool)
+    without_donor = np.zeros(len(household_ids), dtype=bool)
+    split = np.zeros(len(household_ids), dtype=bool)
     for index, household_id in enumerate(household_ids):
         cash_value = float(cash_total.iloc[index])
         stock_value = float(stock_total.iloc[index])
@@ -653,7 +674,7 @@ def split_household_isa_balances(
             raise ISASubscriptionsError("a household holding ISAs has no persons.")
         adults = rows[ages[rows] >= minimum_age]
         if adults.size == 0:
-            without_adult += 1
+            without_adult[index] = True
             adults = rows
         order = np.lexsort((person_ids[adults], -ages[adults]))
         adults = adults[order]
@@ -662,9 +683,9 @@ def split_household_isa_balances(
         while pool.size == 0 and key[0] > 1:
             key = (key[0] - 1, key[1], key[2])
             pool = pools[key]
-            stepped_down += 1
+            stepped_down[index] = True
         if pool.size == 0:
-            without_donor += 1
+            without_donor[index] = True
             cash_shares = np.zeros(len(adults))
             stock_shares = np.zeros(len(adults))
             cash_shares[0] = stock_shares[0] = 1.0
@@ -682,12 +703,16 @@ def split_household_isa_balances(
             )
         cash[adults] = _exact_split(cash_value, cash_shares)
         stocks[adults] = _exact_split(stock_value, stock_shares)
-        split += 1
+        split[index] = True
+
+    def households(mask: np.ndarray) -> int | str:
+        return rounded_count(distinct_count(sources, mask & counted))
+
     receipt = {
-        "households_split": rounded_count(split),
-        "households_without_adult_split_over_all_persons": rounded_count(without_adult),
-        "households_matched_on_fewer_adults": rounded_count(stepped_down),
-        "households_without_donor_given_to_eldest": rounded_count(without_donor),
+        "households_split": households(split),
+        "households_without_adult_split_over_all_persons": households(without_adult),
+        "households_matched_on_fewer_adults": households(stepped_down),
+        "households_without_donor_given_to_eldest": households(without_donor),
         "maximum_donor_adults": maximum_adults,
     }
     return cash, stocks, receipt
@@ -739,8 +764,15 @@ def _enum_name(value: object) -> str:
     return str(name)
 
 
+#: The recipient table's columns a receipt counts by: each person's true source
+#: household, and whether its row is geographic clone 0's (microcosm#931).
+_SOURCE_HOUSEHOLD = "source_household"
+_CLONE_ZERO = "clone_zero"
+
+
 def recipient_table(frame: Frame) -> pd.DataFrame:
-    """One row per person: identity, weight, the cell attributes and LISA holding."""
+    """One row per person: identity, weight, the cell attributes and LISA holding,
+    with each person's true source household and whether it is clone 0's."""
 
     person = frame.table("person")
     household = frame.table("household")
@@ -774,10 +806,17 @@ def recipient_table(frame: Frame) -> pd.DataFrame:
     sex = person["gender"].map(_enum_name).str.upper()
     if not sex.isin(("MALE", "FEMALE")).all():
         raise ISASubscriptionsError("person gender must be MALE or FEMALE.")
+    # A frame without the source column (a unit fixture) is one clone before
+    # any copy: each household is its own source.
+    sources = record_source_households(
+        frame, "person", stage=UK_ISA_SUBSCRIPTIONS_STAGE_NAME, before_copies=True
+    )
     return pd.DataFrame(
         {
             "person_id": person["person_id"].to_numpy(),
             "household_id": household_ids,
+            _SOURCE_HOUSEHOLD: sources,
+            _CLONE_ZERO: record_clone_zero_rows(frame, "person"),
             "weight": weights.reindex(household_ids).to_numpy(float),
             "age": ages,
             "sex": sex.str.lower().to_numpy(),
@@ -793,6 +832,36 @@ def recipient_table(frame: Frame) -> pd.DataFrame:
             .to_numpy(float),
         },
         index=person.index,
+    )
+
+
+def _recipient_records(recipients: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """Each recipient's true source household and whether it is counted.
+
+    A receipt counts records in distinct source households among geographic
+    clone 0's rows, a household's copies once, since each clone draws its own
+    subscribers (microcosm#931). :func:`recipient_table` gives both columns; a
+    table without them (a unit fixture) counts each row as its own source.
+    """
+
+    sources = (
+        recipients[_SOURCE_HOUSEHOLD].to_numpy()
+        if _SOURCE_HOUSEHOLD in recipients
+        else np.arange(len(recipients))
+    )
+    counted = (
+        recipients[_CLONE_ZERO].to_numpy(dtype=bool)
+        if _CLONE_ZERO in recipients
+        else np.ones(len(recipients), dtype=bool)
+    )
+    return sources, counted
+
+
+def _records(sources: np.ndarray, counted: np.ndarray, mask: np.ndarray) -> int | str:
+    """The distinct source households behind ``mask``'s counted rows, rounded."""
+
+    return rounded_count(
+        distinct_count(sources, np.asarray(mask, dtype=bool) & counted)
     )
 
 
@@ -952,7 +1021,7 @@ def select_subscribers(
         "income_margin_max_abs_relative_error": _max_relative_error(
             margins[0], achieved_income
         ),
-        "selected_records": rounded_count(int(selected.sum())),
+        "selected_records": _records(*_recipient_records(recipients), selected),
     }
     return selected, receipt
 
@@ -1181,6 +1250,8 @@ def scale_to_build_year_amounts(
     stocks_target: float,
     limit: float,
     taper_from: float,
+    sources: np.ndarray | None = None,
+    counted: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
     """One factor per type, solved to both totals, holding and tapering to the limit.
 
@@ -1199,6 +1270,10 @@ def scale_to_build_year_amounts(
     limit, exactly as the plain factor would, and the taper does nothing. The
     totals still rise with each factor, so the bisection holds either way
     (Vahid's review of microcosm#1421). 2024-25's cash factor is about 0.88.
+
+    The receipt counts records in distinct source households (``sources``,
+    one per row when omitted) among the ``counted`` rows (geographic clone
+    0's on the spine; every row when omitted).
     """
 
     if not 0 < taper_from < limit:
@@ -1258,6 +1333,12 @@ def scale_to_build_year_amounts(
             break
     scaled_cash, scaled_stocks = scaled(cash_factor, stocks_factor)
     achieved = totals(cash_factor, stocks_factor)
+    sources = np.arange(len(cash)) if sources is None else np.asarray(sources)
+    counted = (
+        np.ones(len(cash), dtype=bool)
+        if counted is None
+        else np.asarray(counted, dtype=bool)
+    )
     receipt = {
         "cash_factor": cash_factor,
         "stocks_and_shares_factor": stocks_factor,
@@ -1265,13 +1346,13 @@ def scale_to_build_year_amounts(
         "cash_achieved_gbp": achieved[0],
         "stocks_and_shares_target_gbp": stocks_target,
         "stocks_and_shares_achieved_gbp": achieved[1],
-        "held_at_overall_limit_records": rounded_count(int(at_limit.sum())),
+        "held_at_overall_limit_records": _records(sources, counted, at_limit),
         "taper_from_gbp": taper_from,
         # Above this factor the taper is inactive: the cap alone binds.
         "taper_bound_factor": limit / taper_from,
-        "tapered_records": rounded_count(int(tapered.sum())),
-        "at_overall_limit_records": rounded_count(
-            int(((scaled_cash + scaled_stocks) >= limit - 1e-6).sum())
+        "tapered_records": _records(sources, counted, tapered),
+        "at_overall_limit_records": _records(
+            sources, counted, (scaled_cash + scaled_stocks) >= limit - 1e-6
         ),
     }
     return scaled_cash, scaled_stocks, receipt
@@ -1295,11 +1376,12 @@ def draw_lifetime_isa_payments(
     )
     rows = np.flatnonzero(payers)
     weights = recipients["weight"].to_numpy(float)
+    sources, counted = _recipient_records(recipients)
     receipt: dict[str, Any] = {
         # Holders at the paying ages; those without room under the overall
         # limit pay nothing, so the paying weight below is the payer count.
         "eligible_holder_weight": float(weights[rows].sum()),
-        "eligible_holder_records": rounded_count(int(rows.size)),
+        "eligible_holder_records": _records(sources, counted, payers),
         "target_gbp": target_gbp,
     }
     if rows.size == 0:
@@ -1347,19 +1429,15 @@ def draw_lifetime_isa_payments(
         receipt["saturated"] = None
     payments[rows] = drawn(mean)
     paying = payments[rows] > 0
+    trimmed = room < _truncated_exponential_quantile(quantiles, 0.0, limit, mean)
     receipt.update(
         {
             "uncapped_mean_gbp": mean,
             "achieved_gbp": float((payments[rows] * payer_weights).sum()),
             "paying_weight": float(payer_weights[paying].sum()),
-            "paying_records": rounded_count(int(paying.sum())),
-            "trimmed_to_overall_limit_records": rounded_count(
-                int(
-                    (
-                        room
-                        < _truncated_exponential_quantile(quantiles, 0.0, limit, mean)
-                    ).sum()
-                )
+            "paying_records": _records(sources[rows], counted[rows], paying),
+            "trimmed_to_overall_limit_records": _records(
+                sources[rows], counted[rows], trimmed
             ),
         }
     )
@@ -1526,6 +1604,7 @@ def impute_isa_subscriptions(
     # populations built from HMRC's own tables (María's ruling of 29 October
     # 2026, review of microcosm#1421). Stocks and shares meet Table 9.4 in
     # 2023-24 through the both class's residual, so the two rules agree for them.
+    sources, counted = _recipient_records(recipients)
     cash, stocks, scale_receipt = scale_to_build_year_amounts(
         cash,
         stocks,
@@ -1534,6 +1613,8 @@ def impute_isa_subscriptions(
         stocks_target=statistics.amount_subscribed[("stocks_and_shares", build_year)],
         limit=spec.overall_limit_gbp,
         taper_from=spec.taper_from_gbp,
+        sources=sources,
+        counted=counted,
     )
     headroom = spec.overall_limit_gbp - cash - stocks
     lifetime, lifetime_receipt = draw_lifetime_isa_payments(
@@ -1628,13 +1709,10 @@ def _checks(
             ),
             "published_2022_23_percent": 22,
         },
-        "subscribers_above_their_balance_records": rounded_count(
-            int(
-                (
-                    ((cash > cash_balance) & (cash > 0))
-                    | ((stocks > stocks_balance) & (stocks > 0))
-                ).sum()
-            )
+        "subscribers_above_their_balance_records": _records(
+            *_recipient_records(recipients),
+            ((cash > cash_balance) & (cash > 0))
+            | ((stocks > stocks_balance) & (stocks > 0)),
         ),
     }
 
