@@ -3,10 +3,11 @@
 Run with ``BE_CHRONICLE_ARTIFACT`` or ``--artifact``. References carry selectors
 only: observations stay in Chronicle. The separate inventory resource records the
 diagnostics the method card asks to publish (ageing ratios, stand-in gaps, the
-B.1 checks, the counts behind the quantile surfaces) and every exclusion, and
-quantile_surfaces.json holds BE-MC3's band documents. Each choice that shapes
-numbers is a proposal of the Belgian method card (BE-MC0 to BE-MC6), pending
-Max's ruling d1902; nothing here publishes a number, and Belgium stays inactive.
+B.1 checks, the counts behind the quantile surfaces) and every exclusion,
+quantile_surfaces.json holds BE-MC3's band documents, and money_normalization.json
+holds BE-MC3's donor money declaration. Each choice that shapes numbers is a
+proposal of the Belgian method card (BE-MC0 to BE-MC6), pending Max's ruling
+d1902; nothing here publishes a number, and Belgium stays inactive.
 
 ``--pin-feed SOURCE_COMMIT`` rewrites ``chronicle_feed.json`` from the loaded
 artifact's verified identity before generating; use it only when Chronicle
@@ -136,8 +137,10 @@ B1_REASON = (
 )
 RULES_REASON = (
     "W3: needs a pinned rulespec-be binding for {module} on the transported "
-    "frame, the S5 pre-calibration allowlist entry for it, and B4's euro "
-    "conversion of the donor inputs it reads."
+    "frame, the S5 pre-calibration allowlist entry for it, and B4's euro donor "
+    "inputs it reads: the columns money_normalization.json converts once at the "
+    "donor-year rate, and wages, which an RSZ/ONSS quantile map writes from raw "
+    "donor values (d1902 items 18 and 19, proposed pending d1902)."
 )
 
 # Declared ratio pairs from the FPB June 2026 outlook. Each pair is one
@@ -231,11 +234,13 @@ FPB_OBSERVED_2025 = {
     "fpb_t11_social_contributions": "116379000000",
     "fpb_t11_current_taxes_on_income_and_wealth": "79273000000",
 }
-# G8-r2 factors need operands with dated period coverage. FPB's annex facts
-# have carried it since Chronicle #402, for money_normalization.json; here the
-# only operands the resolver authenticates are still RSZ's annual wage totals:
-# diagnostic cross-checks of the observed segment of the wage-driven pairs,
-# never profile or money-normalization inputs.
+# G8-r2 factors need operands with dated period coverage. money_normalization.json
+# reads Eurostat's dated 2024 rate (MONEY_RATE); FPB's 2026 levels are source
+# projections, which projected_period_average_ratio@1 refuses as target operands,
+# so no FPB money factor exists yet. The only operands resolve_reference_factor
+# authenticates here are still RSZ's annual wage totals: diagnostic cross-checks
+# of the observed segment of the wage-driven pairs, never profile or
+# money-normalization inputs.
 # FPB T24 prints unemployment twice. The pair takes line a.; these reviewed 2025
 # levels keep the inventory's comparison with line 4 tied to the feed.
 T24_UNEMPLOYMENT_2025 = {
@@ -262,6 +267,86 @@ FACTOR_VALIDITY = {
     "valid_until": "2027-06-30",
     "as_of": "2026-11-01",
 }
+MONEY_RESOURCE = "money_normalization.json"
+# The donor is the populace-us artifact Belgium pins (BE-MC2), for which NZ's
+# declaration recorded the money as calendar 2024 by declared convention.
+DONOR_MONEY_YEAR = 2024
+# The donor artifact that convention is declared for. A repin of Belgium's donor,
+# alone or jointly with NZ, fails test_be_money_normalization's donor-period test
+# until the money period and its evidence are re-declared.
+DONOR_MONEY_ARTIFACT = {
+    "sha256": "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e",
+    "size_bytes": 462915783,
+}
+# d1902 item 19: Eurostat's 2024 annual average, US dollars per euro. The one
+# non-Belgian fact a Belgian resource reads. Every field of its selector and
+# validation is reviewed here, so CI binds the committed rate block without the
+# artifact, and a repin that changes any field refuses generation.
+MONEY_RATE = {
+    "record_set_id": "eurostat.ert_bil_eur_a.cy2024.usd_average",
+    "aggregate_fact_key": "ledger.aggregate_fact.v2:9f3fc6250d094755b6206244",
+    "source_name": "eurostat",
+    "source_measure_id": "annual_average_exchange_rate",
+    "source_concept": "eurostat.ert_bil_eur_a.value",
+    "entity_name": "institutional_sector",
+    "geography": ("statistical_scope", "eurostat:ert_bil_eur_a:USD", "not_applicable"),
+    "dimension_values": {
+        "currency": "USD",
+        "freq": "A",
+        "statinfo": "AVG",
+        "time": 2024,
+        "unit": "NAC",
+    },
+    "unit": "usd_per_eur",
+    "token": "1.0824",
+    "source_sha256": "3c96ca57c15266d07e1976d90ba806a5bb90ab46a503b6311df3aaa9f5ba66c7",
+    "source_vintage": "eurostat_ert_bil_eur_a_usd_updated_2026_07_08",
+    "entity_role": "currency_market",
+    "provenance_class": "administrative",
+    "source_column_id": "value",
+}
+
+
+def money_rate_selector():
+    """The reviewed rate selector, from MONEY_RATE and DONOR_MONEY_YEAR alone."""
+
+    level, area, vintage = MONEY_RATE["geography"]
+    return {
+        "source_name": MONEY_RATE["source_name"],
+        "source_measure_id": MONEY_RATE["source_measure_id"],
+        "source_concept": MONEY_RATE["source_concept"],
+        "entity_name": MONEY_RATE["entity_name"],
+        "period_type": "calendar_year",
+        "period_value": DONOR_MONEY_YEAR,
+        "geography_level": level,
+        "geography_id": area,
+        "geography_vintage": vintage,
+        "record_set_id": MONEY_RATE["record_set_id"],
+        "dimensions": list(MONEY_RATE["dimension_values"]),
+        "dimension_values": dict(MONEY_RATE["dimension_values"]),
+        "aggregate_fact_key": MONEY_RATE["aggregate_fact_key"],
+        "assertion": "observation",
+    }
+
+
+def money_rate_validation():
+    """The reviewed rate validation, from MONEY_RATE and DONOR_MONEY_YEAR alone."""
+
+    return {
+        "unit": MONEY_RATE["unit"],
+        "source_sha256": MONEY_RATE["source_sha256"],
+        "source_vintage": MONEY_RATE["source_vintage"],
+        "entity_role": MONEY_RATE["entity_role"],
+        "provenance_class": MONEY_RATE["provenance_class"],
+        "assertion": "observation",
+        "period_coverage": {
+            "start_date": f"{DONOR_MONEY_YEAR}-01-01",
+            "end_date": f"{DONOR_MONEY_YEAR}-12-31",
+        },
+        "source_column_id": MONEY_RATE["source_column_id"],
+    }
+
+
 # Chronicle labels Statbel's regions NUTS_2024, while the typed geography layer
 # names vintage:be_nuts1_2025 and its closed alias set admits no NUTS label.
 # Each selector keeps Chronicle's label, and its row names the layer's typed
@@ -315,6 +400,181 @@ PENSION_REASON = (
     "amounts are annualized."
 )
 SURFACE_RESOURCE = "quantile_surfaces.json"
+# BE-MC3's money declaration (B4b). Every identity reason starts with this
+# prefix. Hold-fixed is this declaration's interim proposal, to be added to the
+# d1902 card as new items; it is not item 20's rule.
+HOLD_FIXED = (
+    f"{METHOD_CARD_STATUS}, interim hold-fixed rule proposed as a new d1902 item: "
+)
+OTHER_FAMILY = (
+    "d1902 item 20 says a money family without its own index needs one or an "
+    "explicit hold-fixed rule, and this declaration proposes holding this family "
+    "fixed until a buildable index replaces it. No FPB index can be declared yet: "
+    "FPB's 2026 levels are source projections, and the shared factor operation "
+    "reads only observed target levels. "
+)
+HOLD_FIXED_LIMIT = (
+    " Held fixed, the family's amounts stay at 2024 levels in the 2026 policy "
+    "year (BE-MC0)."
+)
+MONEY_COLUMNS = {
+    "person": [
+        "nonfarm_self_employment_income",
+        "farm_self_employment_income",
+        "interest_income",
+        "dividend_income",
+        "rental_income",
+        "realized_capital_gains",
+        "private_pension_income",
+        "liquid_financial_assets",
+    ],
+    "household": [
+        "rent",
+        "mortgage_interest",
+        "property_tax",
+    ],
+}
+MONEY_FAMILIES = {
+    "mixed_income": {
+        "identity": True,
+        "reason": HOLD_FIXED
+        + "BE-MC3 converts every monetary donor column and d1902 item 18 converts "
+        "and ages every unmapped column, so both self-employment columns, signed, "
+        "convert once at the rate. d1902 item 20 proposes FPB's household-account "
+        "net mixed income, 2024 to 2026, as their index, but FPB's 2026 level is a "
+        "source projection and the shared factor operation reads only observed "
+        "target levels, so that factor cannot be declared. This identity is forced "
+        "by that gap, and item 20's factor replaces it once a shared operation "
+        "admits projected targets. BE-MC3's calibration target for this income "
+        "sits at FPB's 2026 level, so until then the held amounts lack the growth "
+        "the factor would supply, besides any difference in level from that "
+        "total." + HOLD_FIXED_LIMIT,
+    },
+    "capital_income": {
+        "identity": True,
+        "reason": HOLD_FIXED
+        + OTHER_FAMILY
+        + "Interest, dividends, rental income and realized capital gains convert "
+        "once at the rate and keep factor one. FPB's household-account "
+        "property-income rows move apart over 2024 to 2026, and capital gains "
+        "have no national-accounts row, so no single feed index is proposed for "
+        "the family." + HOLD_FIXED_LIMIT,
+    },
+    "pensions": {
+        "identity": True,
+        "reason": HOLD_FIXED
+        + OTHER_FAMILY
+        + "Private pension income converts once at the rate and keeps factor "
+        "one. FPB's pension rows are social-security pensions, which this "
+        "concept excludes, so none is proposed as its index." + HOLD_FIXED_LIMIT,
+    },
+    "consumer_prices": {
+        "identity": True,
+        "reason": HOLD_FIXED
+        + OTHER_FAMILY
+        + "The donor's stored person-level bank, stock and bond assets convert "
+        "once at the rate, round half-even to cents and keep factor one, as New "
+        "Zealand's d1982 interim convention does for an unpublishable diagnostic "
+        "beside its S1 scenario; no valuation date is claimed. The feed holds "
+        "consumer prices only as annual percent changes, which the shared factor "
+        "operation does not read as levels." + HOLD_FIXED_LIMIT,
+    },
+    "owner_housing_costs": {
+        "identity": True,
+        "reason": HOLD_FIXED
+        + OTHER_FAMILY
+        + "Mortgage interest and property tax convert once at the rate and keep "
+        "factor one; mortgage principal is pending, since CREATE cannot define it "
+        "from this donor. The feed holds no Belgian index for these flows; FPB's "
+        "household interest paid covers all household interest, not mortgages "
+        "alone." + HOLD_FIXED_LIMIT,
+    },
+    "rents": {
+        "identity": True,
+        "reason": HOLD_FIXED
+        + OTHER_FAMILY
+        + "Rent converts once at the rate and keeps factor one. Belgium's "
+        "package holds no rent distribution, so rent is normalized, not "
+        "mapped. The feed holds the health index only as annual percent "
+        "changes, which the shared factor operation cannot compound from a "
+        "2024 base." + HOLD_FIXED_LIMIT,
+    },
+}
+MONEY_QUANTILE_MAPPED = {
+    "person": {
+        "employment_income": {
+            "awaits": [
+                "BE-MC3 wage surface: precal_references rows "
+                f"{WAGE_CONTRACT}__* (RSZ/ONSS T17 employed workers by "
+                "daily-wage class, 2026-Q1, euros a day), mapped by a transport "
+                "quantile map once d1902 items 21 to 24 settle the cohort, unknown "
+                "pay, the annual-to-daily conversion and the open top band"
+            ],
+            "reason": f"{METHOD_CARD_STATUS}, d1902 item 18: BE-MC3 converts "
+            "every column before its quantile maps, and item 18 proposes departing "
+            "from that convert-first step for a mapped column, because conversion "
+            "changes nothing the map writes. Wages are quantile-mapped onto "
+            "RSZ/ONSS's daily-wage classes, so they rank from raw donor values and "
+            "are never converted at the rate or aged. No graph runs the map yet.",
+        }
+    }
+}
+MONEY_PENDING = {
+    "household": {
+        "mortgage_principal": {
+            "awaits": [
+                "a donor input for mortgage principal repayments: the pinned "
+                "populace-us donor holds no mortgage_payments column, and the "
+                "shared US concept mapping binds mortgage principal only into "
+                "mortgage_payments as a sum with mortgage interest, which no "
+                "decoder can invert, so CREATE never defines the column"
+            ],
+            "reason": f"{METHOD_CARD_STATUS}, new d1902 item: d1902 item 18 "
+            "converts and ages every unmapped column, but no transport node "
+            "defines household.mortgage_principal for this donor, and a money "
+            "normalizer that rewrites a column no node defines is refused when "
+            "the graph is built. It waits for a donor input; Belgium's "
+            "calibration and holdout references do not read it.",
+        }
+    }
+}
+DONOR_MONEY_EVIDENCE = [
+    "tools/build_us_fiscal_refresh_release.py declares the module constant PERIOD = 2024, and its _dataset_from_frame passes PERIOD as time_period to USSingleYearDataset.",
+    "microcosm.frame.adapters.policyengine_us.PolicyEngineUSEngine._write_and_verify writes the supplied model period as a one-row integer _time_period table. This is model-period lineage evidence, not authentication of the monetary basis of donor amounts.",
+    "Belgium's source_stages.json pins the populace-us donor artifact with SHA-256 48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e and 462,915,783 bytes, the artifact for which New Zealand's money_normalization.json declared the calendar-2024 convention (BE-MC2).",
+]
+MONEY_TEXT = {
+    "description": "Proposed normalization of the donor's unmapped money "
+    "columns, proposed_pending_d1902: each is converted to euros exactly and "
+    "labelled at the 2026 policy year (BE-MC0, BE-MC3), but every family is held "
+    "at 2024 levels. Each normalized column converts once at Eurostat's 2024 "
+    "annual average US dollars per euro, read from the pinned Chronicle feed and "
+    "inverted exactly (d1902 item 19). Every family, self-employment included, "
+    "then keeps factor one under an interim hold-fixed rule that this declaration "
+    "proposes as a new d1902 item: no index can be declared yet, because FPB's "
+    "2026 levels are source projections. Mapped wages rank from raw donor values "
+    "and are never converted (d1902 item 18). Mortgage principal is pending, "
+    "because CREATE cannot define it from this donor.",
+    "status": "proposed_pending_d1902: every value is a proposal of Belgium's "
+    "method card (BE-MC0, BE-MC3) awaiting Max's ruling on d1902 items 18 to 20 "
+    "and on the new d1902 items this declaration proposes, its interim hold-fixed "
+    "rules among them. No transport graph reads this declaration, and Belgium "
+    "refuses to activate.",
+    "notes": "proposed_pending_d1902. The rate is Eurostat ert_bil_eur_a's 2024 "
+    "annual average in US dollars per euro, an observation with calendar-2024 "
+    "coverage, replayed from the pinned Chronicle feed; quote from_per_to "
+    "divides each donor amount by it exactly (d1902 item 19). Calendar-2024 "
+    "money is a declared convention covering flows and asset stocks, the one "
+    "New Zealand's money_normalization.json declared for the donor artifact "
+    "Belgium pins (BE-MC2); the donor monetary basis has not been "
+    "authenticated against a producing manifest. Money "
+    "normalization refuses a donor whose recorded _time_period differs from "
+    "calendar 2024; this runtime check is a consistency check, not "
+    "authentication. No donor file is opened to establish this declaration. "
+    "The target period 2026 is BE-MC0's proposed policy year. "
+    "public_pension_income is dropped at CREATE and is not declared; BE-MC3's "
+    "legal-pension route waits for shared rank-only support (d1902 item 25).",
+}
 PROVIDERS = {
     "statbel": "Statbel",
     "fpb": "Federal Planning Bureau",
@@ -383,6 +643,12 @@ def _belgian(fact, communes=None):
 # (copied, not imported: Belgium must not bind to NZ's generator module).
 def _selector(fact, *, pin_key=True):
     _belgian(fact)
+    return _selector_fields(fact, pin_key=pin_key)
+
+
+def _selector_fields(fact, *, pin_key=True):
+    """_selector's field projection, without the Belgian-geography refusal."""
+
     measure, geography = fact["observed_measure"], fact["geography"]
     result = {
         "source_name": measure["source_name"],
@@ -1034,12 +1300,18 @@ def calibration_references(inventory, pairs, members):
             "person",
             "nonfarm_self_employment_income",
             "self_employment",
-            "requires_currency_bridge_b4",
+            "requires_money_node_and_mixed_income_factor",
             "BE-MC3",
             "B4: BE-MC3 gives self-employment income FX and uprating only, then "
-            "calibrates its aggregate; the euro column has no producer until "
-            "B4's currency bridge. FPB's net mixed income also covers farm "
-            "income, which the donor carries separately.",
+            "calibrates its aggregate. money_normalization.json converts the euro "
+            "column once at the donor-year rate and, while FPB's projected 2026 "
+            "level cannot be a money factor's target, holds it at 2024 levels "
+            "under an interim identity (proposed pending d1902). The row waits "
+            "for a Belgian transport graph that runs that normalization, the "
+            "column's producer, and for d1902 item 20's net mixed income factor, "
+            "without which held 2024 amounts would be calibrated to a 2026 total. "
+            "FPB's net mixed income also covers farm income, which the donor "
+            "carries separately.",
             "FPB household net mixed income, 2025, rolled to 2026 (parked)",
         ),
     ):
@@ -1737,7 +2009,7 @@ def holdout_references(inventory, pairs):
             "employment_income",
             "household_accounts",
             "FPB gross wages and salaries (salaires bruts), 2025, rolled to 2026",
-            "The card's wage-headline comparator (BE-MC5): gross wages, not compensation including employer contributions. The euro wage column has no producer until B4's currency bridge.",
+            "The card's wage-headline comparator (BE-MC5): gross wages, not compensation including employer contributions. The euro wage column has no producer until a transport quantile map writes it from RSZ/ONSS's daily-wage classes; d1902 item 18 proposes mapping wages from raw donor values, never converted at the rate.",
         ),
     )
     for (
@@ -1971,6 +2243,92 @@ def build_reference_aging(inventory, feed_identity):
             }
         )
     return {"schema_version": 1, "feed_identity": feed_identity, "factors": factors}
+
+
+def _same(left, right):
+    """Equal, with JSON types: 2024, 2024.0 and "2024" differ."""
+
+    return json.dumps(left, sort_keys=True) == json.dumps(right, sort_keys=True)
+
+
+def _money_rate_fact(inventory):
+    """The reviewed Eurostat rate fact; any drift in any field refuses generation."""
+
+    matches = inventory.cells(MONEY_RATE["record_set_id"])
+    if len(matches) != 1:
+        raise ValueError(
+            "Reviewed money rate fact changed: expected one fact in "
+            f"{MONEY_RATE['record_set_id']}; found {len(matches)}"
+        )
+    (fact,) = matches
+    try:
+        reviewed = (
+            _same(
+                {**_selector_fields(fact), "assertion": fact.get("assertion")},
+                money_rate_selector(),
+            )
+            and _same(_factor_validation(fact), money_rate_validation())
+            and _token(fact["value"]) == MONEY_RATE["token"]
+        )
+    except (KeyError, TypeError, ValueError):
+        reviewed = False
+    if not reviewed:
+        raise ValueError("Reviewed money rate fact changed")
+    return fact
+
+
+def _money_rate(fact, feed_identity):
+    return {
+        "form": "feed_selector",
+        "selector": {**_selector_fields(fact), "assertion": "observation"},
+        "validation": _factor_validation(fact),
+        "assertion_policy": "observed_only",
+        "feed_identity": copy.deepcopy(feed_identity),
+        "expected_decimal": MONEY_RATE["token"],
+    }
+
+
+def money_normalization_document(inventory, feed_identity):
+    """BE-MC3's money declaration; the rate replays before it is written."""
+
+    from microcosm.build.money_normalization import (
+        resolve_money_rate,
+        validate_money_normalization,
+    )
+
+    document = {
+        "schema_version": 1,
+        "description": MONEY_TEXT["description"],
+        "status": MONEY_TEXT["status"],
+        "from_currency": "USD",
+        "to_currency": "EUR",
+        "rate": _money_rate(_money_rate_fact(inventory), feed_identity),
+        "quote": "from_per_to",
+        "rounding": {"digits": 2, "mode": "half_even"},
+        "donor_money_period": {
+            "type": "calendar_year",
+            "value": DONOR_MONEY_YEAR,
+            "basis": "declared_convention",
+            "evidence": list(DONOR_MONEY_EVIDENCE),
+        },
+        "target_period": POLICY_YEAR,
+        "columns": copy.deepcopy(MONEY_COLUMNS),
+        "factor_profile": None,
+        "index_family_factors": copy.deepcopy(MONEY_FAMILIES),
+        "cents_suffix": "_cents",
+        "quantile_mapped": copy.deepcopy(MONEY_QUANTILE_MAPPED),
+        "pending": copy.deepcopy(MONEY_PENDING),
+        "notes": MONEY_TEXT["notes"],
+    }
+    declaration = validate_money_normalization(copy.deepcopy(document))
+    rate, _ = resolve_money_rate(
+        declaration,
+        [fact for rows in inventory.by_spec.values() for fact in rows],
+        feed_identity,
+    )
+    if rate != Fraction(MONEY_RATE["token"]):
+        raise ValueError("Money rate replay changed")
+    return document
 
 
 def _value(fact):
@@ -2484,6 +2842,7 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
     documents["reference_intervals.json"] = _interval_document(classes, members)
     documents["reference_profiles.json"] = _reference_profiles()
     documents["reference_aging.json"] = build_reference_aging(inventory, feed_identity)
+    documents[MONEY_RESOURCE] = money_normalization_document(inventory, feed_identity)
     documents[SURFACE_RESOURCE] = _surface_document(wage_rows, pension_rows, pensions)
     surfaces = _surface_evidence(inventory, wage_rows, wages, pension_rows, pensions)
     documents["reference_inventory.json"] = _inventory(
@@ -2590,7 +2949,7 @@ def _inventory(inventory, pairs, documents, feed_pin, members, communes, surface
         ),
         (
             "usd_eur_rate",
-            "Eurostat ert_bil_eur_a is B4's currency-bridge input (BE-MC3), not a reference.",
+            "Eurostat ert_bil_eur_a's 2024 USD average is money_normalization.json's feed-selected rate (BE-MC3, d1902 item 19), not a reference.",
         ),
         (
             "regional_a1_and_b1",
@@ -2746,6 +3105,8 @@ def _inventory(inventory, pairs, documents, feed_pin, members, communes, surface
             "A selector cannot pair a record set with a dimension value, and T17 holds each daily-wage class in one record set per sex. Each wage row lists both record sets beside an age and a sex roster, so the package tests' cell check expands their product: 24 cells that exist and 24 that cannot. A list of the members' aggregate keys would bind each member without the artifact, but the package scan admits fact keys only as single strings, so the rosters stay key-free and the feed audit proves their members.",
             "No shared code reads a rank-only input. Transport drops the donor's public_pension_income (TransportRule.DROP), and transport.quantile_map@1 ranks one column and overwrites that same column with the mapped amounts. So the SFPD surface rows are kept non-executable only by activation_status, and each one is a named activation gap.",
             "Uniform interpolation refuses an open top band, and both surfaces' top bands are open; Pareto interpolation needs a declared alpha, and no shared mode scales the donor's own tail.",
+            "projected_period_average_ratio@1 reads only observed target levels, and FPB's outlook asserts every 2026 level as a source projection, so no FPB factor can age 2024 donor money to 2026; money_normalization.json holds every family fixed at 2024 levels, self-employment included, as an interim rule proposed for d1902.",
+            "The shared US concept mapping binds household.mortgage_principal only into mortgage_payments, as a sum with mortgage interest, which the decoder cannot invert, and the pinned donor holds no mortgage_payments column; CREATE therefore never defines mortgage principal, and money_normalization.json leaves it pending.",
         ],
         "quantile_surfaces": surfaces,
         "exclusions": [{"id": name, "reason": reason} for name, reason in excluded],
