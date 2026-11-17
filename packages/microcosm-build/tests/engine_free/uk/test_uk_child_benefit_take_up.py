@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from importlib.resources import files
 
 import numpy as np
 import pandas as pd
@@ -11,6 +12,7 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.uk_runtime import stage_health
 from microcosm.build.uk_runtime.child_benefit_take_up import (
     CHILD_BENEFIT_ENGINE_VARIABLES,
     CHILD_BENEFIT_STATISTICS_RESOURCE,
@@ -27,7 +29,10 @@ from microcosm.build.uk_runtime.child_benefit_take_up import (
     solve_child_benefit_claim_rates,
 )
 from microcosm.build.uk_runtime.frs_take_up import UK_TAKE_UP_SIGNAL_OUTPUTS
+from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
 from microcosm.build.uk_runtime.ledger_fact_vendoring import load_vendor_selections
+from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.frame import WeightKind
 from test_support.microcosm_build.uk_child_benefit_take_up import (
     _frame,
     _statistics,
@@ -147,6 +152,204 @@ def test_claims_keep_reporters_and_realise_the_published_rates() -> None:
     assert receipt["realized_rate"] == pytest.approx(receipt["target_rate"], abs=0.01)
     assert receipt["clipped_ages"] == []
     assert receipt["published_all_ages_rate"] == 0.8
+
+
+def test_the_receipt_counts_child_rows_among_clone_zero_children() -> None:
+    """Each age's eligible_child_rows, and the receipt's, count the children
+    whose rows are geographic clone 0's (microcosm#931). Three invented
+    families: the first has children aged 2 and 0, the second one aged 1 and
+    the third one aged 2; at two clones each clone's rows weigh half their
+    source's."""
+
+    units = np.asarray([0, 0, 1, 2])
+    ages = np.asarray([2, 0, 1, 2])
+    eldest = np.asarray([2, 1, 2])
+
+    def receipt(clones: int, clone_zero: np.ndarray | None) -> dict:
+        return assign_child_benefit_claims(
+            child_units=np.concatenate([units + 3 * clone for clone in range(clones)]),
+            child_ages=np.tile(ages, clones),
+            eldest=np.tile(eldest, clones),
+            reporter=np.zeros(3 * clones, dtype=bool),
+            weights=np.full(3 * clones, 10.0 / clones),
+            draws=np.zeros(3 * clones),
+            statistics=_statistics(),
+            child_clone_zero=clone_zero,
+        )[1]
+
+    one = receipt(1, None)
+    two = receipt(2, np.repeat([True, False], 4))
+    assert [row["eligible_child_rows"] for row in one["ages"]] == [1, 1, 2]
+    assert one["eligible_child_rows"] == 4
+    # Every figure but the count of family units, which counts every clone's,
+    # is the one-clone receipt's: the row counts are clone 0's, and the
+    # weighted figures over both clones are one clone's at its full weight.
+    assert two == {**one, "eligible_family_units": 6}
+    # Without clone 0's flags every child row counts, as on a one-clone frame.
+    every = receipt(2, None)
+    assert [row["eligible_child_rows"] for row in every["ages"]] == [2, 2, 4]
+    assert every["eligible_child_rows"] == 8
+    with pytest.raises(ValueError, match="one flag per eligible child"):
+        receipt(2, np.ones(4, dtype=bool))
+
+
+def _cloned_frame(clones: int):
+    """``clones`` geographic clones of the invented frame: each clone's ids
+    moved by a stride, its households given their clone index, and each
+    household at ``1 / clones`` of its source's weight."""
+
+    frame = _frame()
+    person = frame.table("person")
+    benunit = frame.table("benunit")
+    household = frame.table("household")
+    clone_index = ladder_clone_index_column("household")
+    return uk_national_frame(
+        person=pd.concat(
+            [
+                person.assign(
+                    person_id=person["person_id"] + 1_000 * clone,
+                    person_benunit_id=person["person_benunit_id"] + 100 * clone,
+                    person_household_id=person["person_household_id"] + 100 * clone,
+                )
+                for clone in range(clones)
+            ],
+            ignore_index=True,
+        ),
+        benunit=pd.concat(
+            [
+                benunit.assign(benunit_id=benunit["benunit_id"] + 100 * clone)
+                for clone in range(clones)
+            ],
+            ignore_index=True,
+        ),
+        household=pd.concat(
+            [
+                household.assign(
+                    household_id=household["household_id"] + 100 * clone,
+                    **{clone_index: np.int64(clone)},
+                )
+                for clone in range(clones)
+            ],
+            ignore_index=True,
+        ),
+        household_weights=np.full(len(household) * clones, 10.0 / clones),
+        weight_kind=WeightKind.IMPORTANCE,
+        time_period="2024",
+    )
+
+
+def test_the_stage_counts_child_rows_in_clone_zero_at_every_clone_count() -> None:
+    """The stage reads each child's clone from its household's clone index
+    (microcosm#931): at four clones its receipt counts the child rows a
+    one-clone frame has, at each age and overall, and a one-clone frame that
+    carries the index gives the receipt of one without it."""
+
+    def claims(frame) -> dict:
+        return redraw_child_benefit_take_up(
+            frame,
+            engine=_StubEngine(),
+            statistics=_statistics(),
+            thresholds=THRESHOLDS,
+        ).claims
+
+    def rows(receipt: dict) -> list[tuple[int, int, float]]:
+        return [
+            (row["age"], row["eligible_child_rows"], row["eligible_children"])
+            for row in receipt["ages"]
+        ]
+
+    one = claims(_frame())
+    four = claims(_cloned_frame(4))
+    assert rows(four) == rows(one) == [(0, 1, 10.0), (1, 1, 10.0), (2, 2, 20.0)]
+    assert four["eligible_child_rows"] == one["eligible_child_rows"] == 4
+    assert four["eligible_family_units"] == 4 * one["eligible_family_units"]
+    assert claims(_cloned_frame(1)) == one
+
+
+def _packaged_child_benefit_gate_parameters() -> dict:
+    gates = json.loads(files("microcosm.build.uk").joinpath("gates.json").read_text())
+    return dict(
+        next(
+            gate
+            for gate in gates["gates"]
+            if gate["id"] == "uk_stage_child_benefit_take_up"
+        )["parameters"]
+    )
+
+
+def _thin_age_evidence(clones: int, *, count_every_clone: bool = False) -> dict:
+    """An invented receipt at ``clones`` geographic clones: 900 source
+    families with one child aged 5 and 150 with one aged 19, at published
+    rates of 0.9 and 0.5. Every clone of a family weighs ``1 / clones`` of it
+    and takes its source's draw, so the realised rates are the same at every
+    clone count: 819 of the 900 and 63 of the 150 claim, 0.91 and 0.42. No
+    family reports, and the opted-out share is at its target."""
+
+    sources = 1_050
+    ages = np.r_[np.full(900, 5), np.full(150, 19)]
+    draws = np.r_[np.zeros(819), np.full(81, 0.95), np.zeros(63), np.full(87, 0.75)]
+    rows = sources * clones
+    child_ages = np.tile(ages, clones)
+    _, claims = assign_child_benefit_claims(
+        child_units=np.arange(rows),
+        child_ages=child_ages,
+        eldest=child_ages,
+        reporter=np.zeros(rows, dtype=bool),
+        weights=np.full(rows, 15.0 / clones),
+        draws=np.tile(draws, clones),
+        statistics=_statistics({5: 0.9, 19: 0.5}),
+        child_clone_zero=(None if count_every_clone else np.arange(rows) < sources),
+    )
+    return {
+        "stage": CHILD_BENEFIT_TAKE_UP_STAGE_NAME,
+        "claims": claims,
+        "opt_outs": {
+            "target_share": 0.1,
+            "realized_share": 0.1,
+            "pool_exhausted": False,
+        },
+    }
+
+
+def test_the_stage_gate_gives_one_verdict_at_one_and_fifteen_clones() -> None:
+    """The packaged gate measures an age from 200 child rows, which the stage
+    counts in clone 0 (microcosm#931). At one clone the age of 150 rows is too
+    thin to measure and the gate passes on the other age; at fifteen it is as
+    thin, and the gate gives the same verdict. Counted over every clone, the
+    age would hold 2,250 rows at fifteen clones and be measured, its
+    deviation of 0.08 past the 0.05 floor, which three standard errors over
+    2,250 rows at 0.5 (about 0.032) do not reach."""
+
+    parameters = _packaged_child_benefit_gate_parameters()
+
+    def verdict(evidence: dict):
+        return stage_health.uk_stage_health_gate(
+            evidence=evidence,
+            stage=CHILD_BENEFIT_TAKE_UP_STAGE_NAME,
+            check="child_benefit_take_up",
+            parameters=parameters,
+        )
+
+    one = verdict(_thin_age_evidence(1))
+    fifteen = verdict(_thin_age_evidence(15))
+    assert one.passed, one.failures
+    assert (fifteen.passed, fifteen.failures) == (one.passed, one.failures)
+    assert one.details["ages_measured"] == 1
+    # The details are the one-clone details, but for the count of family
+    # units, a floor of one that counts every clone's units.
+    assert fifteen.details == {
+        **one.details,
+        "eligible_family_units": 15 * one.details["eligible_family_units"],
+    }
+    every = verdict(_thin_age_evidence(15, count_every_clone=True))
+    assert not every.passed
+    assert every.details["ages_measured"] == 2
+    assert every.failures == (
+        "child_benefit_take_up: at age 19 0.4200 of eligible children are "
+        "claimed for against the published 0.5000 (tolerance 0.0500: the "
+        "larger of 0.05 and 3 standard errors of a share at the published rate "
+        "over that age's child rows).",
+    )
 
 
 def test_opt_outs_take_the_published_share_from_fully_charged_families_first() -> None:

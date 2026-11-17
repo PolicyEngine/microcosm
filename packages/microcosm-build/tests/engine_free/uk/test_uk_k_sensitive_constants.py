@@ -6,8 +6,8 @@ sees ``K`` times the rows it saw at one clone, while one on distinct true
 source households, on survey records or on weight does not. Each constant
 below is classified by what it counts and by how the code meets ``K``, and
 pinned to the code's value by import, so a change to one fails here until
-it is classified again. The gates' count-like maxima are pinned the same
-way: a new one in the packaged gates must join the table.
+it is classified again. The gates' count-like maxima and minima are pinned
+the same way: a new one in the packaged gates must join the table.
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ from microcosm.build.uk_runtime import (
     aps_occupation,
     area_home_values,
     cgt_support,
+    child_benefit_take_up,
     company_cars,
     frs_person_draws,
     frs_take_up,
@@ -46,7 +47,9 @@ from microcosm.build.uk_runtime import (
 #: What a constant counts: "ratio" bounds a ratio of weighted means, which
 #: K clones at 1 / K of their weight leave as it was; "share" a share of a
 #: group's weight, which they leave as it was too; "value" a value in the
-#: data's own units, which they do not change.
+#: data's own units, which they do not change; "published cells" the cells
+#: of a published table a stage loads or compares with, which the frame does
+#: not set.
 COUNTS = frozenset(
     {
         "source count",
@@ -57,6 +60,7 @@ COUNTS = frozenset(
         "share",
         "value",
         "hyperparameter",
+        "published cells",
     }
 )
 #: How the code meets the clone count, each with what it means.
@@ -110,6 +114,16 @@ def _declared_parameters(check: str, *keys: str) -> frozenset[tuple[str, str]]:
     )
 
 
+def _declared_values(
+    pairs: tuple[tuple[str, str], ...],
+) -> frozenset[tuple[str, str, object]]:
+    """Each (gate id, parameter) pair with the value its packaged gate
+    declares."""
+
+    parameters = {gate["id"]: gate.get("parameters") or {} for gate in _gates()}
+    return frozenset((gate, key, parameters[gate][key]) for gate, key in pairs)
+
+
 def _company_car_donor_households() -> int:
     stage = load_country_spec("uk").sources.stage_map()["company_cars"]
     return company_cars.CompanyCarsSpec.from_stage(stage).minimum_donor_households
@@ -135,6 +149,26 @@ _CLIP_ALLOWANCES = (
 _PROPERTY_MAXIMA = (
     "maximum_rows_receipts_below_profit",
     "maximum_rows_with_profit_above_band",
+)
+#: The band donor gate's minimum seats per band.
+_BAND_DONOR_MINIMUM = (
+    "uk_stage_spi_income_band_donors_support",
+    "minimum_donors_per_band",
+)
+#: The stage gates' floors of one, each on rows counted over every clone.
+_FLOORS_OF_ONE = (
+    ("uk_stage_spi_support_channel_mass", "minimum_spi_households"),
+    ("uk_stage_hmrc_spi_income_spine_identity", "minimum_identity_rows"),
+    ("uk_stage_pension_credit_take_up", "minimum_entitled_units"),
+    ("uk_stage_child_benefit_take_up", "minimum_eligible_family_units"),
+    ("uk_stage_cgt_incidence_anchor_composition", "minimum_pair_count"),
+)
+#: The stage gates' floors on the cells of a published table: the SPI income
+#: stage's HMRC income targets, and the CGT gains summary's rows, one per
+#: published gain band.
+_PUBLISHED_CELL_FLOORS = (
+    ("uk_stage_hmrc_spi_income_spine_identity", "minimum_target_count"),
+    ("uk_stage_hmrc_cgt_gains_spine_summary", "minimum_band_rows"),
 )
 
 K_SENSITIVE_CONSTANTS: tuple[KSensitiveConstant, ...] = (
@@ -189,15 +223,23 @@ K_SENSITIVE_CONSTANTS: tuple[KSensitiveConstant, ...] = (
     ),
     KSensitiveConstant(
         name="band donor minimum seats",
-        where="spi_band_donors.SPI_INCOME_BAND_MINIMUM_DONORS",
-        read=lambda: spi_band_donors.SPI_INCOME_BAND_MINIMUM_DONORS,
-        value=120,
+        where=(
+            "spi_band_donors.SPI_INCOME_BAND_MINIMUM_DONORS, and the band donor "
+            "gate's minimum_donors_per_band (stage_health), which the check "
+            "holds the receipt's minimum to"
+        ),
+        read=lambda: (
+            spi_band_donors.SPI_INCOME_BAND_MINIMUM_DONORS,
+            _declared_values((_BAND_DONOR_MINIMUM,)),
+        ),
+        value=(120, frozenset({(*_BAND_DONOR_MINIMUM, 120)})),
         counts="source count",
         treatment="per clone",
         reason=(
             "every band seats at least this many donors in each clone, and "
             "the band donor check requires K times it"
         ),
+        gate_parameters=frozenset({_BAND_DONOR_MINIMUM}),
     ),
     KSensitiveConstant(
         name="band donor household share",
@@ -411,6 +453,92 @@ K_SENSITIVE_CONSTANTS: tuple[KSensitiveConstant, ...] = (
         ),
     ),
     KSensitiveConstant(
+        name="HMRC leaf signal rows",
+        where=(
+            "the HMRC leaves' source signal gate's minimum_signal_rows "
+            "(stage_health), against frs_hmrc_spine_leaves' source_signal_rows"
+        ),
+        read=lambda: _declared_values(
+            (("uk_stage_frs_hmrc_spine_leaves_signal", "minimum_signal_rows"),)
+        ),
+        value=frozenset(
+            {("uk_stage_frs_hmrc_spine_leaves_signal", "minimum_signal_rows", 1)}
+        ),
+        counts="survey records",
+        treatment="invariant",
+        reason=(
+            "frs_hmrc_spine_leaves runs before geographic_expand, so the rows it "
+            "counts are the survey's own"
+        ),
+        gate_parameters=frozenset(
+            {("uk_stage_frs_hmrc_spine_leaves_signal", "minimum_signal_rows")}
+        ),
+    ),
+    KSensitiveConstant(
+        name="Child Benefit age rows",
+        where=(
+            "the Child Benefit take-up gate's minimum_age_child_rows "
+            "(stage_health), against child_benefit_take_up's eligible_child_rows "
+            "at each age, which the gate's sampling band reads as its n too"
+        ),
+        read=lambda: _declared_values(
+            (("uk_stage_child_benefit_take_up", "minimum_age_child_rows"),)
+        ),
+        value=frozenset(
+            {("uk_stage_child_benefit_take_up", "minimum_age_child_rows", 200)}
+        ),
+        counts="rows",
+        treatment="clone 0",
+        reason=(
+            "the stage counts each age's eligible child rows among geographic "
+            "clone 0's rows, the rows one clone has, so the gate measures the "
+            "same ages against the same bands at every K; counted over every "
+            "clone, an age too thin to measure at one clone would be measured "
+            "at K clones, against a band narrower by the square root of K"
+        ),
+        gate_parameters=frozenset(
+            {("uk_stage_child_benefit_take_up", "minimum_age_child_rows")}
+        ),
+    ),
+    KSensitiveConstant(
+        name="floors of one row",
+        where=(
+            "the stage gates' floors of one: the SPI support channel's "
+            "minimum_spi_households, the SPI income spine's minimum_identity_rows, "
+            "Pension Credit's minimum_entitled_units, Child Benefit's "
+            "minimum_eligible_family_units and the CGT incidence anchor's "
+            "minimum_pair_count (stage_health)"
+        ),
+        read=lambda: _declared_values(_FLOORS_OF_ONE),
+        value=frozenset((gate, key, 1) for gate, key in _FLOORS_OF_ONE),
+        counts="rows",
+        treatment="kept",
+        reason=(
+            "each asks only that its stage's population is not empty, counted in "
+            "rows over every clone, which hold clone 0's rows among them, so more "
+            "clones can only meet a floor of one more easily"
+        ),
+        gate_parameters=frozenset(_FLOORS_OF_ONE),
+    ),
+    KSensitiveConstant(
+        name="published cell floors",
+        where=(
+            "the SPI income spine gate's minimum_target_count, against the count "
+            "of HMRC income targets its stage loads, and the CGT gains summary "
+            "gate's minimum_band_rows, against its rows, one per published gain "
+            "band (stage_health)"
+        ),
+        read=lambda: _declared_values(_PUBLISHED_CELL_FLOORS),
+        value=frozenset((gate, key, 1) for gate, key in _PUBLISHED_CELL_FLOORS),
+        counts="published cells",
+        treatment="invariant",
+        reason=(
+            "each counts the cells of a published table, which the stage loads or "
+            "compares with whatever the frame holds"
+        ),
+        gate_parameters=frozenset(_PUBLISHED_CELL_FLOORS),
+    ),
+    KSensitiveConstant(
         name="take-up signal under-2 usage population support",
         where=(
             "frs_take_up.uk_take_up_signal_receipt's population_support of the "
@@ -617,6 +745,7 @@ K_SENSITIVE_CONSTANTS: tuple[KSensitiveConstant, ...] = (
             "its rows at one clone; releases run at the doctrine's K = 15 "
             "only, the count the floor was set at"
         ),
+        gate_parameters=frozenset({("uk_local_area_support", "minimum_rows")}),
     ),
     KSensitiveConstant(
         name="local area support ESS",
@@ -654,6 +783,35 @@ K_SENSITIVE_CONSTANTS: tuple[KSensitiveConstant, ...] = (
             "grows; releases run at the doctrine's K = 15 only, the count the "
             "floor was set at"
         ),
+        gate_parameters=frozenset(
+            {("uk_local_area_support", "minimum_distinct_sources")}
+        ),
+    ),
+    KSensitiveConstant(
+        name="high-value homes support sources",
+        where=(
+            "the high-value homes support gate's minimum_distinct_sources "
+            "(high_value_home_gates.high_value_home_support_gate)"
+        ),
+        read=lambda: _declared_values(
+            (("uk_high_value_homes_support", "minimum_distinct_sources"),)
+        ),
+        value=frozenset(
+            {("uk_high_value_homes_support", "minimum_distinct_sources", 3)}
+        ),
+        counts="source count",
+        treatment="kept",
+        reason=(
+            "the distinct true sources behind each assessed area's homes above "
+            "a threshold on the calibrated pool: a source counts once in an "
+            "area however many of its clones and copies land there, but its K "
+            "clones are placed apart, so an area meets more sources as K "
+            "grows; the floor is the disclosure floor, which counts sources "
+            "this way at every K, on a diagnostic gate"
+        ),
+        gate_parameters=frozenset(
+            {("uk_high_value_homes_support", "minimum_distinct_sources")}
+        ),
     ),
 )
 
@@ -681,38 +839,65 @@ def test_each_constant_is_classified() -> None:
     ]
 
 
-#: A gate parameter that caps a count: maxima of rows, sources, households,
-#: records, donors, cells or mismatches.
-_COUNT_MAXIMUM = re.compile(
-    r"^max(imum)?_(.*_)?"
-    r"(rows|sources|households|records|donors|cells|mismatches|count)(_.*)?$"
+#: A gate parameter that bounds a count: a maximum or a minimum (a name that
+#: starts with max or min) of rows, sources, households, records, donors,
+#: cells, mismatches, units or a count.
+_COUNT_BOUND = re.compile(
+    r"^(max|min)(imum)?_(.*_)?"
+    r"(rows|sources|households|records|donors|cells|mismatches|units|count)(_.*)?$"
 )
 
 
-def _count_maxima(value: object) -> set[str]:
+def _count_bounds(value: object) -> set[str]:
     if isinstance(value, dict):
-        found = {key for key in value if _COUNT_MAXIMUM.match(key)}
+        found = {key for key in value if _COUNT_BOUND.match(key)}
         for item in value.values():
-            found |= _count_maxima(item)
+            found |= _count_bounds(item)
         return found
     if isinstance(value, list):
-        return set().union(*(_count_maxima(item) for item in value))
+        return set().union(*(_count_bounds(item) for item in value))
     return set()
 
 
-def test_every_count_maximum_in_the_gates_is_classified() -> None:
-    """A count-like maximum a packaged gate declares is in the table, so a
-    new one is classified before a spine of several clones reads it."""
+def test_the_count_bound_pattern_reads_minima_as_well_as_maxima() -> None:
+    for name in (
+        "maximum_rows",
+        "max_clipped_low_rows_by_column",
+        "minimum_age_child_rows",
+        "min_rows",
+        "minimum_distinct_sources",
+        "minimum_eligible_family_units",
+        "minimum_pair_count",
+    ):
+        assert _COUNT_BOUND.match(name), name
+    for name in (
+        "minimum",
+        "maximum_relative_deviation",
+        "min_family_share",
+        "minimum_effective_sample_size",
+        "minimum_target_homes",
+        "rows_minimum",
+    ):
+        assert not _COUNT_BOUND.match(name), name
+
+
+def test_every_count_bound_in_the_gates_is_classified() -> None:
+    """A count-like maximum or minimum a packaged gate declares is in the
+    table, so a new one is classified before a spine of several clones reads
+    it."""
 
     declared = {
         (gate["id"], key)
         for gate in _gates()
-        for key in _count_maxima(gate.get("parameters") or {})
+        for key in _count_bounds(gate.get("parameters") or {})
     }
     classified = set().union(
         *(constant.gate_parameters for constant in K_SENSITIVE_CONSTANTS)
     )
     assert declared == classified
+    # The wider pattern reads minima: the Child Benefit gate's row floor
+    # among them.
+    assert ("uk_stage_child_benefit_take_up", "minimum_age_child_rows") in declared
 
 
 def test_the_scaled_and_clone_zero_treatments_are_the_codes() -> None:
@@ -741,3 +926,15 @@ def test_the_scaled_and_clone_zero_treatments_are_the_codes() -> None:
     assert _source_names(
         frs_person_draws.derive_is_apprentice, "person_clone_zero", "flagged_support"
     )
+    # The Child Benefit receipt counts each age's eligible child rows among
+    # geographic clone 0's rows (microcosm#931), and its check reads its
+    # declared floor and its band's n from them as they stand.
+    assert _source_names(
+        child_benefit_take_up.redraw_child_benefit_take_up,
+        "child_clone_zero=geographic_clone_zero_rows(frame",
+    )
+    assert _source_names(
+        child_benefit_take_up.solve_child_benefit_claim_rates,
+        '"eligible_child_rows": int((of_age & counted).sum())',
+    )
+    assert not _source_names(stage_health._child_benefit_take_up_gate, "clone_count")
