@@ -19,10 +19,14 @@ with its estimate; the first NO-GO's poll and cost; FALSE when a NO-GO came
 for a run that fits.
 
 A run fits when its last slice ends at least 600 s before the budget
-ends: the estimate's allowance for the comparison and scorecards.
+ends: the estimate's allowance for the comparison and scorecards. The
+runner's budget counts from the tool's own start; the watcher's counts from
+started-at, which launch.sh writes before `modal run`, so container start
+and staging come out of the watcher's budget only. --pre-tool sets that gap
+(0 by default: both budgets start together).
 
 usage: python -I scripts/projection_grid.py CHECKOUT [--chunk5 FACTOR]
-       [--chunk5-artifact both|candidate]
+       [--chunk5-artifact both|candidate] [--pre-tool SECONDS]
 """
 
 from __future__ import annotations
@@ -46,6 +50,12 @@ parser.add_argument(
     choices=("both", "candidate"),
     default="both",
     help="which artifacts' chunk 5 --chunk5 slows",
+)
+parser.add_argument(
+    "--pre-tool",
+    type=int,
+    default=0,
+    help="seconds from started-at to the tool's own start",
 )
 args = parser.parse_args()
 sys.path.insert(0, str(args.checkout))
@@ -82,7 +92,7 @@ SLOW_INCUMBENT = args.chunk5_artifact == "both"
 print(
     f"chunk 5 slowed {args.chunk5}x beyond the prior "
     f"({'both artifacts' if SLOW_INCUMBENT else 'candidate only'}); "
-    f"budget {BUDGET} s"
+    f"budget {BUDGET} s; started-at {args.pre_tool} s before the tool"
 )
 print(
     f"{'f':>4} {'T':>4} | {'tool s':>7} {'$':>6} {'fits':>4} | "
@@ -106,7 +116,10 @@ for f in (1, 1.5, 2, 3, 4, 5, 7.6):
         end = run.tool_end - START
         fits = end <= BUDGET
         limits = projection.Limits(
-            workers=16, started_at=START, max_wall_seconds=BUDGET, prior=prior
+            workers=16,
+            started_at=START - args.pre_tool,
+            max_wall_seconds=BUDGET,
+            prior=prior,
         )
         first = no_go = None
         at = START + POLL

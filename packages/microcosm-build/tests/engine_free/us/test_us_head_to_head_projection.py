@@ -331,7 +331,9 @@ def test_logged_candidate_starts_count_before_its_first_slice() -> None:
     run = sim.Run(START, incumbent, candidate, [40, 40], [40, 40], 177)
     prior = _prior(run)
     first_slice = min(
-        at for at, text in candidate.lines if "after scoring candidate chunk 1/2 " in text
+        at
+        for at, text in candidate.lines
+        if "after scoring candidate chunk 1/2 " in text
     )
     for at in (candidate.inits[0], first_slice - 1):
         report = _judge(run, _limits(workers=workers, prior=prior), at)
@@ -453,7 +455,8 @@ def test_a_prior_off_on_one_chunk_moves_the_first_estimate_by_its_share() -> Non
     # chunk 1 faster than the prior errs the other way: early, so a NO-GO
     # comes later than it could (review r3, ESTIMATE-5).
     prior = projection.Prior(
-        candidate=(50.0, 50.0, 150.0), incumbent=(100.0, 100.0, 300.0),
+        candidate=(50.0, 50.0, 150.0),
+        incumbent=(100.0, 100.0, 300.0),
         candidate_slices=40,
     )
 

@@ -1,4 +1,4 @@
-chunk 5 slowed 1.3x beyond the prior (candidate only); budget 14505 s
+chunk 5 slowed 1.3x beyond the prior (candidate only); budget 14505 s; started-at 0 s before the tool
    f    T |  tool s      $ fits | first s      $ verdict   est s | NO-GO s      $
    1   40 |    7076  18.02  yes |     600   1.53      GO  6382.4 |       -      -
    1  100 |    8689  22.13  yes |     600   1.53      GO  7995.0 |       -      -

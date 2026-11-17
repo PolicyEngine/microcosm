@@ -1708,10 +1708,12 @@ raises `MemoryError` in any process whose peak RSS reaches it at a logged
 boundary. What has been measured, all on the Mac
 (`docs/evidence/us-h2h-speed`):
 
-- One process holding both frames peaked at 10.4 GiB, sampled every half
-  second.
-- In a three-worker pool run of the pinned scorer, incumbent workers printed
-  4.38 to 8.10 GiB and the parent 3.66 to 5.01 GiB.
+- One process holding both frames peaked at 10.4 GiB of current RSS,
+  sampled every half second, and at 11.31 GiB of `ru_maxrss`, the peak the
+  scorer's lines and its guard use.
+- In a three-worker pool run of the pinned scorer, incumbent workers' slice
+  lines printed 4.38 to 8.10 GiB of `ru_maxrss` (their start lines 1.85 GiB)
+  and the parent's 3.66 to 5.01 GiB.
 - No candidate worker has run. "About 12 GiB per candidate worker" is an
   inference from the September candidate's frame (5.45 GiB in-process and
   2.17 GiB pickled, measured 10 October).
@@ -1753,7 +1755,13 @@ incumbent worker starts took 42, 36 and 44 s.
 Nothing has timed this scorer on Modal, or a candidate worker's start
 anywhere. A simulation of 16-worker runs from the Mac times (not a
 measurement: `projection-grid.txt` there) shows when the run fits the $40
-budget. Let f be Modal's time per slice over the Mac's:
+budget: when its last slice ends at least 600 s before the budget does, the
+allowance the estimate keeps for the comparison and scorecards. The
+watcher's budget runs from `started-at`, written before `modal run`, so the
+container's start and staging come out of it too: with 300 s of those, the
+f = 1, T = 300 s run below is stopped at 1,200 s although it fits the
+runner's budget (`projection-grid-pre-tool-300.txt`). Let f be Modal's time
+per slice over the Mac's:
 
 - at f up to 1, if a worker starts in 300 s or less;
 - at f up to 1.5, if a worker starts in 175 s or less;
@@ -1863,13 +1871,24 @@ directly in a session shell. Read the app id from the launch log
 checkout:
 
 ```bash
-lsubmit.sh <label> <log> "$PWD" /bin/bash tools/us_head_to_head_watch.sh \
+lsubmit.sh <label> <log> "$PWD" /usr/bin/env \
+  PYTHON="$(command -v python3.14)" MODAL="$HOME/.local/bin/modal" \
+  /bin/bash tools/us_head_to_head_watch.sh \
   <ap-id> "modal-runs/$R" docs/us-modal-stage-route-a-h2h-plan.json \
   docs/evidence/us-h2h-speed/chunk-weights.json
 ```
 
+Pin both: launchd's `PATH` is short, and macOS's `/usr/bin/python3` (3.9)
+cannot run the projection, which needs CPython 3.11 or later and only its
+standard library. The watcher gives the projection a trial run before it
+watches, and refuses to start (exit 2) if it does not answer.
+
 The watcher streams `modal app logs` into `modal-runs/$R/app-N.log`, one
-file per stream. A stream that ends while the app runs is restarted. Every
+file per stream. A stream that ends while the app runs is restarted within
+`WATCH_STEP` seconds. Whether a fresh stream replays what the app printed
+before it is not known (it has not been tried against a live app), so start
+the watcher before the scorer prints its first line. Slice lines a restart
+misses show up as `log_gap` once the parent's later lines arrive. Every
 ten minutes the watcher runs `tools/us_head_to_head_projection.py` on those
 files, the plan, `started-at` and the chunk weights. The projection:
 
@@ -1883,21 +1902,36 @@ files, the plan, `started-at` and the chunk weights. The projection:
 It answers one of three verdicts:
 
 - `WAIT` until a chunk has three measured slices. In the simulated grid,
-  that is 600 to 3,000 s in.
+  that is 600 to 3,000 s in. Also `WAIT` while the streams have lost lines
+  (the report's `log_gap`: the parent took a result whose slice line is
+  missing), because the rebuilt pool is then wrong in an unknown direction.
+  The watcher raises `ALARM` once when that happens; from then on only the
+  stall check and the runner's budget can end the run early.
 - `NO-GO` when the estimated end is past the tool's budget, or the log has
   stalled. The budget is the plan's 14,505 s from `started-at`, or less
   when the runner's `ATTEMPTS:` or `BUDGET:` line says so. A stall is no
   scorer line for an hour, or for four times the slowest slice if that is
-  longer.
+  longer, counted from `started-at` until the first line arrives.
 - `GO` otherwise.
 
 How the estimate has done so far:
 
 - On the one real pool log (three workers, Mac), it came 0.4% to 10% early.
+  The worst poll came while chunk 5 slowed within itself (slices 1 to 12 at
+  227 s, 13 to 29 at 288 s, cause unknown): a chunk in progress is paced by
+  the slices that have ended.
 - In the simulated grid, every run that does not fit got `NO-GO` by
-  3,000 s ($7.64). When chunk 5 ran 1.5 times slower than the weights say,
-  that took up to 5,400 s ($13.75).
-- No simulated run that fits got a `NO-GO`.
+  3,000 s ($7.64). When chunk 5 ran 1.5 times slower than the weights say
+  for both artifacts, that took up to 5,400 s ($13.75). When only the
+  candidate's chunk 5 ran slower, which nothing shows until the candidate
+  reaches it, last, runs that did not fit got `NO-GO` at 7,800 to 12,000 s
+  ($19.87 to $30.56).
+- No simulated run that fits got a `NO-GO`. The grid scales every chunk by
+  one factor, though. When the prior is off on the one chunk the first
+  estimate measures, that estimate is off by the departure's share of the
+  scoring still ahead: with chunk 1 at 1.1 times the prior, late by up to a
+  tenth of it. A run that fits with less spare than that can be stopped,
+  and a stop cannot be taken back.
 
 Memory is reported in each verdict but never judged; the class limit and
 the scorer's 20 GiB guard bound it. The estimate is not a bound either: the
@@ -1909,10 +1943,31 @@ Every poll and action goes to `go-no-go.log`. Its exit codes:
 
 - 0: the app finished on its own.
 - 3: stopped on `NO-GO`.
-- 4: stopped because the projection failed three polls in a row.
+- 4: stopped because the projection gave no usable verdict for three polls
+  in a row. A `WAIT` more than `WATCH_WAIT_GRACE` seconds past the budget's
+  deadline counts as no verdict.
 - 5: a stop it could not confirm. It has written `modal-runs/$R/ALARM`;
   stop the app by hand.
-- 2: bad arguments, or an app that is not running.
+- 2: bad arguments, or a refused start: the app is not running, `modal app
+  list` could not be read in three tries, or the projection did not answer
+  its trial run. A refused start is written to `go-no-go.log` and `ALARM`.
+
+An app list that cannot be read, or that does not have the shape the
+watcher expects, never counts as stopped: a stop is retried until confirmed
+or `WATCH_STOP_TRIES` run out (exit 5), and a log stream that ends while the
+list cannot be read is restarted, not taken as the app's end. Settings
+(environment):
+`WATCH_INTERVAL` (seconds between polls, 600), `WATCH_STEP` (seconds
+between checks that the stream is alive, 10), `WATCH_MAX_FAILURES` (3),
+`WATCH_WAIT_GRACE` (1800), `WATCH_STOP_TRIES` (5), `WATCH_STOP_WAIT`
+(seconds after each stop request, 30), `WATCH_START_TRIES` (3),
+`WATCH_START_WAIT` (10), `MODAL` and `PYTHON`.
+
+`ALARM` is only a file. Nothing notices it, or a watcher that has died, and
+a launchd job does not survive a reboot. Whoever launches the run checks
+`go-no-go.log` and `ALARM` while it runs. The watcher's Modal calls and the
+projection have no timeouts, so a hung call would freeze its loop; none has
+been seen to hang.
 
 It detects and uses Modal CLI 1.4's `--follow` and 1.4.2's `--yes`. Its
 tests run it against a fake `modal` only: never test its stop on a live

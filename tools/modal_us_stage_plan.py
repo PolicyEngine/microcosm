@@ -475,7 +475,9 @@ def timeout_for_cap(cap_usd: float, usd_per_second: float) -> int:
 # scores about 55 of the candidate's 885 slices, so the class allows 16 GiB
 # for each of 16 workers plus 32 GiB for the parent: 288 GiB, as a hard
 # limit. Exceeding it kills the container before it can write a final
-# receipt; the scorer's own 20 GiB per-process guard stops a process first.
+# receipt. The scorer's own 20 GiB per-process guard, checked at each logged
+# boundary, stops one process that outgrows the rest; if all sixteen workers
+# grow alike, the hard limit comes first, at about 16 GiB each.
 # The runbook's watcher (tools/us_head_to_head_watch.sh) reports memory from
 # the run's log but stops a run only on time or a stall. Placement is
 # non-preemptible: the scorer has no resume, and the runbook's measured
