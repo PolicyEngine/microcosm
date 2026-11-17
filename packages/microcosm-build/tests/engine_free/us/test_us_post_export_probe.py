@@ -556,6 +556,39 @@ def test_the_target_surface_resolves_from_a_build_folder_release_manifest(
     assert probe_tool.resolve_target_surface(None, None, identity)["mode"] == "full"
 
 
+def test_the_target_surface_resolves_from_an_uncertified_builds_record(
+    probe_tool, tmp_path
+) -> None:
+    """A build not yet certified has no manifest; the probe reads its
+    selection from the build_record.json two levels above its release
+    directory (microcosm#1585 item 11, PR 4a). A flag still wins."""
+    selection = {
+        "mode": "national_state",
+        "dropped_congressional_district_targets": 27_148,
+    }
+    release_dir = tmp_path / "out" / "releases" / "microcosm-us-2024-national"
+    release_dir.mkdir(parents=True)
+    assert probe_tool.reference_build_record(release_dir) is None
+    record_path = tmp_path / "out" / "build_record.json"
+    record_path.write_text(
+        json.dumps({"manifest": {"target_surface_selection": selection}})
+    )
+    assert probe_tool.reference_build_record(release_dir) == record_path.resolve()
+    record = json.loads(record_path.read_text())
+
+    assert probe_tool.resolve_target_surface(None, None, None, record) == {
+        "mode": "national_state",
+        "dropped_congressional_district_targets": 27_148,
+        "source": "reference build_record.json manifest.target_surface_selection",
+    }
+    full = {"manifest": {"target_surface_selection": None}}
+    assert probe_tool.resolve_target_surface(None, None, None, full)["mode"] == "full"
+    assert (
+        probe_tool.resolve_target_surface("full", None, None, record)["source"]
+        == "--target-surface"
+    )
+
+
 def test_census_with_a_receipt_is_refused(
     probe_tool, builder, fake_reforms, chain, tmp_path
 ) -> None:

@@ -472,11 +472,12 @@ def launch(
     out: Path,
     release_builder: Callable[[Sequence[str] | None], object] = fiscal_release.main,
 ) -> dict[str, object]:
-    """Validate pins, run the house release path, and write a publish receipt.
+    """Validate pins, build through the house release path, and write a receipt.
 
-    The receipt names the build and its release, the national one, and
-    carries the commands that publish the build and make it current; the
-    launcher runs neither.
+    The release tool builds and stops (microcosm#1585 item 11, PR 4a), so the
+    receipt names the build and its release, the national one, and carries
+    the command that certifies the build, then the commands that publish it
+    and make it current. The launcher runs none of them.
     """
 
     config = _read_config(config_path)
@@ -506,8 +507,11 @@ def launch(
         "artifact_root": str(artifact_root),
         "k": k,
         "seed": config.seed,
-        # Publishing lists the build in the release; promoting, after review,
-        # makes it current. The launcher does neither.
+        # Certifying runs the release's post-export checks and writes the
+        # manifests; publishing then lists the build in the release, and
+        # promoting, after review, makes it current. The launcher does none.
+        "certified": False,
+        "certify_command": fiscal_release._certify_command(resolved_out),
         "automatic_publish": False,
         "makes_current": False,
         "publish_command": commands["publish_command"],

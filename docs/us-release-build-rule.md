@@ -41,11 +41,54 @@ holdout exists and has run.
 
 Publication stays a human step. Since the US repository's switch to
 `releases.json`, the release tool writes each build to
-`<out>/releases/microcosm-us-2024-national/` and prints two commands:
+`<out>/releases/microcosm-us-2024-national/`. It builds and stops; the
+certification step below writes the manifests and prints two commands:
 `microcosm-publish-release-build` publishes the build into its own folder of
 the national release without making it current, and the same command with
 `--promote` makes it the release's current build. Only that promotion makes a
 build the certified default.
+
+## Build, then certify
+
+A US national build and its certification are two steps (microcosm#1585 item
+11, PR 4a), as they are for a UK national cut.
+
+- **The build** (`tools/build_us_fiscal_refresh_release.py`) runs every input
+  stage and the gate after it, the pre-solve gates, target compilation, the
+  solve, the terminal gates and the H5 write, then writes the calibration NPZ
+  and, when asked, runs the export audit. It writes `<out>/build_record.json`
+  and stops, printing the command that certifies it. Nothing it writes is
+  publishable: the release directory holds the calibration diagnostics and the
+  gate evidence, but no manifest.
+- **Certification** (`tools/certify_us_national_build.py <out>`) runs from the
+  record: the reform-coverage smoke, reform validation, demographics and the
+  holdouts on the written H5, then source coverage and take-up participation,
+  then both manifests. It needs the build's directory, a checkout of the
+  build's commit and the engine the build ran on; it needs none of the build's
+  raw inputs.
+- **Why.** On the 30 September and 24 October Route A builds, the work after
+  calibration took 28.3 h of 33.0 h and 52.8 h of 56.5 h
+  (`timing.elapsed_through_calibration_seconds` against
+  `timing.total_build_seconds`). Most of it is the post-export scoring: 41
+  smoke and 55 validation reform passes, each over 177 household batches. A
+  build made to test a change no longer pays for them, and a build that proves
+  itself is certified as it stands, without a rebuild.
+- **The record** pins the H5, the calibration weights and the diagnostics by
+  sha256, with paths relative to itself, so a build directory moved to another
+  machine certifies in place. It holds the options the checks read, the 13
+  gate verdicts the manifests carry, the release gate summary, the calibration
+  losses and in-sample fit, the post-export scoring plan, and the
+  source-coverage and take-up receipts. Certification rebuilds the scoring plan
+  and refuses one that differs from the recorded plan.
+- **Refusals.** Certification refuses a record whose files changed after the
+  build, a checkout at another commit or with changes, and a release directory
+  that already carries a release manifest.
+- **Timing.** Both manifests' `timing` blocks carry `build_seconds` and
+  `certify_seconds`; `total_build_seconds` is their sum.
+- **Drivers.** Route A (`tools/route_a/route_a.sh`) stops after the build with
+  `ROUTE_A_BUILT.json`; `route_a.sh --certify` on the same `RUN_ROOT` certifies
+  that build and runs the release-gate and publisher preflights. The exact-k
+  ladder launcher's receipt carries the command that certifies its build.
 
 ## What stands between main and that build
 
@@ -448,7 +491,9 @@ all 8 authoritative smoke verdicts agree with the full-size build.
 
 `--reference-release-dir` points at a full-size build's release directory:
 `releases/microcosm-us-2024-national/` for a build made since the US switch,
-or `releases/<build id>/` for an earlier one. The probe reads the target
+or `releases/<build id>/` for an earlier one. A build that has not been
+certified works too: it has no manifests, so the probe reads its target
+surface from the `build_record.json` in its `--out` directory. The probe reads the target
 surface selection from the release manifest's top level in the first case and
 from its `build` object in the second, and says which field it read. It
 supplies the build's target surface, QRF register and calibration fit (so

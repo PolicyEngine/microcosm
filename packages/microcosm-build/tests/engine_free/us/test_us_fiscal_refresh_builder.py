@@ -6811,6 +6811,19 @@ def _run_green_register_release(
 
     builder.main()
 
+    # The build stops at its record (microcosm#1585 item 11, PR 4a): its
+    # gate evidence is written, but nothing is publishable until
+    # certification runs the post-export checks and writes the manifests.
+    assert (out / builder.US_BUILD_RECORD_FILENAME).is_file()
+    # The scoring plan's dry run reaches the smoke on a recording seam, but
+    # the build never opens the scorer on the written H5.
+    assert "scorer_opened_on" not in captured
+    assert "holdout_scored" not in captured
+    assert not (release_dir / "build_manifest.json").exists()
+    assert not (release_dir / "release_manifest.json").exists()
+    assert (release_dir / "stored_inputs.json").is_file()
+    builder.certify_main([str(out)])
+
     assert validated == []
     assert captured["terminal_gate_events"] == [
         "input_coverage",
@@ -19822,3 +19835,228 @@ def test_a_build_that_must_send_telemetry_stops_before_any_input_without_an_emit
     assert raised.value.reason == "command_not_found"
     assert builder._ACTIVE_EMITTER is None
     assert not output.exists()
+
+
+# ---------------------------------------------------------------------------
+# Build, then certify (microcosm#1585 item 11, PR 4a): the build ends with its
+# record; certification runs from it.
+# ---------------------------------------------------------------------------
+
+
+def _build_record_fixture(builder, tmp_path: Path) -> tuple[Path, dict]:
+    """A minimal finished build: its three pinned files and its record."""
+
+    release_root = tmp_path / "build"
+    release_dir = release_root / "releases" / builder.US_NATIONAL_RELEASE_ID
+    artifact_root = release_root / "artifacts"
+    release_dir.mkdir(parents=True)
+    artifact_root.mkdir()
+    (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
+    (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
+    (release_dir / "calibration_diagnostics.json").write_text("{}")
+    gate = builder.GateResult(
+        name="target_profile",
+        passed=False,
+        failures=("one target missing",),
+        details={"counts": [1, 2], "share": 0.5},
+    )
+    result = SimpleNamespace(
+        initial_loss=2.0,
+        final_loss=float("nan"),
+        fraction_within_10pct=0.75,
+        diagnostics=[
+            SimpleNamespace(final_estimate=10.0, target=12.0),
+            SimpleNamespace(final_estimate=float("inf"), target=None),
+        ],
+        problem=SimpleNamespace(
+            targets=[SimpleNamespace(name="jct_a"), SimpleNamespace(name="jct_b")]
+        ),
+    )
+    # The engine-bound consumers (the smoke, reform validation and
+    # demographics) skipped, so the scoring plan builds without an engine and
+    # records its batching.
+    args = SimpleNamespace(
+        **{name: name.startswith("skip_") for name in builder.US_BUILD_RECORD_SETTINGS},
+    )
+    args.maximum_microsim_batch_size = 2
+    plan = builder._record_post_export_scoring_plan(
+        args, n_households=5, result=result, release_id="populace-us-2024-test-build"
+    )
+    payload = builder._us_build_record(
+        release_id="populace-us-2024-test-build",
+        release_root=release_root,
+        release_dir=release_dir,
+        artifact_root=artifact_root,
+        dataset_key=builder.DATASET_KEY,
+        dataset_filename=builder.DATASET_FILENAME,
+        calibration_key=builder.CALIBRATION_KEY,
+        calibration_filename=builder.CALIBRATION_FILENAME,
+        commit="c" * 40,
+        args=args,
+        evidence_failure_owner_patterns=(("pattern", "PolicyEngine/microcosm#1"),),
+        terminal_gate_failures=["a recorded failure"],
+        n_households=5,
+        result=result,
+        post_export_scoring_plan=plan,
+        release_gate_failures=["one target missing"],
+        registry=builder._RecordedTargetRegistry(version="v1", n_specs=3),
+        target_surface={"sha256": "s", "n_targets": 3},
+        dropped={"dropped_target_names": []},
+        gates={
+            name: (gate if name == "target_profile_gate" else None)
+            for name in builder.US_BUILD_RECORD_GATES
+        },
+        warm_start_calibration=None,
+        selection_source=None,
+        target_surface_selection=None,
+        ledger_artifact={"facts_sha256": "f"},
+        default_dataset=None,
+        medicaid_enrollment_substitutions=(),
+        exact_k_ladder=None,
+        base_pool=None,
+        acs_predictor_join=None,
+        export_input_mass_reference=None,
+        calibration_runtime=None,
+        diagnostics_outcome=builder.DiagnosticsWriteSuccess(
+            status="available",
+            path=release_dir / "calibration_diagnostics.json",
+            schema_version=builder.CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+            sha256=builder._sha256(release_dir / "calibration_diagnostics.json"),
+        ),
+        scf_wealth_signal=None,
+        fiscal_target_sources=[],
+        congressional_district_vintage_crosswalk=None,
+        fiscal_target_exclusion_receipt={"rules": []},
+        fsa_target_receipt=None,
+        take_up_participation={"programs": []},
+        medicaid_take_up_diagnostics={"states": []},
+        snap_state_take_up_diagnostics={"states": []},
+        timing={"calibration_seconds": 1.0, "build_seconds": 3.0},
+        staging={"enabled": False, "reason": "--no-staging"},
+    )
+    path = builder._write_us_build_record(release_root, payload)
+    return path, payload
+
+
+def test_the_build_record_carries_what_certification_reads(tmp_path: Path) -> None:
+    import math
+
+    builder = _load_builder_module()
+    path, payload = _build_record_fixture(builder, tmp_path)
+
+    assert path == tmp_path / "build" / builder.US_BUILD_RECORD_FILENAME
+    # Strict JSON: a non-finite loss is recorded by name, never as NaN.
+    text = path.read_text()
+    assert "NaN" not in text and "Infinity" not in text
+    assert (
+        payload["files"]["dataset"]["path"] == "artifacts/" + builder.DATASET_FILENAME
+    )
+    record = builder._read_us_build_record(path)
+    result = record.calibration_result()
+    assert result.initial_loss == 2.0
+    assert math.isnan(result.final_loss)
+    # The in-sample consumers read the same estimates and targets the build's
+    # calibration result gave, non-finite values dropped.
+    assert builder._in_sample_estimates(result) == {"jct_a": 10.0}
+    assert builder._in_sample_targets(result) == {"jct_a": 12.0}
+    gates = record.gates()
+    assert gates["target_profile_gate"] == builder.GateResult(
+        name="target_profile",
+        passed=False,
+        failures=("one target missing",),
+        details={"counts": [1, 2], "share": 0.5},
+    )
+    assert gates["health_input_gate"] is None
+    assert len(record.registry_summary()) == 3
+    assert (
+        record.diagnostics_outcome().sha256
+        == payload["manifest"]["diagnostics_outcome"]["sha256"]
+    )
+    assert record.evidence_failure_owner_patterns == (
+        ("pattern", "PolicyEngine/microcosm#1"),
+    )
+    assert record.terminal_gate_failures == ("a recorded failure",)
+    assert record.certify_args().maximum_microsim_batch_size == 2
+
+
+def test_a_moved_build_certifies_in_place(tmp_path: Path) -> None:
+    """Paths are relative to the record, so a copied build directory reads."""
+    builder = _load_builder_module()
+    path, _ = _build_record_fixture(builder, tmp_path)
+    moved = tmp_path / "elsewhere"
+    path.parent.rename(moved)
+
+    record = builder._read_us_build_record(moved / builder.US_BUILD_RECORD_FILENAME)
+
+    assert record.release_root == moved.resolve()
+    assert record.artifact_root == moved.resolve() / "artifacts"
+
+
+@pytest.mark.parametrize(
+    "role",
+    ["dataset", "calibration_weights", "calibration_diagnostics"],
+)
+def test_certification_refuses_a_build_whose_files_changed(
+    tmp_path: Path, role: str
+) -> None:
+    builder = _load_builder_module()
+    path, payload = _build_record_fixture(builder, tmp_path)
+    (path.parent / payload["files"][role]["path"]).write_bytes(b"changed")
+
+    with pytest.raises(RuntimeError, match=f"its {role} file .* hashes to"):
+        builder._read_us_build_record(path)
+
+
+def test_certification_refuses_a_record_it_cannot_read(tmp_path: Path) -> None:
+    builder = _load_builder_module()
+    path, payload = _build_record_fixture(builder, tmp_path)
+    path.write_text(json.dumps({**payload, "schema_version": 99}))
+    with pytest.raises(RuntimeError, match="schema 99"):
+        builder._read_us_build_record(path)
+    path.write_text(json.dumps({**payload, "kind": "another"}))
+    with pytest.raises(RuntimeError, match="not a US national build record"):
+        builder._read_us_build_record(path)
+
+
+def test_certification_refuses_a_changed_scoring_plan(tmp_path: Path) -> None:
+    builder = _load_builder_module()
+    path, payload = _build_record_fixture(builder, tmp_path)
+    record = builder._read_us_build_record(path)
+    args = record.certify_args()
+    args.maximum_microsim_batch_size = 3  # another batching than the build's
+
+    with pytest.raises(RuntimeError, match="differs from the one the build recorded"):
+        record.post_export_scoring_plan(args, result=record.calibration_result())
+
+
+def test_certify_main_refuses_another_commit_and_a_certified_build(
+    tmp_path: Path, monkeypatch
+) -> None:
+    builder = _load_builder_module()
+    path, _ = _build_record_fixture(builder, tmp_path)
+    monkeypatch.setattr(builder, "_git_dirty", lambda: False)
+    certified: list[object] = []
+    monkeypatch.setattr(builder, "_certify_us_build", certified.append)
+
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "d" * 40)
+    with pytest.raises(SystemExit, match="certify it from a checkout of that commit"):
+        builder.certify_main([str(path.parent)])
+
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "c" * 40)
+    monkeypatch.setattr(builder, "_git_dirty", lambda: True)
+    with pytest.raises(SystemExit, match="dirty git worktree"):
+        builder.certify_main([str(path.parent)])
+
+    monkeypatch.setattr(builder, "_git_dirty", lambda: False)
+    release_dir = path.parent / "releases" / builder.US_NATIONAL_RELEASE_ID
+    (release_dir / "release_manifest.json").write_text("{}")
+    with pytest.raises(RuntimeError, match="already carries a certified release"):
+        builder.certify_main([str(path.parent)])
+    assert certified == []
+
+    # An earlier certification's outputs are cleared before a rerun.
+    (release_dir / "release_manifest.json").unlink()
+    (release_dir / "reform_coverage_smoke.json").write_text('{"stale": true}')
+    builder.certify_main([str(path.parent)])
+    assert len(certified) == 1
+    assert not (release_dir / "reform_coverage_smoke.json").exists()

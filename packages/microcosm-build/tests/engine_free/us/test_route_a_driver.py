@@ -1176,3 +1176,44 @@ def test_route_a_hands_over_the_emitter_publication_commands() -> None:
     assert (
         f'shlex.join({command}, "--repo-id", "policyengine/populace-us", "--promote"])'
     ) in source
+
+
+def test_route_a_stops_after_the_build_and_certifies_only_when_asked() -> None:
+    """The release tool builds and stops; the driver hands the build over
+    unless --certify (or ROUTE_A_CERTIFY=1) asks it to certify it, which reruns
+    no accepted stage (microcosm#1585 item 11, PR 4a)."""
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+
+    assert "--certify) CERTIFY_FLAG=1 ;;" in source
+    assert ': "${ROUTE_A_CERTIFY=0}"' in source
+    assert 'case "$ROUTE_A_CERTIFY" in 0|1)' in source
+    built = source.index('[ -f "$REL_OUT/build_record.json" ]')
+    handoff = source.index('if [ "$ROUTE_A_CERTIFY" != 1 ]; then')
+    certify = source.index("run_stage certify 0")
+    certified = source.index('[ -f "$REL_DIR/release_manifest.json" ]')
+    preflight = source.index("run_stage preflight-release")
+    assert built < handoff < certify < certified < preflight
+    assert '"$RUN_ROOT/ROUTE_A_BUILT.json"' in source
+    # Certification publishes nothing, so it runs without credentials.
+    assert (
+        '"${NOSECRETS[@]}" "$W/.venv/bin/python" -B '
+        'tools/certify_us_national_build.py "$REL_OUT"'
+    ) in source
+
+
+@pytest.mark.parametrize("flag", ["--certify", "--resolve"])
+def test_route_a_parses_its_modes_before_reading_settings(
+    tmp_path: Path, flag: str
+) -> None:
+    script = ROUTE_A_TOOLS / "route_a.sh"
+    env = {**os.environ, "ROUTE_A_ENV": str(tmp_path / "absent.env")}
+    known = subprocess.run(
+        ["bash", str(script), flag], capture_output=True, env=env, timeout=20
+    )
+    assert known.returncode == 64
+    assert b"missing settings" in known.stderr
+    unknown = subprocess.run(
+        ["bash", str(script), "--bogus"], capture_output=True, env=env, timeout=20
+    )
+    assert unknown.returncode == 64
+    assert b"[--resolve|--certify]" in unknown.stderr

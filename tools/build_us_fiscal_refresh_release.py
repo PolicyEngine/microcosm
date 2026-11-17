@@ -9,11 +9,18 @@ Each run is one build of a release in ``policyengine/populace-us``
 (microcosm#1570): a certified or exact-k build of the national release,
 ``microcosm-us-2024-national``, or an evidence-tier build of the evidence
 release, ``microcosm-us-2024-evidence``. The release directory is
-``<out>/releases/<release>/``; both manifests name the release and the build
-(the ``populace-us-2024-…`` build ID) in the build-folder layout; the run
-checks the directory against its tier's release contract and prints the
-``microcosm-publish-release-build`` commands that publish the build into its
-own folder of the release and then make it the release's current build.
+``<out>/releases/<release>/``.
+
+The run builds and stops (microcosm#1585 item 11, PR 4a): once the H5, the
+calibration weights, the diagnostics and the build's gate evidence are
+written, it writes ``<out>/build_record.json`` and prints the command that
+certifies the build, so the build can be evaluated first. Nothing it writes
+is publishable. ``tools/certify_us_national_build.py`` certifies it: the
+release's post-export checks on the written H5, then both manifests, which
+name the release and the build (the ``populace-us-2024-…`` build ID) in the
+build-folder layout, and the ``microcosm-publish-release-build`` commands
+that publish the build into its own folder of the release and then make it
+the release's current build.
 """
 
 from __future__ import annotations
@@ -47,6 +54,7 @@ import json
 import math
 import platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -13997,11 +14005,7 @@ def _certify_us_build(
         ledger_artifact=inputs["ledger_artifact"],
         default_dataset=default_dataset,
         medicaid_enrollment_substitutions=medicaid_enrollment_substitutions,
-        staging=(
-            _staging_manifest_block(telemetry)
-            if telemetry is not None
-            else record.staging
-        ),
+        staging=record.staging,
         dataset_key=dataset_key,
         dataset_filename=dataset_filename,
         calibration_key=calibration_key,
@@ -14043,6 +14047,121 @@ def _certify_us_build(
         release_dir=release_dir,
         artifact_root=artifact_root,
         publication=publication,
+    )
+
+
+#: Files certification writes into the release directory, beside the
+#: manifests. A rerun after a failed certification removes them first, so a
+#: check this run skips cannot leave an earlier attempt's verdict behind.
+US_CERTIFICATION_OUTPUT_FILES = (
+    "reform_coverage_smoke.json",
+    "reform_validation.json",
+    "demographics.json",
+    "us_ssi_social_security_holdout.json",
+    "us_medicare_irmaa_holdout.json",
+    "us_population_structure_holdout.json",
+    "us_source_coverage.json",
+    "us_take_up_participation.json",
+    "us_medicaid_take_up.json",
+    "us_snap_state_take_up.json",
+    "build_manifest.json",
+)
+
+
+def _certify_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="certify_us_national_build.py",
+        description=(
+            "Certify a finished US national build: run the release's "
+            "post-export checks (the reform-coverage smoke, reform validation, "
+            "demographics and the holdouts) on its written H5 and write the "
+            "manifests that microcosm-publish-release-build requires. The "
+            "build is the --out directory of "
+            "tools/build_us_fiscal_refresh_release.py, which holds "
+            f"{US_BUILD_RECORD_FILENAME}."
+        ),
+    )
+    parser.add_argument(
+        "build_dir",
+        type=Path,
+        help=f"The build's --out directory, holding {US_BUILD_RECORD_FILENAME}.",
+    )
+    return parser
+
+
+def certify_main(argv: Sequence[str] | None = None) -> None:
+    """Certify a finished build from its record (microcosm#1585 item 11, PR 4a).
+
+    Certification runs at the commit the build was built at, from a clean
+    worktree, so the checks and the manifests are the build's own code. A
+    build whose release directory already carries a release manifest is
+    refused: a certified build is never changed.
+    """
+
+    args = _certify_parser().parse_args(argv)
+    record = _read_us_build_record(args.build_dir / US_BUILD_RECORD_FILENAME)
+    if _git_dirty():
+        raise SystemExit("Refusing to certify a build from a dirty git worktree.")
+    head = _git_output("rev-parse", "HEAD")
+    if head != record.commit:
+        raise SystemExit(
+            f"Build {record.build} was built at {record.commit}; certify it "
+            f"from a checkout of that commit, not {head}."
+        )
+    _refuse_certified_release_dir_reuse(record.release_dir)
+    for name in US_CERTIFICATION_OUTPUT_FILES:
+        (record.release_dir / name).unlink(missing_ok=True)
+    _certify_us_build(record)
+
+
+def _certify_command(release_root: Path) -> str:
+    """The command that certifies the build in ``release_root``."""
+    return shlex.join(
+        [
+            "uv",
+            "run",
+            "--no-sync",
+            "python",
+            "tools/certify_us_national_build.py",
+            str(release_root),
+        ]
+    )
+
+
+def _print_built_result(
+    *,
+    build: str,
+    release_root: Path,
+    release_dir: Path,
+    artifact_root: Path,
+    build_record: Path,
+) -> None:
+    """Print the finished build and the command that certifies it.
+
+    A build is not publishable until it is certified: certification runs the
+    release's post-export checks on the written H5 and writes the manifests
+    ``microcosm-publish-release-build`` requires (microcosm#1585 item 11, PR
+    4a).
+    """
+    print(
+        json.dumps(
+            {
+                "release": release_dir.name,
+                "build": build,
+                "certified": False,
+                "build_record": str(build_record),
+                "release_dir": str(release_dir),
+                "artifact_root": str(artifact_root),
+                "certify_command": _certify_command(release_root),
+                "next": (
+                    "The build is written and checked; it is not publishable "
+                    "until certify_command has run the release's post-export "
+                    "checks and written its manifests."
+                ),
+            },
+            indent=2,
+            sort_keys=True,
+        )
     )
 
 
@@ -17873,7 +17992,16 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             staging=_staging_manifest_block(telemetry),
         ),
     )
-    _certify_us_build(_read_us_build_record(build_record_path), telemetry=telemetry)
+    if telemetry is not None:
+        telemetry.attach_artifact("build_record", build_record_path)
+        telemetry.complete()
+    _print_built_result(
+        build=release_id,
+        release_root=release_root,
+        release_dir=release_dir,
+        artifact_root=artifact_root,
+        build_record=build_record_path,
+    )
 
 
 if __name__ == "__main__":

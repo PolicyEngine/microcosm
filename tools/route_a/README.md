@@ -1,10 +1,19 @@
 # Route A release driver
 
-`route_a.sh` builds a US PUF-support base, builds a fiscal-refresh release
-candidate from that base, a build of `microcosm-us-2024-national`, runs
-`preflight_us_release_gates.py` twice and runs `microcosm-publish-release-build`
-with `--preflight-only`. It leaves a hand-off with `published: false`.
-Publication remains a separate manual step that Max authorizes.
+`route_a.sh` builds a US PUF-support base, then a fiscal-refresh release
+build from that base, a build of `microcosm-us-2024-national`, and stops. The
+build is written and checked by its own gates, but it is not publishable: the
+run ends with `ROUTE_A_BUILT.json`, so the build can be evaluated first
+(microcosm#1585 item 11, PR 4a).
+
+`route_a.sh --certify` (or `ROUTE_A_CERTIFY=1`) on the same `RUN_ROOT` skips
+the accepted stages and certifies that build with
+`tools/certify_us_national_build.py`, which runs the release's post-export
+checks on the written H5 and writes the manifests publication requires. It then
+runs `preflight_us_release_gates.py` against the release manifest and
+`microcosm-publish-release-build` with `--preflight-only`, and leaves a hand-off
+with `published: false`. Publication remains a separate manual step that Max
+authorizes.
 
 The driver, `supervise.py`, `sample_series.py`, `check_flags.py` and
 `with_hf_token.sh` live together here. The driver, supervisor and sampler
@@ -138,7 +147,8 @@ overnight chain is alive, unless `EARLY_START_AFTER_HEAVY=1` and its log records
 | `prefetch` | Fetches the ASEC unemployment archive, SCF summary/full extracts, SIPP financial-assets/tips donors and ORG donor through the release's fetch helpers. Exit 0 is required before release. An initial failure lets the base proceed; release retries it. |
 | `base` | Runs `build_us_puf_support_base.py --stage all` on the pinned raw inputs, with seed 0, 32 estimators, target year 2024, district assignment/crosswalk and block ladder. Requires exit 0 and the expected H5, then hashes it. |
 | `preflight-base` | Runs `preflight_us_release_gates.py` on that H5 and the pinned feed, with the configured new-lineage mode and optional export-mass reference. Accepts 0 (clean) or 2 (AT-RISK); `RELEASE_DESPITE_PREFLIGHT_FAIL=1` also accepts 1 here. |
-| `release` | Runs `build_us_fiscal_refresh_release.py --base-h5` with the feed, SSI basis, SCF extract and configured release arguments; its `--release-id` is the build ID. Requires exit 0 and `<release-out>/releases/microcosm-us-2024-national/release_manifest.json`. Staging telemetry is enabled for this stage. |
+| `release` | Runs `build_us_fiscal_refresh_release.py --base-h5` with the feed, SSI basis, SCF extract and configured release arguments; its `--release-id` is the build ID. Requires exit 0 and `<release-out>/build_record.json`. Staging telemetry is enabled for this stage. Without `--certify` the run ends here with `ROUTE_A_BUILT.json`. |
+| `certify` | With `--certify` only: runs `tools/certify_us_national_build.py <release-out>` without credentials. Requires exit 0 and `<release-out>/releases/microcosm-us-2024-national/release_manifest.json`. |
 | `preflight-release` | Repeats the release-gate preflight with the candidate's release manifest. Accepts 0 or 2. |
 | `publisher-preflight` | Runs `microcosm-publish-release-build --preflight-only` against the release directory, `<release-out>/releases/microcosm-us-2024-national`, where a national run writes its build, and the artifacts. Requires exit 0. The command checks the build with its release contract, prints what it would publish, and starts no emitter. It takes no `--extra-file`: the command publishes every artifact the release manifest lists, including the two SCF education-debt fit tables of a release run with `--scf-education-debt` in `RELEASE_EXTRA_ARGS`. |
 
@@ -157,6 +167,7 @@ Every stage runs through the supervisor's admission check and limits:
 | base | 100 | 80 | max(26, 70 − checkpoint GiB) | 21600 | 64800 |
 | gate preflights | 24 | 16 | 22 | 3600 | 7200 |
 | release | 110 | `RELEASE_RAM_GIB` (example: 50) | 45 | `RELEASE_WALL_SECONDS` (example: 345600) | 2000000 |
+| certify | 110 | `RELEASE_RAM_GIB` (example: 50) | 45 | `CERTIFY_WALL_SECONDS` (default: 345600) | 2000000 |
 | publisher preflight | 24 | 16 | 22 | 7200 | 14400 |
 
 The driver waits up to `RESOURCE_WAIT_HOURS` (example: 12) for admission and
@@ -180,7 +191,11 @@ is waited for, and failed/refused directories are moved aside. Base stages
 resume by completed checkpoint prefix. Failed release attempts get a new
 release ID while retaining the shared checkpoint root. With
 `PRUNE_BASE_CHECKPOINTS=1`, base `*.frame.h5` files are removed after hashing the
-finished H5. The hand-off file written at the end (`ROUTE_A_DONE.json` or
+finished H5. A run without `--certify` ends with `ROUTE_A_BUILT.json`, which
+records the build, its directory and record and the base preflight's verdict,
+and says how to certify it. A failed certification is its own stage, so a
+rerun with `--certify` repeats only it, never the build. After certification
+the hand-off file written at the end (`ROUTE_A_DONE.json` or
 `ROUTE_A_BLOCKED.json`) records the candidate paths and preflight verdicts,
 plus two manual commands the driver never runs: `publish_command` publishes
 the build through the emitter into its folder of `microcosm-us-2024-national`,
