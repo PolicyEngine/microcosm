@@ -27,7 +27,7 @@
     "minimum_price": 1000.0,
     "property_type": "additional_residential",
     "transactions": 16.90045717674061,
-    "value": 110879.00816586985
+    "value": 110348.07288068293
   },
   "derivation": {},
   "non_residential": {
@@ -57,7 +57,7 @@
     ],
     "minimum_price": 1000.0,
     "property_type": "non_residential",
-    "transactions": 8.080683696683979,
-    "value": 106646.6475644002
+    "transactions": 8.080683696683977,
+    "value": 106435.31500187318
   }
 }
