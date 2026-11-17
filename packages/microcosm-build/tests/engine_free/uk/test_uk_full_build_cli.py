@@ -4345,19 +4345,32 @@ def test_inspection_export_swaps_only_the_export_node():
 
 
 def test_inspection_kernel_describes_past_a_gate_block_only_when_requested(monkeypatch):
+    from unittest import mock
+
     from microcosm.build.uk_runtime import inspection_export
 
     monkeypatch.setattr(inspection_export, "context_frame", lambda context: "frame")
+    # The stand-in keeps the description's own signature, so a call without
+    # an argument it requires, the solve year among them, fails here as it
+    # would on the real one.
+    describe = mock.create_autospec(
+        inspection_export.graph_terminal.describe_uk_export,
+        side_effect=lambda frame, *, bindings, solve_year: {
+            "frame": frame,
+            "bindings": bindings,
+            "solve_year": solve_year,
+        },
+    )
     monkeypatch.setattr(
-        inspection_export.graph_terminal,
-        "describe_uk_export",
-        lambda frame, *, bindings: {"frame": frame, "bindings": bindings},
+        inspection_export.graph_terminal, "describe_uk_export", describe
     )
     kernel = inspection_export.UKInspectionExportPrepareKernel()
     gate = SimpleNamespace(key="g" * 64)
 
     def context(params):
-        return SimpleNamespace(params=params, artifacts={"full_gates": gate})
+        return SimpleNamespace(
+            params={"solve_year": 2025, **params}, artifacts={"full_gates": gate}
+        )
 
     result = kernel.run(
         context({"bindings": '{"inspection_export":true}', "inspection_export": True})
@@ -4365,6 +4378,8 @@ def test_inspection_kernel_describes_past_a_gate_block_only_when_requested(monke
     descriptor = json.loads(result.artifacts["export_descriptor"])
     assert descriptor["bindings"]["inspection_export"] is True
     assert descriptor["bindings"]["artifacts"] == {"full_gates": "g" * 64}
+    # The node's solve year, as the export kernel passes it.
+    assert descriptor["solve_year"] == 2025
     with pytest.raises(ValueError, match="requires inspection_export"):
         kernel.run(context({"bindings": '{"inspection_export":true}'}))
     with pytest.raises(ValueError, match="must record inspection_export"):
