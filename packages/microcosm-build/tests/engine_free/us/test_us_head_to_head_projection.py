@@ -894,6 +894,61 @@ def test_a_start_lost_in_a_hole_holds_a_time_no_go_until_every_worker_starts() -
     assert report["verdict"] == "WAIT" and "candidate" in report["log_gap"]
 
 
+def test_the_hold_reaches_pools_a_hole_could_cut_and_a_stall_still_stops() -> None:
+    # A pool's start lines can be lost only in a hole that ends once the pool
+    # opened and begins before its release line, and a released pool's starts
+    # matter only while they still set the candidate's start cost. In this
+    # pool the incumbent logs 8 starts for 9 workers and releases at +1,957 s;
+    # the candidate opens at +2,017 s and logs its first start at +2,138 s.
+    # Each restart here loses nothing.
+    run = _run(
+        workers=9,
+        incumbent_seconds=[224],
+        candidate_seconds=[43],
+        incumbent_slices=15,
+        candidate_slices=30,
+        start_cost=121,
+        first_slice_extra=165,
+    )
+    limits = _limits(workers=9, max_wall_seconds=4007, prior=_prior(run))
+
+    def judge(cut: int, poll: int, log_until: int | None = None) -> dict:
+        at = START + poll
+        log = run.log(START + (log_until or poll))
+        offsets = [_offset(line) for line in log]
+        streams = [
+            [
+                line
+                for line, t in zip(log, offsets, strict=True)
+                if t is None or t < cut
+            ],
+            [
+                line
+                for line, t in zip(log, offsets, strict=True)
+                if t is not None and t >= cut
+            ],
+        ]
+        assert sum(map(len, streams)) == len(log)
+        report = projection.project(projection.parse_logs(streams), limits, at)
+        assert len(report["stream_holes"]) == 1
+        return report
+
+    # A restart after the incumbent's release line cannot have cut its starts.
+    assert judge(2000, 2100)["starts_unconfirmed"] == {"candidate": "0 of 9"}
+    # One inside the incumbent's pool holds it until the candidate starts.
+    assert judge(1500, 2100)["starts_unconfirmed"] == {"incumbent": "8 of 9"}
+    report = judge(1500, 2200)
+    assert "starts_unconfirmed" not in report and report["verdict"] == "GO"
+    # The hold acts on the time line only: when the log stops after a
+    # restart, the estimate climbs past the budget and waits, and the stall
+    # check stops the run once no record has come for its 3,600 s floor.
+    held = judge(2000, 2138 + 3600, log_until=2200)
+    assert held["verdict"] == "WAIT" and held["starts_unconfirmed"]
+    stalled = judge(2000, 2138 + 3601, log_until=2200)
+    assert stalled["verdict"] == "NO-GO" and stalled["starts_unconfirmed"]
+    assert stalled["reasons"][0].startswith("stall:")
+
+
 def test_a_lossless_restart_reads_as_the_intact_log_and_holds_only_a_no_go() -> None:
     # Review r6 (Sol, S1): the d844 shape with the first worker start of each
     # pool taking 100 s and every later one 320 s, and a stream that restarts

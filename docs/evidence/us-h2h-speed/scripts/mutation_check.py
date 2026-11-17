@@ -98,7 +98,7 @@ MUTATIONS = {
         "            while False:\n",
     ),
     "candidate starts count only after its first slice": (
-        "        return Timing({}, {}, [], _start_cost(history, holes), list(history.notes))\n",
+        "        return Timing({}, {}, [], _start_cost(history), list(history.notes))\n",
         "        return Timing({}, {}, [], None, list(history.notes))\n",
     ),
     "an overdue running slice ends now": (
@@ -153,14 +153,6 @@ MUTATIONS = {
         "            if tasks:\n",
         "            if False:\n",
     ),
-    "a start whose span holds a hole counts toward the start cost": (
-        "        if not any(began <= start and ended >= end for start, end in holes)\n",
-        "        if True\n",
-    ),
-    "the estimate is not told where the holes are": (
-        "        estimate, notes, why = _estimate(incumbent, candidate, limits, now, holes)\n",
-        "        estimate, notes, why = _estimate(incumbent, candidate, limits, now)\n",
-    ),
     "a newest stream with nothing in it yet is no hole": (
         "    reopened = len(kept) > 1 and not kept[-1] and any(kept[:-1])\n",
         "    reopened = False\n",
@@ -179,10 +171,6 @@ MUTATIONS = {
         "    hole_end = holes[-1][1] if holes else None\n",
         "    hole_end = holes[-1][0] if holes else None\n",
     ),
-    "a start under way across a hole is no suspect": (
-        "        if starting:\n",
-        "        if False:\n",
-    ),
     "an empty newest stream holds nothing": (
         '        report["newest_stream_empty"] = True\n        waiting.append(\n',
         '        report["newest_stream_empty"] = True\n        [].append(\n',
@@ -191,17 +179,37 @@ MUTATIONS = {
         "    stall = None if reopened else _stall(seen, candidate, slowest, limits, now)\n",
         "    stall = _stall(seen, candidate, slowest, limits, now)\n",
     ),
-    "after a hole the estimate is taken to read exact": (
-        '    margin = _hole_margin(histories, holes, estimate["start_seconds"]) if holes else 0.0\n',
-        "    margin = 0.0\n",
+    "a hole never leaves a pool's starts unconfirmed": (
+        "        and len(pool.inits) < workers\n",
+        "        and False\n",
     ),
-    "a hole that held several start lines reads late by one start": (
-        "    return max([across, *costs])\n",
-        "    return max(costs, default=0.0)\n",
+    "the hold lifts a start before every worker has logged one": (
+        "        and len(pool.inits) < workers\n",
+        "        and len(pool.inits) < workers - 1\n",
     ),
-    "the start cost is the clear starts' mean even when it is more": (
-        "    return min(sum(clear) / len(clear), sum(every) / len(every))\n",
-        "    return sum(clear) / len(clear)\n",
+    "a hole that ended before a pool opened holds it": (
+        "            end >= pool.opened and (released[name] is None or start < released[name])\n",
+        "            (released[name] is None or start < released[name])\n",
+    ),
+    "a hole that began after a pool released holds it": (
+        "            end >= pool.opened and (released[name] is None or start < released[name])\n",
+        "            end >= pool.opened\n",
+    ),
+    "a released incumbent stays held after the candidate's first start": (
+        '        and (released[name] is None or (name == "incumbent" and not candidate.inits))\n',
+        '        and (released[name] is None or name == "incumbent")\n',
+    ),
+    "unconfirmed starts hold no NO-GO": (
+        "    if end > time_line and unconfirmed:\n",
+        "    if end > time_line and False:\n",
+    ),
+    "the hold also holds a stall": (
+        "    if stall:\n        reasons.append(stall)\n",
+        "    if stall and not held:\n        reasons.append(stall)\n",
+    ),
+    "the start cost is the slowest logged start, not the mean": (
+        "    return sum(costs) / len(costs) if costs else None\n",
+        "    return max(costs) if costs else None\n",
     ),
     "a stream beginning in the second the log reached adds that second up": (
         "            best[text] = max(best.get(text, 0), count)\n",
