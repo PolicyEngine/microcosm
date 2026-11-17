@@ -17,26 +17,16 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from importlib.resources import files
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import (
     sample_categorical_from_counts,
     stable_identity_uniforms,
 )
-from microcosm.build.uk_runtime.national_frame import (
-    uk_household_weight_kind,
-    uk_national_frame,
-    uk_time_period,
-    validate_uk_national_frame,
-)
-from microcosm.frame import Frame
-from microcosm.frame.rules import assert_rules_engine_country
 
 FRS_BRMA_OUTPUT_COLUMNS = ("brma",)
 UK_BRMA_PREDICTORS = ("LHA_category",)
@@ -50,67 +40,10 @@ UK_BRMA_BENUNIT_SALT = "brma"
 UK_BRMA_HOUSEHOLD_PICK_SALT = "brma:household_pick"
 
 
-@dataclass(frozen=True)
-class UKFRSBRMAStageTransform:
-    """Whole-stage callable for UK household BRMA assignment."""
-
-    stage: SourceStageSpec
-    engine: object
-    count_resource: Mapping[str, Any] | None = None
-
-    def __call__(self, frame: Frame) -> Frame:
-        assert_rules_engine_country(self.engine, "uk")
-        materialized = self.engine.materialize(
-            frame, UK_BRMA_PREDICTORS, uk_time_period(frame)
-        )
-        resource = (
-            self.count_resource
-            if self.count_resource is not None
-            else load_brma_count_resource()
-        )
-        return add_frs_brma(
-            frame, lha_category=materialized["LHA_category"], count_resource=resource
-        )
-
-    @staticmethod
-    def output_columns() -> tuple[str, ...]:
-        return FRS_BRMA_OUTPUT_COLUMNS
-
-
 def load_brma_count_resource() -> Mapping[str, Any]:
     return json.loads(
         files("microcosm.build.uk").joinpath(UK_BRMA_COUNT_RESOURCE).read_text()
     )
-
-
-def add_frs_brma(
-    frame: Frame,
-    *,
-    lha_category: Sequence[object],
-    count_resource: Mapping[str, Any],
-) -> Frame:
-    person = frame.table("person").copy()
-    benunit = frame.table("benunit").copy()
-    household = frame.table("household").copy()
-    household["brma"] = draw_household_brmas(
-        person,
-        benunit,
-        household,
-        lha_category=lha_category,
-        count_resource=count_resource,
-        seed=UK_BRMA_DECLARED_SEEDS["brma"],
-    )
-    result = uk_national_frame(
-        person=person,
-        benunit=benunit,
-        household=household,
-        time_period=uk_time_period(frame),
-        weight_kind=uk_household_weight_kind(frame),
-        household_weights=frame.weights_for("household").values,
-        mass_log=frame.mass_log,
-    )
-    validate_uk_national_frame(result)
-    return result
 
 
 def draw_household_brmas(

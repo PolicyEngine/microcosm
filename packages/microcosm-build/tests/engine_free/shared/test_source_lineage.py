@@ -13,7 +13,6 @@ from microcosm.build.source_lineage import (
     CopyBranch,
     CopyLineage,
     ReplicaFold,
-    collapse_replicas,
     copy_paths,
     fold_replicas,
     record_sources,
@@ -243,31 +242,30 @@ def test_replica_keys_are_shared_by_placed_clones_alone() -> None:
         replica_keys(tables, SCHEMA, "unit", LINEAGE, merge=("elsewhere",))
 
 
-def test_collapse_keeps_each_records_first_row_with_its_summed_weight() -> None:
+def test_the_fold_keeps_each_records_first_row_with_its_summed_weight() -> None:
     keys = np.asarray(["a", "b", "a", "c", "b", "a"], dtype=object)
     rows = np.asarray([True, True, True, False, True, True])
     weights = np.asarray([0.1, 0.2, 0.2, 9.0, 0.3, 0.7])
-    kept, summed = collapse_replicas(keys, rows, weights)
+    fold = fold_replicas(keys, rows, weights)
+    kept, summed = fold.kept, fold.weights
     assert kept.tolist() == [True, True, False, False, False, False]
     # Exact sums, whatever the order: 0.1 + 0.2 + 0.7 rounds once.
     assert summed[0] == 1.0 and summed[1] == 0.5
     assert summed[3] == 9.0
     order = np.asarray([5, 4, 3, 2, 1, 0])
-    reversed_kept, reversed_summed = collapse_replicas(
-        keys[order], rows[order], weights[order]
-    )
-    assert reversed_summed[reversed_kept].tolist() == [1.0, 0.5]
+    reversed_fold = fold_replicas(keys[order], rows[order], weights[order])
+    assert reversed_fold.weights[reversed_fold.kept].tolist() == [1.0, 0.5]
 
 
 def test_a_selection_without_replicas_keeps_its_rows_and_weights() -> None:
     keys = np.asarray(["a", "b", "a"], dtype=object)
     rows = np.asarray([True, True, False])
     weights = np.asarray([0.1, 0.2, 0.3])
-    kept, summed = collapse_replicas(keys, rows, weights)
-    assert kept.tolist() == rows.tolist()
-    assert summed.tobytes() == weights.tobytes()
+    fold = fold_replicas(keys, rows, weights)
+    assert fold.kept.tolist() == rows.tolist()
+    assert fold.weights.tobytes() == weights.tobytes()
     with pytest.raises(ValueError, match="align"):
-        collapse_replicas(keys, rows[:2], weights)
+        fold_replicas(keys, rows[:2], weights)
 
 
 def test_replicas_fold_only_where_they_agree_on_the_inputs() -> None:
@@ -283,7 +281,8 @@ def test_replicas_fold_only_where_they_agree_on_the_inputs() -> None:
             "band": pd.Categorical(["x", "x", "x", "x", "y", "y"]),
         }
     )
-    kept, summed = collapse_replicas(keys, rows, weights, inputs=inputs)
+    fold = fold_replicas(keys, rows, weights, inputs=inputs)
+    kept, summed = fold.kept, fold.weights
     # a holds three variants (3.0 twice, 0.0, missing); b agrees and folds.
     assert kept.tolist() == [True, True, False, True, True, False]
     assert summed[kept].tolist() == [
@@ -296,20 +295,20 @@ def test_replicas_fold_only_where_they_agree_on_the_inputs() -> None:
     assert np.isclose(summed[kept][:3].sum(), 1.0)
     # A missing value agrees only with a missing value.
     both_missing = inputs.assign(income=[np.nan, np.nan, 3.0, 3.0, 7.0, 7.0])
-    kept, _ = collapse_replicas(keys, rows, weights, inputs=both_missing)
-    assert kept.tolist() == [True, False, True, False, True, False]
+    fold = fold_replicas(keys, rows, weights, inputs=both_missing)
+    assert fold.kept.tolist() == [True, False, True, False, True, False]
 
 
 def test_agreeing_inputs_fold_as_the_keys_alone_do() -> None:
     keys = np.asarray(["a", "b", "a", "c", "b", "a"], dtype=object)
     rows = np.asarray([True, True, True, False, True, True])
     weights = np.asarray([0.1, 0.2, 0.2, 9.0, 0.3, 0.7])
-    alone = collapse_replicas(keys, rows, weights)
-    agreeing = collapse_replicas(
+    alone = fold_replicas(keys, rows, weights)
+    agreeing = fold_replicas(
         keys, rows, weights, inputs=pd.DataFrame({"value": np.ones(6)})
     )
-    assert alone[0].tolist() == agreeing[0].tolist()
-    assert alone[1].tobytes() == agreeing[1].tobytes()
+    assert alone.kept.tolist() == agreeing.kept.tolist()
+    assert alone.weights.tobytes() == agreeing.weights.tobytes()
 
 
 def test_inputs_must_align_and_name_each_column_once() -> None:
@@ -317,10 +316,10 @@ def test_inputs_must_align_and_name_each_column_once() -> None:
     rows = np.ones(2, dtype=bool)
     weights = np.ones(2)
     with pytest.raises(ValueError, match="one row per record"):
-        collapse_replicas(keys, rows, weights, inputs=pd.DataFrame({"x": [1.0]}))
+        fold_replicas(keys, rows, weights, inputs=pd.DataFrame({"x": [1.0]}))
     duplicated = pd.DataFrame([[1.0, 2.0], [1.0, 2.0]], columns=["x", "x"])
     with pytest.raises(ValueError, match="each column once"):
-        collapse_replicas(keys, rows, weights, inputs=duplicated)
+        fold_replicas(keys, rows, weights, inputs=duplicated)
 
 
 # --- The fold's representatives, variety and key groups (microcosm#931) ----
@@ -485,9 +484,6 @@ def test_the_fold_matches_hand_built_maps() -> None:
         },
     )
     _assert_fold(fold, _fold_by_hand(keys, rows, weights, inputs, order))
-    kept, summed = collapse_replicas(keys, rows, weights, inputs=inputs, order=order)
-    assert kept.tobytes() == fold.kept.tobytes()
-    assert summed.tobytes() == fold.weights.tobytes()
 
 
 _TODAYS_FIXTURE_INPUTS = pd.DataFrame(
@@ -548,9 +544,6 @@ def test_without_an_order_each_variant_keeps_its_first_row(
         keys, rows, weights, inputs=inputs, order=np.arange(len(keys))
     )
     _assert_fold(fold, {name: getattr(by_position, name) for name in _FOLD_FIELDS})
-    collapsed = collapse_replicas(keys, rows, weights, inputs=inputs)
-    assert collapsed[0].tobytes() == fold.kept.tobytes()
-    assert collapsed[1].tobytes() == fold.weights.tobytes()
 
 
 def test_clones_that_all_differ_fold_nothing_yet_vary() -> None:
@@ -575,9 +568,6 @@ def test_clones_that_all_differ_fold_nothing_yet_vary() -> None:
             "key_group": np.asarray([0, 1, 0, 1], dtype=np.int64),
         },
     )
-    kept, summed = collapse_replicas(keys, rows, weights, inputs=inputs)
-    assert kept.tolist() == rows.tolist()
-    assert summed.tobytes() == weights.tobytes()
 
 
 def test_the_fold_keeps_its_contract_on_random_frames() -> None:

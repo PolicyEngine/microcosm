@@ -25,9 +25,8 @@ module names no country's columns.
   many geographic clones carry it. The row kept is the replica that comes
   first in the caller's order (its lowest id, say). :class:`ReplicaFold`
   also says which row each record trains on, which records' replicas differ
-  and which records share a key; :func:`collapse_replicas` returns its rows
-  and weights alone. A frame without such replicas keeps its rows and
-  weights value for value.
+  and which records share a key. A frame without such replicas keeps its
+  rows and weights value for value.
 """
 
 from __future__ import annotations
@@ -46,7 +45,6 @@ __all__ = [
     "CopyBranch",
     "CopyLineage",
     "ReplicaFold",
-    "collapse_replicas",
     "copy_paths",
     "fold_replicas",
     "record_sources",
@@ -477,24 +475,3 @@ def fold_replicas(
         for variant in np.split(values[positions[sequence]], runs[1:])
     ]
     return ReplicaFold(kept, summed, representative, varied, key_group)
-
-
-def collapse_replicas(
-    keys: np.ndarray,
-    rows: np.ndarray,
-    weights: np.ndarray,
-    *,
-    inputs: pd.DataFrame | None = None,
-    order: np.ndarray | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """The training rows and weights of :func:`fold_replicas`, and nothing else.
-
-    Returns ``(kept, weights)`` over every record: each variant's
-    representative stays selected with its variant's summed weight, and
-    without ``order`` the representative is its first selected record in row
-    order. A selection in which no two records share a variant comes back as
-    it was, value for value.
-    """
-
-    fold = fold_replicas(keys, rows, weights, inputs=inputs, order=order)
-    return fold.kept, fold.weights

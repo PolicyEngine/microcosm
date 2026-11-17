@@ -66,8 +66,8 @@ from microcosm.build.uk_runtime.brma_area_layer import NI_SYSTEM, area_brmas
 from microcosm.build.uk_runtime.frs_brma import (
     UK_BRMA_DECLARED_SEEDS,
     UK_BRMA_PREDICTORS,
-    UKFRSBRMAStageTransform,
     draw_household_brmas,
+    load_brma_count_resource,
 )
 from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
 from microcosm.build.uk_runtime.local_authority_input import (
@@ -145,6 +145,26 @@ def _brmas(frame: Frame) -> pd.Series:
     household = frame.table("household")
     return pd.Series(
         household["brma"].to_numpy(dtype=object),
+        index=household["household_id"].to_numpy(),
+    )
+
+
+def _frs_brma_draw(frame: Frame, clones: int) -> pd.Series:
+    """frs_brma's draw over ``frame``'s households, on the installed engine's
+    LHA_category for its benefit units, by household id."""
+
+    lha_category = PolicyEngineUKEngine(clones=clones).materialize(
+        frame, UK_BRMA_PREDICTORS, uk_time_period(frame)
+    )[UK_BRMA_PREDICTORS[0]]
+    household = frame.table("household")
+    return pd.Series(
+        draw_household_brmas(
+            frame.table("person"),
+            frame.table("benunit"),
+            household,
+            lha_category=lha_category,
+            count_resource=load_brma_count_resource(),
+        ),
         index=household["household_id"].to_numpy(),
     )
 
@@ -304,12 +324,7 @@ def test_area_brma_draws_northern_ireland_as_frs_brma_and_reads_the_layer(
     assert northern_ireland.any() and not northern_ireland.all()
     # frs_brma's draw on the frame area_brma read, on the same engine's
     # LHA_category: the same keys, seed and salts for every household.
-    reference = _brmas(
-        UKFRSBRMAStageTransform(
-            stage=_stage(AREA_BRMA_STAGE_NAME),
-            engine=PolicyEngineUKEngine(clones=clones),
-        )(placed)
-    )
+    reference = _frs_brma_draw(placed, clones)
     drawn = _brmas(brma)
     ids = household["household_id"].to_numpy()
     assert drawn.loc[ids[northern_ireland]].equals(
@@ -341,12 +356,7 @@ def test_the_copy_stage_draws_northern_ireland_copies_on_one_engine_call(
     ), f"spi_copy_areas' call frame at K={clones}"
     # Each copy's BRMA is frs_brma's draw on that call's frame, on the
     # engine's LHA_category for the copies' own benefit units.
-    reference = _brmas(
-        UKFRSBRMAStageTransform(
-            stage=_stage(AREA_BRMA_STAGE_NAME),
-            engine=PolicyEngineUKEngine(clones=clones),
-        )(scratch)
-    )
+    reference = _frs_brma_draw(scratch, clones)
     drawn = _brmas(copy_areas)
     copied_ids = ids[copies & northern_ireland]
     assert drawn.loc[copied_ids].equals(reference.loc[copied_ids]), (
