@@ -70,12 +70,12 @@ def assemble_spines(
     table-format HDF.  For NumPy integers this is the union a plain
     ``pd.concat`` makes; pandas nullable integers are cast to ``float64`` as
     well, since PyTables has no type for them.  A value outside +/-2**53,
-    which ``float64`` cannot hold exactly, is refused.  Float, datetime and
-    timedelta source-specific columns keep their dtype with ``NaN``/``NaT``;
-    boolean and other source-specific columns are padded with ``None`` in an
-    object column.  Columns every source carries keep their dtype.  Measured
-    values in the inputs are copied without modification; only structural IDs
-    can be remapped to avoid collisions.
+    the range in which ``float64`` holds every integer exactly, is refused.
+    Float, datetime and timedelta source-specific columns keep their dtype
+    with ``NaN``/``NaT``; boolean and other source-specific columns are padded
+    with ``None`` in an object column.  Columns every source carries keep
+    their dtype.  Measured values in the inputs are copied without
+    modification; only structural IDs can be remapped to avoid collisions.
 
     Args:
         spines: Two or more peer source frames keyed by stable source channel.
@@ -423,8 +423,8 @@ def _padded_integer_columns(
                     f"Spine {channel!r} {entity!r} column {column!r} is absent "
                     f"from spine(s) {lacking}, so assembly carries it as "
                     "float64 with NaN there, but its values span "
-                    f"[{low}, {high}], beyond the +/-2**53 range float64 "
-                    "holds exactly."
+                    f"[{low}, {high}], beyond +/-2**53, the range in which "
+                    "float64 holds every integer exactly."
                 )
         padded.append(column)
     return padded
