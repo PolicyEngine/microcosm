@@ -202,15 +202,20 @@ def tracked_target_fits(
     Wraps ``RegimeGatedQRF._fit_target``: on entry it requires every object an
     earlier call built (the target model; its sign classifier with its bins
     and trees; its forests with their regressors, trees and leaf-value
-    arrays) to be dead, then records weak references to the new ones. The garbage collector is off inside the block, so an object counts
-    as freed only when nothing references it any more, which is when its
-    memory goes back; a reference cycle would keep it alive and fail the
-    check. Two kinds of part cannot be weakly referenced and are not checked
+    arrays) to be dead, then records weak references to the new ones.
+
+    The garbage collector is off inside the block, so an object counts as
+    freed only when nothing references it any more, which is when its memory
+    goes back; a reference cycle would keep it alive and fail the check.
+
+    Two kinds of part cannot be weakly referenced and are not checked
     directly: scikit-learn's compiled ``Tree`` node storage (each tree's
     ``tree_``) and the sign classifier trees' node arrays. Each belongs to a
     tracked tree and is freed with it, unless something references it
-    directly, which this check cannot see. Violations are also kept on the returned object, in case a caller
-    catches the assertion.
+    directly, which this check cannot see.
+
+    Violations are also kept on the returned object, in case a caller catches
+    the assertion.
     """
 
     lifetimes = TargetFitLifetimes()

@@ -459,7 +459,7 @@ def test_joint_codec_transfer_matches_fitting_every_target_first(
 
 
 class _FitPredictOnlyQRF:
-    """A QRF stand-in with ``fit`` and ``predict`` but no chain methods."""
+    """A QRF stand-in with only the old ``fit`` entry point, no chain methods."""
 
     def __init__(self, **_options: object) -> None:
         pass
