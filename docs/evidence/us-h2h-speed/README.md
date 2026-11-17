@@ -93,9 +93,12 @@ slice work on 16 workers at this speed.
 
 What the incumbent's pool showed:
 
-- Workers started on demand, one at a time. Each start blocked the parent
-  for 42, 36 and 44 s, from the submit that triggered it to the worker's
-  first line.
+- Workers started on demand, one at a time. From the submit that
+  triggered each start to the worker's first line took 42, 36 and 44 s,
+  intervals rebuilt from the log. How much of each blocked the parent is
+  not measured: CPython's `Process.start()` returns once it has written the
+  child's arguments down a pipe, and the line comes after the worker's
+  initializer.
 - The estimate's rebuild of the pool from its lines accounts for every
   start, and dates every slice's start before its end (no notes). All three
   starts fall in the opening burst, so this log cannot tell the start rules

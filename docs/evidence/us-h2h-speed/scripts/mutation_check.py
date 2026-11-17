@@ -46,8 +46,13 @@ MUTATIONS = {
         "        receipt = None\n",
     ),
     "a token-taking submit is dated by its result, not its receive line": (
-        "                    max(ready, receipt) if receipt is not None else ready\n",
-        "                    ready\n",
+        "                taken += 1\n                submitted[2 * workers + task] = received\n",
+        "                taken += 1\n                submitted[2 * workers + task] = ready\n",
+    ),
+    "a full-pool submit is dated by its result, not its receive line": (
+        "                # The pool is full, so this submit starts no worker either.\n"
+        "                submitted[2 * workers + task] = received\n",
+        "                submitted[2 * workers + task] = ready\n",
     ),
     "the replay starts every remaining worker at once": (
         "        elif spawns < workers:\n"
@@ -107,6 +112,10 @@ MUTATIONS = {
     "a lost slice line is not a gap": (
         "                gaps.append(task)\n",
         "                pass\n",
+    ),
+    "streams that began late can still say GO": (
+        '    verdict = "NO-GO" if reasons else "WAIT" if budget_unseen else "GO"\n',
+        '    verdict = "NO-GO" if reasons else "GO"\n',
     ),
     "before any record the stall allowance never starts": (
         "    last = max(seen, default=limits.started_at)\n",

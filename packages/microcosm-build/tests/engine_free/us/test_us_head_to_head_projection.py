@@ -225,7 +225,10 @@ def test_the_real_local_run_is_consistent_with_the_model() -> None:
         assert 35 <= timing.chunk_seconds[chunk] <= 50
     assert 180 <= timing.chunk_seconds[5] <= 320
     prior = projection._prior(WEIGHTS)
-    limits = _limits(workers=3, started_at=end - 3600, prior=prior)
+    # A local run of the scorer: no runner, so no BUDGET line.
+    limits = _limits(
+        workers=3, started_at=end - 3600, prior=prior, budget_line_required=False
+    )
     report = projection.project(
         projection.parse_log(REAL_LOG.read_text().splitlines()), limits, end
     )
@@ -562,6 +565,49 @@ def test_a_late_receive_line_dates_the_submit_it_follows() -> None:
     assert timing.chunk_seconds == {1: 10.0}
 
 
+def test_a_late_receive_line_dates_a_full_pool_submit_too() -> None:
+    # Two workers, six slices of 10 s (review r4). The second start blocks the
+    # parent until 20 s, by when slice 1 is done, so opening submit 3 takes
+    # that token and submit 4 finds none in a full pool. Submit 5 then finds
+    # no token either (one result, one token taken) and the pool is full, so
+    # it starts no worker; the parent takes result 1 late and prints
+    # ``after receiving`` at 40 s, straight after the submit. Task 5 cannot
+    # start before 40 s although a worker is free at 30 s; dating the submit
+    # from the parent's last free moment (20 s) would start it at 30 s and
+    # read its slice as 20 s long.
+    def at(seconds: int, text: str) -> str:
+        return sim.line(START + seconds, text, 4.0)
+
+    log = [
+        at(0, "before starting candidate slice workers"),
+        at(5, "after initializing candidate slice worker"),
+        at(15, "after scoring candidate chunk 1/1 slice 1/6"),
+        at(20, "after initializing candidate slice worker"),
+        at(25, "after scoring candidate chunk 1/1 slice 2/6"),
+        at(30, "after scoring candidate chunk 1/1 slice 3/6"),
+        at(35, "after scoring candidate chunk 1/1 slice 4/6"),
+        *[at(40, "after receiving candidate slice result")] * 4,
+        at(50, "after scoring candidate chunk 1/1 slice 5/6"),
+        at(50, "after scoring candidate chunk 1/1 slice 6/6"),
+        *[at(50, "after receiving candidate slice result")] * 2,
+    ]
+    pool = projection._pool(projection.parse_log(log).events, "candidate")
+    history = projection.reconstruct(pool, 2, START + 50)
+    assert history is not None and history.notes == []
+    assert history.start_costs == [5.0, 15.0]
+    assert history.submitted == {
+        1: START,
+        2: START + 5,
+        3: START + 20,
+        4: START + 20,
+        5: START + 40,
+        6: START + 40,
+    }
+    assert history.started[5] == START + 40
+    timing = projection.timing(pool, history, 3)
+    assert timing.chunk_seconds == {1: 10.0}
+
+
 def test_workers_start_on_demand_so_the_pool_fills_late() -> None:
     # Each start blocks the parent, so the sixteenth worker starts at least
     # fifteen start costs after the first, while results free tokens that
@@ -728,6 +774,41 @@ def test_the_runners_budget_lines_shorten_the_deadline() -> None:
     report = projection.project(parsed, _limits(max_wall_seconds=14505), START)
     assert report["budget_seconds"] == 9000
     assert report["deadline_utc"] == sim.stamp(START + 9000)
+
+
+def test_streams_that_began_after_the_runners_budget_line_never_say_go() -> None:
+    # Review r4: a stream that begins late can miss the runner's only line
+    # shortening the deadline (BUDGET:, or an earlier attempt's ATTEMPTS:) and
+    # judge against the plan's whole budget. The runner prints a BUDGET line
+    # before the tool starts, so scorer records without one mean the streams
+    # began late: GO becomes WAIT and the report carries ``log_gap``, which
+    # the watcher alarms on. A budget line only shortens the deadline, so a
+    # NO-GO against the plan's budget still holds.
+    run = _run(
+        workers=4,
+        incumbent_seconds=[40],
+        candidate_seconds=[40],
+        incumbent_slices=29,
+        candidate_slices=60,
+        start_cost=60,
+    )
+    limits = _limits(prior=_prior(run))
+    at = next(t for t in run.times() if "estimate" in _judge(run, limits, t))
+    full = _judge(run, limits, at)
+    assert full["verdict"] == "GO" and "log_gap" not in full
+    late = [line for line in run.log(at) if not line.startswith("BUDGET:")]
+    assert len(late) == len(run.log(at)) - 1
+    report = projection.project(projection.parse_log(late), limits, at)
+    assert report["verdict"] == "WAIT"
+    assert report["log_gap"] == {"runner": "no BUDGET line"}
+    assert "BUDGET line" in report["reasons"][0]
+    tight = _limits(prior=_prior(run), max_wall_seconds=(run.tool_end - START) / 2)
+    assert projection.project(projection.parse_log(late), tight, at)["verdict"] == (
+        "NO-GO"
+    )
+    # Before the tool's first output there is nothing to miss yet.
+    empty = projection.project(projection.parse_log([]), limits, START + 1)
+    assert "log_gap" not in empty
 
 
 def test_parsing_counts_every_record_and_merges_streams_by_the_most() -> None:

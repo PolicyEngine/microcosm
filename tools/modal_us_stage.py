@@ -1095,12 +1095,13 @@ def _attempt_stage(
             f"class timeout ({tool_budget}); pulling and staging took the "
             "container's time"
         )
-    if tool_budget["limited_by"] != "max_wall_seconds":
-        print(
-            f"BUDGET: the tool may run {tool_budget['seconds']}s "
-            f"(limited by {tool_budget['limited_by']})",
-            flush=True,
-        )
+    # Printed every time, so a log that has scorer records but no BUDGET line
+    # is known to have lost its start (the d844 projection checks this).
+    print(
+        f"BUDGET: the tool may run {tool_budget['seconds']}s "
+        f"(limited by {tool_budget['limited_by']})",
+        flush=True,
+    )
     argv = plan_lib.planned_argv(plan)
     started_at, started = _now(), time.time()
     log_path = state / "logs" / f"{plan.stage}-{started_at.replace(':', '')}.log"

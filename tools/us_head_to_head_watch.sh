@@ -99,7 +99,13 @@ if app is None:
     sys.exit(11)
 if "State" not in app or "Stopped at" not in app:
     sys.exit(2)
-stopped = app["Stopped at"] is not None or app["State"] == "stopped"
+state, at = app["State"], app["Stopped at"]
+# The CLI gives null or a timestamp; any other value is a shape not known.
+if not isinstance(state, str) or not (
+    at is None or (isinstance(at, str) and at.strip())
+):
+    sys.exit(2)
+stopped = at is not None or state == "stopped"
 sys.exit(11 if stopped else 10)
 ' "$APP" 2>/dev/null
   rc=$?
@@ -240,7 +246,7 @@ while true; do
   note "rc=$RC verdict=$VERDICT $(printf '%s' "$OUT" | tr -d '\n')"
   if [ "$GAP" = gap ] && [ "$gap_alarmed" -eq 0 ]; then
     gap_alarmed=1
-    alarm "the log streams lost lines (log_gap in go-no-go.log): the time estimate is off for the rest of the run; only the stall check and the runner's budget can end it early"
+    alarm "the log streams lost lines or began late (log_gap in go-no-go.log): from now on the estimate gives no GO, and after lost slice lines no estimate at all; the stall check and the runner's budget still bound the run"
   fi
   if [ "$RC" -eq 3 ] && [ "$VERDICT" = "NO-GO" ]; then
     if stop_app; then exit 3; fi

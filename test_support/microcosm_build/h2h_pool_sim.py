@@ -35,6 +35,12 @@ CANDIDATE_LOAD_SECONDS = 60
 SCORECARD_SECONDS = 300
 
 
+#: The runner's line before it starts the tool (tools/modal_us_stage.py). Its
+#: budget is beyond any test's, so a test's ``max_wall_seconds`` sets the
+#: deadline.
+RUNNER_BUDGET = "BUDGET: the tool may run 1000000000s (limited by max_wall_seconds)"
+
+
 def stamp(epoch: float) -> str:
     return datetime.fromtimestamp(int(epoch), UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -175,10 +181,15 @@ class Run:
         return self.candidate.end + self.scorecard_seconds
 
     def log(self, until: float | None = None) -> list[str]:
+        """The run's log to ``until``: the runner's budget line, printed before
+        it starts the tool, then the scorer's records."""
+
         rows = sorted(
             [*self.incumbent.lines, *self.candidate.lines], key=lambda row: row[0]
         )
-        return [text for at, text in rows if until is None or at <= until]
+        return [RUNNER_BUDGET] + [
+            text for at, text in rows if until is None or at <= until
+        ]
 
     def times(self) -> list[float]:
         """Every second at which a record was written, in order."""

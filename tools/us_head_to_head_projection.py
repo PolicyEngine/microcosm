@@ -24,15 +24,19 @@ printing ``after receiving`` after that submit. ``ProcessPoolExecutor``
 demand: each result it receives releases a token; a submit takes a free
 token, or else starts a worker if fewer than ``workers`` have started. A
 start blocks the parent while the spawned child imports the scorer and reads
-the frame; results still arrive meanwhile. Workers take queued tasks in
-submission order. A worker's first slice carries one-time costs.
+its arguments down a pipe; results still arrive meanwhile. The model takes
+the block to last until the worker's first line, which comes after its
+initializer, once the parent is free again: an approximation that can date
+the parent's next submit late. Workers take queued tasks in submission
+order. A worker's first slice carries one-time costs.
 
 Rebuilding the past. Under that model the log fixes every submit's time:
 the opening submits come at the pool's opening and after each worker start;
 later ones when the parent takes a result, once it has arrived and the
-previous ``after receiving`` line is out. A submit that takes a token is
-dated by its own ``after receiving`` line, which the parent prints straight
-after it: a result can reach the parent well after its slice line. Which
+previous ``after receiving`` line is out. A submit that starts no worker
+(it takes a token, or the pool is full) is dated by its own ``after
+receiving`` line, which the parent prints straight after it: a result can
+reach the parent well after its slice line. Which
 submits start a worker follows from the tokens, and the log's worker starts
 check it. Stamps are whole seconds, so a result finishing in the same second
 as a start can look like a token the submit did not have; a start logged
@@ -314,6 +318,9 @@ class Limits:
     stall_factor: float = 4.0
     stall_floor_seconds: float = 3600.0
     prior: Prior = Prior()
+    #: The runner prints a BUDGET line before it starts the tool, so streams
+    #: with scorer records but no budget line began late (see ``project``).
+    budget_line_required: bool = True
 
     def __post_init__(self) -> None:
         if self.workers < 1:
@@ -486,14 +493,13 @@ def reconstruct(
                     f"result {task} came from earlier submits the model gave a "
                     "token; their start costs are not measured"
                 )
+            # A submit that starts no worker returns at once and the parent
+            # prints ``after receiving`` straight after it, so that line dates
+            # it (a result can reach the parent well after its slice line).
+            received = max(ready, receipt) if receipt is not None else ready
             if finished_by(ready) - taken > 0:
                 taken += 1
-                # The submit takes a token at once and the parent prints
-                # ``after receiving`` straight after it, so that line dates it
-                # (a result can reach the parent well after its slice line).
-                submitted[2 * workers + task] = (
-                    max(ready, receipt) if receipt is not None else ready
-                )
+                submitted[2 * workers + task] = received
             elif spawns < workers:
                 submitted[2 * workers + task] = ready
                 if spawns < len(inits) and inits[spawns] >= ready:
@@ -509,7 +515,8 @@ def reconstruct(
                     blocked = ready
                     break
             else:
-                submitted[2 * workers + task] = ready
+                # The pool is full, so this submit starts no worker either.
+                submitted[2 * workers + task] = received
         previous = receipt if receipt is not None else parent_free
     if spawns < len(inits):
         notes.append(
@@ -809,17 +816,39 @@ def project(parsed: Parsed, limits: Limits, now: float) -> dict[str, object]:
         for name, pool in (("incumbent", incumbent), ("candidate", candidate))
         if (history := reconstruct(pool, workers, now)) is not None and history.gaps
     }
+    log_gap: dict[str, object] = {name: tasks[:5] for name, tasks in gaps.items()}
     if gaps:
-        report["log_gap"] = {name: tasks[:5] for name, tasks in gaps.items()}
         waiting.append(
             "the streams lost lines: the parent took results whose slice lines "
             f"are missing ({', '.join(f'{n} task {t[0]}' for n, t in gaps.items())}), "
             "so the rebuilt pool is wrong in an unknown direction; the early stop "
             "is off and the runner's budget bounds the run"
         )
+    # The runner's BUDGET line comes before the tool's first output, so a log
+    # with scorer records but no budget line began late and may have missed a
+    # budget line that shortens the deadline. A budget line can only shorten
+    # it, so NO-GO against the plan's budget still holds; GO does not.
+    budget_unseen = (
+        limits.budget_line_required
+        and not parsed.budget_seconds
+        and (bool(events) or any(t <= now for t in parsed.record_times))
+    )
+    budget_unseen_reason = (
+        "the streams hold scorer records but not the runner's BUDGET line, "
+        "printed before the tool starts: they began late and may have missed "
+        "a shorter budget (BUDGET: or ATTEMPTS:), so the verdict is WAIT rather "
+        "than GO; NO-GO against the plan's max_wall_seconds still holds, since "
+        "a budget line only shortens it"
+    )
+    if budget_unseen:
+        log_gap["runner"] = "no BUDGET line"
+    if log_gap:
+        report["log_gap"] = log_gap
     estimate, notes, why = (
         (None, [], None) if waiting else _estimate(incumbent, candidate, limits, now)
     )
+    if budget_unseen:
+        waiting.append(budget_unseen_reason)
     if estimate is None and why:
         waiting.append(why)
     slowest = max((estimate or {}).get("chunk_seconds_used", {}).values(), default=0.0)
@@ -851,10 +880,11 @@ def project(parsed: Parsed, limits: Limits, now: float) -> dict[str, object]:
         )
     if stall:
         reasons.append(stall)
+    verdict = "NO-GO" if reasons else "WAIT" if budget_unseen else "GO"
     return {
         **report,
-        "verdict": "NO-GO" if reasons else "GO",
-        "reasons": reasons,
+        "verdict": verdict,
+        "reasons": reasons or ([budget_unseen_reason] if budget_unseen else []),
         "estimator_notes": notes,
         "estimate": {
             **estimate,

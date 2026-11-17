@@ -58,7 +58,8 @@ case "$1 $2" in
     n=$(( $(cat "$D/list-count" 2>/dev/null || echo 0) + 1 ))
     echo "$n" > "$D/list-count"
     # FAKE_LIST_SEQ names each read's answer in turn (the last repeats):
-    # live, stopped, gone, fail, warning, dict, empty or nostate.
+    # live, stopped, gone, fail, warning, dict, empty, nostate, falsestop or
+    # emptystop (a "Stopped at" that is neither null nor a timestamp).
     mode=
     if [ -n "${FAKE_LIST_SEQ:-}" ]; then
       mode=$(printf '%s' "$FAKE_LIST_SEQ" | tr ',' '\n' | sed -n "${n}p")
@@ -82,6 +83,11 @@ case "$1 $2" in
       nostate)
         printf '[{"App ID": "%s", "Description": "d844"}]\n' "${FAKE_APP:-ap-test}"
         exit 0 ;;
+      falsestop|emptystop)
+        if [ "$mode" = falsestop ]; then at=false; else at='""'; fi
+        printf '[{"App ID": "%s", "State": "ephemeral (detached)", "Stopped at": %s}]\n' \
+          "${FAKE_APP:-ap-test}" "$at"
+        exit 0 ;;
     esac
     if [ "$mode" = stopped ]; then
       state=stopped; at='"2026-11-16 10:00:00+00:00"'
@@ -95,6 +101,9 @@ case "$1 $2" in
 esac
 exit 64
 """
+
+
+RUNNER_BUDGET = "BUDGET: the tool may run 14505s (limited by max_wall_seconds)"
 
 
 def _stamp(epoch: float) -> str:
@@ -112,8 +121,12 @@ def _watch(
     started_ago: int = 3 * 3600,
     kept: dict[str, str] | None = None,
     weights: Path | None = None,
+    budget_line: bool = True,
     **env: str,
 ) -> tuple[subprocess.CompletedProcess, Path, Path]:
+    # The runner prints its BUDGET line before the tool starts, so a stream
+    # begun before the tool shows it first; ``budget_line=False`` is a stream
+    # begun late.
     fake = tmp_path / "fake"
     run = tmp_path / "run"
     fake.mkdir()
@@ -124,7 +137,8 @@ def _watch(
     modal = fake / "modal"
     modal.write_text(FAKE_MODAL)
     modal.chmod(modal.stat().st_mode | stat.S_IXUSR)
-    (fake / "stream.log").write_text("".join(f"{line}\n" for line in stream))
+    lines = [RUNNER_BUDGET, *stream] if budget_line else stream
+    (fake / "stream.log").write_text("".join(f"{line}\n" for line in lines))
     (run / "started-at").write_text(_stamp(time.time() - started_ago) + "\n")
     environment = {
         **os.environ,
@@ -302,7 +316,10 @@ def test_bad_arguments_and_a_missing_start_time_are_refused(tmp_path) -> None:
     assert result.returncode == 2 and "started-at" in result.stderr
 
 
-@pytest.mark.parametrize("answer", ["warning", "dict", "empty", "nostate", "fail"])
+@pytest.mark.parametrize(
+    "answer",
+    ["warning", "dict", "empty", "nostate", "fail", "falsestop", "emptystop"],
+)
 def test_an_unreadable_list_after_a_stop_is_never_taken_as_stopped(
     tmp_path, answer
 ) -> None:
@@ -478,6 +495,22 @@ def test_a_log_gap_alarms_once_and_waits(tmp_path) -> None:
     assert len(alarms) == 1 and "lost lines" in alarms[0]
     verdicts = (run / "go-no-go.log").read_text()
     assert verdicts.count("verdict=WAIT") == 3 and '"log_gap"' in verdicts
+    assert not any(call.startswith("app stop ap-") for call in _calls(fake))
+
+
+def test_a_stream_begun_after_the_runners_budget_line_alarms_once(tmp_path) -> None:
+    # Scorer lines but no BUDGET line: the stream began late and may have
+    # missed a shorter budget, so the projection never says GO and the
+    # watcher raises the gap alarm once, without stopping the app.
+    result, fake, run = _watch(
+        tmp_path, _live(), budget_line=False, FAKE_LIVE_LISTS="3"
+    )
+    assert result.returncode == 0, result.stderr
+    alarms = (run / "ALARM").read_text().splitlines()
+    assert len(alarms) == 1 and "began late" in alarms[0]
+    verdicts = (run / "go-no-go.log").read_text()
+    assert '"runner": "no BUDGET line"' in verdicts
+    assert "verdict=GO" not in verdicts
     assert not any(call.startswith("app stop ap-") for call in _calls(fake))
 
 

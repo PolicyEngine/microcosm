@@ -1749,8 +1749,11 @@ All 1,030 slices then come to about 74,100 s of slice work, or 4,631 s on
 
 The scorer's pool starts workers on demand, one at a time. A submit that
 finds no result token free starts a worker. Each start blocks the parent
-while the child imports the scorer and reads the frame. On the Mac,
-incumbent worker starts took 42, 36 and 44 s.
+while the child imports the scorer and reads its arguments. On the Mac,
+the incumbent's three starts took 42, 36 and 44 s from the submit to the
+worker's first line; how much of that blocked the parent is not measured,
+since the line comes after the worker's initializer, which runs once the
+parent is free.
 
 Nothing has timed this scorer on Modal, or a candidate worker's start
 anywhere. A simulation of 16-worker runs from the Mac times (not a
@@ -1885,10 +1888,16 @@ watches, and refuses to start (exit 2) if it does not answer.
 
 The watcher streams `modal app logs` into `modal-runs/$R/app-N.log`, one
 file per stream. A stream that ends while the app runs is restarted within
-`WATCH_STEP` seconds. Whether a fresh stream replays what the app printed
-before it is not known (it has not been tried against a live app), so start
-the watcher before the scorer prints its first line. Slice lines a restart
-misses show up as `log_gap` once the parent's later lines arrive. Every
+`WATCH_STEP` seconds the first time between two polls; a second end before
+the next poll waits for that poll, up to ten minutes. Whether a fresh stream
+replays what the app printed before it is not known (it has not been tried
+against a live app), so start the watcher as soon as the app id is known,
+before the runner has pulled and staged its inputs. Slice lines a restart
+misses show up as `log_gap` once the
+parent's later lines arrive. The runner prints its `BUDGET:` line just
+before it starts the tool, every time, so streams with scorer lines but no
+`BUDGET:` line began late and may have missed a shorter budget: that is
+`log_gap` too (`"runner"`). Every
 ten minutes the watcher runs `tools/us_head_to_head_projection.py` on those
 files, the plan, `started-at` and the chunk weights. The projection:
 
@@ -1904,12 +1913,15 @@ It answers one of three verdicts:
 - `WAIT` until a chunk has three measured slices. In the simulated grid,
   that is 600 to 3,000 s in. Also `WAIT` while the streams have lost lines
   (the report's `log_gap`: the parent took a result whose slice line is
-  missing), because the rebuilt pool is then wrong in an unknown direction.
-  The watcher raises `ALARM` once when that happens; from then on only the
+  missing), because the rebuilt pool is then wrong in an unknown direction,
+  and while the streams began late (no `BUDGET:` line), when it is never
+  `GO` but a `NO-GO` against the plan's budget still holds. The watcher
+  raises `ALARM` once when either happens; after lost slice lines only the
   stall check and the runner's budget can end the run early.
 - `NO-GO` when the estimated end is past the tool's budget, or the log has
   stalled. The budget is the plan's 14,505 s from `started-at`, or less
-  when the runner's `ATTEMPTS:` or `BUDGET:` line says so. A stall is no
+  when the runner's `BUDGET:` line (or an `ATTEMPTS:` line) says so. A
+  stall is no
   scorer line for an hour, or for four times the slowest slice if that is
   longer, counted from `started-at` until the first line arrives.
 - `GO` otherwise.
@@ -1926,12 +1938,14 @@ How the estimate has done so far:
   candidate's chunk 5 ran slower, which nothing shows until the candidate
   reaches it, last, runs that did not fit got `NO-GO` at 7,800 to 12,000 s
   ($19.87 to $30.56).
-- No simulated run that fits got a `NO-GO`. The grid scales every chunk by
-  one factor, though. When the prior is off on the one chunk the first
-  estimate measures, that estimate is off by the departure's share of the
-  scoring still ahead: with chunk 1 at 1.1 times the prior, late by up to a
-  tenth of it. A run that fits with less spare than that can be stopped,
-  and a stop cannot be taken back.
+- No simulated run that fits got a `NO-GO` in the grid that starts the
+  tool at `started-at`. With 300 s before the tool starts, the f = 1,
+  T = 300 s run, which fits, got one at 1,200 s (above). The grid scales
+  every chunk by one factor, though. When the prior is off on the one
+  chunk the first estimate measures, that estimate is off by the
+  departure's share of the scoring still ahead: with chunk 1 at 1.1 times
+  the prior, late by up to a tenth of it. A run that fits with less spare
+  than that can be stopped, and a stop cannot be taken back.
 
 Memory is reported in each verdict but never judged; the class limit and
 the scorer's 20 GiB guard bound it. The estimate is not a bound either: the
