@@ -52,6 +52,7 @@ import microcosm.build.calibration_columns as calibration_columns_module
 import microcosm.build.calibration_predicates as calibration_predicates_module
 import microcosm.build.chronicle_epoch as chronicle_epoch_module
 import microcosm.build.ledger_artifact as ledger_artifact_module
+import microcosm.build.ledger_targets as ledger_targets_module
 import microcosm.build.reference_factors as reference_factors_module
 import microcosm.build.reference_intervals as reference_intervals_module
 import microcosm.build.reference_profiles as reference_profiles_module
@@ -609,6 +610,9 @@ class CalibrationPrepareKernel(KernelBase):
             ledger_artifact_module,
             chronicle_epoch_module,
             canonical_json,
+            # reference_factors checks a published projection's schedule
+            # selectors through ledger_targets (microcosm#931).
+            ledger_targets_module,
             dependencies=self.capabilities.dependencies,
         )
 
@@ -980,6 +984,9 @@ class TargetsProblemKernel(KernelBase):
             chronicle_epoch_module,
             frame_concepts_module,
             canonical_json,
+            # reference_factors checks a published projection's schedule
+            # selectors through ledger_targets (microcosm#931).
+            ledger_targets_module,
             dependencies=self.capabilities.dependencies,
         )
 
