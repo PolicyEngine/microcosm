@@ -27,6 +27,12 @@ It also exports `MICROCOSM_TELEMETRY_REQUIRED` when the settings file sets it
 and its feed and crosswalk blockers name the commit's own pins
 ([route_a.sh#L176-L199](https://github.com/PolicyEngine/microcosm/blob/17fecf5e3434f649a20bfa09814b120593bbcaa1/tools/route_a/route_a.sh#L176-L199)).
 
+[#1653](https://github.com/PolicyEngine/microcosm/pull/1653) merged after that commit too. On `main`, `sha_of` fails
+when `openssl` prints no digest
+([route_a.sh#L124-L132](https://github.com/PolicyEngine/microcosm/blob/a21fa3b9be33c0e24601989f041a9fdd41de704e/tools/route_a/route_a.sh#L124-L132)),
+and `verify_inputs` then records `$role could not be read to hash it: $path`
+([route_a.sh#L150-L151](https://github.com/PolicyEngine/microcosm/blob/a21fa3b9be33c0e24601989f041a9fdd41de704e/tools/route_a/route_a.sh#L150-L151)).
+
 ## Failures in run order
 
 ### 1. `verify_inputs` finds a processed input missing from `STORAGE`, or gets no digest for an input (`predicted`)
