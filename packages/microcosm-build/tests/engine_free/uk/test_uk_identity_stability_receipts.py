@@ -36,6 +36,9 @@ from microcosm.build.uk_runtime.cgt_support import (
     geographic_clone_count,
     split_cgt_support_households,
 )
+from microcosm.build.uk_runtime.childcare_copy_take_up import (
+    CHILDCARE_COPY_TAKE_UP_REWRITES,
+)
 from microcosm.build.uk_runtime.etb_services import (
     UK_NHS_OUTPUT_COLUMNS,
     UKETBServicesStageTransform,
@@ -3270,14 +3273,14 @@ class TestHighValueCopiesAndAreaHomeValues:
         )
         assert _e5(clone_zero)["matches_stored_columns"] is True
 
-    def test_the_entry_point_names_what_a_release_cannot_recompute(
+    def test_the_entry_point_refuses_a_release_it_compares_nothing_on(
         self, monkeypatch, tmp_path
     ) -> None:
         # A release drops the kept draw at its boundary, the uprating's
-        # declared denominator, so E5 cannot recompute the uprating there:
-        # the entry point names both property columns as not recomputed
-        # rather than holding them to values it could not rebuild.
-        import json
+        # declared denominator, so E5 cannot recompute the uprating there,
+        # and on this frame it recomputes nothing else: the stored comparison
+        # is empty, so the entry point refuses rather than passing, naming
+        # both property columns as not recomputed, and writes no receipt.
         import sys
 
         from microcosm.build.uk_runtime.property_localisation import (
@@ -3304,13 +3307,23 @@ class TestHighValueCopiesAndAreaHomeValues:
                 "e5",
             ],
         )
-        assert tool.main() == 0
-        receipt = json.loads(output.read_text())
-        assert set(receipt["not_recomputed"]["household"]) == {
-            "main_residence_value",
-            "property_wealth",
+        with pytest.raises(ValueError) as refused:
+            tool.main()
+        assert str(refused.value) == (
+            "e5 identity receipt: the frame leaves E5 no recomputed column to "
+            "compare with the store, so a pass would certify nothing; e7 refuses "
+            "an artifact without its layer for the same reason. Recomputed but "
+            "absent from the store: none. Rewritten by a later stage: none. Not "
+            "recomputed: household.main_residence_value, household.property_wealth. "
+            "Run the check on a frame that keeps a column the wealth stages wrote "
+            "and no later stage rewrites, such as the spine."
+        )
+        assert not output.exists()
+        # The spine it was cut from keeps the draw, and E5 compares there.
+        receipt = _e5(tool._frame_as_stage_saw(final, "was_wealth"))
+        assert receipt["stored_columns_compared"] == {
+            "household": ["main_residence_value"]
         }
-        assert "main_residence_value" not in receipt["columns_by_entity"]["household"]
 
     def test_dropping_the_copies_under_a_kept_cgt_layer_is_refused(self) -> None:
         tool = _load_tool()
@@ -3736,9 +3749,26 @@ class TestLaterRewrites:
         moved = final.table("person")["student_loan_balance"].to_numpy()
         assert not np.allclose(moved, person["student_loan_balance"].to_numpy())
 
-        receipt = tool.e5_identity_receipt(final, permutation_seed=7)
+        # The balance is the one column E5 recomputes here, and a later stage
+        # rewrites it, so the frame leaves E5 nothing to compare with the
+        # store: refused rather than passed, naming the column and its writer.
+        with pytest.raises(ValueError) as refused:
+            tool.e5_identity_receipt(final, permutation_seed=7)
+        assert (
+            "Rewritten by a later stage: person.student_loan_balance "
+            "(student_loans)." in str(refused.value)
+        )
+        # With a column E5 compares beside it, the corporate wealth fold, the
+        # balance is reported and the receipt is green.
+        household = final.table("household").copy()
+        household["corporate_wealth_excl_isa"] = [10.0, 20.0]
+        household["stocks_and_shares_isa"] = [1.0, 2.0]
+        household["corporate_wealth"] = [11.0, 22.0]
+        folded = _with_tables(final, household=household)
+        receipt = tool.e5_identity_receipt(folded, permutation_seed=7)
         assert receipt["identical_under_permutation"] is True
         assert receipt["matches_stored_columns"] is True
+        assert receipt["stored_columns_compared"] == {"household": ["corporate_wealth"]}
         assert receipt["rewritten_later"] == {
             "person": {"student_loan_balance": ["student_loans"]}
         }
@@ -4170,51 +4200,58 @@ def _e4_receipt(tool, frame, contract, **arguments):
     )
 
 
+def _e4_entry_point(tool, frame, contract, monkeypatch, tmp_path):
+    """The tool's ``--check e4`` on ``frame``, with the scenario's contract,
+    policy and count table and an engine whose LHA_category reads a claim to
+    Universal Credit: its exit status, its receipt and the engines it built."""
+
+    import json
+    import sys
+
+    from microcosm.build.uk_runtime import take_up_contract
+    from microcosm.frame.adapters import policyengine_uk
+
+    engines: list[_LHAEngine] = []
+
+    def engine(*, clones=None):
+        engines.append(_LHAEngine(clones=clones))
+        return engines[-1]
+
+    monkeypatch.setattr(policyengine_uk, "PolicyEngineUKEngine", engine)
+    monkeypatch.setattr(take_up_contract, "load_uk_take_up_contract", lambda: contract)
+    monkeypatch.setattr(tool, "uk_take_up_population_policy", lambda _: _E4_POLICY)
+    monkeypatch.setattr(tool, "load_brma_count_resource", lambda: _E4_BRMA_COUNTS)
+    monkeypatch.setattr(tool, "load_uk_national_frame", lambda path: (frame, {}))
+    output = tmp_path / "receipt.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "verify_uk_identity_stability.py",
+            "--input-h5",
+            str(tmp_path / "spine.h5"),
+            "--output",
+            str(output),
+            "--check",
+            "e4",
+        ],
+    )
+    status = tool.main()
+    return status, json.loads(output.read_text()), engines
+
+
 class TestE4OnAFrameTheStagesBuilt:
     @pytest.mark.parametrize("clones", [1, 3])
     def test_the_entry_point_receipts_green_with_the_engine_at_the_clone_count(
         self, clones: int, monkeypatch, tmp_path
     ) -> None:
-        import json
-        import sys
-
-        from microcosm.build.uk_runtime import take_up_contract
-        from microcosm.frame.adapters import policyengine_uk
-
         tool = _load_tool()
         built = _e4_chain(clones)
-        engines: list[_LHAEngine] = []
-
-        def engine(*, clones=None):
-            engines.append(_LHAEngine(clones=clones))
-            return engines[-1]
-
-        monkeypatch.setattr(policyengine_uk, "PolicyEngineUKEngine", engine)
-        monkeypatch.setattr(
-            take_up_contract, "load_uk_take_up_contract", lambda: built.contract
-        )
-        monkeypatch.setattr(tool, "uk_take_up_population_policy", lambda _: _E4_POLICY)
-        monkeypatch.setattr(tool, "load_brma_count_resource", lambda: _E4_BRMA_COUNTS)
-        monkeypatch.setattr(
-            tool, "load_uk_national_frame", lambda path: (built.final, {})
-        )
-        output = tmp_path / "receipt.json"
-        monkeypatch.setattr(
-            sys,
-            "argv",
-            [
-                "verify_uk_identity_stability.py",
-                "--input-h5",
-                str(tmp_path / "spine.h5"),
-                "--output",
-                str(output),
-                "--check",
-                "e4",
-            ],
+        status, receipt, engines = _e4_entry_point(
+            tool, built.final, built.contract, monkeypatch, tmp_path
         )
 
-        assert tool.main() == 0
-        receipt = json.loads(output.read_text())
+        assert status == 0
         assert receipt["identical_under_permutation"] is True
         assert receipt["matches_stored_columns"] is True
         assert receipt["stored_mismatches"] == {}
@@ -4233,27 +4270,136 @@ class TestE4OnAFrameTheStagesBuilt:
         assert rewritten["would_claim_child_benefit"] == ["child_benefit_take_up"]
         assert rewritten["child_benefit_opts_out"] == ["child_benefit_take_up"]
         assert "would_claim_uc_childcare" not in rewritten
-        # Those the store still holds are named: the columns
-        # childcare_copy_take_up declares, which no stage of the scenario
-        # rewrites, but not would_claim_uc, which a later stage redrew.
-        childcare = {
-            column
-            for columns in receipt["rewritten_later"].values()
-            for column, stages in columns.items()
-            if "childcare_copy_take_up" in stages
-        }
+        # Those the store still holds are named, but not would_claim_uc, which
+        # a later stage redrew.
         still_equal = {
             column
             for columns in receipt["rewritten_later_still_equal"].values()
             for column in columns
         }
-        assert childcare and childcare <= still_equal
+        assert {"would_claim_child_benefit", "would_claim_pc"} <= still_equal
         assert "would_claim_uc" not in still_equal
+        # childcare_copy_take_up re-draws the columns it declares on copies
+        # alone, every one of which the scope drops, so its rewrite is taken
+        # back: each of them is compared, and holds.
+        assert set(CHILDCARE_COPY_TAKE_UP_REWRITES) <= {
+            column
+            for columns in receipt["columns_by_entity"].values()
+            for column in columns
+        }
+        assert not set(CHILDCARE_COPY_TAKE_UP_REWRITES) & {
+            column
+            for columns in receipt["rewritten_later"].values()
+            for column in columns
+        }
         # spi_copy_areas declares rewriting brma on the rows the SPI support
         # channel copied alone, every one of which the scope drops, so its
         # rewrite is taken back: the BRMA is compared, and holds.
         assert "brma" not in receipt["rewritten_later"].get("household", {})
         assert "brma" not in still_equal
+
+    @pytest.mark.parametrize("clones", [1, 3])
+    def test_childcare_columns_off_the_draw_on_native_rows_fail_e4(
+        self, clones: int, monkeypatch, tmp_path
+    ) -> None:
+        """childcare_copy_take_up re-draws the columns it declares on copies
+        alone, and E4's scope keeps no copy, so E4 compares those columns with
+        frs_take_up's draws (microcosm#931). With each of them overwritten on
+        the rows the scope keeps, every geographic clone's native benefit
+        units and their people, the entry point fails, at one clone and at
+        three, naming each column and no other."""
+
+        tool = _load_tool()
+        built = _e4_chain(clones)
+        scoped = tool._frame_as_draw_stages_saw(
+            built.final, state_pension_age=_E4_POLICY.state_pension_age
+        )
+        tables = {
+            entity: built.final.table(entity).copy() for entity in ("person", "benunit")
+        }
+        overwritten: dict[str, set[str]] = {}
+        for column in CHILDCARE_COPY_TAKE_UP_REWRITES:
+            (entity,) = [name for name, table in tables.items() if column in table]
+            table = tables[entity]
+            native = table[f"{entity}_id"].isin(
+                set(scoped.table(entity)[f"{entity}_id"])
+            )
+            assert native.any() and not native.all()
+            if pd.api.types.is_bool_dtype(table[column].dtype):
+                table.loc[native, column] = ~table.loc[native, column]
+            else:
+                table.loc[native, column] = table.loc[native, column] + 1.0
+            overwritten.setdefault(entity, set()).add(column)
+        assert set().union(*overwritten.values()) == set(
+            CHILDCARE_COPY_TAKE_UP_REWRITES
+        )
+
+        status, receipt, _ = _e4_entry_point(
+            tool,
+            _with_tables(built.final, **tables),
+            built.contract,
+            monkeypatch,
+            tmp_path,
+        )
+
+        assert status == 1
+        assert receipt["identical_under_permutation"] is True
+        assert receipt["matches_stored_columns"] is False
+        assert {
+            entity: set(columns)
+            for entity, columns in receipt["stored_mismatches"].items()
+        } == overwritten
+        assert receipt["geographic_clones"] == {"frame": clones}
+
+    def test_childcare_columns_are_compared_only_where_the_scope_drops_every_copy(
+        self,
+    ) -> None:
+        """E4 compares the childcare columns by taking childcare_copy_take_up's
+        rewrite back, which holds only where the frame keeps no copy, the only
+        units that stage re-draws (microcosm#931). Without the reversal the
+        columns are reported, not compared; a frame that keeps a copy is
+        refused, naming the stage and no count."""
+
+        tool = _load_tool()
+        built = _e4_chain(1)
+        assert tool._E4_SCOPE_REVERSALS == (
+            "salary_sacrifice",
+            "spi_copy_areas",
+            "childcare_copy_take_up",
+        )
+        scoped = tool._frame_as_draw_stages_saw(
+            built.final, state_pension_age=_E4_POLICY.state_pension_age
+        )
+        reported = _e4_receipt(
+            tool,
+            scoped,
+            built.contract,
+            engine=_LHAEngine(),
+            reversed_stages=(*tool._SCOPE_REVERSALS, "spi_copy_areas"),
+        )
+        assert reported["rewritten_later"]["benunit"]["would_claim_tfc"] == [
+            "childcare_copy_take_up"
+        ]
+        compared = _e4_receipt(tool, scoped, built.contract, engine=_LHAEngine())
+        assert "benunit" not in compared["rewritten_later"] or (
+            "would_claim_tfc" not in compared["rewritten_later"]["benunit"]
+        )
+        assert compared["stored_mismatches"] == {}
+
+        with pytest.raises(ValueError) as refused:
+            _e4_receipt(
+                tool,
+                built.final,
+                built.contract,
+                engine=_LHAEngine(),
+                reversed_stages=(*tool._SCOPE_REVERSALS, "childcare_copy_take_up"),
+            )
+        assert str(refused.value) == (
+            "E4 compares the childcare columns childcare_copy_take_up declares by "
+            "taking its rewrite back, which holds only where the frame keeps no "
+            "copy; the frame keeps a copy, so it is not scoped as E4's stages saw "
+            "it (_frame_as_draw_stages_saw)."
+        )
 
     @pytest.mark.parametrize("universal_credit", [0.5, 0.4])
     def test_the_recompute_counts_within_each_clone_at_three_clones(
@@ -4454,19 +4600,24 @@ class TestE4OnAFrameTheStagesBuilt:
     def test_a_rewritten_column_the_store_no_longer_holds_is_not_named_equal(
         self,
     ) -> None:
-        # childcare_copy_take_up declares writing would_claim_tfc, so E4 does
-        # not compare it. Flipped on a survey unit, the receipt stays green,
-        # but no longer names it among the columns the store still holds.
+        # child_benefit_take_up declares writing would_claim_child_benefit on
+        # every benefit unit, so E4 does not compare it. Flipped on a survey
+        # unit, the receipt stays green, but no longer names it among the
+        # columns the store still holds.
         tool = _load_tool()
         built = _e4_chain(1)
         scoped = tool._frame_as_draw_stages_saw(
             built.final, state_pension_age=_E4_POLICY.state_pension_age
         )
         receipt = _e4_receipt(tool, scoped, built.contract, engine=_LHAEngine())
-        assert "would_claim_tfc" in receipt["rewritten_later_still_equal"]["benunit"]
+        assert (
+            "would_claim_child_benefit"
+            in receipt["rewritten_later_still_equal"]["benunit"]
+        )
         benunit = scoped.table("benunit").copy()
-        benunit["would_claim_tfc"] = benunit["would_claim_tfc"].astype(bool)
-        benunit.loc[0, "would_claim_tfc"] = not benunit.loc[0, "would_claim_tfc"]
+        flag = "would_claim_child_benefit"
+        benunit[flag] = benunit[flag].astype(bool)
+        benunit.loc[0, flag] = not benunit.loc[0, flag]
         flipped = _e4_receipt(
             tool,
             _with_tables(scoped, benunit=benunit),
@@ -4474,12 +4625,8 @@ class TestE4OnAFrameTheStagesBuilt:
             engine=_LHAEngine(),
         )
         assert flipped["matches_stored_columns"] is True
-        assert flipped["rewritten_later"]["benunit"]["would_claim_tfc"] == [
-            "childcare_copy_take_up"
-        ]
-        assert "would_claim_tfc" not in flipped["rewritten_later_still_equal"].get(
-            "benunit", []
-        )
+        assert flipped["rewritten_later"]["benunit"][flag] == ["child_benefit_take_up"]
+        assert flag not in flipped["rewritten_later_still_equal"].get("benunit", [])
 
     def test_a_flag_held_to_the_walk_is_named(self, monkeypatch) -> None:
         tool = _load_tool()
