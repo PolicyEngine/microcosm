@@ -20,6 +20,11 @@ construction:
 Frame operations return new frames. Entity-table access follows a read-only
 caller convention; integrity-critical receipts belong in the frame's private,
 immutable metadata rather than in mutable table columns.
+
+The constructor deep-copies every table it is given. :meth:`Frame.replace_tables`
+and :meth:`Frame.with_columns` instead build a frame that shares the memory of
+every unchanged column with its source frame when pandas copy-on-write is on,
+and deep-copy when it is off (see :meth:`Frame._adopt`).
 """
 
 from collections.abc import Mapping
@@ -107,6 +112,96 @@ class Frame:
         mass_log: tuple[MassChangeRecord, ...] = (),
         metadata: Mapping[str, Any] | None = None,
     ) -> None:
+        self._assemble(
+            tables,
+            schema,
+            weights,
+            strata,
+            mass_log=mass_log,
+            metadata=metadata,
+            copy_data=True,
+        )
+
+    @classmethod
+    def _adopt(
+        cls,
+        tables: Mapping[str, pd.DataFrame],
+        schema: EntitySchema,
+        weights: Mapping[str, Weights],
+        strata: pd.Series | None = None,
+        *,
+        mass_log: tuple[MassChangeRecord, ...] = (),
+        metadata: Mapping[str, Any] | None = None,
+    ) -> "Frame":
+        """Build a frame that takes ownership of ``tables`` instead of copying them.
+
+        When pandas copy-on-write is on, the frame stores the given DataFrame
+        objects themselves, so its columns share memory with any other
+        DataFrame that shares theirs. Copy-on-write then keeps a write made
+        through pandas to one of those DataFrames from reaching the others.
+        The caller hands the tables over and must not write to these
+        DataFrame objects afterwards: a write to the same object changes this
+        frame. Raw writes into the shared memory (through ``Series.array``,
+        private pandas attributes, an array made writable, ``np.copyto`` or
+        ``out=``) are never protected; ``test_shared_buffer_writes.py``
+        refuses them in the workspace's source.
+
+        When copy-on-write is off (the pandas 2.x default), a shallow copy
+        shares data even for ordinary pandas writes, so the tables and strata
+        are deep-copied exactly as the constructor copies them.
+
+        Arguments and validation are the constructor's: every invariant is
+        checked and the same errors are raised. Weights are stored as given
+        (their arrays are read-only), and the strata are shallow-copied when
+        copy-on-write is on.
+
+        Args:
+            tables: Entity and link tables, as for the constructor.
+            schema: The entity structure.
+            weights: Typed weight vectors keyed by entity name.
+            strata: Per-person provenance labels, or ``None`` for
+                :data:`DEFAULT_STRATUM`.
+            mass_log: Declared mass changes, as for the constructor.
+            metadata: Stage receipts, as for the constructor.
+
+        Returns:
+            A new validated frame that owns ``tables``.
+
+        Raises:
+            TypeError, ValueError: Exactly as the constructor would on the
+                same arguments.
+        """
+
+        frame = cls.__new__(cls)
+        frame._assemble(
+            tables,
+            schema,
+            weights,
+            strata,
+            mass_log=mass_log,
+            metadata=metadata,
+            copy_data=not _pandas_copy_on_write(),
+        )
+        return frame
+
+    def _assemble(
+        self,
+        tables: Mapping[str, pd.DataFrame],
+        schema: EntitySchema,
+        weights: Mapping[str, Weights],
+        strata: pd.Series | None,
+        *,
+        mass_log: tuple[MassChangeRecord, ...],
+        metadata: Mapping[str, Any] | None,
+        copy_data: bool,
+    ) -> None:
+        """Store a frame's parts and check every constructor invariant.
+
+        With ``copy_data``, each table and the strata are deep-copied (the
+        constructor); without it, the tables are stored as given and the
+        strata shallow-copied (:meth:`_adopt` under copy-on-write).
+        """
+
         self._schema = schema
         self._mass_log = tuple(mass_log)
         self._metadata = _freeze_metadata(metadata)
@@ -115,9 +210,9 @@ class Frame:
         self._link_tables: dict[str, pd.DataFrame] = {}
         for name, frame in tables.items():
             target = self._link_tables if name in declared_links else self._tables
-            target[name] = frame.copy()
+            target[name] = frame.copy() if copy_data else frame
         self._weights = dict(weights)
-        self._strata = self._validated_strata(strata)
+        self._strata = self._validated_strata(strata, deep=copy_data)
         self._validate_tables()
         self._validate_linkage()
         self._validate_links()
@@ -357,7 +452,9 @@ class Frame:
                     "column; drop this column before constructing the frame."
                 )
 
-    def _validated_strata(self, strata: pd.Series | None) -> pd.Series:
+    def _validated_strata(
+        self, strata: pd.Series | None, *, deep: bool = True
+    ) -> pd.Series:
         person = self._tables.get(self._schema.person_entity)
         if person is None:
             raise ValueError(
@@ -379,7 +476,7 @@ class Frame:
             )
         if strata.isna().any():
             raise ValueError("strata contains missing labels.")
-        out = strata.copy()
+        out = strata.copy(deep=deep)
         out.name = "stratum"
         return out
 
@@ -802,6 +899,84 @@ class Frame:
             declared_factor=change.factor,
             reason=change.reason,
         )
+
+    def replace_tables(self, /, **changed_tables: pd.DataFrame) -> "Frame":
+        """Return a new frame with some entity or link tables replaced.
+
+        The new frame holds a shallow copy of each replacement and of every
+        other table, so when pandas copy-on-write is on it shares their memory
+        with the replacements and with this frame, and a write made through
+        pandas to either side never reaches the other. Each frame still holds
+        its own DataFrame objects, so the caller may go on writing to the
+        DataFrames it passed. Weights, strata, the mass log and metadata are
+        carried unchanged. When copy-on-write is off, every table is
+        deep-copied instead (see :meth:`_adopt`).
+
+        Args:
+            **changed_tables: Replacement tables keyed by entity or link name.
+
+        Returns:
+            A new validated frame.
+
+        Raises:
+            TypeError: If a replacement is not a :class:`pandas.DataFrame`, or
+                as construction would.
+            ValueError: If a name is neither a declared entity nor a declared
+                link, or the new tables break any constructor invariant (for
+                example, the weights or strata no longer align with them).
+        """
+
+        for name, table in changed_tables.items():
+            if not isinstance(table, pd.DataFrame):
+                raise TypeError(
+                    f"Table {name!r} must be a pandas DataFrame, got "
+                    f"{type(table).__name__}."
+                )
+        tables = {
+            name: table.copy(deep=False)
+            for name, table in {**self._tables, **self._link_tables}.items()
+        }
+        tables.update(
+            {name: table.copy(deep=False) for name, table in changed_tables.items()}
+        )
+        return Frame._adopt(
+            tables,
+            self._schema,
+            self._weights,
+            self._strata,
+            mass_log=self._mass_log,
+            metadata=self._metadata,
+        )
+
+    def with_columns(self, entity: str, /, **columns: Any) -> "Frame":
+        """Return a new frame with columns set on one entity's table.
+
+        Each value is assigned with ``table[name] = values``, so a new name
+        adds a column and an existing name replaces one, under pandas'
+        assignment rules: a :class:`pandas.Series` aligns on the table's
+        index, and an array or list must have one value per row. pandas 3
+        copies a NumPy array on assignment, so the frame does not alias the
+        caller's array. The table's other columns and every other table are
+        shared with this frame as in :meth:`replace_tables`.
+
+        Args:
+            entity: An entity declared by the schema (not a link).
+            **columns: Column values keyed by column name.
+
+        Returns:
+            A new validated frame.
+
+        Raises:
+            ValueError: If ``entity`` is not declared by the schema, a value's
+                length does not match the table, or the new columns break a
+                constructor invariant (a name another table already carries,
+                a reserved ``{entity}_weight`` name, or broken linkage).
+        """
+
+        table = self.table(entity).copy(deep=not _pandas_copy_on_write())
+        for column_name, values in columns.items():
+            table[column_name] = values
+        return self.replace_tables(**{entity: table})
 
     def broadcast(self, column: str, to: str = "person") -> pd.Series:
         """Map a group-table column onto persons via membership.
@@ -1341,6 +1516,19 @@ class Frame:
         n_strata = self._strata.nunique()
         links = f"; links={list(self.links)}" if self._link_tables else ""
         return f"Frame({sizes}; weights[{weighted}]; strata={n_strata}{links})"
+
+
+def _pandas_copy_on_write() -> bool:
+    """Whether pandas copy-on-write is on in this process, checked at each call.
+
+    pandas 3 always has copy-on-write on and deprecates its option, so the
+    option is read only under pandas 2.x, where it is ``True`` only when
+    copy-on-write is enabled (it is ``False`` by default, or ``"warn"``).
+    """
+
+    if int(pd.__version__.split(".", 1)[0]) >= 3:
+        return True
+    return pd.get_option("mode.copy_on_write") is True
 
 
 @dataclass(frozen=True)
