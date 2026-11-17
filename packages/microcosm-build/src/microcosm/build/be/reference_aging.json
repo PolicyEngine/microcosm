@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "feed_identity": {
-    "source_commit": "2c7e8357f1dcb9af2337c10d6cf4cbd82b1e55ef",
-    "facts_sha256": "e01a463065a81ba60139a24a605e52797442504478be60970e0ff66f9d3c6b95",
-    "manifest_sha256": "7839792643a6a32a1784328644df16c250e8d4ba08287c455983a6e7ceebb34c",
+    "source_commit": "14181d7cdf42a846c256019c1fbfbba45054d88a",
+    "facts_sha256": "607ea9b210eb366110826ed6a8317cc317d1c99c2828d142ce11b21f793aedfc",
+    "manifest_sha256": "e40d48b4157473e2aa454bac08a2815c04d165c906c8f3e515c6d461f1c119b3",
     "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
     "consumer_fact_schema_versions": [
-      "chronicle.consumer_fact.v4"
+      "chronicle.consumer_fact.v5"
     ],
-    "consumer_fact_schema_sha256": "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0",
+    "consumer_fact_schema_sha256": "acd33a091cd8d192be5d264e3e94c13e00afb6fd1972e57d4576ac55a54f6970",
     "fact_row_count": 87112
   },
   "factors": [
@@ -20,14 +20,14 @@
         "operation_version": 1,
         "purpose": "diagnostic",
         "feed_identity": {
-          "source_commit": "2c7e8357f1dcb9af2337c10d6cf4cbd82b1e55ef",
-          "facts_sha256": "e01a463065a81ba60139a24a605e52797442504478be60970e0ff66f9d3c6b95",
-          "manifest_sha256": "7839792643a6a32a1784328644df16c250e8d4ba08287c455983a6e7ceebb34c",
+          "source_commit": "14181d7cdf42a846c256019c1fbfbba45054d88a",
+          "facts_sha256": "607ea9b210eb366110826ed6a8317cc317d1c99c2828d142ce11b21f793aedfc",
+          "manifest_sha256": "e40d48b4157473e2aa454bac08a2815c04d165c906c8f3e515c6d461f1c119b3",
           "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
           "consumer_fact_schema_versions": [
-            "chronicle.consumer_fact.v4"
+            "chronicle.consumer_fact.v5"
           ],
-          "consumer_fact_schema_sha256": "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0",
+          "consumer_fact_schema_sha256": "acd33a091cd8d192be5d264e3e94c13e00afb6fd1972e57d4576ac55a54f6970",
           "fact_row_count": 87112
         },
         "source_period": 2023,
@@ -146,16 +146,16 @@
         "operation": "projected_period_average_ratio",
         "operation_version": 1,
         "factor_id": "rsz_ordinary_remuneration_cy2023_to_cy2025_observed",
-        "declaration_sha256": "12c72b7401ea0eb9784508e783f41970f08cbf548cc4615d2484721aa87ee2c6",
+        "declaration_sha256": "57b03b1bbc6fe987379220671c1b754ba9762f278cf8e4fb9ce7f6e3ddc6ee31",
         "feed_identity": {
-          "source_commit": "2c7e8357f1dcb9af2337c10d6cf4cbd82b1e55ef",
-          "facts_sha256": "e01a463065a81ba60139a24a605e52797442504478be60970e0ff66f9d3c6b95",
-          "manifest_sha256": "7839792643a6a32a1784328644df16c250e8d4ba08287c455983a6e7ceebb34c",
+          "source_commit": "14181d7cdf42a846c256019c1fbfbba45054d88a",
+          "facts_sha256": "607ea9b210eb366110826ed6a8317cc317d1c99c2828d142ce11b21f793aedfc",
+          "manifest_sha256": "e40d48b4157473e2aa454bac08a2815c04d165c906c8f3e515c6d461f1c119b3",
           "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
           "consumer_fact_schema_versions": [
-            "chronicle.consumer_fact.v4"
+            "chronicle.consumer_fact.v5"
           ],
-          "consumer_fact_schema_sha256": "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0",
+          "consumer_fact_schema_sha256": "acd33a091cd8d192be5d264e3e94c13e00afb6fd1972e57d4576ac55a54f6970",
           "fact_row_count": 87112
         },
         "source_period": 2023,
@@ -382,7 +382,7 @@
           "BE-MC0 (proposed pending d1902): targets rolled to 2026 by FPB June 2026 ratio pairs",
           "G8-r2 factor resolver: projected_period_average_ratio@1"
         ],
-        "receipt_sha256": "0c6b93472a6c4e8a3510bc83106a49d25b71e6729c04e16b154e94b053fac36d"
+        "receipt_sha256": "36bc18f498d503e988b209f16b29128601bacf6e8f7ba4c8fc794808e2a19596"
       }
     },
     {
@@ -393,14 +393,14 @@
         "operation_version": 1,
         "purpose": "diagnostic",
         "feed_identity": {
-          "source_commit": "2c7e8357f1dcb9af2337c10d6cf4cbd82b1e55ef",
-          "facts_sha256": "e01a463065a81ba60139a24a605e52797442504478be60970e0ff66f9d3c6b95",
-          "manifest_sha256": "7839792643a6a32a1784328644df16c250e8d4ba08287c455983a6e7ceebb34c",
+          "source_commit": "14181d7cdf42a846c256019c1fbfbba45054d88a",
+          "facts_sha256": "607ea9b210eb366110826ed6a8317cc317d1c99c2828d142ce11b21f793aedfc",
+          "manifest_sha256": "e40d48b4157473e2aa454bac08a2815c04d165c906c8f3e515c6d461f1c119b3",
           "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
           "consumer_fact_schema_versions": [
-            "chronicle.consumer_fact.v4"
+            "chronicle.consumer_fact.v5"
           ],
-          "consumer_fact_schema_sha256": "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0",
+          "consumer_fact_schema_sha256": "acd33a091cd8d192be5d264e3e94c13e00afb6fd1972e57d4576ac55a54f6970",
           "fact_row_count": 87112
         },
         "source_period": 2024,
@@ -519,16 +519,16 @@
         "operation": "projected_period_average_ratio",
         "operation_version": 1,
         "factor_id": "rsz_ordinary_remuneration_cy2024_to_cy2025_observed",
-        "declaration_sha256": "d44873e9991fb138a9a8d2d734c6fc001c73d17fdb85752dfd0443b7b474e6d5",
+        "declaration_sha256": "08d43b0f8f555a245b11b92aa49f5492d54650c4e5d5c836c45faf147b0a2843",
         "feed_identity": {
-          "source_commit": "2c7e8357f1dcb9af2337c10d6cf4cbd82b1e55ef",
-          "facts_sha256": "e01a463065a81ba60139a24a605e52797442504478be60970e0ff66f9d3c6b95",
-          "manifest_sha256": "7839792643a6a32a1784328644df16c250e8d4ba08287c455983a6e7ceebb34c",
+          "source_commit": "14181d7cdf42a846c256019c1fbfbba45054d88a",
+          "facts_sha256": "607ea9b210eb366110826ed6a8317cc317d1c99c2828d142ce11b21f793aedfc",
+          "manifest_sha256": "e40d48b4157473e2aa454bac08a2815c04d165c906c8f3e515c6d461f1c119b3",
           "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
           "consumer_fact_schema_versions": [
-            "chronicle.consumer_fact.v4"
+            "chronicle.consumer_fact.v5"
           ],
-          "consumer_fact_schema_sha256": "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0",
+          "consumer_fact_schema_sha256": "acd33a091cd8d192be5d264e3e94c13e00afb6fd1972e57d4576ac55a54f6970",
           "fact_row_count": 87112
         },
         "source_period": 2024,
@@ -755,7 +755,7 @@
           "BE-MC0 (proposed pending d1902): targets rolled to 2026 by FPB June 2026 ratio pairs",
           "G8-r2 factor resolver: projected_period_average_ratio@1"
         ],
-        "receipt_sha256": "1fa388f0c5b6d3ad8e01f7a0c3355155e5aacc84b710ee4f49b137a2b98d2b9c"
+        "receipt_sha256": "2cdd98d668ea89840684337b92985c264dc647b7e88fdb4c46ce8a801f08322b"
       }
     }
   ]

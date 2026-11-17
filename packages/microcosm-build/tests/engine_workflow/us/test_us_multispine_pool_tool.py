@@ -361,9 +361,9 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#922's county facts pin, two declared legacy resources,
             # moves it.
             # microcosm#1543's fit input checks in microcosm.fit.qrf move it again.
-            # microcosm#1641 moves it again: docstrings in solve and
-            # ssi_take_up, and the calibration contract's renamed modes.
-            "spec_sha256": "7ee3e8499a9bf73df25f38d2e3c8f598907ac6cdba8bd1a9c45f58fcb389b266",
+            # microcosm#1641 moves it again: docstring and comment wording in
+            # solve and ssi_take_up, and the calibration contract's renamed modes.
+            "spec_sha256": "372858d059a129d7b3bcbd7ac2dbdc314742345bd35aaff8d53943e737c98f84",
         },
     }
 
