@@ -103,6 +103,7 @@ GENERATED = (
     "reference_inventory.json",
     "reference_profiles.json",
     SURFACES,
+    "money_normalization.json",
 )
 BELGIAN_LEVELS = {"country": {"BE"}, "nuts1": {"BE1", "BE2", "BE3"}}
 # B1's schema-2 profile required these; schema 1 can't, so this package test does.
@@ -576,7 +577,17 @@ def test_documents_are_value_free_uniquely_named_and_registered():
     assert {"chronicle_feed.json", *GENERATED} <= set(spec.resources)
     for name in GENERATED:
         payload = _document(name)
-        if name not in {"reference_aging.json", "reference_inventory.json"}:
+        if name == "money_normalization.json":
+            # donor_money_period.value is the shared schema's year, not an observation.
+            assert _carried_value_keys(payload) == {"value"}
+            assert not _carried_value_keys(
+                {
+                    key: item
+                    for key, item in payload.items()
+                    if key != "donor_money_period"
+                }
+            )
+        elif name not in {"reference_aging.json", "reference_inventory.json"}:
             # Factor receipts and the inventory record evidence; references,
             # intervals and profiles carry no observation at any depth.
             assert not _carried_value_keys(payload), name
