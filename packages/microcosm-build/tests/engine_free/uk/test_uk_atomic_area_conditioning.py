@@ -13,6 +13,7 @@ households only; no refusal prints a key, a code of a household or a count.
 from __future__ import annotations
 
 import hashlib
+from fractions import Fraction
 
 import numpy as np
 import pandas as pd
@@ -542,6 +543,74 @@ def test_one_definition_draws_every_level_inside_its_cell(definition, supports) 
             else DEFAULT_WEIGHT_COLUMN
         )
         assert int(support.arrays[weight][position]) > 0
+
+
+def test_the_draw_cell_expectation_is_each_systems_shared_expectation(
+    definition, supports
+) -> None:
+    """The one expectation the housing shell's reference and the council-tax
+    localisation both take: each selected row gets the shared expectation of
+    its system's cell, with the definition's own constraints, rule and
+    default, and every other row gets None (microcosm#931)."""
+
+    from microcosm.build.atomic_support_expectations import draw_cell_expectations
+    from microcosm.build.uk_runtime import spi_housing_council_tax, spine_council_tax
+    from microcosm.build.uk_runtime.local_authority_input import (
+        UK_LOCAL_AUTHORITY_CODE_COLUMN,
+    )
+
+    assert (
+        spi_housing_council_tax.uk_draw_cell_expectations
+        is spine_council_tax.uk_draw_cell_expectations
+        is conditioning.uk_draw_cell_expectations
+    )
+    inputs = uk_draw_inputs(_households())
+    draw = uk_draw_frame(inputs, uk_draw_levels(inputs, definition, supports))
+    codes = sorted(
+        {
+            str(code)
+            for support in supports.values()
+            for code in support.arrays[UK_LOCAL_AUTHORITY_CODE_COLUMN]
+        }
+    )
+    # Invented amounts, one per authority.
+    values = {code: Fraction(3001 + 7 * at, 3) for at, code in enumerate(codes)}
+    selected = np.ones(len(draw), dtype=bool)
+    selected[[0, -1]] = False
+    expected = conditioning.uk_draw_cell_expectations(
+        draw,
+        selected,
+        definition,
+        supports,
+        value_column=UK_LOCAL_AUTHORITY_CODE_COLUMN,
+        values=values,
+    )
+    assert expected.dtype == object and len(expected) == len(draw)
+    assert all(value is None for value in expected[~selected])
+    systems = conditioning.uk_draw_systems(draw, definition)
+    for entry in definition["systems"]:
+        rows = np.flatnonzero(selected & (systems == entry["id"]))
+        assert len(rows), entry["id"]
+        rule, default = conditioning._system_rules(entry)
+        assert list(expected[rows]) == draw_cell_expectations(
+            supports[entry["id"]],
+            draw.iloc[rows],
+            constraint_columns=dict(UK_DRAW_CONSTRAINTS),
+            weight_by=rule,
+            default_weight=default,
+            value_column=UK_LOCAL_AUTHORITY_CODE_COLUMN,
+            values=values,
+        ), entry["id"]
+    for mask in (selected[:-1], selected.astype(np.int64)):
+        with pytest.raises(ValueError, match="one selection flag per row"):
+            conditioning.uk_draw_cell_expectations(
+                draw,
+                mask,
+                definition,
+                supports,
+                value_column=UK_LOCAL_AUTHORITY_CODE_COLUMN,
+                values=values,
+            )
 
 
 def test_the_fallback_reasons_name_each_inputs_status(definition, supports) -> None:
