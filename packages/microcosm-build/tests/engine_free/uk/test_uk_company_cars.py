@@ -26,11 +26,13 @@ from microcosm.build.uk_runtime.hmrc_company_car_statistics import (
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.receipt_counts import (
+    rounded_count,
     small_cell_share,
     support_band,
 )
 from microcosm.build.uk_runtime.spi_income import SPI_INCOME_RECIPIENT_COLUMN
 from microcosm.frame import WeightKind
+from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
 from test_support.microcosm_build.uk_company_cars import (
     COMPANY_CARS_STAGE_OPERATIONS,
     company_cars_stage_spec,
@@ -825,6 +827,70 @@ def test_an_engine_that_prices_a_car_otherwise_misses_the_identity(
     transform(_stage_frame())
     receipt = transform.checkpoint_metadata()["evidence"]
     assert receipt["spi_carve_out"]["max_abs_pay_identity_error_gbp"] > 1_000.0
+
+
+def test_the_carve_and_route_counts_are_clone_zero_source_households(spec, donor):
+    """Three geographic clones that repeat clone 0's holders give clone 0's
+    counts: the carve-out and the list-price routes count distinct source
+    households among clone 0's rows, so two holders of one household count
+    once, where counts of rows would read three times as many (microcosm#931)."""
+
+    holders = 40
+    sources = np.repeat(np.arange(holders // 2), 2)
+    inputs = {
+        "epb": np.where(np.arange(holders) % 4 == 0, 0.0, 6_000.0),
+        "spi_pay": np.full(holders, 30_000.0),
+        "pay": np.full(holders, 36_000.0),
+        "employee_contributions": np.zeros(holders),
+        "list_price": np.full(holders, 40_000.0),
+        "contributions": np.zeros(holders),
+        "private_fuel": np.arange(holders) % 3 == 0,
+        "car_benefit": np.full(holders, 10_000.0),
+        "fuel_benefit": np.full(holders, 7_000.0),
+    }
+    bands = np.tile([2, 5, 9, FRS_COMPANY_CAR_PRICE_BAND_UNKNOWN], holders // 4)
+    electric = np.arange(holders) % 2 == 0
+    ids = np.arange(holders) + 1
+    receipts = {}
+    for clones in (1, 3):
+        carve = stage.carve_spi_benefits(
+            **{name: np.tile(values, clones) for name, values in inputs.items()},
+            contribution_cap=CAP,
+            spec=spec,
+            sources=np.tile(sources, clones),
+            counted=np.arange(holders * clones) < holders,
+        )
+        _, routes = stage.draw_list_prices(
+            np.tile(bands, clones),
+            np.tile(electric, clones),
+            np.tile(ids, clones),
+            donor=donor,
+            spec=spec,
+            sources=np.tile(sources, clones),
+            counted=np.arange(holders * clones) < holders,
+        )
+        receipts[clones] = (carve.receipt, routes)
+    assert receipts[3] == receipts[1]
+    carve_receipt, _ = receipts[1]
+    assert carve_receipt["holders"] == rounded_count(holders // 2)
+
+
+def test_the_holder_counts_and_checks_hold_at_three_clones(statistics) -> None:
+    """The stage's counts of holders, fuels and failed checks are clone 0's
+    source households at K = 3 as at K = 1 (microcosm#931)."""
+
+    frame = _stage_frame()
+    receipts = {}
+    for clones in (1, 3):
+        transform = _transform(statistics)
+        transform(frame if clones == 1 else clone_first_frame(frame, clones))
+        receipts[clones] = transform.checkpoint_metadata()["evidence"]
+    for key in ("frs_channel", "spi_channel_tape", "spi_channel_twin_pay"):
+        assert receipts[3]["holders"][key] == receipts[1]["holders"][key], key
+    for key in ("drawn_unknown", "drawn_with_private_fuel"):
+        assert receipts[3]["fuel"][key] == receipts[1]["fuel"][key], key
+    assert receipts[3]["checks"] == receipts[1]["checks"]
+    assert set(receipts[3]["checks"]["violations"].values()) == {0}
 
 
 def test_receipt_figures_on_too_few_source_households_are_withheld(

@@ -474,6 +474,51 @@ def test_the_receipt_bands_counts_and_carries_no_rate() -> None:
     assert small["families"]["SINGLE"]["caseload_after"] == "<3"
 
 
+def test_the_receipt_counts_clone_zero_source_households_at_any_k() -> None:
+    """Three geographic clones that repeat clone 0's units, each at a third of
+    its weight, give clone 0's receipt: the drawn, moved, kept and changed
+    units are counted in distinct source households among clone 0's units, so
+    two units of one household count once, where counts of rows would read
+    three times as many (microcosm#931)."""
+
+    units = 40
+    arrays = {
+        "award": np.full(units, 1_500.0),
+        "family": np.full(units, "SINGLE", dtype=object),
+        "population": np.ones(units, dtype=bool),
+        "reporter": np.arange(units) < 4,
+        "moved": (np.arange(units) >= 4) & (np.arange(units) < 8),
+        "moved_claim": np.where(np.arange(units) < 8, 0.5, 0.0),
+        "previous": np.arange(units) % 5 == 0,
+        "draws": np.linspace(0.01, 0.99, units),
+        "great_britain": np.arange(units) < 36,
+        "source_ids": np.repeat(np.arange(units // 2), 2),
+    }
+    receipts = {}
+    for clones in (1, 3):
+        _, receipts[clones] = _assign(
+            **{name: np.tile(values, clones) for name, values in arrays.items()},
+            weights=np.full(units * clones, 3.0 / clones),
+            counted=np.arange(units * clones) < units,
+            targets=_targets(SINGLE_1=60.0),
+        )
+    keys = (
+        "reporters_not_claiming",
+        "changed_outside_draw",
+        "drawn_units",
+        "drawn_units_northern_ireland",
+        "moved_units",
+        "legacy_kept_units",
+        "set_true",
+        "set_false",
+    )
+    assert {key: receipts[3][key] for key in keys} == {
+        key: receipts[1][key] for key in keys
+    }
+    # 32 drawn units in 16 households, rounded to the nearest ten.
+    assert receipts[1]["drawn_units"] == 20
+
+
 def test_inputs_must_align_and_name_known_cells() -> None:
     with pytest.raises(ValueError, match="must align"):
         _assign(award=np.ones(3), draws=np.ones(2), targets=_targets())

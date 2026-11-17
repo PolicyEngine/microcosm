@@ -55,6 +55,7 @@ from microcosm.build.uk_runtime.national_frame import (
 )
 from microcosm.build.uk_runtime.receipt_counts import (
     distinct_count,
+    record_clone_zero_rows,
     rounded_count,
     source_household_ids,
     support_band,
@@ -271,6 +272,11 @@ def assign_uc_limited_capability(
     spi = p_household.map(spi_by_household).to_numpy(dtype=bool)
     weights = p_household.map(weights_by_household).to_numpy(dtype=float)
     sources = p_household.map(sources_by_household).to_numpy()
+    # The receipt counts people in distinct source households among
+    # geographic clone 0's rows, a household's copies once (microcosm#931).
+    counted = record_clone_zero_rows(
+        {"person": person, "household": household}, "person"
+    )
     benunits = person["person_benunit_id"].to_numpy()
 
     carriers = np.flatnonzero((status != FRS_UC_LCW_NOT_LINKED) & ~spi)
@@ -330,12 +336,19 @@ def assign_uc_limited_capability(
     person[UC_LCWRA] = wra
     person[UC_LCW] = lcw
 
-    def cell(rows: list[int]) -> dict[str, object]:
+    def on_rows(rows: list[int] | np.ndarray) -> np.ndarray:
         mask = np.zeros(count, dtype=bool)
-        mask[rows] = True
+        mask[np.asarray(rows, dtype=np.int64)] = True
+        return mask
+
+    def counted_sources(mask: np.ndarray) -> int | str:
+        return rounded_count(distinct_count(sources, mask & counted))
+
+    def cell(rows: list[int]) -> dict[str, object]:
+        mask = on_rows(rows)
         support = distinct_count(sources, mask, weights)
         return {
-            "claims": rounded_count(len(rows)),
+            "claims": counted_sources(mask),
             "weighted": round(float(weights[mask].sum()), -3) if support >= 3 else None,
             "support": support_band(support),
         }
@@ -354,7 +367,7 @@ def assign_uc_limited_capability(
         "rule": UC_LIMITED_CAPABILITY_RULE,
         "joint_claim_rule": UC_LIMITED_CAPABILITY_JOINT_CLAIM_RULE,
         "scope": UC_LIMITED_CAPABILITY_SCOPE,
-        "linked_claims": rounded_count(len(carriers)),
+        "linked_claims": counted_sources(on_rows(carriers)),
         "linked_claims_support": support_band(
             distinct_count(
                 sources,
@@ -363,10 +376,12 @@ def assign_uc_limited_capability(
             )
         ),
         "status_against_the_proxy": cells,
-        "branches": {name: rounded_count(len(rows)) for name, rows in claims.items()},
+        "branches": {
+            name: counted_sources(on_rows(rows)) for name, rows in claims.items()
+        },
         "people_changed": {
-            UC_LCWRA: rounded_count(int((wra != proxy_wra).sum())),
-            UC_LCW: rounded_count(int((lcw != proxy_lcw).sum())),
+            UC_LCWRA: counted_sources(wra != proxy_wra),
+            UC_LCW: counted_sources(lcw != proxy_lcw),
         },
     }
     household_weights = frame.weights_for("household")

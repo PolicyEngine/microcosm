@@ -20,6 +20,7 @@ from microcosm.build.uk_runtime.aps_occupation import (
     clean_aps_occupation_table,
     impute_soc2020_sub_major_group,
 )
+from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.occupation_constants import (
     UK_SOC2020_MAJOR_GROUP_OF_SUB_MAJOR_GROUP,
     UK_SOC2020_MAJOR_GROUPS,
@@ -31,6 +32,7 @@ from test_support.microcosm_build.uk_aps_occupation import (
     occupation_frame_tables,
     sub_major_codes,
 )
+from test_support.microcosm_build.uk_geographic_clones import with_geographic_clones
 
 STAGE = "aps_occupation"
 
@@ -335,6 +337,41 @@ def test_the_receipt_is_finite_json_with_banded_counts(drawn) -> None:
     assert len(records) == 9
     # A DataFrame fit on stated donor weights resolves to "explicit".
     assert {record.weight_kind for record in records} == {"explicit"}
+
+
+def test_the_drawn_counts_are_source_households_at_three_clones(
+    tables, donors, drawn
+) -> None:
+    """The people drawn, the SPI income recipients among them and the unseen
+    categories count distinct source households, a household's clones and
+    copies once, so three geographic clones give the one-clone receipt
+    (microcosm#931)."""
+
+    person, household, weights = tables
+    _, receipt, _ = drawn
+    pool = with_geographic_clones(
+        uk_national_frame(
+            person=person.assign(person_benunit_id=person["person_household_id"]),
+            benunit=pd.DataFrame({"benunit_id": household["household_id"].to_numpy()}),
+            household=household,
+            household_weights=weights,
+            time_period="2024",
+        ),
+        n_clones=3,
+    )
+    _, cloned_receipt, _ = impute_soc2020_sub_major_group(
+        pool.table("person"),
+        pool.table("household"),
+        pool.weights_for("household").values,
+        donors[0],
+        boosted_max_iter=60,
+    )
+    assert cloned_receipt["drawn"] == receipt["drawn"]
+    assert set(receipt["drawn"]) == {
+        "source_households",
+        "spi_income_recipients",
+        "unseen_category_households",
+    }
 
 
 def test_an_unseen_section_is_counted_not_refused(tables, donors) -> None:

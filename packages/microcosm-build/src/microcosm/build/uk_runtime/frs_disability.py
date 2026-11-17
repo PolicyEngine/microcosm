@@ -36,6 +36,8 @@ from microcosm.build.uk_runtime.national_frame import (
 from microcosm.build.uk_runtime.receipt_counts import (
     UK_DISCLOSURE_FLOOR,
     UK_WITHHELD,
+    distinct_count,
+    own_source_households,
     rounded_count,
     small_cell_share,
     support_band,
@@ -510,7 +512,11 @@ def carer_link_share(
         if base_weight > 0.0
         else None
     )
-    keys = routes.households if support_keys is None else np.asarray(support_keys)
+    keys = (
+        own_source_households(person)
+        if support_keys is None
+        else np.asarray(support_keys)
+    )
     return share, len(set(keys[base].tolist()))
 
 
@@ -521,6 +527,7 @@ def derive_carer_link(
     min_hours: float,
     share: tuple[float | None, int] | None = None,
     support_keys: np.ndarray | None = None,
+    counted: np.ndarray | None = None,
 ) -> tuple[np.ndarray, dict[str, object]]:
     """The carer link for every person, and its evidence (see :data:`CARER_LINK_COLUMN`).
 
@@ -535,7 +542,12 @@ def derive_carer_link(
     households, so a survey household's copies count once. The evidence
     gives each route's records in rounded counts and support bands, withheld
     where one or two households carry them, and the share the drawn route
-    takes.
+    takes. By default it counts records as people, each a survey person on
+    the frame before copies. Given ``support_keys``, it counts them in
+    distinct source households among the ``counted`` rows (geographic clone
+    0's on the clone-first spine, every row when omitted): each clone draws
+    its own outside carers, so a count over every clone would grow with the
+    clone count (microcosm#931).
     """
 
     _assert_care_line(min_hours)
@@ -546,7 +558,16 @@ def derive_carer_link(
             person, weights=weights, min_hours=min_hours, support_keys=support_keys
         )
     share_value, share_households = share
-    keys = routes.households if support_keys is None else np.asarray(support_keys)
+    keys = (
+        own_source_households(person)
+        if support_keys is None
+        else np.asarray(support_keys)
+    )
+    rows = (
+        np.ones(len(person), dtype=bool)
+        if counted is None
+        else np.asarray(counted, dtype=bool)
+    )
     linked = routes.carer & routes.member_qualifies
     drawn_route = routes.carer & routes.outside & ~routes.member_qualifies
     household_route = routes.carer & routes.household_at_line & ~routes.outside
@@ -587,21 +608,23 @@ def derive_carer_link(
         dwp_carer = adult & at_line & np.isin(benunits, carer_units)
     link = linked | drawn | no_link | dwp_carer
 
-    def counted(selected: np.ndarray) -> int | str:
+    def records(selected: np.ndarray) -> int | str:
         # Record counts are rounded, never exact, and withheld where one or
         # two households carry them (UKDS CD137 cl. 8).
         households = len(set(keys[selected].tolist()))
         if 0 < households < UK_DISCLOSURE_FLOOR:
             return UK_WITHHELD
-        return rounded_count(int(selected.sum()))
+        if support_keys is None:
+            return rounded_count(int(selected.sum()))
+        return rounded_count(distinct_count(keys, selected & rows))
 
     def route(selected: np.ndarray) -> dict[str, object]:
         # "carers", never "records": the SPI channel's refresh carries this
         # evidence into the HMRC replay report, which refuses row-data keys.
         return {
-            "carers": counted(selected),
+            "carers": records(selected),
             "support": support_band(len(set(keys[selected].tolist()))),
-            "true": counted(selected & link),
+            "true": records(selected & link),
         }
 
     evidence: dict[str, object] = {
@@ -615,9 +638,9 @@ def derive_carer_link(
         ),
         "share_support": support_band(share_households),
         "dwp_carer_element": {
-            "carers": counted(dwp_carer),
+            "carers": records(dwp_carer),
             "support": support_band(len(set(keys[dwp_carer].tolist()))),
-            "set_true_by_it": counted(dwp_carer & ~(linked | drawn | no_link)),
+            "set_true_by_it": records(dwp_carer & ~(linked | drawn | no_link)),
         },
         "routes_at_the_line": {
             "household_qualifying": route(

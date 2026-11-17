@@ -382,6 +382,39 @@ def test_stage_receipt_counts_support_and_values_in_clone_zero() -> None:
         assert geographic_clone_zero_rows(_frame(), entity).all()
 
 
+def test_stage_receipt_counts_nesting_breaks_in_source_households() -> None:
+    """A unit claiming the extended hours without the universal ones is
+    counted by its source household over every clone, so one household's
+    three clones read as one does, where a count of rows would leave the
+    small cell (microcosm#931)."""
+
+    from microcosm.build.uk_runtime.frs_take_up import (
+        UK_EXTENDED_CHILDCARE_OUTPUT,
+        UK_UNIVERSAL_CHILDCARE_OUTPUT,
+    )
+    from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
+
+    def broken():
+        frame = _frame()
+        benunit = frame.table("benunit")
+        unit = benunit["benunit_id"].eq(201)
+        benunit.loc[unit, UK_EXTENDED_CHILDCARE_OUTPUT] = True
+        benunit.loc[unit, UK_UNIVERSAL_CHILDCARE_OUTPUT] = False
+        return frame
+
+    nested = {}
+    for clones in (1, 3):
+        frame = broken() if clones == 1 else clone_first_frame(broken(), clones)
+        receipt = _receipt(frame, "frs_take_up")
+        rows = {row["output"]: row for row in receipt["flags"]}
+        nested[clones] = rows["benunit.would_claim_universal_childcare"][
+            "extended_without_universal_units"
+        ]
+        failures = _stage_gate("frs_take_up", receipt).failures
+        assert any("source household(s) claim the extended" in f for f in failures)
+    assert nested[3] == nested[1] == "<3"
+
+
 def test_stage_receipt_withholds_a_share_other_clones_carry_on_one_household() -> None:
     """The share and the target are measured over every clone, so they are
     withheld where one or two source households carry the population over

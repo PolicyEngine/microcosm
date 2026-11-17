@@ -802,3 +802,50 @@ def test_the_capital_fold_receipt_is_absent_at_one_clone_and_rounded_at_three() 
         "varied_records": "3-9",
         "varied_share": "3-9",
     }
+
+
+def _with_a_sentinel_unit_beside_property() -> object:
+    """``_frame()`` with a second unit in household 4, on the unavailable
+    sentinel, beside the reference person's unit, which records the
+    household's property."""
+
+    frame = _frame()
+    person = frame.table("person")
+    lodger = person.loc[person["person_id"].eq(4001)].assign(
+        person_id=4002, person_benunit_id=402, is_household_head=False
+    )
+    benunit = frame.table("benunit")
+    unit = benunit.loc[benunit["benunit_id"].eq(401)].assign(
+        benunit_id=402, frs_benunit_capital=-1.0
+    )
+    household = frame.table("household").copy()
+    household.loc[
+        household["household_id"].eq(4), "other_residential_property_value"
+    ] = 80_000.0
+    return _rebuilt(
+        frame,
+        person=pd.concat([person, lodger], ignore_index=True)
+        .sort_values("person_id")
+        .reset_index(drop=True),
+        benunit=pd.concat([benunit, unit], ignore_index=True)
+        .sort_values("benunit_id")
+        .reset_index(drop=True),
+        household=household,
+    )
+
+
+def test_sentinel_units_beside_property_count_source_households_at_any_k() -> None:
+    """The units on the sentinel beside a unit recording its household's
+    property count by source household among geographic clone 0's units, so
+    three clones read as one does, where a count of rows would leave the small
+    cell (microcosm#931)."""
+
+    frame = _with_a_sentinel_unit_beside_property()
+    counts = {
+        clones: cohere_uc_capital(
+            frame if clones == 1 else clone_first_frame(frame, clones),
+            minimum_cell_donors=1,
+        ).property_shares["sentinel_units_beside_recorded_property"]
+        for clones in (1, 3)
+    }
+    assert counts[3] == counts[1] == "<3"

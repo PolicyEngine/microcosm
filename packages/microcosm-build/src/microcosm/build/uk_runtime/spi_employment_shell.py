@@ -50,6 +50,7 @@ from microcosm.build.uk_runtime.occupation_constants import (
 )
 from microcosm.build.uk_runtime.receipt_counts import (
     distinct_count,
+    record_clone_zero_rows,
     rounded_count,
     small_cell_share,
     source_household_ids,
@@ -391,13 +392,16 @@ def _held_out_industry(
     folds: np.ndarray,
     industry: Mapping[str, Any],
     seed: int,
+    sources: np.ndarray,
 ) -> dict[str, object]:
     """Copy each fold's pairs from the other folds, given the adults' own groups.
 
     The gaps are the weighted mean, over major groups, of the total variation
     between the copied and observed SIC section shares, and of the absolute
     public-sector share difference. An adult whose group and status group no
-    adult of the other folds holds has no donor; it is left out and counted.
+    adult of the other folds holds has no donor; it is left out, and the
+    receipt counts such adults in distinct source households (``sources``, the
+    training rows' own).
     """
     copied = np.full(len(train), -1, dtype=np.int64)
     keys = train["person_id"].to_numpy()
@@ -450,7 +454,7 @@ def _held_out_industry(
             float(w @ public[rows] - w @ public[copied[rows]]) / w.sum()
         )
         total += w.sum()
-    without = rounded_count(int((copied < 0).sum()))
+    without = rounded_count(distinct_count(sources, copied < 0))
     if not total:
         return {"status": "not_measured", "adults_without_a_donor": without}
     return {
@@ -622,6 +626,7 @@ def impute_spi_employment_shell(
             folds,
             operation["industry"],
             seed,
+            train_sources,
         )
     else:
         held_out = {
@@ -642,7 +647,7 @@ def impute_spi_employment_shell(
     )
     new_groups = np.asarray([], dtype=object)
     restricted = np.zeros(0, dtype=bool)
-    mismatched = 0
+    mismatched = np.zeros(0, dtype=bool)
     if len(recipients):
         new_groups, restricted = _draw_held_groups(
             fitted,
@@ -661,11 +666,9 @@ def impute_spi_employment_shell(
             stable_identity_uniforms(keys, seed=seed, salt=f"{stage}:industry"),
             operation["industry"],
         )
-        mismatched = int(
-            (
-                train[STATUS_GROUP].to_numpy()[donor_positions]
-                != recipients[STATUS_GROUP].to_numpy()
-            ).sum()
+        mismatched = (
+            train[STATUS_GROUP].to_numpy()[donor_positions]
+            != recipients[STATUS_GROUP].to_numpy()
         )
         donor_rows = train_rows[donor_positions]
         person_out.loc[drawn, OCCUPATION_COLUMN] = new_groups
@@ -673,16 +676,32 @@ def impute_spi_employment_shell(
             person_out.loc[drawn, column] = person[column].to_numpy()[donor_rows]
 
     drawn_weights = weights[drawn]
+    # The receipt counts people in distinct source households, a household's
+    # copies once: the FRS adults trained on, whose geographic clones the fold
+    # holds once, over every row, and the drawn rows and the redraw's
+    # industry copies among geographic clone 0's rows, since each clone draws
+    # its own copies (microcosm#931).
+    counted = record_clone_zero_rows(lineage_tables, "person")
+
+    def people(mask: np.ndarray) -> int | str:
+        return rounded_count(distinct_count(sources, mask & counted))
+
+    def drawn_people(mask: np.ndarray) -> int | str:
+        return rounded_count(
+            distinct_count(
+                sources[drawn], np.asarray(mask, dtype=bool) & counted[drawn]
+            )
+        )
+
     receipt: dict[str, Any] = {
         "training": {
-            "people": rounded_count(int(training.sum())),
             "source_households": rounded_count(distinct_count(sources, training)),
         },
         "drawn": {
-            "people": rounded_count(int(drawn.sum())),
-            "twin_had_an_occupation": rounded_count(int((drawn & coded).sum())),
-            "newly_coded": rounded_count(int((drawn & ~coded).sum())),
-            "kept_no_occupation": rounded_count(int((recipient & ~drawn).sum())),
+            "source_households": people(drawn),
+            "twin_had_an_occupation": people(drawn & coded),
+            "newly_coded": people(drawn & ~coded),
+            "kept_no_occupation": people(recipient & ~drawn),
         },
         "fit": fitted.diagnostics,
         "held_out": held_out,
@@ -697,8 +716,8 @@ def impute_spi_employment_shell(
         "industry_copy": {
             "neighbours": int(operation["industry"]["neighbours"]),
             "cell": "group_and_status_group",
-            "restricted_draws": rounded_count(int(restricted.sum())),
-            "donors_of_another_status_group": rounded_count(mismatched),
+            "restricted_draws": drawn_people(restricted),
+            "donors_of_another_status_group": drawn_people(mismatched),
             "held_out": industry_held_out,
         },
     }

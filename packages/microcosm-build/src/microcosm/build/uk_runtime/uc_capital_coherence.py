@@ -35,7 +35,12 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
-from microcosm.build.uk_runtime.receipt_counts import rounded_count
+from microcosm.build.uk_runtime.receipt_counts import (
+    distinct_count,
+    record_clone_zero_rows,
+    record_source_households,
+    rounded_count,
+)
 from microcosm.build.uk_runtime.spi_support import (
     BASE_FRS_SUPPORT_CHANNEL,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
@@ -429,8 +434,20 @@ def cohere_uc_capital(
     sentinel_beside = (np.asarray(capital) == UC_CAPITAL_UNAVAILABLE) & np.isin(
         benunit_household, benunit_household[recording]
     )
+    # In distinct source households among geographic clone 0's units, a
+    # household's copies once: each clone draws its own reporters' capital
+    # (microcosm#931).
+    tables = {"person": person, "benunit": benunit, "household": household}
     property_receipt["sentinel_units_beside_recorded_property"] = rounded_count(
-        int(sentinel_beside.sum())
+        distinct_count(
+            record_source_households(
+                tables,
+                "benunit",
+                stage=UC_CAPITAL_COHERENCE_STAGE_NAME,
+                before_copies=True,
+            ),
+            sentinel_beside & record_clone_zero_rows(tables, "benunit"),
+        )
     )
 
     result_frame = uk_national_frame(

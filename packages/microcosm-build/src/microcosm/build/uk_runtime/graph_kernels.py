@@ -1150,6 +1150,15 @@ _COUNTING_STAGES = frozenset(
         "aps_occupation",
         "uc_limited_capability",
         "pip_points",
+        # The CGT stages bind cgt_imputation, whose gains spine gives a band's
+        # gains-wealth correlation only where true source households carry
+        # it (microcosm#931).
+        "cgt_support_split",
+        "cgt_incidence_clone",
+        "cgt_incidence_anchor",
+        "hmrc_cgt_gains_spine",
+        "cgt_residential_split",
+        "hmrc_cgt_asset_type_spine",
     }
 )
 

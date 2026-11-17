@@ -187,7 +187,7 @@ def test_the_receipt_is_finite_json_with_banded_counts(shell) -> None:
     assert held_out["status"] == "measured"
     assert set(held_out["log_loss"]) == {"model", "boosted", "spline_logit", "marginal"}
     assert held_out["calibration_outcome"] == "cross_fitted"
-    assert receipt["training"]["people"] == 1500
+    assert receipt["training"]["source_households"] == 1500
     copy = receipt["industry_copy"]
     assert copy["cell"] == "group_and_status_group"
     assert copy["donors_of_another_status_group"] == 0
@@ -354,6 +354,39 @@ def test_geographic_clones_fold_into_each_survey_record(tables, shell) -> None:
         cloned_receipt["category_shares"]["training"]
         == receipt["category_shares"]["training"]
     )
+
+
+def test_the_receipt_counts_source_households_in_clone_zero_at_three_clones(
+    tables, shell
+) -> None:
+    """At K = 3 the receipt counts the FRS adults trained on, the drawn rows
+    and the industry copies as at K = 1: in distinct source households, the
+    drawn rows among geographic clone 0's, where counts of rows would read
+    three times as many (microcosm#931)."""
+
+    person, household, weights = tables
+    _, receipt = shell
+    pool = with_geographic_clones(
+        uk_national_frame(
+            person=person.assign(person_benunit_id=person["person_household_id"]),
+            benunit=pd.DataFrame({"benunit_id": household["household_id"].to_numpy()}),
+            household=household,
+            household_weights=weights,
+            time_period="2024",
+        ),
+        n_clones=3,
+    )
+    _, cloned_receipt = impute_spi_employment_shell(
+        pool.table("person"),
+        pool.table("household"),
+        pool.weights_for("household").values,
+        boosted_max_iter=60,
+    )
+    for key in ("training", "drawn"):
+        assert cloned_receipt[key] == receipt[key], key
+    for key in ("restricted_draws", "donors_of_another_status_group"):
+        assert cloned_receipt["industry_copy"][key] == receipt["industry_copy"][key]
+    assert "people" not in receipt["training"]
 
 
 def test_the_shells_fold_receipt_is_absent_at_one_clone_and_rounded_at_three(
