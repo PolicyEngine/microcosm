@@ -153,6 +153,42 @@ def test_puf_clone_rejects_support_channel_forged_through_mutable_table() -> Non
         clone_us_frame_for_puf_support(assembled)
 
 
+@pytest.mark.parametrize(
+    "references",
+    [
+        # main's object padding, #1665's float64 padding, a nullable carrier.
+        pd.Series([None, 1], dtype=object),
+        pd.Series([np.nan, 1.0], dtype=np.float64),
+        pd.Series([None, 1], dtype="Int64"),
+    ],
+    ids=["object", "float64", "Int64"],
+)
+def test_puf_clone_writes_person_references_as_int64_on_both_arms(
+    references: pd.Series,
+) -> None:
+    """Whatever storage a pointer reaches the clone in, both arms leave as
+    int64: the native arm keeps its ids, the PUF arm's move with the clone,
+    and a missing pointer is the 0 sentinel on both."""
+
+    assembled = _assembled_spines()
+    person = assembled.table("person")
+    person["parent_1_id"] = references.array
+    person["parent_2_id"] = pd.Series([101, None], dtype=references.dtype).array
+    assert person["parent_1_id"].dtype == references.dtype
+
+    cloned = clone_us_frame_for_puf_support(assembled).table("person")
+
+    def values(column: str) -> list[object]:
+        return [None if pd.isna(value) else value for value in cloned[column]]
+
+    # Ids reach 110_000, so the multiplier is 10**6.
+    assert cloned["person_id"].tolist() == [1, 101, 1_000_001, 1_000_101]
+    assert values("parent_1_id") == [0, 1, 0, 1_000_001]
+    assert values("parent_2_id") == [101, 0, 1_000_101, 0]
+    for column in ("parent_1_id", "parent_2_id"):
+        assert cloned[column].dtype == np.dtype(np.int64), column
+
+
 def test_puf_qrf_preparation_accepts_all_source_spines() -> None:
     cloned = clone_us_frame_for_puf_support(_assembled_spines())
     donor = pd.DataFrame(

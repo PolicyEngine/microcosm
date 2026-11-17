@@ -917,3 +917,166 @@ def test_padded_boolean_columns_write_as_table_format_after_the_cps_fill(
         restored = read_frame_table(store, "person")
     assert restored["is_female"].dtype == np.dtype(bool)
     assert restored["is_female"].tolist() == [False, True, True]
+
+
+# Person references through the PUF clone (review r2 P1). Assembly pads a
+# parent pointer one spine lacks as float64; the clone renumbers person ids,
+# and once an assembled id reaches 10**15 the multiplier is 10**16, so the
+# PUF-arm ids pass 2**53. Odd targets matter: float64 rounds 10**16 + 1 to
+# 10**16 but holds 10**16 + 2.
+_PARENT_COLUMNS = ("parent_1_id", "parent_2_id")
+
+
+def _large_id_spines() -> tuple[Frame, Frame]:
+    # ACS ids [1, 2] collide with the ASEC anchor's, so assembly offsets them
+    # to [10**15, 10**15 + 1]; every source id stays within the clone-safe bound.
+    asec = _with_structural_ids(
+        _asec_frame(), [1, PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID]
+    )
+    acs = _with_structural_ids(_asec_frame(), [1, 2])
+    return asec, acs
+
+
+def _references(table: pd.DataFrame, column: str) -> list[object]:
+    # Python objects compare int against float exactly, so 1e16 != 10**16 + 1
+    # here, whereas a NumPy comparison would cast the int side and agree.
+    return [None if pd.isna(value) else value for value in table[column].tolist()]
+
+
+def _assert_cloned_references_name_their_parents(
+    assembled: Frame, cloned: Frame
+) -> None:
+    """Each cloned pointer names the cloned parent in its own arm, exactly."""
+
+    source = assembled.table("person")
+    person = cloned.table("person")
+    rows = len(source)
+    assert len(person) == 2 * rows
+    source_ids = [int(value) for value in source["person_id"]]
+    cloned_ids = [int(value) for value in person["person_id"]]
+    for column in _PARENT_COLUMNS:
+        expected: list[int] = [0] * (2 * rows)
+        for row, parent in enumerate(source[column].tolist()):
+            if pd.isna(parent) or int(parent) == 0:
+                continue  # unknown parent: the 0 sentinel on both arms
+            target = source_ids.index(int(parent))
+            expected[row] = cloned_ids[target]
+            expected[rows + row] = cloned_ids[rows + target]
+        assert _references(person, column) == expected, column
+        assert person[column].dtype == np.dtype(np.int64), column
+
+
+@pytest.mark.parametrize("storage", ["int64", "Int64"])
+def test_padded_parent_references_name_the_intended_person_after_the_clone(
+    storage: str,
+) -> None:
+    """Review r2's orientation: ASEC carries the pointers, ACS lacks them.
+
+    Assembly pads the ACS rows with NaN; a nullable carrier adds a missing
+    value on a carrying row. The clone writes both as the 0 sentinel and
+    keeps every PUF-arm pointer exact past 2**53.
+    """
+
+    asec, acs = _large_id_spines()
+    if storage == "int64":
+        parent_2 = np.asarray([PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID, 0], dtype=np.int64)
+    else:
+        parent_2 = pd.array([PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID, None], dtype="Int64")
+    asec = _with_columns(
+        asec,
+        "person",
+        {
+            "parent_1_id": pd.array([0, 1], dtype=storage),
+            "parent_2_id": parent_2,
+        },
+    )
+    assembled = assemble_spines(
+        {"asec": asec, "acs": acs},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    source = assembled.table("person")
+    for column in _PARENT_COLUMNS:
+        assert source[column].dtype == np.dtype(np.float64), column
+    assert source["parent_1_id"].isna().tolist() == [False, False, True, True]
+    assert source["parent_2_id"].isna().tolist() == [
+        False,
+        storage == "Int64",
+        True,
+        True,
+    ]
+
+    cloned = clone_us_frame_for_puf_support(assembled)
+
+    _assert_cloned_references_name_their_parents(assembled, cloned)
+    person = cloned.table("person")
+    # The PUF arm's parent of ASEC person 10**15 - 1 is person 1 shifted by
+    # the 10**16 multiplier, an odd id float64 cannot hold.
+    assert int(person["person_id"].iloc[4]) == 10**16 + 1
+    assert person["parent_1_id"].tolist() == [0, 1, 0, 0, 0, 10**16 + 1, 0, 0]
+    assert person["parent_2_id"].tolist() == [
+        PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
+        0,
+        0,
+        0,
+        10**16 + PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
+        0,
+        0,
+        0,
+    ]
+
+
+def test_parent_references_filled_by_the_cps_merge_stay_exact_through_the_clone() -> (
+    None
+):
+    """The production orientation: ACS maps every pointer to 0 and ASEC lacks
+    them, so assembly pads the ASEC rows; the pre-clone eligibility operator
+    then fills them through the source-operator merge as float64 values."""
+
+    from microcosm.build.us_runtime.multispine_pool import (
+        _merge_source_operator_outputs,
+    )
+
+    asec, acs = _large_id_spines()
+    acs = _with_columns(
+        acs,
+        "person",
+        {column: np.zeros(2, dtype=np.int64) for column in _PARENT_COLUMNS},
+    )
+    assembled = assemble_spines(
+        {"asec": asec, "acs": acs},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    person = assembled.table("person")
+    cps_rows = person[support_channel_column("person")].eq("asec").to_numpy()
+    operated = _with_columns(
+        assembled.select(cps_rows),
+        "person",
+        {
+            "parent_1_id": np.asarray([0, 1], dtype=np.int64),
+            "parent_2_id": np.asarray(
+                [PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID, 0], dtype=np.int64
+            ),
+        },
+    )
+    merged, rows = _merge_source_operator_outputs(
+        assembled,
+        operated,
+        {"person": frozenset(_PARENT_COLUMNS)},
+        operator_name="with_us_eligibility_inputs",
+    )
+    assert rows == {"person": 2}
+    assert merged.table("person")["parent_1_id"].notna().all()
+
+    cloned = clone_us_frame_for_puf_support(merged)
+
+    _assert_cloned_references_name_their_parents(merged, cloned)
+    assert cloned.table("person")["parent_1_id"].tolist() == [
+        0,
+        1,
+        0,
+        0,
+        0,
+        10**16 + 1,
+        0,
+        0,
+    ]

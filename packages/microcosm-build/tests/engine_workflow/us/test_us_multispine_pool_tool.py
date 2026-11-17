@@ -363,7 +363,9 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#1543's fit input checks in microcosm.fit.qrf move it again.
             # microcosm#1641 moves it again: docstring and comment wording in
             # solve and ssi_take_up, and the calibration contract's renamed modes.
-            "spec_sha256": "372858d059a129d7b3bcbd7ac2dbdc314742345bd35aaff8d53943e737c98f84",
+            # microcosm#1665's exact int64 person references in puf_support's
+            # preassembled clone move it through puf_support's attested bytes.
+            "spec_sha256": "8bf505375c4ccd614dbb4e7abab39bb0b1a54d319795876daac9cf1d4f3a00ce",
         },
     }
 
