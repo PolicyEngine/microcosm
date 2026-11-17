@@ -500,18 +500,40 @@ def _result_problems(
     numeric = NUMERIC_RESULT_FIELDS | {"rows_in_widest_leaf", "max_samples_leaf"}
     not_numbers = sorted(
         field
-        for field in present & numeric
+        for field in (present & numeric) - must_be_null
         if result[field] is not None and not _is_number(result[field])
     )
     if not_numbers:
-        problems.append("not a finite number: " + ", ".join(not_numbers))
+        problems.append("not a finite number within 64 bits: " + ", ".join(not_numbers))
     if result.get("implementation", implementation) != implementation:
         problems.append(f"implementation is not {implementation!r}")
-    if result.get("memory_measure", "resident_set") not in {
+    if (
+        result.get("class", EXPECTED_CLASSES[implementation])
+        != (EXPECTED_CLASSES[implementation])
+    ):
+        problems.append(f"class is not {EXPECTED_CLASSES[implementation]}")
+    measure = result.get("memory_measure", "resident_set")
+    if not isinstance(measure, str) or measure not in {
         "physical_footprint",
         "resident_set",
     }:
         problems.append("memory_measure is not a known measure")
+    # The result must describe the run the parent asked for.
+    requested = {
+        "shape": arguments.shape,
+        "rows": arguments.rows,
+        "trees": arguments.trees,
+        "seed": arguments.seed,
+    }
+    if arguments.shape == "wage":
+        requested["rows_in_widest_leaf"] = arguments.rows_in_widest_leaf
+    different = sorted(
+        field
+        for field, value in requested.items()
+        if field in result and result[field] is not None and result[field] != value
+    )
+    if different:
+        problems.append("differs from the requested run: " + ", ".join(different))
     digest = result.get("leaf_array_sha256")
     if digest is not None and not (
         isinstance(digest, str)
@@ -545,6 +567,11 @@ def _result_problems(
             if cpu_count is not None and not _is_number(cpu_count):
                 problems.append("environment cpu_count is not a number")
     return problems
+
+
+def _refuse_constant(name: str) -> object:
+    """Refuse ``NaN`` and ``Infinity``, which Python's json reads but JSON lacks."""
+    raise ValueError(f"{name} is not standard JSON")
 
 
 def _signal_name(number: int) -> str | None:
@@ -600,16 +627,22 @@ def _run_child(
         )
         return None, failure
     try:
-        result = json.loads(marked[-1])
-    except json.JSONDecodeError:
+        result = json.loads(marked[-1], parse_constant=_refuse_constant)
+    except (ValueError, RecursionError):
         result = None
     if not isinstance(result, dict):
         failure["message"] = (
             f"the {implementation} measurement printed a result that is not a "
-            "JSON object"
+            "standard JSON object"
         )
         return None, failure
-    problems = _result_problems(result, arguments, implementation)
+    try:
+        problems = _result_problems(result, arguments, implementation)
+        if not problems:
+            # Formatting the result alone shows the report can print it.
+            _report([result], [], None)
+    except Exception as error:  # a malformed result must not stop the other run
+        problems = [f"it could not be read ({type(error).__name__}: {error})"]
     if problems:
         failure["message"] = (
             f"the {implementation} measurement's result is unusable: "
@@ -834,10 +867,15 @@ def main(argv: list[str] | None = None) -> int:
                     "leaf_arrays_identical": identical,
                 },
                 indent=2,
+                allow_nan=False,
             )
         )
     else:
-        print(_report(results, failures, identical))
+        report = _report(results, failures, identical)
+        # Escape anything the terminal's encoding cannot show, such as a lone
+        # surrogate in a malformed field, instead of failing to print.
+        encoding = sys.stdout.encoding or "utf-8"
+        print(report.encode(encoding, "backslashreplace").decode(encoding))
     return 1 if failures or identical is False else 0
 
 

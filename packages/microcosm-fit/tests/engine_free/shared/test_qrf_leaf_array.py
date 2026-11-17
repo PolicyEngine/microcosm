@@ -576,8 +576,8 @@ def test_in_place_fill_leaves_unwritten_pages_unmapped() -> None:
     1.0). The array, over 40 MiB, is larger than glibc's largest mmap
     threshold, so it gets fresh pages; numpy's request for transparent huge
     pages is turned off in the child, and glibc's ``MALLOC_PERTURB_`` and its
-    ``glibc.malloc`` tunables (which can fill allocations or request huge
-    pages) are removed from its environment. About a quarter of the pages
+    ``glibc.malloc`` and ``glibc.mem.tagging`` tunables (which can fill
+    allocations or request huge pages) are removed from its environment. About a quarter of the pages
     hold entries with 16 KiB pages and a sixteenth with 4 KiB pages. With
     pages over 16 KiB, or huge pages always on at any size, most pages hold
     an entry, so the test skips.
@@ -602,7 +602,7 @@ def test_in_place_fill_leaves_unwritten_pages_unmapped() -> None:
     other_tunables = [
         tunable
         for tunable in os.environ.get("GLIBC_TUNABLES", "").split(":")
-        if tunable and not tunable.startswith("glibc.malloc.")
+        if tunable and not tunable.startswith(("glibc.malloc.", "glibc.mem.tagging"))
     ]
     if other_tunables:
         environment["GLIBC_TUNABLES"] = ":".join(other_tunables)
