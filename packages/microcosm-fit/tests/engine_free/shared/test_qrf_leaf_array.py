@@ -193,14 +193,14 @@ def test_continuous_target_without_a_cap_matches_the_library() -> None:
     assert leaves.shape[-1] > 1
 
 
-@pytest.mark.parametrize("cap", [16, 0.0047])
+@pytest.mark.parametrize("cap", [16, np.int64(16), 0.0047])
 def test_near_discrete_target_over_the_cap_matches_the_library(
     monkeypatch, cap
 ) -> None:
     """Leaves larger than the cap are shuffled and truncated identically.
 
     The fractional cap is 0.0047 of 3,000 rows, 14.1, which the library rounds
-    up to 15.
+    up to 15. A numpy integer cap counts as an integer, as in the library.
     """
     shuffle_calls: list[int] = []
     original_shuffle = random.shuffle
@@ -212,8 +212,9 @@ def test_near_discrete_target_over_the_cap_matches_the_library(
     monkeypatch.setattr(random, "shuffle", counting_shuffle)
     predictors, target = _near_discrete_donors(seed=2)
     leaves = _assert_same_fit(predictors, target, max_samples_leaf=cap)
-    width = cap if isinstance(cap, int) else math.ceil(cap * len(target))
-    assert leaves.shape[-1] == width == (16 if isinstance(cap, int) else 15)
+    integer_cap = isinstance(cap, int | np.integer)
+    width = cap if integer_cap else math.ceil(cap * len(target))
+    assert leaves.shape[-1] == width == (16 if integer_cap else 15)
     # Both fits shuffled the same leaves, each larger than the cap, before
     # truncating them; the library fit ran first.
     half = len(shuffle_calls) // 2
@@ -291,21 +292,24 @@ def test_weighted_leaves_that_empty_get_the_library_placeholder(
     assert sum(placeholders[half:]) > 0
 
 
+@pytest.mark.parametrize("bootstrap", [True, False])
 @pytest.mark.parametrize("max_samples_leaf", [None, 5])
 def test_weight_filter_matches_the_library_for_tiny_zero_and_negative_weights(
-    max_samples_leaf,
+    max_samples_leaf, bootstrap
 ) -> None:
     """quantile-forest 1.4.2's weight filter is copied as it is.
 
     It looks up each entry's weight by the draw's position minus one, not by
-    the drawn row, so it keeps or drops entries by another row's weight. Tiny
-    and zero weights reach the comparison it makes, and so do negative ones
-    before scikit-learn 1.9, which refuses them while growing the trees.
+    the drawn row, so it keeps or drops entries by another row's weight. Tiny,
+    zero and negative weights all reach the comparison it makes. From
+    scikit-learn 1.9 the forest's weighted bootstrap draw refuses negative
+    weights, so with bootstrapping on they are left out there; with it off
+    they reach the filter on every version.
     """
     predictors, target = _continuous_donors(seed=18, rows=600)
     generator = np.random.default_rng(18)
     levels = [-1.0, 0.0, 1e-3, 0.04, 0.5, 2.0, 3.0]
-    if parse_version(sklearn.__version__) >= parse_version("1.9.0"):
+    if bootstrap and parse_version(sklearn.__version__) >= parse_version("1.9.0"):
         levels.remove(-1.0)
     weights = generator.choice(levels, len(target))
     _assert_same_fit(
@@ -313,6 +317,7 @@ def test_weight_filter_matches_the_library_for_tiny_zero_and_negative_weights(
         target,
         sample_weight=weights,
         max_samples_leaf=max_samples_leaf,
+        bootstrap=bootstrap,
     )
 
 
@@ -563,12 +568,15 @@ def test_in_place_fill_leaves_unwritten_pages_unmapped() -> None:
     memory. The library's ``np.array(list)`` copy writes them all (a share of
     1.0). The array, over 40 MiB, is larger than glibc's largest mmap
     threshold, so it gets fresh pages; numpy's request for transparent huge
-    pages is turned off in the child, and glibc's ``MALLOC_PERTURB_``, which
-    fills allocations, is unset. About a quarter of the pages hold entries
+    pages is turned off in the child, and glibc's ``MALLOC_PERTURB_`` and
+    ``GLIBC_TUNABLES`` (which can fill allocations or request huge pages) are
+    unset. About a quarter of the pages hold entries
     with 16 KiB pages and a sixteenth with 4 KiB pages. With pages over
     16 KiB, or huge pages always on at any size, most pages hold an entry,
     so the test skips.
     """
+    if not hasattr(os, "sysconf"):
+        pytest.skip("os.sysconf is unavailable")
     if os.sysconf("SC_PAGE_SIZE") > 16 * 2**10:
         pytest.skip("memory pages are larger than 16 KiB")
     huge_page_settings = Path("/sys/kernel/mm/transparent_hugepage")
@@ -581,7 +589,7 @@ def test_in_place_fill_leaves_unwritten_pages_unmapped() -> None:
     environment = {
         name: value
         for name, value in os.environ.items()
-        if name not in {"MALLOC_PERTURB_", "MALLOC_PERTURB"}
+        if name not in {"MALLOC_PERTURB_", "GLIBC_TUNABLES"}
     }
     completed = subprocess.run(
         [sys.executable, "-c", _RESIDENT_SHARE_CHILD],

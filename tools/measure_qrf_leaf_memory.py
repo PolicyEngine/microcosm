@@ -147,10 +147,31 @@ REQUIRED_RESULT_FIELDS = frozenset(
         "environment",
     }
 )
-#: Required fields that may hold null: no digest under --no-digest, no row
-#: count for the near-discrete shape, and no cap for an uncapped forest.
-NULLABLE_RESULT_FIELDS = frozenset(
-    {"leaf_array_sha256", "rows_in_widest_leaf", "max_samples_leaf"}
+#: Required result fields that hold a number.
+NUMERIC_RESULT_FIELDS = frozenset(
+    {
+        "leaf_array_bytes",
+        "peak_bytes_after_fit",
+        "fit_peak_growth_bytes",
+        "peak_resident_set_bytes_before_fit",
+        "peak_resident_set_bytes_after_fit",
+        "fit_seconds",
+        "rows",
+        "trees",
+        "seed",
+        "n_jobs",
+        "trees_at_once",
+    }
+)
+#: Fields of a result's ``environment`` that the report reads.
+REQUIRED_ENVIRONMENT_FIELDS = frozenset(
+    {
+        "platform",
+        "cpu_count",
+        "page_size_bytes",
+        "transparent_huge_pages",
+        "numpy_requests_huge_pages",
+    }
 )
 #: Marks the child's result line on standard output.
 RESULT_PREFIX = "measure_qrf_leaf_memory result: "
@@ -433,6 +454,61 @@ def _child_command(arguments: argparse.Namespace, implementation: str) -> list[s
     return command
 
 
+def _nullable_fields(arguments: argparse.Namespace) -> set[str]:
+    """Return the result fields that may be null for this run's options."""
+    nullable = set()
+    if arguments.no_digest:
+        nullable.add("leaf_array_sha256")
+    if arguments.shape == "wage":
+        nullable.add("max_samples_leaf")  # the wage forest has no cap
+    else:
+        nullable.add("rows_in_widest_leaf")
+    return nullable
+
+
+def _result_problems(
+    result: dict[str, object], arguments: argparse.Namespace
+) -> list[str]:
+    """Describe what makes a child's result unusable; empty if nothing does."""
+    nullable = _nullable_fields(arguments)
+    problems = []
+    missing = sorted(REQUIRED_RESULT_FIELDS - set(result))
+    if missing:
+        problems.append("missing " + ", ".join(missing))
+    null = sorted(
+        field
+        for field in REQUIRED_RESULT_FIELDS & set(result)
+        if result[field] is None and field not in nullable
+    )
+    if null:
+        problems.append("null " + ", ".join(null))
+    not_numbers = sorted(
+        field
+        for field in NUMERIC_RESULT_FIELDS & set(result)
+        if result[field] is not None
+        and (
+            isinstance(result[field], bool)
+            or not isinstance(result[field], int | float)
+        )
+    )
+    if not_numbers:
+        problems.append("not a number: " + ", ".join(not_numbers))
+    shape = result.get("leaf_array_shape")
+    if "leaf_array_shape" in result and not (
+        isinstance(shape, list) and all(isinstance(size, int) for size in shape)
+    ):
+        problems.append("leaf_array_shape is not a list of integers")
+    environment = result.get("environment")
+    if "environment" in result:
+        if not isinstance(environment, dict):
+            problems.append("environment is not an object")
+        else:
+            lacking = sorted(REQUIRED_ENVIRONMENT_FIELDS - set(environment))
+            if lacking:
+                problems.append("environment missing " + ", ".join(lacking))
+    return problems
+
+
 def _signal_name(number: int) -> str | None:
     try:
         return signal.Signals(number).name
@@ -495,15 +571,11 @@ def _run_child(
             "JSON object"
         )
         return None, failure
-    missing = sorted(
-        field
-        for field in REQUIRED_RESULT_FIELDS
-        if field not in result
-        or (result[field] is None and field not in NULLABLE_RESULT_FIELDS)
-    )
-    if missing:
+    problems = _result_problems(result, arguments)
+    if problems:
         failure["message"] = (
-            f"the {implementation} measurement's result lacks " + ", ".join(missing)
+            f"the {implementation} measurement's result is unusable: "
+            + "; ".join(problems)
         )
         return None, failure
     return result, None
