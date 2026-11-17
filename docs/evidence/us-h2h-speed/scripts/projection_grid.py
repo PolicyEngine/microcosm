@@ -1,7 +1,8 @@
 """Simulated d844 runs and the watcher's verdicts on them, from the Mac times.
 
 Not a measurement. For each speed factor f (Modal seconds per Mac second,
-the same for every chunk unless --chunk5 says otherwise) and worker start
+the same for every chunk unless --chunk5 says otherwise; --chunk5-artifact
+candidate slows only the candidate's chunk 5) and worker start
 cost T, it simulates one 16-worker run with test_support's pool simulator
 (on-demand worker starts as CPython makes them, chunk-major tasks, twice the
 workers outstanding, in-order consumption) from this folder's per-chunk
@@ -17,7 +18,11 @@ it at 14,505 s); the poll and cost of the first verdict other than WAIT,
 with its estimate; the first NO-GO's poll and cost; FALSE when a NO-GO came
 for a run that fits.
 
+A run fits when its last slice ends at least 600 s before the budget
+ends: the estimate's allowance for the comparison and scorecards.
+
 usage: python -I scripts/projection_grid.py CHECKOUT [--chunk5 FACTOR]
+       [--chunk5-artifact both|candidate]
 """
 
 from __future__ import annotations
@@ -35,6 +40,12 @@ parser.add_argument(
     type=float,
     default=1.0,
     help="chunk 5 runs this many times slower on Modal than the prior says",
+)
+parser.add_argument(
+    "--chunk5-artifact",
+    choices=("both", "candidate"),
+    default="both",
+    help="which artifacts' chunk 5 --chunk5 slows",
 )
 args = parser.parse_args()
 sys.path.insert(0, str(args.checkout))
@@ -61,13 +72,18 @@ POLL = 600
 START = 1_794_816_000
 
 
-def scaled(means: list[float], f: float) -> list[int]:
+def scaled(means: list[float], f: float, slow: bool = True) -> list[int]:
     out = [round(x * f) for x in means]
-    out[-1] = round(means[-1] * f * args.chunk5)
+    out[-1] = round(means[-1] * f * (args.chunk5 if slow else 1.0))
     return out
 
 
-print(f"chunk 5 slowed {args.chunk5}x beyond the prior; budget {BUDGET} s")
+SLOW_INCUMBENT = args.chunk5_artifact == "both"
+print(
+    f"chunk 5 slowed {args.chunk5}x beyond the prior "
+    f"({'both artifacts' if SLOW_INCUMBENT else 'candidate only'}); "
+    f"budget {BUDGET} s"
+)
 print(
     f"{'f':>4} {'T':>4} | {'tool s':>7} {'$':>6} {'fits':>4} | "
     f"{'first s':>7} {'$':>6} {'verdict':>7} {'est s':>7} | {'NO-GO s':>7} {'$':>6}"
@@ -77,7 +93,7 @@ for f in (1, 1.5, 2, 3, 4, 5, 7.6):
         run = sim.run(
             started_at=START,
             workers=16,
-            incumbent_seconds=scaled(inc, f),
+            incumbent_seconds=scaled(inc, f, SLOW_INCUMBENT),
             candidate_seconds=scaled(cand, f),
             incumbent_slices=29,
             candidate_slices=177,

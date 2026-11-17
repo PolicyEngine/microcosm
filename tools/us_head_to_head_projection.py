@@ -30,13 +30,21 @@ submission order. A worker's first slice carries one-time costs.
 Rebuilding the past. Under that model the log fixes every submit's time:
 the opening submits come at the pool's opening and after each worker start;
 later ones when the parent takes a result, once it has arrived and the
-previous ``after receiving`` line is out. Which submits start a worker
-follows from the tokens, and the log's worker starts check it. A task
-starts as soon as it has been submitted and a started worker is free, so at
-any moment the tasks started are the first ``min(submitted, finished +
-workers started)``. That dates every slice's start, so each slice's own time
-is its completion less its start. A chunk's seconds per slice is the mean
-over its slices other than workers' first ones (``min_slices`` at least).
+previous ``after receiving`` line is out. A submit that takes a token is
+dated by its own ``after receiving`` line, which the parent prints straight
+after it: a result can reach the parent well after its slice line. Which
+submits start a worker follows from the tokens, and the log's worker starts
+check it. Stamps are whole seconds, so a result finishing in the same second
+as a start can look like a token the submit did not have; a start logged
+before a later submit is then put back on the submit that made it, and the
+report notes it. A task starts as soon as it has been submitted and a
+started worker is free, so at any moment the tasks started are the first
+``min(submitted, finished + workers started)``. That dates every slice's
+start, so each slice's own time is its completion less its start. A chunk's
+seconds per slice is the mean over its slices other than workers' first
+ones (``min_slices`` at least). A result the parent took whose slice line is
+missing means the log streams lost lines: the rebuild stops there and the
+report carries ``log_gap``.
 
 The end. The estimate replays the model forward from the rebuilt present:
 the running slices, the queue, the free tokens, the workers still to start
@@ -45,13 +53,16 @@ not measured yet takes a measured chunk's, scaled by prior per-chunk times
 (``--chunk-weights``: slice times measured locally for both artifacts) from
 whichever measured chunk gives the slowest result. Before any candidate
 chunk is measured, the candidate's seconds are the incumbent's, scaled
-chunk by chunk by the prior ratio of the two. A start costs the mean of the
-starts logged so far (the incumbent's until the candidate's pool has one);
-a first slice costs the mean extra measured so far. While the incumbent is
-still scoring, its replay comes first and the candidate's whole pool
-follows at once (loading the candidate is left out), with the prior's
-slices per chunk. A fixed allowance for the comparison and scorecards ends
-it.
+chunk by chunk by the prior ratio of the two; after, its unmeasured chunks
+scale the candidate's prior by how far the incumbent's measured chunks
+departed from theirs. A start costs the mean of the starts logged so far
+(the incumbent's until the candidate's pool logs one, slice or not); a
+first slice costs the mean extra measured so far. A running slice already
+past its chunk's pace is taken to run as far past it again. While the
+incumbent is still scoring, its replay comes first and the candidate's
+whole pool follows at once (loading the candidate is left out), with the
+prior's slices per chunk. A fixed allowance for the comparison and
+scorecards ends it.
 
 This is an estimate, made again at every poll, not a bound. What bounds an
 attempt is elsewhere: the class timeout (derived from the cost cap), the
@@ -63,12 +74,16 @@ is spent for nothing.
 The budget is the plan's ``max_wall_seconds`` from ``--started-at``, or less
 when the runner's ``ATTEMPTS:`` or ``BUDGET:`` line in the log says so. The
 verdict is ``WAIT`` until a pace and (while workers are still to start) a
-start cost are known, then ``GO``, or ``NO-GO`` when the estimated end is
-past the budget less a margin (none by default). Once the candidate has
-scored every slice the verdict stays ``GO``: what is left is cheap, and only
-the runner's budget stops it. A stall is ``NO-GO`` at any point after the
-first slice: no scorer record for an hour, or for four times the slowest
-estimated slice if that is longer. Where the log does not follow the model
+start cost are known, and while the log has a gap; then ``GO``, or
+``NO-GO`` when the estimated end is past the budget less a margin (none by
+default). Once the candidate has scored every slice the verdict stays
+``GO``: what is left is cheap, and only the runner's budget stops it. A
+stall is ``NO-GO`` at any point: no scorer record for an hour, or for four
+times the slowest estimated slice if that is longer, counted from
+``--started-at`` before the first record. The first estimate scales the
+one chunk it has measured onto all the work ahead, so a prior off on that
+chunk moves it by that departure's share of the rest: a run that fits with
+less spare than that can be stopped. Where the log does not follow the model
 (a worker start it cannot explain, a slice that seems to end before it
 began), the report says so.
 
