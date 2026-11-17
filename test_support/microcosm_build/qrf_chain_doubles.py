@@ -11,7 +11,8 @@ module provides:
   computed it before: one ``fit`` over every target, then one ``predict``;
 - :func:`tracked_target_fits`, which keeps weak references to each fitted
   target and checks, when the next target's fit starts, that they are dead;
-- :func:`table_bytes_digest`, a SHA-256 of a table's exact bytes.
+- :func:`table_bytes_digest`, a SHA-256 of a table's index and columns, exact
+  to the byte for numeric and boolean columns.
 """
 
 from __future__ import annotations
@@ -156,7 +157,11 @@ class TargetFitLifetimes:
             ("sign classifier bins", getattr(gate, "_bin_mapper", None)),
         ]
         for stage in getattr(gate, "_predictors", None) or ():
-            parts.extend(("sign classifier tree", predictor) for predictor in stage)
+            for predictor in stage:
+                parts.append(("sign classifier tree", predictor))
+                parts.append(
+                    ("sign classifier tree nodes", getattr(predictor, "nodes", None))
+                )
         for sign in ("positive", "negative"):
             forest = getattr(model, sign, None)
             regressor = getattr(forest, "model", None)
@@ -200,19 +205,22 @@ def tracked_target_fits(
     """Check that each fitted target is freed before the next target's fit.
 
     Wraps ``RegimeGatedQRF._fit_target``: on entry it requires every object an
-    earlier call built (the target model; its sign classifier with its bins
-    and trees; its forests with their regressors, trees and leaf-value
-    arrays) to be dead, then records weak references to the new ones.
+    earlier call built (the target model; its sign classifier with its bins,
+    trees and their node arrays; its forests with their regressors, trees and
+    leaf-value arrays) to be dead, then records weak references to the new
+    ones.
 
     The garbage collector is off inside the block, so an object counts as
     freed only when nothing references it any more, which is when its memory
     goes back; a reference cycle would keep it alive and fail the check.
 
-    Two kinds of part cannot be weakly referenced and are not checked
-    directly: scikit-learn's compiled ``Tree`` node storage (each tree's
-    ``tree_``) and the sign classifier trees' node arrays. Each belongs to a
-    tracked tree and is freed with it, unless something references it
-    directly, which this check cannot see.
+    Two parts cannot be weakly referenced and are not checked directly:
+    scikit-learn's compiled ``Tree`` node storage (each tree's ``tree_``) and
+    quantile-forest's ``QuantileForest`` leaf store (each regressor's
+    ``forest_``; only the array owning its leaf values is checked, not its
+    ``y_train`` values). Each belongs to a tracked object and is freed with
+    it, unless something references it directly, which this check cannot
+    see.
 
     Violations are also kept on the returned object, in case a caller catches
     the assertion.
@@ -267,6 +275,10 @@ def table_bytes_digest(table: pd.DataFrame) -> str:
     Numeric and boolean columns contribute their raw bytes, so a float that
     differs in its last bit (or a ``-0.0`` for a ``0.0``) changes the digest;
     a categorical column also contributes its categories and their order.
+    Other columns contribute ``pandas.util.hash_pandas_object`` values, which
+    are not byte-exact: in an object column ``None`` and ``NaN`` hash alike,
+    as do mixed values with the same ``str`` (``1`` and ``"1"``). The tests'
+    output tables have numeric and boolean columns only.
     """
 
     digest = hashlib.sha256()
