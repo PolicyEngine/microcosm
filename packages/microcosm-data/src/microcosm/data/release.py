@@ -334,8 +334,8 @@ BUILD_FOLDER_PUBLICATION_COMMAND = "microcosm-publish-release-build"
 #: ``populace-uk-2023``.
 TAGGED_RELEASE_ADVICE = (
     "US builds publish into microcosm-us-2024-national, -local, "
-    "-receipt-donor, -evidence or -annual, in a directory named after the "
-    "release; "
+    "-receipt-donor, -evidence, -annual or -local-annual, in a directory "
+    "named after the release; "
     "the June 2023 UK release and populace-uk-<year>-<tier>-k<N> releases "
     "take no new builds once the UK repository records its builds in "
     "releases.json."

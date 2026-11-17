@@ -89,8 +89,8 @@ Regenerate
 Archive the pinned commits into a scratch directory (never build inside a
 live checkout), build the CLI and the dense extension from the same engine
 archive, then run this tool once per country from the repository root.
-Each snapshot names its own engine commit: nz.json 753ce7d9 and be.json
-04315d94. Set ``ENGINE`` to the one the snapshot records, and run only that
+Each snapshot names its own engine commit; both nz.json and be.json record
+753ce7d9. Set ``ENGINE`` to the one the snapshot records, and run only that
 country's command. ``AXIOM`` is the directory holding the three
 TheAxiomFoundation checkouts, after a ``git fetch origin`` in each::
 
@@ -98,7 +98,7 @@ TheAxiomFoundation checkouts, after a ``git fetch origin`` in each::
     AXIOM=<dir with axiom-rules-engine, rulespec-nz, rulespec-be checkouts>
     ENGINE=<the snapshot's engine.commit>
     NZ=6fe181fc4c65763150fe97501ef3443774e64869
-    BE=b105e2b3a3086ddd2de447d58a9b951346870dd1
+    BE=632e1da1110ba881c68165e0cd3c2287b5b8ab08
     mkdir -p $W/engine $W/rulespec-nz $W/rulespec-be
     git -C $AXIOM/axiom-rules-engine archive $ENGINE | tar -x -C $W/engine
     git -C $AXIOM/rulespec-nz archive $NZ | tar -x -C $W/rulespec-nz
@@ -107,7 +107,7 @@ TheAxiomFoundation checkouts, after a ``git fetch origin`` in each::
     uv venv --python <python3.14> $W/dense-venv
     VIRTUAL_ENV=$W/dense-venv uv pip install maturin
     (cd $W/engine && PYO3_PYTHON=$W/dense-venv/bin/python \\
-        $W/dense-venv/bin/maturin build --release \\
+        $W/dense-venv/bin/maturin build --release --locked \\
         --manifest-path python-ext/Cargo.toml \\
         -i $W/dense-venv/bin/python --out $W/wheels)
     VIRTUAL_ENV=$W/dense-venv uv pip install $W/wheels/*.whl $W/engine/python
@@ -125,11 +125,11 @@ TheAxiomFoundation checkouts, after a ``git fetch origin`` in each::
 ``<python3.14>`` stands for any GIL-enabled CPython 3.14 interpreter.
 The wrapper pins Python ``==3.14.*``, and the extension must be built for the
 interpreter that loads it: a wheel built for free-threaded 3.14t does not
-import on GIL-enabled 3.14. At 04315d94 ``maturin build`` runs without
-``--locked``, because ``python-ext/Cargo.lock`` there still records the
-path dependency ``axiom-rules-engine`` as 0.1.0 (the crate is 0.2.2), and
-Cargo rewrites only that entry. At 753ce7d9 the lock records 0.2.2, and
-``maturin build --locked`` builds the wheel.
+import on GIL-enabled 3.14. At 753ce7d9 ``python-ext/Cargo.lock`` records
+the path dependency ``axiom-rules-engine`` at the crate's version, 0.2.2,
+so ``maturin build --locked`` builds the wheel. (At 04315d94, which no
+snapshot records now, the lock still said 0.1.0, so the build there ran
+without ``--locked``.)
 
 ``--rulespec-git-dir`` checks that every file under ``--rulespec-root`` is
 byte-identical to the blob at ``--rulespec-commit``. ``--check`` regenerates

@@ -18,9 +18,22 @@ build ID is the base build's ID followed by
 ``-annual-<YYYYMMDDTHHMMSSZ>-<hex8>``, and its release manifest names the base
 build in ``metadata.annual_projection_base`` as ``repo_id``, ``release``,
 ``build``, ``path`` and ``sha256``. In that layout only builds of the annual
-release declare ``metadata.dataset_years``, and each of them must. Before an
+releases declare ``metadata.dataset_years``, and each of them must. Before an
 annual build is handed to the emitter, :func:`require_base_publication` checks
 on the Hub that its base build is published with the same base-year H5.
+
+A local-area build is projected the same way into its own release,
+:data:`~microcosm.data.contract.US_LOCAL_ANNUAL_RELEASE_ID` (the County Files,
+microcosm#922). Its base is a build of
+:data:`~microcosm.data.contract.US_LOCAL_RELEASE_ID`, which claims no default
+dataset, so the base-year H5 is the build's one microdata artifact that is
+not a projected year. Its H5s keep the base's fixed-format nullable layout,
+checked here through h5py without pandas
+(:func:`_check_fixed_native_identity`). Each projected year is
+``microcosm_us_<year>_acs_local``, and its projected years are any years
+after the base year: the County Files name 2026 and 2027, and the base is
+itself read as one single-year file, so the national rule that every year
+from the base through the last is present does not apply.
 """
 
 from __future__ import annotations
@@ -28,6 +41,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -38,7 +52,9 @@ from packaging.specifiers import SpecifierSet
 
 from microcosm.data.contract import (
     CHECKSUMS_FILE,
+    US_ANNUAL_BASE_RELEASES,
     US_ANNUAL_RELEASE_ID,
+    US_LOCAL_ANNUAL_RELEASE_ID,
     US_NATIONAL_RELEASE_ID,
     publishes_to_build_folder,
 )
@@ -60,6 +76,24 @@ _BASE_REFERENCE_FIELDS = frozenset({"repo_id", "release", "build", "path", "sha2
 _PUBLISHER_FILES = frozenset(
     {"release_manifest.json", "build_manifest.json", CHECKSUMS_FILE}
 )
+#: The release-manifest fields an annual build writes itself. It carries every
+#: other field of its base build's release manifest unchanged, and every
+#: ``metadata`` field but :data:`_ANNUAL_METADATA_FIELDS`
+#: (``tools/assemble_us_annual_release_dir.py``).
+_ANNUAL_RELEASE_FIELDS = frozenset(
+    {"release", "build", "metadata", "artifacts", "migrated_from"}
+)
+_ANNUAL_METADATA_FIELDS = frozenset(
+    {
+        "dataset_years",
+        "annual_projection_manifest",
+        "annual_projection_acceptance",
+        "annual_projection_base",
+    }
+)
+#: The build-manifest fields an annual build writes itself; it carries every
+#: other field of its base build's build manifest unchanged.
+_ANNUAL_BUILD_FIELDS = frozenset({"release", "build", "migrated_from"})
 
 
 @dataclass(frozen=True)
@@ -78,8 +112,10 @@ class AnnualProjectionExtension:
 def annual_release_refusal(release: str, manifest: Mapping) -> str | None:
     """Why a build of ``release`` may not declare, or lack, annual years.
 
-    In the build-folder layout only builds of
-    :data:`~microcosm.data.contract.US_ANNUAL_RELEASE_ID` declare
+    In the build-folder layout only builds of the annual releases
+    (:data:`~microcosm.data.contract.US_ANNUAL_BASE_RELEASES`:
+    :data:`~microcosm.data.contract.US_ANNUAL_RELEASE_ID` and
+    :data:`~microcosm.data.contract.US_LOCAL_ANNUAL_RELEASE_ID`) declare
     ``metadata.dataset_years``, and each of them must. ``None`` when the
     build is allowed as it is, which includes every tagged release.
     """
@@ -87,14 +123,15 @@ def annual_release_refusal(release: str, manifest: Mapping) -> str | None:
         return None
     metadata = manifest.get("metadata")
     declares = isinstance(metadata, Mapping) and "dataset_years" in metadata
-    if release == US_ANNUAL_RELEASE_ID and not declares:
+    if release in US_ANNUAL_BASE_RELEASES and not declares:
         return (
-            f"a build of {US_ANNUAL_RELEASE_ID!r} must declare "
+            f"a build of {release!r} must declare "
             "metadata.dataset_years, the years its H5 files cover"
         )
-    if release != US_ANNUAL_RELEASE_ID and declares:
+    if release not in US_ANNUAL_BASE_RELEASES and declares:
         return (
-            f"only builds of {US_ANNUAL_RELEASE_ID!r} declare "
+            f"only builds of {US_ANNUAL_RELEASE_ID!r} or "
+            f"{US_LOCAL_ANNUAL_RELEASE_ID!r} declare "
             "metadata.dataset_years in the build-folder layout; a build of "
             f"{release!r} cannot"
         )
@@ -194,12 +231,19 @@ def _artifact(
 
 
 def _check_base_reference(
-    manifest: Mapping, base: Mapping, base_artifact: Mapping, base_sha: str
+    manifest: Mapping,
+    base: Mapping,
+    base_artifact: Mapping,
+    base_sha: str,
+    *,
+    base_release: str = US_NATIONAL_RELEASE_ID,
 ) -> None:
-    """The base national build an annual build folder names, and its H5.
+    """The base build an annual build folder names, and its H5.
 
-    ``metadata.annual_projection_base`` names a build of the national release
-    in the build-folder form, in the repository of the base-year H5. The
+    ``metadata.annual_projection_base`` names a build of ``base_release`` (the
+    national release for an annual build, the local-area release for a
+    local-annual one) in the build-folder form, in the repository of the
+    base-year H5. The
     annual build's ID is that build's ID followed by
     ``-annual-<YYYYMMDDTHHMMSSZ>-<hex8>``, the candidate's
     ``base.parent_release`` is that build, and the reference's ``path`` and
@@ -227,11 +271,11 @@ def _check_base_reference(
             f"no revision): {exc}"
         ) from exc
     base_build = reference["build"]
-    if reference["release"] != US_NATIONAL_RELEASE_ID:
+    if reference["release"] != base_release:
         raise ValueError(
             f"metadata.annual_projection_base names release "
             f"{reference['release']!r}; an annual build projects a build of "
-            f"{US_NATIONAL_RELEASE_ID!r}"
+            f"{base_release!r}"
         )
     if reference["repo_id"] != base_artifact.get("repo_id"):
         raise ValueError(
@@ -334,6 +378,139 @@ def _check_native_identity(
             )
 
 
+def _decoded_names(dataset: object, label: str) -> list[str]:
+    if (
+        not isinstance(dataset, h5py.Dataset)
+        or dataset.ndim != 1
+        or dataset.dtype.kind != "S"
+    ):
+        raise ValueError(f"{label} must be a one-dimensional list of names")
+    return [bytes(name).decode() for name in dataset[()]]
+
+
+def _fixed_frame(h5: h5py.File, entity: str, label: str) -> tuple[list[str], int]:
+    """A fixed-format entity table's column names, in order, and row count."""
+    group = h5.get(entity)
+    if (
+        not isinstance(group, h5py.Group)
+        or "axis0" not in group
+        or "axis1" not in group
+        or "nblocks" not in group.attrs
+    ):
+        raise ValueError(f"{label} lacks a fixed-format {entity} table")
+    columns = _decoded_names(group["axis0"], f"{label} {entity} columns")
+    if len(set(columns)) != len(columns):
+        raise ValueError(f"{label} {entity} repeats a column name")
+    rows = group["axis1"]
+    if not isinstance(rows, h5py.Dataset) or rows.ndim != 1:
+        raise ValueError(f"{label} {entity} lacks its row index")
+    return columns, len(rows)
+
+
+def _fixed_numeric_column(
+    h5: h5py.File, entity: str, column: str, rows: int, label: str
+) -> np.ndarray:
+    """One numeric column of a fixed-format entity table, read with h5py.
+
+    pandas writes each dtype block as ``block<i>_items`` (its column names)
+    and ``block<i>_values``. A numeric block is a two-dimensional array,
+    rows by items when its ``transposed`` attribute is set; an object block
+    is pickled, so a column stored there cannot be read and is refused.
+    """
+    group = h5[entity]
+    for index in range(int(group.attrs["nblocks"])):
+        items_key, values_key = f"block{index}_items", f"block{index}_values"
+        if items_key not in group or values_key not in group:
+            raise ValueError(f"{label} {entity} lacks block {index}")
+        items = _decoded_names(group[items_key], f"{label} {entity} block {index}")
+        if column not in items:
+            continue
+        values = group[values_key]
+        if (
+            not isinstance(values, h5py.Dataset)
+            or values.ndim != 2
+            or values.dtype.kind not in {"b", "i", "u", "f"}
+        ):
+            raise ValueError(
+                f"{label} {entity} column {column!r} is not in a numeric block"
+            )
+        position = items.index(column)
+        transposed = bool(values.attrs.get("transposed", False))
+        shape = (rows, len(items)) if transposed else (len(items), rows)
+        if values.shape != shape:
+            raise ValueError(f"{label} {entity} block {index} has the wrong shape")
+        return values[:, position] if transposed else values[position, :]
+    raise ValueError(f"{label} {entity} column {column!r} is in no block")
+
+
+def _check_fixed_native_identity(
+    base: Path, projected: Path, year: int, base_year: int, record: Mapping
+) -> None:
+    """A local-annual year's H5 against its base, in the fixed-format layout.
+
+    The local-area H5s are pandas fixed-format files (``write_nullable_us_h5``
+    in ``microcosm.build.us_runtime.h5_io``). The projected year must store
+    its own year and the base its base year; every entity keeps the base's
+    columns in order and its row count, which the candidate record repeats;
+    each entity's ID and every person membership ID are equal to the base's;
+    and the household weights are finite and strictly positive on every row.
+    """
+    with (
+        h5py.File(base, mode="r") as original,
+        h5py.File(projected, mode="r") as annual,
+    ):
+        if _native_year(original) != base_year:
+            raise ValueError(f"local-annual base H5 does not store year {base_year}")
+        if _native_year(annual) != year:
+            raise ValueError(f"annual H5 stored year does not match {year}")
+        rows = _object(record.get("rows"), f"{year} row counts")
+        for entity in _ENTITIES:
+            source_columns, source_rows = _fixed_frame(original, entity, "base H5")
+            target_columns, target_rows = _fixed_frame(annual, entity, f"{year} H5")
+            if source_rows != target_rows or rows.get(entity) != target_rows:
+                raise ValueError(f"{year} {entity} row count differs from its source")
+            if source_columns != target_columns:
+                raise ValueError(
+                    f"{year} {entity} native columns differ from its source"
+                )
+            identity_columns = [
+                column
+                for column in source_columns
+                if column == f"{entity}_id"
+                or (
+                    entity == "person"
+                    and column.startswith("person_")
+                    and column.endswith("_id")
+                )
+            ]
+            if f"{entity}_id" not in identity_columns:
+                raise ValueError(f"{year} {entity} lacks its native identity column")
+            for column in identity_columns:
+                source = _fixed_numeric_column(
+                    original, entity, column, source_rows, "base H5"
+                )
+                target = _fixed_numeric_column(
+                    annual, entity, column, target_rows, f"{year} H5"
+                )
+                if not np.array_equal(source, target):
+                    raise ValueError(f"{year} {column} differs from its source")
+        weights = _fixed_numeric_column(
+            annual,
+            "household",
+            "household_weight",
+            _fixed_frame(annual, "household", f"{year} H5")[1],
+            f"{year} H5",
+        )
+        if (
+            weights.dtype.kind != "f"
+            or not np.isfinite(weights).all()
+            or not (weights > 0).all()
+        ):
+            raise ValueError(
+                f"{year} household weights must be finite and strictly positive"
+            )
+
+
 def validate_annual_projection_extension(
     release_dir: Path | str,
     manifest: Mapping,
@@ -359,6 +536,9 @@ def validate_annual_projection_extension(
     if not isinstance(metadata, Mapping) or "dataset_years" not in metadata:
         return None
     build_folder = publishes_to_build_folder(release_dir.name)
+    # A local-annual build projects a local-area build: no default dataset,
+    # fixed-format H5s, and no rule that every year is present.
+    local = build_folder and release_dir.name == US_LOCAL_ANNUAL_RELEASE_ID
     root = Path(artifact_root) if artifact_root is not None else None
     families = _object(metadata["dataset_years"], "metadata.dataset_years")
     if not families:
@@ -425,7 +605,43 @@ def validate_annual_projection_extension(
             "projection base hash differs from the release's base artifact"
         )
     defaults = _object(manifest.get("default_datasets"), "release defaults")
-    if build_folder:
+    if local:
+        # A local-area build claims no default dataset, so the base-year H5
+        # is the build's one microdata artifact that is not a projected year.
+        build = manifest
+        if defaults:
+            raise ValueError(
+                "a local-annual build claims no default dataset; its "
+                "default_datasets must be empty"
+            )
+        projected_keys = {
+            key
+            for family, years in families.items()
+            if isinstance(years, Mapping)
+            for key in years.values()
+            if key != family
+        }
+        microdata = sorted(
+            str(key)
+            for key, entry in artifacts.items()
+            if isinstance(entry, Mapping)
+            and entry.get("kind") == "microdata"
+            and key not in projected_keys
+        )
+        if microdata != [base_key]:
+            raise ValueError(
+                "a local-annual build's one microdata artifact besides its "
+                f"projected years must be its base {base_key!r}; it declares "
+                f"{microdata}"
+            )
+        _check_base_reference(
+            manifest,
+            base,
+            artifacts[base_key],
+            base_sha,
+            base_release=US_ANNUAL_BASE_RELEASES[US_LOCAL_ANNUAL_RELEASE_ID],
+        )
+    elif build_folder:
         # The build's details are at the manifest's top level, and its base
         # is another build, which metadata.annual_projection_base names.
         build = manifest
@@ -516,7 +732,12 @@ def validate_annual_projection_extension(
         ):
             raise ValueError("annual year keys must be four-digit decimal strings")
         declared_years = {int(year) for year in years}
-        if declared_years != set(range(base_year, max(declared_years) + 1)):
+        if local:
+            if len(declared_years) < 2:
+                raise ValueError(
+                    "a local-annual family must declare at least one projected year"
+                )
+        elif declared_years != set(range(base_year, max(declared_years) + 1)):
             raise ValueError(
                 "annual family must cover every year from its base through its last year"
             )
@@ -599,7 +820,12 @@ def validate_annual_projection_extension(
                 raise ValueError(
                     f"{year_text} lacks passing acceptance for its exact artifact"
                 )
-            _check_native_identity(base_path, path, int(year_text), record)
+            if local:
+                _check_fixed_native_identity(
+                    base_path, path, int(year_text), base_year, record
+                )
+            else:
+                _check_native_identity(base_path, path, int(year_text), record)
     if set(accepted_years) != all_years:
         raise ValueError("annual acceptance coverage differs from the release coverage")
     if build_folder:
@@ -637,12 +863,172 @@ def validate_annual_projection_extension(
 
 
 def is_annual_build(release_dir: Path | str) -> bool:
-    """Whether ``release_dir`` is a build of the annual release, by its name."""
-    return Path(release_dir).name == US_ANNUAL_RELEASE_ID
+    """Whether ``release_dir`` is a build of an annual release, by its name:
+    :data:`~microcosm.data.contract.US_ANNUAL_RELEASE_ID` or
+    :data:`~microcosm.data.contract.US_LOCAL_ANNUAL_RELEASE_ID`."""
+    return Path(release_dir).name in US_ANNUAL_BASE_RELEASES
+
+
+def _pointer(*fields: object) -> str:
+    """The JSON Pointer (RFC 6901) of a manifest field."""
+    return "".join(
+        "/" + str(field).replace("~", "~0").replace("/", "~1") for field in fields
+    )
+
+
+def inherited_release_claims(manifest: Mapping) -> dict[str, object]:
+    """The fields of a release manifest that an annual build carries unchanged.
+
+    Applied to a base build's release manifest, these are the claims its
+    annual build inherits; applied to the annual build's own, the claims it
+    carries. Each claim is keyed by its JSON Pointer: ``/<field>``, and
+    ``/metadata/<field>`` for a ``metadata`` field. A top-level field named
+    ``metadata.note`` is therefore ``/metadata.note``, never the same claim as
+    the metadata field ``note`` (review of #1627).
+    """
+    claims: dict[str, object] = {
+        _pointer(key): value
+        for key, value in manifest.items()
+        if key not in _ANNUAL_RELEASE_FIELDS
+    }
+    metadata = manifest.get("metadata")
+    for key, value in metadata.items() if isinstance(metadata, Mapping) else ():
+        if key not in _ANNUAL_METADATA_FIELDS:
+            claims[_pointer("metadata", key)] = value
+    return claims
+
+
+def inherited_build_claims(manifest: Mapping) -> dict[str, object]:
+    """The fields of a build manifest that an annual build carries unchanged,
+    each keyed by its JSON Pointer, ``/<field>``."""
+    return {
+        _pointer(key): value
+        for key, value in manifest.items()
+        if key not in _ANNUAL_BUILD_FIELDS
+    }
+
+
+def _annual_addition_keys(
+    release_dir: Path, manifest: Mapping, artifact_root: Path | None
+) -> frozenset[str]:
+    """The artifact keys a local-annual build adds to its base build's.
+
+    These are its projection manifest and acceptance report, each projected
+    year's H5 that ``metadata.dataset_years`` declares, and the one receipt
+    the projection manifest names for each of those years, found as
+    :func:`validate_annual_projection_extension` finds them. That function
+    checks each one before the build is handed over; this only names them.
+    A receipt named by any other record of the projection manifest, such as
+    one for an undeclared year or for the base year, is not an addition
+    (review of #1627).
+    """
+    metadata = _object(manifest.get("metadata"), "release metadata")
+    artifacts = _object(manifest.get("artifacts"), "release artifacts")
+    evidence_key = metadata.get("annual_projection_manifest")
+    acceptance_key = metadata.get("annual_projection_acceptance")
+    if not isinstance(evidence_key, str) or not isinstance(acceptance_key, str):
+        raise ValueError(
+            "annual releases require projection manifest and acceptance artifact keys"
+        )
+    evidence_path, _ = _artifact(
+        evidence_key, artifacts, release_dir, artifact_root, build_folder=True
+    )
+    evidence = _read_json(evidence_path)
+    base_key = _object(evidence.get("base"), "projection base").get("dataset")
+    projected = {
+        key
+        for years in _object(
+            metadata.get("dataset_years"), "metadata.dataset_years"
+        ).values()
+        for key in _object(years, "annual family").values()
+        if key != base_key
+    }
+    records = _object(evidence.get("artifacts"), "projection artifacts")
+    receipts: set[str] = set()
+    for key in projected:
+        record = records.get(key)
+        receipt = (
+            record.get("projection_receipt") if isinstance(record, Mapping) else None
+        )
+        filename = receipt.get("path") if isinstance(receipt, Mapping) else None
+        matches = [
+            receipt_key
+            for receipt_key, entry in artifacts.items()
+            if isinstance(filename, str)
+            and isinstance(entry, Mapping)
+            and entry.get("path") == filename
+        ]
+        # The contract refuses a receipt that names no artifact or several;
+        # name none here then, so nothing extra is exempted.
+        if len(matches) == 1:
+            receipts.add(matches[0])
+    return frozenset({evidence_key, acceptance_key, *projected, *receipts})
+
+
+_ABSENT = object()
+
+
+def _differing_claims(carried: Mapping, published: Mapping) -> list[str]:
+    return sorted(
+        key
+        for key in {*carried, *published}
+        if carried.get(key, _ABSENT) != published.get(key, _ABSENT)
+    )
+
+
+def _published_document(
+    api: object,
+    *,
+    repo_id: str,
+    path_in_repo: str,
+    revision: str,
+    base_build: object,
+    fresh: bool,
+) -> dict:
+    """One manifest of the base build as the Hub serves it.
+
+    With ``fresh``, the file is downloaded into a new, empty cache directory.
+    The Hub client otherwise returns its cached copy of a file whose ETag is
+    unchanged, without hashing it, so a base build folder that is itself the
+    client's cached snapshot, edited after download, would be read back as
+    the published manifest (review of #1627).
+    """
+    from microcosm.data.release import (
+        _is_absent_entry_error,
+        _is_absent_revision_error,
+    )
+
+    def download(**fresh_options) -> dict:
+        try:
+            downloaded = api.hf_hub_download(
+                repo_id=repo_id,
+                filename=path_in_repo,
+                repo_type="dataset",
+                revision=revision,
+                **fresh_options,
+            )
+        except Exception as exc:
+            if not (_is_absent_entry_error(exc) or _is_absent_revision_error(exc)):
+                raise
+            raise ValueError(
+                f"base build {base_build!r} is not published: {path_in_repo} is "
+                f"absent at {revision!r} in {repo_id} ({exc}). An annual build "
+                "is published only after the build it projects."
+            ) from exc
+        return _read_json(Path(downloaded))
+
+    if not fresh:
+        return download()
+    with tempfile.TemporaryDirectory(prefix="microcosm-base-manifest-") as cache:
+        return download(cache_dir=cache, force_download=True)
 
 
 def require_base_publication(
-    api: object, release_dir: Path | str, *, repo_id: str
+    api: object,
+    release_dir: Path | str,
+    *,
+    repo_id: str,
+    artifact_root: Path | str | None = None,
 ) -> None:
     """Refuse unless the annual build's base national build is published.
 
@@ -656,17 +1042,43 @@ def require_base_publication(
     every other file it declares, apart from the manifests and the checksum
     ledger the emitter writes for each build, must be in the annual build's
     manifest with the same path and SHA-256; and ``releases.json`` must list
-    it and not have withdrawn it. An absent manifest refuses; any
-    other Hub failure, including one where the Hub could not be asked,
-    propagates. ``api`` needs ``hf_hub_download``.
+    it and not have withdrawn it.
+
+    A local-annual build's release and build manifests are assembled from its
+    base build's local folder, so for one the base build's
+    ``build_manifest.json`` is read from the same folder as well, and every
+    claim the annual build inherits (:func:`inherited_release_claims`,
+    :func:`inherited_build_claims`) must equal the published one. Every
+    artifact entry it carries must equal the published entry whole, not only
+    in path and SHA-256, so a carried file keeps its published kind and role.
+    It may declare no other artifact than those, its own projection files
+    (the projection manifest and acceptance report, each projected year's H5
+    and its receipt; the projection manifest is read from the build folder or
+    else from ``artifact_root``) and the files the emitter writes. Both
+    manifests are downloaded into a new, empty cache, never served from the
+    Hub client's cache. A base folder whose manifest was edited after
+    publication, such as one with a reviewed limitation removed, an artifact
+    relabelled or a file added, therefore cannot hand its edit to the annual
+    build, even when that folder is the client's cached snapshot.
+
+    An absent manifest or ``releases.json`` refuses; any other Hub failure,
+    including one where the Hub could not be asked, propagates. ``api`` needs ``hf_hub_download``; for
+    a local-annual build it must take ``cache_dir`` and ``force_download``.
+
+    A local-annual build's base is a build of the local-area release, read
+    from ``releases/microcosm-us-2024-local/<base build>/``. Neither build
+    names a default dataset there: the base build's dataset is its one
+    microdata artifact, and the annual build's base-year H5 is the artifact
+    ``metadata.annual_projection_base`` names by file name. Its
+    ``releases.json`` entry is read last, once both manifests check out, and
+    also into a new, empty cache, so a record cached before a withdrawal
+    cannot offer the base when the Hub cannot be asked.
     """
+    from functools import partial
+
     from microcosm.data.build_folder_manifests import (
         referenced_build,
         require_offered_build,
-    )
-    from microcosm.data.release import (
-        _is_absent_entry_error,
-        _is_absent_revision_error,
     )
 
     manifest = _read_json(Path(release_dir) / "release_manifest.json")
@@ -682,31 +1094,48 @@ def require_base_publication(
             f"the annual build's base build is in {location.repo_id!r}, not the "
             f"publication repository {repo_id!r}"
         )
-    base_key = _object(manifest.get("default_datasets"), "release defaults").get(
-        "national"
-    )
+    local_annual = Path(release_dir).name == US_LOCAL_ANNUAL_RELEASE_ID
+    if local_annual:
+        expected_release = US_ANNUAL_BASE_RELEASES[US_LOCAL_ANNUAL_RELEASE_ID]
+        if reference.get("release") != expected_release:
+            raise ValueError(
+                f"a local-annual build's base build is a build of "
+                f"{expected_release!r}, not {reference.get('release')!r}"
+            )
+        named = [
+            key
+            for key, entry in _object(
+                manifest.get("artifacts"), "release artifacts"
+            ).items()
+            if isinstance(entry, Mapping)
+            and entry.get("kind") == "microdata"
+            and entry.get("path") == reference.get("path")
+        ]
+        if len(named) != 1:
+            raise ValueError(
+                "the local-annual build must declare one microdata artifact in "
+                f"{reference.get('path')!r}, the file "
+                "metadata.annual_projection_base names"
+            )
+        base_key = named[0]
+    else:
+        base_key = _object(manifest.get("default_datasets"), "release defaults").get(
+            "national"
+        )
     local = _object(
         _object(manifest.get("artifacts"), "release artifacts").get(base_key),
         f"artifact {base_key!r}",
     )
     base_build = reference.get("build")
     path_in_repo = f"{location.folder}/release_manifest.json"
-    try:
-        downloaded = api.hf_hub_download(
-            repo_id=repo_id,
-            filename=path_in_repo,
-            repo_type="dataset",
-            revision=location.revision,
-        )
-    except Exception as exc:
-        if not (_is_absent_entry_error(exc) or _is_absent_revision_error(exc)):
-            raise
-        raise ValueError(
-            f"base build {base_build!r} is not published: {path_in_repo} is "
-            f"absent at {location.revision!r} in {repo_id} ({exc}). An annual "
-            "build is published only after the build it projects."
-        ) from exc
-    published = _read_json(Path(downloaded))
+    published = _published_document(
+        api,
+        repo_id=repo_id,
+        path_in_repo=path_in_repo,
+        revision=location.revision,
+        base_build=base_build,
+        fresh=local_annual,
+    )
     if (published.get("release"), published.get("build")) != (
         reference.get("release"),
         base_build,
@@ -717,12 +1146,28 @@ def require_base_publication(
             f"{base_build!r} of {reference.get('release')!r}"
         )
     published_defaults = published.get("default_datasets")
-    published_key = (
-        published_defaults.get("national")
-        if isinstance(published_defaults, Mapping)
-        else None
-    )
     published_artifacts = published.get("artifacts")
+    if local_annual:
+        # A local-area build claims no default dataset; its dataset is its
+        # one microdata artifact.
+        published_microdata = [
+            key
+            for key, entry in (
+                published_artifacts.items()
+                if isinstance(published_artifacts, Mapping)
+                else ()
+            )
+            if isinstance(entry, Mapping) and entry.get("kind") == "microdata"
+        ]
+        published_key = (
+            published_microdata[0] if len(published_microdata) == 1 else None
+        )
+    else:
+        published_key = (
+            published_defaults.get("national")
+            if isinstance(published_defaults, Mapping)
+            else None
+        )
     dataset = (
         published_artifacts.get(published_key)
         if isinstance(published_artifacts, Mapping) and isinstance(published_key, str)
@@ -763,11 +1208,88 @@ def require_base_publication(
             "build as published"
         )
     # A base build its repository has withdrawn, or no longer lists, is not
-    # one to project.
-    require_offered_build(
+    # one to project, whether national or local.
+    require_offered_base = partial(
+        require_offered_build,
         api,
         repo_id=repo_id,
         release=str(reference.get("release")),
         build=str(base_build),
         label="the annual build's base build",
     )
+    if not local_annual:
+        require_offered_base()
+        return
+    # The assembler copies each carried entry whole, so its kind, role and
+    # every other field must be the published one too.
+    relabelled = sorted(
+        key
+        for key, entry in published_artifacts.items()
+        if isinstance(entry, Mapping)
+        and PurePosixPath(str(entry.get("path", ""))).name not in _PUBLISHER_FILES
+        and carried.get(key) != entry
+    )
+    if relabelled:
+        raise ValueError(
+            f"the local-annual build does not carry the published base build's "
+            f"{relabelled} artifact entries as {path_in_repo} declares them "
+            "(kind, role and every other field, not only path and SHA-256); an "
+            "annual build carries its base build's files as published"
+        )
+    # The assembler also copies every artifact the base folder declares, so
+    # one added there after publication would be handed over unless the
+    # annual build declares nothing but the published files, its own
+    # projection files and the files the emitter writes (review of #1627).
+    additions = _annual_addition_keys(
+        Path(release_dir),
+        manifest,
+        Path(artifact_root) if artifact_root is not None else None,
+    )
+    unpublished = sorted(
+        key
+        for key, entry in carried.items()
+        if key not in published_artifacts
+        and key not in additions
+        and not (
+            isinstance(entry, Mapping)
+            and PurePosixPath(str(entry.get("path", ""))).name in _PUBLISHER_FILES
+        )
+    )
+    if unpublished:
+        raise ValueError(
+            f"the local-annual build declares {unpublished}, which neither the "
+            f"published base build ({path_in_repo}) nor its annual projection "
+            "declares; an annual build adds only its projected years, their "
+            "receipts and its projection evidence to its base build's files"
+        )
+    release_claims = _differing_claims(
+        inherited_release_claims(manifest), inherited_release_claims(published)
+    )
+    if release_claims:
+        raise ValueError(
+            f"the local-annual build's release manifest does not carry the "
+            f"published base build's {release_claims} as {path_in_repo} "
+            "declares them; an annual build carries its base build's claims "
+            "as published"
+        )
+    build_in_repo = f"{location.folder}/build_manifest.json"
+    published_build = _published_document(
+        api,
+        repo_id=repo_id,
+        path_in_repo=build_in_repo,
+        revision=location.revision,
+        base_build=base_build,
+        fresh=True,
+    )
+    build_claims = _differing_claims(
+        inherited_build_claims(_read_json(Path(release_dir) / "build_manifest.json")),
+        inherited_build_claims(published_build),
+    )
+    if build_claims:
+        raise ValueError(
+            f"the local-annual build's build manifest does not carry the "
+            f"published base build's {build_claims} as {build_in_repo} "
+            "declares them; an annual build carries its base build's claims "
+            "as published"
+        )
+    require_offered_base(fresh=True)

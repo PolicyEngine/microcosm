@@ -128,7 +128,7 @@ def test_the_belgian_liquid_asset_reason_names_real_inputs() -> None:
 
 def test_the_belgian_liquid_asset_reason_states_the_apa_household_reading() -> None:
     # A wording pin: the derived APA rules are not on the committed surface.
-    # At b105e2b3 the module turns the input into deemed income and halves
+    # At 632e1da1 the module turns the input into deemed income and halves
     # the summed income when both household members are entitled, so it reads
     # the input as the household's capital, not the beneficiary's alone.
     reason = axiom_concept_mapping("be").unmapped["fact:person.liquid_financial_assets"]

@@ -395,11 +395,13 @@ EXPECTED_HASHES = {
     # microcosm#1387 moves both again: the ACS transfer's opt-in SEMP-covered
     # partnership step changes acs_transfer's attested bytes. Off its flag no
     # draw, RNG rule or QRF target changes.
+    # microcosm#1543's fit input checks (the microimpute bug-parity audit)
+    # move both again; no valid input's draw changes.
     # microcosm#1641 moves both again: it rewords docstrings in solve and
     # ssi_take_up, and ssi_take_up's now names the builder's arms by flag; no
     # draw, RNG rule, QRF target or solve changes.
-    "seed_map": "9af72034a243547c1fe24636aa1e004a0d5ae2f5ae8065391d6669599bcf4834",
-    "seed_protocol": "ae823ebfa88867d16587688699aa1c86726d52ce242f9e75703fce601d7802c6",
+    "seed_map": "b394824bc6889d7be249f40eace2bc688ffbbd3b35ac3e5956a62584739e5eea",
+    "seed_protocol": "1f0c278174a4944d4d8a29fa3dda4b55f89ba86c8e0b70d19d253c64f828b144",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

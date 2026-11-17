@@ -358,9 +358,12 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#1096's exact softmax cap projection in solve moves it.
             # microcosm#1387's SEMP-covered partnership step moves it through
             # acs_transfer's attested bytes.
+            # microcosm#922's county facts pin, two declared legacy resources,
+            # moves it.
+            # microcosm#1543's fit input checks in microcosm.fit.qrf move it again.
             # microcosm#1641 moves it again: docstrings in solve and
             # ssi_take_up, and the calibration contract's renamed modes.
-            "spec_sha256": "33cf0b1ee55ae59ce8f5f159ef2d683f4b2a36321c3c82f177cdb5de92979bf4",
+            "spec_sha256": "ce49749a0e1118886dbfeeddb17e2d94e22c099f7742579caf20b85ed4193652",
         },
     }
 

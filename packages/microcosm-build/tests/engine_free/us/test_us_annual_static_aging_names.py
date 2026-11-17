@@ -29,7 +29,7 @@ def test_the_base_year_keeps_its_base_build_s_dataset_key():
 
 
 @pytest.mark.parametrize(
-    "base_dataset", ["", "../populace_us_2024", "Populace", "microcosm_us_2025"]
+    "base_dataset", ["", "../populace_us_2024", "Microcosm", "microcosm_us_2025"]
 )
 def test_the_base_dataset_is_a_dataset_key_no_projected_year_has(base_dataset):
     with pytest.raises(ValueError, match="base_dataset"):
