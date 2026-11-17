@@ -16,7 +16,8 @@ library between the selection and the H5 write:
   for the joined frame, with per-origin counts;
 - :func:`absences` lists the columns one origin carries as a reviewed
   default fill, a zero written in place of a measure, or not at all, each
-  with its kind;
+  with its kind, and :func:`write_absences` writes that list as
+  :data:`ABSENCES_FILENAME`;
 - :func:`cps_unit_ids` derives each CPS household's unit key, so the
   selection manifest's digest and the contract's key check share one rule.
 
@@ -26,14 +27,53 @@ injected :class:`EngineVariableIndex`. The default,
 source metadata the first time it is asked, never at import, so importing
 this module loads no engine.
 
+Who reads the spine assembly record. At this module's commit
+``validate_assembly_provenance`` is called by ``spine_assembly.py`` (:136),
+``spine_agreement.py`` (:330), ``acs_release_predictors.py`` (:1407, only
+when a row carries channel ``acs``, which this module never writes),
+``puf_support.py`` (:797, :859, :878), ``multispine_pool.py`` (:3589,
+:3597, :3621, :3652, :3673, all inside ``run_multispine_pool_path``, the
+stacked-pool build path, not a loader), ``stacked_spine.py`` (:1442),
+``support_provenance.py``'s receipt and count helpers (:265, :284) and
+``tools/build_us_multispine_pool.py`` (:3356, :4183). The release tool calls
+none of them, and the pool loader it uses
+(``h5_io.load_authenticated_us_multispine_pool_for_release``) never
+validates. So on main nothing on the release tool's arm reads the record:
+it serves :func:`require_one_population`, PR 5's loader and later callers.
+
+What the later d2283 PRs owe this library:
+
+- PR 3 flips four strict xfails of the whole-frame differential: the
+  weeks-unemployed UC-rule scope, Medicare take-up, retirement
+  contributions and retirement distributions (their ``_asec_source_mask``
+  reads the stored channel on the assembled form).
+- PR 4 (prepare) fills on ACS rows every engine input outside
+  :data:`RELEASE_WRITTEN_INPUTS`, ``takes_up_snap_if_eligible`` included
+  (the SNAP take-up gate misgrades an ACS null), and runs the reviewed
+  default fill on the joined frame so its manifest's row counts are the
+  frame's; reads the parent's applied tail donor ids from the export's
+  tax-unit columns (checked against the base manifest's
+  ``records[*].donor_source_id`` when the base run folder is at hand);
+  re-derives the CPS role record with ``with_us_spm_independence_role`` on
+  the selected CPS rows, in the joined frame's row order and dtypes (the
+  digest is dtype-sensitive); builds the selection keys with
+  :func:`cps_unit_ids`; and declares (or fills) each CPS-only register
+  entry the first live run of :func:`absences` lists, the US data owner
+  deciding.
+- PR 5 (the loader) recomputes the role record after the H5 load rather
+  than trusting a pre-write digest, and joins the absences file to the
+  release's ``us_register_consistency_gate``.
+
 The module certifies no numbers: no build calls it yet.
 """
 
 from __future__ import annotations
 
+import json
 import numbers
 from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Protocol, runtime_checkable
 
@@ -59,7 +99,16 @@ from microcosm.build.us_runtime.puf_capital_gains_tail import (
     PUF_CAPITAL_GAINS_TAIL_DONOR_SYNTHETIC_COLUMN,
     PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN,
 )
-from microcosm.build.us_runtime.spm_composition import check_spm_composition
+from microcosm.build.us_runtime.spm_composition import (
+    check_spm_composition,
+    spm_independence_role,
+)
+from microcosm.build.us_runtime.spm_independence_role import _role_binding_sha256
+from microcosm.build.us_runtime.spm_role_source import (
+    NATIVE_SPM_ROLE,
+    SPM_ADULT_RULE,
+    SPM_ROLE_RULE,
+)
 from microcosm.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_CAPITAL_GAINS_TAIL_CLONE_INDEX,
@@ -79,11 +128,13 @@ from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 __all__ = [
     "ABSENCES_FILENAME",
+    "ABSENCE_KINDS",
     "ACS_SUPPORT_CHANNEL",
     "ASSEMBLED_CHANNELS",
     "CPS_SPINE_TAG",
     "ENGINE_PERIOD",
     "PUF_TAIL_TAX_UNIT_COLUMNS",
+    "RAW_COLUMN_READERS",
     "RELEASE_WRITTEN_INPUTS",
     "STRUCTURAL_COLUMNS",
     "EngineVariableIndex",
@@ -94,6 +145,7 @@ __all__ = [
     "cps_unit_ids",
     "require_one_population",
     "to_assembled_provenance",
+    "write_absences",
 ]
 
 #: The national period the engine's variable classes are read at: the
@@ -300,6 +352,147 @@ RELEASE_WRITTEN_INPUTS: Mapping[str, str] = MappingProxyType(
         "is_self_employed": _OTHER_HEALTH_INSURANCE_EVIDENCE,
     }
 )
+
+#: The kinds an :func:`absences` entry carries. Only "owner-declared" needs
+#: an owner's decision (N-2). "release-written" is a column of
+#: :data:`RELEASE_WRITTEN_INPUTS`; "raw source column" a column the
+#: stored-input rule ignores (not model-named, such as the upper-case survey
+#: columns); "reviewed default fill" a value prepare's fill wrote in place
+#: of a null, reviewed by staging's ``reviewed_engine_input_nulls`` register
+#: (``tools/_legacy/build_us_acs_multispine_base.py``, summary key at
+#: :2099, built at :2336-2392); "zero written" a zero staging wrote in place
+#: of a measure, reviewed by the receipt the caller cites.
+ABSENCE_KINDS = (
+    "owner-declared",
+    "release-written",
+    "raw source column",
+    "reviewed default fill",
+    "zero written",
+)
+_OWNER_DECLARED, _RELEASE_WRITTEN, _RAW_SOURCE, _DEFAULT_FILL, _ZERO_WRITTEN = (
+    ABSENCE_KINDS
+)
+
+_HOUSEHOLD_TYPE_READER = "household_type (#1610's household-type materializer)"
+
+#: Raw source columns the release reads, each with its readers, so the
+#: absences file never files them as harmless. The fourteen ACS release
+#: predictors (``acs_release_predictors._MODEL_PREDICTORS``, :992-1006; a
+#: test pins the two) feed these always-on producers; the join writes them
+#: only on channel ``acs`` rows, which this module never writes, so on the
+#: joined frame each producer reads them null on every row that lacks them.
+#: ``TYPEHUGQ``, ``HRHTYPE``, ``A_EXPRRP`` and ``A_MARITL`` are what
+#: PolicyEngine/microcosm#1610's household-type materializer
+#: (``household_type_targets.household_type_household_values``, not on main
+#: at this module's commit) reads and refuses on.
+RAW_COLUMN_READERS: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        **dict.fromkeys(
+            (
+                "PEDISDRS",
+                "PEDISEAR",
+                "PEDISEYE",
+                "PEDISOUT",
+                "PEDISPHY",
+                "PEDISREM",
+            ),
+            ("ssi_disability_criteria",),
+        ),
+        **dict.fromkeys(
+            ("PRDTRACE", "PRDTHSP"),
+            ("org_wages", "scf_auto_loans", "scf_wealth"),
+        ),
+        "SPM_TENMORTSTATUS": ("sipp_vehicles",),
+        "PEIOOCC": ("sipp_tips",),
+        **dict.fromkeys(("POCCU2", "WEIND", "WEMIND", "WKSWORK"), ("org_wages",)),
+        **dict.fromkeys(
+            ("TYPEHUGQ", "HRHTYPE", "A_EXPRRP", "A_MARITL"),
+            (_HOUSEHOLD_TYPE_READER,),
+        ),
+    }
+)
+
+#: The keys staging's ACS role receipt carries
+#: (``acs_inputs.with_acs_spm_independence_role``, :478-511; a test pins the
+#: two), and the values that identify it as the ACS RELSHIPP rule's.
+_ACS_ROLE_RECEIPT_KEYS = frozenset(
+    {
+        "column",
+        "entity",
+        "source_columns",
+        "rule",
+        "partition",
+        "asec_rule",
+        "adult_rule",
+        "provenance",
+        "persons",
+        "spm_units",
+        "role_true_persons",
+        "role_branches",
+        "persons_aged_15_to_17",
+        "independent_minor_persons",
+        "housing_units_classified_only_by_role",
+        "group_quarters_units_without_classified_adult",
+        "weighted_role_share",
+        "weighted_minor_role_share",
+    }
+)
+_ACS_ROLE_RECEIPT_IDENTITY: Mapping[str, object] = MappingProxyType(
+    {
+        "column": NATIVE_SPM_ROLE,
+        "entity": US_SCHEMA.person_entity,
+        "source_columns": ["RELSHIPP"],
+        "asec_rule": SPM_ROLE_RULE,
+        "adult_rule": SPM_ADULT_RULE,
+        "provenance": "acs_2024_1yr_native",
+    }
+)
+#: The receipt's counts and the frame's ACS counts they must cover: the
+#: receipt counts every staged ACS person, the frame only the selected ones.
+_ACS_ROLE_RECEIPT_COVERAGE = (
+    ("persons", "persons"),
+    ("spm_units", "spm_units"),
+    ("role_true_persons", "true_role_persons"),
+)
+#: The keys :func:`~microcosm.build.us_runtime.spm_independence_role.us_spm_independence_role_signal_gate`
+#: compares with the frame (``spm_independence_role.py`` :574-586).
+_ROLE_GATE_COUNT_KEYS = (
+    "persons_joined",
+    "table_rows",
+    "native_spm_units",
+    "true_role_persons",
+)
+_ROLE_GATE_DIGEST_KEY = "person_role_binding_sha256"
+_ROLE_SOURCE_COLUMN = "source_column"
+
+#: The top-level keys and per-fill keys of the reviewed default fill's
+#: manifest (``tools/build_us_acs_local_release.py``, ``fill_reviewed_nulls``,
+#: :1135-1144 and :1151-1165).
+_FILL_MANIFEST_KEYS = frozenset(
+    {
+        "period",
+        "register_entries",
+        "columns_filled",
+        "total_values_filled",
+        "count_mismatch_warnings",
+        "unregistered_violations",
+        "fills",
+    }
+)
+_FILL_KEYS = frozenset(
+    {
+        "entity",
+        "column",
+        "filled_rows",
+        "rows",
+        "fill_value",
+        "fill_kind",
+        "register_missing_rows",
+        "missing_rows_by_spine",
+    }
+)
+#: The absences file's layout version.
+_ABSENCES_SCHEMA_VERSION = 1
 
 
 class OnePopulationContractError(ValueError):
@@ -1814,29 +2007,485 @@ def require_one_population(
     _require_declared_absences(origins, engine, register, declared)  # R10
 
 
+# ------------------------------------------------------- the role record
+
+
+def _plain(value: Any) -> Any:
+    """``value`` as plain JSON builtins (frame metadata and the files hold these)."""
+
+    if isinstance(value, Mapping):
+        return {str(key): _plain(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_plain(item) for item in value]
+    if isinstance(value, np.ndarray):
+        return [_plain(item) for item in value.tolist()]
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
+
+
+def _channel_masks(
+    table: pd.DataFrame, entity: str, *, rule: str
+) -> dict[str, np.ndarray]:
+    """One row mask per assembled channel, or a refusal naming ``rule``."""
+
+    column = support_channel_column(entity)
+    if column not in table:
+        raise OnePopulationContractError(
+            f"{rule}: the {entity!r} table lacks {column!r}, so its rows have no "
+            "origin."
+        )
+    channel = table[column]
+    unknown = _unexpected(channel, ASSEMBLED_CHANNELS)
+    if unknown or channel.isna().any():
+        raise OnePopulationContractError(
+            f"{rule}: {column!r} must hold one of {list(ASSEMBLED_CHANNELS)} on "
+            f"every row; it holds {(unknown or ['null'])[:5]}."
+        )
+    return {name: channel.eq(name).to_numpy() for name in ASSEMBLED_CHANNELS}
+
+
+def _is_count(value: object) -> bool:
+    return isinstance(value, numbers.Integral) and not isinstance(
+        value, bool | np.bool_
+    )
+
+
+def _role_counts(
+    person: pd.DataFrame, spm_units: int, role: pd.Series
+) -> dict[str, object]:
+    """The role gate's counts and digest over ``person`` (its own expressions)."""
+
+    return {
+        "persons_joined": len(person),
+        "table_rows": len(person),
+        "native_spm_units": int(spm_units),
+        "true_role_persons": int(role.dropna().sum()),
+        _ROLE_GATE_DIGEST_KEY: _role_binding_sha256(person),
+    }
+
+
+def _require_cps_role_record(
+    cps_record: Mapping[str, Any], recount: Mapping[str, object]
+) -> None:
+    """The CPS role record states the gate's counts and digest of the CPS rows."""
+
+    rule = "The CPS role record does not match the frame's CPS rows"
+    keys = (*_ROLE_GATE_COUNT_KEYS, _ROLE_GATE_DIGEST_KEY)
+    missing = [key for key in keys if key not in cps_record]
+    if missing:
+        raise OnePopulationContractError(
+            f"{rule}: it lacks the role gate's keys {missing} (PR 4 re-derives it "
+            "with with_us_spm_independence_role on exactly those rows)."
+        )
+    malformed = [key for key in _ROLE_GATE_COUNT_KEYS if not _is_count(cps_record[key])]
+    if not isinstance(cps_record[_ROLE_GATE_DIGEST_KEY], str):
+        malformed.append(_ROLE_GATE_DIGEST_KEY)
+    if malformed:
+        raise OnePopulationContractError(
+            f"{rule}: {malformed} must be integer counts and a hex digest."
+        )
+    differs = {
+        key: {"record": _plain(cps_record[key]), "frame": recount[key]}
+        for key in keys
+        if cps_record[key] != recount[key]
+    }
+    if differs:
+        raise OnePopulationContractError(
+            f"{rule}: {differs}. The record must be derived on the CPS rows in "
+            "the joined frame's order and dtypes (the digest hashes the ordered "
+            "person id, SPM unit membership, age and role)."
+        )
+
+
+def _require_staging_receipt(
+    staging_receipt: Mapping[str, Any], acs_counts: Mapping[str, int]
+) -> None:
+    """Staging's ACS role receipt: its keys, its rule, and counts that cover."""
+
+    missing = sorted(_ACS_ROLE_RECEIPT_KEYS - set(staging_receipt))
+    if missing:
+        raise OnePopulationContractError(
+            f"Staging's ACS role receipt lacks keys {missing} "
+            "(acs_inputs.with_acs_spm_independence_role writes them)."
+        )
+    wrong = {
+        key: _plain(staging_receipt[key])
+        for key, expected in _ACS_ROLE_RECEIPT_IDENTITY.items()
+        if _plain(staging_receipt[key]) != expected
+    }
+    if wrong:
+        raise OnePopulationContractError(
+            "Staging's ACS role receipt is not the ACS RELSHIPP role rule's: "
+            f"{wrong} differ from {dict(_ACS_ROLE_RECEIPT_IDENTITY)}."
+        )
+    short = {}
+    for receipt_key, frame_key in _ACS_ROLE_RECEIPT_COVERAGE:
+        value = staging_receipt[receipt_key]
+        if not _is_count(value) or value < acs_counts[frame_key]:
+            short[receipt_key] = {
+                "receipt": _plain(value),
+                "selected": acs_counts[frame_key],
+            }
+    if short:
+        raise OnePopulationContractError(
+            "Staging's ACS role receipt covers fewer rows than the frame's ACS "
+            f"rows: {short}. The receipt counts every staged ACS person, so each "
+            "count must be an integer at least the selected one."
+        )
+
+
 def combined_spm_role_record(
     cps_record: Mapping[str, Any],
     staging_receipt: Mapping[str, Any],
     frame: Frame,
 ) -> dict[str, object]:
-    """The SPM independence role record for the joined frame (F-17, K-6).
+    """The SPM independence role record for the joined frame (F-17, K-6; Q6).
 
-    ``cps_record`` is a gate-keyed record over exactly the frame's CPS rows,
-    which the prepare step re-derives from raw ASEC inputs; it is checked
-    against a recount of those rows (counts and digest) and must say
-    ``role_source == "source_column"``. ``staging_receipt`` is staging's ACS
-    role receipt, whose keys are checked. The result recounts the whole
-    frame in the keys
-    :func:`~microcosm.build.us_runtime.spm_independence_role.us_spm_independence_role_signal_gate`
-    reads, keeps per-origin counts, and cites both origins' evidence.
+    The parent's release keeps no role record, so each origin brings its own
+    evidence and the record recounts the frame:
+
+    - ``cps_record`` is a record over exactly the frame's CPS rows (channels
+      ``asec`` and ``puf_tax_detail``), which the prepare step derives with
+      ``with_us_spm_independence_role`` from the raw ASEC inputs. Its counts
+      and ``person_role_binding_sha256`` must equal a recount of those rows
+      by the gate's rule (the digest is the gate's own
+      ``_role_binding_sha256``, over the rows in the frame's order and
+      dtypes).
+    - ``staging_receipt`` is staging's ACS role receipt
+      (``acs_inputs.with_acs_spm_independence_role``, :478-511). It counts
+      every staged ACS person, not the selection, so it is checked for its
+      keys, for the RELSHIPP rule's identity (column, entity, source column,
+      ASEC and adult rules, provenance) and for counts at least the selected
+      ACS rows', never for equality.
+    - The frame's role must come from its source column (``role_source ==
+      "source_column"`` under
+      :func:`~microcosm.build.us_runtime.spm_composition.spm_independence_role`),
+      non-null and boolean on every person.
+
+    The result holds the gate's keys
+    (:func:`~microcosm.build.us_runtime.spm_independence_role.us_spm_independence_role_signal_gate`)
+    recounted over the whole frame, the role source, the counts per support
+    channel and per origin (with each origin's digest), and both inputs as
+    plain builtins under ``evidence``. The gate still grades the bands and
+    the classified-adult rule; this function records, it does not grade.
+    A loader must recompute the record after an H5 round trip (PR 5), since
+    a dtype change moves the digest.
+
+    Args:
+        cps_record: The CPS rows' role record in the gate's keys.
+        staging_receipt: Staging's ACS role receipt.
+        frame: The joined frame, built by :func:`to_assembled_provenance`.
+
+    Returns:
+        The record, to store under the frame metadata key
+        ``spm_independence_role``.
 
     Raises:
-        OnePopulationContractError: If either origin's evidence disagrees
-            with the frame.
+        OnePopulationContractError: If the frame's role is not its source
+            column's, or either origin's evidence disagrees with the frame.
+        TypeError: If an argument has the wrong type.
     """
 
-    raise NotImplementedError(
-        "combined_spm_role_record is built in a later phase of d2283 PR 2."
+    if not isinstance(frame, Frame):
+        raise TypeError(f"frame must be a Frame, got {type(frame).__name__}.")
+    for name, value in (
+        ("cps_record", cps_record),
+        ("staging_receipt", staging_receipt),
+    ):
+        if not isinstance(value, Mapping):
+            raise TypeError(f"{name} must be a mapping, got {type(value).__name__}.")
+    if frame.schema != US_SCHEMA:
+        raise OnePopulationContractError(
+            "The SPM role record needs a frame in the US schema."
+        )
+    person = frame.table(US_SCHEMA.person_entity)
+    spm_unit = frame.table("spm_unit")
+    _, role_source, _ = spm_independence_role(person)
+    if role_source != _ROLE_SOURCE_COLUMN:
+        raise OnePopulationContractError(
+            f"The SPM role must come from the source column (role_source "
+            f"{_ROLE_SOURCE_COLUMN!r}); the frame's role source is "
+            f"{role_source!r}: the person table lacks {NATIVE_SPM_ROLE!r}."
+        )
+    if "age" not in person:
+        raise OnePopulationContractError(
+            "The SPM role record needs 'age' on the person table (the role "
+            "digest binds it)."
+        )
+    role = person[NATIVE_SPM_ROLE]
+    if role.isna().any() or pd.api.types.infer_dtype(role, skipna=False) != "boolean":
+        raise OnePopulationContractError(
+            f"The SPM role record needs a non-null boolean {NATIVE_SPM_ROLE!r} on "
+            f"every person; {int(role.isna().sum())} null(s), inferred type "
+            f"{pd.api.types.infer_dtype(role, skipna=False)!r}."
+        )
+    rule = "The SPM role record needs every row's origin"
+    persons = _channel_masks(person, US_SCHEMA.person_entity, rule=rule)
+    units = _channel_masks(spm_unit, "spm_unit", rule=rule)
+
+    by_channel = {
+        channel: {
+            "persons": int(persons[channel].sum()),
+            "spm_units": int(units[channel].sum()),
+            "true_role_persons": int(role[persons[channel]].sum()),
+        }
+        for channel in ASSEMBLED_CHANNELS
+    }
+    origins: dict[str, dict[str, object]] = {}
+    for origin, channels in ((_CPS, _CPS_CHANNELS), (_ACS, (ACS_SUPPORT_CHANNEL,))):
+        rows = np.logical_or.reduce([persons[channel] for channel in channels])
+        counts = _role_counts(
+            person.loc[rows],
+            sum(by_channel[channel]["spm_units"] for channel in channels),
+            role[rows],
+        )
+        origins[origin] = {
+            "channels": list(channels),
+            "persons": counts["persons_joined"],
+            "spm_units": counts["native_spm_units"],
+            "true_role_persons": counts["true_role_persons"],
+            _ROLE_GATE_DIGEST_KEY: counts[_ROLE_GATE_DIGEST_KEY],
+        }
+        if origin == _CPS:
+            _require_cps_role_record(cps_record, counts)
+    _require_staging_receipt(staging_receipt, origins[_ACS])
+
+    return {
+        **_role_counts(person, frame.n("spm_unit"), role),
+        "column": NATIVE_SPM_ROLE,
+        "role_source": role_source,
+        "counts_by_channel": by_channel,
+        "origins": origins,
+        "evidence": {
+            "cps_record": _plain(cps_record),
+            "staging_receipt": _plain(staging_receipt),
+        },
+        "rule": (
+            "d2283 one-population role record: the gate's counts and digest "
+            "recounted over the joined frame; the CPS rows' record matched by "
+            "recount, staging's ACS receipt matched by keys, rule and coverage."
+        ),
+    }
+
+
+# ------------------------------------------------------------- absences
+
+
+def _zero_written_columns(zero_written: object) -> Mapping[str, str]:
+    if not isinstance(zero_written, Mapping):
+        raise TypeError(
+            "zero_written must map each column to the receipt that records its "
+            f"written zeros, got {type(zero_written).__name__}."
+        )
+    for column, receipt in zero_written.items():
+        if not isinstance(column, str) or not isinstance(receipt, str):
+            raise TypeError(
+                "zero_written must map str columns to str receipts, got "
+                f"{column!r}: {receipt!r}."
+            )
+        if not receipt.strip():
+            raise OnePopulationContractError(
+                f"A zero-written column needs its receipt; {column!r} has none."
+            )
+    return zero_written
+
+
+def _fills(
+    fill_manifest: object,
+    tables: Mapping[str, pd.DataFrame],
+) -> list[Mapping[str, Any]]:
+    """The fill manifest's fills, checked against the frame they describe."""
+
+    rule = "The fill manifest does not describe this frame"
+    if not isinstance(fill_manifest, Mapping):
+        raise TypeError(
+            "fill_manifest must be the reviewed default fill's manifest mapping, "
+            f"got {type(fill_manifest).__name__}."
+        )
+    missing = sorted(_FILL_MANIFEST_KEYS - set(fill_manifest))
+    if missing:
+        raise OnePopulationContractError(f"{rule}: it lacks keys {missing}.")
+    fills = fill_manifest["fills"]
+    if isinstance(fills, str | bytes | Mapping) or not isinstance(fills, Collection):
+        raise OnePopulationContractError(f"{rule}: 'fills' must be a list of fills.")
+    violations = fill_manifest["unregistered_violations"]
+    if violations:
+        raise OnePopulationContractError(
+            f"{rule}: it records unregistered violations {_plain(violations)!r}; "
+            "the fill refuses those, so a manifest holding them is not a fill's."
+        )
+    fills = list(fills)
+    seen: set[tuple[str, str]] = set()
+    total = 0
+    for fill in fills:
+        if not isinstance(fill, Mapping) or _FILL_KEYS - set(fill):
+            raise OnePopulationContractError(
+                f"{rule}: each fill needs the keys {sorted(_FILL_KEYS)}; got "
+                f"{_plain(fill)!r}."
+            )
+        entity, column = fill["entity"], fill["column"]
+        if entity not in tables or column not in tables[entity]:
+            raise OnePopulationContractError(
+                f"{rule}: it fills {entity!r}.{column!r}, which the frame lacks."
+            )
+        if (entity, column) in seen:
+            raise OnePopulationContractError(
+                f"{rule}: it fills {entity!r}.{column!r} twice."
+            )
+        seen.add((entity, column))
+        table = tables[entity]
+        by_spine = fill["missing_rows_by_spine"]
+        if not _is_count(fill["filled_rows"]) or fill["filled_rows"] < 1:
+            raise OnePopulationContractError(
+                f"{rule}: {entity!r}.{column!r} fills {fill['filled_rows']!r} rows."
+            )
+        if not _is_count(fill["rows"]) or fill["rows"] != len(table):
+            raise OnePopulationContractError(
+                f"{rule}: its {entity!r} table had {fill['rows']!r} rows; the "
+                f"frame's has {len(table)} (prepare fills the joined frame)."
+            )
+        if (
+            not isinstance(by_spine, Mapping)
+            or set(by_spine) - {CPS_SPINE_TAG, ACS_SUPPORT_CHANNEL}
+            or not all(_is_count(value) for value in by_spine.values())
+            or sum(by_spine.values()) != fill["filled_rows"]
+        ):
+            raise OnePopulationContractError(
+                f"{rule}: {entity!r}.{column!r}'s rows by spine "
+                f"{_plain(by_spine)!r} must count its {fill['filled_rows']!r} "
+                f"filled rows under the spine tags {CPS_SPINE_TAG!r} and "
+                f"{ACS_SUPPORT_CHANNEL!r}."
+            )
+        if table[column].isna().any():
+            raise OnePopulationContractError(
+                f"{rule}: {entity!r}.{column!r} still holds "
+                f"{int(table[column].isna().sum())} null(s) after its fill."
+            )
+        total += int(fill["filled_rows"])
+    if (fill_manifest["columns_filled"], fill_manifest["total_values_filled"]) != (
+        len(fills),
+        total,
+    ):
+        raise OnePopulationContractError(
+            f"{rule}: it says {fill_manifest['columns_filled']!r} columns and "
+            f"{fill_manifest['total_values_filled']!r} values filled; its fills "
+            f"are {len(fills)} columns and {total} values."
+        )
+    return fills
+
+
+#: The spine tag each origin's rows carry on the joined frame (Q3).
+_ORIGIN_OF_SPINE_TAG = MappingProxyType(
+    {CPS_SPINE_TAG: _CPS, ACS_SUPPORT_CHANNEL: _ACS}
+)
+_ORIGIN_CHANNELS = MappingProxyType({_CPS: _CPS_CHANNELS, _ACS: (ACS_SUPPORT_CHANNEL,)})
+
+
+@dataclass(frozen=True)
+class _EntityMass:
+    """One entity's rows and weights by channel, for the absences file."""
+
+    channels: Mapping[str, np.ndarray]
+    weights: np.ndarray
+    total_weight: float
+
+    def origin_rows(self, origin: str) -> np.ndarray:
+        return np.logical_or.reduce(
+            [self.channels[channel] for channel in _ORIGIN_CHANNELS[origin]]
+        )
+
+    def share(self, rows: np.ndarray) -> float | None:
+        if not self.total_weight > 0:
+            return None
+        return float(self.weights[rows].sum() / self.total_weight)
+
+    def counted(self, rows: np.ndarray, origin: str) -> dict[str, object]:
+        """Rows and entity-weight shares of ``rows`` per channel of ``origin``."""
+
+        channels = _ORIGIN_CHANNELS[origin]
+        by_channel = {c: int((rows & self.channels[c]).sum()) for c in channels}
+        shares = {c: self.share(rows & self.channels[c]) for c in channels}
+        return {
+            "rows": int(rows.sum()),
+            "origin_rows": int(self.origin_rows(origin).sum()),
+            "rows_by_channel": by_channel,
+            "entity_weight_share": self.share(rows),
+            "entity_weight_share_by_channel": (
+                None if None in shares.values() else shares
+            ),
+        }
+
+
+def _entity_mass(frame: Frame, entity: str, table: pd.DataFrame) -> _EntityMass:
+    channels = _channel_masks(
+        table, entity, rule="The absences file needs every row's origin"
+    )
+    weights = np.asarray(frame.resolve_weights(entity).values, dtype=np.float64)
+    return _EntityMass(
+        channels=channels, weights=weights, total_weight=float(weights.sum())
+    )
+
+
+def _entry(
+    entity: str,
+    column: str,
+    kind: str,
+    origin: str,
+    counted: Mapping[str, object],
+    *,
+    rows_rule: str,
+    evidence: str,
+    readers: Iterable[str] = (),
+    detail: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    return {
+        "entity": entity,
+        "column": column,
+        "kind": kind,
+        "origin": origin,
+        **counted,
+        "rows_rule": rows_rule,
+        "evidence": evidence,
+        "readers": list(readers),
+        "detail": dict(detail or {}),
+    }
+
+
+def _absence_kind(
+    entity: str,
+    column: str,
+    declared: Mapping[str, str],
+    *,
+    origin: str,
+    rows: int,
+) -> tuple[str, str, tuple[str, ...], dict[str, object]]:
+    """The kind of a column null on ``origin``'s rows that the other carries."""
+
+    from microcosm.data.stored_inputs import is_model_named
+
+    if column in RELEASE_WRITTEN_INPUTS:
+        return (_RELEASE_WRITTEN, RELEASE_WRITTEN_INPUTS[column], (), {})
+    if not is_model_named(column):
+        readers = RAW_COLUMN_READERS.get(column, ())
+        evidence = "a raw source column the stored-input rule ignores; " + (
+            f"the release reads it: {', '.join(readers)}"
+            if readers
+            else "no release reader is listed in RAW_COLUMN_READERS"
+        )
+        return (_RAW_SOURCE, evidence, readers, {})
+    if column in declared:
+        return (
+            _OWNER_DECLARED,
+            declared[column],
+            (),
+            {"decision": declared[column]},
+        )
+    raise OnePopulationContractError(
+        f"A column one origin lacks has no absence kind: {entity!r}.{column!r} is "
+        f"null on {rows} {origin} row(s) the other origin fills. It is "
+        "model-named and not release-written, so prepare must fill it or the "
+        "owner must declare its absence with a decision."
     )
 
 
@@ -1849,18 +2498,281 @@ def absences(
 ) -> dict[str, object]:
     """What one origin carries as a default fill, a written zero, or not at all.
 
-    Returns the content of :data:`ABSENCES_FILENAME`: one entry per column
-    with its origin, rows and weighted share and a kind. The kinds are
-    "owner-declared" (needs the owner's decision, from ``declared``),
-    "release-written" (an always-on producer's listed output), "raw source
-    column" (upper-case survey columns), "reviewed default fill" (from the
-    prepare step's ``fill_manifest``) and "zero written" (``zero_written``
-    maps each such column to the receipt that records it). Both directions
-    are listed: columns CPS rows fill and ACS rows lack, and the reverse.
-    Origins are keyed by support channel.
+    Returns the content of :data:`ABSENCES_FILENAME` (write it with
+    :func:`write_absences`): one entry per (entity, column, kind, origin)
+    with the rows it counts, per support channel, and their share of the
+    entity's total weight on the frame
+    (:meth:`~microcosm.frame.Frame.resolve_weights`), per channel too. Origins
+    are keyed by support channel (``asec`` and ``puf_tax_detail`` for CPS,
+    ``acs_2024_1yr`` for ACS), never by ``<entity>_spine``. Each entry
+    carries one of :data:`ABSENCE_KINDS`:
+
+    - A column null on some row of one origin while the other origin holds a
+      value somewhere (both directions: what CPS rows fill and ACS rows
+      lack, and the reverse) is "release-written" if it is in
+      :data:`RELEASE_WRITTEN_INPUTS`, "raw source column" if it is not
+      model-named (the entry names the release's readers from
+      :data:`RAW_COLUMN_READERS`, so the predictor-join columns and #1610's
+      four household-type columns are never filed as harmless), and
+      "owner-declared" if ``declared`` names it, with the owner's decision.
+      Any other such column refuses: prepare must fill it or its owner
+      declare it.
+    - "reviewed default fill": each fill of ``fill_manifest``, the reviewed
+      default fill's manifest (``tools/build_us_acs_local_release.py``
+      ``fill_reviewed_nulls``, :1151-1165), checked against the frame
+      (table rows, no null left, counts adding up, spine tags known). The
+      fill writes in place and the manifest counts rows by spine tag without
+      naming them, so per-channel rows and weighted shares are given only
+      when the fill covered every row of that origin; otherwise they are
+      ``None`` and ``rows_rule`` says why.
+    - "zero written": each column of ``zero_written``, which maps it to the
+      receipt recording staging's written zeros. Its rows are the ACS rows
+      holding zero, an upper bound: a measured zero is not told apart.
+
+    A column named by more than one of ``declared``, ``fill_manifest`` and
+    ``zero_written``, a declaration for a release-written or raw column (it
+    needs no decision) and a declaration no absence uses refuse.
+
+    Args:
+        frame: The joined frame after prepare's fill.
+        fill_manifest: The reviewed default fill's manifest for this frame.
+        zero_written: Column to the receipt recording its written zeros.
+        declared: Column to its owner's decision, for each model-named
+            column one origin lacks by decision.
+
+    Returns:
+        The absences record: plain builtins, entries sorted.
+
+    Raises:
+        OnePopulationContractError: If an input does not describe the frame,
+            or a column one origin lacks has no kind.
+        TypeError: If an argument has the wrong type.
     """
 
-    raise NotImplementedError("absences is built in a later phase of d2283 PR 2.")
+    if not isinstance(frame, Frame):
+        raise TypeError(f"frame must be a Frame, got {type(frame).__name__}.")
+    if frame.schema != US_SCHEMA:
+        raise OnePopulationContractError(
+            "The absences file needs a frame in the US schema."
+        )
+    declared = _declarations(declared)
+    zero_written = _zero_written_columns(zero_written)
+    tables = _frame_tables(frame)
+    fills = _fills(fill_manifest, tables)
+
+    named = {
+        "declared": set(declared),
+        "fill_manifest": {str(fill["column"]) for fill in fills},
+        "zero_written": set(zero_written),
+    }
+    sources = list(named)
+    for position, first in enumerate(sources):
+        for second in sources[position + 1 :]:
+            both = sorted(named[first] & named[second])
+            if both:
+                raise OnePopulationContractError(
+                    f"An absence has one kind: {both} are named by both {first} "
+                    f"and {second}."
+                )
+    from microcosm.data.stored_inputs import is_model_named
+
+    needless = sorted(
+        column
+        for column in declared
+        if column in RELEASE_WRITTEN_INPUTS or not is_model_named(column)
+    )
+    if needless:
+        raise OnePopulationContractError(
+            f"A declared absence needs no owner's decision for {needless}: they "
+            "are release-written or raw source columns."
+        )
+
+    masses = {
+        entity: _entity_mass(frame, entity, tables[entity])
+        for entity in US_SCHEMA.entities
+    }
+    entries: list[dict[str, object]] = []
+    used: set[str] = set()
+    for entity in US_SCHEMA.entities:
+        table, mass = tables[entity], masses[entity]
+        for column in table.columns:
+            if not isinstance(column, str):
+                continue
+            null = table[column].isna().to_numpy()
+            if not null.any():
+                continue
+            for origin, other in ((_CPS, _ACS), (_ACS, _CPS)):
+                lacking = null & mass.origin_rows(origin)
+                if not lacking.any() or not (~null & mass.origin_rows(other)).any():
+                    continue
+                kind, evidence, readers, detail = _absence_kind(
+                    entity,
+                    column,
+                    declared,
+                    origin=origin,
+                    rows=int(lacking.sum()),
+                )
+                if kind == _OWNER_DECLARED:
+                    used.add(column)
+                entries.append(
+                    _entry(
+                        entity,
+                        column,
+                        kind,
+                        origin,
+                        mass.counted(lacking, origin),
+                        rows_rule="null on these rows; the other origin holds values",
+                        evidence=evidence,
+                        readers=readers,
+                        detail=detail,
+                    )
+                )
+    stale = sorted(set(declared) - used)
+    if stale:
+        raise OnePopulationContractError(
+            f"A declared absence names a column no origin lacks: {stale}."
+        )
+
+    for fill in fills:
+        entity, column = str(fill["entity"]), str(fill["column"])
+        mass = masses[entity]
+        for tag, filled in sorted(fill["missing_rows_by_spine"].items()):
+            if not filled:
+                continue
+            origin = _ORIGIN_OF_SPINE_TAG[tag]
+            rows = mass.origin_rows(origin)
+            if filled > int(rows.sum()):
+                raise OnePopulationContractError(
+                    f"The fill manifest does not describe this frame: it fills "
+                    f"{filled} {origin} rows of {entity!r}.{column!r}; the frame "
+                    f"holds {int(rows.sum())}."
+                )
+            if filled == int(rows.sum()):
+                counted = mass.counted(rows, origin)
+                rows_rule = "every row of the origin (the fill's count equals them)"
+            else:
+                counted = {
+                    "rows": int(filled),
+                    "origin_rows": int(rows.sum()),
+                    "rows_by_channel": None,
+                    "entity_weight_share": None,
+                    "entity_weight_share_by_channel": None,
+                }
+                rows_rule = (
+                    "the fill manifest's count; it names no rows, so the "
+                    "channels and weighted shares are unknown"
+                )
+            entries.append(
+                _entry(
+                    entity,
+                    column,
+                    _DEFAULT_FILL,
+                    origin,
+                    counted,
+                    rows_rule=rows_rule,
+                    evidence=(
+                        "prepare's reviewed default fill, reviewed by staging's "
+                        "reviewed_engine_input_nulls register"
+                    ),
+                    detail={
+                        "fill_value": _plain(fill["fill_value"]),
+                        "fill_kind": _plain(fill["fill_kind"]),
+                        "register_missing_rows": _plain(fill["register_missing_rows"]),
+                    },
+                )
+            )
+
+    for column, receipt in sorted(zero_written.items()):
+        holders = [entity for entity in US_SCHEMA.entities if column in tables[entity]]
+        if not holders:
+            raise OnePopulationContractError(
+                f"A zero-written column the frame lacks: {column!r}."
+            )
+        entity = holders[0]
+        values = tables[entity][column]
+        if pd.api.types.is_bool_dtype(values.dtype) or not (
+            pd.api.types.is_numeric_dtype(values.dtype)
+        ):
+            raise OnePopulationContractError(
+                f"A zero-written column must be numeric: {entity!r}.{column!r} "
+                f"is {values.dtype}."
+            )
+        mass = masses[entity]
+        zero = values.eq(0).to_numpy() & mass.origin_rows(_ACS)
+        entries.append(
+            _entry(
+                entity,
+                column,
+                _ZERO_WRITTEN,
+                _ACS,
+                mass.counted(zero, _ACS),
+                rows_rule=(
+                    "ACS rows holding zero: an upper bound, since a measured "
+                    "zero is not told apart from a written one"
+                ),
+                evidence=receipt,
+                detail={"receipt": receipt},
+            )
+        )
+
+    entries.sort(
+        key=lambda entry: (
+            US_SCHEMA.entities.index(entry["entity"]),
+            entry["column"],
+            ABSENCE_KINDS.index(entry["kind"]),
+            entry["origin"],
+        )
+    )
+    return {
+        "schema_version": _ABSENCES_SCHEMA_VERSION,
+        "file": ABSENCES_FILENAME,
+        "kinds": list(ABSENCE_KINDS),
+        "channels": list(ASSEMBLED_CHANNELS),
+        "share_denominator": (
+            "each entity's total weight on the frame (Frame.resolve_weights)"
+        ),
+        "rows_by_channel": {
+            entity: {
+                channel: int(mask.sum())
+                for channel, mask in masses[entity].channels.items()
+            }
+            for entity in US_SCHEMA.entities
+        },
+        "fill_manifest_period": _plain(fill_manifest["period"]),
+        "entries": entries,
+    }
+
+
+def _absences_json(record: Mapping[str, object]) -> str:
+    """The absences file's bytes: PR 1's canonical JSON, one trailing newline."""
+
+    return (
+        json.dumps(
+            _plain(record),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        )
+        + "\n"
+    )
+
+
+def write_absences(record: Mapping[str, object], directory: str | Path) -> Path:
+    """Write :func:`absences`' record as ``directory/``:data:`ABSENCES_FILENAME`.
+
+    The JSON is deterministic: sorted keys, no whitespace, ASCII, and
+    ``allow_nan=False`` (a non-finite share refuses rather than writes).
+
+    Returns:
+        The written file's path.
+    """
+
+    if not isinstance(record, Mapping):
+        raise TypeError(f"record must be a mapping, got {type(record).__name__}.")
+    path = Path(directory) / ABSENCES_FILENAME
+    path.write_text(_absences_json(record), encoding="ascii")
+    return path
 
 
 def _is_peridnum(value: object) -> bool:

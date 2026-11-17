@@ -37,6 +37,12 @@ Both origins come from one column spec, so a shared column keeps one dtype
 after the two are joined. Every SPM unit has a classified adult, and the
 weighted SPM role shares sit inside the role gate's bands by construction.
 
+:func:`cps_role_record`, :func:`staging_role_receipt` and
+:func:`fill_manifest` give the role record's and the absences file's inputs
+in the shapes the prepare step will pass: a CPS-rows record in the role
+gate's keys, staging's ACS role receipt, and the reviewed default fill's
+manifest.
+
 :class:`StandInVariableIndex` answers the contract's engine questions without
 an engine: its input list is the engine ABI lock's committed projection (the
 926 names ``variables()`` returned at policyengine-us 2.2.1), plus explicit
@@ -911,25 +917,125 @@ def clone_zero_assembly_record(frame: Frame) -> dict[str, object]:
     )
 
 
-def spm_role_gate_record(frame: Frame) -> dict[str, object]:
-    """A record in the role gate's keys, computed by its rule over ``frame``.
+def _gate_record(person: pd.DataFrame, spm_units: int) -> dict[str, object]:
+    """The role gate's counts and digest over ``person``, by its rule.
 
     The digest restates ``spm_independence_role._role_binding_sha256``: the
     sha256 of the uint64 row hashes of the ordered person id, SPM unit
     membership, age and role columns.
     """
 
-    person = frame.table("person")
     columns = ["person_id", "person_spm_unit_id", "age", SPM_ROLE]
     hashes = pd.util.hash_pandas_object(person[columns], index=False)
     return {
         "persons_joined": len(person),
         "table_rows": len(person),
-        "native_spm_units": frame.n("spm_unit"),
+        "native_spm_units": int(spm_units),
         "true_role_persons": int(person[SPM_ROLE].sum()),
         "person_role_binding_sha256": hashlib.sha256(
             hashes.to_numpy(dtype="<u8").tobytes()
         ).hexdigest(),
+    }
+
+
+def spm_role_gate_record(frame: Frame) -> dict[str, object]:
+    """A record in the role gate's keys, computed by its rule over ``frame``."""
+
+    return _gate_record(frame.table("person"), frame.n("spm_unit"))
+
+
+def _cps_rows(table: pd.DataFrame, entity: str) -> np.ndarray:
+    return table[support_channel_column(entity)].ne(ACS_SUPPORT_CHANNEL).to_numpy()
+
+
+def cps_role_record(frame: Frame) -> dict[str, object]:
+    """The CPS half's role record PR 4 would derive, over the frame's CPS rows.
+
+    The gate's keys over the CPS person rows in the frame's order and dtypes
+    (by the gate's rule, restated), plus the provenance keys
+    ``with_us_spm_independence_role`` writes that the contract reads as
+    evidence only.
+    """
+
+    person = frame.table("person")
+    spm_unit = frame.table("spm_unit")
+    return {
+        **_gate_record(
+            person.loc[_cps_rows(person, "person")],
+            int(_cps_rows(spm_unit, "spm_unit").sum()),
+        ),
+        "primitive_column": SPM_ROLE,
+        "source_join": [
+            "source_year (income year)",
+            "PERIDNUM (exact 22-digit string)",
+        ],
+        "unmatched_persons": 0,
+    }
+
+
+def staging_role_receipt(frame: Frame, *, staged_beyond: int = 5) -> dict[str, object]:
+    """Staging's ACS role receipt for a staging run that held ``frame``'s ACS rows.
+
+    The keys and identity are ``acs_inputs.with_acs_spm_independence_role``'s;
+    the counts cover ``staged_beyond`` more persons (and one more SPM unit and
+    role holder per five) than the selection keeps, as a pre-selection
+    receipt does.
+    """
+
+    from microcosm.build.us_runtime.acs_inputs import (
+        ACS_SPM_ROLE_PARTITION,
+        ACS_SPM_ROLE_RULE,
+    )
+    from microcosm.build.us_runtime.spm_role_source import (
+        SPM_ADULT_RULE,
+        SPM_ROLE_RULE,
+    )
+
+    person = frame.table("person")
+    acs = ~_cps_rows(person, "person")
+    role = person.loc[acs, SPM_ROLE].to_numpy(dtype=bool)
+    age = person.loc[acs, "age"].to_numpy()
+    minor = (age >= 15) & (age < 18)
+    extra = staged_beyond // 5
+    return {
+        "column": SPM_ROLE,
+        "entity": "person",
+        "source_columns": ["RELSHIPP"],
+        "rule": ACS_SPM_ROLE_RULE,
+        "partition": ACS_SPM_ROLE_PARTITION,
+        "asec_rule": SPM_ROLE_RULE,
+        "adult_rule": SPM_ADULT_RULE,
+        "provenance": "acs_2024_1yr_native",
+        "persons": int(acs.sum()) + staged_beyond,
+        "spm_units": int((~_cps_rows(frame.table("spm_unit"), "spm_unit")).sum())
+        + extra,
+        "role_true_persons": int(role.sum()) + extra,
+        "role_branches": {
+            "reference_person": int(role.sum()),
+            "spouse_of_reference_person": 0,
+            "group_quarters_sole_person": 2,
+        },
+        "persons_aged_15_to_17": int(minor.sum()),
+        "independent_minor_persons": int((role & minor).sum()),
+        "housing_units_classified_only_by_role": 1,
+        "group_quarters_units_without_classified_adult": 0,
+        "weighted_role_share": 0.6,
+        "weighted_minor_role_share": 0.02,
+    }
+
+
+def fill_manifest(fills: Iterable[Mapping[str, object]] = (), *, period: int = 2024):
+    """A reviewed default fill's manifest (``fill_reviewed_nulls``'s shape)."""
+
+    fills = [dict(fill) for fill in fills]
+    return {
+        "period": period,
+        "register_entries": len(fills),
+        "columns_filled": len(fills),
+        "total_values_filled": sum(int(fill["filled_rows"]) for fill in fills),
+        "count_mismatch_warnings": [],
+        "unregistered_violations": [],
+        "fills": fills,
     }
 
 
