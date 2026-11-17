@@ -29,6 +29,7 @@ deep-copy when it is off (see :meth:`Frame._adopt`).
 """
 
 import re
+import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
