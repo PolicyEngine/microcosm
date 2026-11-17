@@ -27,6 +27,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.reference_factors import (
+    factor_document_sha256,
     resolve_reference_factor,
     validate_factor_context,
 )
@@ -74,6 +75,7 @@ from test_support.microcosm_build.money_normalization import (
     money_sources,
     normalize_node,
     oracle_factor,
+    published_projection_money_context,
     rate_feed_form,
     write_money_feed,
 )
@@ -803,3 +805,41 @@ def test_a_toy_graph_without_a_donor_period_refuses_at_the_normalizer(tmp_path, 
             store=ContentStore(tmp_path / "store"),
             kernels=money_registry(),
         )
+
+
+def test_a_published_projection_factor_normalizes_through_the_kernel(tmp_path):
+    path, pin, identity, facts = write_money_feed(
+        tmp_path / "feed", rate="1.25", published_projections=True
+    )
+    context = published_projection_money_context(identity, facts)
+    feed = (path, pin, identity, facts, context)
+    result = MONEY_NORMALIZE.run(_context(feed))
+    # Target mean (111 + 113) / 2 over source mean (100 + 102) / 2, rounded
+    # half-even at 6 digits.
+    factor = Fraction(round(Fraction(112, 101) * 10**6), 10**6)
+    assert factor == Fraction(1108911, 10**6)
+    for column, values in _VALUES.items():
+        cents = [_oracle_cents(value, Fraction(5, 4), factor) for value in values]
+        assert result.columns["person", f"{column}_cents"].tolist() == cents
+        assert result.columns["person", column].tolist() == [c / 100 for c in cents]
+    assert {row["factor_id"] for row in result.receipt["factors"].values()} == {
+        factor_id("central")
+    }
+
+    # A self-consistent receipt with an edited target assertion refuses on replay.
+    forged = copy.deepcopy(context)
+    (entry,) = (
+        row
+        for row in forged["factors"]
+        if row["declaration"]["id"] == factor_id("central")
+    )
+    body = {
+        key: value for key, value in entry["receipt"].items() if key != "receipt_sha256"
+    }
+    body["target_assertion"] = "observation"
+    entry["receipt"] = {**body, "receipt_sha256": factor_document_sha256(body)}
+    assert set(validate_factor_context(forged)) == {
+        factor_id(profile) for profile in ("low", "central", "high")
+    }
+    with pytest.raises(ValueError, match="replay differs"):
+        MONEY_NORMALIZE.run(_context(feed, factor_context=forged))
