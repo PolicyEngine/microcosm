@@ -23,6 +23,11 @@ Peak memory is read as follows:
 - Linux: the peak resident set size (``ru_maxrss``). Pages swapped out under
   memory pressure are not counted, so measure on a machine with free memory.
 
+The parent checks each child's result before reporting it, and refuses one
+that is malformed or describes a different run, so the other measurement
+still reports. Two results must share their platform record and fit
+settings.
+
 Growth can also read a little low when the fit reuses memory that the process
 already used, and so already counted in its peak, before the fit started. That
 matters only for small fits.
@@ -551,6 +556,15 @@ def _result_problems(
         )
     ):
         problems.append("leaf_array_shape is not four non-negative integers")
+    elif (
+        shape is not None
+        and result.get("leaf_array_dtype") == "int64"
+        and isinstance(result.get("leaf_array_bytes"), int)
+        and result["leaf_array_bytes"] != math.prod(shape) * 8
+    ):
+        problems.append("leaf_array_bytes does not match leaf_array_shape")
+    if result.get("leaf_array_dtype", "int64") != "int64":
+        problems.append("leaf_array_dtype is not int64")
     environment = result.get("environment")
     if environment is not None:
         if not isinstance(environment, dict):
@@ -569,6 +583,14 @@ def _result_problems(
     return problems
 
 
+def _finite_float(text: str) -> float:
+    """Parse a JSON number, refusing one too large for a float (``1e400``)."""
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError(f"{text} does not fit in a float")
+    return value
+
+
 def _refuse_constant(name: str) -> object:
     """Refuse ``NaN`` and ``Infinity``, which Python's json reads but JSON lacks."""
     raise ValueError(f"{name} is not standard JSON")
@@ -585,11 +607,15 @@ def _run_child(
     arguments: argparse.Namespace, implementation: str
 ) -> tuple[dict[str, object] | None, dict[str, object] | None]:
     """Run one measurement; return its result, or a description of its failure."""
+    # The child writes UTF-8 whatever PYTHONIOENCODING the caller has set,
+    # and the parent reads it as UTF-8, replacing any byte it cannot decode.
     completed = subprocess.run(
         _child_command(arguments, implementation),
         stdout=subprocess.PIPE,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
     )
     failure: dict[str, object] = {
         "implementation": implementation,
@@ -627,7 +653,9 @@ def _run_child(
         )
         return None, failure
     try:
-        result = json.loads(marked[-1], parse_constant=_refuse_constant)
+        result = json.loads(
+            marked[-1], parse_constant=_refuse_constant, parse_float=_finite_float
+        )
     except (ValueError, RecursionError):
         result = None
     if not isinstance(result, dict):
@@ -641,6 +669,9 @@ def _run_child(
         if not problems:
             # Formatting the result alone shows the report can print it.
             _report([result], [], None)
+            # And that --json can write it as standard JSON in valid UTF-8
+            # (this refuses lone surrogates and nesting json cannot write).
+            json.dumps(result, allow_nan=False, ensure_ascii=False).encode("utf-8")
     except Exception as error:  # a malformed result must not stop the other run
         problems = [f"it could not be read ({type(error).__name__}: {error})"]
     if problems:
@@ -650,6 +681,27 @@ def _run_child(
         )
         return None, failure
     return result, None
+
+
+#: Result fields that two measurements of one run must share.
+SHARED_RESULT_FIELDS = (
+    "environment",
+    "n_jobs",
+    "trees_at_once",
+    "max_samples_leaf",
+    "memory_measure",
+)
+
+
+def _disagreements(results: list[dict[str, object]]) -> list[str]:
+    """Return the shared fields on which two results differ."""
+    if len(results) != 2:
+        return []
+    return [
+        field
+        for field in SHARED_RESULT_FIELDS
+        if results[0].get(field) != results[1].get(field)
+    ]
 
 
 def _identical(results: list[dict[str, object]]) -> bool | None:
@@ -844,6 +896,19 @@ def main(argv: list[str] | None = None) -> int:
             failures.append(failure)
         else:
             results.append(result)
+    disagreeing = _disagreements(results)
+    if disagreeing:
+        failures.append(
+            {
+                "implementation": "both",
+                "exit_code": None,
+                "signal_number": None,
+                "signal": None,
+                "message": "the two measurements disagree on "
+                + ", ".join(disagreeing)
+                + ", so they ran under different settings",
+            }
+        )
     identical = _identical(results)
     if arguments.json:
         print(
