@@ -35,13 +35,25 @@ It computes the value R2 stores, with R2's own functions and the engine:
 - A county is **at risk** when it has households but none with a nonzero AGI
   as R2 stores it (float32). Return-count rows count every tax unit, so they
   are never empty.
+- R2's ``check_support`` (materialize, after the staging load and the
+  SSI/Medicaid pre-pass) refuses the run, with or without
+  ``--county-drop-empty-soi-rows``, when a household names a county outside
+  the ladder or a ladder county has no household-universe record after the
+  minimum-support moves. With ``--puma-ladder`` the check lists both
+  (``counties_outside_ladder``, ``unsupported_counties``) with R2's set
+  rules, and, as R2 does, moves no household when a county is outside the
+  ladder.
 
 The check needs memory for the full staging frame, as R2's materialize stage
 does, and runs the engine for the AGI alone (minutes, not R2's full pass).
 
-Exit status 0: no county at risk. Exit status 2: at least one county at
-risk; the JSON report (``--out``) lists them. Each needs a ruling before R2
-(drop the county's AGI row with a receipt, or give it a declared SOI cell).
+Exit status 0: no county at risk and none that R2 refuses. Exit status 2: at
+least one county at risk; the JSON report (``--out``) lists them. Each needs
+a ruling before R2 (drop the county's AGI row with a receipt, or give it a
+declared SOI cell). Exit status 3: R2 would refuse the run in materialize
+whatever the drop flag (a county outside the ladder, or without a
+household-universe record); fix the staging file or the ladder first. Status
+3 takes precedence over 2 and needs ``--puma-ladder``.
 
 Usage::
 
@@ -84,6 +96,8 @@ ISSUE = "microcosm#922"
 #: The engine variable whose household sum R2's state SOI AGI row stores.
 AGI_VARIABLE = "adjusted_gross_income"
 EXIT_AT_RISK = 2
+#: R2's ``check_support`` refuses the run whatever the drop flag.
+EXIT_R2_REFUSES = 3
 #: Households per engine chunk; the AGI closure alone is light.
 DEFAULT_HH_CHUNK = 100_000
 _RELEASE_TOOL = _TOOLS / "build_us_acs_local_release.py"
@@ -249,12 +263,16 @@ def county_agi_report(
     county_column: str,
     county_populations: Mapping[int, float] | None = None,
 ) -> dict[str, Any]:
-    """Per-county household counts and the counties at risk.
+    """Per-county household counts, the counties at risk and R2's refusals.
 
     ``nonzero_agi`` flags the households (in ``households`` order) whose AGI
     R2 would store as nonzero; the ``households_with_agi_income`` keys count
     them. ``county_populations`` (the ladder's, as R2 uses) sets the county
-    list; without it the list is the counties the households name.
+    list; without it the list is the counties the households name, and
+    ``counties_outside_ladder`` and ``unsupported_counties`` are None (not
+    checked). With it, they are what R2's ``check_support`` refuses: counties
+    the households name that are not in the ladder, and ladder counties
+    without a household-universe record (``support_universe``).
     """
 
     codes = county_surface.county_codes(households, county_column=county_column)
@@ -268,10 +286,12 @@ def county_agi_report(
         with_income[code] += int(earns)
     if county_populations is None:
         counties = sorted(totals)
+        ladder = None
     else:
         counties = sorted(
             int(code) for code, value in county_populations.items() if float(value) > 0
         )
+        ladder = {int(code) for code in county_populations}
     at_risk, no_household, thin = [], [], []
     rows = {}
     for code in counties:
@@ -290,9 +310,12 @@ def county_agi_report(
             < county_surface.DEFAULT_COUNTY_MIN_SUPPORT
         ):
             thin.append(f"{code:05d}")
-    outside = (
-        sorted(set(totals) - set(counties)) if county_populations is not None else []
-    )
+    # R2's check_support compares with every ladder county, whatever its
+    # population.
+    outside = unsupported = None
+    if ladder is not None:
+        outside = sorted(set(totals) - ladder)
+        unsupported = sorted(ladder - {code for code, n in supporting.items() if n})
     return {
         "county_column": county_column,
         "counties": len(counties),
@@ -302,7 +325,12 @@ def county_agi_report(
         "at_risk_detail": {code: rows[code] for code in at_risk},
         "no_household": no_household,
         "fewer_than_min_support_with_agi_income": thin,
-        "counties_outside_ladder": [f"{code:05d}" for code in outside],
+        "counties_outside_ladder": (
+            None if outside is None else [f"{code:05d}" for code in outside]
+        ),
+        "unsupported_counties": (
+            None if unsupported is None else [f"{code:05d}" for code in unsupported]
+        ),
         "by_county": rows,
     }
 
@@ -337,7 +365,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=Path,
         help=(
             "R2's PUMA ladder. With it, the check takes the county list from "
-            "the ladder and applies R2's minimum-support moves first."
+            "the ladder, applies R2's minimum-support moves first and lists "
+            "the counties R2 refuses (exit status 3)."
         ),
     )
     parser.add_argument(
@@ -357,6 +386,61 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--out", type=Path, help="JSON report path.")
     return parser.parse_args(argv)
+
+
+def ladder_support(
+    households: pd.DataFrame,
+    ladder_path: Path,
+    *,
+    county_column: str,
+    county_min_support: int,
+) -> tuple[pd.DataFrame, dict[int, float], dict[str, Any] | None]:
+    """R2's ladder county populations and minimum-support moves.
+
+    Returns ``(households, county_populations, support)``: the households
+    after the moves, as ``check_support`` rewrites them, and the moves'
+    receipt (None when nothing was planned). As in R2, no household moves
+    when one names a county outside the ladder; R2 then refuses the run.
+    """
+
+    from microcosm.build.us_runtime.puma_ladder import load_us_puma_ladder
+
+    ladder = load_us_puma_ladder(ladder_path)
+    populations = county_surface.with_county_populations(
+        ladder, {}, {"county": True}, county_column=county_column
+    )["county"]
+    codes = county_surface.county_codes(households, county_column=county_column)
+    outside = {int(code) for code in codes.tolist()} - {
+        int(code) for code in populations
+    }
+    needed = county_surface.unsupported_counties(
+        households, populations, county_column=county_column
+    )
+    support = None
+    if county_min_support > 0 and needed and not outside:
+        overlaps = county_surface.county_puma_overlaps(ladder_path, county_column)
+        moves, support = county_surface.plan_minimum_support(
+            households,
+            populations,
+            overlaps,
+            county_column=county_column,
+            per_county=county_min_support,
+        )
+        households = county_surface.apply_support_moves(
+            households,
+            moves,
+            county_column=county_column,
+            columns=support["rewritten_columns"],
+        )
+    return households, populations, support
+
+
+def exit_status(report: Mapping[str, Any]) -> int:
+    """3 when R2 refuses whatever the drop flag, else 2 when a county is at risk."""
+
+    if report.get("counties_outside_ladder") or report.get("unsupported_counties"):
+        return EXIT_R2_REFUSES
+    return EXIT_AT_RISK if report["at_risk"] else 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -381,32 +465,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     populations = None
     support = None
     if args.puma_ladder is not None:
-        from microcosm.build.us_runtime.puma_ladder import load_us_puma_ladder
-
-        ladder = load_us_puma_ladder(args.puma_ladder)
-        populations = county_surface.with_county_populations(
-            ladder, {}, {"county": True}, county_column=args.county_column
-        )["county"]
-        needed = county_surface.unsupported_counties(
-            households, populations, county_column=args.county_column
+        households, populations, support = ladder_support(
+            households,
+            args.puma_ladder,
+            county_column=args.county_column,
+            county_min_support=args.county_min_support,
         )
-        if args.county_min_support > 0 and needed:
-            overlaps = county_surface.county_puma_overlaps(
-                args.puma_ladder, args.county_column
-            )
-            moves, support = county_surface.plan_minimum_support(
-                households,
-                populations,
-                overlaps,
-                county_column=args.county_column,
-                per_county=args.county_min_support,
-            )
-            households = county_surface.apply_support_moves(
-                households,
-                moves,
-                county_column=args.county_column,
-                columns=support["rewritten_columns"],
-            )
     report = county_agi_report(
         households,
         nonzero,
@@ -433,6 +497,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "seconds": round(time.time() - started, 1),
         }
     )
+    status = exit_status(report)
+    report["exit_status"] = status
     rendered = json.dumps(report, indent=2, sort_keys=True) + "\n"
     if args.out is not None:
         args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -448,11 +514,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             "at_risk_detail",
             "no_household",
             "fewer_than_min_support_with_agi_income",
+            "counties_outside_ladder",
+            "unsupported_counties",
+            "exit_status",
             "seconds",
         )
     }
     print(json.dumps(summary, indent=2, sort_keys=True))
-    return EXIT_AT_RISK if report["at_risk"] else 0
+    return status
 
 
 if __name__ == "__main__":
