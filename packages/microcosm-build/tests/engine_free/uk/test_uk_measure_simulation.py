@@ -813,8 +813,9 @@ def test_packaged_exclusions_load():
     # ONS's NEET count (Y3). PR3 holds PAYE RTI's payrolled employees aged 0 to
     # 17 and 18 to 24 (B1), DWP's people on UC aged 16 to 21 and 22 to 24 in two
     # conditionality groups (B5), and Social Security Scotland's ADP and Carer
-    # Support Payment caseloads (B10).
-    assert len(names) == len(set(names)) == 143
+    # Support Payment caseloads (B10). María's call of 2026-11-17 binds England's
+    # PIP cases at 16 to 19 and 20 to 24 and holds their sum, 16 to 24, out.
+    assert len(names) == len(set(names)) == 142
     (gas,) = [
         entry
         for entry in exclusions
