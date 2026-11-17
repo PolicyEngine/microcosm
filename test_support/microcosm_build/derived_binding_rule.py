@@ -30,7 +30,7 @@ import sys
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from types import MappingProxyType, ModuleType
+from types import MappingProxyType, ModuleType, SimpleNamespace
 from typing import NamedTuple
 
 #: The packages the rule follows: every first-party package, each under the
@@ -703,31 +703,49 @@ def hashed_by(compute: Callable[[], object]) -> frozenset[str]:
     """Every module ``compute()`` hashes, recorded at each ``source_hash`` it
     reaches, in whichever module calls it: every loaded module's
     ``source_hash`` name stands in for the recorder during one call, after a
-    first call has imported what ``compute`` imports."""
+    first call has imported what ``compute`` imports.
+
+    A declared dependency the environment does not install (the engine-free
+    tier installs no country engine) hashes as absent during both calls: the
+    modules a kernel hashes do not depend on its dependencies' versions, and
+    ``source_hash`` itself still refuses a missing dependency everywhere else
+    (microcosm#931)."""
 
     from microcosm.graph import kernel as graph_kernel
 
     original = graph_kernel.source_hash
+    metadata = graph_kernel.importlib_metadata
     recorded: list[object] = []
+
+    def version(distribution: str) -> str:
+        try:
+            return metadata.version(distribution)
+        except metadata.PackageNotFoundError:
+            return "absent"
 
     def record(*objects, **dependencies):
         recorded.extend(objects)
         return original(*objects, **dependencies)
 
-    compute()
-    patched = [
-        module
-        for module in list(sys.modules.values())
-        if isinstance(module, ModuleType)
-        and getattr(module, "__dict__", {}).get("source_hash") is original
-    ]
-    for module in patched:
-        module.source_hash = record
+    graph_kernel.importlib_metadata = SimpleNamespace(
+        version=version, PackageNotFoundError=metadata.PackageNotFoundError
+    )
+    patched: list[ModuleType] = []
     try:
+        compute()
+        patched = [
+            module
+            for module in list(sys.modules.values())
+            if isinstance(module, ModuleType)
+            and getattr(module, "__dict__", {}).get("source_hash") is original
+        ]
+        for module in patched:
+            module.source_hash = record
         compute()
     finally:
         for module in patched:
             module.source_hash = original
+        graph_kernel.importlib_metadata = metadata
     return frozenset(
         (item if isinstance(item, ModuleType) else inspect.getmodule(item)).__name__
         for item in recorded
