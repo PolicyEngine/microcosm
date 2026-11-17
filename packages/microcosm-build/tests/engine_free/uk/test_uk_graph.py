@@ -604,17 +604,14 @@ def test_copy_id_table_changes_invalidate_every_stage_that_reads_it(monkeypatch)
         return content
 
     monkeypatch.setattr(Path, "read_bytes", changed_helper_bytes)
-    # Fourteen: the geographic clones mint their ids in the table's
-    # geographic_support field, regional_home_values, which read clone 0 from
-    # it, retired, and the area draw, the SPI-copy area stage and the
-    # council-tax localisation bind frs_spine, which imports the table, for
-    # the root's decile and band flag (microcosm#931).
+    # Eleven: the geographic clones mint their ids in the table's
+    # geographic_support field, and regional_home_values, which read clone 0
+    # from it, retired. The area stages read the root's decile and band flag
+    # from frs_area_draw_columns, which holds names alone, so they bind
+    # neither frs_spine nor the table (microcosm#931).
     assert "geographic_expand" in stages
     assert "regional_home_values" not in stages
-    assert {"atomic_area_assign", "spi_copy_areas", "council_tax_localise"} <= set(
-        stages
-    )
-    assert len(affected) == 14
+    assert len(affected) == 11
     for ref in affected:
         assert registry.implementation_hash(ref) != before[ref], ref
     for ref in controls:

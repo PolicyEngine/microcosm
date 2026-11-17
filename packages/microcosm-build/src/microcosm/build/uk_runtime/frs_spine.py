@@ -27,6 +27,11 @@ from microcosm.build.uk_runtime.council_tax_constants import (
     UK_COUNCIL_TAX_PLACEHOLDER_BAND,
     UK_NATION_BY_REGION,
 )
+from microcosm.build.uk_runtime.frs_area_draw_columns import (
+    FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
+    FRS_IMD_DECILE_COLUMN,
+    FRS_IMD_DECILE_UNOBSERVED,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     validate_uk_national_frame,
@@ -173,8 +178,7 @@ COUNCIL_TAX_BAND_MAP = {
 #: of every receipt and of the spine sidecar's nonzero shares. The area
 #: draw reads both here; the conditioned supports carry each area's decile in
 #: a code column of their own (``atomic_area_support.IMD_DECILE_COLUMN``).
-FRS_IMD_DECILE_COLUMN = "imd_decile"
-FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN = "council_tax_band_observed"
+#: The two names live in ``frs_area_draw_columns``, which holds nothing else.
 FRS_AREA_CONDITIONING_COLUMNS = (
     FRS_IMD_DECILE_COLUMN,
     FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
@@ -193,8 +197,6 @@ FRS_IMD_DECILE_COLUMN_BY_NATION: Mapping[str, str] = MappingProxyType(
 )
 #: The decile codes; anything else, a blank included, is no observed decile.
 FRS_IMD_DECILES = tuple(range(1, 11))
-#: The decile a household with no observed decile carries.
-FRS_IMD_DECILE_UNOBSERVED = 0
 
 MARITAL_MAP = {
     1: "MARRIED",

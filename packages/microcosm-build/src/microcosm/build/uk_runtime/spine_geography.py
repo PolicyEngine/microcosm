@@ -144,6 +144,11 @@ from microcosm.build.uk_runtime.brma_area_layer import (
     load_brma_area_layer,
 )
 from microcosm.build.uk_runtime.cgt_structure import _assert_closed_world_operations
+from microcosm.build.uk_runtime.frs_area_draw_columns import (
+    FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
+    FRS_IMD_DECILE_COLUMN,
+    FRS_IMD_DECILE_UNOBSERVED,
+)
 from microcosm.build.uk_runtime.frs_brma import (
     FRS_BRMA_OUTPUT_COLUMNS,
     UK_BRMA_BENUNIT_SALT,
@@ -152,11 +157,6 @@ from microcosm.build.uk_runtime.frs_brma import (
     UK_BRMA_HOUSEHOLD_PICK_SALT,
     UK_BRMA_PREDICTORS,
     draw_household_brmas,
-)
-from microcosm.build.uk_runtime.frs_spine import (
-    FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
-    FRS_IMD_DECILE_COLUMN,
-    FRS_IMD_DECILE_UNOBSERVED,
 )
 from microcosm.build.uk_runtime.geographic_clones import (
     SOURCE_YEAR_COLUMN,

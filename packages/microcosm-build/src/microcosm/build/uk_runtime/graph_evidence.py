@@ -462,6 +462,7 @@ class UKSpineGateKernel(KernelBase):
             atomic_area_conditioning,
             atomic_area_support,
             council_tax_constants,
+            frs_area_draw_columns,
             graph_kernels,
             household_lineage,
             national_frame,
@@ -487,6 +488,7 @@ class UKSpineGateKernel(KernelBase):
         # re-derives each household's level and ladder through the shared
         # operator (atomic_geography, atomic_support_conditioning, the UK's
         # declarations in atomic_area_conditioning and atomic_area_support,
+        # the FRS draw columns' names in frs_area_draw_columns,
         # the FRS region codes in rowwise_geography, canonical_json and the
         # keyed uniforms the operator's module holds), reading the support
         # channel's copies off the copy lineage (source_lineage,
@@ -522,6 +524,7 @@ class UKSpineGateKernel(KernelBase):
                         atomic_support_conditioning,
                         atomic_area_conditioning,
                         atomic_area_support,
+                        frs_area_draw_columns,
                         rowwise_geography,
                         graph_canonical,
                         graph_randomness,
