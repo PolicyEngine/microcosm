@@ -148,10 +148,12 @@ class Frame:
         through ``Series.array``, private pandas attributes, an array made
         writable, ``ufunc.at``, ``np.copyto`` or ``out=``
         (``test_shared_buffer_writes.py`` refuses these in the workspace's
-        source), and through the arrays that ``to_numpy()`` and ``.values``
-        return for extension-typed columns, which are writable views:
-        ``Int64``, ``Float64``, ``boolean``, ``category`` and python-backed
-        strings.
+        source), and through the extension arrays of extension-typed columns:
+        ``.values`` returns the shared array itself for ``Int64``,
+        ``Float64``, ``boolean``, ``category`` and python-backed string
+        columns (and, under pandas 2.x, for pyarrow-backed ones), and
+        ``to_numpy()`` a writable view of it for all of these but
+        ``category``.
 
         When copy-on-write is off (the pandas 2.x default), a shallow copy
         shares data even for ordinary pandas writes, so the tables and strata
@@ -927,7 +929,8 @@ class Frame:
         with the replacements and with this frame, and a write made through
         pandas to either side never reaches the other. Each frame still holds
         its own DataFrame objects, so the caller may go on writing to the
-        DataFrames it passed. Weights, strata, the mass log and metadata are
+        DataFrames it passed. Raw writes into the shared memory are not
+        protected (see :meth:`_adopt`). Weights, strata, the mass log and metadata are
         carried unchanged. When copy-on-write is off, every table is
         deep-copied instead (see :meth:`_adopt`).
 
@@ -968,10 +971,11 @@ class Frame:
         Each value is assigned with ``table[name] = values``, so a new name
         adds a column and an existing name replaces one, under pandas'
         assignment rules: a :class:`pandas.Series` aligns on the table's
-        index, and an array or list must have one value per row. pandas 3
+        index, and an array or list must have one value per row. pandas
         copies a NumPy array on assignment, so the frame does not alias the
         caller's array. The table's other columns and every other table are
-        shared with this frame as in :meth:`replace_tables`.
+        shared with this frame as in :meth:`replace_tables`, with the same
+        limits.
 
         Args:
             entity: An entity declared by the schema (not a link).
@@ -981,6 +985,8 @@ class Frame:
             A new validated frame.
 
         Raises:
+            TypeError: If pandas cannot assign a value as a column (a set,
+                for example).
             ValueError: If ``entity`` is not declared by the schema, a value's
                 length does not match the table, or the new columns break a
                 constructor invariant (a name another table already carries,
@@ -1549,9 +1555,10 @@ def _pandas_copy_on_write() -> bool:
     ``mode.copy_on_write`` must be ``True`` (it is ``False`` by default, or
     ``"warn"``) and the data manager the default block manager. Reading
     that function emits none of the deprecation warnings the options do.
-    pandas 3 removed it along with the switch, because copy-on-write is
-    always on. Without the function, a version from 3 on counts as on, and
-    any other version reads ``mode.copy_on_write``.
+    pandas 3 removed that function: copy-on-write is always on there, and
+    its option is deprecated and ignored. Without the function, a version
+    from 3 on counts as on, and any other version reads
+    ``mode.copy_on_write``.
     """
 
     try:

@@ -7,8 +7,10 @@ when pandas copy-on-write is on, so a frame built by ``replace_tables`` or
 frame. Copy-on-write keeps a write made through pandas on one frame from
 reaching the other. When copy-on-write is off (the pandas 2.x default), a
 shallow copy shares data even for ordinary pandas writes, so ``_adopt``
-deep-copies instead. These tests replace the copy-on-write check to take that
-path, because pandas 3 always has copy-on-write on.
+deep-copies instead. To take that path, the ``copy_on_write_off`` fixture
+turns copy-on-write off under pandas 2.x and, under pandas 3, where it is
+always on, replaces the check ``_adopt`` makes. Every other test runs with
+copy-on-write on.
 """
 
 import importlib
@@ -105,7 +107,8 @@ def source_frame() -> Frame:
     )
 
 
-_PANDAS_3 = int(pd.__version__.split(".", 1)[0]) >= 3
+#: pandas 3 removed the copy-on-write switch along with this function.
+_PANDAS_3 = not hasattr(pandas_config, "using_copy_on_write")
 
 
 @pytest.fixture(autouse=True)
@@ -613,7 +616,7 @@ class TestCopyOnWriteCheck:
             "empty",
         ],
     )
-    def test_without_pandas_own_check_an_older_version_reads_the_option(
+    def test_without_pandas_own_check_the_version_or_the_option_decides(
         self,
         monkeypatch: pytest.MonkeyPatch,
         version: str,
