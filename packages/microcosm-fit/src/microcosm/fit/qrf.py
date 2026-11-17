@@ -64,6 +64,7 @@ from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 
+import joblib
 import numpy as np
 import pandas as pd
 from quantile_forest import RandomForestQuantileRegressor
@@ -1354,11 +1355,12 @@ _PREDICT_CHUNK_ROWS = 10_000
 
 #: Environment override for the parallel draw's worker count. A build tool sets
 #: it to leave cores for concurrent work or to pin timing; unset defaults to
-#: :func:`os.cpu_count`.
+#: :func:`default_predict_workers`.
 _PREDICT_WORKERS_ENV = "POPULACE_FIT_PREDICT_WORKERS"
 
 #: Environment override for quantile-forest fit parallelism. Unset retains the
-#: historical ``n_jobs=-1`` behavior; checkpointed production builds can pin it
+#: historical ``n_jobs=-1`` behavior, which joblib resolves to
+#: :func:`joblib.cpu_count` threads; checkpointed production builds can pin it
 #: to one (or another positive width) without changing the model API.
 _N_JOBS_ENV = "POPULACE_FIT_N_JOBS"
 
@@ -1381,10 +1383,14 @@ _DISCRETE_Y_LEAF_BOUND = 4_096
 def _fit_n_jobs() -> int:
     """Resolve quantile-forest fit parallelism.
 
-    Unset preserves the historical ``n_jobs=-1`` default. If the environment
-    variable is present it must be a strict positive base-10 integer; in
-    particular, an empty string is an invalid configured value rather than a
-    second spelling of "unset".
+    Unset preserves the historical ``n_jobs=-1`` default. joblib resolves a
+    negative ``n_jobs`` when it starts the fit's and ``apply``'s threads, as
+    ``joblib.cpu_count() + 1 + n_jobs``, so ``-1`` already counts only the
+    CPUs the process may use (see :func:`default_predict_workers`). Chain
+    states and the primary-QRF worker identity record the literal ``-1``,
+    not that count. If the environment variable is present it must be a
+    strict positive base-10 integer; in particular, an empty string is an
+    invalid configured value rather than a second spelling of "unset".
 
     Raises:
         ValueError: If ``POPULACE_FIT_N_JOBS`` is set to anything other than a
@@ -1404,6 +1410,23 @@ def _fit_n_jobs() -> int:
     return jobs
 
 
+def default_predict_workers() -> int:
+    """The draw's thread-pool width when ``POPULACE_FIT_PREDICT_WORKERS`` is unset.
+
+    :func:`joblib.cpu_count` is the smallest of the machine's logical CPU
+    count, the process's CPU affinity mask, a Linux cgroup CPU quota
+    (``cpu.max``) and ``LOKY_MAX_CPU_COUNT``. :func:`os.cpu_count`, the
+    default before it, counts only the machine's CPUs: in a container held to
+    a CPU quota it started one thread per host CPU, and the quota then paused
+    them. The value can change within a process (when ``LOKY_MAX_CPU_COUNT``
+    or the affinity mask changes), so callers read it when they need it.
+
+    The primary-QRF worker identity records this value for an unset override
+    (``microcosm.build.us_runtime.worker_identity``), so both read it here.
+    """
+    return joblib.cpu_count()
+
+
 def _predict_workers() -> int:
     """Resolve the draw's thread-pool width.
 
@@ -1415,15 +1438,15 @@ def _predict_workers() -> int:
     MB to gigabytes each, re-paid on every fit in the fit-then-predict-per-
     pattern transfer path — for no speed gain over the GIL-free threads.
 
-    Defaults to :func:`os.cpu_count`; ``POPULACE_FIT_PREDICT_WORKERS`` overrides
-    it with a positive integer.
+    Defaults to :func:`default_predict_workers`; ``POPULACE_FIT_PREDICT_WORKERS``
+    overrides it with a positive integer.
 
     Raises:
         ValueError: If the override is set but not a positive integer.
     """
     override = os.environ.get(_PREDICT_WORKERS_ENV)
     if override is None or not override.strip():
-        return os.cpu_count() or 1
+        return default_predict_workers()
     try:
         workers = int(override)
     except ValueError:

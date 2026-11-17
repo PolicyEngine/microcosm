@@ -221,6 +221,7 @@ from microcosm.build.us_runtime.us_late_producer_registry import (
     us_late_producer_schedule_receipt,
 )
 from microcosm.fit import Regime
+from microcosm.fit.qrf import default_predict_workers
 from microcosm.frame import US_SCHEMA, Frame, WeightKind
 
 __all__ = [
@@ -6028,7 +6029,7 @@ def _legacy_primary_qrf_worker_execution_binding() -> dict[str, object]:
             )
     predict_workers_raw = os.environ.get("POPULACE_FIT_PREDICT_WORKERS")
     if predict_workers_raw is None or not predict_workers_raw.strip():
-        predict_workers = os.cpu_count() or 1
+        predict_workers = default_predict_workers()
         predict_workers_source = "os_cpu_count_fallback"
     else:
         try:

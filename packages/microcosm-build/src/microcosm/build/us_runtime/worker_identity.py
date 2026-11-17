@@ -154,7 +154,7 @@ _ATTESTATION_KEYS = {
 }
 _SHA256_ALPHABET = frozenset("0123456789abcdef")
 _PRIMARY_QRF_WORKER_IDENTITY_CACHE: dict[
-    tuple[str | None, str | None, str | None], dict[str, object]
+    tuple[str | None, str | None, str | None, int | None], dict[str, object]
 ] = {}
 
 
@@ -1221,6 +1221,24 @@ def _canonical_pyvenv_config() -> dict[str, object]:
     }
 
 
+def _default_predict_workers() -> int:
+    """The QRF draw's own width for an unset ``POPULACE_FIT_PREDICT_WORKERS``.
+
+    The worker resolves the same value through ``microcosm.fit.qrf``, so the
+    identity records the pool width the worker uses. Imported here rather
+    than at module level, which loads only the standard library and
+    ``packaging``.
+    """
+
+    from microcosm.fit.qrf import default_predict_workers
+
+    return default_predict_workers()
+
+
+def _predict_workers_unset(configured: str | None) -> bool:
+    return configured is None or not configured.strip()
+
+
 def _semantic_environment() -> dict[str, object]:
     fit_jobs_raw = os.environ.get("POPULACE_FIT_N_JOBS")
     if fit_jobs_raw is None:
@@ -1239,8 +1257,8 @@ def _semantic_environment() -> dict[str, object]:
                 "the primary-QRF worker binding."
             )
     predict_workers_raw = os.environ.get("POPULACE_FIT_PREDICT_WORKERS")
-    if predict_workers_raw is None or not predict_workers_raw.strip():
-        predict_workers = os.cpu_count() or 1
+    if _predict_workers_unset(predict_workers_raw):
+        predict_workers = _default_predict_workers()
         predict_workers_source = "os_cpu_count_fallback"
     else:
         try:
@@ -1276,6 +1294,20 @@ def _semantic_environment() -> dict[str, object]:
     }
 
 
+def _primary_qrf_worker_identity_cache_key(
+    uv_lock_sha256: str | None,
+) -> tuple[str | None, str | None, str | None, int | None]:
+    predict_workers_raw = os.environ.get("POPULACE_FIT_PREDICT_WORKERS")
+    return (
+        uv_lock_sha256,
+        os.environ.get("POPULACE_FIT_N_JOBS"),
+        predict_workers_raw,
+        _default_predict_workers()
+        if _predict_workers_unset(predict_workers_raw)
+        else None,
+    )
+
+
 def clear_primary_qrf_worker_identity_cache() -> None:
     """Clear process attestations after deliberate runtime or source mutations."""
 
@@ -1298,15 +1330,14 @@ def primary_qrf_worker_semantic_identity(
     lock on its first cache miss and after clearing, while explicit approved
     and legacy digests have separate entries. Bound environment values are
     likewise keyed by their raw configured strings so validation is preserved.
+    An unset prediction-worker count is also keyed by the width it resolves
+    to, which ``joblib.cpu_count()`` can change within a process (through
+    ``LOKY_MAX_CPU_COUNT`` or the CPU affinity mask).
     """
 
     if uv_lock_sha256 is not None:
         _require_sha256(uv_lock_sha256, boundary="primary-QRF worker lock")
-    key = (
-        uv_lock_sha256,
-        os.environ.get("POPULACE_FIT_N_JOBS"),
-        os.environ.get("POPULACE_FIT_PREDICT_WORKERS"),
-    )
+    key = _primary_qrf_worker_identity_cache_key(uv_lock_sha256)
     if key not in _PRIMARY_QRF_WORKER_IDENTITY_CACHE:
         _PRIMARY_QRF_WORKER_IDENTITY_CACHE[key] = (
             _uncached_primary_qrf_worker_semantic_identity(

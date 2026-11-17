@@ -3332,11 +3332,7 @@ def test_primary_qrf_worker_execution_binding_isolates_semantic_memo(
 def test_worker_identity_session_prime_matches_pipeline_binding(
     _session_primary_qrf_worker_identities,
 ) -> None:
-    key = (
-        None,
-        worker_identity_module.os.environ.get("POPULACE_FIT_N_JOBS"),
-        worker_identity_module.os.environ.get("POPULACE_FIT_PREDICT_WORKERS"),
-    )
+    key = worker_identity_module._primary_qrf_worker_identity_cache_key(None)
     memo = worker_identity_module._PRIMARY_QRF_WORKER_IDENTITY_CACHE
     assert key in memo
     first = memo[key]
