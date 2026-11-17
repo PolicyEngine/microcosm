@@ -1959,8 +1959,8 @@ and beginning before its release line), a time `NO-GO` is held as `WAIT`
 (`starts_unconfirmed`): for the incumbent, past its release, for as long as
 the candidate's estimate reads its timing (its start cost, pace or
 first-slice extra, or its departures from the prior for a chunk the
-candidate has not measured). A stall still stops the run. A newest stream with nothing in it yet beside an
-earlier one with records may be a hole that has not ended: the estimate and
+candidate has not measured). A stall still stops the run. A newest stream
+with nothing in it yet beside an earlier one with records may be a hole that has not ended: the estimate and
 the stall check wait for its first record (`newest_stream_empty`). A
 stream that begins in the very second the earlier ones reached and repeats
 records from it is reported as `restart_overlaps`; each record there is
@@ -1992,16 +1992,29 @@ It answers one of three verdicts:
   does not fit the log), because the rebuilt pool is then wrong in an
   unknown direction; after a hole while a slice from before it has no
   line, or in place of a time `NO-GO` while a pool the hole could reach has
-  not logged a start for every worker; and while the streams began late (no `BUDGET:`
-  line), when it is `GO` only once the candidate has scored every slice
+  not logged a start for every worker (for the incumbent past its release,
+  only while the candidate's estimate reads its timing); and while the
+  streams began late (no `BUDGET:` line), when it is `GO` only once the candidate has scored every slice
   (stopping then would throw the scores away) but a `NO-GO` against the
   shortest budget seen still holds. The watcher raises `ALARM` once when
-  either happens, or on `stream_holes`; after lost slice, opening or
-  worker-start lines only the stall check and the runner's budget can end
-  the run early. In the simulated searches no lost stretch turned GO into
-  NO-GO, and a restart that lost nothing held the verdict for one poll at
-  most (`docs/evidence/us-h2h-speed/lost-lines.txt`): a lost line costs the
-  early stop, not a wrong one.
+  either happens, or on `stream_holes`; after lost slice or opening lines,
+  and after lost worker-start lines while the `starts_unconfirmed` hold
+  applies, only the stall check and the runner's budget can end the run
+  early. A lost incumbent start can leave no `log_gap`, so once its hold
+  lifts a time `NO-GO` can end the run again. In the simulated search
+  (`docs/evidence/us-h2h-speed/lost-lines.txt`), at the polls it judged
+  after lost stretches (up to 1,200 s after the last) and after restarts
+  inside one second (the next three 600 s polls), no lost stretch gave
+  `NO-GO` where the intact log gave none for runs with 265 s to spare, and
+  none moved the estimate later at polls that hold did not cover; a hold
+  can last past those polls. A restart that split one second's lines
+  between streams, losing nothing, did move it up to 24 s later, the
+  largest seen and not a bound. Otherwise a restart cost the early stop,
+  not a wrong one: one that lost nothing while the incumbent's workers were
+  still starting delayed a `NO-GO` by up to 8,400 s ($21.39); logs with
+  lost lines gave `WAIT` at many polls where the intact log gave `NO-GO`
+  (the search did not measure how long that delays a stop), and at some
+  polls read early enough to give `GO` where the intact log gave `NO-GO`.
 - `NO-GO` when the estimated end is past the tool's budget, or the log has
   stalled. The budget is the plan's 14,505 s from `started-at`, or less
   when the runner's `BUDGET:` line (or an `ATTEMPTS:` line) says so. A

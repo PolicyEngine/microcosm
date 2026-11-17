@@ -32,8 +32,9 @@ Sections:
 - cut-d844, cut-random: a restart that does not replay loses [s, s + w):
   w = 1, 10 and 60 s ending or starting at each worker start, pool opening
   and release line, and w = 0 (nothing lost), 10 and 60 s every 120 s (d844)
-  or 300 s (random), plus up to 60 pairs of 10 s cuts at two start lines 300
-  to 2,400 s apart (two restarts). Polls come every 5 s to 300 s after the
+  or 300 s (random), plus pairs of 10 s cuts at two start lines 300 to
+  2,400 s apart (two restarts): every pair when there are fewer than 120,
+  else an even sample of 60 to 90. Polls come every 5 s to 300 s after the
   last cut and every 30 s to 1,200 s, so the first ones see the new stream
   still empty.
 - boundary: a restart inside one second, at every second with records: the

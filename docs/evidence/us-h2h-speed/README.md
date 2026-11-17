@@ -242,37 +242,150 @@ moves no verdict.
 
 ## Lost log lines (simulated, not measurements)
 
-`scripts/lost_lines.py` cuts a stretch out of simulated logs, as a log
-stream that the watcher restarts without a replay would lose it, and reads
-the two pieces as the watcher's two streams. It compares the verdict with
-the intact log's at the same poll. Output: `lost-lines.txt`.
+`scripts/lost_lines.py` damages simulated logs the ways a restarted log
+stream can, reads the pieces as the watcher's streams, and compares the
+projection's verdict and estimate with the intact log's at the same poll.
+Output: `lost-lines.txt`; its header gives each section's command. The
+property tests draw intact logs only (one stream, or the same log replayed
+whole by a second); named examples in the projection's tests and this
+offline search cover lost lines.
 
-- d844 shape, every 60 s stretch at 30 s steps and every 10 s stretch at
-  20 s steps, at three to six polls each: none of 1,222 cuts turns GO into
-  NO-GO or back. At f = 1, T = 300 s (fits with 265 s spare) all 765 turn
-  GO into WAIT; in the two shapes that overrun, 456 of 457 turn NO-GO into
-  WAIT and one stays NO-GO.
-- Random pools drawn as the property tests draw them, three seeds of 300:
-  12,765 cuts, each judged against a budget the run fits and one it
-  overruns by 600 s. No cut turns GO into NO-GO. One turns NO-GO into GO: a
-  candidate worker start lost in its opening leaves the rebuild a worker
-  short, which reads the pace early (an estimate of 8,572 s where the
-  intact log gives 10,014 s, against a 9,114 s budget). The next poll is a
-  log gap. Under the fitting budget, 10,502 cuts turn GO into WAIT and 543
-  keep their verdict; the rest were WAIT already.
-- Restarts that lose nothing, across the grid's start costs at f = 1 to 3
-  (a split every 900 s, polls every 600 s): the verdict differs from the
-  intact log's at one poll at most, the poll at which the new stream has
-  not yet delivered the running slices' lines. Every run that overruns has
-  its intact NO-GO by 1,800 s, so only one or two splits come before it;
-  none moves it later. The grids where a NO-GO comes late (only the
-  candidate's chunk 5 slower) are not searched.
-- The cost is the early stop. A lost slice line becomes a log gap once the
-  parent takes its result. A lost start becomes one once the rebuild needs
-  the missing worker: at the next poll in both lost-start cases traced (the
-  one above and the one in the tests). Either holds WAIT for the rest of
-  the run, and the runner's budget then bounds it: 14,505 s, $36.94 at the
-  class's list price.
+The cut and boundary searches judge each poll at two budgets per shape:
+one 265 s past the true end (the last slice plus the estimate's 600 s
+allowance), so the run fits with the spare the d844 shape has at f = 1,
+T = 300 s (14,505 s less its 14,240 s true end); and one 600 s short of the
+true end, so it overruns. Counts are polls, one per damage case and poll
+time. A false NO-GO is a NO-GO from the damaged log, under the fitting
+budget, where the intact log gives none. The excess is the damaged
+estimate less the intact one at the same poll, where both logs have an
+estimate. The search reports it separately for held polls, where the
+starts hold applies, and unheld ones (`lost-lines.txt`'s "where the hold
+is off"). The starts hold exists because a stretch no stream covers after
+a restart (a hole) may contain a pool's worker-start lines: until that
+pool logs a start for every worker, the projection turns a time NO-GO (the
+estimate past the budget) into WAIT. For the incumbent past its release,
+it does so only while the candidate's estimate still uses the incumbent's
+start cost, pace, first-slice extra or, for a chunk the candidate has not
+measured, departures from the prior. The cut searches poll up to 1,200 s
+after the last cut, and the boundary search the next three 600 s polls
+after its restart; neither judges a later poll, and a hold can last past
+them. At the unheld polls searched, no damage in the search can stop a run
+whose intact estimate has more spare than the largest excess; at polls
+where only one log has an estimate, or neither, no damaged log gives NO-GO
+where the intact log does not, even at the overrunning budget. No damaged
+log in the cut or boundary searches gives a stall NO-GO (no scorer line
+for an hour, or four times the slowest slice if longer) that the intact
+log lacks. The cut and boundary searches project each poll once with no
+budget and derive the verdict at each budget from that estimate; the cut
+searches also rerun every 50th poll at both budgets, and no rerun verdict
+differs from the derived one.
+
+- d844 cuts, 12 shapes: f = 1, 1.01, 1.02 and 1.5 at T = 300 s; f = 1 and 2
+  at T = 150 s; f = 3 at T = 100 s; f = 1 at T = 40 and 600 s; and f = 1
+  with uneven start costs (100 s for the first start and 320 s for the
+  rest, 320 s then 200 s, and 200 s and 400 s alternating). A restart loses
+  1, 10 or 60 s at each worker start, pool opening and release line;
+  nothing, 10 or 60 s every 120 s; or, in two restarts, 10 s at each of a
+  pair of such lines 300 to 2,400 s apart (all such pairs, or an even
+  sample of 60 to 90 where a shape has 120 or more). Polls come 5 to
+  1,200 s after the last cut. Every shape gives 0 false NO-GOs, and no
+  unheld poll reads later than the intact log (largest excess 0 s); held
+  polls read up to 3,300 s late. With a 320 s first start cost and 200 s
+  for the rest, the intact log itself gives NO-GO at 7,102 polls under the
+  fitting budget, which leaves 265 s to spare: the estimate's own error,
+  not the damage's.
+  The grid above gives every run one start cost, so it does not test this
+  shape. Under the overrunning budget, damaged logs give GO where the
+  intact log gives NO-GO at 3,004 polls (f = 3, T = 100 s) and 816 (f = 1,
+  T = 40 s), so the damage misses the stop at those polls. The search polls
+  only to 1,200 s after a cut, so it does not show whether a later poll
+  stops those runs; the runner's budget bounds them.
+- Random pools drawn as the property tests draw them (seed 3, 100 pools),
+  with the same cuts (the regular ones every 300 s). The search runs them
+  twice: once with one to four start costs per pool, where the tests draw
+  one, and once with each pool's first start cost for every start
+  (`--constant-starts`). Both give 0 false NO-GOs and a largest excess of
+  0 s at unheld polls; held polls read up to 5,039 s late with varied
+  start costs and 5,664 s with constant ones. Before the fix, the starts
+  hold (as of aa2addb2d) let false NO-GOs through in pool 94 under
+  constant start costs: a lost incumbent start line left the rebuild a
+  worker short, so it placed that worker's slices on another, and the
+  candidate's estimate, which took that chunk's pace from the misread
+  incumbent, read 495 s late once the hold stopped applying at the
+  candidate's first start line. The fix (baf2052287) keeps holding a
+  released incumbent that is short of starts while the candidate's
+  estimate uses any of the incumbent's timing, which closes that case
+  (`test_a_lost_incumbent_start_holds_while_the_candidate_paces_from_it`).
+  With varied start costs the intact log itself gives NO-GO at 54,346 polls
+  of runs that fit by 265 s, and at none with constant ones: the estimate's
+  own error, which the search counts separately and does not attribute to
+  lost lines. Under the overrunning budget, damaged logs miss the stop at
+  4,420 polls (varied) and 7,782 (constant).
+- Restarts that lose nothing, across the d844 grid (f = 1 to 3; T = 40 to
+  600 s, and 100 s then 320 s): a split every 60 s (in runs that overrun,
+  up to the intact log's first NO-GO), polled every 600 s against the
+  plan's 14,505 s budget. In the 10 shapes that fit, no split gives NO-GO,
+  and 11 to 66 polls per shape (each shape has 105 to 240 splits) turn GO
+  into WAIT; the search does not log why, and the code points to waits for
+  the new stream to deliver the running slices' lines (inferred). In the
+  18 that overrun, the intact log gives NO-GO 600 to 1,800 s in, and every
+  split (9 to 29 per shape) gives NO-GO too, all but at most one to three
+  of them later: the latest, per shape, 600 to 8,400 s after the intact
+  log ($1.53 to $21.39; 8,400 s at T = 600 s for every f). The cause,
+  inferred and not traced: a split after the incumbent's pool opens (64 f
+  seconds in) leaves a stretch no stream covers, which the projection
+  cannot tell from a restart that lost start lines, so the starts hold
+  keeps a time NO-GO as WAIT until the incumbent logs its 16th start; a
+  split before the pool opens leaves the first stream with no records, so
+  no hole forms. The counts fit that exactly in all 18 shapes: the polls
+  that turn NO-GO into WAIT equal the splits after the pool opens times the
+  largest delay in 600 s polls (at f = 1, T = 450 s, 18 splits times 11
+  polls gives 198). One split comes before the pool opens at f = 1 and
+  1.5, two at f = 2 and three at f = 3.
+  `test_a_lossless_restart_reads_as_the_intact_log_and_holds_only_a_no_go`
+  pins the `starts_unconfirmed` flag to the 16th start for one such
+  restart, and
+  `test_the_hold_reaches_pools_a_hole_could_cut_and_a_stall_still_stops`
+  shows a restart that loses nothing holding an estimate past the budget
+  as WAIT. In all 18 shapes the delay ends at the first 600 s poll at or
+  after the incumbent's 16th start, as arithmetic on the simulator's start
+  costs places it (the search does not print start times). The search does
+  not cover the grids where a NO-GO comes late anyway (only the candidate's
+  chunk 5 slower).
+- Restarts inside one second, at every second with records, polled at the
+  next three 600 s polls, in the two d844 shapes at f = 1 (T = 300 s, and
+  100 s then 320 s) and 30 random pools (seed 3, varied start costs). A new
+  stream that replays the whole second, or only the last record seen,
+  gives the intact log's verdict at every poll and no later estimate. A
+  continuation that splits the second's records between the streams,
+  losing nothing, gives 0 false NO-GOs, but the random pools read up to
+  24 s late (0 s in both d844 shapes) and one poll reads early enough to
+  miss a stop. The streams meet inside the second, so no hole forms and
+  the starts hold never applies. Inferred from the code, not traced (the
+  boundary command in the header passes no `--rows`, so the output does
+  not name the pool or second): the parse counts a line that both streams
+  show only as many times as the stream showing it most, so a replay adds
+  nothing; but when the split falls between the parent's identical `after
+  receiving` lines (one per slice result it takes) in one second, the
+  parse keeps only the copies of the stream that shows more of them and
+  loses the rest. The
+  rebuild then either no longer fits the log (245 polls turn GO into WAIT
+  with no estimate, which the code suggests are log gaps) or fits with
+  misdated slices. The 24 s is the largest excess at the three polls
+  searched after each split, not a bound: a run whose intact estimate had
+  less spare than that at such a poll would get a false NO-GO there.
+- At the polls searched, the cost is a late or missed stop, not a false
+  one, except that a restart splitting one second's lines can read 24 s
+  late (above). A lost slice line becomes a log gap once the parent takes
+  its result, and a log gap holds WAIT for the rest of the run. A lost
+  start holds a time NO-GO as WAIT while its pool is short of starts: the
+  candidate's for the rest of its pool, the incumbent's until its release
+  and then while the candidate's estimate still uses the incumbent's
+  timing. The rebuild shows a log gap once it needs the missing worker,
+  which in a pool with fewer slices than two per worker it may never do. A
+  restart that loses nothing holds the same way, delaying a NO-GO by up to
+  8,400 s ($21.39) here. The runner's budget bounds every case: 14,505 s,
+  $36.94 at the class's list price.
 - Not covered: a stream that drops lines without ending; Modal's own log
   streams (whether a restart replays has not been tried).
 

@@ -1,37 +1,67 @@
-d844 shape (16 workers, 14,505 s budget):
-  f=1 T=300 W=60 step=30 polls=1200,3600,6000,8400,10800,13200 (tool ends 14240 s): GO->WAIT 644; flips 0
-  f=1 T=300 W=10 step=20 polls=1200,4800,9600 (tool ends 14240 s): GO->WAIT 121; flips 0
-  f=1.5 T=300 W=60 step=30 polls=1200,4800,9600 (tool ends 16303 s): NO-GO->NO-GO 1, NO-GO->WAIT 287; flips 0
-  f=3 T=100 W=60 step=30 polls=1200,2400,3600 (tool ends 17499 s): NO-GO->WAIT 169; flips 0
-random pools:
-  seed 3, 300 pools, 4247 lost stretches, budget fits: GO->GO 189, GO->WAIT 3442, WAIT->GO 1, WAIT->WAIT 615; flips 0
-  seed 3, 300 pools, 4247 lost stretches, budget overruns: NO-GO->GO 1, NO-GO->NO-GO 188, NO-GO->WAIT 3442, WAIT->GO 1, WAIT->WAIT 615; flips 1
-  seed 7, 300 pools, 4276 lost stretches, budget fits: GO->GO 177, GO->WAIT 3563, WAIT->WAIT 536; flips 0
-  seed 7, 300 pools, 4276 lost stretches, budget overruns: NO-GO->NO-GO 177, NO-GO->WAIT 3563, WAIT->WAIT 536; flips 0
-  seed 11, 300 pools, 4242 lost stretches, budget fits: GO->GO 177, GO->WAIT 3497, WAIT->GO 1, WAIT->WAIT 567; flips 0
-  seed 11, 300 pools, 4242 lost stretches, budget overruns: NO-GO->NO-GO 177, NO-GO->WAIT 3497, WAIT->NO-GO 1, WAIT->WAIT 567; flips 0
-restarts that lose nothing (d844 grid):
-  f=1 T=40 (fits, intact NO-GO at - s): 7 splits, verdict differs at up to 1 poll(s); flips 0
-  f=1 T=100 (fits, intact NO-GO at - s): 9 splits, verdict differs at up to 1 poll(s); flips 0
-  f=1 T=175 (fits, intact NO-GO at - s): 12 splits, verdict differs at up to 1 poll(s); flips 0
-  f=1 T=300 (fits, intact NO-GO at - s): 16 splits, verdict differs at up to 1 poll(s); flips 0
-  f=1 T=450 (overruns, intact NO-GO at 1200 s): 1 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
-  f=1 T=600 (overruns, intact NO-GO at 1800 s): 2 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
-  f=1.5 T=40 (fits, intact NO-GO at - s): 10 splits, verdict differs at up to 1 poll(s); flips 0
-  f=1.5 T=100 (fits, intact NO-GO at - s): 12 splits, verdict differs at up to 1 poll(s); flips 0
-  f=1.5 T=175 (fits, intact NO-GO at - s): 14 splits, verdict differs at up to 1 poll(s); flips 0
-  f=1.5 T=300 (overruns, intact NO-GO at 1200 s): 1 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
-  f=1.5 T=450 (overruns, intact NO-GO at 1200 s): 1 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
-  f=1.5 T=600 (overruns, intact NO-GO at 1800 s): 2 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
-  f=2 T=40 (fits, intact NO-GO at - s): 13 splits, verdict differs at up to 1 poll(s); flips 0
-  f=2 T=100 (fits, intact NO-GO at - s): 14 splits, verdict differs at up to 1 poll(s); flips 0
-  f=2 T=175 (overruns, intact NO-GO at 1200 s): 1 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
-  f=2 T=300 (overruns, intact NO-GO at 1200 s): 1 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
-  f=2 T=450 (overruns, intact NO-GO at 1200 s): 1 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
-  f=2 T=600 (overruns, intact NO-GO at 1800 s): 2 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
-  f=3 T=40 (overruns, intact NO-GO at 600 s): 1 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
-  f=3 T=100 (overruns, intact NO-GO at 1200 s): 1 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
-  f=3 T=175 (overruns, intact NO-GO at 1200 s): 1 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
-  f=3 T=300 (overruns, intact NO-GO at 1200 s): 1 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
-  f=3 T=450 (overruns, intact NO-GO at 1800 s): 2 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
-  f=3 T=600 (overruns, intact NO-GO at 1800 s): 2 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
+Simulated, not measurements: scripts/lost_lines.py at baf2052287, run 2026-11-17 on <snapshot>, a copy of that commit's tools/, test_support/ and docs/evidence/us-h2h-speed/.
+Each section below is the verbatim output of python -I -B scripts/lost_lines.py <snapshot> with, in order:
+  (1) --section cut-d844 --rows rows-cut-d844.jsonl  (2) --section cut-random --pools 100 --seeds 3 --rows rows-cut-random.jsonl
+  (3) --section cut-random --pools 100 --seeds 3 --constant-starts --rows rows-cut-random-constant.jsonl  (4) --section lossless  (5) --section boundary; sections (2) and (3) print the same title, and the pool 0 line of (3) shows a single start_cost.
+cut: a restart that does not replay loses a stretch (d844)
+  d844 f=1 T=300 (true end 14240 s): 35804 polls, 8000 with both estimates, max excess 0.0 s where the hold is off (5335 held, max excess there 81.0 s); at the true end +265 s: GO->GO 8000, GO->WAIT 26624, WAIT->WAIT 1180 (false NO-GO 0; the intact log's own NO-GO 0); at the true end -600 s: NO-GO->NO-GO 2665, NO-GO->WAIT 31959, WAIT->WAIT 1180; NO-GO from a stall the intact log does not show 0 [288 s]
+  d844 f=1.01 T=300 (true end 14278 s): 37005 polls, 7972 with both estimates, max excess 0.0 s where the hold is off (5316 held, max excess there 81.0 s); at the true end +265 s: GO->GO 7972, GO->WAIT 27853, WAIT->WAIT 1180 (false NO-GO 0; the intact log's own NO-GO 0); at the true end -600 s: NO-GO->NO-GO 2656, NO-GO->WAIT 33169, WAIT->WAIT 1180; NO-GO from a stall the intact log does not show 0 [590 s]
+  d844 f=1.02 T=300 (true end 14319 s): 36731 polls, 7995 with both estimates, max excess 0.0 s where the hold is off (5308 held, max excess there 81.0 s); at the true end +265 s: GO->GO 7995, GO->WAIT 27556, WAIT->WAIT 1180 (false NO-GO 0; the intact log's own NO-GO 0); at the true end -600 s: NO-GO->NO-GO 2687, NO-GO->WAIT 32864, WAIT->WAIT 1180; NO-GO from a stall the intact log does not show 0 [926 s]
+  d844 f=1 T=150 (true end 9519 s): 34431 polls, 5514 with both estimates, max excess 0.0 s where the hold is off (2791 held, max excess there 492.9 s); at the true end +265 s: GO->GO 5484, GO->WAIT 28157, WAIT->WAIT 790 (false NO-GO 0; the intact log's own NO-GO 0); at the true end -600 s: NO-GO->NO-GO 2723, NO-GO->WAIT 30918, WAIT->WAIT 790; NO-GO from a stall the intact log does not show 0 [1284 s]
+  d844 f=2 T=150 (true end 13985 s): 39276 polls, 7476 with both estimates, max excess 0.0 s where the hold is off (3389 held, max excess there 2330.4 s); at the true end +265 s: GO->GO 7343, GO->WAIT 30535, WAIT->WAIT 1398 (false NO-GO 0; the intact log's own NO-GO 0); at the true end -600 s: NO-GO->NO-GO 4087, NO-GO->WAIT 33791, WAIT->WAIT 1398; NO-GO from a stall the intact log does not show 0 [1669 s]
+  d844 f=1.5 T=300 (true end 16303 s): 40057 polls, 9024 with both estimates, max excess 0.0 s where the hold is off (5515 held, max excess there 296.0 s); at the true end +265 s: GO->GO 9024, GO->WAIT 29754, WAIT->WAIT 1279 (false NO-GO 0; the intact log's own NO-GO 0); at the true end -600 s: NO-GO->NO-GO 3509, NO-GO->WAIT 35269, WAIT->WAIT 1279; NO-GO from a stall the intact log does not show 0 [1979 s]
+  d844 f=3 T=100 (true end 17499 s): 45161 polls, 12115 with both estimates, max excess 0.0 s where the hold is off (6389 held, max excess there 1219.3 s); at the true end +265 s: GO->GO 11703, GO->WAIT 31774, WAIT->GO 92, WAIT->WAIT 1592 (false NO-GO 0; the intact log's own NO-GO 0); at the true end -600 s: NO-GO->GO 3004, NO-GO->NO-GO 5726, NO-GO->WAIT 34747, WAIT->GO 92, WAIT->WAIT 1592; NO-GO from a stall the intact log does not show 0 [2546 s]
+  d844 f=1 T=40 (true end 6356 s): 30199 polls, 4698 with both estimates, max excess 0.0 s where the hold is off (1788 held, max excess there 1203.1 s); at the true end +265 s: GO->GO 4624, GO->WAIT 24985, WAIT->GO 56, WAIT->WAIT 534 (false NO-GO 0; the intact log's own NO-GO 0); at the true end -600 s: NO-GO->GO 816, NO-GO->NO-GO 2910, NO-GO->WAIT 25883, WAIT->GO 56, WAIT->WAIT 534; NO-GO from a stall the intact log does not show 0 [2920 s]
+  d844 f=1 T=600 (true end 23840 s): 41744 polls, 10211 with both estimates, max excess 0.0 s where the hold is off (7533 held, max excess there 81.0 s); at the true end +265 s: GO->GO 10211, GO->WAIT 29835, WAIT->WAIT 1698 (false NO-GO 0; the intact log's own NO-GO 0); at the true end -600 s: NO-GO->NO-GO 2678, NO-GO->WAIT 37368, WAIT->WAIT 1698; NO-GO from a stall the intact log does not show 0 [3293 s]
+  d844 f=1 T=[100, 320, 320]... (true end 14440 s): 38664 polls, 7815 with both estimates, max excess 0.0 s where the hold is off (5153 held, max excess there 3300.0 s); at the true end +265 s: GO->GO 7815, GO->WAIT 29856, WAIT->WAIT 993 (false NO-GO 0; the intact log's own NO-GO 0); at the true end -600 s: GO->GO 1596, GO->WAIT 7690, NO-GO->NO-GO 2459, NO-GO->WAIT 25926, WAIT->WAIT 993; NO-GO from a stall the intact log does not show 0 [3658 s]
+  d844 f=1 T=[320, 200, 200]... (true end 11309 s): 35336 polls, 6545 with both estimates, max excess 0.0 s where the hold is off (3881 held, max excess there 683.5 s); at the true end +265 s: GO->GO 5196, GO->WAIT 21941, NO-GO->GO 32, NO-GO->NO-GO 118, NO-GO->WAIT 6952, WAIT->WAIT 1097 (false NO-GO 0; the intact log's own NO-GO 7102); at the true end -600 s: NO-GO->NO-GO 2664, NO-GO->WAIT 31575, WAIT->WAIT 1097; NO-GO from a stall the intact log does not show 0 [3985 s]
+  d844 f=1 T=[200, 400, 200]... (true end 14240 s): 38144 polls, 7927 with both estimates, max excess 0.0 s where the hold is off (5231 held, max excess there 1600.0 s); at the true end +265 s: GO->GO 7892, GO->WAIT 29041, WAIT->WAIT 1211 (false NO-GO 0; the intact log's own NO-GO 0); at the true end -600 s: GO->GO 621, GO->WAIT 2988, NO-GO->NO-GO 2600, NO-GO->WAIT 30724, WAIT->WAIT 1211; NO-GO from a stall the intact log does not show 0 [4337 s]
+direct judgements: 18090 checked, 0 differ from the derived verdict; 4337 s
+cut: a restart that does not replay loses a stretch (random)
+    seed 3 pool 0 {'workers': 8, 'incumbent_seconds': [298, 86, 209, 262, 53], 'candidate_seconds': [26, 260, 152, 139, 118], 'incumbent_slices': 23, 'candidate_slices': 61, 'start_cost': [204, 328, 78, 119], 'first_slice_extra': 162}: max excess 0.0 s
+  seed 3, 100 pools: 1668873 polls, 174070 with both estimates, max excess 0.0 s where the hold is off (119423 held, max excess there 5039.0 s); at the true end +265 s: GO->GO 154385, GO->WAIT 1199331, NO-GO->GO 954, NO-GO->NO-GO 643, NO-GO->WAIT 52749, WAIT->GO 327, WAIT->WAIT 260484 (false NO-GO 0; the intact log's own NO-GO 54346); at the true end -600 s: GO->GO 8283, GO->WAIT 76414, NO-GO->GO 4420, NO-GO->NO-GO 54127, NO-GO->WAIT 1264818, WAIT->GO 121, WAIT->WAIT 260690; NO-GO from a stall the intact log does not show 0 [4684 s]
+direct judgements: 66664 checked, 0 differ from the derived verdict; 4684 s
+cut: a restart that does not replay loses a stretch (random)
+    seed 3 pool 0 {'workers': 8, 'incumbent_seconds': [298, 86, 209, 262, 53], 'candidate_seconds': [26, 260, 152, 139, 118], 'incumbent_slices': 23, 'candidate_slices': 61, 'start_cost': 204, 'first_slice_extra': 162}: max excess 0.0 s
+  seed 3, 100 pools: 1646161 polls, 176182 with both estimates, max excess 0.0 s where the hold is off (121451 held, max excess there 5664.0 s); at the true end +265 s: GO->GO 161387, GO->WAIT 1236313, WAIT->GO 1142, WAIT->WAIT 247319 (false NO-GO 0; the intact log's own NO-GO 0); at the true end -600 s: NO-GO->GO 7782, NO-GO->NO-GO 54731, NO-GO->WAIT 1335187, WAIT->GO 333, WAIT->WAIT 248128; NO-GO from a stall the intact log does not show 0 [4689 s]
+direct judgements: 65750 checked, 0 differ from the derived verdict; 4689 s
+lossless: a split every 60 s that loses nothing, polled every 600 s
+  d844 f=1 T=40 (fits, intact NO-GO at - s): 105 splits; GO->GO 539, GO->WAIT 11
+  d844 f=1 T=100 (fits, intact NO-GO at - s): 132 splits; GO->GO 884, GO->WAIT 26
+  d844 f=1 T=175 (fits, intact NO-GO at - s): 171 splits; GO->GO 1505, GO->WAIT 25
+  d844 f=1 T=300 (fits, intact NO-GO at - s): 237 splits; GO->GO 2684, GO->WAIT 66, WAIT->WAIT 10
+  d844 f=1 T=450 (overruns, intact NO-GO at 1200 s): 19 splits; NO-GO->NO-GO 19, NO-GO->WAIT 198, WAIT->WAIT 10; first NO-GO up to 6600 s later ($16.81)
+  d844 f=1 T=600 (overruns, intact NO-GO at 1800 s): 29 splits; NO-GO->NO-GO 29, NO-GO->WAIT 392, WAIT->WAIT 30; first NO-GO up to 8400 s later ($21.39)
+  d844 f=1 T=[100, 320, 320]... (fits, intact NO-GO at - s): 240 splits; GO->GO 2950, GO->WAIT 50
+  d844 f=1.5 T=40 (fits, intact NO-GO at - s): 145 splits; GO->GO 1007, GO->WAIT 43
+  d844 f=1.5 T=100 (fits, intact NO-GO at - s): 170 splits; GO->GO 1488, GO->WAIT 42
+  d844 f=1.5 T=175 (fits, intact NO-GO at - s): 207 splits; GO->GO 2066, GO->WAIT 34
+  d844 f=1.5 T=300 (overruns, intact NO-GO at 1200 s): 19 splits; NO-GO->NO-GO 19, NO-GO->WAIT 126, WAIT->WAIT 10; first NO-GO up to 4200 s later ($10.70)
+  d844 f=1.5 T=450 (overruns, intact NO-GO at 1200 s): 19 splits; NO-GO->NO-GO 19, NO-GO->WAIT 198, WAIT->WAIT 10; first NO-GO up to 6600 s later ($16.81)
+  d844 f=1.5 T=600 (overruns, intact NO-GO at 1800 s): 29 splits; NO-GO->NO-GO 29, NO-GO->WAIT 392, WAIT->WAIT 30; first NO-GO up to 8400 s later ($21.39)
+  d844 f=1.5 T=[100, 320, 320]... (overruns, intact NO-GO at 1200 s): 19 splits; NO-GO->NO-GO 19, NO-GO->WAIT 126, WAIT->WAIT 10; first NO-GO up to 4200 s later ($10.70)
+  d844 f=2 T=40 (fits, intact NO-GO at - s): 187 splits; GO->GO 1653, GO->WAIT 57
+  d844 f=2 T=100 (fits, intact NO-GO at - s): 206 splits; GO->GO 2034, GO->WAIT 66
+  d844 f=2 T=175 (overruns, intact NO-GO at 1200 s): 19 splits; NO-GO->NO-GO 19, NO-GO->WAIT 51, WAIT->WAIT 10; first NO-GO up to 1800 s later ($4.58)
+  d844 f=2 T=300 (overruns, intact NO-GO at 1200 s): 19 splits; NO-GO->NO-GO 19, NO-GO->WAIT 119, WAIT->WAIT 10; first NO-GO up to 4200 s later ($10.70)
+  d844 f=2 T=450 (overruns, intact NO-GO at 1200 s): 19 splits; NO-GO->NO-GO 19, NO-GO->WAIT 187, WAIT->WAIT 10; first NO-GO up to 6600 s later ($16.81)
+  d844 f=2 T=600 (overruns, intact NO-GO at 1800 s): 29 splits; NO-GO->NO-GO 29, NO-GO->WAIT 378, WAIT->WAIT 30; first NO-GO up to 8400 s later ($21.39)
+  d844 f=2 T=[100, 320, 320]... (overruns, intact NO-GO at 1200 s): 19 splits; NO-GO->NO-GO 19, NO-GO->WAIT 119, WAIT->WAIT 10; first NO-GO up to 4200 s later ($10.70)
+  d844 f=3 T=40 (overruns, intact NO-GO at 600 s): 9 splits; NO-GO->NO-GO 9, NO-GO->WAIT 6; first NO-GO up to 600 s later ($1.53)
+  d844 f=3 T=100 (overruns, intact NO-GO at 1200 s): 19 splits; NO-GO->NO-GO 19, NO-GO->WAIT 16, WAIT->WAIT 10; first NO-GO up to 600 s later ($1.53)
+  d844 f=3 T=175 (overruns, intact NO-GO at 1200 s): 19 splits; NO-GO->NO-GO 19, NO-GO->WAIT 48, WAIT->WAIT 10; first NO-GO up to 1800 s later ($4.58)
+  d844 f=3 T=300 (overruns, intact NO-GO at 1200 s): 19 splits; NO-GO->NO-GO 19, NO-GO->WAIT 112, WAIT->WAIT 10; first NO-GO up to 4200 s later ($10.70)
+  d844 f=3 T=450 (overruns, intact NO-GO at 1800 s): 29 splits; NO-GO->NO-GO 29, NO-GO->WAIT 260, WAIT->WAIT 30; first NO-GO up to 6000 s later ($15.28)
+  d844 f=3 T=600 (overruns, intact NO-GO at 1800 s): 29 splits; NO-GO->NO-GO 29, NO-GO->WAIT 364, WAIT->WAIT 30; first NO-GO up to 8400 s later ($21.39)
+  d844 f=3 T=[100, 320, 320]... (overruns, intact NO-GO at 1200 s): 19 splits; NO-GO->NO-GO 19, NO-GO->WAIT 112, WAIT->WAIT 10; first NO-GO up to 4200 s later ($10.70)
+direct judgements: 0 checked, 0 differ from the derived verdict; 308 s
+boundary: a restart inside one second
+  d844 f=1 T=300, split: 624 polls, 584 with both estimates, max excess 0.0 s where the hold is off (0 held, max excess there -); at the true end +265 s: GO->GO 584, GO->WAIT 40 (false NO-GO 0; the intact log's own NO-GO 0); at the true end -600 s: NO-GO->NO-GO 584, NO-GO->WAIT 40; NO-GO from a stall the intact log does not show 0
+  d844 f=1 T=300, replay-second: 855 polls, 851 with both estimates, max excess 0.0 s where the hold is off (0 held, max excess there -); at the true end +265 s: GO->GO 851, WAIT->WAIT 4 (false NO-GO 0; the intact log's own NO-GO 0); at the true end -600 s: NO-GO->NO-GO 851, WAIT->WAIT 4; NO-GO from a stall the intact log does not show 0
+  d844 f=1 T=300, replay-last: 855 polls, 851 with both estimates, max excess 0.0 s where the hold is off (0 held, max excess there -); at the true end +265 s: GO->GO 851, WAIT->WAIT 4 (false NO-GO 0; the intact log's own NO-GO 0); at the true end -600 s: NO-GO->NO-GO 851, WAIT->WAIT 4; NO-GO from a stall the intact log does not show 0
+  d844 f=1 T=[100, 320, 320]..., split: 654 polls, 614 with both estimates, max excess 0.0 s where the hold is off (0 held, max excess there -); at the true end +265 s: GO->GO 614, GO->WAIT 40 (false NO-GO 0; the intact log's own NO-GO 0); at the true end -600 s: GO->GO 18, GO->WAIT 6, NO-GO->NO-GO 596, NO-GO->WAIT 34; NO-GO from a stall the intact log does not show 0
+  d844 f=1 T=[100, 320, 320]..., replay-second: 885 polls, 885 with both estimates, max excess 0.0 s where the hold is off (0 held, max excess there -); at the true end +265 s: GO->GO 885 (false NO-GO 0; the intact log's own NO-GO 0); at the true end -600 s: GO->GO 90, NO-GO->NO-GO 795; NO-GO from a stall the intact log does not show 0
+  d844 f=1 T=[100, 320, 320]..., replay-last: 885 polls, 885 with both estimates, max excess 0.0 s where the hold is off (0 held, max excess there -); at the true end +265 s: GO->GO 885 (false NO-GO 0; the intact log's own NO-GO 0); at the true end -600 s: GO->GO 90, NO-GO->NO-GO 795; NO-GO from a stall the intact log does not show 0
+  all 32 shapes, split: 6685 polls, 6407 with both estimates, max excess 24.0 s where the hold is off (0 held, max excess there -); at the true end +265 s: GO->GO 6257, GO->WAIT 245, NO-GO->NO-GO 150, WAIT->WAIT 33 (false NO-GO 0; the intact log's own NO-GO 150); at the true end -600 s: GO->GO 52, GO->WAIT 8, NO-GO->GO 1, NO-GO->NO-GO 6354, NO-GO->WAIT 237, WAIT->WAIT 33; NO-GO from a stall the intact log does not show 0
+  all 32 shapes, replay-second: 10149 polls, 9922 with both estimates, max excess 0.0 s where the hold is off (0 held, max excess there -); at the true end +265 s: GO->GO 9619, NO-GO->NO-GO 303, WAIT->WAIT 227 (false NO-GO 0; the intact log's own NO-GO 303); at the true end -600 s: GO->GO 198, NO-GO->NO-GO 9724, WAIT->WAIT 227; NO-GO from a stall the intact log does not show 0
+  all 32 shapes, replay-last: 10149 polls, 9922 with both estimates, max excess 0.0 s where the hold is off (0 held, max excess there -); at the true end +265 s: GO->GO 9619, NO-GO->NO-GO 303, WAIT->WAIT 227 (false NO-GO 0; the intact log's own NO-GO 303); at the true end -600 s: GO->GO 198, NO-GO->NO-GO 9724, WAIT->WAIT 227; NO-GO from a stall the intact log does not show 0
+direct judgements: 0 checked, 0 differ from the derived verdict; 177 s
