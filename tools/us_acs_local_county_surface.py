@@ -2453,8 +2453,9 @@ def add_arguments(parser):
             "refuses the run after the engine pass. A county with no household "
             "is refused either way. Off by default; passing it is a reviewed "
             "decision (microcosm#922). Temporary for the County Files proof "
-            "of concept (microcosm#1647). Do not use for the final County "
-            "Files build: there a county whose row would be empty needs a "
+            "of concept (microcosm#1647); removal tracked in microcosm#1661. "
+            "Do not use for the final County Files build: there a county "
+            "whose row would be empty needs a "
             "real fix (more household support or a declared cell with its "
             "own ruling), not a dropped target."
         ),
