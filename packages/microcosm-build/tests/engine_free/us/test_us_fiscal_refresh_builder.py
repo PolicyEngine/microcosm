@@ -4,6 +4,8 @@ import importlib.util
 import inspect
 import json
 import os
+import re
+import subprocess
 import sys
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -6918,6 +6920,27 @@ def _run_green_register_release(
     for manifest in (build_manifest, release_manifest):
         assert manifest["release"] == builder.US_NATIONAL_RELEASE_ID
         assert manifest["build"] == release_id
+    # The manifests' provenance is the build's, from its record, not the
+    # certifying process's (microcosm#1585 item 11, PR 4a).
+    build_record = json.loads((out / builder.US_BUILD_RECORD_FILENAME).read_text())
+    assert release_manifest["built_at"] == build_record["built_at"]
+    assert build_manifest["created_at"] == build_record["built_at"]
+    assert build_manifest["runtime"] == build_record["runtime"]
+    assert build_manifest["code"]["git_commit"] == build_record["code"]["git_commit"]
+    assert (
+        release_manifest["built_with_model_package"]["version"]
+        == build_record["runtime"]["policyengine-us"]
+    )
+    # Every file the release manifest binds is one certification wrote, or
+    # one of the build's that its record pins by digest.
+    pinned = {
+        Path(pinned["path"]).name: pinned["sha256"]
+        for pinned in build_record["files"].values()
+    }
+    for key, artifact in release_manifest["artifacts"].items():
+        if artifact["path"] in builder.US_CERTIFICATION_OUTPUT_FILES:
+            continue
+        assert pinned.get(artifact["path"]) == artifact["sha256"], key
     assert build_manifest["dataset"]["filename"] == "microcosm_us_2024.h5"
     assert release_manifest["default_datasets"] == {"national": "microcosm_us_2024"}
     if not skipped_smoke:
@@ -7469,6 +7492,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ]
     monkeypatch.setattr(sys, "argv", argv)
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
+    monkeypatch.setattr(builder, "_git_dirty_paths", lambda **_: [])
 
     def fake_sha256(path):
         if prepared_pool and Path(path) == pool_manifest:
@@ -19897,7 +19921,11 @@ def test_a_build_that_must_send_telemetry_stops_before_any_input_without_an_emit
 def _build_record_fixture(
     builder, tmp_path: Path, *, terminal_gate_failures=()
 ) -> tuple[Path, dict]:
-    """A minimal finished build: its three pinned files and its record."""
+    """A minimal finished build: the files certification reads, and its record.
+
+    Its gate evidence is two of the build's files; the build wrote no ESI
+    premium evidence, and the smoke's is certification's to write.
+    """
 
     release_root = tmp_path / "build"
     release_dir = release_root / "releases" / builder.US_NATIONAL_RELEASE_ID
@@ -19907,6 +19935,9 @@ def _build_record_fixture(
     (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
     (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
     (release_dir / "calibration_diagnostics.json").write_text("{}")
+    (release_dir / "us_ssi_take_up.json").write_text('{"bands": []}')
+    (release_dir / "input_coverage.json").write_text('{"passed": true}')
+    (release_dir / "stored_inputs.json").write_text('{"passed": true}')
     gate = builder.GateResult(
         name="target_profile",
         passed=False,
@@ -19945,6 +19976,9 @@ def _build_record_fixture(
         calibration_key=builder.CALIBRATION_KEY,
         calibration_filename=builder.CALIBRATION_FILENAME,
         commit="c" * 40,
+        built_at="2026-11-17T12:00:00+00:00",
+        # This environment's, so certify_main's tests certify in it.
+        runtime=builder._runtime_versions(),
         args=args,
         evidence_failure_owner_patterns=(("pattern", "PolicyEngine/microcosm#1"),),
         terminal_gate_failures=terminal_gate_failures,
@@ -20030,6 +20064,20 @@ def test_the_build_record_carries_what_certification_reads(tmp_path: Path) -> No
     )
     assert record.terminal_gate_failures == ()
     assert record.certify_args().maximum_microsim_batch_size == 2
+    # The manifests' provenance rides the record: the time the build
+    # finished and the packages that built it.
+    assert record.built_at == "2026-11-17T12:00:00+00:00"
+    assert record.runtime == builder._runtime_versions()
+    # It pins every file of the build that certification reads, under its
+    # artifact key in the manifests, and no file certification writes.
+    assert set(payload["files"]) == {
+        "dataset",
+        "calibration_weights",
+        "calibration_diagnostics",
+        "us_ssi_take_up",
+        "input_coverage",
+        "stored_inputs",
+    }
 
 
 def test_a_moved_build_certifies_in_place(tmp_path: Path) -> None:
@@ -20047,7 +20095,14 @@ def test_a_moved_build_certifies_in_place(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "role",
-    ["dataset", "calibration_weights", "calibration_diagnostics"],
+    [
+        "dataset",
+        "calibration_weights",
+        "calibration_diagnostics",
+        "us_ssi_take_up",
+        "input_coverage",
+        "stored_inputs",
+    ],
 )
 def test_certification_refuses_a_build_whose_files_changed(
     tmp_path: Path, role: str
@@ -20057,6 +20112,22 @@ def test_certification_refuses_a_build_whose_files_changed(
     (path.parent / payload["files"][role]["path"]).write_bytes(b"changed")
 
     with pytest.raises(RuntimeError, match=f"its {role} file .* hashes to"):
+        builder._read_us_build_record(path)
+
+
+def test_certification_refuses_build_evidence_that_appeared_later(
+    tmp_path: Path,
+) -> None:
+    """Gate evidence the build did not write would ride the manifests with no
+    digest the build recorded; the smoke's evidence is certification's own."""
+    builder = _load_builder_module()
+    path, _ = _build_record_fixture(builder, tmp_path)
+    release_dir = path.parent / "releases" / builder.US_NATIONAL_RELEASE_ID
+    (release_dir / "reform_coverage_smoke.json").write_text('{"stale": true}')
+    builder._read_us_build_record(path)
+
+    (release_dir / "esi_premiums.json").write_text('{"passed": true}')
+    with pytest.raises(RuntimeError, match=r"\(esi_premiums\) is not a file"):
         builder._read_us_build_record(path)
 
 
@@ -20087,7 +20158,7 @@ def test_certify_main_refuses_another_commit_and_a_certified_build(
 ) -> None:
     builder = _load_builder_module()
     path, _ = _build_record_fixture(builder, tmp_path)
-    monkeypatch.setattr(builder, "_git_dirty", lambda: False)
+    monkeypatch.setattr(builder, "_git_dirty_paths", lambda **_: [])
     certified: list[object] = []
     monkeypatch.setattr(builder, "_certify_us_build", certified.append)
 
@@ -20096,11 +20167,19 @@ def test_certify_main_refuses_another_commit_and_a_certified_build(
         builder.certify_main([str(path.parent)])
 
     monkeypatch.setattr(builder, "_git_output", lambda *args: "c" * 40)
-    monkeypatch.setattr(builder, "_git_dirty", lambda: True)
-    with pytest.raises(SystemExit, match="dirty git worktree"):
-        builder.certify_main([str(path.parent)])
+    seen: list[Path] = []
 
-    monkeypatch.setattr(builder, "_git_dirty", lambda: False)
+    def dirty(*, excluding):
+        seen.append(excluding)
+        return [" M tools/x.py", "?? stray.txt"]
+
+    monkeypatch.setattr(builder, "_git_dirty_paths", dirty)
+    with pytest.raises(SystemExit, match=r"dirty git worktree:  M tools/x.py; \?\?"):
+        builder.certify_main([str(path.parent)])
+    # The build's own directory is left out of the check.
+    assert seen == [path.parent.resolve()]
+
+    monkeypatch.setattr(builder, "_git_dirty_paths", lambda **_: [])
     release_dir = path.parent / "releases" / builder.US_NATIONAL_RELEASE_ID
     (release_dir / "release_manifest.json").write_text("{}")
     with pytest.raises(RuntimeError, match="already carries a certified release"):
@@ -20125,7 +20204,7 @@ def test_certify_main_refuses_a_build_whose_release_gates_failed(
     path, payload = _build_record_fixture(
         builder, tmp_path, terminal_gate_failures=["Input coverage failed: x"]
     )
-    monkeypatch.setattr(builder, "_git_dirty", lambda: False)
+    monkeypatch.setattr(builder, "_git_dirty_paths", lambda **_: [])
     monkeypatch.setattr(builder, "_git_output", lambda *args: "c" * 40)
     certified: list[object] = []
     monkeypatch.setattr(builder, "_certify_us_build", certified.append)
@@ -20138,3 +20217,79 @@ def test_certify_main_refuses_a_build_whose_release_gates_failed(
     path.write_text(json.dumps(payload))
     builder.certify_main([str(path.parent)])
     assert len(certified) == 1
+
+
+def test_certify_main_refuses_packages_other_than_the_builds(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The manifests name the packages that built the H5, so its checks must
+    run on them: a moved build certifies only where they are installed."""
+    builder = _load_builder_module()
+    path, payload = _build_record_fixture(builder, tmp_path)
+    monkeypatch.setattr(builder, "_git_dirty_paths", lambda **_: [])
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "c" * 40)
+    certified: list[object] = []
+    monkeypatch.setattr(builder, "_certify_us_build", certified.append)
+    built_with = payload["runtime"]["policyengine-us"]
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {**payload["runtime"], "policyengine-us": "9.9.9"},
+    )
+
+    with pytest.raises(
+        SystemExit,
+        match=(
+            rf"built with policyengine-us {re.escape(built_with)}; certify it "
+            r"with those packages, not policyengine-us 9\.9\.9"
+        ),
+    ):
+        builder.certify_main([str(path.parent)])
+    assert certified == []
+
+
+def test_the_dirty_check_leaves_out_a_build_inside_the_work_tree(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """An unignored in-repo --out leaves the build's files untracked; only
+    the code certification runs is checked, not the build it reads."""
+    builder = _load_builder_module()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    # No user or system git configuration (an untracked-files setting, say)
+    # reaches the check.
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+
+    def git(*args: str) -> None:
+        subprocess.run(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@example.com", *args],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+        )
+
+    git("init", "-q")
+    (repo / "tracked.txt").write_text("a\n")
+    git("add", "tracked.txt")
+    git("commit", "-qm", "init")
+    build = repo / "build [1]"
+    (build / "releases").mkdir(parents=True)
+    (build / builder.US_BUILD_RECORD_FILENAME).write_text("{}")
+    (repo / "sub").mkdir()
+    monkeypatch.chdir(repo / "sub")
+
+    assert builder._git_dirty_paths(excluding=build) == []
+    # A build directory outside the work tree leaves nothing out.
+    assert builder._git_dirty_paths(excluding=tmp_path / "elsewhere") == [
+        '?? "build [1]/"'
+    ]
+    # Nor does one that is the work tree itself.
+    assert builder._git_dirty_paths(excluding=repo) == ['?? "build [1]/"']
+
+    (repo / "tracked.txt").write_text("b\n")
+    (repo / "stray.txt").write_text("u\n")
+    assert builder._git_dirty_paths(excluding=build) == [
+        " M tracked.txt",
+        "?? stray.txt",
+    ]

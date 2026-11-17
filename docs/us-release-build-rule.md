@@ -73,16 +73,24 @@ A US national build and its certification are two steps (microcosm#1585 item
   smoke and 55 validation reform passes, each over 177 household batches. A
   build made to test a change no longer pays for them, and a build that proves
   itself is certified as it stands, without a rebuild.
-- **The record** pins the H5, the calibration weights and the diagnostics by
-  sha256, with paths relative to itself, so a build directory moved to another
-  machine certifies in place. It holds the options the checks read, the 13
-  gate verdicts the manifests carry, the release gate summary, the calibration
-  losses and in-sample fit, the post-export scoring plan, and the
-  source-coverage and take-up receipts. Certification rebuilds the scoring plan
-  and refuses one that differs from the recorded plan.
+- **The record** pins by sha256 every file of the build that certification
+  reads: the H5, the calibration weights, the diagnostics, the SSI take-up
+  measurement and the gate evidence the build wrote (and, for an
+  `--scf-education-debt` build, its fit tables). Its paths are relative to
+  itself, so a build directory moved to another machine certifies in place. It
+  holds the build's provenance (its commit, the time it finished and the
+  packages that built it), which the manifests carry as the build's, the
+  options the checks read, the 13 gate verdicts the manifests carry, the
+  release gate summary, the calibration losses and in-sample fit, the
+  post-export scoring plan, and the source-coverage and take-up receipts.
+  Certification rebuilds the scoring plan and refuses one that differs from
+  the recorded plan.
 - **Refusals.** Certification refuses a record whose files changed after the
-  build, a checkout at another commit or with changes, and a release directory
-  that already carries a release manifest.
+  build, or a file it would read that appeared after the build; a checkout at
+  another commit, or with changes outside the build directory; packages other
+  than the ones the build was built with (`runtime` in the record), since the
+  manifests name those as the build's; and a release directory that already
+  carries a release manifest.
 - **A failed release gate.** A build whose terminal gates fail still writes
   its H5, its calibration weights and its record, so it can be evaluated,
   and exits with the same "Release gates failed" error once its record is

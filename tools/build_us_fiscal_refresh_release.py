@@ -3391,6 +3391,31 @@ def _git_dirty() -> bool:
     return bool(_git_output("status", "--porcelain"))
 
 
+def _git_dirty_paths(*, excluding: Path) -> list[str]:
+    """The work tree's ``git status --porcelain`` lines, leaving out ``excluding``.
+
+    Certification checks the code it runs, not the build it reads: a build
+    whose ``--out`` lies inside the work tree, unignored, would otherwise make
+    its own certification refuse it, since the build's files are untracked
+    there. The build directory is left out only when it lies strictly inside
+    the work tree; its files are the record's to check, by digest.
+    """
+
+    top = Path(_git_output("rev-parse", "--show-toplevel")).resolve()
+    pathspec = ["."]
+    try:
+        inside = Path(excluding).resolve().relative_to(top)
+    except ValueError:
+        inside = None
+    if inside is not None and inside != Path("."):
+        pathspec.append(f":(exclude,literal){inside.as_posix()}")
+    # Unstripped, so each line keeps its two status columns.
+    status = subprocess.check_output(
+        ("git", "-C", str(top), "status", "--porcelain", "--", *pathspec), text=True
+    )
+    return [line for line in status.splitlines() if line]
+
+
 def _download_base_h5() -> Path:
     """The base a run without ``--base-h5`` starts from: the US national
     release's current build, SHA-verified by the loader (microcosm#1570).
@@ -11077,6 +11102,9 @@ def _build_manifests(
     scf_wealth_signal: Mapping[str, object] | None = None,
     scf_education_debt: bool = False,
     release_gate_failures: Sequence[str] | None = None,
+    git_commit: str | None = None,
+    built_at: str | None = None,
+    runtime_versions: Mapping[str, str] | None = None,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
     calibration_path = artifact_root / calibration_filename
@@ -11184,9 +11212,15 @@ def _build_manifests(
         )
     )
 
-    commit = _git_output("rev-parse", "HEAD")
-    built_at = datetime.now(UTC).isoformat()
-    runtime = _runtime_versions()
+    # A certified build's provenance is its build's, from its record: the
+    # commit, the time it was made and the packages that made it, not the
+    # certifying process's (microcosm#1585 item 11, PR 4a).
+    commit = git_commit if git_commit is not None else _git_output("rev-parse", "HEAD")
+    if built_at is None:
+        built_at = datetime.now(UTC).isoformat()
+    runtime = (
+        dict(runtime_versions) if runtime_versions is not None else _runtime_versions()
+    )
     timing_payload = dict(timing or {})
     warm_start_payload = (
         dict(warm_start_calibration)
@@ -13290,6 +13324,32 @@ class _RecordedTargetRegistry:
         return self.n_specs
 
 
+def _us_build_files_certification_reads(
+    release_dir: Path, *, scf_education_debt: bool
+) -> dict[str, Path]:
+    """The build's own files in its release directory that certification reads.
+
+    Certification hashes each into the manifests (and reads the QRF tail
+    register and the stored-input verdict back from theirs), so the build
+    record pins each one the build wrote, under its artifact key in the
+    manifests. Gate evidence that certification writes itself (the
+    reform-coverage smoke) is not among them.
+    """
+
+    files = {"us_ssi_take_up": release_dir / "us_ssi_take_up.json"}
+    files.update(
+        (key, release_dir / filename)
+        for key, filename in US_RELEASE_GATE_EVIDENCE_FILES.items()
+        if filename not in US_CERTIFICATION_OUTPUT_FILES
+    )
+    if scf_education_debt:
+        files.update(
+            (key, release_dir / filename)
+            for key, filename in US_SCF_EDUCATION_DEBT_FIT_ARTIFACTS.items()
+        )
+    return files
+
+
 def _us_build_record(
     *,
     release_id: str,
@@ -13301,6 +13361,8 @@ def _us_build_record(
     calibration_key: str,
     calibration_filename: str,
     commit: str,
+    built_at: str,
+    runtime: Mapping[str, str],
     args: argparse.Namespace,
     evidence_failure_owner_patterns: Sequence[tuple[str, str]],
     terminal_gate_failures: Sequence[str],
@@ -13338,9 +13400,12 @@ def _us_build_record(
     """What certification needs of a finished build, as strict JSON.
 
     Everything certification reads that is not a file of the build: its
-    options, gate verdicts, calibration summary, scoring plan and the
-    receipts that ride the manifests. The files themselves (the H5, the
-    calibration weights, the diagnostics) are pinned by digest.
+    provenance (its commit, the time it finished and the packages that built
+    it), options, gate verdicts, calibration summary, scoring plan and the
+    receipts that ride the manifests. The files themselves are pinned by
+    digest: the H5, the calibration weights, the diagnostics and every other
+    file of the build that certification reads
+    (:func:`_us_build_files_certification_reads`).
     """
 
     if set(gates) != set(US_BUILD_RECORD_GATES):
@@ -13370,12 +13435,23 @@ def _us_build_record(
             "error_code": diagnostics_outcome.error_code,
             "message": diagnostics_outcome.message,
         }
+    files.update(
+        (role, path)
+        for role, path in _us_build_files_certification_reads(
+            release_dir, scf_education_debt=bool(args.scf_education_debt)
+        ).items()
+        if path.is_file()
+    )
     return {
         "schema_version": US_BUILD_RECORD_SCHEMA_VERSION,
         "kind": US_BUILD_RECORD_KIND,
         "release": release_dir.name,
         "build": release_id,
         "code": {"repository": "PolicyEngine/microcosm", "git_commit": commit},
+        # The manifests' built_at and built-with packages: the time the build
+        # finished and the packages that built it, not certification's.
+        "built_at": built_at,
+        "runtime": dict(runtime),
         "layout": {
             "release_dir": relative(release_dir),
             "artifact_root": relative(artifact_root),
@@ -13484,6 +13560,10 @@ class _USBuildRecord:
         self.build = str(payload["build"])
         self.release = str(payload["release"])
         self.commit = str(payload["code"]["git_commit"])
+        self.built_at = str(payload["built_at"])
+        self.runtime = {
+            str(name): str(version) for name, version in payload["runtime"].items()
+        }
         self.release_dir = release_root / layout["release_dir"]
         self.artifact_root = release_root / layout["artifact_root"]
         self.dataset_key = str(layout["dataset_key"])
@@ -13588,6 +13668,17 @@ def _read_us_build_record(path: Path) -> _USBuildRecord:
                 f"{actual}, not the {pinned['sha256']} the build recorded; the "
                 "build's files changed after it finished."
             )
+    # A file certification would read that the build did not write: the
+    # manifests would bind it with no digest the build recorded.
+    for role, file_path in _us_build_files_certification_reads(
+        release_root / payload["layout"]["release_dir"],
+        scf_education_debt=bool(payload["settings"]["scf_education_debt"]),
+    ).items():
+        if role not in payload["files"] and file_path.is_file():
+            raise RuntimeError(
+                f"Build {payload['build']}: {file_path} ({role}) is not a file "
+                "the build recorded; it appeared after the build finished."
+            )
     return _USBuildRecord(payload, release_root=release_root)
 
 
@@ -13634,9 +13725,11 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
     """Certify a finished build from its record (microcosm#1585 item 11, PR 4a).
 
     Certification runs at the commit the build was built at, from a clean
-    worktree, so the checks and the manifests are the build's own code. A
-    build whose release directory already carries a release manifest is
-    refused: a certified build is never changed.
+    worktree (the build directory aside), with the packages the build was
+    built with, so the checks and the manifests are the build's own code and
+    score the H5 on the versions its manifests name. A build whose release
+    directory already carries a release manifest is refused: a certified
+    build is never changed.
     """
 
     args = _certify_parser().parse_args(argv)
@@ -13647,13 +13740,32 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
             "release gate(s) when it was built, so it cannot be certified: "
             + "; ".join(record.terminal_gate_failures)
         )
-    if _git_dirty():
-        raise SystemExit("Refusing to certify a build from a dirty git worktree.")
+    dirty = _git_dirty_paths(excluding=record.release_root)
+    if dirty:
+        raise SystemExit(
+            "Refusing to certify a build from a dirty git worktree: "
+            + "; ".join(dirty[:5])
+            + ("; ..." if len(dirty) > 5 else "")
+        )
     head = _git_output("rev-parse", "HEAD")
     if head != record.commit:
         raise SystemExit(
             f"Build {record.build} was built at {record.commit}; certify it "
             f"from a checkout of that commit, not {head}."
+        )
+    runtime = _runtime_versions()
+    mismatched = sorted(
+        name
+        for name in record.runtime.keys() | runtime.keys()
+        if record.runtime.get(name) != runtime.get(name)
+    )
+    if mismatched:
+        raise SystemExit(
+            f"Build {record.build} was built with "
+            + ", ".join(f"{name} {record.runtime.get(name)}" for name in mismatched)
+            + "; certify it with those packages, not "
+            + ", ".join(f"{name} {runtime.get(name)}" for name in mismatched)
+            + ", so its checks run on the versions its manifests name."
         )
     _refuse_certified_release_dir_reuse(record.release_dir)
     for name in US_CERTIFICATION_OUTPUT_FILES:
@@ -17484,6 +17596,8 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             calibration_key=calibration_key,
             calibration_filename=calibration_filename,
             commit=full_commit,
+            built_at=datetime.now(UTC).isoformat(),
+            runtime=_runtime_versions(),
             args=args,
             evidence_failure_owner_patterns=evidence_failure_owner_patterns,
             terminal_gate_failures=terminal_gate_failures,
@@ -17566,6 +17680,8 @@ def _certify_us_build(
     build-folder layout for ``microcosm-publish-release-build``
     (microcosm#1585 item 11, PR 4a). Every input is the record, or a file
     whose digest the record pins: nothing is read from the build's process.
+    The manifests' provenance (the commit, ``built_at`` and the built-with
+    packages) is the build's, from the record.
     """
 
     certify_started = time.perf_counter()
@@ -17993,6 +18109,9 @@ def _certify_us_build(
         diagnostics_outcome=diagnostics_outcome,
         scf_wealth_signal=scf_wealth_signal,
         scf_education_debt=args.scf_education_debt,
+        git_commit=record.commit,
+        built_at=record.built_at,
+        runtime_versions=record.runtime,
     )
     # Both manifests name the release and this build, in the build-folder
     # layout, before telemetry attaches them; the directory must then pass
