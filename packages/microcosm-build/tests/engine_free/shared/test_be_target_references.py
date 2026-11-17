@@ -2186,15 +2186,14 @@ def test_belgium_still_refuses_to_activate():
     spec = load_transport_spec(_SPEC)
     with pytest.raises(ValueError, match="not activated") as error:
         validate_transport_activation(spec)
-    # The bindings resource exists now, so its null engine pins are the gaps.
+    # The bindings resource exists and pins the engine, so neither it nor its
+    # engine pins is a gap.
     for missing in (
         "benefit_unit_rule.json",
-        "axiom_rules_bindings.engine.commit",
-        "axiom_rules_bindings.engine.wheel_sha256",
         "transport_graph.json",
     ):
         assert missing in str(error.value)
-    assert "axiom_rules_bindings.json" not in str(error.value)
+    assert "axiom_rules_bindings" not in str(error.value)
     # The pension surface rows are parked, so each is a named gap.
     for row in _rows("precal"):
         parked = row["metadata"]["activation_status"] != "active"
@@ -2546,10 +2545,16 @@ def test_a_changed_b1_fact_refuses_generation(artifact):
         generator._b1_checks(generator.Inventory(facts))
 
 
-def test_shared_series_check_accepts_a_mismatched_fpb_row_that_ours_refuses(
+def test_shared_series_check_refuses_a_mismatched_fpb_row_as_ours_does(
     artifact, by_record_set
 ):
-    """Documents a shared limitation: every T07 row shares one series key."""
+    """Chronicle #403 gave each FPB row its own source concept.
+
+    Before it, T07's nine level rows shared one roll-forward series key (the
+    rate row's aggregation kept it apart), so the shared check accepted a
+    numerator and denominator from different level rows; only ours refused.
+    Now each row's concept enters the series key, and both refuse.
+    """
 
     row = copy.deepcopy(
         next(row for row in _rows() if row["name"] == "statbel_b4_declarations__joint")
@@ -2565,7 +2570,7 @@ def test_shared_series_check_accepts_a_mismatched_fpb_row_that_ours_refuses(
         **generator._selector(working_age),
         "assertion": "observation",
     }
-    assert "row" in _pair_violations(row)
+    assert {"row", "source_concept"} <= set(_pair_violations(row))
     (reference,) = _parsed(
         [_executable(row)], _document("target_references.json")["hierarchy"]
     )
@@ -2574,7 +2579,8 @@ def test_shared_series_check_accepts_a_mismatched_fpb_row_that_ours_refuses(
         for selector in reference_fact_selectors(reference)
         for fact in _matched(selector, by_record_set)
     }
-    compile_ledger_target_references(needed.values(), [reference], country="be")
+    with pytest.raises(ValueError, match="not one series at two periods"):
+        compile_ledger_target_references(needed.values(), [reference], country="be")
 
 
 def test_factor_receipts_replay_against_the_feed(artifact):

@@ -371,11 +371,13 @@ data and credentials, and cannot run from forks. Release publication is a
 deliberate human step. The UK national and dense releases, each UK local-area
 release that the dataset registry names, and the US releases
 (`microcosm-us-2024-national`, the US default, `-local`,
-`-receipt-donor`, `-evidence` and `-annual`) publish each build into its own folder
+`-receipt-donor`, `-evidence`, `-annual` and `-local-annual`) publish each build into its own folder
 through the emitter (`microcosm-publish-release-build`, from
 `microcosm.build.release_publication`), which records it in the repository's
 `releases.json`; making a published build current is a separate deliberate
-call to the same command with `--promote`. Each US builder writes its build to
+call to the same command with `--promote`, and withdrawing one is
+`microcosm-withdraw-release-build <repository> <release> <build>`, which sets
+its `withdrawn` flag through the same release writer. Each US builder writes its build to
 `releases/<release>/`; the national builder and the ACS package stage also
 print both commands.
 `tools/preflight_us_release_gates.py` runs the US national release checks that
@@ -579,8 +581,11 @@ The ACS local-area release can build its fresh staging H5 on Modal with
 `us-acs-multispine-staging`, then consume its verified H5 and summary through
 `us-acs-local-release`; see [the Modal stage runbook](us-modal-stage-runbook.md#acs-multispine-staging).
 Its optional [county calibration rung](us-acs-local-county-rung.md) uses
-`--geographies state,cd,county --soi-mode state_county`, a county-inclusive
-Ledger feed, and matching county boundaries. Full runs require all 3,144
+`--geographies state,cd,county --soi-mode state_county`, the separately
+pinned county facts (`--county-facts` and `--county-facts-sha256`;
+`us/chronicle_county_facts.json`, microcosm#922) beside the main feed, and
+matching county boundaries. County materialize runs are local: the Modal stage
+runner cannot pass `--county-facts`. Full runs require all 3,144
 county-equivalents and write `county_reliability.json`; the base year is 2024.
 County solves use a run-level loss cap of 10 and a per-record weight cap of 5,
 configurable with `--county-target-loss-cap` and `--county-max-weight-ratio`

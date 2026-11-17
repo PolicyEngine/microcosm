@@ -281,7 +281,7 @@ LEGACY_STAGING_REFRESH_RECIPE = (
 #: Table 2 state tables (broad totals, AGI bands, EITC by qualifying
 #: children). Build O selected it as ``full`` with congressional-district
 #: targets switched off (``include_congressional_district_targets=False`` at
-#: populace@77e2061); commit b7922b089 removed that switch, so no mode
+#: microcosm@77e2061); commit b7922b089 removed that switch, so no mode
 #: reproduced it until this one.
 #:
 #: ``totals`` keeps only the specs whose ``target_role`` is not
@@ -1576,7 +1576,9 @@ PERSON_STRUCT = [
 ]
 
 
-def ladder_population(ladder_path: Path, geographies: list[str]):
+def ladder_population(
+    ladder_path: Path, geographies: list[str], *, county_column: str = "county_fips"
+):
     from microcosm.build.us_runtime.puma_ladder import load_us_puma_ladder
 
     ladder = load_us_puma_ladder(ladder_path)
@@ -1594,7 +1596,9 @@ def ladder_population(ladder_path: Path, geographies: list[str]):
             )
             for cd in np.unique(ladder.cd_overlap_cd)
         }
-    return county_surface.with_county_populations(ladder, populations, geographies)
+    return county_surface.with_county_populations(
+        ladder, populations, geographies, county_column=county_column
+    )
 
 
 def household_sizes(frame) -> np.ndarray:
@@ -1758,15 +1762,19 @@ TARGET_MATRIX_FILENAME = "target_matrix.npz"
 TARGET_ROLES_FILENAME = "target_roles.json"
 
 
-def extract_struct_tables(frame, *, county_column="county_fips"):
-    """Small structural/geography copies so the big frame can be freed early."""
+def extract_struct_tables(frame, *, county_column="county_fips", county_run=False):
+    """Small structural/geography copies so the big frame can be freed early.
+
+    ``county_run`` keeps what county reliability needs after a reload
+    (:func:`us_acs_local_county_surface.struct_columns`).
+    """
 
     households = frame.table("household")
     struct_columns = [
         column for column in LEAN_HOUSEHOLD_COLUMNS if column in households.columns
     ]
     struct_columns += county_surface.struct_columns(
-        households, struct_columns, county_column=county_column
+        households, struct_columns, county_column=county_column, county_run=county_run
     )
     person_columns = [
         column for column in PERSON_STRUCT if column in frame.table("person").columns
@@ -2269,7 +2277,11 @@ def do_materialize(args) -> None:
         f"admin specs: {len(registry)} ({families}, soi_mode={args.soi_mode}); "
         f"RI substitution records={len(surface.ri_substitutions)}"
     )
-    populations = ladder_population(args.ladder, sorted(set(geographies) | {"cd"}))
+    populations = ladder_population(
+        args.ladder,
+        sorted(set(geographies) | {"cd"}),
+        county_column=getattr(args, "county_column", "county_fips"),
+    )
     county_surface.prepare_run(args, geographies, populations, surface=surface)
     require_one_label_per_geography(registry, populations, geographies)
     summary_path = _staging_summary_path(args)
@@ -2346,7 +2358,10 @@ def do_materialize(args) -> None:
         (args.checkpoint_dir / name).unlink(missing_ok=True)
     if getattr(args, "gate_report", None) is not None:
         Path(args.gate_report).unlink(missing_ok=True)
-    county_surface.check_support(frame, populations, args)
+    # microcosm#922: a county with ladder population but no household gets a
+    # fixed number of same-PUMA households before any measure is built; the
+    # frame returned carries their rewritten county columns.
+    frame = county_surface.check_support(frame, populations, args)
     materialized = materialize_chunked(
         frame,
         registry.specs,
@@ -2412,7 +2427,9 @@ def do_materialize(args) -> None:
     matrix = sparse.vstack([admin_matrix, pop_matrix], format="csr")
     del admin_matrix, pop_matrix
     struct = extract_struct_tables(
-        frame, county_column=getattr(args, "county_column", "county_fips")
+        frame,
+        county_column=getattr(args, "county_column", "county_fips"),
+        county_run=any(role.get("geography_level") == "county" for role in roles),
     )
     n_households = frame.n("household")
     del frame
@@ -2519,6 +2536,7 @@ CALIBRATION_OUTPUT_FILENAMES = (
     "calibration_summary.json",
     "calibration_diagnostics.json",
     "county_reliability.json",
+    "county_reliability.csv",
     "consumer_export.json",
     "consumer_reviewed_null_fills.json",
     "spine_qa.json",
@@ -2947,12 +2965,16 @@ def calibration_evidence(
     design_weights: np.ndarray,
     weights: np.ndarray,
     target_loss_cap: float,
+    checkpoint_dir: Path | None = None,
+    identity: dict | None = None,
 ) -> dict:
     """The sparse-surface evidence the calibration summary adds.
 
     The CD holdout scored against the pro-rata baseline, and ESS over rows
     and distinct households with household-weight share by spine, at the
-    design and the calibrated weights.
+    design and the calibrated weights. With the checkpoint directory and run
+    identity, a county run also scores its held-out ACS validation families
+    (microcosm#922), which never reach the loss.
     """
 
     origin = _origin_columns(frame)
@@ -2976,7 +2998,14 @@ def calibration_evidence(
             cap=target_loss_cap,
         ),
         **county_surface.calibration_evidence(
-            frame, roles, matrix, design_weights, weights, target_loss_cap
+            frame,
+            roles,
+            matrix,
+            design_weights,
+            weights,
+            target_loss_cap,
+            checkpoint_dir=checkpoint_dir,
+            identity=identity,
         ),
     }
 
@@ -3075,6 +3104,36 @@ def do_calibrate(args) -> None:
             and _stamped_settings(previous.get("solver_settings")) == settings
             and previous.get("weights_sha256") == _weights_digest(warm)
         ):
+            # The summary's evidence must be what this code computes from the
+            # checkpoint and these weights. Otherwise the shortcut ships what
+            # an older build wrote, such as county reliability grades that
+            # counted group quarters as support from a checkpoint without
+            # TYPEHUGQ. Recomputing it refuses that checkpoint exactly as a
+            # fresh solve does (review of #1630).
+            evidence = calibration_evidence(
+                frame=frame,
+                roles=roles,
+                matrix=matrix,
+                design_weights=design_weights,
+                weights=np.asarray(warm, dtype=np.float64),
+                target_loss_cap=args.target_loss_cap,
+                checkpoint_dir=args.checkpoint_dir,
+                identity=identity,
+            )
+            stale = sorted(
+                key
+                for key, value in evidence.items()
+                if json.dumps(previous.get(key), sort_keys=True)
+                != json.dumps(value, sort_keys=True)
+            )
+            if stale:
+                raise SystemExit(
+                    f"calibration_summary.json records {stale} evidence that "
+                    "this code does not compute from the checkpoint and the "
+                    "weights_latest.npz weights, so another build wrote it. "
+                    "Delete weights_latest.npz or run without --resume to "
+                    "recalibrate."
+                )
             log(
                 f"calibration already complete at {done} epochs and "
                 "the calibration summary exists; nothing to do (delete "
@@ -3186,6 +3245,8 @@ def do_calibrate(args) -> None:
             design_weights=design_weights,
             weights=np.asarray(result.weights, dtype=np.float64),
             target_loss_cap=args.target_loss_cap,
+            checkpoint_dir=args.checkpoint_dir,
+            identity=identity,
         ),
         "total_wall_seconds": round(time.time() - started, 1),
         "peak_rss_gb": round(rss(), 3),
@@ -3384,6 +3445,9 @@ def _write_calibrated_artifact(
     # microcosm#1022: apply the ACS SSI/Medicaid take-up materialize recorded
     # on the same rung; it must reproduce the recorded digest.
     frame = _with_recorded_ssi_medicaid_take_up(frame, ssi_medicaid, ssi_medicaid_path)
+    # microcosm#922: re-apply the county support moves materialize recorded,
+    # so the published file carries the county codes calibration saw.
+    frame = county_surface.apply_recorded_support(frame, identity, args.checkpoint_dir)
     staging_ids = frame.table("household")["household_id"].to_numpy()
     with pd.HDFStore(args.checkpoint_dir / "target_frame_lean.h5", mode="r") as store:
         lean_ids = store["household"]["household_id"].to_numpy()
@@ -6796,7 +6860,10 @@ def do_package(args) -> dict:
         "run_identity.json": identity,
     }
     contract_files["spine_qa.json"] = spine_qa
-    county_surface.package_reports(contract_files, args.checkpoint_dir, identity)
+    # The county reliability CSV ships beside its JSON (microcosm#922).
+    county_files = county_surface.package_reports(
+        contract_files, args.checkpoint_dir, identity
+    )
     contract_files["consumer_export.json"] = consumer_export
     contract_files["consumer_reviewed_null_fills.json"] = consumer_fills
     # microcosm#1022: the notes the fills were graded against ship beside them.
@@ -6806,6 +6873,8 @@ def do_package(args) -> dict:
     release_dir.mkdir(parents=True, exist_ok=True)
     for name, payload in contract_files.items():
         (release_dir / name).write_text(json.dumps(payload, indent=1))
+    for name, text in county_files.items():
+        (release_dir / name).write_text(text)
     if diagnostics_status["status"] == "available":
         source_diagnostics = args.checkpoint_dir / "calibration_diagnostics.json"
         if not source_diagnostics.is_file():
@@ -6858,8 +6927,10 @@ def do_package(args) -> dict:
     # declared artifacts only (microcosm#1570), so every other file written
     # above, the evidence JSON included, is declared, as the UK dense
     # assembler declares its evidence.
-    for name in contract_files:
+    for name in [*contract_files, *county_files]:
         key = Path(name).stem
+        if name in county_files:
+            key = Path(name).name.replace(".", "_")
         if name != "build_manifest.json" and key not in artifacts:
             artifacts[key] = _artifact(name, "diagnostics", release_dir / name)
 
@@ -6896,6 +6967,7 @@ def do_package(args) -> dict:
     )
 
     sums = {path.name: _sha256(path) for path in sorted(release_dir.glob("*.json"))}
+    sums.update({name: _sha256(release_dir / name) for name in county_files})
     sums[ARTIFACT_FILENAME] = h5_sha
     (release_dir / "sha256sums.txt").write_text(
         "".join(f"{digest}  {name}\n" for name, digest in sorted(sums.items()))

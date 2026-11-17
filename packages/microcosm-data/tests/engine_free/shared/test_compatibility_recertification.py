@@ -1190,6 +1190,34 @@ def test_publication_reads_a_build_folder_parent_at_main(
     assert paths_hub.events == []
 
 
+@pytest.mark.parametrize(
+    ("seeding", "refusal"),
+    [
+        ({"withdrawn": True}, "has been withdrawn"),
+        ({"listed": False}, "does not list"),
+    ],
+    ids=["withdrawn", "unlisted"],
+)
+def test_publication_refuses_a_build_folder_parent_releases_json_does_not_offer(
+    paths_hub, folder_parent, tmp_path, monkeypatch, seeding, refusal
+):
+    """A recertification republishes its parent's data under a wider claim,
+    so a parent its repository has withdrawn, or no longer lists, is refused
+    before anything is handed over."""
+    parent_dir, parent_root = folder_parent
+    child = build_child(folder_parent, tmp_path / "folder-candidate", monkeypatch)
+    output, artifact_root = certify(child, tmp_path / "folder", monkeypatch)
+    seed_published_parent(paths_hub, parent_dir, parent_root, **seeding)
+    try:
+        _publish(paths_hub, output, artifact_root, monkeypatch)
+    except ValueError as error:
+        outcome = str(error)
+    else:
+        outcome = "published"
+    assert refusal in outcome
+    assert paths_hub.events == []
+
+
 def test_the_publication_contract_takes_wheels_but_not_a_parent_h5(
     candidate, tmp_path, monkeypatch
 ):

@@ -395,8 +395,15 @@ EXPECTED_HASHES = {
     # microcosm#1387 moves both again: the ACS transfer's opt-in SEMP-covered
     # partnership step changes acs_transfer's attested bytes. Off its flag no
     # draw, RNG rule or QRF target changes.
-    "seed_map": "f3a295ea68b894d4f4e38d13edb9aeb3313138f394d9ff67e4dfdb22f4b63f71",
-    "seed_protocol": "05b0bc3cb82fdfe6919efb09b15e800206425a0d041336f50818b2da277aea78",
+    # microcosm#1543's fit input checks (the microimpute bug-parity audit)
+    # move both again; no valid input's draw changes. microcosm#1617's refusal
+    # of a weightless class in the balanced gate's weights moves both again;
+    # no fit reached it, and no draw changes.
+    # microcosm#1641 moves both again: it rewords docstrings and a comment in
+    # solve and the delivery gate's docstring in ssi_take_up, which now names
+    # the builder's arms by flag; no draw, RNG rule, QRF target or solve changes.
+    "seed_map": "d756dc67535c04788e605bedb4cd6721cf715e5f5ce4be73d9b27420a61b3d50",
+    "seed_protocol": "2c57cbfb9dd0f132f9b5751eb8bc303f4b7e37430cd5e0b155aac0b0b8eaa42e",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

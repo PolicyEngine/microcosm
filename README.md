@@ -62,7 +62,7 @@ change:
 ```bash
 uv tool install microcosm-emitter   # once per machine
 uv tool upgrade microcosm-emitter   # to take a new release
-microcosm-emitter version           # the installed release; builds need 0.15.0 or later
+microcosm-emitter version           # the installed release; builds need 0.16.0 or later
 ```
 
 The build finds the `microcosm-emitter` command through
@@ -75,12 +75,15 @@ no remote staging, and measures no Orrery publication inventory; a UK build give
 its dataset bundle remotely, as it is by default, is refused before it
 starts, since the emitter uploads the bundle. Before it starts the emitter,
 the build reads its version from `microcosm-emitter version` and does not
-start one older than 0.15.0. That release adds the setting that switches
-the Hugging Face module's collector submissions on, which every emitter a
-build starts sets, so staged bundles and release publications that name
-their build reach the collector; collector provenance on a release
-publication; and a `skipped` collector receipt when the emitter refuses its
-collector settings. 0.14.0 added the build machine's
+start one older than 0.16.0. That release adds collector provenance on a
+promotion or withdrawal, so the emitter submits the `releases.json` the
+change wrote once it lands; 0.15.0 accepts that provenance but drops it.
+0.15.0 added the setting that switches the Hugging Face module's collector
+submissions on, which every emitter a build starts sets, so staged bundles
+and release publications that name their build reach the collector;
+collector provenance on a release publication; and a `skipped` collector
+receipt when the emitter refuses its collector settings. 0.14.0 added the
+build machine's
 readings: each heartbeat carries the machine's memory, CPU and disk use and
 the build's processes, a heartbeat after the machine wakes carries the sleep,
 the run's first event describes the machine, each stage's end says how long
@@ -94,12 +97,12 @@ which builds read as package data and the Modal image's install step reads
 from the launching checkout. Releases before 0.10.0 send telemetry to the
 collector's Cloud Run address, which changes when the collector moves to
 another Google Cloud project; from 0.10.0 on, releases send to the
-collector's hostname, which stays the same. 0.13.0, 0.14.0 and 0.15.0 were
-each the newest release when practically no machine ran the emitter yet, so
+collector's hostname, which stays the same. 0.13.0, 0.14.0, 0.15.0 and 0.16.0
+were each the newest release when practically no machine ran the emitter yet, so
 requiring them cost nothing (see
 [graph publication](docs/orrery-publication.md#emitter-dependency)). The
 build prints the installed and required versions, what it loses and the
-upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.15.0'`,
+upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.16.0'`,
 and continues as it does without the command. `uv tool upgrade` keeps any
 version constraint given at install time, such as `==0.7.0`; that
 `uv tool install --upgrade` command replaces it. Microcosm supplies build
@@ -122,7 +125,7 @@ if the emitter cannot be prepared or is missing, its
 `microcosm-emitter version` times out or fails, it is older than the
 minimum, it lists no protocol version 1, its `hello` fails, it exits or
 times out before it is ready, or it starts without its telemetry module.
-Every emitter a build starts (0.15.0 and later, the minimum) reads a given
+Every emitter a build starts (0.16.0 and later, the minimum) reads a given
 collector token, and exits at that point when the collector-token
 variables it inherits (`MICROCOSM_COLLECTOR_TOKEN`,
 `MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT`, `MICROCOSM_COLLECTOR_ORIGIN`) are set
@@ -566,7 +569,23 @@ to accept them before it closes the emitter. The printed outcome's
 submissions not yet accepted when the wait ends, are warnings and never fail
 the command. Once the collector has accepted them, its own processing decides
 whether it builds a tree from them or rejects them (for example
-`provenance_mismatch`); the command doesn't wait for that. The calibration diagnostics dashboard posts
+`provenance_mismatch`); the command doesn't wait for that. A promotion names
+its build for the collector in the same way, so once it has landed the
+emitter submits `releases.json` at the commit its receipt reports, naming the
+build now current, and the command waits for the collector to accept it,
+with the same `collector_submission` output and warnings, less the advice
+about files on disk (the emitter keeps the `releases.json` it sends). A
+change that writes nothing, such as promoting the build already current,
+sends the same record as the change that last wrote `releases.json`; when
+another Hugging Face user sent that one, the collector refuses the copy and
+the command warns `COLLECTOR_REFUSED_403`, although the collector already
+holds the record. For a promotion
+that has not landed the command says nothing of the collector: a refused one
+sends nothing, and a pending one is sent by the emitter that lands it later. The collector then reads `releases.json` at the repository's
+head and points the country's latest calibration tree at the current build
+of its default release, older or newer, when it has that build's tree.
+`--make-current` needs no separate record: the publication's calibration
+diagnostics already name the build it made current. The calibration diagnostics dashboard posts
 these releases' Slack alerts from changes to `releases.json`. The UK
 assemblers, the US national builder and the US ACS package stage print the
 exact commands; the UK
@@ -575,7 +594,36 @@ exact commands; the UK
 `microcosm.data.load` reads the current build of such a release from
 `releases.json`, or the listed build `build=` names.
 
-**The US releases.** `policyengine/populace-us` has five releases
+**Withdrawing a build.** A published build that should no longer be used is
+withdrawn, not deleted:
+
+```bash
+uv run microcosm-withdraw-release-build <repository> <release> <build>
+```
+
+The command hands the withdrawal to the emitter's release writer, which sets
+the build's `withdrawn` flag in `releases.json` and leaves its folder as
+published. The writer refuses the release's current build (make another
+build current first: `--promote` with that build's release directory) and a
+build `releases.json` does not list, and never makes a withdrawn build
+current: `--promote` is refused, and publishing it again with
+`--make-current` reports it published but not current. The command refuses
+offline and while a `latest*.json` file exists, before it starts an emitter,
+checks the emitter's write access first, waits up to five minutes, prints
+the receipt as JSON with `"change": "withdraw"` and `"withdrawn"`, and exits
+1 unless the build is withdrawn. Like a promotion, the withdrawal names its
+build for the collector: once it has landed, the emitter submits
+`releases.json`, naming the release's current build, and the command waits
+for the collector to accept it (`collector_submission`). A release left with
+no current build sends nothing (`NO_CURRENT_BUILD`), which the command
+reports as a warning. The publish and promote commands' JSON
+carries `"change"` too, and `"withdrawn": null`: they cannot tell. `microcosm.data.load` loads a withdrawn build only when `build=`
+pins it, with a warning. A compatibility recertification or an annual
+projection whose parent or base is a build-folder build is refused before
+anything is handed over when `releases.json` withdrew or no longer lists that
+build, and the UK cut reference refuses a withdrawn build.
+
+**The US releases.** `policyengine/populace-us` has six releases
 (`microcosm.data.contract.US_RELEASES`):
 
 | Release | Role in `releases.json` | Builds | Dataset file a new build declares |
@@ -585,6 +633,7 @@ exact commands; the UK
 | `microcosm-us-2024-receipt-donor` | `national`, never the default | receipt-qualified donors | `microcosm_us_2024_receipt_qualified.h5` |
 | `microcosm-us-2024-evidence` | `national`, never the default | evidence-tier builds | `microcosm_us_2024.h5` |
 | `microcosm-us-2024-annual` | `national`, never the default | annual projections of a national build: its files, one H5 per later year and the projection receipts ([the annual guide](docs/us-annual-static-aging.md)) | the base build's dataset file, and `microcosm_us_<year>.h5` for each later year |
+| `microcosm-us-2024-local-annual` | `local_area` | annual projections of an ACS local-area build (the County Files, microcosm#922): its files, one H5 per projected year and the projection receipts ([the local projection guide](docs/us-local-annual-projection.md)) | the base build's dataset file, and `microcosm_us_<year>_acs_local.h5` for each projected year |
 
 The national builder writes a build's calibration weights as
 `microcosm_us_2024_calibration.npz`, for national and evidence-tier builds
@@ -641,7 +690,10 @@ command takes only the releases above, and the tagged publisher refuses
 a repository that has `releases.json`. A US annual-projection build publishes
 into `microcosm-us-2024-annual`, carrying its base national build's files
 ([the annual guide](docs/us-annual-static-aging.md)); its base is a
-calibrated national build, not yet a source enrichment.
+calibrated national build, not yet a source enrichment. An annual projection
+of an ACS local-area build publishes into `microcosm-us-2024-local-annual`,
+carrying its base local build's files
+([the local projection guide](docs/us-local-annual-projection.md)).
 
 **The switch.** `microcosm.build.build_folder_switch` moves a repository over,
 once, in two steps, and a third step later deletes what the old layout left
@@ -785,8 +837,10 @@ that run the contract on one again are re-certifications: a publish retry of
 its local directory, and an annual build, which carries a national base's
 files into `microcosm-us-2024-annual`. Every
 published US national base already fails the unchanged calibration-diagnostics
-schema rule, and local-area releases cannot be annual bases. So publishing one
-again means rebuilding or re-packaging it, which runs the check. An
+schema rule. A local-annual build carries its base local build's gate, which
+must certify that build's H5, so its base must have been packaged with the
+check. So publishing one again means rebuilding or re-packaging it, which runs
+the check. An
 evidence-tier run that ships a stored-input refusal needs a per-run
 `--evidence-failure-owners` entry naming its owner; the standing owner register
 covers none.

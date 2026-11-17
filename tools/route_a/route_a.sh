@@ -45,6 +45,13 @@ LOG=$RUN_ROOT/route_a.log
 : "${PREFLIGHT_NEW_LINEAGE_ARGS:=}" "${EARLY_START_AFTER_HEAVY:=0}" "${PRUNE_BASE_CHECKPOINTS:=0}"
 : "${RELEASE_DESPITE_PREFLIGHT_FAIL:=0}" "${RELEASE_EXTRA_ARGS:=}" "${EXPORT_MASS_REF_H5:=}"
 : "${RESOURCE_WAIT_HOURS:=12}"
+# uv sync takes the newest installed CPython unless told otherwise, and the
+# lock's torch wheels stop at cp314; a fresh worktree on 3.15 fails to sync.
+: "${UV_SYNC_PYTHON:=3.14}"
+# The release reads these two from its environment. Export a settings-file
+# value so the stages see what --resolve checked.
+[ -z "${MICROCOSM_TELEMETRY_REQUIRED+set}" ] || export MICROCOSM_TELEMETRY_REQUIRED
+[ -z "${MICROCOSM_EMITTER_COMMAND+set}" ] || export MICROCOSM_EMITTER_COMMAND
 
 # ---------------------------------------------------------------------------
 # Inputs, resolved and hashed on this machine on 2026-09-23 (see status.md).
@@ -79,6 +86,7 @@ CROSSWALK_REL=packages/microcosm-build/src/microcosm/build/us_runtime/data/congr
 FEED_PIN_REL=packages/microcosm-build/src/microcosm/build/us/chronicle_feed.json
 ASEC_PIN_REL=packages/microcosm-build/src/microcosm/build/us_runtime/asec_sources.py
 SPM_ROLE_REL=packages/microcosm-build/src/microcosm/build/us_runtime/spm_independence_role.py
+EMITTER_FLOOR_REL=packages/microcosm-build/src/microcosm/build/minimum_emitter_version.json
 BASE_FLAGS="--stage --checkpoint-dir --asec-h5 --asec-h5-sha256 --puf-h5 --puf-source-year-csv --acs-h5 --asec-education-source --target-year --seed --n-estimators --ledger-facts --assign-congressional-districts --congressional-district-vintage-crosswalk --congressional-district-seed --block-ladder-artifact --out"
 RELEASE_FLAGS="--base-h5 --ledger-facts --ledger-facts-sha256 --qrf-tail-concentration-exclusions --ssi-take-up-prior-weight-basis --ssi-take-up-prior-weight-basis-sha256 --scf-summary-extract --out --release-id --checkpoint-root --seed"
 [ "$ROUTE_A_STAGING" = 0 ] && RELEASE_FLAGS="$RELEASE_FLAGS --no-staging"
@@ -168,17 +176,26 @@ check_commit() {  # $1 = build ref, $2 = preflight ref; fills COMMIT_BLOCKERS/CO
   if git -C "$MAIN" show "$full:$FEED_PIN_REL" 2>/dev/null | grep -q "\"facts_sha256\": \"$FEED_SHA\""; then
     COMMIT_NOTES+=("us/chronicle_feed.json at $full pins facts_sha256 $FEED_SHA")
   else
-    COMMIT_BLOCKERS+=("us/chronicle_feed.json at $full does not pin facts_sha256 $FEED_SHA (the release tool would refuse the feed)")
+    local pinned_feed
+    pinned_feed=$(git -C "$MAIN" show "$full:$FEED_PIN_REL" 2>/dev/null | \
+      "$PYTHON" -c 'import json, sys; print(json.load(sys.stdin).get("facts_sha256") or "")' 2>/dev/null)
+    COMMIT_BLOCKERS+=("us/chronicle_feed.json at $full does not pin facts_sha256 $FEED_SHA (the release tool would refuse the feed); it pins ${pinned_feed:-no readable facts_sha256}: set FEED to that feed's file, FEED_SHA to its digest and FEED_BYTES to its size")
   fi
   local s
   for s in $ASEC_2024_SHA $ASEC_2023_SHA $ASEC_2022_SHA; do
     git -C "$MAIN" show "$full:$ASEC_PIN_REL" 2>/dev/null | grep -q "$s" \
       || COMMIT_BLOCKERS+=("asec_sources.py at $full lacks canonical ASEC pin $s (the base would refuse the CLI pin)")
   done
-  if [ "$(git -C "$MAIN" show "$full:$CROSSWALK_REL" 2>/dev/null | openssl dgst -sha256 -r | cut -c1-64)" = "$CROSSWALK_SHA" ]; then
-    COMMIT_NOTES+=("packaged CD vintage crosswalk at $full = $CROSSWALK_SHA")
+  local crosswalk
+  if ! git -C "$MAIN" cat-file -e "$full:$CROSSWALK_REL" 2>/dev/null; then
+    COMMIT_BLOCKERS+=("no packaged CD vintage crosswalk at $full ($CROSSWALK_REL)")
   else
-    COMMIT_BLOCKERS+=("packaged CD vintage crosswalk at $full is not $CROSSWALK_SHA")
+    crosswalk=$(git -C "$MAIN" show "$full:$CROSSWALK_REL" | openssl dgst -sha256 -r | cut -c1-64)
+    if [ "$crosswalk" = "$CROSSWALK_SHA" ]; then
+      COMMIT_NOTES+=("packaged CD vintage crosswalk at $full = $CROSSWALK_SHA")
+    else
+      COMMIT_BLOCKERS+=("packaged CD vintage crosswalk at $full is $crosswalk, not $CROSSWALK_SHA: set CROSSWALK_SHA to it once the change is reviewed")
+    fi
   fi
   if git -C "$MAIN" show "$full:tools/build_us_fiscal_refresh_release.py" 2>/dev/null | grep -q '_check_committed_us_ledger_feed_pin'; then
     COMMIT_NOTES+=("release tool at $full holds the feed to the committed pin")
@@ -228,6 +245,27 @@ check_commit() {  # $1 = build ref, $2 = preflight ref; fills COMMIT_BLOCKERS/CO
     git -C "$MAIN" branch -r --contains "$pfull" 2>/dev/null | grep -qv -- '->' \
       || COMMIT_BLOCKERS+=("preflight commit $pfull is on no origin branch")
   fi
+  check_emitter "$full"
+}
+
+check_emitter() {  # $1 = full build sha; adds to COMMIT_NOTES/COMMIT_BLOCKERS
+  # The release starts microcosm-emitter (MICROCOSM_EMITTER_COMMAND, then PATH)
+  # for collector telemetry and staging hand-overs, and never starts one older
+  # than the commit's minimum_emitter_version.json. With
+  # MICROCOSM_TELEMETRY_REQUIRED=1 such an emitter stops the release before it
+  # does any work; otherwise the release runs without telemetry.
+  # check_emitter.py repeats the release's checks without importing microcosm.
+  local full=$1 line
+  if ! git -C "$MAIN" cat-file -e "$full:$EMITTER_FLOOR_REL" 2>/dev/null; then
+    COMMIT_NOTES+=("no $EMITTER_FLOOR_REL at $full; emitter not checked")
+    return
+  fi
+  line=$(git -C "$MAIN" show "$full:$EMITTER_FLOOR_REL" | "$PYTHON" -I "$SCRIPT_DIR/check_emitter.py" 2>&1)
+  case "$line" in
+    "NOTE "*) COMMIT_NOTES+=("${line#NOTE }") ;;
+    "BLOCKER "*) COMMIT_BLOCKERS+=("${line#BLOCKER }") ;;
+    *) COMMIT_BLOCKERS+=("the emitter check at $full failed: ${line:-no output}") ;;
+  esac
 }
 
 refuse_bad_release_args() {
@@ -341,11 +379,23 @@ ensure_worktree() {  # $1 = full sha; sets WT
     log "created worktree $WT at $c"
   fi
   [ -z "$(git -C "$WT" status --porcelain)" ] || fail "worktree $WT is dirty"
-  if [ ! -f "$WT/.venv/.route_a_synced" ]; then
-    log "uv sync --all-packages --locked --extra us in $WT"
-    (cd "$WT" && "$UV" sync --all-packages --locked --extra us) >>"$LOG" 2>&1 || fail "uv sync in $WT"
+  local marker=$WT/.venv/.route_a_synced synced
+  if [ ! -f "$marker" ]; then
+    log "uv sync --python $UV_SYNC_PYTHON --all-packages --locked --extra us in $WT"
+    # uv refuses --locked beside UV_FROZEN=1, which a profile shell may export,
+    # so the sync drops it, as supervise.py does for the stages.
+    (cd "$WT" && unset UV_FROZEN && "$UV" sync --python "$UV_SYNC_PYTHON" --all-packages --locked --extra us) >>"$LOG" 2>&1 || fail "uv sync in $WT"
     "$WT/.venv/bin/python" -c 'import psutil, policyengine_us' >>"$LOG" 2>&1 || fail "venv in $WT lacks psutil/policyengine_us"
-    date '+%F %T' > "$WT/.venv/.route_a_synced"
+    printf '%s\npython=%s\n' "$(date '+%F %T')" "$UV_SYNC_PYTHON" > "$marker"
+  else
+    # A resumed chain keeps its venv; a changed interpreter setting would
+    # otherwise be ignored without a word.
+    synced=$(sed -n 's/^python=//p' "$marker")
+    if [ -z "$synced" ]; then
+      log "worktree $WT was synced before its interpreter was recorded; keeping its venv"
+    elif [ "$synced" != "$UV_SYNC_PYTHON" ]; then
+      fail "worktree $WT was synced with --python $synced, not UV_SYNC_PYTHON=$UV_SYNC_PYTHON: set it back, or remove $marker to re-sync"
+    fi
   fi
   [ -z "$(git -C "$WT" status --porcelain)" ] || fail "worktree $WT dirty after uv sync"
 }

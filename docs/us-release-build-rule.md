@@ -5,8 +5,11 @@
 Main must demonstrably build the certified US default from raw sources and pass
 its preflight and certification gates (decided 15 September 2026).
 
-The last from-scratch build is Build P (28 July 2026, policyengine-us 1.764.6).
-Every later default is a supplied-parent enrichment of that file. A pull request
+The last from-scratch build made the default is Build P (28 July 2026,
+policyengine-us 1.764.6). Every later default is a supplied-parent enrichment of
+that file. Route A's 30 September and 24 October builds came from raw sources
+on main (a fresh base, then a `--base-h5` release) and were published by tag
+only, not made the default. A pull request
 large enough to change how the dataset is built carries a from-scratch build and
 certification receipt from its own tree before it merges. Main carries the same
 build as a standing check afterwards.
@@ -18,10 +21,23 @@ frozen comparison register, both rescored on it, with strict improvement
 `tools/build_us_fiscal_refresh_release.py`). That gate runs on the `--exact-k`
 arm only, and that arm takes a pool manifest, which the release tool refuses
 to combine with `--base-h5`. A `--base-h5` release runs no improvement gate.
-Main has no US held-out test: the rotated-fold holdout in
-`microcosm.build.holdout` is imported by the UK runtime and UK tools only. So a
-US release says it beats the incumbent on the frozen register, and says it beats
-it on held-out cells only once a US holdout exists and has run.
+Main has no held-out test that compares a US national candidate with the
+incumbent. Among the packages and tools, only the UK runtime
+(`uk_runtime/local_rowwise.py`) runs the rotated folds in
+`microcosm.build.holdout`; an ACS local-area experiment
+(`experiments/us-acs-local-l2-basis-20260928/prepare.py`) also uses them. US
+package and tool code imports only the module's keyed-hash helpers. The ACS
+local-area tools (`tools/us_acs_local_cd_surface.py` and
+`tools/us_acs_local_county_surface.py`) use them to keep blocks of district and
+county SOI targets out of the local-area solve, then score those blocks against
+a pro-rata baseline; the scores are marked report-only and refuse nothing.
+`us_runtime/support_mix.py` uses them to split targets and to order ACS
+households for the support-mix bake-off. The national builder imports neither
+helper. Its three
+`*_holdout.json` reports compare one build with outside benchmarks and never
+refuse a release. So a US national release says it beats the incumbent on the
+frozen register, and says it beats it on held-out cells only once a national
+holdout exists and has run.
 
 Publication stays a human step. Since the US repository's switch to
 `releases.json`, the release tool writes each build to
@@ -37,6 +53,25 @@ A from-scratch attempt ran on main at `51c314382` on 15 and 16 September 2026
 and reached no release. The causes below were re-read on main at `d1196af10`.
 The engine lock that also blocked it is fixed: main resolves policyengine-us
 2.2.1, policyengine-core 3.32.5 and spm-calculator 1.0.0.
+
+**16 November 2026:** all four causes are answered on the `--base-h5` arm,
+which route A (`tools/route_a/route_a.sh`) drives:
+
+1. The labelled feed pin landed in #955 (section 1).
+2. The SPM independence role stage is `us_runtime/spm_independence_role.py`,
+   and the driver blocks a commit without it (section 2).
+3. The preflight has a `--new-lineage` mode (section 3).
+4. The three ASEC files are mirrored to `policyengine/microcosm-us-sources`
+   and pinned by upload revision in `us_runtime/asec_sources.py`. The base
+   refuses a command-line ASEC digest that differs from its year's pin
+   (section 4).
+
+The `--exact-k` arm still waits on a reviewed feed re-pin. Chronicle fixed
+chronicle#277 in `b571381f` (merged 28 September 2026 in `0ca1c0d6`), but
+`us/chronicle_feed.json` pins Chronicle `41b2fb2b`, which does not contain the
+fix (a later cherry-pick on an older base). A build from a newer main commit
+needs settings beyond the commit; "A build from main" in
+`tools/route_a/README.md` lists them.
 
 ### 1. No Chronicle feed on the build machine carries dimension labels
 

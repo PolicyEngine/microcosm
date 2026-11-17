@@ -564,9 +564,9 @@ POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
 # The L0+refit and --exact-k arms pass no fences and keep hard enforcement.
 # RE-ADJUDICATES when microcosm#566's damped fixed-point protocol lands.
 _US_DENSE_SSI_FENCE_ADJUDICATION = (
-    "Fenced for the dense diagnostic arm (microcosm#566/#567): "
+    "Fenced for the --dense-default-dataset arm (microcosm#566/#567): "
     "microcosm#508 delivered-weight recomputes have not landed the adult "
-    "band pair in the envelope on either observed frame (P2, current-"
+    "band pair in the envelope on either observed full-pool frame (P2, current-"
     "frame attempt then its one permitted recompute: +5.8%/+24.8% -> "
     "+8.2%/+20.0%; P3, attempts already anchored on delivered bases: "
     "65+ +34.6%, then +8.3%/+19.8% after recomputing again — a chain "
@@ -574,7 +574,8 @@ _US_DENSE_SSI_FENCE_ADJUDICATION = (
     "deleted microcosm#463-class loop. This band's miss ships in the "
     "scorecard as a known boundary — never as an enforced contract. "
     "Re-adjudicates when the microcosm#566 damped fixed-point protocol "
-    "lands. The sparse certified default keeps hard enforcement."
+    "lands. The L0+refit and --exact-k arms pass no fences and keep hard "
+    "enforcement."
 )
 US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES: dict[str, str] = {
     "18_64": _US_DENSE_SSI_FENCE_ADJUDICATION,
