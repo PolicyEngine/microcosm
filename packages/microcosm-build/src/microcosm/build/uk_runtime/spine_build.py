@@ -808,8 +808,8 @@ def _validate_stage_profile_dir(directory: Path) -> None:
         # The wider check names the paths; this refusal stays a fixed sentence.
         raise ValueError(
             "--stage-profile-dir must lie outside every git work tree: a stage "
-            "profile keeps the message of a failure its node raised, so it "
-            "stays private."
+            "profile keeps the message of a failure its node raised, and no "
+            "checkout may commit it."
         ) from None
     existing = target / STAGE_PROFILE_FILENAME
     if existing.exists():
