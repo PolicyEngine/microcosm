@@ -5,8 +5,11 @@
 Main must demonstrably build the certified US default from raw sources and pass
 its preflight and certification gates (decided 15 September 2026).
 
-The last from-scratch build is Build P (28 July 2026, policyengine-us 1.764.6).
-Every later default is a supplied-parent enrichment of that file. A pull request
+The last from-scratch build made the default is Build P (28 July 2026,
+policyengine-us 1.764.6). Every later default is a supplied-parent enrichment of
+that file. Route A's 30 September and 24 October builds came from raw sources
+on main (a fresh base, then a `--base-h5` release) and were published by tag
+only, not made the default. A pull request
 large enough to change how the dataset is built carries a from-scratch build and
 certification receipt from its own tree before it merges. Main carries the same
 build as a standing check afterwards.
@@ -50,6 +53,25 @@ A from-scratch attempt ran on main at `51c314382` on 15 and 16 September 2026
 and reached no release. The causes below were re-read on main at `d1196af10`.
 The engine lock that also blocked it is fixed: main resolves policyengine-us
 2.2.1, policyengine-core 3.32.5 and spm-calculator 1.0.0.
+
+**16 November 2026:** all four causes are answered on the `--base-h5` arm,
+which route A (`tools/route_a/route_a.sh`) drives:
+
+1. The labelled feed pin landed in #955 (section 1).
+2. The SPM independence role stage is `us_runtime/spm_independence_role.py`,
+   and the driver blocks a commit without it (section 2).
+3. The preflight has a `--new-lineage` mode (section 3).
+4. The three ASEC files are mirrored to `policyengine/microcosm-us-sources`
+   and pinned by upload revision in `us_runtime/asec_sources.py`. The base
+   refuses a command-line ASEC digest that differs from its year's pin
+   (section 4).
+
+The `--exact-k` arm still waits on a reviewed feed re-pin. Chronicle fixed
+chronicle#277 in `b571381f` (merged 28 September 2026 in `0ca1c0d6`), but
+`us/chronicle_feed.json` pins Chronicle `41b2fb2b`, which does not contain the
+fix (a later cherry-pick on an older base). A build from a newer main commit
+needs settings beyond the commit; "A build from main" in
+`tools/route_a/README.md` lists them.
 
 ### 1. No Chronicle feed on the build machine carries dimension labels
 
