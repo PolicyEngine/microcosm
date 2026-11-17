@@ -1,4 +1,9 @@
-"""Assemble an annual build of a US national build (microcosm#1570).
+"""Assemble an annual build of a US national or local-area build.
+
+National builds project into ``microcosm-us-2024-annual`` (microcosm#1570);
+local-area builds into ``microcosm-us-2024-local-annual`` (the County Files,
+microcosm#922). The national case is described first; the local case
+follows the same steps with the differences listed after it.
 
 An annual projection family is published as a build of the release
 ``microcosm-us-2024-annual``, into its own folder through the emitter. This
@@ -44,6 +49,23 @@ place. The summary printed on success gives the build, the release directory
 and the two emitter commands: ``publish_command`` publishes the build, and
 ``promote_command`` makes it the annual release's current build. The annual
 release is never the repository's default release.
+
+**A local-area base.** When ``--base-build-dir`` holds a build of
+``microcosm-us-2024-local`` (as the ACS release tool's ``package`` stage
+writes it, or as downloaded from
+``releases/microcosm-us-2024-local/<base build>/``), the tool writes a build
+of ``microcosm-us-2024-local-annual`` into
+``<out>/releases/microcosm-us-2024-local-annual/``. A local-area build claims
+no default dataset, so its dataset is its one microdata artifact
+(``microcosm_us_2024_acs_local``), and the annual build keeps
+``default_datasets`` empty. The package stage writes that H5 one level above
+its release directory: pass that directory as ``--base-artifact-root``, where
+the tool looks for every carried file the build folder lacks. The candidate
+must come from ``microcosm.build.us_annual_static_aging`` run on the same
+base build; it records the base-year H5 without copying it, and the tool
+takes that H5 from the base build. Each projected year is
+``microcosm_us_<year>_acs_local.h5``; the years need not be consecutive. The
+rest is as above.
 """
 
 from __future__ import annotations
@@ -63,7 +85,8 @@ from typing import Any
 from microcosm.data.build_folder_manifests import publication_commands
 from microcosm.data.contract import (
     CHECKSUMS_FILE,
-    US_ANNUAL_RELEASE_ID,
+    US_ANNUAL_BASE_RELEASES,
+    US_LOCAL_RELEASE_ID,
     US_NATIONAL_RELEASE_ID,
     release_artifact_role,
     validate_release_dir,
@@ -81,6 +104,8 @@ _EVIDENCE_KEY = "annual_manifest"
 _ACCEPTANCE_KEY = "annual_acceptance"
 #: One line of a checksum ledger, as ``sha256sum`` writes it.
 _LEDGER_LINE = re.compile(r"(?P<digest>[0-9a-f]{64}) [ *](?P<name>.+)")
+#: Each base release and the annual release its builds project into.
+_ANNUAL_RELEASE_OF = {base: annual for annual, base in US_ANNUAL_BASE_RELEASES.items()}
 
 
 def _utc_now() -> datetime:
@@ -147,40 +172,70 @@ def _place(source: Path, destination: Path, sha256: str, *, link: bool) -> None:
         )
 
 
-def _base_build(base_dir: Path) -> tuple[dict, dict, str, str, dict]:
-    """The base build's two manifests, its build ID, dataset key and dataset."""
+def _base_build(base_dir: Path) -> tuple[dict, dict, str, str, dict, str]:
+    """The base build's two manifests, its build ID, dataset key, dataset and
+    release.
+
+    A national build's dataset is its ``default_datasets.national``; a
+    local-area build claims no default, so its dataset is its one microdata
+    artifact.
+    """
     release_manifest = _read_object(base_dir / _RELEASE_MANIFEST)
     build_manifest = _read_object(base_dir / _BUILD_MANIFEST)
     build = release_manifest.get("build")
-    if release_manifest.get("release") != US_NATIONAL_RELEASE_ID or not (
-        isinstance(build, str) and build
-    ):
+    release = release_manifest.get("release")
+    if release not in _ANNUAL_RELEASE_OF or not (isinstance(build, str) and build):
         raise _refuse(
-            f"{base_dir} is not a build of {US_NATIONAL_RELEASE_ID}: its release "
-            f"manifest names release {release_manifest.get('release')!r} and build "
-            f"{build!r}. An annual build projects a national build in its folder."
+            f"{base_dir} is not a build of {US_NATIONAL_RELEASE_ID} or "
+            f"{US_LOCAL_RELEASE_ID}: its release manifest names release "
+            f"{release!r} and build {build!r}. An annual build projects a "
+            "national or local-area build in its folder."
         )
     if (build_manifest.get("release"), build_manifest.get("build")) != (
-        US_NATIONAL_RELEASE_ID,
+        release,
         build,
     ):
         raise _refuse(
             f"{base_dir}/{_BUILD_MANIFEST} does not name release "
-            f"{US_NATIONAL_RELEASE_ID} and build {build}"
+            f"{release} and build {build}"
         )
     metadata = release_manifest.get("metadata")
     if isinstance(metadata, Mapping) and "dataset_years" in metadata:
         raise _refuse(f"base build {build} already declares metadata.dataset_years")
     artifacts = release_manifest.get("artifacts")
     defaults = release_manifest.get("default_datasets")
-    base_key = defaults.get("national") if isinstance(defaults, Mapping) else None
+    if release == US_LOCAL_RELEASE_ID:
+        microdata = [
+            key
+            for key, entry in (
+                artifacts.items() if isinstance(artifacts, Mapping) else ()
+            )
+            if isinstance(entry, Mapping) and entry.get("kind") == "microdata"
+        ]
+        if defaults != {} or len(microdata) != 1:
+            raise _refuse(
+                f"base build {build} of {US_LOCAL_RELEASE_ID} must claim no "
+                "default dataset and declare one microdata artifact; it has "
+                f"default_datasets {defaults!r} and microdata {sorted(microdata)}"
+            )
+        base_key = microdata[0]
+    else:
+        base_key = defaults.get("national") if isinstance(defaults, Mapping) else None
     dataset = artifacts.get(base_key) if isinstance(artifacts, Mapping) else None
     if not isinstance(dataset, Mapping) or dataset.get("kind") != "microdata":
         raise _refuse(
             f"base build {build}'s default_datasets.national is not a microdata "
             "artifact"
         )
-    return release_manifest, build_manifest, build, base_key, dict(dataset)
+    return release_manifest, build_manifest, build, base_key, dict(dataset), release
+
+
+def _base_file(base_dir: Path, artifact_root: Path | None, name: str) -> Path:
+    """Where a carried file is: the base build folder, else the artifact root."""
+    local = base_dir / name
+    if local.is_file() or artifact_root is None:
+        return local
+    return artifact_root / name
 
 
 def assemble_annual_release_dir(
@@ -190,11 +245,22 @@ def assemble_annual_release_dir(
     acceptance: Path,
     out: Path,
     assembled_at: datetime,
+    base_artifact_root: Path | None = None,
 ) -> dict[str, Any]:
-    """Write, validate and move into place an annual build; return its summary."""
-    base_release, base_build_manifest, base_build, base_key, base_dataset = _base_build(
-        base_build_dir
-    )
+    """Write, validate and move into place an annual build; return its summary.
+
+    ``base_artifact_root`` is where a carried file the base build folder lacks
+    is read from (the ACS package stage writes the local H5 there).
+    """
+    (
+        base_release,
+        base_build_manifest,
+        base_build,
+        base_key,
+        base_dataset,
+        base_release_id,
+    ) = _base_build(base_build_dir)
+    annual_release_id = _ANNUAL_RELEASE_OF[base_release_id]
     base_artifacts = base_release["artifacts"]
     repositories = {
         entry.get("repo_id")
@@ -263,7 +329,7 @@ def assemble_annual_release_dir(
         f"{base_build}-annual-"
         f"{assembled_at.astimezone(UTC):%Y%m%dT%H%M%SZ}-{evidence_sha256[:8]}"
     )
-    destination = out / "releases" / US_ANNUAL_RELEASE_ID
+    destination = out / "releases" / annual_release_id
     artifacts_destination = out / "artifacts"
     for path in (destination, artifacts_destination):
         if path.exists() or path.is_symlink():
@@ -327,7 +393,7 @@ def assemble_annual_release_dir(
     out.mkdir(parents=True, exist_ok=True)
     releases_created = not destination.parent.exists()
     staging = out / f".assemble-{uuid.uuid4().hex}"
-    staged_release = staging / "releases" / US_ANNUAL_RELEASE_ID
+    staged_release = staging / "releases" / annual_release_id
     staged_artifacts = staging / "artifacts"
     staged_release.mkdir(parents=True)
     staged_artifacts.mkdir()
@@ -336,7 +402,7 @@ def assemble_annual_release_dir(
             name = _bare_name(entry.get("path"), "a base build artifact")
             h5 = entry.get("kind") == "microdata"
             _place(
-                base_build_dir / name,
+                _base_file(base_build_dir, base_artifact_root, name),
                 (staged_artifacts if h5 else staged_release) / name,
                 entry.get("sha256"),
                 link=h5,
@@ -363,7 +429,7 @@ def assemble_annual_release_dir(
             annual_projection_acceptance=_ACCEPTANCE_KEY,
             annual_projection_base={
                 "repo_id": repo_id,
-                "release": US_NATIONAL_RELEASE_ID,
+                "release": base_release_id,
                 "build": base_build,
                 "path": base_path,
                 "sha256": base_sha256,
@@ -375,7 +441,7 @@ def assemble_annual_release_dir(
             if key not in {"migrated_from", "metadata", "artifacts"}
         }
         release_manifest.update(
-            release=US_ANNUAL_RELEASE_ID,
+            release=annual_release_id,
             build=build,
             metadata=metadata,
             artifacts={**carried, **new_artifacts},
@@ -385,7 +451,7 @@ def assemble_annual_release_dir(
             for key, value in base_build_manifest.items()
             if key != "migrated_from"
         }
-        build_manifest.update(release=US_ANNUAL_RELEASE_ID, build=build)
+        build_manifest.update(release=annual_release_id, build=build)
         _write_object(staged_release / _RELEASE_MANIFEST, release_manifest)
         _write_object(staged_release / _BUILD_MANIFEST, build_manifest)
         if (base_build_dir / CHECKSUMS_FILE).is_file():
@@ -415,12 +481,12 @@ def assemble_annual_release_dir(
         ):
             destination.parent.rmdir()
     return {
-        "release": US_ANNUAL_RELEASE_ID,
+        "release": annual_release_id,
         "build": build,
         "release_dir": str(destination),
         "artifact_root": str(artifacts_destination),
         "base": {
-            "release": US_NATIONAL_RELEASE_ID,
+            "release": base_release_id,
             "build": base_build,
             "dataset": base_path,
             "sha256": base_sha256,
@@ -480,8 +546,19 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         required=True,
         type=Path,
         help=(
-            "A local copy of releases/microcosm-us-2024-national/<base build>/, "
-            "with its H5."
+            "A local copy of releases/microcosm-us-2024-national/<base build>/ "
+            "or releases/microcosm-us-2024-local/<base build>/, with its H5 "
+            "(or with the H5 in --base-artifact-root)."
+        ),
+    )
+    parser.add_argument(
+        "--base-artifact-root",
+        type=Path,
+        default=None,
+        help=(
+            "Where a file the base build folder lacks is read from: the "
+            "directory above releases/ that the ACS package stage writes the "
+            "local H5 into."
         ),
     )
     parser.add_argument(
@@ -500,7 +577,11 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--out",
         required=True,
         type=Path,
-        help="Where releases/microcosm-us-2024-annual/ and artifacts/ are written.",
+        help=(
+            "Where releases/<annual release>/ and artifacts/ are written: "
+            "microcosm-us-2024-annual for a national base, "
+            "microcosm-us-2024-local-annual for a local-area base."
+        ),
     )
     return parser.parse_args(argv)
 
@@ -513,6 +594,7 @@ def main(argv: list[str] | None = None) -> int:
         acceptance=args.acceptance,
         out=args.out,
         assembled_at=_utc_now(),
+        base_artifact_root=args.base_artifact_root,
     )
     print(json.dumps(summary, indent=2, sort_keys=True))
     return 0

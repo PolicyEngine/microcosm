@@ -854,9 +854,11 @@ def test_create_applies_cited_unit_spec_and_reports_hours_diagnostics(
     assert dict(result.receipt["unit_construction"]) == {
         "hours_independent_children": int(independent),
         "independent_teen_parents": 0,
+        "younger_independent_teen_parents": 0,
         "dependent_teen_parents": 0,
         "non_partnered_coparent_households": 0,
         "children_with_reference_person": 0,
+        "parentless_reference_person_heads": 0,
     }
 
 

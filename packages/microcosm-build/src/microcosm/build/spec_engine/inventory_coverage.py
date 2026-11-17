@@ -389,12 +389,25 @@ EXPECTED_HASHES = {
     # calibrate's shared option checks move both again; no US solve changes.
     # Its TANF ledger fix moves the protocol again: the site's recorded salt
     # becomes the takes_up_tanf_if_eligible its draw always used.
+    # microcosm#1096 moves both again: solve's opt-in softmax mass
+    # parametrization projects exactly onto the capped simplex; the default
+    # projection parametrization is unchanged.
+    # microcosm#1387 moves both again: the ACS transfer's opt-in SEMP-covered
+    # partnership step changes acs_transfer's attested bytes. Off its flag no
+    # draw, RNG rule or QRF target changes.
+    # microcosm#1543's fit input checks (the microimpute bug-parity audit)
+    # move both again; no valid input's draw changes. microcosm#1617's refusal
+    # of a weightless class in the balanced gate's weights moves both again;
+    # no fit reached it, and no draw changes.
+    # microcosm#1641 moves both again: it rewords docstrings and a comment in
+    # solve and the delivery gate's docstring in ssi_take_up, which now names
+    # the builder's arms by flag; no draw, RNG rule, QRF target or solve changes.
     # microcosm#931 moves both again: it adds the keyed tie order, the keyed
     # uniform for a label, the binomial share band and a strata keyword to
     # stochastic_assignment. stable_identity_uniforms, the one function the
     # US keyed draws call there, is unchanged, so no US draw changes.
-    "seed_map": "8b4cf2e4ddaec8494a1ef41ddc0892ac454894315e51bb7d244b160568593a87",
-    "seed_protocol": "5b870f9fed400cad5d8a138f622de5bb60954cc62f9ae4f451e2e46035e87fa9",
+    "seed_map": "bba77300658af2bbd6fa936fb4c4d62e8ca8b55c4dd94f008213c2f5fc1cd58e",
+    "seed_protocol": "1e1ffc5e5cd939d02dc9c3832627e3d1595e2f6ff5911c9d707dfe6c02c128d7",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

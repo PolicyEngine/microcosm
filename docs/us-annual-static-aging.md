@@ -5,10 +5,26 @@ candidate containing one native single-year H5 for each year from the source yea
 through the requested end year (2035 by default). It reuses `static_aging` and
 `multi_year_dataset`; it does not run the base calibration graph or publish data.
 
+The same builder projects a build of the local-area release,
+`microcosm-us-2024-local`, for the County Files; see
+[US local-area annual projections](us-local-annual-projection.md). This page
+covers the national line.
+
 The inputs are an exact base H5 SHA256 and the ID of the base build it comes
 from (`--parent-release`), the base build's dataset key (`--base-dataset`), an
 exact SSA population CSV SHA256, and the version, full commit, and clean source
-checkout of the imported PolicyEngine-US model. The caller supplies the base
+checkout of the imported PolicyEngine-US model. Instead of the first three,
+`--base-build-dir` can name the base build's folder: the builder reads the
+H5's file name, its SHA-256, the build ID and the dataset key from the
+build's manifests, and refuses an H5 whose bytes differ from them. When the
+H5 is not in the folder, `--base-artifact-root` names the directory that
+holds it. The two forms cannot be mixed. `--years Y [Y ...]` writes exactly
+those projected years instead of every year through `--end-year`. The base
+copy and the year map's base entry stay, and `settings.years` records the
+choice. The national release contract still requires every year from the
+base year through the last, so a national candidate built with `--years`
+assembles only when those years are contiguous from the year after the
+base. The caller supplies the base
 build claim; assembly and publication authenticate that build and its base SHA
 separately. The numerical environment must contain the reviewed model and
 Microcosm packages.
@@ -45,10 +61,11 @@ income inputs retain their separate positive and negative scale factors. Each
 annual H5 uses root entity tables and an explicit `_time_period` equal to its
 year. Logical and native-loader round trips compare all table values. Consumers
 must select the exact annual file and year; its inputs are already projected.
-The current publication contract requires table-format storage with direct HDF
-fields. Fixed-format inputs, including missing nullable booleans that require
-that storage format, are rejected before building and need a separate certified
-layout contract.
+On the national line the current publication contract requires table-format
+storage with direct HDF fields. Fixed-format inputs, including missing nullable
+booleans that require that storage format, are rejected before building and
+need a separate certified layout contract. The local-area line writes the local
+release's own fixed nullable layout instead.
 
 The output directory must be new. A failed attempt retains its partial files and
 `build_status.json`; rerunning requires another directory. `annual_manifest.json`
@@ -136,7 +153,8 @@ changes what `microcosm.data.load("us")` loads.
    the Hub, from its folder at `main`, and refuses unless its dataset has the
    base-year H5's file name and SHA-256, and every other file it declares,
    apart from the manifests and `sha256sums.txt`, is in the annual build's
-   manifest with the same path and SHA-256. A Hub that cannot be asked (a
+   manifest with the same path and SHA-256, and unless `releases.json` lists
+   the base build and has not withdrawn it. A Hub that cannot be asked (a
    403, or a server error after retries) stops the command with that error.
    Publishing does not make the build
    current. To make it the annual release's current build, run the printed

@@ -33,6 +33,16 @@
       "schema_id": "vintages.schema.json"
     },
     {
+      "path": "axiom_input_closure.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "axiom_rules_bindings.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "chronicle_feed.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -49,6 +59,11 @@
     },
     {
       "path": "holdout_references.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "money_normalization.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },

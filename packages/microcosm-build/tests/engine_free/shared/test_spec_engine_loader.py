@@ -25,10 +25,17 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # ssi_disability_criteria's attested bytes.
     # The opt-in cross-fitted gate calibration moves the fit kernels' bytes.
     # The hierarchy value ranks move medicaid_take_up's attested bytes.
+    # microcosm#1096's exact softmax cap projection in solve moves it too.
+    # microcosm#1387's SEMP-covered partnership step moves acs_transfer's
+    # attested bytes.
+    # The fit input checks from the microimpute bug-parity audit move the fit
+    # kernels' bytes too.
+    # microcosm#1641's docstring and comment wording in solve and ssi_take_up
+    # moves it again.
     # microcosm#931's keyed helpers move stochastic_assignment's attested
     # bytes.
     assert first.spec_sha256 == (
-        "abe116069e1882e374155525ee904b46f25544b0c46a7ff6b3e3030b0703dc5d"
+        "cd4840b18c9d6f2fc65b7e02daf7d09a7e88e231ab9aa2f5fcb68347586360f2"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

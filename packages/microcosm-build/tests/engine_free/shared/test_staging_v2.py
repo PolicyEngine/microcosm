@@ -1010,7 +1010,7 @@ def test_version_2_storage_prefix_is_fixed_to_runs(tmp_path):
 
 
 def test_version_2_accepts_explicit_configuration_for_another_country(tmp_path):
-    repo_id = "example/populace-ca-staging"
+    repo_id = "example/microcosm-ca-staging"
     telemetry, emitter = _remote_recorder(tmp_path, country_code="CA", repo_id=repo_id)
 
     telemetry.complete()
