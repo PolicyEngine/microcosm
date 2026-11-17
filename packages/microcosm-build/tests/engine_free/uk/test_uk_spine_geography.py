@@ -76,9 +76,9 @@ from microcosm.build.uk_runtime.brma_area_layer import (
 from microcosm.build.uk_runtime.frs_brma import (
     UK_BRMA_BENUNIT_SALT,
     UK_BRMA_HOUSEHOLD_PICK_SALT,
-    add_frs_brma,
     assign_brma_by_cell,
     collapse_benunit_brma_to_household,
+    draw_household_brmas,
     load_brma_count_resource,
 )
 from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
@@ -1083,19 +1083,23 @@ def test_g4_reads_great_britain_brmas_off_the_committed_layer(copy_runs) -> None
 
 def test_g4_draws_northern_ireland_as_frs_brma_does(runs, copy_runs) -> None:
     """Northern Ireland's benefit units draw with frs_brma's keys, so each
-    of its households takes the BRMA frs_brma gives it, at every K."""
+    of its households takes the BRMA frs_brma's draw gives it, at every K."""
 
     for clones in (1, 3):
         base = runs[clones]["frames"]["g5"]
-        reference = add_frs_brma(
-            base, lha_category=_lha(base), count_resource=load_brma_count_resource()
-        ).table("household")
+        reference = draw_household_brmas(
+            base.table("person"),
+            base.table("benunit"),
+            base.table("household"),
+            lha_category=_lha(base),
+            count_resource=load_brma_count_resource(),
+        )
         household = copy_runs[clones]["frames"]["g4"].table("household")
         northern_ireland = (household["atomic_area_system"] == NI).to_numpy()
         assert northern_ireland.sum() == 4 * clones
         assert (
             household["brma"].to_numpy()[northern_ireland].tolist()
-            == reference["brma"].to_numpy()[northern_ireland].tolist()
+            == reference[northern_ireland].tolist()
         )
 
 

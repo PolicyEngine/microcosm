@@ -6,7 +6,6 @@ from microcosm.build.uk_runtime.frs_brma import (
     UK_BRMA_BENUNIT_SALT,
     UK_BRMA_HOUSEHOLD_PICK_SALT,
     _benunit_regions,
-    add_frs_brma,
     draw_household_brmas,
     load_brma_count_resource,
 )
@@ -191,29 +190,6 @@ def test_brma_cell_membership_and_household_collapse() -> None:
     assert collapsed[1] == "SCOTLAND_A"
 
 
-def test_brma_stage_materializes_lha_category_and_writes_household_brma() -> None:
-    frame = _frame()
-    resource = {
-        "cells": {
-            "LONDON": {"A": {"LONDON_A": 1}},
-            "SCOTLAND": {"B": {"SCOTLAND_A": 1}},
-        }
-    }
-    stage = UKFRSBRMAStageTransform(
-        stage=None,
-        engine=_FakeEngine(["A", "A", "B"]),
-        count_resource=resource,
-    )
-
-    transformed = stage(frame)
-
-    assert transformed.table("household")["brma"].tolist() == [
-        "LONDON_A",
-        "SCOTLAND_A",
-    ]
-    assert "brma" not in transformed.table("benunit")
-
-
 def test_brma_missing_cell_fails_closed() -> None:
     benunit = pd.DataFrame(
         {"benunit_id": [1], "region": ["LONDON"], "LHA_category": ["Z"]}
@@ -266,10 +242,9 @@ def _brma_lha(benunit: pd.DataFrame) -> list[str]:
     return [_LHA_CATEGORIES[int(unit) % 5] for unit in benunit["benunit_id"]]
 
 
-def test_add_frs_brma_draws_what_the_cell_draw_and_household_pick_give() -> None:
-    """The stage's values are today's: each benefit unit's cell draw under
-    salt "brma", then each household's pick under "brma:household_pick",
-    both keyed on ids with seed 0; the benefit-unit table is left as it was."""
+def test_the_brma_draw_is_the_cell_draw_then_the_household_pick() -> None:
+    """Each benefit unit's cell draw under salt "brma", then each household's
+    pick under "brma:household_pick", both keyed on ids with seed 0."""
 
     frame = _brma_frame()
     resource = load_brma_count_resource()
@@ -287,11 +262,14 @@ def test_add_frs_brma_draws_what_the_cell_draw_and_household_pick_give() -> None
     expected = collapse_benunit_brma_to_household(
         person, cells[["benunit_id"]].assign(brma=drawn), household, seed=0
     )
-    result = add_frs_brma(
-        frame, lha_category=_brma_lha(benunit), count_resource=resource
+    result = draw_household_brmas(
+        person,
+        benunit,
+        household,
+        lha_category=_brma_lha(benunit),
+        count_resource=resource,
     )
-    assert result.table("household")["brma"].tolist() == expected.tolist()
-    assert result.table("benunit").equals(benunit)
+    assert result.tolist() == expected.tolist()
     # The cell draw, written out for one benefit unit.
     first = cells.iloc[0]
     uniform = stable_identity_uniforms([first["benunit_id"]], seed=0, salt="brma")
@@ -299,8 +277,8 @@ def test_add_frs_brma_draws_what_the_cell_draw_and_household_pick_give() -> None
     assert drawn[0] == sample_categorical_from_counts(uniform, counts=counts)[0]
 
 
-def test_add_frs_brma_picks_each_households_brma_as_written_out() -> None:
-    """The household pick, which sets frs_brma's live values, written out
+def test_the_brma_draw_picks_each_households_brma_as_written_out() -> None:
+    """The household pick, which sets the draw's values, written out
     without the module's pick: the uniform keyed on the household's id under
     salt "brma:household_pick" and seed 0 picks among its benefit units'
     cell draws in ascending benefit-unit id."""
@@ -320,8 +298,9 @@ def test_add_frs_brma_picks_each_households_brma_as_written_out() -> None:
     owner = person.drop_duplicates("person_benunit_id").set_index("person_benunit_id")[
         "person_household_id"
     ]
-    result = add_frs_brma(frame, lha_category=lha, count_resource=resource)
-    picked = result.table("household")["brma"].tolist()
+    picked = draw_household_brmas(
+        person, benunit, household, lha_category=lha, count_resource=resource
+    ).tolist()
     choices = 0
     for row, household_id in enumerate(household["household_id"].tolist()):
         units = sorted(int(unit) for unit in owner.index[owner == household_id])
@@ -347,8 +326,9 @@ def test_brma_draw_of_a_household_subset_takes_the_whole_frames_draws() -> None:
     person, benunit = frame.table("person"), frame.table("benunit")
     household = frame.table("household")
     lha = _brma_lha(benunit)
-    whole = add_frs_brma(frame, lha_category=lha, count_resource=resource)
-    whole_brma = whole.table("household")["brma"].to_numpy()
+    whole_brma = draw_household_brmas(
+        person, benunit, household, lha_category=lha, count_resource=resource
+    )
     for region in _BRMA_REGIONS:
         rows = (household["region"] == region).to_numpy()
         subset = household.loc[rows]
