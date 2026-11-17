@@ -319,6 +319,7 @@ def test_unlinked_claims_draw_their_cells_linked_rate() -> None:
         "support": "3-9",
         "rate": 0.5,
         "source": "cell",
+        "own_esa_award_claims": {"linked_claims": 0, "support": 0, "rate": "withheld"},
     }
     # One linked claim is LCWRA: the rate is drawn at but never printed.
     assert cells["16_to_24"]["proxy_does_not"]["rate"] == "withheld"
@@ -329,6 +330,86 @@ def test_unlinked_claims_draw_their_cells_linked_rate() -> None:
     # 45 imputed claims, rounded to the nearest ten as every receipt count is.
     assert imputation["claims"] == 50
     assert imputation["kept_the_proxy"] == {"own_esa_award": 0, "spi": 0, "no_rate": 0}
+
+
+def test_linked_claims_with_their_own_esa_award_stay_out_of_the_rates() -> None:
+    people = [
+        # Linked claims aged 25 to 49 the proxy flags. With their own ESA award:
+        # half LCWRA.
+        *[_single(unit, "LCWRA", True) for unit in (1, 2, 3)],
+        *[_single(unit, "NONE", True) for unit in (4, 5, 6)],
+        # Without one: a third LCWRA.
+        *[_single(unit, "LCWRA", True) for unit in (7, 8, 9)],
+        *[_single(unit, "NONE", True) for unit in range(10, 16)],
+        # Unlinked claims the proxy flags, with no award of their own.
+        *[_single(unit, "NOT_LINKED", True) for unit in range(100, 140)],
+    ]
+    esa = [True] * 6 + [False] * (len(people) - 6)
+    unlinked = range(100, 140)
+    # Only the claims without an award set the rate, a third: a claim with one
+    # keeps the proxy rather than drawing. Every linked claim would give 0.4,
+    # and some draw falls between the two, so the test tells them apart.
+    assert any(1 / 3 <= _uniform(unit) < 0.4 for unit in unlinked)
+    result = assign_uc_limited_capability(
+        _frame(people, ages=[40] * len(people)),
+        engine_answers=_answers(people, esa=esa),
+    )
+    person = result.frame.table("person").set_index("person_benunit_id")
+
+    for unit in unlinked:
+        assert person.loc[unit, UC_LCWRA] == (_uniform(unit) < 1 / 3)
+        assert person.loc[unit, UC_LCW] == (_uniform(unit) < 1 / 3)
+    # The linked claims with their own award still take DWP's status.
+    assert person.loc[[1, 2, 3], UC_LCWRA].all()
+    assert not person.loc[[4, 5, 6], UC_LCWRA].any()
+    assert result.evidence()["imputation"]["cells"]["25_to_49"]["proxy_flags"] == {
+        "linked_claims": "3-9",
+        "support": "3-9",
+        "rate": 0.333,
+        "source": "cell",
+        "own_esa_award_claims": {"linked_claims": "3-9", "support": "3-9", "rate": 0.5},
+    }
+
+
+def test_a_cell_under_three_households_draws_at_its_groups_rate_over_every_age() -> (
+    None
+):
+    people = [
+        # Linked claims the proxy flags: young, half LCWRA; aged 25 to 49, none.
+        *[_single(unit, "LCWRA", True) for unit in (1, 2, 3)],
+        *[_single(unit, "NONE", True) for unit in (4, 5, 6)],
+        *[_single(unit, "NONE", True) for unit in (7, 8, 9)],
+        # One linked LCWRA claim aged 50 or over: its cell rests on one household.
+        _single(10, "LCWRA", True),
+        # Unlinked claims aged 50 or over the proxy flags.
+        *[_single(unit, "NOT_LINKED", True) for unit in range(400, 430)],
+    ]
+    ages = [20] * 6 + [40] * 3 + [60] * 31
+    unlinked = range(400, 430)
+    # Over every age, four of the ten linked claims the proxy flags are LCWRA.
+    # The draws reach both sides of 0.4 and fall between it and the young
+    # cell's 0.5, so the test tells the pooled rate from the cell rates.
+    assert any(_uniform(unit) < 0.4 for unit in unlinked)
+    assert any(0.4 <= _uniform(unit) < 0.5 for unit in unlinked)
+    result = assign_uc_limited_capability(
+        _frame(people, ages=ages), engine_answers=_answers(people)
+    )
+    person = result.frame.table("person").set_index("person_benunit_id")
+
+    for unit in unlinked:
+        assert person.loc[unit, UC_LCWRA] == (_uniform(unit) < 0.4)
+        assert person.loc[unit, UC_LCW] == (_uniform(unit) < 0.4)
+    imputation = result.evidence()["imputation"]
+    over_fifty = imputation["cells"]["50_and_over"]["proxy_flags"]
+    assert over_fifty["source"] == "pooled"
+    assert over_fifty["support"] == "<3"
+    assert over_fifty["rate"] == "withheld"
+    assert imputation["pooled"]["proxy_flags"] == {
+        "linked_claims": 10,
+        "support": "10-29",
+        "rate": 0.4,
+        "own_esa_award_claims": {"linked_claims": 0, "support": 0, "rate": "withheld"},
+    }
 
 
 def test_claims_with_their_own_esa_award_keep_the_proxy() -> None:

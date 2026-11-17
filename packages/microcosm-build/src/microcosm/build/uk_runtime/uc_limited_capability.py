@@ -152,9 +152,11 @@ UC_LIMITED_CAPABILITY_IMPUTATION_RULE = (
     "claimant in place of the UC row's person. A cell is the youngest "
     "claimant's age band and whether the proxy flags any claimant; its rate is "
     "the share of linked claims in it with DWP's LCWRA status, at the stage's "
-    "household weights. A cell with fewer than three distinct source "
-    "households takes its proxy group's rate over every age, and a group with "
-    "fewer keeps the proxy."
+    "household weights, counting only linked claims in which no claimant has "
+    "their own ESA award: a claim with one keeps the proxy rather than "
+    "drawing, so the rates are measured on the kind of claim that draws. A "
+    "cell with fewer than three distinct source households takes its proxy "
+    "group's rate over every age, and a group with fewer keeps the proxy."
 )
 UC_LIMITED_CAPABILITY_SCOPE = (
     "SPI rows, and claims in which a claimant has their own ESA award, keep "
@@ -448,8 +450,19 @@ def assign_uc_limited_capability(
     cell_rows: dict[tuple[str, str], list[int]] = {
         (band, side): [] for band in bands for side in sides
     }
+    # A linked claim in which a claimant has their own ESA award stays out of
+    # the rates: a claim like it keeps the proxy instead of drawing, so a rate
+    # measured on it would speak for claims that never draw from it. The
+    # receipt gives these claims' own rate beside each cell's, to show the gap.
+    own_esa_rows: dict[tuple[str, str], list[int]] = {
+        (band, side): [] for band in bands for side in sides
+    }
     for carrier_row, rows in linked_claims:
-        cell_rows[(band_of(rows), proxy_side(rows))].append(carrier_row)
+        key = (band_of(rows), proxy_side(rows))
+        if own_esa[rows].any():
+            own_esa_rows[key].append(carrier_row)
+        else:
+            cell_rows[key].append(carrier_row)
     is_lcwra = status == "LCWRA"
 
     def rows_mask(rows: list[int]) -> np.ndarray:
@@ -475,10 +488,16 @@ def assign_uc_limited_capability(
         }
         return (rate if usable else None), entry
 
-    pooled = {
-        side: measured_rate([row for band in bands for row in cell_rows[(band, side)]])
-        for side in sides
-    }
+    def over_every_age(
+        by_cell: dict[tuple[str, str], list[int]], side: str
+    ) -> list[int]:
+        return [row for band in bands for row in by_cell[(band, side)]]
+
+    pooled = {side: measured_rate(over_every_age(cell_rows, side)) for side in sides}
+    for side in sides:
+        pooled[side][1]["own_esa_award_claims"] = measured_rate(
+            over_every_age(own_esa_rows, side)
+        )[1]
     rates: dict[tuple[str, str], float | None] = {}
     cells: dict[str, dict[str, object]] = {}
     for band in bands:
@@ -490,6 +509,7 @@ def assign_uc_limited_capability(
                 entry["source"] = "pooled" if rate is not None else "proxy_kept"
             else:
                 entry["source"] = "cell"
+            entry["own_esa_award_claims"] = measured_rate(own_esa_rows[(band, side)])[1]
             rates[(band, side)] = rate
             cells[band][side] = entry
 
