@@ -141,7 +141,7 @@ UK_SPINE_ATOMIC_AREA_DRAW_STREAM = (
 )
 
 #: The household columns the inputs are read from, beside the root's decile
-#: and band flag (``frs_spine``'s ``FRS_IMD_DECILE_COLUMN``, whose unobserved
+#: and band flag (``frs_area_draw_columns``' ``FRS_IMD_DECILE_COLUMN``, whose unobserved
 #: code is ``FRS_IMD_DECILE_UNOBSERVED``, and
 #: ``FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN``).
 REGION_COLUMN = "region"
