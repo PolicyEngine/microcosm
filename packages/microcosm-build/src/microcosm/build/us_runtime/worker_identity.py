@@ -67,7 +67,8 @@ _SEMANTIC_ENVIRONMENT_NAMES = (
 _PREDICT_WORKERS_FALLBACK = "joblib_cpu_count_fallback"
 #: The same field as identities recorded it while the default was
 #: ``os.cpu_count()``. Those records still validate, and the frozen schema-4
-#: worker shape (``legacy_primary_qrf_worker_execution_binding``) keeps it.
+#: worker shape (``legacy_primary_qrf_worker_execution_binding``) records an
+#: unset count as that code did: ``os.cpu_count()`` under this label.
 _SCHEMA_4_PREDICT_WORKERS_FALLBACK = "os_cpu_count_fallback"
 _PREDICT_WORKERS_RESOLUTIONS = frozenset(
     {
@@ -1253,7 +1254,12 @@ def _predict_workers_unset(configured: str | None) -> bool:
     return configured is None or not configured.strip()
 
 
-def _semantic_environment() -> dict[str, object]:
+def _semantic_environment(
+    predict_workers_fallback: int | None = None,
+) -> dict[str, object]:
+    """Bind the fit controls; an unset prediction-worker count records
+    ``predict_workers_fallback`` when given, else reads the QRF default."""
+
     fit_jobs_raw = os.environ.get("POPULACE_FIT_N_JOBS")
     if fit_jobs_raw is None:
         fit_jobs = -1
@@ -1272,7 +1278,11 @@ def _semantic_environment() -> dict[str, object]:
             )
     predict_workers_raw = os.environ.get("POPULACE_FIT_PREDICT_WORKERS")
     if _predict_workers_unset(predict_workers_raw):
-        predict_workers = _default_predict_workers()
+        predict_workers = (
+            _default_predict_workers()
+            if predict_workers_fallback is None
+            else predict_workers_fallback
+        )
         predict_workers_source = _PREDICT_WORKERS_FALLBACK
     else:
         try:
@@ -1353,9 +1363,13 @@ def primary_qrf_worker_semantic_identity(
         _require_sha256(uv_lock_sha256, boundary="primary-QRF worker lock")
     key = _primary_qrf_worker_identity_cache_key(uv_lock_sha256)
     if key not in _PRIMARY_QRF_WORKER_IDENTITY_CACHE:
+        # The identity records the count the key holds, read once, so a
+        # change during the attestation cannot file it under another count.
+        predict_workers_fallback = key[3]
         _PRIMARY_QRF_WORKER_IDENTITY_CACHE[key] = (
             _uncached_primary_qrf_worker_semantic_identity(
-                uv_lock_sha256=uv_lock_sha256
+                uv_lock_sha256=uv_lock_sha256,
+                predict_workers_fallback=predict_workers_fallback,
             )
         )
     return _PRIMARY_QRF_WORKER_IDENTITY_CACHE[key]
@@ -1364,6 +1378,7 @@ def primary_qrf_worker_semantic_identity(
 def _uncached_primary_qrf_worker_semantic_identity(
     *,
     uv_lock_sha256: str | None = None,
+    predict_workers_fallback: int | None = None,
 ) -> dict[str, object]:
     """Build the canonical worker identity, excluding all launcher aliases."""
 
@@ -1395,7 +1410,7 @@ def _uncached_primary_qrf_worker_semantic_identity(
             "Primary-QRF worker cannot read its loaded Python runtime."
         ) from error
     pyvenv_config = _canonical_pyvenv_config()
-    environment = _semantic_environment()
+    environment = _semantic_environment(predict_workers_fallback)
     import_trace = _clean_worker_import_trace()
     namespace_rows = _worker_package_resource_rows(import_trace)
     imports_sha256 = _canonical_sha256(
@@ -1776,10 +1791,13 @@ def legacy_primary_qrf_worker_execution_binding(
     environment["policy"] = "inherit_parent_environment_with_bound_fit_controls"
     environment["overrides"] = {}
     environment["bound_names"] = list(_SEMANTIC_ENVIRONMENT_NAMES)
-    # Schema-4 code labelled an unset prediction-worker count with the
-    # os.cpu_count() fallback's name; keep that label in this frozen shape.
+    # Schema-4 code resolved an unset prediction-worker count to this host's
+    # os.cpu_count() under the label below, and the sealed records compared
+    # with this projection hold that. The live draw uses joblib.cpu_count(),
+    # which the attested semantic identity binds; the count changes no draw.
     predict_workers = environment["semantic_controls"]["POPULACE_FIT_PREDICT_WORKERS"]
     if predict_workers["resolution"] == _PREDICT_WORKERS_FALLBACK:
+        predict_workers["resolved"] = os.cpu_count() or 1
         predict_workers["resolution"] = _SCHEMA_4_PREDICT_WORKERS_FALLBACK
     return {
         "module": worker_module["name"],

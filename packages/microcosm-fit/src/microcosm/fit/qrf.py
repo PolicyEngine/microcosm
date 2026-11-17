@@ -1414,17 +1414,33 @@ def default_predict_workers() -> int:
     """The draw's thread-pool width when ``POPULACE_FIT_PREDICT_WORKERS`` is unset.
 
     :func:`joblib.cpu_count` is the smallest of the machine's logical CPU
-    count, the process's CPU affinity mask, a Linux cgroup CPU quota
-    (``cpu.max``) and ``LOKY_MAX_CPU_COUNT``. :func:`os.cpu_count`, the
-    default before it, counts only the machine's CPUs: in a container held to
-    a CPU quota it started one thread per host CPU, and the quota then paused
-    them. The value can change within a process (when ``LOKY_MAX_CPU_COUNT``
-    or the affinity mask changes), so callers read it when they need it.
+    count, the process's CPU affinity mask, a Linux cgroup CPU quota (cgroup
+    v2 ``cpu.max`` or v1 ``cpu.cfs_quota_us``, rounded up) and
+    ``LOKY_MAX_CPU_COUNT``, and at least 1. It is 1 when joblib has turned
+    multiprocessing off (``JOBLIB_MULTIPROCESSING=0``, or no working
+    semaphores), as tree building with ``n_jobs=-1`` then also runs on one
+    thread. :func:`os.cpu_count`, the default before it, counts only the
+    machine's CPUs: in a container held to a CPU quota it started one thread
+    per host CPU, and the quota then paused them. The value can change within
+    a process (when ``LOKY_MAX_CPU_COUNT`` or the affinity mask changes), so
+    callers read it when they need it.
 
     The primary-QRF worker identity records this value for an unset override
     (``microcosm.build.us_runtime.worker_identity``), so both read it here.
+
+    Raises:
+        ValueError: If ``LOKY_MAX_CPU_COUNT`` is not an integer, which joblib
+            refuses, or joblib cannot read the cgroup CPU quota.
     """
-    return joblib.cpu_count()
+    try:
+        return joblib.cpu_count()
+    except ValueError as error:
+        raise ValueError(
+            "Cannot size the QRF draw's thread pool: joblib.cpu_count() failed "
+            f"with LOKY_MAX_CPU_COUNT={os.environ.get('LOKY_MAX_CPU_COUNT')!r} "
+            f"({error}). Set LOKY_MAX_CPU_COUNT to an integer, or set "
+            f"{_PREDICT_WORKERS_ENV}."
+        ) from error
 
 
 def _predict_workers() -> int:

@@ -9,8 +9,8 @@ by ``n_jobs=-1``, which joblib resolves to the same :func:`joblib.cpu_count`.
 Neither count may change an imputed value. The equality tests fit and draw on
 fixed seeds once with one fit job and one prediction worker, then again with
 several of either, and require the float64 bytes of every draw to be equal.
-Each run records the thread pool the draw used and the ``n_jobs`` each forest
-was fit with, so a run that silently fell back to one thread fails.
+Each run records the thread pool the draw used, so a draw that silently ran
+on one thread fails, and the ``n_jobs`` each forest was configured with.
 """
 
 from __future__ import annotations
@@ -92,6 +92,20 @@ def test_prediction_worker_override_wins_over_joblib_cpu_count(
     monkeypatch.setenv(PREDICT_WORKERS_ENV, configured)
 
     assert _predict_workers() == expected
+
+
+@pytest.mark.parametrize("malformed", ["", "4.0", "four"])
+def test_malformed_loky_max_cpu_count_is_named_in_the_error(
+    malformed: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """joblib refuses a non-integer ``LOKY_MAX_CPU_COUNT``; the error says so."""
+    monkeypatch.delenv(PREDICT_WORKERS_ENV, raising=False)
+    monkeypatch.setenv("LOKY_MAX_CPU_COUNT", malformed)
+
+    with pytest.raises(ValueError, match="LOKY_MAX_CPU_COUNT"):
+        _predict_workers()
+    monkeypatch.setenv(PREDICT_WORKERS_ENV, "2")
+    assert _predict_workers() == 2
 
 
 def test_fit_jobs_default_stays_minus_one_under_joblib_cpu_count(

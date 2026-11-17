@@ -7,10 +7,11 @@ worker identity in ``worker_identity.py`` and the older binding in
 still overrides it. Each test patches ``joblib.cpu_count`` to a value that
 ``os.cpu_count()``, the earlier default, does not return.
 
-The identity labels that fallback ``"joblib_cpu_count_fallback"``. Identities
-written before carry ``"os_cpu_count_fallback"`` and still validate, and the
-schema-4 worker shape that legacy pools recorded keeps the old label, so the
-scoring-only relocation of those pools still compares equal.
+Both label that fallback ``"joblib_cpu_count_fallback"``. Identities written
+before carry ``"os_cpu_count_fallback"`` and still validate. The schema-4
+worker shape that legacy pools recorded is projected as that code recorded it,
+the host's ``os.cpu_count()`` under the old label, so the scoring-only
+relocation of those pools compares what it compared before.
 """
 
 # ruff: noqa: F403, F405
@@ -71,10 +72,8 @@ PREDICT_CONTROL_READERS = (
         pytest.param(
             _worker_identity_predict_controls, JOBLIB_FALLBACK, id="worker_identity"
         ),
-        # The older binding builds the frozen schema-4 shape, so it keeps the
-        # label that shape has always carried.
         pytest.param(
-            _stacked_spine_predict_controls, SCHEMA_4_FALLBACK, id="stacked_spine"
+            _stacked_spine_predict_controls, JOBLIB_FALLBACK, id="stacked_spine"
         ),
     ),
 )
@@ -189,40 +188,79 @@ def test_worker_identity_validation_refuses_an_unknown_fallback_label(
         )
 
 
-def test_schema_4_projection_keeps_the_os_cpu_count_fallback_label(
+def test_schema_4_projection_records_an_unset_count_as_schema_4_code_did(
     _worker_identity_memo_inputs, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The legacy projection matches what the schema-4 code records.
+    """The legacy projection reports ``os.cpu_count()`` under the old label.
 
-    The scoring-only relocation of a schema-9 pool allows only two differences
-    between the pool's recorded schema-4 worker and this projection of the live
-    worker. ``stacked_spine``'s older binding is that schema-4 recorder.
+    Schema-4 code resolved an unset count to ``os.cpu_count()`` and labelled it
+    ``"os_cpu_count_fallback"``. The scoring-only relocation of a schema-9 pool
+    compares that record with this projection of the live worker and allows
+    only the two relocated interpreter paths to differ. The live identity
+    itself still records the ``joblib.cpu_count()`` the draw uses.
     """
     joblib_cpu_count = _cpu_count_unlike_os()
     binding = _live_binding_with_unset_predict_workers(monkeypatch, joblib_cpu_count)
     semantic = binding["semantic_identity"]
     live_controls = semantic["environment"]["semantic_controls"][PREDICT_WORKERS_ENV]
-    assert live_controls["resolution"] == JOBLIB_FALLBACK
+    live_before = deepcopy(live_controls)
 
     projected = worker_identity_module.legacy_primary_qrf_worker_execution_binding(
         semantic_identity=semantic
     )
 
-    assert projected["environment"]["semantic_controls"][PREDICT_WORKERS_ENV] == {
+    schema_4_controls = {
         "configured": None,
-        "resolved": joblib_cpu_count,
+        "resolved": os.cpu_count() or 1,
         "resolution": SCHEMA_4_FALLBACK,
     }
-    assert live_controls["resolution"] == JOBLIB_FALLBACK
-    schema_4_recorded = (
-        stacked_spine_module._legacy_primary_qrf_worker_execution_binding()
+    assert (
+        projected["environment"]["semantic_controls"][PREDICT_WORKERS_ENV]
+        == schema_4_controls
+    )
+    assert (
+        live_controls
+        == live_before
+        == {
+            "configured": None,
+            "resolved": joblib_cpu_count,
+            "resolution": JOBLIB_FALLBACK,
+        }
+    )
+    relocated_python = "/relocated/campaign/.venv/bin/python"
+    recorded = deepcopy(projected)
+    recorded["argv_template"][0] = relocated_python
+    recorded["interpreter"]["executable"] = relocated_python
+    recorded["environment"]["semantic_controls"][PREDICT_WORKERS_ENV] = dict(
+        schema_4_controls
     )
     assert (
         worker_identity_module._legacy_worker_execution_mismatch_paths(
-            schema_4_recorded, projected
+            recorded, projected
         )
-        == ()
+        == worker_identity_module.LEGACY_WORKER_PERMITTED_MISMATCHES
     )
+
+
+def test_worker_identity_records_the_count_it_is_cached_under(
+    _worker_identity_memo_inputs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The cache key and the identity read ``joblib.cpu_count()`` once."""
+    monkeypatch.delenv(PREDICT_WORKERS_ENV, raising=False)
+    first_count, later_count = _cpu_count_unlike_os(3), _cpu_count_unlike_os(5)
+    calls = []
+
+    def changing_cpu_count(only_physical_cores: bool = False) -> int:
+        calls.append(None)
+        return first_count if len(calls) == 1 else later_count
+
+    monkeypatch.setattr(joblib, "cpu_count", changing_cpu_count)
+
+    identity = worker_identity_module.primary_qrf_worker_semantic_identity()
+
+    controls = identity["environment"]["semantic_controls"][PREDICT_WORKERS_ENV]
+    assert controls["resolved"] == first_count
+    assert len(calls) == 1
 
 
 def test_schema_4_projection_keeps_an_override_label(

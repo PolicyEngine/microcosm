@@ -6030,9 +6030,7 @@ def _legacy_primary_qrf_worker_execution_binding() -> dict[str, object]:
     predict_workers_raw = os.environ.get("POPULACE_FIT_PREDICT_WORKERS")
     if predict_workers_raw is None or not predict_workers_raw.strip():
         predict_workers = default_predict_workers()
-        # This builds the frozen schema-4 shape, whose label for the fallback
-        # predates the joblib.cpu_count() default.
-        predict_workers_source = "os_cpu_count_fallback"
+        predict_workers_source = "joblib_cpu_count_fallback"
     else:
         try:
             predict_workers = int(predict_workers_raw)

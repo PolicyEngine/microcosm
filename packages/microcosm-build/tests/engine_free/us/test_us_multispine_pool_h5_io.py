@@ -1314,7 +1314,7 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
         _cached_canonical_stacked_late_dag_receipt(
             worker_identity_module.os.environ.get("POPULACE_FIT_N_JOBS"),
             worker_identity_module.os.environ.get("POPULACE_FIT_PREDICT_WORKERS"),
-            worker_identity_module.os.cpu_count(),
+            worker_identity_module._default_predict_workers(),
         )
     )
 
