@@ -537,9 +537,9 @@ def _unpinned_knots(sidecar: dict) -> None:
         pytest.param(
             _zero_digest,
             [
-                "its geography binding's definition_sha256 is not the digest of "
-                "the definition the registered conditioned supports compose at "
-                "the declared seed"
+                "its geography binding's definition_sha256 does not name the "
+                "definition the registered conditioned supports compose at the "
+                "declared seed"
             ],
             id="zero-digest",
         ),

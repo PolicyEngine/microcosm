@@ -271,9 +271,9 @@ def uk_spine_geography_binding_failures(
     names a field and what it must be, never the value it holds, so a
     refusal carries names and K only.
 
-    It holds ``definition_sha256`` to its format alone: the digest is of a
-    definition composed from the supports' bytes, so its value is recomputed
-    only where they are at hand (:func:`uk_spine_definition_failures`), as a
+    It holds ``definition_sha256`` to its format alone: that SHA-256 names a
+    definition composed from the supports' bytes, so it is recomputed only
+    where they are at hand (:func:`uk_spine_definition_failures`), as a
     release candidate's dense build on a bound spine and the national
     certifier do.
     """
@@ -339,14 +339,14 @@ def uk_spine_definition_failures(
     definition the spine's area draw builds on them at its declared seed is
     composed again, by the helper the sidecar writer calls
     (:func:`uk_spine_geography_binding`), with this checkout's code, and the
-    block's ``definition_sha256`` must be its digest: a zero or invented
-    digest, or one of a definition another commit's code composed, fails.
-    The supports must be the conditioned ones ``sources.yaml`` registers
+    block's ``definition_sha256`` must name it: a zero or invented SHA-256,
+    or one naming a definition another commit's code composed, fails. The
+    supports must be the conditioned ones ``sources.yaml`` registers
     (:func:`uk_atomic_support_register` with ``conditioned=True``), or the
-    digest is not recomputed and that fails instead. A digest that is not a
+    SHA-256 is not recomputed and that fails instead. A value that is not a
     SHA-256 hex digest is left to :func:`uk_spine_geography_binding_failures`
     to name. Each failure names the field and what it must be, never a
-    digest.
+    SHA-256.
     """
 
     register = uk_atomic_support_register(spec, conditioned=True)
@@ -366,7 +366,7 @@ def uk_spine_definition_failures(
     composed = uk_spine_geography_binding(supports, register=UK_SPINE_SUPPORT_REGISTER)
     if digest != composed["definition_sha256"]:
         return (
-            "definition_sha256 is not the digest of the definition the registered "
+            "definition_sha256 does not name the definition the registered "
             "conditioned supports compose at the declared seed",
         )
     return ()

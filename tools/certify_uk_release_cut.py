@@ -219,7 +219,7 @@ def _verify_spine_package(sidecar: dict, args: argparse.Namespace) -> None:
     this checkout's package: its ``resource_pins`` and ``stage_artifact_pins``
     must be the package's for the stages it ran
     (``spine_build.uk_spine_package_pin_failures``), and its geography
-    block's ``definition_sha256`` the digest of the definition the three
+    block's ``definition_sha256`` must name the definition the three
     conditioned supports compose
     (``country_adapter.uk_spine_definition_failures``). The supports are
     ``--spine-support-ew``, ``--spine-support-scotland`` and
