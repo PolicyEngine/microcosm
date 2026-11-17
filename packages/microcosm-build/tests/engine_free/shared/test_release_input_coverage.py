@@ -2235,3 +2235,41 @@ class TestCapitalGainDistributionRouteGuarantee:
 
         with pytest.raises(ValueError, match=column):
             assert_release_input_coverage_manifest_current(manifest=demoted)
+
+
+def test_clearing_the_installed_parameter_cache_frees_the_cached_system(
+    monkeypatch,
+) -> None:
+    """The release tool clears the cache after its start-up check, so the
+    tax-benefit system the check built is not kept for the whole run; the next
+    caller builds it again."""
+    import gc
+    import weakref
+
+    class TaxBenefitSystem:
+        """A stand-in for the reformed PolicyEngine-US system."""
+
+    built: list[weakref.ref] = []
+
+    def build_installed_parameter_stages():
+        system = TaxBenefitSystem()
+        built.append(weakref.ref(system))
+        return {}, system
+
+    monkeypatch.setattr(
+        coverage_module,
+        "_installed_parameter_stages",
+        functools.cache(build_installed_parameter_stages),
+    )
+    first = coverage_module._installed_parameter_stages()
+    assert coverage_module._installed_parameter_stages() is first
+    del first
+    gc.collect()
+    assert built[0]() is not None
+
+    coverage_module.clear_installed_list_parameter_baseline_cache()
+    gc.collect()
+
+    assert built[0]() is None
+    coverage_module._installed_parameter_stages()
+    assert len(built) == 2

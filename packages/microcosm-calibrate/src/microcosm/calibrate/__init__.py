@@ -111,6 +111,8 @@ from microcosm.calibrate.hierarchy import (  # noqa: E402 - after compat gate
 )
 from microcosm.calibrate.matrix import (  # noqa: E402 - after the compat gate
     CalibrationProblem,
+    ConstraintMatrixDroppedError,
+    DroppedConstraintMatrix,
     SkippedTarget,
     build_constraint_matrix,
 )
@@ -150,6 +152,7 @@ from microcosm.calibrate.solve import (  # noqa: E402 - after the compat gate
     rebuild_calibration_result,
     refit_l0_selection,
     relative_error_loss,
+    without_constraint_matrix,
 )
 from microcosm.calibrate.static_aging import (  # noqa: E402 - after the compat gate
     DemographicProjection,
@@ -206,6 +209,8 @@ __all__ = [
     "TARGET_LOSS_ATTRIBUTION_WARNING_CODES",
     "TARGET_LOSS_BASIS_HASH_ALGORITHM",
     "CalibrationProblem",
+    "ConstraintMatrixDroppedError",
+    "DroppedConstraintMatrix",
     "CalibrationHierarchy",
     "CalibrationHierarchySeed",
     "CalibrationResult",
@@ -235,6 +240,7 @@ __all__ = [
     "effective_sample_size",
     "rebuild_calibration_result",
     "refit_l0_selection",
+    "without_constraint_matrix",
     "diagnostics_payload",
     "past_cap_census",
     "relative_error_loss",
