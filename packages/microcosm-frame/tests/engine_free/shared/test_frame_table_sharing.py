@@ -11,6 +11,7 @@ deep-copies instead. These tests replace the copy-on-write check to take that
 path, because pandas 3 always has copy-on-write on.
 """
 
+import importlib
 from collections.abc import Callable, Iterator
 from typing import Any
 
@@ -27,6 +28,8 @@ from microcosm.frame import (
     Weights,
 )
 from microcosm.frame import bundle as bundle_module
+
+pandas_config = importlib.import_module("pandas._config")
 
 _SCHEMA = EntitySchema(
     group_entities=("household", "firm"),
@@ -148,15 +151,17 @@ def _numeric_columns_sharing_memory(
 
 
 class TestDefaultConstructor:
-    def test_constructor_deep_copies_every_table(self) -> None:
+    def test_constructor_deep_copies_every_table_and_the_strata(self) -> None:
         tables = _source_tables()
-        frame = Frame(tables, _SCHEMA, _source_weights(), _source_strata())
+        strata = _source_strata()
+        frame = Frame(tables, _SCHEMA, _source_weights(), strata)
 
         for name, table in _tables_of(frame).items():
             assert table is not tables[name]
         sharing = _numeric_columns_sharing_memory(_tables_of(frame), tables)
         assert sharing, "the comparison found no numeric columns"
         assert not any(sharing.values()), sharing
+        assert not np.shares_memory(frame.strata.to_numpy(), strata.to_numpy())
 
 
 class TestAdopt:
@@ -545,52 +550,59 @@ def test_a_pandas_write_to_the_source_leaves_the_new_frame_unchanged(
 
 
 class TestCopyOnWriteCheck:
+    """``_pandas_copy_on_write`` on each pandas it can run under.
+
+    pandas 2.x provides ``pandas._config.using_copy_on_write``; pandas 3
+    removed it. The tests add or remove that function and replace the
+    version and the option reader to stand for each case.
+    """
+
+    @staticmethod
+    def _refuse_option_reads(name: str) -> object:
+        raise AssertionError(f"the check must not read option {name!r}")
+
     def test_pandas_3_has_copy_on_write_without_reading_the_option(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        def refuse_option_reads(name: str) -> object:
-            raise AssertionError(f"pandas 3 must not read option {name!r}")
-
+        monkeypatch.delattr(pandas_config, "using_copy_on_write", raising=False)
         monkeypatch.setattr(bundle_module.pd, "__version__", "3.0.3")
-        monkeypatch.setattr(bundle_module.pd, "get_option", refuse_option_reads)
+        monkeypatch.setattr(bundle_module.pd, "get_option", self._refuse_option_reads)
 
         assert bundle_module._pandas_copy_on_write() is True
 
+    @pytest.mark.parametrize("in_force", [True, False], ids=["on", "off"])
+    def test_pandas_2_uses_pandas_own_check(
+        self, monkeypatch: pytest.MonkeyPatch, in_force: bool
+    ) -> None:
+        monkeypatch.setattr(
+            pandas_config, "using_copy_on_write", lambda: in_force, raising=False
+        )
+        monkeypatch.setattr(bundle_module.pd, "__version__", "2.3.3")
+        monkeypatch.setattr(bundle_module.pd, "get_option", self._refuse_option_reads)
+
+        assert bundle_module._pandas_copy_on_write() is in_force
+
     @pytest.mark.parametrize(
-        ("copy_on_write", "data_manager", "expected"),
+        ("version", "option_value", "expected"),
         [
-            (True, "block", True),
-            (False, "block", False),
-            ("warn", "block", False),
-            (True, "array", False),
+            ("2.3.3", True, True),
+            ("2.3.3", False, False),
+            ("2.3.3", "warn", False),
+            ("0+unknown", True, True),
+            ("0+unknown", False, False),
         ],
-        ids=["enabled", "disabled", "warn_mode", "array_manager"],
+        ids=["enabled", "disabled", "warn_mode", "undotted_on", "undotted_off"],
     )
-    def test_pandas_2_reads_the_copy_on_write_and_data_manager_options(
+    def test_without_pandas_own_check_an_older_version_reads_the_option(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        copy_on_write: object,
-        data_manager: str,
+        version: str,
+        option_value: object,
         expected: bool,
     ) -> None:
-        options = {
-            "mode.copy_on_write": copy_on_write,
-            "mode.data_manager": data_manager,
-        }
-        monkeypatch.setattr(bundle_module.pd, "__version__", "2.3.3")
+        options = {"mode.copy_on_write": option_value}
+        monkeypatch.delattr(pandas_config, "using_copy_on_write", raising=False)
+        monkeypatch.setattr(bundle_module.pd, "__version__", version)
         monkeypatch.setattr(bundle_module.pd, "get_option", options.__getitem__)
 
         assert bundle_module._pandas_copy_on_write() is expected
-
-    def test_pandas_2_without_a_data_manager_option_uses_copy_on_write(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        def read_option(name: str) -> object:
-            if name == "mode.copy_on_write":
-                return True
-            raise pd.errors.OptionError(f"No such keys(s): {name!r}")
-
-        monkeypatch.setattr(bundle_module.pd, "__version__", "2.3.3")
-        monkeypatch.setattr(bundle_module.pd, "get_option", read_option)
-
-        assert bundle_module._pandas_copy_on_write() is True

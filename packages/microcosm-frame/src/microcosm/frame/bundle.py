@@ -27,7 +27,7 @@ every unchanged column with its source frame when pandas copy-on-write is on,
 and deep-copy when it is off (see :meth:`Frame._adopt`).
 """
 
-import warnings
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -161,8 +161,9 @@ class Frame:
 
         Arguments and validation are the constructor's: every invariant is
         checked and the same errors are raised, except that a table that is
-        not a DataFrame raises ``TypeError`` (the constructor fails on its
-        ``copy()`` call). Weights are stored as given (their arrays are
+        not a DataFrame raises ``TypeError`` before any other check (the
+        constructor fails on such a table later, with an error that depends
+        on the object). Weights are stored as given (their arrays are
         read-only), and the strata are shallow-copied when copy-on-write is
         on.
 
@@ -986,7 +987,7 @@ class Frame:
                 a reserved ``{entity}_weight`` name, or broken linkage).
         """
 
-        table = self.table(entity).copy(deep=not _pandas_copy_on_write())
+        table = self.table(entity).copy(deep=False)
         for column_name, values in columns.items():
             table[column_name] = values
         return self.replace_tables(**{entity: table})
@@ -1543,25 +1544,23 @@ def _require_dataframes(tables: Mapping[str, Any]) -> None:
 def _pandas_copy_on_write() -> bool:
     """Whether pandas copy-on-write is on in this process, checked at each call.
 
-    pandas 3 always has copy-on-write on and deprecates its options, so they
-    are read only under pandas 2.x. There, as in pandas' own check,
-    copy-on-write is on only when ``mode.copy_on_write`` is ``True`` (it is
-    ``False`` by default, or ``"warn"``) and ``mode.data_manager`` is
-    ``"block"``.
+    pandas 2.x answers this itself with ``pandas._config.using_copy_on_write()``:
+    ``mode.copy_on_write`` must be ``True`` (it is ``False`` by default, or
+    ``"warn"``) and the data manager the default block manager. Reading
+    that function emits none of the deprecation warnings the options do.
+    pandas 3 removed it along with the switch, because copy-on-write is
+    always on. Without the function, a version from 3 on counts as on, and
+    any other version reads ``mode.copy_on_write``.
     """
 
-    if int(pd.__version__.split(".", 1)[0]) >= 3:
-        return True
-    if pd.get_option("mode.copy_on_write") is not True:
-        return False
-    with warnings.catch_warnings():
-        # pandas 2.x deprecates the data_manager option.
-        warnings.simplefilter("ignore", category=DeprecationWarning)
-        warnings.simplefilter("ignore", category=FutureWarning)
-        try:
-            return pd.get_option("mode.data_manager") == "block"
-        except pd.errors.OptionError:
+    try:
+        from pandas._config import using_copy_on_write
+    except ImportError:
+        major_version = re.match(r"\d+", pd.__version__)
+        if major_version is not None and int(major_version.group()) >= 3:
             return True
+        return pd.get_option("mode.copy_on_write") is True
+    return bool(using_copy_on_write())
 
 
 @dataclass(frozen=True)

@@ -21,12 +21,17 @@ and refuses it. Each rule's name is what a failure reports.
     assignment, ``__setitem__``, ``fill``, ``sort`` and the other in-place
     ndarray methods, ``fillna(copy=False)``, ``out=``, ``shuffle`` and the
     in-place NumPy functions below. It counts when the written expression
-    reaches the view through indexing, ``np.asarray``, ``np.flip`` and the
-    other NumPy view functions, ``to_numpy()``, ``astype(copy=False)`` and
-    the other view methods, a list, tuple, set or dict holding it, ``or``
-    and conditional expressions, or a name the same function binds to any
-    of these (by assignment, unpacking, a ``for`` loop or a ``with``
-    statement). Workspace classes' own ``self.array`` is exempt.
+    reaches the view through indexing, the NumPy functions that can return
+    a view (``np.asarray``, ``np.flip``, ``np.split``, ... in
+    ``_VIEW_NUMPY_FUNCTIONS``), ``to_numpy()``, ``astype(copy=False)`` and
+    the other view methods, a list, tuple, set or dict display or
+    comprehension holding it (also concatenated with ``+``), ``zip``,
+    ``enumerate``, ``.items()``, ``.values()`` and ``.get()``, ``or`` and
+    conditional expressions, or a name the same function binds to any of
+    these (by assignment, unpacking, a ``for`` loop or a ``with``
+    statement) or fills with one (``append``, ``extend``, ``update``,
+    ``name[key] = ...``, ``+=``). Workspace classes' own ``self.array`` is
+    exempt.
 ``pandas-private-attribute``
     ``._ndarray``, ``._mgr``, ``._get_column_array`` or
     ``._iter_column_arrays`` on anything, and ``._values``, ``._data``,
@@ -36,24 +41,27 @@ and refuses it. Each rule's name is what a failure reports.
     Any use of ``numpy.copyto``.
 ``writes-into-existing-array``
     A write into an array the same function did not create:
-    ``out=`` given to a NumPy function, ufunc, ndarray method or NumPy random
-    ``Generator`` method (by keyword, or by position for NumPy functions and
-    ufuncs), the first argument of ``numpy.<ufunc>.at`` (which writes even
-    into a read-only array), the first argument of ``numpy.put``,
-    ``numpy.putmask``, ``numpy.place``, ``numpy.put_along_axis``,
-    ``numpy.fill_diagonal``, ``numpy.random.shuffle``, any ``.shuffle``
-    method and ``numpy.nan_to_num(copy=False)``. NumPy functions are also
-    followed through a local name bound to them (``plus = np.add``).
-    Created means one of: the result of a ufunc, a ``numpy.random`` function
-    or a NumPy function that always allocates
+    ``out=`` given to a NumPy or SciPy function or ufunc, an ndarray method
+    or a NumPy random ``Generator`` method (by keyword, or by position for
+    NumPy and SciPy functions and ufuncs), the first argument of
+    ``numpy.<ufunc>.at`` (which writes even into a read-only array), the
+    first argument of ``numpy.put``, ``numpy.putmask``, ``numpy.place``,
+    ``numpy.put_along_axis``, ``numpy.fill_diagonal``,
+    ``numpy.random.shuffle``, any ``.shuffle`` method and
+    ``numpy.nan_to_num(copy=False)``. Library functions are also followed
+    through a local name bound to them (``plus = np.add``).
+    Created means one of: the result of a ufunc or ufunc reduction, a
+    ``numpy.random`` function, a random ``Generator`` draw (``rng.normal``,
+    ...), ``.flatten()``, or a NumPy function that always allocates
     (``_ALLOCATING_NUMPY_FUNCTIONS``: ``np.zeros``, ``np.where``,
-    ``np.concatenate``, ...), when not given an output array; ``np.array``
-    without ``copy=``; ``to_numpy(copy=True)``; a subscript of one of these;
-    a ``.copy()``, arithmetic, a comparison, ``list(...)`` and the other
-    container builtins, or a list, set or dict display (a slice of these is
-    new, an item is not, because a shallow copy or a container shares its
-    items); or a local name whose every binding in the function, other than
-    to ``None``, is one of these.
+    ``np.concatenate``, ...), when not given an output array;
+    ``np.array`` without ``copy=``; ``to_numpy(copy=True)``; a view or
+    subscript of one of these; arithmetic or a comparison; a ``.copy()``,
+    ``list(...)`` and the other container builtins, ``+`` or ``*``
+    (which also join lists), or a list, set or dict display (a slice of
+    these is new, an item is not, because a shallow copy or a container
+    shares its items); or a local name whose every binding in the
+    function, other than to ``None``, is one of these.
 
 ``setflags``, ``Series.array[i] = value``, ``._ndarray``, ``._mgr``,
 ``np.copyto`` and ``out=`` are the writes first identified as unprotected.
@@ -66,16 +74,24 @@ builds US and UK frames) and under ``tools/`` (the release and build tools),
 except files in ``node_modules`` or hidden directories. Tests and
 ``test_support/`` are not scanned.
 
-What source reading cannot see, so is not refused here:
+What this scan does not refuse:
 
-- the arrays ``to_numpy()`` and ``.values`` return for extension-typed
-  columns (``Int64``, ``Float64``, ``boolean``, ``category``, python-backed
-  strings) are writable views of the shared memory;
-- a pandas object built with ``copy=False`` over another object's array
-  writes into it when it is written through pandas;
-- names reached dynamically (``getattr(np, name)``, ``**{"out": array}``,
-  ``*arguments``), positional ``out`` given to ndarray methods, writes
-  through closures, and items of a container a function did not build.
+- Writes it cannot see from the source: into the arrays ``to_numpy()`` and
+  ``.values`` return for extension-typed columns (``Int64``, ``Float64``,
+  ``boolean``, ``category``, python-backed strings), which are writable
+  views of the shared memory; through a pandas object built with
+  ``copy=False`` over another object's array; into ``np.asarray(index)``,
+  which is writable although the index is shared even between deep copies.
+- Arrays reached in ways it does not follow: through other functions'
+  return values or arguments, closures, object arrays, names reached
+  dynamically (``getattr(np, name)``, ``**{"out": array}``, ``*arguments``),
+  positional ``out`` given to ndarray methods, items of a container the
+  function did not build, and array libraries other than NumPy and SciPy
+  (``torch.from_numpy`` of a read-only view returns a writable tensor).
+- The analysis is not flow-sensitive: a name counts as created only if
+  every binding in its function does, so a parameter rebound to a new
+  array, and ``.astype()`` (which shares memory when it is a pandas
+  object's same-type conversion), count as not created.
 
 A finding that cannot write into memory a pandas object shares goes in
 ``_REVIEWED_FINDINGS`` with the reason.
@@ -87,10 +103,11 @@ import ast
 import bisect
 import functools
 import hashlib
+import importlib
 import inspect
 import re
 from collections import defaultdict
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -106,7 +123,8 @@ _REPOSITORY = paths_for("microcosm-frame").repository
 #: expression's source, a digest of the enclosing function's source) as a
 #: failure prints it, with the reason. The function is ``Class.method`` or
 #: ``outer.inner``, or ``<module>`` for module-level code. Any change to the
-#: enclosing function changes the digest and needs a new review.
+#: enclosing function changes the digest and needs a new review; a reason
+#: that rests on other functions names them, and changing them needs one too.
 _REVIEWED_FINDINGS: dict[tuple[str, str, str, str, str], str] = {
     (
         "packages/microcosm-build/src/microcosm/build/uk_runtime/frs_relationships.py",
@@ -128,7 +146,8 @@ _REVIEWED_FINDINGS: dict[tuple[str, str, str, str, str], str] = {
     ): (
         "np.add.at writes into the array _pre_clone_household_weights returns, "
         "which _pre_residential_household_weights creates with "
-        "np.asarray(...).copy() from the household weights."
+        "np.asarray(...).copy() from the household weights. Review again if "
+        "either of those functions changes."
     ),
 }
 
@@ -150,8 +169,13 @@ _OWN_OBJECT_NAMES = frozenset({"self", "cls"})
 #: Attributes that return a writable view of pandas' memory.
 _WRITABLE_VIEW_ATTRIBUTES = frozenset({"array", "base", "asi8"})
 
-#: NumPy functions whose result is always a new array (unless given ``out=``).
-#: A ufunc's result and a ``numpy.random`` function's result are new too.
+#: Libraries whose functions the scan resolves through imports.
+_LIBRARIES = ("numpy", "scipy")
+
+#: NumPy functions whose result is always new memory, for ndarrays and for
+#: pandas objects alike (unless given ``out=``). ``np.clip``, ``np.tile`` and
+#: ``np.round`` are left out: given a pandas object, their result can share
+#: its memory.
 _ALLOCATING_NUMPY_FUNCTIONS = frozenset(
     f"numpy.{name}"
     for name in (
@@ -165,10 +189,8 @@ _ALLOCATING_NUMPY_FUNCTIONS = frozenset(
         "bincount",
         "cumsum",
         "cumprod",
-        "clip",
         "take",
-        "round",
-        "around",
+        "interp",
         "flatnonzero",
         "outer",
         "dot",
@@ -190,18 +212,66 @@ _ALLOCATING_NUMPY_FUNCTIONS = frozenset(
         "hstack",
         "vstack",
         "column_stack",
-        "tile",
         "repeat",
     )
+)
+
+#: ufunc methods whose result is a new array (unless given ``out=``).
+_ALLOCATING_UFUNC_METHODS = frozenset({"reduce", "accumulate", "reduceat", "outer"})
+
+#: NumPy random Generator methods that draw a new array.
+_RANDOM_DRAW_METHODS = frozenset(
+    {
+        "random",
+        "normal",
+        "uniform",
+        "integers",
+        "choice",
+        "permutation",
+        "standard_normal",
+        "standard_exponential",
+        "standard_gamma",
+        "exponential",
+        "gamma",
+        "beta",
+        "binomial",
+        "poisson",
+        "lognormal",
+        "multinomial",
+        "multivariate_normal",
+        "dirichlet",
+        "laplace",
+        "logistic",
+        "triangular",
+        "geometric",
+    }
 )
 
 #: Builtins whose result is a new container (whose items may be shared).
 _CONTAINER_BUILTINS = frozenset(
     {"list", "dict", "set", "frozenset", "tuple", "sorted", "bytearray"}
 )
+#: Builtins and methods whose result holds the items of their arguments or
+#: receiver, for following views through iteration.
+_SAME_ITEMS_BUILTINS = frozenset(
+    {"reversed", "iter", "list", "tuple", "sorted", "set", "frozenset"}
+)
+_TUPLE_YIELDING_BUILTINS = frozenset({"zip", "enumerate"})
+_SAME_ITEMS_METHODS = frozenset({"values", "popitem"})
+_TUPLE_YIELDING_METHODS = frozenset({"items"})
+#: Methods that return one item of the container they are called on.
+_ITEM_TAKING_METHODS = frozenset({"get", "pop", "setdefault"})
+#: Methods that put one item, or the items of an iterable, into the
+#: container they are called on.
+_ITEM_ADDING_METHODS = frozenset(
+    {"append", "appendleft", "insert", "add", "setdefault"}
+)
+_ITEMS_ADDING_METHODS = frozenset({"extend", "update"})
 
-#: Expressions whose value is a new array: arithmetic and comparisons.
-_NEW_VALUE_EXPRESSIONS = (ast.BinOp, ast.UnaryOp, ast.Compare)
+#: Arithmetic and comparisons give a new array; ``+`` and ``*`` also join or
+#: repeat lists, whose items are shared, so they give a new container.
+_NEW_ARRAY_EXPRESSIONS = (ast.UnaryOp, ast.Compare)
+_JOINING_OPERATORS = (ast.Add, ast.Mult)
 #: Displays and comprehensions: a new container whose items may be shared.
 _CONTAINER_EXPRESSIONS = (
     ast.List,
@@ -256,6 +326,7 @@ _IN_PLACE_NUMPY_FUNCTIONS = frozenset(
         "numpy.put_along_axis",
         "numpy.fill_diagonal",
         "numpy.random.shuffle",
+        "numpy.random.mtrand.shuffle",
     }
 )
 
@@ -273,7 +344,8 @@ _IN_PLACE_ARRAY_METHODS = frozenset(
     }
 )
 
-#: NumPy functions that can return a view of an argument.
+#: NumPy functions that can return a view of an argument (or views, as
+#: ``np.split`` does).
 _VIEW_NUMPY_FUNCTIONS = frozenset(
     f"numpy.{name}"
     for name in (
@@ -281,14 +353,19 @@ _VIEW_NUMPY_FUNCTIONS = frozenset(
         "asanyarray",
         "ascontiguousarray",
         "asfortranarray",
+        "asarray_chkfinite",
+        "require",
         "ravel",
         "reshape",
         "squeeze",
         "transpose",
+        "permute_dims",
+        "matrix_transpose",
         "atleast_1d",
         "atleast_2d",
         "atleast_3d",
         "frombuffer",
+        "from_dlpack",
         "flip",
         "fliplr",
         "flipud",
@@ -299,16 +376,44 @@ _VIEW_NUMPY_FUNCTIONS = frozenset(
         "expand_dims",
         "real",
         "imag",
+        "trim_zeros",
+        "tile",
+        "clip",
+        "round",
+        "around",
         "lib.stride_tricks.as_strided",
+    )
+)
+
+#: NumPy functions that return a list or tuple of views of an argument.
+_SPLITTING_NUMPY_FUNCTIONS = frozenset(
+    f"numpy.{name}"
+    for name in (
+        "split",
+        "array_split",
+        "hsplit",
+        "vsplit",
+        "dsplit",
+        "unstack",
+        "broadcast_arrays",
     )
 )
 
 #: Methods and attributes that can return a view of the object they are read
 #: from.
 _VIEW_METHODS = frozenset(
-    {"to_numpy", "view", "reshape", "ravel", "squeeze", "transpose", "__array__"}
+    {
+        "to_numpy",
+        "view",
+        "reshape",
+        "ravel",
+        "squeeze",
+        "transpose",
+        "swapaxes",
+        "__array__",
+    }
 )
-_VIEW_ATTRIBUTES = frozenset({"T", "real", "imag", "flat"})
+_VIEW_ATTRIBUTES = frozenset({"T", "mT", "real", "imag", "flat"})
 
 _NESTED_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
 
@@ -319,6 +424,42 @@ _NOT_NEW = 0
 _NEW_OBJECT = 1
 #: A new array: every item and view of it is new memory.
 _NEW_ARRAY = 2
+
+#: How deep in containers a value holds a writable view of pandas' memory:
+#: ``_IS_VIEW`` for a view itself, 1 for a container of views, 2 for a
+#: container of those, and ``_NO_VIEW`` for none (or deeper than tracked).
+_IS_VIEW = 0
+_NO_VIEW = 5
+
+
+def _item_of(depth: int) -> int:
+    """An item of a view (a row or slice) is a view; of a container, one level less."""
+
+    if depth >= _NO_VIEW:
+        return _NO_VIEW
+    return max(depth - 1, _IS_VIEW)
+
+
+def _holder_of(depth: int) -> int:
+    """A container of a value holds its view one level deeper."""
+
+    return min(depth + 1, _NO_VIEW)
+
+
+def _shifted(depth: int, shift: int) -> int:
+    """``depth`` after taking ``-shift`` items, or going ``shift`` containers deeper."""
+
+    for _step in range(-shift):
+        depth = _item_of(depth)
+    for _step in range(shift):
+        depth = _holder_of(depth)
+    return depth
+
+
+def _view_of(depth: int) -> int:
+    """A NumPy view of a view is a view; of a container (a list) it is a copy."""
+
+    return _IS_VIEW if depth == _IS_VIEW else _NO_VIEW
 
 
 @dataclass(frozen=True)
@@ -337,23 +478,25 @@ class Finding:
         return (self.path, self.function, self.rule, self.code, self.function_digest)
 
     def describe(self) -> str:
-        return f"{self.path}:{self.line} in {self.function}: {self.rule}: {self.code}"
+        code = self.code if len(self.code) <= 120 else self.code[:117] + "..."
+        return f"{self.path}:{self.line} in {self.function}: {self.rule}: {code}"
 
 
 # Bindings ------------------------------------------------------------------
 
 #: One binding of a name: the value expression (``None`` when it cannot be
-#: followed, as for an import), and whether the name is bound to exactly that
-#: value (``False`` when it is bound to a part of it, as a loop target is
-#: bound to an item of its iterable).
-_Binding = tuple[ast.expr | None, bool]
+#: followed, as for an import), and how many items deep into that value the
+#: name is bound: 0 for the value itself, 1 for a loop target (an item of
+#: its iterable), 2 for a name unpacked from a loop target, and so on.
+_Binding = tuple[ast.expr | None, int]
 
 
 class _Scope:
     """One function, class or module, and the names it binds.
 
     The bindings are collected on first use, because most scopes are never
-    asked.
+    asked. ``held_values`` are the expressions a name's container is filled
+    with (``name.append(value)``, ``name[key] = value``, ``name += value``).
     """
 
     def __init__(self, qualified_name: str, node: ast.AST) -> None:
@@ -362,11 +505,24 @@ class _Scope:
         self._parameters: frozenset[str] = frozenset()
         self._declared_elsewhere: set[str] = set()
         self._bindings: defaultdict[str, list[_Binding]] | None = None
+        self._held: defaultdict[str, list[tuple[ast.expr, bool]]] = defaultdict(list)
+        # Filled by the scanner on first use, held here so that they live
+        # exactly as long as the scope.
+        self.newness_table: dict[str, int] | None = None
+        self.view_table: dict[str, int] | None = None
 
     def child_name(self, name: str) -> str:
         if self.qualified_name == "<module>":
             return name
         return f"{self.qualified_name}.{name}"
+
+    def is_local(self, name: str) -> bool:
+        self._collect()
+        return (
+            name not in self._parameters
+            and name not in self._declared_elsewhere
+            and bool(self._bindings.get(name))
+        )
 
     def bindings_of(self, name: str) -> list[_Binding] | None:
         """The bindings of ``name`` here, or ``None`` when it is not local.
@@ -375,23 +531,40 @@ class _Scope:
         this scope never binds are not local.
         """
 
-        self._collect()
-        if name in self._parameters or name in self._declared_elsewhere:
-            return None
-        return self._bindings.get(name) or None
+        return self._bindings[name] if self.is_local(name) else None
 
     def is_parameter(self, name: str) -> bool:
         self._collect()
         return name in self._parameters
 
-    def _bind(self, target: ast.expr, value: ast.expr | None, exact: bool) -> None:
+    def local_bindings(self) -> dict[str, list[_Binding]]:
+        self._collect()
+        return {
+            name: bindings
+            for name, bindings in self._bindings.items()
+            if self.is_local(name)
+        }
+
+    def held_names(self) -> list[str]:
+        self._collect()
+        return list(self._held)
+
+    def held_values(self, name: str) -> list[tuple[ast.expr, bool]]:
+        """What the container ``name`` is filled with, and whether each value
+        goes in as one item (``append``) rather than as its items (``extend``)."""
+
+        self._collect()
+        return self._held.get(name, [])
+
+    def _bind(self, target: ast.expr, value: ast.expr | None, items_taken: int) -> None:
         if isinstance(target, ast.Name):
-            self._bindings[target.id].append((value, exact))
+            self._bindings[target.id].append((value, items_taken))
         elif isinstance(target, ast.Starred):
-            self._bind(target.value, value, False)
+            # A starred target collects items into a list: the same depth.
+            self._bind(target.value, value, items_taken)
         elif isinstance(target, (ast.Tuple, ast.List)):
             pairs = (
-                exact
+                items_taken == 0
                 and isinstance(value, (ast.Tuple, ast.List))
                 and len(value.elts) == len(target.elts)
                 and not any(
@@ -401,9 +574,15 @@ class _Scope:
             )
             for index, element in enumerate(target.elts):
                 if pairs:
-                    self._bind(element, value.elts[index], True)
+                    self._bind(element, value.elts[index], 0)
                 else:
-                    self._bind(element, value, False)
+                    self._bind(element, value, items_taken + 1)
+        elif (
+            isinstance(target, ast.Subscript)
+            and isinstance(target.value, ast.Name)
+            and value is not None
+        ):
+            self._held[target.value.id].append((value, True))
 
     def _collect(self) -> None:
         if self._bindings is not None:
@@ -427,55 +606,81 @@ class _Scope:
         for child in _nodes_in_scope(body):
             if isinstance(child, ast.Assign):
                 for target in child.targets:
-                    self._bind(target, child.value, True)
+                    self._bind(target, child.value, 0)
             elif isinstance(child, (ast.AnnAssign, ast.NamedExpr)):
                 if child.value is not None:
-                    self._bind(child.target, child.value, True)
+                    self._bind(child.target, child.value, 0)
+            elif isinstance(child, ast.AugAssign):
+                target = child.target
+                if isinstance(target, ast.Subscript):
+                    target = target.value
+                if isinstance(target, ast.Name):
+                    self._held[target.id].append((child.value, False))
             elif isinstance(child, (ast.For, ast.AsyncFor)):
-                self._bind(child.target, child.iter, False)
+                self._bind(child.target, child.iter, 1)
             elif isinstance(child, ast.withitem) and child.optional_vars is not None:
-                self._bind(child.optional_vars, child.context_expr, False)
+                self._bind(child.optional_vars, child.context_expr, 1)
             elif isinstance(child, ast.ExceptHandler) and child.name:
-                self._bindings[child.name].append((None, False))
+                self._bindings[child.name].append((None, 1))
             elif isinstance(child, (ast.Import, ast.ImportFrom)):
                 for alias in child.names:
                     bound = alias.asname or alias.name.split(".", 1)[0]
-                    self._bindings[bound].append((None, False))
+                    self._bindings[bound].append((None, 1))
             elif isinstance(child, _NESTED_SCOPES) and not isinstance(
                 child, ast.Lambda
             ):
-                self._bindings[child.name].append((None, False))
+                self._bindings[child.name].append((None, 1))
             elif isinstance(child, (ast.Global, ast.Nonlocal)):
                 self._declared_elsewhere.update(child.names)
             elif isinstance(child, (ast.MatchAs, ast.MatchStar)) and child.name:
-                self._bindings[child.name].append((None, False))
+                self._bindings[child.name].append((None, 1))
             elif isinstance(child, ast.MatchMapping) and child.rest:
-                self._bindings[child.rest].append((None, False))
+                self._bindings[child.rest].append((None, 1))
+            elif (
+                isinstance(child, ast.Call)
+                and isinstance(child.func, ast.Attribute)
+                and isinstance(child.func.value, ast.Name)
+            ):
+                method = child.func.attr
+                if method in _ITEM_ADDING_METHODS or method in _ITEMS_ADDING_METHODS:
+                    one_item = method in _ITEM_ADDING_METHODS
+                    self._held[child.func.value.id].extend(
+                        (argument, one_item)
+                        for argument in (
+                            *child.args,
+                            *(keyword.value for keyword in child.keywords),
+                        )
+                    )
 
 
 class _ComprehensionScope:
     """A comprehension: its loop targets shadow the enclosing scope's names."""
 
     def __init__(self, enclosing: _Scope | _ComprehensionScope, node: ast.AST):
-        self._enclosing = enclosing
+        self.enclosing = enclosing
         self.qualified_name = enclosing.qualified_name
         self.node = enclosing.node
-        self._targets: defaultdict[str, list[_Binding]] = defaultdict(list)
+        self._targets: defaultdict[str, list[ast.expr]] = defaultdict(list)
         for generator in node.generators:
             for name in ast.walk(generator.target):
                 if isinstance(name, ast.Name):
-                    self._targets[name.id].append((generator.iter, False))
+                    self._targets[name.id].append(generator.iter)
 
     def child_name(self, name: str) -> str:
-        return self._enclosing.child_name(name)
+        return self.enclosing.child_name(name)
+
+    def target_iterables(self, name: str) -> list[ast.expr] | None:
+        """The iterables ``name`` takes items from, if it is a loop target here."""
+
+        return self._targets.get(name)
 
     def bindings_of(self, name: str) -> list[_Binding] | None:
         if name in self._targets:
-            return self._targets[name]
-        return self._enclosing.bindings_of(name)
+            return [(iterable, 1) for iterable in self._targets[name]]
+        return self.enclosing.bindings_of(name)
 
     def is_parameter(self, name: str) -> bool:
-        return name in self._targets or self._enclosing.is_parameter(name)
+        return name in self._targets or self.enclosing.is_parameter(name)
 
 
 def _nodes_in_scope(roots: Iterable[ast.AST]) -> Iterator[ast.AST]:
@@ -511,10 +716,16 @@ def _statements(tree: ast.Module) -> Iterator[ast.AST]:
                 stack.extend(reversed(children))
 
 
-class _NumpyNames:
-    """The names one module binds to NumPy, to resolve ``np.add.at`` and the like.
+def _is_library_module(module: str) -> bool:
+    return any(
+        module == library or module.startswith(f"{library}.") for library in _LIBRARIES
+    )
 
-    ``derived_names`` are names some statement assigns a NumPy object to
+
+class _LibraryNames:
+    """The names one module binds to NumPy and SciPy, to resolve ``np.add.at``.
+
+    ``derived_names`` are names some statement assigns a library object to
     (``plus = np.add``); the scanner follows them through the bindings of
     the scope that uses them.
     """
@@ -525,16 +736,18 @@ class _NumpyNames:
         for node in statements:
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    if alias.name == "numpy" or alias.name.startswith("numpy."):
-                        if alias.asname:
-                            self._aliases[alias.asname] = alias.name
-                        else:
-                            self._aliases["numpy"] = "numpy"
+                    if not _is_library_module(alias.name):
+                        continue
+                    if alias.asname:
+                        self._aliases[alias.asname] = alias.name
+                    else:
+                        root = alias.name.split(".", 1)[0]
+                        self._aliases[root] = root
             elif (
                 isinstance(node, ast.ImportFrom)
                 and node.level == 0
                 and node.module is not None
-                and (node.module == "numpy" or node.module.startswith("numpy."))
+                and _is_library_module(node.module)
             ):
                 for alias in node.names:
                     self._aliases[alias.asname or alias.name] = (
@@ -561,7 +774,7 @@ class _NumpyNames:
         return frozenset(self._aliases)
 
     def resolve(self, expression: ast.expr) -> str | None:
-        """The dotted NumPy name of ``expression`` (``numpy.add.at``), if any."""
+        """The dotted library name of ``expression`` (``numpy.add.at``), if any."""
 
         attributes: list[str] = []
         while isinstance(expression, ast.Attribute):
@@ -579,8 +792,8 @@ class _NumpyNames:
 
 #: A dot before an attribute, allowing spaces and backslash continuations.
 _DOT = r"\.(?:\s|\\)*"
-#: Text found in every refused expression, except NumPy names, names bound to
-#: NumPy objects, and writes through a name bound to a writable view.
+#: Text found in every refused expression, except library names, names bound
+#: to library objects, and writes through a name bound to a writable view.
 _TRIGGER_TEXT = (
     r"setflags|writeable|WRITEABLE|\bflags\b|copyto|shuffle|\bout\s*="
     rf"|{_DOT}_(?:ndarray|mgr|values|data|mask|codes|get_column_array"
@@ -588,7 +801,9 @@ _TRIGGER_TEXT = (
 )
 _WRITABLE_VIEW_TEXT = re.compile(rf"{_DOT}(?:array|base|asi8)\b")
 #: A module without any of this text cannot hold a finding and is not parsed.
-_FILE_TRIGGERS = re.compile(rf"{_TRIGGER_TEXT}|numpy|{_WRITABLE_VIEW_TEXT.pattern}")
+_FILE_TRIGGERS = re.compile(
+    rf"{_TRIGGER_TEXT}|numpy|scipy|{_WRITABLE_VIEW_TEXT.pattern}"
+)
 
 
 class _TriggerLines:
@@ -619,24 +834,32 @@ class _TriggerLines:
         return index < len(self._lines) and self._lines[index] <= last
 
 
-# NumPy lookups -------------------------------------------------------------
+# Library lookups -----------------------------------------------------------
 
 
 @functools.cache
-def _numpy_object(dotted_name: str) -> object | None:
-    found: object = np
-    for part in dotted_name.split(".")[1:]:
-        found = getattr(found, part, None)
-        if found is None:
-            return None
-    return found
+def _library_object(dotted_name: str) -> object | None:
+    """The NumPy or SciPy object a dotted name names, importing its module."""
+
+    parts = dotted_name.split(".")
+    for split in range(len(parts), 0, -1):
+        try:
+            found: object = importlib.import_module(".".join(parts[:split]))
+        except ImportError:
+            continue
+        for part in parts[split:]:
+            found = getattr(found, part, None)
+            if found is None:
+                return None
+        return found
+    return None
 
 
 @functools.cache
 def _positional_outputs(dotted_name: str) -> slice | None:
-    """Which positional arguments of a NumPy function or ufunc are outputs."""
+    """Which positional arguments of a library function or ufunc are outputs."""
 
-    function = _numpy_object(dotted_name)
+    function = _library_object(dotted_name)
     if isinstance(function, np.ufunc):
         return slice(function.nin, None)
     if not callable(function):
@@ -653,6 +876,11 @@ def _positional_outputs(dotted_name: str) -> slice | None:
         if parameter.name == "out" and parameter.kind in positional:
             return slice(index, index + 1)
     return None
+
+
+def _is_ufunc_method(dotted_name: str, methods: Iterable[str]) -> bool:
+    owner, _, method = dotted_name.rpartition(".")
+    return method in methods and isinstance(_library_object(owner), np.ufunc)
 
 
 def _is_false_constant(expression: ast.expr) -> bool:
@@ -684,24 +912,27 @@ def _is_own_object(expression: ast.expr) -> bool:
 
 # The scanner ---------------------------------------------------------------
 
+#: How a name is looked up while a scope's table is computed.
+_NameLookup = Callable[[str], object]
+
 
 class _Scanner:
     def __init__(self, source: str, path: str, tree: ast.Module) -> None:
         self._source = source
         self._path = path
         self._tree = tree
-        self._numpy = _NumpyNames(tree)
-        # A write through a name bound to a writable view holds no trigger
-        # text of its own, so a module that reads one is scanned in full.
+        self._libraries = _LibraryNames(tree)
         lone_carriage_return = "\r" in source and "\r" in source.replace("\r\n", "")
         # Without ``.array``, ``.base`` or ``.asi8`` text, nothing in the
-        # module can reach a writable view.
+        # module can reach a writable view. A write through a name bound to
+        # one holds no trigger text of its own, so a module with that text
+        # is scanned in full.
         self._has_writable_views = bool(_WRITABLE_VIEW_TEXT.search(source))
         self._trigger_lines = (
             None
             if lone_carriage_return or self._has_writable_views
             else _TriggerLines(
-                source, self._numpy.bound_names | self._numpy.derived_names
+                source, self._libraries.bound_names | self._libraries.derived_names
             )
         )
         self._module_scope = _Scope("<module>", tree)
@@ -768,14 +999,13 @@ class _Scanner:
 
     def _report(self, node: ast.AST, rule: str) -> None:
         segment = ast.get_source_segment(self._source, node) or ast.unparse(node)
-        code = " ".join(segment.split())
         self.findings.append(
             Finding(
                 path=self._path,
                 line=node.lineno,
                 function=self._scope.qualified_name,
                 rule=rule,
-                code=code if len(code) <= 120 else code[:117] + "...",
+                code=" ".join(segment.split()),
                 function_digest=self._function_digest(),
             )
         )
@@ -787,10 +1017,16 @@ class _Scanner:
 
         return self._scope.bindings_of(name)
 
-    def _resolve(self, expression: ast.expr) -> str | None:
-        """The dotted NumPy name of ``expression``, following ``plus = np.add``."""
+    def _owning_scope(self) -> _Scope:
+        scope = self._scope
+        while isinstance(scope, _ComprehensionScope):
+            scope = scope.enclosing
+        return scope
 
-        name = self._numpy.resolve(expression)
+    def _resolve(self, expression: ast.expr) -> str | None:
+        """The dotted library name of ``expression``, following ``plus = np.add``."""
+
+        name = self._libraries.resolve(expression)
         if name is not None:
             return name
         attributes: list[str] = []
@@ -798,26 +1034,92 @@ class _Scanner:
         while isinstance(root, ast.Attribute):
             attributes.append(root.attr)
             root = root.value
-        if not isinstance(root, ast.Name) or root.id not in self._numpy.derived_names:
+        if (
+            not isinstance(root, ast.Name)
+            or root.id not in self._libraries.derived_names
+        ):
             return None
         bindings = self._bindings(root.id)
         if bindings is None and not self._scope.is_parameter(root.id):
             bindings = self._module_scope.bindings_of(root.id)
-        if not bindings or not all(exact for _value, exact in bindings):
+        if not bindings or any(items_taken for _value, items_taken in bindings):
             return None
-        resolved = {self._numpy.resolve(value) for value, _exact in bindings if value}
+        resolved = {
+            self._libraries.resolve(value) for value, _items in bindings if value
+        }
         if len(resolved) != 1 or None in resolved:
             return None
         return ".".join([resolved.pop(), *reversed(attributes)])
 
-    def _call_newness(self, call: ast.Call) -> int:
+    # How new a value is ----------------------------------------------------
+
+    def _name_newness(self, name: str) -> int:
+        """How new ``name``'s value is where it is used, in the current scope."""
+
+        scope = self._scope
+        while isinstance(scope, _ComprehensionScope):
+            if scope.target_iterables(name) is not None:
+                return _NOT_NEW
+            scope = scope.enclosing
+        return self._newness_table(scope).get(name, _NOT_NEW)
+
+    def _newness_table(self, scope: _Scope) -> dict[str, int]:
+        """How new each local name of ``scope`` is.
+
+        Every name starts at the newest level and is lowered to the oldest
+        level any of its bindings gives, until nothing changes, so a name
+        bound to itself (``values = values[:n]``) is as new as its other
+        bindings make it. A binding to None is a placeholder that holds no
+        array.
+        """
+
+        if scope.newness_table is not None:
+            return scope.newness_table
+        saved_scope, self._scope = self._scope, scope
+        levels: dict[str, int] = {}
+        candidates: dict[str, list[ast.expr]] = {}
+        for name, bindings in scope.local_bindings().items():
+            kept = [
+                (value, items_taken)
+                for value, items_taken in bindings
+                if not (items_taken == 0 and _is_none(value))
+            ]
+            if not kept or any(value is None or items for value, items in kept):
+                levels[name] = _NOT_NEW
+            else:
+                levels[name] = _NEW_ARRAY
+                candidates[name] = [value for value, _items in kept]
+
+        def lookup(name: str) -> int:
+            return levels.get(name, _NOT_NEW)
+
+        changed = True
+        try:
+            while changed:
+                changed = False
+                for name, values in candidates.items():
+                    if levels[name] == _NOT_NEW:
+                        continue
+                    level = min(self._newness(value, lookup) for value in values)
+                    if level < levels[name]:
+                        levels[name] = level
+                        changed = True
+        finally:
+            self._scope = saved_scope
+        scope.newness_table = levels
+        return levels
+
+    def _call_newness(self, call: ast.Call, lookup: _NameLookup | None) -> int:
         if self._output_arguments(call):
             return _NOT_NEW
         name = self._resolve(call.func)
+        function = call.func
         if name is not None:
             if name in _ALLOCATING_NUMPY_FUNCTIONS:
                 return _NEW_ARRAY
-            if isinstance(_numpy_object(name), np.ufunc):
+            if isinstance(_library_object(name), np.ufunc):
+                return _NEW_ARRAY
+            if _is_ufunc_method(name, _ALLOCATING_UFUNC_METHODS):
                 return _NEW_ARRAY
             if (
                 name.startswith("numpy.random.")
@@ -826,16 +1128,32 @@ class _Scanner:
                 return _NEW_ARRAY
             if name == "numpy.array":
                 return _NOT_NEW if _copy_is_off(call) else _NEW_ARRAY
+            if name in _VIEW_NUMPY_FUNCTIONS and call.args:
+                # A view of a new array, or an array made from a new container.
+                source = self._newness(call.args[0], lookup)
+                return _NEW_ARRAY if source >= _NEW_OBJECT else _NOT_NEW
             return _NOT_NEW
-        function = call.func
         if isinstance(function, ast.Name) and function.id in _CONTAINER_BUILTINS:
             return _NEW_OBJECT
         if not isinstance(function, ast.Attribute):
             return _NOT_NEW
-        if function.attr == "to_numpy":
+        method = function.attr
+        if method == "to_numpy":
             copy = _keyword(call, "copy")
-            return _NEW_ARRAY if copy and _is_true_constant(copy.value) else _NOT_NEW
-        if function.attr == "copy":
+            copy_value = copy.value if copy is not None else None
+            if copy_value is None and len(call.args) >= 2:
+                copy_value = call.args[1]
+            return (
+                _NEW_ARRAY
+                if copy_value is not None and _is_true_constant(copy_value)
+                else _NOT_NEW
+            )
+        if method == "flatten" or method in _RANDOM_DRAW_METHODS:
+            return _NEW_ARRAY
+        if method in _VIEW_METHODS:
+            receiver = self._newness(function.value, lookup)
+            return _NEW_ARRAY if receiver == _NEW_ARRAY else _NOT_NEW
+        if method == "copy":
             deep = _keyword(call, "deep")
             if deep is not None and not _is_true_constant(deep.value):
                 return _NOT_NEW
@@ -848,14 +1166,11 @@ class _Scanner:
                 return _NEW_OBJECT
         return _NOT_NEW
 
-    def _newness(
-        self, expression: ast.expr, assumed: Mapping[str, int] | None = None
-    ) -> int:
+    def _newness(self, expression: ast.expr, lookup: _NameLookup | None = None) -> int:
         """How new the value of ``expression`` is (``_NOT_NEW`` to ``_NEW_ARRAY``)."""
 
-        assumed = assumed or {}
         if isinstance(expression, ast.Subscript):
-            container = self._newness(expression.value, assumed)
+            container = self._newness(expression.value, lookup)
             if container == _NEW_ARRAY:
                 return _NEW_ARRAY
             if container == _NEW_OBJECT and isinstance(expression.slice, ast.Slice):
@@ -863,61 +1178,157 @@ class _Scanner:
             return _NOT_NEW
         if isinstance(expression, ast.IfExp):
             return min(
-                self._newness(expression.body, assumed),
-                self._newness(expression.orelse, assumed),
+                self._newness(expression.body, lookup),
+                self._newness(expression.orelse, lookup),
             )
         if isinstance(expression, ast.BoolOp):
-            return min(self._newness(value, assumed) for value in expression.values)
+            return min(self._newness(value, lookup) for value in expression.values)
         if isinstance(expression, ast.Call):
-            return self._call_newness(expression)
-        if isinstance(expression, _NEW_VALUE_EXPRESSIONS):
+            return self._call_newness(expression, lookup)
+        if isinstance(expression, ast.BinOp):
+            if isinstance(expression.op, _JOINING_OPERATORS):
+                return _NEW_OBJECT
+            return _NEW_ARRAY
+        if isinstance(expression, _NEW_ARRAY_EXPRESSIONS):
             return _NEW_ARRAY
         if isinstance(expression, _CONTAINER_EXPRESSIONS):
             return _NEW_OBJECT
-        if not isinstance(expression, ast.Name):
-            return _NOT_NEW
-        name = expression.id
-        if name in assumed:
-            return assumed[name]
-        # A binding to None is a placeholder that holds no array.
-        bindings = [
-            (value, exact)
-            for value, exact in self._bindings(name) or []
-            if not (exact and _is_none(value))
-        ]
-        if not bindings or any(value is None or not exact for value, exact in bindings):
-            return _NOT_NEW
-        # A binding may refer back to the name (values = values[:n]), so
-        # start from the newest level and lower it until it holds.
-        level = _NEW_ARRAY
-        while True:
-            inner = {**assumed, name: level}
-            result = min(self._newness(value, inner) for value, _exact in bindings)
-            if result >= level:
-                return level
-            level = result
+        if isinstance(expression, ast.Name):
+            if lookup is not None:
+                return lookup(expression.id)
+            return self._name_newness(expression.id)
+        return _NOT_NEW
 
-    def _reaches_writable_view(
-        self, expression: ast.expr, following: frozenset[str] = frozenset()
-    ) -> bool:
-        """Whether ``expression`` can be, or hold, a writable view of pandas' memory."""
+    # Whether a value can be a writable view --------------------------------
+
+    def _name_view_depth(self, name: str) -> int:
+        """How deep in containers ``name`` holds a writable view, where it is used."""
+
+        scope = self._scope
+        while isinstance(scope, _ComprehensionScope):
+            iterables = scope.target_iterables(name)
+            if iterables is not None:
+                self._scope = scope.enclosing
+                try:
+                    return min(_item_of(self._view_depth(item)) for item in iterables)
+                finally:
+                    self._scope = scope
+            scope = scope.enclosing
+        return self._view_table(scope).get(name, _NO_VIEW)
+
+    def _view_table(self, scope: _Scope) -> dict[str, int]:
+        """How deep in containers each name of ``scope`` holds a writable view.
+
+        Starts every name at ``_NO_VIEW`` and lowers it to the smallest depth
+        any of its bindings or held values gives, until nothing changes. A
+        binding that takes items of its value (a loop target, unpacking)
+        takes one level per item; a container filled with a value holds it
+        one level deeper.
+        """
+
+        if scope.view_table is not None:
+            return scope.view_table
+        saved_scope, self._scope = self._scope, scope
+        sources: defaultdict[str, list[tuple[ast.expr, int]]] = defaultdict(list)
+        for name, bindings in scope.local_bindings().items():
+            for value, items_taken in bindings:
+                if value is not None:
+                    sources[name].append((value, -items_taken))
+        # A container filled here may be a parameter, so held values count
+        # for any name.
+        for name in scope.held_names():
+            for value, adds_level in scope.held_values(name):
+                sources[name].append((value, 1 if adds_level else 0))
+        depths: dict[str, int] = dict.fromkeys(sources, _NO_VIEW)
+
+        def lookup(name: str) -> int:
+            return depths.get(name, _NO_VIEW)
+
+        changed = True
+        try:
+            while changed:
+                changed = False
+                for name, parts in sources.items():
+                    if depths[name] == _IS_VIEW:
+                        continue
+                    depth = min(
+                        _shifted(self._view_depth(value, lookup), shift)
+                        for value, shift in parts
+                    )
+                    if depth < depths[name]:
+                        depths[name] = depth
+                        changed = True
+        finally:
+            self._scope = saved_scope
+        scope.view_table = depths
+        return depths
+
+    def _is_container(self, expression: ast.expr) -> bool:
+        if isinstance(expression, _CONTAINER_EXPRESSIONS):
+            return True
+        if isinstance(expression, ast.Call) and isinstance(expression.func, ast.Name):
+            return expression.func.id in _CONTAINER_BUILTINS
+        if isinstance(expression, ast.Name):
+            bindings = self._bindings(expression.id) or []
+            return bool(bindings) and all(
+                value is not None
+                and items_taken == 0
+                and isinstance(value, _CONTAINER_EXPRESSIONS)
+                for value, items_taken in bindings
+            )
+        return False
+
+    def _reaches_writable_view(self, expression: ast.expr) -> bool:
+        """Whether ``expression`` can be a writable view of pandas' memory."""
+
+        return self._view_depth(expression) == _IS_VIEW
+
+    def _view_depth(
+        self, expression: ast.expr, lookup: _NameLookup | None = None
+    ) -> int:
+        """How deep in containers ``expression`` holds a writable view.
+
+        ``_IS_VIEW`` (0) for a view itself, 1 for a container of views, 2
+        for a container of those, up to ``_NO_VIEW`` for none.
+        """
 
         if not self._has_writable_views:
-            return False
+            return _NO_VIEW
         if isinstance(expression, ast.Attribute):
             if expression.attr in _WRITABLE_VIEW_ATTRIBUTES:
-                return not _is_own_object(expression.value)
+                return _NO_VIEW if _is_own_object(expression.value) else _IS_VIEW
             if expression.attr in _VIEW_ATTRIBUTES:
-                return self._reaches_writable_view(expression.value, following)
-            return False
-        if isinstance(expression, (ast.Subscript, ast.Starred)):
-            return self._reaches_writable_view(expression.value, following)
+                return _view_of(self._view_depth(expression.value, lookup))
+            return _NO_VIEW
+        if isinstance(expression, ast.Subscript):
+            return _item_of(self._view_depth(expression.value, lookup))
+        if isinstance(expression, ast.Starred):
+            return self._view_depth(expression.value, lookup)
+        if isinstance(expression, ast.Name):
+            if lookup is not None:
+                return lookup(expression.id)
+            return self._name_view_depth(expression.id)
         if isinstance(expression, ast.IfExp):
-            parts: list[ast.expr] = [expression.body, expression.orelse]
-        elif isinstance(expression, ast.BoolOp):
-            parts = list(expression.values)
-        elif isinstance(expression, (ast.List, ast.Tuple, ast.Set)):
-            parts = list(expression.elts)
+            return min(
+                self._view_depth(expression.body, lookup),
+                self._view_depth(expression.orelse, lookup),
+            )
+        if isinstance(expression, ast.BoolOp):
+            return min(self._view_depth(value, lookup) for value in expression.values)
+        if isinstance(expression, ast.BinOp):
+            # ``[a.array] + rest`` joins lists; arithmetic gives new memory.
+            joins = isinstance(expression.op, _JOINING_OPERATORS) and (
+                self._is_container(expression.left)
+                or self._is_container(expression.right)
+            )
+            if not joins:
+                return _NO_VIEW
+            return min(
+                self._view_depth(expression.left, lookup),
+                self._view_depth(expression.right, lookup),
+            )
+        if isinstance(expression, (ast.List, ast.Tuple, ast.Set)):
+            parts: list[ast.expr] = list(expression.elts)
         elif isinstance(expression, ast.Dict):
             parts = list(expression.values)
         elif isinstance(expression, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):
@@ -925,34 +1336,77 @@ class _Scanner:
         elif isinstance(expression, ast.DictComp):
             parts = [expression.value]
         elif isinstance(expression, ast.Call):
-            parts = self._view_call_sources(expression)
-        elif isinstance(expression, ast.Name) and expression.id not in following:
-            parts = [
-                value for value, _exact in self._bindings(expression.id) or [] if value
-            ]
-            following = following | {expression.id}
+            return self._call_view_depth(expression, lookup)
         else:
-            return False
-        return any(self._reaches_writable_view(part, following) for part in parts)
+            return _NO_VIEW
+        return _holder_of(
+            min((self._view_depth(part, lookup) for part in parts), default=_NO_VIEW)
+        )
 
-    def _view_call_sources(self, call: ast.Call) -> list[ast.expr]:
-        """The expressions a call's result can be a view of."""
+    def _call_view_depth(self, call: ast.Call, lookup: _NameLookup | None) -> int:
+        arguments = [*call.args, *(keyword.value for keyword in call.keywords)]
+
+        def nearest(expressions: Iterable[ast.expr]) -> int:
+            return min(
+                (self._view_depth(expression, lookup) for expression in expressions),
+                default=_NO_VIEW,
+            )
 
         name = self._resolve(call.func)
+        if name in _SPLITTING_NUMPY_FUNCTIONS:
+            return _holder_of(_view_of(nearest(arguments)))
         if name in _VIEW_NUMPY_FUNCTIONS or (
-            name == "numpy.array" and _copy_is_off(call)
+            name in ("numpy.array", "numpy.astype") and _copy_is_off(call)
         ):
-            return [*call.args, *(keyword.value for keyword in call.keywords)]
+            return _view_of(nearest(arguments))
         function = call.func
-        if isinstance(function, ast.Attribute):
-            if function.attr in _VIEW_METHODS:
-                copy = _keyword(call, "copy")
-                if copy is not None and _is_true_constant(copy.value):
-                    return []
-                return [function.value]
-            if function.attr == "astype" and _copy_is_off(call):
-                return [function.value]
-        return []
+        if isinstance(function, ast.Name):
+            if function.id == "next":
+                return _item_of(nearest(arguments))
+            if function.id in _SAME_ITEMS_BUILTINS:
+                # A new container of the argument's items.
+                return _holder_of(_item_of(nearest(arguments)))
+            if function.id in _TUPLE_YIELDING_BUILTINS:
+                # A new container of tuples of the arguments' items.
+                return _holder_of(_holder_of(_item_of(nearest(arguments))))
+            return _NO_VIEW
+        if not isinstance(function, ast.Attribute):
+            return _NO_VIEW
+        method = function.attr
+        receiver = function.value
+        if method in _VIEW_METHODS:
+            copy = _keyword(call, "copy")
+            if copy is not None and _is_true_constant(copy.value):
+                return _NO_VIEW
+            return _view_of(self._view_depth(receiver, lookup))
+        if method == "astype" and _copy_is_off(call):
+            return _view_of(self._view_depth(receiver, lookup))
+        if method == "copy":
+            # A copy of an array is new memory; of a container, it holds the
+            # same items.
+            depth = self._view_depth(receiver, lookup)
+            return _NO_VIEW if depth == _IS_VIEW else depth
+        if method in _ITEM_TAKING_METHODS:
+            return _item_of(self._view_depth(receiver, lookup))
+        if method in _SAME_ITEMS_METHODS:
+            return _holder_of(_item_of(self._view_depth(receiver, lookup)))
+        if method in _TUPLE_YIELDING_METHODS:
+            return _holder_of(_holder_of(_item_of(self._view_depth(receiver, lookup))))
+        return _NO_VIEW
+
+    def _bound_to_a_view(self, name: str) -> bool:
+        """Whether some binding sets ``name`` to exactly a writable view."""
+
+        if isinstance(self._scope, _ComprehensionScope) and (
+            self._scope.target_iterables(name) is not None
+        ):
+            return False
+        return any(
+            items_taken == 0
+            and value is not None
+            and self._reaches_writable_view(value)
+            for value, items_taken in self._bindings(name) or []
+        )
 
     def _check_written_array(self, node: ast.AST, written: ast.expr) -> None:
         """Report a write into ``written`` unless it is new in this function."""
@@ -972,8 +1426,8 @@ class _Scanner:
         function = call.func
         method = function.attr if isinstance(function, ast.Attribute) else None
         output = _keyword(call, "out")
-        # ``out=`` means an output array only to NumPy and to array and random
-        # Generator methods; workspace functions use it for output paths.
+        # ``out=`` means an output array only to the libraries and to array
+        # and random Generator methods; workspace functions use it for paths.
         if output is not None and (name is not None or method in _METHODS_WITH_OUT):
             if isinstance(output.value, (ast.Tuple, ast.List)):
                 written.extend(
@@ -991,7 +1445,7 @@ class _Scanner:
             return [*written, *call.args[:1]]
         if name == "numpy.nan_to_num" and _copy_is_off(call):
             return [*written, *call.args[:1]]
-        if name.endswith(".at") and isinstance(_numpy_object(name[:-3]), np.ufunc):
+        if _is_ufunc_method(name, ("at",)):
             return [*written, *call.args[:1]]
         outputs = _positional_outputs(name)
         return written if outputs is None else [*written, *call.args[outputs]]
@@ -1063,10 +1517,9 @@ class _Scanner:
         self._check_assigned_target(node, node.target, node.value)
 
     def _check_augmented_assign(self, node: ast.AugAssign) -> None:
-        # ``values += 1`` writes into the array ``values`` names.
-        if isinstance(node.target, ast.Name) and self._reaches_writable_view(
-            node.target
-        ):
+        # ``values += 1`` writes into the array ``values`` names; a name that
+        # only takes items of a view (a loop target) may hold scalars.
+        if isinstance(node.target, ast.Name) and self._bound_to_a_view(node.target.id):
             self._report(node, _WRITES_THROUGH_WRITABLE_VIEW)
         else:
             self._check_assigned_target(node, node.target, None)
@@ -1223,6 +1676,164 @@ def _in_function(*body_lines: str, parameters: str = "series") -> str:
 
 #: Snippets the scan must refuse, with the one rule each must report.
 _REFUSED_SNIPPETS = {
+    # Round-two cases: views reached through iteration and filled containers.
+    "series_array_through_zip": (
+        _in_function(
+            "arrays = [frame[name].array for name in names]",
+            "for name, values in zip(names, arrays):",
+            "    values[0] = 1",
+            parameters="frame, names",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_through_enumerate": (
+        _in_function(
+            "arrays = [frame[name].array for name in names]",
+            "for position, values in enumerate(arrays):",
+            "    values[0] = position",
+            parameters="frame, names",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_through_dict_items": (
+        _in_function(
+            "arrays = {name: frame[name].array for name in names}",
+            "for name, values in arrays.items():",
+            "    values[0] = 1",
+            parameters="frame, names",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_through_dict_get": (
+        _in_function(
+            "arrays = {name: frame[name].array for name in names}",
+            'arrays.get("income")[0] = 1',
+            parameters="frame, names",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_appended": (
+        _in_function(
+            "arrays = []",
+            "for name in names:",
+            "    arrays.append(frame[name].array)",
+            "arrays[0][0] = 1",
+            parameters="frame, names",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_appended_to_a_parameter": (
+        _in_function(
+            "arrays.append(series.array)",
+            "arrays[0][0] = 1",
+            parameters="series, arrays",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_stored_by_key": (
+        _in_function(
+            "columns = {}",
+            "for name in names:",
+            "    columns[name] = frame[name].array",
+            'columns["income"][0] = 1',
+            parameters="frame, names",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_added_with_augmented_assignment": (
+        _in_function(
+            "arrays = []",
+            "arrays += [series.array]",
+            "arrays[0][0] = 1",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_in_joined_lists": (
+        _in_function(
+            "pair = [first.array] + [second.array]",
+            "pair[0][0] = 1",
+            parameters="first, second",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_split": (
+        _in_function(
+            "parts = np.split(np.asarray(series.array), 2)", "parts[0][0] = 1"
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_broadcast": (
+        _in_function(
+            "left, right = np.broadcast_arrays(np.asarray(series.array), 0)",
+            "left[0] = 1",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_required": (
+        _NUMPY + "np.require(series.array)[0] = 1\n",
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_swapped_axes_method": (
+        _NUMPY + "np.asarray(series.array).swapaxes(0, 0)[0] = 1\n",
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_matrix_transpose_attribute": (
+        _NUMPY + "np.atleast_2d(series.array).mT[0, 0] = 1\n",
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    # Round-two cases: arrays that are not new.
+    "ufunc_at_on_item_of_joined_new_list": (
+        _in_function(
+            "columns = [frame[name].to_numpy() for name in names] + []",
+            "np.add.at(columns[0], [0], 1)",
+            parameters="frame, names",
+        ),
+        _WRITES_INTO_EXISTING_ARRAY,
+    ),
+    "ufunc_at_on_clip_of_a_series": (
+        _in_function(
+            'np.add.at(np.clip(frame["f"], 0, None), positions, weights)',
+            parameters="frame, positions, weights",
+        ),
+        _WRITES_INTO_EXISTING_ARRAY,
+    ),
+    "ufunc_at_on_tile_of_a_series": (
+        _in_function("np.add.at(np.tile(series, 1), [0], 1)"),
+        _WRITES_INTO_EXISTING_ARRAY,
+    ),
+    "out_round_of_a_parameter": (
+        _in_function(
+            "rounded = np.round(values)",
+            "np.add(rounded, 1, out=rounded)",
+            parameters="values",
+        ),
+        _WRITES_INTO_EXISTING_ARRAY,
+    ),
+    "out_scipy_ufunc_keyword": (
+        "import scipy.special\n"
+        + "def change(values):\n"
+        + "    scipy.special.expit(values, out=values)\n",
+        _WRITES_INTO_EXISTING_ARRAY,
+    ),
+    "out_scipy_ufunc_positional": (
+        "from scipy.special import expit\n"
+        + "def change(values):\n"
+        + "    expit(values, values)\n",
+        _WRITES_INTO_EXISTING_ARRAY,
+    ),
+    "series_array_in_a_shallow_dict_copy": (
+        _in_function(
+            "arrays = {name: frame[name].array for name in names}",
+            "copied = arrays.copy()",
+            'copied["income"][0] = 1',
+            parameters="frame, names",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "numpy_random_mtrand_shuffle": (
+        _in_function("np.random.mtrand.shuffle(values)", parameters="values"),
+        _WRITES_INTO_EXISTING_ARRAY,
+    ),
     # makes-array-writable
     "setflags_write_true": (
         "values = series.to_numpy()\nvalues.setflags(write=True)\nvalues[0] = 1.0\n",
@@ -1768,6 +2379,66 @@ def test_the_scanner_refuses_each_unprotected_write(source: str, rule: str) -> N
 #: Snippets the scan must accept: reads, read-only flags, and writes into
 #: arrays the same function created.
 _ACCEPTED_SNIPPETS = {
+    # Round-two cases.
+    "long_chain_of_views_of_a_new_array": _in_function(
+        "chain_0 = np.zeros(64)",
+        *(
+            f"chain_{index} = chain_{index - 1}[1:] if flag else chain_{index - 1}[:-1]"
+            for index in range(1, 40)
+        ),
+        "np.add(chain_39, 1, out=chain_39)",
+        parameters="flag",
+    ),
+    "generator_draws": _in_function(
+        "draws = rng.normal(size=size)",
+        "np.multiply(draws, 2, out=draws)",
+        "sample = np.random.default_rng(seed).random(size)",
+        "np.add(sample, 1, out=sample)",
+        parameters="rng, seed, size",
+    ),
+    "flattened_reshaped_and_listed_new_arrays": _in_function(
+        "flat = values.flatten()",
+        "np.add(flat, 1, out=flat)",
+        "grid = np.empty(6).reshape(2, 3)",
+        "np.add(grid, 1, out=grid)",
+        "listed = np.asarray([1.0, 2.0])",
+        "np.add(listed, 1, out=listed)",
+        parameters="values",
+    ),
+    "ufunc_reductions_and_interpolation": _in_function(
+        "peaks = np.maximum.accumulate(values)",
+        "np.add(peaks, 1, out=peaks)",
+        "curve = np.interp(points, xp, fp)",
+        "np.add(curve, 1, out=curve)",
+        parameters="values, points, xp, fp",
+    ),
+    "positional_copy_to_numpy": _in_function(
+        "values = series.to_numpy(float, True)", "np.add(values, 1, out=values)"
+    ),
+    "copy_of_a_view_written": _in_function(
+        "encoded = series.array.asi8.copy()", "encoded[0] = 0"
+    ),
+    "list_of_a_view_reassigned": _in_function(
+        "items = list(series.array)", "items[0] = 1"
+    ),
+    "frame_holding_a_view_written_by_column": _in_function(
+        "carried = table.copy()",
+        "carried['id'] = replacement.array",
+        "tables = {}",
+        "tables['person'] = carried",
+        "tables['person']['income'] = aligned.array",
+        parameters="table, replacement, aligned",
+    ),
+    "arithmetic_on_a_view_written": _in_function(
+        "doubled = np.asarray(series.array) * 2", "doubled[0] = 0"
+    ),
+    "scipy_ufunc_into_new_array": (
+        "import numpy as np\n"
+        + "import scipy.special\n"
+        + "def change(values):\n"
+        + "    result = np.empty(3)\n"
+        + "    scipy.special.expit(values, out=result)\n"
+    ),
     "setflags_read_only": "values.setflags(write=False)\nvalues.setflags(write=0)\n",
     "setflags_alignment_only": "values.setflags(align=True)\n",
     "flags_read_only": (
@@ -1893,11 +2564,11 @@ _ACCEPTED_SNIPPETS = {
     "list_builtin_shuffled": _in_function(
         "order = list(range(size))", "np.random.shuffle(order)", parameters="size"
     ),
-    "random_and_rounded_results": _in_function(
+    "random_results": _in_function(
         "order = np.random.permutation(size)",
         "np.add(order, 1, out=order)",
-        "rounded = np.round(values)",
-        "np.add(rounded, 1, out=rounded)",
+        "chosen = np.random.choice(values, 3)",
+        "np.add(chosen, 1, out=chosen)",
         parameters="size, values",
     ),
     "generator_method_into_new_array": _in_function(
