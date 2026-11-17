@@ -47,7 +47,8 @@ is what a failure reports.
       with ``copy=True``, of ``.to_numpy(copy=True)``, or of a random
       ``Generator`` draw (``_RANDOM_DRAW_METHODS``: ``rng.random(n)``, ...);
     - arithmetic or a comparison (``a - b``, ``a > 0``);
-    - ``.copy()`` with no arguments, or ``+``, ``*`` or ``|`` (which also
+    - ``.copy()`` with no arguments (except of ``.index`` or ``.columns``:
+      ``Index.copy()`` is shallow), or ``+``, ``*`` or ``|`` (which also
       join lists and dicts), or a slice of these, but not an item of them,
       because a copy or join of a dict or list shares its items;
     - a subscript of the others;
@@ -212,7 +213,6 @@ _RANDOM_DRAW_METHODS = frozenset(
         "normal",
         "uniform",
         "integers",
-        "choice",
         "permutation",
         "standard_normal",
         "exponential",
@@ -435,9 +435,15 @@ class _Scope:
         body = [node.body] if isinstance(node, ast.Lambda) else node.body
 
         def bind_other(target: ast.AST) -> None:
-            for name in ast.walk(target):
-                if isinstance(name, ast.Name):
-                    assignments[name.id].append(None)
+            # Only names the target binds: ``a[0], b = ...`` binds ``b`` and
+            # writes an item of ``a``.
+            if isinstance(target, ast.Name):
+                assignments[target.id].append(None)
+            elif isinstance(target, ast.Starred):
+                bind_other(target.value)
+            elif isinstance(target, (ast.Tuple, ast.List)):
+                for element in target.elts:
+                    bind_other(element)
 
         for child in _nodes_in_scope(body):
             if isinstance(child, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
@@ -587,8 +593,12 @@ class _Scanner(ast.NodeVisitor):
         name = self._numpy.resolve(function)
         if name is None and isinstance(function, ast.Attribute):
             if function.attr == "copy":
+                # ``Index.copy()`` is shallow by default.
                 plain = not expression.args and not expression.keywords
-                return _COPY if plain else None
+                of_an_index = isinstance(function.value, ast.Attribute) and (
+                    function.value.attr in ("index", "columns")
+                )
+                return _COPY if plain and not of_an_index else None
             if function.attr == "to_numpy":
                 copy = _keyword(expression, "copy")
                 return _NEW_ARRAY if copy and _is_true_constant(copy.value) else None
@@ -910,6 +920,15 @@ _REFUSED_SNIPPETS = {
         _MAKES_ARRAY_WRITABLE,
     ),
     "flags_w_key": ('values.flags["W"] = 1\n', _MAKES_ARRAY_WRITABLE),
+    "flags_writeable_from_a_name": (
+        "values.flags.writeable = flag\n",
+        _MAKES_ARRAY_WRITABLE,
+    ),
+    "flags_w_key_from_a_name": ('values.flags["W"] = flag\n', _MAKES_ARRAY_WRITABLE),
+    "flags_writeable_from_an_expression": (
+        "values.flags.writeable = not frozen\n",
+        _MAKES_ARRAY_WRITABLE,
+    ),
     # writes-through-series-array
     "series_array_item": (
         'frame.person["income"].array[0] = 1.0\n',
@@ -975,6 +994,22 @@ _REFUSED_SNIPPETS = {
             "joined = parts + extra",
             "np.add.at(joined[0], [0], 1)",
             parameters="parts, extra",
+        ),
+        _WRITES_INTO_EXISTING_ARRAY,
+    ),
+    "ufunc_at_on_an_index_copy": (
+        _in_function(
+            "ids = table.index.copy()",
+            "np.add.at(ids, positions, 1)",
+            parameters="table, positions",
+        ),
+        _WRITES_INTO_EXISTING_ARRAY,
+    ),
+    "out_standard_library_random_choice": (
+        _in_function(
+            "chosen = random.choice(arrays)",
+            "np.add(chosen, 1, out=chosen)",
+            parameters="random, arrays",
         ),
         _WRITES_INTO_EXISTING_ARRAY,
     ),
@@ -1321,6 +1356,20 @@ _ACCEPTED_SNIPPETS = {
         "row = np.zeros((2, size))[0]",
         "np.add(row, 1, out=row)",
         parameters="values, size",
+    ),
+    "out_items_of_a_new_array_assigned_by_unpacking": _in_function(
+        "bounds = np.empty(2)",
+        "bounds[0], bounds[1] = low, high",
+        "np.clip(bounds, 0, 1, out=bounds)",
+        "order = np.argsort(values)",
+        "order[0], order[-1] = order[-1], order[0]",
+        "np.add(order, 1, out=order)",
+        parameters="low, high, values",
+    ),
+    "out_multidimensional_slice_of_a_copy": _in_function(
+        "result = matrix.copy()",
+        "np.clip(result[:, 1:], 0, None, out=result[:, 1:])",
+        parameters="matrix",
     ),
     "out_slice_of_a_copy": _in_function(
         "totals = first.copy()",
