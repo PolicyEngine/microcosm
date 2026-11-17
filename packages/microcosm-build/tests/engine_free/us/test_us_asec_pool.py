@@ -56,6 +56,8 @@ def _write_asec(
         tuple[int, int] | tuple[int, int, int] | tuple[int, int, int, int]
     ],
     include_relationship_recode: bool = True,
+    landlord_fields: bool = True,
+    hpublic: int | None = None,
 ) -> None:
     person_rows = []
     household_rows = []
@@ -69,14 +71,22 @@ def _write_asec(
             state_fips = 6
         else:
             household_id, n_people, household_weight, state_fips = household
-        household_rows.append(
-            {
-                "H_SEQ": household_id,
-                "HSUP_WGT": household_weight,
-                "GESTFIPS": state_fips,
-                "H_TENURE": 1 + (household_id % 2),
-            }
-        )
+        tenure = 1 + (household_id % 2)
+        row = {
+            "H_SEQ": household_id,
+            "HSUP_WGT": household_weight,
+            "GESTFIPS": state_fips,
+            "H_TENURE": tenure,
+        }
+        if landlord_fields:
+            # As the ASEC asks them: HPUBLIC of every non-owner household,
+            # HLORENT only where HPUBLIC is 2 (no).
+            public = 0 if tenure == 1 else 1 if household_id % 4 == 1 else 2
+            if hpublic is not None:
+                public = hpublic
+            row["HPUBLIC"] = public
+            row["HLORENT"] = 0 if public != 2 else 1 if household_id % 3 == 0 else 2
+        household_rows.append(row)
         if n_people >= 2:
             person_rows.append(_asec_person(household_id, 1, spouse=2))
             person_rows.append(_asec_person(household_id, 2, spouse=1))
@@ -201,6 +211,69 @@ def test_build_pooled_asec_unit_frame_runs_unit_assignment_on_pooled_source(
     assert frame.table("household")["H_TENURE"].tolist() == [2, 2]
     assert "state_fips" not in frame.table("person")
     assert "H_TENURE" not in frame.table("person")
+
+
+def test_the_landlord_fields_ride_on_the_household_table_unchanged(
+    tmp_path: Path,
+) -> None:
+    # Households 1 (public housing), 3 (subsidised private renter), 4 (owner)
+    # and 7 (unsubsidised private renter), by the fixture's codes.
+    current = tmp_path / "asec_2024.h5"
+    _write_asec(current, households=[(1, 1), (3, 1), (4, 1), (7, 1)])
+
+    frame, _ = build_pooled_asec_unit_frame(
+        [AsecSource(year=2024, path=current)],
+        target_year=2024,
+    )
+
+    household = frame.table("household").sort_values("household_id")
+    assert household["H_TENURE"].tolist() == [2, 2, 1, 2]
+    assert household["HPUBLIC"].tolist() == [1, 2, 0, 2]
+    assert household["HLORENT"].tolist() == [0, 1, 0, 2]
+    for column in ("HPUBLIC", "HLORENT"):
+        assert column not in frame.table("person")
+
+
+def test_a_landlord_field_missing_from_one_pooled_year_is_refused(
+    tmp_path: Path,
+) -> None:
+    current = tmp_path / "asec_2024.h5"
+    prior = tmp_path / "asec_2023.h5"
+    _write_asec(current, households=[(1, 2)])
+    _write_asec(prior, households=[(3, 2)], landlord_fields=False)
+
+    with pytest.raises(
+        ValueError, match=r"HPUBLIC is missing from pooled year\(s\) \[2023\]"
+    ):
+        pool_asec_sources(
+            [
+                AsecSource(year=2024, path=current),
+                AsecSource(year=2023, path=prior),
+            ]
+        )
+
+
+def test_a_landlord_code_outside_the_census_values_is_refused(
+    tmp_path: Path,
+) -> None:
+    current = tmp_path / "asec_2024.h5"
+    _write_asec(current, households=[(1, 1)], hpublic=9)
+
+    with pytest.raises(ValueError, match=r"HPUBLIC must be 0, 1 or 2.*\[1\]"):
+        pool_asec_sources([AsecSource(year=2024, path=current)])
+
+
+def test_sources_without_the_landlord_fields_still_pool(tmp_path: Path) -> None:
+    current = tmp_path / "asec_2024.h5"
+    _write_asec(current, households=[(1, 1)], landlord_fields=False)
+
+    frame, _ = build_pooled_asec_unit_frame(
+        [AsecSource(year=2024, path=current)],
+        target_year=2024,
+    )
+
+    assert "HPUBLIC" not in frame.table("household")
+    assert "HLORENT" not in frame.table("household")
 
 
 def test_build_pooled_asec_unit_frame_aligns_household_weights_by_remapped_id(
