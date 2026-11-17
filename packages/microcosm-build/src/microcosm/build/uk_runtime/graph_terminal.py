@@ -1879,6 +1879,7 @@ def rowwise_candidate_manifest_from_graph(
     from .battery_bindings import uk_area_support_below_floor
     from .diagnostics import uk_fit_by_family, uk_support_limited_misses
     from .gate_scopes import UK_LOCAL_GATE_SCOPE
+    from .geographic_expand import GEOGRAPHIC_EXPAND_STAGE_NAME
     from .graph_targets import registry_from_payload
     from .national_sampling import UK_SAMPLE_RUNG_TOKENS
     from .rowwise_cli import (
@@ -2146,14 +2147,22 @@ def rowwise_candidate_manifest_from_graph(
         "gate": dict(ladder_gate),
         "weights": {
             "household_weight_kind": weight_kind,
+            # The household weights' kind at each step, in the graph's order
+            # (microcosm#931): the spine samples its FRS root below f100 and
+            # makes its geographic clones on the survey's design weights,
+            # before its SPI support channel makes them importance weights;
+            # the dense line stages the bound spine with those and calibrates.
             "household_weight_kind_chain": [
-                {"stage": "staging", "kind": "importance"},
                 *(
                     []
                     if spine_fraction == 1.0
-                    else [{"stage": "sample", "kind": "importance"}]
+                    else [{"stage": "sample", "kind": WeightKind.DESIGN.value}]
                 ),
-                {"stage": "geographic_expand", "kind": "importance"},
+                {
+                    "stage": GEOGRAPHIC_EXPAND_STAGE_NAME,
+                    "kind": WeightKind.DESIGN.value,
+                },
+                {"stage": "staging", "kind": WeightKind.IMPORTANCE.value},
                 {"stage": "rowwise_calibration", "kind": weight_kind},
             ],
             "mass_log_records_before_calibration": len(frame.mass_log) - 1,
