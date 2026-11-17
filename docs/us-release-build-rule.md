@@ -55,9 +55,9 @@ which route A (`tools/route_a/route_a.sh`) drives:
 
 The `--exact-k` arm still waits on a reviewed feed re-pin. Chronicle fixed
 chronicle#277 in `b571381f` (merged 28 September 2026 in `0ca1c0d6`), but
-`us/chronicle_feed.json` pins Chronicle `41b2fb2b`, which predates the fix. A
-build from a newer main
-commit needs settings beyond the commit; "A build from main" in
+`us/chronicle_feed.json` pins Chronicle `41b2fb2b`, which does not contain the
+fix (a later cherry-pick on an older base). A build from a newer main commit
+needs settings beyond the commit; "A build from main" in
 `tools/route_a/README.md` lists them.
 
 ### 1. No Chronicle feed on the build machine carries dimension labels
