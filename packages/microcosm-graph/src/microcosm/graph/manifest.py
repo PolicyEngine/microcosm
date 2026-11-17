@@ -680,7 +680,9 @@ class RunManifest:
 
         Population frames are deliberately not serialized in manifest JSON;
         a manifest restored from JSON therefore raises this explicit error
-        until a loader attaches them again.
+        until a loader attaches them again. A run that named the versions it
+        retains (``run_graph``'s ``retain_populations``) attaches only those,
+        and raises the same error for any other.
         """
 
         try:

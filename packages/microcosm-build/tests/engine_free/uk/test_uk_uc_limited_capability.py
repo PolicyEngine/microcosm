@@ -84,6 +84,8 @@ def _frame(
             "household_id": households,
             "region": ["WALES"] * len(households),
             "household_source_id": households,
+            # The true source each floor counts (microcosm#931).
+            "source_household_id": households,
         }
     )
     if spi_column:

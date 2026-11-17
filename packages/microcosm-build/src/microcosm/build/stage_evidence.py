@@ -2,17 +2,34 @@
 
 Capture only their declared checkpoint/evidence hooks after computation. Model
 objects, closures and execution timestamps never become numerical artifacts.
-Consumers need only this data contract, not a live fitting instance.
+Consumers need only this data contract, not a live fitting instance. Once a
+stage's evidence is captured, :func:`release_stage_results` lets a run drop
+the result the stage kept, output Frame included.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 
 from microcosm.graph import ArtifactType
 
 STAGE_EVIDENCE_TYPE = ArtifactType("microcosm.stage-evidence", 1)
+
+
+def _proxy_chain(transform: object | None) -> Iterator[object]:
+    """The object a staged run holds, then each object it wraps.
+
+    A wrapper keeps the object it wraps under ``transform`` in its own
+    ``__dict__``. The walk follows that entry and stops at a repeat.
+    """
+
+    seen: set[int] = set()
+    candidate: object | None = transform
+    while candidate is not None and id(candidate) not in seen:
+        seen.add(id(candidate))
+        yield candidate
+        candidate = getattr(candidate, "__dict__", {}).get("transform")
 
 
 def _fit_weight_hook_holder(transform: object | None) -> object | None:
@@ -27,14 +44,10 @@ def _fit_weight_hook_holder(transform: object | None) -> object | None:
     release-cut weights audit finds no evidence.
     """
 
-    seen: set[int] = set()
-    candidate: object | None = transform
-    while candidate is not None and id(candidate) not in seen:
-        seen.add(id(candidate))
+    for candidate in _proxy_chain(transform):
         declared = getattr(type(candidate), "fit_weight_records", None) is not None
         if declared or "fit_weight_records" in getattr(candidate, "__dict__", {}):
             return candidate
-        candidate = getattr(candidate, "__dict__", {}).get("transform")
     return None
 
 
@@ -86,6 +99,24 @@ def snapshot_stage_evidence(stage: str, transform: object | None) -> dict[str, o
             "present" if checkpoint["fit_weight_records"] else "empty"
         )
     return payload
+
+
+def release_stage_results(transform: object | None) -> None:
+    """Drop the result a stage kept from its last run, once it is snapshotted.
+
+    Call it only after :func:`snapshot_stage_evidence` has read the stage.
+    The snapshot is then all a consumer reads, yet a stage keeps its
+    ``last_result``, output Frame included, until the run ends. This walks
+    the same wrappers as the snapshot and clears ``last_result`` wherever an
+    object holds one in its own ``__dict__``. It writes through
+    ``object.__setattr__``, so a frozen dataclass is cleared too. A wrapper
+    that only proxies the attribute is never written, and everything else
+    stays: the wrapped objects, fit-weight records, receipts and sampling.
+    """
+
+    for candidate in _proxy_chain(transform):
+        if getattr(candidate, "__dict__", {}).get("last_result") is not None:
+            object.__setattr__(candidate, "last_result", None)
 
 
 def encode_stage_evidence(payload: Mapping[str, object]) -> bytes:

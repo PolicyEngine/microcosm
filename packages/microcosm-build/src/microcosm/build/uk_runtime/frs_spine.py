@@ -32,6 +32,7 @@ from microcosm.build.uk_runtime.pension_coherence import (
 from microcosm.build.uk_runtime.receipt_counts import (
     UK_DISCLOSURE_FLOOR,
     UK_WITHHELD,
+    own_source_households,
     rounded_count,
     support_band,
 )
@@ -2095,15 +2096,18 @@ def frs_care_recipients(
     by_carer = by_carer.join(line_routes).fillna({"inside": False, "outside": False})
     by_carer = by_carer.astype({"inside": bool, "outside": bool})
     held_carers = by_carer.loc[by_carer.index.isin(list(held))]
+    # The survey holds no copies yet, so each carer's own household, from the
+    # care tab, is their true source (microcosm#931).
+    sources = own_source_households(
+        held_carers.rename(columns={"household_id": "person_household_id"})
+    )
     recipients = at_line.loc[at_line["needper"].isin(FRS_CARE_HELPER_NUMBERS)]
     recipient_ids = recipients["household_id"] * 1000 + recipients["needper"]
     evidence.update(
         {
             # Record counts are rounded, never exact (UKDS CD137 cl. 8).
             "carers": rounded_count(len(held_carers)),
-            "carer_households": support_band(
-                int(held_carers["household_id"].nunique())
-            ),
+            "carer_households": support_band(len(set(sources.tolist()))),
             "household_only": rounded_count(
                 int((held_carers["inside"] & ~held_carers["outside"]).sum())
             ),
@@ -2591,7 +2595,9 @@ def frs_dwp_carer_care_hours(
 
     hours = pe_person["care_hours"].to_numpy(dtype=np.float64).copy()
     benunits = pe_person["person_benunit_id"].to_numpy()
-    households = pe_person["person_household_id"].to_numpy()
+    # Each person's own household is their true source: the spine has no
+    # copies yet (microcosm#931).
+    households = own_source_households(pe_person)
     adult = pe_person["is_claimant_or_partner"].to_numpy(dtype=bool)
     reported = (
         pd.to_numeric(pe_person["carers_allowance_reported"], errors="coerce")

@@ -49,6 +49,8 @@ def _rows(**overrides) -> dict:
 
     base = {
         "spine_key": np.array(["a", "b", "c", "d", "d", "e", "f"], dtype=object),
+        # The FRS clone pair d shares its true source household.
+        "source": np.array([1, 2, 3, 4, 4, 5, 6]),
         "region": np.array(
             [
                 "LONDON",
@@ -142,6 +144,7 @@ def test_frs_renters_rank_within_their_cell_and_spi_renters_land_among_them() ->
     mask = prl.redraw_mask(rows["region"], rows["tenure_type"], rows["rent"])
     spine = prl._spine_rows(
         spine_key=rows["spine_key"][mask],
+        source=rows["source"][mask],
         region=rows["region"][mask],
         category=prl.rent_categories(rows["num_bedrooms"][mask]),
         rent=rows["rent"][mask],
@@ -216,6 +219,7 @@ def test_region_scale_holds_the_frs_mean_on_the_census_mix() -> None:
     mask = prl.redraw_mask(rows["region"], rows["tenure_type"], rows["rent"])
     spine = prl._spine_rows(
         spine_key=rows["spine_key"][mask],
+        source=rows["source"][mask],
         region=rows["region"][mask],
         category=prl.rent_categories(rows["num_bedrooms"][mask]),
         rent=rows["rent"][mask],
@@ -261,6 +265,7 @@ def test_renters_on_the_census_mix_keep_their_regions_frs_level(seed) -> None:
     keys = np.array([f"k{i}" for i in range(n)], dtype=object)
     new, _ = prl.localise_rents(
         spine_key=keys,
+        source=np.arange(n),
         region=np.full(n, "LONDON"),
         tenure_type=np.full(n, "RENT_PRIVATELY"),
         rent=rent,
@@ -592,6 +597,7 @@ def _regional_rows(*, wales_frs: int, wales_rent: float = 9_000.0) -> dict:
     channel = ["frs"] * london + ["spi"] + ["frs"] * wales_frs + ["spi"]
     return {
         "spine_key": np.array([f"k{index}" for index in range(n)], dtype=object),
+        "source": np.arange(n),
         "region": np.array(region),
         "tenure_type": np.full(n, "RENT_PRIVATELY"),
         "rent": np.asarray(rent, dtype=float),
