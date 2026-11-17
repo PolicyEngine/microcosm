@@ -1,0 +1,1 @@
+Remove the seven stored-input register entries that policyengine-us 2.145.3 defines as inputs (`tax_unit_role_input`, `parent_1_id`, `parent_2_id` and the four federal student loan inputs), and keep microunit's tax-unit roles in the pool's build-time simulation projection (microcosm#1027).

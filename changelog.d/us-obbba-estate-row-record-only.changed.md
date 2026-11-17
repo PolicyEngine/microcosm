@@ -1,0 +1,1 @@
+Note on the OBBBA estate and gift tax exemption validation row that it scores zero by construction on policyengine-us 2.145.3 (`estate_tax` needs the `is_deceased` input, which no release stores), so it is recorded, not compared with JCT.

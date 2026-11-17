@@ -48,6 +48,7 @@ __all__ = [
     "QBI_ARCHIVED_IMPUTATION_URL",
     "QBI_ARCHIVED_PUF_ARTIFACT_URL",
     "QBI_ARCHIVED_SIMULATION_URL",
+    "US_QBI_ASEC_QUALIFICATION_DEFAULTS",
     "US_QBI_BOOLEAN_OUTPUT_COLUMNS",
     "US_QBI_NONCONSTANT_PERSON_COLUMNS",
     "US_QBI_NONNEGATIVE_OUTPUT_COLUMNS",
@@ -95,6 +96,19 @@ _GENERAL_QUALIFICATION_FLAGS: tuple[str, ...] = (
     "rental_income_would_be_qualified",
     "self_employment_income_would_be_qualified",
 )
+#: PolicyEngine-US's defaults for the general qualification flags, which the
+#: base ASEC channel keeps. policyengine-us 2.145.3 defaults
+#: ``estate_income_would_be_qualified`` to False (2.2.1 defaulted it to True);
+#: the other five stay True. An engine-contract test pins these to the
+#: installed engine.
+US_QBI_ASEC_QUALIFICATION_DEFAULTS: dict[str, bool] = {
+    "estate_income_would_be_qualified": False,
+    "farm_operations_income_would_be_qualified": True,
+    "farm_rent_income_would_be_qualified": True,
+    "partnership_s_corp_income_would_be_qualified": True,
+    "rental_income_would_be_qualified": True,
+    "self_employment_income_would_be_qualified": True,
+}
 _SSTB_QUALIFICATION_FLAG = "sstb_self_employment_income_would_be_qualified"
 US_QBI_BOOLEAN_OUTPUT_COLUMNS: tuple[str, ...] = (
     *_GENERAL_QUALIFICATION_FLAGS,
@@ -1259,7 +1273,9 @@ def with_us_qbi_input_reconciliation(frame: Frame) -> Frame:
     # This is a hermetic two-channel choice, not a claim about the retired
     # clone implementation (which imputed absent PUF variables onto both halves).
     for column in _GENERAL_QUALIFICATION_FLAGS:
-        flags[column][asec_mask & reconciliation_scope] = True
+        flags[column][asec_mask & reconciliation_scope] = (
+            US_QBI_ASEC_QUALIFICATION_DEFAULTS[column]
+        )
     flags["business_is_sstb"][asec_mask & reconciliation_scope] = False
     flags[_SSTB_QUALIFICATION_FLAG][asec_mask & reconciliation_scope] = False
 

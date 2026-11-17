@@ -681,11 +681,10 @@ _POOL_NATIVE_COMPLETE_OUTPUTS: Mapping[str, frozenset[str]] = {
             # The parent ids are complete on both arms without a transfer:
             # the eligibility operator resolves them on the CPS projection
             # and ``map_acs_native_inputs`` writes the ACS spine's declared
-            # 0. They must never enter the QRF plan — parent_1_id is not a
-            # PolicyEngine-US variable, so ``_target_encoding`` would treat
-            # it as continuous and hand an ACS child a fractional
-            # interpolation between two unrelated ASEC person ids
-            # (microcosm#884).
+            # 0. They must never enter the QRF plan — a parent id is an
+            # identifier, not an amount, so a QRF draw would hand an ACS
+            # child a fractional interpolation between two unrelated ASEC
+            # person ids (microcosm#884).
             *US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS,
         }
     ),
@@ -696,6 +695,11 @@ _POOL_SIMULATION_PRESERVED_ENGINE_INPUTS: Mapping[
     tuple[str, str], tuple[str, str | None]
 ] = {
     ("person", "is_related_to_head_or_spouse"): ("assembled", None),
+    # policyengine-us#9617 reads microunit's HEAD / SPOUSE / DEPENDENT roles
+    # through this person Enum input (its default UNSPECIFIED falls back to
+    # age ordering), so the build-time simulation projection keeps the roles
+    # the published model will use (microcosm#1027).
+    ("person", "tax_unit_role_input"): ("assembled", None),
     ("household", "puma"): (
         "assembled",
         "ephemeral_simulation_projection_engine_default_for_null",

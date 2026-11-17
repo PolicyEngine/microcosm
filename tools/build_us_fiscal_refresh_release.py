@@ -53,7 +53,7 @@ import sys
 import time
 import tomllib
 import uuid
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
@@ -255,6 +255,13 @@ from microcosm.build.us_runtime.battery_bindings import (
     us_gate_registry,
     us_gate_specs,
 )
+from microcosm.build.us_runtime.block_location import (
+    POPULACE_BLOCK_LADDER_SHA256_ATTR,
+    POPULACE_BLOCK_LADDER_VINTAGES_ATTR,
+    POPULACE_LOCATION_CLONES_ATTR,
+    POPULACE_LOCATION_RULE_ATTR,
+    POPULACE_LOCATION_SEED_ATTR,
+)
 from microcosm.build.us_runtime.chronicle_feed import (
     USChronicleFeed,
     load_us_chronicle_feed,
@@ -384,6 +391,7 @@ from microcosm.build.us_runtime.release_gate_preflight import (  # noqa: TC001
 )
 from microcosm.build.us_runtime.release_input_coverage import (
     REFERENCE_ECPS_LAYER_RENAMES,
+    REFERENCE_ECPS_RETIRED_LAYERS,
     project_ecps_parity_known_gap_names,
     us_release_input_coverage_signal_counts,
 )
@@ -1006,10 +1014,6 @@ US_HEALTH_INPUT_NONCONSTANT_COLUMNS = (
 US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
     "takes_up_dc_ptc": ("DC PTC take-up imputation backlog; constant True."),
     "second_home_mortgage_balance": (
-        "Second-home mortgage decomposition not imputed; constant at the"
-        " engine default (PolicyEngine/microcosm#38)."
-    ),
-    "second_home_mortgage_interest": (
         "Second-home mortgage decomposition not imputed; constant at the"
         " engine default (PolicyEngine/microcosm#38)."
     ),
@@ -3634,6 +3638,63 @@ def _h5_attr_text(attrs: object, key: str) -> str | None:
     if isinstance(value, np.bytes_):
         return value.decode()
     return str(value)
+
+
+#: The base's household-location root attributes the release carries onto its
+#: own H5 (microcosm#1047, #1647). A base built under ``block_v1`` records all
+#: five; a legacy base records none, and the release then writes none.
+US_RELEASE_CARRIED_LOCATION_ATTRS = (
+    POPULACE_LOCATION_RULE_ATTR,
+    POPULACE_LOCATION_SEED_ATTR,
+    POPULACE_LOCATION_CLONES_ATTR,
+    POPULACE_BLOCK_LADDER_SHA256_ATTR,
+    POPULACE_BLOCK_LADDER_VINTAGES_ATTR,
+)
+
+
+def _read_base_location_attributes(h5_path: Path) -> dict[str, str]:
+    """The base H5's household-location root attributes, as text.
+
+    The release writes its H5 through the engine adapter, which sets no root
+    attributes, so without this carry a ``block_v1`` national file reads as
+    ``legacy`` to every consumer (ACS staging refuses such a donor). A base
+    records either all of :data:`US_RELEASE_CARRIED_LOCATION_ATTRS` or none.
+    """
+
+    with pd.HDFStore(h5_path, mode="r") as store:
+        attributes = store.get_node("/")._v_attrs
+        names = set(attributes._v_attrnames)
+        recorded = {
+            key: str(_h5_attr_text(attributes, key))
+            for key in US_RELEASE_CARRIED_LOCATION_ATTRS
+            if key in names
+        }
+    if recorded and set(recorded) != set(US_RELEASE_CARRIED_LOCATION_ATTRS):
+        missing = sorted(set(US_RELEASE_CARRIED_LOCATION_ATTRS) - set(recorded))
+        raise ValueError(
+            f"Base H5 {h5_path} records a household-location rule without "
+            f"{missing}; a located base records all of them."
+        )
+    return recorded
+
+
+def _write_release_location_attributes(
+    dataset_path: Path, attributes: Mapping[str, str]
+) -> None:
+    """Carry the base's household-location attributes onto the release H5."""
+
+    if not attributes:
+        return
+    with pd.HDFStore(dataset_path, mode="a") as store:
+        root = store.get_node("/")._v_attrs
+        for key in US_RELEASE_CARRIED_LOCATION_ATTRS:
+            root[key] = str(attributes[key])
+    written = _read_base_location_attributes(dataset_path)
+    if written != dict(attributes):
+        raise RuntimeError(
+            f"Release H5 {dataset_path} household-location attributes "
+            f"{written!r} differ from the base's {dict(attributes)!r}."
+        )
 
 
 def _load_incumbent_diagnostics_payload(path: Path | None) -> dict[str, object]:
@@ -7999,6 +8060,37 @@ def _input_mass_reference_gate(
     )
 
 
+def _retire_ecps_reference_layers(
+    nonzero_shares: Mapping[str, float],
+    engine_inputs: Collection[str],
+) -> tuple[dict[str, float], dict[str, str]]:
+    """Drop the reference layers whose engine input the pinned engine removed.
+
+    Each retired layer (``REFERENCE_ECPS_RETIRED_LAYERS``) names the live
+    layer that carries its amount. The retirement applies only while the
+    engine defines the successor and not the retired input; anything else is
+    refused, because the register would then describe another engine.
+    Returns the kept layers and ``{retired: successor}`` for those dropped.
+    """
+
+    inputs = set(engine_inputs)
+    kept: dict[str, float] = {}
+    retired: dict[str, str] = {}
+    for name, share in nonzero_shares.items():
+        successor = REFERENCE_ECPS_RETIRED_LAYERS.get(str(name))
+        if successor is None:
+            kept[str(name)] = float(share)
+            continue
+        if str(name) in inputs or successor not in inputs:
+            raise ValueError(
+                f"eCPS parity reference layer {name!r} is registered as retired "
+                f"in favour of {successor!r}, but the installed engine "
+                f"{'still defines it' if str(name) in inputs else 'lacks the successor'}."
+            )
+        retired[str(name)] = successor
+    return kept, retired
+
+
 def _project_ecps_reference_layers(
     nonzero_shares: Mapping[str, float],
 ) -> tuple[dict[str, float], dict[str, str]]:
@@ -8087,9 +8179,10 @@ def _ecps_parity_gate(
     known_gaps = known_gaps if known_gaps is not None else load_ecps_parity_known_gaps()
     input_variables = _engine_input_variables()
     candidate_shares = us_nonzero_shares(base_frame, columns=input_variables)
-    reference_shares, applied_renames = _project_ecps_reference_layers(
-        reference.nonzero_shares
+    kept_shares, retired_layers = _retire_ecps_reference_layers(
+        reference.nonzero_shares, input_variables
     )
+    reference_shares, applied_renames = _project_ecps_reference_layers(kept_shares)
     # Exemptions resolve through the same register, so a historical-name entry
     # exempts (and goes stale or dormant on) the live layer it names.
     projected_gaps, applied_gap_renames = _project_ecps_known_gaps(known_gaps)
@@ -8102,6 +8195,7 @@ def _ecps_parity_gate(
     # The pinned reference predates engine input renames; its layers are graded
     # under the live names, and the projection is recorded, not hidden.
     details["reference_layer_renames"] = applied_renames
+    details["reference_layer_retirements"] = retired_layers
     details["known_gap_renames"] = applied_gap_renames
     details["reference"] = {
         "repo_id": reference.source.repo_id,
@@ -8187,8 +8281,6 @@ def _ecps_parity_gate(
 #                          itemizer-masked Table 2.1 target (~$186.3B aged)
 #                          pins the itemizer share and pulls the full column
 #                          down toward the band from $474-526B.
-#   first_home_mortgage_interest follows home_mortgage_interest (second-home
-#                          leg un-imputed / 0 per microcosm#38).
 #   taxable_interest_income ref $320.159B band [$160.079B, $480.238B]; the
 #                          microcosm#489 adjudication VINDICATED this
 #                          reference: SOI Pub 1304 Table 1.4 puts taxable
@@ -13861,6 +13953,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         congressional_district_vintage_crosswalk_metadata,
         authenticated_pool_h5=authenticated_pool_h5,
     )
+    # microcosm#1047/#1647: the release H5 carries the base's location rule.
+    if authenticated_pool_h5 is not None:
+        authenticated_pool_h5.verified_digest(
+            consumer="household-location attributes before H5 read"
+        )
+    base_location_attributes = _read_base_location_attributes(base_h5)
     # Preflight (before the expensive calibration): every provision-critical
     # input leaf the reform-validation configs depend on must be produced by a
     # source stage or be an allowlisted known gap. This catches the
@@ -17507,6 +17605,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # microcosm#443: #437 dropped this call while inserting the batched raise,
     # so attempts 13/14 smoke-scored a stale artifact from a prior run.
     release_engine.write_dataset(export_frame, dataset_path, period=PERIOD)
+    # microcosm#1047/#1647: before anything binds the file's sha256, carry the
+    # base's household-location rule onto it (metadata only; no column moves).
+    _write_release_location_attributes(dataset_path, base_location_attributes)
     # microcosm#1026: the stored-input gate above graded a model of the
     # writer's output; the written bytes are graded whatever the gate reached
     # and must earn the same verdict (no refusal, if the gate could not
@@ -17748,6 +17849,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         coverage["congressional_district_vintage_crosswalk"] = (
             congressional_district_vintage_crosswalk_metadata
         )
+    coverage["household_location_attributes"] = dict(base_location_attributes)
     coverage["fiscal_target_support_exclusions"] = [
         {"source_record_id": source_record_id, "reason": reason}
         for source_record_id, reason in sorted(

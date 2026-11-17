@@ -1,0 +1,1 @@
+Stop imputing the tax-unit `first_home_mortgage_interest` and `second_home_mortgage_interest` legs, which policyengine-us removed (policyengine-us#9605): the person-level `home_mortgage_interest` carries the amount. The eCPS parity gate now records the two retired reference layers instead of grading them (ported from microcosm#1365).

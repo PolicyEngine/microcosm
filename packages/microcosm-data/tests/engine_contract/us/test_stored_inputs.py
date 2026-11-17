@@ -52,10 +52,14 @@ def test_the_1026_premises_hold_for_the_installed_engine():
     assert not wic.formulas
     for retired_or_construction in (
         "medicare_part_b_premiums",
-        "tax_unit_role_input",
         "filing_status_input",
     ):
         assert retired_or_construction not in variables
+    # policyengine-us#9617 made the role microunit assigns a person Enum input,
+    # so it left the register (microcosm#1027).
+    role = variables["tax_unit_role_input"]
+    assert (role.entity.key, role.definition_period) == ("person", "year")
+    assert not role.formulas
     # medicare_part_b_premiums is a Person, YEAR, float input with no formula
     # in every policyengine-us version read from 1.452.0 to 1.670.2; its
     # replacement has that shape.
