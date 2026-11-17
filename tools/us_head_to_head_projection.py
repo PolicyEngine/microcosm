@@ -512,7 +512,9 @@ def reconstruct(
             # submit, came from an earlier submit the model gave a token: that
             # submit took none, so the token is still free.
             resynced = 0
-            while spawns < min(workers, len(inits)) and inits[spawns] <= ready and taken:
+            while (
+                spawns < min(workers, len(inits)) and inits[spawns] <= ready and taken
+            ):
                 spawns += 1
                 taken -= 1
                 resynced += 1

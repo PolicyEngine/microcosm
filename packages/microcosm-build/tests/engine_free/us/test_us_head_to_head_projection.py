@@ -62,9 +62,7 @@ def _toy_truth() -> tuple[dict[int, float], list[int], dict[int, float]]:
     config = records[0]["config"]
     tasks = {r["task"]: r for r in records if "task" in r}
     order = sorted((r["init_v"], r["pid"]) for r in records if "init_v" in r)
-    firsts = [
-        min(t for t, r in tasks.items() if r["pid"] == pid) for _, pid in order
-    ]
+    firsts = [min(t for t, r in tasks.items() if r["pid"] == pid) for _, pid in order]
     per = config["slices"]
     chunks: dict[int, list[float]] = {}
     for task, record in tasks.items():
@@ -73,6 +71,8 @@ def _toy_truth() -> tuple[dict[int, float], list[int], dict[int, float]]:
             chunks.setdefault(chunk, []).append(record["end_v"] - record["start_v"])
     means = {chunk: sum(d) / len(d) for chunk, d in chunks.items()}
     return means, firsts, {task: r["start_v"] for task, r in tasks.items()}
+
+
 SCORER = ROOT / "tools" / "score_us_release_head_to_head.py"
 START = 1_794_816_000  # 2026-11-16T08:00:00Z
 #: The estimate allows 600 s after the last slice; the simulator takes 300.
@@ -327,9 +327,7 @@ def test_a_toy_pool_with_steady_state_starts_follows_its_own_timing() -> None:
     # MODEL-6): a completion stamped in a spawning submit's second but
     # landing after it gives that submit a token. Any other misdating fails.
     misdated = {
-        task
-        for task, at in history.started.items()
-        if abs(at - true_starts[task]) > 5
+        task for task, at in history.started.items() if abs(at - true_starts[task]) > 5
     }
     assert misdated == {10, 25, 37}
     # The ties make the first chunks read slow, never fast: chunk 1 +6.3%,
