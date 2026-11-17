@@ -390,14 +390,14 @@ def test_clone_refusals_print_counts_and_no_id() -> None:
             households, crosswalk_rows(), n_clones=2, id_multiplier=1
         )
     assert str(caught.value).endswith(
-        "too small for household cloning: 1 row(s) repeat an earlier row's id."
+        "too small for household cloning: a row repeats an earlier row's id."
     )
     assert "700002" not in str(caught.value)
 
     repeated = households.assign(household_id=[700_001, 700_001])
     with pytest.raises(ValueError, match="unique before cloning") as caught:
         assign_household_geography(repeated, crosswalk_rows(), n_clones=1)
-    assert "1 row(s) repeat" in str(caught.value)
+    assert "a row repeats" in str(caught.value)
     assert "700001" not in str(caught.value)
 
     people = pd.DataFrame({"person_id": [700_001_001, 700_002_001]})
@@ -405,7 +405,7 @@ def test_clone_refusals_print_counts_and_no_id() -> None:
         clone_entity_frame(
             people, id_columns=["person_id"], n_clones=2, id_multiplier=1_000
         )
-    assert "1 row(s) repeat" in str(caught.value)
+    assert "a row repeats" in str(caught.value)
     assert "700002001" not in str(caught.value)
 
     largest = np.iinfo(np.int64).max
@@ -415,10 +415,8 @@ def test_clone_refusals_print_counts_and_no_id() -> None:
             clone_entity_frame(
                 near, id_columns=["person_id"], n_clones=2, id_multiplier=multiplier
             )
-        overflowing = 1 if multiplier == 100 else 2
         assert str(caught.value) == (
-            f"clone ID remapping would overflow int64 on {overflowing} of 2 id(s) "
-            "at clone index 1."
+            "clone ID remapping would overflow int64 at clone index 1."
         )
         assert str(largest - 10) not in str(caught.value)
         assert str(multiplier) not in str(caught.value)

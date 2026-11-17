@@ -362,12 +362,10 @@ def assign_household_geography(
         clone_frames.append(clone)
 
     result = pd.concat(clone_frames, ignore_index=True)
-    repeated = int(result["household_id"].duplicated().sum())
-    if repeated:
+    if result["household_id"].duplicated().any():
         raise ValueError(
             "remapped 'household_id' values are not unique; id_multiplier is "
-            f"too small for household cloning: {repeated} row(s) repeat an "
-            "earlier row's id."
+            "too small for household cloning: a row repeats an earlier row's id."
         )
     return RowwiseGeographyAssignment(
         household=result,
@@ -523,12 +521,11 @@ def clone_entity_frame(
         clones.append(clone)
     result = pd.concat(clones, ignore_index=True)
     for column in unique_input_columns:
-        repeated = int(result[column].duplicated().sum())
-        if repeated:
+        if result[column].duplicated().any():
             raise ValueError(
                 f"remapped {column!r} values are not unique; id_multiplier "
-                f"is too small for linked entity cloning: {repeated} row(s) "
-                "repeat an earlier row's id."
+                "is too small for linked entity cloning: a row repeats an "
+                "earlier row's id."
             )
     return result
 
@@ -578,11 +575,10 @@ def _prepare_households(
         frame = frame.rename(columns={weight_column: "household_weight"})
     if frame["household_id"].isna().any():
         raise ValueError("household_id contains missing values.")
-    repeated = int(frame["household_id"].duplicated().sum())
-    if repeated:
+    if frame["household_id"].duplicated().any():
         raise ValueError(
-            f"household_id must be unique before cloning; {repeated} row(s) "
-            "repeat an earlier row's id."
+            "household_id must be unique before cloning; a row repeats an "
+            "earlier row's id."
         )
     weights = pd.to_numeric(frame["household_weight"], errors="coerce")
     if weights.isna().any():
@@ -855,17 +851,13 @@ def _remap_ids(
     if clone_index == 0:
         return values.copy()
     # Exact: the offset is a Python integer and is compared, never cast, so an
-    # offset beyond int64 is refused rather than wrapped. The message prints
-    # counts, never an id or the multiplier.
+    # offset beyond int64 is refused rather than wrapped. The message names
+    # the clone index, never a count, an id or the multiplier.
     offset = int(clone_index) * int(id_multiplier)
     largest = int(np.iinfo(np.int64).max)
-    overflowing = (
-        len(values) if offset > largest else int((values > largest - offset).sum())
-    )
-    if overflowing:
+    if len(values) and (offset > largest or bool((values > largest - offset).any())):
         raise ValueError(
-            f"clone ID remapping would overflow int64 on {overflowing} of "
-            f"{len(values)} id(s) at clone index {clone_index}."
+            f"clone ID remapping would overflow int64 at clone index {clone_index}."
         )
     return values + offset
 

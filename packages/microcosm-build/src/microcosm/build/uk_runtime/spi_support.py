@@ -744,11 +744,10 @@ def fill_support_channel_from_source(
         raise ValueError(f"donor is missing column(s): {missing_donor}.")
     if donor[donor_id_column].isna().any():
         raise ValueError(f"donor.{donor_id_column} contains missing values.")
-    repeated = int(donor[donor_id_column].duplicated().sum())
-    if repeated:
+    if donor[donor_id_column].duplicated().any():
         raise ValueError(
-            f"donor.{donor_id_column} must be unique; {repeated} row(s) repeat "
-            "an earlier row's id."
+            f"donor.{donor_id_column} must be unique; a row repeats an earlier "
+            "row's id."
         )
 
     channel_column = support_channel_column(entity)
@@ -770,11 +769,10 @@ def fill_support_channel_from_source(
 
     donor_indexed = donor.set_index(donor_id_column, drop=False)
     source_ids = out.loc[mask, source_id_column]
-    unmatched = int((~source_ids.isin(donor_indexed.index)).sum())
-    if unmatched:
+    if (~source_ids.isin(donor_indexed.index)).any():
         raise ValueError(
             "donor is missing source ID value(s) required by the support "
-            f"channel: {unmatched} channel row(s) name a source it lacks."
+            "channel: channel rows name a source it lacks."
         )
 
     aligned = donor_indexed.loc[source_ids.to_numpy()]
@@ -998,11 +996,10 @@ def _distinct_source_households(household: pd.DataFrame) -> int:
     """The share's denominator: the distinct true sources of the households."""
 
     sources = household["source_household_id"]
-    unsourced = int(sources.isna().sum())
-    if unsourced:
+    if sources.isna().any():
         raise ValueError(
-            f"{unsourced} household row(s) carry no source_household_id; the SPI "
-            "share counts distinct source households."
+            "Household rows carry no source_household_id; the SPI share counts "
+            "distinct source households."
         )
     count = int(sources.nunique())
     if count == 0:
@@ -1040,10 +1037,9 @@ def _validate_selected_household_ids(
     if len(set(selected)) != len(selected):
         raise ValueError("selected_household_ids must be unique.")
     available = set(household["household_id"])
-    missing = sum(1 for value in selected if value not in available)
-    if missing:
+    if any(value not in available for value in selected):
         raise ValueError(
-            f"selected_household_ids contains {missing} value(s) absent from household."
+            "selected_household_ids contains values absent from household."
         )
     selected_set = set(selected)
     return tuple(
@@ -1313,7 +1309,8 @@ def _geographic_clone_strata(household: pd.DataFrame) -> np.ndarray | None:
     """Each household's geographic clone, or None without the index column.
 
     Refuses a non-integer column, a household without an index and a
-    negative index, each by count or dtype, never by id or value.
+    negative index, each by its column or dtype, never by a count, an id or a
+    value.
     """
 
     column = SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN
@@ -1327,18 +1324,16 @@ def _geographic_clone_strata(household: pd.DataFrame) -> np.ndarray | None:
             "The SPI prior allocation stratifies geographic clones on an integer "
             f"{column!r} column; it has dtype {values.dtype}."
         )
-    unindexed = int(values.isna().sum())
-    if unindexed:
+    if values.isna().any():
         raise ValueError(
-            f"{unindexed} household row(s) carry no {column!r}; the SPI prior "
-            "allocation stratifies each geographic clone."
+            f"Household rows carry no {column!r}; the SPI prior allocation "
+            "stratifies each geographic clone."
         )
     indices = values.to_numpy(dtype=np.int64)
-    negative = int((indices < 0).sum())
-    if negative:
+    if (indices < 0).any():
         raise ValueError(
-            f"{negative} household row(s) carry a negative {column!r}; the SPI "
-            "prior allocation stratifies each geographic clone."
+            f"Household rows carry a negative {column!r}; the SPI prior "
+            "allocation stratifies each geographic clone."
         )
     return indices
 
@@ -1510,12 +1505,8 @@ def _validate_uk_support_inputs(
         ("person_household_id", household, "household_id", "household"),
         ("person_benunit_id", benunit, "benunit_id", "benunit"),
     ):
-        unlinked = int((~person[column].isin(table[id_column])).sum())
-        if unlinked:
-            raise ValueError(
-                f"person.{column} names a {label} absent from {label} on "
-                f"{unlinked} person row(s)."
-            )
+        if (~person[column].isin(table[id_column])).any():
+            raise ValueError(f"person.{column} names a {label} absent from {label}.")
 
 
 def _validate_uk_support_outputs(
@@ -1575,11 +1566,9 @@ def _require_columns(
 def _require_unique(frame: pd.DataFrame, column: str, *, label: str) -> None:
     if frame[column].isna().any():
         raise ValueError(f"{label}.{column} contains missing values.")
-    repeated = int(frame[column].duplicated().sum())
-    if repeated:
+    if frame[column].duplicated().any():
         raise ValueError(
-            f"{label}.{column} must be unique; {repeated} row(s) repeat an "
-            "earlier row's value."
+            f"{label}.{column} must be unique; a row repeats an earlier row's value."
         )
 
 

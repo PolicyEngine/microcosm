@@ -2249,7 +2249,7 @@ def _source_lineage(
     walk reads a row whose columns hold only integers and floats as float64,
     which is inexact above 2**53 (an all-integer row stays int64, and a row
     with a string or boolean column comes back as objects). The refusals
-    print counts, never an id.
+    name the condition and the column, never a count or an id.
     """
 
     id_column = before.schema.entity_id_column(entity)
@@ -2276,28 +2276,26 @@ def _source_lineage(
         # stage's declared copy-id radix, not that older provenance column.
         copy_index = targets // int(id_offset)
         sources = targets - copy_index * int(id_offset)
-        unmatched = int(((copy_index < 1) | ~pd.Index(sources).isin(before_ids)).sum())
-        if unmatched:
+        if ((copy_index < 1) | ~pd.Index(sources).isin(before_ids)).any():
             raise ValueError(
-                f"UK stage produced {unmatched} new {entity!r} row(s) whose id "
-                "less its copy ordinal times the stage's declared copy-id radix "
-                "is not an incumbent id."
+                f"UK stage produced new {entity!r} rows whose id less its copy "
+                "ordinal times the stage's declared copy-id radix is not an "
+                "incumbent id."
             )
     elif source_column in after_table:
         # Only the new rows' sources are read, as the row walk read them.
         sources = _exact_ids(
             after_table[source_column][new], label=f"{entity}.{source_column}"
         )
-        unmatched = int((~pd.Index(sources).isin(before_ids)).sum())
-        if unmatched:
+        if (~pd.Index(sources).isin(before_ids)).any():
             raise ValueError(
-                f"UK stage produced {unmatched} new {entity!r} row(s) whose "
-                f"{source_column!r} is not an incumbent id."
+                f"UK stage produced new {entity!r} rows whose {source_column!r} "
+                "is not an incumbent id."
             )
     else:
         raise ValueError(
-            f"UK stage produced {int(new.sum())} new {entity!r} row(s) without an "
-            f"explicit {source_column!r} or a declared copy-id lineage rule."
+            f"UK stage produced new {entity!r} rows without an explicit "
+            f"{source_column!r} or a declared copy-id lineage rule."
         )
     return pd.Series(
         sources,

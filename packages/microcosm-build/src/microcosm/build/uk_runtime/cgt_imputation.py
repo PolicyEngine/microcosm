@@ -1830,10 +1830,7 @@ def impute_uk_capital_gains_with_report(
         weights_by_household.index
     )
     if missing_households:
-        raise ValueError(
-            f"Person rows reference {len(missing_households)} household(s) with "
-            "no weight."
-        )
+        raise ValueError("Person rows reference households with no weight.")
     person_weight = (
         person["person_household_id"].map(weights_by_household).to_numpy(dtype=float)
     )

@@ -602,7 +602,7 @@ def test_the_executor_stays_exact_above_2_53_on_integer_and_float_tables() -> No
     )
 
 
-def test_the_executor_refuses_new_rows_without_an_incumbent_parent_by_count() -> None:
+def test_the_executor_refuses_new_rows_without_an_incumbent_parent() -> None:
     base = base_id_tables()
     before_tables = copy_chain(base, layers=2)
     stray = 10**12 + 99_999
@@ -641,16 +641,16 @@ def test_the_executor_refuses_new_rows_without_an_incumbent_parent_by_count() ->
     )
     before, after = id_frame(before_tables), id_frame(after_tables)
     with pytest.raises(
-        ValueError, match=r"^UK stage produced 1 new 'household' row\(s\) whose id"
+        ValueError, match=r"^UK stage produced new 'household' rows whose id"
     ) as caught:
         graph_kernels._source_lineage(
             before, after, "household", id_offset=radix("high_value_support")
         )
     assert str(stray) not in str(caught.value)
-    # Without a declared radix or a source-id column, new rows are refused by
-    # count too.
+    # Without a declared radix or a source-id column, new rows are refused
+    # too, by name.
     with pytest.raises(
-        ValueError, match=r"^UK stage produced 2 new 'household' row\(s\) without"
+        ValueError, match=r"^UK stage produced new 'household' rows without"
     ) as caught:
         graph_kernels._source_lineage(before, after, "household", id_offset=None)
     assert str(stray) not in str(caught.value)
@@ -674,7 +674,7 @@ def test_the_executor_refuses_new_rows_without_an_incumbent_parent_by_count() ->
     with pytest.raises(
         ValueError,
         match=(
-            r"^UK stage produced 1 new 'household' row\(s\) whose "
+            r"^UK stage produced new 'household' rows whose "
             r"'household_source_id' is not an incumbent id\.$"
         ),
     ) as caught:

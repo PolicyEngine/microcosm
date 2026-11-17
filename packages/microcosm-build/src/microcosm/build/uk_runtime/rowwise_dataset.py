@@ -742,18 +742,14 @@ def validate_uk_ladder_rowwise_dataset_tables(
 def _require_person_links(
     person: pd.DataFrame, benunit: pd.DataFrame, household: pd.DataFrame
 ) -> None:
-    """Refuse a person whose household or benefit unit is absent, by count."""
+    """Refuse a person whose household or benefit unit is absent, by name."""
 
     for column, table, id_column, label in (
         ("person_household_id", household, "household_id", "household"),
         ("person_benunit_id", benunit, "benunit_id", "benunit"),
     ):
-        unlinked = int((~person[column].isin(table[id_column])).sum())
-        if unlinked:
-            raise ValueError(
-                f"person.{column} names a {label} absent from {label} on "
-                f"{unlinked} person row(s)."
-            )
+        if (~person[column].isin(table[id_column])).any():
+            raise ValueError(f"person.{column} names a {label} absent from {label}.")
 
 
 def _assert_clone_link_alignment(
@@ -1301,11 +1297,9 @@ def _require_columns(
 def _require_unique(frame: pd.DataFrame, column: str, *, label: str) -> None:
     if frame[column].isna().any():
         raise ValueError(f"{label}.{column} contains missing values.")
-    repeated = int(frame[column].duplicated().sum())
-    if repeated:
+    if frame[column].duplicated().any():
         raise ValueError(
-            f"{label}.{column} must be unique; {repeated} row(s) repeat an "
-            "earlier row's value."
+            f"{label}.{column} must be unique; a row repeats an earlier row's value."
         )
 
 

@@ -456,10 +456,8 @@ class TestImputation:
                 PARAMETERS,
                 conditioning=load_hmrc_cgt_conditioning_facts(),
             )
-        # The refusal counts the households and names none (microcosm#931).
-        assert str(caught.value) == (
-            "Person rows reference 1 household(s) with no weight."
-        )
+        # The refusal names no household and gives no count (microcosm#931).
+        assert str(caught.value) == "Person rows reference households with no weight."
 
 
 class TestWealthRanking:
