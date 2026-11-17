@@ -16,22 +16,28 @@ and refuses it. Each rule's name is what a failure reports.
     read-only views of the shared memory; this makes them writable.
 ``writes-through-writable-view``
     A write into a writable view of pandas' memory: ``.array`` (of a Series
-    or Index), ``.base`` (the writable array behind a read-only view) or
-    ``.asi8`` (datetime data). Writes are item assignment, augmented
+    or Index), ``.asi8`` (datetime data), or ``.base`` read from an array
+    expression (a call such as ``to_numpy()``, or ``.values``), which is
+    the writable array behind a read-only view. Writes are item
     assignment, ``__setitem__``, ``fill``, ``sort`` and the other in-place
     ndarray methods, ``fillna(copy=False)``, ``out=``, ``shuffle`` and the
-    in-place NumPy functions below. It counts when the written expression
-    reaches the view through indexing, the NumPy functions that can return
-    a view (``np.asarray``, ``np.flip``, ``np.split``, ... in
-    ``_VIEW_NUMPY_FUNCTIONS``), ``to_numpy()``, ``astype(copy=False)`` and
-    the other view methods, a list, tuple, set or dict display or
-    comprehension holding it (also concatenated with ``+``), ``zip``,
-    ``enumerate``, ``.items()``, ``.values()`` and ``.get()``, ``or`` and
+    in-place NumPy functions below, into the view or into an item of it (a
+    row of a two-dimensional view is a view too), and ``+=`` and the other
+    augmented assignments into the view itself (an item of a
+    one-dimensional view is a scalar, which ``+=`` rebinds). It counts
+    when the written expression reaches the view through indexing, the
+    NumPy functions that can return a view (``np.asarray``, ``np.flip``,
+    ``np.split``, ... in ``_VIEW_NUMPY_FUNCTIONS``), ``to_numpy()``,
+    ``astype(copy=False)`` and the other view methods, a list, tuple, set
+    or dict display or comprehension holding it (also with ``*``/``**``
+    unpacking, ``+`` or ``|``), ``zip``, ``enumerate``, ``.items()``,
+    ``.values()`` and ``.get()`` (with its default), ``or`` and
     conditional expressions, or a name the same function binds to any of
-    these (by assignment, unpacking, a ``for`` loop or a ``with``
-    statement) or fills with one (``append``, ``extend``, ``update``,
-    ``name[key] = ...``, ``+=``). Workspace classes' own ``self.array`` is
-    exempt.
+    these (by assignment, unpacking, a ``for`` loop, which pairs ``zip``,
+    ``enumerate`` and ``.items()`` targets with their own sources, or a
+    ``with`` statement) or fills with one (``append``, ``extend``,
+    ``update``, ``name[key] = ...``, ``+=``). Workspace classes' own
+    ``self.array`` is exempt.
 ``pandas-private-attribute``
     ``._ndarray``, ``._mgr``, ``._get_column_array`` or
     ``._iter_column_arrays`` on anything, and ``._values``, ``._data``,
@@ -55,8 +61,8 @@ and refuses it. Each rule's name is what a failure reports.
     ...), ``.flatten()``, or a NumPy function that always allocates
     (``_ALLOCATING_NUMPY_FUNCTIONS``: ``np.zeros``, ``np.where``,
     ``np.concatenate``, ...), when not given an output array;
-    ``np.array`` without ``copy=``; ``to_numpy(copy=True)``; a view or
-    subscript of one of these; arithmetic or a comparison; a ``.copy()``,
+    ``np.array`` without ``copy=``; ``to_numpy(copy=True)``; a view,
+    subscript or item (a loop target, unpacking) of one of these; arithmetic or a comparison; a ``.copy()``,
     ``list(...)`` and the other container builtins, ``+`` or ``*``
     (which also join lists), or a list, set or dict display (a slice of
     these is new, an item is not, because a shallow copy or a container
@@ -167,15 +173,16 @@ _FOREIGN_PRIVATE_ATTRIBUTES = frozenset({"_values", "_data", "_mask", "_codes"})
 _OWN_OBJECT_NAMES = frozenset({"self", "cls"})
 
 #: Attributes that return a writable view of pandas' memory.
-_WRITABLE_VIEW_ATTRIBUTES = frozenset({"array", "base", "asi8"})
+#: ``.base`` counts too, when read from an array expression.
+_WRITABLE_VIEW_ATTRIBUTES = frozenset({"array", "asi8"})
 
 #: Libraries whose functions the scan resolves through imports.
 _LIBRARIES = ("numpy", "scipy")
 
-#: NumPy functions whose result is always new memory, for ndarrays and for
-#: pandas objects alike (unless given ``out=``). ``np.clip``, ``np.tile`` and
-#: ``np.round`` are left out: given a pandas object, their result can share
-#: its memory.
+#: NumPy functions whose result is new memory (unless given ``out=``),
+#: checked for ndarrays and for integer, float and boolean Series.
+#: ``np.clip``, ``np.tile``, ``np.round`` and ``np.take`` are treated as
+#: views instead: given a pandas object, their result can share its memory.
 _ALLOCATING_NUMPY_FUNCTIONS = frozenset(
     f"numpy.{name}"
     for name in (
@@ -189,7 +196,6 @@ _ALLOCATING_NUMPY_FUNCTIONS = frozenset(
         "bincount",
         "cumsum",
         "cumprod",
-        "take",
         "interp",
         "flatnonzero",
         "outer",
@@ -271,7 +277,10 @@ _ITEMS_ADDING_METHODS = frozenset({"extend", "update"})
 #: Arithmetic and comparisons give a new array; ``+`` and ``*`` also join or
 #: repeat lists, whose items are shared, so they give a new container.
 _NEW_ARRAY_EXPRESSIONS = (ast.UnaryOp, ast.Compare)
-_JOINING_OPERATORS = (ast.Add, ast.Mult)
+_JOINING_OPERATORS = (ast.Add, ast.Mult, ast.BitOr)
+#: Operators that join containers holding views (``*`` repeats a list, but
+#: with an array it is arithmetic, so it is left out).
+_VIEW_JOINING_OPERATORS = (ast.Add, ast.BitOr)
 #: Displays and comprehensions: a new container whose items may be shared.
 _CONTAINER_EXPRESSIONS = (
     ast.List,
@@ -378,6 +387,9 @@ _VIEW_NUMPY_FUNCTIONS = frozenset(
         "imag",
         "trim_zeros",
         "tile",
+        "take",
+        "real_if_close",
+        "asmatrix",
         "clip",
         "round",
         "around",
@@ -425,41 +437,62 @@ _NEW_OBJECT = 1
 #: A new array: every item and view of it is new memory.
 _NEW_ARRAY = 2
 
-#: How deep in containers a value holds a writable view of pandas' memory:
-#: ``_IS_VIEW`` for a view itself, 1 for a container of views, 2 for a
-#: container of those, and ``_NO_VIEW`` for none (or deeper than tracked).
+#: Whether, and how deep in containers, a value holds a writable view of
+#: pandas' memory. ``_IS_VIEW`` is a view. ``_ELEMENT`` is an item of a view:
+#: a row (itself a view) of a two-dimensional view, but a scalar of a
+#: one-dimensional one. Each container level adds 2, so 2 is a container of
+#: views and 3 a container of elements. ``_NO_VIEW`` is none, or deeper than
+#: tracked.
 _IS_VIEW = 0
-_NO_VIEW = 5
+_ELEMENT = 1
+_NO_VIEW = 11
 
 
-def _item_of(depth: int) -> int:
-    """An item of a view (a row or slice) is a view; of a container, one level less."""
+def _item_of(level: int) -> int:
+    """An item of a view is an element; an item of a container, one level less."""
 
-    if depth >= _NO_VIEW:
+    if level >= _NO_VIEW:
         return _NO_VIEW
-    return max(depth - 1, _IS_VIEW)
+    if level <= _ELEMENT:
+        return _ELEMENT
+    return level - 2
 
 
-def _holder_of(depth: int) -> int:
-    """A container of a value holds its view one level deeper."""
-
-    return min(depth + 1, _NO_VIEW)
-
-
-def _shifted(depth: int, shift: int) -> int:
-    """``depth`` after taking ``-shift`` items, or going ``shift`` containers deeper."""
-
-    for _step in range(-shift):
-        depth = _item_of(depth)
-    for _step in range(shift):
-        depth = _holder_of(depth)
-    return depth
+def _items_taken(level: int, count: int) -> int:
+    for _step in range(count):
+        level = _item_of(level)
+    return level
 
 
-def _view_of(depth: int) -> int:
-    """A NumPy view of a view is a view; of a container (a list) it is a copy."""
+def _holder_of(level: int) -> int:
+    """A container holding a value holds its view one level deeper."""
 
-    return _IS_VIEW if depth == _IS_VIEW else _NO_VIEW
+    return _NO_VIEW if level >= _NO_VIEW else min(level + 2, _NO_VIEW)
+
+
+def _items_holder_of(level: int) -> int:
+    """A new container of a value's items (``list(value)``, ``extend``)."""
+
+    return _holder_of(_item_of(level))
+
+
+def _view_of(level: int) -> int:
+    """A NumPy view of a view or element stays one; of a container it is a copy."""
+
+    return level if level <= _ELEMENT else _NO_VIEW
+
+
+def _bound_level(items_taken: int, level: int) -> int:
+    """The level of a name bound ``items_taken`` items deep into a value."""
+
+    return _items_taken(level, items_taken)
+
+
+def _held_level(items_taken: int, one_item: bool, level: int) -> int:
+    """The level of a container filled with a value (see ``_HeldValue``)."""
+
+    level = _items_taken(level, items_taken)
+    return _holder_of(level) if one_item else _items_holder_of(level)
 
 
 @dataclass(frozen=True)
@@ -489,14 +522,98 @@ class Finding:
 #: name is bound: 0 for the value itself, 1 for a loop target (an item of
 #: its iterable), 2 for a name unpacked from a loop target, and so on.
 _Binding = tuple[ast.expr | None, int]
+#: What a container is filled with: the value, how many items deep into it,
+#: and whether it goes in as one item (``append``, ``name[key] = value``)
+#: rather than as its items (``extend``, ``update``, ``+=``).
+_HeldValue = tuple[ast.expr, int, bool]
+
+
+def _target_names(
+    target: ast.expr, value: ast.expr | None, items_taken: int
+) -> Iterator[tuple[ast.expr, ast.expr | None, int]]:
+    """The names and subscripts an assignment target binds, with their values.
+
+    Each is yielded with the value it takes items from and how many items
+    deep it is bound.
+    """
+
+    if isinstance(target, (ast.Name, ast.Subscript)):
+        yield target, value, items_taken
+    elif isinstance(target, ast.Starred):
+        # A starred target collects items into a new list: the same depth.
+        yield from _target_names(target.value, value, items_taken)
+    elif isinstance(target, (ast.Tuple, ast.List)):
+        pairs = (
+            items_taken == 0
+            and isinstance(value, (ast.Tuple, ast.List))
+            and len(value.elts) == len(target.elts)
+            and not any(
+                isinstance(element, ast.Starred)
+                for element in (*target.elts, *value.elts)
+            )
+        )
+        for index, element in enumerate(target.elts):
+            if pairs:
+                yield from _target_names(element, value.elts[index], 0)
+            elif isinstance(element, ast.Starred):
+                yield from _target_names(element.value, value, items_taken)
+            else:
+                yield from _target_names(element, value, items_taken + 1)
+
+
+def _loop_target_names(
+    target: ast.expr, iterable: ast.expr
+) -> Iterator[tuple[ast.expr, ast.expr | None, int]]:
+    """What a ``for`` target binds, pairing each name with its own source.
+
+    ``for a, b in zip(x, y)`` binds ``a`` to an item of ``x`` and ``b`` to
+    an item of ``y``; ``enumerate`` and ``.items()`` pair the second name
+    with the iterable's items.
+    """
+
+    if (
+        isinstance(target, (ast.Tuple, ast.List))
+        and not any(isinstance(element, ast.Starred) for element in target.elts)
+        and isinstance(iterable, ast.Call)
+        and not any(isinstance(argument, ast.Starred) for argument in iterable.args)
+    ):
+        function = iterable.func
+        elements = target.elts
+        arguments = iterable.args
+        if (
+            isinstance(function, ast.Name)
+            and function.id == "zip"
+            and len(arguments) == len(elements)
+        ):
+            for element, argument in zip(elements, arguments, strict=True):
+                yield from _target_names(element, argument, 1)
+            return
+        if (
+            isinstance(function, ast.Name)
+            and function.id == "enumerate"
+            and len(elements) == 2
+            and arguments
+        ):
+            yield from _target_names(elements[0], None, 1)
+            yield from _target_names(elements[1], arguments[0], 1)
+            return
+        if (
+            isinstance(function, ast.Attribute)
+            and function.attr == "items"
+            and len(elements) == 2
+        ):
+            yield from _target_names(elements[0], None, 1)
+            yield from _target_names(elements[1], function.value, 1)
+            return
+    yield from _target_names(target, iterable, 1)
 
 
 class _Scope:
     """One function, class or module, and the names it binds.
 
     The bindings are collected on first use, because most scopes are never
-    asked. ``held_values`` are the expressions a name's container is filled
-    with (``name.append(value)``, ``name[key] = value``, ``name += value``).
+    asked. ``held_values`` are what a name's container is filled with
+    (``name.append(value)``, ``name[key] = value``, ``name += value``).
     """
 
     def __init__(self, qualified_name: str, node: ast.AST) -> None:
@@ -505,7 +622,7 @@ class _Scope:
         self._parameters: frozenset[str] = frozenset()
         self._declared_elsewhere: set[str] = set()
         self._bindings: defaultdict[str, list[_Binding]] | None = None
-        self._held: defaultdict[str, list[tuple[ast.expr, bool]]] = defaultdict(list)
+        self._held: defaultdict[str, list[_HeldValue]] = defaultdict(list)
         # Filled by the scanner on first use, held here so that they live
         # exactly as long as the scope.
         self.newness_table: dict[str, int] | None = None
@@ -549,40 +666,17 @@ class _Scope:
         self._collect()
         return list(self._held)
 
-    def held_values(self, name: str) -> list[tuple[ast.expr, bool]]:
-        """What the container ``name`` is filled with, and whether each value
-        goes in as one item (``append``) rather than as its items (``extend``)."""
-
+    def held_values(self, name: str) -> list[_HeldValue]:
         self._collect()
         return self._held.get(name, [])
 
-    def _bind(self, target: ast.expr, value: ast.expr | None, items_taken: int) -> None:
-        if isinstance(target, ast.Name):
-            self._bindings[target.id].append((value, items_taken))
-        elif isinstance(target, ast.Starred):
-            # A starred target collects items into a list: the same depth.
-            self._bind(target.value, value, items_taken)
-        elif isinstance(target, (ast.Tuple, ast.List)):
-            pairs = (
-                items_taken == 0
-                and isinstance(value, (ast.Tuple, ast.List))
-                and len(value.elts) == len(target.elts)
-                and not any(
-                    isinstance(element, ast.Starred)
-                    for element in (*target.elts, *value.elts)
-                )
-            )
-            for index, element in enumerate(target.elts):
-                if pairs:
-                    self._bind(element, value.elts[index], 0)
-                else:
-                    self._bind(element, value, items_taken + 1)
-        elif (
-            isinstance(target, ast.Subscript)
-            and isinstance(target.value, ast.Name)
-            and value is not None
-        ):
-            self._held[target.value.id].append((value, True))
+    def _record(self, bound: Iterable[tuple[ast.expr, ast.expr | None, int]]) -> None:
+        for target, value, items_taken in bound:
+            if isinstance(target, ast.Name):
+                self._bindings[target.id].append((value, items_taken))
+            elif isinstance(target.value, ast.Name) and value is not None:
+                # ``name[key] = value`` puts one item into ``name``.
+                self._held[target.value.id].append((value, items_taken, True))
 
     def _collect(self) -> None:
         if self._bindings is not None:
@@ -606,20 +700,19 @@ class _Scope:
         for child in _nodes_in_scope(body):
             if isinstance(child, ast.Assign):
                 for target in child.targets:
-                    self._bind(target, child.value, 0)
+                    self._record(_target_names(target, child.value, 0))
             elif isinstance(child, (ast.AnnAssign, ast.NamedExpr)):
                 if child.value is not None:
-                    self._bind(child.target, child.value, 0)
+                    self._record(_target_names(child.target, child.value, 0))
             elif isinstance(child, ast.AugAssign):
-                target = child.target
-                if isinstance(target, ast.Subscript):
-                    target = target.value
-                if isinstance(target, ast.Name):
-                    self._held[target.id].append((child.value, False))
+                # ``name += values`` adds the items of ``values`` to a list;
+                # ``name[key] += value`` changes an item and adds none.
+                if isinstance(child.target, ast.Name):
+                    self._held[child.target.id].append((child.value, 0, False))
             elif isinstance(child, (ast.For, ast.AsyncFor)):
-                self._bind(child.target, child.iter, 1)
+                self._record(_loop_target_names(child.target, child.iter))
             elif isinstance(child, ast.withitem) and child.optional_vars is not None:
-                self._bind(child.optional_vars, child.context_expr, 1)
+                self._record(_target_names(child.optional_vars, child.context_expr, 1))
             elif isinstance(child, ast.ExceptHandler) and child.name:
                 self._bindings[child.name].append((None, 1))
             elif isinstance(child, (ast.Import, ast.ImportFrom)):
@@ -645,7 +738,7 @@ class _Scope:
                 if method in _ITEM_ADDING_METHODS or method in _ITEMS_ADDING_METHODS:
                     one_item = method in _ITEM_ADDING_METHODS
                     self._held[child.func.value.id].extend(
-                        (argument, one_item)
+                        (argument, 0, one_item)
                         for argument in (
                             *child.args,
                             *(keyword.value for keyword in child.keywords),
@@ -654,29 +747,52 @@ class _Scope:
 
 
 class _ComprehensionScope:
-    """A comprehension: its loop targets shadow the enclosing scope's names."""
+    """A comprehension: its loop targets shadow the enclosing scope's names.
 
-    def __init__(self, enclosing: _Scope | _ComprehensionScope, node: ast.AST):
+    ``upto`` limits it to its first generators, the ones whose targets a
+    later generator's iterable can see.
+    """
+
+    def __init__(
+        self,
+        enclosing: _Scope | _ComprehensionScope,
+        node: ast.AST,
+        upto: int | None = None,
+    ) -> None:
         self.enclosing = enclosing
         self.qualified_name = enclosing.qualified_name
         self.node = enclosing.node
-        self._targets: defaultdict[str, list[ast.expr]] = defaultdict(list)
-        for generator in node.generators:
-            for name in ast.walk(generator.target):
-                if isinstance(name, ast.Name):
-                    self._targets[name.id].append(generator.iter)
+        self._comprehension = node
+        self._targets: defaultdict[str, list[tuple[ast.expr | None, int, int]]] = (
+            defaultdict(list)
+        )
+        generators = node.generators if upto is None else node.generators[:upto]
+        for index, generator in enumerate(generators):
+            for target, value, items_taken in _loop_target_names(
+                generator.target, generator.iter
+            ):
+                if isinstance(target, ast.Name):
+                    self._targets[target.id].append((value, items_taken, index))
+
+    def before(self, index: int) -> _ComprehensionScope:
+        """This comprehension as seen from its generator ``index``."""
+
+        return _ComprehensionScope(self.enclosing, self._comprehension, upto=index)
 
     def child_name(self, name: str) -> str:
         return self.enclosing.child_name(name)
 
-    def target_iterables(self, name: str) -> list[ast.expr] | None:
-        """The iterables ``name`` takes items from, if it is a loop target here."""
+    def target_sources(
+        self, name: str
+    ) -> list[tuple[ast.expr | None, int, int]] | None:
+        """What ``name`` takes items from, if it is a loop target here: each
+        source with its item count and the index of its generator."""
 
         return self._targets.get(name)
 
     def bindings_of(self, name: str) -> list[_Binding] | None:
         if name in self._targets:
-            return [(iterable, 1) for iterable in self._targets[name]]
+            return [(value, items) for value, items, _index in self._targets[name]]
         return self.enclosing.bindings_of(name)
 
     def is_parameter(self, name: str) -> bool:
@@ -878,6 +994,15 @@ def _positional_outputs(dotted_name: str) -> slice | None:
     return None
 
 
+def _items_newness(level: int, items_taken: int) -> int:
+    """How new a name bound ``items_taken`` items deep into a value is: an
+    item of a new array is new memory, an item of a container may not be."""
+
+    if items_taken == 0:
+        return level
+    return _NEW_ARRAY if level == _NEW_ARRAY else _NOT_NEW
+
+
 def _is_ufunc_method(dotted_name: str, methods: Iterable[str]) -> bool:
     owner, _, method = dotted_name.rpartition(".")
     return method in methods and isinstance(_library_object(owner), np.ufunc)
@@ -1058,7 +1183,7 @@ class _Scanner:
 
         scope = self._scope
         while isinstance(scope, _ComprehensionScope):
-            if scope.target_iterables(name) is not None:
+            if scope.target_sources(name) is not None:
                 return _NOT_NEW
             scope = scope.enclosing
         return self._newness_table(scope).get(name, _NOT_NEW)
@@ -1077,18 +1202,18 @@ class _Scanner:
             return scope.newness_table
         saved_scope, self._scope = self._scope, scope
         levels: dict[str, int] = {}
-        candidates: dict[str, list[ast.expr]] = {}
+        candidates: dict[str, list[_Binding]] = {}
         for name, bindings in scope.local_bindings().items():
             kept = [
                 (value, items_taken)
                 for value, items_taken in bindings
                 if not (items_taken == 0 and _is_none(value))
             ]
-            if not kept or any(value is None or items for value, items in kept):
+            if not kept or any(value is None for value, _items in kept):
                 levels[name] = _NOT_NEW
             else:
                 levels[name] = _NEW_ARRAY
-                candidates[name] = [value for value, _items in kept]
+                candidates[name] = kept
 
         def lookup(name: str) -> int:
             return levels.get(name, _NOT_NEW)
@@ -1100,7 +1225,10 @@ class _Scanner:
                 for name, values in candidates.items():
                     if levels[name] == _NOT_NEW:
                         continue
-                    level = min(self._newness(value, lookup) for value in values)
+                    level = min(
+                        _items_newness(self._newness(value, lookup), items_taken)
+                        for value, items_taken in values
+                    )
                     if level < levels[name]:
                         levels[name] = level
                         changed = True
@@ -1169,6 +1297,12 @@ class _Scanner:
     def _newness(self, expression: ast.expr, lookup: _NameLookup | None = None) -> int:
         """How new the value of ``expression`` is (``_NOT_NEW`` to ``_NEW_ARRAY``)."""
 
+        if isinstance(expression, ast.Attribute):
+            # ``.T`` and the other view attributes of a new array are new.
+            if expression.attr in _VIEW_ATTRIBUTES:
+                source = self._newness(expression.value, lookup)
+                return _NEW_ARRAY if source == _NEW_ARRAY else _NOT_NEW
+            return _NOT_NEW
         if isinstance(expression, ast.Subscript):
             container = self._newness(expression.value, lookup)
             if container == _NEW_ARRAY:
@@ -1201,25 +1335,33 @@ class _Scanner:
 
     # Whether a value can be a writable view --------------------------------
 
-    def _name_view_depth(self, name: str) -> int:
-        """How deep in containers ``name`` holds a writable view, where it is used."""
+    def _name_view_level(self, name: str) -> int:
+        """Whether, and how deep, ``name`` holds a writable view where it is used."""
 
         scope = self._scope
         while isinstance(scope, _ComprehensionScope):
-            iterables = scope.target_iterables(name)
-            if iterables is not None:
-                self._scope = scope.enclosing
+            sources = scope.target_sources(name)
+            if sources is not None:
+                saved_scope = self._scope
+                levels = []
                 try:
-                    return min(_item_of(self._view_depth(item)) for item in iterables)
+                    for value, items_taken, index in sources:
+                        if value is None:
+                            continue
+                        self._scope = scope.before(index)
+                        levels.append(
+                            _items_taken(self._view_level(value), items_taken)
+                        )
                 finally:
-                    self._scope = scope
+                    self._scope = saved_scope
+                return min(levels, default=_NO_VIEW)
             scope = scope.enclosing
         return self._view_table(scope).get(name, _NO_VIEW)
 
     def _view_table(self, scope: _Scope) -> dict[str, int]:
-        """How deep in containers each name of ``scope`` holds a writable view.
+        """Whether, and how deep, each name of ``scope`` holds a writable view.
 
-        Starts every name at ``_NO_VIEW`` and lowers it to the smallest depth
+        Starts every name at ``_NO_VIEW`` and lowers it to the closest level
         any of its bindings or held values gives, until nothing changes. A
         binding that takes items of its value (a loop target, unpacking)
         takes one level per item; a container filled with a value holds it
@@ -1229,39 +1371,45 @@ class _Scanner:
         if scope.view_table is not None:
             return scope.view_table
         saved_scope, self._scope = self._scope, scope
-        sources: defaultdict[str, list[tuple[ast.expr, int]]] = defaultdict(list)
+        sources: defaultdict[str, list[tuple[ast.expr, Callable[[int], int]]]] = (
+            defaultdict(list)
+        )
         for name, bindings in scope.local_bindings().items():
             for value, items_taken in bindings:
                 if value is not None:
-                    sources[name].append((value, -items_taken))
+                    sources[name].append(
+                        (value, functools.partial(_bound_level, items_taken))
+                    )
         # A container filled here may be a parameter, so held values count
         # for any name.
         for name in scope.held_names():
-            for value, adds_level in scope.held_values(name):
-                sources[name].append((value, 1 if adds_level else 0))
-        depths: dict[str, int] = dict.fromkeys(sources, _NO_VIEW)
+            for value, items_taken, one_item in scope.held_values(name):
+                sources[name].append(
+                    (value, functools.partial(_held_level, items_taken, one_item))
+                )
+        levels: dict[str, int] = dict.fromkeys(sources, _NO_VIEW)
 
         def lookup(name: str) -> int:
-            return depths.get(name, _NO_VIEW)
+            return levels.get(name, _NO_VIEW)
 
         changed = True
         try:
             while changed:
                 changed = False
                 for name, parts in sources.items():
-                    if depths[name] == _IS_VIEW:
+                    if levels[name] == _IS_VIEW:
                         continue
-                    depth = min(
-                        _shifted(self._view_depth(value, lookup), shift)
-                        for value, shift in parts
+                    level = min(
+                        convert(self._view_level(value, lookup))
+                        for value, convert in parts
                     )
-                    if depth < depths[name]:
-                        depths[name] = depth
+                    if level < levels[name]:
+                        levels[name] = level
                         changed = True
         finally:
             self._scope = saved_scope
-        scope.view_table = depths
-        return depths
+        scope.view_table = levels
+        return levels
 
     def _is_container(self, expression: ast.expr) -> bool:
         if isinstance(expression, _CONTAINER_EXPRESSIONS):
@@ -1279,134 +1427,174 @@ class _Scanner:
         return False
 
     def _reaches_writable_view(self, expression: ast.expr) -> bool:
-        """Whether ``expression`` can be a writable view of pandas' memory."""
+        """Whether a write into ``expression`` can reach pandas' memory."""
 
-        return self._view_depth(expression) == _IS_VIEW
+        return self._view_level(expression) <= _ELEMENT
 
-    def _view_depth(
+    def _view_level(
         self, expression: ast.expr, lookup: _NameLookup | None = None
     ) -> int:
-        """How deep in containers ``expression`` holds a writable view.
-
-        ``_IS_VIEW`` (0) for a view itself, 1 for a container of views, 2
-        for a container of those, up to ``_NO_VIEW`` for none.
-        """
+        """Whether, and how deep in containers, ``expression`` holds a writable view."""
 
         if not self._has_writable_views:
             return _NO_VIEW
         if isinstance(expression, ast.Attribute):
             if expression.attr in _WRITABLE_VIEW_ATTRIBUTES:
                 return _NO_VIEW if _is_own_object(expression.value) else _IS_VIEW
+            if expression.attr == "base":
+                # ``.base`` of an array expression is the array behind a view;
+                # on other objects it is an ordinary attribute.
+                array_expression = isinstance(expression.value, ast.Call) or (
+                    isinstance(expression.value, ast.Attribute)
+                    and expression.value.attr in ("values", "array")
+                )
+                return _IS_VIEW if array_expression else _NO_VIEW
             if expression.attr in _VIEW_ATTRIBUTES:
-                return _view_of(self._view_depth(expression.value, lookup))
+                return _view_of(self._view_level(expression.value, lookup))
             return _NO_VIEW
         if isinstance(expression, ast.Subscript):
-            return _item_of(self._view_depth(expression.value, lookup))
+            return _item_of(self._view_level(expression.value, lookup))
         if isinstance(expression, ast.Starred):
-            return self._view_depth(expression.value, lookup)
+            return self._view_level(expression.value, lookup)
         if isinstance(expression, ast.Name):
             if lookup is not None:
                 return lookup(expression.id)
-            return self._name_view_depth(expression.id)
+            return self._name_view_level(expression.id)
         if isinstance(expression, ast.IfExp):
             return min(
-                self._view_depth(expression.body, lookup),
-                self._view_depth(expression.orelse, lookup),
+                self._view_level(expression.body, lookup),
+                self._view_level(expression.orelse, lookup),
             )
         if isinstance(expression, ast.BoolOp):
-            return min(self._view_depth(value, lookup) for value in expression.values)
+            return min(self._view_level(value, lookup) for value in expression.values)
         if isinstance(expression, ast.BinOp):
-            # ``[a.array] + rest`` joins lists; arithmetic gives new memory.
-            joins = isinstance(expression.op, _JOINING_OPERATORS) and (
-                self._is_container(expression.left)
-                or self._is_container(expression.right)
-            )
-            if not joins:
-                return _NO_VIEW
-            return min(
-                self._view_depth(expression.left, lookup),
-                self._view_depth(expression.right, lookup),
-            )
+            return self._joined_view_level(expression, lookup)
         if isinstance(expression, (ast.List, ast.Tuple, ast.Set)):
-            parts: list[ast.expr] = list(expression.elts)
-        elif isinstance(expression, ast.Dict):
-            parts = list(expression.values)
-        elif isinstance(expression, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):
-            parts = [expression.elt]
-        elif isinstance(expression, ast.DictComp):
-            parts = [expression.value]
-        elif isinstance(expression, ast.Call):
-            return self._call_view_depth(expression, lookup)
-        else:
-            return _NO_VIEW
-        return _holder_of(
-            min((self._view_depth(part, lookup) for part in parts), default=_NO_VIEW)
-        )
+            # A starred element puts its items into the new container.
+            items = [
+                _item_of(self._view_level(element.value, lookup))
+                if isinstance(element, ast.Starred)
+                else self._view_level(element, lookup)
+                for element in expression.elts
+            ]
+            return _holder_of(min(items, default=_NO_VIEW))
+        if isinstance(expression, ast.Dict):
+            # ``**mapping`` puts the mapping's values into the new dict.
+            items = [
+                _item_of(self._view_level(value, lookup))
+                if key is None
+                else self._view_level(value, lookup)
+                for key, value in zip(expression.keys, expression.values, strict=True)
+            ]
+            return _holder_of(min(items, default=_NO_VIEW))
+        if isinstance(expression, _COMPREHENSIONS):
+            return self._comprehension_view_level(expression, lookup)
+        if isinstance(expression, ast.Call):
+            return self._call_view_level(expression, lookup)
+        return _NO_VIEW
 
-    def _call_view_depth(self, call: ast.Call, lookup: _NameLookup | None) -> int:
+    def _joined_view_level(
+        self, expression: ast.BinOp, lookup: _NameLookup | None
+    ) -> int:
+        """``[a.array] + rest`` and ``mapping | other`` join containers;
+        arithmetic, and any operator with an array operand, give new memory."""
+
+        if not isinstance(expression.op, _VIEW_JOINING_OPERATORS) or not (
+            self._is_container(expression.left) or self._is_container(expression.right)
+        ):
+            return _NO_VIEW
+        level = min(
+            self._view_level(expression.left, lookup),
+            self._view_level(expression.right, lookup),
+        )
+        return _NO_VIEW if level <= _ELEMENT else level
+
+    def _comprehension_view_level(
+        self, expression: ast.expr, lookup: _NameLookup | None
+    ) -> int:
+        """A comprehension holds what its element is, its loop targets taking
+        items of their iterables."""
+
+        targets: dict[str, int] = {}
+
+        def inner(name: str) -> int:
+            if name in targets:
+                return targets[name]
+            if lookup is not None:
+                return lookup(name)
+            return self._name_view_level(name)
+
+        for generator in expression.generators:
+            for target, value, items_taken in _loop_target_names(
+                generator.target, generator.iter
+            ):
+                if isinstance(target, ast.Name):
+                    level = (
+                        _NO_VIEW
+                        if value is None
+                        else _items_taken(self._view_level(value, inner), items_taken)
+                    )
+                    targets[target.id] = min(targets.get(target.id, _NO_VIEW), level)
+        element = (
+            expression.value if isinstance(expression, ast.DictComp) else expression.elt
+        )
+        return _holder_of(self._view_level(element, inner))
+
+    def _call_view_level(self, call: ast.Call, lookup: _NameLookup | None) -> int:
         arguments = [*call.args, *(keyword.value for keyword in call.keywords)]
 
         def nearest(expressions: Iterable[ast.expr]) -> int:
             return min(
-                (self._view_depth(expression, lookup) for expression in expressions),
+                (self._view_level(expression, lookup) for expression in expressions),
                 default=_NO_VIEW,
             )
 
         name = self._resolve(call.func)
         if name in _SPLITTING_NUMPY_FUNCTIONS:
             return _holder_of(_view_of(nearest(arguments)))
-        if name in _VIEW_NUMPY_FUNCTIONS or (
-            name in ("numpy.array", "numpy.astype") and _copy_is_off(call)
-        ):
+        if name in _VIEW_NUMPY_FUNCTIONS:
+            copy = _keyword(call, "copy")
+            if copy is not None and _is_true_constant(copy.value):
+                return _NO_VIEW
+            return _view_of(nearest(arguments))
+        if name in ("numpy.array", "numpy.astype") and _copy_is_off(call):
             return _view_of(nearest(arguments))
         function = call.func
         if isinstance(function, ast.Name):
             if function.id == "next":
                 return _item_of(nearest(arguments))
             if function.id in _SAME_ITEMS_BUILTINS:
-                # A new container of the argument's items.
-                return _holder_of(_item_of(nearest(arguments)))
+                return _items_holder_of(nearest(arguments))
             if function.id in _TUPLE_YIELDING_BUILTINS:
-                # A new container of tuples of the arguments' items.
-                return _holder_of(_holder_of(_item_of(nearest(arguments))))
+                # A container of tuples of the arguments' items.
+                return _holder_of(_items_holder_of(nearest(arguments)))
             return _NO_VIEW
         if not isinstance(function, ast.Attribute):
             return _NO_VIEW
         method = function.attr
-        receiver = function.value
+        receiver = self._view_level(function.value, lookup)
         if method in _VIEW_METHODS:
             copy = _keyword(call, "copy")
-            if copy is not None and _is_true_constant(copy.value):
+            copy_value = copy.value if copy is not None else None
+            if copy_value is None and method == "to_numpy" and len(call.args) >= 2:
+                copy_value = call.args[1]
+            if copy_value is not None and _is_true_constant(copy_value):
                 return _NO_VIEW
-            return _view_of(self._view_depth(receiver, lookup))
+            return _view_of(receiver)
         if method == "astype" and _copy_is_off(call):
-            return _view_of(self._view_depth(receiver, lookup))
+            return _view_of(receiver)
         if method == "copy":
-            # A copy of an array is new memory; of a container, it holds the
-            # same items.
-            depth = self._view_depth(receiver, lookup)
-            return _NO_VIEW if depth == _IS_VIEW else depth
+            # A copy of an array is new memory; a copy of a container holds
+            # the same items.
+            return _NO_VIEW if receiver <= _ELEMENT else receiver
         if method in _ITEM_TAKING_METHODS:
-            return _item_of(self._view_depth(receiver, lookup))
+            # ``get(key, default)`` may also return its default.
+            return min(_item_of(receiver), nearest(call.args[1:]))
         if method in _SAME_ITEMS_METHODS:
-            return _holder_of(_item_of(self._view_depth(receiver, lookup)))
+            return _items_holder_of(receiver)
         if method in _TUPLE_YIELDING_METHODS:
-            return _holder_of(_holder_of(_item_of(self._view_depth(receiver, lookup))))
+            return _holder_of(_items_holder_of(receiver))
         return _NO_VIEW
-
-    def _bound_to_a_view(self, name: str) -> bool:
-        """Whether some binding sets ``name`` to exactly a writable view."""
-
-        if isinstance(self._scope, _ComprehensionScope) and (
-            self._scope.target_iterables(name) is not None
-        ):
-            return False
-        return any(
-            items_taken == 0
-            and value is not None
-            and self._reaches_writable_view(value)
-            for value, items_taken in self._bindings(name) or []
-        )
 
     def _check_written_array(self, node: ast.AST, written: ast.expr) -> None:
         """Report a write into ``written`` unless it is new in this function."""
@@ -1517,12 +1705,18 @@ class _Scanner:
         self._check_assigned_target(node, node.target, node.value)
 
     def _check_augmented_assign(self, node: ast.AugAssign) -> None:
-        # ``values += 1`` writes into the array ``values`` names; a name that
-        # only takes items of a view (a loop target) may hold scalars.
-        if isinstance(node.target, ast.Name) and self._bound_to_a_view(node.target.id):
-            self._report(node, _WRITES_THROUGH_WRITABLE_VIEW)
-        else:
-            self._check_assigned_target(node, node.target, None)
+        # ``values += 1`` writes into the array ``values`` names. An element
+        # of a view may be a scalar, which ``+=`` rebinds, so only a view
+        # itself counts; ``holder[key] += 1`` writes into a view the holder
+        # holds.
+        target = node.target
+        if isinstance(target, ast.Name):
+            if self._view_level(target) == _IS_VIEW:
+                self._report(node, _WRITES_THROUGH_WRITABLE_VIEW)
+        elif isinstance(target, ast.Subscript):
+            container = self._view_level(target.value)
+            if container <= _ELEMENT or _item_of(container) == _IS_VIEW:
+                self._report(node, _WRITES_THROUGH_WRITABLE_VIEW)
 
     def _check_attribute(self, node: ast.Attribute) -> None:
         if node.attr in _ALWAYS_PRIVATE_ATTRIBUTES:
@@ -1676,6 +1870,122 @@ def _in_function(*body_lines: str, parameters: str = "series") -> str:
 
 #: Snippets the scan must refuse, with the one rule each must report.
 _REFUSED_SNIPPETS = {
+    # Round-three cases.
+    "series_array_through_a_dict_comprehension_of_loop_targets": (
+        _in_function(
+            "arrays = [frame[name].array for name in names]",
+            "by_name = {name: values for name, values in zip(names, arrays)}",
+            'by_name["income"][0] = 1',
+            parameters="frame, names",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_through_an_identity_comprehension": (
+        _in_function(
+            "arrays = [frame[name].array for name in names]",
+            "[values for values in arrays][0][0] = 1",
+            parameters="frame, names",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_filled_in_a_nested_comprehension": (
+        _in_function(
+            "groups = [[frame[name].array for name in names]]",
+            "[values.fill(0) for group in groups for values in group]",
+            parameters="frame, names",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_through_next": (
+        _in_function(
+            "arrays = [frame[name].array for name in names]",
+            "next(values for values in arrays)[0] = 1",
+            parameters="frame, names",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_augmented_through_a_loop_target": (
+        _in_function(
+            "arrays = [np.asarray(frame[name].array) for name in names]",
+            "for values in arrays:",
+            "    values += 1",
+            parameters="frame, names",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_augmented_through_an_item": (
+        _in_function(
+            "arrays = [np.asarray(frame[name].array) for name in names]",
+            "arrays[0] += 1",
+            parameters="frame, names",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_augmented_after_split": (
+        _in_function(
+            "left, right = np.split(np.asarray(series.array), 2)", "left += 1"
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_through_starred_display": (
+        _in_function(
+            "arrays = [frame[name].array for name in names]",
+            "[*arrays, other][0][0] = 1",
+            parameters="frame, names, other",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_through_dict_unpacking": (
+        _in_function(
+            "by_name = {name: frame[name].array for name in names}",
+            '{**by_name}["income"][0] = 1',
+            parameters="frame, names",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_through_dict_union": (
+        _in_function(
+            "by_name = {name: frame[name].array for name in names}",
+            '(by_name | {})["income"][0] = 1',
+            parameters="frame, names",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_through_get_default": (
+        _in_function(
+            'values = overrides.get("income", frame["income"].array)',
+            "values[0] = 1",
+            parameters="frame, overrides",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_unpacked_into_subscripts": (
+        _in_function(
+            "columns = {}",
+            'columns["a"], columns["b"] = np.split(np.asarray(series.array), 2)',
+            'columns["a"][0] = 1',
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_through_real_if_close": (
+        _NUMPY + "np.real_if_close(np.asarray(series.array))[0] = 1\n",
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "out_item_of_a_dict_union": (
+        _in_function(
+            "merged = by_name | {}",
+            'np.add(merged["x"], 1, out=merged["x"])',
+            parameters="by_name",
+        ),
+        _WRITES_INTO_EXISTING_ARRAY,
+    ),
+    "ufunc_at_on_take_of_a_frame": (
+        _in_function(
+            "np.add.at(np.take(frame, [0], axis=1), ([0], [0]), 100)",
+            parameters="frame",
+        ),
+        _WRITES_INTO_EXISTING_ARRAY,
+    ),
     # Round-two cases: views reached through iteration and filled containers.
     "series_array_through_zip": (
         _in_function(
@@ -2379,6 +2689,60 @@ def test_the_scanner_refuses_each_unprotected_write(source: str, rule: str) -> N
 #: Snippets the scan must accept: reads, read-only flags, and writes into
 #: arrays the same function created.
 _ACCEPTED_SNIPPETS = {
+    # Round-three cases.
+    "accumulating_scalars_of_views_into_a_dict": (
+        "from collections import defaultdict\n"
+        + _in_function(
+            "totals = defaultdict(float)",
+            'for group, weight in zip(frame["group"].array, frame["weight"].array):',
+            "    totals[group] += weight",
+            parameters="frame",
+        )
+    ),
+    "running_total_of_view_columns": _in_function(
+        "total = np.zeros(size)",
+        "for column in columns:",
+        "    total += frame[column].array",
+        "total[total < 0] = 0",
+        "np.maximum(total, 0, out=total)",
+        parameters="frame, columns, size",
+    ),
+    "zip_pairs_rows_of_a_parameter_with_a_view": _in_function(
+        'for row, value in zip(matrix, frame["x"].array):',
+        "    row[:] = value",
+        parameters="matrix, frame",
+    ),
+    "views_and_items_of_new_arrays": _in_function(
+        "grid = np.zeros((3, 3)).T",
+        "np.add(grid, 1, out=grid)",
+        "matrix = np.ones((3, 3))",
+        "np.fill_diagonal(matrix.T, 0)",
+        "for row in np.zeros((3, 3)):",
+        "    np.add(row, 1, out=row)",
+        "first, second = np.zeros((2, 3))",
+        "np.add(first, 1, out=first)",
+        parameters="",
+    ),
+    "copies_given_by_keyword_and_position": _in_function(
+        "values = np.asarray(series.array, copy=True)",
+        "values[0] = 1",
+        "other = series.array.to_numpy(float, True)",
+        "other[0] = 1",
+    ),
+    "starred_rest_replaced": _in_function(
+        "arrays = [frame[name].array for name in names]",
+        "first, *rest = arrays",
+        "rest[0] = np.zeros(3)",
+        parameters="frame, names",
+    ),
+    "view_times_a_list": _in_function(
+        "weights = [1.0, 2.0]",
+        "scaled = series.array * weights",
+        "scaled[0] = 0",
+    ),
+    "ordinary_base_attribute": _in_function(
+        "columns = holder.base", 'columns["x"] = 1', parameters="holder"
+    ),
     # Round-two cases.
     "long_chain_of_views_of_a_new_array": _in_function(
         "chain_0 = np.zeros(64)",

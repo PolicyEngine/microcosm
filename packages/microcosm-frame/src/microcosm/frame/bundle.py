@@ -161,9 +161,9 @@ class Frame:
 
         Arguments and validation are the constructor's: every invariant is
         checked and the same errors are raised, except that a table that is
-        not a DataFrame raises ``TypeError`` before any other check (the
-        constructor fails on such a table later, with an error that depends
-        on the object). Weights are stored as given (their arrays are
+        not a DataFrame raises ``TypeError`` before any table is stored or
+        checked (the constructor fails on such a table later, with an error
+        that depends on the object). Weights are stored as given (their arrays are
         read-only), and the strata are shallow-copied when copy-on-write is
         on.
 
@@ -984,7 +984,8 @@ class Frame:
             ValueError: If ``entity`` is not declared by the schema, a value's
                 length does not match the table, or the new columns break a
                 constructor invariant (a name another table already carries,
-                a reserved ``{entity}_weight`` name, or broken linkage).
+                an ``{entity}_weight`` name on a table whose entity has no
+                typed weights, or broken linkage).
         """
 
         table = self.table(entity).copy(deep=False)

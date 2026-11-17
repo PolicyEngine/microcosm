@@ -105,11 +105,14 @@ def source_frame() -> Frame:
     )
 
 
+_PANDAS_3 = int(pd.__version__.split(".", 1)[0]) >= 3
+
+
 @pytest.fixture(autouse=True)
 def copy_on_write_on() -> Iterator[None]:
     """Turn copy-on-write on under pandas 2.x; pandas 3 always has it on."""
 
-    if int(pd.__version__.split(".", 1)[0]) >= 3:
+    if _PANDAS_3:
         yield
         return
     with pd.option_context("mode.copy_on_write", True):
@@ -117,10 +120,17 @@ def copy_on_write_on() -> Iterator[None]:
 
 
 @pytest.fixture
-def copy_on_write_off(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Make ``Frame._adopt`` see pandas copy-on-write as off."""
+def copy_on_write_off(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Turn copy-on-write off: under pandas 2.x through its option, and under
+    pandas 3, where it cannot be off, by replacing the check ``_adopt`` makes."""
 
-    monkeypatch.setattr(bundle_module, "_pandas_copy_on_write", lambda: False)
+    if _PANDAS_3:
+        monkeypatch.setattr(bundle_module, "_pandas_copy_on_write", lambda: False)
+        yield
+        return
+    with pd.option_context("mode.copy_on_write", False):
+        assert not bundle_module._pandas_copy_on_write()
+        yield
 
 
 def _tables_of(frame: Frame) -> dict[str, pd.DataFrame]:
@@ -590,8 +600,18 @@ class TestCopyOnWriteCheck:
             ("2.3.3", "warn", False),
             ("0+unknown", True, True),
             ("0+unknown", False, False),
+            ("unknown", True, True),
+            ("", False, False),
         ],
-        ids=["enabled", "disabled", "warn_mode", "undotted_on", "undotted_off"],
+        ids=[
+            "enabled",
+            "disabled",
+            "warn_mode",
+            "undotted_on",
+            "undotted_off",
+            "no_leading_number",
+            "empty",
+        ],
     )
     def test_without_pandas_own_check_an_older_version_reads_the_option(
         self,
