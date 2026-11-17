@@ -253,7 +253,7 @@ def test_stale_feed_and_crosswalk_blockers_name_the_commits_pins(
             _CROSSWALK_REL: crosswalk,
         },
     )
-    result = _input_settings_result(
+    result = run_driver_settings(
         tmp_path,
         {"MAIN": str(main), "FEED_SHA": "a" * 64, "CROSSWALK_SHA": "b" * 64},
         _report_lines(f"\ncheck_commit {sha} {sha}\n"),
@@ -281,7 +281,7 @@ def test_a_missing_crosswalk_blocks_without_naming_a_digest(tmp_path: Path) -> N
         tmp_path,
         {_FEED_PIN_REL: json.dumps({"facts_sha256": "c" * 64}) + "\n"},
     )
-    result = _input_settings_result(
+    result = run_driver_settings(
         tmp_path,
         {"MAIN": str(main), "FEED_SHA": "c" * 64},
         _report_lines(f"\ncheck_commit {sha} {sha}\n"),
@@ -306,7 +306,7 @@ def test_matching_feed_and_crosswalk_pins_are_notes_not_blockers(
             _CROSSWALK_REL: crosswalk,
         },
     )
-    result = _input_settings_result(
+    result = run_driver_settings(
         tmp_path,
         {"MAIN": str(main), "FEED_SHA": "c" * 64, "CROSSWALK_SHA": digest},
         _report_lines(f"\ncheck_commit {sha} {sha}\n"),
@@ -572,7 +572,7 @@ def test_a_telemetry_setting_the_release_refuses_blocks(
 
 
 def _driver_emitter(tmp_path: Path, overrides: dict[str, str], sha: str) -> list[str]:
-    result = _input_settings_result(
+    result = run_driver_settings(
         tmp_path,
         overrides,
         _report_lines(
@@ -603,7 +603,7 @@ def test_driver_settings_reach_the_emitter_check_and_the_stages(tmp_path: Path) 
     assert _driver_emitter(
         tmp_path, {**required, "MICROCOSM_EMITTER_COMMAND": good}, sha
     ) == [f"NOTE microcosm-emitter 0.16.0 at {good} meets the commit's floor 0.16.0"]
-    exported = _input_settings_result(
+    exported = run_driver_settings(
         tmp_path,
         {**required, "MICROCOSM_EMITTER_COMMAND": good},
         "\nprintenv MICROCOSM_TELEMETRY_REQUIRED\nprintenv MICROCOSM_EMITTER_COMMAND\n",
@@ -701,7 +701,7 @@ def _ensure_worktree(
     )
     run_root = tmp_path / "run-root"
     run_root.mkdir()
-    result = _input_settings_result(
+    result = run_driver_settings(
         tmp_path, {"UV": str(uv), "RUN_ROOT": str(run_root), **overrides}, commands
     )
     return result, recorded
