@@ -240,6 +240,42 @@ in, and up to 2,960 s late just before it ends, so it can stop a run that
 fits; the real pool's slowest chunk-5 slice was 1.29 times its mean, which
 moves no verdict.
 
+## Lost log lines (simulated, not measurements)
+
+`scripts/lost_lines.py` cuts a stretch out of simulated logs, as a log
+stream that the watcher restarts without a replay would lose it, and reads
+the two pieces as the watcher's two streams. It compares the verdict with
+the intact log's at the same poll. Output: `lost-lines.txt`.
+
+- d844 shape, every 60 s stretch at 30 s steps and every 10 s stretch at
+  20 s steps, at three to six polls each: none of 1,222 cuts turns GO into
+  NO-GO or back. At f = 1, T = 300 s (fits with 265 s spare) all 765 turn
+  GO into WAIT; in the two shapes that overrun, 456 of 457 turn NO-GO into
+  WAIT and one stays NO-GO.
+- Random pools drawn as the property tests draw them, three seeds of 300:
+  12,765 cuts, each judged against a budget the run fits and one it
+  overruns by 600 s. No cut turns GO into NO-GO. One turns NO-GO into GO: a
+  candidate worker start lost in its opening leaves the rebuild a worker
+  short, which reads the pace early (an estimate of 8,572 s where the
+  intact log gives 10,014 s, against a 9,114 s budget). The next poll is a
+  log gap. Under the fitting budget, 10,502 cuts turn GO into WAIT and 543
+  keep their verdict; the rest were WAIT already.
+- Restarts that lose nothing, across the grid's start costs at f = 1 to 3
+  (a split every 900 s, polls every 600 s): the verdict differs from the
+  intact log's at one poll at most, the poll at which the new stream has
+  not yet delivered the running slices' lines. Every run that overruns has
+  its intact NO-GO by 1,800 s, so only one or two splits come before it;
+  none moves it later. The grids where a NO-GO comes late (only the
+  candidate's chunk 5 slower) are not searched.
+- The cost is the early stop. A lost slice line becomes a log gap once the
+  parent takes its result. A lost start becomes one once the rebuild needs
+  the missing worker: at the next poll in both lost-start cases traced (the
+  one above and the one in the tests). Either holds WAIT for the rest of
+  the run, and the runner's budget then bounds it: 14,505 s, $36.94 at the
+  class's list price.
+- Not covered: a stream that drops lines without ending; Modal's own log
+  streams (whether a restart replays has not been tried).
+
 What this rests on:
 
 - Modal's speed for this scorer. The runbook's measured Modal slowdown for

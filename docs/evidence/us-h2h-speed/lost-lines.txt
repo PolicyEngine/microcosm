@@ -1,0 +1,37 @@
+d844 shape (16 workers, 14,505 s budget):
+  f=1 T=300 W=60 step=30 polls=1200,3600,6000,8400,10800,13200 (tool ends 14240 s): GO->WAIT 644; flips 0
+  f=1 T=300 W=10 step=20 polls=1200,4800,9600 (tool ends 14240 s): GO->WAIT 121; flips 0
+  f=1.5 T=300 W=60 step=30 polls=1200,4800,9600 (tool ends 16303 s): NO-GO->NO-GO 1, NO-GO->WAIT 287; flips 0
+  f=3 T=100 W=60 step=30 polls=1200,2400,3600 (tool ends 17499 s): NO-GO->WAIT 169; flips 0
+random pools:
+  seed 3, 300 pools, 4247 lost stretches, budget fits: GO->GO 189, GO->WAIT 3442, WAIT->GO 1, WAIT->WAIT 615; flips 0
+  seed 3, 300 pools, 4247 lost stretches, budget overruns: NO-GO->GO 1, NO-GO->NO-GO 188, NO-GO->WAIT 3442, WAIT->GO 1, WAIT->WAIT 615; flips 1
+  seed 7, 300 pools, 4276 lost stretches, budget fits: GO->GO 177, GO->WAIT 3563, WAIT->WAIT 536; flips 0
+  seed 7, 300 pools, 4276 lost stretches, budget overruns: NO-GO->NO-GO 177, NO-GO->WAIT 3563, WAIT->WAIT 536; flips 0
+  seed 11, 300 pools, 4242 lost stretches, budget fits: GO->GO 177, GO->WAIT 3497, WAIT->GO 1, WAIT->WAIT 567; flips 0
+  seed 11, 300 pools, 4242 lost stretches, budget overruns: NO-GO->NO-GO 177, NO-GO->WAIT 3497, WAIT->NO-GO 1, WAIT->WAIT 567; flips 0
+restarts that lose nothing (d844 grid):
+  f=1 T=40 (fits, intact NO-GO at - s): 7 splits, verdict differs at up to 1 poll(s); flips 0
+  f=1 T=100 (fits, intact NO-GO at - s): 9 splits, verdict differs at up to 1 poll(s); flips 0
+  f=1 T=175 (fits, intact NO-GO at - s): 12 splits, verdict differs at up to 1 poll(s); flips 0
+  f=1 T=300 (fits, intact NO-GO at - s): 16 splits, verdict differs at up to 1 poll(s); flips 0
+  f=1 T=450 (overruns, intact NO-GO at 1200 s): 1 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
+  f=1 T=600 (overruns, intact NO-GO at 1800 s): 2 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
+  f=1.5 T=40 (fits, intact NO-GO at - s): 10 splits, verdict differs at up to 1 poll(s); flips 0
+  f=1.5 T=100 (fits, intact NO-GO at - s): 12 splits, verdict differs at up to 1 poll(s); flips 0
+  f=1.5 T=175 (fits, intact NO-GO at - s): 14 splits, verdict differs at up to 1 poll(s); flips 0
+  f=1.5 T=300 (overruns, intact NO-GO at 1200 s): 1 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
+  f=1.5 T=450 (overruns, intact NO-GO at 1200 s): 1 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
+  f=1.5 T=600 (overruns, intact NO-GO at 1800 s): 2 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
+  f=2 T=40 (fits, intact NO-GO at - s): 13 splits, verdict differs at up to 1 poll(s); flips 0
+  f=2 T=100 (fits, intact NO-GO at - s): 14 splits, verdict differs at up to 1 poll(s); flips 0
+  f=2 T=175 (overruns, intact NO-GO at 1200 s): 1 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
+  f=2 T=300 (overruns, intact NO-GO at 1200 s): 1 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
+  f=2 T=450 (overruns, intact NO-GO at 1200 s): 1 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
+  f=2 T=600 (overruns, intact NO-GO at 1800 s): 2 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
+  f=3 T=40 (overruns, intact NO-GO at 600 s): 1 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
+  f=3 T=100 (overruns, intact NO-GO at 1200 s): 1 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
+  f=3 T=175 (overruns, intact NO-GO at 1200 s): 1 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
+  f=3 T=300 (overruns, intact NO-GO at 1200 s): 1 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
+  f=3 T=450 (overruns, intact NO-GO at 1800 s): 2 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0
+  f=3 T=600 (overruns, intact NO-GO at 1800 s): 2 splits, verdict differs at up to 0 poll(s), NO-GO up to 0 s later ($0.00); flips 0

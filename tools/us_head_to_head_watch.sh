@@ -301,7 +301,7 @@ while true; do
   fi
   if [ "$HOLE" = hole ] && [ "$hole_alarmed" -eq 0 ]; then
     hole_alarmed=1
-    alarm "a restarted log stream did not replay what the app printed before it (stream_holes in go-no-go.log): a hole alone changes no verdict but may hide a lost line, and a lost line the estimate can detect raises the gap alarm on its own; the stall check and the runner's budget still bound the run"
+    alarm "a restarted log stream did not replay what the app printed before it (stream_holes in go-no-go.log): the estimate waits while a slice that began before the hole has no line (hole_suspects) and leaves out the cost of a start whose span holds the hole (starts_across_holes); a lost line the estimate can prove raises the gap alarm on its own and keeps it waiting for good; the stall check and the runner's budget still bound the run"
   fi
   if [ "$RC" -eq 3 ] && [ "$VERDICT" = "NO-GO" ]; then
     if stop_app; then exit 3; fi

@@ -1916,12 +1916,23 @@ misses show up as `log_gap` once the
 parent's later lines arrive; a lost pool-opening line shows up as `log_gap`
 as soon as that pool's other lines do; a lost worker-start line, which the
 parent's later lines cannot reveal, shows up as `log_gap` once the rebuild
-starts a slice after it ends (no intact simulated log does that). A
-restarted stream that does not
-replay leaves a stretch no stream covers, reported as `stream_holes`; a
-hole alone changes no verdict but raises its own alarm, once, since a lost
-line can hide in it. `log_gap` raises a separate alarm, once, so a lost line
-found after a hole is still reported. The runner prints its `BUDGET:` line just
+no longer fits the log: it starts a slice after it ends, meets a submit
+that took no token and started no worker it can see, or counts starts it
+cannot explain (no intact simulated log does any of these). A restarted
+stream that does not replay leaves a stretch no stream covers, reported as
+`stream_holes`, and raises its own alarm, once. A slice line lost there
+reads as a straggler before any `log_gap` shows, so after a hole the
+verdict is `WAIT` while a slice that began before the hole ended has no
+line (`hole_suspects`); a slice that is really running clears it when its
+line arrives, a lost one becomes `log_gap` when the parent takes its
+result. A start line lost there merges two starts into one that reads
+twice as long, so a start whose span holds the hole is left out of the
+start cost (`starts_across_holes`); the rebuild then reads early until the
+missing worker becomes `log_gap`: a missed early stop, never a false one
+in the simulated searches. A newest stream with nothing in it yet beside an earlier one
+with records counts as a hole ending now (`newest_stream_empty`). The
+projection reads `app-2.log` before `app-10.log`. `log_gap` raises a
+separate alarm, once, so a lost line found after a hole is still reported. The runner prints its `BUDGET:` line just
 before it starts the tool, every time, so streams with scorer lines but no
 `BUDGET:` line began late or lost it and may have missed a shorter budget:
 that is `log_gap` too (`"runner"`). An `ATTEMPTS:` line, printed before
@@ -1943,14 +1954,18 @@ It answers one of three verdicts:
   that is 600 to 3,000 s in. Also `WAIT` while the streams have lost lines
   (the report's `log_gap`: the parent took a result whose slice line is
   missing, a pool's lines came without its opening line, or the rebuild
-  starts slices after they end), because the rebuilt pool is then wrong in
-  an unknown direction, and while the streams began late (no `BUDGET:`
+  does not fit the log), because the rebuilt pool is then wrong in an
+  unknown direction; after a hole while a slice from before it has no
+  line; and while the streams began late (no `BUDGET:`
   line), when it is `GO` only once the candidate has scored every slice
   (stopping then would throw the scores away) but a `NO-GO` against the
   shortest budget seen still holds. The watcher raises `ALARM` once when
   either happens, or on `stream_holes`; after lost slice, opening or
   worker-start lines only the stall check and the runner's budget can end
-  the run early.
+  the run early. In the simulated searches no lost stretch turned GO into
+  NO-GO, and a restart that lost nothing held the verdict for one poll at
+  most (`docs/evidence/us-h2h-speed/lost-lines.txt`): a lost line costs the
+  early stop, not a wrong one.
 - `NO-GO` when the estimated end is past the tool's budget, or the log has
   stalled. The budget is the plan's 14,505 s from `started-at`, or less
   when the runner's `BUDGET:` line (or an `ATTEMPTS:` line) says so. A

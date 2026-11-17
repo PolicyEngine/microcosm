@@ -97,7 +97,7 @@ MUTATIONS = {
         "            while False:\n",
     ),
     "candidate starts count only after its first slice": (
-        "        costs = history.start_costs\n"
+        "        costs = _costs_clear_of(history, holes)\n"
         "        return Timing(\n"
         "            {}, {}, [], sum(costs) / len(costs) if costs else None, list(history.notes)\n"
         "        )\n",
@@ -136,7 +136,7 @@ MUTATIONS = {
         "    early = 0\n",
     ),
     "streams with a hole report none": (
-        '            holes.append({"from_utc": _utc(reach), "to_utc": _utc(first)})\n',
+        "            holes.append((reach, first))\n",
         "            pass\n",
     ),
     "before any record the stall allowance never starts": (
@@ -144,8 +144,32 @@ MUTATIONS = {
         "    last = max(seen, default=now)\n",
     ),
     "a rebuild that starts slices after they end is not a gap": (
-        "        if unplaced and name not in log_gap:\n",
-        "        if False:\n",
+        "        unplaced = len(_unplaced(pool, history))\n",
+        "        unplaced = 0\n",
+    ),
+    "a submit or start the rebuild cannot explain is not a gap": (
+        "            *history.unexplained,\n",
+        "",
+    ),
+    "a slice from before a hole with no line yet is no suspect": (
+        "            if tasks:\n",
+        "            if False:\n",
+    ),
+    "a start whose span holds a hole counts toward the start cost": (
+        "        if not any(began <= start and ended >= end for start, end in holes)\n",
+        "        if True\n",
+    ),
+    "the estimate is not told where the holes are": (
+        "        estimate, notes, why = _estimate(incumbent, candidate, limits, now, holes)\n",
+        "        estimate, notes, why = _estimate(incumbent, candidate, limits, now)\n",
+    ),
+    "a newest stream with nothing in it yet is no hole": (
+        "    reopened = len(kept) > 1 and not kept[-1] and any(kept[:-1])\n",
+        "    reopened = False\n",
+    ),
+    "streams are read in glob order, app-10 before app-2": (
+        '        return sorted(paths, key=lambda path: int(path.stem.removeprefix("app-")))\n',
+        "        return list(paths)\n",
     ),
     "an ATTEMPTS: line stands in for the BUDGET line": (
         "        and not parsed.budget_lines\n",
