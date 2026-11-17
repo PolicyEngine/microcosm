@@ -17,7 +17,12 @@ dependencies = [
     # bound: this package's own sklearn usage (HistGradientBoostingClassifier,
     # forest .fit() without sample_weight) is stable across 1.5-1.9.
     "scikit-learn>=1.5",
-    "quantile-forest>=1.4.2",
+    # Exact: microcosm.fit.qrf._InPlaceLeafQRF replaces the private
+    # RandomForestQuantileRegressor._get_y_train_leaves with a copy of 1.4.2's
+    # that fills the leaf array in place, and refuses to fit under any other
+    # release (_SUPPORTED_QUANTILE_FOREST_VERSION). Raise both together, after
+    # comparing the override with the new release's method.
+    "quantile-forest==1.4.2",
     "numpy>=2",
     "pandas>=2.3",
 ]
