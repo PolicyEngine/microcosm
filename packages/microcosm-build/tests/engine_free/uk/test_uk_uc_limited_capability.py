@@ -9,15 +9,20 @@ import pandas as pd
 import pytest
 
 from microcosm.build.country_spec import load_country_spec
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.frs_spine import FRS_UC_LCW_STATUS_COLUMN
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.uc_limited_capability import (
     UC_LCW,
     UC_LCWRA,
+    UC_LIMITED_CAPABILITY_AGE,
     UC_LIMITED_CAPABILITY_CARER,
     UC_LIMITED_CAPABILITY_CLAIMANT,
     UC_LIMITED_CAPABILITY_ENGINE_VARIABLES,
+    UC_LIMITED_CAPABILITY_ESA,
     UC_LIMITED_CAPABILITY_MASS_CHANGE_REASON,
+    UC_LIMITED_CAPABILITY_SALT,
+    UC_LIMITED_CAPABILITY_SEED,
     UC_LIMITED_CAPABILITY_STAGE_NAME,
     UKUCLimitedCapabilityStageTransform,
     assign_uc_limited_capability,
@@ -42,7 +47,8 @@ _PEOPLE = [
     (5, 5, "NOT_LINKED", False, False, False, True, False),
     # 8. A linked LCW single the proxy gives WRA: WRA goes, LCW stays.
     (6, 6, "LCW", False, True, True, True, False),
-    # 9. An unlinked reporter: the proxy stands.
+    # 9. An unlinked reporter the proxy flags: an imputed status, at the rate
+    # of the linked claims the proxy flags at its age.
     (7, 7, "NOT_LINKED", False, True, True, True, False),
     # 10. An SPI twin with its donor's carrier: ignored, the proxy stands.
     (8, 8, "NONE", True, True, True, True, False),
@@ -51,7 +57,14 @@ _PEOPLE = [
 ]
 
 
-def _frame(people=_PEOPLE, *, spi_column: bool = True, carrier: bool = True):
+def _frame(
+    people=_PEOPLE,
+    *,
+    spi_column: bool = True,
+    carrier: bool = True,
+    ages=None,
+    age_column: bool = True,
+):
     count = len(people)
     person = pd.DataFrame(
         {
@@ -60,6 +73,8 @@ def _frame(people=_PEOPLE, *, spi_column: bool = True, carrier: bool = True):
             "person_household_id": [row[1] for row in people],
         }
     )
+    if age_column:
+        person[UC_LIMITED_CAPABILITY_AGE] = ages if ages is not None else [30] * count
     if carrier:
         person[FRS_UC_LCW_STATUS_COLUMN] = [row[2] for row in people]
     households = sorted({row[1] for row in people})
@@ -84,18 +99,33 @@ def _frame(people=_PEOPLE, *, spi_column: bool = True, carrier: bool = True):
     )
 
 
-def _answers(people=_PEOPLE) -> dict[str, np.ndarray]:
+def _answers(people=_PEOPLE, *, esa=None) -> dict[str, np.ndarray]:
     return {
         UC_LCWRA: np.asarray([row[4] for row in people]),
         UC_LCW: np.asarray([row[5] for row in people]),
         UC_LIMITED_CAPABILITY_CLAIMANT: np.asarray([row[6] for row in people]),
         UC_LIMITED_CAPABILITY_CARER: np.asarray([row[7] for row in people]),
+        UC_LIMITED_CAPABILITY_ESA: np.asarray(
+            esa if esa is not None else [False] * len(people)
+        ),
     }
 
 
-def test_linked_claims_take_dwps_status_and_everyone_else_the_proxy() -> None:
+def _uniform(benunit: int) -> float:
+    return float(
+        stable_identity_uniforms(
+            [benunit], seed=UC_LIMITED_CAPABILITY_SEED, salt=UC_LIMITED_CAPABILITY_SALT
+        )[0]
+    )
+
+
+def test_linked_claims_take_dwps_status_and_the_rest_an_imputed_one() -> None:
     result = assign_uc_limited_capability(_frame(), engine_answers=_answers())
     person = result.frame.table("person")
+    # Every claimant is 30: of the three linked claims the proxy flags, one is
+    # LCWRA (a third), so the unlinked reporter the proxy flags keeps its flags
+    # when its uniform falls below a third and loses both otherwise.
+    imputed = _uniform(7) < 1 / 3
 
     assert person[UC_LCWRA].tolist() == [
         False,  # NONE over the proxy
@@ -106,7 +136,7 @@ def test_linked_claims_take_dwps_status_and_everyone_else_the_proxy() -> None:
         True,  # the UC row's person takes it
         False,
         False,  # LCW: nobody in the claim has WRA
-        True,  # unlinked: the proxy
+        imputed,  # unlinked: the imputed status
         True,  # SPI twin: the proxy
         True,  # the child: the proxy
     ]
@@ -119,10 +149,19 @@ def test_linked_claims_take_dwps_status_and_everyone_else_the_proxy() -> None:
         True,
         False,
         True,
-        True,
+        imputed,
         True,
         True,
     ]
+    imputation = result.evidence()["imputation"]
+    assert imputation["statuses"] == (
+        {"LCWRA": "<3", "NONE": 0} if imputed else {"LCWRA": 0, "NONE": "<3"}
+    )
+    assert imputation["kept_the_proxy"] == {
+        "own_esa_award": 0,
+        "spi": "<3",
+        "no_rate": 0,
+    }
     branches = result.evidence()["branches"]
     assert branches["none_over_a_proxy_flag"] == "<3"
     assert branches["lcwra_given_to_the_partner_of_a_carer"] == "<3"
@@ -180,6 +219,14 @@ def test_the_stage_refuses_what_it_cannot_read() -> None:
     short = {name: values[:-1] for name, values in _answers().items()}
     with pytest.raises(ValueError, match="shape"):
         assign_uc_limited_capability(_frame(), engine_answers=short)
+    with pytest.raises(KeyError, match=UC_LIMITED_CAPABILITY_AGE):
+        assign_uc_limited_capability(
+            _frame(age_column=False), engine_answers=_answers()
+        )
+    with pytest.raises(ValueError, match="missing values"):
+        assign_uc_limited_capability(
+            _frame(ages=[30] * (len(_PEOPLE) - 1) + [None]), engine_answers=_answers()
+        )
 
 
 class _Engine:
@@ -228,3 +275,116 @@ def test_the_committed_stage_binds_its_operations_closed_world() -> None:
             stage=replace(stage, operations=(operations[0], drifted, operations[2])),
             engine=_Engine(_answers()),
         )
+
+
+def _single(unit: int, carrier: str, proxy: bool) -> tuple:
+    return (unit, unit, carrier, False, proxy, proxy, True, False)
+
+
+def test_unlinked_claims_draw_their_cells_linked_rate() -> None:
+    people = [
+        # Young linked claims the proxy flags: half LCWRA.
+        *[_single(unit, "LCWRA", True) for unit in (1, 2, 3)],
+        *[_single(unit, "NONE", True) for unit in (4, 5, 6)],
+        # Young linked claims the proxy misses: a third LCWRA.
+        _single(7, "LCWRA", False),
+        *[_single(unit, "NONE", False) for unit in (8, 9)],
+        # Linked claims aged 25 to 49 the proxy flags: none LCWRA.
+        *[_single(unit, "NONE", True) for unit in (10, 11, 12)],
+        *[_single(unit, "NOT_LINKED", True) for unit in range(100, 120)],
+        *[_single(unit, "NOT_LINKED", False) for unit in range(200, 220)],
+        *[_single(unit, "NOT_LINKED", True) for unit in range(300, 305)],
+    ]
+    ages = [20] * 9 + [40] * 3 + [20] * 40 + [40] * 5
+    result = assign_uc_limited_capability(
+        _frame(people, ages=ages), engine_answers=_answers(people)
+    )
+    person = result.frame.table("person").set_index("person_benunit_id")
+
+    for unit in range(100, 120):
+        assert person.loc[unit, UC_LCWRA] == (_uniform(unit) < 0.5)
+        assert person.loc[unit, UC_LCW] == (_uniform(unit) < 0.5)
+    for unit in range(200, 220):
+        assert person.loc[unit, UC_LCWRA] == (_uniform(unit) < 1 / 3)
+        assert person.loc[unit, UC_LCW] == (_uniform(unit) < 1 / 3)
+    for unit in range(300, 305):
+        assert not person.loc[unit, UC_LCWRA]
+        assert not person.loc[unit, UC_LCW]
+    imputation = result.evidence()["imputation"]
+    cells = imputation["cells"]
+    assert cells["16_to_24"]["proxy_flags"] == {
+        "linked_claims": "3-9",
+        "support": "3-9",
+        "rate": 0.5,
+        "source": "cell",
+    }
+    # One linked claim is LCWRA: the rate is drawn at but never printed.
+    assert cells["16_to_24"]["proxy_does_not"]["rate"] == "withheld"
+    assert cells["16_to_24"]["proxy_does_not"]["source"] == "cell"
+    # No linked claim is 50 or over: both sides take their group's rate.
+    assert cells["50_and_over"]["proxy_flags"]["source"] == "pooled"
+    assert cells["50_and_over"]["proxy_does_not"]["source"] == "pooled"
+    # 45 imputed claims, rounded to the nearest ten as every receipt count is.
+    assert imputation["claims"] == 50
+    assert imputation["kept_the_proxy"] == {"own_esa_award": 0, "spi": 0, "no_rate": 0}
+
+
+def test_claims_with_their_own_esa_award_keep_the_proxy() -> None:
+    people = [
+        *[_single(unit, "NONE", True) for unit in (1, 2, 3)],
+        _single(10, "NOT_LINKED", True),
+        _single(11, "NOT_LINKED", False),
+    ]
+    esa = [False, False, False, True, True]
+    result = assign_uc_limited_capability(
+        _frame(people), engine_answers=_answers(people, esa=esa)
+    )
+
+    # Without the award, the flagged claim would take the linked rate, zero.
+    assert result.frame.table("person")[UC_LCWRA].tolist() == [
+        False,
+        False,
+        False,
+        True,
+        False,
+    ]
+    assert result.evidence()["imputation"]["kept_the_proxy"]["own_esa_award"] == "<3"
+
+
+def test_without_linked_claims_every_claim_keeps_the_proxy() -> None:
+    people = [_single(10, "NOT_LINKED", True), _single(11, "NOT_LINKED", False)]
+    result = assign_uc_limited_capability(
+        _frame(people), engine_answers=_answers(people)
+    )
+
+    assert result.frame.table("person")[UC_LCWRA].tolist() == [True, False]
+    imputation = result.evidence()["imputation"]
+    assert imputation["kept_the_proxy"]["no_rate"] == "<3"
+    assert {
+        entry["source"]
+        for band in imputation["cells"].values()
+        for entry in band.values()
+    } == {"proxy_kept"}
+
+
+def test_imputed_lcwra_goes_to_the_first_claimant_or_a_carers_partner() -> None:
+    people = [
+        # Every linked claim the proxy misses is LCWRA: the rate is one.
+        *[_single(unit, "LCWRA", False) for unit in (1, 2, 3)],
+        # An unlinked couple nobody flags: the first claimant takes both flags.
+        (10, 10, "NOT_LINKED", False, False, False, True, False),
+        (10, 10, "NOT_LINKED", False, False, False, True, False),
+        # The same couple, but the first claimant cares: the partner takes them.
+        (11, 11, "NOT_LINKED", False, False, False, True, True),
+        (11, 11, "NOT_LINKED", False, False, False, True, False),
+    ]
+    result = assign_uc_limited_capability(
+        _frame(people), engine_answers=_answers(people)
+    )
+
+    person = result.frame.table("person")
+    assert person[UC_LCWRA].tolist() == [True, True, True, True, False, False, True]
+    assert person[UC_LCW].tolist() == [True, True, True, True, False, False, True]
+    branches = result.evidence()["imputation"]["branches"]
+    assert branches["lcwra_given_to_the_first_claimant"] == "<3"
+    assert branches["lcwra_given_to_the_partner_of_a_carer"] == "<3"

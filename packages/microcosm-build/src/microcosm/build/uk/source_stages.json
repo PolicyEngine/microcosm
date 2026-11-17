@@ -6864,7 +6864,8 @@
       "uc_limited_capability_for_WRA",
       "uc_limited_capability_for_work",
       "is_uc_assessed_claimant",
-      "is_carer_for_benefits"
+      "is_carer_for_benefits",
+      "has_own_esa_award"
      ],
      "year_rule": "survey_year"
     },
@@ -6883,10 +6884,32 @@
      "not_linked": "NOT_LINKED",
      "claimant": "is_uc_assessed_claimant",
      "carer": "is_carer_for_benefits",
+     "esa_award": "has_own_esa_award",
      "linked_scope": "household_is_spi_synthetic",
+     "age": "age",
+     "age_bands": [
+      {
+       "band": "16_to_24",
+       "low": 16,
+       "high": 24
+      },
+      {
+       "band": "25_to_49",
+       "low": 25,
+       "high": 49
+      },
+      {
+       "band": "50_and_over",
+       "low": 50,
+       "high": null
+      }
+     ],
+     "seed": 0,
+     "salt": "frs_uc_lcw_status_imputed",
      "rule": "Every person takes the locked engine's own proxy for both flags. A linked FRS claim (a non-SPI household whose UC row carries a status) takes DWP's: NONE sets every claimant false on both flags; LCWRA keeps the claimants the proxy flags, and if it flags none gives both flags to one claimant; LCW keeps the claimants the proxy gives limited capability for work, and if it gives none gives it to one claimant, with WRA false for every claimant.",
      "joint_claim_rule": "The FRS keeps one UC row per claim, couples included, so the status is the claim's. Where a claimant must be chosen it is the UC row's person, or the partner where the UC row's person cares (is_carer_for_benefits) and the partner does not; the other claimant keeps the proxy.",
-     "scope": "Unlinked reporters, the take-up redraw's entrants, the legacy-closure movers and every SPI row keep the proxy; no later stage writes the proxy's inputs, so their stored value equals the formula's."
+     "imputation_rule": "Every other claim outside the SPI rows (an unlinked reporter, a take-up entrant or any other benefit unit with a claimant) takes an imputed status: LCWRA when its identity-keyed uniform falls below its cell's rate, NONE otherwise, and then the linked rules with the claim's first claimant in place of the UC row's person. A cell is the youngest claimant's age band and whether the proxy flags any claimant; its rate is the share of linked claims in it with DWP's LCWRA status, at the stage's household weights. A cell with fewer than three distinct source households takes its proxy group's rate over every age, and a group with fewer keeps the proxy.",
+     "scope": "SPI rows, and claims in which a claimant has their own ESA award, keep the proxy; no later stage writes the proxy's inputs, so their stored value equals the formula's."
     },
     {
      "kind": "record_mass_conservation_receipt",
@@ -6900,7 +6923,7 @@
     "uc_limited_capability_for_WRA",
     "uc_limited_capability_for_work"
    ],
-   "notes": "DWP's limited capability for work status on linked Universal Credit claims (Y1 of the November event-data plan, microcosm#1095; María's NS6 ruling of 9 November 2026, which revisits her ruling of 29 October 2026 to keep the engine's proxy; she signed the choices below the same day). policyengine-uk 2.177.7 gives limited capability for work and work-related activity (uc_limited_capability_for_WRA) to a person flagged is_disabled_for_benefits, which the spine sets from any reported disability benefit or ESA, unless their own ESA award lacks the support component, and limited capability for work (uc_limited_capability_for_work) to that or the same flag. The FRS 2024-25 links most UC claims to DWP's records, and BENEFITS.UCLCW, which frs_spine carries as frs_uc_lcw_status on the UC row's person, gives the claim's own status; the status and the proxy disagree on a substantial share of linked claims in both directions, so the stage changes who has the LCWRA element more than how many. Every person takes the locked engine's own proxy, so nothing mirrors its formula here, and a linked FRS claim (a non-SPI household) takes DWP's status: NONE sets every claimant false on both flags; LCWRA keeps the claimants the proxy flags and, if it flags none, gives both flags to the UC row's person, or to the partner where the UC row's person cares (is_carer_for_benefits) and the partner does not, so a carer keeps the carer element; LCW does the same for limited capability for work, with WRA false for every claimant. The FRS keeps one UC row per claim, couples included, so which partner holds a joint claim's status is this rule's approximation. Unlinked reporters, the take-up redraw's entrants, the legacy-closure movers and every SPI row keep the proxy, which their stored value equals, since no later stage writes its inputs. The flags are stored as survey-year inputs, which the engine carries into every projected year, and the release carries both. uc_reporter_redraw's award screen, earlier in the spine, still reads the proxy."
+   "notes": "DWP's limited capability for work status on linked Universal Credit claims (Y1 of the November event-data plan, microcosm#1095; María's NS6 ruling of 9 November 2026, which revisits her ruling of 29 October 2026 to keep the engine's proxy; she signed the choices below the same day). policyengine-uk 2.177.7 gives limited capability for work and work-related activity (uc_limited_capability_for_WRA) to a person flagged is_disabled_for_benefits, which the spine sets from any reported disability benefit or ESA, unless their own ESA award lacks the support component, and limited capability for work (uc_limited_capability_for_work) to that or the same flag. The FRS 2024-25 links most UC claims to DWP's records, and BENEFITS.UCLCW, which frs_spine carries as frs_uc_lcw_status on the UC row's person, gives the claim's own status; the status and the proxy disagree on a substantial share of linked claims in both directions, so the stage changes who has the LCWRA element more than how many. Every person takes the locked engine's own proxy, so nothing mirrors its formula here, and a linked FRS claim (a non-SPI household) takes DWP's status: NONE sets every claimant false on both flags; LCWRA keeps the claimants the proxy flags and, if it flags none, gives both flags to the UC row's person, or to the partner where the UC row's person cares (is_carer_for_benefits) and the partner does not, so a carer keeps the carer element; LCW does the same for limited capability for work, with WRA false for every claimant. The FRS keeps one UC row per claim, couples included, so which partner holds a joint claim's status is this rule's approximation. Unlinked reporters, the take-up redraw's entrants, the legacy-closure movers and every SPI row keep the proxy, which their stored value equals, since no later stage writes its inputs. The flags are stored as survey-year inputs, which the engine carries into every projected year, and the release carries both. uc_reporter_redraw's award screen, earlier in the spine, still reads the proxy. On María's call of 17 November 2026, after the Milburn review's benchmarks put the build's young claimants with the LCWRA element about a third above the Resolution Foundation's count, nine in ten of them on PIP (PolicyEngine/uk-milburn-review-dashboard#1), every other claim outside the SPI rows takes an imputed status instead of the proxy: LCWRA at the share of linked claims with that status in its cell (the youngest claimant's age band, and whether the proxy flags any claimant), NONE otherwise, so the take-up redraw's entrants carry the element at the rates DWP's own records show and not only where someone gets a disability benefit. Claims in which a claimant has their own ESA award keep the proxy, since the award carries DWP's determination."
   },
   {
    "stage": "uc_take_up",

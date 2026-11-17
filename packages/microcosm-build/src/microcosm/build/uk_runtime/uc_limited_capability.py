@@ -26,10 +26,32 @@ here. Linked FRS claims then take DWP's status:
 
 The FRS keeps one UC row per claim, couples included, so the status is the
 claim's, and which partner holds it in a joint claim is this rule's
-approximation. Unlinked reporters, the take-up redraw's entrants, the
-legacy-closure movers and every SPI row keep the proxy, which their stored
-value equals: no later stage writes the proxy's inputs. María signed these
-choices on 9 November 2026.
+approximation. María signed these choices on 9 November 2026.
+
+On María's call of 17 November 2026, every other claim takes an imputed
+status instead of the proxy: the unlinked reporters, the take-up redraw's
+entrants and any other benefit unit with a claimant, outside the SPI rows.
+Before it, they kept the proxy, which gives limited capability to every
+claimant on a disability benefit and to no one else, while on linked claims
+DWP's status disagrees with the proxy in both directions. So the take-up
+redraw's entrants carried the LCWRA element only where someone got PIP, DLA or
+ESA, and young claimants above all: the Milburn review's benchmarks
+(PolicyEngine/uk-milburn-review-dashboard#1). The imputation:
+
+* a claim's cell is its youngest claimant's age band
+  (``UC_LIMITED_CAPABILITY_AGE_BANDS``) and whether the proxy flags any of its
+  claimants;
+* the cell's rate is the share of linked claims in it with DWP's LCWRA status,
+  at the stage's household weights; a cell with fewer than three distinct
+  source households takes its proxy group's rate over every age;
+* a claim draws LCWRA when its identity-keyed uniform falls below the rate,
+  and NONE otherwise, and the linked rules then apply with the claim's first
+  claimant in place of the UC row's person. Linked claims have too few LCW
+  statuses to give a rate, so none is imputed;
+* a claim in which a claimant has their own ESA award keeps the proxy, since
+  the ESA award carries DWP's determination, and so does every SPI row; no
+  later stage writes the proxy's inputs, so their stored value equals the
+  formula's.
 """
 
 from __future__ import annotations
@@ -41,12 +63,14 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.frs_release import resolve_uk_year_rule
 from microcosm.build.uk_runtime.frs_spine import (
     FRS_UC_LCW_NOT_LINKED,
     FRS_UC_LCW_STATUS_CODES,
     FRS_UC_LCW_STATUS_COLUMN,
 )
+from microcosm.build.uk_runtime.frs_take_up import UK_UC_AGE_ELIGIBLE_SOURCE
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -59,6 +83,7 @@ from microcosm.build.uk_runtime.receipt_counts import (
     source_household_ids,
     support_band,
 )
+from microcosm.build.uk_runtime.uc_take_up import UC_TAKE_UP_YOUNG_AGES
 from microcosm.frame import Frame, MassChangeRecord
 
 __all__ = [
@@ -76,13 +101,28 @@ UC_LCW = "uc_limited_capability_for_work"
 UC_LIMITED_CAPABILITY_OUTPUTS: tuple[str, ...] = (UC_LCWRA, UC_LCW)
 UC_LIMITED_CAPABILITY_CLAIMANT = "is_uc_assessed_claimant"
 UC_LIMITED_CAPABILITY_CARER = "is_carer_for_benefits"
+#: A claimant's own ESA award, current or ended, carries DWP's determination,
+#: so a claim with one keeps the proxy.
+UC_LIMITED_CAPABILITY_ESA = "has_own_esa_award"
 #: What the stage asks the engine, for every person, on the frame as it stands.
 UC_LIMITED_CAPABILITY_ENGINE_VARIABLES: tuple[str, ...] = (
     UC_LCWRA,
     UC_LCW,
     UC_LIMITED_CAPABILITY_CLAIMANT,
     UC_LIMITED_CAPABILITY_CARER,
+    UC_LIMITED_CAPABILITY_ESA,
 )
+#: The stored survey-year age the cells read.
+UC_LIMITED_CAPABILITY_AGE = UK_UC_AGE_ELIGIBLE_SOURCE
+#: The imputation's age bands, by a claim's youngest claimant: the take-up
+#: redraw's young ages (uc_take_up), then 25 to 49 and 50 and over.
+UC_LIMITED_CAPABILITY_AGE_BANDS: tuple[tuple[str, int, int | None], ...] = (
+    ("16_to_24", min(UC_TAKE_UP_YOUNG_AGES), max(UC_TAKE_UP_YOUNG_AGES)),
+    ("25_to_49", max(UC_TAKE_UP_YOUNG_AGES) + 1, 49),
+    ("50_and_over", 50, None),
+)
+UC_LIMITED_CAPABILITY_SEED = 0
+UC_LIMITED_CAPABILITY_SALT = "frs_uc_lcw_status_imputed"
 #: The frame holds survey-year values, and the flags are stored as survey-year
 #: inputs, which the engine carries into every projected year.
 UC_LIMITED_CAPABILITY_YEAR_RULE = "survey_year"
@@ -104,10 +144,22 @@ UC_LIMITED_CAPABILITY_JOINT_CLAIM_RULE = (
     "or the partner where the UC row's person cares (is_carer_for_benefits) "
     "and the partner does not; the other claimant keeps the proxy."
 )
+UC_LIMITED_CAPABILITY_IMPUTATION_RULE = (
+    "Every other claim outside the SPI rows (an unlinked reporter, a take-up "
+    "entrant or any other benefit unit with a claimant) takes an imputed "
+    "status: LCWRA when its identity-keyed uniform falls below its cell's "
+    "rate, NONE otherwise, and then the linked rules with the claim's first "
+    "claimant in place of the UC row's person. A cell is the youngest "
+    "claimant's age band and whether the proxy flags any claimant; its rate is "
+    "the share of linked claims in it with DWP's LCWRA status, at the stage's "
+    "household weights. A cell with fewer than three distinct source "
+    "households takes its proxy group's rate over every age, and a group with "
+    "fewer keeps the proxy."
+)
 UC_LIMITED_CAPABILITY_SCOPE = (
-    "Unlinked reporters, the take-up redraw's entrants, the legacy-closure "
-    "movers and every SPI row keep the proxy; no later stage writes the "
-    "proxy's inputs, so their stored value equals the formula's."
+    "SPI rows, and claims in which a claimant has their own ESA award, keep "
+    "the proxy; no later stage writes the proxy's inputs, so their stored "
+    "value equals the formula's."
 )
 UC_LIMITED_CAPABILITY_MASS_CHANGE_REASON = (
     "UC limited capability flags stored on the source spine: household weights "
@@ -129,6 +181,15 @@ _BRANCHES = (
     "lcw_given_to_the_uc_rows_person",
     "lcw_given_to_the_partner_of_a_carer",
     "linked_claim_with_no_claimant_kept_the_proxy",
+)
+#: Imputed claims are LCWRA or NONE, and their lead is the first claimant.
+_IMPUTED_BRANCHES = (
+    "none_over_a_proxy_flag",
+    "none_where_the_proxy_agrees",
+    "lcwra_kept_from_the_proxy",
+    "lcwra_given_to_a_single_claimant",
+    "lcwra_given_to_the_first_claimant",
+    "lcwra_given_to_the_partner_of_a_carer",
 )
 
 
@@ -154,9 +215,18 @@ def uc_limited_capability_operation_parameters() -> tuple[
                 "not_linked": FRS_UC_LCW_NOT_LINKED,
                 "claimant": UC_LIMITED_CAPABILITY_CLAIMANT,
                 "carer": UC_LIMITED_CAPABILITY_CARER,
+                "esa_award": UC_LIMITED_CAPABILITY_ESA,
                 "linked_scope": UC_LIMITED_CAPABILITY_LINKED_SCOPE,
+                "age": UC_LIMITED_CAPABILITY_AGE,
+                "age_bands": [
+                    {"band": name, "low": low, "high": high}
+                    for name, low, high in UC_LIMITED_CAPABILITY_AGE_BANDS
+                ],
+                "seed": UC_LIMITED_CAPABILITY_SEED,
+                "salt": UC_LIMITED_CAPABILITY_SALT,
                 "rule": UC_LIMITED_CAPABILITY_RULE,
                 "joint_claim_rule": UC_LIMITED_CAPABILITY_JOINT_CLAIM_RULE,
+                "imputation_rule": UC_LIMITED_CAPABILITY_IMPUTATION_RULE,
                 "scope": UC_LIMITED_CAPABILITY_SCOPE,
             },
         ),
@@ -283,13 +353,67 @@ def assign_uc_limited_capability(
     for row, benunit in enumerate(benunits):
         members.setdefault(benunit, []).append(row)
 
+    if UC_LIMITED_CAPABILITY_AGE not in person.columns:
+        raise KeyError(
+            f"person.{UC_LIMITED_CAPABILITY_AGE} is missing; the imputation's "
+            "cells read each claim's youngest claimant."
+        )
+    own_esa = _bool(
+        engine_answers[UC_LIMITED_CAPABILITY_ESA], UC_LIMITED_CAPABILITY_ESA, count
+    )
+    age = pd.to_numeric(person[UC_LIMITED_CAPABILITY_AGE], errors="coerce").to_numpy(
+        dtype=float
+    )
+    if np.isnan(age).any():
+        raise ValueError(f"person.{UC_LIMITED_CAPABILITY_AGE} has missing values.")
+
     wra = proxy_wra.copy()
     lcw = proxy_lcw.copy()
+
+    def apply_status(
+        claim_status: str,
+        rows: list[int],
+        lead: int,
+        lead_label: str,
+        log: dict[str, list[int]],
+    ) -> None:
+        """Give a claim's claimants the flags its status implies."""
+
+        key = lead
+        flags = proxy_wra if claim_status in ("NONE", "LCWRA") else proxy_lcw
+        flagged = [row for row in rows if flags[row]]
+        if claim_status == "NONE":
+            if any(proxy_wra[row] or proxy_lcw[row] for row in rows):
+                log["none_over_a_proxy_flag"].append(key)
+            else:
+                log["none_where_the_proxy_agrees"].append(key)
+            wra[rows] = False
+            lcw[rows] = False
+            return
+        prefix = claim_status.lower()
+        if claim_status == "LCW":
+            wra[rows] = False
+        if flagged:
+            log[f"{prefix}_kept_from_the_proxy"].append(key)
+            return
+        chosen = lead if lead in rows else rows[0]
+        others = [row for row in rows if row != chosen]
+        if len(rows) == 1:
+            log[f"{prefix}_given_to_a_single_claimant"].append(key)
+        elif len(others) == 1 and carer[chosen] and not carer[others[0]]:
+            chosen = others[0]
+            log[f"{prefix}_given_to_the_partner_of_a_carer"].append(key)
+        else:
+            log[f"{prefix}_given_to_the_{lead_label}"].append(key)
+        lcw[chosen] = True
+        wra[chosen] = claim_status == "LCWRA"
+
     claims: dict[str, list[int]] = {name: [] for name in _BRANCHES}
     agreement = {
         claim_status: {"proxy_flags": [], "proxy_does_not": []}
         for claim_status in _STATUSES
     }
+    linked_claims: list[tuple[int, list[int]]] = []
     for carrier_row in carriers:
         claim_status = status[carrier_row]
         rows = [row for row in members[benunits[carrier_row]] if claimant[row]]
@@ -301,31 +425,110 @@ def assign_uc_limited_capability(
         if not rows:
             claims["linked_claim_with_no_claimant_kept_the_proxy"].append(carrier_row)
             continue
-        if claim_status == "NONE":
-            if any(proxy_wra[row] or proxy_lcw[row] for row in rows):
-                claims["none_over_a_proxy_flag"].append(carrier_row)
+        linked_claims.append((carrier_row, rows))
+        apply_status(claim_status, rows, carrier_row, "uc_rows_person", claims)
+
+    # The imputation's rates, from the linked claims at the stage's household
+    # weights: each claim counts once, at its UC row's person, in the cell of
+    # its youngest claimant's age band and of the proxy's view of its claimants.
+    def band_of(rows: list[int]) -> str:
+        youngest = float(age[rows].min())
+        for name, _low, high in UC_LIMITED_CAPABILITY_AGE_BANDS:
+            if high is None or youngest <= high:
+                return name
+        raise AssertionError("the last age band is open")
+
+    def proxy_side(rows: list[int]) -> str:
+        return (
+            "proxy_flags" if any(proxy_wra[row] for row in rows) else "proxy_does_not"
+        )
+
+    sides = ("proxy_flags", "proxy_does_not")
+    bands = tuple(name for name, _low, _high in UC_LIMITED_CAPABILITY_AGE_BANDS)
+    cell_rows: dict[tuple[str, str], list[int]] = {
+        (band, side): [] for band in bands for side in sides
+    }
+    for carrier_row, rows in linked_claims:
+        cell_rows[(band_of(rows), proxy_side(rows))].append(carrier_row)
+    is_lcwra = status == "LCWRA"
+
+    def rows_mask(rows: list[int]) -> np.ndarray:
+        mask = np.zeros(count, dtype=bool)
+        mask[rows] = True
+        return mask
+
+    def measured_rate(rows: list[int]) -> tuple[float | None, dict[str, object]]:
+        mask = rows_mask(rows)
+        support = distinct_count(sources, mask, weights)
+        lcwra_support = distinct_count(sources, mask & is_lcwra, weights)
+        other_support = distinct_count(sources, mask & ~is_lcwra, weights)
+        total = float(weights[mask].sum())
+        rate = float(weights[mask & is_lcwra].sum()) / total if total > 0 else None
+        usable = support >= 3 and rate is not None
+        # The rate prints only where its LCWRA claims and the rest each rest on
+        # three source households or more, so neither part comes back from it.
+        printable = usable and lcwra_support >= 3 and other_support >= 3
+        entry: dict[str, object] = {
+            "linked_claims": rounded_count(len(rows)),
+            "support": support_band(support),
+            "rate": round(rate, 3) if printable else "withheld",
+        }
+        return (rate if usable else None), entry
+
+    pooled = {
+        side: measured_rate([row for band in bands for row in cell_rows[(band, side)]])
+        for side in sides
+    }
+    rates: dict[tuple[str, str], float | None] = {}
+    cells: dict[str, dict[str, object]] = {}
+    for band in bands:
+        cells[band] = {}
+        for side in sides:
+            rate, entry = measured_rate(cell_rows[(band, side)])
+            if rate is None:
+                rate = pooled[side][0]
+                entry["source"] = "pooled" if rate is not None else "proxy_kept"
             else:
-                claims["none_where_the_proxy_agrees"].append(carrier_row)
-            wra[rows] = False
-            lcw[rows] = False
+                entry["source"] = "cell"
+            rates[(band, side)] = rate
+            cells[band][side] = entry
+
+    # The imputed claims: every other benefit unit with a claimant outside the
+    # SPI rows whose claimants hold no ESA award of their own, in benefit unit
+    # order, each with its identity-keyed uniform.
+    linked_units = {benunits[carrier_row] for carrier_row, _rows in linked_claims}
+    linked_units |= {
+        benunits[row] for row in claims["linked_claim_with_no_claimant_kept_the_proxy"]
+    }
+    imputed: dict[str, list[int]] = {name: [] for name in _IMPUTED_BRANCHES}
+    kept: dict[str, list[int]] = {"own_esa_award": [], "spi": [], "no_rate": []}
+    statuses: dict[str, list[int]] = {"LCWRA": [], "NONE": []}
+    candidates = []
+    for unit in sorted(members):
+        if unit in linked_units:
             continue
-        prefix = claim_status.lower()
-        if claim_status == "LCW":
-            wra[rows] = False
-        if flagged:
-            claims[f"{prefix}_kept_from_the_proxy"].append(carrier_row)
+        rows = [row for row in members[unit] if claimant[row]]
+        if not rows:
             continue
-        chosen = carrier_row if carrier_row in rows else rows[0]
-        others = [row for row in rows if row != chosen]
-        if len(rows) == 1:
-            claims[f"{prefix}_given_to_a_single_claimant"].append(carrier_row)
-        elif len(others) == 1 and carer[chosen] and not carer[others[0]]:
-            chosen = others[0]
-            claims[f"{prefix}_given_to_the_partner_of_a_carer"].append(carrier_row)
+        if spi[rows[0]]:
+            kept["spi"].append(rows[0])
+        elif own_esa[rows].any():
+            kept["own_esa_award"].append(rows[0])
         else:
-            claims[f"{prefix}_given_to_the_uc_rows_person"].append(carrier_row)
-        lcw[chosen] = True
-        wra[chosen] = claim_status == "LCWRA"
+            candidates.append((unit, rows))
+    uniforms = stable_identity_uniforms(
+        [unit for unit, _rows in candidates],
+        seed=UC_LIMITED_CAPABILITY_SEED,
+        salt=UC_LIMITED_CAPABILITY_SALT,
+    )
+    for (_unit, rows), uniform in zip(candidates, uniforms, strict=True):
+        rate = rates[(band_of(rows), proxy_side(rows))]
+        if rate is None:
+            kept["no_rate"].append(rows[0])
+            continue
+        claim_status = "LCWRA" if uniform < rate else "NONE"
+        statuses[claim_status].append(rows[0])
+        apply_status(claim_status, rows, rows[0], "first_claimant", imputed)
 
     person[UC_LCWRA] = wra
     person[UC_LCW] = lcw
@@ -340,15 +543,15 @@ def assign_uc_limited_capability(
             "support": support_band(support),
         }
 
-    cells = {
-        claim_status: {side: cell(rows) for side, rows in sides.items()}
-        for claim_status, sides in agreement.items()
+    status_cells = {
+        claim_status: {side: cell(rows) for side, rows in by_side.items()}
+        for claim_status, by_side in agreement.items()
     }
     # A cell under three source households is withheld, and so is its
     # status's other cell, so no total gives it back (UKDS disclosure control).
-    for sides in cells.values():
-        if any(entry["weighted"] is None for entry in sides.values()):
-            for entry in sides.values():
+    for by_side in status_cells.values():
+        if any(entry["weighted"] is None for entry in by_side.values()):
+            for entry in by_side.values():
                 entry["weighted"] = "withheld"
     receipt: dict[str, object] = {
         "rule": UC_LIMITED_CAPABILITY_RULE,
@@ -362,8 +565,30 @@ def assign_uc_limited_capability(
                 weights,
             )
         ),
-        "status_against_the_proxy": cells,
+        "status_against_the_proxy": status_cells,
         "branches": {name: rounded_count(len(rows)) for name, rows in claims.items()},
+        "imputation": {
+            "rule": UC_LIMITED_CAPABILITY_IMPUTATION_RULE,
+            "cells": cells,
+            "pooled": {side: entry for side, (_rate, entry) in pooled.items()},
+            "claims": rounded_count(sum(len(rows) for rows in statuses.values())),
+            "claims_support": support_band(
+                distinct_count(
+                    sources,
+                    rows_mask([row for rows in statuses.values() for row in rows]),
+                    weights,
+                )
+            ),
+            "statuses": {
+                name: rounded_count(len(rows)) for name, rows in statuses.items()
+            },
+            "branches": {
+                name: rounded_count(len(rows)) for name, rows in imputed.items()
+            },
+            "kept_the_proxy": {
+                name: rounded_count(len(rows)) for name, rows in kept.items()
+            },
+        },
         "people_changed": {
             UC_LCWRA: rounded_count(int((wra != proxy_wra).sum())),
             UC_LCW: rounded_count(int((lcw != proxy_lcw).sum())),
