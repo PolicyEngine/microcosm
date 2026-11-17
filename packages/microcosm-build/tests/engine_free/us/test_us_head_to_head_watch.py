@@ -27,19 +27,28 @@ APP = "ap-test"
 FAKE_MODAL = r"""#!/bin/bash
 D=$FAKE_DIR
 echo "$*" >> "$D/calls"
+help_tail() {
+  # A long help, as typer prints: a reader that stops at the first match
+  # leaves the writer with a broken pipe.
+  if [ -n "${FAKE_LONG_HELP:-}" ]; then
+    for i in $(seq 1 5000); do echo "  --option-$i  padding"; done
+  fi
+}
 case "$1 $2" in
   "app logs")
     if [ "$3" = "--help" ]; then
-      [ -n "${FAKE_NEW_CLI:-}" ] && echo "  -f, --follow  Stream logs until the app stops"
       echo "Usage: modal app logs [OPTIONS] [APP_IDENTIFIER]"
+      [ -n "${FAKE_NEW_CLI:-}" ] && echo "  -f, --follow  Stream logs until the app stops"
+      help_tail
       exit 0
     fi
     cat "$D/stream.log"
     exit 0 ;;
   "app stop")
     if [ "$3" = "--help" ]; then
-      [ -n "${FAKE_NEW_CLI:-}" ] && echo "  -y, --yes  Skip the confirmation prompt"
       echo "Usage: modal app stop [OPTIONS] [APP_IDENTIFIER]"
+      [ -n "${FAKE_NEW_CLI:-}" ] && echo "  -y, --yes  Skip the confirmation prompt"
+      help_tail
       exit 0
     fi
     [ -n "${FAKE_STOP_FAILS:-}" ] && exit 1
@@ -48,10 +57,36 @@ case "$1 $2" in
   "app list")
     n=$(( $(cat "$D/list-count" 2>/dev/null || echo 0) + 1 ))
     echo "$n" > "$D/list-count"
-    if [ -e "$D/stopped" ] || [ "$n" -gt "${FAKE_LIVE_LISTS:-1000}" ]; then
+    # FAKE_LIST_SEQ names each read's answer in turn (the last repeats):
+    # live, stopped, gone, fail, warning, dict, empty or nostate.
+    mode=
+    if [ -n "${FAKE_LIST_SEQ:-}" ]; then
+      mode=$(printf '%s' "$FAKE_LIST_SEQ" | tr ',' '\n' | sed -n "${n}p")
+      [ -n "$mode" ] || mode=${FAKE_LIST_SEQ##*,}
+    fi
+    if [ -z "$mode" ]; then
+      if [ -e "$D/stopped" ] || [ "$n" -gt "${FAKE_LIVE_LISTS:-1000}" ]; then
+        mode=stopped
+      else
+        mode=live
+      fi
+    fi
+    case $mode in
+      fail) echo "Error: could not connect" >&2; exit 1 ;;
+      warning) echo "Warning: a newer modal client is available" ;;
+      dict) echo '{"apps": []}'; exit 0 ;;
+      empty) exit 0 ;;
+      gone)
+        echo '[{"App ID": "ap-other", "State": "deployed", "Stopped at": null}]'
+        exit 0 ;;
+      nostate)
+        printf '[{"App ID": "%s", "Description": "d844"}]\n' "${FAKE_APP:-ap-test}"
+        exit 0 ;;
+    esac
+    if [ "$mode" = stopped ]; then
       state=stopped; at='"2026-11-16 10:00:00+00:00"'
     else
-      state=deployed; at=null
+      state="ephemeral (detached)"; at=null
     fi
     printf '[{"App ID": "ap-other", "State": "deployed", "Stopped at": null},'
     printf ' {"App ID": "%s", "Description": "d844", "State": "%s",' "${FAKE_APP:-ap-test}" "$state"
@@ -75,16 +110,17 @@ def _watch(
     stream: list[str],
     *,
     started_ago: int = 3 * 3600,
-    kept: str | None = None,
+    kept: dict[str, str] | None = None,
+    weights: Path | None = None,
     **env: str,
 ) -> tuple[subprocess.CompletedProcess, Path, Path]:
     fake = tmp_path / "fake"
     run = tmp_path / "run"
     fake.mkdir()
     run.mkdir()
-    if kept is not None:
+    for name, text in (kept or {}).items():
         # An earlier watcher's stream in the same run directory.
-        (run / "app-1.log").write_text(kept)
+        (run / name).write_text(text)
     modal = fake / "modal"
     modal.write_text(FAKE_MODAL)
     modal.chmod(modal.stat().st_mode | stat.S_IXUSR)
@@ -97,10 +133,14 @@ def _watch(
         "PYTHON": sys.executable,
         "WATCH_INTERVAL": "0",
         "WATCH_STOP_WAIT": "0",
+        "WATCH_START_WAIT": "0",
         **env,
     }
+    argv = ["bash", str(WATCH), APP, str(run), str(PLAN)]
+    if weights is not None:
+        argv.append(str(weights))
     result = subprocess.run(
-        ["bash", str(WATCH), APP, str(run), str(PLAN)],
+        argv,
         env=environment,
         capture_output=True,
         text=True,
@@ -167,8 +207,9 @@ def test_a_projection_that_cannot_answer_alarms_then_stops_the_app(tmp_path) -> 
 
 
 def test_a_stream_that_ends_while_the_app_runs_is_restarted(tmp_path) -> None:
-    # Live for the start check and one poll, then finished.
-    result, fake, run = _watch(tmp_path, [], FAKE_LIVE_LISTS="2")
+    # Live for the start check and one poll, then finished. Launched ten
+    # minutes ago, so an empty log is still inside the allowance.
+    result, fake, run = _watch(tmp_path, [], started_ago=600, FAKE_LIVE_LISTS="2")
     assert result.returncode == 0, result.stderr
     calls = _calls(fake)
     assert calls.count(f"app logs {APP}") == 2
@@ -205,11 +246,28 @@ def test_each_stream_has_its_own_file_and_replays_count_once(tmp_path) -> None:
 def test_a_restarted_watcher_keeps_the_streams_it_finds(tmp_path) -> None:
     kept = "".join(f"{line}\n" for line in _live())
     # Live only for the start check, so one stream and one poll.
-    result, fake, run = _watch(tmp_path, _live(), kept=kept, FAKE_LIVE_LISTS="1")
+    result, fake, run = _watch(
+        tmp_path, _live(), kept={"app-1.log": kept}, FAKE_LIVE_LISTS="1"
+    )
     assert result.returncode == 0, result.stderr
     assert (run / "app-1.log").read_text() == kept
     assert "initializing incumbent" in (run / "app-2.log").read_text()
     assert _calls(fake).count(f"app logs {APP}") == 1
+
+
+def test_a_gap_in_the_stream_numbers_overwrites_nothing(tmp_path) -> None:
+    kept = "".join(f"{line}\n" for line in _live())
+    # app-2.log without app-1.log: the new streams take 1 and then 3.
+    result, _, run = _watch(
+        tmp_path, _live(), kept={"app-2.log": kept}, FAKE_LIVE_LISTS="2"
+    )
+    assert result.returncode == 0, result.stderr
+    assert (run / "app-2.log").read_text() == kept
+    assert sorted(path.name for path in run.glob("app-*.log")) == [
+        "app-1.log",
+        "app-2.log",
+        "app-3.log",
+    ]
 
 
 def test_an_unconfirmed_stop_is_retried_then_raised(tmp_path) -> None:
@@ -242,3 +300,228 @@ def test_bad_arguments_and_a_missing_start_time_are_refused(tmp_path) -> None:
         check=False,
     )
     assert result.returncode == 2 and "started-at" in result.stderr
+
+
+@pytest.mark.parametrize("answer", ["warning", "dict", "empty", "nostate", "fail"])
+def test_an_unreadable_list_after_a_stop_is_never_taken_as_stopped(
+    tmp_path, answer
+) -> None:
+    # The list reads at the start, then never again: the stop is retried and
+    # raised, not logged as confirmed.
+    result, fake, run = _watch(
+        tmp_path, _stalled(), FAKE_LIST_SEQ=f"live,{answer}", WATCH_STOP_TRIES="2"
+    )
+    assert result.returncode == 5, result.stderr
+    assert _calls(fake).count(f"app stop {APP}") == 2
+    verdicts = (run / "go-no-go.log").read_text()
+    assert f"stopped {APP} (try" not in verdicts
+    assert "stop it by hand" in (run / "ALARM").read_text()
+
+
+def test_an_app_no_longer_listed_counts_as_stopped(tmp_path) -> None:
+    result, _, run = _watch(tmp_path, _stalled(), FAKE_LIST_SEQ="live,gone")
+    assert result.returncode == 3, result.stderr
+    assert f"stopped {APP} (try 1)" in (run / "go-no-go.log").read_text()
+
+
+def test_an_unreadable_list_when_the_stream_ends_keeps_watching(tmp_path) -> None:
+    # The stream ends after each poll; the list fails twice, then shows the
+    # app stopped. The watcher alarms once, restarts the stream, and ends
+    # only on a list it could read.
+    result, fake, run = _watch(
+        tmp_path, _live(), FAKE_LIST_SEQ="live,warning,fail,stopped"
+    )
+    assert result.returncode == 0, result.stderr
+    calls = _calls(fake)
+    assert calls.count(f"app logs {APP}") == 3
+    assert not any(call.startswith("app stop ap-") for call in calls)
+    alarms = (run / "ALARM").read_text().splitlines()
+    assert len(alarms) == 1 and "could not be read" in alarms[0]
+    verdicts = (run / "go-no-go.log").read_text()
+    assert "still could not be read" in verdicts and "has finished" in verdicts
+
+
+def test_a_list_that_fails_at_the_start_is_retried(tmp_path) -> None:
+    result, fake, run = _watch(
+        tmp_path, _live(), FAKE_LIST_SEQ="fail,warning,live,stopped"
+    )
+    assert result.returncode == 0, result.stderr
+    assert f"watching {APP}" in (run / "go-no-go.log").read_text()
+    assert not (run / "ALARM").exists()
+
+
+def test_a_list_that_never_reads_refuses_the_start_in_the_run_folder(
+    tmp_path,
+) -> None:
+    result, fake, run = _watch(
+        tmp_path, _live(), FAKE_LIST_SEQ="fail", WATCH_START_TRIES="2"
+    )
+    assert result.returncode == 2
+    assert "could not be read in 2 tries" in result.stderr
+    assert (fake / "list-count").read_text().strip() == "2"
+    assert "did not start" in (run / "ALARM").read_text()
+    assert "did not start" in (run / "go-no-go.log").read_text()
+    assert not any(call.startswith("app logs ap-") for call in _calls(fake))
+
+
+def test_a_python_that_cannot_run_the_projection_is_refused_at_the_start(
+    tmp_path,
+) -> None:
+    # An interpreter that reads the app list but cannot import the projection
+    # (as macOS's /usr/bin/python3 3.9 cannot: no datetime.UTC).
+    python = tmp_path / "python3"
+    python.write_text(
+        "#!/bin/bash\n"
+        'case "$1" in *us_head_to_head_projection.py)\n'
+        '  echo "ImportError: cannot import name UTC" >&2; exit 1 ;;\n'
+        "esac\n"
+        f'exec "{sys.executable}" "$@"\n'
+    )
+    python.chmod(0o755)
+    result, fake, run = _watch(tmp_path, _live(), PYTHON=str(python))
+    assert result.returncode == 2
+    assert "did not answer a trial run" in result.stderr
+    assert "did not start" in (run / "ALARM").read_text()
+    assert "cannot import name UTC" in (run / "projection.err").read_text()
+    calls = _calls(fake)
+    assert not any(call.startswith(("app logs ap-", "app stop ap-")) for call in calls)
+
+
+def test_one_failed_poll_between_good_ones_does_not_stop_the_app(tmp_path) -> None:
+    # Projection calls 2 and 4 fail (call 1 is the start's trial run). With
+    # WATCH_MAX_FAILURES=2 two failures that are not in a row stop nothing.
+    count = tmp_path / "projections"
+    python = tmp_path / "python3"
+    python.write_text(
+        "#!/bin/bash\n"
+        'case "$1" in *us_head_to_head_projection.py)\n'
+        f'  n=$(( $(cat "{count}" 2>/dev/null || echo 0) + 1 )); echo $n > "{count}"\n'
+        '  if [ "$n" -eq 2 ] || [ "$n" -eq 4 ]; then exit 1; fi ;;\n'
+        "esac\n"
+        f'exec "{sys.executable}" "$@"\n'
+    )
+    python.chmod(0o755)
+    result, fake, run = _watch(
+        tmp_path,
+        _live(),
+        PYTHON=str(python),
+        WATCH_MAX_FAILURES="2",
+        FAKE_LIVE_LISTS="4",
+    )
+    assert result.returncode == 0, result.stderr
+    alarms = (run / "ALARM").read_text().splitlines()
+    assert len(alarms) == 2
+    assert all("1 poll(s) in a row" in alarm for alarm in alarms)
+    assert not any(call.startswith("app stop ap-") for call in _calls(fake))
+
+
+def test_a_wait_far_past_the_deadline_counts_as_no_verdict(tmp_path) -> None:
+    # Seventeen worker starts for sixteen workers keep the estimate at WAIT;
+    # the lines are fresh, so no stall. The launch was 15,000 s ago, past the
+    # plan's 14,505 s budget.
+    now = time.time()
+    log = [_line(now - 200, "before starting incumbent slice workers", 3.7)] + [
+        _line(now - 100 + i, "after initializing incumbent slice worker", 1.9)
+        for i in range(17)
+    ]
+    result, fake, run = _watch(
+        tmp_path,
+        log,
+        started_ago=15_000,
+        WATCH_WAIT_GRACE="0",
+        WATCH_MAX_FAILURES="2",
+    )
+    assert result.returncode == 4, result.stderr
+    alarms = (run / "ALARM").read_text()
+    assert "still WAIT more than 0s past the budget's deadline, 1 poll(s)" in alarms
+    assert f"app stop {APP}" in _calls(fake)
+
+
+def test_a_wait_inside_the_grace_keeps_watching(tmp_path) -> None:
+    now = time.time()
+    log = [_line(now - 200, "before starting incumbent slice workers", 3.7)] + [
+        _line(now - 100 + i, "after initializing incumbent slice worker", 1.9)
+        for i in range(17)
+    ]
+    result, fake, run = _watch(tmp_path, log, started_ago=15_000, FAKE_LIVE_LISTS="3")
+    assert result.returncode == 0, result.stderr
+    assert not (run / "ALARM").exists()
+    assert "verdict=WAIT" in (run / "go-no-go.log").read_text()
+
+
+@pytest.mark.parametrize("stream", [[], ["the container is still building"]])
+def test_a_hang_before_any_scorer_record_is_stopped(tmp_path, stream) -> None:
+    # Launched two hours ago and no scorer record since: past the one-hour
+    # allowance from the launch.
+    result, fake, run = _watch(tmp_path, stream, started_ago=2 * 3600)
+    assert result.returncode == 3, result.stderr
+    verdicts = (run / "go-no-go.log").read_text()
+    assert "no scorer record at all since the launch" in verdicts
+    assert f"app stop {APP}" in _calls(fake)
+
+
+def test_a_log_gap_alarms_once_and_waits(tmp_path) -> None:
+    # The parent took result 2, but slice 2's line is missing from the stream.
+    t0 = time.time() - 600
+    log = [
+        _line(t0, "before starting candidate slice workers", 4.0),
+        _line(t0 + 5, "after initializing candidate slice worker", 4.0),
+        _line(t0 + 15, "after scoring candidate chunk 1/1 slice 1/40", 4.0),
+        _line(t0 + 15, "after receiving candidate slice result", 4.0),
+        _line(t0 + 25, "after receiving candidate slice result", 4.0),
+        _line(t0 + 35, "after scoring candidate chunk 1/1 slice 3/40", 4.0),
+        _line(t0 + 35, "after receiving candidate slice result", 4.0),
+    ]
+    result, fake, run = _watch(tmp_path, log, started_ago=900, FAKE_LIVE_LISTS="3")
+    assert result.returncode == 0, result.stderr
+    alarms = (run / "ALARM").read_text().splitlines()
+    assert len(alarms) == 1 and "lost lines" in alarms[0]
+    verdicts = (run / "go-no-go.log").read_text()
+    assert verdicts.count("verdict=WAIT") == 3 and '"log_gap"' in verdicts
+    assert not any(call.startswith("app stop ap-") for call in _calls(fake))
+
+
+def test_a_dead_stream_is_restarted_before_the_next_poll(tmp_path) -> None:
+    # Polls every 2 s, stream checks every 1 s. The fake's stream ends at
+    # once, so the first restart comes before the first poll; a second death
+    # in the same interval waits for the poll.
+    result, fake, run = _watch(
+        tmp_path,
+        _live(),
+        started_ago=900,
+        WATCH_INTERVAL="2",
+        WATCH_STEP="1",
+        FAKE_LIVE_LISTS="2",
+    )
+    assert result.returncode == 0, result.stderr
+    lines = (run / "go-no-go.log").read_text().splitlines()
+    first_poll = next(i for i, line in enumerate(lines) if " rc=" in line)
+    assert any("restarting it" in line for line in lines[:first_poll])
+    assert _calls(fake).count(f"app logs {APP}") == 2
+
+
+def test_help_is_read_whole_so_a_long_help_keeps_its_flags(tmp_path) -> None:
+    result, fake, _ = _watch(tmp_path, _stalled(), FAKE_NEW_CLI="1", FAKE_LONG_HELP="1")
+    assert result.returncode == 3, result.stderr
+    calls = _calls(fake)
+    assert f"app logs --follow {APP}" in calls
+    assert f"app stop --yes {APP}" in calls
+
+
+def test_chunk_weights_reach_every_projection(tmp_path) -> None:
+    weights = ROOT / "docs" / "evidence" / "us-h2h-speed" / "chunk-weights.json"
+    argv = tmp_path / "argv"
+    python = tmp_path / "python3"
+    python.write_text(
+        "#!/bin/bash\n"
+        f'case "$1" in *us_head_to_head_projection.py) echo "$*" >> "{argv}" ;; esac\n'
+        f'exec "{sys.executable}" "$@"\n'
+    )
+    python.chmod(0o755)
+    result, _, _ = _watch(
+        tmp_path, _live(), weights=weights, PYTHON=str(python), FAKE_LIVE_LISTS="2"
+    )
+    assert result.returncode == 0, result.stderr
+    calls = argv.read_text().splitlines()
+    assert len(calls) >= 2
+    assert all(f"--chunk-weights {weights}" in call for call in calls)

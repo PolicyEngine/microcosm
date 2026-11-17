@@ -121,6 +121,8 @@ _ATTEMPTS = re.compile(
     r"tool budget for this attempt (?P<seconds>\d+)s"
 )
 _BUDGET = re.compile(r"BUDGET: the tool may run (?P<seconds>\d+)s")
+#: Any scorer boundary line, the pool's or not: a sign of life for the stall.
+_ANY_RECORD = re.compile(_STAMP + r"[^:\[]+" + _RSS)
 
 
 @dataclass(frozen=True)
@@ -144,6 +146,8 @@ class Parsed:
     #: The tool's budget for this attempt, where the runner printed one.
     budget_seconds: list[int] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    #: The time of every scorer boundary line, the pool's or not.
+    record_times: list[float] = field(default_factory=list)
 
 
 def _epoch(stamp: str) -> float:
@@ -152,8 +156,11 @@ def _epoch(stamp: str) -> float:
     )
 
 
-def _records(lines: Iterable[str]) -> tuple[list[tuple[str, Event]], list[int]]:
-    """The scorer records and the runner's budget seconds in one stream.
+def _records(
+    lines: Iterable[str],
+) -> tuple[list[tuple[str, Event]], list[int], list[float]]:
+    """The scorer records, the runner's budget seconds and the time of every
+    scorer boundary line in one stream.
 
     A line may carry any prefix, and two processes writing at once can put
     two records on one line, so every record on a line counts.
@@ -161,9 +168,11 @@ def _records(lines: Iterable[str]) -> tuple[list[tuple[str, Event]], list[int]]:
 
     records: list[tuple[str, Event]] = []
     budgets: list[int] = []
+    times: list[float] = []
     for line in lines:
         for pattern in (_ATTEMPTS, _BUDGET):
             budgets.extend(int(m["seconds"]) for m in pattern.finditer(line))
+        times.extend(_epoch(m["at"]) for m in _ANY_RECORD.finditer(line))
         # A worker's "after scoring ... slice s/S" line also fits the parent's
         # "after scoring ..." shape; a span a worker record holds is the worker's.
         found = [
@@ -199,7 +208,7 @@ def _records(lines: Iterable[str]) -> tuple[list[tuple[str, Event]], list[int]]:
             else:
                 event = Event(**common)
             records.append((match.group(0), event))
-    return records, budgets
+    return records, budgets, times
 
 
 def parse_logs(streams: Sequence[Iterable[str]]) -> Parsed:
@@ -217,8 +226,9 @@ def parse_logs(streams: Sequence[Iterable[str]]) -> Parsed:
     events: dict[str, Event] = {}
     seen = 0
     for stream in streams:
-        records, budgets = _records(stream)
+        records, budgets, times = _records(stream)
         parsed.budget_seconds.extend(budgets)
+        parsed.record_times.extend(times)
         counts: dict[str, int] = {}
         for text, event in records:
             counts[text] = counts.get(text, 0) + 1
@@ -380,6 +390,9 @@ class History:
     #: Free workers in the order they take tasks, and whether each has had one.
     idle_has_run: list[bool]
     notes: list[str]
+    #: Tasks whose result the parent took but whose slice line is missing:
+    #: lines the log streams lost.
+    gaps: list[int] = field(default_factory=list)
 
 
 def reconstruct(
@@ -425,32 +438,64 @@ def reconstruct(
     in_burst = count < opening
     consumed = 0
     previous = clock
+    gaps: list[int] = []
     while not in_burst and blocked is None and consumed < total:
         task = consumed + 1
         arrived = pool.by_task.get(task)
-        if arrived is None or max(arrived, previous) > now:
+        receipt = receives[task - 1] if len(receives) >= task else None
+        if arrived is None:
+            if receipt is not None:
+                # The parent took this result, so its slice ended: its line
+                # is missing from the streams.
+                gaps.append(task)
             break
-        at = max(arrived, previous)
+        # The parent takes the result once it has arrived and the previous
+        # ``after receiving`` line is out.
+        ready = max(arrived, previous)
+        if ready > now:
+            break
         consumed = task
-        parent_free = at
+        parent_free = ready
         if 2 * workers + task <= total:
-            submitted[2 * workers + task] = at
-            if finished_by(at) - taken > 0:
+            # A worker start the model has not explained, logged before this
+            # submit, came from an earlier submit the model gave a token: that
+            # submit took none, so the token is still free.
+            resynced = 0
+            while spawns < min(workers, len(inits)) and inits[spawns] < ready and taken:
+                spawns += 1
+                taken -= 1
+                resynced += 1
+            if resynced:
+                notes.append(
+                    f"{resynced} worker start(s) logged before the submit after "
+                    f"result {task} came from earlier submits the model gave a "
+                    "token; their start costs are not measured"
+                )
+            if finished_by(ready) - taken > 0:
                 taken += 1
+                # The submit takes a token at once and the parent prints
+                # ``after receiving`` straight after it, so that line dates it
+                # (a result can reach the parent well after its slice line).
+                submitted[2 * workers + task] = (
+                    max(ready, receipt) if receipt is not None else ready
+                )
             elif spawns < workers:
-                if spawns < len(inits) and inits[spawns] >= at:
-                    start_costs.append(inits[spawns] - at)
+                submitted[2 * workers + task] = ready
+                if spawns < len(inits) and inits[spawns] >= ready:
+                    start_costs.append(inits[spawns] - ready)
                     parent_free = inits[spawns]
                     spawns += 1
-                elif len(receives) >= task:
+                elif receipt is not None:
                     notes.append(
                         f"the submit after result {task} took no token and started "
                         "no worker the log shows"
                     )
                 else:
-                    blocked = at
+                    blocked = ready
                     break
-        previous = receives[task - 1] if len(receives) >= task else parent_free
+            else:
+                submitted[2 * workers + task] = ready
+        previous = receipt if receipt is not None else parent_free
     if spawns < len(inits):
         notes.append(
             f"the log shows {len(inits)} worker starts and the model explains {spawns}"
@@ -488,6 +533,7 @@ def reconstruct(
         blocked_since=blocked,
         idle_has_run=idle_line,
         notes=notes,
+        gaps=gaps,
     )
 
 
@@ -511,8 +557,14 @@ class Timing:
 
 
 def timing(pool: _Pool, history: History | None, need: int) -> Timing:
-    if history is None or not pool.slices_per_chunk:
+    if history is None:
         return Timing({}, {}, [], None, [])
+    if not pool.slices_per_chunk:
+        # No slice yet: no pace, but the starts logged so far are measured.
+        costs = history.start_costs
+        return Timing(
+            {}, {}, [], sum(costs) / len(costs) if costs else None, list(history.notes)
+        )
     per_chunk = pool.slices_per_chunk
     firsts = set(history.firsts)
     regular: dict[int, list[float]] = {}
@@ -551,10 +603,14 @@ def replay(
     first_extra: float,
     history: History | None = None,
     finished: Mapping[int, float] | None = None,
+    notes: list[str] | None = None,
 ) -> tuple[float, float]:
     """The model run forward from ``history`` at ``now`` (a fresh pool opening
     at ``now`` without one): when its last slice ends and when the parent is
-    done with it."""
+    done with it.
+
+    A running slice past its expected end is taken to run as far past it
+    again: assuming it ends now would hide the work it still holds."""
 
     finished_at = dict(finished or {})
     clock, last = now, max(finished_at.values(), default=now)
@@ -575,6 +631,7 @@ def replay(
         tokens, spawns = history.tokens, len(history.firsts)
         in_burst, blocked = history.in_burst, history.blocked_since
         firsts = set(history.firsts)
+        overdue = 0
         for task in sorted(history.started):
             if task in finished_at:
                 continue
@@ -582,7 +639,15 @@ def replay(
             has_run.add(worker)
             end = history.started[task] + seconds[chunk_of(task)]
             end += first_extra if task in firsts else 0.0
-            heapq.heappush(heap, (max(end, now), task, worker))
+            if end < now:
+                overdue += 1
+                end = 2 * now - end
+            heapq.heappush(heap, (end, task, worker))
+        if overdue and notes is not None:
+            notes.append(
+                f"{overdue} running slice(s) are past their chunk's pace; each is "
+                "taken to run as far past it again"
+            )
         queue.extend(t for t in sorted(history.submitted) if t not in history.started)
         for ran in history.idle_has_run:
             worker += 1
@@ -724,13 +789,27 @@ def project(parsed: Parsed, limits: Limits, now: float) -> dict[str, object]:
             f"{workers} workers: a restarted container or recycling, which the "
             "estimate does not model"
         )
+    gaps = {
+        name: history.gaps
+        for name, pool in (("incumbent", incumbent), ("candidate", candidate))
+        if (history := reconstruct(pool, workers, now)) is not None and history.gaps
+    }
+    if gaps:
+        report["log_gap"] = {name: tasks[:5] for name, tasks in gaps.items()}
+        waiting.append(
+            "the streams lost lines: the parent took results whose slice lines "
+            f"are missing ({', '.join(f'{n} task {t[0]}' for n, t in gaps.items())}), "
+            "so the rebuilt pool is wrong in an unknown direction; the early stop "
+            "is off and the runner's budget bounds the run"
+        )
     estimate, notes, why = (
         (None, [], None) if waiting else _estimate(incumbent, candidate, limits, now)
     )
     if estimate is None and why:
         waiting.append(why)
     slowest = max((estimate or {}).get("chunk_seconds_used", {}).values(), default=0.0)
-    stall = _stall(events, candidate, slowest, limits, now)
+    seen = [t for t in parsed.record_times if t <= now] + [e.at for e in events]
+    stall = _stall(seen, candidate, slowest, limits, now)
     if estimate is None:
         if stall:
             return {
@@ -795,9 +874,30 @@ def _estimate(
     cand_cost = timings["candidate"].start_cost or inc_cost
     if measured["candidate"]:
         assert candidate.chunks is not None
-        seconds, more = _filled(
-            measured["candidate"], candidate.chunks, prior.candidate
-        )
+        fill_prior: Sequence[float] = prior.candidate
+        carried = [
+            c
+            for c in measured["incumbent"]
+            if len(prior.candidate) == len(prior.incumbent) == candidate.chunks
+        ]
+        if carried:
+            # The incumbent's measured chunks say how this pool departs from
+            # the prior chunk by chunk; carry that into the candidate's fill.
+            fill_prior = tuple(
+                prior.candidate[c - 1]
+                * (
+                    measured["incumbent"][c] / prior.incumbent[c - 1]
+                    if c in measured["incumbent"]
+                    else 1.0
+                )
+                for c in range(1, candidate.chunks + 1)
+            )
+        seconds, more = _filled(measured["candidate"], candidate.chunks, fill_prior)
+        if carried and len(seconds) > len(measured["candidate"]):
+            more.append(
+                f"the candidate's fill carries the incumbent's measured chunks "
+                f"{sorted(carried)} against the prior"
+            )
         pace_from = "candidate"
     elif measured["incumbent"] and prior.candidate and prior.incumbent:
         assert incumbent.chunks is not None
@@ -854,6 +954,7 @@ def _estimate(
             first_extra=cand_extra or 0.0,
             history=cand_history,
             finished={t: at for t, at in candidate.by_task.items() if at <= now},
+            notes=notes,
         )
     else:
         # The incumbent is still scoring (or its pool is done and the
@@ -872,6 +973,7 @@ def _estimate(
             first_extra=inc_extra or 0.0,
             history=inc_history,
             finished={t: at for t, at in incumbent.by_task.items() if at <= now},
+            notes=notes,
         )
         last, _ = replay(
             now=released,
@@ -908,7 +1010,7 @@ def _estimate(
 
 
 def _stall(
-    events: Sequence[Event],
+    seen: Sequence[float],
     candidate: _Pool,
     slowest: float,
     limits: Limits,
@@ -916,24 +1018,25 @@ def _stall(
 ) -> str | None:
     """Why the run looks stuck, or None.
 
-    Once any slice has been scored, and until the candidate has scored every
-    slice, some scorer record should appear well within the allowance: the
-    floor (which covers loading the candidate and starting its first worker)
-    or a multiple of the slowest estimated slice, whichever is longer.
+    Until the candidate has scored every slice, some scorer record should
+    appear well within the allowance: the floor (which covers staging,
+    loading a frame and starting a pool's first worker) or a multiple of the
+    slowest estimated slice, whichever is longer. Before any record the
+    allowance runs from ``--started-at``, so a run whose log never arrives
+    (a hang before the first slice, or streams that fail) is not watched as
+    WAIT forever.
     """
 
-    if not any(e.kind == "slice" for e in events):
-        return None
     if candidate.total is not None and candidate.done >= candidate.total:
         return None
-    last = max(e.at for e in events)
+    last = max(seen, default=limits.started_at)
     allowed = max(limits.stall_floor_seconds, limits.stall_factor * slowest)
     if now - last <= allowed:
         return None
-    return (
-        f"stall: no scorer record since {_utc(last)}, {now - last:.0f} s against "
-        f"{allowed:.0f} s allowed"
+    since = (
+        f"since {_utc(last)}" if seen else f"at all since the launch at {_utc(last)}"
     )
+    return f"stall: no scorer record {since}, {now - last:.0f} s against {allowed:.0f} s allowed"
 
 
 def _utc(epoch: float) -> str:

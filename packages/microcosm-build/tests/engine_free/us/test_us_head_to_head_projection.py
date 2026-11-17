@@ -243,10 +243,14 @@ def test_on_the_real_log_the_replay_comes_within_ten_percent_early() -> None:
     assert all(-0.101 <= error < 0 for error in errors), errors
 
 
-def test_a_late_receive_line_dates_the_submits_after_it() -> None:
-    # One worker, four slices of 10 s. The parent prints its first result's
-    # line late (at 40 s), so the next submit cannot come before then: task 4
-    # waits for it although the worker is free at 35 s.
+def test_a_late_receive_line_dates_the_submit_it_follows() -> None:
+    # One worker, four slices of 10 s. The parent takes result 1 late (its
+    # reducer, or the result's transfer, holds it), submits task 3 and prints
+    # ``after receiving`` at once, at 40 s (score_us_release_head_to_head.py:
+    # ``future.result()``, ``submit_next()``, then the line). So task 3 cannot
+    # start before 40 s although the worker is free at 25 s; dating the submit
+    # from slice 1's line (15 s) would start it at 25 s and read its slice as
+    # 25 s long.
     def at(seconds: int, text: str) -> str:
         return sim.line(START + seconds, text, 4.0)
 
@@ -255,22 +259,24 @@ def test_a_late_receive_line_dates_the_submits_after_it() -> None:
         at(5, "after initializing candidate slice worker"),
         at(15, "after scoring candidate chunk 1/1 slice 1/4"),
         at(25, "after scoring candidate chunk 1/1 slice 2/4"),
-        at(35, "after scoring candidate chunk 1/1 slice 3/4"),
         at(40, "after receiving candidate slice result"),
         at(40, "after receiving candidate slice result"),
-        at(50, "after scoring candidate chunk 1/1 slice 4/4"),
+        at(50, "after scoring candidate chunk 1/1 slice 3/4"),
         at(50, "after receiving candidate slice result"),
-        at(50, "after receiving candidate slice result"),
+        at(60, "after scoring candidate chunk 1/1 slice 4/4"),
+        at(60, "after receiving candidate slice result"),
     ]
     pool = projection._pool(projection.parse_log(log).events, "candidate")
-    history = projection.reconstruct(pool, 1, START + 50)
+    history = projection.reconstruct(pool, 1, START + 60)
     assert history is not None and history.notes == []
     assert history.start_costs == [5.0]
+    # Submit 1 starts the worker, so submit 2 waits for it.
+    assert history.submitted == {1: START, 2: START + 5, 3: START + 40, 4: START + 40}
     assert history.started == {
         1: START + 5,
         2: START + 15,
-        3: START + 25,
-        4: START + 40,
+        3: START + 40,
+        4: START + 50,
     }
     timing = projection.timing(pool, history, 3)
     assert timing.chunk_seconds == {1: 10.0}
@@ -416,9 +422,19 @@ def test_a_stall_is_a_no_go_whether_or_not_the_estimate_is_ready() -> None:
     assert late["verdict"] == "NO-GO"
     assert late["reasons"][-1].startswith("stall:")
     assert projection.project(parsed, limits, at + 3500)["verdict"] == "GO"
-    # Before any slice there is no stall: compiling and loading print nothing.
-    quiet = projection.project(projection.parse_log([]), limits, START + 10**6)
-    assert quiet["verdict"] == "WAIT"
+    # Before any record the allowance runs from the launch, so a log that
+    # never arrives is not WAIT forever; any scorer line (compiling the
+    # yardstick, loading a frame) counts as a record.
+    empty = projection.parse_log([])
+    assert projection.project(empty, limits, START + 3600)["verdict"] == "WAIT"
+    silent = projection.project(empty, limits, START + 3601)
+    assert silent["verdict"] == "NO-GO"
+    assert "since the launch" in silent["reasons"][0]
+    loading = projection.parse_log(
+        [sim.line(START + 3000, "after loading populace_us_2024.h5", 3.6)]
+    )
+    assert projection.project(loading, limits, START + 6600)["verdict"] == "WAIT"
+    assert projection.project(loading, limits, START + 6601)["verdict"] == "NO-GO"
 
 
 def test_the_runners_budget_lines_shorten_the_deadline() -> None:
