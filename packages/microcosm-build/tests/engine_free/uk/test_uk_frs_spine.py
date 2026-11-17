@@ -4115,8 +4115,8 @@ def test_driver_refuses_a_stage_profile_dir_before_any_node_runs(
             validated(inside)
         assert str(refused.value) == (
             "--stage-profile-dir must lie outside every git work tree: a stage "
-            "profile keeps the message of a failure its node raised, so it "
-            "stays private."
+            "profile keeps the message of a failure its node raised, and no "
+            "checkout may commit it."
         )
         assert not inside.exists()
 
