@@ -1,9 +1,10 @@
 """The pre-R2 check for counties whose SOI AGI row would be empty (microcosm#922).
 
 ``tools/check_us_acs_county_agi_support.py`` lists counties that have
-households but none that can carry a nonzero AGI: R2's ``attach_surface``
-refuses such a county after the engine pass. These tests use small fixture
-H5 files and a stand-in engine index, so no country engine is imported.
+households but none with a nonzero AGI: R2's ``attach_surface`` refuses such
+a county after the engine pass. These tests stub the engine pass (the
+household AGI), so no country engine is imported; the engine-tier test
+``engine_workflow/us/test_us_acs_county_agi_support_engine.py`` runs it.
 """
 
 from __future__ import annotations
@@ -13,13 +14,13 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from microcosm.build.us_runtime.h5_io import write_nullable_us_h5
-from microcosm.frame import US_SCHEMA, Frame, VariableMetadata, WeightKind, Weights
+from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -36,44 +37,11 @@ def check():
     return module
 
 
-@dataclass(frozen=True)
-class _Closure:
-    input_leaves: tuple[str, ...]
-    engine_version: str = "fixture"
-    sha256: str = "c" * 64
-
-
-class _Index:
-    """Stand-in for PolicyEngineUSVariableMetadataIndex."""
-
-    leaves = {
-        "employment_income_before_lsr": ("person", "float", "currency-USD"),
-        "taxable_interest_income": ("person", "float", "currency-USD"),
-        "social_security_retirement": ("person", "float", "currency-USD"),
-        "student_loan_interest": ("person", "float", "currency-USD"),
-        "other_net_gain": ("tax_unit", "float", "currency-USD"),
-        "age": ("person", "float", None),
-        "is_blind": ("person", "bool", None),
-    }
-
-    def variable_dependency_closure(self, name):
-        assert name == "irs_gross_income"
-        return _Closure(tuple(sorted(self.leaves)))
-
-    def variable_metadata(self, name):
-        entity, dtype, _unit = self.leaves[name]
-        return VariableMetadata(name=name, entity=entity, dtype=dtype, period="year")
-
-    def variable_unit(self, name):
-        return self.leaves[name][2]
-
-
-def _frame(person_income: dict[str, list[float]], unit_income=None) -> Frame:
+def _frame(person_columns: dict[str, list] | None = None) -> Frame:
     """Six households in three counties of state 01, one person each.
 
-    01001: two households with income. 01003: two households, the first with
-    Social Security only, the second with a null wage. 01005: two ACS
-    households, one a group-quarters record.
+    01001 and 01003 hold two donor households each; 01005 holds two ACS
+    households, the second a group-quarters record.
     """
 
     n = 6
@@ -83,10 +51,9 @@ def _frame(person_income: dict[str, list[float]], unit_income=None) -> Frame:
             "person_id": ids,
             **{f"person_{entity}_id": ids for entity in US_SCHEMA.group_entities},
             "age": np.full(n, 40.0),
+            **(person_columns or {}),
         }
     )
-    for column, values in person_income.items():
-        person[column] = values
     tables = {"person": person}
     for entity in US_SCHEMA.group_entities:
         tables[entity] = pd.DataFrame({f"{entity}_id": ids})
@@ -98,8 +65,6 @@ def _frame(person_income: dict[str, list[float]], unit_income=None) -> Frame:
         ["asec_puf"] * 4 + ["acs_2024_1yr"] * 2, dtype=object
     )
     household["TYPEHUGQ"] = [np.nan] * 4 + [1.0, 3.0]
-    for column, values in (unit_income or {}).items():
-        tables["tax_unit"][column] = values
     return Frame(
         tables,
         US_SCHEMA,
@@ -107,65 +72,13 @@ def _frame(person_income: dict[str, list[float]], unit_income=None) -> Frame:
     )
 
 
-_INCOME = {
-    "employment_income_before_lsr": [100.0, 0.0, 0.0, np.nan, 0.0, 0.0],
-    "taxable_interest_income": [0.0, 5.0, 0.0, 0.0, 0.0, 0.0],
-    "social_security_retirement": [0.0, 0.0, 900.0, 0.0, 0.0, 0.0],
-    "student_loan_interest": [0.0, 0.0, 0.0, 0.0, 300.0, 0.0],
-}
-
-
-def test_agi_income_columns_drop_social_security_and_deductions(check) -> None:
-    sources = check.agi_income_columns(_Index())
-
-    assert sources["person"] == [
-        "employment_income_before_lsr",
-        "taxable_interest_income",
-    ]
-    assert sources["tax_unit"] == ["other_net_gain"]
-    assert sources["excluded"] == {
-        "social_security_retirement": "social_security_taxable_share_only",
-        "student_loan_interest": "deduction_expense_or_contribution",
-    }
-    assert sources["engine_version"] == "fixture"
-
-
-def test_households_without_agi_income_are_found(check) -> None:
-    frame = _frame(_INCOME)
-
-    flags = check.household_income_flags(
-        frame.table("household"),
-        frame.table("person"),
-        frame.table("tax_unit"),
-        person_columns=["employment_income_before_lsr", "taxable_interest_income"],
-    )
-
-    # Social Security only, a null wage, a deduction only: no AGI income.
-    assert flags.tolist() == [True, True, False, False, False, False]
-
-
-def test_tax_unit_income_reaches_its_household(check) -> None:
-    frame = _frame(_INCOME, unit_income={"other_net_gain": [0, 0, 0, 0, 0, 7.0]})
-
-    flags = check.household_income_flags(
-        frame.table("household"),
-        frame.table("person"),
-        frame.table("tax_unit"),
-        person_columns=["employment_income_before_lsr"],
-        tax_unit_columns=["other_net_gain"],
-    )
-
-    assert flags.tolist() == [True, False, False, False, False, True]
-
-
-def test_report_lists_counties_with_households_but_no_agi_income(check) -> None:
-    frame = _frame(_INCOME)
-    households = frame.table("household")
-    income = np.asarray([True, True, False, False, False, True])
+def test_report_lists_counties_with_households_but_no_nonzero_agi(check) -> None:
+    households = _frame().table("household")
+    nonzero = np.asarray([True, True, False, False, False, True])
 
     report = check.county_agi_report(
         households,
-        income,
+        nonzero,
         county_column="county_fips_2023",
         county_populations={1001: 10.0, 1003: 5.0, 1005: 5.0, 1007: 3.0},
     )
@@ -184,55 +97,134 @@ def test_report_lists_counties_with_households_but_no_agi_income(check) -> None:
     assert report["counties_outside_ladder"] == []
 
 
-@pytest.mark.parametrize("layout", ["fixed", "table"])
-def test_read_columns_reads_only_the_named_columns(
-    check, tmp_path: Path, layout: str
-) -> None:
-    frame = _frame(_INCOME)
-    path = tmp_path / f"{layout}.h5"
-    if layout == "fixed":
-        write_nullable_us_h5(frame, path, period=2024, artifact_kind="fixture")
-    else:
-        with pd.HDFStore(path, mode="w") as store:
-            store.put("person", frame.table("person"), format="table")
+_NEVER_DEFAULT = frozenset(
+    {
+        ("person", "takes_up_ssi_if_eligible"),
+        ("person", "is_blind"),
+        ("spm_unit", "takes_up_snap_if_eligible"),
+    }
+)
 
-    read = check.read_columns(
-        path,
-        "person",
-        ["person_household_id", "taxable_interest_income", "not_a_column"],
+
+def test_null_runtime_columns_outside_the_agi_are_held_back(check) -> None:
+    frame = _frame(
+        {
+            "takes_up_ssi_if_eligible": [True, np.nan, True, True, False, True],
+            "is_blind": [False] * 6,
+        }
     )
 
-    assert list(read.columns) == ["person_household_id", "taxable_interest_income"]
-    np.testing.assert_array_equal(
-        read["taxable_interest_income"].to_numpy(), _INCOME["taxable_interest_income"]
+    held_frame, held = check.hold_back_null_runtime_columns(
+        frame, never_default_filled=_NEVER_DEFAULT, agi_inputs={"is_blind", "age"}
     )
-    np.testing.assert_array_equal(
-        read["person_household_id"].to_numpy(), np.arange(1, 7)
+
+    assert held == {"person": ["takes_up_ssi_if_eligible"]}
+    assert "takes_up_ssi_if_eligible" not in held_frame.table("person").columns
+    assert "is_blind" in held_frame.table("person").columns
+    assert held_frame.n("household") == frame.n("household")
+
+
+def test_a_null_never_default_agi_input_is_refused(check) -> None:
+    frame = _frame({"is_blind": [False, np.nan, False, False, False, False]})
+
+    with pytest.raises(SystemExit, match=r"person\.is_blind"):
+        check.hold_back_null_runtime_columns(
+            frame, never_default_filled=_NEVER_DEFAULT, agi_inputs={"is_blind"}
+        )
+
+
+def test_a_frame_without_null_runtime_columns_is_returned_as_is(check) -> None:
+    frame = _frame({"takes_up_ssi_if_eligible": [True] * 6})
+
+    held_frame, held = check.hold_back_null_runtime_columns(
+        frame, never_default_filled=_NEVER_DEFAULT, agi_inputs={"age"}
     )
+
+    assert held == {}
+    assert held_frame is frame
+
+
+@dataclass(frozen=True)
+class _Closure:
+    input_leaves: tuple[str, ...]
+
+
+def test_agi_engine_inputs_are_the_static_closure_of_agi(check) -> None:
+    class _Index:
+        def variable_dependency_closure(self, name):
+            assert name == "adjusted_gross_income"
+            return _Closure(("age", "employment_income_before_lsr"))
+
+    assert check.agi_engine_inputs(_Index()) == {"age", "employment_income_before_lsr"}
+
+
+def _stub_release(frame: Frame) -> SimpleNamespace:
+    return SimpleNamespace(_load_staging_frame=lambda path: frame)
 
 
 def test_command_exits_2_and_reports_an_at_risk_county(
     check, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import microcosm.frame.adapters.policyengine_us as adapter
-
-    monkeypatch.setattr(adapter, "PolicyEngineUSVariableMetadataIndex", _Index)
     staging = tmp_path / "staging.h5"
-    write_nullable_us_h5(_frame(_INCOME), staging, period=2024, artifact_kind="fixture")
+    staging.write_bytes(b"")
+    (tmp_path / "staging.summary.json").write_text("{}")
     out = tmp_path / "report.json"
+    monkeypatch.setattr(check, "_release_tool", lambda: _stub_release(_frame()))
+    calls = []
+
+    def agi(frame, summary_path, *, release, hh_chunk):
+        calls.append((summary_path, hh_chunk))
+        # 01003's households have an AGI of 0; a negative AGI is stored.
+        return np.asarray([100.0, 0.0, 0.0, 0.0, -5.0, 0.0]), {"stub": True}
+
+    monkeypatch.setattr(check, "household_agi", agi)
 
     status = check.main(["--h5", str(staging), "--out", str(out)])
 
     report = json.loads(out.read_text())
     assert status == check.EXIT_AT_RISK
-    assert report["at_risk"] == ["01003", "01005"]
-    assert report["agi_income_columns"]["person_present"] == [
-        "employment_income_before_lsr",
-        "taxable_interest_income",
-    ]
-    assert report["agi_income_columns"]["tax_unit_present"] == []
+    assert report["at_risk"] == ["01003"]
+    assert report["households_with_agi_income"] == 2
+    assert report["agi_engine"] == {"stub": True}
     assert report["minimum_support"] is None
+    # The summary path defaults as R2's does: the H5 with .summary.json.
+    assert calls == [(tmp_path / "staging.summary.json", check.DEFAULT_HH_CHUNK)]
 
-    healthy = dict(_INCOME, taxable_interest_income=[0.0, 5.0, 1.0, 0.0, 2.0, 0.0])
-    write_nullable_us_h5(_frame(healthy), staging, period=2024, artifact_kind="fixture")
+    def healthy(frame, summary_path, *, release, hh_chunk):
+        return np.asarray([1.0, 0.0, 0.0, 2.0, 0.0, 3.0]), {}
+
+    monkeypatch.setattr(check, "household_agi", healthy)
     assert check.main(["--h5", str(staging), "--county-column", "county_fips"]) == 0
+
+
+def test_an_agi_below_float32_resolution_is_stored_as_zero(
+    check, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    staging = tmp_path / "staging.h5"
+    staging.write_bytes(b"")
+    summary = tmp_path / "other.summary.json"
+    summary.write_text("{}")
+    monkeypatch.setattr(check, "_release_tool", lambda: _stub_release(_frame()))
+    monkeypatch.setattr(
+        check,
+        "household_agi",
+        lambda frame, path, *, release, hh_chunk: (
+            np.asarray([1.0, 0.0, 1e-50, 0.0, 1.0, 0.0]),
+            {},
+        ),
+    )
+
+    status = check.main(["--h5", str(staging), "--staging-summary", str(summary)])
+
+    assert status == check.EXIT_AT_RISK
+
+
+def test_command_refuses_without_a_staging_summary(
+    check, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    staging = tmp_path / "staging.h5"
+    staging.write_bytes(b"")
+    monkeypatch.setattr(check, "_release_tool", lambda: _stub_release(_frame()))
+
+    with pytest.raises(SystemExit, match="Staging summary not found"):
+        check.main(["--h5", str(staging)])
