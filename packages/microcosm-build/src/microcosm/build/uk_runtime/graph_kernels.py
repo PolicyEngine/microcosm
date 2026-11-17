@@ -930,11 +930,14 @@ _STAGE_HELPER_MODULES = {
         stochastic_assignment,
     ),
     # The Child Benefit redraw shares the weight mapping and the adapter, and
-    # reads the vendored Child Benefit statistics (microcosm#931).
+    # reads the vendored Child Benefit statistics; its receipt counts the
+    # eligible child rows among geographic clone 0's rows, read through
+    # frs_take_up (microcosm#931).
     "child_benefit_take_up": (
         uc_capital_coherence,
         *_ENGINE_STAGE_MODULES,
         *_FEED_FACT_MODULES,
+        frs_take_up,
         stochastic_assignment,
     ),
     # The Carer's Allowance draw reads the earnings test through the adapter's

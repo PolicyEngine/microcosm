@@ -1138,6 +1138,14 @@ def _child_benefit_take_up_gate(
     realised rate is weighted. The opted-out share of claiming families is
     held to the published share, or may fall short of it only where the
     receipt shows the charged families exhausted (microcosm#1063).
+
+    An age's child rows, for the floor ``minimum_age_child_rows`` and for the
+    band's n alike, are the receipt's ``eligible_child_rows``, which the stage
+    counts among geographic clone 0's rows (microcosm#931): the rows a
+    one-clone frame has, so the gate measures the same ages, each against the
+    same band, at every clone count. The realised rate is taken over every
+    clone, each drawing on its own keys, so a band read on one clone's rows is
+    no narrower than the noise of a rate realised over several clones.
     """
 
     check = "child_benefit_take_up"
