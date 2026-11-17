@@ -232,9 +232,10 @@ FPB_OBSERVED_2025 = {
     "fpb_t11_current_taxes_on_income_and_wealth": "79273000000",
 }
 # G8-r2 factors need operands with dated period coverage. FPB's annex facts
-# carry none, so the only Belgian operands the resolver can authenticate are
-# RSZ's annual wage totals: diagnostic cross-checks of the observed segment of
-# the wage-driven pairs, never profile or money-normalization inputs.
+# have carried it since Chronicle #402, for money_normalization.json; here the
+# only operands the resolver authenticates are still RSZ's annual wage totals:
+# diagnostic cross-checks of the observed segment of the wage-driven pairs,
+# never profile or money-normalization inputs.
 # FPB T24 prints unemployment twice. The pair takes line a.; these reviewed 2025
 # levels keep the inventory's comparison with line 4 tied to the feed.
 T24_UNEMPLOYMENT_2025 = {
@@ -2738,9 +2739,8 @@ def _inventory(inventory, pairs, documents, feed_pin, members, communes, surface
             "A national row composed from commune facts refuses for Belgium: the composed-geography path labels only UK areas (ledger_targets._geography_fallback_label), so CREATE's single national mass reference cannot be the commune sum.",
             "A schema-2 target_profile requires period_match_policy 'exact', which refuses rolled_forward_by_ratio; the documents keep B1's schema-2 hierarchy catalogs with a schema-1 target_profile (NZ's documents use the same schema-1 profile, with inline hierarchies).",
             "No shared operation ages interval cuts by a declared annual ratio pair: scale_money_and_intervals needs a G8-r2 factor and singleton identity money rows, and G8-r2's projected_period_average_ratio cannot project an annual series past its last observation.",
-            "G8-r2's resolver needs dated period_coverage on every operand; Chronicle's FPB, Statbel NUTS1, NBB, ONSS, ONEM and most Eurostat facts carry none.",
+            "G8-r2's resolver needs dated period_coverage on every operand; Chronicle's Statbel NUTS1, NBB, ONSS, ONEM and most Eurostat facts carry none (FPB's outlook facts and Eurostat's euro exchange rates have it since Chronicle #402).",
             "rolled_forward_by_ratio refuses a negative base, so signed targets (B.1 low deciles) cannot be aged by it.",
-            "rolled_forward_by_ratio's series key treats every FPB annex row of one table as one series (same concept, entity, geography and empty dimensions); the generator and tests enforce row identity themselves.",
             "The typed vintage alias set admits only a layer's full id, its country-shortened id and its authority value, so Chronicle's NUTS_2024 label cannot be an alias of vintage:be_nuts1_2025; geography_vintage_bindings carries the mapping instead.",
             "The schema-1 target_profile drops B1's required_families, basis_periods, tolerance tiers and subnational vintage rule. Package tests restore required families, the vintage rule and each row's periods. Caseload tolerance moves from B1's 15% to BE-MC6's 5%, and the ONSS contribution row moves from B1's standard_admin_release 10% to 5%.",
             "A selector cannot pair a record set with a dimension value, and T17 holds each daily-wage class in one record set per sex. Each wage row lists both record sets beside an age and a sex roster, so the package tests' cell check expands their product: 24 cells that exist and 24 that cannot. A list of the members' aggregate keys would bind each member without the artifact, but the package scan admits fact keys only as single strings, so the rosters stay key-free and the feed audit proves their members.",
