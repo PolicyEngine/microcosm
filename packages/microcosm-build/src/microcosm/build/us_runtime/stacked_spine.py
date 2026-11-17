@@ -6084,7 +6084,7 @@ def _legacy_primary_qrf_worker_execution_binding() -> dict[str, object]:
 
 
 def _late_primary_qrf_worker_execution_binding() -> dict[str, object]:
-    """Bind portable semantics and retain absolute launch paths for audit."""
+    """Bind portable semantics; keep launch paths and thread counts for audit."""
 
     return worker_identity_runtime.primary_qrf_worker_execution_binding()
 
@@ -6395,7 +6395,11 @@ def _late_primary_resource_receipts_semantic_projection(
     *,
     boundary: str,
 ) -> dict[str, object]:
-    """Normalize only primary-worker audit aliases out of authentication."""
+    """Normalize only the primary-worker audit fields out of authentication.
+
+    Those are the interpreter paths and the thread counts; see
+    ``worker_identity.primary_qrf_worker_semantic_projection``.
+    """
 
     normalized = _json_ready(resources)
     if not isinstance(normalized, dict):  # pragma: no cover - Mapping normalized
@@ -6426,7 +6430,7 @@ def _late_primary_resource_receipts_semantically_equal(
     *,
     boundary: str,
 ) -> bool:
-    """Compare checkpoint resources without authenticating launcher aliases."""
+    """Compare checkpoint resources without authenticating worker audit fields."""
 
     return _late_primary_resource_receipts_semantic_projection(
         left, boundary=f"{boundary} recorded"

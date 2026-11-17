@@ -352,7 +352,7 @@ EXPECTED_HASHES = {
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
     "full_checkpoint": "ecf64f2bfbb59ffaaa717d8a09d38e56a38d6d43c1aa0a209d57492b038fb19a",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
-    "graph_nodes": "1b208fff4f6d878c522147fee617177544bda8963c940f98a4bfc37507cb955f",
+    "graph_nodes": "ea67473e331b8849b3b48ecac89509661d904f2356ff2161a04715e569c79e91",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
     "late_families": "7857518a5327a816acae80d55a04f43e7445a5e47be822d3ccb747bcb375e199",
     "late_resource_semantics": "4464b646c45dff39a500e07bf60a8505d45725712fc27dcfc6de1e839fd6b0c3",
@@ -526,10 +526,11 @@ def _without_operational_bindings(value: object) -> object:
     """Strip execution-profile subtrees before semantic inventory digesting.
 
     ``worker_execution`` is the primary-QRF worker's execution binding: its
-    semantic identity hashes the interpreter binary, ABI, ``pyvenv.cfg``,
-    the installed distributions' RECORD files, and the resolved fit
-    controls (CPU count included), and its audit aliases spell the
-    interpreter path. All of that authenticates an environment for replay
+    semantic identity hashes the interpreter binary, ABI, ``pyvenv.cfg`` and
+    the installed distributions' RECORD files, its audit aliases spell the
+    interpreter path, and its audit thread controls record the fit-job and
+    prediction-worker counts (the CPU count included). All of that
+    authenticates or describes an environment for replay
     and legitimately differs between macOS and the Linux CI runners; none
     of it is spec evidence. Inventory digests are therefore computed over
     the receipt with the whole subtree removed, as they were before the

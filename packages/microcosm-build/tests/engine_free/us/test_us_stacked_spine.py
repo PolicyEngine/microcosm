@@ -3252,26 +3252,22 @@ def test_primary_qrf_worker_identity_memo_reuses_graph_and_clear_recomputes(
 @pytest.mark.parametrize(
     "name", ("POPULACE_FIT_N_JOBS", "POPULACE_FIT_PREDICT_WORKERS")
 )
-def test_primary_qrf_worker_identity_memo_binds_environment(
+def test_primary_qrf_worker_identity_memo_ignores_thread_controls(
     _worker_identity_memo_inputs,
     monkeypatch: pytest.MonkeyPatch,
     name: str,
 ) -> None:
+    """Thread counts are recorded per binding, outside the cached identity."""
     _source, calls = _worker_identity_memo_inputs
     monkeypatch.setenv(name, "1")
-    first = worker_identity_module.primary_qrf_worker_semantic_identity()
+    first = worker_identity_module.primary_qrf_worker_execution_binding()
     monkeypatch.setenv(name, "3")
-    second = worker_identity_module.primary_qrf_worker_semantic_identity()
-    assert second is not first
-    assert first["environment"]["semantic_controls"][name]["resolved"] == 1
-    assert second["environment"]["semantic_controls"][name]["resolved"] == 3
-    assert worker_identity_module._canonical_sha256(
-        first
-    ) != worker_identity_module._canonical_sha256(second)
-    assert len(calls) == 2
-    monkeypatch.setenv(name, "1")
-    assert worker_identity_module.primary_qrf_worker_semantic_identity() is first
-    assert len(calls) == 2
+    second = worker_identity_module.primary_qrf_worker_execution_binding()
+    assert first["audit_thread_controls"][name]["resolved"] == 1
+    assert second["audit_thread_controls"][name]["resolved"] == 3
+    assert first["semantic_identity"] == second["semantic_identity"]
+    assert first["semantic_identity_sha256"] == second["semantic_identity_sha256"]
+    assert len(calls) == 1
 
 
 @pytest.mark.parametrize(
@@ -3332,7 +3328,7 @@ def test_primary_qrf_worker_execution_binding_isolates_semantic_memo(
 def test_worker_identity_session_prime_matches_pipeline_binding(
     _session_primary_qrf_worker_identities,
 ) -> None:
-    key = worker_identity_module._primary_qrf_worker_identity_cache_key(None)
+    key = None
     memo = worker_identity_module._PRIMARY_QRF_WORKER_IDENTITY_CACHE
     assert key in memo
     first = memo[key]
@@ -3812,8 +3808,6 @@ def test_worker_transitive_source_identity_binds_actual_imported_package_resourc
         "uv_lock",
         "distribution_record",
         "environment_code",
-        "fit_jobs",
-        "predict_workers",
         "torch_backend_autoload",
         "python_dont_write_bytecode",
         "python_pycache_prefix",
@@ -3870,15 +3864,6 @@ def test_late_primary_worker_authentication_rejects_semantic_matrix(
         refresh_environment_code = True
     elif semantic_change == "environment_code":
         semantic["transitive_environment_code_sha256"] = "0" * 64
-    elif semantic_change == "fit_jobs":
-        semantic["environment"]["semantic_controls"]["POPULACE_FIT_N_JOBS"][
-            "resolved"
-        ] = 1
-    elif semantic_change == "predict_workers":
-        predict = semantic["environment"]["semantic_controls"][
-            "POPULACE_FIT_PREDICT_WORKERS"
-        ]
-        predict["resolved"] = int(predict["resolved"]) + 1
     elif semantic_change == "python_dont_write_bytecode":
         semantic["environment"]["overrides"]["PYTHONDONTWRITEBYTECODE"] = "0"
     elif semantic_change == "python_pycache_prefix":
@@ -4165,8 +4150,9 @@ def test_late_primary_resources_bind_donor_content_and_execution_config(
         "semantic_identity",
         "semantic_identity_sha256",
         "audit_aliases",
+        "audit_thread_controls",
     }
-    assert worker["schema_version"] == 1
+    assert worker["schema_version"] == 2
     semantic = worker["semantic_identity"]
     assert semantic["worker_module"]["name"] == (
         "microcosm.build.us_runtime.puf_qrf_worker"
@@ -4221,7 +4207,8 @@ def test_late_primary_resources_bind_donor_content_and_execution_config(
         "PYTHONDONTWRITEBYTECODE",
         "PYTHONPYCACHEPREFIX",
     ]
-    assert environment["semantic_controls"] == {
+    assert "semantic_controls" not in environment
+    assert worker["audit_thread_controls"] == {
         "POPULACE_FIT_N_JOBS": {"configured": None, "resolved": -1},
         "POPULACE_FIT_PREDICT_WORKERS": {
             "configured": "2",

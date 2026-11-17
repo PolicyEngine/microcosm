@@ -1324,12 +1324,12 @@
         ],
         "expected": {
           "nodes": 38,
-          "sha256": "1b208fff4f6d878c522147fee617177544bda8963c940f98a4bfc37507cb955f"
+          "sha256": "ea67473e331b8849b3b48ecac89509661d904f2356ff2161a04715e569c79e91"
         },
         "failures": [],
         "observed": {
           "nodes": 38,
-          "sha256": "1b208fff4f6d878c522147fee617177544bda8963c940f98a4bfc37507cb955f"
+          "sha256": "ea67473e331b8849b3b48ecac89509661d904f2356ff2161a04715e569c79e91"
         },
         "status": "covered"
       },
