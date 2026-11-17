@@ -205,7 +205,11 @@ def tracked_target_fits(
     arrays) to be dead, then records weak references to the new ones. The garbage collector is off inside the block, so an object counts
     as freed only when nothing references it any more, which is when its
     memory goes back; a reference cycle would keep it alive and fail the
-    check. Violations are also kept on the returned object, in case a caller
+    check. Two kinds of part cannot be weakly referenced and are not checked
+    directly: scikit-learn's compiled ``Tree`` node storage (each tree's
+    ``tree_``) and the sign classifier trees' node arrays. Each belongs to a
+    tracked tree and is freed with it, unless something references it
+    directly, which this check cannot see. Violations are also kept on the returned object, in case a caller
     catches the assertion.
     """
 

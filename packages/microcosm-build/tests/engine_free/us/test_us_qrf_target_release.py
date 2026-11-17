@@ -48,6 +48,7 @@ from microcosm.build.us_runtime.acs_transfer import (
 from microcosm.build.us_runtime.acs_transfer_bank import AcsTransferTargetBankStore
 from microcosm.build.us_runtime.org_wages import ORG_QRF_TARGETS, impute_us_org_wages
 from microcosm.fit import RegimeGatedQRF
+from microcosm.frame import Frame
 from test_support.microcosm_build.qrf_chain_doubles import (
     FitThenPredictQRF,
     table_bytes_digest,
@@ -404,3 +405,77 @@ def test_lifetime_check_notices_a_kept_part_of_an_earlier_forest(
             model.fit_draw_next(donor, recipients, priors, state=state, weights="none")
 
     assert len(lifetimes.violations) == 1
+
+
+def _with_joint_immigration_codec(donor: Frame) -> Frame:
+    """The donor with the two immigration columns one joint model target encodes."""
+
+    tables = {name: donor.table(name).copy() for name in donor.entities}
+    person = tables["person"]
+    non_citizen = np.random.default_rng(13).random(len(person)) < 0.3
+    person["ssn_card_type"] = np.where(non_citizen, "NONE", "CITIZEN")
+    person["immigration_status_str"] = np.where(non_citizen, "UNDOCUMENTED", "CITIZEN")
+    return Frame(
+        tables,
+        donor.schema,
+        {name: donor.weights_for(name) for name in donor.weighted_entities},
+        donor.strata,
+    )
+
+
+@pytest.mark.parametrize("banked", [False, True], ids=["in_memory", "banked"])
+def test_joint_codec_transfer_matches_fitting_every_target_first(
+    banked: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two exported columns drawn from one model target, as before."""
+
+    families = {
+        "person": {
+            "fixture_immigration": ("ssn_card_type", "immigration_status_str"),
+            **ACS_FIXTURE_FAMILIES["person"],
+        }
+    }
+
+    def run(target_bank: AcsTransferTargetBankStore | None) -> AcsTransferResult:
+        recipient, donor = acs_transfer_fixture()
+        return transfer_acs_inputs(
+            recipient,
+            _with_joint_immigration_codec(donor),
+            target_families=families,
+            seed=ACS_FIXTURE_SEED,
+            n_estimators=ACS_FIXTURE_N_ESTIMATORS,
+            target_bank=target_bank,
+        )
+
+    result = run(_bank_store(tmp_path / "bank") if banked else None)
+    monkeypatch.setattr(acs_transfer_module, "QRF", FitThenPredictQRF)
+    reference = run(None)
+
+    _assert_same_transfer(result, reference)
+    person = result.frame.table("person")
+    assert set(person["immigration_status_str"]) == {"CITIZEN", "UNDOCUMENTED"}
+
+
+class _FitPredictOnlyQRF:
+    """A QRF stand-in with ``fit`` and ``predict`` but no chain methods."""
+
+    def __init__(self, **_options: object) -> None:
+        pass
+
+    def fit(self, *_args: object, **_kwargs: object) -> object:
+        raise AssertionError("the transfer must not fall back to fit")
+
+
+@pytest.mark.parametrize("banked", [False, True], ids=["in_memory", "banked"])
+def test_acs_transfer_refuses_a_qrf_without_chain_methods(
+    banked: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(acs_transfer_module, "QRF", _FitPredictOnlyQRF)
+    target_bank = _bank_store(tmp_path / "bank") if banked else None
+
+    with pytest.raises(TypeError, match="start_chain and fit_draw_next"):
+        _transfer_acs_fixture("shared", target_bank=target_bank)
