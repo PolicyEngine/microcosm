@@ -11,7 +11,7 @@ deep-copies instead. These tests replace the copy-on-write check to take that
 path, because pandas 3 always has copy-on-write on.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import numpy as np
@@ -79,7 +79,9 @@ def _source_weights() -> dict[str, Weights]:
 
 
 def _source_strata() -> pd.Series:
-    return pd.Series(["cps", "cps", "puf", "puf"], index=pd.RangeIndex(4))
+    # Object dtype, as the frame's default strata: ``to_numpy()`` then returns
+    # a view of the stored array, so memory sharing can be checked.
+    return pd.Series(["cps", "cps", "puf", "puf"], index=pd.RangeIndex(4), dtype=object)
 
 
 @pytest.fixture
@@ -98,6 +100,17 @@ def source_frame() -> Frame:
         Weights(values=np.array([150.0, 300.0]), kind=WeightKind.CALIBRATED),
         mass=MassChange(factor=1.5, reason="test calibration"),
     )
+
+
+@pytest.fixture(autouse=True)
+def copy_on_write_on() -> Iterator[None]:
+    """Turn copy-on-write on under pandas 2.x; pandas 3 always has it on."""
+
+    if int(pd.__version__.split(".", 1)[0]) >= 3:
+        yield
+        return
+    with pd.option_context("mode.copy_on_write", True):
+        yield
 
 
 @pytest.fixture
@@ -149,11 +162,26 @@ class TestDefaultConstructor:
 class TestAdopt:
     def test_adopt_stores_the_given_tables_without_copying(self) -> None:
         tables = _source_tables()
-        frame = Frame._adopt(tables, _SCHEMA, _source_weights(), _source_strata())
+        strata = _source_strata()
+        frame = Frame._adopt(tables, _SCHEMA, _source_weights(), strata)
 
         for name, table in _tables_of(frame).items():
             assert table is tables[name]
         assert frame.links == ("jobs",)
+        assert frame.strata is not strata
+        assert np.shares_memory(frame.strata.to_numpy(), strata.to_numpy())
+
+    @pytest.mark.parametrize("copy_on_write", [True, False], ids=["cow_on", "cow_off"])
+    def test_adopt_refuses_a_table_that_is_not_a_dataframe(
+        self, monkeypatch: pytest.MonkeyPatch, copy_on_write: bool
+    ) -> None:
+        monkeypatch.setattr(
+            bundle_module, "_pandas_copy_on_write", lambda: copy_on_write
+        )
+        tables: dict[str, Any] = {**_source_tables(), "jobs": None}
+
+        with pytest.raises(TypeError, match="'jobs' must be a pandas DataFrame"):
+            Frame._adopt(tables, _SCHEMA, _source_weights())
 
     def test_adopt_deep_copies_when_copy_on_write_is_off(
         self, copy_on_write_off: None
@@ -529,15 +557,40 @@ class TestCopyOnWriteCheck:
         assert bundle_module._pandas_copy_on_write() is True
 
     @pytest.mark.parametrize(
-        ("option_value", "expected"),
-        [(True, True), (False, False), ("warn", False)],
-        ids=["enabled", "disabled", "warn_mode"],
+        ("copy_on_write", "data_manager", "expected"),
+        [
+            (True, "block", True),
+            (False, "block", False),
+            ("warn", "block", False),
+            (True, "array", False),
+        ],
+        ids=["enabled", "disabled", "warn_mode", "array_manager"],
     )
-    def test_pandas_2_reads_the_copy_on_write_option(
-        self, monkeypatch: pytest.MonkeyPatch, option_value: object, expected: bool
+    def test_pandas_2_reads_the_copy_on_write_and_data_manager_options(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        copy_on_write: object,
+        data_manager: str,
+        expected: bool,
     ) -> None:
-        options = {"mode.copy_on_write": option_value}
+        options = {
+            "mode.copy_on_write": copy_on_write,
+            "mode.data_manager": data_manager,
+        }
         monkeypatch.setattr(bundle_module.pd, "__version__", "2.3.3")
         monkeypatch.setattr(bundle_module.pd, "get_option", options.__getitem__)
 
         assert bundle_module._pandas_copy_on_write() is expected
+
+    def test_pandas_2_without_a_data_manager_option_uses_copy_on_write(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def read_option(name: str) -> object:
+            if name == "mode.copy_on_write":
+                return True
+            raise pd.errors.OptionError(f"No such keys(s): {name!r}")
+
+        monkeypatch.setattr(bundle_module.pd, "__version__", "2.3.3")
+        monkeypatch.setattr(bundle_module.pd, "get_option", read_option)
+
+        assert bundle_module._pandas_copy_on_write() is True

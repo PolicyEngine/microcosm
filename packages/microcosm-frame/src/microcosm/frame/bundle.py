@@ -27,6 +27,7 @@ every unchanged column with its source frame when pandas copy-on-write is on,
 and deep-copy when it is off (see :meth:`Frame._adopt`).
 """
 
+import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -141,19 +142,29 @@ class Frame:
         through pandas to one of those DataFrames from reaching the others.
         The caller hands the tables over and must not write to these
         DataFrame objects afterwards: a write to the same object changes this
-        frame. Raw writes into the shared memory (through ``Series.array``,
-        private pandas attributes, an array made writable, ``np.copyto`` or
-        ``out=``) are never protected; ``test_shared_buffer_writes.py``
-        refuses them in the workspace's source.
+        frame.
+
+        Copy-on-write does not protect raw writes into the shared memory:
+        through ``Series.array``, private pandas attributes, an array made
+        writable, ``ufunc.at``, ``np.copyto`` or ``out=``
+        (``test_shared_buffer_writes.py`` refuses these in the workspace's
+        source), and through the arrays that ``to_numpy()`` and ``.values``
+        return for extension-typed columns, which are writable views:
+        ``Int64``, ``Float64``, ``boolean``, ``category`` and python-backed
+        strings.
 
         When copy-on-write is off (the pandas 2.x default), a shallow copy
         shares data even for ordinary pandas writes, so the tables and strata
-        are deep-copied exactly as the constructor copies them.
+        are deep-copied exactly as the constructor copies them. The check is
+        made when the frame is built: a frame built while copy-on-write was on
+        relies on it staying on.
 
         Arguments and validation are the constructor's: every invariant is
-        checked and the same errors are raised. Weights are stored as given
-        (their arrays are read-only), and the strata are shallow-copied when
-        copy-on-write is on.
+        checked and the same errors are raised, except that a table that is
+        not a DataFrame raises ``TypeError`` (the constructor fails on its
+        ``copy()`` call). Weights are stored as given (their arrays are
+        read-only), and the strata are shallow-copied when copy-on-write is
+        on.
 
         Args:
             tables: Entity and link tables, as for the constructor.
@@ -168,8 +179,9 @@ class Frame:
             A new validated frame that owns ``tables``.
 
         Raises:
-            TypeError, ValueError: Exactly as the constructor would on the
-                same arguments.
+            TypeError: If a table is not a :class:`pandas.DataFrame`, or as
+                the constructor would.
+            ValueError: As the constructor would on the same arguments.
         """
 
         frame = cls.__new__(cls)
@@ -181,6 +193,7 @@ class Frame:
             mass_log=mass_log,
             metadata=metadata,
             copy_data=not _pandas_copy_on_write(),
+            require_dataframes=True,
         )
         return frame
 
@@ -194,12 +207,15 @@ class Frame:
         mass_log: tuple[MassChangeRecord, ...],
         metadata: Mapping[str, Any] | None,
         copy_data: bool,
+        require_dataframes: bool = False,
     ) -> None:
         """Store a frame's parts and check every constructor invariant.
 
         With ``copy_data``, each table and the strata are deep-copied (the
         constructor); without it, the tables are stored as given and the
-        strata shallow-copied (:meth:`_adopt` under copy-on-write).
+        strata shallow-copied (:meth:`_adopt` under copy-on-write). With
+        ``require_dataframes``, a table that is not a DataFrame raises
+        ``TypeError`` (:meth:`_adopt`).
         """
 
         self._schema = schema
@@ -208,6 +224,8 @@ class Frame:
         declared_links = {link.name for link in schema.links}
         self._tables: dict[str, pd.DataFrame] = {}
         self._link_tables: dict[str, pd.DataFrame] = {}
+        if require_dataframes:
+            _require_dataframes(tables)
         for name, frame in tables.items():
             target = self._link_tables if name in declared_links else self._tables
             target[name] = frame.copy() if copy_data else frame
@@ -926,12 +944,7 @@ class Frame:
                 example, the weights or strata no longer align with them).
         """
 
-        for name, table in changed_tables.items():
-            if not isinstance(table, pd.DataFrame):
-                raise TypeError(
-                    f"Table {name!r} must be a pandas DataFrame, got "
-                    f"{type(table).__name__}."
-                )
+        _require_dataframes(changed_tables)
         tables = {
             name: table.copy(deep=False)
             for name, table in {**self._tables, **self._link_tables}.items()
@@ -1518,17 +1531,37 @@ class Frame:
         return f"Frame({sizes}; weights[{weighted}]; strata={n_strata}{links})"
 
 
+def _require_dataframes(tables: Mapping[str, Any]) -> None:
+    for name, table in tables.items():
+        if not isinstance(table, pd.DataFrame):
+            raise TypeError(
+                f"Table {name!r} must be a pandas DataFrame, got "
+                f"{type(table).__name__}."
+            )
+
+
 def _pandas_copy_on_write() -> bool:
     """Whether pandas copy-on-write is on in this process, checked at each call.
 
-    pandas 3 always has copy-on-write on and deprecates its option, so the
-    option is read only under pandas 2.x, where it is ``True`` only when
-    copy-on-write is enabled (it is ``False`` by default, or ``"warn"``).
+    pandas 3 always has copy-on-write on and deprecates its options, so they
+    are read only under pandas 2.x. There, as in pandas' own check,
+    copy-on-write is on only when ``mode.copy_on_write`` is ``True`` (it is
+    ``False`` by default, or ``"warn"``) and ``mode.data_manager`` is
+    ``"block"``.
     """
 
     if int(pd.__version__.split(".", 1)[0]) >= 3:
         return True
-    return pd.get_option("mode.copy_on_write") is True
+    if pd.get_option("mode.copy_on_write") is not True:
+        return False
+    with warnings.catch_warnings():
+        # pandas 2.x deprecates the data_manager option.
+        warnings.simplefilter("ignore", category=DeprecationWarning)
+        warnings.simplefilter("ignore", category=FutureWarning)
+        try:
+            return pd.get_option("mode.data_manager") == "block"
+        except pd.errors.OptionError:
+            return True
 
 
 @dataclass(frozen=True)
