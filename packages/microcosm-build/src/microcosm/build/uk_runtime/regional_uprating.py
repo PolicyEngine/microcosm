@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_mass_conservation_receipt,
     uk_household_weight_kind,
@@ -181,6 +182,15 @@ def _base_rows(household: pd.DataFrame) -> pd.Series:
     )
 
 
+def _clone_zero_rows(household: pd.DataFrame) -> pd.Series:
+    """Geographic clone 0's rows: every row of a table without a clone index."""
+
+    column = ladder_clone_index_column("household")
+    if column not in household.columns:
+        return pd.Series(True, index=household.index)
+    return household[column].astype("int64") == 0
+
+
 def _region_owners(household: pd.DataFrame, region: str) -> pd.Series:
     """The region's owner rows: a positive main residence, as declared."""
 
@@ -197,12 +207,14 @@ def regional_reference_factors(
     denominator_column: str = UK_REGIONAL_PROPERTY_DEFAULT_DENOMINATOR,
 ) -> dict[str, float]:
     """Each region's factor: its public mean house price over a mean of its
-    FRS-base owners.
+    FRS-base owners in geographic clone 0.
 
     The owners are the region's rows with a positive ``main_residence_value``;
     the mean is the unweighted mean of their ``denominator_column``, summed in
     sorted order so that it does not depend on the table's row order. SPI
-    support rows do not enter it. A region the resource lists with no FRS-base
+    support rows do not enter it, and neither do the rows of geographic clones
+    above 0, so a frame of K clones has the one-clone frame's factor
+    (microcosm#931). A region the resource lists with no FRS-base
     owner, or whose mean is not positive, has no factor. Returns the factors in
     the resource's order of regions.
     """
@@ -214,7 +226,7 @@ def regional_reference_factors(
             f"household table is missing property-uprating columns: {missing}"
         )
     hpi_prices = _regional_house_prices(resource)
-    base_rows = _base_rows(household)
+    base_rows = _base_rows(household) & _clone_zero_rows(household)
     factors: dict[str, float] = {}
     for region, hpi_price in hpi_prices.items():
         base_owners = _region_owners(household, region) & base_rows
@@ -242,7 +254,7 @@ def uprate_household_property_by_region(
     """Scale owner property values to region-level public house-price means.
 
     The factor for a region is its public mean house price over the unweighted
-    mean ``denominator_column`` of FRS-base owners
+    mean ``denominator_column`` of geographic clone 0's FRS-base owners
     (:func:`regional_reference_factors`), the ``main_residence_value`` unless
     the stage declares otherwise. When the frame carries SPI support rows,
     which are imputed from higher incomes, they are uprated by the same factor

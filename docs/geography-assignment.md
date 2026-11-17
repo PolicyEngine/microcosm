@@ -291,8 +291,9 @@ order:
      6, 13 and 14 November 2026).
    - In `was_wealth`, each England and Wales owner with a positive drawn main
      residence reads its value off its constituency's sale-price distribution,
-     at the owner's rank within its FRS region, and the chain's later wealth
-     draws condition on it (María's ruling of 6 November 2026).
+     at a keyed point inside its weighted slice of that constituency and its
+     geographic clone, and the chain's later wealth draws condition on it
+     (María's rulings of 6 and 17 November 2026).
 9. Copies made after `spi_copy_areas`, by `high_value_home_support`,
    `cgt_support_split`, `cgt_incidence_clone` and `cgt_residential_split`, keep
    their parent's key, area, ladder, local authority, BRMA, rural fuel duty
