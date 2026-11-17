@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "description": "Proposed normalization of the donor's unmapped money columns, proposed_pending_d1902: each is converted to euros exactly and labelled at the 2026 policy year (BE-MC0, BE-MC3), but every family is held at 2024 levels. Each normalized column converts once at Eurostat's 2024 annual average US dollars per euro, read from the pinned Chronicle feed and inverted exactly (d1902 item 19). Every family, self-employment included, then keeps factor one under an interim hold-fixed rule that this declaration proposes as a new d1902 item: no index can be declared yet, because FPB's 2026 levels are source projections. Mapped wages rank from raw donor values and are never converted (d1902 item 18). Mortgage principal is pending, because CREATE cannot define it from this donor.",
+  "status": "proposed_pending_d1902: every value is a proposal of Belgium's method card (BE-MC0, BE-MC3) awaiting Max's ruling on d1902 items 18 to 20 and on the new d1902 items this declaration proposes, its interim hold-fixed rules among them. No transport graph reads this declaration, and Belgium refuses to activate.",
+  "from_currency": "USD",
+  "to_currency": "EUR",
+  "rate": {
+    "form": "feed_selector",
+    "selector": {
+      "source_name": "eurostat",
+      "source_measure_id": "annual_average_exchange_rate",
+      "source_concept": "eurostat.ert_bil_eur_a.value",
+      "entity_name": "institutional_sector",
+      "period_type": "calendar_year",
+      "period_value": 2024,
+      "geography_level": "statistical_scope",
+      "geography_id": "eurostat:ert_bil_eur_a:USD",
+      "geography_vintage": "not_applicable",
+      "record_set_id": "eurostat.ert_bil_eur_a.cy2024.usd_average",
+      "dimensions": [
+        "currency",
+        "freq",
+        "statinfo",
+        "time",
+        "unit"
+      ],
+      "dimension_values": {
+        "currency": "USD",
+        "freq": "A",
+        "statinfo": "AVG",
+        "time": 2024,
+        "unit": "NAC"
+      },
+      "aggregate_fact_key": "ledger.aggregate_fact.v2:9f3fc6250d094755b6206244",
+      "assertion": "observation"
+    },
+    "validation": {
+      "unit": "usd_per_eur",
+      "source_sha256": "3c96ca57c15266d07e1976d90ba806a5bb90ab46a503b6311df3aaa9f5ba66c7",
+      "source_vintage": "eurostat_ert_bil_eur_a_usd_updated_2026_07_08",
+      "entity_role": "currency_market",
+      "provenance_class": "administrative",
+      "assertion": "observation",
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31"
+      },
+      "source_column_id": "value"
+    },
+    "assertion_policy": "observed_only",
+    "feed_identity": {
+      "source_commit": "14181d7cdf42a846c256019c1fbfbba45054d88a",
+      "facts_sha256": "607ea9b210eb366110826ed6a8317cc317d1c99c2828d142ce11b21f793aedfc",
+      "manifest_sha256": "e40d48b4157473e2aa454bac08a2815c04d165c906c8f3e515c6d461f1c119b3",
+      "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+      "consumer_fact_schema_versions": [
+        "chronicle.consumer_fact.v5"
+      ],
+      "consumer_fact_schema_sha256": "acd33a091cd8d192be5d264e3e94c13e00afb6fd1972e57d4576ac55a54f6970",
+      "fact_row_count": 87112
+    },
+    "expected_decimal": "1.0824"
+  },
+  "quote": "from_per_to",
+  "rounding": {
+    "digits": 2,
+    "mode": "half_even"
+  },
+  "donor_money_period": {
+    "type": "calendar_year",
+    "value": 2024,
+    "basis": "declared_convention",
+    "evidence": [
+      "tools/build_us_fiscal_refresh_release.py declares the module constant PERIOD = 2024, and its _dataset_from_frame passes PERIOD as time_period to USSingleYearDataset.",
+      "microcosm.frame.adapters.policyengine_us.PolicyEngineUSEngine._write_and_verify writes the supplied model period as a one-row integer _time_period table. This is model-period lineage evidence, not authentication of the monetary basis of donor amounts.",
+      "Belgium's source_stages.json pins the populace-us donor artifact with SHA-256 48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e and 462,915,783 bytes, the artifact for which New Zealand's money_normalization.json declared the calendar-2024 convention (BE-MC2)."
+    ]
+  },
+  "target_period": 2026,
+  "columns": {
+    "person": [
+      "nonfarm_self_employment_income",
+      "farm_self_employment_income",
+      "interest_income",
+      "dividend_income",
+      "rental_income",
+      "realized_capital_gains",
+      "private_pension_income",
+      "liquid_financial_assets"
+    ],
+    "household": [
+      "rent",
+      "mortgage_interest",
+      "property_tax"
+    ]
+  },
+  "factor_profile": null,
+  "index_family_factors": {
+    "mixed_income": {
+      "identity": true,
+      "reason": "proposed_pending_d1902, interim hold-fixed rule proposed as a new d1902 item: BE-MC3 converts every monetary donor column and d1902 item 18 converts and ages every unmapped column, so both self-employment columns, signed, convert once at the rate. d1902 item 20 proposes FPB's household-account net mixed income, 2024 to 2026, as their index, but FPB's 2026 level is a source projection and the shared factor operation reads only observed target levels, so that factor cannot be declared. This identity is forced by that gap, and item 20's factor replaces it once a shared operation admits projected targets. BE-MC3's calibration target for this income sits at FPB's 2026 level, so until then the held amounts lack the growth the factor would supply, besides any difference in level from that total. Held fixed, the family's amounts stay at 2024 levels in the 2026 policy year (BE-MC0)."
+    },
+    "capital_income": {
+      "identity": true,
+      "reason": "proposed_pending_d1902, interim hold-fixed rule proposed as a new d1902 item: d1902 item 20 says a money family without its own index needs one or an explicit hold-fixed rule, and this declaration proposes holding this family fixed until a buildable index replaces it. No FPB index can be declared yet: FPB's 2026 levels are source projections, and the shared factor operation reads only observed target levels. Interest, dividends, rental income and realized capital gains convert once at the rate and keep factor one. FPB's household-account property-income rows move apart over 2024 to 2026, and capital gains have no national-accounts row, so no single feed index is proposed for the family. Held fixed, the family's amounts stay at 2024 levels in the 2026 policy year (BE-MC0)."
+    },
+    "pensions": {
+      "identity": true,
+      "reason": "proposed_pending_d1902, interim hold-fixed rule proposed as a new d1902 item: d1902 item 20 says a money family without its own index needs one or an explicit hold-fixed rule, and this declaration proposes holding this family fixed until a buildable index replaces it. No FPB index can be declared yet: FPB's 2026 levels are source projections, and the shared factor operation reads only observed target levels. Private pension income converts once at the rate and keeps factor one. FPB's pension rows are social-security pensions, which this concept excludes, so none is proposed as its index. Held fixed, the family's amounts stay at 2024 levels in the 2026 policy year (BE-MC0)."
+    },
+    "consumer_prices": {
+      "identity": true,
+      "reason": "proposed_pending_d1902, interim hold-fixed rule proposed as a new d1902 item: d1902 item 20 says a money family without its own index needs one or an explicit hold-fixed rule, and this declaration proposes holding this family fixed until a buildable index replaces it. No FPB index can be declared yet: FPB's 2026 levels are source projections, and the shared factor operation reads only observed target levels. The donor's stored person-level bank, stock and bond assets convert once at the rate, round half-even to cents and keep factor one, as New Zealand's d1982 interim convention does for an unpublishable diagnostic beside its S1 scenario; no valuation date is claimed. The feed holds consumer prices only as annual percent changes, which the shared factor operation does not read as levels. Held fixed, the family's amounts stay at 2024 levels in the 2026 policy year (BE-MC0)."
+    },
+    "owner_housing_costs": {
+      "identity": true,
+      "reason": "proposed_pending_d1902, interim hold-fixed rule proposed as a new d1902 item: d1902 item 20 says a money family without its own index needs one or an explicit hold-fixed rule, and this declaration proposes holding this family fixed until a buildable index replaces it. No FPB index can be declared yet: FPB's 2026 levels are source projections, and the shared factor operation reads only observed target levels. Mortgage interest and property tax convert once at the rate and keep factor one; mortgage principal is pending, since CREATE cannot define it from this donor. The feed holds no Belgian index for these flows; FPB's household interest paid covers all household interest, not mortgages alone. Held fixed, the family's amounts stay at 2024 levels in the 2026 policy year (BE-MC0)."
+    },
+    "rents": {
+      "identity": true,
+      "reason": "proposed_pending_d1902, interim hold-fixed rule proposed as a new d1902 item: d1902 item 20 says a money family without its own index needs one or an explicit hold-fixed rule, and this declaration proposes holding this family fixed until a buildable index replaces it. No FPB index can be declared yet: FPB's 2026 levels are source projections, and the shared factor operation reads only observed target levels. Rent converts once at the rate and keeps factor one. Belgium's package holds no rent distribution, so rent is normalized, not mapped. The feed holds the health index only as annual percent changes, which the shared factor operation cannot compound from a 2024 base. Held fixed, the family's amounts stay at 2024 levels in the 2026 policy year (BE-MC0)."
+    }
+  },
+  "cents_suffix": "_cents",
+  "quantile_mapped": {
+    "person": {
+      "employment_income": {
+        "awaits": [
+          "BE-MC3 wage surface: precal_references rows rsz_employed_workers_by_daily_wage_class__* (RSZ/ONSS T17 employed workers by daily-wage class, 2026-Q1, euros a day), mapped by a transport quantile map once d1902 items 21 to 24 settle the cohort, unknown pay, the annual-to-daily conversion and the open top band"
+        ],
+        "reason": "proposed_pending_d1902, d1902 item 18: BE-MC3 converts every column before its quantile maps, and item 18 proposes departing from that convert-first step for a mapped column, because conversion changes nothing the map writes. Wages are quantile-mapped onto RSZ/ONSS's daily-wage classes, so they rank from raw donor values and are never converted at the rate or aged. No graph runs the map yet."
+      }
+    }
+  },
+  "pending": {
+    "household": {
+      "mortgage_principal": {
+        "awaits": [
+          "a donor input for mortgage principal repayments: the pinned populace-us donor holds no mortgage_payments column, and the shared US concept mapping binds mortgage principal only into mortgage_payments as a sum with mortgage interest, which no decoder can invert, so CREATE never defines the column"
+        ],
+        "reason": "proposed_pending_d1902, new d1902 item: d1902 item 18 converts and ages every unmapped column, but no transport node defines household.mortgage_principal for this donor, and a money normalizer that rewrites a column no node defines is refused when the graph is built. It waits for a donor input; Belgium's calibration and holdout references do not read it."
+      }
+    }
+  },
+  "notes": "proposed_pending_d1902. The rate is Eurostat ert_bil_eur_a's 2024 annual average in US dollars per euro, an observation with calendar-2024 coverage, replayed from the pinned Chronicle feed; quote from_per_to divides each donor amount by it exactly (d1902 item 19). Calendar-2024 money is a declared convention covering flows and asset stocks, the one New Zealand's money_normalization.json declared for the donor artifact Belgium pins (BE-MC2); the donor monetary basis has not been authenticated against a producing manifest. Money normalization refuses a donor whose recorded _time_period differs from calendar 2024; this runtime check is a consistency check, not authentication. No donor file is opened to establish this declaration. The target period 2026 is BE-MC0's proposed policy year. public_pension_income is dropped at CREATE and is not declared; BE-MC3's legal-pension route waits for shared rank-only support (d1902 item 25)."
+}

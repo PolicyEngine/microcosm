@@ -95,7 +95,7 @@
         "reference_set": "holdout",
         "method_card_row": "BE-MC5",
         "method_card_status": "proposed_pending_d1902",
-        "parking_reason": "Held out of calibration; compared, never fitted. Accrual national-accounts revenue held out against assessed tax (BE-MC5). W3: needs a pinned rulespec-be binding for be/statutes/income_tax/individual/final_tax.yaml on the transported frame, the S5 pre-calibration allowlist entry for it, and B4's euro conversion of the donor inputs it reads.",
+        "parking_reason": "Held out of calibration; compared, never fitted. Accrual national-accounts revenue held out against assessed tax (BE-MC5). W3: needs a pinned rulespec-be binding for be/statutes/income_tax/individual/final_tax.yaml on the transported frame, the S5 pre-calibration allowlist entry for it, and B4's euro donor inputs it reads: the columns money_normalization.json converts once at the donor-year rate, and wages, which an RSZ/ONSS quantile map writes from raw donor values (d1902 items 18 and 19, proposed pending d1902).",
         "ageing": "rolled_forward_by_ratio",
         "ageing_pair": "fpb_t17_direct_taxes_households",
         "ageing_source": "FPB Economic Outlook 2026-2031, June 2026 annex",
@@ -103,7 +103,7 @@
         "target_period": "2026",
         "holdout_use": "validation_comparator"
       },
-      "notes": "Held out of calibration; compared, never fitted. Accrual national-accounts revenue held out against assessed tax (BE-MC5). W3: needs a pinned rulespec-be binding for be/statutes/income_tax/individual/final_tax.yaml on the transported frame, the S5 pre-calibration allowlist entry for it, and B4's euro conversion of the donor inputs it reads.",
+      "notes": "Held out of calibration; compared, never fitted. Accrual national-accounts revenue held out against assessed tax (BE-MC5). W3: needs a pinned rulespec-be binding for be/statutes/income_tax/individual/final_tax.yaml on the transported frame, the S5 pre-calibration allowlist entry for it, and B4's euro donor inputs it reads: the columns money_normalization.json converts once at the donor-year rate, and wages, which an RSZ/ONSS quantile map writes from raw donor values (d1902 items 18 and 19, proposed pending d1902).",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -658,7 +658,7 @@
         "reference_set": "holdout",
         "method_card_row": "BE-MC5",
         "method_card_status": "proposed_pending_d1902",
-        "parking_reason": "Held out of calibration; compared, never fitted. The card's wage-headline comparator (BE-MC5): gross wages, not compensation including employer contributions. The euro wage column has no producer until B4's currency bridge.",
+        "parking_reason": "Held out of calibration; compared, never fitted. The card's wage-headline comparator (BE-MC5): gross wages, not compensation including employer contributions. The euro wage column has no producer until a transport quantile map writes it from RSZ/ONSS's daily-wage classes; d1902 item 18 proposes mapping wages from raw donor values, never converted at the rate.",
         "ageing_target_equals": "FPB's 2026 projection of the base's own row",
         "ageing": "rolled_forward_by_ratio",
         "ageing_pair": "fpb_t11_gross_wages_and_salaries",
@@ -667,7 +667,7 @@
         "target_period": "2026",
         "holdout_use": "validation_comparator"
       },
-      "notes": "Held out of calibration; compared, never fitted. The card's wage-headline comparator (BE-MC5): gross wages, not compensation including employer contributions. The euro wage column has no producer until B4's currency bridge.",
+      "notes": "Held out of calibration; compared, never fitted. The card's wage-headline comparator (BE-MC5): gross wages, not compensation including employer contributions. The euro wage column has no producer until a transport quantile map writes it from RSZ/ONSS's daily-wage classes; d1902 item 18 proposes mapping wages from raw donor values, never converted at the rate.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
