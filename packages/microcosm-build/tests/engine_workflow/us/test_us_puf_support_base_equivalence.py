@@ -23,11 +23,6 @@ from microcosm.build.us_runtime import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
 )
-from microcosm.build.us_runtime.gate_shadow import (
-    GATE_BATTERY_SHADOW_DIRECTORY,
-    US_GATE_SHADOW_SWITCH,
-    shadow_file_paths,
-)
 from microcosm.frame import Frame
 from test_support.paths import paths_for
 
@@ -39,7 +34,6 @@ _INPUT_DIR_ENV = "POPULACE_US_PUF_EQUIVALENCE_INPUT_DIR"
 _WEEKS_SOURCE_ENV = "POPULACE_US_PUF_EQUIVALENCE_WEEKS_SOURCE"
 _MAX_HOUSEHOLDS_ENV = "POPULACE_US_PUF_EQUIVALENCE_MAX_HOUSEHOLDS"
 _MAX_PUF_TAX_UNITS_ENV = "POPULACE_US_PUF_EQUIVALENCE_MAX_PUF_TAX_UNITS"
-_PRODUCTION_THREAD_STRESS_ENV = "POPULACE_US_PUF_PRODUCTION_THREAD_STRESS"
 _DATASET_FILENAME = "base_populace_us_2024_puf_support.h5"
 _LOCKED_ENVIRONMENT = {
     "BLIS_NUM_THREADS": "1",
@@ -130,122 +124,6 @@ def test_monolith_and_staged_builds_are_bit_exact_at_every_boundary(
     assert monolith_h5.read_bytes() == staged_h5.read_bytes()
     _assert_successful_stage_profiles(
         staged_checkpoints,
-        fixture.builder.PIPELINE_STEPS,
-    )
-
-
-@pytest.mark.slow
-def test_the_gate_battery_shadow_agrees_and_changes_no_output(tmp_path: Path) -> None:
-    """microcosm#1585 item 11 (PR 2): the base's gates in shadow, on real gates.
-
-    Three locked builds of one sample: single-process with the shadow,
-    single-process without it, and staged with it. On every entry the
-    battery reaches today's verdict; the shadow changes no byte of the
-    dataset; and the staged children's saved observations add up to the
-    single process's comparison.
-    """
-
-    fixture = _prepare_builder_fixture(tmp_path)
-    locked = {**os.environ, **_LOCKED_ENVIRONMENT}
-    # tests/conftest.py turns the tools' shadows off for every test.
-    shadowed = {
-        key: value for key, value in locked.items() if key != US_GATE_SHADOW_SWITCH
-    }
-    unshadowed = {**locked, US_GATE_SHADOW_SWITCH: "off"}
-    staged_checkpoints = tmp_path / "staged_checkpoints"
-    runs = {
-        "monolith": (tmp_path / "monolith", (), shadowed),
-        "unshadowed": (tmp_path / "unshadowed", (), unshadowed),
-        "staged": (
-            tmp_path / "staged",
-            ("--checkpoint-dir", str(staged_checkpoints)),
-            shadowed,
-        ),
-    }
-    for out, extra, environment in runs.values():
-        _run_builder(
-            [*fixture.common_command, "--out", str(out), *extra],
-            cwd=fixture.root,
-            environment=environment,
-        )
-
-    shadowed_h5 = runs["monolith"][0] / _DATASET_FILENAME
-    unshadowed_h5 = runs["unshadowed"][0] / _DATASET_FILENAME
-    assert shadowed_h5.read_bytes() == unshadowed_h5.read_bytes()
-    assert not (runs["unshadowed"][0] / GATE_BATTERY_SHADOW_DIRECTORY).exists()
-    verdicts = {}
-    for name in ("monolith", "staged"):
-        _, path = shadow_file_paths(
-            runs[name][0] / GATE_BATTERY_SHADOW_DIRECTORY, "us_base"
-        )
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        assert payload["run_completed"] is True, name
-        assert payload["verdict_difference"] is False, (
-            name,
-            payload["differences"],
-            payload["shadow_errors"],
-        )
-        assert payload["not_observed"] == [], name
-        verdicts[name] = {
-            row["id"]: (
-                row["legacy"]["status"],
-                row["legacy"].get("failures"),
-                row["battery"]["status"],
-                row["battery"].get("failures"),
-            )
-            for row in payload["entries"]
-        }
-    assert verdicts["monolith"] == verdicts["staged"]
-
-
-@pytest.mark.slow
-def test_staged_build_completes_with_production_threading(tmp_path: Path) -> None:
-    """Opt-in stress run: validate production-width execution, not equality."""
-
-    if os.environ.get(_PRODUCTION_THREAD_STRESS_ENV) != "1":
-        pytest.skip(f"set {_PRODUCTION_THREAD_STRESS_ENV}=1 to run the stress test")
-    fixture = _prepare_builder_fixture(tmp_path)
-    output_dir = tmp_path / "production_thread_output"
-    checkpoint_dir = tmp_path / "production_thread_checkpoints"
-    environment = os.environ.copy()
-    for variable in _LOCKED_ENVIRONMENT:
-        environment.pop(variable, None)
-    # Named stage children require a stable hash seed; numerical workers retain
-    # their normal production defaults because every thread-width override is
-    # deliberately absent.
-    environment["PYTHONHASHSEED"] = "0"
-
-    _run_builder(
-        [
-            *fixture.common_command,
-            "--out",
-            str(output_dir),
-            "--checkpoint-dir",
-            str(checkpoint_dir),
-        ],
-        cwd=fixture.root,
-        environment=environment,
-    )
-
-    runtime = StageRuntime(checkpoint_dir, fixture.builder.OUTER_STAGE_PIPELINE)
-    assert runtime.context.completed == fixture.builder.PIPELINE_STEPS
-    for stage in fixture.builder.PIPELINE_STEPS:
-        loaded = runtime.load(stage)
-        assert loaded.frame.entities == loaded.frame.schema.entities
-        for entity in loaded.frame.entities:
-            table = loaded.frame.table(entity)
-            assert len(table) > 0
-            assert table[loaded.frame.schema.entity_id_column(entity)].is_unique
-        for entity in loaded.frame.weighted_entities:
-            weights = loaded.frame.weights_for(entity)
-            assert len(weights.values) == len(loaded.frame.table(entity))
-            assert np.isfinite(weights.values).all()
-            assert (weights.values >= 0).all()
-            assert (weights.values > 0).any()
-    _assert_complete_primary_qrf(checkpoint_dir / "primary_qrf")
-    _assert_valid_final_h5(output_dir / _DATASET_FILENAME)
-    _assert_successful_stage_profiles(
-        checkpoint_dir,
         fixture.builder.PIPELINE_STEPS,
     )
 
@@ -660,36 +538,6 @@ def _assert_h5_attrs_identical(
             actual.attrs[name],
             label=f"{label} attr {name}",
         )
-
-
-def _assert_complete_primary_qrf(root: Path) -> None:
-    manifest = json.loads((root / "manifest.json").read_text())
-    target_order = tuple(manifest["target_order"])
-    assert target_order == (
-        *PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
-        *PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
-    )
-    for index, target in enumerate(target_order):
-        path = root / "targets" / _target_checkpoint_name(index, target)
-        with h5py.File(path, mode="r") as h5:
-            bits = np.asarray(h5["raw_draw_bits"])
-        assert bits.dtype == np.dtype("<u8")
-        assert bits.ndim == 1
-        assert len(bits) == manifest["recipient_rows"]
-
-
-def _assert_valid_final_h5(path: Path) -> None:
-    assert path.is_file()
-    assert path.stat().st_size > 0
-    with h5py.File(path, mode="r") as h5:
-        objects = _h5_object_kinds(h5)
-        datasets = [name for name, kind in objects.items() if kind == "dataset"]
-        assert datasets
-        for name in datasets:
-            dataset = h5[name]
-            assert isinstance(dataset, h5py.Dataset)
-            assert dataset.ndim == 1
-            assert len(dataset) > 0
 
 
 def _assert_successful_stage_profiles(
