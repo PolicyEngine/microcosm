@@ -8,7 +8,7 @@
 #
 # The UK national and dense releases, each UK local-area release that the
 # dataset registry names, and the US releases
-# (microcosm-us-2024-national, -local, -receipt-donor, -evidence and -annual) publish
+# (microcosm-us-2024-national, -local, -receipt-donor, -evidence, -annual and -local-annual) publish
 # each build into its own folder through the emitter with
 # `microcosm-publish-release-build` instead, and the calibration diagnostics
 # dashboard posts their Slack alerts from changes to releases.json.

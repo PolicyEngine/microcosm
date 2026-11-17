@@ -371,7 +371,7 @@ data and credentials, and cannot run from forks. Release publication is a
 deliberate human step. The UK national and dense releases, each UK local-area
 release that the dataset registry names, and the US releases
 (`microcosm-us-2024-national`, the US default, `-local`,
-`-receipt-donor`, `-evidence` and `-annual`) publish each build into its own folder
+`-receipt-donor`, `-evidence`, `-annual` and `-local-annual`) publish each build into its own folder
 through the emitter (`microcosm-publish-release-build`, from
 `microcosm.build.release_publication`), which records it in the repository's
 `releases.json`; making a published build current is a separate deliberate

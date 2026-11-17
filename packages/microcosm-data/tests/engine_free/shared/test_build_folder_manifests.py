@@ -321,3 +321,44 @@ def test_a_hub_that_could_not_be_asked_propagates():
             build="populace-us-2024-9f1260b-20260611",
             label="the parent build",
         )
+
+
+class _OptionsHub:
+    """A Hub without ``releases.json`` that records each request's options."""
+
+    def __init__(self) -> None:
+        self.options: list[dict] = []
+        self.empty_cache: list[bool] = []
+
+    def hf_hub_download(self, *, repo_id, filename, repo_type, revision, **options):
+        from test_support.microcosm_data.hub_errors import missing_on_hub
+
+        self.options.append(dict(options))
+        cache = options.get("cache_dir")
+        if cache is not None:
+            self.empty_cache.append(
+                Path(cache).is_dir() and not any(Path(cache).iterdir())
+            )
+        raise missing_on_hub(repo_id, filename, revision)
+
+
+@pytest.mark.parametrize("fresh", [False, True])
+def test_a_fresh_record_read_bypasses_the_client_cache(fresh: bool) -> None:
+    """With ``fresh``, releases.json is downloaded into a new, empty cache with
+    ``force_download``; without it the request is as before."""
+    hub = _OptionsHub()
+    with pytest.raises(ValueError, match="has no releases.json"):
+        build_folder_manifests.require_offered_build(
+            hub,
+            repo_id="policyengine/populace-us",
+            release="microcosm-us-2024-local",
+            build="populace-us-2024-acs-local-x",
+            label="the annual build's base build",
+            fresh=fresh,
+        )
+    if fresh:
+        assert len(hub.options) == 1
+        assert hub.options[0]["force_download"] is True
+        assert hub.empty_cache == [True]
+    else:
+        assert hub.options == [{}]

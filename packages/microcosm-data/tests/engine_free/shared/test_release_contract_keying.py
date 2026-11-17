@@ -52,19 +52,20 @@ def test_an_unlisted_id_gets_only_the_base_files_and_no_model_package(release_id
     assert contract._expected_model_package(release_id) is None
 
 
-def test_the_us_releases_are_a_closed_list_of_five_names():
+def test_the_us_releases_are_a_closed_list_of_six_names():
     assert dict(contract.US_RELEASES) == {
         "microcosm-us-2024-national": "national",
         "microcosm-us-2024-local": "local_area",
         "microcosm-us-2024-receipt-donor": "national",
         "microcosm-us-2024-evidence": "national",
         "microcosm-us-2024-annual": "national",
+        "microcosm-us-2024-local-annual": "local_area",
     }
 
 
 @pytest.mark.parametrize("release_id", (*contract.US_RELEASES, TAGGED_US_ID))
-def test_the_us_contract_keys_on_five_exact_names_and_one_prefix(release_id):
-    """The US requirements apply to the five names in ``contract.US_RELEASES``,
+def test_the_us_contract_keys_on_six_exact_names_and_one_prefix(release_id):
+    """The US requirements apply to the six names in ``contract.US_RELEASES``,
     matched exactly, and to every name with the ``populace-us-`` prefix. A US
     name outside both, such as ``microcosm-us-2025-national``, is unlisted."""
 

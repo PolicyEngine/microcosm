@@ -8,6 +8,7 @@ tests never start an emitter or reach the Hub.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from microcosm_emitter_interface import CollectorProvenance
@@ -652,3 +653,116 @@ def test_the_command_takes_the_incomplete_reform_validation_override(
     else:
         assert exit_code == 1
         assert "--allow-incomplete-reform-validation" in error_output
+
+
+class _LocalBaseOnTheHub:
+    """A Hub serving a local-area base build's published release and build
+    manifests, and the ``releases.json`` that lists it."""
+
+    def __init__(self, directory, manifest, build_manifest):
+        from test_support.microcosm_data.local_annual import local_releases_record
+
+        self.directory = directory
+        self.manifests = {
+            "release_manifest.json": manifest,
+            "build_manifest.json": build_manifest,
+            "releases.json": local_releases_record(),
+        }
+        self.requests = []
+        self.fresh = []
+
+    def hf_hub_download(
+        self,
+        *,
+        repo_id,
+        filename,
+        repo_type,
+        revision,
+        cache_dir=None,
+        force_download=False,
+    ):
+        import json
+
+        self.requests.append((repo_id, filename, repo_type, revision))
+        self.fresh.append(bool(force_download) and cache_dir is not None)
+        local = Path(cache_dir or self.directory) / filename
+        local.parent.mkdir(parents=True, exist_ok=True)
+        local.write_text(json.dumps(self.manifests[local.name]))
+        return str(local)
+
+
+@pytest.mark.parametrize("published_sha256", [None, "d" * 64])
+def test_a_local_annual_build_is_handed_over_only_once_its_local_base_is_published(
+    tmp_path, monkeypatch, published_sha256
+) -> None:
+    """A build of microcosm-us-2024-local-annual (microcosm#922) is an annual
+    build too: before the hand-over, the publisher reads its base build's
+    manifest from releases/microcosm-us-2024-local/<base build>/ and requires
+    the base-year H5 there."""
+    from test_support.microcosm_data.local_annual import (
+        LOCAL_BUILD,
+        LOCAL_DATASET_KEY,
+        local_annual_build_folder_of,
+        local_build_folder,
+        read_json,
+    )
+
+    root = tmp_path / "package"
+    local = local_build_folder(root)
+    published = read_json(local / "release_manifest.json")
+    if published_sha256 is not None:
+        published["artifacts"][LOCAL_DATASET_KEY]["sha256"] = published_sha256
+    release_dir = local_annual_build_folder_of(local, root)
+    hub = _LocalBaseOnTheHub(
+        tmp_path / "hub", published, read_json(local / "build_manifest.json")
+    )
+    handed_over = []
+    monkeypatch.setattr(
+        release_publication, "_refuse_pointer_files", lambda _repo: None
+    )
+    monkeypatch.setattr(
+        release_publication,
+        "prepare_build_folder_release",
+        lambda path, **_kwargs: _prepared(path),
+    )
+    monkeypatch.setattr(
+        release_publication,
+        "publication_request",
+        lambda prepared, **_kwargs: prepared,
+    )
+    monkeypatch.setattr(release_publication, "_hub_api", lambda: hub)
+    monkeypatch.setattr(
+        release_publication,
+        "_hand_over",
+        lambda change, **_kwargs: handed_over.append(change) or "handed over",
+    )
+
+    def publish():
+        return release_publication.publish_release_build(
+            release_dir, artifact_root=root, client=object()
+        )
+
+    def request(name):
+        return (
+            _US_REPOSITORY,
+            f"releases/microcosm-us-2024-local/{LOCAL_BUILD}/{name}",
+            "dataset",
+            "main",
+        )
+
+    if published_sha256 is None:
+        assert publish() == "handed over"
+        assert len(handed_over) == 1
+        assert hub.requests == [
+            request("release_manifest.json"),
+            request("build_manifest.json"),
+            (_US_REPOSITORY, "releases.json", "dataset", "main"),
+        ]
+        # Both manifests and releases.json are read afresh, not from the
+        # client's cache.
+        assert hub.fresh == [True, True, True]
+    else:
+        with pytest.raises(ValueError, match="published base build's bytes"):
+            publish()
+        assert handed_over == []
+        assert hub.requests == [request("release_manifest.json")]

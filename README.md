@@ -623,7 +623,7 @@ projection whose parent or base is a build-folder build is refused before
 anything is handed over when `releases.json` withdrew or no longer lists that
 build, and the UK cut reference refuses a withdrawn build.
 
-**The US releases.** `policyengine/populace-us` has five releases
+**The US releases.** `policyengine/populace-us` has six releases
 (`microcosm.data.contract.US_RELEASES`):
 
 | Release | Role in `releases.json` | Builds | Dataset file a new build declares |
@@ -633,6 +633,7 @@ build, and the UK cut reference refuses a withdrawn build.
 | `microcosm-us-2024-receipt-donor` | `national`, never the default | receipt-qualified donors | `microcosm_us_2024_receipt_qualified.h5` |
 | `microcosm-us-2024-evidence` | `national`, never the default | evidence-tier builds | `microcosm_us_2024.h5` |
 | `microcosm-us-2024-annual` | `national`, never the default | annual projections of a national build: its files, one H5 per later year and the projection receipts ([the annual guide](docs/us-annual-static-aging.md)) | the base build's dataset file, and `microcosm_us_<year>.h5` for each later year |
+| `microcosm-us-2024-local-annual` | `local_area` | annual projections of an ACS local-area build (the County Files, microcosm#922): its files, one H5 per projected year and the projection receipts ([the local projection guide](docs/us-local-annual-projection.md)) | the base build's dataset file, and `microcosm_us_<year>_acs_local.h5` for each projected year |
 
 The national builder writes a build's calibration weights as
 `microcosm_us_2024_calibration.npz`, for national and evidence-tier builds
@@ -689,7 +690,10 @@ command takes only the releases above, and the tagged publisher refuses
 a repository that has `releases.json`. A US annual-projection build publishes
 into `microcosm-us-2024-annual`, carrying its base national build's files
 ([the annual guide](docs/us-annual-static-aging.md)); its base is a
-calibrated national build, not yet a source enrichment.
+calibrated national build, not yet a source enrichment. An annual projection
+of an ACS local-area build publishes into `microcosm-us-2024-local-annual`,
+carrying its base local build's files
+([the local projection guide](docs/us-local-annual-projection.md)).
 
 **The switch.** `microcosm.build.build_folder_switch` moves a repository over,
 once, in two steps, and a third step later deletes what the old layout left
@@ -833,8 +837,10 @@ that run the contract on one again are re-certifications: a publish retry of
 its local directory, and an annual build, which carries a national base's
 files into `microcosm-us-2024-annual`. Every
 published US national base already fails the unchanged calibration-diagnostics
-schema rule, and local-area releases cannot be annual bases. So publishing one
-again means rebuilding or re-packaging it, which runs the check. An
+schema rule. A local-annual build carries its base local build's gate, which
+must certify that build's H5, so its base must have been packaged with the
+check. So publishing one again means rebuilding or re-packaging it, which runs
+the check. An
 evidence-tier run that ships a stored-input refusal needs a per-run
 `--evidence-failure-owners` entry naming its owner; the standing owner register
 covers none.
