@@ -354,9 +354,29 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#1073's scf_wealth education-debt declaration moves it
             # through the bundle's source stages.
             # The hierarchy value ranks move it through medicaid_take_up's
-            # attested bytes. microcosm#931's keyed helpers move it through
-            # stochastic_assignment's attested bytes.
-            "spec_sha256": "fc9a94611f8f96dbe260cc6e9b78a03800e88d89be77c4534fdb6453f3317a0c",
+            # attested bytes.
+            # microcosm#1096's exact softmax cap projection in solve moves it.
+            # microcosm#1387's SEMP-covered partnership step moves it through
+            # acs_transfer's attested bytes.
+            # microcosm#922's county facts pin, two declared legacy resources,
+            # moves it.
+            # microcosm#1543's fit input checks in microcosm.fit.qrf move it again.
+            # microcosm#1641 moves it again: docstring and comment wording in
+            # solve and ssi_take_up, and the calibration contract's renamed modes.
+            # microcosm#1585's us/gates.json row in country_package.json moves it.
+            # The in-place QRF leaf array in microcosm.fit.qrf moves it again.
+            # The ACS transfer fitting and drawing one QRF target at a time
+            # moves it again (acs_transfer's attested bytes; no draw changes).
+            # The QRF draw's default thread count, joblib.cpu_count() in
+            # microcosm.fit.qrf, moves it again.
+            # calibrate's return_frame option in solve moves it again.
+            # microcosm#1686's shared SIPP person-file read moves it again.
+            # The SIPP 2023 donor download tag and the financial-asset cache lookup
+            # move it again.
+            # Importing torch inside the solve functions that use it, and the
+            # QRF chain passing its workers a lock-file check record, move it
+            # again.
+            "spec_sha256": "fd92fb8889e913c400e662b5db4cf4bfb96f870f7e269bf83a266aaca3429332",
         },
     }
 
