@@ -148,8 +148,8 @@ class Frame:
         example through ``Series.array``, the ``.base`` of a read-only view,
         ``.asi8``, private pandas attributes, an array made writable,
         ``ufunc.at``, ``np.copyto`` or ``out=``
-        (``test_shared_buffer_writes.py`` refuses these in the workspace's
-        source), and through what ``.values`` and ``to_numpy()`` return for
+        (``test_shared_buffer_writes.py`` refuses the direct forms of some of
+        these in the workspace's source), and through what ``.values`` and ``to_numpy()`` return for
         extension-typed columns. ``.values`` returns the column's own
         extension array, for example for the nullable integer, float and
         boolean types, ``category`` and python-backed strings, and under
@@ -167,8 +167,8 @@ class Frame:
         Arguments and validation are the constructor's: every invariant is
         checked and the same errors are raised, except that a table that is
         not a DataFrame raises ``TypeError`` before any table is stored or
-        checked (the constructor stores whatever the table's ``copy()``
-        returns and checks that). Weights are stored as given (their arrays are
+        checked (the constructor calls each table's ``copy()`` and checks
+        what it returns, so it fails on a table without one). Weights are stored as given (their arrays are
         read-only), and the strata are shallow-copied when copy-on-write is
         on.
 
@@ -990,8 +990,8 @@ class Frame:
 
         Raises:
             TypeError, ValueError: As pandas raises them when it cannot
-                assign a value as a column (for example a set, a value of the
-                wrong length, or a two-dimensional array).
+                assign a value as a column (for example a set, or a value of
+                the wrong length), or as construction would.
             ValueError: If ``entity`` is not declared by the schema, or the
                 new columns break a constructor invariant (for example a
                 name another table already carries, a reserved
