@@ -14,8 +14,13 @@ This check runs in seconds after the staging (R1), before R2:
 
 - It reads the staging summary's ``reviewed_engine_input_nulls`` (column
   names and null counts by spine; no row values).
-- A null in a ``NEVER_DEFAULT_FILLED`` column on any spine but the ACS one
-  is refused, as materialize refuses it; R2's own stages fill the ACS cells.
+- A null in a ``NEVER_DEFAULT_FILLED`` column is refused, as materialize
+  refuses it, unless it is on the ACS spine alone and in a column that one of
+  R2's own stages fills on the ACS rows first (``stage_filled_never_default``:
+  the take-up stage's SPM-unit take-up flags and engine-free fills, and the
+  SSI and Medicaid take-up flags). R2 expects staging to fill every other
+  never-default column (immigration, disability, income transfers, SSI
+  disability criteria); its reason for those says to re-run staging.
 - A null in an ESI premium output is refused, as materialize refuses it.
 - Every other null becomes the fill record R2 writes, with the fill value R2
   resolves from the installed engine, and R2's own gate grades the records.
@@ -72,21 +77,53 @@ def _release_tool():
     return module
 
 
+def stage_filled_never_default(release: Any) -> frozenset[tuple[str, str]]:
+    """The ``NEVER_DEFAULT_FILLED`` columns that R2's own stages fill on ACS rows.
+
+    Materialize's ACS take-up stage fills the SPM-unit take-up flags and the
+    engine-free fills; its SSI/Medicaid take-up stage fills those two flags.
+    R2's reasons for every other never-default column (immigration,
+    disability, income transfers, SSI disability criteria) say to re-run
+    staging, and a null there stops materialize on any spine.
+    """
+
+    filled = frozenset(
+        {
+            *(("spm_unit", column) for column in release.ACS_LOCAL_TAKE_UP_COLUMNS),
+            *(tuple(key) for key in release.ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS),
+            *(
+                ("person", column)
+                for column in release.ACS_LOCAL_SSI_MEDICAID_TAKE_UP_COLUMNS
+            ),
+        }
+    )
+    unknown = sorted(filled - set(release.NEVER_DEFAULT_FILLED))
+    if unknown:
+        raise SystemExit(
+            f"R2's stage-filled columns {unknown} are not in NEVER_DEFAULT_FILLED."
+        )
+    return filled
+
+
 def expected_fills(
     nulls: Sequence[Mapping[str, Any]],
     *,
     never_default_filled: Collection[tuple[str, str]],
+    stage_filled: Collection[tuple[str, str]],
     resolve_default: Callable[[str], tuple[object, str]],
 ) -> dict[str, list]:
     """Split the staged nulls as R2's fill step treats them.
 
     Returns ``fills`` (the records R2 writes, in its manifest's shape),
-    ``denied`` (never-default nulls off the ACS spine), ``esi`` (null ESI
-    premium outputs) and ``natively_filled`` (never-default nulls on the ACS
-    spine only, which R2's stages fill).
+    ``denied`` (never-default nulls that materialize refuses), ``esi`` (null
+    ESI premium outputs) and ``natively_filled`` (never-default nulls on the
+    ACS spine only, in a ``stage_filled`` column: one that R2's stages fill
+    there). Each denied record says whether an R2 stage fills its column
+    (``r2_stage_fills``).
     """
 
     never = set(never_default_filled)
+    by_stage = set(stage_filled)
     result: dict[str, list] = {
         "fills": [],
         "denied": [],
@@ -108,8 +145,12 @@ def expected_fills(
             off_acs = {
                 spine: rows for spine, rows in by_spine.items() if spine != ACS_SPINE
             }
-            target = "denied" if off_acs or not by_spine else "natively_filled"
-            result[target].append({"column": name, "missing_rows_by_spine": by_spine})
+            stage = (entity, column) in by_stage
+            record = {"column": name, "missing_rows_by_spine": by_spine}
+            if stage and by_spine and not off_acs:
+                result["natively_filled"].append(record)
+            else:
+                result["denied"].append({**record, "r2_stage_fills": stage})
             continue
         fill_value, kind = resolve_default(column)
         missing = int(item["missing_rows"])
@@ -148,11 +189,7 @@ def grade(
         installed_engine_version=installed_engine_version,
     )
     refusals = [
-        *(
-            f"{item['column']}: null on {sorted(item['missing_rows_by_spine'])}, "
-            "a column R2 never default-fills (materialize refuses it)"
-            for item in split["denied"]
-        ),
+        *(_denied_refusal(item) for item in split["denied"]),
         *(
             f"{item['column']}: null ESI employer premium (materialize refuses it)"
             for item in split["esi"]
@@ -170,6 +207,16 @@ def grade(
             "failures": list(gate.failures),
         },
     }
+
+
+def _denied_refusal(item: Mapping[str, Any]) -> str:
+    where = f"{item['column']}: null on {sorted(item['missing_rows_by_spine'])}"
+    if item.get("r2_stage_fills", True):
+        return f"{where}, a column R2 never default-fills (materialize refuses it)"
+    return (
+        f"{where}, a never-default column that staging fills and no R2 stage "
+        "does (materialize refuses it; re-run staging)"
+    )
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -204,9 +251,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     release = _release_tool()
     system = _tax_benefit_system()
+    stage_filled = stage_filled_never_default(release)
     split = expected_fills(
         nulls,
         never_default_filled=release.NEVER_DEFAULT_FILLED,
+        stage_filled=stage_filled,
         resolve_default=lambda column: release._resolve_engine_default(system, column),
     )
     report = {
@@ -214,6 +263,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         "issue": ISSUE,
         "staging_summary": str(args.staging_summary),
         "staged_null_columns": len(nulls),
+        "r2_stage_filled_never_default": sorted(
+            f"{entity}.{column}" for entity, column in stage_filled
+        ),
         **grade(
             split,
             manifest_names=release.REVIEWED_FILL_MANIFESTS,
