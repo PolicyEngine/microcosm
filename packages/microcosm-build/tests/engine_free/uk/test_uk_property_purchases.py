@@ -417,7 +417,7 @@ def _frame(n: int = 300, seed: int = 3, time_period: str = "2024"):
     household = pd.DataFrame(
         {
             "household_id": np.arange(1, n + 1, dtype="int64"),
-            "household_source_id": np.arange(1, n + 1, dtype="int64"),
+            "source_household_id": np.arange(1, n + 1, dtype="int64"),
             "region": pd.array(regions[rng.integers(0, 6, n)], dtype="string"),
             "other_residential_property_value": np.where(
                 rng.random(n) < 0.5, rng.lognormal(12.6, 0.8, n), 0.0
@@ -588,7 +588,7 @@ def test_the_stage_refuses_a_stored_output_or_a_missing_lineage() -> None:
     stored = pp.impute_property_purchases(frame, targets=_frame_targets()).frame
     with pytest.raises(ValueError, match="already stored"):
         pp.impute_property_purchases(stored, targets=_frame_targets())
-    household = frame.table("household").drop(columns="household_source_id")
+    household = frame.table("household").drop(columns="source_household_id")
     bare = uk_national_frame(
         person=frame.table("person"),
         benunit=frame.table("benunit"),
@@ -597,13 +597,13 @@ def test_the_stage_refuses_a_stored_output_or_a_missing_lineage() -> None:
         weight_kind=WeightKind.DESIGN,
         household_weights=np.asarray(frame.weights_for("household").values),
     )
-    with pytest.raises(ValueError, match="household_source_id"):
+    with pytest.raises(ValueError, match="source_household_id"):
         pp.impute_property_purchases(bare, targets=_frame_targets())
     # A null would drop out of a distinct count or count as one source.
     nulls = _frame()
-    sources = nulls.table("household")["household_source_id"].astype("Int64")
+    sources = nulls.table("household")["source_household_id"].astype("Int64")
     sources.iloc[0] = None
-    nulls.table("household")["household_source_id"] = sources
+    nulls.table("household")["source_household_id"] = sources
     with pytest.raises(ValueError, match="null"):
         pp.impute_property_purchases(nulls, targets=_frame_targets())
 
@@ -617,7 +617,7 @@ def _copies_frame():
     household = pd.DataFrame(
         {
             "household_id": ids,
-            "household_source_id": np.arange(n, dtype="int64") % 2,
+            "source_household_id": np.arange(n, dtype="int64") % 2,
             "region": pd.array(["LONDON"] * n, dtype="string"),
             "other_residential_property_value": np.full(n, 200_000.0),
             "non_residential_property_value": np.zeros(n),

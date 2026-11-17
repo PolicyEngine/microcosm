@@ -53,7 +53,7 @@
         "requires_ageing_ruling_and_receipt_binding": 1,
         "requires_receipt_contract_and_rules_binding": 1,
         "requires_pension_route_d1902": 1,
-        "requires_currency_bridge_b4": 1
+        "requires_money_node_and_mixed_income_factor": 1
       }
     },
     "precal_references.json": {
@@ -1181,7 +1181,9 @@
     "The schema-1 target_profile drops B1's required_families, basis_periods, tolerance tiers and subnational vintage rule. Package tests restore required families, the vintage rule and each row's periods. Caseload tolerance moves from B1's 15% to BE-MC6's 5%, and the ONSS contribution row moves from B1's standard_admin_release 10% to 5%.",
     "A selector cannot pair a record set with a dimension value, and T17 holds each daily-wage class in one record set per sex. Each wage row lists both record sets beside an age and a sex roster, so the package tests' cell check expands their product: 24 cells that exist and 24 that cannot. A list of the members' aggregate keys would bind each member without the artifact, but the package scan admits fact keys only as single strings, so the rosters stay key-free and the feed audit proves their members.",
     "No shared code reads a rank-only input. Transport drops the donor's public_pension_income (TransportRule.DROP), and transport.quantile_map@1 ranks one column and overwrites that same column with the mapped amounts. So the SFPD surface rows are kept non-executable only by activation_status, and each one is a named activation gap.",
-    "Uniform interpolation refuses an open top band, and both surfaces' top bands are open; Pareto interpolation needs a declared alpha, and no shared mode scales the donor's own tail."
+    "Uniform interpolation refuses an open top band, and both surfaces' top bands are open; Pareto interpolation needs a declared alpha, and no shared mode scales the donor's own tail.",
+    "projected_period_average_ratio@1 reads only observed target levels, and FPB's outlook asserts every 2026 level as a source projection, so no FPB factor can age 2024 donor money to 2026; money_normalization.json holds every family fixed at 2024 levels, self-employment included, as an interim rule proposed for d1902.",
+    "The shared US concept mapping binds household.mortgage_principal only into mortgage_payments, as a sum with mortgage interest, which the decoder cannot invert, and the pinned donor holds no mortgage_payments column; CREATE therefore never defines mortgage principal, and money_normalization.json leaves it pending."
   ],
   "quantile_surfaces": {
     "resource": "quantile_surfaces.json",
@@ -1500,7 +1502,7 @@
     },
     {
       "id": "usd_eur_rate",
-      "reason": "Eurostat ert_bil_eur_a is B4's currency-bridge input (BE-MC3), not a reference."
+      "reason": "Eurostat ert_bil_eur_a's 2024 USD average is money_normalization.json's feed-selected rate (BE-MC3, d1902 item 19), not a reference."
     },
     {
       "id": "regional_a1_and_b1",

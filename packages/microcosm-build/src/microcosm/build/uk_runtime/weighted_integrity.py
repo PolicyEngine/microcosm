@@ -1167,9 +1167,11 @@ def uk_input_mass_carriers(
 ) -> dict[str, int]:
     """Distinct source households carrying each column :func:`uk_input_mass_totals` sums.
 
-    A column's carriers are the distinct ``household_source_id`` values among
-    rows of positive weight whose value is nonzero (a boolean: ``True``),
-    counted as the stage receipts count support
+    A column's carriers are the distinct true source households
+    (``source_household_id``, read by
+    :func:`~microcosm.build.uk_runtime.receipt_counts.source_household_ids`;
+    microcosm#931) among rows of positive weight whose value is nonzero (a
+    boolean: ``True``), counted as the stage receipts count support
     (:func:`~microcosm.build.uk_runtime.receipt_counts.distinct_count`):
     support copies and clones repeat their source household, so they count
     once. A person or benefit unit row counts its household's source. A

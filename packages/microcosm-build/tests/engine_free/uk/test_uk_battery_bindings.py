@@ -202,8 +202,10 @@ def _tables(*, n: int = 4, weights=None):
             "household_id": household_ids,
             "household_weight": np.asarray(weights, dtype=float),
             # Each household its own survey source, as the input-mass gate's
-            # carriers read them (microcosm#1095).
+            # carriers read them (microcosm#1095), by its true source
+            # (microcosm#931).
             "household_source_id": household_ids + 1000,
+            "source_household_id": household_ids + 1000,
             "household_is_spi_synthetic": np.arange(n) % 2 == 1,
             "household_is_capital_gains_clone": np.arange(n) % 4 >= 2,
             "owned_land": land,

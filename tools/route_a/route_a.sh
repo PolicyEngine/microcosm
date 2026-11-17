@@ -121,7 +121,15 @@ fail() {
   echo "$(date '+%F %T') $*" > "$RUN_ROOT/ROUTE_A_FAILED"
   exit 1
 }
-sha_of() { openssl dgst -sha256 -r "$1" 2>/dev/null | cut -c1-64; }
+# The file's sha256, or nothing and status 1 when openssl prints no digest:
+# an unreadable file (in a launchd job on 2026-11-17, /usr/bin/openssl got
+# "Operation not permitted" on an external drive) must not hash as empty.
+sha_of() {
+  local out
+  out=$(openssl dgst -sha256 -r "$1" 2>/dev/null | cut -c1-64)
+  [[ $out =~ ^[0-9a-f]{64}$ ]] || return 1
+  printf '%s\n' "$out"
+}
 free_bytes() { df -k "$DISK_PATH" | awk 'NR==2 {print $4*1024}'; }
 
 INPUT_PROBLEMS=()
@@ -139,8 +147,9 @@ verify_inputs() {  # fills INPUT_PROBLEMS; writes $RUN_ROOT/inputs.resolved.json
       if [ "$size" != "-" ] && [ "$asize" != "$size" ]; then
         status=size_mismatch; INPUT_PROBLEMS+=("$role size $asize != $size: $path")
       fi
-      actual=$(sha_of "$path")
-      if [ "$actual" != "$sha" ]; then
+      if ! actual=$(sha_of "$path"); then
+        status=unreadable; INPUT_PROBLEMS+=("$role could not be read to hash it: $path")
+      elif [ "$actual" != "$sha" ]; then
         status=sha_mismatch; INPUT_PROBLEMS+=("$role sha256 $actual != $sha: $path")
       fi
     fi
@@ -402,7 +411,8 @@ ensure_worktree() {  # $1 = full sha; sets WT
 ensure_worktree "$C"; W=$WT
 ensure_worktree "$PC"; PW=$WT
 PY=$W/.venv/bin/python
-[ "$(sha_of "$W/$CROSSWALK_REL")" = "$CROSSWALK_SHA" ] || fail "packaged crosswalk digest in $W"
+CROSSWALK_ACTUAL=$(sha_of "$W/$CROSSWALK_REL") || fail "could not read $W/$CROSSWALK_REL to hash it"
+[ "$CROSSWALK_ACTUAL" = "$CROSSWALK_SHA" ] || fail "packaged crosswalk digest in $W"
 PEUS=$("$PY" -c 'import importlib.metadata as m; print(m.version("policyengine-us"))')
 [ -x "$W/.venv/bin/microcosm-publish-release-build" ] || fail "no microcosm-publish-release-build in $W/.venv"
 log "build worktree $W (policyengine-us $PEUS); preflight worktree $PW"
@@ -585,9 +595,11 @@ if ! stage_done base; then
 fi
 [ -f "$BASE_H5" ] || fail "base stage accepted but $BASE_H5 is missing"
 if [ ! -f "$RUN/base.sha256" ] || [ "$BASE_H5" -nt "$RUN/base.sha256" ]; then
-  echo "$(sha_of "$BASE_H5")  $BASE_H5" > "$RUN/base.sha256"
+  BASE_SHA=$(sha_of "$BASE_H5") || fail "could not read $BASE_H5 to hash it"
+  echo "$BASE_SHA  $BASE_H5" > "$RUN/base.sha256"
 fi
 BASE_SHA=$(cut -c1-64 "$RUN/base.sha256")
+[[ $BASE_SHA =~ ^[0-9a-f]{64}$ ]] || fail "$RUN/base.sha256 holds no sha256; delete it and rerun"
 log "base H5 $BASE_H5 sha256 $BASE_SHA ($(stat -f %z "$BASE_H5") bytes)"
 if [ "$PRUNE_BASE_CHECKPOINTS" = 1 ] && ls "$BASE_CKPT"/*.frame.h5 >/dev/null 2>&1; then
   log "PRUNE_BASE_CHECKPOINTS=1: removing base frame checkpoints ($(du -sh "$BASE_CKPT" | cut -f1)) after the base H5 was hashed"

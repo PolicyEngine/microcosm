@@ -41,6 +41,7 @@ from microcosm.build.ledger_targets import (
 )
 from microcosm.build.reference_factors import (
     replay_reference_factor,
+    resolve_reference_factor,
     validate_factor_context,
 )
 from microcosm.build.reference_intervals import (
@@ -103,6 +104,7 @@ GENERATED = (
     "reference_inventory.json",
     "reference_profiles.json",
     SURFACES,
+    "money_normalization.json",
 )
 BELGIAN_LEVELS = {"country": {"BE"}, "nuts1": {"BE1", "BE2", "BE3"}}
 # B1's schema-2 profile required these; schema 1 can't, so this package test does.
@@ -576,7 +578,17 @@ def test_documents_are_value_free_uniquely_named_and_registered():
     assert {"chronicle_feed.json", *GENERATED} <= set(spec.resources)
     for name in GENERATED:
         payload = _document(name)
-        if name not in {"reference_aging.json", "reference_inventory.json"}:
+        if name == "money_normalization.json":
+            # donor_money_period.value is the shared schema's year, not an observation.
+            assert _carried_value_keys(payload) == {"value"}
+            assert not _carried_value_keys(
+                {
+                    key: item
+                    for key, item in payload.items()
+                    if key != "donor_money_period"
+                }
+            )
+        elif name not in {"reference_aging.json", "reference_inventory.json"}:
             # Factor receipts and the inventory record evidence; references,
             # intervals and profiles carry no observation at any depth.
             assert not _carried_value_keys(payload), name
@@ -2593,6 +2605,77 @@ def test_factor_receipts_replay_against_the_feed(artifact):
             entry["operational_factor"],
             entry["receipt"],
         )
+
+
+def test_published_projection_ages_fpb_net_mixed_income_to_2026(artifact):
+    inventory = generator.Inventory(artifact.facts)
+    source = generator._fpb(inventory, "household_account.net_mixed_income", 2024)
+    target = generator._fpb(inventory, "household_account.net_mixed_income", 2026)
+    assert (generator._token(source["value"]), source["assertion"]) == (
+        "36678000000",
+        "observation",
+    )
+    assert (generator._token(target["value"]), target["assertion"]) == (
+        "41044000000",
+        "source_projection",
+    )
+
+    def slot(fact):
+        return {
+            "selector": {**generator._selector(fact), "assertion": fact["assertion"]},
+            "validation": generator._factor_validation(fact),
+            "weight": "1",
+            "sequence": 0,
+        }
+
+    identity = _document("reference_aging.json")["feed_identity"]  # the seven fields
+    declaration = {
+        "schema_version": 1,
+        "id": "fpb_t11_net_mixed_income_cy2024_to_cy2026",
+        "operation": "published_projection_period_average_ratio",
+        "operation_version": 1,
+        "purpose": "money_normalization_input",
+        "feed_identity": copy.deepcopy(identity),
+        "source_period": 2024,
+        "target_period": 2026,
+        "source_schedule": [slot(source)],
+        "target_schedule": [slot(target)],
+        "subperiods_per_year": 1,
+        "rounding": {"digits": 6, "mode": "nearest_half_even"},
+        "expected_operational_factor": {"numerator": 1119036, "denominator": 1000000},
+        "validity": dict(generator.FACTOR_VALIDITY),
+        "evidence": [
+            "test-local: FPB table 11 net mixed income, 2024 observed, 2026 projected"
+        ],
+        "decision_references": [
+            "test-local: ruling be-projection-factor-placement-2026-11-17"
+        ],
+    }
+    factor, receipt = resolve_reference_factor(declaration, artifact.facts, identity)
+    assert factor == {"numerator": 1119036, "denominator": 1000000}
+    assert receipt["unrounded_factor"] == {"numerator": 20522, "denominator": 18339}
+    assert receipt["target_assertion"] == "source_projection"
+    entry = {
+        "declaration": declaration,
+        "operational_factor": factor,
+        "receipt": receipt,
+    }
+    validate_factor_context(
+        {"schema_version": 1, "feed_identity": identity, "factors": [entry]},
+        [declaration["id"]],
+    )
+    replay_reference_factor(declaration, artifact.facts, identity, factor, receipt)
+    # Version 1 still refuses the same operands with today's message.
+    version_1 = {
+        **declaration,
+        "operation": "projected_period_average_ratio",
+        "growth": None,
+        "projection_policy": "observed_preferred_latest_contiguous",
+        "target_schedule": [{**slot(target), "projection_offset": 0}],
+    }
+    with pytest.raises(ValueError) as error:
+        resolve_reference_factor(version_1, artifact.facts, identity)
+    assert str(error.value) == "Target schedules prefer observations only."
 
 
 @pytest.mark.parametrize(

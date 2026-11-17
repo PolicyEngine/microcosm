@@ -209,6 +209,65 @@ printf '%s\\n' "${#INPUT_PROBLEMS[@]}"
     )
 
 
+@pytest.mark.parametrize(
+    "openssl",
+    [
+        # Nothing on stdout: openssl could not open the file.
+        "openssl() { return 1; }",
+        # An error on stdout instead of a digest.
+        "openssl() { echo 'Operation not permitted'; }",
+        # A digest-shaped line that is not 64 hex digits.
+        "openssl() { echo '0123 *x'; }",
+    ],
+)
+def test_an_input_openssl_cannot_read_is_unreadable_not_an_empty_digest(
+    tmp_path: Path, openssl: str
+) -> None:
+    # On 2026-11-17 a launchd job's /usr/bin/openssl could not read the
+    # archive drive, and sha_of turned that into an empty digest. Now it
+    # prints nothing and fails, and the input is reported as unreadable.
+    feed = tmp_path / "new-feed.jsonl"
+    payload = b'{"fixture": "feed"}\n'
+    feed.write_bytes(payload)
+    result = _input_settings_result(
+        tmp_path,
+        {
+            "FEED": str(feed),
+            "FEED_SHA": hashlib.sha256(payload).hexdigest(),
+            "FEED_BYTES": str(len(payload)),
+        },
+        f"""
+registered_rows=$(input_rows)
+input_rows() {{ printf '%s\\n' "$registered_rows" | awk -F '|' '$1 == "release_ledger_facts"'; }}
+stat() {{ "$PYTHON" -c 'import os,sys; print(os.stat(sys.argv[1]).st_size)' "$3"; }}
+{openssl}
+if out=$(sha_of "{feed}"); then echo "sha_of ok [$out]"; else echo "sha_of failed [$out]"; fi
+verify_inputs
+printf '%s\\n' "${{INPUT_PROBLEMS[@]}}"
+""",
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    lines = result.stdout.decode().splitlines()
+    assert lines[0] == "sha_of failed []"
+    assert lines[1:] == [f"release_ledger_facts could not be read to hash it: {feed}"]
+    report = json.loads((tmp_path / "run_root" / "inputs.resolved.json").read_text())
+    assert report["inputs"][0]["status"] == "unreadable"
+    assert report["inputs"][0]["observed_sha256"] == ""
+
+
+def test_the_crosswalk_and_base_digests_refuse_an_unreadable_file() -> None:
+    # These run after the fetch, where the settings harness stops, so the
+    # source is checked: neither compares nor records an empty digest.
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+    assert (
+        'CROSSWALK_ACTUAL=$(sha_of "$W/$CROSSWALK_REL") || fail "could not read'
+        in source
+    )
+    assert 'BASE_SHA=$(sha_of "$BASE_H5") || fail "could not read $BASE_H5' in source
+    assert "[[ $BASE_SHA =~ ^[0-9a-f]{64}$ ]] || fail" in source
+    assert '"$(sha_of ' not in source
+
+
 def _tiny_main(tmp_path: Path, files: dict[str, str]) -> tuple[Path, str]:
     """A throwaway local repository standing in for ``$MAIN`` at one commit."""
 
