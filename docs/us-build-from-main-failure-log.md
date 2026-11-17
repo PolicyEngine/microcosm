@@ -183,7 +183,7 @@ hand-overs and queues no Orrery graph publication
 ([#L192-L202](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/packages/microcosm-build/src/microcosm/build/telemetry_emitter.py#L192-L202),
 [#L574-L583](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/packages/microcosm-build/src/microcosm/build/telemetry_emitter.py#L574-L583)).
 
-### 6. The release-gate preflight compiles the feed's targets on the base (`from the code`)
+### 6. The preflight can stop the driver on exit 1 (`from the code`)
 
 The driver runs `tools/preflight_us_release_gates.py` on the base with `--ledger-facts "$FEED"`, and it accepts exit 0
 (clean) or 2 (at risk) unless `RELEASE_DESPITE_PREFLIGHT_FAIL=1`
@@ -204,9 +204,8 @@ selection carry-over and passed its capital-gains tail, smoke-support and SPM co
 preview could statically check none of the 33,193 positive targets, so it passed without grading any. Its
 export-mass check found two columns under their bands at base weights.
 `partnership_income` held $394.2 billion against a band of $423.9 billion to $1,271.6 billion, and
-`social_security_survivors` held $67.8 billion against $80.5 billion to $241.5 billion. The preflight's message asks
-an agent to confirm that the calibration targets each column: the solve lifts a targeted column into its band, and
-an untargeted one fails the export-mass parity gate.
+`social_security_survivors` held $67.8 billion against $80.5 billion to $241.5 billion. The preflight asks an agent
+to confirm that calibration targets each column; this run measured neither column after calibration.
 
 ### 7. The QRF tail register must match the new export's concentrated columns (`predicted`)
 
