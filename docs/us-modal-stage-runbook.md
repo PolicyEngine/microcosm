@@ -1916,8 +1916,9 @@ misses show up as `log_gap` once the
 parent's later lines arrive; a lost pool-opening line shows up as `log_gap`
 as soon as that pool's other lines do. A restarted stream that does not
 replay leaves a stretch no stream covers, reported as `stream_holes`; a
-hole alone changes no verdict but raises the alarm, since a lost line can
-hide in it. The runner prints its `BUDGET:` line just
+hole alone changes no verdict but raises its own alarm, once, since a lost
+line can hide in it. `log_gap` raises a separate alarm, once, so a lost line
+found after a hole is still reported. The runner prints its `BUDGET:` line just
 before it starts the tool, every time, so streams with scorer lines but no
 `BUDGET:` line began late and may have missed a shorter budget: that is
 `log_gap` too (`"runner"`). Every

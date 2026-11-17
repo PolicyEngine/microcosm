@@ -202,8 +202,9 @@ check_stream() {
 
 # One projection over the given streams. Sets OUT, RC, VERDICT (GO, WAIT,
 # NO-GO, WAIT-OVERDUE or none), GAP (gap when the streams lost lines or
-# began late, or no stream covers a stretch between the first record and the
-# last) and EARLY (scorer records before started-at).
+# began late), HOLE (hole when no stream covers a stretch between the first
+# record and the last) and EARLY (scorer records before started-at). GAP and
+# HOLE alarm apart, so a hole raised first cannot hide a later lost line.
 project() {
   local args
   args=("$HERE/us_head_to_head_projection.py" "$@" --plan "$PLAN" --started-at "$STARTED")
@@ -219,13 +220,14 @@ def at(key):
     return calendar.timegm(time.strptime(report[key], "%Y-%m-%dT%H:%M:%SZ"))
 if verdict == "WAIT" and at("now_utc") > at("deadline_utc") + float(sys.argv[1]):
     verdict = "WAIT-OVERDUE"
-gap = "gap" if report.get("log_gap") or report.get("stream_holes") else "-"
-print(verdict, gap, int(report.get("records_before_start") or 0))
+gap = "gap" if report.get("log_gap") else "-"
+hole = "hole" if report.get("stream_holes") else "-"
+print(verdict, gap, hole, int(report.get("records_before_start") or 0))
 ' "$WAIT_GRACE" 2>/dev/null)
-  if [ "$(printf '%s' "$parsed" | wc -w | tr -d ' ')" = 3 ]; then
-    read -r VERDICT GAP EARLY <<< "$parsed"
+  if [ "$(printf '%s' "$parsed" | wc -w | tr -d ' ')" = 4 ]; then
+    read -r VERDICT GAP HOLE EARLY <<< "$parsed"
   else
-    VERDICT=none; GAP=-; EARLY=0
+    VERDICT=none; GAP=-; HOLE=-; EARLY=0
   fi
 }
 
@@ -269,6 +271,7 @@ note "watching $APP (plan $PLAN, started-at $STARTED, every ${INTERVAL}s, MODAL_
 stream
 failures=0
 gap_alarmed=0
+hole_alarmed=0
 while true; do
   RESTARTED=0
   waited=0
@@ -283,7 +286,11 @@ while true; do
   note "rc=$RC verdict=$VERDICT $(printf '%s' "$OUT" | tr -d '\n')"
   if [ "$GAP" = gap ] && [ "$gap_alarmed" -eq 0 ]; then
     gap_alarmed=1
-    alarm "the log streams lost lines or began late, or a restarted stream did not replay what the app printed before it (log_gap or stream_holes in go-no-go.log): after a late start the estimate gives no GO, after lost slice or opening lines no estimate at all, and a hole alone changes no verdict but may hide a lost line; the stall check and the runner's budget still bound the run"
+    alarm "the log streams lost lines or began late (log_gap in go-no-go.log): after a late start the estimate gives no GO, after lost slice or opening lines no estimate at all; the stall check and the runner's budget still bound the run"
+  fi
+  if [ "$HOLE" = hole ] && [ "$hole_alarmed" -eq 0 ]; then
+    hole_alarmed=1
+    alarm "a restarted log stream did not replay what the app printed before it (stream_holes in go-no-go.log): a hole alone changes no verdict but may hide a lost line, and a lost line the estimate can detect raises the gap alarm on its own; the stall check and the runner's budget still bound the run"
   fi
   if [ "$RC" -eq 3 ] && [ "$VERDICT" = "NO-GO" ]; then
     if stop_app; then exit 3; fi

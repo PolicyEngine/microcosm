@@ -412,8 +412,38 @@ def test_a_restarted_stream_that_does_not_replay_alarms_once(tmp_path) -> None:
     assert result.returncode == 0, result.stderr
     verdicts = (run / "go-no-go.log").read_text()
     assert "stream_holes" in verdicts and "verdict=NO-GO" not in verdicts
-    alarms = (run / "ALARM").read_text()
-    assert alarms.count("did not replay") == 1
+    alarms = (run / "ALARM").read_text().splitlines()
+    assert len(alarms) == 1 and "did not replay" in alarms[0]
+
+
+def test_a_lost_line_after_a_hole_still_raises_the_gap_alarm(tmp_path) -> None:
+    # The hole alarm comes first; a later lost opening line must still raise
+    # its own alarm, not be taken as already reported.
+    now = time.time()
+    first = [
+        RUNNER_BUDGET,
+        _line(now - 1200, "before starting incumbent slice workers", 3.7),
+        _line(now - 1160, "after initializing incumbent slice worker", 1.9),
+    ]
+    second = [_line(now - 300, "after initializing incumbent slice worker", 1.9)]
+    third = [
+        *second,
+        # A candidate worker with no opening line: a lost line, so log_gap.
+        _line(now - 290, "after initializing candidate slice worker", 1.9),
+    ]
+    result, _, run = _watch(
+        tmp_path,
+        third,
+        budget_line=False,
+        streams={1: first, 2: second, 3: third},
+        FAKE_LIVE_LISTS="3",
+    )
+    assert result.returncode == 0, result.stderr
+    verdicts = (run / "go-no-go.log").read_text()
+    assert '"log_gap"' in verdicts and "stream_holes" in verdicts
+    alarms = (run / "ALARM").read_text().splitlines()
+    assert len(alarms) == 2, alarms
+    assert "did not replay" in alarms[0] and "lost lines" in alarms[1]
 
 
 def test_an_unreadable_list_when_the_stream_ends_keeps_watching(tmp_path) -> None:
