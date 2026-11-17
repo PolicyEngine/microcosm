@@ -21,9 +21,17 @@ two inputs: the parent Route A export's CPS rows and a staging run's ACS rows.
   ``base_pool._id_remap_offsets``'s rule; household ``SERIALNO`` and
   ``TYPEHUGQ``; person ``SPORDER`` and the PUMS lineage columns. They also
   carry what the prepare step fills before the contract runs: the ESI
-  premium (PR 0) and the six tail columns at the transfer's defaults. The
-  SSI take-up column, which the release writes, and the raw ASEC columns
-  are absent, as on staging's ACS rows.
+  premium (PR 0) and the six tail columns at the transfer's defaults.
+
+The ACS tables :func:`generate_population` returns hold only the ACS rows'
+own columns: the SSI take-up column (which the release writes) and the raw
+ASEC columns are absent. Staging pools the union of both origins' columns
+(``base_pool._aligned_column_orders`` and the concat in
+``base_pool._combined_tables``), so on its output those columns are present
+and all null on ACS rows, and an ACS-only integer column (``SPORDER``,
+``TYPEHUGQ``) comes back as float64. :func:`with_staging_union_columns`
+gives that form; a clause that reads "absent" and "all null" differently
+should be tested on both.
 
 Both origins come from one column spec, so a shared column keeps one dtype
 after the two are joined. Every SPM unit has a classified adult, and the
@@ -41,7 +49,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cache
 from importlib.resources import files
 from types import MappingProxyType
@@ -52,6 +60,7 @@ import pandas as pd
 from microcosm.build.us_runtime.one_population_contract import (
     ACS_SUPPORT_CHANNEL,
     ASSEMBLED_CHANNELS,
+    CPS_SPINE_TAG,
     STRUCTURAL_COLUMNS,
 )
 from microcosm.build.us_runtime.one_population_selection import (
@@ -750,6 +759,28 @@ def generate_population(
     )
     _check_role_bands(joined_frame(population))
     return population
+
+
+def with_staging_union_columns(population: GeneratedPopulation) -> GeneratedPopulation:
+    """``population`` with its ACS tables in staging's pooled column union.
+
+    Staging concatenates the donor's rows (here, the CPS tables, tagged
+    ``asec_puf``) and the ACS rows over the union of their columns, donor
+    columns first. Its ACS rows therefore carry every CPS-only column all
+    null, in the dtype the concat gives it, and their own integer-only
+    columns come back as float64. The CPS tables and weights are unchanged.
+    """
+
+    acs: dict[str, pd.DataFrame] = {}
+    for entity in US_SCHEMA.entities:
+        donor = population.cps_tables[entity].assign(
+            **{f"{entity}_spine": CPS_SPINE_TAG}
+        )
+        pooled = pd.concat(
+            [donor, population.acs_tables[entity]], ignore_index=True, sort=False
+        )
+        acs[entity] = pooled.iloc[len(donor) :].reset_index(drop=True)
+    return replace(population, acs_tables=MappingProxyType(acs))
 
 
 # ------------------------------------------------------ joined frame

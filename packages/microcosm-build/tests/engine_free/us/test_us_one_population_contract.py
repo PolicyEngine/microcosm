@@ -76,6 +76,7 @@ from test_support.microcosm_build.us_one_population_contract import (
     role_shares,
     spm_role_gate_record,
     with_spm_role_record,
+    with_staging_union_columns,
 )
 
 _SEEDS = (0, 1, 2)
@@ -606,3 +607,42 @@ class TestGeneratedPopulation:
         for column in ("SERIALNO", "TYPEHUGQ"):
             assert household.loc[acs_household, column].notna().all()
             assert household.loc[~acs_household, column].isna().all()
+
+
+class TestStagingUnionForm:
+    """The ACS tables in staging's pooled form: every CPS column, all null."""
+
+    def test_acs_rows_gain_every_cps_column_all_null(self, population) -> None:
+        union = with_staging_union_columns(population)
+        for entity in US_SCHEMA.entities:
+            trimmed = population.acs_tables[entity]
+            pooled = union.acs_tables[entity]
+            cps_only = set(population.cps_tables[entity]) - set(trimmed)
+            assert set(pooled) == set(trimmed) | set(population.cps_tables[entity])
+            for column in cps_only:
+                assert pooled[column].isna().all(), (entity, column)
+            for column in trimmed:
+                assert (
+                    pooled[column].astype(object).tolist()
+                    == trimmed[column].astype(object).tolist()
+                ), (entity, column)
+        person = union.acs_tables["person"]
+        assert person["takes_up_ssi_if_eligible"].isna().all()
+        # An ACS-only integer column comes back as float64 from staging.
+        assert person["SPORDER"].dtype == np.dtype("float64")
+        assert union.acs_tables["household"]["TYPEHUGQ"].dtype == np.dtype("float64")
+
+    def test_union_form_passes_the_same_checks(self, population) -> None:
+        frame = joined_frame(with_staging_union_columns(population))
+        assert check_spm_composition(frame).status == "PASS"
+        gated = with_spm_role_record(frame, spm_role_gate_record(frame))
+        assert us_spm_independence_role_signal_gate(gated).passed
+        assembled = Frame(
+            {entity: frame.table(entity) for entity in frame.entities},
+            frame.schema,
+            {"household": frame.weights_for("household")},
+            frame.strata,
+            mass_log=frame.mass_log,
+            metadata={**frame.metadata, **clone_zero_assembly_record(frame)},
+        )
+        validate_assembly_provenance(assembled, boundary="phase 0 union test")
