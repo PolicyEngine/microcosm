@@ -198,17 +198,39 @@ _NEVER_DEFAULT = frozenset(
 )
 
 
-def test_null_runtime_columns_outside_the_agi_are_held_back(check) -> None:
+#: The columns of ``_NEVER_DEFAULT`` that an R2 stage fills on ACS rows;
+#: ``is_blind`` stands in for one that staging must fill.
+_STAGE_FILLED = frozenset(
+    {
+        ("person", "takes_up_ssi_if_eligible"),
+        ("spm_unit", "takes_up_snap_if_eligible"),
+    }
+)
+#: One person per household: persons 5 and 6 are ACS rows.
+_PERSON_SPINE = ["asec_puf"] * 4 + ["acs_2024_1yr"] * 2
+
+
+def _hold_back(check, frame, agi_inputs):
+    return check.hold_back_null_runtime_columns(
+        frame,
+        never_default_filled=_NEVER_DEFAULT,
+        stage_filled=_STAGE_FILLED,
+        agi_inputs=agi_inputs,
+    )
+
+
+def test_null_stage_filled_columns_on_acs_rows_outside_the_agi_are_held_back(
+    check,
+) -> None:
     frame = _frame(
         {
-            "takes_up_ssi_if_eligible": [True, np.nan, True, True, False, True],
+            "person_spine": _PERSON_SPINE,
+            "takes_up_ssi_if_eligible": [True, True, True, True, np.nan, True],
             "is_blind": [False] * 6,
         }
     )
 
-    held_frame, held = check.hold_back_null_runtime_columns(
-        frame, never_default_filled=_NEVER_DEFAULT, agi_inputs={"is_blind", "age"}
-    )
+    held_frame, held = _hold_back(check, frame, {"is_blind", "age"})
 
     assert held == {"person": ["takes_up_ssi_if_eligible"]}
     assert "takes_up_ssi_if_eligible" not in held_frame.table("person").columns
@@ -216,21 +238,50 @@ def test_null_runtime_columns_outside_the_agi_are_held_back(check) -> None:
     assert held_frame.n("household") == frame.n("household")
 
 
-def test_a_null_never_default_agi_input_is_refused(check) -> None:
-    frame = _frame({"is_blind": [False, np.nan, False, False, False, False]})
+@pytest.mark.parametrize(
+    ("columns", "agi_inputs", "message"),
+    [
+        # An R2 stage fills it on the ACS rows, but the AGI reads it.
+        (
+            {"takes_up_ssi_if_eligible": [True] * 4 + [np.nan, True]},
+            {"takes_up_ssi_if_eligible"},
+            r"person\.takes_up_ssi_if_eligible: the AGI reads it",
+        ),
+        # R2's stages fill the ACS rows only; this null is on a donor row.
+        (
+            {"takes_up_ssi_if_eligible": [np.nan] + [True] * 4 + [np.nan]},
+            {"age"},
+            r"person\.takes_up_ssi_if_eligible: null on 1 non-ACS row",
+        ),
+        # No R2 stage fills it, so staging must, on any spine.
+        (
+            {"is_blind": [False] * 4 + [np.nan, False]},
+            {"age"},
+            r"person\.is_blind: no R2 stage fills it",
+        ),
+    ],
+    ids=["agi-input", "donor-row", "staging-filled"],
+)
+def test_never_default_nulls_r2_refuses_are_refused(
+    check, columns, agi_inputs, message
+) -> None:
+    frame = _frame({"person_spine": _PERSON_SPINE, **columns})
 
-    with pytest.raises(SystemExit, match=r"person\.is_blind"):
-        check.hold_back_null_runtime_columns(
-            frame, never_default_filled=_NEVER_DEFAULT, agi_inputs={"is_blind"}
-        )
+    with pytest.raises(SystemExit, match=message):
+        _hold_back(check, frame, agi_inputs)
+
+
+def test_a_null_stage_filled_column_without_a_spine_tag_is_refused(check) -> None:
+    frame = _frame({"takes_up_ssi_if_eligible": [True] * 4 + [np.nan, True]})
+
+    with pytest.raises(SystemExit, match="no person_spine column"):
+        _hold_back(check, frame, {"age"})
 
 
 def test_a_frame_without_null_runtime_columns_is_returned_as_is(check) -> None:
     frame = _frame({"takes_up_ssi_if_eligible": [True] * 6})
 
-    held_frame, held = check.hold_back_null_runtime_columns(
-        frame, never_default_filled=_NEVER_DEFAULT, agi_inputs={"age"}
-    )
+    held_frame, held = _hold_back(check, frame, {"age"})
 
     assert held == {}
     assert held_frame is frame

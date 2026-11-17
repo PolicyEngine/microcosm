@@ -79,10 +79,12 @@ def _frame(*, with_nulls: bool) -> Frame:
         tables[entity] = pd.DataFrame({f"{entity}_id": ids})
     if with_nulls:
         # A runtime-owned take-up flag that R2's stages fill on ACS rows and
-        # the AGI does not read: the check holds it back while it is null.
+        # the AGI does not read: the check holds it back while its nulls are
+        # on ACS rows only.
         tables["spm_unit"]["takes_up_snap_if_eligible"] = pd.Series(
             [True, None, True, True, True, True], dtype=object
         )
+        tables["spm_unit"]["spm_unit_spine"] = "acs_2024_1yr"
     tables["household"] = pd.DataFrame(
         {
             "household_id": np.arange(1, 7, dtype="int64"),
@@ -94,6 +96,25 @@ def _frame(*, with_nulls: bool) -> Frame:
         US_SCHEMA,
         {"household": Weights(np.ones(6), WeightKind.DESIGN)},
     )
+
+
+def test_no_column_an_r2_stage_fills_is_an_agi_input() -> None:
+    """The check holds back a null stage-filled column on ACS rows because
+    the AGI does not read it; an engine release whose AGI read one would make
+    the check refuse a staging file R2 accepts (review of #1660)."""
+
+    from microcosm.frame.adapters.policyengine_us import (
+        PolicyEngineUSVariableMetadataIndex,
+    )
+
+    check = _check()
+    release = check._release_tool()
+    inputs = check.agi_engine_inputs(PolicyEngineUSVariableMetadataIndex())
+    stage_filled = check.reviewed_fills.stage_filled_never_default(release)
+
+    assert "employment_income_before_lsr" in inputs
+    assert stage_filled
+    assert inputs.isdisjoint(column for _entity, column in stage_filled)
 
 
 def test_household_agi_counts_only_heads_and_spouses_as_the_soi_row_does(
