@@ -62,6 +62,20 @@ _SEMANTIC_ENVIRONMENT_NAMES = (
     "POPULACE_FIT_N_JOBS",
     "POPULACE_FIT_PREDICT_WORKERS",
 )
+#: ``resolution`` of an unset POPULACE_FIT_PREDICT_WORKERS: the QRF draw's
+#: default width, ``joblib.cpu_count()``.
+_PREDICT_WORKERS_FALLBACK = "joblib_cpu_count_fallback"
+#: The same field as identities recorded it while the default was
+#: ``os.cpu_count()``. Those records still validate, and the frozen schema-4
+#: worker shape (``legacy_primary_qrf_worker_execution_binding``) keeps it.
+_SCHEMA_4_PREDICT_WORKERS_FALLBACK = "os_cpu_count_fallback"
+_PREDICT_WORKERS_RESOLUTIONS = frozenset(
+    {
+        "environment_override",
+        _PREDICT_WORKERS_FALLBACK,
+        _SCHEMA_4_PREDICT_WORKERS_FALLBACK,
+    }
+)
 _TORCH_BACKEND_ENTRY_POINT_GROUP = "torch.backends"
 _WORKER_ENVIRONMENT_OVERRIDES = {
     "TORCH_DEVICE_BACKEND_AUTOLOAD": "0",
@@ -1259,7 +1273,7 @@ def _semantic_environment() -> dict[str, object]:
     predict_workers_raw = os.environ.get("POPULACE_FIT_PREDICT_WORKERS")
     if _predict_workers_unset(predict_workers_raw):
         predict_workers = _default_predict_workers()
-        predict_workers_source = "os_cpu_count_fallback"
+        predict_workers_source = _PREDICT_WORKERS_FALLBACK
     else:
         try:
             predict_workers = int(predict_workers_raw)
@@ -1639,8 +1653,7 @@ def _validate_semantic_identity(
         or isinstance(predict.get("resolved"), bool)
         or not isinstance(predict.get("resolved"), int)
         or int(predict["resolved"]) < 1
-        or predict.get("resolution")
-        not in {"environment_override", "os_cpu_count_fallback"}
+        or predict.get("resolution") not in _PREDICT_WORKERS_RESOLUTIONS
     ):
         raise ValueError(f"{boundary} resolved worker controls are malformed.")
     return value
@@ -1763,6 +1776,11 @@ def legacy_primary_qrf_worker_execution_binding(
     environment["policy"] = "inherit_parent_environment_with_bound_fit_controls"
     environment["overrides"] = {}
     environment["bound_names"] = list(_SEMANTIC_ENVIRONMENT_NAMES)
+    # Schema-4 code labelled an unset prediction-worker count with the
+    # os.cpu_count() fallback's name; keep that label in this frozen shape.
+    predict_workers = environment["semantic_controls"]["POPULACE_FIT_PREDICT_WORKERS"]
+    if predict_workers["resolution"] == _PREDICT_WORKERS_FALLBACK:
+        predict_workers["resolution"] = _SCHEMA_4_PREDICT_WORKERS_FALLBACK
     return {
         "module": worker_module["name"],
         "argv_template": [str(executable), *argv[1:]],
