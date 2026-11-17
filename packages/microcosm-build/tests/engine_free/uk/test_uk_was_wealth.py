@@ -1424,7 +1424,7 @@ def _doubling_localiser(calls: list, *, rows: np.ndarray | None = None):
             clone_count=1,
             sources_rewritten_by_region={},
             sources_at_cap=0,
-            ranking="weighted_midpoint_within_frs_region",
+            ranking="weighted_slice_within_constituency_and_clone",
             knots_basis_year=2024,
             knots_sha256="0" * 64,
             regional_reference_sha256="0" * 64,
@@ -1910,7 +1910,7 @@ def test_a_declared_stage_localises_its_owners_and_the_uprating_lands_them() -> 
     from microcosm.build.uk_runtime.property_localisation import (
         RANK_BASIS_COLUMN,
         localise_main_residence_values,
-        owner_uniforms,
+        owner_slice_uniforms,
     )
     from microcosm.build.uk_runtime.regional_uprating import (
         UKRegionalPropertyUpratingStageTransform,
@@ -1974,9 +1974,14 @@ def test_a_declared_stage_localises_its_owners_and_the_uprating_lands_them() -> 
         stage=uprating_stage(RANK_BASIS_COLUMN)
     )
     landed = uprating(result).table("household")["main_residence_value"].to_numpy()
-    rank, _ = owner_uniforms(
-        spine_key=household["household_id"].astype(str).to_numpy(dtype=object),
-        region=household["region"].to_numpy(),
+    rank, _ = owner_slice_uniforms(
+        key=household["household_id"].astype(str).to_numpy(dtype=object),
+        cell=household["constituency_code"].astype(object).to_numpy(dtype=object),
+        stratum=(
+            household["household_clone_index"].to_numpy(dtype=np.int64)
+            if "household_clone_index" in household.columns
+            else np.zeros(len(household), dtype=np.int64)
+        ),
         tenure_type=household["tenure_type"].to_numpy(),
         value=drawn,
         weight=frame.weights_for("household").values,

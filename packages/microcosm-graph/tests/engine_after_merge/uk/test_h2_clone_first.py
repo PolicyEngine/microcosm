@@ -168,7 +168,7 @@ from microcosm.build.uk_runtime.property_localisation import (
     RANK_BASIS_COLUMN,
     localise_main_residence_values,
     owner_mask,
-    owner_uniforms,
+    owner_slice_uniforms,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
     distinct_carriers,
@@ -1631,9 +1631,14 @@ def test_on_h2_the_uprating_lands_localised_homes_and_copies_keep_them(
         f"{_WAS} at K={clones} does not hold the area home values on its input."
     )
     tenure = household["tenure_type"].to_numpy()
-    rank, _ = owner_uniforms(
-        spine_key=household["household_id"].astype(str).to_numpy(dtype=object),
-        region=household["region"].astype(str).to_numpy(),
+    rank, _ = owner_slice_uniforms(
+        key=household["household_id"].astype(str).to_numpy(dtype=object),
+        cell=household["constituency_code"].to_numpy(dtype=object).astype(str),
+        stratum=(
+            household["household_clone_index"].to_numpy(dtype=np.int64)
+            if "household_clone_index" in household.columns
+            else np.zeros(len(household), dtype=np.int64)
+        ),
         tenure_type=tenure,
         value=drawn,
         weight=weights,

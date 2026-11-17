@@ -3218,12 +3218,12 @@ class TestHighValueCopiesAndAreaHomeValues:
         with pytest.raises(ValueError, match="dividing by one of"):
             _e5(frame, denominator="property_wealth")
 
-    def test_e5_holds_the_two_steps_pooled_over_two_geographic_clones(self) -> None:
-        # The area home values rank each region's owners over every
-        # geographic clone, at the clones' weights, and the uprating's mean
-        # is over every clone's FRS-base owners, so E5 recomputes both over
-        # the clones the frame carries: green on the two clones, red on
-        # clone 0 alone, whose ranks are not the pooled ones (microcosm#931).
+    def test_e5_holds_the_two_steps_on_two_clones_and_on_clone_zero(self) -> None:
+        # The area home values rank each constituency's owners within each
+        # geographic clone, and the uprating's mean is over clone 0's
+        # FRS-base owners, so E5 recomputes both over the clones the frame
+        # carries, and clone 0 alone recomputes to what the two-clone frame
+        # stores: green on both (microcosm#931).
         from microcosm.build.uk_runtime.regional_uprating import (
             load_regional_land_values_resource,
         )
@@ -3268,7 +3268,7 @@ class TestHighValueCopiesAndAreaHomeValues:
             household_weights=frame.weights_for("household").values[: len(household)],
             time_period="2024",
         )
-        assert _e5(clone_zero)["matches_stored_columns"] is False
+        assert _e5(clone_zero)["matches_stored_columns"] is True
 
     def test_the_entry_point_names_what_a_release_cannot_recompute(
         self, monkeypatch, tmp_path

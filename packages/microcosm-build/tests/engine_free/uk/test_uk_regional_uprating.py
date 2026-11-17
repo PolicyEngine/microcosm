@@ -419,3 +419,35 @@ def test_the_stage_refuses_the_kept_draw_unless_it_divides_by_it() -> None:
     )(frame).table("household")
     # The factor is 400 over the kept draw's mean of 200.
     assert uprated["main_residence_value"].tolist() == pytest.approx([600.0, 1000.0])
+
+
+def test_the_factor_is_geographic_clone_zeros_and_applies_to_every_clone() -> None:
+    """The factor's mean is over geographic clone 0's FRS-base owners, so a
+    frame of K clones has the one-clone frame's factor, whatever the other
+    clones hold; the factor still scales every clone's owners (microcosm#931)."""
+
+    from microcosm.build.uk_runtime.regional_uprating import (
+        regional_reference_factors,
+    )
+
+    household = _random_household()
+    one = regional_reference_factors(household, _RESOURCE)
+    tables = []
+    for clone in range(3):
+        table = household.assign(
+            household_clone_index=pd.Series([clone] * len(household), dtype="int64")
+        )
+        if clone:
+            table = table.assign(
+                main_residence_value=table["main_residence_value"] * (1.0 + clone)
+            )
+        tables.append(table)
+    many = pd.concat(tables, ignore_index=True)
+    factors = regional_reference_factors(many, _RESOURCE)
+    assert factors == one
+    uprated = uprate_household_property_by_region(many, _RESOURCE)
+    owners = (many["region"] == "LONDON") & (many["main_residence_value"] > 0)
+    assert (
+        uprated.loc[owners, "main_residence_value"]
+        == many.loc[owners, "main_residence_value"] * one["LONDON"]
+    ).all()

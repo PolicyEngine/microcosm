@@ -2,14 +2,16 @@
 
 Form F (C-15). After segment 2 of the WAS chain, each England and Wales owner
 with a positive drawn main residence ``v2`` reads its assigned constituency's
-knots (``high_value_home_value_knots.json``) at its weighted mid-rank within
-its FRS region, divided by the factor ``regional_property_uprating`` computes
-on ``v2``; that stage, declaring the kept ``v2``
+knots (``high_value_home_value_knots.json``) at a keyed point inside its
+weighted slice of its constituency and geographic clone (ruled 17 Nov 2026),
+divided by the factor ``regional_property_uprating`` computes on geographic
+clone 0's ``v2``; that stage, declaring the kept ``v2``
 (``main_residence_value_rank_basis``) its denominator, returns it to the knot
 value to one rounding, and a home read at the knots' cap to the cap or below.
 A region without a factor keeps the knot value, as that stage leaves it. Every other row keeps ``v2`` bit for bit, and the release
-boundary drops the kept column. Ties break on household-id keys over a fixed
-stream with seed source NONE (C-43). The evidence counts clone 0's distinct
+boundary drops the kept column. Ties and slice points draw on household-id
+keys over a fixed stream with seed source NONE (C-43), so geographic clone 0's
+values are the one-clone frame's, to rounding. The evidence counts clone 0's distinct
 true sources, rounded or banded, with no value, sum or factor (C-16, C-44);
 the module's own refusals name columns and declared constants only. It reads
 the areas the spine's area stages assign; the packaged WAS stage declares it,
@@ -43,7 +45,7 @@ from microcosm.build.uk_runtime.property_localisation import (
     load_value_knots,
     localise_main_residence_values,
     owner_mask,
-    owner_uniforms,
+    owner_slice_uniforms,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
     distinct_count,
@@ -97,7 +99,7 @@ AREA_HOME_VALUES_STREAM = (
     0,
     0,
 )
-METHOD_VERSION = "uk-spine-area-home-values-v1"
+METHOD_VERSION = "uk-spine-area-home-values-v2"
 #: The two artifacts the WAS stage declares for this step (role, resource):
 #: the constituency knots and the regional reference the factor reads.
 KNOTS_ARTIFACT_ROLE = "value_knots"
@@ -161,10 +163,12 @@ def area_home_values_operation_parameters() -> dict[str, object]:
             "and Wales"
         ),
         "rank": (
-            "weighted mid-rank of the drawn main_residence_value among the owner "
-            "households of the FRS region with a positive draw, both support "
-            "channels, at the stage's household weights, ties broken by a draw "
-            "keyed on the household id"
+            "a point inside the row's weighted slice of the drawn "
+            "main_residence_value among the owner households of its assigned "
+            "constituency and geographic clone with a positive draw, both support "
+            "channels, at the stage's household weights, ordered by the draw, ties "
+            "broken by a draw keyed on the household id, each row's slice as wide "
+            "as its weight and its point drawn keyed on the household id"
         ),
         "stream": list(AREA_HOME_VALUES_STREAM),
         "knots": KNOTS_RESOURCE,
@@ -178,8 +182,8 @@ def area_home_values_operation_parameters() -> dict[str, object]:
         ),
         "factor": (
             "avg_house_price / unweighted_mean(drawn main_residence_value | "
-            "region, FRS-base owners, >0), the regional property uprating's "
-            "factor on the draw"
+            "region, geographic clone 0's FRS-base owners, >0), the regional "
+            "property uprating's factor on the draw"
         ),
         "region_map": dict(sorted(FRS_REGION_TO_KNOTS_REGION.items())),
         "rank_basis_column": RANK_BASIS_COLUMN,
@@ -388,12 +392,14 @@ def localise_area_home_values(
     ``value`` is the WAS chain's segment-2 draw in ``household``'s row order,
     ``weights`` the stage's household weights in that order. Each England and
     Wales owner with a positive draw reads its assigned constituency's knots
-    at its weighted mid-rank within its FRS region, divided by its region's
-    factor on the draw; a home read at the knots' cap takes the largest
+    at a keyed point inside its weighted slice of its constituency and
+    geographic clone (:func:`owner_slice_uniforms`), divided by its region's
+    factor on geographic clone 0's draws; a home read at the knots' cap takes the largest
     quotient the factor multiplies back to the cap or below. Every other row
     keeps its draw bit for bit. A row's
-    value depends on its own key and its region's pooled ranks and factor,
-    never on the table's row order.
+    value depends on its own key, its constituency and clone's rows and its
+    region's clone-0 factor, never on the table's row order; geographic clone
+    0's values are the one-clone frame's, to rounding.
 
     The evidence counts a source among clone 0's rows of positive weight: a
     row of zero weight carries no localised value into a weighted figure
@@ -432,9 +438,15 @@ def localise_area_home_values(
             "area draw places each household in its own FRS region "
             "(microcosm#931)."
         )
-    rank, receipt = owner_uniforms(
-        spine_key=household["household_id"].astype(str).to_numpy(dtype=object),
-        region=region,
+    stratum = (
+        household[_CLONE_INDEX_COLUMN].to_numpy(dtype=np.int64)
+        if _CLONE_INDEX_COLUMN in household.columns
+        else np.zeros(len(household), dtype=np.int64)
+    )
+    rank, receipt = owner_slice_uniforms(
+        key=household["household_id"].astype(str).to_numpy(dtype=object),
+        cell=codes,
+        stratum=stratum,
         tenure_type=tenure,
         value=drawn,
         weight=weight,
@@ -454,7 +466,12 @@ def localise_area_home_values(
             "every owner the step ranks must keep one (microcosm#931)."
         )
     factor_table = household.loc[
-        :, [column for column in ("region", _CHANNEL_COLUMN) if column in household]
+        :,
+        [
+            column
+            for column in ("region", _CHANNEL_COLUMN, _CLONE_INDEX_COLUMN)
+            if column in household
+        ],
     ].copy()
     factor_table["main_residence_value"] = drawn
     factors = regional_reference_factors(factor_table, resources.regional_reference)

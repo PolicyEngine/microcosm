@@ -2,11 +2,11 @@
 
 The spine's WAS chain reads each England and Wales owner's main residence off
 its assigned constituency's knots (``uk/high_value_home_value_knots.json``,
-winsorised at the declared cap), at the owner's weighted mid-rank within its
-FRS region (``area_home_values``, G8). This module holds what that step reads:
-the knots loader, the owner mask, the ranks with their keyed tie-breaks
-(:func:`owner_uniforms`) and the read itself
-(:func:`localise_main_residence_values`). ``high_value_home_support`` takes its
+winsorised at the declared cap), at a keyed point inside the owner's weighted
+slice of its constituency and geographic clone (``area_home_values``, G8).
+This module holds what that step reads: the knots loader, the owner mask, the
+slices with their keyed draws (:func:`owner_slice_uniforms`) and the read
+itself (:func:`localise_main_residence_values`). ``high_value_home_support`` takes its
 stratum from :data:`SUPPORT_STRATUM_LOWER`, and ``tools/uk_private_rent_pool.py``
 keys households with :func:`spine_household_keys`.
 
@@ -45,6 +45,7 @@ __all__ = [
     "BAND_MIX_SOURCE",
     "COUNCIL_TAX_BANDS",
     "METHOD_VERSION",
+    "OWNER_RANK_BASIS",
     "PROPERTY_LOCALISATION_MODES",
     "PROPERTY_STREAM_EXPERIMENT",
     "RANK_BASIS_COLUMN",
@@ -61,7 +62,7 @@ __all__ = [
     "localise_bands",
     "localise_main_residence_values",
     "localise_values",
-    "owner_uniforms",
+    "owner_slice_uniforms",
     "spine_household_keys",
 ]
 
@@ -89,12 +90,15 @@ COUNCIL_TAX_BANDS: tuple[str, ...] = ("A", "B", "C", "D", "E", "F", "G", "H", "I
 KNOTS_KIND = "uk_high_value_home_value_knots"
 BAND_MIX_KIND = "uk_voa_council_tax_band_mix_lsoa"
 _OWNER_CATEGORIES = frozenset({UK_TENURE_OWNED_OUTRIGHT, UK_TENURE_OWNED_WITH_MORTGAGE})
-#: The process name of the owners' keyed tie-break draw. Rows that share a
-#: key share its draw, and the spine keys each row on its own id
-#: (``area_home_values``, microcosm#931).
+#: The process names of the owners' keyed draws: the tie-break among equal
+#: values and the point inside each row's slice. The spine keys each row on its
+#: own id (``area_home_values``, microcosm#931).
 _TIE_BREAK = "tie_break"
+_SLICE = "slice"
 _IDENTITY = "identity"
-_SUPPORT = "support"
+#: The rank basis :func:`owner_slice_uniforms` reports, which the home-value
+#: ranking gate declares (microcosm#931).
+OWNER_RANK_BASIS = "weighted_slice_within_constituency_and_clone"
 
 
 # ----------------------------------------------------------------------------
@@ -281,132 +285,107 @@ def owner_mask(tenure_type: np.ndarray) -> np.ndarray:
     return np.isin(categories, list(_OWNER_CATEGORIES))
 
 
-def owner_uniforms(
+def owner_slice_uniforms(
     *,
-    spine_key: np.ndarray,
-    region: np.ndarray,
+    key: np.ndarray,
+    cell: np.ndarray,
+    stratum: np.ndarray,
     tenure_type: np.ndarray,
     value: np.ndarray,
     weight: np.ndarray,
     stream: tuple,
-    support_copy: np.ndarray | None = None,
-    support_stratum_lower: float = 0.95,
 ) -> tuple[np.ndarray, dict[str, object]]:
-    """The uniform each row maps its home value through.
+    """The uniform each owner row reads its constituency's knots at.
 
-    Owner rows with a positive stored value take their spine household's
-    weighted mid-rank among the owner spine households of the same FRS
-    region (row weights summed per spine key; ties broken by a keyed
-    uniform). Every other row takes an identity-keyed uniform. High-value
-    support copies (microcosm#1240 fix 1) take a keyed uniform inside the top
-    stratum ``[support_stratum_lower, 1)`` instead of their rank, so the copies
-    of one tail household spread across the stratum rather than share one
-    rank. Rows that share a spine key share its uniform, whatever the row order.
+    The ranked rows are the owners with a positive ``value`` whose ``cell``
+    (the assigned constituency) is in England or Wales. They are ranked within
+    their cell and ``stratum`` (the geographic clone index): in order of
+    value, ties broken by a uniform keyed on the row's ``key``, each row holds
+    a slice of its cell's weight as wide as its own weight, and takes a second
+    keyed uniform point inside that slice (María's ruling of 17 Nov 2026). So
+    a cell's weighted values follow its knots in expectation however few rows
+    it holds, and its top row can reach the top of the knots. Geographic clone
+    0's rows form the same cells as a one-clone frame's rows, so they take the
+    same uniforms, to rounding. A cell whose ranked rows carry no weight gives
+    each row an equal slice. Every other row takes an identity-keyed uniform,
+    which no caller reads. A row's uniform depends on its own key and its
+    cell's rows, never on the table's row order.
 
-    ``area_home_values`` reads each owner's value at this rank. It keys rows
-    on their own ``household_id``, so every clone and copy ranks on its own
-    (microcosm#931).
+    Refused, by name: inputs that do not align; a key that two rows share;
+    weights that are not finite or are negative.
     """
-    spine_key = np.asarray(spine_key, dtype=object)
-    region = np.asarray(region).astype(str)
+
+    key = np.asarray(key, dtype=object).astype(str)
+    cell = np.asarray(cell, dtype=object).astype(str)
+    stratum = np.asarray(stratum, dtype=np.int64)
+    tenure_type = np.asarray(tenure_type)
     value = np.asarray(value, dtype=float)
     weight = np.asarray(weight, dtype=float)
-    owner = owner_mask(tenure_type)
-    if not 0 < support_stratum_lower < 1:
-        raise ValueError("support_stratum_lower must be in (0, 1).")
-    if support_copy is None:
-        support_copy = np.zeros(len(spine_key), dtype=bool)
-    support_copy = np.asarray(support_copy, dtype=bool)
+    count = len(key)
     if not (
-        len(region)
+        len(cell)
+        == len(stratum)
+        == len(tenure_type)
         == len(value)
         == len(weight)
-        == len(owner)
-        == len(spine_key)
-        == len(support_copy)
+        == count
     ):
-        raise ValueError("owner_uniforms inputs must align.")
-
-    frame = pd.DataFrame(
-        {
-            "key": spine_key,
-            "region": region,
-            "owner": owner,
-            "value": value,
-            "weight": weight,
-            "support": support_copy,
-        }
+        raise ValueError("owner_slice_uniforms inputs must align.")
+    if len(np.unique(key)) != count:
+        raise ValueError("owner_slice_uniforms keys each row on its own key.")
+    if not np.isfinite(weight).all() or np.any(weight < 0):
+        raise ValueError("owner_slice_uniforms reads finite, non-negative weights.")
+    ranked = (
+        owner_mask(tenure_type)
+        & np.isfinite(value)
+        & (value > 0)
+        & _england_wales(cell)
     )
-    grouped = frame.groupby("key", sort=True)
-    spine = grouped.agg(
-        region=("region", "first"),
-        region_n=("region", "nunique"),
-        owner=("owner", "first"),
-        owner_n=("owner", "nunique"),
-        value=("value", "first"),
-        value_min=("value", "min"),
-        value_max=("value", "max"),
-        weight=("weight", "sum"),
-        support=("support", "first"),
-        support_n=("support", "nunique"),
+    u = np.empty(count, dtype=float)
+    u[~ranked] = keyed_uniform(
+        stream=stream, keys=[(k, _IDENTITY) for k in key[~ranked]]
     )
-    if (
-        (spine["region_n"] != 1).any()
-        or (spine["owner_n"] != 1).any()
-        or (spine["support_n"] != 1).any()
-    ):
-        raise ValueError(
-            "Pool clones of one spine household disagree on region, tenure or support flag."
+    rows = np.flatnonzero(ranked)
+    ranked_keys = key[rows]
+    tie_break = np.asarray(
+        keyed_uniform(stream=stream, keys=[(k, _TIE_BREAK) for k in ranked_keys])
+    )
+    point = np.asarray(
+        keyed_uniform(stream=stream, keys=[(k, _SLICE) for k in ranked_keys])
+    )
+    _, cell_id = np.unique(cell[rows], return_inverse=True)
+    _, key_id = np.unique(ranked_keys, return_inverse=True)
+    ranked_stratum = stratum[rows]
+    order = np.lexsort((key_id, tie_break, value[rows], ranked_stratum, cell_id))
+    boundary = np.ones(len(order), dtype=bool)
+    boundary[1:] = (cell_id[order][1:] != cell_id[order][:-1]) | (
+        ranked_stratum[order][1:] != ranked_stratum[order][:-1]
+    )
+    starts = np.flatnonzero(boundary)
+    ends = np.append(starts[1:], len(order))
+    below_one = np.nextafter(1.0, 0.0)
+    unweighted = 0
+    for begin, end in zip(starts, ends, strict=True):
+        members = order[begin:end]
+        cell_weight = weight[rows[members]]
+        upper = np.cumsum(cell_weight)
+        if upper[-1] <= 0:
+            cell_weight = np.ones(len(members), dtype=float)
+            upper = np.cumsum(cell_weight)
+            unweighted += 1
+        lower = np.concatenate(([0.0], upper[:-1]))
+        u[rows[members]] = np.minimum(
+            (lower + point[members] * cell_weight) / upper[-1], below_one
         )
-    if (spine["value_max"] - spine["value_min"]).abs().max() > 1e-6:
-        raise ValueError(
-            "Pool clones of one spine household carry different stored home values."
-        )
-    keys = spine.index.to_numpy(dtype=object)
-    tie_break = keyed_uniform(stream=stream, keys=[(str(k), _TIE_BREAK) for k in keys])
-    identity = keyed_uniform(stream=stream, keys=[(str(k), _IDENTITY) for k in keys])
-    support_draw = keyed_uniform(stream=stream, keys=[(str(k), _SUPPORT) for k in keys])
-    u = identity.copy()
-    ranked = (spine["owner"].to_numpy() & (spine["value"].to_numpy() > 0)).astype(bool)
-    is_support = spine["support"].to_numpy().astype(bool)
-    # The support copies are ranked beside their root (they tie on value and
-    # split the tie-break), so the stratum keeps its mass in the rank: the
-    # unselected owners' mid-ranks end where the stratum starts, and the
-    # copies' own draws below then spread them inside it. Dropping the copies
-    # from the rank would hand their 5/6 of the stratum's mass to the owners
-    # below and nearly double the mass above ``support_stratum_lower``.
-    rank_rows = ranked
-    spine_region = spine["region"].to_numpy().astype(str)
-    spine_value = spine["value"].to_numpy(dtype=float)
-    spine_weight = spine["weight"].to_numpy(dtype=float)
-    regions_ranked: dict[str, int] = {}
-    for code in sorted(set(spine_region[rank_rows])):
-        rows = np.flatnonzero(rank_rows & (spine_region == code))
-        order = rows[np.lexsort((tie_break[rows], spine_value[rows]))]
-        weights = spine_weight[order]
-        total = float(weights.sum())
-        if total <= 0:
-            raise ValueError(f"Owner households in region {code} carry no weight.")
-        cumulative = np.cumsum(weights)
-        u[order] = (cumulative - weights / 2.0) / total
-        regions_ranked[code] = int(len(rows))
-    u[is_support] = (
-        support_stratum_lower + (1.0 - support_stratum_lower) * support_draw[is_support]
-    )
-    per_row = (
-        pd.Series(u, index=spine.index).reindex(frame["key"]).to_numpy(dtype=float)
-    )
-    if np.any(~np.isfinite(per_row)) or np.any(per_row < 0) or np.any(per_row >= 1):
+    if np.any(~np.isfinite(u)) or np.any(u < 0) or np.any(u >= 1):
         raise ValueError("Property uniforms must lie in [0, 1).")
     receipt = {
-        "spine_households": int(len(spine)),
-        "pool_rows": int(len(frame)),
-        "ranked_owner_households_by_region": regions_ranked,
-        "support_copies": int(is_support.sum()),
-        "support_stratum_lower": support_stratum_lower,
-        "rank_basis": "weighted_midpoint_within_frs_region",
+        "ranked_rows": int(len(rows)),
+        "cells": int(len(starts)),
+        "cells_without_weight": int(unweighted),
+        "rank_basis": OWNER_RANK_BASIS,
     }
-    return per_row, receipt
+    return u, receipt
 
 
 # ----------------------------------------------------------------------------

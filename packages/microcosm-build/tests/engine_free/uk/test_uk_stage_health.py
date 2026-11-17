@@ -4459,7 +4459,7 @@ def _area_home_values_receipt() -> dict:
             "knots_sha256": "c" * 64,
             "knots_level": "constituency",
             "regional_reference_sha256": "d" * 64,
-            "ranking": {"rank_basis": "weighted_midpoint_within_frs_region"},
+            "ranking": {"rank_basis": "weighted_slice_within_constituency_and_clone"},
             "rank_basis_column": "main_residence_value_rank_basis",
         },
     }
@@ -4626,7 +4626,9 @@ def test_the_packaged_ranking_gate_reads_the_localisers_constants() -> None:
     print (microcosm#931)."""
 
     from microcosm.build.uk_runtime import area_home_values
-    from microcosm.build.uk_runtime.property_localisation import owner_uniforms
+    from microcosm.build.uk_runtime.property_localisation import (
+        owner_slice_uniforms,
+    )
 
     parameters = _area_home_values_parameters()
     assert (parameters["stage"], parameters["check"]) == (
@@ -4639,9 +4641,10 @@ def test_the_packaged_ranking_gate_reads_the_localisers_constants() -> None:
     knots = area_home_values.load_committed_area_home_values_resources().knots
     assert parameters["knots_basis_year"] == knots.basis_year
     assert parameters["knots_level"] == area_home_values.KNOTS_LEVEL
-    _, receipt = owner_uniforms(
-        spine_key=np.array(["a", "b"], dtype=object),
-        region=np.array(["LONDON", "LONDON"]),
+    _, receipt = owner_slice_uniforms(
+        key=np.array(["a", "b"], dtype=object),
+        cell=np.array(["E14000001", "E14000001"], dtype=object),
+        stratum=np.zeros(2, dtype=np.int64),
         tenure_type=np.array(["OWNED_OUTRIGHT", "OWNED_WITH_MORTGAGE"]),
         value=np.array([1.0, 2.0]),
         weight=np.array([1.0, 1.0]),
@@ -4653,11 +4656,11 @@ def test_the_packaged_ranking_gate_reads_the_localisers_constants() -> None:
 def test_the_cap_maximum_rests_on_the_committed_knots() -> None:
     """The maximum is re-derived for constituency knots (microcosm#931). The
     retired stage's zero held by construction: the regional knots reach the
-    cap at the top grid point at most, which a weighted mid-rank never reaches
-    (owner_uniforms keeps every rank below 1). Some constituencies' knots
-    reach it below the top grid point, so a correct localiser can put a few
-    sources there: owners ranked in the top hundredth of their FRS region's
-    owner weight and placed in such a constituency. The packaged maximum is
+    cap at the top grid point at most, which a slice point never reaches
+    (owner_slice_uniforms keeps every point below 1). Some constituencies'
+    knots reach it below the top grid point, from the 0.99 point up, so a
+    correct localiser can put a few sources there: owners whose slice of such
+    a constituency's weight reaches its top hundredth. The packaged maximum is
     the top of the receipt's 3-9 band, so no band the receipt prints
     straddles it: the gate passes through "3-9" and fails from "10-29". The
     count is clone 0's sources, so the maximum holds at any clone count."""

@@ -2,8 +2,8 @@
 
 Invented households, toy knots and a toy regional reference only. The tests
 hold form F: an England and Wales owner's value is its constituency's knots at
-its weighted mid-rank within its FRS region, divided by the region's regional
-uprating factor on the draw, so the uprating, dividing by the kept draw,
+a keyed point inside its weighted slice of its constituency and geographic
+clone, divided by the region's regional uprating factor on clone 0's draws, so the uprating, dividing by the kept draw,
 lands it back on the knots; every other row keeps its draw bit for bit. They
 also hold the evidence to rounded clone-0 source counts and the declaration
 to its reviewed form.
@@ -31,7 +31,7 @@ from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.property_localisation import (
     RANK_BASIS_COLUMN,
     localise_main_residence_values,
-    owner_uniforms,
+    owner_slice_uniforms,
 )
 from microcosm.build.uk_runtime.regional_uprating import (
     UK_REGIONAL_LAND_VALUES_RESOURCE,
@@ -112,9 +112,15 @@ def _expected(household, drawn, weights, resources) -> tuple[np.ndarray, np.ndar
     """Form F from the public helpers: the knot value at the rank, then
     divided by the region's factor on the draw."""
 
-    rank, _ = owner_uniforms(
-        spine_key=household["household_id"].astype(str).to_numpy(dtype=object),
-        region=household["region"].to_numpy(),
+    clone = (
+        household["household_clone_index"].to_numpy(dtype=np.int64)
+        if "household_clone_index" in household.columns
+        else np.zeros(len(household), dtype=np.int64)
+    )
+    rank, _ = owner_slice_uniforms(
+        key=household["household_id"].astype(str).to_numpy(dtype=object),
+        cell=household["constituency_code"].astype(object).to_numpy(dtype=object),
+        stratum=clone,
         tenure_type=household["tenure_type"].to_numpy(),
         value=drawn,
         weight=weights,
@@ -127,11 +133,13 @@ def _expected(household, drawn, weights, resources) -> tuple[np.ndarray, np.ndar
         value=drawn,
         knots=resources.knots,
     )
+    columns = [
+        column
+        for column in ("region", "household_support_channel", "household_clone_index")
+        if column in household.columns
+    ]
     factors = regional_reference_factors(
-        household.loc[:, ["region", "household_support_channel"]].assign(
-            main_residence_value=drawn
-        ),
-        _REGIONAL,
+        household.loc[:, columns].assign(main_residence_value=drawn), _REGIONAL
     )
     expected = knot.copy()
     for region, factor in factors.items():
@@ -167,13 +175,16 @@ def test_england_and_wales_owners_read_their_seat_divided_by_the_factor() -> Non
     assert _bits(result.value).tolist() == _bits(expected).tolist()
     ids = household["household_id"].to_numpy()
     assert sorted(ids[result.rewritten].tolist()) == list(_ENGLAND_WALES_OWNERS)
-    # By hand for the North East: two owners at weights 3 and 1 take the
-    # mid-ranks 0.375 and 0.875, read 175,000 and 350,000 off their seat, and
-    # the region's factor on the draw is 150,000 over their mean of 140,000.
+    # By hand for the North East: two owners of one seat at weights 3 and 1
+    # hold the slices [0, 0.75) and [0.75, 1) of its weight, so they read
+    # between 100,000 and 300,000 and between 300,000 and 400,000 off its
+    # knots, and the region's factor on the draw is 150,000 over their mean
+    # of 140,000.
     north_east = household["region"].to_numpy() == "NORTH_EAST"
-    assert knot[north_east].tolist() == pytest.approx([175_000.0, 350_000.0])
+    low, high = knot[north_east].tolist()
+    assert 100_000.0 <= low < 300_000.0 <= high < 400_000.0
     assert result.value[north_east].tolist() == pytest.approx(
-        [175_000.0 * 140_000.0 / 150_000.0, 350_000.0 * 140_000.0 / 150_000.0]
+        [low * 140_000.0 / 150_000.0, high * 140_000.0 / 150_000.0]
     )
     # Scotland, Northern Ireland, renters and the owner without a positive
     # draw keep the draw bit for bit; the draw is the rank basis on every row.
@@ -225,6 +236,45 @@ def test_the_regional_uprating_lands_localised_homes_on_the_knots() -> None:
     assert uprated["main_residence_value"].to_numpy()[scotland].tolist() == (
         pytest.approx((drawn[scotland] * on_draw["SCOTLAND"]).tolist())
     )
+
+
+def test_geographic_clone_zero_takes_the_one_clone_values() -> None:
+    """Ranked within its constituency and clone, with the factor's mean over
+    clone 0's rows, geographic clone 0 of K clones takes the one-clone frame's
+    values, to rounding, whatever the other clones draw and wherever they sit
+    (microcosm#931)."""
+
+    household, drawn, weights = _household()
+    resources = _resources()
+    one = ahv.localise_area_home_values(household, weights, drawn, resources=resources)
+    k = 3
+    rng = np.random.default_rng(7)
+    tables, draws = [], []
+    for clone in range(k):
+        table = household.assign(
+            household_clone_index=np.full(len(household), clone, dtype=np.int64)
+        )
+        draw = drawn
+        if clone:
+            table = table.assign(household_id=table["household_id"] + 100 * clone)
+            london = (table["region"] == "LONDON").to_numpy()
+            swapped = table["constituency_code"].map(
+                {"E14000001": "E14000002", "E14000002": "E14000001"}
+            )
+            table.loc[london, "constituency_code"] = swapped[london]
+            draw = np.where(drawn > 0, drawn * rng.uniform(0.5, 1.5, len(drawn)), 0.0)
+        tables.append(table)
+        draws.append(draw)
+    many_household = pd.concat(tables, ignore_index=True)
+    many = ahv.localise_area_home_values(
+        many_household,
+        np.tile(weights / k, k),
+        np.concatenate(draws),
+        resources=resources,
+    )
+    zero = many_household["household_clone_index"].to_numpy() == 0
+    np.testing.assert_allclose(many.value[zero], one.value, rtol=1e-12, atol=0)
+    assert many.rewritten[zero].tolist() == one.rewritten.tolist()
 
 
 def test_a_home_at_the_knots_cap_comes_back_at_most_at_the_cap() -> None:
@@ -441,7 +491,7 @@ def test_the_evidence_counts_rounded_sources_and_carries_no_value() -> None:
         "knots_sha256": _resources().knots_sha256,
         "knots_level": "constituency",
         "regional_reference_sha256": _resources().regional_reference_sha256,
-        "ranking": {"rank_basis": "weighted_midpoint_within_frs_region"},
+        "ranking": {"rank_basis": "weighted_slice_within_constituency_and_clone"},
         "rank_basis_column": RANK_BASIS_COLUMN,
         "stream": list(ahv.AREA_HOME_VALUES_STREAM),
         "method": ahv.METHOD_VERSION,
@@ -606,8 +656,8 @@ def test_a_row_of_zero_weight_carries_no_source_into_the_evidence() -> None:
     )
     with_zero = pd.concat([household, extra], ignore_index=True)
 
-    # The lowest draw in the region: a zero-weight owner at the top of a
-    # region's rank would sit at rank 1, which owner_uniforms refuses.
+    # The lowest draw in its seat: a zero-weight owner holds an empty slice
+    # where its draw ranks, here the bottom of its seat's knots.
     result = ahv.localise_area_home_values(
         with_zero,
         np.append(weights, 0.0),
@@ -654,7 +704,9 @@ def test_a_seat_without_knots_and_a_knot_at_zero_are_refused() -> None:
             household, weights, drawn, resources=_resources(seats)
         )
     assert _no_data_digit(str(caught.value))
-    zero = {**_SEATS, "E14000003": [0.0, 0.0, 400_000.0]}
+    # A seat whose knots are zero throughout: wherever an owner's slice point
+    # falls, it reads zero.
+    zero = {**_SEATS, "E14000003": [0.0, 0.0, 0.0]}
     with pytest.raises(ValueError, match="not positive") as caught:
         ahv.localise_area_home_values(
             household, weights, drawn, resources=_resources(zero)

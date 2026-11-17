@@ -3572,7 +3572,7 @@ stages:
     value_column: main_residence_value
     after_segment: 2
     rows: owner households (tenure owned outright or with a mortgage) with a positive drawn main_residence_value in the FRS regions of England and Wales
-    rank: weighted mid-rank of the drawn main_residence_value among the owner households of the FRS region with a positive draw, both support channels, at the stage's household weights, ties broken by a draw keyed on the household id
+    rank: a point inside the row's weighted slice of the drawn main_residence_value among the owner households of its assigned constituency and geographic clone with a positive draw, both support channels, at the stage's household weights, ordered by the draw, ties broken by a draw keyed on the household id, each row's slice as wide as its weight and its point drawn keyed on the household id
     stream:
     - sha256-u53-v1
     - uk-spine-area-home-values-v1
@@ -3583,7 +3583,7 @@ stages:
     constituency_column: constituency_code
     regional_reference: regional_land_values.json
     value: np.interp(rank, grid, the assigned constituency's knots) divided by the FRS region's factor, a home at the knots' cap taking the largest quotient the factor multiplies back to the cap or below
-    factor: avg_house_price / unweighted_mean(drawn main_residence_value | region, FRS-base owners, >0), the regional property uprating's factor on the draw
+    factor: avg_house_price / unweighted_mean(drawn main_residence_value | region, geographic clone 0's FRS-base owners, >0), the regional property uprating's factor on the draw
     region_map:
       EAST_MIDLANDS: E12000004
       EAST_OF_ENGLAND: E12000006
@@ -3597,7 +3597,7 @@ stages:
       YORKSHIRE: E12000003
     rank_basis_column: main_residence_value_rank_basis
     kept: Scotland, Northern Ireland, renters and owners without a positive draw keep the draw
-    method: uk-spine-area-home-values-v1
+    method: uk-spine-area-home-values-v2
   - kind: fold_into
     output: corporate_wealth
     inputs:
@@ -3863,7 +3863,7 @@ stages:
   operations:
   - kind: uprate_to_regional_reference
     resource: regional_land_values.json
-    factor: avg_house_price / unweighted_mean(main_residence_value_rank_basis | region, FRS-base owners, main_residence_value > 0)
+    factor: avg_house_price / unweighted_mean(main_residence_value_rank_basis | region, geographic clone 0's FRS-base owners, main_residence_value > 0)
     denominator: main_residence_value_rank_basis
     owner_rows: main_residence_value > 0
     skip_empty_or_nonpositive_regions: true
@@ -3879,7 +3879,7 @@ stages:
   - owned_land
   - other_residential_property_value
   - non_residential_property_value
-  notes: 'Deterministically rescales owner rows by each region''s factor: its public house-price reference over the unweighted mean of main_residence_value_rank_basis, the WAS chain''s draw of the main residence, among its FRS-base owners. was_wealth keeps that draw beside the values it reads off each England and Wales owner''s constituency, which it divides by the same factor, so the uprating returns those values to the constituency''s knots (microcosm#931); Scotland''s owners hold the draw itself, so the region''s unweighted owner mean matches the reference as before. Northern Ireland has no reference row and is never scaled; empty and nonpositive regions are skipped. The unweighted mean follows the incumbent behavior. The factor has always scaled the property total; since microcosm#1063 it scales the total''s other components in the frame as well (land, other houses, buildings), so an owner''s property_wealth stays the sum of its components after the uprating. Mortgage debt is never uprated.'
+  notes: 'Deterministically rescales owner rows by each region''s factor: its public house-price reference over the unweighted mean of main_residence_value_rank_basis, the WAS chain''s draw of the main residence, among its FRS-base owners in geographic clone 0, so a frame of K clones keeps the one-clone factor. was_wealth keeps that draw beside the values it reads off each England and Wales owner''s constituency, which it divides by the same factor, so the uprating returns those values to the constituency''s knots (microcosm#931); Scotland''s owners hold the draw itself, so the region''s unweighted owner mean matches the reference as before. Northern Ireland has no reference row and is never scaled; empty and nonpositive regions are skipped. The unweighted mean follows the incumbent behavior. The factor has always scaled the property total; since microcosm#1063 it scales the total''s other components in the frame as well (land, other houses, buildings), so an owner''s property_wealth stays the sum of its components after the uprating. Mortgage debt is never uprated.'
 - stage: high_value_home_support
   survey: Family Resources Survey 2024-25 and SPI synthetic support, after the WAS wealth draw and the regional property uprating
   source: Microcosm structural operator (microcosm#1240 fix 1); no publisher input
