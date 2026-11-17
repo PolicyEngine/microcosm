@@ -1762,8 +1762,24 @@ def _impute_recording_transport(monkeypatch, frame, donor_path, *, translate=Tru
     the transport's result. ``translate=False`` drops the twin identities
     the stage passes, so the twin check reads each copy's own identity, as
     it did before the stage translated it through its fold.
+
+    The stage reads the DWP disability rates from the engine when none are
+    supplied, and the engine-free tier installs no engine: fixed stand-in
+    rates keep the helper hermetic, whatever ran before it in the process
+    (microcosm#931).
     """
 
+    from microcosm.build.uk_runtime import frs_disability
+    from test_support.microcosm_build.uk_frs_disability import _category_rates, _flags
+
+    monkeypatch.setattr(
+        frs_disability,
+        "uk_dwp_disability_category_rates",
+        lambda year: _category_rates(),
+    )
+    monkeypatch.setattr(
+        frs_disability, "uk_dwp_disability_flag_rates", lambda year: _flags()
+    )
     calls = []
 
     def recording(*args, **kwargs):
