@@ -1036,6 +1036,24 @@ def test_published_projection_weighted_period_means():
     assert [slot["weight"] for slot in receipt["target_schedule"]] == ["1", "3"]
 
 
+def test_published_projection_divides_the_exact_means():
+    # (1*1 + 2*2) / 3 = 5/3 and (2*1 + 4*2) / 3 = 10/3, so the ratio is exactly 2.
+    # Rounding either mean to six digits before dividing leaves it short of 2,
+    # and rounding both gives 1999999.
+    declaration, facts, identity = published_projection_fixture(
+        frequency=2,
+        source_levels=("1", "2"),
+        target_levels=("2", "4"),
+        weights=("1", "2"),
+        expected_numerator=2000000,
+    )
+    factor, receipt = resolve_reference_factor(declaration, facts, identity)
+    assert _fraction(receipt["denominator_mean"]) == Fraction(5, 3)
+    assert _fraction(receipt["numerator_mean"]) == Fraction(10, 3)
+    assert _fraction(receipt["unrounded_factor"]) == Fraction(2)
+    assert factor == {"numerator": 2000000, "denominator": 10**6}
+
+
 def test_published_projection_refuses_a_wrong_expected_factor():
     declaration, facts, identity = published_projection_fixture(
         expected_numerator=1100001
