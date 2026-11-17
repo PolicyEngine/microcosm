@@ -17,8 +17,9 @@ Peak memory is read as follows:
 - macOS: the process's lifetime peak physical footprint
   (``proc_pid_rusage``'s ``ri_lifetime_max_phys_footprint``), which counts
   pages macOS has compressed under memory pressure. The peak resident set size
-  (``ru_maxrss``) is reported beside it; it drops when pages are compressed, so
-  on a busy machine it can read lower than the memory the fit used.
+  (``ru_maxrss``) is reported beside it; the resident set shrinks when pages
+  are compressed, so on a busy machine its peak can understate the memory the
+  fit used.
 - Linux: the peak resident set size (``ru_maxrss``). Pages swapped out under
   memory pressure are not counted, so measure on a machine with free memory.
 
@@ -37,21 +38,32 @@ Two synthetic shapes stand in for the build's heavy fits. Neither reads survey
 data. Donor weights are lognormal, so ``_fit_forest``'s weighted resample
 duplicates rows as it does for weighted survey donors.
 
-- ``wage``: the CPS-ORG ``hourly_wage`` forest. 100 trees, a continuous
-  positive target and no leaf cap. The full donor pool has 119,237 rows; the
-  default here is 10,000. Wages are whole dollars, so neighbouring donors
-  often share a wage and the trees grow about 0.7 nodes per donor row, the
-  top of the 0.4 to 0.7 the build's trees have. ``--rows-in-widest-leaf`` rows
-  share one predictor vector that no split separates; their draws, after the
-  weighted resample and the forest's bootstrap, make the widest leaf and so
-  set the array's padded width, which the report shows. The production width
-  is not recorded anywhere, so that option is a parameter, not a measurement.
+- ``wage``: the CPS-ORG ``hourly_wage`` forest. 100 trees, a positive target
+  in whole dollars with hundreds of distinct values, which ``_fit_forest``
+  treats as continuous, so no leaf cap. The full donor pool has 119,237 rows;
+  the default here is 10,000. Because wages are whole dollars, neighbouring
+  donors often share a wage, and from about 2,000 rows the trees grow about
+  0.7 nodes per donor row, the top of the 0.4 to 0.7 the build's trees have
+  (fewer at small sizes, where the shared rows below are a large share of the
+  donors). ``--rows-in-widest-leaf`` rows share one predictor vector that no
+  split separates. From about 30 such rows, their draws after the weighted
+  resample and the forest's bootstrap make the widest leaf and so set the
+  array's padded width; other leaves hold about 30 entries at most. The
+  report shows the width. The production width is not recorded anywhere, so
+  that option is a parameter, not a measurement. A leaf row of a few hundred
+  entries is narrower than a memory page, so the in-place fill still writes
+  nearly every page of the array, and the saving for this shape is mostly the
+  library's second copy.
 - ``near-discrete``: a base-stage near-discrete target. 32 trees and five
   distinct values dominated by zero, so ``_fit_forest`` applies its
   4,096-entry cap. The production pool has up to 207,692 rows; the default
   here is 10,000. About 80% of rows are zero in a region the trees isolate in
   one leaf; from about 5,100 rows that leaf holds more than 4,096 draws, so
   the library's shuffle and truncation run. The width is 4,096 at any size.
+  The trees grow about 0.1 nodes per donor row; the build's near-discrete
+  trees' density is not recorded. Each 32 KiB leaf row spans several pages,
+  so most pages are never written, and the in-place fill saves most of the
+  array as well as the second copy.
 
 The defaults finish in under a minute on a laptop and need a few GB. Memory
 grows roughly in proportion to rows times width (the cap, for
@@ -62,7 +74,8 @@ grows roughly in proportion to rows times width (the cap, for
     uv run python tools/measure_qrf_leaf_memory.py --shape wage --rows 5000 --json
 
 Set ``POPULACE_FIT_N_JOBS`` to fix quantile-forest's thread count, as for a
-build; the report records the setting and the thread count it gave.
+build; the report records the setting and how many trees it could grow at
+once (the thread count, at most the number of trees).
 
 The script also hashes each leaf array after the fit and reports whether the
 two arrays have the same shape, dtype and bytes. Hashing happens after the
@@ -72,7 +85,9 @@ Pass ``--no-digest`` for large runs.
 
 If one measurement fails, for example because the operating system stopped
 the library run for using too much memory, the other still runs, the report
-shows what completed, and the exit code is 1.
+shows what completed, and the exit code is 1. The exit code is also 1 when
+the two leaf arrays differ, since the memory comparison then compares
+different arrays.
 """
 
 from __future__ import annotations
@@ -344,7 +359,7 @@ def _fit_in_this_process(arguments: argparse.Namespace) -> dict[str, object]:
         ),
         "seed": arguments.seed,
         "n_jobs": model.n_jobs,
-        "threads": joblib.effective_n_jobs(model.n_jobs),
+        "trees_at_once": min(joblib.effective_n_jobs(model.n_jobs), arguments.trees),
         "max_samples_leaf": model.max_samples_leaf,
         "leaf_array_shape": list(leaves.shape),
         "leaf_array_dtype": str(leaves.dtype),
@@ -373,36 +388,67 @@ def _child_command(arguments: argparse.Namespace, implementation: str) -> list[s
         str(arguments.rows),
         "--trees",
         str(arguments.trees),
-        "--rows-in-widest-leaf",
-        str(arguments.rows_in_widest_leaf),
         "--seed",
         str(arguments.seed),
     ]
+    if arguments.shape == "wage":
+        command += ["--rows-in-widest-leaf", str(arguments.rows_in_widest_leaf)]
     if arguments.no_digest:
         command.append("--no-digest")
     return command
 
 
-def _run_child(arguments: argparse.Namespace, implementation: str) -> dict | str:
-    """Run one measurement; return its result, or why it failed."""
+def _signal_name(number: int) -> str:
+    try:
+        return signal.Signals(number).name
+    except ValueError:
+        return f"signal {number}"
+
+
+def _run_child(
+    arguments: argparse.Namespace, implementation: str
+) -> tuple[dict[str, object] | None, dict[str, object] | None]:
+    """Run one measurement; return its result, or a description of its failure."""
     completed = subprocess.run(
         _child_command(arguments, implementation),
         stdout=subprocess.PIPE,
         text=True,
         check=False,
     )
+    failure: dict[str, object] = {
+        "implementation": implementation,
+        "exit_code": completed.returncode,
+        "signal": None,
+    }
     if completed.returncode < 0:
-        stopped_by = signal.Signals(-completed.returncode).name
-        return (
-            f"the {implementation} measurement was stopped by {stopped_by}; an "
-            "out-of-memory stop by the operating system looks like this"
+        stopped_by = _signal_name(-completed.returncode)
+        failure["signal"] = stopped_by
+        failure["message"] = (
+            f"the {implementation} measurement was stopped by {stopped_by}"
+            + (
+                "; the operating system stops a process this way when memory runs out"
+                if -completed.returncode == signal.SIGKILL
+                else ""
+            )
         )
+        return None, failure
     if completed.returncode != 0:
-        return (
+        failure["message"] = (
             f"the {implementation} measurement failed with exit code "
-            f"{completed.returncode}; its error is printed above"
+            f"{completed.returncode}; its error is on standard error"
         )
-    return json.loads(completed.stdout.strip().splitlines()[-1])
+        return None, failure
+    lines = completed.stdout.strip().splitlines()
+    try:
+        result = json.loads(lines[-1])
+    except (IndexError, json.JSONDecodeError):
+        result = None
+    if not isinstance(result, dict):
+        failure["message"] = (
+            f"the {implementation} measurement exited without printing a result"
+        )
+        return None, failure
+    return result, None
 
 
 def _identical(results: list[dict[str, object]]) -> bool | None:
@@ -434,10 +480,18 @@ def _array_description(result: dict[str, object]) -> str:
     )
 
 
+def _measure_label(result: dict[str, object]) -> str:
+    if result["memory_measure"] == "physical_footprint":
+        return "peak physical footprint"
+    return "peak resident set"
+
+
 def _report(
-    results: list[dict[str, object]], failures: list[str], identical: bool | None
+    results: list[dict[str, object]],
+    failures: list[dict[str, object]],
+    identical: bool | None,
 ) -> str:
-    lines = list(failures)
+    lines = [str(failure["message"]) for failure in failures]
     if not results:
         return "\n".join(lines)
     first = results[0]
@@ -449,8 +503,9 @@ def _report(
         f"{environment['numpy_requests_huge_pages']}",
         f"shape {first['shape']}: {_plural(int(first['rows']), 'donor row')}, "
         f"{_plural(int(first['trees']), 'tree')}, max_samples_leaf="
-        f"{first['max_samples_leaf']}, n_jobs={first['n_jobs']} "
-        f"({_plural(int(first['threads']), 'thread')}), seed {first['seed']}"
+        f"{first['max_samples_leaf']}, n_jobs={first['n_jobs']} (up to "
+        f"{_plural(int(first['trees_at_once']), 'tree')} grown at once), seed "
+        f"{first['seed']}"
         + (
             f", {_plural(int(first['rows_in_widest_leaf']), 'row')} sharing one "
             "predictor vector"
@@ -461,11 +516,6 @@ def _report(
     descriptions = {_array_description(result) for result in results}
     if len(descriptions) == 1:
         lines.append("leaf array: " + _array_description(first))
-    measure = (
-        "peak physical footprint"
-        if first["memory_measure"] == "physical_footprint"
-        else "peak resident set"
-    )
     for result in results:
         if len(descriptions) > 1:
             lines.append(
@@ -484,13 +534,15 @@ def _report(
                 + ")"
             )
         lines.append(
-            f"{result['implementation']} ({result['class']}): {measure} "
+            f"{result['implementation']} ({result['class']}): {_measure_label(result)} "
             f"{_size(int(result['peak_bytes_after_fit']))}, of which the fit "
             f"added {_size(int(result['fit_peak_growth_bytes']))}{resident}; fit "
             f"took {result['fit_seconds']:.1f} s"
         )
     if identical is not None:
         lines.append("leaf arrays byte-identical: " + ("yes" if identical else "NO"))
+    elif len(results) == 2:
+        lines.append("leaf arrays not compared (--no-digest)")
     return "\n".join(lines)
 
 
@@ -498,7 +550,9 @@ def _parse_arguments(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--shape", choices=SHAPES, default="wage")
+    parser.add_argument(
+        "--shape", choices=SHAPES, default="wage", help="synthetic shape (default wage)"
+    )
     parser.add_argument(
         "--rows", type=int, help="donor rows (default 10,000 for either shape)"
     )
@@ -510,9 +564,16 @@ def _parse_arguments(argv: list[str] | None) -> argparse.Namespace:
         type=int,
         help="wage shape only: donor rows that share one predictor vector "
         f"(default {DEFAULT_ROWS_IN_WIDEST_LEAF}, or half of --rows if that is "
-        "smaller); their draws make the widest leaf, whose width the report shows",
+        "smaller); from about 30 rows their draws make the widest leaf, whose "
+        "width the report shows",
     )
-    parser.add_argument("--seed", type=int, default=20261117)
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=20261117,
+        help=f"seed for the donors and the forest, 0 to {SEED_LIMIT - 1:,} "
+        "(default 20261117)",
+    )
     parser.add_argument(
         "--implementation",
         choices=(*IMPLEMENTATIONS, "both"),
@@ -529,6 +590,8 @@ def _parse_arguments(argv: list[str] | None) -> argparse.Namespace:
         arguments.rows = DEFAULT_ROWS[arguments.shape]
     if arguments.trees is None:
         arguments.trees = DEFAULT_TREES[arguments.shape]
+    if arguments.shape != "wage" and arguments.rows_in_widest_leaf is not None:
+        parser.error("--rows-in-widest-leaf applies only to --shape wage")
     if arguments.rows_in_widest_leaf is None:
         arguments.rows_in_widest_leaf = max(
             1, min(DEFAULT_ROWS_IN_WIDEST_LEAF, arguments.rows // 2)
@@ -573,18 +636,31 @@ def main(argv: list[str] | None = None) -> int:
         else (arguments.implementation,)
     )
     results: list[dict[str, object]] = []
-    failures: list[str] = []
+    failures: list[dict[str, object]] = []
     for implementation in implementations:
-        outcome = _run_child(arguments, implementation)
-        if isinstance(outcome, str):
-            failures.append(outcome)
+        result, failure = _run_child(arguments, implementation)
+        if failure is not None:
+            failures.append(failure)
         else:
-            results.append(outcome)
+            results.append(result)
     identical = _identical(results)
     if arguments.json:
         print(
             json.dumps(
                 {
+                    "arguments": {
+                        "shape": arguments.shape,
+                        "rows": arguments.rows,
+                        "trees": arguments.trees,
+                        "rows_in_widest_leaf": (
+                            arguments.rows_in_widest_leaf
+                            if arguments.shape == "wage"
+                            else None
+                        ),
+                        "seed": arguments.seed,
+                        "implementations": list(implementations),
+                        "digest": not arguments.no_digest,
+                    },
                     "results": results,
                     "failures": failures,
                     "leaf_arrays_identical": identical,
@@ -594,7 +670,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     else:
         print(_report(results, failures, identical))
-    return 1 if failures else 0
+    return 1 if failures or identical is False else 0
 
 
 if __name__ == "__main__":

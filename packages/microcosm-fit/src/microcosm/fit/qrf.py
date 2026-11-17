@@ -1188,7 +1188,8 @@ def _fill_tree_leaves(
     writes into the caller's slice of the forest-wide array instead of
     allocating a zeroed array of its own and returning it. So it takes no
     ``max_node_count``, which only sized that array, and it checks that the
-    compiled helper wrote into the slice. Every other step, including the
+    array the compiled helper returns shares memory with the slice, as it does
+    when the helper writes into its argument. Every other step, including the
     grouping helper, the global ``random.seed``/``random.shuffle`` calls and the
     order of the writes, is the library's.
 
@@ -1219,7 +1220,8 @@ def _fill_tree_leaves(
 
         for leaf in range(len(leaf_values_list)):
             if sample_weight is not None:
-                # quantile-forest 1.4.2 drops zero-weight entries this way.
+                # quantile-forest 1.4.2 drops entries whose weight is not
+                # positive this way.
                 weight_mask = sample_weight[leaf_values_list[leaf] - 1] > 0
                 leaf_values_list[leaf] = leaf_values_list[leaf][weight_mask]
             if leaf_subsample:
@@ -1270,7 +1272,10 @@ class _InPlaceLeafQRF(RandomForestQuantileRegressor):
     ``_get_y_train_leaves`` and wraps :meth:`fit` only to check the version:
     both refuse any quantile-forest release other than
     :data:`_SUPPORTED_QUANTILE_FOREST_VERSION`. scikit-learn's validation
-    messages name this class instead of ``RandomForestQuantileRegressor``.
+    messages name this class instead of ``RandomForestQuantileRegressor``. A
+    ``max_samples_leaf`` so large that the whole forest's array exceeds the
+    largest size numpy can describe raises numpy's ``ValueError`` here, where
+    the library, allocating one tree at a time, raises ``MemoryError``.
 
     The saving lasts while pages stay untouched. Pages of an ``np.zeros``
     array take no memory until something touches them. A write makes a page

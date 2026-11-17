@@ -404,8 +404,8 @@ EXPECTED_HASHES = {
     # the builder's arms by flag; no draw, RNG rule, QRF target or solve changes.
     # The in-place QRF leaf array in microcosm.fit.qrf moves both again: the
     # forests' leaf arrays are byte-identical, and no draw changes.
-    "seed_map": "46d360f5e1e9ccc99abda87b65ed11dcf03ec69d1ce8f4cea6ea5af35e1d56f4",
-    "seed_protocol": "e58b68b1a21174b74f5ece6e289494d96ababd6f95ad21890d3635a6080b63c7",
+    "seed_map": "9fd9c3abac2069d3581710dbb2602978ecaaba70a6e02b66b8c3fad69d495d9d",
+    "seed_protocol": "8e7b70d0b89f9041d31700b31c75ef486024d815e4cc37cf7743fd52f5049004",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

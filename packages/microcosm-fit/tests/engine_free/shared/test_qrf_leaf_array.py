@@ -23,6 +23,7 @@ import math
 import pickle
 import random
 import tomllib
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -31,6 +32,7 @@ import quantile_forest
 from quantile_forest import RandomForestQuantileRegressor
 from quantile_forest import _quantile_forest as quantile_forest_module
 from sklearn.base import clone
+from sklearn.utils.fixes import parse_version
 
 from microcosm.fit import fit, qrf
 from test_support.paths import paths_for
@@ -59,7 +61,7 @@ def _near_discrete_donors(
     """Target with four distinct values, dominated by zero.
 
     Two predictors with ``predictor_levels`` values each give at most
-    ``predictor_levels**2`` distinct predictor vectors, so leaves hold hundreds
+    ``predictor_levels**2`` distinct predictor vectors, so leaves hold tens to hundreds
     of rows: far more than the small caps the tests set.
     """
     generator = np.random.default_rng(seed)
@@ -239,14 +241,16 @@ def test_weighted_samples_match_the_library(max_samples_leaf) -> None:
     )
 
 
+@pytest.mark.parametrize("max_samples_leaf", [None, 3, 1])
 def test_weighted_leaves_that_empty_get_the_library_placeholder(
-    monkeypatch,
+    monkeypatch, max_samples_leaf
 ) -> None:
     """A leaf whose entries the zero-weight filter removes holds ``[0]``.
 
     Nine in ten weights are zero, so some leaves empty. Both classes hand the
     filtered leaves to quantile-forest's compiled helper, which records how
-    many hold the placeholder.
+    many hold the placeholder. With a cap of one entry the helper is not
+    used, and only the arrays are compared.
     """
     placeholders: list[int] = []
     original_map = quantile_forest_module.map_indices_to_leaves
@@ -265,11 +269,36 @@ def test_weighted_leaves_that_empty_get_the_library_placeholder(
     generator = np.random.default_rng(15)
     weights = generator.uniform(0.1, 3.0, len(target))
     weights[generator.random(len(target)) < 0.9] = 0.0
-    _assert_same_fit(predictors, target, sample_weight=weights, max_samples_leaf=None)
+    _assert_same_fit(
+        predictors,
+        target,
+        sample_weight=weights,
+        max_samples_leaf=max_samples_leaf,
+    )
+    if max_samples_leaf == 1:
+        assert placeholders == []
+        return
+    # Six trees per class, each handed to the helper once.
     half = len(placeholders) // 2
     assert half == 6
     assert placeholders[:half] == placeholders[half:]
     assert sum(placeholders[half:]) > 0
+
+
+@pytest.mark.parametrize("max_samples_leaf", [None, 5])
+def test_weight_filter_drops_every_weight_that_is_not_positive(
+    max_samples_leaf,
+) -> None:
+    """Small positive weights stay; zero and negative weights go, as in 1.4.2."""
+    predictors, target = _continuous_donors(seed=18, rows=600)
+    generator = np.random.default_rng(18)
+    weights = generator.choice([-1.0, 0.0, 1e-3, 0.04, 0.5, 2.0, 3.0], len(target))
+    _assert_same_fit(
+        predictors,
+        target,
+        sample_weight=weights,
+        max_samples_leaf=max_samples_leaf,
+    )
 
 
 @pytest.mark.parametrize(
@@ -301,10 +330,11 @@ def test_parallel_tree_fitting_matches_the_library() -> None:
 
 
 def test_fill_refuses_a_helper_that_returns_a_copy(monkeypatch) -> None:
-    """If the compiled helper stopped writing into its argument, fitting fails.
+    """If the compiled helper returned a copy, fitting fails.
 
-    A copy would leave the preallocated slice at zero, so every leaf would
-    read as empty.
+    The fill checks that the array the helper returns shares memory with the
+    slice it was given. A copy would leave the preallocated slice at zero, so
+    every leaf would read as empty.
     """
     original_map = quantile_forest_module.map_indices_to_leaves
 
@@ -317,6 +347,105 @@ def test_fill_refuses_a_helper_that_returns_a_copy(monkeypatch) -> None:
     model = qrf._InPlaceLeafQRF(n_estimators=2, max_samples_leaf=None, random_state=0)
     with pytest.raises(RuntimeError, match="returned a copy"):
         model.fit(predictors, target)
+
+
+def test_forest_keeps_the_array_the_fill_wrote(monkeypatch) -> None:
+    """The stored leaf array is the one preallocated buffer, not a copy of it.
+
+    A copy would hold the same bytes but make every padding page resident,
+    which is the memory this subclass exists to save.
+    """
+    written: list[np.ndarray] = []
+    original_fill = qrf._fill_tree_leaves
+
+    def recording_fill(tree_leaves, *arguments):
+        written.append(tree_leaves)
+        return original_fill(tree_leaves, *arguments)
+
+    monkeypatch.setattr(qrf, "_fill_tree_leaves", recording_fill)
+    predictors, target = _continuous_donors(seed=19, rows=300)
+    model = qrf._InPlaceLeafQRF(n_estimators=4, max_samples_leaf=None, random_state=1)
+    model.fit(predictors, target)
+    stored = np.asarray(model.forest_.y_train_leaves)
+    assert len(written) == 4
+    for tree, tree_leaves in enumerate(written):
+        assert np.shares_memory(stored[tree], tree_leaves)
+    # One buffer for the whole forest: each slice is a view of the same base.
+    assert {id(tree_leaves.base) for tree_leaves in written} == {id(written[0].base)}
+
+
+def test_fit_returns_the_model_and_keeps_the_default_pickle_format() -> None:
+    predictors, target = _continuous_donors(seed=20, rows=150)
+    model = qrf._InPlaceLeafQRF(n_estimators=2, max_samples_leaf=None, random_state=4)
+    assert model.fit(predictors, target) is model
+    assert not model.forest_.sparse_pickle
+
+
+def test_dataframe_predictors_give_the_library_warnings_and_array() -> None:
+    """quantile-forest silences ``apply``'s feature-name warning; so does the copy."""
+    predictors, target = _continuous_donors(seed=21, rows=300)
+    frame = pd.DataFrame(predictors, columns=["first", "second", "third"])
+    warning_texts = {}
+    leaves = {}
+    for name, model_class in (
+        ("library", RandomForestQuantileRegressor),
+        ("in_place", qrf._InPlaceLeafQRF),
+    ):
+        model = model_class(n_estimators=3, max_samples_leaf=None, random_state=6)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            model.fit(frame, target)
+        warning_texts[name] = [
+            (type(warning.message), str(warning.message)) for warning in caught
+        ]
+        leaves[name] = np.asarray(model.forest_.y_train_leaves)
+    assert warning_texts["in_place"] == warning_texts["library"]
+    _assert_byte_identical(leaves["in_place"], leaves["library"])
+
+
+def test_scikit_learn_1_9_bootstrap_arguments_match_the_library(monkeypatch) -> None:
+    """Under scikit-learn 1.9 both classes pass the helpers the same weights.
+
+    scikit-learn 1.9 adds a ``sample_weight`` argument to its private
+    bootstrap helpers, and quantile-forest 1.4.2 passes ``sample_weight_``
+    when it finds 1.9 or later. The installed scikit-learn is older, so the
+    test reports 1.9 and wraps the helpers to record that argument and drop it.
+    """
+    recorded: list[tuple[str, object]] = []
+    original_count = quantile_forest_module._get_n_samples_bootstrap
+    original_indices = quantile_forest_module._generate_sample_indices
+
+    def count_with_weights(n_samples, max_samples, sample_weight):
+        recorded.append(
+            ("count", None if sample_weight is None else sample_weight.sum())
+        )
+        return original_count(n_samples, max_samples)
+
+    def indices_with_weights(
+        random_state, n_samples, n_samples_bootstrap, sample_weight
+    ):
+        recorded.append(
+            ("indices", None if sample_weight is None else sample_weight.sum())
+        )
+        return original_indices(random_state, n_samples, n_samples_bootstrap)
+
+    monkeypatch.setattr(
+        quantile_forest_module, "sklearn_version", parse_version("1.9.0")
+    )
+    monkeypatch.setattr(
+        quantile_forest_module, "_get_n_samples_bootstrap", count_with_weights
+    )
+    monkeypatch.setattr(
+        quantile_forest_module, "_generate_sample_indices", indices_with_weights
+    )
+    predictors, target = _continuous_donors(seed=22, rows=300)
+    weights = np.random.default_rng(22).uniform(0.5, 2.0, len(target))
+    _assert_same_fit(predictors, target, sample_weight=weights, max_samples_leaf=None)
+    # One count and one index call per tree (six trees), for each class.
+    half = len(recorded) // 2
+    assert half == 7
+    assert recorded[:half] == recorded[half:]
+    assert all(weight_sum == pytest.approx(weights.sum()) for _, weight_sum in recorded)
 
 
 def test_sparse_pickle_reaches_the_library() -> None:
@@ -612,6 +741,14 @@ def test_library_fit_on_the_subclass_refuses_another_version(monkeypatch) -> Non
     model = qrf._InPlaceLeafQRF(n_estimators=2, max_samples_leaf=None, random_state=0)
     with pytest.raises(RuntimeError, match="1.4.3"):
         RandomForestQuantileRegressor.fit(model, predictors, target)
+
+
+def test_fit_refuses_a_quantile_forest_without_a_version(monkeypatch) -> None:
+    monkeypatch.delattr(quantile_forest, "__version__")
+    predictors, target = _continuous_donors(seed=23, rows=60)
+    model = qrf._InPlaceLeafQRF(n_estimators=2, max_samples_leaf=None, random_state=0)
+    with pytest.raises(RuntimeError, match="None is installed"):
+        model.fit(predictors, target)
 
 
 def test_fit_forest_refuses_another_quantile_forest_version(monkeypatch) -> None:
