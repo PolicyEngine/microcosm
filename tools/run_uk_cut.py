@@ -845,6 +845,19 @@ def certify_argv(
         "--reference-record", str(paths.reference_record),
         "--release-id", RELEASE_ID,
     ]  # fmt: skip
+    # The conditioned supports the spine read, from which the certifier
+    # recomputes the spine's area definition (microcosm#931).
+    from microcosm.build.uk_runtime.spine_build import SPINE_SUPPORT_FLAGS
+
+    for system, flag in SPINE_SUPPORT_FLAGS.items():
+        argv += [
+            flag,
+            str(
+                paths.input_file(
+                    CONDITIONED_SUPPORTS_DIRECTORY, conditioned_support_file(system)
+                )
+            ),
+        ]
     if logbook_prev_row_digest:
         argv += ["--logbook-prev-row-digest", logbook_prev_row_digest]
     return argv

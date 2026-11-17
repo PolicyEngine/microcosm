@@ -99,8 +99,22 @@ uv run --no-sync python tools/build_uk_full.py --release-role dense \
   --input-mass-reference <reference-dir>/input_mass_reference.json \
   --reference-surface <reference-dir>/reference_surface.json \
   --review-date <YYYY-MM-DD> --graph-store <graph-store-dir> \
+  --spine-support-ew <file> --spine-support-scotland <file> \
+  --spine-support-ni <file> \
   --logbook-prev-row-digest <previous row> --out <candidate-dir>
 ```
+
+The three `--spine-support-*` files are the conditioned supports the spine
+was built on, which the spine took as `--atomic-support-*` (microcosm#931).
+They bind nothing: the build draws no area from them. Before it pins an
+input, the build holds each to `sources.yaml`'s conditioned register. It then
+recomputes the spine's area definition from them, and refuses a spine whose
+`definition_sha256` is another. It also refuses a spine whose sidecar's
+`resource_pins` or `stage_artifact_pins` are not this checkout's package's
+for the stages it ran, as for a spine built at another commit whose resources
+have changed since. A build that is not a release candidate on a bound spine
+refuses the three flags, since nothing reads them, and so does the national
+role.
 
 Pass `--review-date` and `--graph-store` explicitly, even though both have
 defaults. If this build's gate-only failures are signed (below), a second

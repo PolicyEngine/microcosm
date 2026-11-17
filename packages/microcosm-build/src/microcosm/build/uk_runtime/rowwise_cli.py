@@ -1123,6 +1123,16 @@ def refuse_dense_role_arguments(
     # (microcosm#1095); the national build runs no export-surface gate.
     if getattr(args, "reference_surface", None) is not None:
         refused.append("--reference-surface")
+    # It reads the spine's conditioned supports too, to recompute the spine's
+    # area definition; here only a dense release candidate reads them
+    # (microcosm#931).
+    from .spine_build import SPINE_SUPPORT_FLAGS, _atomic_support_argument
+
+    refused.extend(
+        flag
+        for flag in SPINE_SUPPORT_FLAGS.values()
+        if getattr(args, _atomic_support_argument(flag), None) is not None
+    )
     if args.selection_seed is not None:
         refused.append("--selection-seed")
     if getattr(args, "selection_initial_lambda", None) is not None:

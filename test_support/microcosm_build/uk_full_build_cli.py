@@ -172,6 +172,46 @@ def patch_support_register(monkeypatch, pins=None) -> None:
     )
 
 
+def release_spine_supports(monkeypatch, directory: Path) -> tuple[list[str], dict]:
+    """The three ``--spine-support-*`` flags a release check on a bound spine
+    takes (``spine_build.SPINE_SUPPORT_FLAGS``), naming the toy conditioned
+    supports written under ``directory``, and the geography block those
+    supports compose (microcosm#931).
+
+    The toys are registered in place of sources.yaml's conditioned supports
+    (:func:`patch_support_register`), for the binding check and for the
+    support files the dense build and the national certifier read alike
+    (``spine_build.registered_atomic_support_payloads``). A spine whose
+    sidecar records the block, and the package's pins for its stages
+    (``spine_build.uk_spine_package_pins``), is a release spine of this
+    package on those supports.
+    """
+    from microcosm.build.uk_runtime import country_adapter, spine_build
+    from microcosm.build.uk_runtime.country_adapter import (
+        UK_SPINE_SUPPORT_REGISTER,
+        uk_spine_geography_binding,
+    )
+    from test_support.microcosm_build.uk_conditioned_support_fixtures import (
+        toy_conditioned_support_payloads,
+    )
+
+    payloads = toy_conditioned_support_payloads()
+    block = uk_spine_geography_binding(payloads, register=UK_SPINE_SUPPORT_REGISTER)
+    patch_support_register(monkeypatch, pins=block["support_pins"])
+    monkeypatch.setattr(
+        spine_build,
+        "uk_atomic_support_register",
+        country_adapter.uk_atomic_support_register,
+    )
+    directory.mkdir(parents=True, exist_ok=True)
+    flags: list[str] = []
+    for system, flag in spine_build.SPINE_SUPPORT_FLAGS.items():
+        path = directory / f"{system}.npz"
+        path.write_bytes(payloads[system])
+        flags += [flag, str(path)]
+    return flags, block
+
+
 #: A stand-in sidecar ``geography`` block's values, by key: the stand-in
 #: spine's own binding, read off the definition and toy supports its areas are
 #: drawn with (``uk_full_population_graph.toy_geography_binding``), which the

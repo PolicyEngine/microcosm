@@ -351,6 +351,16 @@ if tuple(_ATOMIC_SUPPORT_FLAGS) != SYSTEMS:
     raise RuntimeError(
         "the atomic-area support flags must name every system, in order."
     )
+#: The flags a release check takes a bound spine's three conditioned supports
+#: under, by system, in the systems' order (microcosm#931): a dense release
+#: candidate on a bound spine and the national certifier recompute the spine's
+#: area definition from them. They bind nothing, so they are not the spine's
+#: own ``--atomic-support-*``, which bind its area stages' supports and which
+#: the dense line retired, since it takes its areas from the spine.
+SPINE_SUPPORT_FLAGS: Mapping[str, str] = {
+    system: flag.replace("--atomic-support-", "--spine-support-", 1)
+    for system, flag in _ATOMIC_SUPPORT_FLAGS.items()
+}
 
 
 def _atomic_support_argument(flag: str) -> str:
@@ -966,6 +976,119 @@ def _resource_pins(stages, spec) -> dict[str, str]:
                 )
             pins[resource] = str(sha256)
     return dict(sorted(pins.items()))
+
+
+def uk_spine_package_pins(
+    stage_names: Sequence[str], *, spec=None
+) -> dict[str, dict[str, object]]:
+    """The pins a spine that ran ``stage_names`` records of the current
+    package (microcosm#931): ``resource_pins``, each committed resource those
+    stages declare by its SHA-256 as ``load_country_spec`` hashes the file,
+    and ``stage_artifact_pins``, each stage's declared tables and files by
+    their locator, SHA-256 and size. They are what the build sidecar's writer
+    (:func:`_build_sidecar`) records, through the same helpers, so a spine
+    built from this package records exactly these. ``spec`` is the packaged
+    UK spec by default; a name it does not declare raises ``KeyError``.
+    """
+
+    spec = load_country_spec("uk") if spec is None else spec
+    declared = spec.sources.stage_map()
+    stages = [declared[str(name)] for name in stage_names]
+    return {
+        "resource_pins": _resource_pins(stages, spec),
+        "stage_artifact_pins": {
+            stage.stage: _stage_artifact_pins(stage) for stage in stages
+        },
+    }
+
+
+def _same_pin(recorded: object, expected: object) -> bool:
+    """Whether a recorded pin is the expected one, value and JSON type alike
+    (a size recorded as ``1.0`` is not the integer ``1``)."""
+
+    return json.dumps(recorded, sort_keys=True) == json.dumps(expected, sort_keys=True)
+
+
+def _pin_set_failures(
+    field: str, recorded: Mapping[str, object], expected: Mapping[str, object]
+) -> list[str]:
+    """Each entry of ``recorded`` that is not ``expected``'s, each entry
+    ``expected`` has and ``recorded`` lacks, and each extra one, by name."""
+
+    failures: list[str] = []
+    for name in sorted({*recorded, *expected}):
+        if name not in recorded:
+            failures.append(
+                f"{field}.{name} is missing, though the package declares it for "
+                "the stages it ran"
+            )
+        elif name not in expected:
+            failures.append(
+                f"{field}.{name} is not one the package declares for the stages it ran"
+            )
+        elif not _same_pin(recorded[name], expected[name]):
+            failures.append(f"{field}.{name} is not the package's pin")
+    return failures
+
+
+def uk_spine_package_pin_failures(
+    sidecar: Mapping[str, object], *, spec=None
+) -> tuple[str, ...]:
+    """What a bound spine's recorded pins fail of the current package's.
+
+    A release builds only on a spine built from the package it is released
+    from (microcosm#931): the spine's stages read the committed resources
+    (the knots, the band mixes, the BRMA and RFDR layers, the rent
+    resources, the Band D tables among them) and the declared tables and
+    files, so a spine built at another commit whose resources have changed
+    since carries values drawn from the old files. The sidecar's
+    ``resource_pins`` and ``stage_artifact_pins`` must be, entry for entry,
+    :func:`uk_spine_package_pins` of the stages it records (``stages``), so
+    each of them must also be a stage the package declares. Each failure
+    names the field, the stage, the resource or the artifact, and what it
+    must be, never a digest, a size or a locator.
+    """
+
+    spec = load_country_spec("uk") if spec is None else spec
+    stages = sidecar.get("stages") if isinstance(sidecar, Mapping) else None
+    if not (isinstance(stages, list) and all(isinstance(name, str) for name in stages)):
+        return ("stages is not a list of stage names",)
+    declared = spec.sources.stage_map()
+    failures = [
+        f"stages names {name}, which the package does not declare"
+        for name in stages
+        if name not in declared
+    ]
+    expected = uk_spine_package_pins(
+        [name for name in stages if name in declared], spec=spec
+    )
+    resources = sidecar.get("resource_pins")
+    if isinstance(resources, Mapping):
+        failures.extend(
+            _pin_set_failures("resource_pins", resources, expected["resource_pins"])
+        )
+    else:
+        failures.append("resource_pins is not a record of the resources it read")
+    artifacts = sidecar.get("stage_artifact_pins")
+    if not isinstance(artifacts, Mapping):
+        failures.append(
+            "stage_artifact_pins is not a record of its stages' declared artifacts"
+        )
+        return tuple(failures)
+    for stage in sorted({*artifacts, *expected["stage_artifact_pins"]}):
+        recorded = artifacts.get(stage)
+        wanted = expected["stage_artifact_pins"].get(stage)
+        if wanted is None:
+            # A stage it ran that the package does not declare is named above.
+            if stage not in stages:
+                failures.append(f"stage_artifact_pins.{stage} is not a stage it ran")
+        elif not isinstance(recorded, Mapping):
+            failures.append(f"stage_artifact_pins.{stage} is missing")
+        else:
+            failures.extend(
+                _pin_set_failures(f"stage_artifact_pins.{stage}", recorded, wanted)
+            )
+    return tuple(failures)
 
 
 def _input_artifact_pins(stages) -> dict[str, dict[str, object]]:
@@ -1944,10 +2067,34 @@ def _registered_atomic_supports(
             "on the conditioned atomic-area supports, so it requires "
             f"{', '.join(missing)} (microcosm#931)."
         )
+    return registered_atomic_support_payloads(
+        {system: _support_path(args, system) for system in _ATOMIC_SUPPORT_FLAGS}
+    )
+
+
+def registered_atomic_support_payloads(
+    paths: Mapping[str, Path],
+    *,
+    flags: Mapping[str, str] = _ATOMIC_SUPPORT_FLAGS,
+) -> dict[str, bytes]:
+    """The conditioned supports' bytes at ``paths``, by system, each held to
+    sources.yaml's conditioned register (microcosm#931).
+
+    ``paths`` names every system's file, as its flag in ``flags`` does: the
+    spine's own ``--atomic-support-*`` (``_ATOMIC_SUPPORT_FLAGS``) by default,
+    or a release check's ``--spine-support-*`` (:data:`SPINE_SUPPORT_FLAGS`).
+    Each must be a file whose SHA-256 and size are those the register
+    (``country_adapter.uk_atomic_support_register`` with ``conditioned=True``)
+    holds for its system. The spine build reads its supports through it, and
+    so do the release checks that recompute a bound spine's area definition
+    from them. A refusal names the flag and what it must be, never a digest,
+    a size or a path.
+    """
+
     register = uk_atomic_support_register(conditioned=True)
     supports: dict[str, bytes] = {}
-    for system, flag in _ATOMIC_SUPPORT_FLAGS.items():
-        path = _support_path(args, system)
+    for system, flag in flags.items():
+        path = Path(paths[system])
         if not path.is_file():
             raise ValueError(f"{flag} must name an existing file.")
         payload = path.read_bytes()

@@ -50,6 +50,30 @@ def test_the_dense_geography_flags_are_gone(tmp_path, capsys, flag, value):
         assert flag in capsys.readouterr().err
 
 
+def test_the_spine_support_flags_are_a_release_check_and_bind_nothing(tmp_path):
+    """A dense release candidate on a bound spine recomputes the spine's area
+    definition from the three conditioned supports (microcosm#931), under
+    flags of their own: not the retired ones, since they bind nothing. The
+    dense parser takes them (its preparation decides who reads them), and the
+    national role refuses them by name: the certifier reads them for a
+    national cut."""
+    from microcosm.build.uk_runtime.spine_build import SPINE_SUPPORT_FLAGS
+
+    retired = {flag for flag, _ in _RETIRED_DENSE_FLAGS}
+    for flag in SPINE_SUPPORT_FLAGS.values():
+        assert flag not in retired
+        dense = arguments(tmp_path, flag, "supports/conditioned.npz")
+        cli.validate_cli_args(dense)
+        national = cli.parse_args(
+            _national_argv(tmp_path, flag, "supports/conditioned.npz")
+        )
+        with pytest.raises(ValueError) as refused:
+            cli.validate_cli_args(national)
+        assert str(refused.value) == (
+            f"--release-role national refuses the dense role's arguments: {flag}"
+        )
+
+
 def test_the_constituency_vintage_flag_is_gone(tmp_path, capsys):
     """María's ruling of 13 Nov: the dense line takes its areas from the
     spine (microcosm#931), and no dense node read the ladder's vintage

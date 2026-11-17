@@ -6,8 +6,9 @@ every certification refused up front. The command is exercised here with
 its battery stubbed, on the pins alone, and on the inputs it binds before
 any gate reads them: the spine the calibration recorded as the candidate's
 parent, that spine's build sidecar, the one the build record's digest names,
-and the sidecar's geography binding (microcosm#931); and on the candidate it
-loads, which must carry no geographic clone index.
+the sidecar's geography binding, and its recorded package pins and area
+definition, recomputed from the conditioned supports (microcosm#931); and on
+the candidate it loads, which must carry no geographic clone index.
 """
 
 from __future__ import annotations
@@ -21,10 +22,11 @@ import pandas as pd
 import pytest
 
 from microcosm.build.logbook_adoption import role_pins_digest
+from microcosm.build.uk_runtime import spine_build
 from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
 from test_support.microcosm_build.uk_full_build_cli import (
-    patch_support_register,
-    synthetic_spine_geography,
+    geography_first_sidecar_fields,
+    release_spine_supports,
 )
 from tools import certify_uk_release_cut as certify
 
@@ -296,34 +298,44 @@ class _PastTheBoundInputsError(Exception):
 
 
 def _certify_bound_inputs(
-    tmp_path: Path, monkeypatch, *, recorded_sidecar, sidecar_fields=None
+    tmp_path: Path,
+    monkeypatch,
+    *,
+    recorded_sidecar,
+    sidecar_fields=None,
+    edit=None,
+    supports=None,
 ) -> None:
     """Run the certifier on stand-in inputs whose spine is the candidate's
     recorded parent, its build record recording ``recorded_sidecar`` as the
     spine sidecar's digest (``None`` records none); a run past the inputs is
     stopped at the Ledger read by :class:`_PastTheBoundInputsError`.
 
-    The sidecar records one clone and the stand-in spine's geography binding,
-    whose toy support pins stand as sources.yaml's conditioned supports
-    (``patch_support_register``), with ``sidecar_fields`` replacing any of its
-    fields (microcosm#931).
+    The sidecar is a release spine of this package (microcosm#931): one
+    clone, the geography-first roster's stages, the geography block the toy
+    conditioned supports compose, which stand as sources.yaml's
+    (``release_spine_supports``), and the package's pins for its stages. The
+    certifier is handed those supports, or the flags ``supports`` gives.
+    ``sidecar_fields`` replaces any of the sidecar's fields, and ``edit``
+    changes the sidecar in place before it is written.
     """
     candidate = tmp_path / "microcosm_uk_2024_25.h5"
     candidate.write_bytes(b"candidate bytes")
     spine = tmp_path / "spine.h5"
     spine.write_bytes(b"spine bytes")
     sidecar = tmp_path / "spine.build.json"
-    patch_support_register(monkeypatch)
-    sidecar.write_text(
-        json.dumps(
-            {
-                "stages": ["frs_spine"],
-                "geographic_clone_count": 1,
-                "geography": synthetic_spine_geography(),
-                **(sidecar_fields or {}),
-            }
-        )
-    )
+    flags, block = release_spine_supports(monkeypatch, tmp_path / "supports")
+    stages = geography_first_sidecar_fields("frs_spine")["stages"]
+    written = {
+        "stages": stages,
+        "geographic_clone_count": 1,
+        "geography": block,
+        **spine_build.uk_spine_package_pins(stages),
+        **(sidecar_fields or {}),
+    }
+    if edit is not None:
+        edit(written)
+    sidecar.write_text(json.dumps(written))
     parent = hashlib.sha256(spine.read_bytes()).hexdigest()
     diagnostics = tmp_path / "calibration_diagnostics.json"
     diagnostics.write_text(
@@ -400,6 +412,7 @@ def _certify_bound_inputs(
             str(tmp_path / "release_cut_gates.json"),
             "--certification-json",
             str(tmp_path / "release_certification.json"),
+            *(flags if supports is None else supports),
         ]
     )
 
@@ -486,6 +499,137 @@ def test_certifier_refuses_a_spine_binding_before_any_gate(
         )
     assert str(refused.value) == _GEOGRAPHY_LEAD + refusal
     assert not (tmp_path / "release_cut_gates.json").exists()
+
+
+_PACKAGE_LEAD = (
+    "error: a release certifies only a spine built from the package it is "
+    "certified with (microcosm#931); the spine sidecar fails it: "
+)
+
+
+def _zero_digest(sidecar: dict) -> None:
+    sidecar["geography"]["definition_sha256"] = "0" * 64
+
+
+def _old_knots(sidecar: dict) -> None:
+    """The knots' pin of another commit: a spine built before they moved."""
+    sidecar["resource_pins"]["high_value_home_value_knots.json"] = "0" * 64
+
+
+def _old_adult_table(sidecar: dict) -> None:
+    sidecar["stage_artifact_pins"]["frs_spine"]["adult"]["sha256"] = "0" * 64
+
+
+def _unpinned_knots(sidecar: dict) -> None:
+    del sidecar["resource_pins"]["high_value_home_value_knots.json"]
+
+
+@pytest.mark.parametrize(
+    ("edit", "failures"),
+    [
+        pytest.param(
+            _zero_digest,
+            [
+                "its geography binding's definition_sha256 is not the digest of "
+                "the definition the registered conditioned supports compose at "
+                "the declared seed"
+            ],
+            id="zero-digest",
+        ),
+        pytest.param(
+            _old_knots,
+            [
+                "its resource_pins.high_value_home_value_knots.json is not the "
+                "package's pin"
+            ],
+            id="resource",
+        ),
+        pytest.param(
+            _unpinned_knots,
+            [
+                "its resource_pins.high_value_home_value_knots.json is missing, "
+                "though the package declares it for the stages it ran"
+            ],
+            id="resource-missing",
+        ),
+        pytest.param(
+            _old_adult_table,
+            ["its stage_artifact_pins.frs_spine.adult is not the package's pin"],
+            id="artifact",
+        ),
+    ],
+)
+def test_certifier_refuses_a_spine_built_from_another_package(
+    monkeypatch, tmp_path: Path, edit, failures
+) -> None:
+    """The spine may have been built at another commit than the certifier's
+    (microcosm#931): a sidecar whose area definition digest is not the one
+    the conditioned supports compose (a zero digest), or whose recorded
+    resource or stage artifact pins are not the package's, is refused before
+    the Ledger read, naming the field, the resource or the artifact and no
+    digest, and no release-cut battery runs."""
+    with pytest.raises(SystemExit) as refused:
+        _certify_bound_inputs(
+            tmp_path,
+            monkeypatch,
+            recorded_sidecar=lambda written: hashlib.sha256(written).hexdigest(),
+            edit=edit,
+        )
+    assert str(refused.value) == _PACKAGE_LEAD + "; ".join(failures) + "."
+    assert "0" * 16 not in str(refused.value)
+    assert not (tmp_path / "release_cut_gates.json").exists()
+
+
+def test_certifier_requires_the_registered_conditioned_supports(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """The certifier recomputes the spine's area definition from the three
+    conditioned supports (microcosm#931), so it refuses to go on without
+    them, or with one sources.yaml's register does not hold, naming the
+    flags, before the Ledger read."""
+    with pytest.raises(SystemExit) as refused:
+        _certify_bound_inputs(
+            tmp_path,
+            monkeypatch,
+            recorded_sidecar=lambda written: hashlib.sha256(written).hexdigest(),
+            supports=[],
+        )
+    assert str(refused.value) == (
+        "error: the certifier requires --spine-support-ew, "
+        "--spine-support-scotland, --spine-support-ni: the conditioned "
+        "atomic-area supports the spine's areas were drawn on, from which it "
+        "recomputes the spine's area definition (microcosm#931)."
+    )
+    # The harness writes the registered toys under its own directory's
+    # supports; the Northern Ireland flag names another file.
+    other = tmp_path / "other.npz"
+    other.write_bytes(b"not the registered support")
+    run = tmp_path / "off-register"
+    run.mkdir()
+    flags = [
+        argument
+        for system, flag in spine_build.SPINE_SUPPORT_FLAGS.items()
+        for argument in (
+            flag,
+            str(
+                other
+                if flag == "--spine-support-ni"
+                else run / "supports" / f"{system}.npz"
+            ),
+        )
+    ]
+    with pytest.raises(SystemExit) as refused:
+        _certify_bound_inputs(
+            run,
+            monkeypatch,
+            recorded_sidecar=lambda written: hashlib.sha256(written).hexdigest(),
+            supports=flags,
+        )
+    assert str(refused.value) == (
+        "error: --spine-support-ni is not the conditioned support sources.yaml "
+        "registers for uk_ni_data_zone_2021: its SHA-256 or size is not the "
+        "register's (microcosm#931)."
+    )
 
 
 def _candidate_with(*indexed: str) -> SimpleNamespace:

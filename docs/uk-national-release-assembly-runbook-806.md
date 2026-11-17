@@ -139,8 +139,21 @@ uv run --no-sync python tools/certify_uk_release_cut.py \
   --reference-surface <reference-dir>/reference_surface.json \
   --score-receipt <candidate-dir>/score_vs_reference.json \
   --reference-record <reference-dir>/reference.json \
-  --release-id microcosm-uk-2024-25-national
+  --release-id microcosm-uk-2024-25-national \
+  --spine-support-ew <file> --spine-support-scotland <file> \
+  --spine-support-ni <file>
 ```
+
+The three `--spine-support-*` files are the conditioned atomic-area supports
+the spine was built on, which the spine took as `--atomic-support-*`
+(microcosm#931). Before any gate runs, the certifier holds each to
+`sources.yaml`'s conditioned register. It then recomputes the spine's area
+definition from them, and refuses a spine sidecar whose `definition_sha256`
+is another. It also refuses a sidecar whose `resource_pins` or
+`stage_artifact_pins` are not the checkout's package's for the stages the
+spine ran, as for a spine built at another commit whose resources have
+changed since. Each refusal names the field, the stage, the resource or the
+artifact.
 
 The input-mass, export-surface and input-coverage gates compare the candidate
 with the reference: its totals within the relative tolerance gates.json

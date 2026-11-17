@@ -9,6 +9,7 @@ from microcosm.build.uk_runtime.country_adapter import (
     UK_SPINE_SUPPORT_REGISTER,
     UK_SYNTHETIC_SUPPORT_REGISTER,
     uk_atomic_support_register,
+    uk_spine_definition_failures,
     uk_spine_geography_binding,
     uk_spine_geography_binding_failures,
     validate_uk_country_source_projection,
@@ -399,3 +400,61 @@ def _registered(pins: dict):
     return SimpleNamespace(
         resolved_spec=SimpleNamespace(resource=lambda name: resource)
     )
+
+
+def test_a_spine_definition_digest_is_recomputed_from_its_supports():
+    """The binding check holds ``definition_sha256`` to its format alone;
+    where the conditioned supports are at hand the digest is recomputed from
+    them (microcosm#931). The block the toy supports compose, registered in
+    place of sources.yaml's, passes. A zero digest, which the format check
+    passes, and the digest of the definition at another seed fail, naming
+    the field and no digest. Supports off the register are named instead,
+    and a digest that is not one is left to the format check."""
+    import hashlib
+
+    from microcosm.build.uk_runtime.atomic_area_conditioning import (
+        UK_SPINE_ATOMIC_AREA_SEED,
+        uk_conditioned_assignment_definition,
+    )
+    from microcosm.graph.canonical import canonical_json
+    from test_support.microcosm_build.uk_conditioned_support_fixtures import (
+        toy_conditioned_support_payloads,
+    )
+
+    payloads = toy_conditioned_support_payloads()
+    block = uk_spine_geography_binding(payloads, register=UK_SPINE_SUPPORT_REGISTER)
+    spec = _registered(block["support_pins"])
+    assert uk_spine_definition_failures(block, payloads, spec=spec) == ()
+    recomputed = (
+        "definition_sha256 is not the digest of the definition the registered "
+        "conditioned supports compose at the declared seed",
+    )
+    zero = {**block, "definition_sha256": "0" * 64}
+    assert uk_spine_geography_binding_failures(zero, spec=spec) == ()
+    assert uk_spine_definition_failures(zero, payloads, spec=spec) == recomputed
+    another_seed = hashlib.sha256(
+        canonical_json(
+            uk_conditioned_assignment_definition(
+                payloads, seed=UK_SPINE_ATOMIC_AREA_SEED + 1
+            )
+        )
+    ).hexdigest()
+    assert another_seed != block["definition_sha256"]
+    assert (
+        uk_spine_definition_failures(
+            {**block, "definition_sha256": another_seed}, payloads, spec=spec
+        )
+        == recomputed
+    )
+    malformed = {**block, "definition_sha256": "A" * 64}
+    assert uk_spine_definition_failures(malformed, payloads, spec=spec) == ()
+    assert uk_spine_definition_failures(None, payloads, spec=spec) == ()
+    edited = dict(payloads)
+    edited["uk_ni_data_zone_2021"] = payloads["uk_ni_data_zone_2021"] + b"\0"
+    off_register = (
+        "definition_sha256 is not recomputed: the supports given are not the "
+        "registered conditioned supports",
+    )
+    assert uk_spine_definition_failures(block, edited, spec=spec) == off_register
+    partial = {k: v for k, v in payloads.items() if k != "uk_ni_data_zone_2021"}
+    assert uk_spine_definition_failures(block, partial, spec=spec) == off_register

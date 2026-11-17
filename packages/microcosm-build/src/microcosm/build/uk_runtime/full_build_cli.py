@@ -23,7 +23,10 @@ measures and pool run on the spine's version as it stands, and the run's
 recorded clone count and rung are the spine's. Its engine blocks are one or
 the spine's K, and a release candidate needs an unsampled spine of the
 doctrine's K, built as a release candidate, whose geography binding is a
-release's (:func:`~microcosm.build.uk_runtime.country_adapter.uk_spine_geography_binding_failures`).
+release's (:func:`~microcosm.build.uk_runtime.country_adapter.uk_spine_geography_binding_failures`);
+on a bound spine its recorded resource and stage artifact pins must be the
+package's and its area definition the one the conditioned supports, which the
+build then takes, compose.
 The national line builds only on a geography-first spine of one geographic
 clone, and only once the degenerate-surface register's area-basis exclusion
 is signed for the national line and in force on the build's review date:
@@ -123,7 +126,10 @@ from .calibration_run import (
     spine_provenance_from_sidecar,
 )
 from .chronicle_feed import load_uk_chronicle_feed
-from .country_adapter import uk_spine_geography_binding_failures
+from .country_adapter import (
+    uk_spine_definition_failures,
+    uk_spine_geography_binding_failures,
+)
 from .dataset_size import (
     UK_SIZE_L2_ANCHORS,
     UK_SIZE_L2_BASES,
@@ -462,6 +468,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=sha256_argument,
         help="Pinned SHA-256 of --input-h5 (required with --input-h5).",
     )
+    # The supports a release candidate on a bound spine recomputes the
+    # spine's area definition from. They bind nothing: the dense line takes
+    # its areas from the spine (microcosm#931).
+    from .spine_build import SPINE_SUPPORT_FLAGS
+
+    for system, flag in SPINE_SUPPORT_FLAGS.items():
+        parser.add_argument(
+            flag,
+            type=Path,
+            help=(
+                f"With --input-h5 and --release-candidate only: the {system} "
+                "conditioned atomic-area support the bound spine's areas were "
+                "drawn on, held to sources.yaml's conditioned register. The "
+                "build recomputes the spine's area definition from the three "
+                "and refuses a spine whose geography binding names another; "
+                "nothing is drawn from them (microcosm#931)."
+            ),
+        )
     parser.add_argument(
         "--ladder",
         type=Path,
@@ -1169,8 +1193,66 @@ def _bind_spine_arguments(
         args.sample_seed = int(sampling["seed"])
 
 
+def _bound_spine_release_supports(
+    args: argparse.Namespace,
+) -> dict[str, bytes] | None:
+    """The conditioned supports a release candidate on a bound spine is held
+    to, by system, or ``None`` for any other build (microcosm#931).
+
+    A bound spine's sidecar records the digest of the definition its areas
+    were drawn under, which the build recomputes from the conditioned
+    supports (``country_adapter.uk_spine_definition_failures``). So a release
+    candidate on ``--input-h5`` requires the three ``--spine-support-*``
+    flags (``spine_build.SPINE_SUPPORT_FLAGS``), each a file sources.yaml's
+    conditioned register holds
+    (``spine_build.registered_atomic_support_payloads``). A spine request's
+    preparation composes the definition from its own supports, and a build
+    that is not a release candidate reads nothing from them, so the flags are
+    refused on both. The refusals name flags only, and come before any input
+    is pinned.
+    """
+    from .spine_build import (
+        SPINE_SUPPORT_FLAGS,
+        _atomic_support_argument,
+        registered_atomic_support_payloads,
+    )
+
+    paths = {
+        system: getattr(args, _atomic_support_argument(flag), None)
+        for system, flag in SPINE_SUPPORT_FLAGS.items()
+    }
+    if not (args.release_candidate and args.input_h5 is not None):
+        given = [
+            flag
+            for system, flag in SPINE_SUPPORT_FLAGS.items()
+            if paths[system] is not None
+        ]
+        if given:
+            raise ValueError(
+                f"{', '.join(given)}: only a release candidate on a bound spine "
+                "(--input-h5 with --release-candidate) reads the conditioned "
+                "supports, to recompute that spine's area definition "
+                "(microcosm#931)."
+            )
+        return None
+    missing = [
+        flag for system, flag in SPINE_SUPPORT_FLAGS.items() if paths[system] is None
+    ]
+    if missing:
+        raise ValueError(
+            f"--release-candidate on a bound spine requires {', '.join(missing)}: "
+            "the conditioned atomic-area supports its areas were drawn on, from "
+            "which the build recomputes its area definition (microcosm#931)."
+        )
+    return registered_atomic_support_payloads(paths, flags=SPINE_SUPPORT_FLAGS)
+
+
 def _require_release_candidate_spine(
-    binding: Mapping[str, object], *, clone_count: int
+    binding: Mapping[str, object],
+    *,
+    clone_count: int,
+    sidecar: Mapping[str, object] | None = None,
+    supports: Mapping[str, bytes] | None = None,
 ) -> None:
     """Refuse a release candidate on a spine a release cannot build on.
 
@@ -1184,8 +1266,19 @@ def _require_release_candidate_spine(
     composed, through the helper the sidecar writer calls, so both routes are
     held to the same check; a spine that runs no area draw, a bound spine
     built before its area stages among them, records no block, and a release
-    candidate on one is refused here, as recording no geography binding. The
-    refusal names every failure, with K, never a value.
+    candidate on one is refused here, as recording no geography binding.
+
+    A bound spine may have been built at another commit, so it is held to the
+    package this build runs from as well: its authenticated build
+    ``sidecar``'s ``resource_pins`` and ``stage_artifact_pins`` must be the
+    package's for the stages it ran
+    (:func:`~microcosm.build.uk_runtime.spine_build.uk_spine_package_pin_failures`),
+    and its block's ``definition_sha256`` the digest of the definition the
+    conditioned ``supports`` compose
+    (:func:`~microcosm.build.uk_runtime.country_adapter.uk_spine_definition_failures`).
+    A spine request composes both from the package and its supports here, so
+    it passes neither. The refusal names every failure, with K, never a
+    value.
     """
     clones = int(binding["geographic_clone_count"])
     failures: list[str] = []
@@ -1208,6 +1301,18 @@ def _require_release_candidate_spine(
             for failure in uk_spine_geography_binding_failures(
                 geography, clone_count=clones
             )
+        )
+        if supports is not None:
+            failures.extend(
+                f"its geography binding's {failure}"
+                for failure in uk_spine_definition_failures(geography, supports)
+            )
+    if sidecar is not None:
+        from .spine_build import uk_spine_package_pin_failures
+
+        failures.extend(
+            f"its sidecar's {failure}"
+            for failure in uk_spine_package_pin_failures(sidecar)
         )
     if failures:
         raise ValueError(
@@ -1235,6 +1340,10 @@ def prepare_full_build(
     # the dense line builds only on a spine that assigns areas (microcosm#931).
     _require_geography_first_spine(args)
     posture = posture_of(args)
+    # The supports a release candidate on a bound spine recomputes its area
+    # definition from, held to the register before any input is pinned
+    # (microcosm#931); None for any other build.
+    release_supports = _bound_spine_release_supports(args)
     release = load_uk_frs_release()
     pins = {"ladder": _pin(args.ladder, args.ladder_sha256)}
     inputs = {
@@ -1244,6 +1353,7 @@ def prepare_full_build(
     }
     sources = {"uk_ladder": args.ladder, "uk_ledger_facts": args.ledger_facts}
     provenance = None
+    bound_sidecar = None
     if args.input_h5 is not None:
         pins["dataset"] = _pin(args.input_h5, args.input_sha256)
         inputs["dataset"] = _input_record(
@@ -1272,6 +1382,7 @@ def prepare_full_build(
         # The checkpoint authentication held the sidecar's clone count to the
         # frame's, so either is the spine's K.
         spine_binding = _bound_spine_binding(sidecar)
+        bound_sidecar = sidecar
         stages = tuple(sidecar["stages"])
         _rules_engine()  # the uk extra must be installed; the identity is provenance
         engine_identity = hashlib.sha256(
@@ -1390,11 +1501,15 @@ def prepare_full_build(
             "Sampled builds cannot request release-candidate certification."
         )
     # The release candidate's K pin, posture and geography binding: the
-    # doctrine's K, a release-candidate spine and the release line's areas
-    # (microcosm#931).
+    # doctrine's K, a release-candidate spine and the release line's areas;
+    # on a bound spine, also its recorded package pins and its area
+    # definition, recomputed from the conditioned supports (microcosm#931).
     if args.release_candidate:
         _require_release_candidate_spine(
-            spine_binding, clone_count=int(posture.clone_count)
+            spine_binding,
+            clone_count=int(posture.clone_count),
+            sidecar=bound_sidecar,
+            supports=release_supports,
         )
     feed = load_uk_chronicle_feed()
     for supplied, committed in (
