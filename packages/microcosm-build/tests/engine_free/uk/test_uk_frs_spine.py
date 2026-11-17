@@ -4041,8 +4041,8 @@ def test_driver_refuses_a_stage_profile_dir_before_any_node_runs(
     """The profiler adds a node's record only once the node has run, so a
     ``--stage-profile-dir`` it could not add to is refused with the
     arguments, before any node runs, in a fixed sentence; so is one inside
-    the repository, since a record keeps the message of a failure its node
-    raised (microcosm#931)."""
+    any git work tree, this checkout or another, since a record keeps the
+    message of a failure its node raised (microcosm#931)."""
 
     from microcosm.build.stage_profile import STAGE_PROFILE_SCHEMA_VERSION
 
@@ -4083,11 +4083,27 @@ def test_driver_refuses_a_stage_profile_dir_before_any_node_runs(
             f"profile of schema version {STAGE_PROFILE_SCHEMA_VERSION}, so no "
             "node's record could be added to it."
         )
-    # Named only: nothing is written there.
-    inside = tool._REPOSITORY / "stage-profile-inside-the-repository"
-    with pytest.raises(ValueError, match="must lie outside the repository"):
-        validated(inside)
-    assert not inside.exists()
+    # Named only: nothing is written there. The repository is refused, and so
+    # is any other git work tree, a checkout's directory or a worktree's file
+    # alike, as receipt_counts.outside_work_trees refuses the tools' outputs.
+    checkout = tmp_path / "another-checkout"
+    (checkout / ".git").mkdir(parents=True)
+    worktree = tmp_path / "a-worktree"
+    worktree.mkdir()
+    (worktree / ".git").write_text("gitdir: elsewhere\n", encoding="utf-8")
+    for inside in (
+        tool._REPOSITORY / "stage-profile-inside-the-repository",
+        checkout / "profiles",
+        worktree / "nested" / "profiles",
+    ):
+        with pytest.raises(ValueError) as refused:
+            validated(inside)
+        assert str(refused.value) == (
+            "--stage-profile-dir must lie outside every git work tree: a stage "
+            "profile keeps the message of a failure its node raised, so it "
+            "stays private."
+        )
+        assert not inside.exists()
 
 
 def test_the_logbook_identity_takes_a_clone_count_other_than_one(
