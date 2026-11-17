@@ -170,11 +170,9 @@ COUNCIL_TAX_BAND_MAP = {
 #: is observed, since the root refuses NaN; a bool flag); neither is an engine
 #: input, so they leave at the release boundary
 #: (``national_frame.UK_RELEASE_EXPORT_DROPPED_COLUMNS``), and they stay out
-#: of every receipt and of the spine sidecar's nonzero shares. The decile's
-#: name is spelled here, not imported from ``atomic_area_support``, whose
-#: conditioned supports carry the areas' deciles under the same name, so an
-#: edit to that module does not re-key the root; a test holds the spellings
-#: equal.
+#: of every receipt and of the spine sidecar's nonzero shares. The area
+#: draw reads both here; the conditioned supports carry each area's decile in
+#: a code column of their own (``atomic_area_support.IMD_DECILE_COLUMN``).
 FRS_IMD_DECILE_COLUMN = "imd_decile"
 FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN = "council_tax_band_observed"
 FRS_AREA_CONDITIONING_COLUMNS = (

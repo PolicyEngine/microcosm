@@ -65,7 +65,7 @@ from microcosm.build.uk_runtime.atomic_area_conditioning import (
     uk_draw_inputs,
     uk_draw_levels,
 )
-from microcosm.build.uk_runtime.atomic_area_support import IMD_DECILE_COLUMN, _profile
+from microcosm.build.uk_runtime.atomic_area_support import IMD_DECILE_COLUMN
 from microcosm.build.uk_runtime.atomic_household_identity import household_draw_key
 from microcosm.build.uk_runtime.brma_area_layer import (
     GRAINS as BRMA_GRAINS,
@@ -103,7 +103,6 @@ from microcosm.build.uk_runtime.spi_band_donors import (
 )
 from microcosm.build.uk_runtime.spine_geography import (
     _COPY_KINDS,
-    _NORTHERN_IRELAND_REGION,
     AREA_BRMA_STAGE_NAME,
     ATOMIC_AREA_ASSIGN_STAGE_NAME,
     BRMA_COUNT_ARTIFACT_ROLE,
@@ -1010,13 +1009,12 @@ def test_the_g4_and_copy_stage_operations_are_declarative_and_agree() -> None:
     assert copy["rewrites"] == list(UK_SPI_COPY_AREAS_REWRITE_COLUMNS)
 
 
-def test_the_copy_kinds_and_northern_irelands_region_match_their_owners() -> None:
-    """The ordinals and the region the stages spell for themselves."""
+def test_the_copy_kinds_match_their_owners() -> None:
+    """The ordinals the copy stage spells for itself."""
 
     bound = copy_id_table.ordinal_bound("spi_support_channel")
     assert set(_COPY_KINDS) == set(range(1, bound))
     assert _COPY_KINDS[SPI_INCOME_BAND_DONOR_CLONE_INDEX] == "income_band_donor"
-    assert _profile(NI)[2] == (_NORTHERN_IRELAND_REGION,)
 
 
 @pytest.mark.parametrize("name", [AREA_BRMA_STAGE_NAME, SPI_COPY_AREAS_STAGE_NAME])

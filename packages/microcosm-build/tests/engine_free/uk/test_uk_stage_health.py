@@ -4569,9 +4569,10 @@ def test_the_area_mapping_check_passes_each_area_stages_frame_on_its_binding(
     row of the frame, the copies' among them, holds the area and ladder the
     block's supports give it (microcosm#931)."""
 
-    from microcosm.build.uk_runtime import spine_geography
+    from microcosm.build.atomic_geography import ATOMIC_GEOGRAPHY_VALIDATION_SCOPE
 
-    assert spine_geography._VALIDATION_SCOPE == _SCOPE
+    # The gate's declared scope is the one the shared operator records.
+    assert ATOMIC_GEOGRAPHY_VALIDATION_SCOPE == _SCOPE
     result = _toy_gate(stage, clones=clones)
     assert _passed(result), result.failures
     assert result.details["outcome"] == "pass"
@@ -5222,6 +5223,7 @@ def test_the_packaged_mapping_gates_read_the_area_stages_records() -> None:
     not_run it records on a frame without a copy, and the base draw's accepts
     a pass alone (microcosm#931)."""
 
+    from microcosm.build.atomic_geography import ATOMIC_GEOGRAPHY_VALIDATION_SCOPE
     from microcosm.build.uk_runtime import spine_geography
     from microcosm.build.uk_runtime.atomic_area_support import SYSTEMS
 
@@ -5231,7 +5233,7 @@ def test_the_packaged_mapping_gates_read_the_area_stages_records() -> None:
     assert copies["stage"] == spine_geography.SPI_COPY_AREAS_STAGE_NAME
     for parameters in (base, copies):
         assert parameters["check"] == "atomic_mapping_integrity"
-        assert parameters["validation_scope"] == spine_geography._VALIDATION_SCOPE
+        assert parameters["validation_scope"] == ATOMIC_GEOGRAPHY_VALIDATION_SCOPE
         assert tuple(parameters["support_systems"]) == SYSTEMS
     assert "accepted_outcomes" not in base
     assert copies["accepted_outcomes"] == ["pass", spine_geography._CHECKS_NOT_RUN]

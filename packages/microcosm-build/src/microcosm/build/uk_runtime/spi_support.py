@@ -25,6 +25,7 @@ from microcosm.build.stochastic_assignment import (
 from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime.geographic_clones import (
     UK_GEOGRAPHIC_SOURCE_COLUMNS,
+    ladder_clone_index_column,
 )
 from microcosm.build.uk_runtime.hmrc_income import (
     HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
@@ -62,14 +63,11 @@ SPI_SUPPORT_INCLUSION_SALT = "spi_support_channel:inclusion"
 #: repo's binomial band at the declared sigma
 #: (:func:`~microcosm.build.stochastic_assignment.binomial_share_tolerance`).
 SPI_SHARE_GATE_RULE = "binomial_share_band"
-#: The geographic clone index the clone-first spine gives every household
-#: (``geographic_clones.ladder_clone_index_column("household")``, the
-#: ``geographic_support`` branch of the UK copy lineage; microcosm#931). Where
-#: the frame carries it, the prior allocation's strata split by it, so each
-#: clone keeps its own mass. It is spelled here, not imported, so a change to
-#: it re-keys the stage; a test holds the spellings equal.
-SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN = "household_clone_index"
-#: The allocation stratum derived from it, for the allocation only and never
+#: The allocation stratum derived from the household's geographic clone
+#: index (``geographic_clones.ladder_clone_index_column("household")``, the
+#: ``geographic_support`` branch of the UK copy lineage; microcosm#931): where
+#: the frame carries the index, the prior allocation's strata split by it, so
+#: each clone keeps its own mass. For the allocation only and never
 #: written to the frame.
 SPI_GEOGRAPHIC_CLONE_STRATUM_COLUMN = "household_geographic_clone_stratum"
 DEFAULT_SPI_PRIOR_MASS_SHARE = 0.5
@@ -952,7 +950,7 @@ def _prepare_household_lineage(
     """
 
     frame = household.copy()
-    if SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN in frame.columns:
+    if ladder_clone_index_column("household") in frame.columns:
         missing = [
             column
             for column in UK_GEOGRAPHIC_SOURCE_COLUMNS
@@ -961,7 +959,7 @@ def _prepare_household_lineage(
         if missing:
             raise ValueError(
                 "The SPI support channel's households carry "
-                f"{SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN!r} but not {missing}: on the "
+                f"{ladder_clone_index_column('household')!r} but not {missing}: on the "
                 "clone-first spine geographic_expand writes every household's "
                 "source columns, and the stage never takes a clone's own ids "
                 "for its source (microcosm#931)."
@@ -1313,7 +1311,7 @@ def _geographic_clone_strata(household: pd.DataFrame) -> np.ndarray | None:
     value.
     """
 
-    column = SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN
+    column = ladder_clone_index_column("household")
     if column not in household.columns:
         return None
     values = household[column]
@@ -1637,7 +1635,6 @@ __all__ = [
     "SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN",
     "SPI_INCOME_IMPUTATION_COLUMNS",
     "SPI_INCOME_QRF_OUTPUT_COLUMNS",
-    "SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN",
     "SPI_GEOGRAPHIC_CLONE_STRATUM_COLUMN",
     "SPI_LOSSES_BROUGHT_FORWARD_DRAW_COLUMN",
     "SPI_LOSS_DRAW_COLUMNS",

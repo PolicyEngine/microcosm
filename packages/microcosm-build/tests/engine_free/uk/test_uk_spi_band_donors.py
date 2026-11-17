@@ -25,6 +25,7 @@ from microcosm.build.uk_runtime.cgt_support import (
     HOUSEHOLD_IS_CGT_SUPPORT_COPY,
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
+from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
 from microcosm.build.uk_runtime.geographic_expand import expand_uk_geographic_clones
 from microcosm.build.uk_runtime.high_value_home_support import (
     HIGH_VALUE_SUPPORT_COPIES_COLUMN,
@@ -2041,7 +2042,7 @@ def test_the_gate_spells_the_stages_columns_and_tolerances_as_the_stage_does() -
         HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR,
         SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN,
         PERSON_IS_SPI_INCOME_BAND_CARRIER,
-        spi_support.SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN,
+        ladder_clone_index_column("household"),
         spi_support.SPI_SUPPORT_COPY_ID_FIELD,
     )
     assert stage_health._COPY_ID_FIELDS_AFTER_BAND_DONORS == _LATER_FIELDS

@@ -51,6 +51,7 @@ import pandas as pd
 
 from microcosm.build.source_manifest import SourceOperationSpec, SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
@@ -79,7 +80,6 @@ from microcosm.build.uk_runtime.spi_support import (
     _PERSON_ID_COLUMNS,
     BASE_FRS_SUPPORT_CHANNEL,
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
-    SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
     _clone_support_frame,
     _exact_total_correction,
@@ -1059,7 +1059,11 @@ def stack_spi_income_band_donors(
         clone_count=clone_count,
         funding_strata=(
             *SPI_INCOME_BAND_FUNDING_STRATA,
-            *(() if clone_indices is None else (SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN,)),
+            *(
+                ()
+                if clone_indices is None
+                else (ladder_clone_index_column("household"),)
+            ),
         ),
     )
 
@@ -1126,7 +1130,7 @@ def _funding_strata(household: pd.DataFrame) -> pd.Series:
         household[column].astype(str) for column in SPI_INCOME_BAND_FUNDING_STRATA
     ]
     if _geographic_clone_indices(household) is not None:
-        columns.append(household[SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN].astype(str))
+        columns.append(household[ladder_clone_index_column("household")].astype(str))
     label = columns[0]
     for column in columns[1:]:
         label = label + "|" + column
@@ -1145,7 +1149,7 @@ def _geographic_clone_indices(household: pd.DataFrame) -> np.ndarray | None:
     dtype): never a count, an id or a value.
     """
 
-    column = SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN
+    column = ladder_clone_index_column("household")
     if column not in household.columns:
         return None
     values = household[column]
@@ -1184,7 +1188,8 @@ def _geographic_clone_count(indices: np.ndarray | None) -> int:
     clone_count = int(indices.max()) + 1
     if int(np.unique(indices).size) != clone_count:
         raise ValueError(
-            f"A {SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN!r} value from 0 to the largest is "
+            f"A {ladder_clone_index_column('household')!r} value from 0 to the "
+            "largest is "
             "carried by no household; SPI income band donors seat clones 0 to "
             "K - 1."
         )

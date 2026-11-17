@@ -2939,17 +2939,12 @@ def test_the_root_writes_each_households_imd_decile_and_band_flag_typed(
 
 
 def test_the_root_names_the_conditioned_supports_decile_and_every_nation() -> None:
-    """The decile's name is spelled in frs_spine, so a change to the
-    conditioned supports' module never re-keys the root; the two spellings,
-    the decile codes and the nations stay equal (microcosm#931)."""
+    """The root's decile codes are the conditioned supports', and it reads
+    every nation's own decile (microcosm#931)."""
 
-    from microcosm.build.uk_runtime.atomic_area_support import (
-        IMD_DECILE_COLUMN,
-        IMD_DECILES,
-    )
+    from microcosm.build.uk_runtime.atomic_area_support import IMD_DECILES
     from microcosm.build.uk_runtime.council_tax_constants import UK_NATION_BY_REGION
 
-    assert FRS_IMD_DECILE_COLUMN == IMD_DECILE_COLUMN
     assert tuple(str(decile) for decile in FRS_IMD_DECILES) == IMD_DECILES
     assert FRS_IMD_DECILE_UNOBSERVED not in FRS_IMD_DECILES
     assert set(FRS_IMD_DECILE_COLUMN_BY_NATION) == set(UK_NATION_BY_REGION.values())

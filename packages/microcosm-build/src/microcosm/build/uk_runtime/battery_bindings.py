@@ -85,6 +85,7 @@ from microcosm.build.uk_runtime.local_targets import (
     metric_names,
 )
 from microcosm.build.uk_runtime.national_frame import (
+    UK_RELEASE_LINES,
     _uk_gate_surface,
     uk_release_export_dropped_columns,
     uk_release_export_frame,
@@ -121,7 +122,6 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_REFERENCE_REGISTRY,
     UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
-    UK_RELEASE_LINES,
     UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
     UKInputMassParityPolicy,
     UKReviewedExclusion,

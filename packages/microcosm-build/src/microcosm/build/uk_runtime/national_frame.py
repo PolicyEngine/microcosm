@@ -35,6 +35,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
 from microcosm.frame import (
     EntitySchema,
     Frame,
@@ -58,6 +59,7 @@ __all__ = [
     "UK_NATIONAL_EXPORT_DROPPED_COLUMNS",
     "UK_NATIONAL_H5_TABLES",
     "UK_NATIONAL_SCHEMA",
+    "UK_RELEASE_LINES",
     "UK_TIME_PERIOD_METADATA_KEY",
     "UKNationalStage",
     "UKStagingProvenance",
@@ -830,25 +832,22 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
 
 #: What the national line's release boundary drops beside
 #: :data:`UK_RELEASE_EXPORT_DROPPED_COLUMNS` (microcosm#931): each entity's
-#: geographic clone index, spelled as
-#: ``geographic_clones.ladder_clone_index_column`` spells it (here, so that
-#: this module imports nothing more; a test holds the spellings equal). The
-#: national line builds on a spine of one geographic clone, so every index is
-#: zero there: a constant column the degenerate-surface gate would fail, which
-#: tells a consumer nothing. The dense line's export keeps them, as the
+#: geographic clone index (``geographic_clones.ladder_clone_index_column``).
+#: The national line builds on a spine of one geographic clone, so every index
+#: is zero there: a constant column the degenerate-surface gate would fail,
+#: which tells a consumer nothing. The dense line's export keeps them, as the
 #: lineage of its clones.
 UK_NATIONAL_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {
-        "person": ("person_clone_index",),
-        "benunit": ("benunit_clone_index",),
-        "household": ("household_clone_index",),
+        entity: (ladder_clone_index_column(entity),)
+        for entity in ("person", "benunit", "household")
     }
 )
 
-#: The release lines an export can be cut for, as a gate context declares its
-#: ``release_line`` (``weighted_integrity.UK_RELEASE_LINES``, spelled here so
-#: that this module imports nothing more; a test holds the two equal).
-_UK_EXPORT_LINES = frozenset({"national", "local"})
+#: The UK release lines: the national seam and the geographic K-clone pool of
+#: the local line. A gate context declares one as its ``release_line``
+#: (``weighted_integrity``), and an export is cut for one.
+UK_RELEASE_LINES = frozenset({"national", "local"})
 
 
 def uk_release_export_dropped_columns(
@@ -865,9 +864,9 @@ def uk_release_export_dropped_columns(
     the boundary treats as the local line. Any other is refused.
     """
 
-    if line is not None and line not in _UK_EXPORT_LINES:
+    if line is not None and line not in UK_RELEASE_LINES:
         raise ValueError(
-            f"A release export's line must be one of {sorted(_UK_EXPORT_LINES)} "
+            f"A release export's line must be one of {sorted(UK_RELEASE_LINES)} "
             f"or None, got {line!r}."
         )
     if line != "national":

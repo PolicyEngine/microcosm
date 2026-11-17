@@ -777,7 +777,6 @@ def _scenario_split_at(clone_count):
 
 
 def test_the_clone_index_column_is_the_lineages_geographic_branch():
-    from microcosm.build.uk_runtime.cgt_support import _GEOGRAPHIC_CLONE_INDEX_COLUMN
     from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
     from microcosm.build.uk_runtime.household_lineage import (
         GEOGRAPHIC_SUPPORT_BRANCH,
@@ -789,39 +788,24 @@ def test_the_clone_index_column_is_the_lineages_geographic_branch():
         for branch in UK_COPY_LINEAGE.branches
         if branch.name == GEOGRAPHIC_SUPPORT_BRANCH
     ]
-    assert (
-        _GEOGRAPHIC_CLONE_INDEX_COLUMN
-        == ladder_clone_index_column("household")
-        == branch.index
-        == "household_clone_index"
-    )
+    assert ladder_clone_index_column("household") == branch.index
+    assert branch.index == "household_clone_index"
 
 
 def test_every_spelling_of_the_household_clone_index_is_the_leafs_name():
     """geographic_clones names the clone index columns and counts the clones
-    (microcosm#931). The household's name is also spelled out in this stage's
-    module, in the SPI support channel's, whose stages key on it there, and as
-    microcosm-frame's engine batch column, whose package does not depend on
-    microcosm-build. Each spelling equals the leaf's name, and rowwise_dataset
-    and this stage's module re-export the leaf's own definitions."""
-    from microcosm.build.uk_runtime import (
-        geographic_clones,
-        rowwise_dataset,
-        spi_support,
-    )
+    (microcosm#931). The household's name is also spelled as microcosm-frame's
+    engine batch column, whose package does not depend on microcosm-build; it
+    equals the leaf's name, and rowwise_dataset and this stage's module
+    re-export the leaf's own definitions."""
+    from microcosm.build.uk_runtime import geographic_clones, rowwise_dataset
     from microcosm.frame.adapters.policyengine_uk_population import (
         UK_SPINE_ENGINE_BATCH_COLUMN,
     )
 
     name = geographic_clones.ladder_clone_index_column("household")
     assert name == f"household_{geographic_clones.ARTIFACT_CLONE_INDEX_COLUMN}"
-    assert (
-        name
-        == cgt_support._GEOGRAPHIC_CLONE_INDEX_COLUMN
-        == spi_support.SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN
-        == UK_SPINE_ENGINE_BATCH_COLUMN
-        == "household_clone_index"
-    )
+    assert name == UK_SPINE_ENGINE_BATCH_COLUMN == "household_clone_index"
     for module, names in (
         (rowwise_dataset, ("ARTIFACT_CLONE_INDEX_COLUMN", "ladder_clone_index_column")),
         (cgt_support, ("geographic_clone_count",)),

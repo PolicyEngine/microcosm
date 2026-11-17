@@ -1450,24 +1450,18 @@ def test_the_share_counts_distinct_sources_and_refuses_an_unsourced_row() -> Non
 
 
 def test_the_clone_stratum_reads_the_lineages_geographic_index() -> None:
-    from microcosm.build.uk_runtime.cgt_support import _GEOGRAPHIC_CLONE_INDEX_COLUMN
+    from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
     from microcosm.build.uk_runtime.household_lineage import (
         GEOGRAPHIC_SUPPORT_BRANCH,
         UK_COPY_LINEAGE,
     )
-    from microcosm.build.uk_runtime.rowwise_dataset import ladder_clone_index_column
 
     (branch,) = [
         branch
         for branch in UK_COPY_LINEAGE.branches
         if branch.name == GEOGRAPHIC_SUPPORT_BRANCH
     ]
-    assert (
-        spi_support.SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN
-        == _GEOGRAPHIC_CLONE_INDEX_COLUMN
-        == ladder_clone_index_column("household")
-        == branch.index
-    )
+    assert ladder_clone_index_column("household") == branch.index
 
 
 def test_one_indexed_clone_allocates_bit_for_bit_as_no_index() -> None:
