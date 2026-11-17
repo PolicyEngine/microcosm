@@ -73,11 +73,13 @@ never a weight or an id.
 
 from __future__ import annotations
 
+import json
 import math
 from collections import Counter
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from fractions import Fraction
+from importlib.resources import files
 from itertools import pairwise
 
 import numpy as np
@@ -184,10 +186,127 @@ G1 = GEOGRAPHIC_EXPAND_STAGE_NAME
 SPI = UK_SPI_SUPPORT_STAGE_NAME
 DONORS = UK_SPI_INCOME_BAND_DONORS_STAGE_NAME
 CGT = CGT_SUPPORT_SPLIT_STAGE_NAME
+TAKE_UP = "frs_take_up"
+PERSON_DRAWS = "frs_person_draws"
+HOUSEHOLD_DRAWS = "frs_household_draws"
+
+
+def _roster() -> tuple[str, ...]:
+    """The packaged roster's stage names, in order, read from
+    source_stages.json in Python: names only, never a stage's notes."""
+
+    roster = json.loads(
+        files("microcosm.build.uk")
+        .joinpath("source_stages.json")
+        .read_text(encoding="utf-8")
+    )
+    return tuple(str(stage["stage"]) for stage in roster["stages"])
+
+
+#: The packaged roster, and its stages after geographic_expand, the ones that
+#: run on every clone, in its order (microcosm#931). The run lists below are
+#: read off it, and every post-clone stage is classified in
+#: :data:`_NESTING_HELD`, so a stage the roster gains fails
+#: test_every_post_clone_stage_says_where_its_clone_zero_is_held until it is.
+_ROSTER = _roster()
+_POST_CLONE_STAGES = _ROSTER[_ROSTER.index(G1) + 1 :]
+
+
+def _in_roster_order(*stages: str) -> tuple[str, ...]:
+    """``stages`` in the roster's order, each one the roster declares."""
+
+    missing = sorted(set(stages) - set(_ROSTER))
+    assert not missing, f"Stages the packaged roster does not declare: {missing}."
+    return tuple(stage for stage in _ROSTER if stage in stages)
+
+
 #: The stages each frame goes through, in spine order.
-_STAGES = (G1, SPI, DONORS, CGT)
+_STAGES = _in_roster_order(G1, SPI, DONORS, CGT)
 #: The stages whose clone-0 weights are held to K = 1's row by row.
-_WEIGHED_STAGES = (G1, SPI, DONORS)
+_WEIGHED_STAGES = _in_roster_order(G1, SPI, DONORS)
+#: Where each post-clone stage's clone 0 is held to the one-clone run before
+#: merge, by stage, in the roster's order (microcosm#931).
+_IN_THE_PREFIX = (
+    "exactly, every column, through the spine graph's engine-free prefix at "
+    "two clones (test_uk_clone_first_spine_prefix.py)"
+)
+_FRAME_HERE = "exactly, every column, at K = 2, 3, 7 and 15, in this module"
+_COPIES_HERE = (
+    "its copies or seats exactly and its weights to the stated ulps, at K = 2, "
+    "3, 7 and 15, in this module"
+)
+_APPROXIMATELY_HERE = (
+    "approximately (family masses and copy counts), at K = 2, 3, 7 and 15, in "
+    "this module"
+)
+_RECEIPT_HERE = "its receipt's K-invariant counts at K = 3, in this module"
+_AFTER_MERGE = (
+    "only after merge: test_h2_clone_first.py runs every stage at four clones "
+    "through the engine"
+)
+_NESTING_HELD: Mapping[str, str] = {
+    **dict.fromkeys(
+        ("geographic_identity", "atomic_area_assign", "local_authority", "rfdr"),
+        _IN_THE_PREFIX,
+    ),
+    TAKE_UP: _FRAME_HERE,
+    PERSON_DRAWS: _FRAME_HERE,
+    HOUSEHOLD_DRAWS: _RECEIPT_HERE,
+    "area_brma": _AFTER_MERGE,
+    SPI: _COPIES_HERE,
+    DONORS: _COPIES_HERE,
+    **dict.fromkeys(
+        (
+            "spi_copy_areas",
+            "hmrc_spi_income_spine",
+            "company_cars",
+            "spi_employment_shell",
+            "aps_occupation",
+            "spi_housing_shell",
+            "private_rent",
+            "council_tax_localise",
+            "was_wealth",
+            "was_lisa",
+            "regional_property_uprating",
+            "high_value_home_support",
+            "property_components",
+            "property_purchases",
+            "nts_bus_travel",
+            "lcfs_consumption",
+            "etb_vat",
+            "etb_services",
+            "uc_reporter_redraw",
+            "spi_benefit_coherence",
+            "uc_capital_coherence",
+            "uc_limited_capability",
+            "uc_take_up",
+            "uc_legacy_closure_take_up",
+            "pension_credit_take_up",
+            "child_benefit_take_up",
+            "uc_deduction_attributes",
+        ),
+        _AFTER_MERGE,
+    ),
+    CGT: _APPROXIMATELY_HERE,
+    **dict.fromkeys(
+        (
+            "cgt_incidence_clone",
+            "hmrc_cgt_gains_spine",
+            "cgt_incidence_anchor",
+            "cgt_residential_split",
+            "hmrc_cgt_asset_type_spine",
+            "salary_sacrifice",
+            "carers_allowance_take_up",
+            "student_loans",
+            "childcare_copy_take_up",
+            "private_school_attendance",
+            "isa_subscriptions",
+            "pip_points",
+            "trading_allowance_receipts",
+        ),
+        _AFTER_MERGE,
+    ),
+}
 #: The clone counts held to one clone: the plan's 2, 3 and 7, and a K = 15 on
 #: the same small frame.
 _CLONE_COUNTS = (2, 3, 7, 15)
@@ -684,6 +803,42 @@ def _band_row(result, band: int) -> dict[str, object]:
     return row
 
 
+# --- the roster's post-clone stages -----------------------------------------------
+
+
+def test_every_post_clone_stage_says_where_its_clone_zero_is_held() -> None:
+    """The post-clone stages are the packaged roster's, read from
+    source_stages.json (microcosm#931): every one is classified in
+    :data:`_NESTING_HELD`, in the roster's order, uc_limited_capability and
+    pip_points among them, so a stage the roster gains fails here until it is
+    classified. Each class is what runs it: the stages this module runs are
+    the ones its run lists name, and the prefix's are the roster's from
+    geographic_expand through rfdr, as test_uk_clone_first_spine_prefix.py
+    runs them."""
+
+    assert tuple(_NESTING_HELD) == _POST_CLONE_STAGES
+    assert {"uc_limited_capability", "pip_points"} <= set(_POST_CLONE_STAGES)
+    classes: dict[str, list[str]] = {}
+    for stage, held in _NESTING_HELD.items():
+        classes.setdefault(held, []).append(stage)
+    assert (
+        tuple(classes[_IN_THE_PREFIX])
+        == (_ROSTER[_ROSTER.index(G1) + 1 : _ROSTER.index("rfdr") + 1])
+    )
+    assert set(classes[_FRAME_HERE]) == set(_DRAW_STAGES) - {G1}
+    assert set(classes[_COPIES_HERE]) == set(_WEIGHED_STAGES) - {G1}
+    assert set(classes[_APPROXIMATELY_HERE]) == set(_STAGES) - set(_WEIGHED_STAGES)
+    assert classes[_RECEIPT_HERE] == [HOUSEHOLD_DRAWS]
+    assert set(classes) == {
+        _IN_THE_PREFIX,
+        _FRAME_HERE,
+        _COPIES_HERE,
+        _APPROXIMATELY_HERE,
+        _RECEIPT_HERE,
+        _AFTER_MERGE,
+    }
+
+
 # --- reported first ---------------------------------------------------------------
 
 
@@ -1144,10 +1299,8 @@ def test_rule_b_puts_the_correction_on_a_copy_at_seven_and_thirteen_clones(
 # unit in every fourth, some with reported Pension Credit; and reported
 # Universal Credit on every fifth family adult.
 
-TAKE_UP = "frs_take_up"
-PERSON_DRAWS = "frs_person_draws"
 #: The stages the invented frame goes through, in spine order.
-_DRAW_STAGES = (G1, TAKE_UP, PERSON_DRAWS)
+_DRAW_STAGES = _in_roster_order(G1, TAKE_UP, PERSON_DRAWS)
 _TAKE_UP_HOUSEHOLDS = 60
 #: Invented design weights' seed.
 _TAKE_UP_WEIGHT_SEED = 11

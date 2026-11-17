@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -305,11 +306,13 @@ def _certify_bound_inputs(
     sidecar_fields=None,
     edit=None,
     supports=None,
+    ledger_read=None,
 ) -> None:
     """Run the certifier on stand-in inputs whose spine is the candidate's
     recorded parent, its build record recording ``recorded_sidecar`` as the
     spine sidecar's digest (``None`` records none); a run past the inputs is
-    stopped at the Ledger read by :class:`_PastTheBoundInputsError`.
+    stopped at the Ledger read by :class:`_PastTheBoundInputsError`, unless
+    ``ledger_read`` stands in for that read.
 
     The sidecar is a release spine of this package (microcosm#931): one
     clone, the geography-first roster's stages, the geography block the toy
@@ -373,7 +376,11 @@ def _certify_bound_inputs(
     def past_the_inputs(*args, **kwargs):
         raise _PastTheBoundInputsError
 
-    monkeypatch.setattr(certify, "load_ledger_consumer_artifact", past_the_inputs)
+    monkeypatch.setattr(
+        certify,
+        "load_ledger_consumer_artifact",
+        past_the_inputs if ledger_read is None else ledger_read,
+    )
     certify.main(
         [
             "--candidate-h5",
@@ -662,3 +669,71 @@ def test_certifier_takes_a_candidate_without_a_clone_index() -> None:
     """A national candidate as the national line writes it carries no clone
     index, and passes (microcosm#931)."""
     assert certify._refuse_clone_indexed_candidate(_candidate_with()) is None
+
+
+class _PastTheFrameLoadError(Exception):
+    """Raised by the first step after the certifier loads the candidate."""
+
+
+def _past_the_ledger(monkeypatch, candidate) -> object:
+    """Stand in for every step from the Ledger read to the candidate's load,
+    the load returning ``candidate`` and the next step raising
+    :class:`_PastTheFrameLoadError`; return the Ledger read's stand-in."""
+
+    registry = SimpleNamespace(registry="registry", unsupported=())
+    for name, stand_in in (
+        ("require_uk_chronicle_feed_row_contracts", lambda *a, **k: None),
+        ("uk_derived_fact_rows", lambda: ()),
+        ("compile_uk_target_registry", lambda *a, **k: registry),
+        ("compile_uk_local_target_registry", lambda *a, **k: registry),
+        ("load_uk_local_area_crosswalk", lambda: None),
+        ("load_uk_frs_release", lambda: SimpleNamespace(calibration_year=2025)),
+        ("uk_registry_on_calibration_line", lambda reg, **k: (reg, None)),
+        # An invented evaluation date: the test reads no clock.
+        ("exclusion_evaluation_date", lambda value: date(2026, 1, 1)),
+        ("load_uk_calibration_measure_exclusions", lambda: {}),
+        ("apply_uk_calibration_measure_exclusions", lambda reg, *a, **k: (reg, None)),
+        ("load_uk_support_floor_declaration", lambda: None),
+        ("narrow_uk_registry_by_support_floor", lambda reg, *a, **k: reg),
+        ("load_uk_national_frame", lambda path: (candidate, {})),
+    ):
+        monkeypatch.setattr(certify, name, stand_in)
+
+    def past_the_frame_load(*args, **kwargs):
+        raise _PastTheFrameLoadError
+
+    monkeypatch.setattr(certify, "uk_solve_year_frame", past_the_frame_load)
+    return lambda *args, **kwargs: SimpleNamespace(
+        fact_schema_versions={}, facts_sha256="1" * 64, facts=()
+    )
+
+
+@pytest.mark.parametrize("entity", ["person", "benunit", "household"])
+def test_certifier_refuses_a_clone_indexed_candidate_where_it_loads_it(
+    monkeypatch, tmp_path: Path, entity
+) -> None:
+    """The certifier's run reaches the candidate's load past every input
+    check and the Ledger read, and refuses there a candidate that carries a
+    geographic clone index, before anything reads the frame (microcosm#931):
+    without the refusal in the run this test fails, since the run goes on to
+    the next step. A candidate without the index goes on to it."""
+    with pytest.raises(SystemExit) as refused:
+        _certify_bound_inputs(
+            tmp_path,
+            monkeypatch,
+            recorded_sidecar=lambda written: hashlib.sha256(written).hexdigest(),
+            ledger_read=_past_the_ledger(monkeypatch, _candidate_with(entity)),
+        )
+    assert str(refused.value) == (
+        "error: a national release carries no geographic clone index "
+        f"(microcosm#931); the candidate carries {ladder_clone_index_column(entity)}."
+    )
+    run = tmp_path / "without"
+    run.mkdir()
+    with pytest.raises(_PastTheFrameLoadError):
+        _certify_bound_inputs(
+            run,
+            monkeypatch,
+            recorded_sidecar=lambda written: hashlib.sha256(written).hexdigest(),
+            ledger_read=_past_the_ledger(monkeypatch, _candidate_with()),
+        )
