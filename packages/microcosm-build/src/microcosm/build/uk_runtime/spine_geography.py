@@ -91,6 +91,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.atomic_geography import (
+    ATOMIC_GEOGRAPHY_VALIDATION_SCOPE,
     AtomicSupport,
     assign_atomic,
     decode_atomic_support,
@@ -103,7 +104,6 @@ from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.uk_runtime.atomic_area_conditioning import (
     BAND_INPUT_COLUMN,
     COUNCIL_TAX_BAND_COLUMN,
-    COUNCIL_TAX_BAND_OBSERVED_COLUMN,
     DECILE_INPUT_COLUMN,
     DEFAULT_WEIGHT_COLUMN,
     IDENTITY_COLUMN,
@@ -116,7 +116,6 @@ from microcosm.build.uk_runtime.atomic_area_conditioning import (
     UK_SPINE_ATOMIC_AREA_SEED,
     UK_SPINE_ATOMIC_AREA_STREAM,
     UK_SPINE_LADDER_COLUMNS,
-    UNOBSERVED_IMD_DECILE,
     uk_band_weight_map,
     uk_conditioned_assignment_definition,
     uk_conditioned_supports,
@@ -128,8 +127,8 @@ from microcosm.build.uk_runtime.atomic_area_conditioning import (
 from microcosm.build.uk_runtime.atomic_area_support import (
     ASSIGNMENT_COLUMNS,
     CONDITIONED_SOURCES,
-    IMD_DECILE_COLUMN,
     SYSTEMS,
+    _profile,
 )
 from microcosm.build.uk_runtime.atomic_household_identity import household_draw_key
 from microcosm.build.uk_runtime.brma_area_layer import (
@@ -153,6 +152,11 @@ from microcosm.build.uk_runtime.frs_brma import (
     UK_BRMA_HOUSEHOLD_PICK_SALT,
     UK_BRMA_PREDICTORS,
     draw_household_brmas,
+)
+from microcosm.build.uk_runtime.frs_spine import (
+    FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
+    FRS_IMD_DECILE_COLUMN,
+    FRS_IMD_DECILE_UNOBSERVED,
 )
 from microcosm.build.uk_runtime.geographic_clones import (
     SOURCE_YEAR_COLUMN,
@@ -379,7 +383,6 @@ ATOMIC_AREA_ASSIGN_OPERATION_KIND = "assign_atomic_area"
 #: The columns G2 writes: the three assignment columns, then the ten ladder
 #: columns, every one in the graph's string dtype.
 UK_ATOMIC_AREA_ASSIGN_OUTPUT_COLUMNS = UK_SPINE_AREA_COLUMNS
-_VALIDATION_SCOPE = "atomic_geography_mapping_integrity"
 
 
 def atomic_area_assign_operation_parameters() -> tuple[
@@ -415,12 +418,12 @@ def atomic_area_assign_operation_parameters() -> tuple[
                 },
                 "draw_inputs": {
                     DECILE_INPUT_COLUMN: {
-                        "column": IMD_DECILE_COLUMN,
-                        "unobserved": UNOBSERVED_IMD_DECILE,
+                        "column": FRS_IMD_DECILE_COLUMN,
+                        "unobserved": FRS_IMD_DECILE_UNOBSERVED,
                     },
                     BAND_INPUT_COLUMN: {
                         "column": COUNCIL_TAX_BAND_COLUMN,
-                        "observed": COUNCIL_TAX_BAND_OBSERVED_COLUMN,
+                        "observed": FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
                     },
                     "missing_on_copies_of": SUPPORT_CHANNEL_BRANCH,
                 },
@@ -498,7 +501,10 @@ def draw_uk_spine_areas(
     receipt = validate_geography(
         pd.concat([placed, derived], axis=1), definition, supports
     )
-    if receipt.get("outcome") != "pass" or receipt.get("scope") != _VALIDATION_SCOPE:
+    if (
+        receipt.get("outcome") != "pass"
+        or receipt.get("scope") != ATOMIC_GEOGRAPHY_VALIDATION_SCOPE
+    ):
         raise ValueError("The area draw's mapping-integrity validation did not pass.")
     values = pd.concat([assigned, derived], axis=1)
     columns = pd.DataFrame(
@@ -551,7 +557,10 @@ class UKAtomicAreaAssignResult:
             "stream": list(self.stream),
             "definition_sha256": self.definition_sha256,
             "support_sha256": dict(self.support_sha256),
-            "validation": {"outcome": "pass", "scope": _VALIDATION_SCOPE},
+            "validation": {
+                "outcome": "pass",
+                "scope": ATOMIC_GEOGRAPHY_VALIDATION_SCOPE,
+            },
             "fallback_levels": [level.name for level in UK_ATOMIC_FALLBACK_LEVELS],
             "source_households": rounded_count(self.source_households),
             "source_households_by_system": {
@@ -833,9 +842,9 @@ BRMA_COUNT_ARTIFACT_ROLE = "count_resource"
 UK_AREA_BRMA_OUTPUT_COLUMNS = FRS_BRMA_OUTPUT_COLUMNS
 _BRMA_COLUMN = FRS_BRMA_OUTPUT_COLUMNS[0]
 _PREDICTORS_OPERATION_KIND = "materialize_rules_engine_predictors"
-#: The FRS region of Northern Ireland, the one region of its system
-#: (``atomic_area_support``'s profile; a test holds the spelling equal).
-_NORTHERN_IRELAND_REGION = "NORTHERN_IRELAND"
+#: The FRS region of Northern Ireland, the one region of its system in
+#: ``atomic_area_support``'s profile.
+(_NORTHERN_IRELAND_REGION,) = _profile(NI_SYSTEM)[2]
 #: The household columns the BRMA lookup reads: the drawn system, the two
 #: area codes the layer is keyed by and the FRS region.
 _BRMA_INPUT_COLUMNS = (
@@ -1824,7 +1833,10 @@ class UKSPICopyAreasResult:
             "stream": list(self.stream),
             "definition_sha256": self.definition_sha256,
             "support_sha256": dict(self.support_sha256),
-            "validation": {"outcome": self.checks, "scope": _VALIDATION_SCOPE},
+            "validation": {
+                "outcome": self.checks,
+                "scope": ATOMIC_GEOGRAPHY_VALIDATION_SCOPE,
+            },
             "local_authority_vintage": UK_LOCAL_AUTHORITY_VINTAGE,
             "names_source_sha256": LAD23_NAMES_SHA256,
             "brma": {

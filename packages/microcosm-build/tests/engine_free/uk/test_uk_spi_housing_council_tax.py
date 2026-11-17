@@ -90,7 +90,6 @@ from microcosm.build.source_manifest import (
 )
 from microcosm.build.uk_runtime.atomic_area_conditioning import (
     BAND_INPUT_COLUMN,
-    COUNCIL_TAX_BAND_OBSERVED_COLUMN,
     DECILE_INPUT_COLUMN,
     IDENTITY_COLUMN,
     REGION_COLUMN,
@@ -103,7 +102,6 @@ from microcosm.build.uk_runtime.atomic_area_conditioning import (
     uk_draw_levels,
     uk_support_channel_copies,
 )
-from microcosm.build.uk_runtime.atomic_area_support import IMD_DECILE_COLUMN
 from microcosm.build.uk_runtime.council_tax_band_d import (
     SCOTLAND_BAND_D_RESOURCE,
     UK_BAND_D_BUILD_PERIOD,
@@ -117,6 +115,10 @@ from microcosm.build.uk_runtime.council_tax_band_d import (
 from microcosm.build.uk_runtime.council_tax_constants import (
     UK_COUNCIL_TAX_BANDS_BY_NATION,
     UK_NATION_BY_REGION,
+)
+from microcosm.build.uk_runtime.frs_spine import (
+    FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
+    FRS_IMD_DECILE_COLUMN,
 )
 from microcosm.build.uk_runtime.graph import _STAGE_CONSUMES
 from microcosm.build.uk_runtime.household_lineage import UK_COPY_LINEAGE
@@ -732,8 +734,8 @@ def test_the_references_and_bills_read_no_area_column(clones) -> None:
         columns=[
             *_AREA_COLUMNS,
             IDENTITY_COLUMN,
-            IMD_DECILE_COLUMN,
-            COUNCIL_TAX_BAND_OBSERVED_COLUMN,
+            FRS_IMD_DECILE_COLUMN,
+            FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
         ]
     )
     # The household columns the shell consumes, with the household id.

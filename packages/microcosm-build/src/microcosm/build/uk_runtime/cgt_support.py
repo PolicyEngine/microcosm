@@ -180,13 +180,6 @@ CGT_SUPPORT_ONE_COPY_CHECK = (
     "not make"
 )
 _HOUSEHOLD_SUPPORT_CHANNEL_COLUMN = "household_support_channel"
-#: The geographic clone index the clone-first spine gives every household
-#: (``geographic_clones.ladder_clone_index_column("household")``, the
-#: ``geographic_support`` branch of the UK copy lineage; microcosm#931). This
-#: stage reads ``K`` through ``geographic_clones.geographic_clone_count``,
-#: which reads that module's name, and its node hashes that module, so no code
-#: here reads this spelling any more; a test holds it equal to the others.
-_GEOGRAPHIC_CLONE_INDEX_COLUMN = "household_clone_index"
 _PERSON_ID_COLUMNS = ("person_id", "person_household_id", "person_benunit_id")
 _POLICY_PARAMETER_NAMES = (
     "gov.hmrc.income_tax.allowances.personal_allowance.amount",

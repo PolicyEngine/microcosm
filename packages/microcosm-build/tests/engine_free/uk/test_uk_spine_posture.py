@@ -26,6 +26,7 @@ from microcosm.build.uk_runtime.geography_first_roster import (
     GEOGRAPHY_FIRST_STAGES,
     SIDECAR_GEOGRAPHY_KEYS,
 )
+from microcosm.build.uk_runtime.national_frame import UK_RELEASE_LINES
 from microcosm.build.uk_runtime.spine_posture import (
     NATIONAL_AREA_EXCLUSION,
     NATIONAL_CLONE_COUNT,
@@ -39,7 +40,6 @@ from microcosm.build.uk_runtime.spine_posture import (
 )
 from microcosm.build.uk_runtime.weighted_integrity import (
     UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
-    UK_RELEASE_LINES,
     load_uk_reviewed_exclusion_register,
 )
 from test_support.microcosm_build.uk_full_build_cli import (

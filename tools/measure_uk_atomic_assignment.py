@@ -105,7 +105,6 @@ from microcosm.build.source_lineage import copy_paths
 from microcosm.build.trace import sha256_file
 from microcosm.build.uk_runtime.atomic_area_conditioning import (
     COUNCIL_TAX_BAND_COLUMN,
-    COUNCIL_TAX_BAND_OBSERVED_COLUMN,
     IDENTITY_COLUMN,
     REGION_COLUMN,
     UK_ATOMIC_FALLBACK_LEVELS,
@@ -119,13 +118,16 @@ from microcosm.build.uk_runtime.atomic_area_conditioning import (
 from microcosm.build.uk_runtime.atomic_area_support import (
     ASSIGNMENT_COLUMNS,
     CONDITIONED_SOURCES,
-    IMD_DECILE_COLUMN,
     SYSTEMS,
     uk_atomic_assignment_definition,
     uk_conditioned_support_base,
 )
 from microcosm.build.uk_runtime.calibration_run import load_bound_spine_checkpoint
 from microcosm.build.uk_runtime.country_adapter import uk_atomic_support_register
+from microcosm.build.uk_runtime.frs_spine import (
+    FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
+    FRS_IMD_DECILE_COLUMN,
+)
 from microcosm.build.uk_runtime.geographic_clones import (
     SOURCE_YEAR_COLUMN,
     geographic_clone_count,
@@ -193,9 +195,9 @@ WEIGHT_COLUMN = "household_weight"
 #: The base rows' draw inputs, as the spine's root writes them.
 BASE_INPUT_COLUMNS = (
     REGION_COLUMN,
-    IMD_DECILE_COLUMN,
+    FRS_IMD_DECILE_COLUMN,
     COUNCIL_TAX_BAND_COLUMN,
-    COUNCIL_TAX_BAND_OBSERVED_COLUMN,
+    FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
 )
 #: Northern Ireland's FRS region, the system of its data zones and the level
 #: its local government districts sit at.

@@ -261,21 +261,11 @@ def test_the_region_only_definition_keeps_its_bytes() -> None:
 
 
 def test_the_spellings_follow_their_owners() -> None:
-    from microcosm.build.uk_runtime.frs_spine import (
-        FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
-        FRS_IMD_DECILE_COLUMN,
-        FRS_IMD_DECILE_UNOBSERVED,
-    )
     from microcosm.build.uk_runtime.geography_ladder import UK_GEOGRAPHY_LADDER_COLUMNS
     from microcosm.build.uk_runtime.local_authority_input import (
         UK_LOCAL_AUTHORITY_INPUT_COLUMN,
     )
 
-    assert conditioning.COUNCIL_TAX_BAND_OBSERVED_COLUMN == (
-        FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN
-    )
-    assert conditioning.UNOBSERVED_IMD_DECILE == FRS_IMD_DECILE_UNOBSERVED
-    assert IMD_DECILE_COLUMN == FRS_IMD_DECILE_COLUMN
     assert UK_SPINE_LADDER_COLUMNS == tuple(
         column
         for column in UK_GEOGRAPHY_LADDER_COLUMNS

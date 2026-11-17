@@ -493,7 +493,6 @@ def test_the_national_drop_list_is_the_clone_indices_on_the_gate_lines() -> None
     from microcosm.build.uk_runtime.geographic_clones import (
         ladder_clone_index_column,
     )
-    from microcosm.build.uk_runtime.weighted_integrity import UK_RELEASE_LINES
 
     entities = ("person", "benunit", "household")
     assert dict(national_frame.UK_NATIONAL_EXPORT_DROPPED_COLUMNS) == {
@@ -502,7 +501,6 @@ def test_the_national_drop_list_is_the_clone_indices_on_the_gate_lines() -> None
     assert _CLONE_INDEX_COLUMNS == {
         entity: ladder_clone_index_column(entity) for entity in entities
     }
-    assert national_frame._UK_EXPORT_LINES == UK_RELEASE_LINES
     shared = national_frame.UK_RELEASE_EXPORT_DROPPED_COLUMNS
     # No reviewed exclusion is a clone index, so the national line adds them
     # and only them, after the shared drops.

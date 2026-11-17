@@ -33,6 +33,7 @@ from microcosm.build.uk_runtime.frs_hmrc_source import (
     _read_raw_frs_table,
 )
 from microcosm.build.uk_runtime.frs_take_up import uk_take_up_population_policy
+from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
 from microcosm.build.uk_runtime.hmrc_income import (
     HMRCIncomeTargetSet,
     materialize_hmrc_spi_income_band_targets,
@@ -112,7 +113,6 @@ from microcosm.build.uk_runtime.spi_support import (
     DEFAULT_SPI_SUPPORT_HOUSEHOLDS,
     FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS,
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
-    SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN,
     SPI_HMRC_DERIVED_AUXILIARY_COLUMNS,
     SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
     SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN,
@@ -1298,13 +1298,12 @@ def _support_stage_parameters(
     strata = tuple(allocation.parameters.get("strata", ()))
     if strata != ("region",):
         raise ValueError("SPI support spine allocation must use strata ['region'].")
-    if (
-        allocation.parameters.get("geographic_clone_stratum")
-        != SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN
-    ):
+    if allocation.parameters.get(
+        "geographic_clone_stratum"
+    ) != ladder_clone_index_column("household"):
         raise ValueError(
             "SPI support allocation must split its strata by geographic clone "
-            f"on {SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN!r}."
+            f"on {ladder_clone_index_column('household')!r}."
         )
     pension_age_share = allocation.parameters.get("pension_age_share")
     if pension_age_share is not None:

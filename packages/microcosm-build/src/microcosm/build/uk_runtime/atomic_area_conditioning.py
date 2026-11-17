@@ -79,6 +79,11 @@ from microcosm.build.uk_runtime.atomic_area_support import (
     uk_conditioned_support_base,
 )
 from microcosm.build.uk_runtime.council_tax_constants import UK_COUNCIL_TAX_BANDS
+from microcosm.build.uk_runtime.frs_spine import (
+    FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
+    FRS_IMD_DECILE_COLUMN,
+    FRS_IMD_DECILE_UNOBSERVED,
+)
 from microcosm.build.uk_runtime.geographic_clones import (
     GEOGRAPHY_HOUSEHOLD_KEY_COLUMN,
 )
@@ -87,7 +92,6 @@ from microcosm.build.uk_runtime.household_lineage import UK_COPY_LINEAGE
 __all__ = [
     "BAND_INPUT_COLUMN",
     "COUNCIL_TAX_BAND_COLUMN",
-    "COUNCIL_TAX_BAND_OBSERVED_COLUMN",
     "DECILE_INPUT_COLUMN",
     "DEFAULT_WEIGHT_COLUMN",
     "DRAW_INPUT_COLUMNS",
@@ -103,7 +107,6 @@ __all__ = [
     "UK_SPINE_ATOMIC_AREA_STREAM",
     "UK_SPINE_LADDER_COLUMNS",
     "UK_SPINE_LAYERS",
-    "UNOBSERVED_IMD_DECILE",
     "uk_band_weight_map",
     "uk_conditioned_assignment_definition",
     "uk_conditioned_supports",
@@ -137,14 +140,12 @@ UK_SPINE_ATOMIC_AREA_DRAW_STREAM = (
     UK_SPINE_ATOMIC_AREA_SEED,
 )
 
-#: The household columns the inputs are read from. The band flag and the
-#: unobserved decile are frs_spine's (``FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN``
-#: and ``FRS_IMD_DECILE_UNOBSERVED``), spelled here so that an edit to that
-#: module does not re-key the area stages; a test holds the spellings equal.
+#: The household columns the inputs are read from, beside the root's decile
+#: and band flag (``frs_spine``'s ``FRS_IMD_DECILE_COLUMN``, whose unobserved
+#: code is ``FRS_IMD_DECILE_UNOBSERVED``, and
+#: ``FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN``).
 REGION_COLUMN = "region"
 COUNCIL_TAX_BAND_COLUMN = "council_tax_band"
-COUNCIL_TAX_BAND_OBSERVED_COLUMN = "council_tax_band_observed"
-UNOBSERVED_IMD_DECILE = 0
 #: The transient inputs the draw reads: never stage outputs, they live on the
 #: narrow frame :func:`uk_draw_inputs` builds and go with it.
 DECILE_INPUT_COLUMN = "atomic_draw_imd_decile"
@@ -446,32 +447,34 @@ def uk_draw_inputs(household: pd.DataFrame) -> pd.DataFrame:
     required = (
         IDENTITY_COLUMN,
         REGION_COLUMN,
-        IMD_DECILE_COLUMN,
+        FRS_IMD_DECILE_COLUMN,
         COUNCIL_TAX_BAND_COLUMN,
-        COUNCIL_TAX_BAND_OBSERVED_COLUMN,
+        FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
     )
     missing = [column for column in required if column not in household.columns]
     _require(not missing, f"the household table lacks {missing}")
     keys = _strings(household[IDENTITY_COLUMN], IDENTITY_COLUMN)
     regions = _strings(household[REGION_COLUMN], REGION_COLUMN)
-    decile = household[IMD_DECILE_COLUMN]
+    decile = household[FRS_IMD_DECILE_COLUMN]
     _require(
         pd.api.types.is_integer_dtype(decile.dtype)
         and not pd.api.types.is_bool_dtype(decile.dtype)
         and not decile.isna().any(),
-        f"{IMD_DECILE_COLUMN} must be a complete integer column",
+        f"{FRS_IMD_DECILE_COLUMN} must be a complete integer column",
     )
     deciles = decile.to_numpy(dtype=np.int64)
     _require(
         bool(
-            np.all((deciles >= UNOBSERVED_IMD_DECILE) & (deciles <= len(IMD_DECILES)))
+            np.all(
+                (deciles >= FRS_IMD_DECILE_UNOBSERVED) & (deciles <= len(IMD_DECILES))
+            )
         ),
-        f"{IMD_DECILE_COLUMN} holds codes outside 0 to 10",
+        f"{FRS_IMD_DECILE_COLUMN} holds codes outside 0 to 10",
     )
-    observed = household[COUNCIL_TAX_BAND_OBSERVED_COLUMN]
+    observed = household[FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN]
     _require(
         pd.api.types.is_bool_dtype(observed.dtype) and not observed.isna().any(),
-        f"{COUNCIL_TAX_BAND_OBSERVED_COLUMN} must be a complete boolean column",
+        f"{FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN} must be a complete boolean column",
     )
     flags = observed.to_numpy(dtype=bool)
     bands = household[COUNCIL_TAX_BAND_COLUMN].to_numpy(dtype=object)
@@ -481,7 +484,7 @@ def uk_draw_inputs(household: pd.DataFrame) -> pd.DataFrame:
     )
     copies = uk_support_channel_copies(household)
     decile_inputs = [
-        pd.NA if copy or value == UNOBSERVED_IMD_DECILE else str(int(value))
+        pd.NA if copy or value == FRS_IMD_DECILE_UNOBSERVED else str(int(value))
         for value, copy in zip(deciles.tolist(), copies.tolist(), strict=True)
     ]
     band_inputs = [

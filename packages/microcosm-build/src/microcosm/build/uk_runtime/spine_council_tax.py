@@ -114,7 +114,6 @@ from microcosm.build.bounded_amounts import FINITE_NONNEGATIVE, amounts_within_b
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.uk_runtime.atomic_area_conditioning import (
     COUNCIL_TAX_BAND_COLUMN,
-    COUNCIL_TAX_BAND_OBSERVED_COLUMN,
     IDENTITY_COLUMN,
     REGION_COLUMN,
     SUPPORT_CHANNEL_BRANCH,
@@ -131,7 +130,6 @@ from microcosm.build.uk_runtime.atomic_area_conditioning import (
 from microcosm.build.uk_runtime.atomic_area_support import (
     ASSIGNMENT_COLUMNS,
     CONDITIONED_SOURCES,
-    IMD_DECILE_COLUMN,
     SYSTEMS,
 )
 from microcosm.build.uk_runtime.cgt_structure import _assert_closed_world_operations
@@ -158,6 +156,10 @@ from microcosm.build.uk_runtime.frs_council_tax import (
     FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN,
     FRS_COUNCIL_TAX_BILL_PROVENANCE_VALUES,
     FRS_COUNCIL_TAX_BILL_UNKNOWN_REDUCTION,
+)
+from microcosm.build.uk_runtime.frs_spine import (
+    FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
+    FRS_IMD_DECILE_COLUMN,
 )
 from microcosm.build.uk_runtime.geographic_clones import (
     geographic_clone_count,
@@ -285,9 +287,9 @@ _SUPPORT_CHANNEL_COLUMNS = next(
 UK_COUNCIL_TAX_LOCALISE_HOUSEHOLD_INPUTS = (
     IDENTITY_COLUMN,
     REGION_COLUMN,
-    IMD_DECILE_COLUMN,
+    FRS_IMD_DECILE_COLUMN,
     COUNCIL_TAX_BAND_COLUMN,
-    COUNCIL_TAX_BAND_OBSERVED_COLUMN,
+    FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
     ASSIGNMENT_COLUMNS[0],
     ASSIGNMENT_COLUMNS[1],
     UK_LOCAL_AUTHORITY_CODE_COLUMN,
@@ -445,7 +447,7 @@ def council_tax_localise_operation_parameters() -> tuple[
                     FRS_COUNCIL_TAX_BILL_MISSING,
                     FRS_COUNCIL_TAX_BILL_UNKNOWN_REDUCTION,
                 ],
-                "formula_needs": COUNCIL_TAX_BAND_OBSERVED_COLUMN,
+                "formula_needs": FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
                 "band_ratios": uk_council_tax_band_ratio_text(),
                 "single_adult_column": _SINGLE_ADULT_COLUMN,
                 "single_adult_discount": float(UK_COUNCIL_TAX_SINGLE_ADULT_DISCOUNT),
@@ -882,7 +884,7 @@ def _paths(
             f"{FRS_COUNCIL_TAX_BILL_NOT_LEVIED!r} in "
             f"{FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN!r}."
         )
-    banded = household[COUNCIL_TAX_BAND_OBSERVED_COLUMN].to_numpy(dtype=bool)
+    banded = household[FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN].to_numpy(dtype=bool)
     paths = np.full(len(household), _UNCHANGED_NORTHERN_IRELAND, dtype=object)
     paths[great_britain & support_channel] = _RATIO_SUPPORT_CHANNEL
     frs = np.flatnonzero(great_britain & ~support_channel)
