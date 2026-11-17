@@ -1,4 +1,7 @@
-"""Assembling an annual build of a US national build (microcosm#1570).
+"""Assembling an annual build of a US national or local-area build.
+
+National builds project into ``microcosm-us-2024-annual`` (microcosm#1570);
+local-area builds into ``microcosm-us-2024-local-annual`` (microcosm#922).
 
 ``tools/assemble_us_annual_release_dir.py`` takes a local copy of the base
 national build's folder, an annual candidate directory and its acceptance
@@ -14,12 +17,18 @@ import importlib.util
 import json
 import shutil
 from datetime import UTC, datetime
+from pathlib import Path
 
 import h5py
 import pytest
 
 from microcosm.data.build_folder_manifests import publication_commands
-from microcosm.data.contract import ReleaseContractError, validate_release_dir
+from microcosm.data.contract import (
+    US_LOCAL_ANNUAL_RELEASE_ID,
+    US_LOCAL_RELEASE_ID,
+    ReleaseContractError,
+    validate_release_dir,
+)
 
 # The national build-folder fixtures, which build on release_dir and
 # artifact_root.
@@ -30,6 +39,16 @@ from test_support.microcosm_data.annual_projections import (  # noqa: F401
     artifact_root,
     national_build,
     release_dir,
+)
+from test_support.microcosm_data.local_annual import (
+    LOCAL_BUILD,
+    LOCAL_DATASET_KEY,
+    LOCAL_REPO,
+    acceptance_report,
+    local_build_folder,
+    local_releases_record,
+    rewrite_json,
+    write_local_candidate,
 )
 from test_support.microcosm_data.release import RELEASE_ID
 from test_support.paths import paths_for
@@ -385,3 +404,321 @@ def test_the_assembler_refreshes_the_checksum_ledger_and_drops_manifest_artifact
         assert digest == _sha(local), name
     assert validate_release_dir(annual_dir, artifact_root=artifacts) == []
     capsys.readouterr()
+
+
+# --- A local-area base: the County Files (microcosm#922) --------------------
+
+
+@pytest.fixture
+def local_inputs(tmp_path):
+    """A local-area build as the ACS package stage writes it (its H5 one level
+    above its release directory), a candidate for 2026 and 2027 and a passing
+    acceptance report."""
+    package = tmp_path / "package"
+    base = local_build_folder(package)
+    candidate = write_local_candidate(base, package, tmp_path / "candidate")
+    acceptance = tmp_path / "acceptance.json"
+    _write(acceptance, acceptance_report(candidate / "annual_manifest.json"))
+    return {
+        "base": base,
+        "root": package,
+        "candidate": candidate,
+        "acceptance": acceptance,
+        "out": tmp_path / "assembled",
+    }
+
+
+def _assemble_local(tool, inputs, monkeypatch, *, root=True):
+    monkeypatch.setattr(tool, "_utc_now", lambda: _ASSEMBLED_AT)
+    return tool.main(
+        [
+            "--base-build-dir",
+            str(inputs["base"]),
+            *(["--base-artifact-root", str(inputs["root"])] if root else []),
+            "--candidate-dir",
+            str(inputs["candidate"]),
+            "--acceptance",
+            str(inputs["acceptance"]),
+            "--out",
+            str(inputs["out"]),
+        ]
+    )
+
+
+def test_the_assembler_writes_a_local_annual_build_that_passes_the_contract(
+    local_inputs, monkeypatch, capsys
+):
+    tool = _load_tool()
+
+    assert _assemble_local(tool, local_inputs, monkeypatch) == 0
+
+    summary = json.loads(capsys.readouterr().out)
+    out = local_inputs["out"]
+    annual_dir = out / "releases" / US_LOCAL_ANNUAL_RELEASE_ID
+    artifacts = out / "artifacts"
+    candidate_sha = _sha(local_inputs["candidate"] / "annual_manifest.json")
+    build = f"{LOCAL_BUILD}-annual-20261110T120000Z-{candidate_sha[:8]}"
+    assert summary["release"] == US_LOCAL_ANNUAL_RELEASE_ID
+    assert summary["build"] == build
+    assert summary["base"]["release"] == US_LOCAL_RELEASE_ID
+    assert summary["years"] == ["2024", "2026", "2027"]
+    assert validate_release_dir(annual_dir, artifact_root=artifacts) == []
+
+    base = _read(local_inputs["base"] / "release_manifest.json")
+    manifest = _read(annual_dir / "release_manifest.json")
+    assert (manifest["release"], manifest["build"]) == (
+        US_LOCAL_ANNUAL_RELEASE_ID,
+        build,
+    )
+    assert manifest["default_datasets"] == {}
+    assert manifest["dataset_role"] == base["dataset_role"]
+    assert manifest["metadata"]["annual_projection_base"] == {
+        "repo_id": _REPOSITORY,
+        "release": US_LOCAL_RELEASE_ID,
+        "build": LOCAL_BUILD,
+        "path": f"{LOCAL_DATASET_KEY}.h5",
+        "sha256": base["artifacts"][LOCAL_DATASET_KEY]["sha256"],
+    }
+    # The base build's files are carried unchanged; its H5 comes from the
+    # artifact root, never from the candidate, which holds no copy.
+    assert not (local_inputs["candidate"] / f"{LOCAL_DATASET_KEY}.h5").exists()
+    for key, entry in base["artifacts"].items():
+        assert manifest["artifacts"][key] == entry
+        source = (
+            local_inputs["root"] / entry["path"]
+            if entry["kind"] == "microdata"
+            else local_inputs["base"] / entry["path"]
+        )
+        carried = (
+            artifacts / entry["path"]
+            if entry["kind"] == "microdata"
+            else annual_dir / entry["path"]
+        )
+        assert carried.read_bytes() == source.read_bytes()
+    for year in (2026, 2027):
+        name = f"microcosm_us_{year}_acs_local.h5"
+        assert (artifacts / name).read_bytes() == (
+            local_inputs["candidate"] / name
+        ).read_bytes()
+        assert manifest["artifacts"][f"microcosm_us_{year}_acs_local"]["role"] == (
+            "dataset"
+        )
+        assert (annual_dir / f"projection_{year}.json").is_file()
+    ledger = {
+        line.split("  ")[1]
+        for line in (annual_dir / "sha256sums.txt").read_text().splitlines()
+    }
+    assert {
+        f"{LOCAL_DATASET_KEY}.h5",
+        "microcosm_us_2026_acs_local.h5",
+        "microcosm_us_2027_acs_local.h5",
+        "annual_manifest.json",
+        "annual_acceptance.json",
+    } <= ledger
+
+
+def test_a_downloaded_local_build_folder_holds_its_own_h5(
+    local_inputs, monkeypatch, capsys
+):
+    """A local build downloaded from releases/microcosm-us-2024-local/<build>/
+    holds its H5 in the folder, so no artifact root is needed."""
+    tool = _load_tool()
+    name = f"{LOCAL_DATASET_KEY}.h5"
+    shutil.move(local_inputs["root"] / name, local_inputs["base"] / name)
+
+    assert _assemble_local(tool, local_inputs, monkeypatch, root=False) == 0
+
+    capsys.readouterr()
+    annual_dir = local_inputs["out"] / "releases" / US_LOCAL_ANNUAL_RELEASE_ID
+    artifacts = local_inputs["out"] / "artifacts"
+    assert validate_release_dir(annual_dir, artifact_root=artifacts) == []
+
+
+def _break_local(problem, inputs):
+    evidence_path = inputs["candidate"] / "annual_manifest.json"
+    if problem == "no_artifact_root":
+        return
+    if problem == "defaults":
+        path = inputs["base"] / "release_manifest.json"
+        manifest = _read(path)
+        manifest["default_datasets"] = {"national": LOCAL_DATASET_KEY}
+        _write(path, manifest)
+        return
+    evidence = _read(evidence_path)
+    if problem == "parent_release":
+        evidence["base"]["parent_release"] = "populace-us-2024-other"
+    elif problem == "base_sha256":
+        evidence["base"]["sha256"] = "0" * 64
+    elif problem == "base_dataset":
+        evidence["base"]["dataset"] = "microcosm_us_2024"
+    _write(evidence_path, evidence)
+    _write(inputs["acceptance"], acceptance_report(evidence_path))
+
+
+@pytest.mark.parametrize(
+    ("problem", "message"),
+    [
+        ("no_artifact_root", "does not exist"),
+        ("defaults", "claim no default dataset"),
+        ("parent_release", "parent_release"),
+        ("base_sha256", "sha256"),
+        ("base_dataset", LOCAL_DATASET_KEY),
+    ],
+)
+def test_the_assembler_refuses_a_local_candidate_that_does_not_belong(
+    local_inputs, monkeypatch, problem, message
+):
+    tool = _load_tool()
+    _break_local(problem, local_inputs)
+
+    with pytest.raises(SystemExit, match=message):
+        _assemble_local(
+            tool, local_inputs, monkeypatch, root=problem != "no_artifact_root"
+        )
+
+    assert not (local_inputs["out"] / "releases").exists()
+    assert not (local_inputs["out"] / "artifacts").exists()
+
+
+def test_a_local_annual_build_that_fails_the_contract_is_not_moved_into_place(
+    local_inputs, monkeypatch
+):
+    tool = _load_tool()
+    acceptance = _read(local_inputs["acceptance"])
+    acceptance["years"]["2027"]["checks"]["runtime"] = "failed"
+    _write(local_inputs["acceptance"], acceptance)
+
+    with pytest.raises(ReleaseContractError, match="passing acceptance"):
+        _assemble_local(tool, local_inputs, monkeypatch)
+
+    assert not (local_inputs["out"] / "releases").exists()
+    assert not (local_inputs["out"] / "artifacts").exists()
+
+
+class _PublishedLocalBase:
+    """A Hub serving a local base build's two manifests as they were when it
+    was published, whatever happens to its local folder afterwards.
+
+    With ``cache`` set, the base folder is the Hub client's cached snapshot:
+    a download into the default cache returns the folder's file, edited or
+    not, as the client does for a cached file whose ETag is unchanged. A
+    forced download into its own ``cache_dir`` reads the published bytes.
+    It also serves the repository's ``releases.json``, listing the base build.
+    """
+
+    def __init__(self, directory, base, *, cache=False):
+        self.directory = directory
+        self.base = base
+        self.cache = cache
+        self.documents = {
+            name: _read(base / name)
+            for name in ("release_manifest.json", "build_manifest.json")
+        }
+        self.documents["releases.json"] = local_releases_record()
+
+    def hf_hub_download(
+        self,
+        *,
+        repo_id,
+        filename,
+        repo_type,
+        revision,
+        cache_dir=None,
+        force_download=False,
+    ):
+        name = Path(filename).name
+        cached = name != "releases.json"
+        if self.cache and cached and cache_dir is None and not force_download:
+            return str(self.base / name)
+        local = Path(cache_dir or self.directory) / filename
+        local.parent.mkdir(parents=True, exist_ok=True)
+        _write(local, self.documents[name])
+        return str(local)
+
+
+def _drop_limitations(manifest):
+    assert manifest["reviewed_limitations"]
+    manifest["reviewed_limitations"] = []
+
+
+def _other_core(manifest):
+    manifest["built_with_core_package"]["version"] = "3.99.9"
+
+
+def _relabel_reliability(manifest):
+    manifest["artifacts"]["county_reliability"].update(
+        kind="calibration", role="calibration_weights"
+    )
+
+
+#: Weights added to the base folder after publication, unlike the H5's.
+_UNPUBLISHED_WEIGHTS = b"weights [1, 2, 3] beside the H5's [10, 20, 30]"
+
+
+def _add_unpublished_weights(manifest):
+    manifest["artifacts"]["unpublished_weights"] = {
+        "kind": "calibration",
+        "path": "unpublished_weights.npz",
+        "repo_id": LOCAL_REPO,
+        "sha256": hashlib.sha256(_UNPUBLISHED_WEIGHTS).hexdigest(),
+        "role": "calibration_weights",
+    }
+
+
+@pytest.mark.parametrize("cache", [False, True], ids=["folder", "cached-folder"])
+@pytest.mark.parametrize(
+    ("edit", "claim"),
+    [
+        (None, None),
+        (_drop_limitations, "reviewed_limitations"),
+        (_other_core, "built_with_core_package"),
+        (_relabel_reliability, "county_reliability"),
+        (_add_unpublished_weights, r"declares \['unpublished_weights'\]"),
+    ],
+)
+def test_an_assembled_local_annual_build_hands_over_only_its_published_base_claims(
+    tmp_path, monkeypatch, capsys, edit, claim, cache
+):
+    """The assembler takes the annual build's claims and artifact entries
+    from the base build's local folder. A folder edited after its base was
+    published still assembles and passes the contract, so the hand-over
+    check must refuse it (review of #1627), including when the folder is the
+    Hub client's cached snapshot; an unedited folder hands over."""
+    from microcosm.data import annual_projections
+
+    package = tmp_path / "package"
+    base = local_build_folder(package)
+    hub = _PublishedLocalBase(tmp_path / "hub", base, cache=cache)
+    if edit is _add_unpublished_weights:
+        (base / "unpublished_weights.npz").write_bytes(_UNPUBLISHED_WEIGHTS)
+    if edit is not None:
+        rewrite_json(base, package, "release_manifest.json", edit)
+    candidate = write_local_candidate(base, package, tmp_path / "candidate")
+    acceptance = tmp_path / "acceptance.json"
+    _write(acceptance, acceptance_report(candidate / "annual_manifest.json"))
+    inputs = {
+        "base": base,
+        "root": package,
+        "candidate": candidate,
+        "acceptance": acceptance,
+        "out": tmp_path / "assembled",
+    }
+
+    assert _assemble_local(_load_tool(), inputs, monkeypatch) == 0
+
+    capsys.readouterr()
+    annual_dir = inputs["out"] / "releases" / US_LOCAL_ANNUAL_RELEASE_ID
+    artifacts = inputs["out"] / "artifacts"
+    assert validate_release_dir(annual_dir, artifact_root=artifacts) == []
+
+    def hand_over():
+        # As the publisher calls it, with the folder's artifact root.
+        annual_projections.require_base_publication(
+            hub, annual_dir, repo_id=LOCAL_REPO, artifact_root=artifacts
+        )
+
+    if claim is None:
+        hand_over()
+    else:
+        with pytest.raises(ValueError, match=claim):
+            hand_over()

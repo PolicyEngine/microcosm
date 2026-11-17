@@ -262,7 +262,7 @@ LEGACY_STAGING_REFRESH_RECIPE = (
 #: Table 2 state tables (broad totals, AGI bands, EITC by qualifying
 #: children). Build O selected it as ``full`` with congressional-district
 #: targets switched off (``include_congressional_district_targets=False`` at
-#: populace@77e2061); commit b7922b089 removed that switch, so no mode
+#: microcosm@77e2061); commit b7922b089 removed that switch, so no mode
 #: reproduced it until this one.
 #:
 #: ``totals`` keeps only the specs whose ``target_role`` is not
@@ -1557,7 +1557,9 @@ PERSON_STRUCT = [
 ]
 
 
-def ladder_population(ladder_path: Path, geographies: list[str]):
+def ladder_population(
+    ladder_path: Path, geographies: list[str], *, county_column: str = "county_fips"
+):
     from microcosm.build.us_runtime.puma_ladder import load_us_puma_ladder
 
     ladder = load_us_puma_ladder(ladder_path)
@@ -1575,7 +1577,9 @@ def ladder_population(ladder_path: Path, geographies: list[str]):
             )
             for cd in np.unique(ladder.cd_overlap_cd)
         }
-    return county_surface.with_county_populations(ladder, populations, geographies)
+    return county_surface.with_county_populations(
+        ladder, populations, geographies, county_column=county_column
+    )
 
 
 def household_sizes(frame) -> np.ndarray:
@@ -1739,15 +1743,19 @@ TARGET_MATRIX_FILENAME = "target_matrix.npz"
 TARGET_ROLES_FILENAME = "target_roles.json"
 
 
-def extract_struct_tables(frame, *, county_column="county_fips"):
-    """Small structural/geography copies so the big frame can be freed early."""
+def extract_struct_tables(frame, *, county_column="county_fips", county_run=False):
+    """Small structural/geography copies so the big frame can be freed early.
+
+    ``county_run`` keeps what county reliability needs after a reload
+    (:func:`us_acs_local_county_surface.struct_columns`).
+    """
 
     households = frame.table("household")
     struct_columns = [
         column for column in LEAN_HOUSEHOLD_COLUMNS if column in households.columns
     ]
     struct_columns += county_surface.struct_columns(
-        households, struct_columns, county_column=county_column
+        households, struct_columns, county_column=county_column, county_run=county_run
     )
     person_columns = [
         column for column in PERSON_STRUCT if column in frame.table("person").columns
@@ -2244,7 +2252,11 @@ def do_materialize(args) -> None:
         f"admin specs: {len(registry)} ({families}, soi_mode={args.soi_mode}); "
         f"RI substitution records={len(surface.ri_substitutions)}"
     )
-    populations = ladder_population(args.ladder, sorted(set(geographies) | {"cd"}))
+    populations = ladder_population(
+        args.ladder,
+        sorted(set(geographies) | {"cd"}),
+        county_column=getattr(args, "county_column", "county_fips"),
+    )
     county_surface.prepare_run(args, geographies, populations, surface=surface)
     require_one_label_per_geography(registry, populations, geographies)
     summary_path = _staging_summary_path(args)
@@ -2312,7 +2324,10 @@ def do_materialize(args) -> None:
         (args.checkpoint_dir / name).unlink(missing_ok=True)
     if getattr(args, "gate_report", None) is not None:
         Path(args.gate_report).unlink(missing_ok=True)
-    county_surface.check_support(frame, populations, args)
+    # microcosm#922: a county with ladder population but no household gets a
+    # fixed number of same-PUMA households before any measure is built; the
+    # frame returned carries their rewritten county columns.
+    frame = county_surface.check_support(frame, populations, args)
     materialized = materialize_chunked(
         frame,
         registry.specs,
@@ -2378,7 +2393,9 @@ def do_materialize(args) -> None:
     matrix = sparse.vstack([admin_matrix, pop_matrix], format="csr")
     del admin_matrix, pop_matrix
     struct = extract_struct_tables(
-        frame, county_column=getattr(args, "county_column", "county_fips")
+        frame,
+        county_column=getattr(args, "county_column", "county_fips"),
+        county_run=any(role.get("geography_level") == "county" for role in roles),
     )
     n_households = frame.n("household")
     del frame
@@ -2485,6 +2502,7 @@ CALIBRATION_OUTPUT_FILENAMES = (
     "calibration_summary.json",
     "calibration_diagnostics.json",
     "county_reliability.json",
+    "county_reliability.csv",
     "consumer_export.json",
     "consumer_reviewed_null_fills.json",
     "spine_qa.json",
@@ -2729,6 +2747,41 @@ def _require_current_calibration(identity: dict, summary: dict, *, stage: str) -
         )
 
 
+#: What a softmax solve's summary recorded before the exact cap step
+#: (microcosm#1096): how many epochs ran out of renormalize-and-clamp rounds.
+PRE_EXACT_CAP_SOFTMAX_RECEIPT = "softmax_cap_rounds_exhausted_epochs"
+#: What it records since: the largest in-loop weight over its cap. ``None``
+#: for a solve with no softmax cap step (projection, or softmax uncapped).
+SOFTMAX_CAP_RECEIPT = "softmax_in_loop_max_cap_ratio"
+
+
+def _require_exact_cap_step_summary(summary: dict, *, stage: str) -> None:
+    """Refuse a softmax calibration summary from before the exact cap step.
+
+    The old receipt counts epochs and the new one is a weight-to-cap ratio,
+    so neither can stand in for the other. A summary that holds a count under
+    the old key and lacks the new key was solved by the old step, and the
+    manifest would carry ``None`` for the new key: the value of a solve with
+    no softmax cap step, over a capped softmax solve. A projection solve from
+    before the change recorded the old key as ``None``, and an older summary
+    records neither key; both read as before.
+    """
+
+    if (
+        summary.get(PRE_EXACT_CAP_SOFTMAX_RECEIPT) is not None
+        and SOFTMAX_CAP_RECEIPT not in summary
+    ):
+        raise SystemExit(
+            f"calibration_summary.json records {PRE_EXACT_CAP_SOFTMAX_RECEIPT}="
+            f"{summary[PRE_EXACT_CAP_SOFTMAX_RECEIPT]!r} and no "
+            f"{SOFTMAX_CAP_RECEIPT}: this checkpoint's softmax solve predates "
+            "the exact cap step (microcosm#1096), and the two receipts measure "
+            "different things. Calibrate the checkpoint again before --stage "
+            f"{stage}: run --stage calibrate without --resume (--resume keeps "
+            "a completed weights_latest.npz and this summary)."
+        )
+
+
 def load_checkpoint_surface(checkpoint_dir: Path, identity: dict | None = None):
     """The lean frame, design weights, registry, roles and matrix of a checkpoint.
 
@@ -2878,12 +2931,16 @@ def calibration_evidence(
     design_weights: np.ndarray,
     weights: np.ndarray,
     target_loss_cap: float,
+    checkpoint_dir: Path | None = None,
+    identity: dict | None = None,
 ) -> dict:
     """The sparse-surface evidence the calibration summary adds.
 
     The CD holdout scored against the pro-rata baseline, and ESS over rows
     and distinct households with household-weight share by spine, at the
-    design and the calibrated weights.
+    design and the calibrated weights. With the checkpoint directory and run
+    identity, a county run also scores its held-out ACS validation families
+    (microcosm#922), which never reach the loss.
     """
 
     origin = _origin_columns(frame)
@@ -2907,7 +2964,14 @@ def calibration_evidence(
             cap=target_loss_cap,
         ),
         **county_surface.calibration_evidence(
-            frame, roles, matrix, design_weights, weights, target_loss_cap
+            frame,
+            roles,
+            matrix,
+            design_weights,
+            weights,
+            target_loss_cap,
+            checkpoint_dir=checkpoint_dir,
+            identity=identity,
         ),
     }
 
@@ -3006,6 +3070,36 @@ def do_calibrate(args) -> None:
             and _stamped_settings(previous.get("solver_settings")) == settings
             and previous.get("weights_sha256") == _weights_digest(warm)
         ):
+            # The summary's evidence must be what this code computes from the
+            # checkpoint and these weights. Otherwise the shortcut ships what
+            # an older build wrote, such as county reliability grades that
+            # counted group quarters as support from a checkpoint without
+            # TYPEHUGQ. Recomputing it refuses that checkpoint exactly as a
+            # fresh solve does (review of #1630).
+            evidence = calibration_evidence(
+                frame=frame,
+                roles=roles,
+                matrix=matrix,
+                design_weights=design_weights,
+                weights=np.asarray(warm, dtype=np.float64),
+                target_loss_cap=args.target_loss_cap,
+                checkpoint_dir=args.checkpoint_dir,
+                identity=identity,
+            )
+            stale = sorted(
+                key
+                for key, value in evidence.items()
+                if json.dumps(previous.get(key), sort_keys=True)
+                != json.dumps(value, sort_keys=True)
+            )
+            if stale:
+                raise SystemExit(
+                    f"calibration_summary.json records {stale} evidence that "
+                    "this code does not compute from the checkpoint and the "
+                    "weights_latest.npz weights, so another build wrote it. "
+                    "Delete weights_latest.npz or run without --resume to "
+                    "recalibrate."
+                )
             log(
                 f"calibration already complete at {done} epochs and "
                 "the calibration summary exists; nothing to do (delete "
@@ -3100,10 +3194,11 @@ def do_calibrate(args) -> None:
         "effective_sample_size": round(result.effective_sample_size, 1),
         "ess_fraction": round(result.effective_sample_size / n_households, 4),
         "chi_square_distance": round(result.chi_square_distance, 6),
-        # Softmax only: epochs whose cap rounds ran out (the last epoch batch).
-        "softmax_cap_rounds_exhausted_epochs": (
+        # Softmax only: the largest in-loop weight over its cap, before the
+        # closing projection (the last epoch batch).
+        "softmax_in_loop_max_cap_ratio": (
             result.options.get("iterate_selection_receipt") or {}
-        ).get("softmax_cap_rounds_exhausted_epochs"),
+        ).get("softmax_in_loop_max_cap_ratio"),
         "realized_max_weight_ratio": round(result.realized_max_weight_ratio, 4),
         "mass_conserved_ratio": round(
             float(result.weights.sum()) / float(design_weights.sum()), 6
@@ -3116,6 +3211,8 @@ def do_calibrate(args) -> None:
             design_weights=design_weights,
             weights=np.asarray(result.weights, dtype=np.float64),
             target_loss_cap=args.target_loss_cap,
+            checkpoint_dir=args.checkpoint_dir,
+            identity=identity,
         ),
         "total_wall_seconds": round(time.time() - started, 1),
         "peak_rss_gb": round(rss(), 3),
@@ -3305,6 +3402,9 @@ def _write_calibrated_artifact(
     # microcosm#1022: apply the ACS SSI/Medicaid take-up materialize recorded
     # on the same rung; it must reproduce the recorded digest.
     frame = _with_recorded_ssi_medicaid_take_up(frame, ssi_medicaid, ssi_medicaid_path)
+    # microcosm#922: re-apply the county support moves materialize recorded,
+    # so the published file carries the county codes calibration saw.
+    frame = county_surface.apply_recorded_support(frame, identity, args.checkpoint_dir)
     staging_ids = frame.table("household")["household_id"].to_numpy()
     with pd.HDFStore(args.checkpoint_dir / "target_frame_lean.h5", mode="r") as store:
         lean_ids = store["household"]["household_id"].to_numpy()
@@ -5381,14 +5481,15 @@ def _require_ssi_take_up_handling(
 
 
 def _require_acs_self_employment_identity(frame):
-    """Refuse a frame whose ACS self-employment leaves add to SEMP (#1380).
+    """Refuse a frame whose ACS self-employment double-counts SEMP.
 
     Staging built before the ACS transfer zeroed donor self-employment
-    components carries them on top of SEMP, and so does any checkpoint
-    calibrated from it. Materialize and calibrate check the staging frame;
-    package checks the calibrated H5 it ships, so a historical checkpoint
-    cannot reach a release through qa and finalize alone. Returns the
-    passing gate.
+    components (#1380) carries them on top of SEMP, and staging built before
+    it kept partnership_income at zero where SEMP already holds it (#1387)
+    carries that on top too; so does any checkpoint calibrated from either.
+    Materialize and calibrate check the staging frame; package checks the
+    calibrated H5 it ships, so a historical checkpoint cannot reach a
+    release through qa and finalize alone. Returns the passing gate.
     """
 
     person = frame.table("person")
@@ -5409,10 +5510,36 @@ def _require_acs_self_employment_identity(frame):
         ),
     )
     if not gate.passed:
+        double_counted = any(
+            gate.details.get(key, 0) for key in _SELF_EMPLOYMENT_DOUBLE_COUNT_DETAILS
+        )
         raise SystemExit(
-            "ACS self-employment identity failed: " + "; ".join(gate.failures)
+            "ACS self-employment identity failed: "
+            + "; ".join(gate.failures)
+            + (
+                ". Staging, or a checkpoint calibrated from staging, built before "
+                "microcosm#1380 or #1387 must be rebuilt with the current ACS base "
+                "builder."
+                if double_counted
+                else "."
+            )
         )
     return gate
+
+
+#: Gate detail counts that mean income counted twice, which staging built
+#: before microcosm#1380 or #1387 carries; other failures (a malformed role,
+#: a blank or non-numeric value) need their input fixed, not a rebuild.
+_SELF_EMPLOYMENT_DOUBLE_COUNT_DETAILS = (
+    "mismatched_rows",
+    "blank_semp_nonzero_rows",
+    "non_acs_component_rows",
+    "base_and_sstb_rows",
+    "partnership_on_semp_rows",
+    "partnership_on_spouse_rows",
+    "partnership_on_blank_semp_rows",
+    "passive_without_line_32_rows",
+)
 
 
 def do_finalize(args) -> None:
@@ -6161,6 +6288,7 @@ def do_package(args) -> dict:
     soi_mode = _require_recorded_soi_mode(materialize_rss)
     _require_full_rung(identity)
     _require_current_calibration(identity, diagnostics, stage="package")
+    _require_exact_cap_step_summary(diagnostics, stage="package")
     _require_blocking_district_ess_gate(gate_report, args)
     calibrated_h5 = Path(args.out_h5)
     if not calibrated_h5.exists():
@@ -6296,8 +6424,9 @@ def do_package(args) -> dict:
     # release records as built-with.
     spm_measurement_gate = _require_spm_measurement(artifact_frame)
     package_hours_gate = _local_hours_gate(artifact_frame, staging_summary)
-    # microcosm#1380: a checkpoint calibrated from pre-fix staging stacks
-    # donor self-employment on SEMP; grade the bytes being packaged.
+    # microcosm#1380, #1387: a checkpoint calibrated from pre-fix staging
+    # stacks donor self-employment or partnership income on SEMP; grade the
+    # bytes being packaged.
     self_employment_gate = _require_acs_self_employment_identity(artifact_frame)
     del artifact_frame
     gc.collect()
@@ -6482,7 +6611,7 @@ def do_package(args) -> dict:
                 "effective_sample_size",
                 "ess_fraction",
                 "chi_square_distance",
-                "softmax_cap_rounds_exhausted_epochs",
+                "softmax_in_loop_max_cap_ratio",
                 "realized_max_weight_ratio",
                 "mass_conserved_ratio",
             )
@@ -6538,7 +6667,10 @@ def do_package(args) -> dict:
         "run_identity.json": identity,
     }
     contract_files["spine_qa.json"] = spine_qa
-    county_surface.package_reports(contract_files, args.checkpoint_dir, identity)
+    # The county reliability CSV ships beside its JSON (microcosm#922).
+    county_files = county_surface.package_reports(
+        contract_files, args.checkpoint_dir, identity
+    )
     contract_files["consumer_export.json"] = consumer_export
     contract_files["consumer_reviewed_null_fills.json"] = consumer_fills
     # microcosm#1022: the notes the fills were graded against ship beside them.
@@ -6548,6 +6680,8 @@ def do_package(args) -> dict:
     release_dir.mkdir(parents=True, exist_ok=True)
     for name, payload in contract_files.items():
         (release_dir / name).write_text(json.dumps(payload, indent=1))
+    for name, text in county_files.items():
+        (release_dir / name).write_text(text)
     if diagnostics_status["status"] == "available":
         source_diagnostics = args.checkpoint_dir / "calibration_diagnostics.json"
         if not source_diagnostics.is_file():
@@ -6600,8 +6734,10 @@ def do_package(args) -> dict:
     # declared artifacts only (microcosm#1570), so every other file written
     # above, the evidence JSON included, is declared, as the UK dense
     # assembler declares its evidence.
-    for name in contract_files:
+    for name in [*contract_files, *county_files]:
         key = Path(name).stem
+        if name in county_files:
+            key = Path(name).name.replace(".", "_")
         if name != "build_manifest.json" and key not in artifacts:
             artifacts[key] = _artifact(name, "diagnostics", release_dir / name)
 
@@ -6638,6 +6774,7 @@ def do_package(args) -> dict:
     )
 
     sums = {path.name: _sha256(path) for path in sorted(release_dir.glob("*.json"))}
+    sums.update({name: _sha256(release_dir / name) for name in county_files})
     sums[ARTIFACT_FILENAME] = h5_sha
     (release_dir / "sha256sums.txt").write_text(
         "".join(f"{digest}  {name}\n" for name, digest in sorted(sums.items()))
@@ -6820,10 +6957,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "How the mass-conserving Adam solve holds the total "
             "(microcosm.calibrate mass_parametrization). 'projection' "
             "(default) is the historical per-step uniform shift; 'softmax' "
-            "optimizes total * softmax(log_w). At the ACS release's scale "
-            "softmax's per-step cap rounds run out on most epochs, so it "
-            "optimizes past the cap until the closing projection; the summary "
-            "records the count (docs/calibration-l2-basis.md)."
+            "optimizes total * softmax(log_w), projecting exactly onto the "
+            "capped simplex after every step; the summary records the largest "
+            "in-loop weight over its cap (docs/calibration-l2-basis.md)."
         ),
     )
     parser.add_argument("--seed", type=int, default=0)

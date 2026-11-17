@@ -7,16 +7,16 @@
     "country": "be",
     "scope": "be_calibration",
     "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "2c7e8357f1dcb9af2337c10d6cf4cbd82b1e55ef",
+    "source_commit": "14181d7cdf42a846c256019c1fbfbba45054d88a",
     "build": "build-bundle --suite be -> build-consumer-artifact",
     "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
     "consumer_fact_schema_versions": [
-      "chronicle.consumer_fact.v4"
+      "chronicle.consumer_fact.v5"
     ],
-    "consumer_fact_schema_sha256": "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0",
+    "consumer_fact_schema_sha256": "acd33a091cd8d192be5d264e3e94c13e00afb6fd1972e57d4576ac55a54f6970",
     "fact_row_count": 87112,
-    "facts_sha256": "e01a463065a81ba60139a24a605e52797442504478be60970e0ff66f9d3c6b95",
-    "manifest_sha256": "7839792643a6a32a1784328644df16c250e8d4ba08287c455983a6e7ceebb34c"
+    "facts_sha256": "607ea9b210eb366110826ed6a8317cc317d1c99c2828d142ce11b21f793aedfc",
+    "manifest_sha256": "e40d48b4157473e2aa454bac08a2815c04d165c906c8f3e515c6d461f1c119b3"
   },
   "policy_year": 2026,
   "method_card_status": "BE-MC0, BE-MC3 to BE-MC6 proposed pending d1902; nothing publishes a number",
@@ -423,7 +423,7 @@
       "numerator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t06.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t06.net_national_disposable_income",
         "entity_name": "institutional_sector",
         "period_type": "calendar_year",
         "period_value": 2026,
@@ -432,12 +432,12 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.national_income_account.net_national_disposable_income",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:63c570cc58902f2813b3bde9"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:6e4d6b226aad0905cc37a4f8"
       },
       "denominator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t06.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t06.net_national_disposable_income",
         "entity_name": "institutional_sector",
         "period_type": "calendar_year",
         "period_value": 2024,
@@ -446,7 +446,7 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2024.national_income_account.net_national_disposable_income",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:5148b5898c391c11ff484930"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:6afbcabff50434464a75425f"
       },
       "numerator": 534156000000.0,
       "denominator": 500699000000.0,
@@ -474,7 +474,7 @@
       "numerator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "level_thousand",
-        "source_concept": "fpb.economic_outlook_2026_2031.t07.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t07.total_population",
         "entity_name": "person",
         "period_type": "calendar_year",
         "period_value": 2026,
@@ -483,12 +483,12 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.labour_market.levels.total_population",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:d0f703b4cdbc4b51ce2a9674"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:c2050b1163ff8bbd91a78d6a"
       },
       "denominator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "level_thousand",
-        "source_concept": "fpb.economic_outlook_2026_2031.t07.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t07.total_population",
         "entity_name": "person",
         "period_type": "calendar_year",
         "period_value": 2023,
@@ -497,7 +497,7 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2023.labour_market.levels.total_population",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:216674c54ce3810c24e7434c"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:26a6f2a5c42d10d907c30092"
       },
       "numerator": 11896000.0,
       "denominator": 11730600.0,
@@ -533,7 +533,7 @@
       "numerator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.actual_social_contributions",
         "entity_name": "household",
         "period_type": "calendar_year",
         "period_value": 2026,
@@ -542,12 +542,12 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.household_account.actual_social_contributions",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:a66b02d02ed92c58e542e7ed"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:4be03d22b5fd13eba3ea9477"
       },
       "denominator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.actual_social_contributions",
         "entity_name": "household",
         "period_type": "calendar_year",
         "period_value": 2024,
@@ -556,7 +556,7 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2024.household_account.actual_social_contributions",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:3f953c8cbe00192899c93c3b"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:0a8d84668181959ac088e716"
       },
       "numerator": 101300000000.0,
       "denominator": 94613000000.0,
@@ -583,7 +583,7 @@
       "numerator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.current_taxes_on_income_and_wealth",
         "entity_name": "household",
         "period_type": "calendar_year",
         "period_value": 2026,
@@ -592,12 +592,12 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.household_account.current_taxes_on_income_and_wealth",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:67bb0b178a502334a5798bfa"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:1bbbd7c1fa2df49c183d8c87"
       },
       "denominator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.current_taxes_on_income_and_wealth",
         "entity_name": "household",
         "period_type": "calendar_year",
         "period_value": 2024,
@@ -606,7 +606,7 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2024.household_account.current_taxes_on_income_and_wealth",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:d3638106fd28d6f6d119c0d5"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:0a30adbf2deccca7c4fdd0c2"
       },
       "numerator": 83113000000.0,
       "denominator": 77033000000.0,
@@ -633,7 +633,7 @@
       "numerator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.gross_wages_and_salaries",
         "entity_name": "household",
         "period_type": "calendar_year",
         "period_value": 2026,
@@ -642,12 +642,12 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.household_account.gross_wages_and_salaries",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:f17958efe84e42471bf68f80"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:044628832522c2f679db2dd3"
       },
       "denominator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.gross_wages_and_salaries",
         "entity_name": "household",
         "period_type": "calendar_year",
         "period_value": 2025,
@@ -656,7 +656,7 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2025.household_account.gross_wages_and_salaries",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:1b99b4161fa76ca1069ad5e7"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:6f2ce9ba247d92e9db540c55"
       },
       "numerator": 247221000000.0,
       "denominator": 240536000000.0,
@@ -681,7 +681,7 @@
       "numerator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.net_mixed_income",
         "entity_name": "household",
         "period_type": "calendar_year",
         "period_value": 2026,
@@ -690,12 +690,12 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.household_account.net_mixed_income",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:82a8d913db8aa3594a182492"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:93d23afcf05e558fb5c63901"
       },
       "denominator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.net_mixed_income",
         "entity_name": "household",
         "period_type": "calendar_year",
         "period_value": 2025,
@@ -704,7 +704,7 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2025.household_account.net_mixed_income",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:0db8ec51ab64a7f7519fc5d4"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:337dc00027bc26bf8ec897ce"
       },
       "numerator": 41044000000.0,
       "denominator": 39834000000.0,
@@ -729,7 +729,7 @@
       "numerator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.social_benefits",
         "entity_name": "household",
         "period_type": "calendar_year",
         "period_value": 2026,
@@ -738,12 +738,12 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.household_account.social_benefits",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:bf52974b05acf19d1d3ccb28"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:22e426217cdab8e38484dc91"
       },
       "denominator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.social_benefits",
         "entity_name": "household",
         "period_type": "calendar_year",
         "period_value": 2024,
@@ -752,7 +752,7 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2024.household_account.social_benefits",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:e87808ae0b585214ec608b92"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:3cefc3f023b9aad52491c952"
       },
       "numerator": 132674000000.0,
       "denominator": 124608000000.0,
@@ -779,7 +779,7 @@
       "numerator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.social_contributions",
         "entity_name": "household",
         "period_type": "calendar_year",
         "period_value": 2026,
@@ -788,12 +788,12 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.household_account.social_contributions",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:4c597d6ad755576b4e1faf01"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:952e3583001cf5af223e99b8"
       },
       "denominator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.social_contributions",
         "entity_name": "household",
         "period_type": "calendar_year",
         "period_value": 2024,
@@ -802,7 +802,7 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2024.household_account.social_contributions",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:deed6d1fc86e5e7032cbfa5e"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:d3393435f11deabddbc8d3a4"
       },
       "numerator": 120094000000.0,
       "denominator": 112346000000.0,
@@ -829,7 +829,7 @@
       "numerator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.total_resources",
         "entity_name": "household",
         "period_type": "calendar_year",
         "period_value": 2026,
@@ -838,12 +838,12 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.household_account.total_resources",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:96551e39b8ae3a2a4d4fbba5"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:a350c8a8446d741b07a8b593"
       },
       "denominator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.total_resources",
         "entity_name": "household",
         "period_type": "calendar_year",
         "period_value": 2023,
@@ -852,7 +852,7 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2023.household_account.total_resources",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:782bd24d9f5d7ce79feadabf"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:499fd4df6ec1887a6b39ab3f"
       },
       "numerator": 571010000000.0,
       "denominator": 518286000000.0,
@@ -886,7 +886,7 @@
       "numerator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t17.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t17.direct_taxes_households",
         "entity_name": "government",
         "period_type": "calendar_year",
         "period_value": 2026,
@@ -895,12 +895,12 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.general_government_account.direct_taxes_households",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:09dcccdb13ecc60173a18079"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:fa7f06ea5e0b9904a56972eb"
       },
       "denominator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t17.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t17.direct_taxes_households",
         "entity_name": "government",
         "period_type": "calendar_year",
         "period_value": 2025,
@@ -909,7 +909,7 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2025.general_government_account.direct_taxes_households",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:ebae7d68bab03979e30b2b5e"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:e95b487dc45cf3160ec4d0b9"
       },
       "numerator": 81561000000.0,
       "denominator": 77771000000.0,
@@ -934,7 +934,7 @@
       "numerator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t24.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t24.federal_government_cash_income_guarantee_for_older_people",
         "entity_name": "government",
         "period_type": "calendar_year",
         "period_value": 2026,
@@ -943,12 +943,12 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.social_benefits_detail.federal_government_cash_income_guarantee_for_older_people",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:13ee4f4b5a469ddeb487eafc"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:17bb4e73a99e188349c049be"
       },
       "denominator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t24.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t24.federal_government_cash_income_guarantee_for_older_people",
         "entity_name": "government",
         "period_type": "calendar_year",
         "period_value": 2025,
@@ -957,7 +957,7 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2025.social_benefits_detail.federal_government_cash_income_guarantee_for_older_people",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:776e68a9e93ca03151c53baf"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:9f2e35a3a333635c6e90354f"
       },
       "numerator": 1034000000.0,
       "denominator": 1025000000.0,
@@ -982,7 +982,7 @@
       "numerator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t24.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t24.social_security_cash_unemployment",
         "entity_name": "government",
         "period_type": "calendar_year",
         "period_value": 2026,
@@ -991,12 +991,12 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.social_benefits_detail.social_security_cash_unemployment",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:61a041fd9dff09745593e4da"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:ce84f72f67735e43865ed96d"
       },
       "denominator_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t24.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t24.social_security_cash_unemployment",
         "entity_name": "government",
         "period_type": "calendar_year",
         "period_value": 2025,
@@ -1005,7 +1005,7 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2025.social_benefits_detail.social_security_cash_unemployment",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:45ad11668f4cf559bb3c388f"
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:1c93b7227d89b9683186aafe"
       },
       "numerator": 4255000000.0,
       "denominator": 5602000000.0,
@@ -1175,9 +1175,8 @@
     "A national row composed from commune facts refuses for Belgium: the composed-geography path labels only UK areas (ledger_targets._geography_fallback_label), so CREATE's single national mass reference cannot be the commune sum.",
     "A schema-2 target_profile requires period_match_policy 'exact', which refuses rolled_forward_by_ratio; the documents keep B1's schema-2 hierarchy catalogs with a schema-1 target_profile (NZ's documents use the same schema-1 profile, with inline hierarchies).",
     "No shared operation ages interval cuts by a declared annual ratio pair: scale_money_and_intervals needs a G8-r2 factor and singleton identity money rows, and G8-r2's projected_period_average_ratio cannot project an annual series past its last observation.",
-    "G8-r2's resolver needs dated period_coverage on every operand; Chronicle's FPB, Statbel NUTS1, NBB, ONSS, ONEM and most Eurostat facts carry none.",
+    "G8-r2's resolver needs dated period_coverage on every operand; Chronicle's Statbel NUTS1, NBB, ONSS, ONEM and most Eurostat facts carry none (FPB's outlook facts and Eurostat's euro exchange rates have it since Chronicle #402).",
     "rolled_forward_by_ratio refuses a negative base, so signed targets (B.1 low deciles) cannot be aged by it.",
-    "rolled_forward_by_ratio's series key treats every FPB annex row of one table as one series (same concept, entity, geography and empty dimensions); the generator and tests enforce row identity themselves.",
     "The typed vintage alias set admits only a layer's full id, its country-shortened id and its authority value, so Chronicle's NUTS_2024 label cannot be an alias of vintage:be_nuts1_2025; geography_vintage_bindings carries the mapping instead.",
     "The schema-1 target_profile drops B1's required_families, basis_periods, tolerance tiers and subnational vintage rule. Package tests restore required families, the vintage rule and each row's periods. Caseload tolerance moves from B1's 15% to BE-MC6's 5%, and the ONSS contribution row moves from B1's standard_admin_release 10% to 5%.",
     "A selector cannot pair a record set with a dimension value, and T17 holds each daily-wage class in one record set per sex. Each wage row lists both record sets beside an age and a sex roster, so the package tests' cell check expands their product: 24 cells that exist and 24 that cannot. A list of the members' aggregate keys would bind each member without the artifact, but the package scan admits fact keys only as single strings, so the rosters stay key-free and the feed audit proves their members.",
@@ -1860,7 +1859,7 @@
     {
       "name": "statbel_a1_standin_declarations__under_10k",
       "reference_set": "calibration",
-      "selector_sha256": "841fddbf568f9098d11444c876edf7128500d1d9c942c34f683da72a5740cd8a",
+      "selector_sha256": "4ab586624930212081b6110fc015c872cd1bcb3291ddb381d07a5c38ff355638",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:114f42a3ac944b9344a21870"
@@ -1895,10 +1894,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:216674c54ce3810c24e7434c"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:26a6f2a5c42d10d907c30092"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:d0f703b4cdbc4b51ce2a9674"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:c2050b1163ff8bbd91a78d6a"
         }
       ],
       "semantic_facts": [
@@ -1946,7 +1945,7 @@
     {
       "name": "statbel_a1_standin_taxable_income__under_10k",
       "reference_set": "calibration",
-      "selector_sha256": "3fb5a95406841d06893dd0bf5e95f129191231ab909e6ac52c0719783dc5653c",
+      "selector_sha256": "48667f347482657b5720969f5020bff35e6db2660da9fb5d91453bdb5a5a3455",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:03e35c91952d2ac2d1055adb"
@@ -1981,10 +1980,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:782bd24d9f5d7ce79feadabf"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:499fd4df6ec1887a6b39ab3f"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:96551e39b8ae3a2a4d4fbba5"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:a350c8a8446d741b07a8b593"
         }
       ],
       "semantic_facts": [
@@ -2032,7 +2031,7 @@
     {
       "name": "statbel_a1_standin_declarations__10k_20k",
       "reference_set": "calibration",
-      "selector_sha256": "e862b7cf0afe44e41a0afc3964ee96d622813622b7feceeab875211d13065b43",
+      "selector_sha256": "510ae2ba1d68cbb24031e5261b7a1bc9815edaa0d12d9e7ec8a94ebdf64901cf",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:2e42eef08f6a64d886936951"
@@ -2067,10 +2066,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:216674c54ce3810c24e7434c"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:26a6f2a5c42d10d907c30092"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:d0f703b4cdbc4b51ce2a9674"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:c2050b1163ff8bbd91a78d6a"
         }
       ],
       "semantic_facts": [
@@ -2118,7 +2117,7 @@
     {
       "name": "statbel_a1_standin_taxable_income__10k_20k",
       "reference_set": "calibration",
-      "selector_sha256": "3cb7d6e82c3422fceb0b64f81b38ea16d46e747f03578e1912af575b30712ef7",
+      "selector_sha256": "7de89befa033ec5fd033af726f74a3f2123384f06905a136511e3346ceab6f66",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:10a7b971f0b7b148ae529385"
@@ -2153,10 +2152,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:782bd24d9f5d7ce79feadabf"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:499fd4df6ec1887a6b39ab3f"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:96551e39b8ae3a2a4d4fbba5"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:a350c8a8446d741b07a8b593"
         }
       ],
       "semantic_facts": [
@@ -2204,7 +2203,7 @@
     {
       "name": "statbel_a1_standin_declarations__20k_30k",
       "reference_set": "calibration",
-      "selector_sha256": "2eafcb7f99f3a5365232d7e21f20d1a5396143eca9c8a04c46823d1e69890615",
+      "selector_sha256": "20440eb129da5bc98aeed4b979027cd1aaa750a003666963d126db725528dbf7",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:052ed48c321f723308b3b3c0"
@@ -2239,10 +2238,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:216674c54ce3810c24e7434c"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:26a6f2a5c42d10d907c30092"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:d0f703b4cdbc4b51ce2a9674"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:c2050b1163ff8bbd91a78d6a"
         }
       ],
       "semantic_facts": [
@@ -2290,7 +2289,7 @@
     {
       "name": "statbel_a1_standin_taxable_income__20k_30k",
       "reference_set": "calibration",
-      "selector_sha256": "a141456d262d7e6951f590b7a61564551aa7757166659b7a3ac72afa1a5932e6",
+      "selector_sha256": "e24648931a4d71625ec199e6fa5f4269bf231f80e0c4b87cc98d1edf1e573ea5",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:0504a2f0556287682bc0060a"
@@ -2325,10 +2324,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:782bd24d9f5d7ce79feadabf"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:499fd4df6ec1887a6b39ab3f"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:96551e39b8ae3a2a4d4fbba5"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:a350c8a8446d741b07a8b593"
         }
       ],
       "semantic_facts": [
@@ -2376,7 +2375,7 @@
     {
       "name": "statbel_a1_standin_declarations__30k_40k",
       "reference_set": "calibration",
-      "selector_sha256": "6dcea454850493141741ff7dc05e2dbc201ae438f15057307003bf7589e110c0",
+      "selector_sha256": "e26e6423e0c744079309a216f702ad023bd24d64cc3ac156c5f4d60cbe64280a",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:0e707027eeb4d419d4de22c4"
@@ -2411,10 +2410,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:216674c54ce3810c24e7434c"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:26a6f2a5c42d10d907c30092"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:d0f703b4cdbc4b51ce2a9674"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:c2050b1163ff8bbd91a78d6a"
         }
       ],
       "semantic_facts": [
@@ -2462,7 +2461,7 @@
     {
       "name": "statbel_a1_standin_taxable_income__30k_40k",
       "reference_set": "calibration",
-      "selector_sha256": "d9bffef36dc426e1d29da578feaa7b52dfcc8df1ff0fb3171e7bb696232ea3d5",
+      "selector_sha256": "01d8f731998115577e24792cdd7794241264424eda923403c3f4bd48be34f900",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:0241a0ca21b3d34e1cd8ce46"
@@ -2497,10 +2496,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:782bd24d9f5d7ce79feadabf"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:499fd4df6ec1887a6b39ab3f"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:96551e39b8ae3a2a4d4fbba5"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:a350c8a8446d741b07a8b593"
         }
       ],
       "semantic_facts": [
@@ -2548,7 +2547,7 @@
     {
       "name": "statbel_a1_standin_declarations__40k_50k",
       "reference_set": "calibration",
-      "selector_sha256": "d47131fa49cee7df04e6d12da356e57ee7efcdec118ebbe1a8956d629cf1bc04",
+      "selector_sha256": "29720e69c5e1c868f2f6d569632d156d860ea50b3dd7a08ea72a6e3de2556b07",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:2109ea2a59573abcb4941aac"
@@ -2583,10 +2582,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:216674c54ce3810c24e7434c"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:26a6f2a5c42d10d907c30092"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:d0f703b4cdbc4b51ce2a9674"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:c2050b1163ff8bbd91a78d6a"
         }
       ],
       "semantic_facts": [
@@ -2634,7 +2633,7 @@
     {
       "name": "statbel_a1_standin_taxable_income__40k_50k",
       "reference_set": "calibration",
-      "selector_sha256": "e7e1677730c775c0a1044899e0df1f06023a5a8cc646e82b5d1d9431efe0ff07",
+      "selector_sha256": "389370282986b5b14aa960a73e7821537ad2e62256c0ca6cbe58ced7101c5389",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:00190a31d57c9cc9b4424a6e"
@@ -2669,10 +2668,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:782bd24d9f5d7ce79feadabf"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:499fd4df6ec1887a6b39ab3f"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:96551e39b8ae3a2a4d4fbba5"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:a350c8a8446d741b07a8b593"
         }
       ],
       "semantic_facts": [
@@ -2720,7 +2719,7 @@
     {
       "name": "statbel_a1_standin_declarations__50k_75k",
       "reference_set": "calibration",
-      "selector_sha256": "1f154e89ae76dece31686c1f228ea957ea81e50027e31e72f6c3867c1007da81",
+      "selector_sha256": "29d1d430afea76959d61912c2f9402c46851c8086bfbce6c8c1d145943e155ce",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:00374c57163e7864edc3d259"
@@ -2800,10 +2799,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:216674c54ce3810c24e7434c"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:26a6f2a5c42d10d907c30092"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:d0f703b4cdbc4b51ce2a9674"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:c2050b1163ff8bbd91a78d6a"
         }
       ],
       "semantic_facts": [
@@ -2896,7 +2895,7 @@
     {
       "name": "statbel_a1_standin_taxable_income__50k_75k",
       "reference_set": "calibration",
-      "selector_sha256": "32fb4d56971230678aacf3d9b133f42c1367a2e3a91c70f81ac61c4491b9452c",
+      "selector_sha256": "3ea94f01d7099c8aed6c49c80362696d5e46602c5e73ba1280b2b1d2c2546a1c",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:30e116f7afb7eb9b5129127f"
@@ -2976,10 +2975,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:782bd24d9f5d7ce79feadabf"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:499fd4df6ec1887a6b39ab3f"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:96551e39b8ae3a2a4d4fbba5"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:a350c8a8446d741b07a8b593"
         }
       ],
       "semantic_facts": [
@@ -3072,7 +3071,7 @@
     {
       "name": "statbel_a1_standin_declarations__75k_100k",
       "reference_set": "calibration",
-      "selector_sha256": "438f812f3fe654f170c2c37e3a009b5d8733d8c443d927a181f77946a6231ae6",
+      "selector_sha256": "1655afd624964698b19bb540dbada69539ec71ec1de105c2d79cdf31890a09bf",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:0225b0fb074813695ccac841"
@@ -3152,10 +3151,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:216674c54ce3810c24e7434c"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:26a6f2a5c42d10d907c30092"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:d0f703b4cdbc4b51ce2a9674"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:c2050b1163ff8bbd91a78d6a"
         }
       ],
       "semantic_facts": [
@@ -3248,7 +3247,7 @@
     {
       "name": "statbel_a1_standin_taxable_income__75k_100k",
       "reference_set": "calibration",
-      "selector_sha256": "5a67cd764147d219e3515e3b89cf732466f9c48fb887c017513cbd44f81c02dc",
+      "selector_sha256": "981d0fe9f5534cc6bb8abab735d127fa9b68beb1a3998e36f4f6e7c2fa012520",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:02419020ad8d5e7b50d4e147"
@@ -3328,10 +3327,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:782bd24d9f5d7ce79feadabf"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:499fd4df6ec1887a6b39ab3f"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:96551e39b8ae3a2a4d4fbba5"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:a350c8a8446d741b07a8b593"
         }
       ],
       "semantic_facts": [
@@ -3424,7 +3423,7 @@
     {
       "name": "statbel_a1_standin_declarations__100k_plus",
       "reference_set": "calibration",
-      "selector_sha256": "b123cd350b25ffbdb33cb2e93bd6b57e2d36bde4c8edc5e45b2ec1d91d86cf34",
+      "selector_sha256": "cf3ad71c6e68ab78f1bf5c6474db016ed7d399677428bd0fbac6f6eeeca32b8e",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:b72f44f341a3d1c4c8fcc571"
@@ -3432,10 +3431,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:216674c54ce3810c24e7434c"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:26a6f2a5c42d10d907c30092"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:d0f703b4cdbc4b51ce2a9674"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:c2050b1163ff8bbd91a78d6a"
         }
       ],
       "semantic_facts": [
@@ -3456,7 +3455,7 @@
     {
       "name": "statbel_a1_standin_taxable_income__100k_plus",
       "reference_set": "calibration",
-      "selector_sha256": "0ab74de6ae8bceaaa1d5a04365483af0e0ca9b623e4ae701333d1da655e51547",
+      "selector_sha256": "064559af1a108a676e5ae8e03772ca9c4ddf68a5233a24ea4489e60ce1cdb401",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:d104436d6743b4c030077c7c"
@@ -3464,10 +3463,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:782bd24d9f5d7ce79feadabf"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:499fd4df6ec1887a6b39ab3f"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:96551e39b8ae3a2a4d4fbba5"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:a350c8a8446d741b07a8b593"
         }
       ],
       "semantic_facts": [
@@ -3488,7 +3487,7 @@
     {
       "name": "statbel_b4_declarations__joint",
       "reference_set": "calibration",
-      "selector_sha256": "f462b22b9609e84bfeb74868bc2fde240a51c038f28927611601e824fb2aeba9",
+      "selector_sha256": "f693424aa86b830d0ff6dd56bff1c1e4edd0978ed033b38dc105c3ce7bdbadc7",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:30213a94a5fbd0cf462ea7ea"
@@ -3523,10 +3522,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:216674c54ce3810c24e7434c"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:26a6f2a5c42d10d907c30092"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:d0f703b4cdbc4b51ce2a9674"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:c2050b1163ff8bbd91a78d6a"
         }
       ],
       "semantic_facts": [
@@ -3571,7 +3570,7 @@
     {
       "name": "statbel_b4_declarations__individual",
       "reference_set": "calibration",
-      "selector_sha256": "a832417f42fe43afbeb4bc776c153b283d66aa67b271014da0f03b2eac3a5097",
+      "selector_sha256": "9d923911a33b22dcc01c6cd18b4166ddbfe62377a9b2eba381b491e31d21302d",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:5cd58387095122d5d4bf33f0"
@@ -3606,10 +3605,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:216674c54ce3810c24e7434c"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:26a6f2a5c42d10d907c30092"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:d0f703b4cdbc4b51ce2a9674"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:c2050b1163ff8bbd91a78d6a"
         }
       ],
       "semantic_facts": [
@@ -4015,7 +4014,7 @@
     {
       "name": "onss_worker_personal_contributions",
       "reference_set": "calibration",
-      "selector_sha256": "b078c7128d3da087c087e6172f799721377a83fff6ed9fb5342384a298eff77a",
+      "selector_sha256": "1d41e99226c52b1093329cf0405cc0718d0454153894abac5dce0ebfe7255c82",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:b6355af1bd917ae71a7df3ae"
@@ -4023,10 +4022,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:3f953c8cbe00192899c93c3b"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:0a8d84668181959ac088e716"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:a66b02d02ed92c58e542e7ed"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:4be03d22b5fd13eba3ea9477"
         }
       ],
       "semantic_facts": [
@@ -4060,18 +4059,18 @@
     {
       "name": "fpb_unemployment_benefit_expenditure",
       "reference_set": "calibration",
-      "selector_sha256": "23b469afb84b648c2a7af5dc4c80295c1ae2488c65b70c61ed38633b4e2597f2",
+      "selector_sha256": "f564e5313a70557570642b1a78768170c5cc7a79b09dc93f745e770d183a52ea",
       "base_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:45ad11668f4cf559bb3c388f"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:1c93b7227d89b9683186aafe"
         }
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:45ad11668f4cf559bb3c388f"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:1c93b7227d89b9683186aafe"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:61a041fd9dff09745593e4da"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:ce84f72f67735e43865ed96d"
         }
       ],
       "semantic_facts": [
@@ -4086,18 +4085,18 @@
     {
       "name": "fpb_grapa_expenditure",
       "reference_set": "calibration",
-      "selector_sha256": "c177aaaee2187c53a1f79b86ccbfd974f1cc077e776d9b909eecb915d6753630",
+      "selector_sha256": "45d653117aadbda55c8b7fe213edfd5438355f89f482d11323ca4b41093b6a32",
       "base_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:776e68a9e93ca03151c53baf"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:9f2e35a3a333635c6e90354f"
         }
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:13ee4f4b5a469ddeb487eafc"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:17bb4e73a99e188349c049be"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:776e68a9e93ca03151c53baf"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:9f2e35a3a333635c6e90354f"
         }
       ],
       "semantic_facts": [
@@ -4112,18 +4111,18 @@
     {
       "name": "fpb_net_mixed_income",
       "reference_set": "calibration",
-      "selector_sha256": "5f7cbc4eb439e0aed2aee10ac75fd54f15b17a607260e70e7b403ce4ddec91d4",
+      "selector_sha256": "c811eb7d38c0d9e5419543e344b3e366d88913c5c9fe381e6e2c98b62c3b75e1",
       "base_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:0db8ec51ab64a7f7519fc5d4"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:337dc00027bc26bf8ec897ce"
         }
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:0db8ec51ab64a7f7519fc5d4"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:337dc00027bc26bf8ec897ce"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:82a8d913db8aa3594a182492"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:93d23afcf05e558fb5c63901"
         }
       ],
       "semantic_facts": [
@@ -14442,7 +14441,7 @@
     {
       "name": "eurostat_d51a_c1_individual_income_tax",
       "reference_set": "holdout",
-      "selector_sha256": "674877acfe42f7b4b417441258d3e399301443016dc7f92bb31671827ae3df1f",
+      "selector_sha256": "d30b980b73bc9bb13d7e8d96f0347c44f448a6004c2c63120b0e6bb92b98e7d3",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:e3c28f2774b8452eeb2acd91"
@@ -14450,10 +14449,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:09dcccdb13ecc60173a18079"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:e95b487dc45cf3160ec4d0b9"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:ebae7d68bab03979e30b2b5e"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:fa7f06ea5e0b9904a56972eb"
         }
       ],
       "semantic_facts": [
@@ -14471,7 +14470,7 @@
     {
       "name": "nbb_household_gross_disposable_income",
       "reference_set": "holdout",
-      "selector_sha256": "b0d921970e5a519de7f8c617b73ae5311c6dea8b6069d51d2247086ce39e2451",
+      "selector_sha256": "02954c45d5c0d87e7c1e169e4763853c144cdd1ae9d130ffac70b849858d9526",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:5e83461cf5b9b1d0292c4c7e"
@@ -14479,10 +14478,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:5148b5898c391c11ff484930"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:6afbcabff50434464a75425f"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:63c570cc58902f2813b3bde9"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:6e4d6b226aad0905cc37a4f8"
         }
       ],
       "semantic_facts": [
@@ -14500,7 +14499,7 @@
     {
       "name": "eurostat_household_gross_disposable_income",
       "reference_set": "holdout",
-      "selector_sha256": "97b1ac33a58e0609903deb84d521bee5e583b7a7dcc445055f235f273008f640",
+      "selector_sha256": "5415311cedfe0248b3e918036baa004da6eaf6072651bd0bb3160c0882b79427",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:1c1549bca1f666dae3f1c6fe"
@@ -14508,10 +14507,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:5148b5898c391c11ff484930"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:6afbcabff50434464a75425f"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:63c570cc58902f2813b3bde9"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:6e4d6b226aad0905cc37a4f8"
         }
       ],
       "semantic_facts": [
@@ -14529,7 +14528,7 @@
     {
       "name": "eurostat_household_social_benefits_received",
       "reference_set": "holdout",
-      "selector_sha256": "90a4a4f5341352071e84d04c69ead1dd5c26a8eb0361f91b34f14203cb451777",
+      "selector_sha256": "48be32b7099042f4a2941cfdf5c1f3a2c5157096e1c507ffbda37c9cc0f29664",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:8c7c28463b5421308945c344"
@@ -14537,10 +14536,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:bf52974b05acf19d1d3ccb28"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:22e426217cdab8e38484dc91"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:e87808ae0b585214ec608b92"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:3cefc3f023b9aad52491c952"
         }
       ],
       "semantic_facts": [
@@ -14558,7 +14557,7 @@
     {
       "name": "eurostat_household_social_contributions_paid",
       "reference_set": "holdout",
-      "selector_sha256": "3e292559ff7720db6d917612b9d4b6eff5095bee53ca1d9248691bcfa0e6b200",
+      "selector_sha256": "adba00ce9cd36a64ac91efcb024bc8f633d31b2af61047c3137fd0c82f0f3c2e",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:627f1716ff45e9ac8e2ffd22"
@@ -14566,10 +14565,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:4c597d6ad755576b4e1faf01"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:952e3583001cf5af223e99b8"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:deed6d1fc86e5e7032cbfa5e"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:d3393435f11deabddbc8d3a4"
         }
       ],
       "semantic_facts": [
@@ -14587,7 +14586,7 @@
     {
       "name": "eurostat_household_current_taxes_paid",
       "reference_set": "holdout",
-      "selector_sha256": "38a4d2a3a2276d345195600da54e1a809c9602360c08137f7b0cb56be354264f",
+      "selector_sha256": "524b835779ae81ca3476562efe8b2119e6e5a1172b8e9d5ed2e35f2a56319c1c",
       "base_facts": [
         {
           "aggregate_fact_key": "ledger.aggregate_fact.v2:05ca22b4bedd957b4d655ff6"
@@ -14595,10 +14594,10 @@
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:67bb0b178a502334a5798bfa"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:0a30adbf2deccca7c4fdd0c2"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:d3638106fd28d6f6d119c0d5"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:1bbbd7c1fa2df49c183d8c87"
         }
       ],
       "semantic_facts": [
@@ -14616,18 +14615,18 @@
     {
       "name": "fpb_gross_wages_and_salaries",
       "reference_set": "holdout",
-      "selector_sha256": "4d9a02dbf906f65fabaefb636892ab35a81263d399078d77726ec9675dd6f79c",
+      "selector_sha256": "6863dcd466f443334e24a61f3a8dfac650fdd0b38e4331aac1132fae14bad768",
       "base_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:1b99b4161fa76ca1069ad5e7"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:6f2ce9ba247d92e9db540c55"
         }
       ],
       "operand_facts": [
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:1b99b4161fa76ca1069ad5e7"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:044628832522c2f679db2dd3"
         },
         {
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:f17958efe84e42471bf68f80"
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:6f2ce9ba247d92e9db540c55"
         }
       ],
       "semantic_facts": [

@@ -379,8 +379,9 @@ def test_the_run_refuses_skipped_checks_left_files_before_any_side_effect() -> N
 def test_dense_ssi_fences_cover_the_enforced_bands_and_cite_the_adjudication() -> None:
     """microcosm#566/#567: the dense-arm fence table must cover exactly the
     normally-enforced bands, and every fence must carry the recompute
-    adjudication, its re-adjudication trigger, and the sparse contrast —
-    a fence without its documented reason is forbidden."""
+    adjudication, its re-adjudication trigger, and the arms that keep hard
+    enforcement, each named by its builder flag — a fence without its
+    documented reason is forbidden."""
     from microcosm.build.us_runtime.ssi_take_up import (
         US_SSI_TAKE_UP_ENFORCED_BAND_KEYS,
     )
@@ -392,7 +393,12 @@ def test_dense_ssi_fences_cover_the_enforced_bands_and_cite_the_adjudication() -
         assert "microcosm#566/#567" in text, band
         assert "microcosm#508" in text, band
         assert "Re-adjudicates" in text, band
-        assert "sparse certified" in text, band
+        assert "--dense-default-dataset arm" in text, band
+        assert "The L0+refit and --exact-k arms pass no fences" in text, band
+        # The text names arms by builder flag, not by the retired
+        # "dense diagnostic" and "sparse certified default" labels.
+        assert "diagnostic arm" not in text, band
+        assert "sparse certified" not in text, band
         # The adjudication must claim only what the artifacts support:
         # recomputes failed to land the pair in band — NOT a proven
         # periodic map (sol round-1 blocker 3). The refusal scans the
@@ -406,7 +412,7 @@ def test_dense_ssi_fences_cover_the_enforced_bands_and_cite_the_adjudication() -
 
 
 def test_ssi_delivery_fences_are_passed_on_the_dense_arm_only() -> None:
-    """The sparse certified arm must keep hard enforcement: structurally,
+    """The L0+refit and --exact-k arms must keep hard enforcement: structurally,
     main()'s single _enforce_ssi_take_up_delivery call may pass the fence
     table only under args.dense_default_dataset, with None otherwise (the
     #443 AST-guard pattern)."""

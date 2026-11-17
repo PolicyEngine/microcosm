@@ -106,14 +106,15 @@ def test_doctrine_constants_are_the_declared_contract() -> None:
     assert UKLocalSolveDoctrine(target_weight_rule="uniform").target_weight_rule == (
         "uniform"
     )
-    # microcosm#1207: check-only loss-share floors for the two new families.
+    # microcosm#1207: check-only loss-share floors for the two new families
+    # (bus lowered from 1.25 % to 1.15 % on 2026-11-16 for the PIP family).
     from microcosm.build.uk_runtime.local_doctrine import (
         UK_LOCAL_FAMILY_LOSS_SHARE_FLOORS,
     )
 
     assert dict(UK_LOCAL_FAMILY_LOSS_SHARE_FLOORS) == {
         "domestic_energy": 0.025,
-        "dft_bus_journeys": 0.0125,
+        "dft_bus_journeys": 0.0115,
     }
 
 

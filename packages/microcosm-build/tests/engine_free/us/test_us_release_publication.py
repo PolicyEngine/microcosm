@@ -8,6 +8,7 @@ tests never start an emitter or reach the Hub.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from microcosm_emitter_interface import CollectorProvenance
@@ -15,6 +16,7 @@ from microcosm_emitter_interface import CollectorProvenance
 from microcosm.build import release_publication
 from microcosm.data.contract import US_RELEASES
 from microcosm.data.release import BuildFolderFile
+from test_support.microcosm_build.emitter import FakeEmitterClient
 
 #: The largest US builds, the ACS local-area ones, are about 10 GB.
 LARGEST_US_BUILD_BYTES = 10e9
@@ -90,6 +92,55 @@ def test_a_us_publication_names_its_build_for_the_collector(tmp_path) -> None:
         licensed_data=False,
         release="microcosm-us-2024-national",
     )
+
+
+#: A US build handed to the in-memory emitter by the promotion and
+#: withdrawal tests, and the build the receipts name as current.
+_US_BUILD = "populace-us-2024-20261201T000000Z"
+_US_CURRENT_BUILD = "populace-us-2024-20261101T000000Z"
+
+
+def test_a_us_promotion_names_its_build_for_the_collector(
+    tmp_path, monkeypatch
+) -> None:
+    """The emitter submits the releases.json the promotion wrote under the
+    US country code, as for the build's publication."""
+    release = "microcosm-us-2024-national"
+    release_dir = tmp_path / release
+    release_dir.mkdir()
+    monkeypatch.setattr(
+        release_publication,
+        "build_folder_identity",
+        lambda _path: (_US_REPOSITORY, release, _US_BUILD),
+    )
+    monkeypatch.setattr(release_publication, "_repository_files", lambda _repo: [])
+    client = FakeEmitterClient(release_receipts=[{"current": _US_BUILD}])
+
+    outcome = release_publication.promote_release_build(release_dir, client=client)
+
+    (promotion,) = client.release_requests
+    assert promotion.collector == CollectorProvenance(
+        country_code="US", build_id=_US_BUILD, licensed_data=False, release=release
+    )
+    assert client.collector_receipt_requests == [promotion.handover_id()]
+    assert outcome.current
+
+
+def test_a_us_withdrawal_names_its_build_for_the_collector(monkeypatch) -> None:
+    release = "microcosm-us-2024-local"
+    monkeypatch.setattr(release_publication, "_repository_files", lambda _repo: [])
+    client = FakeEmitterClient(release_receipts=[{"current": _US_CURRENT_BUILD}])
+
+    outcome = release_publication.withdraw_release_build(
+        _US_REPOSITORY, release, _US_BUILD, client=client
+    )
+
+    (withdrawal,) = client.release_requests
+    assert withdrawal.collector == CollectorProvenance(
+        country_code="US", build_id=_US_BUILD, licensed_data=False, release=release
+    )
+    assert client.collector_receipt_requests == [withdrawal.handover_id()]
+    assert outcome.withdrawn
 
 
 def _prepared(release_dir):
@@ -404,6 +455,8 @@ class _BaseOnTheHub:
         )
 
         self.requests.append((repo_id, filename, repo_type, revision))
+        if filename == "releases.json":
+            return self._record(repo_id, filename)
         if self.problem == "absent":
             raise missing_on_hub(repo_id, filename, revision)
         if self.problem == "unreachable":
@@ -442,11 +495,46 @@ class _BaseOnTheHub:
         local.write_text(json.dumps(manifest))
         return str(local)
 
+    def _record(self, repo_id, filename):
+        """``releases.json``, listing the base build (withdrawn, or not at all,
+        when the problem says so) beside another, current build."""
+        from microcosm_emitter_interface.releases import (
+            ReleasesRecord,
+            add_build,
+            withdraw_build,
+        )
+
+        record = ReleasesRecord.empty()
+        builds = [("an-earlier-national-build", True)]
+        if self.problem != "unlisted":
+            builds.append((_BASE_BUILD, False))
+        for build, current in builds:
+            record = add_build(
+                record,
+                release="microcosm-us-2024-national",
+                build=build,
+                release_role="national",
+                published_at="2026-11-01T00:00:00+00:00",
+                make_current=current,
+            )
+        if self.problem == "withdrawn":
+            record = withdraw_build(
+                record, release="microcosm-us-2024-national", build=_BASE_BUILD
+            )
+        local = self.directory / filename
+        local.parent.mkdir(parents=True, exist_ok=True)
+        local.write_bytes(record.serialize())
+        return str(local)
+
 
 @pytest.mark.parametrize(
     ("problem", "refusal"),
     [
         (None, None),
+        # A withdrawn base build, or one releases.json no longer lists, is
+        # not one to project.
+        ("withdrawn", "has been withdrawn"),
+        ("unlisted", "does not list"),
         ("absent", "not published"),
         ("other_sha256", "sha256"),
         ("unreachable", "did not answer"),
@@ -497,13 +585,18 @@ def test_an_annual_build_is_handed_over_only_once_its_base_build_is_published(
         with pytest.raises((ValueError, RuntimeError), match=refusal):
             publish()
         assert handed_over == []
+    manifest_request = (
+        _US_REPOSITORY,
+        f"releases/microcosm-us-2024-national/{_BASE_BUILD}/release_manifest.json",
+        "dataset",
+        "main",
+    )
+    record_request = (_US_REPOSITORY, "releases.json", "dataset", "main")
+    # releases.json is read once the base build's manifest checks out.
+    reads_record = problem in (None, "withdrawn", "unlisted")
     assert hub.requests == [
-        (
-            _US_REPOSITORY,
-            f"releases/microcosm-us-2024-national/{_BASE_BUILD}/release_manifest.json",
-            "dataset",
-            "main",
-        )
+        manifest_request,
+        *([record_request] if reads_record else []),
     ]
 
 
@@ -560,3 +653,116 @@ def test_the_command_takes_the_incomplete_reform_validation_override(
     else:
         assert exit_code == 1
         assert "--allow-incomplete-reform-validation" in error_output
+
+
+class _LocalBaseOnTheHub:
+    """A Hub serving a local-area base build's published release and build
+    manifests, and the ``releases.json`` that lists it."""
+
+    def __init__(self, directory, manifest, build_manifest):
+        from test_support.microcosm_data.local_annual import local_releases_record
+
+        self.directory = directory
+        self.manifests = {
+            "release_manifest.json": manifest,
+            "build_manifest.json": build_manifest,
+            "releases.json": local_releases_record(),
+        }
+        self.requests = []
+        self.fresh = []
+
+    def hf_hub_download(
+        self,
+        *,
+        repo_id,
+        filename,
+        repo_type,
+        revision,
+        cache_dir=None,
+        force_download=False,
+    ):
+        import json
+
+        self.requests.append((repo_id, filename, repo_type, revision))
+        self.fresh.append(bool(force_download) and cache_dir is not None)
+        local = Path(cache_dir or self.directory) / filename
+        local.parent.mkdir(parents=True, exist_ok=True)
+        local.write_text(json.dumps(self.manifests[local.name]))
+        return str(local)
+
+
+@pytest.mark.parametrize("published_sha256", [None, "d" * 64])
+def test_a_local_annual_build_is_handed_over_only_once_its_local_base_is_published(
+    tmp_path, monkeypatch, published_sha256
+) -> None:
+    """A build of microcosm-us-2024-local-annual (microcosm#922) is an annual
+    build too: before the hand-over, the publisher reads its base build's
+    manifest from releases/microcosm-us-2024-local/<base build>/ and requires
+    the base-year H5 there."""
+    from test_support.microcosm_data.local_annual import (
+        LOCAL_BUILD,
+        LOCAL_DATASET_KEY,
+        local_annual_build_folder_of,
+        local_build_folder,
+        read_json,
+    )
+
+    root = tmp_path / "package"
+    local = local_build_folder(root)
+    published = read_json(local / "release_manifest.json")
+    if published_sha256 is not None:
+        published["artifacts"][LOCAL_DATASET_KEY]["sha256"] = published_sha256
+    release_dir = local_annual_build_folder_of(local, root)
+    hub = _LocalBaseOnTheHub(
+        tmp_path / "hub", published, read_json(local / "build_manifest.json")
+    )
+    handed_over = []
+    monkeypatch.setattr(
+        release_publication, "_refuse_pointer_files", lambda _repo: None
+    )
+    monkeypatch.setattr(
+        release_publication,
+        "prepare_build_folder_release",
+        lambda path, **_kwargs: _prepared(path),
+    )
+    monkeypatch.setattr(
+        release_publication,
+        "publication_request",
+        lambda prepared, **_kwargs: prepared,
+    )
+    monkeypatch.setattr(release_publication, "_hub_api", lambda: hub)
+    monkeypatch.setattr(
+        release_publication,
+        "_hand_over",
+        lambda change, **_kwargs: handed_over.append(change) or "handed over",
+    )
+
+    def publish():
+        return release_publication.publish_release_build(
+            release_dir, artifact_root=root, client=object()
+        )
+
+    def request(name):
+        return (
+            _US_REPOSITORY,
+            f"releases/microcosm-us-2024-local/{LOCAL_BUILD}/{name}",
+            "dataset",
+            "main",
+        )
+
+    if published_sha256 is None:
+        assert publish() == "handed over"
+        assert len(handed_over) == 1
+        assert hub.requests == [
+            request("release_manifest.json"),
+            request("build_manifest.json"),
+            (_US_REPOSITORY, "releases.json", "dataset", "main"),
+        ]
+        # Both manifests and releases.json are read afresh, not from the
+        # client's cache.
+        assert hub.fresh == [True, True, True]
+    else:
+        with pytest.raises(ValueError, match="published base build's bytes"):
+            publish()
+        assert handed_over == []
+        assert hub.requests == [request("release_manifest.json")]

@@ -22,9 +22,9 @@
   "refit_contracts": {
    "type": "object",
    "additionalProperties": false,
-   "required": ["default_sparse", "exact_k"],
+   "required": ["l0_refit", "exact_k"],
    "properties": {
-    "default_sparse": {"$ref": "#/$defs/refit_contract"},
+    "l0_refit": {"$ref": "#/$defs/refit_contract"},
     "exact_k": {"$ref": "#/$defs/refit_contract"}
    }
   },
@@ -577,12 +577,12 @@
    "type": "object",
    "additionalProperties": false,
    "required": [
-    "default_sparse_l0_refit",
-    "dense_diagnostic",
+    "l0_refit",
+    "dense_no_l0",
     "exact_k_or_full_pool_refit"
    ],
    "properties": {
-    "default_sparse_l0_refit": {
+    "l0_refit": {
      "type": "object",
      "additionalProperties": false,
      "required": ["kernel", "solver_ref", "selection_contract_ref", "refit_contract_ref"],
@@ -590,10 +590,10 @@
       "kernel": {"const": "kernel:calibrate_l0_refit"},
       "solver_ref": {"const": "solver"},
       "selection_contract_ref": {"const": "solver.l0_contract"},
-      "refit_contract_ref": {"const": "refit_contracts.default_sparse"}
+      "refit_contract_ref": {"const": "refit_contracts.l0_refit"}
      }
     },
-    "dense_diagnostic": {
+    "dense_no_l0": {
      "type": "object",
      "additionalProperties": false,
      "required": ["kernel", "solver_ref", "l0_mode", "refit_contract_ref"],

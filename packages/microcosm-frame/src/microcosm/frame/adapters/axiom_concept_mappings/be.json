@@ -212,6 +212,34 @@
    }
   },
   {
+   "canonical_input": "be-bru:statutes/family_benefits/eligibility#input.brussels_family_benefits_child_in_qualifying_education_training_or_stage",
+   "concepts": [
+    "fact:person.education_enrollment"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "brussels_family_benefits_child_in_qualifying_education_training_or_stage",
+   "group_rule": "person_role",
+   "module": "be-bru/statutes/family_benefits/eligibility.yaml",
+   "note": "Consumed in be-bru/statutes/family_benefits/eligibility.yaml by brussels_family_benefits_article_25_age_or_status_condition_met (Month; ordinance of 25 April 2019 article 25). With the brussels_family_benefits_ prefix dropped from every name, the rule returns 1 when child_age_on_august_31_years is below 18. Otherwise, while child_age_years is below 25, it returns 1 when child_is_apprentice, child_in_qualifying_education_training_or_stage, child_prepares_higher_education_thesis or child_registered_jobseeker_after_studies_or_apprenticeship holds, and 0 otherwise. child_entitlement adds the article 4 conditions and the article 26 alternative, and the routing bridge reads the result through its import of brussels_family_benefits_eligible_monthly_amount. The input carries article 25 section 2(b): a child who 'suit des cours', does a stage 'pour pouvoir être nommé à une charge', or takes bachelor-master credit training with no required courses. Section 2 grants the extension 'aux conditions fixées par le Collège réuni', and 2(b) leaves the trainings that count to the Collège réuni. The module summary says 'Delegated proof rules and Article 26 detail remain supplied inputs', and the module does not encode those conditions. The binding reads the input as current enrollment in any ISCED programme at the reference date, not in the benefit month. Part-time enrollment counts. The concept does not observe whatever intensity or programme conditions the Collège réuni sets, or the gainful activities that it rules out. It does not see an appointment stage or credit training without courses unless the source records it as enrollment. The sibling inputs child_is_apprentice, child_prepares_higher_education_thesis and child_registered_jobseeker_after_studies_or_apprenticeship stay uncovered. An apprentice or thesis writer recorded as enrolled lands here, which the OR in the rule makes harmless to the result but not to the input's meaning. A school leaver registered as a jobseeker is not enrolled, so this binding leaves them to child_registered_jobseeker_after_studies_or_apprenticeship. The binding of brussels_family_benefits_child_enrolled_in_higher_education reads the tertiary band, one of the bands read here, so a child that input marks always meets this one. Each Child row takes that child's own enrollment.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:person.education_enrollment",
+      [
+       "early_childhood",
+       "primary",
+       "lower_secondary",
+       "upper_secondary",
+       "post_secondary_non_tertiary",
+       "tertiary"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
    "canonical_input": "be-bru:statutes/family_benefits/social_supplements#input.brussels_family_benefits_social_supplement_child_age_years",
    "concepts": [
     "fact:person.age"
@@ -477,6 +505,34 @@
    "relation": "approximate",
    "transform": {
     "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-vlg:statutes/family_benefits/eligibility#input.flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver",
+   "concepts": [
+    "fact:person.education_enrollment"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver",
+   "group_rule": "person_role",
+   "module": "be-vlg/statutes/family_benefits/eligibility.yaml",
+   "note": "Consumed in be-vlg/statutes/family_benefits/eligibility.yaml by flanders_family_benefits_age_or_status_condition_met (Month; Groeipakket decree of 27 April 2018, article 8 section 2 item 3). With the flanders_family_benefits_ prefix dropped from every name, the third branch reads 'child_is_pupil_student_intern_or_school_leaver and (child_age_years < student_age_limit_years or child_in_month_turning_25)', with the limit 25. That branch is reached only after two earlier branches fail: age under 18 or the month of the 18th birthday, and a specific support need up to the month of the 21st birthday. It is the module's only reader of this input, and it reaches be/statutes/family_benefits/regional_routing.yaml through that module's import of flanders_family_benefits_eligible_monthly_amount. The module summary says 'Delegated proof and implementing conditions remain supplied inputs'. Article 8 section 2 item 3 extends entitlement to a 'leerling, student, stagiair of schoolverlater' on conditions the Flemish Government sets, and the module does not encode those conditions. The binding reads the input as current enrollment in any ISCED programme at the reference date, not in the benefit month. The concept does not observe an internship or traineeship outside an education programme, an apprenticeship or dual-learning track that the survey does not record as enrollment, or a school leaver's period after studies end, so those children read false. It does not say where the programme is, so a child taught outside Belgium, whom article 8 section 3 excludes unless the Government exempts them, reads as enrolled here. That exclusion is flanders_family_benefits_outside_belgium_exclusion_applies, which reads the separate input flanders_family_benefits_child_raised_or_studies_outside_belgium; that input stays uncovered and the input closure defaults it to false, so nothing in the model applies the exclusion. It also does not observe whatever minimum intensity, programme or earnings conditions the Government's rules impose, and part-time enrollment counts as enrolled here. The companion input flanders_family_benefits_child_in_month_turning_25 needs a birth month and stays uncovered. Each Child row takes that child's own enrollment.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:person.education_enrollment",
+      [
+       "early_childhood",
+       "primary",
+       "lower_secondary",
+       "upper_secondary",
+       "post_secondary_non_tertiary",
+       "tertiary"
+      ]
+     ]
+    ],
+    "kind": "predicate"
    }
   },
   {
@@ -886,6 +942,34 @@
    }
   },
   {
+   "canonical_input": "be-bru:statutes/family_benefits/eligibility#input.brussels_family_benefits_child_in_qualifying_education_training_or_stage",
+   "concepts": [
+    "fact:person.education_enrollment"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "brussels_family_benefits_child_in_qualifying_education_training_or_stage",
+   "group_rule": "person_role",
+   "module": "be/statutes/family_benefits/regional_routing.yaml",
+   "note": "Consumed in be-bru/statutes/family_benefits/eligibility.yaml by brussels_family_benefits_article_25_age_or_status_condition_met (Month; ordinance of 25 April 2019 article 25). With the brussels_family_benefits_ prefix dropped from every name, the rule returns 1 when child_age_on_august_31_years is below 18. Otherwise, while child_age_years is below 25, it returns 1 when child_is_apprentice, child_in_qualifying_education_training_or_stage, child_prepares_higher_education_thesis or child_registered_jobseeker_after_studies_or_apprenticeship holds, and 0 otherwise. child_entitlement adds the article 4 conditions and the article 26 alternative, and the routing bridge reads the result through its import of brussels_family_benefits_eligible_monthly_amount. The input carries article 25 section 2(b): a child who 'suit des cours', does a stage 'pour pouvoir être nommé à une charge', or takes bachelor-master credit training with no required courses. Section 2 grants the extension 'aux conditions fixées par le Collège réuni', and 2(b) leaves the trainings that count to the Collège réuni. The module summary says 'Delegated proof rules and Article 26 detail remain supplied inputs', and the module does not encode those conditions. The binding reads the input as current enrollment in any ISCED programme at the reference date, not in the benefit month. Part-time enrollment counts. The concept does not observe whatever intensity or programme conditions the Collège réuni sets, or the gainful activities that it rules out. It does not see an appointment stage or credit training without courses unless the source records it as enrollment. The sibling inputs child_is_apprentice, child_prepares_higher_education_thesis and child_registered_jobseeker_after_studies_or_apprenticeship stay uncovered. An apprentice or thesis writer recorded as enrolled lands here, which the OR in the rule makes harmless to the result but not to the input's meaning. A school leaver registered as a jobseeker is not enrolled, so this binding leaves them to child_registered_jobseeker_after_studies_or_apprenticeship. The binding of brussels_family_benefits_child_enrolled_in_higher_education reads the tertiary band, one of the bands read here, so a child that input marks always meets this one. Each Child row takes that child's own enrollment.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:person.education_enrollment",
+      [
+       "early_childhood",
+       "primary",
+       "lower_secondary",
+       "upper_secondary",
+       "post_secondary_non_tertiary",
+       "tertiary"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
    "canonical_input": "be-bru:statutes/family_benefits/social_supplements#input.brussels_family_benefits_social_supplement_child_age_years",
    "concepts": [
     "fact:person.age"
@@ -928,6 +1012,34 @@
    "relation": "approximate",
    "transform": {
     "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-vlg:statutes/family_benefits/eligibility#input.flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver",
+   "concepts": [
+    "fact:person.education_enrollment"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver",
+   "group_rule": "person_role",
+   "module": "be/statutes/family_benefits/regional_routing.yaml",
+   "note": "Consumed in be-vlg/statutes/family_benefits/eligibility.yaml by flanders_family_benefits_age_or_status_condition_met (Month; Groeipakket decree of 27 April 2018, article 8 section 2 item 3). With the flanders_family_benefits_ prefix dropped from every name, the third branch reads 'child_is_pupil_student_intern_or_school_leaver and (child_age_years < student_age_limit_years or child_in_month_turning_25)', with the limit 25. That branch is reached only after two earlier branches fail: age under 18 or the month of the 18th birthday, and a specific support need up to the month of the 21st birthday. It is the module's only reader of this input, and it reaches be/statutes/family_benefits/regional_routing.yaml through that module's import of flanders_family_benefits_eligible_monthly_amount. The module summary says 'Delegated proof and implementing conditions remain supplied inputs'. Article 8 section 2 item 3 extends entitlement to a 'leerling, student, stagiair of schoolverlater' on conditions the Flemish Government sets, and the module does not encode those conditions. The binding reads the input as current enrollment in any ISCED programme at the reference date, not in the benefit month. The concept does not observe an internship or traineeship outside an education programme, an apprenticeship or dual-learning track that the survey does not record as enrollment, or a school leaver's period after studies end, so those children read false. It does not say where the programme is, so a child taught outside Belgium, whom article 8 section 3 excludes unless the Government exempts them, reads as enrolled here. That exclusion is flanders_family_benefits_outside_belgium_exclusion_applies, which reads the separate input flanders_family_benefits_child_raised_or_studies_outside_belgium; that input stays uncovered and the input closure defaults it to false, so nothing in the model applies the exclusion. It also does not observe whatever minimum intensity, programme or earnings conditions the Government's rules impose, and part-time enrollment counts as enrolled here. The companion input flanders_family_benefits_child_in_month_turning_25 needs a birth month and stays uncovered. Each Child row takes that child's own enrollment.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:person.education_enrollment",
+      [
+       "early_childhood",
+       "primary",
+       "lower_secondary",
+       "upper_secondary",
+       "post_secondary_non_tertiary",
+       "tertiary"
+      ]
+     ]
+    ],
+    "kind": "predicate"
    }
   },
   {
@@ -1769,7 +1881,7 @@
   }
  ],
  "engine": "axiom:be",
- "engine_version": "b105e2b3a3086ddd2de447d58a9b951346870dd1",
+ "engine_version": "632e1da1110ba881c68165e0cd3c2287b5b8ab08",
  "entity_correspondence": {
   "household": "Household",
   "person": "Person"
@@ -1778,14 +1890,14 @@
  "input_declaration": "usage_inferred",
  "structural_inputs": [],
  "unmapped": {
-  "fact:household.mortgage_principal": "rulespec-be at b105e2b3 has no input for mortgage capital repayments. The only housing-loan inputs are the interest deductions belgium_social_integration_eligible_annual_mortgage_interest_on_property (RIS art. 25 §4) and brussels_apa_eligible_annual_mortgage_interest (APA art. 15), which this mapping feeds from mortgage_interest. No non-test rule text mentions capital repayment, and the PIT reductions module takes no loan input.",
+  "fact:household.mortgage_principal": "rulespec-be at 632e1da1 has no input for mortgage capital repayments. The only housing-loan inputs are the interest deductions belgium_social_integration_eligible_annual_mortgage_interest_on_property (RIS art. 25 §4) and brussels_apa_eligible_annual_mortgage_interest (APA art. 15), which this mapping feeds from mortgage_interest. No non-test rule text mentions capital repayment, and the PIT reductions module takes no loan input.",
   "fact:household.source_household_id": "Original donor household lineage is build provenance and weight diagnostic support, not a rulespec-be legal input.",
   "fact:person.educational_attainment": "rulespec-be has no input that reads completed education. No non-test rule text mentions an attainment level, certificate or ISCED level. Every education input describes current enrollment or training: flanders_school_allowance_education_level, study_allowance_is_higher_education, and the Child-entity family-benefit training flags, including wallonia_family_benefits_child_in_qualifying_diploma_training. Where this mapping binds these, it feeds them from education_enrollment.",
   "fact:person.enrolled_full_time": "rulespec-be has no input that tests full-time enrollment. The full-time wording in non-test rule text concerns work regimes (parental leave, the work bonus, unemployment admission, the Flemish jobbonus). The one exception is a Flemish school-allowance parameter citing 'voltijds secundair onderwijs', and that module selects it by education level alone. The student statuses the tree does take are supplied legal statuses, and the rules that consume them contain no full-time test: belgium_self_employed_is_student (RD 38 art. 12bis) and the Child-entity family-benefit training and 'qualifying' flags.",
-  "fact:person.liquid_financial_assets": "rulespec-be at b105e2b3 takes movable capital only as means-test inputs. belgium_social_integration_movable_capital_amount (RIS art. 27, in regulations/social_integration/resource_calculation.yaml and statutes/social_integration/payable_amount.yaml) lives on Household, and no transform puts a person amount on a Household input; the module also counts it through an owner fraction it takes as two further inputs (belgium_social_integration_movable_capital_numerator_share over belgium_social_integration_movable_capital_account_holder_count). brussels_apa_movable_capital_amount (Person, be-bru/statutes/disability/elderly_care_allowance.yaml; APA order of 28 January 2021 art. 16: 'Pour les capitaux mobiliers, placés ou non, il est porté en compte une somme égale à 6 % des capitaux.') is the one Person-level candidate. It counts all movable capital, invested or not, which is broader than the concept. The APA module also reads it as the movable capital of the beneficiary and the person they form a household with, not the beneficiary's alone: brussels_apa_movable_capital_deemed_annual_income turns it into deemed income at 6 %, and brussels_apa_annual_income_before_disregard multiplies the summed income by brussels_apa_household_income_split_factor, which is 0.5 when the person forms a household and both members are entitled to the allowance (art. 5 § 2: 'il est tenu compte pour chacune des deux personnes de la moitié du revenu du ménage') and 1 otherwise. It is left for a reviewed Belgian binding.",
-  "fact:person.realized_capital_gains": "rulespec-be at b105e2b3 encodes no capital-gains rule: no non-test module mentions capital gains, plus-values or meerwaarden. The nearest inputs are legal net-income categories that realized gains do not determine. One is belgium_pit_net_miscellaneous_income (Person, CIR art. 6 in taxable_income.yaml), which the module takes as already determined under category-specific rules. The others are the TaxUnit belgium_pit_spouse_{a,b}_article_90_items_1_to_4_and_12_income slots in the art. 127 joint-assessment allocation.",
-  "fact:person.rental_income": "rulespec-be at b105e2b3 has no input that net rental income determines. (1) belgium_pit_net_immovable_income (Person, CIR art. 6) is a net-income category that taxable_income.yaml 'expects ... to have already been determined under the category-specific CIR 1992 rules', and no module derives it. (2) belgium_social_integration_annual_property_rent (RIS art. 26) lives on Household, and no transform puts a person amount on a Household input. (3) belgium_pit_article_17_non_copyright_movable_property_rental_use_or_concession_income is income from movable property, which is outside the concept's land-and-buildings scope.",
-  "fact:person.sex": "rulespec-be at b105e2b3 has no input that reads sex. No surface input name and no non-test rule text mentions sex or gender. The one sex-dependent provision found, Brussels social-housing child-bedroom pairing, is left out of the module: social_housing_rental.yaml lists 'exact child-room pairing from person-level sex/age arrays' among what it leaves to separate surfaces. It enters only as the supplied Household count brussels_social_housing_child_bedrooms_required.",
+  "fact:person.liquid_financial_assets": "rulespec-be at 632e1da1 takes movable capital only as means-test inputs. belgium_social_integration_movable_capital_amount (RIS art. 27, in regulations/social_integration/resource_calculation.yaml and statutes/social_integration/payable_amount.yaml) lives on Household, and no transform puts a person amount on a Household input; the module also counts it through an owner fraction it takes as two further inputs (belgium_social_integration_movable_capital_numerator_share over belgium_social_integration_movable_capital_account_holder_count). brussels_apa_movable_capital_amount (Person, be-bru/statutes/disability/elderly_care_allowance.yaml; APA order of 28 January 2021 art. 16: 'Pour les capitaux mobiliers, placés ou non, il est porté en compte une somme égale à 6 % des capitaux.') is the one Person-level candidate. It counts all movable capital, invested or not, which is broader than the concept. The APA module also reads it as the movable capital of the beneficiary and the person they form a household with, not the beneficiary's alone: brussels_apa_movable_capital_deemed_annual_income turns it into deemed income at 6 %, and brussels_apa_annual_income_before_disregard multiplies the summed income by brussels_apa_household_income_split_factor, which is 0.5 when the person forms a household and both members are entitled to the allowance (art. 5 § 2: 'il est tenu compte pour chacune des deux personnes de la moitié du revenu du ménage') and 1 otherwise. It is left for a reviewed Belgian binding.",
+  "fact:person.realized_capital_gains": "rulespec-be at 632e1da1 encodes no capital-gains rule: no non-test module mentions capital gains, plus-values or meerwaarden. The nearest inputs are legal net-income categories that realized gains do not determine. One is belgium_pit_net_miscellaneous_income (Person, CIR art. 6 in taxable_income.yaml), which the module takes as already determined under category-specific rules. The others are the TaxUnit belgium_pit_spouse_{a,b}_article_90_items_1_to_4_and_12_income slots in the art. 127 joint-assessment allocation.",
+  "fact:person.rental_income": "rulespec-be at 632e1da1 has no input that net rental income determines. (1) belgium_pit_net_immovable_income (Person, CIR art. 6) is a net-income category that taxable_income.yaml 'expects ... to have already been determined under the category-specific CIR 1992 rules', and no module derives it. (2) belgium_social_integration_annual_property_rent (RIS art. 26) lives on Household, and no transform puts a person amount on a Household input. (3) belgium_pit_article_17_non_copyright_movable_property_rental_use_or_concession_income is income from movable property, which is outside the concept's land-and-buildings scope.",
+  "fact:person.sex": "rulespec-be at 632e1da1 has no input that reads sex. No surface input name and no non-test rule text mentions sex or gender. The one sex-dependent provision found, Brussels social-housing child-bedroom pairing, is left out of the module: social_housing_rental.yaml lists 'exact child-room pairing from person-level sex/age arrays' among what it leaves to separate surfaces. It enters only as the supplied Household count brussels_social_housing_child_bedrooms_required.",
   "fact:person.take_up_seed": "rulespec-be computes legal entitlements and has no take-up or participation input. Its only claim-type inputs are eligibility conditions or elections, not decisions to take up the program the rule computes: belgium_social_integration_social_benefit_rights_asserted (a RIS art. 3-4 condition), brussels_apa_required_other_benefit_rights_claimed (an APA eligibility conjunct), and belgium_pit_article_1458_pension_savings_reduction_claimed (a non-cumulation election against the art. 145/7 reduction that also needs pension-savings payments).",
   "fact:person.weeks_worked": "rulespec-be has no input for weeks worked in a year. Its work-history inputs are day or hour counts over windows that run back from a claim. Examples: belgium_unemployment_article_30_countable_work_days_since_prior_admission_in_extended_reference_period (312 work days within a 36-month reference period, admission.yaml), and belgium_health_waiting_stage_assimilated_work_days/_hours (windows of one to 36 months, with the length supplied as the separate input belgium_health_waiting_stage_reference_months, waiting_stage.yaml). These need a claim date, count days rather than weeks, and depend on an assimilated-day classification that the module leaves to separate surfaces. Multiplying weekly hours by weeks (a Product transform) would still give annual hours, not hours inside the claim window."
  }

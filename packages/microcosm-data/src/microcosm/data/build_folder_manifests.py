@@ -25,6 +25,7 @@ import hashlib
 import json
 import re
 import shlex
+import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,6 +46,7 @@ __all__ = [
     "build_folder_release_manifest",
     "publication_commands",
     "referenced_build",
+    "require_offered_build",
     "rewrite_release_dir",
 ]
 
@@ -260,3 +262,62 @@ def referenced_build(reference: Mapping[str, Any]) -> ReferencedBuild:
     return ReferencedBuild(
         repo_id=repo_id, revision=revision, folder=f"releases/{build_id}"
     )
+
+
+def require_offered_build(
+    api: Any,
+    *,
+    repo_id: str,
+    release: str,
+    build: str,
+    label: str,
+    fresh: bool = False,
+) -> None:
+    """Refuse a build-folder build that ``releases.json`` at ``main`` does not offer.
+
+    ``releases.json`` must list the build and not have withdrawn it
+    (:func:`microcosm.data.releases_record.build_refusal`). ``label`` names
+    the build in the refusal, for example "the parent build". An absent
+    ``releases.json`` refuses; any other Hub failure, including one where the
+    Hub could not be asked, propagates. ``api`` needs ``hf_hub_download``.
+
+    With ``fresh``, ``releases.json`` is downloaded into a new, empty cache,
+    and ``api`` must take ``cache_dir`` and ``force_download``. The Hub client
+    otherwise answers from its cached copy when the Hub cannot be asked, so a
+    record cached before a withdrawal would still offer the build (review of
+    #1627).
+    """
+    from microcosm.data.release import _is_absent_entry_error
+    from microcosm.data.releases_record import (
+        RELEASES_RECORD_PATH,
+        build_refusal,
+        parse_releases_record,
+    )
+
+    def read_record(**fresh_options: Any) -> bytes:
+        try:
+            downloaded = api.hf_hub_download(
+                repo_id=repo_id,
+                filename=RELEASES_RECORD_PATH,
+                repo_type="dataset",
+                revision="main",
+                **fresh_options,
+            )
+        except Exception as exc:
+            if not _is_absent_entry_error(exc):
+                raise
+            raise ValueError(
+                f"{repo_id} has no {RELEASES_RECORD_PATH}, so {label} {build!r} of "
+                f"{release!r} is not a published build ({exc})"
+            ) from exc
+        return Path(downloaded).read_bytes()
+
+    if fresh:
+        with tempfile.TemporaryDirectory(prefix="microcosm-releases-record-") as cache:
+            document = read_record(cache_dir=cache, force_download=True)
+    else:
+        document = read_record()
+    record = parse_releases_record(document)
+    problem = build_refusal(record, release=release, build=build)
+    if problem is not None:
+        raise ValueError(f"{label} {build!r} of {release!r} is refused: {problem}")

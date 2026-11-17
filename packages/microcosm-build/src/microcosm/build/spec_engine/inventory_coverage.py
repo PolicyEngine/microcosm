@@ -389,8 +389,21 @@ EXPECTED_HASHES = {
     # calibrate's shared option checks move both again; no US solve changes.
     # Its TANF ledger fix moves the protocol again: the site's recorded salt
     # becomes the takes_up_tanf_if_eligible its draw always used.
-    "seed_map": "270cf6498f8a2977993f969d0703be88fb930499dab42741a2111f57ffec4266",
-    "seed_protocol": "a696ad74bfa5743b63c65499e6f5a41ea913a96ca38a5e3b9882069284bfca47",
+    # microcosm#1096 moves both again: solve's opt-in softmax mass
+    # parametrization projects exactly onto the capped simplex; the default
+    # projection parametrization is unchanged.
+    # microcosm#1387 moves both again: the ACS transfer's opt-in SEMP-covered
+    # partnership step changes acs_transfer's attested bytes. Off its flag no
+    # draw, RNG rule or QRF target changes.
+    # microcosm#1543's fit input checks (the microimpute bug-parity audit)
+    # move both again; no valid input's draw changes. microcosm#1617's refusal
+    # of a weightless class in the balanced gate's weights moves both again;
+    # no fit reached it, and no draw changes.
+    # microcosm#1641 moves both again: it rewords docstrings and a comment in
+    # solve and the delivery gate's docstring in ssi_take_up, which now names
+    # the builder's arms by flag; no draw, RNG rule, QRF target or solve changes.
+    "seed_map": "d756dc67535c04788e605bedb4cd6721cf715e5f5ce4be73d9b27420a61b3d50",
+    "seed_protocol": "2c57cbfb9dd0f132f9b5751eb8bc303f4b7e37430cd5e0b155aac0b0b8eaa42e",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
