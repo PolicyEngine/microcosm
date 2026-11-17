@@ -1,9 +1,11 @@
 """The proof-of-concept donor patch for the ACS staging (microcosm#922).
 
 ``tools/patch_us_acs_donor_columns.py`` writes a patched copy of a US
-national donor H5 with reviewed all-zero columns added. These tests use a
-small fixture H5 in the nullable layout R1's ``_load_base_frame`` reads and a
-stand-in engine, so no country engine is imported.
+national donor H5 with the ASEC work columns restored and reviewed all-zero
+columns added. These tests use a small fixture H5 in the nullable layout R1's
+``_load_base_frame`` reads, a stand-in engine and invented ASEC person
+members whose pins are measured here, so no country engine is imported and
+no Census file is read or downloaded.
 """
 
 from __future__ import annotations
@@ -11,8 +13,11 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import shutil
 import sys
+import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -23,10 +28,13 @@ from microcosm.build.us_runtime.acs_local_income import (
     ACS_LOCAL_INCOME_TRANSFER_COLUMNS,
     ACS_LOCAL_OTHER_INCOME_DONOR_COMPONENTS,
 )
+from microcosm.build.us_runtime.asec_census_person_columns import WEIND_TO_WEMIND
 from microcosm.build.us_runtime.h5_io import (
     read_nullable_us_h5_metadata,
     write_nullable_us_h5,
 )
+from microcosm.build.us_runtime.org_wages import derive_us_org_occupation_inputs
+from microcosm.build.us_runtime.spm_role_source import AsecSpmRoleSource
 from microcosm.build.us_runtime.support_provenance import (
     support_channel_column,
     support_clone_index_column,
@@ -177,7 +185,13 @@ def _sha256(path: Path) -> str:
 
 
 def _patch(
-    tool, tmp_path: Path, donor: Path, *, engine: _Engine | None = None, **options
+    tool,
+    tmp_path: Path,
+    donor: Path,
+    *,
+    engine: _Engine | None = None,
+    asec_sources=None,
+    **options,
 ):
     output = tmp_path / "out" / "donor_patched.h5"
     receipt_path = tmp_path / "out" / "donor_patched.receipt.json"
@@ -185,7 +199,9 @@ def _patch(
         donor,
         output,
         steps=tool.build_patch_steps(
-            zero_columns=list(_ZERO_COLUMNS), engine=engine or _Engine()
+            zero_columns=list(_ZERO_COLUMNS),
+            engine=engine or _Engine(),
+            asec_sources=asec_sources,
         ),
         receipt_path=receipt_path,
         tool_identity={"commit": "f" * 40, "tool_dirty": False},
@@ -379,11 +395,11 @@ def test_r1_income_donor_gate_passes_on_the_patched_fixture(
 
 
 def test_command_writes_the_default_receipt_beside_the_copy(
-    tool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tool, asec, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import microcosm.frame.adapters.policyengine_us as adapter
 
-    donor = _write_donor(tmp_path / "donor.h5")
+    donor = _write_asec_donor(tmp_path / "donor.h5")
     monkeypatch.setattr(adapter, "PolicyEngineUSEngine", _Engine)
     monkeypatch.setattr(
         tool, "current_tool_identity", lambda: {"commit": "c" * 40, "tool_dirty": False}
@@ -395,9 +411,10 @@ def test_command_writes_the_default_receipt_beside_the_copy(
     receipt = json.loads((tmp_path / "patched.receipt.json").read_text())
     assert receipt["output"]["sha256"] == _sha256(output)
     assert receipt["tool_commit"]["commit"] == "c" * 40
-    assert [r["column"] for r in receipt["added_columns"]] == list(
-        tool.REVIEWED_ZERO_COLUMNS
-    )
+    assert [r["column"] for r in receipt["added_columns"]] == [
+        *tool.ASEC_WORK_COLUMNS,
+        *tool.REVIEWED_ZERO_COLUMNS,
+    ]
 
     with pytest.raises(SystemExit, match="Donor patch refused"):
         tool.main(["--input-h5", str(donor), "--output-h5", str(donor)])
@@ -568,11 +585,11 @@ def test_copy_release_manifest_refuses_a_bad_build_name(
 
 
 def test_command_writes_the_copy_release_manifest_only_when_asked(
-    tool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tool, asec, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import microcosm.frame.adapters.policyengine_us as adapter
 
-    donor = _write_donor(tmp_path / "donor.h5")
+    donor = _write_asec_donor(tmp_path / "donor.h5")
     monkeypatch.setattr(adapter, "PolicyEngineUSEngine", _Engine)
     monkeypatch.setattr(
         tool, "current_tool_identity", lambda: {"commit": "c" * 40, "tool_dirty": False}
@@ -606,3 +623,607 @@ def test_command_writes_the_copy_release_manifest_only_when_asked(
     ):
         with pytest.raises(SystemExit):
             tool._parse_args([*base, *partial])
+
+
+# --------------------------------------------------------------------------
+# The ASEC work-column restore step
+# --------------------------------------------------------------------------
+
+#: Invented ASEC person members by income year: key -> (PH_SEQ, P_SEQ,
+#: A_LINENO, A_AGE, WKSWORK, POCCU2, PRDTRACE, PRDTHSP, WEIND). Key 1 is in
+#: both years with different answers (CPS rotation), so a join that ignored
+#: source_year would pair the wrong person. Keys 2 and 3 are member-only: the
+#: donor is a subset of each member, as the real donor is.
+_ASEC_MEMBERS = {
+    2022: {
+        1: (11, 1, 1, 34, 52, 8, 1, 0, 5),
+        2: (12, 1, 1, 9, 0, 0, 1, 0, 0),
+    },
+    2023: {
+        1: (21, 1, 1, 70, 0, 0, 2, 1, 23),
+        3: (22, 1, 1, 30, 30, 52, 4, 0, 22),
+    },
+}
+_ASEC_MEMBER_FIELDS = (
+    "PH_SEQ",
+    "P_SEQ",
+    "A_LINENO",
+    "A_AGE",
+    "WKSWORK",
+    "POCCU2",
+    "PRDTRACE",
+    "PRDTHSP",
+    "WEIND",
+)
+#: The fixture donor's persons as (source_year, key): rows 2 and 3 are the
+#: PUF-support clones of rows 0 and 1 (``_donor_frame``'s support ids).
+_ASEC_DONOR_KEYS = ((2022, 1), (2023, 1), (2022, 1), (2023, 1))
+_EXPECTED_WORK = {
+    "detailed_industry_recode": [5, 23, 5, 23],
+    "major_industry_recode": [WEIND_TO_WEMIND[5], 15, WEIND_TO_WEMIND[5], 15],
+    "worked_last_year": [True, False, True, False],
+}
+_DONOR_IDENTITY = (
+    "source_household_id",
+    "P_SEQ",
+    "A_LINENO",
+    "A_AGE",
+    "WKSWORK",
+    "POCCU2",
+    "PRDTRACE",
+    "PRDTHSP",
+)
+
+
+def _peridnum(key: int, *, wide: bool = False) -> str:
+    # Leading zeros: the join must compare exact text, never numbers. Wide keys
+    # share their first 15 digits, so they collide as float64.
+    return f"91{key:020d}" if wide else f"{key * 7:022d}"
+
+
+def _asec_member_row(year: int, key: int) -> dict[str, int]:
+    values = dict(zip(_ASEC_MEMBER_FIELDS, _ASEC_MEMBERS[year][key], strict=True))
+    values["WEMIND"] = WEIND_TO_WEMIND[values["WEIND"]]
+    return values
+
+
+def _asec_person_columns(
+    *, wide_keys: bool = False, overrides: dict | None = None, drop: tuple = ()
+) -> dict[str, pd.Series]:
+    """The ASEC person columns a pre-restoration donor carries.
+
+    The identity columns equal each row's member; the carry's other outputs
+    are the carry's own; the three work columns and raw WEIND/WEMIND are
+    absent, as on 766b7c7's donor.
+    """
+
+    members = [_asec_member_row(year, key) for year, key in _ASEC_DONOR_KEYS]
+    table = pd.DataFrame(
+        {
+            "PERIDNUM": [_peridnum(key, wide=wide_keys) for _, key in _ASEC_DONOR_KEYS],
+            "source_year": [year for year, _ in _ASEC_DONOR_KEYS],
+            "source_household_id": [row["PH_SEQ"] for row in members],
+            **{
+                column: [row[column] for row in members]
+                for column in _DONOR_IDENTITY[1:]
+            },
+        }
+    )
+    carried = derive_us_org_occupation_inputs(
+        table.assign(
+            WEIND=[row["WEIND"] for row in members],
+            WEMIND=[row["WEMIND"] for row in members],
+        )
+    )
+    columns = {column: table[column] for column in table.columns}
+    for column in carried.columns:
+        if column not in _EXPECTED_WORK:
+            columns[column] = carried[column]
+    for column, values in (overrides or {}).items():
+        columns[column] = pd.Series(values)
+    return {column: values for column, values in columns.items() if column not in drop}
+
+
+def _write_asec_donor(path: Path, **options) -> Path:
+    return _write_donor(path, _asec_person_columns(**options))
+
+
+def _write_member(
+    path: Path,
+    year: int,
+    *,
+    drop_keys: tuple[int, ...] = (),
+    overrides: dict | None = None,
+    wide_keys: bool = False,
+    duplicate_keys: tuple[int, ...] = (),
+) -> Path:
+    rows = []
+    for key in _ASEC_MEMBERS[year]:
+        if key in drop_keys:
+            continue
+        row = {
+            "PERIDNUM": _peridnum(key, wide=wide_keys),
+            **_asec_member_row(year, key),
+        }
+        row.update((overrides or {}).get(key, {}))
+        row["A_FNLWGT"] = 1000.0 + key
+        rows.append(row)
+        if key in duplicate_keys:
+            rows.append(dict(row))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_csv(path, index=False, lineterminator="\n")
+    return path
+
+
+def _measured_pin(path: Path, year: int) -> AsecSpmRoleSource:
+    return AsecSpmRoleSource(
+        income_year=year,
+        survey_year=year + 1,
+        csv_sha256=_sha256(path),
+        csv_size_bytes=path.stat().st_size,
+        persons=int(len(pd.read_csv(path))),
+        units=0,
+        official_archive_url=f"https://example.invalid/asecpub{str(year + 1)[2:]}csv.zip",
+        archive_sha256="0" * 64,
+        member=path.name,
+    )
+
+
+def _refuse_download(*args, **kwargs):
+    raise AssertionError("a test attempted an ASEC download")
+
+
+@pytest.fixture
+def asec(tool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Invented members with measured pins, as the test's default ASEC cache.
+
+    The command resolves its pins through ``_resolve_pin``; here that falls
+    back to the measured pins (the vintage check still runs). No test reads
+    the real cache or downloads.
+    """
+
+    def build(**member_options) -> SimpleNamespace:
+        cache = tmp_path / "asec-cache"
+        paths, pins = {}, {}
+        for year in _ASEC_MEMBERS:
+            options = {
+                name: value.get(year, ()) if name != "wide_keys" else value
+                for name, value in member_options.items()
+            }
+            if "overrides" in options and options["overrides"] == ():
+                options["overrides"] = None
+            path = _write_member(
+                cache / f"pppub{str(year + 1)[2:]}.csv", year, **options
+            )
+            paths[year], pins[year] = path, _measured_pin(path, year)
+        resolve = tool._resolve_pin
+        monkeypatch.setattr(
+            tool,
+            "_resolve_pin",
+            lambda year, pin: resolve(year, pin if pin is not None else pins[year]),
+        )
+        monkeypatch.setattr(tool, "DEFAULT_ASEC_SOURCE_CACHE", cache)
+        monkeypatch.setattr(
+            tool.education_assistance_source,
+            "fetch_asec_education_assistance_source",
+            _refuse_download,
+        )
+        return SimpleNamespace(
+            cache=cache,
+            paths=paths,
+            pins=pins,
+            sources=tool.AsecPersonSources(paths=paths, pins=pins),
+        )
+
+    build()
+    return build
+
+
+def test_work_columns_are_restored_by_the_year_scoped_key(
+    tool, asec, tmp_path: Path
+) -> None:
+    fixture = asec()
+    donor = _write_asec_donor(tmp_path / "donor.h5")
+
+    output, _receipt_path, receipt = _patch(
+        tool, tmp_path, donor, asec_sources=fixture.sources
+    )
+
+    _keys, before, _others, _root = _tables(donor)
+    _keys, after, _others, _root = _tables(output)
+    person = after["person"]
+    assert list(person.columns) == [
+        *before["person"].columns,
+        *tool.ASEC_WORK_COLUMNS,
+        *_ZERO_COLUMNS,
+    ]
+    for column, dtype in tool.ASEC_WORK_DTYPES.items():
+        assert person[column].dtype == np.dtype(dtype)
+        assert person[column].tolist() == _EXPECTED_WORK[column]
+    # Key 1 takes each year's own answer; each PUF clone its sibling's.
+    assert person["detailed_industry_recode"].tolist()[:2] == [5, 23]
+    for entity in US_SCHEMA.entities:
+        pd.testing.assert_frame_equal(
+            after[entity][list(before[entity].columns)],
+            before[entity],
+            check_exact=True,
+        )
+
+    work = [r for r in receipt["added_columns"] if r["step"] == tool.ASEC_WORK_STEP]
+    assert [(r["entity"], r["column"], r["dtype"]) for r in work] == [
+        ("person", "detailed_industry_recode", "int16"),
+        ("person", "major_industry_recode", "int16"),
+        ("person", "worked_last_year", "bool"),
+    ]
+    assert [r["source_item"] for r in work] == ["WEIND", "WEMIND", "WKSWORK > 0"]
+    assert receipt["rewritten_tables"] == ["person"]
+    step = receipt["steps"][0]
+    assert step["name"] == tool.ASEC_WORK_STEP
+    assert step["columns"] == [f"person.{c}" for c in tool.ASEC_WORK_COLUMNS]
+    assert receipt["steps"][1]["name"] == tool.ZERO_STEP
+    for year in (2022, 2023):
+        record = step["files"][str(year)]
+        assert record["member_sha256"] == _sha256(fixture.paths[year])
+        assert record["path"] == str(fixture.paths[year].resolve())
+        assert record["form"] == "csv"
+        assert (record["income_year"], record["survey_year"]) == (year, year + 1)
+        assert record["persons"] == 2
+        assert step["join"]["by_income_year"][str(year)] == {
+            "donor_rows": 2,
+            "donor_rows_matched_once": 2,
+            "distinct_keys_matched": 1,
+            "member_rows": 2,
+            "member_rows_not_in_donor": 1,
+            "identity_mismatches": 0,
+        }
+    assert step["join"]["donor_rows"] == 4
+    assert step["join"]["unmatched_donor_rows"] == 0
+    assert step["join"]["multiply_matched_donor_rows"] == 0
+    assert step["clones"]["keys_with_two_rows"] == 2
+    assert step["clones"]["repeated_key_channel_composition"] == {
+        "asec+puf_tax_detail": 2
+    }
+    assert "cps_race" in step["carry"]["reemitted_columns_verified_equal"]
+    shares = step["work_experience"]["nonzero_shares"]["worked_last_year"]
+    # Persons 1 and 3 (weights 40 and 50 of 180) worked last year.
+    assert shares["weighted_nonzero_share"] == pytest.approx(90 / 180)
+    json.dumps(receipt, allow_nan=False)
+
+
+def test_r1_work_experience_gate_passes_on_the_patched_fixture(
+    tool, builder, asec, tmp_path: Path
+) -> None:
+    fixture = asec()
+    donor = _write_asec_donor(tmp_path / "donor.h5")
+    with pytest.raises(SystemExit, match="detailed_industry_recode"):
+        builder._require_donor_work_experience(builder._load_base_frame(donor))
+
+    output, _receipt_path, _receipt = _patch(
+        tool, tmp_path, donor, asec_sources=fixture.sources
+    )
+
+    frame = builder._load_base_frame(output)
+    builder._require_donor_work_experience(frame)
+    builder._require_income_donor(frame)
+
+
+def test_table_format_donor_keeps_its_layout_with_the_work_columns(
+    tool, builder, asec, tmp_path: Path
+) -> None:
+    """The published donor's layout: compound tables, every column indexed."""
+
+    fixture = asec()
+    frame = _donor_frame(_asec_person_columns())
+    donor = tmp_path / "donor-table.h5"
+    with pd.HDFStore(donor, mode="w") as store:
+        for entity in US_SCHEMA.entities:
+            table = frame.table(entity).copy()
+            if entity == "household":
+                table["household_weight"] = frame.weights_for("household").values
+            table = table.drop(
+                columns=["has_marketplace_health_coverage_at_interview"],
+                errors="ignore",
+            )
+            store.put(entity, table, format="table", data_columns=True)
+
+    output, _receipt_path, receipt = _patch(
+        tool, tmp_path, donor, asec_sources=fixture.sources
+    )
+
+    _keys, after, _others, _root = _tables(output)
+    with pd.HDFStore(output, mode="r") as store:
+        storer = store.get_storer("person")
+        assert storer.is_table
+        assert set(tool.ASEC_WORK_COLUMNS) <= set(storer.data_columns)
+    for column, dtype in tool.ASEC_WORK_DTYPES.items():
+        assert after["person"][column].dtype == np.dtype(dtype)
+        assert after["person"][column].tolist() == _EXPECTED_WORK[column]
+    assert receipt["rewritten_tables"] == ["person"]
+    builder._require_donor_work_experience(builder._load_base_frame(output))
+
+
+def test_join_compares_exact_text_keys(tool, asec, tmp_path: Path) -> None:
+    # Every key shares its first 15 digits, so a numeric join could not tell
+    # the people apart.
+    fixture = asec(wide_keys=True)
+    assert len({float(_peridnum(key, wide=True)) for key in (1, 2, 3)}) == 1
+    donor = _write_asec_donor(tmp_path / "donor.h5", wide_keys=True)
+
+    output, _receipt_path, _receipt = _patch(
+        tool, tmp_path, donor, asec_sources=fixture.sources
+    )
+
+    _keys, after, _others, _root = _tables(output)
+    for column, expected in _EXPECTED_WORK.items():
+        assert after["person"][column].tolist() == expected
+
+
+def _refused(tool, tmp_path: Path, donor: Path, sources, match: str) -> None:
+    donor_sha256 = _sha256(donor)
+    with pytest.raises(ValueError, match=match):
+        _patch(tool, tmp_path, donor, asec_sources=sources)
+    assert not (tmp_path / "out").exists() or not any((tmp_path / "out").iterdir())
+    assert _sha256(donor) == donor_sha256
+
+
+def test_refuses_a_donor_person_without_a_member_row(
+    tool, asec, tmp_path: Path
+) -> None:
+    fixture = asec(drop_keys={2023: (1,)})
+    donor = _write_asec_donor(tmp_path / "donor.h5")
+
+    _refused(
+        tool,
+        tmp_path,
+        donor,
+        fixture.sources,
+        "2 donor person rows of income year 2023 have no row",
+    )
+
+
+def test_refuses_a_member_that_would_match_a_person_twice(
+    tool, asec, tmp_path: Path
+) -> None:
+    fixture = asec(duplicate_keys={2022: (1,)})
+    donor = _write_asec_donor(tmp_path / "donor.h5")
+
+    _refused(tool, tmp_path, donor, fixture.sources, "repeats PERIDNUM on 2 rows")
+
+
+def test_refuses_a_file_whose_sha256_is_not_pinned(tool, asec, tmp_path: Path) -> None:
+    fixture = asec()
+    donor = _write_asec_donor(tmp_path / "donor.h5")
+    pins = dict(fixture.pins)
+    pins[2022] = AsecSpmRoleSource(**{**vars(pins[2022]), "csv_sha256": "0" * 64})
+
+    _refused(
+        tool,
+        tmp_path,
+        donor,
+        tool.AsecPersonSources(paths=fixture.paths, pins=pins),
+        "SHA-256 mismatch",
+    )
+    # A file of another year is refused against its year's pin, by name.
+    _refused(
+        tool,
+        tmp_path,
+        donor,
+        tool.AsecPersonSources(
+            paths={2022: fixture.paths[2023], 2023: fixture.paths[2023]},
+            pins=fixture.pins,
+        ),
+        r"pppub23\.csv \(read from pppub24\.csv\)",
+    )
+
+
+def test_refuses_a_pin_for_another_vintage(tool, asec, tmp_path: Path) -> None:
+    fixture = asec()
+    donor = _write_asec_donor(tmp_path / "donor.h5")
+    pins = {2022: fixture.pins[2023], 2023: fixture.pins[2023]}
+
+    _refused(
+        tool,
+        tmp_path,
+        donor,
+        tool.AsecPersonSources(paths=fixture.paths, pins=pins),
+        "pin is for income year 2023",
+    )
+
+
+@pytest.mark.parametrize("column", _DONOR_IDENTITY)
+def test_refuses_one_row_that_disagrees_on_any_identity_column(
+    tool, asec, tmp_path: Path, column: str
+) -> None:
+    fixture = asec()
+    # Row 2 is the 2022 PUF clone; only the named column changes.
+    values = _asec_person_columns()[column].tolist()
+    values[2] += 1
+    donor = _write_asec_donor(tmp_path / "donor.h5", overrides={column: values})
+
+    _refused(
+        tool,
+        tmp_path,
+        donor,
+        fixture.sources,
+        rf"Income year 2022 donor rows disagree .*\{{'{column}': 1\}}",
+    )
+
+
+def test_refuses_a_code_outside_the_reviewed_domain(tool, asec, tmp_path: Path) -> None:
+    fixture = asec(overrides={2023: {3: {"WEIND": 99}}})
+    donor = _write_asec_donor(tmp_path / "donor.h5")
+
+    _refused(tool, tmp_path, donor, fixture.sources, "outside its reviewed Census")
+
+
+def test_refuses_a_donor_the_carry_did_not_build(tool, asec, tmp_path: Path) -> None:
+    fixture = asec()
+    cps_race = _asec_person_columns()["cps_race"].copy()
+    cps_race.iloc[1] = 7
+    donor = _write_asec_donor(tmp_path / "donor.h5", overrides={"cps_race": cps_race})
+
+    _refused(tool, tmp_path, donor, fixture.sources, "Donor cps_race differs")
+
+
+def test_refuses_a_donor_without_the_join_columns(tool, asec, tmp_path: Path) -> None:
+    fixture = asec()
+    donor = _write_asec_donor(tmp_path / "donor.h5", drop=("P_SEQ",))
+
+    _refused(tool, tmp_path, donor, fixture.sources, r"lacks \['P_SEQ'\]")
+
+
+def test_existing_work_columns_are_kept_only_when_equal(
+    tool, asec, tmp_path: Path
+) -> None:
+    fixture = asec()
+    same = pd.Series(_EXPECTED_WORK["worked_last_year"])
+    donor = _write_asec_donor(
+        tmp_path / "donor.h5", overrides={"worked_last_year": same}
+    )
+
+    _output, _receipt_path, receipt = _patch(
+        tool, tmp_path, donor, asec_sources=fixture.sources
+    )
+
+    assert [r["column"] for r in receipt["kept_columns"]] == ["worked_last_year"]
+
+    other = tmp_path / "other"
+    other.mkdir()
+    different = pd.Series([True, True, True, False])
+    donor = _write_asec_donor(
+        other / "donor.h5", overrides={"worked_last_year": different}
+    )
+    _refused(tool, other, donor, fixture.sources, "refusing to overwrite")
+
+    # A work column on another entity is refused, not duplicated on person.
+    step = tool.asec_work_column_step(fixture.sources)
+    with pytest.raises(ValueError, match="on tax_unit; refusing to duplicate"):
+        step.run(
+            {
+                "person": pd.DataFrame(_asec_person_columns()),
+                "tax_unit": pd.DataFrame({"worked_last_year": [True]}),
+            }
+        )
+
+
+def test_reads_the_cache_as_member_csvs_or_official_archives(
+    tool, asec, tmp_path: Path
+) -> None:
+    fixture = asec()
+    donor = _write_asec_donor(tmp_path / "donor.h5")
+    archives = tmp_path / "archives"
+    archives.mkdir()
+    pins = {}
+    for year, path in fixture.paths.items():
+        pin = fixture.pins[year]
+        archive = archives / Path(pin.official_archive_url).name
+        with zipfile.ZipFile(archive, "w") as handle:
+            handle.write(path, arcname=pin.member)
+        pins[year] = AsecSpmRoleSource(
+            **{**vars(pin), "archive_sha256": _sha256(archive)}
+        )
+
+    _output, _receipt_path, receipt = _patch(
+        tool,
+        tmp_path,
+        donor,
+        asec_sources=tool.AsecPersonSources(cache=archives, pins=pins),
+    )
+
+    files = receipt["steps"][0]["files"]
+    assert [files[str(year)]["form"] for year in (2022, 2023)] == ["archive"] * 2
+    assert files["2022"]["archive_sha256"] == pins[2022].archive_sha256
+    assert files["2022"]["path"].endswith("asecpub23csv.zip")
+
+    # The CSV form, from the default cache.
+    shutil.rmtree(tmp_path / "out")
+    _output, _receipt_path, receipt = _patch(
+        tool, tmp_path, donor, asec_sources=tool.AsecPersonSources(pins=fixture.pins)
+    )
+    files = receipt["steps"][0]["files"]
+    assert files["2023"]["path"] == str((fixture.cache / "pppub24.csv").resolve())
+    assert files["2023"]["form"] == "csv"
+
+
+def test_refuses_absent_members_and_fetches_only_when_asked(
+    tool, asec, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = asec()
+    donor = _write_asec_donor(tmp_path / "donor.h5")
+    cache = tmp_path / "partial-cache"
+    cache.mkdir()
+    shutil.copyfile(fixture.paths[2022], cache / "pppub23.csv")
+
+    _refused(
+        tool,
+        tmp_path,
+        donor,
+        tool.AsecPersonSources(cache=cache, pins=fixture.pins),
+        r"income year\(s\) \['2023'\] are not in .*--asec-fetch",
+    )
+
+    calls = []
+
+    def download(income_year, cache_dir=None):
+        calls.append((income_year, Path(cache_dir)))
+        target = Path(cache_dir) / fixture.pins[income_year].member
+        shutil.copyfile(fixture.paths[income_year], target)
+        return target
+
+    monkeypatch.setattr(
+        tool.education_assistance_source,
+        "fetch_asec_education_assistance_source",
+        download,
+    )
+    _output, _receipt_path, receipt = _patch(
+        tool,
+        tmp_path,
+        donor,
+        asec_sources=tool.AsecPersonSources(cache=cache, fetch=True, pins=fixture.pins),
+    )
+    assert calls == [(2023, cache)]
+    assert receipt["steps"][0]["files"]["2023"]["path"] == str(
+        (cache / "pppub24.csv").resolve()
+    )
+
+
+def test_command_restores_the_work_columns_and_passes_its_options(
+    tool, asec, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import microcosm.frame.adapters.policyengine_us as adapter
+
+    fixture = asec()
+    donor = _write_asec_donor(tmp_path / "donor.h5")
+    monkeypatch.setattr(adapter, "PolicyEngineUSEngine", _Engine)
+    monkeypatch.setattr(
+        tool, "current_tool_identity", lambda: {"commit": "c" * 40, "tool_dirty": False}
+    )
+    base = ["--input-h5", str(donor), "--output-h5", str(tmp_path / "patched.h5")]
+
+    # Without the members, the command refuses rather than skip the step.
+    monkeypatch.setattr(tool, "DEFAULT_ASEC_SOURCE_CACHE", tmp_path / "absent")
+    with pytest.raises(SystemExit, match="Donor patch refused: The pinned ASEC"):
+        tool.main(base)
+
+    assert tool.main([*base, "--asec-source-cache", str(fixture.cache)]) == 0
+    receipt = json.loads((tmp_path / "patched.receipt.json").read_text())
+    assert receipt["steps"][0]["name"] == tool.ASEC_WORK_STEP
+    assert receipt["steps"][0]["files"]["2022"]["path"] == str(
+        fixture.paths[2022].resolve()
+    )
+
+    seen = {}
+
+    def capture(**kwargs):
+        seen.update(kwargs)
+        raise ValueError("captured")
+
+    monkeypatch.setattr(tool, "build_patch_steps", capture)
+    with pytest.raises(SystemExit, match="captured"):
+        tool.main([*base, "--asec-source-cache", str(tmp_path / "c"), "--asec-fetch"])
+    assert seen["asec_sources"] == tool.AsecPersonSources(
+        cache=tmp_path / "c", fetch=True
+    )
+    with pytest.raises(SystemExit, match="captured"):
+        tool.main(base)
+    assert seen["asec_sources"] == tool.AsecPersonSources()

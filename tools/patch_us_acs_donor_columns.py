@@ -10,22 +10,30 @@ never changes it. The real County Files donor will be a new national build
 from ``main``.
 
 The copy keeps every table, column, dtype and HDF5 root attribute of the
-input. Each patch step only adds named columns to the entity tables:
+input. Each patch step only adds named columns to the entity tables, in this
+order:
 
+- ``asec_work_columns`` (:func:`asec_work_column_step`) restores
+  ``detailed_industry_recode``, ``major_industry_recode`` and
+  ``worked_last_year`` on ``person`` from the pinned ASEC person files
+  (``pppub23``-``pppub26``), matched on source year and ``PERIDNUM``, as the
+  #720 restoration and the fiscal ``org_wages`` carry value them (int16,
+  int16, bool). It refuses a file whose SHA-256 is not pinned and a donor
+  person with no match or more than one. The command looks the files up in
+  ``--asec-source-cache`` (default ``~/.cache/microcosm/cps/asec_education``)
+  and downloads a missing pinned archive only with ``--asec-fetch``.
 - ``reviewed_zero_columns`` adds reviewed all-zero columns. It looks up each
   column's entity, dtype and default in the US engine and refuses a column
   whose engine default is not 0. ``REVIEWED_ZERO_COLUMNS`` holds the reason
   for each column.
-- The ASEC work-column restore step (:func:`asec_work_column_step`) is
-  reserved for a later commit. It restores ``detailed_industry_recode``,
-  ``major_industry_recode`` and ``worked_last_year`` from the pinned ASEC
-  person files.
 
 A step never overwrites data: when a column is already present, the step
 must give exactly the stored values, or the tool refuses the input. The tool
 writes the copy atomically, verifies it against the input, and writes a JSON
 receipt with both SHA-256 digests, the row counts per entity, each added
-column with its entity and reason, and the tool's commit.
+column with its entity and reason or source item, each step's own record
+(for the work columns: the files read, their pinned SHA-256 digests and the
+match counts), and the tool's commit.
 
 Two options record lineage (both optional):
 
@@ -59,6 +67,7 @@ R1 then reads the copy with ``--base-h5 run/donor_patched_poc.h5`` and
 # without registering it in ``sys.modules``, where string annotations break
 # the dataclasses below.
 import argparse
+import gc
 import hashlib
 import json
 import numbers
@@ -73,13 +82,34 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
+from urllib.parse import urlparse
 
 import numpy as np
 import pandas as pd
 
+from microcosm.build.us_runtime import education_assistance_source, org_wages
+
+# The #720 restoration's pin resolver, domain specs and work-experience
+# identities, and the pinned reader's exact-key parser, are reused rather than
+# re-derived, so the work-column step checks what the restoration checks.
+from microcosm.build.us_runtime.asec_census_person_columns import (  # noqa: PLC2701
+    ASEC_CENSUS_PERSON_COLUMNS,
+    WORKER_INDUSTRY_CODES,
+    _check_work_experience_universe,
+    _resolve_pin,
+)
 from microcosm.build.us_runtime.h5_io import (
     assert_h5_unchanged,
     refuse_denied_pool_h5,
+)
+from microcosm.build.us_runtime.org_wages import (
+    derive_us_org_occupation_inputs,
+    require_us_occupation_and_work_experience_inputs,
+)
+from microcosm.build.us_runtime.spm_role_source import (  # noqa: PLC2701
+    AsecSpmRoleSource,
+    _exact_person_keys,
+    read_pinned_asec_person_columns,
 )
 from microcosm.data.build_folder_manifests import referenced_build
 from microcosm.frame import put_frame_table, read_frame_table
@@ -121,13 +151,71 @@ REVIEWED_ZERO_COLUMNS: Mapping[str, str] = MappingProxyType(
 ZERO_STEP = "reviewed_zero_columns"
 
 #: The ASEC work columns that R1's ``_require_donor_work_experience`` needs
-#: and that the reserved restore step adds (see :func:`asec_work_column_step`).
+#: and that the restore step adds (see :func:`asec_work_column_step`).
 ASEC_WORK_COLUMNS: tuple[str, ...] = (
     "detailed_industry_recode",
     "major_industry_recode",
     "worked_last_year",
 )
 ASEC_WORK_STEP = "asec_work_columns"
+
+#: Each work column's source item in the pinned ASEC person member and its
+#: dtype: those of ``org_wages.derive_us_org_occupation_inputs`` (#719).
+ASEC_WORK_SOURCE_ITEMS: Mapping[str, str] = MappingProxyType(
+    {
+        "detailed_industry_recode": "WEIND",
+        "major_industry_recode": "WEMIND",
+        "worked_last_year": "WKSWORK > 0",
+    }
+)
+ASEC_WORK_DTYPES: Mapping[str, str] = MappingProxyType(
+    {
+        "detailed_industry_recode": "int16",
+        "major_industry_recode": "int16",
+        "worked_last_year": "bool",
+    }
+)
+#: Where the pinned members are looked up by default (the cache of
+#: ``education_assistance_source.fetch_asec_education_assistance_source``).
+DEFAULT_ASEC_SOURCE_CACHE = Path.home() / ".cache/microcosm/cps/asec_education"
+
+#: Donor person column -> member column, compared on every joined row. The
+#: donor's ``PH_SEQ`` is the pooled household id; the Census ``PH_SEQ``
+#: survives as ``source_household_id`` (``asec_pool._remap_source_year``).
+ASEC_IDENTITY_COLUMNS: Mapping[str, str] = MappingProxyType(
+    {
+        "source_household_id": "PH_SEQ",
+        "P_SEQ": "P_SEQ",
+        "A_LINENO": "A_LINENO",
+        "A_AGE": "A_AGE",
+        "WKSWORK": "WKSWORK",
+        "POCCU2": "POCCU2",
+        "PRDTRACE": "PRDTRACE",
+        "PRDTHSP": "PRDTHSP",
+    }
+)
+#: Member columns read: the join key, the identity and the two restored codes.
+_ASEC_MEMBER_COLUMNS: tuple[str, ...] = (
+    "PERIDNUM",
+    *dict.fromkeys(ASEC_IDENTITY_COLUMNS.values()),
+    "WEIND",
+    "WEMIND",
+)
+#: The restoration's reviewed domains for the two restored codes.
+_ASEC_RESTORED_DOMAINS: Mapping[str, Any] = MappingProxyType(
+    {
+        spec.name: spec.domain
+        for spec in ASEC_CENSUS_PERSON_COLUMNS
+        if spec.name in ("WEIND", "WEMIND")
+    }
+)
+_ASEC_REQUIRED_PERSON_COLUMNS: tuple[str, ...] = (
+    "PERIDNUM",
+    "source_year",
+    *ASEC_IDENTITY_COLUMNS,
+    "detailed_occupation_recode",
+)
+_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
 
 _NUMERIC_DTYPES: Mapping[str, type[np.generic]] = MappingProxyType(
     {"float": np.float64, "int": np.int64}
@@ -244,30 +332,504 @@ def reviewed_zero_column_step(columns: Sequence[str], *, engine: Any) -> PatchSt
     return PatchStep(name=ZERO_STEP, run=run)
 
 
-def asec_work_column_step(*args: object, **kwargs: object) -> PatchStep:
-    """Restore ``ASEC_WORK_COLUMNS`` from the pinned ASEC person files.
+@dataclass(frozen=True)
+class AsecPersonSources:
+    """Where :func:`asec_work_column_step` finds the pinned ASEC person files.
 
-    Reserved for the next commit on this tool, which Max's agents add from
-    their verified local step. Its contract:
-
-    - Read the pinned ASEC person files (``pppub23``-``pppub26``) and refuse a
-      file whose SHA-256 is not the pinned one.
-    - Match each donor person on its source year and ``PERIDNUM``. Refuse a
-      donor person with no match or with more than one match.
-    - Return a :class:`PatchStep` named ``ASEC_WORK_STEP``. Its ``run``
-      returns a :class:`PatchStepResult` with one :class:`ColumnPatch` per
-      column on ``person`` (the source item in each ``record``), and the
-      files, their digests and the match counts in the step ``receipt``.
-    - Register it in :func:`build_patch_steps` before the zero step, with its
-      command-line options in :func:`_parse_args`.
-
-    R1's ``_require_donor_work_experience`` must then pass on the copy.
+    ``paths`` names each income year's file (the official archive or its
+    person CSV). Otherwise each is looked up in ``cache`` (default
+    :data:`DEFAULT_ASEC_SOURCE_CACHE`) as the pinned member CSV, then as the
+    official archive, and downloaded through the pin-verifying
+    ``fetch_asec_education_assistance_source`` only with ``fetch``. ``pins``
+    overrides ``spm_role_source.ASEC_SPM_ROLE_SOURCES`` per income year, for
+    synthetic tests; the restoration's resolver still refuses a pin whose
+    survey year is not the income year plus one. Every file is read through
+    ``read_pinned_asec_person_columns``, which refuses a size or SHA-256 that
+    is not the pin's.
     """
 
-    raise NotImplementedError(
-        "The ASEC work-column restore step is not in this commit; the next "
-        "commit on this tool adds it (microcosm#1647)."
+    cache: Path | None = None
+    paths: Mapping[int, Path] | None = None
+    fetch: bool = False
+    pins: Mapping[int, AsecSpmRoleSource] | None = None
+
+
+def _asec_income_years(person: pd.DataFrame) -> tuple[np.ndarray, tuple[int, ...]]:
+    years = pd.to_numeric(person["source_year"], errors="coerce").to_numpy(
+        dtype=np.float64, na_value=np.nan
     )
+    if not np.isfinite(years).all() or not np.equal(years, np.floor(years)).all():
+        raise ValueError("Donor person source_year must be finite integers.")
+    years = years.astype(np.int64)
+    return years, tuple(sorted({int(year) for year in years}))
+
+
+def resolve_asec_person_files(
+    pins: Mapping[int, AsecSpmRoleSource], sources: AsecPersonSources
+) -> dict[int, Path]:
+    """Locate each income year's pinned member; pins are checked when read."""
+
+    if sources.paths is not None:
+        missing = sorted(
+            str(year)
+            for year in pins
+            if year not in sources.paths or not Path(sources.paths[year]).is_file()
+        )
+        if missing:
+            raise ValueError(
+                f"No ASEC person file for income year(s) {missing}; every "
+                "donor income year needs its pinned member."
+            )
+        return {year: Path(sources.paths[year]) for year in pins}
+    cache = Path(sources.cache or DEFAULT_ASEC_SOURCE_CACHE).expanduser()
+    resolved: dict[int, Path] = {}
+    absent: list[str] = []
+    for year, pin in pins.items():
+        member = cache / pin.member
+        archive = cache / Path(urlparse(pin.official_archive_url).path).name
+        if member.is_file():
+            resolved[year] = member
+        elif archive.is_file():
+            resolved[year] = archive
+        elif sources.fetch:
+            resolved[year] = (
+                education_assistance_source.fetch_asec_education_assistance_source(
+                    year, cache_dir=cache
+                )
+            )
+        else:
+            absent.append(str(year))
+    if absent:
+        raise ValueError(
+            f"The pinned ASEC person member(s) for income year(s) {absent} are "
+            f"not in {cache}; pass --asec-source-cache DIR, or --asec-fetch to "
+            "download the pinned archives."
+        )
+    return resolved
+
+
+def read_asec_work_member(
+    path: Path, pin: AsecSpmRoleSource
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Read and check one pinned member's join key, identity and codes."""
+
+    # The label names the file actually read beside the pin's member, so a
+    # wrong-year file is reported as itself.
+    label = (
+        f"ASEC {pin.survey_year} Census person member {pin.member} "
+        f"(read from {Path(path).name})"
+    )
+    source, form = read_pinned_asec_person_columns(
+        Path(path).expanduser(), pin, label, _ASEC_MEMBER_COLUMNS
+    )
+    if len(source) != pin.persons:
+        raise ValueError(
+            f"{label} holds {len(source)} persons; the pin records {pin.persons}."
+        )
+    for column in _ASEC_MEMBER_COLUMNS[1:]:
+        values = source[column]
+        if not pd.api.types.is_integer_dtype(values) or pd.api.types.is_bool_dtype(
+            values
+        ):
+            raise ValueError(
+                f"{label} column {column} parsed as {values.dtype}, not integer."
+            )
+    for column, domain in _ASEC_RESTORED_DOMAINS.items():
+        outside = int((~source[column].isin(domain)).sum())
+        if outside:
+            raise ValueError(
+                f"{label} column {column} has {outside} values outside its "
+                f"reviewed Census codes {sorted(domain)}."
+            )
+    source = source.copy()
+    source["PERIDNUM"] = _exact_person_keys(source["PERIDNUM"], label)
+    repeated = int(source["PERIDNUM"].duplicated(keep=False).sum())
+    if repeated:
+        raise ValueError(
+            f"{label} repeats PERIDNUM on {repeated} rows, so a donor person "
+            "could match more than one member row."
+        )
+    universe = _check_work_experience_universe(source, label)
+    return source.reset_index(drop=True), {
+        "path": str(Path(path).expanduser().resolve()),
+        "form": form,
+        "income_year": pin.income_year,
+        "survey_year": pin.survey_year,
+        "member": pin.member,
+        "member_sha256": pin.csv_sha256,
+        "member_size_bytes": pin.csv_size_bytes,
+        "archive_sha256": pin.archive_sha256 if form == "archive" else None,
+        "official_archive_url": pin.official_archive_url,
+        "persons": len(source),
+        "work_experience_universe": universe,
+    }
+
+
+def _integer_values(values: pd.Series, label: str) -> np.ndarray:
+    numeric = pd.to_numeric(values, errors="coerce").to_numpy(
+        dtype=np.float64, na_value=np.nan
+    )
+    invalid = ~np.isfinite(numeric) | (numeric != np.floor(numeric))
+    if invalid.any():
+        raise ValueError(
+            f"{label} has {int(invalid.sum())} missing or non-integer rows."
+        )
+    return numeric.astype(np.int64)
+
+
+def _member_positions(member_keys: pd.Series, keys: np.ndarray) -> np.ndarray:
+    """Each donor key's member row by exact text, or -1."""
+
+    return pd.Index(member_keys).get_indexer(keys)
+
+
+def join_asec_work_codes(
+    person: pd.DataFrame,
+    years: np.ndarray,
+    keys: np.ndarray,
+    members: Mapping[int, pd.DataFrame],
+) -> tuple[np.ndarray, np.ndarray, dict[str, dict[str, object]]]:
+    """``WEIND``/``WEMIND`` for every donor row, by exact (year, PERIDNUM).
+
+    Many donor rows may join one member row (an ASEC row and its PUF-support
+    clones); every donor row must match exactly one member row, and agree
+    with it on every :data:`ASEC_IDENTITY_COLUMNS` pair.
+    """
+
+    rows = len(person)
+    weind = np.full(rows, -1, dtype=np.int64)
+    wemind = np.full(rows, -1, dtype=np.int64)
+    per_year: dict[str, dict[str, object]] = {}
+    for year in sorted(members):
+        mask = years == year
+        member = members[year]
+        if not member["PERIDNUM"].is_unique:
+            raise ValueError(
+                f"Income year {year} member repeats PERIDNUM; a donor person "
+                "could match more than one member row."
+            )
+        positions = _member_positions(member["PERIDNUM"], keys[mask])
+        missing = int((positions < 0).sum())
+        if missing:
+            raise ValueError(
+                f"{missing} donor person rows of income year {year} have no row "
+                "in its pinned ASEC person member; every donor person must match."
+            )
+        aligned = member.iloc[positions]
+        if not np.array_equal(aligned["PERIDNUM"].to_numpy(), keys[mask]):
+            raise ValueError(
+                f"Income year {year} member rows did not align by PERIDNUM."
+            )
+        mismatches: dict[str, int] = {}
+        for donor_column, member_column in ASEC_IDENTITY_COLUMNS.items():
+            donor_values = _integer_values(
+                person.loc[mask, donor_column],
+                f"Donor person {donor_column} (income year {year})",
+            )
+            disagree = donor_values != aligned[member_column].to_numpy(dtype=np.int64)
+            if disagree.any():
+                mismatches[donor_column] = int(disagree.sum())
+        if mismatches:
+            raise ValueError(
+                f"Income year {year} donor rows disagree with their ASEC person "
+                f"member after the (source_year, PERIDNUM) join: {mismatches} rows "
+                "by column; the join would pair the wrong people."
+            )
+        weind[mask] = aligned["WEIND"].to_numpy(dtype=np.int64)
+        wemind[mask] = aligned["WEMIND"].to_numpy(dtype=np.int64)
+        distinct = int(len(np.unique(positions)))
+        per_year[str(year)] = {
+            "donor_rows": int(mask.sum()),
+            "donor_rows_matched_once": int(mask.sum()),
+            "distinct_keys_matched": distinct,
+            "member_rows": int(len(member)),
+            "member_rows_not_in_donor": int(len(member) - distinct),
+            "identity_mismatches": 0,
+        }
+    if (weind < 0).any() or (wemind < 0).any():
+        raise ValueError("A donor person row was left without a joined ASEC code.")
+    return weind, wemind, per_year
+
+
+def asec_clone_summary(
+    person: pd.DataFrame, years: np.ndarray, keys: np.ndarray
+) -> dict[str, object]:
+    """Counts of the donor rows that share a (source_year, PERIDNUM) key."""
+
+    channels = (
+        person[_SUPPORT_CHANNEL_COLUMN].astype(str).to_numpy()
+        if _SUPPORT_CHANNEL_COLUMN in person
+        else np.full(len(person), "unlabelled", dtype=object)
+    )
+    frame = pd.DataFrame({"year": years, "key": keys, "channel": channels})
+    grouped = frame.groupby(["year", "key"], sort=False)["channel"]
+    sizes = grouped.size()
+    composition = grouped.agg(lambda values: "+".join(sorted(values)))
+    repeated = sizes.gt(1)
+    return {
+        "rows": int(len(frame)),
+        "distinct_keys": int(len(sizes)),
+        "keys_with_one_row": int(sizes.eq(1).sum()),
+        "keys_with_two_rows": int(sizes.eq(2).sum()),
+        "keys_with_more_rows": int(sizes.gt(2).sum()),
+        "repeated_key_channel_composition": {
+            str(label): int(count)
+            for label, count in composition[repeated]
+            .value_counts()
+            .sort_index()
+            .items()
+        },
+        "rows_by_support_channel": {
+            str(label): int(count)
+            for label, count in frame["channel"].value_counts().sort_index().items()
+        },
+        "handling": (
+            "Every row sharing a key joins the same member row and must match "
+            "it on every identity column, so clones get identical codes."
+        ),
+    }
+
+
+def carry_asec_work_columns(
+    person: pd.DataFrame, weind: np.ndarray, wemind: np.ndarray
+) -> tuple[dict[str, np.ndarray], dict[str, object]]:
+    """The three columns, from ``derive_us_org_occupation_inputs`` itself.
+
+    The carry's other outputs must equal the donor's own columns (value and
+    dtype), so the donor is known to come from the same carry.
+    """
+
+    restored = person[["PRDTRACE", "PRDTHSP", "POCCU2", "WKSWORK"]].copy()
+    restored["WEIND"] = weind
+    restored["WEMIND"] = wemind
+    universe = _check_work_experience_universe(restored, "Donor person rows")
+    carried = derive_us_org_occupation_inputs(restored)
+    derived: dict[str, np.ndarray] = {}
+    for column, dtype in ASEC_WORK_DTYPES.items():
+        values = carried[column].to_numpy()
+        if values.dtype != np.dtype(dtype) or values.shape != (len(person),):
+            raise ValueError(
+                f"The carry did not emit {column} as a person-grain {dtype}."
+            )
+        derived[column] = values
+    verified, absent = [], []
+    for column in carried.columns:
+        if column in ASEC_WORK_DTYPES:
+            continue
+        if column not in person:
+            absent.append(column)
+            continue
+        if (
+            not np.array_equal(person[column].to_numpy(), carried[column].to_numpy())
+            or person[column].dtype != carried[column].dtype
+        ):
+            raise ValueError(
+                f"Donor {column} differs from the carry's value; the donor was "
+                "not built by the carry these columns come from."
+            )
+        verified.append(column)
+    candidate = pd.DataFrame(
+        {"detailed_occupation_recode": person["detailed_occupation_recode"]},
+        index=person.index,
+    )
+    for column, values in derived.items():
+        candidate[column] = values
+    require_us_occupation_and_work_experience_inputs(
+        candidate, label="Donor with restored work columns"
+    )
+    return derived, {
+        "function": (
+            "microcosm.build.us_runtime.org_wages.derive_us_org_occupation_inputs"
+        ),
+        "inputs": ["PRDTRACE", "PRDTHSP", "POCCU2", "WKSWORK", "WEIND", "WEMIND"],
+        "donor_work_experience_universe": universe,
+        "reemitted_columns_verified_equal": verified,
+        "reemitted_columns_absent_from_donor": absent,
+        "require_us_occupation_and_work_experience_inputs": "passed",
+    }
+
+
+def _person_weights(tables: Mapping[str, pd.DataFrame]) -> np.ndarray | None:
+    """``household_weight`` resolved to persons, or None without one."""
+
+    household, person = tables["household"], tables["person"]
+    if "household_weight" not in household or "person_household_id" not in person:
+        return None
+    weights = pd.Series(
+        household["household_weight"].to_numpy(dtype=np.float64),
+        index=household["household_id"].to_numpy(),
+    )
+    resolved = person["person_household_id"].map(weights)
+    if resolved.isna().any():
+        return None
+    return resolved.to_numpy(dtype=np.float64)
+
+
+def asec_work_summary(
+    weights: np.ndarray | None,
+    years: np.ndarray,
+    derived: Mapping[str, np.ndarray],
+) -> dict[str, object]:
+    """Nonzero shares beside the carry's gate bands, and code counts."""
+
+    bands = org_wages._SHARE_BANDS  # noqa: SLF001 - the carry's measured bands
+    detailed = derived["detailed_industry_recode"].astype(np.int64)
+    major = derived["major_industry_recode"].astype(np.int64)
+    worked = derived["worked_last_year"].astype(bool)
+    worker = np.isin(detailed, WORKER_INDUSTRY_CODES)
+    shares: dict[str, object] = {}
+    for column, values in derived.items():
+        nonzero = np.asarray(values).astype(np.int64) != 0
+        low, high = bands[column]
+        entry: dict[str, object] = {
+            "unweighted_nonzero_share": float(nonzero.mean()) if nonzero.size else 0.0,
+            "gate_band": [low, high],
+        }
+        if weights is not None and float(weights.sum()):
+            weighted = float(weights[nonzero].sum() / weights.sum())
+            entry["weighted_nonzero_share"] = weighted
+            entry["within_band"] = bool(low <= weighted <= high)
+            entry["by_source_year_weighted"] = {
+                str(year): (
+                    float(
+                        weights[(years == year) & nonzero].sum()
+                        / weights[years == year].sum()
+                    )
+                    if weights[years == year].sum()
+                    else 0.0
+                )
+                for year in sorted(set(years.tolist()))
+            }
+        shares[column] = entry
+    return {
+        "weights": (
+            "household_weight resolved to persons" if weights is not None else None
+        ),
+        "nonzero_shares": shares,
+        "worked_last_year_rows": int(worked.sum()),
+        "worked_rows_with_worker_industry": int((worked & worker).sum()),
+        "worker_industry_rows_without_weeks_worked": int((worker & ~worked).sum()),
+        "detailed_industry_recode_counts": {
+            str(code): int((detailed == code).sum()) for code in range(24)
+        },
+        "major_industry_recode_counts": {
+            str(code): int((major == code).sum()) for code in range(16)
+        },
+    }
+
+
+def asec_work_column_step(sources: AsecPersonSources | None = None) -> PatchStep:
+    """Restore ``ASEC_WORK_COLUMNS`` from the pinned ASEC person files.
+
+    The #719 work columns, valued as the #720 restoration and the fiscal
+    ``org_wages`` carry value them (the route 2 step reviewed on #1647):
+
+    - Each donor person's ``source_year`` is its ASEC income year; its member
+      is the survey-year ``source_year + 1`` file (``_resolve_pin`` refuses
+      any other pairing). Only the donor's income years are read, through
+      ``read_pinned_asec_person_columns``, which refuses a file whose size or
+      SHA-256 is not the pin's.
+    - ``WEIND`` and ``WEMIND`` join by exact ``(source_year, PERIDNUM)`` text.
+      A donor repeats a key within a year for an ASEC row and its PUF-support
+      clone, so many donor rows join one member row. A donor person with no
+      member row is refused, and so is a member that repeats a ``PERIDNUM``
+      (a donor person would match more than one row). On every row the
+      :data:`ASEC_IDENTITY_COLUMNS` must equal the member's.
+    - The restoration's domains and work-experience identities are checked on
+      each member and on the joined rows. The columns are the output of
+      ``derive_us_org_occupation_inputs`` (int16, int16, bool); its other
+      outputs must equal the donor's own columns.
+    - A work column already on another entity is refused; one already on
+      ``person`` must equal the restored values (the tool's rule).
+
+    ``run`` returns one :class:`ColumnPatch` per column on ``person``, with
+    its source item in ``record``, and the files, their digests, the match
+    counts, the clone counts, the carry checks and the nonzero shares in the
+    step ``receipt``. R1's ``_require_donor_work_experience`` then passes on
+    the copy.
+    """
+
+    sources = sources or AsecPersonSources()
+
+    def run(tables: Mapping[str, pd.DataFrame]) -> PatchStepResult:
+        for entity, table in tables.items():
+            elsewhere = sorted(
+                column for column in ASEC_WORK_COLUMNS if column in table.columns
+            )
+            if entity != "person" and elsewhere:
+                raise ValueError(
+                    f"The donor already carries work column(s) {elsewhere} on "
+                    f"{entity}; refusing to duplicate them on person."
+                )
+        person = tables["person"]
+        missing = [c for c in _ASEC_REQUIRED_PERSON_COLUMNS if c not in person]
+        if missing:
+            raise ValueError(
+                f"The donor person table lacks {missing}, which the ASEC work "
+                "column join needs."
+            )
+        years, income_years = _asec_income_years(person)
+        pins = {
+            year: _resolve_pin(year, (sources.pins or {}).get(year))
+            for year in income_years
+        }
+        paths = resolve_asec_person_files(pins, sources)
+        keys = _exact_person_keys(person["PERIDNUM"], "Donor person table").to_numpy()
+        members: dict[int, pd.DataFrame] = {}
+        files: dict[str, dict[str, object]] = {}
+        for year in income_years:
+            members[year], files[str(year)] = read_asec_work_member(
+                paths[year], pins[year]
+            )
+        weind, wemind, per_year = join_asec_work_codes(person, years, keys, members)
+        del members
+        gc.collect()
+        clones = asec_clone_summary(person, years, keys)
+        derived, carry = carry_asec_work_columns(person, weind, wemind)
+        summary = asec_work_summary(_person_weights(tables), years, derived)
+        patches = tuple(
+            ColumnPatch(
+                entity="person",
+                column=column,
+                values=pd.Series(derived[column], index=person.index, name=column),
+                record={
+                    "source_item": ASEC_WORK_SOURCE_ITEMS[column],
+                    "source": (
+                        "pinned ASEC person member of the row's income year, "
+                        "joined on (source_year, PERIDNUM)"
+                    ),
+                    "derivation": carry["function"],
+                },
+            )
+            for column in ASEC_WORK_COLUMNS
+        )
+        receipt = {
+            "source": (
+                "pinned Census ASEC person members "
+                "(spm_role_source.ASEC_SPM_ROLE_SOURCES), read through "
+                "spm_role_source.read_pinned_asec_person_columns"
+            ),
+            "vintage_rule": (
+                "source_year is the ASEC income year; its member is survey year "
+                "source_year + 1 (asec_census_person_columns._resolve_pin)"
+            ),
+            "files": files,
+            "join": {
+                "key": "(source_year, PERIDNUM as exact 22-digit text)",
+                "identity_columns": dict(ASEC_IDENTITY_COLUMNS),
+                "donor_rows": int(len(person)),
+                "donor_rows_matched_once": int(len(person)),
+                "unmatched_donor_rows": 0,
+                "multiply_matched_donor_rows": 0,
+                "by_income_year": per_year,
+            },
+            "clones": clones,
+            "carry": carry,
+            "work_experience": summary,
+        }
+        return PatchStepResult(patches=patches, receipt=receipt)
+
+    return PatchStep(name=ASEC_WORK_STEP, run=run)
 
 
 @dataclass(frozen=True)
@@ -434,14 +996,18 @@ def build_patch_steps(
     *,
     zero_columns: Sequence[str],
     engine: Any,
+    asec_sources: AsecPersonSources | None = None,
 ) -> list[PatchStep]:
     """The steps the command runs, in order.
 
-    The ASEC work-column restore step (:func:`asec_work_column_step`) goes
-    first when it lands, then the reviewed zero columns.
+    With ``asec_sources``, the ASEC work-column restore step
+    (:func:`asec_work_column_step`) goes first, then the reviewed zero
+    columns. The command always passes ``asec_sources``.
     """
 
-    return [reviewed_zero_column_step(zero_columns, engine=engine)]
+    steps = [] if asec_sources is None else [asec_work_column_step(asec_sources)]
+    steps.append(reviewed_zero_column_step(zero_columns, engine=engine))
+    return steps
 
 
 def patch_donor_h5(
@@ -876,6 +1442,23 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--asec-source-cache",
+        type=Path,
+        help=(
+            "Directory holding the pinned ASEC person members (pppubYY.csv) or "
+            "their official archives (asecpubYYcsv.zip), for the work-column "
+            f"restore (default: {DEFAULT_ASEC_SOURCE_CACHE})."
+        ),
+    )
+    parser.add_argument(
+        "--asec-fetch",
+        action="store_true",
+        help=(
+            "Download a pinned ASEC archive absent from the cache (verified "
+            "against its pin) instead of refusing."
+        ),
+    )
+    parser.add_argument(
         "--input-release-manifest",
         type=Path,
         help=(
@@ -922,6 +1505,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         steps = build_patch_steps(
             zero_columns=args.zero_column or list(REVIEWED_ZERO_COLUMNS),
             engine=PolicyEngineUSEngine(),
+            asec_sources=AsecPersonSources(
+                cache=args.asec_source_cache, fetch=args.asec_fetch
+            ),
         )
         release_manifest = (
             None
