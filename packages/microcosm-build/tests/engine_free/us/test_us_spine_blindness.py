@@ -339,8 +339,11 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "engine_lifecycle.py",
         # MEPS-IC employer-premium input (#454): a base-builder pre-clone
         # stage keyed on restored ASEC coverage fields,
-        # not yet a multispine pool operator. Reads no spine or support-channel
-        # column and remains subject to the all-runtime source-identity scan.
+        # not yet a multispine pool operator. Its gates also grade frames that
+        # mix CPS rows with rows a transfer filled (allow_transferred_rows,
+        # d2283), telling them apart by whether the raw ASEC fields are
+        # present. Reads no spine or support-channel column and remains
+        # subject to the all-runtime source-identity scan.
         "esi_premiums.py",
         "exact_k_ladder.py",  # Calibration/selection seam; no source treatment.
         "fiscal_targets.py",
