@@ -6433,9 +6433,11 @@ def _assert_stored_input_abort(builder, *, captured, release_dir, mode) -> None:
     """How ``_main`` acts on each stored-input verdict (microcosm#1026).
 
     A refusal is a batched pre-export gate failure: in an otherwise green run
-    it is the raise's only line, the gate ran once on the export frame and no
-    H5 is written. A premise failure aborts after the write and before any
-    post-export scorer opens the file, with no manifest minted.
+    it is the raise's only line and the gate ran once on the export frame.
+    The build still writes its H5 and its record, which certification refuses
+    (microcosm#1585 item 11, PR 4a). A premise failure aborts right after the
+    write, before the record, so nothing can certify the build. Neither mints
+    a manifest.
     """
 
     with pytest.raises(RuntimeError) as abort:
@@ -6452,8 +6454,14 @@ def _assert_stored_input_abort(builder, *, captured, release_dir, mode) -> None:
         assert str(abort.value) == (
             f"Release gates failed: {STORED_INPUT_REFUSAL_FIXTURE}"
         )
-        assert "written_dataset" not in captured
-        assert "stored_input_post_write_check" not in captured
+        assert captured["stored_input_post_write_check"] == (
+            captured["written_dataset"],
+            captured["written_dataset"],
+        )
+        record = json.loads(
+            (release_dir.parent.parent / builder.US_BUILD_RECORD_FILENAME).read_text()
+        )
+        assert record["terminal_gate_failures"] == [STORED_INPUT_REFUSAL_FIXTURE]
         assert evidence["stored_inputs"] == {
             "passed": False,
             "failures": [STORED_INPUT_REFUSAL_FIXTURE],
@@ -6461,6 +6469,9 @@ def _assert_stored_input_abort(builder, *, captured, release_dir, mode) -> None:
         }
     else:
         assert str(abort.value) == STORED_INPUT_PREMISE_FIXTURE
+        assert not (
+            release_dir.parent.parent / builder.US_BUILD_RECORD_FILENAME
+        ).exists()
         assert captured["stored_input_post_write_check"] == (
             captured["written_dataset"],
             captured["written_dataset"],
@@ -7525,6 +7536,18 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             builder,
             "_build_progress",
             lambda *args, **kwargs: live_telemetry,
+        )
+    if terminal_mode in {"merge", "crash", "target_frame_checkpoint"}:
+        # A build whose release gates fail still writes its H5 (microcosm#1585
+        # item 11, PR 4a). These modes keep the real engine's gates and fake
+        # only its writer.
+        def fake_failed_write_dataset(self, frame, path, *, period):
+            captured["written_dataset"] = Path(path)
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            Path(path).write_bytes(b"release h5")
+
+        monkeypatch.setattr(
+            builder.PolicyEngineUSEngine, "write_dataset", fake_failed_write_dataset
         )
     if terminal_mode in {
         "integrity",
@@ -9520,10 +9543,18 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "zero_count": 0,
         },
     }
-    # Artifact exclusion: the failed run leaves evidence, never artifacts.
-    # H5s land under the out root (not the release dir), so sweep the tree.
-    assert not list(out.rglob("*.h5"))
+    # A failed build writes its H5 for evaluation, and its record, which
+    # carries the failures; certification refuses it while they stand, so it
+    # never becomes a release (microcosm#1585 item 11, PR 4a).
+    assert captured["written_dataset"] == out / "artifacts" / builder.DATASET_FILENAME
+    failed_record = json.loads((out / builder.US_BUILD_RECORD_FILENAME).read_text())
+    assert failed_record["terminal_gate_failures"]
+    assert message == "Release gates failed: " + "; ".join(
+        failed_record["terminal_gate_failures"]
+    )
     assert not list(release_dir.glob("*manifest*"))
+    with pytest.raises(SystemExit, match="cannot be certified"):
+        builder.certify_main([str(out)])
     if terminal_mode in qrf_tail_register_modes:
         assert captured["qrf_tail_register_seen"] == {
             "estate_income": "measured concentrated on another lineage",
@@ -16216,14 +16247,25 @@ def test_release_h5_write_sits_between_batched_raise_and_smoke() -> None:
     assert '"dataset": artifact_root / dataset_filename' in inspect.getsource(
         builder._us_build_record
     )
+    # A certified-tier build records its batched refusal and raises it only
+    # once its record is written; certification refuses the record
+    # (microcosm#1585 item 11, PR 4a). The build never raises it before the
+    # write, so the H5 always exists for evaluation.
     batched_raises: list[int] = []
     writes: list[int] = []
     smokes: list[int] = []
+    final_raises = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Raise) and ast.unparse(node) == "raise build_refusal"
+    ]
     for node in ast.walk(tree):
-        if isinstance(node, ast.Raise):
-            segment = ast.get_source_segment(source, node) or ""
-            if "terminal_gate_failures" in segment:
-                batched_raises.append(node.lineno)
+        if (
+            isinstance(node, ast.Assign)
+            and ast.unparse(node.targets[0]) == "build_refusal"
+            and "terminal_gate_failures" in (ast.get_source_segment(source, node) or "")
+        ):
+            batched_raises.append(node.lineno)
         elif isinstance(node, ast.Call):
             func = node.func
             name = (
@@ -16242,11 +16284,13 @@ def test_release_h5_write_sits_between_batched_raise_and_smoke() -> None:
         f"release manifest read that file (microcosm#443). Found: {writes}"
     )
     assert len(smokes) == 1, smokes
-    assert batched_raises[0] < writes[0] < smokes[0], (
-        "Ordering contract violated: batched pre-export raise "
+    assert len(final_raises) == 1, final_raises
+    assert batched_raises[0] < writes[0] < smokes[0] < final_raises[0], (
+        "Ordering contract violated: batched pre-export refusal "
         f"(line {batched_raises[0]}) < H5 write ({writes[0]}) < build record "
-        f"({smokes[0]}) must hold so a gate-failed run never produces the "
-        "H5 and the smoke scores the just-written file."
+        f"({smokes[0]}) < its raise ({final_raises[0]}) must hold so a "
+        "gate-failed build leaves its H5 and record and the smoke scores the "
+        "just-written file."
     )
 
 
@@ -17757,10 +17801,13 @@ def test_qrf_tail_register_refusal_is_wired_into_the_evidence_batch() -> None:
     assert "args.evidence_release" in _ancestor_if_tests(refusal)
     [sidecar] = _calls("_write_final_household_weight_evidence")
     assert record.lineno < refusal.lineno < sidecar.lineno
+    # The certified tier records the batched refusal and raises it once its
+    # record is written (microcosm#1585 item 11, PR 4a).
     batched_raise = next(
         node
         for node in ast.walk(main_fn)
-        if isinstance(node, ast.Raise)
+        if isinstance(node, ast.Assign)
+        and ast.unparse(node.targets[0]) == "build_refusal"
         and "Release gates failed: " in (ast.get_source_segment(source, node) or "")
         and node.lineno > sidecar.lineno
     )
@@ -19106,8 +19153,10 @@ def test_spm_composition_gate_rides_the_batched_pre_export_raise() -> None:
     ``test_release_h5_write_sits_between_batched_raise_and_smoke`` uses, and it
     pins the three properties the placement exists for: the gate is evaluated
     exactly once, its verdict joins the single batched pre-export failure list,
-    and that raise precedes both the export H5 write and the calibration NPZ
-    write.
+    and that refusal is recorded before both the export H5 write and the
+    calibration NPZ write. A refused build writes its H5 for evaluation and
+    raises once its record is written, so it is never certified
+    (microcosm#1585 item 11, PR 4a).
     """
     import ast
     import inspect
@@ -19122,10 +19171,12 @@ def test_spm_composition_gate_rides_the_batched_pre_export_raise() -> None:
     writes: list[int] = []
     npz_writes: list[int] = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.Raise):
-            segment = ast.get_source_segment(source, node) or ""
-            if "terminal_gate_failures" in segment:
-                batched_raises.append(node.lineno)
+        if (
+            isinstance(node, ast.Assign)
+            and ast.unparse(node.targets[0]) == "build_refusal"
+            and "terminal_gate_failures" in (ast.get_source_segment(source, node) or "")
+        ):
+            batched_raises.append(node.lineno)
         elif isinstance(node, ast.Call):
             func = node.func
             name = (
@@ -19158,7 +19209,7 @@ def test_spm_composition_gate_rides_the_batched_pre_export_raise() -> None:
     assert gate_calls[0] < extends[0] < batched_raises[0] < writes[0] < npz_writes[0], (
         "Ordering contract violated: the SPM composition gate "
         f"({gate_calls[0]}) must be evaluated and extended into the batch "
-        f"({extends[0]}) before the batched pre-export raise "
+        f"({extends[0]}) before the batched pre-export refusal "
         f"({batched_raises[0]}), which must precede the export H5 write "
         f"({writes[0]}) and the calibration NPZ write ({npz_writes[0]})."
     )
@@ -19843,7 +19894,9 @@ def test_a_build_that_must_send_telemetry_stops_before_any_input_without_an_emit
 # ---------------------------------------------------------------------------
 
 
-def _build_record_fixture(builder, tmp_path: Path) -> tuple[Path, dict]:
+def _build_record_fixture(
+    builder, tmp_path: Path, *, terminal_gate_failures=()
+) -> tuple[Path, dict]:
     """A minimal finished build: its three pinned files and its record."""
 
     release_root = tmp_path / "build"
@@ -19894,7 +19947,7 @@ def _build_record_fixture(builder, tmp_path: Path) -> tuple[Path, dict]:
         commit="c" * 40,
         args=args,
         evidence_failure_owner_patterns=(("pattern", "PolicyEngine/microcosm#1"),),
-        terminal_gate_failures=["a recorded failure"],
+        terminal_gate_failures=terminal_gate_failures,
         n_households=5,
         result=result,
         post_export_scoring_plan=plan,
@@ -19975,7 +20028,7 @@ def test_the_build_record_carries_what_certification_reads(tmp_path: Path) -> No
     assert record.evidence_failure_owner_patterns == (
         ("pattern", "PolicyEngine/microcosm#1"),
     )
-    assert record.terminal_gate_failures == ("a recorded failure",)
+    assert record.terminal_gate_failures == ()
     assert record.certify_args().maximum_microsim_batch_size == 2
 
 
@@ -20060,3 +20113,28 @@ def test_certify_main_refuses_another_commit_and_a_certified_build(
     builder.certify_main([str(path.parent)])
     assert len(certified) == 1
     assert not (release_dir / "reform_coverage_smoke.json").exists()
+
+
+def test_certify_main_refuses_a_build_whose_release_gates_failed(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A failed build writes its H5 for evaluation, never a release
+    (microcosm#1585 item 11, PR 4a); an evidence-tier build's failures are
+    owned, so its record certifies into the evidence release."""
+    builder = _load_builder_module()
+    path, payload = _build_record_fixture(
+        builder, tmp_path, terminal_gate_failures=["Input coverage failed: x"]
+    )
+    monkeypatch.setattr(builder, "_git_dirty", lambda: False)
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "c" * 40)
+    certified: list[object] = []
+    monkeypatch.setattr(builder, "_certify_us_build", certified.append)
+
+    with pytest.raises(SystemExit, match="1 release gate.*Input coverage failed: x"):
+        builder.certify_main([str(path.parent)])
+    assert certified == []
+
+    payload["settings"]["evidence_release"] = True
+    path.write_text(json.dumps(payload))
+    builder.certify_main([str(path.parent)])
+    assert len(certified) == 1

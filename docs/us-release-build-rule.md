@@ -83,6 +83,12 @@ A US national build and its certification are two steps (microcosm#1585 item
 - **Refusals.** Certification refuses a record whose files changed after the
   build, a checkout at another commit or with changes, and a release directory
   that already carries a release manifest.
+- **A failed release gate.** A build whose terminal gates fail still writes
+  its H5, its calibration weights and its record, so it can be evaluated,
+  and exits with the same "Release gates failed" error once its record is
+  written. Certification refuses a record that carries release-gate failures,
+  unless the build is evidence-tier. Input gates still stop the build where
+  they fail.
 - **Timing.** Both manifests' `timing` blocks carry `build_seconds` and
   `certify_seconds`; `total_build_seconds` is their sum.
 - **Drivers.** Route A (`tools/route_a/route_a.sh`) stops after the build with

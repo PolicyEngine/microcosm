@@ -13307,7 +13307,7 @@ def _us_build_record(
     n_households: int,
     result,
     post_export_scoring_plan: _PostExportScoringPlan,
-    release_gate_failures: Sequence[str],
+    release_gate_failures: Sequence[str] | None,
     registry: TargetRegistry,
     target_surface: Mapping[str, object],
     dropped: Mapping[str, object],
@@ -13416,7 +13416,9 @@ def _us_build_record(
                 ),
             },
             "registry": {"version": registry.version, "n_specs": len(registry)},
-            "release_gate_failures": list(release_gate_failures),
+            "release_gate_failures": (
+                None if release_gate_failures is None else list(release_gate_failures)
+            ),
             "target_surface": dict(target_surface),
             "dropped": dict(dropped),
             "gates": {
@@ -13621,6 +13623,11 @@ def _certify_us_build(
     registry = record.registry_summary()
     post_export_scoring_plan = record.post_export_scoring_plan(args, result=result)
     inputs = record.manifest_inputs
+    if inputs["release_gate_failures"] is None:
+        raise RuntimeError(
+            f"Build {release_id}: its release gate summary crashed when it was "
+            "built, so its manifests cannot record the calibration gate."
+        )
     gates = record.gates()
     target_profile_gate = gates["target_profile_gate"]
     ssi_take_up_delivery_gate_result = gates["ssi_take_up_delivery_gate_result"]
@@ -14100,6 +14107,12 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
 
     args = _certify_parser().parse_args(argv)
     record = _read_us_build_record(args.build_dir / US_BUILD_RECORD_FILENAME)
+    if record.terminal_gate_failures and not record.settings["evidence_release"]:
+        raise SystemExit(
+            f"Build {record.build} failed {len(record.terminal_gate_failures)} "
+            "release gate(s) when it was built, so it cannot be certified: "
+            + "; ".join(record.terminal_gate_failures)
+        )
     if _git_dirty():
         raise SystemExit("Refusing to certify a build from a dirty git worktree.")
     head = _git_output("rev-parse", "HEAD")
@@ -14135,8 +14148,12 @@ def _print_built_result(
     release_dir: Path,
     artifact_root: Path,
     build_record: Path,
+    release_gate_failures: Sequence[str] = (),
 ) -> None:
     """Print the finished build and the command that certifies it.
+
+    A build that failed a release gate is printed too, so its H5 can be
+    evaluated, with the failures that stop certification.
 
     A build is not publishable until it is certified: certification runs the
     release's post-export checks on the written H5 and writes the manifests
@@ -14149,6 +14166,8 @@ def _print_built_result(
                 "release": release_dir.name,
                 "build": build,
                 "certified": False,
+                "certifiable": not release_gate_failures,
+                "release_gate_failures": list(release_gate_failures),
                 "build_record": str(build_record),
                 "release_dir": str(release_dir),
                 "artifact_root": str(artifact_root),
@@ -17283,6 +17302,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     enforced_ecps_parity_gate = (
         None if args.allow_ecps_parity_gaps else ecps_parity_gate
     )
+    # The summary the manifests' calibration gate block carries, recorded for
+    # certification (microcosm#1585 item 11, PR 4a); None when it crashed.
+    release_gate_summary: list[str] | None = None
     try:
         gate_failures = _release_gate_failures(
             result,
@@ -17303,6 +17325,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
             target_registry=registry,
         )
+        release_gate_summary = list(gate_failures)
     except Exception as error:
         # Degraded-mode guard (microcosm#547): the batch must still form and
         # the diagnostics artifact must still be written when earlier
@@ -17787,6 +17810,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # below: each already evaluates and reports its full failure set
     # internally, and both require the written H5 / export artifacts that a
     # gate-failed run must not produce.
+    # A failed release gate no longer withholds a build's H5 (microcosm#1585
+    # item 11, PR 4a): a build is evaluated before anyone certifies it. Its
+    # failures ride the build record, certification refuses the build while
+    # they stand, and the build exits non-zero once its record is written.
+    build_refusal: RuntimeError | None = None
     if terminal_gate_failures:
         # Evidence tier (microcosm#506): owners are resolved NOW so an
         # unowned failure refuses the export before the H5 and manifest work
@@ -17829,7 +17857,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             )
             if evidence_refusal is not None:
                 raise evidence_refusal
-            raise RuntimeError(
+            build_refusal = RuntimeError(
                 "Release gates failed: " + "; ".join(terminal_gate_failures)
             )
         # The owned failures ride into the release manifest's known_failures
@@ -17841,28 +17869,30 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         # is unowned the run dies post-H5 — weights retained in the written
         # dataset, per the #568 doctrine for late-gate failures — and no
         # manifest is minted.
-        terminal_batch_telemetry.stage(
-            "release_gates",
-            status="failed",
-            message=(
-                "Release gates failed; --evidence-release continues to "
-                "export with the failures recorded (microcosm#506)."
-            ),
-            failures=terminal_gate_failures,
-            force_upload=True,
-        )
+        else:
+            terminal_batch_telemetry.stage(
+                "release_gates",
+                status="failed",
+                message=(
+                    "Release gates failed; --evidence-release continues to "
+                    "export with the failures recorded (microcosm#506)."
+                ),
+                failures=terminal_gate_failures,
+                force_upload=True,
+            )
     # A green run must not inherit a prior failed attempt's weight evidence
     # (microcosm#568 round 2): with --out/--release-id reuse, stale evidence
     # files would coexist with a certified release whose manifest knows
     # nothing about them. The batched gates have passed (or --evidence-release
     # is recording their failures), so any evidence present here belongs to a
     # superseded attempt — remove it before the release artifacts are written.
-    for stale_evidence in (
-        release_dir / FINAL_HOUSEHOLD_WEIGHTS_FILENAME,
-        release_dir / FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME,
-        release_dir / FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME,
-    ):
-        stale_evidence.unlink(missing_ok=True)
+    if build_refusal is None:
+        for stale_evidence in (
+            release_dir / FINAL_HOUSEHOLD_WEIGHTS_FILENAME,
+            release_dir / FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME,
+            release_dir / FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME,
+        ):
+            stale_evidence.unlink(missing_ok=True)
     dataset_path = artifact_root / dataset_filename
     # The export H5 write: everything below (reform smoke, take-up contract,
     # release manifest sha) reads THIS file, and it must be written only after
@@ -17907,25 +17937,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         release_root / f"base_{base_h5.name}",
         authenticated_pool_h5=authenticated_pool_h5,
     )
-    release_gate_failures = _release_gate_failures(
-        result,
-        compilation,
-        target_profile_gate,
-        health_input_gate,
-        base_population_gate,
-        incumbent_diagnostics,
-        immigration_gate,
-        enforced_input_mass_reference_gate,
-        degenerate_input_gate,
-        ecps_parity_gate=enforced_ecps_parity_gate,
-        hours_worked_gate=hours_worked_gate,
-        snap_take_up_gate=snap_take_up_gate,
-        eligibility_inputs_gate=eligibility_inputs_gate,
-        pregnancy_gate=pregnancy_gate,
-        reported_coverage_vintage_gate=reported_coverage_vintage_gate,
-        snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
-        target_registry=registry,
-    )
     timing["build_seconds"] = time.perf_counter() - build_started
     build_record_path = _write_us_build_record(
         release_root,
@@ -17945,7 +17956,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             n_households=int(export_frame.n("household")),
             result=result,
             post_export_scoring_plan=post_export_scoring_plan,
-            release_gate_failures=release_gate_failures,
+            release_gate_failures=release_gate_summary,
             registry=registry,
             target_surface=current_target_surface,
             dropped=compilation,
@@ -17994,14 +18005,18 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     )
     if telemetry is not None:
         telemetry.attach_artifact("build_record", build_record_path)
-        telemetry.complete()
+        if build_refusal is None:
+            telemetry.complete()
     _print_built_result(
         build=release_id,
         release_root=release_root,
         release_dir=release_dir,
         artifact_root=artifact_root,
         build_record=build_record_path,
+        release_gate_failures=terminal_gate_failures if build_refusal else (),
     )
+    if build_refusal is not None:
+        raise build_refusal
 
 
 if __name__ == "__main__":
