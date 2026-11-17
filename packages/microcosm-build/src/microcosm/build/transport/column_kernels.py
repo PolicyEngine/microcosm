@@ -810,6 +810,9 @@ class TakeupAssignKernel(_ColumnKernel):
             target_kernels.chronicle_epoch_module,
             target_kernels.target_module,
             canonical_json,
+            # reference_factors checks a published projection's schedule
+            # selectors through ledger_targets (microcosm#931).
+            target_kernels.ledger_targets_module,
             dependencies=self.capabilities.dependencies,
         )
 
