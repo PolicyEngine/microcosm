@@ -28,7 +28,6 @@ from microcosm.build.us_runtime.gate_scopes import us_scoped_gate_manifest
 from microcosm.build.us_runtime.gate_shadow import (
     GATE_BATTERY_SHADOW_DIRECTORY,
     US_GATE_SHADOW_SWITCH,
-    GateBatteryShadowMismatchError,
     LegacyVerdict,
     current_gate_shadow,
     shadow_file_paths,
@@ -184,7 +183,9 @@ def test_each_release_keeps_its_own_shadow_files(tmp_path, release) -> None:
     assert evidence == shared / release.US_EVIDENCE_RELEASE_ID
 
 
-def test_a_verdict_difference_fails_a_finished_build(tmp_path, monkeypatch, release):
+def test_a_verdict_difference_is_recorded_without_failing_a_finished_build(
+    tmp_path, monkeypatch, release, capsys
+):
     args = _args(tmp_path)
     _stand_in_gates(monkeypatch, release, failing={"pregnancy_signal"})
     passing = GateResult(name="pregnancy_signal", passed=True)
@@ -197,8 +198,13 @@ def test_a_verdict_difference_fails_a_finished_build(tmp_path, monkeypatch, rele
         return None
 
     monkeypatch.setattr(release, "_main", build)
-    with pytest.raises(GateBatteryShadowMismatchError, match="us_national_pregnancy"):
-        release.main([])
+    # Today's gates still decide: main returns as the build left it.
+    release.main([])
+    payload = _comparison(release._national_gate_shadow_directory(args))
+    assert payload["run_completed"] is True
+    assert payload["verdict_difference"] is True
+    assert [row["id"] for row in payload["differences"]] == ["us_national_pregnancy"]
+    assert "scope 'us_national' disagrees with today's gates" in capsys.readouterr().err
 
 
 class _Recorder:
@@ -232,9 +238,9 @@ def test_a_finished_builds_staging_run_keeps_the_outcome_it_recorded(
     tmp_path, monkeypatch, release, difference
 ):
     # Review of #1635: _main completes a finished build's staging run, and
-    # with it the emitter, before main finishes the shadow. A difference
-    # raised there fails the program's exit alone: neither record is
-    # rewritten, and each records one outcome.
+    # with it the emitter, before main finishes the shadow. A difference is
+    # then recorded without changing the exit: neither record is rewritten,
+    # and each records one outcome.
     args = _args(tmp_path)
     _stand_in_gates(
         monkeypatch, release, failing={"pregnancy_signal"} if difference else ()
@@ -257,13 +263,9 @@ def test_a_finished_builds_staging_run_keeps_the_outcome_it_recorded(
         return None
 
     monkeypatch.setattr(release, "_main", build)
-    if difference:
-        with pytest.raises(
-            GateBatteryShadowMismatchError, match="us_national_pregnancy"
-        ):
-            release.main([])
-    else:
-        release.main([])
+    release.main([])
+    payload = _comparison(release._national_gate_shadow_directory(args))
+    assert payload["verdict_difference"] is difference
     assert progress.calls == [("complete", None)]
     assert emitter.calls == [("complete", None)]
 

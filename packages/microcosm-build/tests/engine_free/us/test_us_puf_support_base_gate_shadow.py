@@ -20,7 +20,6 @@ from microcosm.build.us_runtime.gate_scopes import us_scoped_gate_manifest
 from microcosm.build.us_runtime.gate_shadow import (
     GATE_BATTERY_SHADOW_DIRECTORY,
     US_GATE_SHADOW_SWITCH,
-    GateBatteryShadowMismatchError,
     active_gate_shadow,
     current_gate_shadow,
     shadow_file_paths,
@@ -136,7 +135,9 @@ def test_with_the_switch_off_no_shadow_is_armed_or_written(tmp_path, monkeypatch
     assert not (tmp_path / "checkpoints" / GATE_BATTERY_SHADOW_DIRECTORY).exists()
 
 
-def test_a_verdict_difference_fails_the_single_process_run(tmp_path, monkeypatch, base):
+def test_a_verdict_difference_is_recorded_without_failing_the_single_process_run(
+    tmp_path, monkeypatch, base, capsys
+):
     args = _args(tmp_path, checkpoint_dir=None)
     # The battery's gate fails where today's verdict passed.
     _stand_in_gates(monkeypatch, base, failing={"pregnancy_signal"})
@@ -158,8 +159,16 @@ def test_a_verdict_difference_fails_the_single_process_run(tmp_path, monkeypatch
 
     monkeypatch.setattr(base, "_shadow_frame_gate", legacy_passes)
     monkeypatch.setattr(base, "_run_all", run_all)
-    with pytest.raises(GateBatteryShadowMismatchError, match="us_base_pregnancy"):
-        base._dispatch(args, None)
+    # Today's gates still decide: the run returns, with the difference on record.
+    base._dispatch(args, None)
+    _, comparison = shadow_file_paths(
+        args.out.resolve() / GATE_BATTERY_SHADOW_DIRECTORY, "us_base"
+    )
+    payload = json.loads(comparison.read_text())
+    assert payload["run_completed"] is True
+    assert payload["verdict_difference"] is True
+    assert [row["id"] for row in payload["differences"]] == ["us_base_pregnancy"]
+    assert "scope 'us_base' disagrees with today's gates" in capsys.readouterr().err
 
 
 def test_todays_raise_propagates_and_the_shadow_says_where(tmp_path, monkeypatch, base):

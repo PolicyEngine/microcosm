@@ -32,7 +32,6 @@ from microcosm.build.us_runtime.battery_bindings import (
 from microcosm.build.us_runtime.gate_shadow import (
     US_GATE_SHADOW_SWITCH,
     GateBatteryShadow,
-    GateBatteryShadowMismatchError,
     LegacyStatus,
     LegacyVerdict,
     compare_verdicts,
@@ -367,7 +366,9 @@ def test_a_crash_in_both_is_a_match_and_todays_exception_propagates(tmp_path) ->
     assert report["gates"]["us_test_alpha"]["status"] == "unreached"
 
 
-def test_a_difference_fails_the_finished_run_after_both_files(tmp_path) -> None:
+def test_a_difference_is_flagged_and_reported_without_failing_the_run(
+    tmp_path, capsys
+) -> None:
     gates = _two_phase_gates()
     shadow = _shadow(tmp_path, gates)
     # Today's code passes at a looser cap than the spec declares.
@@ -386,16 +387,21 @@ def test_a_difference_fails_the_finished_run_after_both_files(tmp_path) -> None:
         lambda: ALPHA(0.5),
         EvidenceContext(artifacts={"alpha_value": 0.5}),
     )
-    with pytest.raises(GateBatteryShadowMismatchError, match="us_test_alpha") as raised:
-        shadow.finish()
-    assert raised.value.comparison_path.is_file()
-    payload = json.loads(raised.value.comparison_path.read_text())
+    # Today's gates still decide, so the shadow returns instead of raising.
+    returned = shadow.finish()
+    assert returned["verdict_difference"] is True
+    payload = json.loads(shadow.comparison_path.read_text())
     assert payload["verdict_difference"] is True
     assert [row["id"] for row in payload["differences"]] == ["us_test_alpha"]
     assert shadow.report_path.is_file()
+    warning = capsys.readouterr().err
+    assert "scope 'us_test' disagrees with today's gates" in warning
+    assert str(shadow.comparison_path) in warning
+    assert "the build's exit is unchanged" in warning
+    assert "  - [us_test_alpha] " in warning
 
 
-def test_a_runtime_override_explains_its_difference(tmp_path) -> None:
+def test_a_runtime_override_explains_its_difference(tmp_path, capsys) -> None:
     gates = _two_phase_gates()
     overrides = legacy_parameter_overrides(
         {"us_test_alpha": {"cap": 1.0}}, {"us_test_alpha": {"cap": 2.0}}
@@ -420,9 +426,47 @@ def test_a_runtime_override_explains_its_difference(tmp_path) -> None:
     payload = shadow.finish()
     assert payload["verdict_difference"] is False
     assert [row["id"] for row in payload["explained_differences"]] == ["us_test_alpha"]
+    # An explained difference is not one the shadow warns about.
+    assert "disagrees with today's gates" not in capsys.readouterr().err
 
 
-def test_an_unwired_entry_fails_a_finished_run(tmp_path) -> None:
+def test_shadow_files_it_cannot_clear_or_write_only_warn(tmp_path, capsys) -> None:
+    # Neither arming the shadow nor finishing it may fail the build: here the
+    # comparison's directory is a file, so it can be neither cleared nor
+    # written, even on a finished run.
+    blocker = tmp_path / "blocked"
+    blocker.write_text("a file where the shadow's directory would go\n")
+    report, _ = shadow_file_paths(tmp_path, "us_test")
+    shadow = GateBatteryShadow(
+        _two_phase_gates(),
+        scope="us_test",
+        release_id="us-test-build",
+        report_path=report,
+        comparison_path=blocker / "us_test.gate_battery_shadow_comparison.json",
+        registry=_registry(),
+    )
+    shadow.gate(
+        "us_test_alpha",
+        lambda: ALPHA(0.5),
+        EvidenceContext(artifacts={"alpha_value": 0.5}),
+    )
+    shadow.gate(
+        "us_test_beta",
+        lambda: BETA(0.5),
+        EvidenceContext(artifacts={"beta_value": 0.5}),
+    )
+    shadow.gate(
+        "us_test_final",
+        lambda: ALPHA(0.5),
+        EvidenceContext(artifacts={"alpha_value": 0.5}),
+    )
+    payload = shadow.finish()
+    assert payload["run_completed"] is True
+    assert any("could not clear" in line for line in payload["shadow_errors"])
+    assert "could not write" in capsys.readouterr().err
+
+
+def test_an_unwired_entry_is_flagged_on_a_finished_run(tmp_path) -> None:
     gates = _two_phase_gates()
     shadow = _shadow(tmp_path, gates)
     shadow.gate(
@@ -435,8 +479,7 @@ def test_an_unwired_entry_fails_a_finished_run(tmp_path) -> None:
         lambda: BETA(0.5),
         EvidenceContext(artifacts={"beta_value": 0.5}),
     )
-    with pytest.raises(GateBatteryShadowMismatchError, match="us_test_final"):
-        shadow.finish()
+    assert shadow.finish()["verdict_difference"] is True
     payload = json.loads(shadow.comparison_path.read_text())
     assert payload["not_observed"] == ["us_test_final"]
     assert payload["phases_recorded"] == ["assembled"]
@@ -447,7 +490,7 @@ def test_an_unwired_entry_fails_a_finished_run(tmp_path) -> None:
 def test_a_finished_run_names_the_stage_that_saved_no_observations(tmp_path) -> None:
     # As when a pre-merge checkpoint or a stage run with the switch off
     # resumes: the entry may have run in that stage, so the site is not
-    # blamed. The unobserved entry still fails the finished run.
+    # blamed. The unobserved entry is still flagged on the finished run.
     shadow = _shadow(tmp_path, _two_phase_gates())
     shadow.note_missing_observations("the finalize stage saved no observations")
     shadow.gate(
@@ -460,8 +503,7 @@ def test_a_finished_run_names_the_stage_that_saved_no_observations(tmp_path) -> 
         lambda: BETA(0.5),
         EvidenceContext(artifacts={"beta_value": 0.5}),
     )
-    with pytest.raises(GateBatteryShadowMismatchError, match="us_test_final"):
-        shadow.finish()
+    assert shadow.finish()["verdict_difference"] is True
     payload = json.loads(shadow.comparison_path.read_text())
     assert payload["not_observed"] == ["us_test_final"]
     assert payload["shadow_errors"] == [
@@ -739,8 +781,7 @@ def test_a_gate_reached_twice_keeps_the_outcome_the_run_produced(tmp_path) -> No
         lambda: ALPHA(0.1),
         EvidenceContext(artifacts={"alpha_value": 0.1}),
     )
-    with pytest.raises(GateBatteryShadowMismatchError, match="more than once"):
-        shadow.finish()
+    assert shadow.finish()["verdict_difference"] is True
     payload = json.loads(shadow.comparison_path.read_text())
     assert payload["phases_recorded"] == ["assembled", "terminal"]
     (error,) = payload["shadow_errors"]
@@ -755,7 +796,7 @@ def test_the_run_refuses_a_second_evaluation_and_the_shadow_records_it(
     # The run's own refusal (#1609) backs the shadow up: an entry the run
     # evaluated outside the shadow (a wiring fault) is not evaluated again
     # when its site is reached. The shadow records the refusal, never raises,
-    # and does not retry, so the entry stays unobserved and fails the run.
+    # and does not retry, so the entry stays unobserved and is flagged.
     shadow = _shadow(tmp_path, _two_phase_gates())
     shadow.run.evaluate_entries(
         ("us_test_alpha",), EvidenceContext(artifacts={"alpha_value": 0.5})
@@ -776,8 +817,7 @@ def test_the_run_refuses_a_second_evaluation_and_the_shadow_records_it(
         lambda: ALPHA(0.1),
         EvidenceContext(artifacts={"alpha_value": 0.1}),
     )
-    with pytest.raises(GateBatteryShadowMismatchError):
-        shadow.finish()
+    assert shadow.finish()["verdict_difference"] is True
     payload = json.loads(shadow.comparison_path.read_text())
     assert payload["phases_recorded"] == []
     assert payload["not_observed"] == ["us_test_alpha"]
@@ -823,8 +863,8 @@ def test_the_shadow_never_raises_while_the_tool_runs(tmp_path) -> None:
     assert any("us_undeclared" in line for line in differences)
     assert any("cannot build evidence" in line for line in differences)
     assert any("more than once" in line for line in differences)
-    with pytest.raises(GateBatteryShadowMismatchError):
-        shadow.finish()
+    # Nor at the end: the differences are flagged, and finish returns.
+    assert shadow.finish()["verdict_difference"] is True
 
 
 def test_a_gate_today_did_not_run_must_be_evidence_absent(tmp_path) -> None:

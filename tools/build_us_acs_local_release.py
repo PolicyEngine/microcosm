@@ -7375,9 +7375,10 @@ def _local_gate_shadow(args, directory: Path) -> GateBatteryShadow:
 def _finish_local_gate_scope(args, *, stage: str, stopped_by=None) -> None:
     """Rebuild the scope's shadow files from every stage saved so far.
 
-    Only a package stage that finished decides: a verdict difference then
-    fails the run. A stage today's code stopped, or one a later process
-    follows, records and goes on.
+    Only a package stage that finished is a finished run, whose differences
+    are flagged and printed. A stage today's code stopped, or one a later
+    process follows, records and goes on. None of this fails a stage:
+    today's gates decide until the flip.
     """
 
     try:
@@ -7397,8 +7398,6 @@ def _finish_local_gate_scope(args, *, stage: str, stopped_by=None) -> None:
                     f"the {name} stage saved no observations"
                 )
     except Exception as error:  # noqa: BLE001 - the shadow never stops a stage
-        if stopped_by is None and stage == "package":
-            raise
         log(f"WARNING: gate battery shadow could not be rebuilt: {error}")
         return
     if stopped_by is not None:
@@ -7423,15 +7422,18 @@ def _local_gate_shadow_stage(args, stage: str):
     if not tool_gate_shadows_enabled():
         yield None
         return
-    for name in _LOCAL_GATE_SHADOW_STAGES[_LOCAL_GATE_SHADOW_STAGES.index(stage) :]:
-        _local_stage_observations(args, name).unlink(missing_ok=True)
-    # The scope's report and comparison were built from observations just
-    # discarded, so they go too: a stage that never reaches its end, killed
-    # before it rebuilds them, must not leave an earlier run's verdict.
-    for stale in shadow_file_paths(
-        _local_gate_shadow_directory(args), US_LOCAL_GATE_SCOPE
-    ):
-        stale.unlink(missing_ok=True)
+    try:
+        for name in _LOCAL_GATE_SHADOW_STAGES[_LOCAL_GATE_SHADOW_STAGES.index(stage) :]:
+            _local_stage_observations(args, name).unlink(missing_ok=True)
+        # The scope's report and comparison were built from observations just
+        # discarded, so they go too: a stage that never reaches its end, killed
+        # before it rebuilds them, must not leave an earlier run's verdict.
+        for stale in shadow_file_paths(
+            _local_gate_shadow_directory(args), US_LOCAL_GATE_SCOPE
+        ):
+            stale.unlink(missing_ok=True)
+    except Exception as error:  # noqa: BLE001 - the shadow never stops a stage
+        log(f"WARNING: gate battery shadow could not clear earlier files: {error}")
     shadow = _local_gate_shadow(args, _local_gate_shadow_directory(args) / stage)
 
     def save() -> None:

@@ -19,7 +19,6 @@ from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.us_runtime.battery_bindings import us_gate_specs
 from microcosm.build.us_runtime.gate_shadow import (
     US_GATE_SHADOW_SWITCH,
-    GateBatteryShadowMismatchError,
     current_gate_shadow,
     shadow_file_paths,
     shadow_gate,
@@ -132,15 +131,22 @@ def test_with_the_switch_off_the_stacked_path_has_no_shadow(
     assert not pool._pool_gate_shadow_directory(args).exists()
 
 
-def test_a_terminal_difference_fails_the_build_after_its_files(
-    tmp_path, monkeypatch, pool
+def test_a_terminal_difference_is_recorded_without_failing_the_build(
+    tmp_path, monkeypatch, pool, capsys
 ) -> None:
     args = SimpleNamespace(out=tmp_path / "stacked.h5")
     _stand_in_gates(monkeypatch, pool, failing={"by_origin_battery"})
     passing = GateResult(name="us_by_origin_battery", passed=True)
-    with pytest.raises(GateBatteryShadowMismatchError, match="us_pool_by_origin"):
-        with pool._armed_pool_gate_shadow(args):
-            _cold_legacy_rule_run(pool, legacy_terminal=lambda: passing)
+    # Today's gates still decide: the build returns today's exit.
+    with pool._armed_pool_gate_shadow(args):
+        assert _cold_legacy_rule_run(pool, legacy_terminal=lambda: passing) == 0
+    _, comparison = shadow_file_paths(pool._pool_gate_shadow_directory(args), "us_pool")
+    payload = json.loads(comparison.read_text())
+    assert payload["verdict_difference"] is True
+    assert [row["id"] for row in payload["differences"]] == [
+        "us_pool_by_origin_battery"
+    ]
+    assert "scope 'us_pool' disagrees with today's gates" in capsys.readouterr().err
 
 
 def test_a_marked_terminal_failure_is_a_match(tmp_path, monkeypatch, pool) -> None:
