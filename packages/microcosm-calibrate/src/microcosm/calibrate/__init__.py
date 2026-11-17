@@ -96,6 +96,11 @@ from microcosm.calibrate.diagnostics import (  # noqa: E402 - after the compat g
     target_surface_payload,
     write_calibration_diagnostics,
 )
+from microcosm.calibrate.dropped_matrix import (  # noqa: E402 - after compat gate
+    ConstraintMatrixDroppedError,
+    DroppedConstraintMatrix,
+    without_constraint_matrix,
+)
 from microcosm.calibrate.exact_k import (  # noqa: E402 - after the compat gate
     assert_exact_k_support,
     exact_k_design_feasibility,
@@ -111,8 +116,6 @@ from microcosm.calibrate.hierarchy import (  # noqa: E402 - after compat gate
 )
 from microcosm.calibrate.matrix import (  # noqa: E402 - after the compat gate
     CalibrationProblem,
-    ConstraintMatrixDroppedError,
-    DroppedConstraintMatrix,
     SkippedTarget,
     build_constraint_matrix,
 )
@@ -152,7 +155,6 @@ from microcosm.calibrate.solve import (  # noqa: E402 - after the compat gate
     rebuild_calibration_result,
     refit_l0_selection,
     relative_error_loss,
-    without_constraint_matrix,
 )
 from microcosm.calibrate.static_aging import (  # noqa: E402 - after the compat gate
     DemographicProjection,

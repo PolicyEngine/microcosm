@@ -89,7 +89,7 @@ from __future__ import annotations
 import math
 import warnings
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 
 import numpy as np
 import torch
@@ -107,7 +107,6 @@ from microcosm.calibrate.gates import HardConcrete
 from microcosm.calibrate.initialization import GateInitialization
 from microcosm.calibrate.matrix import (
     CalibrationProblem,
-    DroppedConstraintMatrix,
     SkippedTarget,
     build_constraint_matrix,
 )
@@ -120,7 +119,6 @@ __all__ = [
     "rebuild_calibration_result",
     "refit_l0_selection",
     "solve_constraint_system",
-    "without_constraint_matrix",
     "default_target_loss_scales",
     "chi_square_distance",
     "effective_sample_size",
@@ -3037,40 +3035,6 @@ def calibrate(
         },
         gate_open_probabilities=gate_open_probabilities,
     )
-
-
-def without_constraint_matrix(result):
-    """Free a result's constraint matrices, keeping their shapes and nonzero counts.
-
-    A :class:`CalibrationResult` keeps its compiled problem, whose CSR matrix
-    is the largest object a solve returns. A caller that later reads only the
-    matrix's shape and nonzero count, as
-    :func:`~microcosm.calibrate.diagnostics.target_surface_payload` does,
-    can call this once the matrix's entries are no longer needed. The returned
-    result's problem holds a
-    :class:`~microcosm.calibrate.matrix.DroppedConstraintMatrix` with those two
-    numbers; any later use that needs the entries, such as
-    :meth:`CalibrationProblem.estimates`, raises
-    :class:`~microcosm.calibrate.matrix.ConstraintMatrixDroppedError`. Every
-    other field is the same object as before.
-
-    An :class:`L0RefitResult` has two problems, the selection's over the full
-    frame and the refit's over the selected support; both are dropped. Any
-    other object holds no compiled problem and is returned unchanged.
-    """
-    if isinstance(result, L0RefitResult):
-        return replace(
-            result,
-            selection=without_constraint_matrix(result.selection),
-            refit=without_constraint_matrix(result.refit),
-        )
-    if isinstance(result, CalibrationResult):
-        problem = result.problem
-        return replace(
-            result,
-            problem=replace(problem, matrix=DroppedConstraintMatrix.of(problem.matrix)),
-        )
-    return result
 
 
 def solve_constraint_system(

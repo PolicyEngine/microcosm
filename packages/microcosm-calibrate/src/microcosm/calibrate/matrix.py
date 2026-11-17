@@ -38,90 +38,7 @@ from microcosm.calibrate.monetary_binding import (
 from microcosm.calibrate.target import Target, TargetSet
 from microcosm.frame import Frame, Weights
 
-__all__ = [
-    "CalibrationProblem",
-    "ConstraintMatrixDroppedError",
-    "DroppedConstraintMatrix",
-    "SkippedTarget",
-    "build_constraint_matrix",
-]
-
-
-class ConstraintMatrixDroppedError(RuntimeError):
-    """A use of a constraint matrix that was dropped after its solve."""
-
-
-class DroppedConstraintMatrix:
-    """The shape and nonzero count of a constraint matrix that was freed.
-
-    :func:`~microcosm.calibrate.solve.without_constraint_matrix` puts one in a
-    :class:`CalibrationProblem` in place of its CSR matrix once later code
-    reads only those two numbers, as
-    :func:`~microcosm.calibrate.diagnostics.target_surface_payload` does.
-    ``shape`` and ``nnz`` keep the dropped matrix's values, so such a reader
-    reports the matrix it describes. Every other use of the matrix (a product,
-    a row slice, a conversion, its stored arrays) raises
-    :class:`ConstraintMatrixDroppedError`, so no caller computes with an empty
-    or missing matrix.
-    """
-
-    __slots__ = ("nnz", "shape")
-
-    def __init__(self, shape: tuple[int, int], nnz: int) -> None:
-        self.shape = (int(shape[0]), int(shape[1]))
-        self.nnz = int(nnz)
-
-    @classmethod
-    def of(cls, matrix) -> DroppedConstraintMatrix:
-        """Record ``matrix``'s shape and nonzero count; a record passes through."""
-        if isinstance(matrix, cls):
-            return matrix
-        return cls(matrix.shape, matrix.nnz)
-
-    def _refuse(self, use: str):
-        raise ConstraintMatrixDroppedError(
-            f"The {self.shape[0]} x {self.shape[1]} constraint matrix was dropped "
-            f"after calibration; only its shape and nonzero count ({self.nnz}) "
-            f"were kept, so {use} is unavailable."
-        )
-
-    def __getattr__(self, name: str):
-        # Called only for attributes the class lacks. Special-method lookups
-        # (copy, pickle, numpy's array protocols) see a plain missing
-        # attribute; so does an unset slot, which only partial construction
-        # leaves.
-        if name in type(self).__slots__ or (
-            name.startswith("__") and name.endswith("__")
-        ):
-            raise AttributeError(name)
-        self._refuse(f"its {name!r}")
-
-    def __array__(self, *args, **kwargs):
-        self._refuse("its dense array")
-
-    def __matmul__(self, other):
-        self._refuse("a matrix product")
-
-    def __rmatmul__(self, other):
-        self._refuse("a matrix product")
-
-    def __mul__(self, other):
-        self._refuse("a product")
-
-    def __rmul__(self, other):
-        self._refuse("a product")
-
-    def __getitem__(self, key):
-        self._refuse("a row or entry")
-
-    def __iter__(self):
-        self._refuse("iteration over its rows")
-
-    def __len__(self) -> int:
-        self._refuse("its length")
-
-    def __repr__(self) -> str:
-        return f"DroppedConstraintMatrix(shape={self.shape!r}, nnz={self.nnz!r})"
+__all__ = ["CalibrationProblem", "SkippedTarget", "build_constraint_matrix"]
 
 
 @dataclass(frozen=True)
@@ -149,9 +66,6 @@ class CalibrationProblem:
         matrix: The constraint matrix ``A`` as a CSR ``scipy.sparse`` array of
             shape ``(n_targets, n_weights)``: one row per compiled
             ``(target, period)``, one column per record of ``weight_entity``.
-            After :func:`~microcosm.calibrate.solve.without_constraint_matrix`
-            it is a :class:`DroppedConstraintMatrix`, which keeps only the
-            shape and the nonzero count.
         target_vector: The right-hand side ``b`` of length ``n_targets``. Each
             row is a sum target, so the right-hand side is the target value.
         names: Row labels (``"name@period"``), aligned to ``matrix`` rows.
@@ -167,7 +81,7 @@ class CalibrationProblem:
             guard; :func:`build_constraint_matrix` never produces one).
     """
 
-    matrix: sparse.csr_array | DroppedConstraintMatrix
+    matrix: sparse.csr_array
     target_vector: np.ndarray
     names: tuple[str, ...]
     initial_weights: Weights
