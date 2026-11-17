@@ -269,7 +269,7 @@ FACTOR_VALIDITY = {
 }
 MONEY_RESOURCE = "money_normalization.json"
 # The donor is the populace-us artifact Belgium pins (BE-MC2), for which NZ's
-# declaration records the money as calendar 2024 by declared convention.
+# declaration recorded the money as calendar 2024 by declared convention.
 DONOR_MONEY_YEAR = 2024
 # The donor artifact that convention is declared for. A repin of Belgium's donor,
 # alone or jointly with NZ, fails test_be_money_normalization's donor-period test
@@ -565,8 +565,9 @@ MONEY_TEXT = {
     "coverage, replayed from the pinned Chronicle feed; quote from_per_to "
     "divides each donor amount by it exactly (d1902 item 19). Calendar-2024 "
     "money is a declared convention covering flows and asset stocks, the one "
-    "New Zealand declares for the same donor artifact; the donor monetary basis "
-    "has not been authenticated against a producing manifest. Money "
+    "New Zealand's money_normalization.json declared for the donor artifact "
+    "Belgium pins (BE-MC2); the donor monetary basis has not been "
+    "authenticated against a producing manifest. Money "
     "normalization refuses a donor whose recorded _time_period differs from "
     "calendar 2024; this runtime check is a consistency check, not "
     "authentication. No donor file is opened to establish this declaration. "

@@ -413,27 +413,35 @@ def test_the_donor_money_period_is_declared_for_the_pinned_donor():
     declaration, nz = _declaration(), validate_money_normalization(_load(_NAME, _NZ))
     period, nz_period = declaration["donor_money_period"], nz["donor_money_period"]
     assert period["value"] == generator.DONOR_MONEY_YEAR
-    # A repin of Belgium's donor, alone or jointly with NZ, fails here until
-    # the money period is re-declared.
-    donor = _donor_pin(_SPEC)
-    assert donor == generator.DONOR_MONEY_ARTIFACT
+    # Belgium pins exactly one donor microdata artifact, in any stage. A repin
+    # of it, alone or jointly with NZ, fails here until the money period is
+    # re-declared.
+    assert _microdata_pins(_SPEC) == [generator.DONOR_MONEY_ARTIFACT]
+    donor = generator.DONOR_MONEY_ARTIFACT
     # Belgium's own evidence names that pin, so re-declaring the pin means
     # rewriting the evidence too, whatever NZ pins.
     assert donor["sha256"] in period["evidence"][2]
     assert f"{donor['size_bytes']:,} bytes" in period["evidence"][2]
-    # While NZ pins the same donor, Belgium declares NZ's period, and NZ's test
-    # checks these two evidence strings against the code they cite. A repin of
-    # NZ alone does not tie Belgium to it.
-    if _donor_pin(_NZ) == donor:
+    # While NZ pins the same donor, in whichever stage or position, Belgium
+    # declares NZ's period, and NZ's test checks these two evidence strings
+    # against the code they cite. NZ pinning it twice is ambiguous and fails.
+    # A repin of NZ alone does not tie Belgium to it.
+    matches = [pin for pin in _microdata_pins(_NZ) if pin == donor]
+    assert len(matches) <= 1, f"NZ pins Belgium's donor {len(matches)} times"
+    if matches:
         assert {k: period[k] for k in ("type", "value", "basis")} == {
             k: nz_period[k] for k in ("type", "value", "basis")
         }
         assert period["evidence"][:2] == nz_period["evidence"]
 
 
-def _donor_pin(root):
-    donor = _load("source_stages.json", root)["stages"][0]["artifacts"][0]
-    return {k: donor[k] for k in ("sha256", "size_bytes")}
+def _microdata_pins(root):
+    return [
+        {k: artifact[k] for k in ("sha256", "size_bytes")}
+        for stage in _load("source_stages.json", root)["stages"]
+        for artifact in stage.get("artifacts", ())
+        if artifact["kind"] == "public_microdata"
+    ]
 
 
 def test_no_factor_is_selected_until_a_shared_operation_admits_one():
