@@ -328,6 +328,7 @@ def _dense_args(
     candidate's posture)."""
     if route == "input_h5":
         pytest.importorskip("tables")
+        request.getfixturevalue("stand_in_engine")
         ladder = request.getfixturevalue("toy_ladder")[1]
         return _checkpoint_request(
             directory, ladder, *extra, clones=clones, sampling=sampling, posture=posture
