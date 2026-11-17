@@ -46,9 +46,10 @@ is what a failure reports.
       ``np.where``, ...), of a ufunc, of ``np.array`` without ``copy=`` or
       with ``copy=True``, of ``.to_numpy(copy=True)``, or of a random
       ``Generator`` draw (``_RANDOM_DRAW_METHODS``: ``rng.random(n)``, ...);
-    - arithmetic or a comparison (``a * b``, ``a > 0``);
-    - ``.copy()`` with no arguments, or a slice of it, but not an item of
-      it, because a copy of a dict or list shares its items;
+    - arithmetic or a comparison (``a - b``, ``a > 0``);
+    - ``.copy()`` with no arguments, or ``+``, ``*`` or ``|`` (which also
+      join lists and dicts), or a slice of these, but not an item of them,
+      because a copy or join of a dict or list shares its items;
     - a subscript of the others;
     - a local name, or a subscript of one, whose every assignment in the
       function is one of these or ``None``, with at least one that is not
@@ -561,15 +562,30 @@ class _Scanner(ast.NodeVisitor):
     # Created arrays --------------------------------------------------------
 
     def _created_kind(self, expression: ast.expr) -> str | None:
-        """``"array"`` for a new array, ``"copy"`` for a ``.copy()`` (which
-        may be a container's copy, sharing its items), or ``None``."""
+        """``_NEW_ARRAY`` for a new array; ``_COPY`` for a new object whose
+        items may be shared (a ``.copy()``, or ``+``, ``*`` or ``|``, which
+        also join containers); ``None`` for anything else."""
 
-        if isinstance(expression, (ast.BinOp, ast.UnaryOp, ast.Compare)):
+        items_taken = False
+        while isinstance(expression, ast.Subscript):
+            items_taken = items_taken or not _is_slice(expression.slice)
+            expression = expression.value
+        kind = self._whole_created_kind(expression)
+        if kind == _COPY and items_taken:
+            return None
+        return kind
+
+    def _whole_created_kind(self, expression: ast.expr) -> str | None:
+        if isinstance(expression, ast.BinOp):
+            joins = isinstance(expression.op, (ast.Add, ast.Mult, ast.BitOr))
+            return _COPY if joins else _NEW_ARRAY
+        if isinstance(expression, (ast.UnaryOp, ast.Compare)):
             return _NEW_ARRAY
         if not isinstance(expression, ast.Call) or _keyword(expression, "out"):
             return None
         function = expression.func
-        if isinstance(function, ast.Attribute):
+        name = self._numpy.resolve(function)
+        if name is None and isinstance(function, ast.Attribute):
             if function.attr == "copy":
                 plain = not expression.args and not expression.keywords
                 return _COPY if plain else None
@@ -578,7 +594,6 @@ class _Scanner(ast.NodeVisitor):
                 return _NEW_ARRAY if copy and _is_true_constant(copy.value) else None
             if function.attr in _RANDOM_DRAW_METHODS:
                 return _NEW_ARRAY
-        name = self._numpy.resolve(function)
         if name is None:
             return None
         if name == "numpy.array":
@@ -785,16 +800,28 @@ def test_every_reviewed_finding_still_occurs(workspace_scan: _WorkspaceScan) -> 
     )
 
 
+def _definition(tree: ast.Module, qualified_name: str) -> ast.AST:
+    """The one function or class whose qualified name (``Class.method``) is
+    ``qualified_name``."""
+
+    found: list[ast.AST] = []
+    stack: list[tuple[str, ast.AST]] = [("", node) for node in tree.body]
+    while stack:
+        prefix, node = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            name = f"{prefix}{node.name}"
+            if name == qualified_name:
+                found.append(node)
+            stack.extend((f"{name}.", child) for child in node.body)
+    assert len(found) == 1, f"{qualified_name} is defined {len(found)} times"
+    return found[0]
+
+
 def test_the_functions_reviewed_reasons_rest_on_are_unchanged() -> None:
     changed: list[str] = []
     for (relative, name), digest in _REVIEWED_HELPERS.items():
         source = (_REPOSITORY / relative).read_text(encoding="utf-8-sig")
-        function = next(
-            node
-            for node in ast.walk(ast.parse(source))
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and node.name == name
-        )
+        function = _definition(ast.parse(source), name)
         segment = ast.get_source_segment(source, function) or ""
         current = hashlib.sha256(segment.encode("utf-8")).hexdigest()[:12]
         if current != digest:
@@ -932,6 +959,22 @@ _REFUSED_SNIPPETS = {
             "import buffer",
             "np.add(1, 1, out=buffer)",
             parameters="",
+        ),
+        _WRITES_INTO_EXISTING_ARRAY,
+    ),
+    "ufunc_at_on_an_item_of_a_merged_dict": (
+        _in_function(
+            'merged = columns | {"w": weights}',
+            'np.add.at(merged["income"], [0], 100)',
+            parameters="columns, weights",
+        ),
+        _WRITES_INTO_EXISTING_ARRAY,
+    ),
+    "ufunc_at_on_an_item_of_joined_lists": (
+        _in_function(
+            "joined = parts + extra",
+            "np.add.at(joined[0], [0], 1)",
+            parameters="parts, extra",
         ),
         _WRITES_INTO_EXISTING_ARRAY,
     ),
@@ -1267,6 +1310,18 @@ _ACCEPTED_SNIPPETS = {
         "np.multiply(draws, 2, out=draws)",
         parameters="left, right, rng, size",
     ),
+    "out_numpy_copy": _in_function(
+        "buffer = np.copy(values)",
+        "np.add(buffer, 1, out=buffer)",
+        "np.add.at(np.copy(values), [0], 1)",
+    ),
+    "out_names_bound_to_subscripts_of_new_arrays": _in_function(
+        "ordered = np.sort(values)[::-1]",
+        "np.cumsum(ordered, out=ordered)",
+        "row = np.zeros((2, size))[0]",
+        "np.add(row, 1, out=row)",
+        parameters="values, size",
+    ),
     "out_slice_of_a_copy": _in_function(
         "totals = first.copy()",
         "np.cumsum(later, out=totals[1:])",
@@ -1314,3 +1369,15 @@ def test_a_changed_function_changes_the_finding_key() -> None:
 
     assert before.code == after.code
     assert before.key != after.key
+
+
+def test_every_output_in_an_out_tuple_is_checked() -> None:
+    both_existing = _in_function(
+        "np.divmod(7, 2, out=(left, right))", parameters="left, right"
+    )
+    second_existing = _in_function(
+        "np.divmod(7, 2, out=(np.zeros(1), right))", parameters="right"
+    )
+
+    assert len(scan_source(both_existing, "snippet.py")) == 2
+    assert len(scan_source(second_existing, "snippet.py")) == 1
