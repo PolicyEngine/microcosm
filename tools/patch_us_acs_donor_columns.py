@@ -1020,6 +1020,7 @@ def patch_donor_h5(
     engine_identity: Mapping[str, object] | None = None,
     input_release_manifest: Path | None = None,
     release_manifest: CopyReleaseManifest | None = None,
+    overwrite: bool = False,
 ) -> dict[str, object]:
     """Write the patched copy and its receipt; return the receipt.
 
@@ -1028,7 +1029,9 @@ def patch_donor_h5(
     tables a step changes are rewritten, through the shared frame-table
     codec, in their stored HDF format. The copy is verified before it
     replaces ``output_h5``. ``input_release_manifest`` is checked before any
-    work; ``release_manifest`` is written last, after the receipt.
+    work; ``release_manifest`` is written last, after the receipt. An
+    existing ``output_h5``, receipt or ``release_manifest`` is refused unless
+    ``overwrite``: a re-run writes a copy with another SHA-256.
     """
 
     input_h5, output_h5 = Path(input_h5), Path(output_h5)
@@ -1039,6 +1042,14 @@ def patch_donor_h5(
         receipt_path,
         *(() if input_release_manifest is None else (Path(input_release_manifest),)),
         *(() if release_manifest is None else (Path(release_manifest.path),)),
+    )
+    _refuse_existing_outputs(
+        (
+            output_h5,
+            receipt_path,
+            *(() if release_manifest is None else (Path(release_manifest.path),)),
+        ),
+        overwrite=overwrite,
     )
     input_sha256 = refuse_denied_pool_h5(input_h5, consumer=_CONSUMER)
     input_release = (
@@ -1377,6 +1388,24 @@ def _validate_paths(
         )
 
 
+def _refuse_existing_outputs(paths: Sequence[Path], *, overwrite: bool) -> None:
+    """Refuse to replace an existing output unless asked.
+
+    A re-run writes a copy with another SHA-256 (the HDF5 object headers
+    record write times), so a staging summary that pinned the first copy
+    (``base.sha256``) would name bytes no longer at its path.
+    """
+
+    existing = [str(path) for path in paths if path.exists()]
+    if existing and not overwrite:
+        raise ValueError(
+            f"Output(s) already exist: {existing}. A re-run writes a copy with "
+            "another SHA-256, so a staging summary built on the first copy "
+            "would no longer match it. Write to a new path, or pass --overwrite "
+            "and re-run R1 on the new copy."
+        )
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as file:
@@ -1485,6 +1514,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--manifest-release", help="Release folder name of the copy.")
     parser.add_argument("--manifest-build", help="Build folder name of the copy.")
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help=(
+            "Replace an existing --output-h5, receipt and --release-manifest "
+            "(refused by default). The new copy has another SHA-256 (the HDF5 "
+            "object headers record write times), so re-run R1 on it: a staging "
+            "summary built on the old copy no longer matches."
+        ),
+    )
     args = parser.parse_args(argv)
     names = (args.manifest_release, args.manifest_build)
     if args.release_manifest is None and any(name is not None for name in names):
@@ -1528,6 +1567,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             engine_identity=_engine_identity(),
             input_release_manifest=args.input_release_manifest,
             release_manifest=release_manifest,
+            overwrite=args.overwrite,
         )
     except ValueError as error:
         raise SystemExit(f"Donor patch refused: {error}") from error

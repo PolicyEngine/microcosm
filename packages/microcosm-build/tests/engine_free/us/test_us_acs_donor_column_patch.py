@@ -420,6 +420,61 @@ def test_command_writes_the_default_receipt_beside_the_copy(
         tool.main(["--input-h5", str(donor), "--output-h5", str(donor)])
 
 
+def test_an_existing_copy_receipt_or_manifest_is_replaced_only_when_asked(
+    tool, asec, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review of #1660: a re-run writes another SHA-256, so a staging summary
+    that pinned the first copy would name bytes no longer at its path."""
+
+    import microcosm.frame.adapters.policyengine_us as adapter
+
+    donor = _write_asec_donor(tmp_path / "donor.h5")
+    monkeypatch.setattr(adapter, "PolicyEngineUSEngine", _Engine)
+    monkeypatch.setattr(
+        tool, "current_tool_identity", lambda: {"commit": "c" * 40, "tool_dirty": False}
+    )
+    output = tmp_path / "patched.h5"
+    receipt_path = tmp_path / "patched.receipt.json"
+    base = ["--input-h5", str(donor), "--output-h5", str(output)]
+    assert tool.main(base) == 0
+    first = (output.read_bytes(), receipt_path.read_bytes())
+
+    with pytest.raises(SystemExit, match="already exist.*--overwrite"):
+        tool.main(base)
+    assert (output.read_bytes(), receipt_path.read_bytes()) == first
+
+    # An existing receipt alone is refused too.
+    output.unlink()
+    with pytest.raises(SystemExit, match="already exist"):
+        tool.main(base)
+    assert not output.exists()
+
+    assert tool.main([*base, "--overwrite"]) == 0
+    assert json.loads(receipt_path.read_text())["output"]["sha256"] == _sha256(output)
+
+    # So is an existing copy release manifest, before any work.
+    manifest_path = tmp_path / "release_manifest.json"
+    manifest_path.write_text("{}")
+    fresh = tmp_path / "fresh.h5"
+    with pytest.raises(SystemExit, match="release_manifest.json"):
+        tool.main(
+            [
+                "--input-h5",
+                str(donor),
+                "--output-h5",
+                str(fresh),
+                "--release-manifest",
+                str(manifest_path),
+                "--manifest-release",
+                _COPY_RELEASE,
+                "--manifest-build",
+                _COPY_BUILD,
+            ]
+        )
+    assert manifest_path.read_text() == "{}"
+    assert not fresh.exists()
+
+
 def test_table_format_donor_keeps_its_layout(tool, builder, tmp_path: Path) -> None:
     """A donor stored like BuildP: compound tables, every column a data column."""
 
