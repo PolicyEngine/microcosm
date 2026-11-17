@@ -105,6 +105,21 @@ are also reported and refused outside that smoke exception. The exception
 does not excuse missing source facts or mismatched county boundaries, and
 development samples cannot be packaged as releases.
 
+`--county-drop-empty-soi-rows` (off by default) drops, instead of refusing, a
+county IRS SOI row that is empty although the county has households: every
+household's measure is 0 (for example AGI), and the state row stores no zero.
+Each dropped row is recorded in `county_surface.json`
+(`zero_measure_soi_rows_dropped`), the run identity and the reliability report,
+and the refresh recipe repeats the flag. A county with no household is refused
+either way. `tools/check_us_acs_county_agi_support.py` lists, before R2, the
+counties whose AGI row would be empty.
+
+**Temporary for the County Files proof of concept (microcosm#1647). Do not use
+for the final County Files build.** There every county must be supported well:
+a county whose AGI row would be empty needs a real fix, for example more
+household support (minimum support that also covers counties whose SOI rows
+would be empty) or a declared cell with its own ruling, not a dropped target.
+
 Calibration writes schema-3 `county_reliability.json` and a flat
 `county_reliability.csv` next to its calibration outputs, and packaging
 publishes both (the CSV is refused unless it is the flattening of the bound

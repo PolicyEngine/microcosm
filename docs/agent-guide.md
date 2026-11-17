@@ -549,7 +549,9 @@ build-folder release manifest for the copy, for `--donor-release-manifest`),
 and the staging builder's
 `--allow-default-donor-column COLUMN=REASON` accepts named all-default donor
 columns and records each one in the staging summary. Neither changes a
-default.
+default. Both are temporary for the County Files proof of concept
+(microcosm#1647): do not use them for the final County Files build, whose
+donor is a new national build.
 US household ladders carry both `county_fips` (2020 counties for the locked
 policyengine-us rules) and `county_fips_2023` (3,144 county-equivalents for
 calibration, including Connecticut's nine planning regions). The latter is

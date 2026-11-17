@@ -25,7 +25,10 @@ an allowance for a column with donor signal. The summary records each
 allowance and its reason (``allowed_default_donor_columns``,
 ``orchestration.allow_default_donor_columns``) and a reviewed limitation. It
 exists for the County Files proof of concept's patched donor (microcosm#922);
-without it the gate, the outputs and the summary are unchanged.
+without it the gate, the outputs and the summary are unchanged. Temporary for
+the County Files proof of concept (microcosm#1647). Do not use for the final
+County Files build: its donor is a new national build that carries these
+columns.
 
 Telemetry: after parsing its arguments the builder starts the emitter
 (``microcosm.build.program_telemetry``, pipeline ``us_acs_multispine_staging``),
@@ -349,7 +352,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "none). Only that failure is skipped: an absent, unknown or not "
             "transfer-consumed column is still refused, and so is an allowance "
             "for a column with donor signal. Each allowance and its reason is "
-            "recorded in the summary (microcosm#922)."
+            "recorded in the summary (microcosm#922). Temporary for the County "
+            "Files proof of concept (microcosm#1647). Do not use for the final "
+            "County Files build."
         ),
     )
     return parser.parse_args(argv)
