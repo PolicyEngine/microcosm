@@ -4,25 +4,36 @@
 #
 # usage: tools/us_head_to_head_watch.sh APP_ID RUN_DIR PLAN [CHUNK_WEIGHTS]
 #
-# RUN_DIR must hold `started-at` (UTC, written just before `modal run`).
+# RUN_DIR must hold `started-at` (UTC, written just before `modal run`), and
+# must be this attempt's own folder: the watcher refuses a RUN_DIR whose
+# streams hold scorer records from before started-at. MODAL_PROFILE and
+# MODAL_ENVIRONMENT must be set to the workspace and environment the app runs
+# in, so a profile or environment switched by another session mid-run cannot
+# point the app list and the stop at another workspace.
 # Writes RUN_DIR/app-N.log (the N-th log stream; a restarted stream may
 # replay what earlier ones saw, so each is its own file and the projection
 # counts a record once across them), RUN_DIR/go-no-go.log (one line per poll
 # and per action) and RUN_DIR/ALARM (only when something needs a person).
 #
 # Exit:
-#   0 the app finished on its own;
+#   0 the app is no longer running and the watcher did not stop it: it
+#     finished, or the runner's budget, the class timeout, a crash or a stop
+#     by hand ended it;
 #   3 stopped on NO-GO;
 #   4 stopped because the projection gave no usable verdict for
 #     WATCH_MAX_FAILURES polls in a row (a WAIT more than WATCH_WAIT_GRACE
 #     seconds past the budget's deadline counts as no verdict);
 #   5 a stop was asked for but not confirmed;
-#   2 bad arguments, or a refused start: the app is not running, the app
-#     list could not be read in WATCH_START_TRIES tries, or the projection
-#     cannot run. A refused start is also written to go-no-go.log and ALARM
-#     whenever RUN_DIR exists.
+#   2 bad arguments, or a refused start: MODAL_PROFILE or MODAL_ENVIRONMENT
+#     is unset, RUN_DIR holds an earlier attempt's streams, the app is not
+#     running, the app list could not be read in WATCH_START_TRIES tries, or
+#     the projection cannot run. A refused start is also written to
+#     go-no-go.log and ALARM whenever RUN_DIR exists.
 #
 # The cap and the runner's budget bound the spend; this only saves part of it.
+# The WAIT-OVERDUE escalation acts only after the class timeout has passed,
+# so it cleans up a run the timeout should already have ended; it saves no
+# spend.
 # Env: WATCH_INTERVAL (seconds between polls, default 600), WATCH_STEP
 # (seconds between checks that the log stream is alive, 10),
 # WATCH_MAX_FAILURES (3), WATCH_WAIT_GRACE (1800), WATCH_STOP_TRIES (5),
@@ -67,6 +78,9 @@ refuse() {
 if ! STARTED=$(cat "$DIR/started-at" 2>/dev/null) || [ -z "$STARTED" ]; then
   refuse "$DIR/started-at is missing or empty"
 fi
+if [ -z "${MODAL_PROFILE:-}" ] || [ -z "${MODAL_ENVIRONMENT:-}" ]; then
+  refuse "MODAL_PROFILE and MODAL_ENVIRONMENT must both be set to the app's workspace and environment"
+fi
 
 # Modal 1.4 and later need --follow to keep streaming, and 1.4.2 and later
 # ask before stopping unless given --yes; 1.3 has neither flag. The help is
@@ -79,11 +93,13 @@ YES=()
 HELP=$("$MODAL" app stop --help 2>&1)
 case $HELP in *--yes*) YES=(--yes) ;; esac
 
-# 0 when the app is listed and not stopped; 1 when the list was read and the
-# app is stopped or no longer listed (`modal app list` lists running and
-# recently stopped apps); 2 when the list could not be read or is not the
-# shape this expects. Only the two deliberate codes from the check count;
-# any other exit, a crash included, reads as 2.
+# 0 when the app is listed and not stopped; 1 when the list was read and
+# lists the app as stopped; 2 when the list could not be read, is not the
+# shape this expects, or does not list the app. `modal app list` lists
+# running and recently stopped apps, so an app missing from it is more
+# likely a list from another workspace than an app that ended unseen. Only
+# the two deliberate codes from the check count; any other exit, a crash
+# included, reads as 2.
 app_state() {
   local listing rc
   listing=$("$MODAL" app list --json 2>/dev/null) || return 2
@@ -96,7 +112,7 @@ if not isinstance(apps, list) or not apps or not all(
     sys.exit(2)
 app = next((app for app in apps if app["App ID"] == sys.argv[1]), None)
 if app is None:
-    sys.exit(11)
+    sys.exit(2)
 if "State" not in app or "Stopped at" not in app:
     sys.exit(2)
 state, at = app["State"], app["Stopped at"]
@@ -153,8 +169,9 @@ stream() {
 }
 
 # A stream that ended while the app runs is restarted at once the first
-# time in a poll interval, and at the poll after that, so a stream that keeps
-# failing does not spin. Ends the watcher when the app has finished.
+# time in a poll interval; a second end in the same interval waits for the
+# poll, up to WATCH_INTERVAL, so a stream that keeps failing does not spin.
+# Ends the watcher when the app has finished.
 RESTARTED=0
 UNREADABLE=0
 check_stream() {
@@ -184,7 +201,9 @@ check_stream() {
 }
 
 # One projection over the given streams. Sets OUT, RC, VERDICT (GO, WAIT,
-# NO-GO, WAIT-OVERDUE or none) and GAP (gap when the streams lost lines).
+# NO-GO, WAIT-OVERDUE or none), GAP (gap when the streams lost lines or
+# began late, or no stream covers a stretch between the first record and the
+# last) and EARLY (scorer records before started-at).
 project() {
   local args
   args=("$HERE/us_head_to_head_projection.py" "$@" --plan "$PLAN" --started-at "$STARTED")
@@ -200,12 +219,14 @@ def at(key):
     return calendar.timegm(time.strptime(report[key], "%Y-%m-%dT%H:%M:%SZ"))
 if verdict == "WAIT" and at("now_utc") > at("deadline_utc") + float(sys.argv[1]):
     verdict = "WAIT-OVERDUE"
-print(verdict, "gap" if report.get("log_gap") else "-")
+gap = "gap" if report.get("log_gap") or report.get("stream_holes") else "-"
+print(verdict, gap, int(report.get("records_before_start") or 0))
 ' "$WAIT_GRACE" 2>/dev/null)
-  case $parsed in
-    *" "*) VERDICT=${parsed%% *}; GAP=${parsed#* } ;;
-    *) VERDICT=none; GAP=- ;;
-  esac
+  if [ "$(printf '%s' "$parsed" | wc -w | tr -d ' ')" = 3 ]; then
+    read -r VERDICT GAP EARLY <<< "$parsed"
+  else
+    VERDICT=none; GAP=-; EARLY=0
+  fi
 }
 
 # ${ARRAY[@]+...} keeps an empty array from tripping set -u on bash 3.2
@@ -220,7 +241,7 @@ done
 case $state in
   0) ;;
   1) refuse "$APP is not a running app in \`$MODAL app list\`" ;;
-  *) refuse "\`$MODAL app list --json\` could not be read in $START_TRIES tries" ;;
+  *) refuse "\`$MODAL app list --json\` could not be read, or does not list $APP, in $START_TRIES tries" ;;
 esac
 # The projection must answer before the run is left to it: an interpreter
 # without the build's Python would fail every poll and stop a healthy run.
@@ -228,7 +249,23 @@ project /dev/null
 if { [ "$RC" -ne 0 ] && [ "$RC" -ne 3 ]; } || [ "$VERDICT" = none ]; then
   refuse "the projection did not answer a trial run with $PYTHON (rc=$RC; see $DIR/projection.err)"
 fi
-note "watching $APP (plan $PLAN, started-at $STARTED, every ${INTERVAL}s)"
+# Streams already in RUN_DIR are this attempt's only when a watcher restarts;
+# records from before started-at mean a relaunch reused the folder, and the
+# earlier attempt's worker starts would hold every verdict at WAIT.
+EXISTING=()
+for log in "$DIR"/app-*.log; do
+  if [ -e "$log" ]; then EXISTING+=("$log"); fi
+done
+if [ ${#EXISTING[@]} -gt 0 ]; then
+  project "${EXISTING[@]}"
+  if [ "$VERDICT" = none ]; then
+    refuse "the projection could not read the streams already in $DIR (rc=$RC; see $DIR/projection.err)"
+  fi
+  if [ "$EARLY" -gt 0 ]; then
+    refuse "$DIR holds $EARLY scorer records from before started-at $STARTED: an earlier attempt's streams; give each attempt its own run folder"
+  fi
+fi
+note "watching $APP (plan $PLAN, started-at $STARTED, every ${INTERVAL}s, MODAL_PROFILE=$MODAL_PROFILE, MODAL_ENVIRONMENT=$MODAL_ENVIRONMENT)"
 stream
 failures=0
 gap_alarmed=0
@@ -246,7 +283,7 @@ while true; do
   note "rc=$RC verdict=$VERDICT $(printf '%s' "$OUT" | tr -d '\n')"
   if [ "$GAP" = gap ] && [ "$gap_alarmed" -eq 0 ]; then
     gap_alarmed=1
-    alarm "the log streams lost lines or began late (log_gap in go-no-go.log): from now on the estimate gives no GO, and after lost slice lines no estimate at all; the stall check and the runner's budget still bound the run"
+    alarm "the log streams lost lines or began late, or a restarted stream did not replay what the app printed before it (log_gap or stream_holes in go-no-go.log): after a late start the estimate gives no GO, after lost slice or opening lines no estimate at all, and a hole alone changes no verdict but may hide a lost line; the stall check and the runner's budget still bound the run"
   fi
   if [ "$RC" -eq 3 ] && [ "$VERDICT" = "NO-GO" ]; then
     if stop_app; then exit 3; fi

@@ -42,7 +42,11 @@ case "$1 $2" in
       help_tail
       exit 0
     fi
-    cat "$D/stream.log"
+    # FAKE stream-N.log, when present, is what the N-th stream sees: a
+    # restart that does not replay what the app printed before it.
+    n=$(( $(cat "$D/logs-count" 2>/dev/null || echo 0) + 1 ))
+    echo "$n" > "$D/logs-count"
+    if [ -e "$D/stream-$n.log" ]; then cat "$D/stream-$n.log"; else cat "$D/stream.log"; fi
     exit 0 ;;
   "app stop")
     if [ "$3" = "--help" ]; then
@@ -122,6 +126,7 @@ def _watch(
     kept: dict[str, str] | None = None,
     weights: Path | None = None,
     budget_line: bool = True,
+    streams: dict[int, list[str]] | None = None,
     **env: str,
 ) -> tuple[subprocess.CompletedProcess, Path, Path]:
     # The runner prints its BUDGET line before the tool starts, so a stream
@@ -139,6 +144,8 @@ def _watch(
     modal.chmod(modal.stat().st_mode | stat.S_IXUSR)
     lines = [RUNNER_BUDGET, *stream] if budget_line else stream
     (fake / "stream.log").write_text("".join(f"{line}\n" for line in lines))
+    for number, text in (streams or {}).items():
+        (fake / f"stream-{number}.log").write_text("".join(f"{x}\n" for x in text))
     (run / "started-at").write_text(_stamp(time.time() - started_ago) + "\n")
     environment = {
         **os.environ,
@@ -148,6 +155,9 @@ def _watch(
         "WATCH_INTERVAL": "0",
         "WATCH_STOP_WAIT": "0",
         "WATCH_START_WAIT": "0",
+        # The watcher refuses to run without a pinned workspace.
+        "MODAL_PROFILE": "test-profile",
+        "MODAL_ENVIRONMENT": "test-env",
         **env,
     }
     argv = ["bash", str(WATCH), APP, str(run), str(PLAN)]
@@ -173,6 +183,7 @@ def _stalled() -> list[str]:
 
     then = time.time() - 2 * 3600
     return [
+        _line(then - 70, "before starting candidate slice workers"),
         _line(then - 60, "after initializing candidate slice worker"),
         _line(then, "after scoring candidate chunk 1/5 slice 1/177"),
     ]
@@ -296,7 +307,7 @@ def test_an_unconfirmed_stop_is_retried_then_raised(tmp_path) -> None:
 def test_an_app_that_is_not_running_is_refused_at_the_start(tmp_path) -> None:
     result, fake, _ = _watch(tmp_path, _stalled(), FAKE_APP="ap-someone-else")
     assert result.returncode == 2
-    assert "is not a running app" in result.stderr
+    assert f"does not list {APP}" in result.stderr
     assert not any(call.startswith("app logs ap-") for call in _calls(fake))
 
 
@@ -318,13 +329,14 @@ def test_bad_arguments_and_a_missing_start_time_are_refused(tmp_path) -> None:
 
 @pytest.mark.parametrize(
     "answer",
-    ["warning", "dict", "empty", "nostate", "fail", "falsestop", "emptystop"],
+    ["warning", "dict", "empty", "nostate", "fail", "falsestop", "emptystop", "gone"],
 )
 def test_an_unreadable_list_after_a_stop_is_never_taken_as_stopped(
     tmp_path, answer
 ) -> None:
     # The list reads at the start, then never again: the stop is retried and
-    # raised, not logged as confirmed.
+    # raised, not logged as confirmed. "gone" is a valid list without the app,
+    # as from another workspace (review r4, WATCHER-1).
     result, fake, run = _watch(
         tmp_path, _stalled(), FAKE_LIST_SEQ=f"live,{answer}", WATCH_STOP_TRIES="2"
     )
@@ -335,10 +347,73 @@ def test_an_unreadable_list_after_a_stop_is_never_taken_as_stopped(
     assert "stop it by hand" in (run / "ALARM").read_text()
 
 
-def test_an_app_no_longer_listed_counts_as_stopped(tmp_path) -> None:
-    result, _, run = _watch(tmp_path, _stalled(), FAKE_LIST_SEQ="live,gone")
-    assert result.returncode == 3, result.stderr
-    assert f"stopped {APP} (try 1)" in (run / "go-no-go.log").read_text()
+def test_an_app_missing_from_the_list_when_the_stream_ends_is_not_finished(
+    tmp_path,
+) -> None:
+    # Review r4, WATCHER-1: a list from another workspace once ended the
+    # watcher with "has finished". Now it alarms and keeps the stream going
+    # until the list shows the app stopped.
+    result, _, run = _watch(tmp_path, _live(), FAKE_LIST_SEQ="live,gone,gone,stopped")
+    assert result.returncode == 0, result.stderr
+    verdicts = (run / "go-no-go.log").read_text()
+    assert "could not be read" in (run / "ALARM").read_text()
+    assert verdicts.count("has finished") == 1
+    assert len(list(run.glob("app-*.log"))) == 3
+
+
+@pytest.mark.parametrize("unset", ["MODAL_PROFILE", "MODAL_ENVIRONMENT"])
+def test_a_start_without_a_pinned_modal_workspace_is_refused(tmp_path, unset) -> None:
+    result, fake, run = _watch(tmp_path, _live(), **{unset: ""})
+    assert result.returncode == 2
+    assert "MODAL_PROFILE and MODAL_ENVIRONMENT" in result.stderr
+    assert "did not start" in (run / "ALARM").read_text()
+    assert not (fake / "calls").exists() or not any(
+        call.startswith("app list") for call in _calls(fake)
+    )
+
+
+def test_a_run_folder_holding_an_earlier_attempt_is_refused(tmp_path) -> None:
+    # Review r4, WATCHER-4: a relaunch into the same folder overwrites
+    # started-at; the earlier attempt's worker starts held every verdict at
+    # WAIT, so a run that cannot fit was never stopped.
+    then = time.time() - 4 * 3600
+    earlier = [
+        RUNNER_BUDGET,
+        _line(then, "before starting incumbent slice workers", 3.7),
+        _line(then + 40, "after initializing incumbent slice worker", 1.9),
+    ]
+    kept = "".join(f"{line}\n" for line in earlier)
+    result, fake, run = _watch(tmp_path, _live(), kept={"app-1.log": kept})
+    assert result.returncode == 2
+    assert "earlier attempt" in result.stderr
+    assert "own run folder" in (run / "ALARM").read_text()
+    assert not any(call.startswith("app logs ap-") for call in _calls(fake))
+    assert (run / "app-1.log").read_text() == kept
+
+
+def test_a_restarted_stream_that_does_not_replay_alarms_once(tmp_path) -> None:
+    # A stream that ends and restarts without replaying the app's earlier
+    # lines leaves a stretch no stream covers; a lost opening line can hide
+    # there (review r4, ESTIMATE-3 = WATCHER-2).
+    now = time.time()
+    first = [
+        RUNNER_BUDGET,
+        _line(now - 1200, "before starting incumbent slice workers", 3.7),
+        _line(now - 1160, "after initializing incumbent slice worker", 1.9),
+    ]
+    later = [_line(now - 300, "after initializing incumbent slice worker", 1.9)]
+    result, _, run = _watch(
+        tmp_path,
+        later,
+        budget_line=False,
+        streams={1: first, 2: later},
+        FAKE_LIVE_LISTS="4",
+    )
+    assert result.returncode == 0, result.stderr
+    verdicts = (run / "go-no-go.log").read_text()
+    assert "stream_holes" in verdicts and "verdict=NO-GO" not in verdicts
+    alarms = (run / "ALARM").read_text()
+    assert alarms.count("did not replay") == 1
 
 
 def test_an_unreadable_list_when_the_stream_ends_keeps_watching(tmp_path) -> None:
@@ -374,7 +449,7 @@ def test_a_list_that_never_reads_refuses_the_start_in_the_run_folder(
         tmp_path, _live(), FAKE_LIST_SEQ="fail", WATCH_START_TRIES="2"
     )
     assert result.returncode == 2
-    assert "could not be read in 2 tries" in result.stderr
+    assert "could not be read" in result.stderr and "in 2 tries" in result.stderr
     assert (fake / "list-count").read_text().strip() == "2"
     assert "did not start" in (run / "ALARM").read_text()
     assert "did not start" in (run / "go-no-go.log").read_text()

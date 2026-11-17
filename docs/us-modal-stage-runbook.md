@@ -423,7 +423,7 @@ local wall times in this table understate Modal's wall and cost.
 | check | n/a | check | 2 cores, 8 GiB, 30 min timeout | cents |
 | PUF-support base (`all`) | 72.5 GB, 2,788 s wall, 6,238 CPU-s | base | 4 cores (limit 4), 112 GiB, 4 h 35 min timeout | about $0.84 ($2.52 non-preemptible) |
 | ACS multispine staging (`all`) | 42.4 GB, 7,218 s wall, 103,105 CPU-s | acs-staging | 16 cores (limit 16), 80 GiB, 17 h timeout | about $2.79 ($8.38 non-preemptible) |
-| Route A head-to-head (`score`) | Mac only: 10.4 GiB peak sampled RSS for one process holding both frames, 8.10 GiB peak printed by 3 incumbent workers; no candidate worker measured; time on Modal not measured | head-to-head | 16 cores (limit 16), 288 GiB (limit 288), 15,705 s (4 h 22 min) timeout from the $40 cap | $40.00 non-preemptible compute through the timeout |
+| Route A head-to-head (`score`) | Mac only: 11.31 GiB peak `ru_maxrss` for one process holding both frames, 8.10 GiB peak `ru_maxrss` printed by 3 incumbent workers; no candidate worker measured; time on Modal not measured | head-to-head | 16 cores (limit 16), 288 GiB (limit 288), 15,705 s (4 h 22 min) timeout from the $40 cap | $40.00 non-preemptible compute through the timeout |
 
 The prices are Modal's list prices for standard compute, read from
 [modal.com/pricing](https://modal.com/pricing) on 22 September 2026 and
@@ -1744,16 +1744,18 @@ One process scored a slice in these times:
 | Candidate | 34 to 42 s | about 200 s |
 | Incumbent | 33 to 50 s | 226 to 232 s |
 
-All 1,030 slices then come to about 74,100 s of slice work, or 4,631 s on
-16 workers.
+Extrapolated from two timed slices per chunk, all 1,030 slices come to
+about 74,100 s of slice work, or 4,631 s on 16 workers.
 
 The scorer's pool starts workers on demand, one at a time. A submit that
 finds no result token free starts a worker. Each start blocks the parent
 while the child imports the scorer and reads its arguments. On the Mac,
-the incumbent's three starts took 42, 36 and 44 s from the submit to the
-worker's first line; how much of that blocked the parent is not measured,
-since the line comes after the worker's initializer, which runs once the
-parent is free.
+the rebuilt pool dates the incumbent's three starts at 42, 36 and 44 s from
+the submit to the worker's first line. Those are intervals the model dates
+from the log, not measured blocks: `Process.start()` returns once the
+child's arguments are written, and the line comes after the worker's
+initializer, so how much of each interval blocked the parent is not
+measured.
 
 Nothing has timed this scorer on Modal, or a candidate worker's start
 anywhere. A simulation of 16-worker runs from the Mac times (not a
@@ -1848,19 +1850,35 @@ stage is spawned (see "Commands"), and record the launch time, the app id
 (`ap-…`) and the printed `function_call_id`. From the checkout that holds
 this plan:
 
+Each attempt gets its own local folder, `modal-runs/$R/attempt-N`: the
+plan's run id, and so `runs/$R` on the volume, stays the same across
+attempts, but the watcher must not read an earlier attempt's streams. It
+refuses a folder whose streams hold scorer lines from before `started-at`.
+
+Pin the Modal workspace and environment for the launch and the watcher.
+Another session can switch the active profile (`modal profile activate`,
+`modal token new` or `modal token set`) or environment (`modal config
+set-environment`) mid-run; the app list and the stop would then read
+another workspace. `~/.modal.toml` on the build Mac sets no environment
+(checked 2026-11-16), so the workspace's default, `main`, is inferred:
+confirm it with `modal environment list` before the launch. The watcher
+refuses to start unless both are set.
+
 ```bash
 R=route-a-h2h-d844-d1386-r1
-mkdir -p "modal-runs/$R"
-cat > "modal-runs/$R/launch.sh" <<SH
+A="modal-runs/$R/attempt-1"   # attempt-2 for a second attempt, and so on
+mkdir -p "$A"
+cat > "$A/launch.sh" <<SH
 #!/bin/bash
 set -euo pipefail
 cd "$PWD"
 export PATH="\$HOME/.local/bin:/opt/homebrew/bin:/usr/bin:/bin"
+export MODAL_PROFILE=policyengine MODAL_ENVIRONMENT=main
 export MICROCOSM_MODAL_PLAN=docs/us-modal-stage-route-a-h2h-plan.json
-date -u +%Y-%m-%dT%H:%M:%SZ > modal-runs/$R/started-at
+date -u +%Y-%m-%dT%H:%M:%SZ > $A/started-at
 exec modal run --detach tools/modal_us_stage.py --run --spawn
 SH
-chmod +x "modal-runs/$R/launch.sh"
+chmod +x "$A/launch.sh"
 ```
 
 Submit that script as a transient launchd job. On the build Mac the helper
@@ -1876,17 +1894,18 @@ checkout:
 ```bash
 lsubmit.sh <label> <log> "$PWD" /usr/bin/env \
   PYTHON="$(command -v python3.14)" MODAL="$HOME/.local/bin/modal" \
+  MODAL_PROFILE=policyengine MODAL_ENVIRONMENT=main \
   /bin/bash tools/us_head_to_head_watch.sh \
-  <ap-id> "modal-runs/$R" docs/us-modal-stage-route-a-h2h-plan.json \
+  <ap-id> "$A" docs/us-modal-stage-route-a-h2h-plan.json \
   docs/evidence/us-h2h-speed/chunk-weights.json
 ```
 
-Pin both: launchd's `PATH` is short, and macOS's `/usr/bin/python3` (3.9)
+Pin `PYTHON` and `MODAL` too: launchd's `PATH` is short, and macOS's `/usr/bin/python3` (3.9)
 cannot run the projection, which needs CPython 3.11 or later and only its
 standard library. The watcher gives the projection a trial run before it
 watches, and refuses to start (exit 2) if it does not answer.
 
-The watcher streams `modal app logs` into `modal-runs/$R/app-N.log`, one
+The watcher streams `modal app logs` into `$A/app-N.log`, one
 file per stream. A stream that ends while the app runs is restarted within
 `WATCH_STEP` seconds the first time between two polls; a second end before
 the next poll waits for that poll, up to ten minutes. Whether a fresh stream
@@ -1894,7 +1913,11 @@ replays what the app printed before it is not known (it has not been tried
 against a live app), so start the watcher as soon as the app id is known,
 before the runner has pulled and staged its inputs. Slice lines a restart
 misses show up as `log_gap` once the
-parent's later lines arrive. The runner prints its `BUDGET:` line just
+parent's later lines arrive; a lost pool-opening line shows up as `log_gap`
+as soon as that pool's other lines do. A restarted stream that does not
+replay leaves a stretch no stream covers, reported as `stream_holes`; a
+hole alone changes no verdict but raises the alarm, since a lost line can
+hide in it. The runner prints its `BUDGET:` line just
 before it starts the tool, every time, so streams with scorer lines but no
 `BUDGET:` line began late and may have missed a shorter budget: that is
 `log_gap` too (`"runner"`). Every
@@ -1913,11 +1936,12 @@ It answers one of three verdicts:
 - `WAIT` until a chunk has three measured slices. In the simulated grid,
   that is 600 to 3,000 s in. Also `WAIT` while the streams have lost lines
   (the report's `log_gap`: the parent took a result whose slice line is
-  missing), because the rebuilt pool is then wrong in an unknown direction,
-  and while the streams began late (no `BUDGET:` line), when it is never
-  `GO` but a `NO-GO` against the plan's budget still holds. The watcher
-  raises `ALARM` once when either happens; after lost slice lines only the
-  stall check and the runner's budget can end the run early.
+  missing, or a pool's lines came without its opening line), because the
+  rebuilt pool is then wrong in an unknown direction, and while the streams
+  began late (no `BUDGET:` line), when it is never `GO` but a `NO-GO`
+  against the plan's budget still holds. The watcher raises `ALARM` once
+  when either happens, or on `stream_holes`; after lost slice or opening
+  lines only the stall check and the runner's budget can end the run early.
 - `NO-GO` when the estimated end is past the tool's budget, or the log has
   stalled. The budget is the plan's 14,505 s from `started-at`, or less
   when the runner's `BUDGET:` line (or an `ATTEMPTS:` line) says so. A
@@ -1938,6 +1962,21 @@ How the estimate has done so far:
   candidate's chunk 5 ran slower, which nothing shows until the candidate
   reaches it, last, runs that did not fit got `NO-GO` at 7,800 to 12,000 s
   ($19.87 to $30.56).
+- Whole-second stamps bias the first chunks slow: on the toy pool in the
+  tests, ties misdate three slices with no note and chunk 1 reads 6.3% slow
+  (chunk 2 5.5%); on simulated 16-worker pools chunk 1 read more than 5%
+  slow in 29 of 200. A run that fits with less spare than that can be
+  stopped.
+- When the incumbent's measured chunk 5 departs from the weights, the
+  estimate carries that departure onto the candidate whether or not the
+  candidate shares it: 300 to 600 s late on the grid (f = 1 to 1.75), and
+  about 800 s late in review r4's chunk-by-chunk scenario even with the
+  pooled ratio.
+- "Fits" keeps the 600 s allowance after the last slice. That allowance is
+  unmeasured for the candidate (the measured 12 s tail is the
+  incumbent's), so a run whose last slice ends less than 600 s before the
+  budget is stopped though it would very likely complete: f = 2,
+  T = 175 s (last slice at 13,941 s) gets `NO-GO` at 1,200 s ($3.06).
 - No simulated run that fits got a `NO-GO` in the grid that starts the
   tool at `started-at`. With 300 s before the tool starts, the f = 1,
   T = 300 s run, which fits, got one at 1,200 s (above). The grid scales
@@ -1955,19 +1994,25 @@ On `NO-GO` the watcher runs `modal app stop`, confirms the stop in
 `modal app list`, and retries up to `WATCH_STOP_TRIES` times (default 5).
 Every poll and action goes to `go-no-go.log`. Its exit codes:
 
-- 0: the app finished on its own.
+- 0: the app is no longer running and the watcher did not stop it: it
+  finished, or the runner's budget, the class timeout, a crash or a stop by
+  hand ended it.
 - 3: stopped on `NO-GO`.
 - 4: stopped because the projection gave no usable verdict for three polls
   in a row. A `WAIT` more than `WATCH_WAIT_GRACE` seconds past the budget's
-  deadline counts as no verdict.
-- 5: a stop it could not confirm. It has written `modal-runs/$R/ALARM`;
+  deadline counts as no verdict. That escalation acts only after the class
+  timeout, so it cleans up rather than saves spend.
+- 5: a stop it could not confirm. It has written `$A/ALARM`;
   stop the app by hand.
-- 2: bad arguments, or a refused start: the app is not running, `modal app
-  list` could not be read in three tries, or the projection did not answer
+- 2: bad arguments, or a refused start: `MODAL_PROFILE` or
+  `MODAL_ENVIRONMENT` is unset, the folder holds an earlier attempt's
+  streams, the app is not running, `modal app list` could not be read or
+  did not list the app in three tries, or the projection did not answer
   its trial run. A refused start is written to `go-no-go.log` and `ALARM`.
 
-An app list that cannot be read, or that does not have the shape the
-watcher expects, never counts as stopped: a stop is retried until confirmed
+An app list that cannot be read, that does not have the shape the watcher
+expects, or that does not list the app (as a list from another workspace
+would not), never counts as stopped: a stop is retried until confirmed
 or `WATCH_STOP_TRIES` run out (exit 5), and a log stream that ends while the
 list cannot be read is restarted, not taken as the app's end. Settings
 (environment):
@@ -1975,7 +2020,8 @@ list cannot be read is restarted, not taken as the app's end. Settings
 between checks that the stream is alive, 10), `WATCH_MAX_FAILURES` (3),
 `WATCH_WAIT_GRACE` (1800), `WATCH_STOP_TRIES` (5), `WATCH_STOP_WAIT`
 (seconds after each stop request, 30), `WATCH_START_TRIES` (3),
-`WATCH_START_WAIT` (10), `MODAL` and `PYTHON`.
+`WATCH_START_WAIT` (10), `MODAL`, `PYTHON`, and the required
+`MODAL_PROFILE` and `MODAL_ENVIRONMENT`.
 
 `ALARM` is only a file. Nothing notices it, or a watcher that has died, and
 a launchd job does not survive a reboot. Whoever launches the run checks
@@ -1987,9 +2033,9 @@ It detects and uses Modal CLI 1.4's `--follow` and 1.4.2's `--yes`. Its
 tests run it against a fake `modal` only: never test its stop on a live
 app.
 
-If the watcher dies, start it again on the same run directory. It numbers
+If the watcher dies, start it again on the same attempt folder. It numbers
 new streams after the files it finds, and the projection counts each record
-once across streams. A stopped or failed attempt writes no receipt; record
+once across streams. A relaunch gets a new attempt folder. A stopped or failed attempt writes no receipt; record
 its spend in the run folder. Another attempt is a new spend against Max's
 cap and needs his go.
 

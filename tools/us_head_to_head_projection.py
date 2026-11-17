@@ -41,14 +41,27 @@ submits start a worker follows from the tokens, and the log's worker starts
 check it. Stamps are whole seconds, so a result finishing in the same second
 as a start can look like a token the submit did not have; a start logged
 before a later submit is then put back on the submit that made it, and the
-report notes it. A task starts as soon as it has been submitted and a
+report notes it. A tie can also misdate slices with no note: a completion
+stamped in a spawning submit's second but landing after it gives that
+submit a token, the spawn moves to the next submit, and an idle wait reads
+as slice time. It errs slow on the first chunk measured: on the toy pool in
+the tests chunk 1 reads 6.3% slow and chunk 2 5.5% slow, never fast, and on
+simulated d844-shaped pools chunk 1 read more than 5% slow in 29 of 200
+(review r4, MODEL-6). A run that fits with less spare than that can be
+stopped. A task starts as soon as it has been submitted and a
 started worker is free, so at any moment the tasks started are the first
 ``min(submitted, finished + workers started)``. That dates every slice's
 start, so each slice's own time is its completion less its start. A chunk's
 seconds per slice is the mean over its slices other than workers' first
 ones (``min_slices`` at least). A result the parent took whose slice line is
 missing means the log streams lost lines: the rebuild stops there and the
-report carries ``log_gap``.
+report carries ``log_gap``. So does a pool whose worker, slice or receive
+lines are there without its opening line, which no rebuild can place. A
+stretch that no stream covers between the first record and the last is
+reported as ``stream_holes``: the shape a restarted stream leaves when it
+does not replay what the app printed. A hole alone changes no verdict.
+Records from before ``--started-at`` mean the streams hold an earlier
+attempt's log; the verdict waits.
 
 The end. The estimate replays the model forward from the rebuilt present:
 the running slices, the queue, the free tokens, the workers still to start
@@ -59,14 +72,23 @@ whichever measured chunk gives the slowest result. Before any candidate
 chunk is measured, the candidate's seconds are the incumbent's, scaled
 chunk by chunk by the prior ratio of the two; after, its unmeasured chunks
 scale the candidate's prior by how far the incumbent's measured chunks
-departed from theirs. A start costs the mean of the starts logged so far
-(the incumbent's until the candidate's pool logs one, slice or not); a
-first slice costs the mean extra measured so far. A running slice already
-past its chunk's pace is taken to run as far past it again. While the
+departed from theirs, through one ratio pooled over the candidate's
+measured chunks. A candidate that does not share a departure still reads
+late: in review r4's scenario (the incumbent's chunk 5 at 1.147 times its
+prior, the candidate at its prior) by about 800 s. A start costs the mean
+of the starts logged so far (the incumbent's until the candidate's pool
+logs one, slice or not), so a candidate whose workers start slower reads
+early, toward GO, until its first start line. A first slice costs the mean
+extra measured so far. A running slice already past its chunk's pace is
+taken to run as far past it again; past the slice's midpoint that can be
+late by up to the slice's remaining time, so one long straggler can give a
+NO-GO to a run that fits. While the
 incumbent is still scoring, its replay comes first and the candidate's
 whole pool follows at once (loading the candidate is left out), with the
 prior's slices per chunk. A fixed allowance for the comparison and
-scorecards ends it.
+scorecards ends it: 600 s, unmeasured for the candidate (the measured 12 s
+tail is the incumbent's), so a run whose last slice ends less than 600 s
+before the budget is stopped though it would very likely complete.
 
 This is an estimate, made again at every poll, not a bound. What bounds an
 attempt is elsewhere: the class timeout (derived from the cost cap), the
@@ -87,7 +109,10 @@ times the slowest estimated slice if that is longer, counted from
 ``--started-at`` before the first record. The first estimate scales the
 one chunk it has measured onto all the work ahead, so a prior off on that
 chunk moves it by that departure's share of the rest: a run that fits with
-less spare than that can be stopped. Where the log does not follow the model
+less spare than that can be stopped. The same happens later when the
+incumbent's measured chunk 5 departs from the prior and the
+incumbent-times-prior estimate carries it onto the candidate: 300-600 s
+late on review r4's grid. Where the log does not follow the model
 (a worker start it cannot explain, a slice that seems to end before it
 began), the report says so.
 
@@ -167,6 +192,9 @@ class Parsed:
     notes: list[str] = field(default_factory=list)
     #: The time of every scorer boundary line, the pool's or not.
     record_times: list[float] = field(default_factory=list)
+    #: Each stream's scorer record times, in its order: a restarted stream
+    #: that does not replay earlier lines leaves a hole between them.
+    stream_times: list[list[float]] = field(default_factory=list)
 
 
 def _epoch(stamp: str) -> float:
@@ -248,6 +276,7 @@ def parse_logs(streams: Sequence[Iterable[str]]) -> Parsed:
         records, budgets, times = _records(stream)
         parsed.budget_seconds.extend(budgets)
         parsed.record_times.extend(times)
+        parsed.stream_times.append(sorted(times))
         counts: dict[str, int] = {}
         for text, event in records:
             counts[text] = counts.get(text, 0) + 1
@@ -483,7 +512,7 @@ def reconstruct(
             # submit, came from an earlier submit the model gave a token: that
             # submit took none, so the token is still free.
             resynced = 0
-            while spawns < min(workers, len(inits)) and inits[spawns] < ready and taken:
+            while spawns < min(workers, len(inits)) and inits[spawns] <= ready and taken:
                 spawns += 1
                 taken -= 1
                 resynced += 1
@@ -735,16 +764,33 @@ def replay(
 
 
 def _filled(
-    measured: Mapping[int, float], chunks: int, prior: Sequence[float]
+    measured: Mapping[int, float],
+    chunks: int,
+    prior: Sequence[float],
+    pooled: bool = False,
 ) -> tuple[dict[int, float], list[str]]:
-    """Every chunk's seconds per slice: measured, or scaled from a measured one."""
+    """Every chunk's seconds per slice: measured, or scaled from a measured one.
+
+    By default an unmeasured chunk takes the slowest result of scaling each
+    measured chunk by the prior. ``pooled`` scales by one ratio over all the
+    measured chunks instead: for a prior that already carries the other
+    artifact's departures, which this pool may not share, the slowest result
+    would compound them."""
 
     notes: list[str] = []
     seconds = dict(measured)
     missing = [c for c in range(1, chunks + 1) if c not in measured]
     if not missing:
         return seconds, notes
-    if prior and len(prior) == chunks:
+    if prior and len(prior) == chunks and pooled:
+        ratio = sum(measured.values()) / sum(prior[m - 1] for m in measured)
+        for chunk in missing:
+            seconds[chunk] = prior[chunk - 1] * ratio
+        notes.append(
+            f"chunks {missing} not measured yet: scaled from the prior by one "
+            "ratio pooled over the measured chunks"
+        )
+    elif prior and len(prior) == chunks:
         for chunk in missing:
             seconds[chunk] = max(
                 measured[m] * prior[chunk - 1] / prior[m - 1] for m in measured
@@ -763,6 +809,29 @@ def _filled(
             "chunk makes optimistic"
         )
     return seconds, notes
+
+
+def _stream_holes(streams: Sequence[Sequence[float]], now: float) -> list[dict]:
+    """Stretches no stream covers between the first record and the last.
+
+    A restarted stream that replays what the app printed covers the earlier
+    stream's span; one that does not starts after it, and any line printed in
+    between is lost unless another stream holds it. A hole is not proof of a
+    lost line (the scorer can be silent for minutes), so it is reported, not
+    judged."""
+
+    spans = sorted(
+        (kept[0], kept[-1])
+        for times in streams
+        if (kept := [t for t in times if t <= now])
+    )
+    holes: list[dict] = []
+    reach = None
+    for first, last in spans:
+        if reach is not None and first > reach:
+            holes.append({"from_utc": _utc(reach), "to_utc": _utc(first)})
+        reach = last if reach is None else max(reach, last)
+    return holes
 
 
 def project(parsed: Parsed, limits: Limits, now: float) -> dict[str, object]:
@@ -794,7 +863,8 @@ def project(parsed: Parsed, limits: Limits, now: float) -> dict[str, object]:
             "candidate_worker_init_peak_gib": candidate.init_peak,
         },
     }
-    if candidate.total is not None and candidate.done >= candidate.total:
+    early = sum(1 for t in parsed.record_times if t < limits.started_at)
+    if not early and candidate.total is not None and candidate.done >= candidate.total:
         # Every slice is scored; stopping now would only throw the scores away.
         return {
             **report,
@@ -805,6 +875,14 @@ def project(parsed: Parsed, limits: Limits, now: float) -> dict[str, object]:
             ],
         }
     waiting: list[str] = []
+    if early:
+        # A relaunch into the same run folder overwrites started-at, so the
+        # earlier attempt's streams would be read as this attempt's.
+        report["records_before_start"] = early
+        waiting.append(
+            f"{early} scorer records predate --started-at: the streams hold an "
+            "earlier attempt's log; give each attempt its own run folder"
+        )
     if len(candidate.inits) > workers or len(incumbent.inits) > workers:
         waiting.append(
             f"{len(incumbent.inits)} and {len(candidate.inits)} worker starts for "
@@ -817,6 +895,16 @@ def project(parsed: Parsed, limits: Limits, now: float) -> dict[str, object]:
         if (history := reconstruct(pool, workers, now)) is not None and history.gaps
     }
     log_gap: dict[str, object] = {name: tasks[:5] for name, tasks in gaps.items()}
+    for name, pool in (("incumbent", incumbent), ("candidate", candidate)):
+        if pool.opened is None and (pool.inits or pool.receives or pool.by_task):
+            # Without the opening line the pool cannot be rebuilt, and the
+            # estimate would replay all of it from now.
+            log_gap[name] = "no opening line"
+            waiting.append(
+                f"the streams lost the {name}'s opening line (its worker, slice "
+                "or receive lines are there), so its pool cannot be rebuilt; "
+                "the early stop is off and the runner's budget bounds the run"
+            )
     if gaps:
         waiting.append(
             "the streams lost lines: the parent took results whose slice lines "
@@ -844,6 +932,9 @@ def project(parsed: Parsed, limits: Limits, now: float) -> dict[str, object]:
         log_gap["runner"] = "no BUDGET line"
     if log_gap:
         report["log_gap"] = log_gap
+    holes = _stream_holes(parsed.stream_times, now)
+    if holes:
+        report["stream_holes"] = holes
     estimate, notes, why = (
         (None, [], None) if waiting else _estimate(incumbent, candidate, limits, now)
     )
@@ -937,7 +1028,9 @@ def _estimate(
                 )
                 for c in range(1, candidate.chunks + 1)
             )
-        seconds, more = _filled(measured["candidate"], candidate.chunks, fill_prior)
+        seconds, more = _filled(
+            measured["candidate"], candidate.chunks, fill_prior, pooled=bool(carried)
+        )
         if carried and len(seconds) > len(measured["candidate"]):
             more.append(
                 f"the candidate's fill carries the incumbent's measured chunks "
@@ -1079,7 +1172,10 @@ def _stall(
     if now - last <= allowed:
         return None
     since = (
-        f"since {_utc(last)}" if seen else f"at all since the launch at {_utc(last)}"
+        f"since {_utc(last)}"
+        if seen
+        else f"at all since the launch at {_utc(last)} (a log stream that "
+        "delivers nothing reads the same; go-no-go.log notes each restart)"
     )
     return f"stall: no scorer record {since}, {now - last:.0f} s against {allowed:.0f} s allowed"
 
@@ -1141,8 +1237,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--started-at",
         required=True,
-        help="UTC launch time, YYYY-MM-DDTHH:MM:SSZ; earlier than the tool's "
-        "start, so the deadline it gives is early, not late",
+        help="UTC launch time, YYYY-MM-DDTHH:MM:SSZ; it precedes the tool's "
+        "start, so the deadline comes early: no overspend, but a long wait "
+        "before the tool starts can stop a run that would fit",
     )
     parser.add_argument(
         "--chunk-weights",

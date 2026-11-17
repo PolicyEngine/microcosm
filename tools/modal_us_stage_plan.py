@@ -487,8 +487,9 @@ def timeout_for_cap(cap_usd: float, usd_per_second: float) -> int:
 # The class timeout is what bounds one attempt's bill, so timeout_for_cap
 # derives it from the cost cap at the non-preemptible price; CPU and memory
 # limits equal their requests. Max set the $40 cap on 2026-10-10. At this
-# class it buys 15,705 s (4 h 22 min). One process on a shared Mac scored
-# the run's 1,030 slices' worth in 74,091 s, which is 4,631 s on 16 workers
+# class it buys 15,705 s (4 h 22 min). One process on a shared Mac timed
+# two slices per chunk; extrapolated to each chunk's slice count, the run's
+# 1,030 slices come to 74,091 s, which is 4,631 s on 16 workers
 # (docs/evidence/us-h2h-speed); Modal's speed and the serial worker starts
 # are not measured. A new cap changes HEAD_TO_HEAD_COST_CAP_USD, the plan's
 # max_wall_seconds and the figures the plan tests pin.

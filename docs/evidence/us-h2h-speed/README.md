@@ -49,9 +49,10 @@ each slice; the highest psutil sample, every half second, was 10.4 GiB. Its
 11.31 GiB.
 
 `chunk-weights.json` gives the candidate's chunk means relative to chunk 1
-(1.00, 1.06, 0.98, 0.89, 5.13) and the one-process totals: 62,401 s for the
-candidate's 885 slices and 11,690 s for the incumbent's 145, or 4,631 s of
-slice work on 16 workers at this speed.
+(1.00, 1.06, 0.98, 0.89, 5.13) and the one-process totals, extrapolated
+from two timed slices per chunk (each chunk's two-slice mean times its
+slice count): 62,401 s for the candidate's 885 slices and 11,690 s for the
+incumbent's 145, or 4,631 s of slice work on 16 workers at this speed.
 
 ### What this does not establish
 
@@ -104,8 +105,18 @@ What the incumbent's pool showed:
   starts fall in the opening burst, so this log cannot tell the start rules
   apart: it is consistent with the model, not a test of its steady state.
   The test fixture `toy-pool-12-workers-g44.log`, review r3's toy of the
-  pool on CPython 3.14 with twelve workers, has nine starts after a result;
-  it is a toy, not the scorer.
+  pool on CPython 3.14 with twelve workers, has nine starts after a result,
+  four of which run the consume loop's start branch (the rest the opening
+  loop's); it is a toy, not the scorer. Its per-process records (float
+  clock) are `toy-pool-12-workers-g44-truth.jsonl` beside it, and the test
+  checks the rebuild against them.
+- Whole-second stamps bias the rebuild slow on the first chunks measured.
+  A completion stamped in a spawning submit's second but landing after it
+  gives that submit a token, so an idle wait reads as slice time, with no
+  note. On the toy, three slices are misdated and chunk 1 reads 6.3% slow
+  (chunk 2 5.5%, chunk 3 0.1% fast) against the per-process truth; on
+  simulated d844-shaped pools chunk 1 read more than 5% slow in 29 of 200
+  (review r4, MODEL-6). The test pins those three slices and those bands.
 - Seconds per slice, excluding workers' first slices: 42.9, 41.8, 41.8,
   43.1 and 262.7 in chunks 1 to 5. The one-process means are 41.6, 46.1,
   42.1, 44.3 and 229.0.
@@ -144,7 +155,10 @@ pool simulator (`test_support/microcosm_build/h2h_pool_sim.py`).
 - A run fits when its last slice ends at least 600 s before the budget does:
   the estimate's allowance for the comparison and scorecards, which the grid
   also gives them. The incumbent's tail took 12 s on the Mac; the
-  candidate's is not timed.
+  candidate's is not timed, though the scorer's code suggests it is short.
+  So a run whose last slice ends less than 600 s before the budget counts
+  as not fitting and is stopped, though it would very likely complete:
+  f = 2, T = 175 s (last slice at 13,941 s) gets NO-GO at 1,200 s ($3.06).
 - Output: `projection-grid.txt`; `projection-grid-chunk5-1.5.txt`, with
   chunk 5 a further 1.5 times slower than the prior says for both artifacts;
   `projection-grid-candidate-chunk5-{1.2,1.3,1.5}.txt`, with only the
@@ -171,7 +185,12 @@ Results:
 - Every run that does not fit gets a NO-GO at the first or second estimate,
   600 to 3,000 s in ($1.53 to $7.64). No run that fits gets one; here every
   chunk is the prior times one factor f, so the first estimate's chunk is
-  as far from the prior as the rest.
+  as far from the prior as the rest. The grid starts the candidate's
+  workers as fast as the incumbent's; the estimate uses the incumbent's
+  start cost until the candidate logs one, so a slower candidate start is
+  caught about a poll later (review r4: f = 1.5, incumbent starts 100 s,
+  candidate 700 s, gets GO at 2,400 and 3,000 s and NO-GO at 3,600 s,
+  $9.17).
 - With chunk 5 1.5 times slower, the fits shrink:
   - f = 1 with T up to 175 s;
   - f = 1.5 with T up to 100 s;
@@ -203,6 +222,20 @@ the other way makes the estimate early and a NO-GO late. The test
 the band: with chunk 1 at 1.1 times the prior, the first estimate is late
 by up to a tenth of the scoring after it; a run with less spare than that
 error is stopped, and one with a tenth of its run to spare is not.
+
+The same band comes back later. Once the incumbent's chunk 5 is measured,
+its departure from the prior (1.147 in the real pool) is carried onto the
+candidate. Review r4 found that 300 to 600 s late on the grid: f = 1,
+T = 300 s (231 s spare) gets NO-GO at 5,400 s ($13.75). Once the candidate
+has measured chunks of its own, its unmeasured ones scale by one ratio
+pooled over them, carrying the incumbent's departures. A candidate that
+does not share them still reads late: by about 800 s in review r4's
+scenario with the real pool's departures (the run fitted by 898 s, so
+the estimate still passed it, by 105 s). A single slice running far past its chunk's pace is taken to run
+as far past it again, which past its midpoint can be late by up to its
+remaining time. One 3,000 s straggler among 40 s slices can stop a run
+that fits; the real pool's slowest chunk-5 slice was 1.29 times its mean,
+which moves no verdict.
 
 What this rests on:
 

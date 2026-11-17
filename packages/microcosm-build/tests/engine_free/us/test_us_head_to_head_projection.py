@@ -48,10 +48,31 @@ REAL_LOG = (
 #: workers, three chunks of 24 slices, seed 44), whose whole-second ties
 #: once left the rebuild unable to explain a worker start.
 TOY_LOG = REAL_LOG.with_name("toy-pool-12-workers-g44.log")
-#: The toy's own record of each chunk's mean slice time and each worker's
-#: first task, from its per-process timestamps.
-TOY_CHUNK_SECONDS = {1: 37.4, 2: 41.82, 3: 38.6}
-TOY_FIRST_TASKS = [1, 2, 4, 8, 14, 17, 23, 30, 36, 45, 50, 61]
+#: The toy's own per-process records (float clock): its config, then each
+#: worker's init time and each task's start and end, from which the truth
+#: below is computed (review r4, MODEL-8).
+TOY_TRUTH = REAL_LOG.with_name("toy-pool-12-workers-g44-truth.jsonl")
+
+
+def _toy_truth() -> tuple[dict[int, float], list[int], dict[int, float]]:
+    """Each chunk's mean slice time over tasks that were not a worker's first,
+    each worker's first task in start order, and each task's true start."""
+
+    records = [json.loads(line) for line in TOY_TRUTH.read_text().splitlines()]
+    config = records[0]["config"]
+    tasks = {r["task"]: r for r in records if "task" in r}
+    order = sorted((r["init_v"], r["pid"]) for r in records if "init_v" in r)
+    firsts = [
+        min(t for t, r in tasks.items() if r["pid"] == pid) for _, pid in order
+    ]
+    per = config["slices"]
+    chunks: dict[int, list[float]] = {}
+    for task, record in tasks.items():
+        if task not in firsts:
+            chunk = (task - 1) // per + 1
+            chunks.setdefault(chunk, []).append(record["end_v"] - record["start_v"])
+    means = {chunk: sum(d) / len(d) for chunk, d in chunks.items()}
+    return means, firsts, {task: r["start_v"] for task, r in tasks.items()}
 SCORER = ROOT / "tools" / "score_us_release_head_to_head.py"
 START = 1_794_816_000  # 2026-11-16T08:00:00Z
 #: The estimate allows 600 s after the last slice; the simulator takes 300.
@@ -117,12 +138,16 @@ def _runs(max_workers: int) -> st.SearchStrategy:
 
 
 @settings(max_examples=150, deadline=None)
-@given(_runs(16), st.floats(0.0, 1.0))
-def test_the_rebuilt_schedule_is_the_simulated_one(params, cut) -> None:
+@given(_runs(16), st.integers(0, 10**6))
+def test_the_rebuilt_schedule_is_the_simulated_one(params, pick) -> None:
     run = _run(**params)
-    # Cut while a pool is open, so every example compares at least one.
-    opened = run.incumbent.opened
-    now = opened + cut * (run.candidate.end - opened)
+    # Cut at a record time from the incumbent's first task on, so every
+    # example compares at least one started task and one start cost; a
+    # float cut gave exactly the opening instant in about half the examples
+    # (review r4, NUMBERS-6).
+    first = min(run.incumbent.starts.values())
+    cuts = [t for t in run.times() if first <= t <= run.candidate.end]
+    now = cuts[pick % len(cuts)]
     events = projection.parse_log(run.log(now)).events
     for name, simulated in (("incumbent", run.incumbent), ("candidate", run.candidate)):
         pool = projection._pool(events, name)
@@ -145,6 +170,8 @@ def test_the_rebuilt_schedule_is_the_simulated_one(params, cut) -> None:
             if theirs is not None
         )
         assert history.start_costs == [params["start_cost"]] * started
+        if name == "incumbent":
+            assert history.started and history.start_costs
 
 
 @settings(max_examples=100, deadline=None)
@@ -225,9 +252,11 @@ def test_the_real_local_run_is_consistent_with_the_model() -> None:
         assert 35 <= timing.chunk_seconds[chunk] <= 50
     assert 180 <= timing.chunk_seconds[5] <= 320
     prior = projection._prior(WEIGHTS)
-    # A local run of the scorer: no runner, so no BUDGET line.
+    # A local run of the scorer: no runner, so no BUDGET line. Started at its
+    # first record, so no record predates it.
+    first = min(projection.parse_log(REAL_LOG.read_text().splitlines()).record_times)
     limits = _limits(
-        workers=3, started_at=end - 3600, prior=prior, budget_line_required=False
+        workers=3, started_at=first, prior=prior, budget_line_required=False
     )
     report = projection.project(
         projection.parse_log(REAL_LOG.read_text().splitlines()), limits, end
@@ -270,9 +299,12 @@ def test_on_the_real_log_the_replay_comes_within_ten_percent_early() -> None:
 
 def test_a_toy_pool_with_steady_state_starts_follows_its_own_timing() -> None:
     # Nine of the toy's twelve starts come after a result, so it exercises
-    # the steady-state start rule the real log cannot. A result finishing in
-    # the same second as a start once made the rebuild give that submit a
-    # token, and every later start went unexplained (review r3, MODEL-4).
+    # the steady-state start rule the real log cannot (four of the nine run
+    # the consume loop's start branch; the rest the opening loop's). A result
+    # finishing in the same second as a start once made the rebuild give
+    # that submit a token, and every later start went unexplained (review
+    # r3, MODEL-4).
+    truth, true_firsts, true_starts = _toy_truth()
     events = projection.parse_log(TOY_LOG.read_text().splitlines()).events
     pool = projection._pool(events, "incumbent")
     end = max(event.at for event in events)
@@ -284,12 +316,28 @@ def test_a_toy_pool_with_steady_state_starts_follows_its_own_timing() -> None:
     # own record says, never earlier.
     assert all(
         0 <= ours - theirs <= 1
-        for ours, theirs in zip(history.firsts, TOY_FIRST_TASKS, strict=True)
+        for ours, theirs in zip(history.firsts, true_firsts, strict=True)
     )
+    # Every start after the first is a spawn the parent waited out, about
+    # 40 s here; a model that put the receive line before the next submit
+    # reads some as 0 s (review r4, NUMBERS-5).
+    assert all(cost >= 30 for cost in history.start_costs), history.start_costs
+    assert all(pool.by_task[t] >= history.started[t] for t in pool.by_task)
+    # Whole-second ties misdate three slices with no note (review r4,
+    # MODEL-6): a completion stamped in a spawning submit's second but
+    # landing after it gives that submit a token. Any other misdating fails.
+    misdated = {
+        task
+        for task, at in history.started.items()
+        if abs(at - true_starts[task]) > 5
+    }
+    assert misdated == {10, 25, 37}
+    # The ties make the first chunks read slow, never fast: chunk 1 +6.3%,
+    # chunk 2 +5.5% and chunk 3 -0.1% against the per-process truth.
     timing = projection.timing(pool, history, 3)
-    assert set(timing.chunk_seconds) == set(TOY_CHUNK_SECONDS)
-    for chunk, seconds in TOY_CHUNK_SECONDS.items():
-        assert abs(timing.chunk_seconds[chunk] / seconds - 1) <= 0.10, chunk
+    assert set(timing.chunk_seconds) == set(truth)
+    for chunk, seconds in truth.items():
+        assert -0.01 <= timing.chunk_seconds[chunk] / seconds - 1 <= 0.07, chunk
 
 
 def test_the_scorer_prints_after_receiving_after_its_next_submit() -> None:
@@ -448,6 +496,123 @@ def test_the_candidates_fill_carries_the_incumbents_measured_departure() -> None
         assert abs(_estimated_end(report) - SURPLUS - run.tool_end) <= 1
 
 
+def test_the_carried_fill_scales_by_one_pooled_ratio_not_the_slowest() -> None:
+    # Review r4, ESTIMATE-1: the incumbent runs chunk 2 at half its prior
+    # and the candidate does not. The carried fill prior is then (50, 50,
+    # 150). With chunks 1 and 2 measured at 50 and 100, the slowest result
+    # scales chunk 3 to 300 s; one ratio pooled over both gives 225 s. The
+    # truth is 150 s: a departure the candidate does not share still makes
+    # the fill late, by less.
+    run = _run(
+        workers=4,
+        incumbent_seconds=[100, 100, 300],
+        candidate_seconds=[50, 100, 150],
+        incumbent_slices=12,
+        candidate_slices=40,
+        start_cost=10,
+    )
+    prior = projection.Prior(
+        candidate=(50.0, 100.0, 150.0),
+        incumbent=(100.0, 200.0, 300.0),
+        candidate_slices=40,
+    )
+    limits = _limits(prior=prior)
+    reports = [_judge(run, limits, t) for t in run.times() if t < run.candidate.end]
+    two = [
+        r
+        for r in reports
+        if r.get("estimate", {}).get("pace_from") == "candidate"
+        and set(r["estimate"]["measured_chunk_seconds"]["candidate"]) == {"1", "2"}
+        and set(r["estimate"]["measured_chunk_seconds"]["incumbent"]) == {"1", "2", "3"}
+    ]
+    assert two
+    for report in two:
+        assert report["estimate"]["chunk_seconds_used"]["3"] == 225.0
+        assert any("pooled" in n for n in report["estimator_notes"])
+    seconds, notes = projection._filled({1: 50.0, 2: 100.0}, 3, (50.0, 50.0, 150.0))
+    assert seconds[3] == 300.0 and "slowest result" in notes[0]
+
+
+def _cut_candidate_opening(run: sim.Run, at: float) -> list[str]:
+    log = run.log(at)
+    lost = [i for i, text in enumerate(log) if "before starting candidate" in text]
+    assert len(lost) == 1
+    del log[lost[0]]
+    return log
+
+
+def test_a_lost_pool_opening_line_is_a_log_gap() -> None:
+    # Review r4, ESTIMATE-3 = WATCHER-2: without the candidate's opening line
+    # its pool cannot be rebuilt, and the estimate used to replay the whole
+    # pool from now, climbing a poll's worth at every poll into a false NO-GO.
+    run = _run(
+        workers=4,
+        incumbent_seconds=[100],
+        candidate_seconds=[100],
+        incumbent_slices=8,
+        candidate_slices=40,
+        start_cost=10,
+    )
+    limits = _limits(prior=_prior(run))
+    at = run.candidate.end - 1
+    assert _judge(run, limits, at)["verdict"] == "GO"
+    report = projection.project(
+        projection.parse_log(_cut_candidate_opening(run, at)), limits, at
+    )
+    assert report["verdict"] == "WAIT" and "estimate" not in report
+    assert report["log_gap"] == {"candidate": "no opening line"}
+    assert any("opening line" in reason for reason in report["reasons"])
+    # Before the candidate prints anything there is nothing to lose.
+    before = run.candidate.opened - 1
+    assert "log_gap" not in _judge(run, limits, before)
+
+
+def test_records_from_before_started_at_mean_an_earlier_attempt() -> None:
+    # Review r4, WATCHER-4: a relaunch into the same run folder overwrites
+    # started-at, and the earlier attempt's streams were read as this one's.
+    run = _run(
+        workers=4,
+        incumbent_seconds=[100],
+        candidate_seconds=[100],
+        incumbent_slices=8,
+        candidate_slices=40,
+        start_cost=10,
+    )
+    end = run.candidate.end + 1
+    later = _limits(prior=_prior(run), started_at=run.candidate.opened)
+    report = projection.project(projection.parse_log(run.log(end)), later, end)
+    # Even an attempt whose candidate scored every slice is not taken as GO.
+    assert report["verdict"] == "WAIT"
+    assert report["records_before_start"] > 0
+    assert "earlier attempt" in report["reasons"][0]
+    own = _judge(run, _limits(prior=_prior(run)), end)
+    assert own["verdict"] == "GO" and "records_before_start" not in own
+
+
+def test_a_restarted_stream_that_does_not_replay_leaves_a_hole() -> None:
+    run = _run(
+        workers=4,
+        incumbent_seconds=[100],
+        candidate_seconds=[100],
+        incumbent_slices=8,
+        candidate_slices=40,
+        start_cost=10,
+    )
+    limits = _limits(prior=_prior(run))
+    at = run.candidate.end - 1
+    log = run.log(at)
+    records = [i for i, text in enumerate(log) if text.startswith("[h2h ")]
+    split = records[len(records) // 2]
+    first, second = log[:split], log[split + 5 :]
+    report = projection.project(projection.parse_logs([first, second]), limits, at)
+    holes = report["stream_holes"]
+    assert len(holes) == 1 and holes[0]["from_utc"] < holes[0]["to_utc"]
+    # A restart that replays what the app printed covers the hole.
+    replayed = projection.project(projection.parse_logs([first, log]), limits, at)
+    assert "stream_holes" not in replayed
+    assert replayed["verdict"] == _judge(run, limits, at)["verdict"]
+
+
 def test_a_prior_off_on_one_chunk_moves_the_first_estimate_by_its_share() -> None:
     # Both artifacts run chunk 1 at 1.1 times the prior and the rest as the
     # prior says. The first estimate sees only the incumbent's chunk 1 and
@@ -502,8 +667,10 @@ def test_a_prior_off_on_one_chunk_moves_the_first_estimate_by_its_share() -> Non
 def test_the_properties_reach_an_estimate_in_most_uniform_runs() -> None:
     # The properties above check the estimate only at polls that give one,
     # so a run that never gives one checks nothing. Draws uniform over the
-    # same ranges (seed 1) pin how many runs reach an estimate before the
-    # candidate's last slice, and how many while the incumbent scores.
+    # same ranges (seed 1) show how many runs reach an estimate before the
+    # candidate's last slice, and how many while the incumbent scores. This
+    # measures uniform draws, not Hypothesis's own, which favour edge values:
+    # it does not pin the properties' reach (review r4, NUMBERS-7).
     rng = random.Random(1)
     draws = 100
     reached = early = 0
