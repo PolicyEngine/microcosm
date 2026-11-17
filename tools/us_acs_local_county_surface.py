@@ -2367,6 +2367,45 @@ def apply_recorded_support(frame, identity, checkpoint_dir):
     return with_household_table(frame, households)
 
 
+def zero_measure_soi_rows(specs, households, empty, *, county_column=COUNTY_COLUMN):
+    """The empty county SOI rows whose county cell has households.
+
+    The state SOI rows store no zero, so a county whose households all have a
+    zero measure (every household's AGI exactly 0, say) gets an empty row
+    although it has households. Each record names the row, its county cell,
+    concept and target, and the cell's household count.
+    """
+    codes = county_codes(households, county_column=county_column)
+    counts = defaultdict(int)
+    for code in codes.tolist():
+        counts[int(code)] += 1
+    empty = set(empty)
+    rows = []
+    for spec in specs:
+        if spec.name not in empty:
+            continue
+        members = cell_members(spec.metadata)
+        in_cell = sum(counts.get(member, 0) for member in members)
+        if in_cell == 0:
+            continue
+        rows.append(
+            {
+                "target": spec.name,
+                "county_fips": str(spec.metadata["county_fips"]),
+                "cell_members": [f"{member:05d}" for member in members],
+                "concept": spec.metadata.get("source_measure_id"),
+                "parent": spec.metadata.get("state_county_parent_target_name"),
+                "target_value": float(spec.value),
+                "households": int(in_cell),
+                "reason": (
+                    "every household in the county cell has a zero measure, "
+                    "and the state row stores no zero"
+                ),
+            }
+        )
+    return rows
+
+
 def require_support(dropped, *, capped_smoke=False):
     if dropped and not capped_smoke:
         raise SystemExit(
@@ -2401,6 +2440,19 @@ def add_arguments(parser):
             "ladder population is positive but which has no household "
             f"(default {DEFAULT_COUNTY_MIN_SUPPORT}; 0 disables the step). "
             "Every move is recorded in county_support.json."
+        ),
+    )
+    parser.add_argument(
+        "--county-drop-empty-soi-rows",
+        action="store_true",
+        help=(
+            "Drop, with a receipt in county_surface.json and the run identity, "
+            "a county IRS SOI row that is empty although the county has "
+            "households: every household's measure is 0 (for example AGI), "
+            "and the state row stores no zero. Without the flag such a row "
+            "refuses the run after the engine pass. A county with no household "
+            "is refused either way. Off by default; passing it is a reviewed "
+            "decision (microcosm#922)."
         ),
     )
 
@@ -2700,18 +2752,24 @@ def attach_surface(surface, materialized, frame, populations, args):
         for index, spec in enumerate(specs)
         if spec.value != 0 and rows.indptr[index] == rows.indptr[index + 1]
     ]
-    (args.checkpoint_dir / SURFACE_FILENAME).write_text(
-        json.dumps(
-            {
-                **county.receipt,
-                "acs_households": acs.receipt,
-                "unsupported_targets": empty,
-            },
-            indent=2,
+    receipt = {
+        **county.receipt,
+        "acs_households": acs.receipt,
+        "unsupported_targets": empty,
+    }
+    refused = empty
+    if getattr(args, "county_drop_empty_soi_rows", False):
+        # Only SOI rows of counties that have households; an ACS households
+        # row or a county without households is still refused.
+        dropped = zero_measure_soi_rows(
+            county.specs, households, empty, county_column=column
         )
-    )
+        receipt["zero_measure_soi_rows_dropped"] = dropped
+        names = {row["target"] for row in dropped}
+        refused = [name for name in empty if name not in names]
+    (args.checkpoint_dir / SURFACE_FILENAME).write_text(json.dumps(receipt, indent=2))
     require_support(
-        empty,
+        refused,
         capped_smoke=bool(args.allow_partial_geography and args.sample_fraction < 1),
     )
     county_specs = [*county.specs, *acs.specs]
@@ -2769,6 +2827,9 @@ def run_metadata(args, county_holdout):
         "county_holdout": county_holdout,
         "county_targets_dropped": getattr(args, "county_targets_dropped", []),
     }
+    # Recorded only when set, so every other run identity keeps its bytes.
+    if getattr(args, "county_drop_empty_soi_rows", False):
+        metadata["county_drop_empty_soi_rows"] = True
     # Only a run that read county facts (or ran the county support step)
     # records them, so a no-county run identity keeps its pre-county bytes.
     for key, attribute in (
@@ -3027,6 +3088,8 @@ def refresh_recipe(command, materialize_rss):
     # or the run predates it), so its replay must turn the step off too.
     support = materialize_rss.get("county_support") or {}
     command += f" --county-min-support {int(support.get('households_per_county', 0))}"
+    if materialize_rss.get("county_drop_empty_soi_rows"):
+        command += " --county-drop-empty-soi-rows"
     return command
 
 
