@@ -228,7 +228,8 @@ SPI_SPINE_EMPLOYMENT_PAY_FLOOR: Mapping[str, object] = {
         "check gives the weighted shares of the drawn employees below the "
         "minimum wage for their age before and after the floor, beside the FRS "
         "employees' share, each withheld beside a side on one or two, and the "
-        "eligible rows still below their floor (banded, zero exact)"
+        "source households of the eligible rows still below their floor, over "
+        "every clone (banded, zero exact)"
     ),
 }
 
