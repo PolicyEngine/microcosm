@@ -124,7 +124,7 @@ from microcosm.build.uk_runtime.atomic_area_support import (
 )
 from microcosm.build.uk_runtime.calibration_run import load_bound_spine_checkpoint
 from microcosm.build.uk_runtime.country_adapter import uk_atomic_support_register
-from microcosm.build.uk_runtime.frs_spine import (
+from microcosm.build.uk_runtime.frs_area_draw_columns import (
     FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
     FRS_IMD_DECILE_COLUMN,
 )

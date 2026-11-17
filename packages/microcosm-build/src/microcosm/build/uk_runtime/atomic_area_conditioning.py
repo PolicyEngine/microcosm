@@ -79,7 +79,7 @@ from microcosm.build.uk_runtime.atomic_area_support import (
     uk_conditioned_support_base,
 )
 from microcosm.build.uk_runtime.council_tax_constants import UK_COUNCIL_TAX_BANDS
-from microcosm.build.uk_runtime.frs_spine import (
+from microcosm.build.uk_runtime.frs_area_draw_columns import (
     FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
     FRS_IMD_DECILE_COLUMN,
     FRS_IMD_DECILE_UNOBSERVED,

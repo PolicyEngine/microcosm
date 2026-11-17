@@ -2562,6 +2562,7 @@ UK_GATE_REGISTRY_MODULES: tuple[str, ...] = (
     "microcosm.build.uk_runtime.energy_pricing",
     "microcosm.build.uk_runtime.etb_services",
     "microcosm.build.uk_runtime.frs_annual_income",
+    "microcosm.build.uk_runtime.frs_area_draw_columns",
     "microcosm.build.uk_runtime.frs_take_up",
     "microcosm.build.uk_runtime.gambling_participation",
     "microcosm.build.uk_runtime.geography_ladder",

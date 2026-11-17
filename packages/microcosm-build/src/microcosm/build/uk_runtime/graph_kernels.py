@@ -101,6 +101,7 @@ from . import (
     energy_pricing,
     etb_vat,
     frs_annual_income,
+    frs_area_draw_columns,
     frs_brma,
     frs_council_tax,
     frs_disability,
@@ -401,23 +402,20 @@ _STAGE_HELPER_MODULES = {
     # fallback-level chooser on the conditioned supports, through
     # atomic_area_conditioning's definition and draw inputs, which read the
     # support profile, the band order, the FRS region map and the root's
-    # decile and band flag (frs_spine's names and unobserved code); the operator
+    # decile and band flag (frs_area_draw_columns' names and unobserved code); the operator
     # encodes its definition canonically and keys its draws through
     # microcosm.graph's uniforms. The fuel-relief flag decodes the same
     # supports for its roster and reads the RFDR layer; the local authority
     # reads the names roster (microcosm#931). Their module, spine_geography,
     # imports the BRMA stages' Northern Ireland draw, which draws through the
-    # keyed-draw helpers, so every stage it holds binds them. frs_spine
-    # imports the copy-id table and the keyed-draw helpers, so every stage
-    # that binds it binds them too.
+    # keyed-draw helpers, so every stage it holds binds them.
     "atomic_area_assign": (
         atomic_geography,
         atomic_support_conditioning,
         atomic_area_conditioning,
         atomic_area_support,
-        copy_id_table,
         council_tax_constants,
-        frs_spine,
+        frs_area_draw_columns,
         rowwise_geography,
         geography_first_roster,
         graph_canonical,
@@ -443,7 +441,7 @@ _STAGE_HELPER_MODULES = {
     ),
     # The SPI copies' areas re-key each copy as the geography identity does,
     # draw its area with the area draw's definition and inputs (which read
-    # the root's decile and band flag through frs_spine's names), and re-run
+    # the root's decile and band flag through frs_area_draw_columns' names), and re-run
     # the local authority, the BRMA (Northern Ireland's on the copies' own
     # benefit units after one engine call) and the fuel-relief flag
     # (microcosm#931).
@@ -455,11 +453,10 @@ _STAGE_HELPER_MODULES = {
         atomic_area_support,
         atomic_household_identity,
         brma_area_layer,
-        copy_id_table,
         council_tax_constants,
         frs_brma,
         frs_release,
-        frs_spine,
+        frs_area_draw_columns,
         geographic_identity,
         local_authority_input,
         geography_sources,
@@ -483,10 +480,9 @@ _STAGE_HELPER_MODULES = {
     # the area draw does, through atomic_area_conditioning's definition, draw
     # inputs and levels on the decoded supports, which read the support
     # profile, the band order, the FRS region map and the root's decile and
-    # band flag (frs_spine); the definition is encoded canonically and names
+    # band flag (frs_area_draw_columns); the definition is encoded canonically and names
     # microcosm.graph's stream, and the stage reruns the shared operator's
-    # draw on it to hold each drawn area to its recomputed cell; frs_spine
-    # brings the copy-id table and the keyed-draw helpers it imports. It
+    # draw on it to hold each drawn area to its recomputed cell. It
     # takes each cell's expected Band D through the shared draw-cell
     # expectation, reads the Band D and prices the statute through
     # council_tax_band_d,
@@ -502,11 +498,10 @@ _STAGE_HELPER_MODULES = {
         atomic_area_conditioning,
         atomic_area_support,
         bounded_amounts,
-        copy_id_table,
         council_tax_band_d,
         council_tax_constants,
         frs_council_tax,
-        frs_spine,
+        frs_area_draw_columns,
         local_authority_input,
         rowwise_geography,
         geography_constants,
@@ -514,7 +509,6 @@ _STAGE_HELPER_MODULES = {
         geography_first_roster,
         graph_canonical,
         graph_randomness,
-        stochastic_assignment,
     ),
     # The SPI income stage's imputation, band-donor resample and receipt live
     # in spi_income, so an edit there moves the stage's hash (microcosm#1278),
@@ -569,7 +563,9 @@ _STAGE_HELPER_MODULES = {
     # trace's digest, ages people by birth month, caps pension contributions
     # with their receipt, and codes council tax bands in the shared band order
     # (microcosm#931). It writes the annuity and trust descriptor under the
-    # name annuity_trust_column holds (microcosm#931, ruled 9 Nov (late)). It
+    # name annuity_trust_column holds (microcosm#931, ruled 9 Nov (late)), and
+    # the area draw's decile and band flag under the names
+    # frs_area_draw_columns holds (microcosm#931). It
     # reads each household's nation, for its IMD decile and its band flag,
     # from the region tier through council_tax_constants (microcosm#931). The
     # LCWRA proxy reads the reported disability benefits frs_disability lists
@@ -577,6 +573,7 @@ _STAGE_HELPER_MODULES = {
     "frs_spine": (
         uc_relationships,
         annuity_trust_column,
+        frs_area_draw_columns,
         copy_id_table,
         birth_month,
         council_tax_constants,

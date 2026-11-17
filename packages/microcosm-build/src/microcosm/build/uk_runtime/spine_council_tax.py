@@ -149,6 +149,10 @@ from microcosm.build.uk_runtime.council_tax_band_d import (
     uk_statutory_council_tax,
 )
 from microcosm.build.uk_runtime.council_tax_constants import UK_NATION_BY_REGION
+from microcosm.build.uk_runtime.frs_area_draw_columns import (
+    FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
+    FRS_IMD_DECILE_COLUMN,
+)
 from microcosm.build.uk_runtime.frs_council_tax import (
     FRS_COUNCIL_TAX_BILL_MISSING,
     FRS_COUNCIL_TAX_BILL_NOT_LEVIED,
@@ -156,10 +160,6 @@ from microcosm.build.uk_runtime.frs_council_tax import (
     FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN,
     FRS_COUNCIL_TAX_BILL_PROVENANCE_VALUES,
     FRS_COUNCIL_TAX_BILL_UNKNOWN_REDUCTION,
-)
-from microcosm.build.uk_runtime.frs_spine import (
-    FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
-    FRS_IMD_DECILE_COLUMN,
 )
 from microcosm.build.uk_runtime.geographic_clones import (
     geographic_clone_count,
