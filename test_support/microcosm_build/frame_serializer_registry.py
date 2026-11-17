@@ -399,6 +399,27 @@ def _round_trip_spm_role_projection(
     return _semantic_observation(source, before, loaded)
 
 
+def _round_trip_us_acs_donor_column_patch(
+    tmp_path: Path, nullable_case: str
+) -> BooleanRoundTrip:
+    pytest.importorskip("tables")
+    tool = _load_tool(
+        "tools/patch_us_acs_donor_columns.py",
+        "registry_us_acs_donor_column_patch",
+    )
+    source = _dtype_family_table(nullable_case)
+    before = source.copy(deep=True)
+    path = tmp_path / "donor-column-patch.h5"
+    tool._rewrite_entity_tables(
+        path,
+        {"person": source},
+        {"person": tool._StoredLayout("fixed", None, ())},
+    )
+    with pd.HDFStore(path, mode="r") as store:
+        loaded = read_frame_table(store, "person")
+    return _semantic_observation(source, before, loaded)
+
+
 ROUND_TRIP_ADAPTERS: dict[str, RoundTripAdapter] = {
     "frame_checkpoint": _round_trip_frame_checkpoint,
     "nullable_us_h5": _round_trip_nullable_us_h5,
@@ -410,6 +431,7 @@ ROUND_TRIP_ADAPTERS: dict[str, RoundTripAdapter] = {
     "acs_local_lean_checkpoint": _round_trip_acs_lean,
     "fiscal_target_frame_checkpoint": _round_trip_fiscal_checkpoint,
     "spm_role_derivation_projection": _round_trip_spm_role_projection,
+    "us_acs_donor_column_patch": _round_trip_us_acs_donor_column_patch,
 }
 
 ENGINE_REQUIRED_SERIALIZER_IDS = frozenset(

@@ -170,6 +170,20 @@ FRAME_TABLE_SERIALIZERS = (
         version_owner="derive_spm_role_source parent person/spm_unit contract",
         nullable_boolean_storage="numpy_bool_or_object_pd_na_v1",
     ),
+    FrameSerializerSpec(
+        serializer_id="us_acs_donor_column_patch",
+        writer=HdfWriteSite(
+            "tools/patch_us_acs_donor_columns.py",
+            "_rewrite_entity_tables",
+        ),
+        backend="pandas.HDFStore in the input table's own format",
+        routes=(
+            "County Files proof-of-concept donor copy for the ACS staging "
+            "(microcosm#922): entity tables that gain reviewed columns",
+        ),
+        version_owner="RECEIPT_VERSION in tools/patch_us_acs_donor_columns.py",
+        nullable_boolean_storage="numpy_bool_or_object_pd_na_v1",
+    ),
 )
 
 
