@@ -372,8 +372,10 @@ def test_main_runs_the_gate_in_the_batch_and_checks_the_written_h5(builder):
     ``_main``'s own body, under no ``if``, loop or ``try``), before the
     batched raise's ``if terminal_gate_failures:`` block. The H5 write comes
     after that block; the post-write check and its unconditional
-    ``raise RuntimeError`` come right after the write and before the
-    post-export scorer opens. The behaviour of both aborts is pinned through
+    ``raise RuntimeError`` come right after the write and before the build
+    record, the only way into certification, where the post-export scorer
+    opens (microcosm#1585 item 11, PR 4a). The behaviour of both aborts is
+    pinned through
     ``_main`` itself by the ``stored_input_*`` modes of
     ``test_main_writes_diagnostics_before_post_calibration_gate_failure``."""
 
@@ -464,9 +466,16 @@ def test_main_runs_the_gate_in_the_batch_and_checks_the_written_h5(builder):
     assert len(body[abort].body) == 1 and not body[abort].orelse
     assert ast.unparse(body[abort].body[0]) == (f"raise RuntimeError({premise_name})")
     scorer = position(
-        lambda node: assigned_from(node, "_open_post_export_scorer"),
-        "post-export scorer",
+        lambda node: assigned_from(node, "_write_us_build_record"),
+        "build record",
     )
+    assert not any(calls(node, "_open_post_export_scorer") for node in body)
+    certify = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_certify_us_build"
+    )
+    assert calls(certify, "_open_post_export_scorer")
 
     assert gate < joined < batched < write < premise < abort < scorer
     assert premise == write + 1 and abort == premise + 1

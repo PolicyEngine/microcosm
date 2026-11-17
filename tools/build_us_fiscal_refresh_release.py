@@ -57,7 +57,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
-from types import MethodType
+from types import MethodType, SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -449,6 +449,7 @@ from microcosm.data.us_critical_targets import (
 )
 from microcosm.diagnostics import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    DiagnosticsWriteFailure,
     DiagnosticsWriteOutcome,
     DiagnosticsWriteSuccess,
 )
@@ -11067,6 +11068,7 @@ def _build_manifests(
     diagnostics_outcome: DiagnosticsWriteOutcome | None = None,
     scf_wealth_signal: Mapping[str, object] | None = None,
     scf_education_debt: bool = False,
+    release_gate_failures: Sequence[str] | None = None,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
     calibration_path = artifact_root / calibration_filename
@@ -11147,24 +11149,31 @@ def _build_manifests(
             coverage_path, coverage_sha
         ),
     }
-    gate_failures = _release_gate_failures(
-        result,
-        dropped,
-        target_profile_gate,
-        health_input_gate,
-        base_population_gate,
-        incumbent_diagnostics,
-        immigration_gate,
-        input_mass_reference_gate,
-        degenerate_input_gate,
-        ecps_parity_gate=ecps_parity_gate,
-        hours_worked_gate=hours_worked_gate,
-        snap_take_up_gate=snap_take_up_gate,
-        eligibility_inputs_gate=eligibility_inputs_gate,
-        pregnancy_gate=pregnancy_gate,
-        reported_coverage_vintage_gate=reported_coverage_vintage_gate,
-        snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
-        target_registry=registry,
+    # A build record carries the summary its build computed: the
+    # calibration result and the registry it reads stay in the build's
+    # process (microcosm#1585 item 11, PR 4a).
+    gate_failures = (
+        list(release_gate_failures)
+        if release_gate_failures is not None
+        else _release_gate_failures(
+            result,
+            dropped,
+            target_profile_gate,
+            health_input_gate,
+            base_population_gate,
+            incumbent_diagnostics,
+            immigration_gate,
+            input_mass_reference_gate,
+            degenerate_input_gate,
+            ecps_parity_gate=ecps_parity_gate,
+            hours_worked_gate=hours_worked_gate,
+            snap_take_up_gate=snap_take_up_gate,
+            eligibility_inputs_gate=eligibility_inputs_gate,
+            pregnancy_gate=pregnancy_gate,
+            reported_coverage_vintage_gate=reported_coverage_vintage_gate,
+            snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
+            target_registry=registry,
+        )
     )
 
     commit = _git_output("rev-parse", "HEAD")
@@ -13149,6 +13158,892 @@ def _is_release_refusal(error: BaseException) -> bool:
     if isinstance(error, SystemExit):
         return not isinstance(error.code, int) and error.code is not None
     return isinstance(error, Exception)
+
+
+#: The build record a build leaves beside ``artifacts/`` and ``releases/``
+#: (microcosm#1585 item 11, PR 4a). The build ends once its H5, calibration
+#: weights, diagnostics and gate evidence are written; certification is a
+#: separate step (``tools/certify_us_national_build.py``) that runs the
+#: release's post-export checks from this record and writes the manifests the
+#: publisher requires.
+US_BUILD_RECORD_FILENAME = "build_record.json"
+US_BUILD_RECORD_KIND = "microcosm_us_national_build_record"
+US_BUILD_RECORD_SCHEMA_VERSION = 1
+#: The options of the build that its post-export checks read. Certification
+#: takes them from the record, never from its own command line, so a build is
+#: certified exactly as it was configured.
+US_BUILD_RECORD_SETTINGS = (
+    "allow_reform_coverage_smoke_failures",
+    "evidence_release",
+    "maximum_microsim_batch_size",
+    "scf_education_debt",
+    "skip_demographics",
+    "skip_out_of_sample_reforms",
+    "skip_reform_coverage_smoke",
+    "skip_reform_validation",
+)
+#: The build's gate verdicts its manifests carry, under the keyword
+#: :func:`_build_manifests` takes each by.
+US_BUILD_RECORD_GATES = (
+    "target_profile_gate",
+    "ssi_take_up_delivery_gate_result",
+    "health_input_gate",
+    "base_population_gate",
+    "immigration_gate",
+    "degenerate_input_gate",
+    "ecps_parity_gate",
+    "hours_worked_gate",
+    "snap_take_up_gate",
+    "eligibility_inputs_gate",
+    "pregnancy_gate",
+    "reported_coverage_vintage_gate",
+    "snap_discretionary_exemption_gate",
+)
+
+
+def _build_record_gate(gate: GateResult | None) -> dict[str, object] | None:
+    if gate is None:
+        return None
+    return {
+        "name": gate.name,
+        "passed": bool(gate.passed),
+        "failures": list(gate.failures),
+        "details": dict(gate.details),
+    }
+
+
+def _gate_from_build_record(record: Mapping[str, Any] | None) -> GateResult | None:
+    if record is None:
+        return None
+    return GateResult(
+        name=str(record["name"]),
+        passed=bool(record["passed"]),
+        failures=tuple(str(line) for line in record["failures"]),
+        details=dict(record["details"]),
+    )
+
+
+def _build_record_loss(value: float) -> float | str:
+    """A calibration loss in strict JSON: non-finite losses as their names."""
+    value = float(value)
+    return value if math.isfinite(value) else repr(value)
+
+
+def _build_record_finite(value: object) -> float | None:
+    if value is None:
+        return None
+    value = float(value)
+    return value if math.isfinite(value) else None
+
+
+def _canonical_json(payload: object) -> str:
+    return json.dumps(payload, sort_keys=True, allow_nan=False)
+
+
+class _RecordedCalibrationResult:
+    """The calibration result as certification reads it, from the record.
+
+    The post-export consumers read each target's name, final estimate and
+    target value (reform validation's in-sample rows); the manifests read
+    the three losses, since the release's gate summary is computed when the
+    build ends and recorded (``release_gate_failures``). (A plain class:
+    this tool is loaded by file path in the tests, outside ``sys.modules``,
+    where ``dataclasses`` cannot resolve the module's string annotations.)
+    """
+
+    def __init__(
+        self,
+        *,
+        initial_loss: float | str,
+        final_loss: float | str,
+        fraction_within_10pct: float | str,
+        in_sample_fit: Sequence[Sequence[object]],
+    ) -> None:
+        self.initial_loss = float(initial_loss)
+        self.final_loss = float(final_loss)
+        self.fraction_within_10pct = float(fraction_within_10pct)
+        self.diagnostics = [
+            SimpleNamespace(final_estimate=estimate, target=target)
+            for _, estimate, target in in_sample_fit
+        ]
+        self.problem = SimpleNamespace(
+            targets=[SimpleNamespace(name=str(name)) for name, _, _ in in_sample_fit]
+        )
+
+
+class _RecordedTargetRegistry:
+    """The target registry as :func:`_build_manifests` reads it: version, size."""
+
+    def __init__(self, *, version: object, n_specs: int) -> None:
+        self.version = version
+        self.n_specs = int(n_specs)
+
+    def __len__(self) -> int:
+        return self.n_specs
+
+
+def _us_build_record(
+    *,
+    release_id: str,
+    release_root: Path,
+    release_dir: Path,
+    artifact_root: Path,
+    dataset_key: str,
+    dataset_filename: str,
+    calibration_key: str,
+    calibration_filename: str,
+    commit: str,
+    args: argparse.Namespace,
+    evidence_failure_owner_patterns: Sequence[tuple[str, str]],
+    terminal_gate_failures: Sequence[str],
+    n_households: int,
+    result,
+    post_export_scoring_plan: _PostExportScoringPlan,
+    release_gate_failures: Sequence[str],
+    registry: TargetRegistry,
+    target_surface: Mapping[str, object],
+    dropped: Mapping[str, object],
+    gates: Mapping[str, GateResult | None],
+    warm_start_calibration: Mapping[str, object] | None,
+    selection_source: Mapping[str, object] | None,
+    target_surface_selection: Mapping[str, object] | None,
+    ledger_artifact: Mapping[str, object] | None,
+    default_dataset: Mapping[str, object] | None,
+    medicaid_enrollment_substitutions: Sequence[Mapping[str, object]],
+    exact_k_ladder: Mapping[str, object] | None,
+    base_pool: Mapping[str, object] | None,
+    acs_predictor_join: Mapping[str, object] | None,
+    export_input_mass_reference: Mapping[str, object] | None,
+    calibration_runtime: Mapping[str, object] | None,
+    diagnostics_outcome: DiagnosticsWriteOutcome,
+    scf_wealth_signal: Mapping[str, object] | None,
+    fiscal_target_sources: object,
+    congressional_district_vintage_crosswalk: Mapping[str, object] | None,
+    fiscal_target_exclusion_receipt: object,
+    fsa_target_receipt: object,
+    take_up_participation: Mapping[str, object],
+    medicaid_take_up_diagnostics: Mapping[str, object],
+    snap_state_take_up_diagnostics: Mapping[str, object],
+    timing: Mapping[str, object],
+    staging: Mapping[str, object],
+) -> dict[str, object]:
+    """What certification needs of a finished build, as strict JSON.
+
+    Everything certification reads that is not a file of the build: its
+    options, gate verdicts, calibration summary, scoring plan and the
+    receipts that ride the manifests. The files themselves (the H5, the
+    calibration weights, the diagnostics) are pinned by digest.
+    """
+
+    if set(gates) != set(US_BUILD_RECORD_GATES):
+        raise ValueError(
+            "The build record carries exactly the gates its manifests write: "
+            f"expected {sorted(US_BUILD_RECORD_GATES)}, got {sorted(gates)}."
+        )
+
+    def relative(path: Path) -> str:
+        return path.relative_to(release_root).as_posix()
+
+    files = {
+        "dataset": artifact_root / dataset_filename,
+        "calibration_weights": artifact_root / calibration_filename,
+    }
+    if diagnostics_outcome.status == "available":
+        files["calibration_diagnostics"] = release_dir / "calibration_diagnostics.json"
+        diagnostics = {
+            "status": "available",
+            "schema_version": diagnostics_outcome.schema_version,
+            "sha256": diagnostics_outcome.sha256,
+        }
+    else:
+        diagnostics = {
+            "status": "failed",
+            "expected_schema_version": diagnostics_outcome.expected_schema_version,
+            "error_code": diagnostics_outcome.error_code,
+            "message": diagnostics_outcome.message,
+        }
+    return {
+        "schema_version": US_BUILD_RECORD_SCHEMA_VERSION,
+        "kind": US_BUILD_RECORD_KIND,
+        "release": release_dir.name,
+        "build": release_id,
+        "code": {"repository": "PolicyEngine/microcosm", "git_commit": commit},
+        "layout": {
+            "release_dir": relative(release_dir),
+            "artifact_root": relative(artifact_root),
+            "dataset_key": dataset_key,
+            "dataset_filename": dataset_filename,
+            "calibration_key": calibration_key,
+            "calibration_filename": calibration_filename,
+        },
+        "files": {
+            role: {"path": relative(path), "sha256": _sha256(path)}
+            for role, path in files.items()
+        },
+        "settings": {name: getattr(args, name) for name in US_BUILD_RECORD_SETTINGS},
+        "evidence_failure_owner_patterns": [
+            [pattern, owner] for pattern, owner in evidence_failure_owner_patterns
+        ],
+        "terminal_gate_failures": list(terminal_gate_failures),
+        "n_households": int(n_households),
+        # The calibration fit as the reform-validation consumer reads it: each
+        # target's name, final estimate and target value, in solve order.
+        "in_sample_fit": [
+            [
+                str(target.name),
+                _build_record_finite(diagnostic.final_estimate),
+                _build_record_finite(diagnostic.target),
+            ]
+            for diagnostic, target in zip(
+                result.diagnostics, result.problem.targets, strict=True
+            )
+        ],
+        "post_export_scoring_plan": post_export_scoring_plan.record(),
+        "manifest": {
+            "result": {
+                "initial_loss": _build_record_loss(result.initial_loss),
+                "final_loss": _build_record_loss(result.final_loss),
+                "fraction_within_10pct": _build_record_loss(
+                    result.fraction_within_10pct
+                ),
+            },
+            "registry": {"version": registry.version, "n_specs": len(registry)},
+            "release_gate_failures": list(release_gate_failures),
+            "target_surface": dict(target_surface),
+            "dropped": dict(dropped),
+            "gates": {
+                name: _build_record_gate(gates[name]) for name in US_BUILD_RECORD_GATES
+            },
+            "warm_start_calibration": warm_start_calibration,
+            "selection_source": selection_source,
+            "target_surface_selection": target_surface_selection,
+            "ledger_artifact": ledger_artifact,
+            "default_dataset": default_dataset,
+            "medicaid_enrollment_substitutions": [
+                dict(record) for record in medicaid_enrollment_substitutions
+            ],
+            "exact_k_ladder": exact_k_ladder,
+            "base_pool": base_pool,
+            "acs_predictor_join": acs_predictor_join,
+            "export_input_mass_reference": export_input_mass_reference,
+            "calibration_runtime": calibration_runtime,
+            "diagnostics_outcome": diagnostics,
+            "scf_wealth_signal": scf_wealth_signal,
+        },
+        "source_coverage": {
+            "fiscal_target_sources": fiscal_target_sources,
+            "congressional_district_vintage_crosswalk": (
+                congressional_district_vintage_crosswalk
+            ),
+            "fiscal_target_exclusion_receipt": fiscal_target_exclusion_receipt,
+            "fsa_student_loan_target_receipt": fsa_target_receipt,
+        },
+        "take_up": {
+            "participation": take_up_participation,
+            "medicaid": medicaid_take_up_diagnostics,
+            "snap_state": snap_state_take_up_diagnostics,
+        },
+        "timing": dict(timing),
+        "staging": dict(staging),
+    }
+
+
+def _write_us_build_record(release_root: Path, record: Mapping[str, object]) -> Path:
+    """Write the build record atomically; certification refuses a torn one."""
+
+    path = release_root / US_BUILD_RECORD_FILENAME
+    text = json.dumps(record, indent=1, allow_nan=False) + "\n"
+    staged = path.with_name(f".{path.name}.tmp")
+    staged.write_text(text, encoding="utf-8")
+    staged.replace(path)
+    return path
+
+
+class _USBuildRecord:
+    """A finished build, read back from its :data:`US_BUILD_RECORD_FILENAME`.
+
+    Paths are relative to the record's directory, so a build folder moved to
+    another machine certifies in place. (A plain class, for the reason
+    :class:`_RecordedCalibrationResult` gives.)
+    """
+
+    def __init__(self, payload: Mapping[str, Any], *, release_root: Path) -> None:
+        layout = payload["layout"]
+        self.payload = payload
+        self.release_root = release_root
+        self.build = str(payload["build"])
+        self.release = str(payload["release"])
+        self.commit = str(payload["code"]["git_commit"])
+        self.release_dir = release_root / layout["release_dir"]
+        self.artifact_root = release_root / layout["artifact_root"]
+        self.dataset_key = str(layout["dataset_key"])
+        self.dataset_filename = str(layout["dataset_filename"])
+        self.calibration_key = str(layout["calibration_key"])
+        self.calibration_filename = str(layout["calibration_filename"])
+        self.settings = dict(payload["settings"])
+        self.evidence_failure_owner_patterns = tuple(
+            (str(pattern), str(owner))
+            for pattern, owner in payload["evidence_failure_owner_patterns"]
+        )
+        self.terminal_gate_failures = tuple(
+            str(line) for line in payload["terminal_gate_failures"]
+        )
+        self.n_households = int(payload["n_households"])
+        self.timing = dict(payload["timing"])
+        self.staging = dict(payload["staging"])
+        self.manifest_inputs = dict(payload["manifest"])
+        self.source_coverage = dict(payload["source_coverage"])
+        self.take_up = dict(payload["take_up"])
+
+    def certify_args(self) -> argparse.Namespace:
+        """The build's options its post-export checks read."""
+        return argparse.Namespace(**self.settings)
+
+    def post_export_scoring_plan(
+        self, args: argparse.Namespace, *, result
+    ) -> _PostExportScoringPlan:
+        """The build's scoring plan, rebuilt and held to the one it recorded."""
+        plan = _record_post_export_scoring_plan(
+            args, n_households=self.n_households, result=result, release_id=self.build
+        )
+        recorded = self.payload["post_export_scoring_plan"]
+        if _canonical_json(plan.record()) != _canonical_json(recorded):
+            raise RuntimeError(
+                f"Build {self.build}: the post-export scoring plan rebuilt for "
+                "certification differs from the one the build recorded in "
+                f"{US_BUILD_RECORD_FILENAME}; certify the build with the code "
+                f"it was built with ({self.commit})."
+            )
+        return plan
+
+    def gates(self) -> dict[str, GateResult | None]:
+        recorded = self.manifest_inputs["gates"]
+        return {
+            name: _gate_from_build_record(recorded[name])
+            for name in US_BUILD_RECORD_GATES
+        }
+
+    def calibration_result(self) -> _RecordedCalibrationResult:
+        return _RecordedCalibrationResult(
+            **self.manifest_inputs["result"],
+            in_sample_fit=self.payload["in_sample_fit"],
+        )
+
+    def registry_summary(self) -> _RecordedTargetRegistry:
+        return _RecordedTargetRegistry(**self.manifest_inputs["registry"])
+
+    def diagnostics_outcome(self) -> DiagnosticsWriteOutcome:
+        recorded = dict(self.manifest_inputs["diagnostics_outcome"])
+        if recorded["status"] == "available":
+            return DiagnosticsWriteSuccess(
+                status="available",
+                path=self.release_dir / "calibration_diagnostics.json",
+                schema_version=recorded["schema_version"],
+                sha256=recorded["sha256"],
+            )
+        return DiagnosticsWriteFailure(
+            status="failed",
+            expected_schema_version=recorded["expected_schema_version"],
+            error_code=recorded["error_code"],
+            message=recorded["message"],
+        )
+
+
+def _read_us_build_record(path: Path) -> _USBuildRecord:
+    """Read a build record and check the files it pins are the build's."""
+
+    path = Path(path)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise RuntimeError(f"Cannot read the build record {path}: {error}") from error
+    if not isinstance(payload, dict) or payload.get("kind") != US_BUILD_RECORD_KIND:
+        raise RuntimeError(f"{path} is not a US national build record.")
+    if payload.get("schema_version") != US_BUILD_RECORD_SCHEMA_VERSION:
+        raise RuntimeError(
+            f"{path} has build record schema {payload.get('schema_version')!r}; "
+            f"this tool reads schema {US_BUILD_RECORD_SCHEMA_VERSION}."
+        )
+    release_root = path.resolve().parent
+    for role, pinned in payload["files"].items():
+        file_path = release_root / pinned["path"]
+        if not file_path.is_file():
+            raise RuntimeError(
+                f"Build {payload['build']}: its {role} file {file_path} is missing."
+            )
+        actual = _sha256(file_path)
+        if actual != pinned["sha256"]:
+            raise RuntimeError(
+                f"Build {payload['build']}: its {role} file {file_path} hashes to "
+                f"{actual}, not the {pinned['sha256']} the build recorded; the "
+                "build's files changed after it finished."
+            )
+    return _USBuildRecord(payload, release_root=release_root)
+
+
+def _certify_us_build(
+    record: _USBuildRecord, *, telemetry: _BuildProgress | None = None
+) -> None:
+    """Run a finished build's post-export checks and write its manifests.
+
+    The build (``_main``) ends once its H5, calibration weights, diagnostics,
+    gate evidence and :data:`US_BUILD_RECORD_FILENAME` are written. This
+    scores the written H5 (the reform-coverage smoke, reform validation,
+    demographics and the holdouts), writes the source-coverage and take-up
+    receipts and both manifests, and leaves the release directory in the
+    build-folder layout for ``microcosm-publish-release-build``
+    (microcosm#1585 item 11, PR 4a). Every input is the record, or a file
+    whose digest the record pins: nothing is read from the build's process.
+    """
+
+    certify_started = time.perf_counter()
+    args = record.certify_args()
+    release_id = record.build
+    release_dir = record.release_dir
+    artifact_root = record.artifact_root
+    dataset_key = record.dataset_key
+    dataset_filename = record.dataset_filename
+    calibration_key = record.calibration_key
+    calibration_filename = record.calibration_filename
+    dataset_path = artifact_root / dataset_filename
+    evidence_failure_owner_patterns = record.evidence_failure_owner_patterns
+    terminal_gate_failures = list(record.terminal_gate_failures)
+    timing = dict(record.timing)
+    result = record.calibration_result()
+    registry = record.registry_summary()
+    post_export_scoring_plan = record.post_export_scoring_plan(args, result=result)
+    inputs = record.manifest_inputs
+    gates = record.gates()
+    target_profile_gate = gates["target_profile_gate"]
+    ssi_take_up_delivery_gate_result = gates["ssi_take_up_delivery_gate_result"]
+    health_input_gate = gates["health_input_gate"]
+    base_population_gate = gates["base_population_gate"]
+    immigration_gate = gates["immigration_gate"]
+    degenerate_input_gate = gates["degenerate_input_gate"]
+    enforced_ecps_parity_gate = gates["ecps_parity_gate"]
+    hours_worked_gate = gates["hours_worked_gate"]
+    snap_take_up_gate = gates["snap_take_up_gate"]
+    eligibility_inputs_gate = gates["eligibility_inputs_gate"]
+    pregnancy_gate = gates["pregnancy_gate"]
+    reported_coverage_vintage_gate = gates["reported_coverage_vintage_gate"]
+    snap_discretionary_exemption_gate = gates["snap_discretionary_exemption_gate"]
+    # Read only by the gate summary, which the build recorded.
+    incumbent_diagnostics = None
+    enforced_input_mass_reference_gate = None
+    current_target_surface = inputs["target_surface"]
+    compilation = inputs["dropped"]
+    warm_start_calibration = inputs["warm_start_calibration"]
+    selection_source_payload = inputs["selection_source"]
+    target_surface_selection = inputs["target_surface_selection"]
+    default_dataset = inputs["default_dataset"]
+    medicaid_enrollment_substitutions = inputs["medicaid_enrollment_substitutions"]
+    exact_k_ladder_provenance = inputs["exact_k_ladder"]
+    base_pool_receipt = inputs["base_pool"]
+    acs_predictor_join_receipt = inputs["acs_predictor_join"]
+    export_input_mass_reference = inputs["export_input_mass_reference"]
+    calibration_runtime = inputs["calibration_runtime"]
+    diagnostics_outcome = record.diagnostics_outcome()
+    scf_wealth_signal = inputs["scf_wealth_signal"]
+    source_coverage = record.source_coverage
+    congressional_district_vintage_crosswalk_metadata = source_coverage[
+        "congressional_district_vintage_crosswalk"
+    ]
+    fiscal_target_exclusion_receipt = source_coverage["fiscal_target_exclusion_receipt"]
+    fsa_target_receipt = source_coverage["fsa_student_loan_target_receipt"]
+    medicaid_take_up_diagnostics = record.take_up["medicaid"]
+    snap_state_take_up_diagnostics = record.take_up["snap_state"]
+    # Route A remediation (microcosm#956): every post-export stage below (the
+    # smoke, reform validation, demographics) scores THIS file through one
+    # household-batched scorer instead of one whole-pool Microsimulation each.
+    # It loads the written H5 once, binds its sha256 (the manifest must pin
+    # the same bytes), and serves the baseline plans recorded above.
+    post_export_scorer = _open_post_export_scorer(
+        post_export_scoring_plan, dataset_path
+    )
+    # microcosm#368: reform-coverage smoke on the WRITTEN release H5. The column
+    # gate above proves the required keys exist and carry signal; this is the
+    # end-to-end backstop: each pinned probe (first: SSI asset limits at
+    # $10k/$20k) mechanically binds through named input leaves and must move
+    # its budget measure. A ~$0 score on a bound reform means those leaves are
+    # absent or degenerate — the release aborts before any manifest or
+    # contract file certifies the artifact. Runs on both dense and sparse
+    # default paths (both reach this line). Until the asset stage is restored
+    # (Deliverable 2) the SSI probe fails by design; that is the gate working.
+    if not args.skip_reform_coverage_smoke:
+        if telemetry is not None:
+            telemetry.stage(
+                "reform_coverage_smoke",
+                message="Scoring pinned bound-reform probes on the written H5.",
+            )
+        smoke_scoring = post_export_scorer.open_consumer(
+            "reform_coverage_smoke",
+            post_export_scoring_plan.baseline_plan("reform_coverage_smoke"),
+            planned_reform_passes=post_export_scoring_plan.planned_reform_passes(
+                "reform_coverage_smoke"
+            ),
+        )
+        reform_coverage_smoke_gate = us_reform_coverage_smoke_gate(
+            simulate=smoke_scoring.simulate,
+            period=PERIOD,
+        )
+        smoke_scoring_record = post_export_scorer.finish_consumer(smoke_scoring)
+        reform_coverage_smoke_path = release_dir / "reform_coverage_smoke.json"
+        reform_coverage_smoke_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "enforced": not args.allow_reform_coverage_smoke_failures,
+                    "reform_coverage_smoke": {
+                        "passed": reform_coverage_smoke_gate.passed,
+                        "failures": list(reform_coverage_smoke_gate.failures),
+                        "details": dict(reform_coverage_smoke_gate.details),
+                    },
+                    "post_export_scoring": smoke_scoring_record,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        # The smoke's scored baseline plan is recorded; free its arrays before
+        # reform validation scores its own.
+        del smoke_scoring
+        if telemetry is not None:
+            telemetry.attach_artifact(
+                "reform_coverage_smoke", reform_coverage_smoke_path
+            )
+        if (
+            not reform_coverage_smoke_gate.passed
+            and not args.allow_reform_coverage_smoke_failures
+        ):
+            if telemetry is not None:
+                telemetry.stage(
+                    "reform_coverage_smoke",
+                    status="failed",
+                    message="Reform-coverage smoke gate failed.",
+                    failures=list(reform_coverage_smoke_gate.failures),
+                    force_upload=True,
+                )
+            smoke_failures = [
+                f"Reform coverage smoke failed: {failure}"
+                for failure in reform_coverage_smoke_gate.failures
+            ]
+            if not args.evidence_release:
+                raise RuntimeError("Release gates failed: " + "; ".join(smoke_failures))
+            # Evidence tier: the smoke verdict joins the recorded terminal
+            # set (owner-checked immediately, so an unowned failure aborts
+            # before further export work).
+            terminal_gate_failures.extend(smoke_failures)
+            _evidence_known_failures(
+                terminal_gate_failures, evidence_failure_owner_patterns
+            )
+    if not args.skip_reform_validation:
+        if telemetry is not None:
+            telemetry.stage(
+                "reform_validation",
+                message="Writing reform validation diagnostics.",
+            )
+        _write_reform_validation(
+            release_dir=release_dir,
+            dataset_path=dataset_path,
+            result=result,
+            registry=registry,
+            release_id=release_id,
+            simulate_out_of_sample=not args.skip_out_of_sample_reforms,
+            post_export_scorer=post_export_scorer,
+            baseline_plan=(
+                None
+                if args.skip_out_of_sample_reforms
+                else post_export_scoring_plan.baseline_plan("reform_validation")
+            ),
+            planned_reform_passes=post_export_scoring_plan.planned_reform_passes(
+                "reform_validation"
+            ),
+        )
+        if telemetry is not None:
+            telemetry.attach_artifact(
+                "reform_validation",
+                release_dir / "reform_validation.json",
+            )
+
+    if not args.skip_demographics:
+        if telemetry is not None:
+            telemetry.stage("demographics", message="Writing demographics diagnostics.")
+        _write_demographics(
+            release_dir=release_dir,
+            dataset_path=dataset_path,
+            release_id=release_id,
+            post_export_scorer=post_export_scorer,
+            baseline_plan=post_export_scoring_plan.baseline_plan("demographics"),
+        )
+        if telemetry is not None:
+            telemetry.attach_artifact("demographics", release_dir / "demographics.json")
+    if telemetry is not None:
+        telemetry.stage(
+            "ssi_social_security_holdout",
+            message="Writing held-out SSI/Social Security receipt overlap.",
+        )
+    _write_ssi_social_security_holdout(
+        release_dir=release_dir,
+        dataset_path=dataset_path,
+        release_id=release_id,
+        post_export_scorer=post_export_scorer,
+        baseline_plan=post_export_scoring_plan.baseline_plan(
+            "ssi_social_security_holdout"
+        ),
+    )
+    if telemetry is not None:
+        telemetry.attach_artifact(
+            "us_ssi_social_security_holdout",
+            release_dir / "us_ssi_social_security_holdout.json",
+        )
+        telemetry.stage(
+            "medicare_irmaa_holdout",
+            message="Writing held-out Medicare IRMAA payers and premiums.",
+        )
+    _write_medicare_irmaa_holdout(
+        release_dir=release_dir,
+        dataset_path=dataset_path,
+        release_id=release_id,
+        post_export_scorer=post_export_scorer,
+        baseline_plan=post_export_scoring_plan.baseline_plan("medicare_irmaa_holdout"),
+    )
+    if telemetry is not None:
+        telemetry.attach_artifact(
+            "us_medicare_irmaa_holdout",
+            release_dir / "us_medicare_irmaa_holdout.json",
+        )
+    # Every post-export engine stage has run; free the scorer's batch frames.
+    # The manifest must pin the bytes those stages scored, and both manifests
+    # carry how they were scored (Route A remediation PR-3).
+    post_export_scoring = _post_export_scoring_manifest_block(post_export_scorer)
+    scored_dataset_sha256 = _close_post_export_scorer(post_export_scorer)
+    post_export_scorer = None
+    # Reads the written H5 without an engine, after the scorer frees its
+    # batch frames, so it adds no memory on top of them.
+    if telemetry is not None:
+        telemetry.stage(
+            "population_structure_holdout",
+            message="Writing held-out population-structure checks.",
+        )
+    _write_population_structure_holdout(
+        release_dir=release_dir, dataset_path=dataset_path, release_id=release_id
+    )
+    if telemetry is not None:
+        telemetry.attach_artifact(
+            "us_population_structure_holdout",
+            release_dir / "us_population_structure_holdout.json",
+        )
+
+    if telemetry is not None:
+        telemetry.stage(
+            "source_coverage", message="Writing source coverage diagnostics."
+        )
+    active_aliases, surface_exclusions = _source_coverage_aliases(
+        target_surface_selection
+    )
+    coverage = us_source_coverage_diagnostics(
+        active_target_aliases=active_aliases,
+        reviewed_exclusions={
+            **_reviewed_exclusions(active_aliases),
+            **surface_exclusions,
+        },
+    )
+    coverage["fiscal_target_sources"] = source_coverage["fiscal_target_sources"]
+    if congressional_district_vintage_crosswalk_metadata is not None:
+        coverage["congressional_district_vintage_crosswalk"] = (
+            congressional_district_vintage_crosswalk_metadata
+        )
+    coverage["fiscal_target_support_exclusions"] = [
+        {"source_record_id": source_record_id, "reason": reason}
+        for source_record_id, reason in sorted(
+            US_FISCAL_TARGET_SUPPORT_EXCLUSIONS.items()
+        )
+    ]
+    coverage[US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY] = fiscal_target_exclusion_receipt
+    if fsa_target_receipt is not None:
+        coverage[US_FSA_STUDENT_LOAN_TARGET_RECEIPT_KEY] = fsa_target_receipt
+    write_us_source_coverage_diagnostics(
+        coverage, release_dir / "us_source_coverage.json"
+    )
+    if args.evidence_release:
+        # The certified path surfaces a failed source-coverage gate at publish
+        # (the contract requires gate.passed); the evidence contract relaxes
+        # that verdict but BINDS gate.failures into known_failures — so an
+        # evidence build must record them here, owner-checked immediately, or
+        # its manifest would be unpublishable by construction.
+        coverage_gate = coverage.get("gate") or {}
+        coverage_gate_failures = [
+            f"Source coverage failed: {failure}"
+            for failure in (coverage_gate.get("failures") or ())
+        ]
+        if coverage_gate_failures:
+            terminal_gate_failures.extend(coverage_gate_failures)
+            _evidence_known_failures(
+                terminal_gate_failures, evidence_failure_owner_patterns
+            )
+    if telemetry is not None:
+        telemetry.attach_artifact(
+            "us_source_coverage",
+            release_dir / "us_source_coverage.json",
+        )
+        telemetry.stage(
+            "take_up_participation",
+            message="Writing take-up participation diagnostics.",
+        )
+    take_up_participation = record.take_up["participation"]
+    write_us_take_up_participation_diagnostics(
+        take_up_participation,
+        release_dir / "us_take_up_participation.json",
+    )
+    write_us_medicaid_take_up_diagnostics(
+        medicaid_take_up_diagnostics,
+        release_dir / "us_medicaid_take_up.json",
+    )
+    # us_ssi_take_up.json was already written the moment the final
+    # measurement existed, ahead of the integrity and delivery gates
+    # (microcosm#507/#508) — nothing mutates the dict in between.
+    write_us_snap_state_take_up_diagnostics(
+        snap_state_take_up_diagnostics,
+        release_dir / "us_snap_state_take_up.json",
+    )
+    # The stage gate ran on the stage output; this re-checks the EXPORT frame
+    # so a downstream transform that drops or flattens a count-calibrated
+    # column cannot ship the engine-default landmine with only an
+    # observational JSON field recording it.
+    stale_count_calibrated = [
+        str(row["variable"])
+        for row in take_up_participation["programs"]
+        if row.get("populace_treatment") == "count_calibrated"
+        and row.get("ships_at_engine_default")
+    ]
+    if stale_count_calibrated:
+        stale_count_calibrated_failure = (
+            "count-calibrated take-up column(s) "
+            f"{stale_count_calibrated} ship at the engine default on the "
+            "export frame despite the stage having run."
+        )
+        if not args.evidence_release:
+            raise RuntimeError(
+                "Release gates failed: " + stale_count_calibrated_failure
+            )
+        # Evidence tier: recorded like every other terminal verdict, with
+        # the same immediate owner check.
+        terminal_gate_failures.append(stale_count_calibrated_failure)
+        _evidence_known_failures(
+            terminal_gate_failures, evidence_failure_owner_patterns
+        )
+    if telemetry is not None:
+        telemetry.attach_artifact(
+            "us_take_up_participation",
+            release_dir / "us_take_up_participation.json",
+        )
+        telemetry.attach_artifact(
+            "us_medicaid_take_up",
+            release_dir / "us_medicaid_take_up.json",
+        )
+        telemetry.attach_artifact(
+            "us_ssi_take_up",
+            release_dir / "us_ssi_take_up.json",
+        )
+        telemetry.attach_artifact(
+            "us_snap_state_take_up",
+            release_dir / "us_snap_state_take_up.json",
+        )
+        telemetry.stage("manifests", message="Writing release manifests.")
+    timing["certify_seconds"] = time.perf_counter() - certify_started
+    timing["total_build_seconds"] = timing["build_seconds"] + timing["certify_seconds"]
+    evidence_known_failures = None
+    if args.evidence_release:
+        if not terminal_gate_failures:
+            raise RuntimeError(
+                "Evidence release refused: every terminal gate passed. This "
+                "artifact qualifies for the certified path — rerun without "
+                "--evidence-release (the flag cannot mint a certified-shape "
+                "manifest, and an evidence manifest with no known failures "
+                "is invalid by contract)."
+            )
+        evidence_known_failures = _evidence_known_failures(
+            terminal_gate_failures, evidence_failure_owner_patterns
+        )
+    _build_manifests(
+        release_id=release_id,
+        release_dir=release_dir,
+        artifact_root=artifact_root,
+        result=result,
+        target_surface=current_target_surface,
+        registry=registry,
+        dropped=compilation,
+        target_profile_gate=target_profile_gate,
+        ssi_take_up_delivery_gate_result=ssi_take_up_delivery_gate_result,
+        health_input_gate=health_input_gate,
+        base_population_gate=base_population_gate,
+        incumbent_diagnostics=incumbent_diagnostics,
+        immigration_gate=immigration_gate,
+        input_mass_reference_gate=enforced_input_mass_reference_gate,
+        degenerate_input_gate=degenerate_input_gate,
+        ecps_parity_gate=enforced_ecps_parity_gate,
+        hours_worked_gate=hours_worked_gate,
+        snap_take_up_gate=snap_take_up_gate,
+        eligibility_inputs_gate=eligibility_inputs_gate,
+        pregnancy_gate=pregnancy_gate,
+        reported_coverage_vintage_gate=reported_coverage_vintage_gate,
+        snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
+        release_gate_failures=inputs["release_gate_failures"],
+        timing=timing,
+        warm_start_calibration=warm_start_calibration,
+        selection_source=selection_source_payload,
+        target_surface_selection=target_surface_selection,
+        ledger_artifact=inputs["ledger_artifact"],
+        default_dataset=default_dataset,
+        medicaid_enrollment_substitutions=medicaid_enrollment_substitutions,
+        staging=(
+            _staging_manifest_block(telemetry)
+            if telemetry is not None
+            else record.staging
+        ),
+        dataset_key=dataset_key,
+        dataset_filename=dataset_filename,
+        calibration_key=calibration_key,
+        calibration_filename=calibration_filename,
+        exact_k_ladder=exact_k_ladder_provenance,
+        base_pool=base_pool_receipt,
+        acs_predictor_join=acs_predictor_join_receipt,
+        evidence_known_failures=evidence_known_failures,
+        export_input_mass_reference=export_input_mass_reference,
+        calibration_runtime=calibration_runtime,
+        skipped_gates=(
+            ("reform_coverage_smoke",) if args.skip_reform_coverage_smoke else ()
+        ),
+        scored_dataset_sha256=scored_dataset_sha256,
+        post_export_scoring=post_export_scoring,
+        diagnostics_outcome=diagnostics_outcome,
+        scf_wealth_signal=scf_wealth_signal,
+        scf_education_debt=args.scf_education_debt,
+    )
+    # Both manifests name the release and this build, in the build-folder
+    # layout, before telemetry attaches them; the directory must then pass
+    # its tier's contract (microcosm#1570).
+    publication = _finish_build_folder_release(
+        release_dir,
+        build=release_id,
+        artifact_root=artifact_root,
+        evidence_release=args.evidence_release,
+    )
+    if telemetry is not None:
+        telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")
+        telemetry.attach_artifact(
+            "release_manifest",
+            release_dir / "release_manifest.json",
+        )
+        telemetry.complete()
+
+    _print_build_result(
+        build=release_id,
+        release_dir=release_dir,
+        artifact_root=artifact_root,
+        publication=publication,
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -16865,91 +17760,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     )
     if stored_input_premise_failure is not None:
         raise RuntimeError(stored_input_premise_failure)
-    # Route A remediation (microcosm#956): every post-export stage below (the
-    # smoke, reform validation, demographics) scores THIS file through one
-    # household-batched scorer instead of one whole-pool Microsimulation each.
-    # It loads the written H5 once, binds its sha256 (the manifest must pin
-    # the same bytes), and serves the baseline plans recorded above.
-    post_export_scorer = _open_post_export_scorer(
-        post_export_scoring_plan, dataset_path
-    )
-    # microcosm#368: reform-coverage smoke on the WRITTEN release H5. The column
-    # gate above proves the required keys exist and carry signal; this is the
-    # end-to-end backstop: each pinned probe (first: SSI asset limits at
-    # $10k/$20k) mechanically binds through named input leaves and must move
-    # its budget measure. A ~$0 score on a bound reform means those leaves are
-    # absent or degenerate — the release aborts before any manifest or
-    # contract file certifies the artifact. Runs on both dense and sparse
-    # default paths (both reach this line). Until the asset stage is restored
-    # (Deliverable 2) the SSI probe fails by design; that is the gate working.
-    if not args.skip_reform_coverage_smoke:
-        if telemetry is not None:
-            telemetry.stage(
-                "reform_coverage_smoke",
-                message="Scoring pinned bound-reform probes on the written H5.",
-            )
-        smoke_scoring = post_export_scorer.open_consumer(
-            "reform_coverage_smoke",
-            post_export_scoring_plan.baseline_plan("reform_coverage_smoke"),
-            planned_reform_passes=post_export_scoring_plan.planned_reform_passes(
-                "reform_coverage_smoke"
-            ),
-        )
-        reform_coverage_smoke_gate = us_reform_coverage_smoke_gate(
-            simulate=smoke_scoring.simulate,
-            period=PERIOD,
-        )
-        smoke_scoring_record = post_export_scorer.finish_consumer(smoke_scoring)
-        reform_coverage_smoke_path = release_dir / "reform_coverage_smoke.json"
-        reform_coverage_smoke_path.write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "enforced": not args.allow_reform_coverage_smoke_failures,
-                    "reform_coverage_smoke": {
-                        "passed": reform_coverage_smoke_gate.passed,
-                        "failures": list(reform_coverage_smoke_gate.failures),
-                        "details": dict(reform_coverage_smoke_gate.details),
-                    },
-                    "post_export_scoring": smoke_scoring_record,
-                },
-                indent=2,
-                sort_keys=True,
-            )
-            + "\n"
-        )
-        # The smoke's scored baseline plan is recorded; free its arrays before
-        # reform validation scores its own.
-        del smoke_scoring
-        if telemetry is not None:
-            telemetry.attach_artifact(
-                "reform_coverage_smoke", reform_coverage_smoke_path
-            )
-        if (
-            not reform_coverage_smoke_gate.passed
-            and not args.allow_reform_coverage_smoke_failures
-        ):
-            if telemetry is not None:
-                telemetry.stage(
-                    "reform_coverage_smoke",
-                    status="failed",
-                    message="Reform-coverage smoke gate failed.",
-                    failures=list(reform_coverage_smoke_gate.failures),
-                    force_upload=True,
-                )
-            smoke_failures = [
-                f"Reform coverage smoke failed: {failure}"
-                for failure in reform_coverage_smoke_gate.failures
-            ]
-            if not args.evidence_release:
-                raise RuntimeError("Release gates failed: " + "; ".join(smoke_failures))
-            # Evidence tier: the smoke verdict joins the recorded terminal
-            # set (owner-checked immediately, so an unowned failure aborts
-            # before further export work).
-            terminal_gate_failures.extend(smoke_failures)
-            _evidence_known_failures(
-                terminal_gate_failures, evidence_failure_owner_patterns
-            )
+    # The build ends here (microcosm#1585 item 11, PR 4a). The optional export
+    # audit and the calibration NPZ read the calibration result, which only
+    # this process holds, so they run first. Every later stage scores the
+    # written H5 and runs from the build record (_certify_us_build), so a
+    # build can be judged before anyone pays for those checks.
     if args.audit_export_targets:
         if telemetry is not None:
             telemetry.stage(
@@ -16967,251 +17782,22 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         telemetry.stage("write_calibration_npz", message="Writing calibration NPZ.")
     calibration_path = artifact_root / calibration_filename
     _write_npz(calibration_path, result=result, registry=registry)
-
-    if not args.skip_reform_validation:
-        if telemetry is not None:
-            telemetry.stage(
-                "reform_validation",
-                message="Writing reform validation diagnostics.",
-            )
-        _write_reform_validation(
-            release_dir=release_dir,
-            dataset_path=dataset_path,
-            result=result,
-            registry=registry,
-            release_id=release_id,
-            simulate_out_of_sample=not args.skip_out_of_sample_reforms,
-            post_export_scorer=post_export_scorer,
-            baseline_plan=(
-                None
-                if args.skip_out_of_sample_reforms
-                else post_export_scoring_plan.baseline_plan("reform_validation")
-            ),
-            planned_reform_passes=post_export_scoring_plan.planned_reform_passes(
-                "reform_validation"
-            ),
-        )
-        if telemetry is not None:
-            telemetry.attach_artifact(
-                "reform_validation",
-                release_dir / "reform_validation.json",
-            )
-
-    if not args.skip_demographics:
-        if telemetry is not None:
-            telemetry.stage("demographics", message="Writing demographics diagnostics.")
-        _write_demographics(
-            release_dir=release_dir,
-            dataset_path=dataset_path,
-            release_id=release_id,
-            post_export_scorer=post_export_scorer,
-            baseline_plan=post_export_scoring_plan.baseline_plan("demographics"),
-        )
-        if telemetry is not None:
-            telemetry.attach_artifact("demographics", release_dir / "demographics.json")
-    if telemetry is not None:
-        telemetry.stage(
-            "ssi_social_security_holdout",
-            message="Writing held-out SSI/Social Security receipt overlap.",
-        )
-    _write_ssi_social_security_holdout(
-        release_dir=release_dir,
-        dataset_path=dataset_path,
-        release_id=release_id,
-        post_export_scorer=post_export_scorer,
-        baseline_plan=post_export_scoring_plan.baseline_plan(
-            "ssi_social_security_holdout"
-        ),
+    # Keep a copy of the exact base artifact beside diagnostics for local audit.
+    _copy_base_h5_for_local_audit(
+        base_h5,
+        release_root / f"base_{base_h5.name}",
+        authenticated_pool_h5=authenticated_pool_h5,
     )
-    if telemetry is not None:
-        telemetry.attach_artifact(
-            "us_ssi_social_security_holdout",
-            release_dir / "us_ssi_social_security_holdout.json",
-        )
-        telemetry.stage(
-            "medicare_irmaa_holdout",
-            message="Writing held-out Medicare IRMAA payers and premiums.",
-        )
-    _write_medicare_irmaa_holdout(
-        release_dir=release_dir,
-        dataset_path=dataset_path,
-        release_id=release_id,
-        post_export_scorer=post_export_scorer,
-        baseline_plan=post_export_scoring_plan.baseline_plan("medicare_irmaa_holdout"),
-    )
-    if telemetry is not None:
-        telemetry.attach_artifact(
-            "us_medicare_irmaa_holdout",
-            release_dir / "us_medicare_irmaa_holdout.json",
-        )
-    # Every post-export engine stage has run; free the scorer's batch frames.
-    # The manifest must pin the bytes those stages scored, and both manifests
-    # carry how they were scored (Route A remediation PR-3).
-    post_export_scoring = _post_export_scoring_manifest_block(post_export_scorer)
-    scored_dataset_sha256 = _close_post_export_scorer(post_export_scorer)
-    post_export_scorer = None
-    # Reads the written H5 without an engine, after the scorer frees its
-    # batch frames, so it adds no memory on top of them.
-    if telemetry is not None:
-        telemetry.stage(
-            "population_structure_holdout",
-            message="Writing held-out population-structure checks.",
-        )
-    _write_population_structure_holdout(
-        release_dir=release_dir, dataset_path=dataset_path, release_id=release_id
-    )
-    if telemetry is not None:
-        telemetry.attach_artifact(
-            "us_population_structure_holdout",
-            release_dir / "us_population_structure_holdout.json",
-        )
-
-    if telemetry is not None:
-        telemetry.stage(
-            "source_coverage", message="Writing source coverage diagnostics."
-        )
-    active_aliases, surface_exclusions = _source_coverage_aliases(
-        target_surface_selection
-    )
-    coverage = us_source_coverage_diagnostics(
-        active_target_aliases=active_aliases,
-        reviewed_exclusions={
-            **_reviewed_exclusions(active_aliases),
-            **surface_exclusions,
-        },
-    )
-    coverage["fiscal_target_sources"] = _fiscal_target_source_provenance(target_specs)
-    if congressional_district_vintage_crosswalk_metadata is not None:
-        coverage["congressional_district_vintage_crosswalk"] = (
-            congressional_district_vintage_crosswalk_metadata
-        )
-    coverage["fiscal_target_support_exclusions"] = [
-        {"source_record_id": source_record_id, "reason": reason}
-        for source_record_id, reason in sorted(
-            US_FISCAL_TARGET_SUPPORT_EXCLUSIONS.items()
-        )
-    ]
-    coverage[US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY] = fiscal_target_exclusion_receipt
-    if fsa_target_receipt is not None:
-        coverage[US_FSA_STUDENT_LOAN_TARGET_RECEIPT_KEY] = fsa_target_receipt
-    write_us_source_coverage_diagnostics(
-        coverage, release_dir / "us_source_coverage.json"
-    )
-    if args.evidence_release:
-        # The certified path surfaces a failed source-coverage gate at publish
-        # (the contract requires gate.passed); the evidence contract relaxes
-        # that verdict but BINDS gate.failures into known_failures — so an
-        # evidence build must record them here, owner-checked immediately, or
-        # its manifest would be unpublishable by construction.
-        coverage_gate = coverage.get("gate") or {}
-        coverage_gate_failures = [
-            f"Source coverage failed: {failure}"
-            for failure in (coverage_gate.get("failures") or ())
-        ]
-        if coverage_gate_failures:
-            terminal_gate_failures.extend(coverage_gate_failures)
-            _evidence_known_failures(
-                terminal_gate_failures, evidence_failure_owner_patterns
-            )
-    if telemetry is not None:
-        telemetry.attach_artifact(
-            "us_source_coverage",
-            release_dir / "us_source_coverage.json",
-        )
-        telemetry.stage(
-            "take_up_participation",
-            message="Writing take-up participation diagnostics.",
-        )
-    take_up_participation = us_take_up_participation_diagnostics(export_frame)
-    write_us_take_up_participation_diagnostics(
-        take_up_participation,
-        release_dir / "us_take_up_participation.json",
-    )
-    write_us_medicaid_take_up_diagnostics(
-        medicaid_take_up_diagnostics,
-        release_dir / "us_medicaid_take_up.json",
-    )
-    # us_ssi_take_up.json was already written the moment the final
-    # measurement existed, ahead of the integrity and delivery gates
-    # (microcosm#507/#508) — nothing mutates the dict in between.
-    write_us_snap_state_take_up_diagnostics(
-        snap_state_take_up_diagnostics,
-        release_dir / "us_snap_state_take_up.json",
-    )
-    # The stage gate ran on the stage output; this re-checks the EXPORT frame
-    # so a downstream transform that drops or flattens a count-calibrated
-    # column cannot ship the engine-default landmine with only an
-    # observational JSON field recording it.
-    stale_count_calibrated = [
-        str(row["variable"])
-        for row in take_up_participation["programs"]
-        if row.get("populace_treatment") == "count_calibrated"
-        and row.get("ships_at_engine_default")
-    ]
-    if stale_count_calibrated:
-        stale_count_calibrated_failure = (
-            "count-calibrated take-up column(s) "
-            f"{stale_count_calibrated} ship at the engine default on the "
-            "export frame despite the stage having run."
-        )
-        if not args.evidence_release:
-            raise RuntimeError(
-                "Release gates failed: " + stale_count_calibrated_failure
-            )
-        # Evidence tier: recorded like every other terminal verdict, with
-        # the same immediate owner check.
-        terminal_gate_failures.append(stale_count_calibrated_failure)
-        _evidence_known_failures(
-            terminal_gate_failures, evidence_failure_owner_patterns
-        )
-    if telemetry is not None:
-        telemetry.attach_artifact(
-            "us_take_up_participation",
-            release_dir / "us_take_up_participation.json",
-        )
-        telemetry.attach_artifact(
-            "us_medicaid_take_up",
-            release_dir / "us_medicaid_take_up.json",
-        )
-        telemetry.attach_artifact(
-            "us_ssi_take_up",
-            release_dir / "us_ssi_take_up.json",
-        )
-        telemetry.attach_artifact(
-            "us_snap_state_take_up",
-            release_dir / "us_snap_state_take_up.json",
-        )
-        telemetry.stage("manifests", message="Writing release manifests.")
-    timing["total_build_seconds"] = time.perf_counter() - build_started
-    evidence_known_failures = None
-    if args.evidence_release:
-        if not terminal_gate_failures:
-            raise RuntimeError(
-                "Evidence release refused: every terminal gate passed. This "
-                "artifact qualifies for the certified path — rerun without "
-                "--evidence-release (the flag cannot mint a certified-shape "
-                "manifest, and an evidence manifest with no known failures "
-                "is invalid by contract)."
-            )
-        evidence_known_failures = _evidence_known_failures(
-            terminal_gate_failures, evidence_failure_owner_patterns
-        )
-    _build_manifests(
-        release_id=release_id,
-        release_dir=release_dir,
-        artifact_root=artifact_root,
-        result=result,
-        target_surface=current_target_surface,
-        registry=registry,
-        dropped=compilation,
-        target_profile_gate=target_profile_gate,
-        ssi_take_up_delivery_gate_result=ssi_take_up_delivery_gate_result,
-        health_input_gate=health_input_gate,
-        base_population_gate=base_population_gate,
-        incumbent_diagnostics=incumbent_diagnostics,
-        immigration_gate=immigration_gate,
-        input_mass_reference_gate=enforced_input_mass_reference_gate,
-        degenerate_input_gate=degenerate_input_gate,
+    release_gate_failures = _release_gate_failures(
+        result,
+        compilation,
+        target_profile_gate,
+        health_input_gate,
+        base_population_gate,
+        incumbent_diagnostics,
+        immigration_gate,
+        enforced_input_mass_reference_gate,
+        degenerate_input_gate,
         ecps_parity_gate=enforced_ecps_parity_gate,
         hours_worked_gate=hours_worked_gate,
         snap_take_up_gate=snap_take_up_gate,
@@ -17219,62 +17805,75 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         pregnancy_gate=pregnancy_gate,
         reported_coverage_vintage_gate=reported_coverage_vintage_gate,
         snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
-        timing=timing,
-        warm_start_calibration=warm_start_calibration,
-        selection_source=selection_source_payload,
-        target_surface_selection=target_surface_selection,
-        ledger_artifact=ledger_artifact.provenance(),
-        default_dataset=default_dataset,
-        medicaid_enrollment_substitutions=medicaid_enrollment_substitutions,
-        staging=_staging_manifest_block(telemetry),
-        dataset_key=dataset_key,
-        dataset_filename=dataset_filename,
-        calibration_key=calibration_key,
-        calibration_filename=calibration_filename,
-        exact_k_ladder=exact_k_ladder_provenance,
-        base_pool=base_pool_receipt,
-        acs_predictor_join=acs_predictor_join_receipt,
-        evidence_known_failures=evidence_known_failures,
-        export_input_mass_reference=export_input_mass_reference,
-        calibration_runtime=calibration_runtime,
-        skipped_gates=(
-            ("reform_coverage_smoke",) if args.skip_reform_coverage_smoke else ()
+        target_registry=registry,
+    )
+    timing["build_seconds"] = time.perf_counter() - build_started
+    build_record_path = _write_us_build_record(
+        release_root,
+        _us_build_record(
+            release_id=release_id,
+            release_root=release_root,
+            release_dir=release_dir,
+            artifact_root=artifact_root,
+            dataset_key=dataset_key,
+            dataset_filename=dataset_filename,
+            calibration_key=calibration_key,
+            calibration_filename=calibration_filename,
+            commit=full_commit,
+            args=args,
+            evidence_failure_owner_patterns=evidence_failure_owner_patterns,
+            terminal_gate_failures=terminal_gate_failures,
+            n_households=int(export_frame.n("household")),
+            result=result,
+            post_export_scoring_plan=post_export_scoring_plan,
+            release_gate_failures=release_gate_failures,
+            registry=registry,
+            target_surface=current_target_surface,
+            dropped=compilation,
+            gates={
+                "target_profile_gate": target_profile_gate,
+                "ssi_take_up_delivery_gate_result": ssi_take_up_delivery_gate_result,
+                "health_input_gate": health_input_gate,
+                "base_population_gate": base_population_gate,
+                "immigration_gate": immigration_gate,
+                "degenerate_input_gate": degenerate_input_gate,
+                "ecps_parity_gate": enforced_ecps_parity_gate,
+                "hours_worked_gate": hours_worked_gate,
+                "snap_take_up_gate": snap_take_up_gate,
+                "eligibility_inputs_gate": eligibility_inputs_gate,
+                "pregnancy_gate": pregnancy_gate,
+                "reported_coverage_vintage_gate": reported_coverage_vintage_gate,
+                "snap_discretionary_exemption_gate": (
+                    snap_discretionary_exemption_gate
+                ),
+            },
+            warm_start_calibration=warm_start_calibration,
+            selection_source=selection_source_payload,
+            target_surface_selection=target_surface_selection,
+            ledger_artifact=ledger_artifact.provenance(),
+            default_dataset=default_dataset,
+            medicaid_enrollment_substitutions=medicaid_enrollment_substitutions,
+            exact_k_ladder=exact_k_ladder_provenance,
+            base_pool=base_pool_receipt,
+            acs_predictor_join=acs_predictor_join_receipt,
+            export_input_mass_reference=export_input_mass_reference,
+            calibration_runtime=calibration_runtime,
+            diagnostics_outcome=diagnostics_outcome,
+            scf_wealth_signal=scf_wealth_signal,
+            fiscal_target_sources=_fiscal_target_source_provenance(target_specs),
+            congressional_district_vintage_crosswalk=(
+                congressional_district_vintage_crosswalk_metadata
+            ),
+            fiscal_target_exclusion_receipt=fiscal_target_exclusion_receipt,
+            fsa_target_receipt=fsa_target_receipt,
+            take_up_participation=us_take_up_participation_diagnostics(export_frame),
+            medicaid_take_up_diagnostics=medicaid_take_up_diagnostics,
+            snap_state_take_up_diagnostics=snap_state_take_up_diagnostics,
+            timing=timing,
+            staging=_staging_manifest_block(telemetry),
         ),
-        scored_dataset_sha256=scored_dataset_sha256,
-        post_export_scoring=post_export_scoring,
-        diagnostics_outcome=diagnostics_outcome,
-        scf_wealth_signal=scf_wealth_signal,
-        scf_education_debt=args.scf_education_debt,
     )
-    # Both manifests name the release and this build, in the build-folder
-    # layout, before telemetry attaches them; the directory must then pass
-    # its tier's contract (microcosm#1570).
-    publication = _finish_build_folder_release(
-        release_dir,
-        build=release_id,
-        artifact_root=artifact_root,
-        evidence_release=args.evidence_release,
-    )
-    if telemetry is not None:
-        telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")
-        telemetry.attach_artifact(
-            "release_manifest",
-            release_dir / "release_manifest.json",
-        )
-        telemetry.complete()
-
-    # Keep a copy of the exact base artifact beside diagnostics for local audit.
-    _copy_base_h5_for_local_audit(
-        base_h5,
-        release_root / f"base_{base_h5.name}",
-        authenticated_pool_h5=authenticated_pool_h5,
-    )
-    _print_build_result(
-        build=release_id,
-        release_dir=release_dir,
-        artifact_root=artifact_root,
-        publication=publication,
-    )
+    _certify_us_build(_read_us_build_record(build_record_path), telemetry=telemetry)
 
 
 if __name__ == "__main__":

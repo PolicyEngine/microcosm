@@ -52,6 +52,64 @@ def _load_builder_module():
     return module
 
 
+def _builder_function(builder, name: str):
+    """One top-level function of the builder, parsed from the tool's file."""
+    import ast
+
+    tree = ast.parse(Path(builder.__file__).read_text())
+    return next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == name
+    )
+
+
+def _calls_named(function, name: str) -> list:
+    import ast
+
+    return [
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == name
+    ]
+
+
+def _manifest_call(builder):
+    """The one ``_build_manifests`` call, which certification makes.
+
+    The build (``_main``) writes no manifest: it records what certification
+    needs in ``_us_build_record(...)``, and ``_certify_us_build`` reads the
+    record back and writes both manifests (microcosm#1585 item 11, PR 4a).
+    """
+    assert not _calls_named(_builder_function(builder, "_main"), "_build_manifests")
+    [call] = _calls_named(
+        _builder_function(builder, "_certify_us_build"), "_build_manifests"
+    )
+    return call
+
+
+def _recorded(builder, keyword: str) -> str:
+    """What ``_main`` hands the build record under ``keyword``, unparsed."""
+    import ast
+
+    [call] = _calls_named(_builder_function(builder, "_main"), "_us_build_record")
+    return {kw.arg: ast.unparse(kw.value) for kw in call.keywords}[keyword]
+
+
+def _recorded_gate(builder, name: str) -> str:
+    """The ``_main`` local the build record carries as gate ``name``."""
+    import ast
+
+    [call] = _calls_named(_builder_function(builder, "_main"), "_us_build_record")
+    gates = next(kw.value for kw in call.keywords if kw.arg == "gates")
+    return {
+        ast.literal_eval(key): ast.unparse(value)
+        for key, value in zip(gates.keys, gates.values, strict=True)
+    }[name]
+
+
 def _installed_variable_metadata_index(builder):
     try:
         return builder.PolicyEngineUSVariableMetadataIndex()
@@ -447,26 +505,19 @@ def test_delivery_gate_result_reaches_the_manifest_gates_block() -> None:
     """A release built with fences must be distinguishable from one whose
     bands passed enforcement: the delivery gate result (effective enforced
     set + fenced rows with adjudication text) must ride the manifest gates
-    block, and main() must thread it into _build_manifests."""
+    block: main() records it for certification, which threads it into
+    _build_manifests."""
     import ast
 
     builder = _load_builder_module()
     tree = ast.parse(Path(builder.__file__).read_text())
-    main_fn = next(
-        n
-        for n in ast.walk(tree)
-        if isinstance(n, ast.FunctionDef) and n.name == "_main"
+    assert _recorded_gate(builder, "ssi_take_up_delivery_gate_result") == (
+        "ssi_take_up_delivery_gate_result"
     )
-    manifest_calls = [
-        n
-        for n in ast.walk(main_fn)
-        if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "_build_manifests"
-    ]
-    assert manifest_calls, "main() must call _build_manifests"
-    assert all(
-        any(kw.arg == "ssi_take_up_delivery_gate_result" for kw in call.keywords)
-        for call in manifest_calls
-    ), "every _build_manifests call must thread the delivery gate result"
+    assert any(
+        kw.arg == "ssi_take_up_delivery_gate_result"
+        for kw in _manifest_call(builder).keywords
+    ), "the _build_manifests call must thread the delivery gate result"
     build_fn = next(
         n
         for n in ast.walk(tree)
@@ -2722,19 +2773,17 @@ def test_authenticated_pool_h5_consumers_use_one_returned_identity() -> None:
         for element in base_pool_assignments[0].targets[0].elts
         if isinstance(element, ast.Name)
     ] == ["pool_frame", "base_pool_receipt", "authenticated_pool_h5"]
-    manifest_calls = [
-        node
-        for node in ast.walk(main_tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "_build_manifests"
-    ]
-    assert len(manifest_calls) == 1
+    assert _recorded(builder, "base_pool") == "base_pool_receipt"
     base_pool_keyword = next(
-        keyword for keyword in manifest_calls[0].keywords if keyword.arg == "base_pool"
+        keyword
+        for keyword in _manifest_call(builder).keywords
+        if keyword.arg == "base_pool"
     )
     assert isinstance(base_pool_keyword.value, ast.Name)
     assert base_pool_keyword.value.id == "base_pool_receipt"
+    assert 'base_pool_receipt = inputs["base_pool"]' in inspect.getsource(
+        builder._certify_us_build
+    )
     assert (
         "authenticated_pool_h5.verified_digest(\n"
         '            consumer="builder base dataset identity"'
@@ -2758,13 +2807,16 @@ def test_builder_reconciles_exact_k_count_before_any_release_write() -> None:
     source = inspect.getsource(builder._main)
     count_gate = source.index("assert_exact_k_realized_count(ladder_outcome")
 
+    # The build's last write is its record; the manifests are written only
+    # from it, by certification (microcosm#1585 item 11, PR 4a).
     for later_write in (
         "_write_release_calibration_diagnostics(",
         "release_engine.write_dataset(",
         "_write_npz(",
-        "_build_manifests(",
+        "_write_us_build_record(",
     ):
         assert count_gate < source.index(later_write)
+    _manifest_call(builder)
 
 
 @pytest.mark.parametrize(
@@ -2943,21 +2995,18 @@ def test_acs_predictor_join_precedes_all_six_archived_model_stages() -> None:
     ):
         assert join_position < source.index(stage)
 
-    manifest_calls = [
-        node
-        for node in ast.walk(ast.parse(source))
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "_build_manifests"
-    ]
-    assert len(manifest_calls) == 1
+    assert _recorded(builder, "acs_predictor_join") == "acs_predictor_join_receipt"
     receipt_keyword = next(
         keyword
-        for keyword in manifest_calls[0].keywords
+        for keyword in _manifest_call(builder).keywords
         if keyword.arg == "acs_predictor_join"
     )
     assert isinstance(receipt_keyword.value, ast.Name)
     assert receipt_keyword.value.id == "acs_predictor_join_receipt"
+    assert (
+        'acs_predictor_join_receipt = inputs["acs_predictor_join"]'
+        in inspect.getsource(builder._certify_us_build)
+    )
 
 
 def test_fiscal_target_exclusion_receipt_replays_the_compile_into_source_coverage() -> (
@@ -2976,10 +3025,13 @@ def test_fiscal_target_exclusion_receipt_replays_the_compile_into_source_coverag
 
     builder = _load_builder_module()
     tree = ast.parse(inspect.getsource(builder._main))
+    # The build compiles and records the receipt; certification writes the
+    # coverage payload from the record (microcosm#1585 item 11, PR 4a).
+    certify_tree = ast.parse(inspect.getsource(builder._certify_us_build))
     calls = {
         name: [
             node
-            for node in ast.walk(tree)
+            for node in ast.walk(certify_tree if name.startswith("write_") else tree)
             if isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
             and node.func.id == name
@@ -2991,6 +3043,13 @@ def test_fiscal_target_exclusion_receipt_replays_the_compile_into_source_coverag
         )
     }
     assert [len(found) for found in calls.values()] == [1, 1, 1]
+    assert _recorded(builder, "fiscal_target_exclusion_receipt") == (
+        "fiscal_target_exclusion_receipt"
+    )
+    assert (
+        'fiscal_target_exclusion_receipt = source_coverage["fiscal_target_exclusion_receipt"]'
+        in inspect.getsource(builder._certify_us_build)
+    )
     compile_call = calls["compile_us_fiscal_target_registry"][0]
     receipt_call = calls["us_fiscal_target_exclusion_receipt"][0]
     assert ast.dump(receipt_call.args[0]) == ast.dump(compile_call.args[0])
@@ -3010,7 +3069,7 @@ def test_fiscal_target_exclusion_receipt_replays_the_compile_into_source_coverag
 
     coverage_writes = [
         node
-        for node in ast.walk(tree)
+        for node in ast.walk(certify_tree)
         if isinstance(node, ast.Assign)
         and isinstance(node.targets[0], ast.Subscript)
         and isinstance(node.targets[0].value, ast.Name)
@@ -3020,8 +3079,7 @@ def test_fiscal_target_exclusion_receipt_replays_the_compile_into_source_coverag
     ]
     assert len(coverage_writes) == 1
     assert (
-        receipt_call.lineno
-        < coverage_writes[0].lineno
+        coverage_writes[0].lineno
         < calls["write_us_source_coverage_diagnostics"][0].lineno
     )
 
@@ -13528,9 +13586,15 @@ def test_main_writes_scf_education_debt_fits_where_its_manifest_lists_them() -> 
     assert keywords("_with_scf_education_debt_stage")["fit_path"] == (
         "release_dir / US_SCF_EDUCATION_DEBT_FIT_FILENAME if dry_run is None else None"
     )
-    assert keywords("_build_manifests")["scf_education_debt"] == (
-        "args.scf_education_debt"
-    )
+    # Certification reads the flag from the build record's settings.
+    assert "scf_education_debt" in builder.US_BUILD_RECORD_SETTINGS
+    assert ast.unparse(
+        next(
+            kw.value
+            for kw in _manifest_call(builder).keywords
+            if kw.arg == "scf_education_debt"
+        )
+    ) == ("args.scf_education_debt")
 
 
 @pytest.mark.parametrize("readable", (True, False), ids=("available", "unavailable"))
@@ -14138,18 +14202,16 @@ def test_gate_evidence_files_are_the_files_their_gates_write() -> None:
     ]
     assert len(solves) == 3
     assert runtime_call.lineno < min(solves)
-    [manifest_call] = [
-        node
-        for node in ast.walk(main_fn)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "_build_manifests"
-    ]
+    manifest_call = _manifest_call(builder)
     keywords = {
         keyword.arg: ast.unparse(keyword.value) for keyword in manifest_call.keywords
     }
     assert keywords["export_input_mass_reference"] == "export_input_mass_reference"
     assert keywords["calibration_runtime"] == "calibration_runtime"
+    assert _recorded(builder, "export_input_mass_reference") == (
+        "export_input_mass_reference"
+    )
+    assert _recorded(builder, "calibration_runtime") == "calibration_runtime"
     assert keywords["skipped_gates"] == (
         "('reform_coverage_smoke',) if args.skip_reform_coverage_smoke else ()"
     )
@@ -14174,15 +14236,11 @@ def test_fiscal_target_exclusion_receipt_writer_uses_the_manifest_key() -> None:
     import ast
 
     builder = _load_builder_module()
-    source = Path(builder.__file__).read_text()
-    main_fn = next(
-        node
-        for node in ast.walk(ast.parse(source))
-        if isinstance(node, ast.FunctionDef) and node.name == "_main"
-    )
+    # Certification writes the coverage payload (microcosm#1585 item 11, PR 4a).
+    certify_fn = _builder_function(builder, "_certify_us_build")
     coverage_keys = [
         target.slice
-        for node in ast.walk(main_fn)
+        for node in ast.walk(certify_fn)
         if isinstance(node, ast.Assign)
         for target in node.targets
         if isinstance(target, ast.Subscript)
@@ -16135,6 +16193,16 @@ def test_release_h5_write_sits_between_batched_raise_and_smoke() -> None:
     source = inspect.getsource(builder._main)
     tree = ast.parse(source)
 
+    # The smoke runs in certification, from the build record, which pins
+    # the written H5 by digest (microcosm#1585 item 11, PR 4a): the build
+    # writes the H5, then the record, and certification scores that file.
+    certify_smokes = _calls_named(
+        _builder_function(builder, "_certify_us_build"), "us_reform_coverage_smoke_gate"
+    )
+    assert len(certify_smokes) == 1, certify_smokes
+    assert '"dataset": artifact_root / dataset_filename' in inspect.getsource(
+        builder._us_build_record
+    )
     batched_raises: list[int] = []
     writes: list[int] = []
     smokes: list[int] = []
@@ -16152,7 +16220,7 @@ def test_release_h5_write_sits_between_batched_raise_and_smoke() -> None:
             )
             if name == "write_dataset":
                 writes.append(node.lineno)
-            elif name == "us_reform_coverage_smoke_gate":
+            elif name == "_write_us_build_record":
                 smokes.append(node.lineno)
 
     assert len(batched_raises) == 1, batched_raises
@@ -16163,7 +16231,7 @@ def test_release_h5_write_sits_between_batched_raise_and_smoke() -> None:
     assert len(smokes) == 1, smokes
     assert batched_raises[0] < writes[0] < smokes[0], (
         "Ordering contract violated: batched pre-export raise "
-        f"(line {batched_raises[0]}) < H5 write ({writes[0]}) < smoke "
+        f"(line {batched_raises[0]}) < H5 write ({writes[0]}) < build record "
         f"({smokes[0]}) must hold so a gate-failed run never produces the "
         "H5 and the smoke scores the just-written file."
     )
@@ -18499,6 +18567,42 @@ def test_evidence_mode_conversion_is_pinned_structurally() -> None:
                 "gates must abort in both modes"
             )
 
+    # The terminal set continues in certification, from the build record
+    # (microcosm#1585 item 11, PR 4a): every release-gate raise there comes
+    # after the accumulator, so each must be a conversion site.
+    assert _recorded(builder, "terminal_gate_failures") == "terminal_gate_failures"
+    assert _recorded(builder, "evidence_failure_owner_patterns") == (
+        "evidence_failure_owner_patterns"
+    )
+    certify_fn = _builder_function(builder, "_certify_us_build")
+    main_owner_checks = len(
+        [
+            node
+            for node in ast.walk(main_fn)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_evidence_known_failures"
+        ]
+    )
+    main_fn = certify_fn
+    for parent in ast.walk(main_fn):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+    certify_raises = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Raise)
+        and "Release gates failed: " in (ast.get_source_segment(source, node) or "")
+    ]
+    assert certify_raises, "certification lost its release-gate raises"
+    for raise_node in certify_raises:
+        assert any(
+            test in certified_guard_tests for test in _ancestor_if_tests(raise_node)
+        ), (
+            f"certification raise at line {raise_node.lineno} must sit under one "
+            f"of {sorted(certified_guard_tests)}"
+        )
+
     refusals = [
         node
         for node in ast.walk(main_fn)
@@ -18563,8 +18667,9 @@ def test_evidence_mode_conversion_is_pinned_structurally() -> None:
         and isinstance(node.func, ast.Name)
         and node.func.id == "_evidence_known_failures"
     ]
-    assert len(owner_check_calls) == 5, (
-        f"expected 5 owner-resolution sites in _main(), found {len(owner_check_calls)}"
+    assert (main_owner_checks, len(owner_check_calls)) == (1, 4), (
+        "expected 5 owner-resolution sites, 1 in _main() and 4 in "
+        f"certification; found {main_owner_checks} and {len(owner_check_calls)}"
     )
 
 
@@ -19061,20 +19166,32 @@ def test_spm_composition_gate_is_not_guarded_by_skip_reform_validation() -> None
     source = inspect.getsource(builder._main)
     tree = ast.parse(source)
 
-    skipped_lines: set[int] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.If):
-            continue
-        if "args.skip_reform_validation" not in (
-            ast.get_source_segment(source, node.test) or ""
-        ):
-            continue
-        for branch in (*node.body, *node.orelse):
-            for inner in ast.walk(branch):
-                if hasattr(inner, "lineno"):
-                    skipped_lines.add(inner.lineno)
+    def guarded_lines(source: str) -> set[int]:
+        lines: set[int] = set()
+        for node in ast.walk(ast.parse(source)):
+            if not isinstance(node, ast.If):
+                continue
+            if "args.skip_reform_validation" not in (
+                ast.get_source_segment(source, node.test) or ""
+            ):
+                continue
+            for branch in (*node.body, *node.orelse):
+                for inner in ast.walk(branch):
+                    if hasattr(inner, "lineno"):
+                        lines.add(inner.lineno)
+        return lines
 
-    assert skipped_lines, "expected at least one --skip-reform-validation guard"
+    # Reform validation runs in certification (microcosm#1585 item 11, PR
+    # 4a), where the guard lives; the gate runs in the build.
+    certify_source = inspect.getsource(builder._certify_us_build)
+    assert guarded_lines(certify_source), (
+        "expected at least one --skip-reform-validation guard"
+    )
+    assert not _calls_named(
+        _builder_function(builder, "_certify_us_build"),
+        "_spm_composition_gate_failures",
+    )
+    skipped_lines = guarded_lines(source)
     gate_calls = [
         node.lineno
         for node in ast.walk(tree)
@@ -19555,11 +19672,14 @@ def test_national_state_surface_source_coverage_excludes_dropped_cd_sources() ->
 def test_main_derives_source_coverage_aliases_from_the_target_surface() -> None:
     builder = _load_builder_module()
     main_source = inspect.getsource(builder._main)
+    certify_source = inspect.getsource(builder._certify_us_build)
 
+    assert _recorded(builder, "target_surface_selection") == "target_surface_selection"
     assert "_source_coverage_aliases(\n        target_surface_selection\n    )" in (
-        main_source
+        certify_source
     )
     assert '"soi-congressional-district-2022",' not in main_source
+    assert '"soi-congressional-district-2022",' not in certify_source
 
 
 @pytest.mark.parametrize(
