@@ -14,11 +14,10 @@ the shell's stage declares for it. It draws nothing and calls no engine.
   own weights: ``E = sum(households x D) / sum(households)`` over the
   region's areas, ``D`` each area's local authority's Band D.
   :func:`uk_spi_housing_council_tax_inputs` takes it from
-  :func:`~microcosm.build.atomic_support_expectations.draw_cell_expectations`
-  with each system's constraints, weight rule and default, the arguments the
-  council-tax localisation (``council_tax_localise``) passes for the same
-  rows, on a narrow frame of the region alone whose decile and band inputs
-  are present and missing (:func:`uk_spi_copy_draw_frame`). It reads each
+  :func:`~microcosm.build.uk_runtime.atomic_area_conditioning.uk_draw_cell_expectations`,
+  the call the council-tax localisation (``council_tax_localise``) makes for
+  the same rows, on a narrow frame of the region alone whose decile and band
+  inputs are present and missing (:func:`uk_spi_copy_draw_frame`). It reads each
   row's region, support channel and copy lineage, and no area column,
   geography key, decile or band flag.
 - **The bill.** On a Great Britain row, one whose region's nation
@@ -74,15 +73,13 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.atomic_geography import AtomicSupport, validate_assignment_spec
-from microcosm.build.atomic_support_expectations import draw_cell_expectations
 from microcosm.build.uk_runtime.atomic_area_conditioning import (
     BAND_INPUT_COLUMN,
     DECILE_INPUT_COLUMN,
     REGION_COLUMN,
     SUPPORT_CHANNEL_BRANCH,
     UK_ATOMIC_FALLBACK_LEVELS,
-    _system_rules,
-    uk_draw_systems,
+    uk_draw_cell_expectations,
     uk_support_channel_copies,
 )
 from microcosm.build.uk_runtime.council_tax_band_d import (
@@ -364,12 +361,11 @@ def uk_spi_housing_council_tax_inputs(
     lineage marks as its copies
     (:func:`~microcosm.build.uk_runtime.atomic_area_conditioning.uk_support_channel_copies`).
     Their systems come from the definition's region selectors on
-    :func:`uk_spi_copy_draw_frame`, and each Great Britain system's rows take
-    :func:`~microcosm.build.atomic_support_expectations.draw_cell_expectations`
-    on that frame, with the system's constraints, its ``weight_by`` rule
-    without the default and the default, over the local authority codes'
-    2024-25 Band D: the call the council-tax localisation makes for the same
-    rows, so each reference is the region's, by households. The digests are
+    :func:`uk_spi_copy_draw_frame`, and the Great Britain rows take
+    :func:`~microcosm.build.uk_runtime.atomic_area_conditioning.uk_draw_cell_expectations`
+    on that frame, over the local authority codes' 2024-25 Band D: the call
+    the council-tax localisation makes for the same rows, so each reference is
+    the region's, by households. The digests are
     keyed by the supports given, never by the systems the rows fall in.
 
     Refused, naming columns and declared constants only: a ``band_d`` that is
@@ -424,34 +420,20 @@ def uk_spi_housing_council_tax_inputs(
     great_britain = np.asarray(
         [_levies_council_tax(region) for region in regions], dtype=bool
     )
-    systems = uk_draw_systems(frame, spec)
-    reference = np.full(len(rows), None, dtype=object)
-    for system in spec["systems"]:
-        members = np.flatnonzero(great_britain & (systems == system["id"]))
-        if not len(members):
-            continue
-        weight_by, default = _system_rules(system)
-        try:
-            means = draw_cell_expectations(
-                supports[system["id"]],
-                frame.iloc[members],
-                constraint_columns={
-                    constraint["input"]: constraint["support"]
-                    for constraint in system["constraints"]
-                },
-                weight_by=weight_by,
-                default_weight=default,
-                value_column=UK_LOCAL_AUTHORITY_CODE_COLUMN,
-                values=band_d.band_d,
-            )
-        except ValueError as error:
-            raise ValueError(
-                f"{_WHAT} takes the expected {UK_BAND_D_FISCAL_YEAR} Band D of each "
-                f"copy's draw cell: {error}"
-            ) from error
-        table = np.empty(len(means), dtype=object)
-        table[:] = means
-        reference[members] = table
+    try:
+        reference = uk_draw_cell_expectations(
+            frame,
+            great_britain,
+            spec,
+            supports,
+            value_column=UK_LOCAL_AUTHORITY_CODE_COLUMN,
+            values=band_d.band_d,
+        )
+    except ValueError as error:
+        raise ValueError(
+            f"{_WHAT} takes the expected {UK_BAND_D_FISCAL_YEAR} Band D of each "
+            f"copy's draw cell: {error}"
+        ) from error
     return UKSPIHousingCouncilTaxInputs(
         household_ids=tuple(
             household[_HOUSEHOLD_ID_COLUMN].to_numpy(dtype=object)[rows].tolist()

@@ -50,6 +50,7 @@ of a household or a count.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from fractions import Fraction
 from numbers import Integral
 from types import MappingProxyType
 
@@ -65,6 +66,7 @@ from microcosm.build.atomic_support_conditioning import (
     FallbackLevel,
     choose_fallback_levels,
 )
+from microcosm.build.atomic_support_expectations import draw_cell_expectations
 from microcosm.build.source_lineage import copy_paths
 from microcosm.build.uk_runtime.atomic_area_support import (
     ASSIGNMENT_COLUMNS,
@@ -105,6 +107,7 @@ __all__ = [
     "uk_band_weight_map",
     "uk_conditioned_assignment_definition",
     "uk_conditioned_supports",
+    "uk_draw_cell_expectations",
     "uk_draw_frame",
     "uk_draw_inputs",
     "uk_draw_levels",
@@ -540,6 +543,62 @@ def _system_rules(system: Mapping) -> tuple[dict | None, str]:
     if rule is None:
         return None, stage["weight"]
     return {"input": rule["input"], "map": dict(rule["map"])}, rule["default"]
+
+
+def uk_draw_cell_expectations(
+    frame: pd.DataFrame,
+    rows: np.ndarray,
+    definition: Mapping,
+    supports: Mapping[str, AtomicSupport],
+    *,
+    value_column: str,
+    values: Mapping[str, int | Fraction],
+) -> np.ndarray:
+    """The exact expected value of each selected row's draw cell, in row order.
+
+    ``frame`` carries the draw's inputs at each row's level
+    (:func:`uk_draw_frame`'s frame, or one whose inputs are missing by rule),
+    and ``rows`` is a boolean mask of the rows to take. Each system's selected
+    rows go to
+    :func:`~microcosm.build.atomic_support_expectations.draw_cell_expectations`
+    with the system's support and the definition's own arguments, as
+    :func:`uk_draw_levels` passes them to the chooser: its constraints as the
+    input-to-support mapping, its stage's ``weight_by`` rule without the
+    default, and the default as ``default_weight``; ``values`` is keyed by the
+    support's ``value_column``. Returns an object array, the expectation on
+    each selected row and ``None`` on every other. Refused: a mask that is not
+    one flag per row, and what the system routing and the expectation refuse.
+    """
+
+    spec = validate_assignment_spec(definition)
+    selected = np.asarray(rows)
+    _require(
+        selected.dtype == bool and selected.shape == (len(frame),),
+        "one selection flag per row is required",
+    )
+    systems = uk_draw_systems(frame, spec)
+    expected = np.full(len(frame), None, dtype=object)
+    for system in spec["systems"]:
+        members = np.flatnonzero(selected & (systems == system["id"]))
+        if not len(members):
+            continue
+        weight_by, default = _system_rules(system)
+        means = draw_cell_expectations(
+            supports[system["id"]],
+            frame.iloc[members],
+            constraint_columns={
+                constraint["input"]: constraint["support"]
+                for constraint in system["constraints"]
+            },
+            weight_by=weight_by,
+            default_weight=default,
+            value_column=value_column,
+            values=values,
+        )
+        table = np.empty(len(means), dtype=object)
+        table[:] = means
+        expected[members] = table
+    return expected
 
 
 def uk_draw_levels(

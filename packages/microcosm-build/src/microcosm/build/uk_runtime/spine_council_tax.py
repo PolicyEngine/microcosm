@@ -23,9 +23,10 @@ capped at the bill outside Northern Ireland):
   over the three conditioned supports, with G2's definition built at seed 0,
   since a level reads no stream. A Great Britain household's reference is
   the expected Band D of that cell under the draw's own weights
-  (:func:`~microcosm.build.atomic_support_expectations.draw_cell_expectations`,
+  (:func:`~microcosm.build.uk_runtime.atomic_area_conditioning.uk_draw_cell_expectations`,
   exact, with each system's constraints, weight rule and default as
-  ``uk_draw_levels`` passes them to the chooser): ``E = sum(w D) / sum(w)``
+  ``uk_draw_levels`` passes them to the chooser; the housing shell's reference
+  for the SPI copies is the same call): ``E = sum(w D) / sum(w)``
   over the cell's areas (the household's region, and its IMD decile at L0
   and L1), ``w`` the households in the household's band where its level
   keeps the band (L0 and L2) and all households otherwise (L1 and L3), ``D``
@@ -109,7 +110,6 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.atomic_geography import AtomicSupport, validate_assignment_spec
-from microcosm.build.atomic_support_expectations import draw_cell_expectations
 from microcosm.build.bounded_amounts import FINITE_NONNEGATIVE, amounts_within_bound
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.uk_runtime.atomic_area_conditioning import (
@@ -121,6 +121,7 @@ from microcosm.build.uk_runtime.atomic_area_conditioning import (
     _system_rules,
     uk_conditioned_assignment_definition,
     uk_conditioned_supports,
+    uk_draw_cell_expectations,
     uk_draw_frame,
     uk_draw_inputs,
     uk_draw_levels,
@@ -765,10 +766,11 @@ def uk_council_tax_references(
     ``uk_draw_levels``, ``uk_draw_frame``); a row the SPI support channel
     copied has both inputs missing, so it takes L3. For every Great Britain
     row, the draw-cell guard runs, then
-    :func:`~microcosm.build.atomic_support_expectations.draw_cell_expectations`
-    gives the exact mean of its cell's areas' authorities' Band D, weighted by
-    the column the row samples by, with each system's constraints, weight
-    rule and default as ``uk_draw_levels`` passes them to the chooser. Its
+    :func:`~microcosm.build.uk_runtime.atomic_area_conditioning.uk_draw_cell_expectations`,
+    which the housing shell's reference calls too, gives the exact mean of its
+    cell's areas' authorities' Band D, weighted by the column the row samples
+    by, with each system's constraints, weight rule and default as
+    ``uk_draw_levels`` passes them to the chooser. Its
     ratio is its own authority's Band D over that mean: one correctly rounded
     division of the two exact rationals, made once for each distinct expected
     Band D and authority.
@@ -800,33 +802,20 @@ def uk_council_tax_references(
             f"{UK_LOCAL_AUTHORITY_CODE_COLUMN!r} has none."
         )
     _check_draw_cells(household, at_level, systems, great_britain, spec, supports)
-    expected = np.full(rows, None, dtype=object)
-    for system in spec["systems"]:
-        members = np.flatnonzero(great_britain & (systems == system["id"]))
-        if not len(members):
-            continue
-        weight_by, default = _system_rules(system)
-        try:
-            means = draw_cell_expectations(
-                supports[system["id"]],
-                at_level.iloc[members],
-                constraint_columns={
-                    constraint["input"]: constraint["support"]
-                    for constraint in system["constraints"]
-                },
-                weight_by=weight_by,
-                default_weight=default,
-                value_column=UK_LOCAL_AUTHORITY_CODE_COLUMN,
-                values=values,
-            )
-        except ValueError as error:
-            raise ValueError(
-                f"{_WHAT} takes the expected {UK_BAND_D_FISCAL_YEAR} Band D of each "
-                f"Great Britain household's draw cell: {error}"
-            ) from error
-        table = np.empty(len(means), dtype=object)
-        table[:] = means
-        expected[members] = table
+    try:
+        expected = uk_draw_cell_expectations(
+            at_level,
+            great_britain,
+            spec,
+            supports,
+            value_column=UK_LOCAL_AUTHORITY_CODE_COLUMN,
+            values=values,
+        )
+    except ValueError as error:
+        raise ValueError(
+            f"{_WHAT} takes the expected {UK_BAND_D_FISCAL_YEAR} Band D of each "
+            f"Great Britain household's draw cell: {error}"
+        ) from error
     own = np.full(rows, None, dtype=object)
     ratios = np.full(rows, np.nan, dtype=np.float64)
     quotients: dict[tuple[Fraction, str], float] = {}
