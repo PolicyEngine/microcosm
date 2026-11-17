@@ -5508,14 +5508,25 @@ _COUNCIL_TAX_NAME_LISTS = (
 
 
 def _without_excluded_regions(
-    household: pd.DataFrame, person: pd.DataFrame, regions: tuple[str, ...]
+    household: pd.DataFrame,
+    person: pd.DataFrame,
+    regions: tuple[str, ...],
+    *,
+    household_columns: tuple[str, ...],
+    person_columns: tuple[str, ...],
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """The household and person tables without the households whose
-    ``region`` is one of ``regions``, and without those households' persons.
+    ``region`` is one of ``regions``, and without those households' persons,
+    each holding only the columns its caller reads: ``household_columns`` and
+    ``person_columns``.
 
     The household ids are read over the whole table first, so a household
-    left in cannot share an id with one taken out. Refusals name columns
-    only.
+    left in cannot share an id with one taken out. Only the named columns are
+    copied, which on a frame of many columns is a small part of it
+    (microcosm#931). A named column keeps every column of its name, and one a
+    table lacks is left out, so a missing or repeated column reaches the
+    caller's own refusal as it would on the whole table. Refusals name
+    columns only.
     """
 
     for entity, table, column in (
@@ -5530,7 +5541,16 @@ def _without_excluded_regions(
         raise ValueError("household_id must name each household once")
     excluded = household["region"].isin(list(regions)).to_numpy(dtype=bool)
     leaves = person["person_household_id"].isin(ids[excluded]).to_numpy(dtype=bool)
-    return household.loc[~excluded], person.loc[~leaves]
+    return (
+        household.loc[~excluded, _columns_present(household, household_columns)],
+        person.loc[~leaves, _columns_present(person, person_columns)],
+    )
+
+
+def _columns_present(table: pd.DataFrame, columns: tuple[str, ...]) -> list[str]:
+    """``columns``, each once and in order, that ``table`` holds."""
+
+    return [column for column in dict.fromkeys(columns) if column in table.columns]
 
 
 def _council_tax_reduction_within_bill_gate(
@@ -5598,7 +5618,11 @@ def _council_tax_reduction_within_bill_gate(
     try:
         if names["excluded_regions"]:
             household, person = _without_excluded_regions(
-                household, person, names["excluded_regions"]
+                household,
+                person,
+                names["excluded_regions"],
+                household_columns=("household_id", bill, *household_columns),
+                person_columns=("person_household_id", *person_columns),
             )
         verdicts = amounts_within_bound(
             {"household": household, "person": person},
