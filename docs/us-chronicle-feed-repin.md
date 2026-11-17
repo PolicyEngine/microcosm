@@ -38,7 +38,8 @@ machine on 2026-11-13; the run notes are not in this repository.
 
 - **Commit.** Chronicle main `3e9d3a0694e8ca7e31ed5319c3ceb1bde92b12e0`
   (merged 2026-11-12), which carries every county package. It is on main, so
-  it needs no branch or tag; the next main re-pin starts at or after it.
+  it needs no branch or tag. The combined re-pin (below) moves both pins to
+  one Chronicle main commit at or after it.
   The rows are on the `chronicle.consumer_fact.v5` contract
   (schema digest `acd33a09…`); the main pin stays on v3.
 - **Pairs.** 10 (record set, period) pairs from nine packages, built at their
@@ -105,11 +106,29 @@ machine on 2026-11-13; the run notes are not in this repository.
 A later main re-pin can fold these pairs into the main scope only by retiring
 the county pin in the same change.
 
-The two pins move together. The main feed is pinned at `41b2fb2` and the
-county facts at `3e9d3a0`; the next main re-pin starts at or after
-`3e9d3a0`. From then on, a change that re-pins the main feed at a Chronicle
-commit also rebuilds the county facts at that commit and re-pins them, so a
-US build reads one Chronicle base.
+The two pins move together. When the county facts were pinned at `3e9d3a0`,
+the main feed was at `41b2fb2` (the split pin). Until the combined re-pin, the
+main pin may also name one feed cut on the split pin that the US feed owner
+allowed; `test_us_chronicle_county_facts.py` names it, and a later cut replaces
+it. A cut is the split pin, or the cut before it, plus whole Chronicle packages
+whose git trees equal Chronicle main's, built with `41b2fb2`'s Chronicle code
+changed only in `SOURCE_PACKAGE_ALIASES`. Its re-pin report keeps every earlier
+row byte for byte, or the cut brings its own reviewed check of the rows it
+changes, and it changes no compiled state IRS SOI spec (cite the compile
+delta). Only the county-facts rung reads both pins, and it reads only state
+IRS SOI parents from the main feed, so such a cut leaves the rung's inputs
+unchanged. Today the cut is `60266a3` (microcosm#880, through microcosm#1610).
+Any other main re-pin starts at or after `3e9d3a0` and rebuilds and re-pins
+the county facts at the same commit, so a US build reads one Chronicle base.
+
+The combined re-pin moves both pins to one Chronicle main commit at or after
+chronicle#430's merge `b428468d`, rebuilds both feeds and retires the allowed
+cut in the same change. It brings the 20 main-scope packages that differ
+between `41b2fb2` and `3e9d3a0`, the v5 row contract, and a scope rebuild for
+the ten pairs Chronicle main no longer emits (see the TY2023 state AGI bands
+re-pin below), so it needs its own decisions. The US feed owner owns it and
+starts it once the next certified build's commit is fixed; target merge
+11 December 2026.
 
 ## A re-pin onto a newer row contract
 

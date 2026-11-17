@@ -129,21 +129,57 @@ def test_the_county_pin_is_not_the_main_pin() -> None:
 #: their own, at 3e9d3a0 (docs/us-chronicle-feed-repin.md).
 _MAIN_PIN_WHEN_THE_COUNTY_PIN_SPLIT = "41b2fb2b864a28c0eda03322b77a97ef147dfa3c"
 
+#: The one feed cut on the split pin that the US feed owner allows until the
+#: combined re-pin ("The two pins move together" in
+#: docs/us-chronicle-feed-repin.md says what a cut may be). A later cut replaces
+#: it, so the main pin cannot drift back to an older cut. 60266a3 is 41b2fb2
+#: plus chronicle#430's five packages, for microcosm#880 (microcosm#1610;
+#: branch feed/us-41b2fb2-household-880, tag microcosm-us-feed-880-v1).
+_FEED_CUT_ON_THE_SPLIT_PIN: str | None = "60266a3088319c909cf7fc89c9d00d3b055dc6e1"
+
 
 def test_the_county_pin_moves_with_the_next_main_pin() -> None:
     """The two pins move together. The main feed may stay at the commit it
-    had when the county facts were pinned separately; once a change re-pins it
-    anywhere else, the same change re-pins the county facts to that commit, so
-    a US build reads one Chronicle base."""
+    had when the county facts were pinned separately, or name the one allowed
+    feed cut on it; once a change re-pins it anywhere else, the same change
+    re-pins the county facts to that commit, so a US build reads one Chronicle
+    base."""
 
     main = load_us_chronicle_feed()
     county = load_us_chronicle_county_facts_pin()
-    assert main.source_commit in (
+    allowed = {_MAIN_PIN_WHEN_THE_COUNTY_PIN_SPLIT, county.source_commit}
+    if _FEED_CUT_ON_THE_SPLIT_PIN is not None:
+        allowed.add(_FEED_CUT_ON_THE_SPLIT_PIN)
+    assert main.source_commit in allowed, (
+        f"The main Chronicle feed pin moved to {main.source_commit}, which is "
+        "neither the split pin 41b2fb2 nor the allowed feed cut on it; re-pin "
+        "the county facts to the same commit in the same change."
+    )
+
+
+def test_the_combined_repin_retires_the_feed_cut() -> None:
+    """Once both pins name one Chronicle commit, no feed cut stays allowed."""
+
+    main = load_us_chronicle_feed()
+    county = load_us_chronicle_county_facts_pin()
+    if main.source_commit == county.source_commit:
+        assert _FEED_CUT_ON_THE_SPLIT_PIN is None, (
+            "Both pins name one Chronicle commit; set _FEED_CUT_ON_THE_SPLIT_PIN "
+            "to None in the same change."
+        )
+
+
+def test_the_feed_cut_is_a_full_commit_id_other_than_the_pins() -> None:
+    """The allowed cut is a full 40-character commit id, distinct from both pins."""
+
+    if _FEED_CUT_ON_THE_SPLIT_PIN is None:
+        return
+    county = load_us_chronicle_county_facts_pin()
+    assert len(_FEED_CUT_ON_THE_SPLIT_PIN) == 40
+    assert set(_FEED_CUT_ON_THE_SPLIT_PIN) <= set("0123456789abcdef")
+    assert _FEED_CUT_ON_THE_SPLIT_PIN not in (
         _MAIN_PIN_WHEN_THE_COUNTY_PIN_SPLIT,
         county.source_commit,
-    ), (
-        f"The main Chronicle feed pin moved to {main.source_commit}; re-pin the "
-        "county facts to the same commit in the same change."
     )
 
 
