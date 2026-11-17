@@ -2738,13 +2738,22 @@ def _verify_chain_target_regime(
 
     reported = getattr(result, "regime", None)
     if reported is None:
-        # Lightweight bank-path test doubles may omit QRF diagnostics.
+        # Lightweight test doubles may omit QRF diagnostics.
         return
     if reported != expected:
         raise RuntimeError(
             f"ACS transfer {entity!r}/{family!r}/{pattern!r} target "
             f"{model_target!r} reported regime {reported!r}, expected exact "
             f"donor-support regime {expected!r}."
+        )
+
+
+def _require_chain_api(model: object) -> None:
+    """Refuse a QRF without the one-target-at-a-time chain methods."""
+
+    if not hasattr(model, "start_chain") or not hasattr(model, "fit_draw_next"):
+        raise TypeError(
+            "ACS transfer requires a QRF with start_chain and fit_draw_next support."
         )
 
 
@@ -2779,8 +2788,7 @@ def _fit_draw_pattern_target(
     )
     if result.target != model_target:
         raise AssertionError(
-            f"ACS transfer chain returned {result.target!r}, "
-            f"expected {model_target!r}."
+            f"ACS transfer chain returned {result.target!r}, expected {model_target!r}."
         )
     if result.weight_kind != weight_kind:
         raise RuntimeError(
@@ -2923,6 +2931,7 @@ def _fit_family_patterns(
         # next is fitted, so one target's forests are in memory at once. The
         # draws equal fitting every target and then predicting (the chain API
         # keeps the fit and draw random streams apart).
+        _require_chain_api(model)
         state = model.start_chain(
             model_frame,
             list(predictors),
@@ -2959,9 +2968,9 @@ def _fit_family_patterns(
             raw_draws[model_target] = draw
         for target in targets:
             model_target = target_encodings[target].model_target
-            predictions[target][recipient_positions] = raw_draws[
-                model_target
-            ].to_numpy(dtype=np.float64)
+            predictions[target][recipient_positions] = raw_draws[model_target].to_numpy(
+                dtype=np.float64
+            )
 
         pattern_record = AcsTransferPattern(
             name=pattern_name,
@@ -3125,11 +3134,7 @@ def _fit_family_patterns_banked(
             if evidence_model_targets
             else ()
         )
-        if not hasattr(model, "start_chain") or not hasattr(model, "fit_draw_next"):
-            raise TypeError(
-                "Banked ACS transfer requires a QRF with start_chain and "
-                "fit_draw_next support."
-            )
+        _require_chain_api(model)
         state = model.start_chain(
             model_frame,
             list(predictors),

@@ -219,9 +219,14 @@ def tracked_target_fits(
 # ---------------------------------------------------------------------------
 
 
-def _update_digest(digest: hashlib._Hash, label: object, values: pd.Index | pd.Series) -> None:
+def _update_digest(
+    digest: hashlib._Hash, label: object, values: pd.Index | pd.Series
+) -> None:
     digest.update(repr(label).encode("utf-8"))
     digest.update(str(values.dtype).encode("utf-8"))
+    if isinstance(values.dtype, pd.CategoricalDtype):
+        digest.update(repr(list(values.dtype.categories)).encode("utf-8"))
+        digest.update(repr(values.dtype.ordered).encode("utf-8"))
     if isinstance(values.dtype, np.dtype) and values.dtype.kind in "biuf":
         digest.update(np.ascontiguousarray(values.to_numpy()).tobytes())
     else:
@@ -236,7 +241,8 @@ def table_bytes_digest(table: pd.DataFrame) -> str:
     """SHA-256 over a table's index and columns: names, dtypes and value bytes.
 
     Numeric and boolean columns contribute their raw bytes, so a float that
-    differs in its last bit (or a ``-0.0`` for a ``0.0``) changes the digest.
+    differs in its last bit (or a ``-0.0`` for a ``0.0``) changes the digest;
+    a categorical column also contributes its categories and their order.
     """
 
     digest = hashlib.sha256()

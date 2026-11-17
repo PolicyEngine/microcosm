@@ -405,8 +405,8 @@ EXPECTED_HASHES = {
     # The ACS transfer fitting and drawing one QRF target at a time, and
     # freeing each target's forests before the next, moves both again:
     # acs_transfer's attested bytes change; no draw, RNG rule or QRF target does.
-    "seed_map": "62c20d8f1e64300e1a92836689a4c9aa446faf765dd7cc34e037d5f967c60435",
-    "seed_protocol": "e0271448cb5a26568e0fbaa11245cd686ed98e0b2f2d917f7e4d3bd61d79b79b",
+    "seed_map": "132a30b3c2746842129698e8932f0bbd4435ea72e97614ea78a52f17c6a0b43a",
+    "seed_protocol": "c22d9a74d572a3058e42e8880ca9f8a7a4373ca6218f02a4b45c5644b1b2a33f",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

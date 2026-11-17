@@ -365,7 +365,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # solve and ssi_take_up, and the calibration contract's renamed modes.
             # The ACS transfer fitting and drawing one QRF target at a time
             # moves it again (acs_transfer's attested bytes; no draw changes).
-            "spec_sha256": "de3a65abe3b769ce5bf9b3e7ff554732572590e71e7dbc0d4c83b2e0060b9690",
+            "spec_sha256": "affbcac5cd7d3ddf2a22e548729a7923441d243ecb75ad0de4586f75c6d159ee",
         },
     }
 

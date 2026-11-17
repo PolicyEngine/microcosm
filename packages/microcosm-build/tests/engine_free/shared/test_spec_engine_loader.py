@@ -34,7 +34,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # moves it again. The ACS transfer fitting and drawing one QRF target at a
     # time moves it again (acs_transfer's attested bytes; no draw changes).
     assert first.spec_sha256 == (
-        "cf61f884233ebd050265e6eece3bbaeb5ca2316a9e4fd83d6937e8e76bda927c"
+        "1d1def33ad3545517f5d1d4cdb3497b828c224941cb54a65ef865dadbfedb9dd"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

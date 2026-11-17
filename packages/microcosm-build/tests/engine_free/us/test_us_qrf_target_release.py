@@ -19,7 +19,9 @@ Two kinds of comparison:
   system and machine: macOS arm64 natively, and Linux x86_64 (CI's platform)
   under Docker emulation on Apple silicon. Python 3.13 and 3.14 gave the same
   bytes on each, as did single-threaded native libraries and QRF thread
-  pools. On any other platform these tests skip.
+  pools. They are checked only where the platform and the versions of the
+  libraries that compute the draws match the recording
+  (``_RECORDED_DEPENDENCIES``); elsewhere these tests skip.
 
 A change that is meant to move these outputs re-records the digests by
 running the code it starts from on each platform, not the changed code.
@@ -27,8 +29,10 @@ running the code it starts from on each platform, not the changed code.
 
 from __future__ import annotations
 
+import dataclasses
 import platform
 from collections import Counter
+from importlib.metadata import version
 from pathlib import Path
 
 import pandas as pd
@@ -42,6 +46,7 @@ from microcosm.build.us_runtime.acs_transfer import (
 )
 from microcosm.build.us_runtime.acs_transfer_bank import AcsTransferTargetBankStore
 from microcosm.build.us_runtime.org_wages import ORG_QRF_TARGETS, impute_us_org_wages
+from microcosm.fit import RegimeGatedQRF
 from test_support.microcosm_build.qrf_chain_doubles import (
     FitThenPredictQRF,
     table_bytes_digest,
@@ -115,8 +120,18 @@ _ORIGIN_MAIN_DIGESTS: dict[tuple[str, str], dict[str, dict]] = {
 }
 
 
+#: Versions of the libraries that compute the draws, on both recordings.
+_RECORDED_DEPENDENCIES = {
+    "numpy": "2.4.6",
+    "pandas": "3.0.3",
+    "scipy": "1.17.1",
+    "scikit-learn": "1.8.0",
+    "quantile-forest": "1.4.2",
+}
+
+
 def _origin_main_digests() -> dict[str, dict]:
-    """This platform's recorded digests, or a skip where none were recorded."""
+    """This platform's recorded digests, or a skip where they do not apply."""
 
     here = (platform.system(), platform.machine())
     recorded = _ORIGIN_MAIN_DIGESTS.get(here)
@@ -124,6 +139,12 @@ def _origin_main_digests() -> dict[str, dict]:
         pytest.skip(
             f"origin/main's digests were recorded on {sorted(_ORIGIN_MAIN_DIGESTS)}, "
             f"not {here}; the in-process comparisons cover this platform."
+        )
+    installed = {name: version(name) for name in _RECORDED_DEPENDENCIES}
+    if installed != _RECORDED_DEPENDENCIES:
+        pytest.skip(
+            f"origin/main's digests were recorded with {_RECORDED_DEPENDENCIES}, "
+            f"not {installed}; the in-process comparisons cover these versions."
         )
     return recorded
 
@@ -261,7 +282,9 @@ def test_banked_acs_transfer_reproduces_origin_main_bytes(tmp_path: Path) -> Non
     assert _table_digests(resumed) == expected
 
 
-def _assert_same_transfer(result: AcsTransferResult, reference: AcsTransferResult) -> None:
+def _assert_same_transfer(
+    result: AcsTransferResult, reference: AcsTransferResult
+) -> None:
     assert result.frame.entities == reference.frame.entities
     for entity in reference.frame.entities:
         pd.testing.assert_frame_equal(
@@ -317,3 +340,24 @@ def test_acs_transfer_frees_each_target_before_fitting_the_next(
     assert Counter(lifetimes.fitted_targets) == {
         record.column: len(record.patterns) for record in result.imputed_inputs
     }
+
+
+class _MisreportedRegimeQRF(RegimeGatedQRF):
+    """The real QRF, but every chain step reports a regime its data never has."""
+
+    def fit_draw_next(self, *args: object, **kwargs: object) -> object:
+        step = super().fit_draw_next(*args, **kwargs)
+        return dataclasses.replace(step, regime="misreported")
+
+
+@pytest.mark.parametrize("banked", [False, True], ids=["in_memory", "banked"])
+def test_acs_transfer_refuses_a_target_drawn_under_another_regime(
+    banked: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MisreportedRegimeQRF)
+    target_bank = _bank_store(tmp_path / "bank") if banked else None
+
+    with pytest.raises(RuntimeError, match="reported regime 'misreported'"):
+        _transfer_acs_fixture("shared", target_bank=target_bank)

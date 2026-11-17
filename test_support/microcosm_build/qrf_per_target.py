@@ -13,8 +13,8 @@ from collections.abc import Mapping
 import numpy as np
 import pandas as pd
 
-from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
-from test_support.microcosm_build.us_org_wages import _donor, _frame, _person
+from microcosm.build.us_runtime.asec_census_person_columns import WEIND_TO_WEMIND
+from microcosm.frame import US_SCHEMA, EntitySchema, Frame, WeightKind, Weights
 
 # ---------------------------------------------------------------------------
 # CPS-ORG fixture
@@ -23,6 +23,97 @@ from test_support.microcosm_build.us_org_wages import _donor, _frame, _person
 #: Seed and tree count of the CPS-ORG per-target fixture.
 ORG_FIXTURE_SEED = 11
 ORG_FIXTURE_N_ESTIMATORS = 6
+
+# The three builders below copy ``_person``, ``_frame`` and ``_donor`` from
+# ``test_support.microcosm_build.us_org_wages`` as they were when the tests'
+# frozen digests were recorded, so edits made there for other tests cannot
+# move these fixtures' bytes.
+
+
+def _org_people(rows: int) -> pd.DataFrame:
+    household = np.arange(1, rows + 1, dtype=np.int64)
+    occupation = np.full(rows, 20, dtype=np.int16)
+    occupation[:180] = 0
+    occupation[180:420] = 53
+    occupation[420:423] = 52
+    occupation[423:443] = 8
+    occupation[443:447] = 41
+    occupation[447:737] = 1
+    employment = np.zeros(rows)
+    employment[400:] = 52_000.0
+    industry = np.where(occupation == 0, 0, 23).astype(np.int16)
+    industry[employment > 0] = 13
+    industry[occupation == 52] = 22
+    return pd.DataFrame(
+        {
+            "person_id": np.arange(1, rows + 1, dtype=np.int64),
+            "person_household_id": household,
+            "person_tax_unit_id": household + 10_000,
+            "person_spm_unit_id": household + 20_000,
+            "person_family_id": household + 30_000,
+            "person_marital_unit_id": household + 40_000,
+            "age": np.resize(np.arange(18, 78), rows),
+            "is_female": np.arange(rows) % 2 == 0,
+            "PRDTRACE": np.resize(np.asarray([1, 1, 2, 4]), rows),
+            "PRDTHSP": np.arange(rows) % 7 == 0,
+            "POCCU2": occupation,
+            "WEIND": industry,
+            "WEMIND": np.asarray([WEIND_TO_WEMIND[code] for code in industry]),
+            "WKSWORK": np.where(employment > 0, 52, 0).astype(np.int16),
+            "employment_income_before_lsr": employment,
+            "self_employment_income_before_lsr": 0.0,
+            "weekly_hours_worked_before_lsr": np.where(employment > 0, 40.0, 0.0),
+            "hours_worked_last_week": np.where(
+                np.arange(rows) >= 950, 50.0, np.where(employment > 0, 40.0, 0.0)
+            ),
+            "weeks_worked": np.where(employment > 0, 52.0, 0.0),
+        }
+    )
+
+
+def _org_frame(person: pd.DataFrame) -> Frame:
+    household_ids = person["person_household_id"].to_numpy()
+    rows = len(person)
+    return Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame(
+                {"household_id": household_ids, "state_fips": np.resize([6, 36], rows)}
+            ),
+            "tax_unit": pd.DataFrame(
+                {"tax_unit_id": person["person_tax_unit_id"].to_numpy()}
+            ),
+            "spm_unit": pd.DataFrame(
+                {"spm_unit_id": person["person_spm_unit_id"].to_numpy()}
+            ),
+            "family": pd.DataFrame(
+                {"family_id": person["person_family_id"].to_numpy()}
+            ),
+            "marital_unit": pd.DataFrame(
+                {"marital_unit_id": person["person_marital_unit_id"].to_numpy()}
+            ),
+        },
+        US_SCHEMA,
+        {"household": Weights(np.ones(rows), WeightKind.DESIGN)},
+    )
+
+
+def _org_donor(rows: int) -> pd.DataFrame:
+    rng = np.random.default_rng(2)
+    return pd.DataFrame(
+        {
+            "employment_income": rng.uniform(10_000, 120_000, rows),
+            "weekly_hours_worked": rng.uniform(20, 60, rows),
+            "age": rng.integers(18, 80, rows),
+            "is_female": rng.integers(0, 2, rows),
+            "is_hispanic": rng.integers(0, 2, rows),
+            "race_wbho": rng.integers(1, 5, rows),
+            "state_fips": np.resize([6, 36], rows),
+            "hourly_wage": rng.uniform(8, 80, rows),
+            "is_paid_hourly": rng.integers(0, 2, rows),
+            "sample_weight": rng.uniform(1, 5, rows),
+        }
+    )
 
 
 def org_wage_fixture() -> tuple[Frame, pd.DataFrame]:
@@ -35,7 +126,7 @@ def org_wage_fixture() -> tuple[Frame, pd.DataFrame]:
     """
 
     rng = np.random.default_rng(5)
-    person = _person(160)
+    person = _org_people(160)
     workers = np.arange(len(person)) >= 24
     person["employment_income_before_lsr"] = np.where(
         workers, np.round(rng.uniform(6_000.0, 160_000.0, len(person)), 2), 0.0
@@ -47,7 +138,7 @@ def org_wage_fixture() -> tuple[Frame, pd.DataFrame]:
         workers, rng.integers(8, 61, len(person)).astype(np.float64), 0.0
     )
     person["hours_worked_last_week"] = person["weekly_hours_worked_before_lsr"]
-    return _frame(person), _donor(400)
+    return _org_frame(person), _org_donor(400)
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +261,11 @@ def acs_transfer_fixture() -> tuple[Frame, Frame]:
         rng.random(units) < 0.45, 0.0, np.round(rng.lognormal(11.5, 0.7, units), 2)
     )
     donor = Frame(
-        {"person": donor_person, "household": donor_household, "tax_unit": donor_tax_unit},
+        {
+            "person": donor_person,
+            "household": donor_household,
+            "tax_unit": donor_tax_unit,
+        },
         _ACS_SCHEMA,
         {
             "household": Weights(
