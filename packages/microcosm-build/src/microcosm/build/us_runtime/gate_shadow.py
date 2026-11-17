@@ -984,10 +984,19 @@ class GateBatteryShadow:
                 f"shadow could not record its phases: {type(exc).__name__}: {exc}"
             )
         if completed:
+            # A process that saved no observations (a stage run with the
+            # shadow off, or before it existed) explains an unobserved entry
+            # better than its site does, so it is named instead.
+            cause = (
+                "; ".join(self._observations_missing)
+                + ", so it may have run there unrecorded"
+                if self._observations_missing
+                else "its site is not wired"
+            )
             for entry_id in not_observed:
                 self._shadow_errors.append(
                     f"[{entry_id}] today's run finished without observing this "
-                    "entry; its site is not wired."
+                    f"entry; {cause}."
                 )
         payload = self._comparison_payload(
             recorded=recorded,

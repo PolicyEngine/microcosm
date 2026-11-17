@@ -280,6 +280,44 @@ def test_the_parent_notes_each_stage_that_ran_and_saved_nothing(
     assert payload["phases_recorded"] == []
 
 
+def test_a_resume_cannot_mix_stages_run_with_and_without_the_shadow(
+    tmp_path, monkeypatch, base
+) -> None:
+    # A stage run with the switch off saves nothing, so the parent could only
+    # call its entries unwired. The run config locks the switch when it is
+    # off; with the shadow on, as in every real build, it is unchanged.
+    puf = tmp_path / "puf.h5"
+    puf.write_bytes(b"puf")
+    args = base._parse_args(
+        [
+            "--base-h5",
+            str(tmp_path / "base.h5"),
+            "--puf-h5",
+            str(puf),
+            "--out",
+            str(tmp_path / "out"),
+            "--without-block-ladder",
+        ]
+    )
+    monkeypatch.setattr(
+        base, "_builder_code_identity", lambda: {"source_sha256": "builder"}
+    )
+    armed = base._stage_run_config(args)
+    assert "gate_battery_shadow" not in armed
+    monkeypatch.setenv(US_GATE_SHADOW_SWITCH, "off")
+    off = base._stage_run_config(args)
+    assert off == {**armed, "gate_battery_shadow": "off"}
+    checkpoints = tmp_path / "checkpoints"
+    base.StageRuntime(checkpoints, base.OUTER_STAGE_PIPELINE, run_config=off)
+    monkeypatch.delenv(US_GATE_SHADOW_SWITCH)
+    with pytest.raises(ValueError, match="run_config differs"):
+        base.StageRuntime(
+            checkpoints,
+            base.OUTER_STAGE_PIPELINE,
+            run_config=base._stage_run_config(args),
+        )
+
+
 def test_the_geography_waiver_is_recorded_by_entry(tmp_path, base) -> None:
     shadow = base._base_gate_shadow(
         _args(tmp_path, allow_geography_ladder_gate_failures=True), tmp_path

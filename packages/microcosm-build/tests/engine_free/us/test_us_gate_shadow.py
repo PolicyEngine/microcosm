@@ -440,6 +440,35 @@ def test_an_unwired_entry_fails_a_finished_run(tmp_path) -> None:
     payload = json.loads(shadow.comparison_path.read_text())
     assert payload["not_observed"] == ["us_test_final"]
     assert payload["phases_recorded"] == ["assembled"]
+    (unwired,) = payload["shadow_errors"]
+    assert unwired.endswith("this entry; its site is not wired.")
+
+
+def test_a_finished_run_names_the_stage_that_saved_no_observations(tmp_path) -> None:
+    # As when a pre-merge checkpoint or a stage run with the switch off
+    # resumes: the entry may have run in that stage, so the site is not
+    # blamed. The unobserved entry still fails the finished run.
+    shadow = _shadow(tmp_path, _two_phase_gates())
+    shadow.note_missing_observations("the finalize stage saved no observations")
+    shadow.gate(
+        "us_test_alpha",
+        lambda: ALPHA(0.5),
+        EvidenceContext(artifacts={"alpha_value": 0.5}),
+    )
+    shadow.gate(
+        "us_test_beta",
+        lambda: BETA(0.5),
+        EvidenceContext(artifacts={"beta_value": 0.5}),
+    )
+    with pytest.raises(GateBatteryShadowMismatchError, match="us_test_final"):
+        shadow.finish()
+    payload = json.loads(shadow.comparison_path.read_text())
+    assert payload["not_observed"] == ["us_test_final"]
+    assert payload["shadow_errors"] == [
+        "[us_test_final] today's run finished without observing this entry; "
+        "the finalize stage saved no observations, so it may have run there "
+        "unrecorded."
+    ]
 
 
 def test_a_deliberate_stop_records_what_ran_and_never_raises(tmp_path) -> None:

@@ -1353,6 +1353,13 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
         "thread_environment": thread_environment,
         "without_block_ladder": bool(args.without_block_ladder),
     }
+    if not tool_gate_shadows_enabled():
+        # microcosm#1585 item 11: a stage run with the gate battery's shadow
+        # off saves no observations, and the run that finishes the scope
+        # could then only call its entries unwired. The switch is locked
+        # when off only, so a resume cannot mix the two, and a real build's
+        # config, with the shadow on, is unchanged.
+        config["gate_battery_shadow"] = "off"
     if _is_block_v1(args):
         # Off the legacy rule only, so a legacy run config (and every legacy
         # checkpoint directory that locked one) is unchanged. The ladder's

@@ -168,6 +168,30 @@ def test_a_finalize_stop_is_recorded_and_its_rerun_starts_clean(
     assert not (acs_directory(args) / "package.observations.json").exists()
 
 
+def test_starting_a_stage_clears_the_scope_files_it_outdates(
+    tmp_path, monkeypatch, acs
+) -> None:
+    # Starting a stage discards its own and every later stage's observations,
+    # so the scope's report and comparison built from them go at once: a
+    # stage killed before its end must not leave a finished run's verdict.
+    args = _args(tmp_path)
+    stand_in_gates(monkeypatch, "us_local", acs)
+    for stage in STAGE_ENTRIES:
+        _run_stage(acs, args, stage)
+    report, comparison = shadow_file_paths(acs_directory(args), "us_local")
+    assert report.is_file()
+    assert json.loads(comparison.read_text())["run_completed"] is True
+    # The qa stage declares no entry, and it still outdates the later ones.
+    with acs._local_gate_shadow_stage(args, "qa"):
+        assert not comparison.exists()
+        assert not report.exists()
+        assert not (acs_directory(args) / "package.observations.json").exists()
+    # Its end rebuilds them from the stages left: a run stopped after qa.
+    payload = _comparison(args)
+    assert payload["run_completed"] is False
+    assert payload["stopped_at"] == "after the qa stage"
+
+
 def test_a_stage_that_saved_nothing_is_never_named_unreached(
     tmp_path, monkeypatch, acs
 ) -> None:

@@ -170,6 +170,10 @@ class USGateSpec:
             sets it per run. The entry declares the parser's default; a
             build that passes another value is a runtime override, which
             the shadow records and explains.
+        failure_lines: For a ``mapping`` gate, the reference of the function
+            that gives a failing mapping's lines, as today's verdict reads
+            them, for a gate whose failing mapping may carry none (the
+            district ESS gate fails a blocking collapse on its counts).
     """
 
     check: str
@@ -182,6 +186,7 @@ class USGateSpec:
     returns: str = "result"
     refusals: tuple[type[BaseException], ...] = ()
     flags: Mapping[str, str] = field(default_factory=dict)
+    failure_lines: str | None = None
 
     def __post_init__(self) -> None:
         if not self.check or not self.legacy_name:
@@ -210,6 +215,13 @@ class USGateSpec:
             )
         if self.returns == "receipt" and not self.refusals:
             raise ValueError(f"{self.check}: a receipt check fails only by a refusal.")
+        if self.failure_lines is not None:
+            if self.returns != "mapping":
+                raise ValueError(
+                    f"{self.check}: failure_lines reads a mapping; it returns "
+                    f"{self.returns!r}."
+                )
+            _split_reference(self.failure_lines)
         stray_flags = sorted(set(self.flags) - set(self.parameters))
         if stray_flags:
             raise ValueError(
@@ -236,8 +248,16 @@ class USGateSpec:
         return FRAME in self.sources
 
     @property
+    def callables(self) -> tuple[str, ...]:
+        """The references the binding calls: the gate and its line maker."""
+
+        return (self.gate,) + (
+            (self.failure_lines,) if self.failure_lines is not None else ()
+        )
+
+    @property
     def references(self) -> tuple[str, ...]:
-        return (self.gate, *self.pinned.values())
+        return (*self.callables, *self.pinned.values())
 
 
 def _as_gate_result(value: object, legacy_name: str) -> object:
@@ -299,7 +319,7 @@ class USCheckBinding:
                 except (AttributeError, ImportError, ValueError) as exc:
                     unresolved.append(f"{spec.check}: {reference} ({exc})")
                     continue
-                if reference == spec.gate and not callable(target):
+                if reference in spec.callables and not callable(target):
                     unresolved.append(f"{spec.check}: {reference} is not callable")
         if unresolved:
             raise ValueError(f"{name}: unresolved references: {unresolved}.")
@@ -389,7 +409,15 @@ class USCheckBinding:
             )
         except spec.refusals as refusal:
             return GateResult(name=self.name, passed=False, failures=(str(refusal),))
-        value = _verdict_of(spec, value)
+        value = _verdict_of(
+            spec,
+            value,
+            failure_lines=(
+                resolve_reference(spec.failure_lines, tool=self._tool)
+                if spec.failure_lines is not None
+                else None
+            ),
+        )
         if isinstance(value, GateResult) and value.name == spec.legacy_name:
             value = replace(value, name=self.name)
         return value
@@ -420,8 +448,18 @@ def _lines(value: object, check: str) -> tuple[str, ...]:
     return tuple(str(line) for line in value)
 
 
-def _verdict_of(spec: USGateSpec, value: Any) -> object:
-    """The gate's return value as its result, by :attr:`USGateSpec.returns`."""
+def _verdict_of(
+    spec: USGateSpec,
+    value: Any,
+    *,
+    failure_lines: Callable[[Mapping[str, Any]], Sequence[str]] | None = None,
+) -> object:
+    """The gate's return value as its result, by :attr:`USGateSpec.returns`.
+
+    ``failure_lines`` is the resolved :attr:`USGateSpec.failure_lines`: a
+    failing mapping's lines come from it, since a result that fails must
+    name why.
+    """
 
     name = spec.legacy_name
     if spec.returns == "result":
@@ -432,11 +470,17 @@ def _verdict_of(spec: USGateSpec, value: Any) -> object:
     if spec.returns == "receipt":
         return GateResult(name=name, passed=True)
     if spec.returns == "mapping":
-        failures = _lines(value.get("failures") or (), spec.check)
+        passed = bool(value.get("passed"))
+        failures = _lines(
+            failure_lines(value)
+            if failure_lines is not None and not passed
+            else value.get("failures") or (),
+            spec.check,
+        )
         details = {key: item for key, item in value.items() if key != "failures"}
         return GateResult(
             name=name,
-            passed=bool(value.get("passed")),
+            passed=passed,
             failures=failures,
             details=details,
         )
@@ -1320,6 +1364,7 @@ def _us_local_specs() -> tuple[USGateSpec, ...]:
                 "acs_local_ssi_medicaid_take_up",
                 "_RESIDUAL_RELATIVE_TOLERANCE",
                 "_SATURATED_RELATIVE_TOLERANCE",
+                "ACS_LOCAL_SSI_BAND_RELATIVE_TOLERANCE",
             ),
         ),
         # The calibrated artifact's gates at finalize, and package's re-checks.
@@ -1359,7 +1404,12 @@ def _us_local_specs() -> tuple[USGateSpec, ...]:
             legacy_name="acs_local_take_up_signal",
             gate="tool:acs_local_take_up_signal_gate",
             positional=(FRAME,),
-            pinned=_pins("acs_local_take_up", "_MEDICARE_AGED_SHARE_FLOOR"),
+            pinned=_pins(
+                "acs_local_take_up",
+                "_MEDICARE_AGED_SHARE_FLOOR",
+                "_SHARE_BANDS",
+                "_DISCRETIONARY_SHARE_FACTORS",
+            ),
         ),
         USGateSpec(
             check="immigration_signal",
@@ -1383,6 +1433,7 @@ def _us_local_specs() -> tuple[USGateSpec, ...]:
             gate="tool:acs_local_income_transfer_signal_gate",
             positional=(FRAME,),
             arguments={"receipt": "income_transfer_receipt"},
+            pinned=_pins("acs_local_income", "ACS_LOCAL_INCOME_REVIEW_BAND"),
         ),
         USGateSpec(
             check="ssi_disability_signal",
@@ -1390,6 +1441,9 @@ def _us_local_specs() -> tuple[USGateSpec, ...]:
             gate="tool:acs_local_ssi_disability_signal_gate",
             positional=(FRAME,),
             arguments={"receipt": "ssi_disability_receipt"},
+            pinned=_pins(
+                "acs_local_ssi_disability", "ACS_LOCAL_SSI_DISABILITY_REVIEW_BAND"
+            ),
         ),
         USGateSpec(
             check="receipt_anchor_signal",
@@ -1418,6 +1472,8 @@ def _us_local_specs() -> tuple[USGateSpec, ...]:
                 "absolute_floor": "district_ess_floor",
             },
             returns="mapping",
+            # A blocking collapse records its counts but no failure line.
+            failure_lines="tool:district_ess_collapse_failures",
         ),
         USGateSpec(
             check="stored_inputs",

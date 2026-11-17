@@ -90,14 +90,16 @@ SCOPE_PINS: dict[str, dict[str, str]] = {
         ),
     },
     "us_local": {
+        # Moved by the five entries that pin the thresholds they compare
+        # against (review of #1635).
         "gates_manifest_sha256": (
-            "6b4286429c8ad369b8b3d2fbbcc4e3f16dcb553915969d72f02873fd87f56f60"
+            "3356e3f69213870398f2920dbc08b983c994551e61d45175c22ef9efef9c53f8"
         ),
         "policy_sha256": (
-            "a1fe120a37dbc2f4e55091872f06c2fe6f2d0ecf504cf1c08323aac4514dfda5"
+            "cb3471437b10de6b4e5c67818007edb5b647c77c25aa055bd26ce50203f9ff88"
         ),
         "spec_fingerprint": (
-            "139d82665b455eb86f5c2c9a4f597cb3bdeff61a6ef666a9fc415241568195b2"
+            "28c7f82d14bce4a63c82b20cfbaee5f7caf225c893633e34f91f3855f0344b15"
         ),
     },
 }
@@ -441,3 +443,58 @@ def test_a_declared_threshold_off_todays_constant_is_a_difference(tmp_path) -> N
         )
     (difference,) = shadow.differences()
     assert "differs from today's" in difference
+
+
+def test_a_blocking_district_collapse_fails_both_verdicts_on_one_line(
+    tmp_path,
+) -> None:
+    # The district ESS gate fails a blocking collapse on its counts, with no
+    # failure line, and a result that fails must name why. Both verdicts read
+    # the line district_ess_collapse_failures makes from the counts; before,
+    # the battery recorded an evaluation error and today's verdict a pass.
+    tool = vars(load_us_gate_tool("us_local"))
+    shadow = _shadow(tmp_path, "us_local")
+    origin = {
+        "design": {"effective_sample_size_by_district": {"0601": 100.0, "0602": 80.0}},
+        "calibrated": {
+            "effective_sample_size_by_district": {"0601": 20.0, "0602": 60.0}
+        },
+    }
+    with active_gate_shadow(shadow):
+        entry = shadow_value(
+            "us_local_district_ess_collapse",
+            lambda: tool["district_ess_collapse_gate"](
+                origin, relative_floor=0.25, absolute_floor=15.0, blocking=True
+            ),
+            EvidenceContext(
+                artifacts={"weight_origin": origin, "district_ess_blocking": True}
+            ),
+            verdict=tool["_legacy_district_ess_verdict"],
+        )
+    # Today's entry is written as before: failing, with its counts only.
+    assert (entry["passed"], entry["failures"], entry["n_collapsed"]) == (
+        False,
+        [],
+        1,
+    )
+    line = (
+        "blocking district ESS gate: congressional districts with a calibrated "
+        "Kish ESS 1 of 2 below 0.25 x their design-weight Kish ESS; 0 of 2 "
+        "below 15"
+    )
+    outcome = shadow.outcome("us_local_district_ess_collapse")
+    assert outcome is not None and outcome.status is GateStatus.FAILED
+    assert outcome.result.failures == (line,)
+    assert tool["_legacy_district_ess_verdict"](entry).failures == (line,)
+    assert shadow.differences() == ()
+
+
+def test_only_a_mapping_gate_takes_a_failure_line_maker() -> None:
+    (spec,) = [
+        spec
+        for spec in us_gate_specs("us_local")
+        if spec.check == "district_ess_collapse"
+    ]
+    assert spec.failure_lines in spec.references
+    with pytest.raises(ValueError, match="failure_lines reads a mapping"):
+        replace(spec, returns="failures")

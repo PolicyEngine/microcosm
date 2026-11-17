@@ -5015,6 +5015,36 @@ def district_ess_collapse_gate(
     }
 
 
+def district_ess_collapse_failures(gate: dict) -> list[str]:
+    """The district ESS gate entry's failure lines; none when it passes.
+
+    An entry that could not be evaluated names why. A blocking entry whose
+    criteria are not met records only its counts, so its line is made from
+    them, naming each check that is on, as the reviewed limitation does. Both
+    verdicts in the gate battery's shadow (microcosm#1585 item 11) read it.
+    """
+
+    if gate.get("passed"):
+        return []
+    if gate.get("failures"):
+        return [str(line) for line in gate["failures"]]
+    n = gate["n_districts"]
+    checks = []
+    if gate["relative_floor"] > 0:
+        checks.append(
+            f"{gate['n_collapsed']} of {n} below {gate['relative_floor']:g} x "
+            "their design-weight Kish ESS"
+        )
+    if gate["absolute_floor"] > 0:
+        checks.append(
+            f"{gate['n_below_floor']} of {n} below {gate['absolute_floor']:g}"
+        )
+    return [
+        "blocking district ESS gate: congressional districts with a calibrated "
+        "Kish ESS " + "; ".join(checks)
+    ]
+
+
 def district_ess_collapse_limitation(gate: dict) -> dict:
     """The reviewed-limitations entry stating the district ESS gate's result."""
 
@@ -6106,7 +6136,7 @@ def do_finalize(args) -> None:
                 "district_ess_blocking": args.district_ess_gate_blocking,
             }
         ),
-        verdict=_legacy_mapping_verdict,
+        verdict=_legacy_district_ess_verdict,
     )
 
     limitations = finalize_reviewed_limitations(
@@ -7395,6 +7425,13 @@ def _local_gate_shadow_stage(args, stage: str):
         return
     for name in _LOCAL_GATE_SHADOW_STAGES[_LOCAL_GATE_SHADOW_STAGES.index(stage) :]:
         _local_stage_observations(args, name).unlink(missing_ok=True)
+    # The scope's report and comparison were built from observations just
+    # discarded, so they go too: a stage that never reaches its end, killed
+    # before it rebuilds them, must not leave an earlier run's verdict.
+    for stale in shadow_file_paths(
+        _local_gate_shadow_directory(args), US_LOCAL_GATE_SCOPE
+    ):
+        stale.unlink(missing_ok=True)
     shadow = _local_gate_shadow(args, _local_gate_shadow_directory(args) / stage)
 
     def save() -> None:
@@ -7432,12 +7469,14 @@ def _shadow_local_refusal(entry_id: str, evaluate, frame, **artifacts):
     )
 
 
-def _legacy_mapping_verdict(entry: dict) -> LegacyVerdict:
-    """Today's verdict on a gate entry written as a mapping."""
+def _legacy_district_ess_verdict(entry: dict) -> LegacyVerdict:
+    """Today's verdict on the district ESS gate entry.
 
-    if entry.get("passed"):
-        return LegacyVerdict.from_failures(())
-    return LegacyVerdict.from_failures(entry.get("failures") or ())
+    A blocking collapse fails it with the line made from its counts, as the
+    battery's binding does (:func:`district_ess_collapse_failures`).
+    """
+
+    return LegacyVerdict.from_failures(district_ess_collapse_failures(entry))
 
 
 def main(argv: list[str] | None = None) -> int:

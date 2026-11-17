@@ -8694,8 +8694,10 @@ def _record_qrf_tail_concentration_gate(
     Returns the register-mismatch failure lines (empty when the register
     matches) so --evidence-release can refuse them.
     """
+    register_loaded = False
     try:
         register = _load_qrf_tail_concentration_exclusions(exclusions_path)
+        register_loaded = True
         gate, surface = shadow_value(
             "us_national_qrf_tail_concentration",
             lambda: _qrf_tail_concentration_gate(
@@ -8729,6 +8731,15 @@ def _record_qrf_tail_concentration_gate(
         # outright; see _qrf_tail_register_evidence_refusal.
         if not terminal_gate_failures:
             raise
+        if not register_loaded:
+            # The gate never ran, so the gate battery's shadow (microcosm#1585
+            # item 11) records that, or a finished --evidence-release build
+            # would call the entry unwired.
+            shadow_not_run(
+                "us_national_qrf_tail_concentration",
+                "its reviewed-exclusions register did not load: "
+                f"{type(exc).__name__}: {exc}",
+            )
         terminal_gate_failures.append(
             "QRF tail concentration failed: evaluation error under earlier "
             f"gate failures: {type(exc).__name__}: {exc}"
@@ -13401,9 +13412,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     AT-RISK only, 0 clean.
 
     The gate battery's shadow (microcosm#1585 item 11) finishes after the
-    build's own handler. By then a finished build has completed its staging
-    run, so a verdict difference that the shadow raises fails the program's
-    emitter once and leaves the staging run as the build recorded it.
+    build's own handler. By then a finished build's telemetry has completed
+    its staging run and its emitter, which closes on that outcome, so a
+    verdict difference that the shadow raises fails the program's exit
+    alone: both records stay as the build left them.
     """
 
     global _ACTIVE_DRY_RUN
@@ -13445,6 +13457,9 @@ def main(argv: Sequence[str] | None = None) -> None:
             )
         )
     except BaseException as error:
+        # A finished release's telemetry has closed the emitter by now (see
+        # the docstring), so this records an outcome only on an emitter that
+        # something left open.
         if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
             _ACTIVE_EMITTER.fail(error)
         raise
@@ -17276,6 +17291,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         "sha256": None,
         "reference_name": export_reference_name,
     }
+    reference_loaded = False
     try:
         if args.export_input_mass_reference_h5 is not None:
             export_input_mass_reference["sha256"] = _sha256(
@@ -17286,6 +17302,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             if args.export_input_mass_reference_h5 is not None
             else None
         )
+        reference_loaded = True
         # Build H (microcosm#299): the two SOI-identified columns whose true
         # target level provably cannot sit inside the live-default reference
         # band (estate_income, non_sch_d_capital_gains). miscellaneous_income
@@ -17319,6 +17336,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         # Same degraded-mode contract as the coverage gate above.
         if not terminal_gate_failures:
             raise
+        if not reference_loaded:
+            # As for the QRF tail register: the gate never ran.
+            shadow_not_run(
+                "us_national_export_input_mass",
+                f"its reference did not load: {type(exc).__name__}: {exc}",
+            )
         terminal_gate_failures.append(
             "Input mass parity failed: evaluation error under earlier gate "
             f"failures: {type(exc).__name__}: {exc}"

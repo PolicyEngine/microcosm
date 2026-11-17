@@ -349,7 +349,10 @@ reached. The run refuses a phase that marks unreached an entry it
 evaluated, but a scope rebuilt from stages run as separate processes
 (Route A's checkpointed base, ACS local) holds only their outcomes, so each
 stage's saved observations also name every entry it reached, and a stage
-that ran and saved none leaves the stopped phase unrecorded. The national
+that ran and saved none leaves the stopped phase unrecorded. A finished run
+names that stage where it would otherwise call an unobserved entry unwired,
+and Route A's base locks the switch in its run config when it is off, so a
+resume cannot mix stages run with and without the shadow. The national
 release's shadow is armed before its preflight gates, which run ahead of
 the refusal to reuse a certified release directory, so it holds its files
 until that refusal has passed: a refused rerun leaves the certified

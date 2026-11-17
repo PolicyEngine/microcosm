@@ -18,7 +18,7 @@ from types import SimpleNamespace
 import pytest
 
 from microcosm.build import GateResult
-from microcosm.build.gate_battery import EvidenceContext
+from microcosm.build.gate_battery import EvidenceContext, GateStatus
 from microcosm.build.us_runtime.battery_bindings import (
     FRAME,
     us_flag_overrides,
@@ -202,33 +202,46 @@ def test_a_verdict_difference_fails_a_finished_build(tmp_path, monkeypatch, rele
 
 
 class _Recorder:
-    """A stand-in staging run or emitter that records each outcome it is told."""
+    """A stand-in staging run or emitter that records each outcome it is told.
 
-    available = True
+    It closes on its first outcome, as the build's emitter does, and a
+    staging run hands its outcome to the emitter it reports to, as
+    ``_BuildProgress`` does.
+    """
 
-    def __init__(self) -> None:
+    def __init__(self, emitter: _Recorder | None = None) -> None:
         self.calls: list[tuple[str, str | None]] = []
+        self.available = True
+        self._emitter = emitter
 
     def complete(self) -> None:
         self.calls.append(("complete", None))
+        self.available = False
+        if self._emitter is not None:
+            self._emitter.complete()
 
     def fail(self, error: BaseException, **_: object) -> None:
         self.calls.append(("fail", type(error).__name__))
+        self.available = False
+        if self._emitter is not None:
+            self._emitter.fail(error)
 
 
 @pytest.mark.parametrize("difference", [False, True])
 def test_a_finished_builds_staging_run_keeps_the_outcome_it_recorded(
     tmp_path, monkeypatch, release, difference
 ):
-    # Review of #1635: _main completes a finished build's staging run before
-    # main finishes the shadow. A difference raised there must not rewrite
-    # that run as failed. The program's emitter records one outcome.
+    # Review of #1635: _main completes a finished build's staging run, and
+    # with it the emitter, before main finishes the shadow. A difference
+    # raised there fails the program's exit alone: neither record is
+    # rewritten, and each records one outcome.
     args = _args(tmp_path)
     _stand_in_gates(
         monkeypatch, release, failing={"pregnancy_signal"} if difference else ()
     )
     passing = GateResult(name="pregnancy_signal", passed=True)
-    progress, emitter = _Recorder(), _Recorder()
+    emitter = _Recorder()
+    progress = _Recorder(emitter)
     monkeypatch.setattr(release, "_ACTIVE_EMITTER", emitter)
 
     def build(argv):
@@ -252,9 +265,7 @@ def test_a_finished_builds_staging_run_keeps_the_outcome_it_recorded(
     else:
         release.main([])
     assert progress.calls == [("complete", None)]
-    assert emitter.calls == [
-        ("fail", "GateBatteryShadowMismatchError") if difference else ("complete", None)
-    ]
+    assert emitter.calls == [("complete", None)]
 
 
 def test_a_build_error_still_fails_the_staging_run_and_the_emitter(
@@ -262,7 +273,8 @@ def test_a_build_error_still_fails_the_staging_run_and_the_emitter(
 ):
     # Today's handler is unchanged: an error inside _main fails both, once.
     args = _args(tmp_path)
-    progress, emitter = _Recorder(), _Recorder()
+    emitter = _Recorder()
+    progress = _Recorder(emitter)
     monkeypatch.setattr(release, "_ACTIVE_EMITTER", emitter)
 
     def refused(argv):
@@ -400,3 +412,81 @@ def test_waivers_and_flag_overrides_are_recorded_by_entry(tmp_path, release):
     )
     assert evidence["us_national_release_gates"] == ["--evidence-release"]
     assert "us_national_pregnancy" not in evidence
+
+
+def test_a_tail_register_that_never_loads_records_its_gate_not_run(
+    tmp_path, release
+) -> None:
+    # Review of #1635: under earlier failures the degraded-mode handler
+    # swallows a register that failed to load ahead of the gate's site, and
+    # the build goes on; a finished --evidence-release build then called the
+    # entry unwired.
+    release._start_national_gate_shadow(_args(tmp_path), release_id="microcosm-us-test")
+    register = tmp_path / "qrf_tail_exclusions.json"
+    register.write_text("[]")
+    failures = ["an earlier gate failed"]
+    assert (
+        release._record_qrf_tail_concentration_gate(
+            object(),
+            exclusions_path=register,
+            allow_concentration=False,
+            terminal_gate_failures=failures,
+            release_dir=tmp_path,
+            telemetry=None,
+        )
+        == []
+    )
+    # Today's line is as before.
+    assert failures[-1].startswith(
+        "QRF tail concentration failed: evaluation error under earlier gate "
+        "failures: ValueError"
+    )
+    shadow = current_gate_shadow("us_national_qrf_tail_concentration")
+    outcome = shadow.outcome("us_national_qrf_tail_concentration")
+    assert outcome is not None and outcome.status is GateStatus.EVIDENCE_ABSENT
+    assert shadow.differences() == ()
+
+
+def test_every_degraded_mode_handler_records_a_gate_kept_from_running(
+    release,
+) -> None:
+    # Each handler that swallows an error under earlier failures guards one
+    # gate's site. Work ahead of the site can raise before the gate runs (a
+    # register or a reference that does not load), so the handler must then
+    # record the entry not run; a handler whose site comes first records
+    # nothing, since the site itself observed the crash.
+    tree = ast.parse(Path(release.__file__).read_text(encoding="utf-8"))
+    handlers = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Try):
+            continue
+        for handler in node.handlers:
+            if not any(
+                isinstance(statement, ast.If)
+                and ast.unparse(statement.test) == "not terminal_gate_failures"
+                for statement in handler.body
+            ):
+                continue
+            ((index, entry_id),) = [
+                (index, call.args[0].value)
+                for index, statement in enumerate(node.body)
+                for call in ast.walk(statement)
+                if isinstance(call, ast.Call)
+                and ast.unparse(call.func) in {"shadow_gate", "shadow_value"}
+            ]
+            recorded = {
+                call.args[0].value
+                for call in ast.walk(handler)
+                if isinstance(call, ast.Call)
+                and ast.unparse(call.func) == "shadow_not_run"
+            }
+            handlers[entry_id] = (index > 0, recorded)
+    assert handlers == {
+        "us_national_qrf_tail_concentration": (
+            True,
+            {"us_national_qrf_tail_concentration"},
+        ),
+        "us_national_release_input_coverage": (False, set()),
+        "us_national_esi_premiums_anchor": (False, set()),
+        "us_national_export_input_mass": (True, {"us_national_export_input_mass"}),
+    }
