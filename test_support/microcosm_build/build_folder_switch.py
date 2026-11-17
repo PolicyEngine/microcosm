@@ -16,6 +16,15 @@ release that ``latest.json`` names, whose release manifest has a
 ``metadata`` object both at its top level and in its ``build`` object, two
 tagged national builds of which ``latest-national.json`` names the older,
 and a tag-only dense build with a checksum ledger, whose tag is annotated.
+
+``us_repository`` builds one in the tagged layout ``policyengine/populace-us``
+has before its switch: every build is a release-per-build release in
+``releases/<tag>/``. ``latest.json`` names an SPM build whose release
+manifest declares its own ``build_manifest.json`` as an artifact; a tag-only
+ACS local-area build has files its checksum ledger records but its release
+manifest doesn't declare; and an older national build has a leftover
+``release-staging/`` branch, pointing at a commit on ``main``, from a retry
+of its publication that stopped because its tag already existed.
 """
 
 from __future__ import annotations
@@ -44,6 +53,27 @@ DENSE_BUILD = "uk-local-candidate-f100-s42-20261104T093024Z-83802786"
 OLDER_NATIONAL_TAG = f"{NATIONAL}-20261019T083323Z-6cba5d71"
 NEWER_NATIONAL_TAG = f"{NATIONAL}-20261105T133052Z-51f60255"
 DENSE_TAG = f"{DENSE}-20261104T093024Z-83802786"
+US_REPOSITORY = "policyengine/populace-us"
+US_NATIONAL = "microcosm-us-2024-national"
+US_LOCAL = "microcosm-us-2024-local"
+SPM_TAG = "populace-us-2024-spm-20260915"
+ACS_TAG = "populace-us-2024-buildo-acs-local-766b7c7-20261017T030317Z"
+#: A national build tagged and committed to ``main`` in July. A later retry,
+#: by the publisher of that time, made its staging branch from ``main``, found
+#: nothing to commit, and stopped when tagging failed, leaving the branch.
+FINISHED_TAG = "populace-us-2024-buildm-sparse-rmloss100-98bf731-20260717T075101Z"
+FINISHED_STAGING_BRANCH = f"release-staging/{FINISHED_TAG}"
+#: The ACS build's files that its checksum ledger records and its release
+#: manifest doesn't declare, as each ACS local-area build has them.
+ACS_UNDECLARED_FILES = {
+    "consumer_export.json": b'{"columns": ["household_id"]}',
+    "run_identity.json": b'{"run": "766b7c7"}',
+}
+US_PUBLISHED_AT = {
+    FINISHED_TAG: datetime(2026, 7, 17, 10, 24, 13, tzinfo=UTC),
+    SPM_TAG: datetime(2026, 9, 15, 7, 6, 23, tzinfo=UTC),
+    ACS_TAG: datetime(2026, 10, 18, 18, 35, 46, tzinfo=UTC),
+}
 #: When each tagged commit was made: its build's ``published_at``.
 PUBLISHED_AT = {
     JUNE_2023_TAG: datetime(2026, 6, 19, 2, 38, 38, tzinfo=UTC),
@@ -304,6 +334,7 @@ def _tagged_manifests(
     dataset_role: str | None = None,
     release_metadata: dict[str, Any] | None = None,
     build_metadata: dict[str, Any] | None = None,
+    repository: str = UK_REPOSITORY,
 ) -> tuple[bytes, bytes]:
     """A tagged build's release and build manifests.
 
@@ -337,7 +368,7 @@ def _tagged_manifests(
             key: {
                 "kind": kind,
                 "path": name,
-                "repo_id": UK_REPOSITORY,
+                "repo_id": repository,
                 "revision": tag,
                 "sha256": sha256(content),
             }
@@ -521,5 +552,132 @@ def uk_repository(download_dir: Path) -> FakeDatasetRepository:
         ),
         date=PUBLISHED_AT[NEWER_NATIONAL_TAG],
         tag=NEWER_NATIONAL_TAG,
+    )
+    return hub
+
+
+def _us_build_files(
+    tag: str,
+    *,
+    dataset_name: str,
+    dataset: bytes,
+    dataset_role: str | None = None,
+    declares_build_manifest: bool = False,
+    undeclared: dict[str, bytes] | None = None,
+) -> dict[str, bytes]:
+    """A US release-per-build build's files: ``releases/<tag>/`` and the root.
+
+    With ``declares_build_manifest`` the release manifest lists the build's
+    own ``build_manifest.json`` as an artifact, as the SPM builds' do. With
+    ``undeclared`` the folder also holds those files and a checksum ledger
+    that records every file of the build, as the ACS local-area builds' do.
+    """
+    folder = f"releases/{tag}"
+    diagnostics = dumped({"schema_version": 9, "build": tag})
+    artifacts: dict[str, tuple[str, str, bytes]] = {
+        dataset_name.removesuffix(".h5"): ("microdata", dataset_name, dataset),
+        "calibration_diagnostics": (
+            "diagnostics",
+            "calibration_diagnostics.json",
+            diagnostics,
+        ),
+    }
+    if declares_build_manifest:
+        parent = dumped({"build_id": "populace-us-2024-buildp-parent"})
+        artifacts["parent_build_manifest"] = (
+            "evidence",
+            "parent_build_manifest.json",
+            parent,
+        )
+    _, build_manifest = _tagged_manifests(
+        release=tag,
+        tag=tag,
+        attempt_id=None,
+        artifacts=artifacts,
+        dataset_role=dataset_role,
+        repository=US_REPOSITORY,
+    )
+    if declares_build_manifest:
+        artifacts["build_manifest"] = (
+            "evidence",
+            "build_manifest.json",
+            build_manifest,
+        )
+    release_manifest, _ = _tagged_manifests(
+        release=tag,
+        tag=tag,
+        attempt_id=None,
+        artifacts=artifacts,
+        dataset_role=dataset_role,
+        repository=US_REPOSITORY,
+    )
+    files = {
+        f"{folder}/release_manifest.json": release_manifest,
+        f"{folder}/build_manifest.json": build_manifest,
+        dataset_name: dataset,
+    }
+    for _, name, content in artifacts.values():
+        if name != dataset_name:
+            files[f"{folder}/{name}"] = content
+    if undeclared is not None:
+        files.update(
+            {f"{folder}/{name}": content for name, content in undeclared.items()}
+        )
+        recorded = {
+            path.removeprefix(f"{folder}/"): content
+            for path, content in files.items()
+            if path.startswith(f"{folder}/")
+        }
+        recorded[dataset_name] = dataset
+        files[f"{folder}/sha256sums.txt"] = "".join(
+            f"{sha256(content)}  {name}\n" for name, content in sorted(recorded.items())
+        ).encode()
+    return files
+
+
+def us_repository(download_dir: Path) -> FakeDatasetRepository:
+    """The US repository's tagged layout, before its switch.
+
+    ``main`` holds the leftover national build and the SPM build, which
+    ``latest.json`` names; the ACS local-area build is only under its tag.
+    The leftover build's tag is on its own commit, and its staging branch, as
+    the retry left it, names the commit on ``main`` that repeated its files.
+    """
+    hub = FakeDatasetRepository(US_REPOSITORY, download_dir)
+    hub.seed(
+        {".gitattributes": b"*.h5 filter=lfs\n"}, date=datetime(2026, 6, 1, tzinfo=UTC)
+    )
+    finished = _us_build_files(
+        FINISHED_TAG, dataset_name="populace_us_2024.h5", dataset=b"buildm dataset"
+    )
+    published = US_PUBLISHED_AT[FINISHED_TAG]
+    hub.seed(finished, date=published, tag=FINISHED_TAG, on_main=False)
+    hub.branches[FINISHED_STAGING_BRANCH] = hub.seed(
+        finished, date=published.replace(second=16)
+    )
+    hub.seed(
+        {
+            **_us_build_files(
+                SPM_TAG,
+                dataset_name="populace_us_2024.h5",
+                dataset=b"spm dataset",
+                declares_build_manifest=True,
+            ),
+            "latest.json": _pointer(SPM_TAG),
+        },
+        date=US_PUBLISHED_AT[SPM_TAG],
+        tag=SPM_TAG,
+    )
+    hub.seed(
+        _us_build_files(
+            ACS_TAG,
+            dataset_name="populace_us_2024_acs_local.h5",
+            dataset=b"acs local-area dataset",
+            dataset_role="non_default_local_area",
+            undeclared=ACS_UNDECLARED_FILES,
+        ),
+        date=US_PUBLISHED_AT[ACS_TAG],
+        tag=ACS_TAG,
+        on_main=False,
     )
     return hub

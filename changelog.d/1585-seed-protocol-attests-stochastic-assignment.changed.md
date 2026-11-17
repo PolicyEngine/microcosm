@@ -1,0 +1,1 @@
+The US seed protocol's direct-draw kernel now attests `microcosm.build.stochastic_assignment`, whose `stable_identity_uniforms` computes the US keyed draws, so an edit to that module moves the US seed-protocol and seed-map digests (microcosm#1585).

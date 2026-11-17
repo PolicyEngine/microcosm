@@ -18,6 +18,7 @@ from microcosm.build.us_runtime.acs_sources import (
 from microcosm.build.us_runtime.base_pool import spine_column
 from microcosm.build.us_runtime.puf_support import support_channel_column
 from microcosm.build.us_runtime.spm_role_source import NATIVE_SPM_ROLE
+from microcosm.data.build_folder_manifests import ReferencedBuild, referenced_build
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from test_support.paths import paths_for
 
@@ -217,6 +218,13 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     combined.table("person")["sstb_self_employment_income_before_lsr"] = [0.0, 2_042.0]
     combined.table("person")["farm_operations_income"] = [0.0, 0.0]
     combined.table("person")["partnership_self_employment_net_earnings"] = [0.0, 0.0]
+    # microcosm#1387: the ACS row reports SEMP, so its partnership income is
+    # zero; its S-corp income and the ASEC row's partnership income stand.
+    combined.table("person")["partnership_income"] = [3_000.0, 0.0]
+    combined.table("person")["s_corp_income"] = [0.0, 1_500.0]
+    combined.table("person")["passive_partnership_s_corp_income"] = [0.0, 0.0]
+    combined.table("person")["person_tax_unit_id"] = [1, 2]
+    combined.table("person")["tax_unit_role_input"] = ["HEAD", "HEAD"]
     # What the ACS local immigration stage returns (microcosm#1020): the
     # null audit, hours gate and export must all see this frame, not the
     # unlabelled pool.
@@ -600,6 +608,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "work_disability_inputs": True,
         "income_transfer": True,
         "native_receipt_anchors": True,
+        "semp_covers_partnership_income": True,
         "donor_channel": builder.ACS_DONOR_CHANNEL_AUTO,
         "seed": 11,
         "n_estimators": 32,
@@ -695,6 +704,10 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     assert self_employment["details"]["mismatched_rows"] == 0
     assert self_employment["details"]["non_acs_component_rows"] == 0
     assert self_employment["details"]["base_and_sstb_rows"] == 0
+    assert self_employment["details"]["partnership_on_semp_rows"] == 0
+    assert self_employment["details"]["partnership_on_spouse_rows"] == 0
+    assert self_employment["details"]["partnership_on_blank_semp_rows"] == 0
+    assert self_employment["details"]["passive_without_line_32_rows"] == 0
     assert "pending_engine_input_nulls" not in summary
     assert summary["staging_export_peak_estimate_bytes"] == 123_456
     assert summary["geography_ladder"] == {
@@ -1789,6 +1802,7 @@ def test_donor_release_identity_verifies_sha_and_pins_provenance(
 
     identity = module._donor_release_identity(manifest, sha)
 
+    # A donor that keeps only its tag is named by its ID and revision.
     assert identity == {
         "manifest_path": str(manifest.resolve()),
         "artifact": "populace_us_2024",
@@ -1799,7 +1813,114 @@ def test_donor_release_identity_verifies_sha_and_pins_provenance(
         "dataset_role": "national_default",
         "is_default": True,
     }
+    assert referenced_build(identity) == ReferencedBuild(
+        repo_id="policyengine/populace-us",
+        revision="populace-us-2024-buildo-sparse-x",
+        folder="releases/populace-us-2024-buildo-sparse-x",
+    )
     assert module._donor_release_identity(None, sha) is None
+
+
+def _build_folder_donor_manifest(sha: str) -> dict:
+    """A donor's release manifest in the build-folder layout."""
+    return {
+        "schema_version": 1,
+        "release": "microcosm-us-2024-receipt-donor",
+        "build": "populace-us-2024-spm-receipts-20261201",
+        "built_at": "2026-12-01T00:00:00+00:00",
+        "dataset_role": "national_default",
+        "is_default": False,
+        "artifacts": {
+            "microcosm_us_2024_receipt_qualified": {
+                "kind": "microdata",
+                "path": "microcosm_us_2024_receipt_qualified.h5",
+                "repo_id": "policyengine/populace-us",
+                "sha256": sha,
+                "role": "dataset",
+            },
+            "calibration_diagnostics": {
+                "kind": "diagnostics",
+                "path": "calibration_diagnostics.json",
+                "repo_id": "policyengine/populace-us",
+                "sha256": "b" * 64,
+                "role": "calibration_diagnostics",
+            },
+        },
+    }
+
+
+def test_donor_release_identity_names_a_build_folder_donor_by_release_and_build(
+    tmp_path: Path,
+) -> None:
+    """A donor published into a build folder has no tag: staging names it by
+    its release and build, read at main from its folder (microcosm#1570)."""
+    module = _load_builder_module()
+    sha = "a" * 64
+    manifest = tmp_path / "release_manifest.json"
+    manifest.write_text(json.dumps(_build_folder_donor_manifest(sha)))
+
+    identity = module._donor_release_identity(manifest, sha)
+
+    assert identity == {
+        "manifest_path": str(manifest.resolve()),
+        "artifact": "microcosm_us_2024_receipt_qualified",
+        "repo_id": "policyengine/populace-us",
+        "release": "microcosm-us-2024-receipt-donor",
+        "build": "populace-us-2024-spm-receipts-20261201",
+        "sha256": sha,
+        "dataset_role": "national_default",
+        "is_default": False,
+    }
+    assert referenced_build(identity) == ReferencedBuild(
+        repo_id="policyengine/populace-us",
+        revision="main",
+        folder=(
+            "releases/microcosm-us-2024-receipt-donor/"
+            "populace-us-2024-spm-receipts-20261201"
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("edit", "message"),
+    [
+        (
+            lambda manifest: manifest["artifacts"][
+                "microcosm_us_2024_receipt_qualified"
+            ].update(revision="populace-us-2024-spm-receipts-20261201"),
+            "pins revision",
+        ),
+        (
+            lambda manifest: manifest.update(release=""),
+            "names its release and its build",
+        ),
+        (
+            lambda manifest: manifest.pop("release"),
+            "names its release and its build",
+        ),
+        (
+            lambda manifest: manifest.update(
+                build={"build_id": "populace-us-2024-spm-receipts-20261201"}
+            ),
+            "names its release and its build",
+        ),
+    ],
+    ids=["revision", "empty-release", "no-release", "build-object"],
+)
+def test_donor_release_identity_refuses_a_manifest_in_neither_layout(
+    tmp_path: Path, edit, message: str
+) -> None:
+    """A manifest that names a release or build as strings but is not fully in
+    the build-folder layout says nowhere the donor can be read from."""
+    module = _load_builder_module()
+    sha = "a" * 64
+    donor = _build_folder_donor_manifest(sha)
+    edit(donor)
+    manifest = tmp_path / "release_manifest.json"
+    manifest.write_text(json.dumps(donor))
+
+    with pytest.raises(SystemExit, match=message):
+        module._donor_release_identity(manifest, sha)
 
 
 def test_donor_release_identity_rejects_sha_mismatch(tmp_path: Path) -> None:

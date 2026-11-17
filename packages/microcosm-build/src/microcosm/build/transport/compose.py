@@ -11,8 +11,15 @@ explicit selection:
 - ``{"resource": name, "path": [...], "encoding": e}`` reads the value at
   ``path`` (a list of object keys) inside the named spec resource. ``e`` is
   ``"value"`` (the JSON value, lists as tuples), ``"json"`` (an object as
-  canonical JSON text) or ``"sha256"`` (the SHA-256 of the whole resource's
-  bytes, so the node's key moves with that one resource only).
+  canonical JSON text) or ``"sha256"`` (the SHA-256 of the whole resource, as
+  below, so the node's key moves with that one resource only). A ``"json"``
+  selection of a whole target-reference document (one that carries
+  ``target_references``) keeps only ``REFERENCE_DOCUMENT_KEYS``, the keys the
+  reference kernels read (docs/transport-graph-kernels.md); the resource file
+  keeps its other keys, and its ``"sha256"`` selection is unchanged: the
+  digest ``resource_hashes`` records for the resource (its canonical JSON's
+  digest when none is recorded), or the effective view's digest for the
+  reference and interval resources that ``reference_profiles`` resolves.
 - ``{"prepared": "engine_refs"}`` is the canonical JSON of the prepared
   binding-id -> engine reference map that preparation built.
 - ``{"prepared": "unit_entities"}`` is the canonical JSON of every declared
@@ -91,7 +98,10 @@ from microcosm.build.money_normalization import (
     money_concept_columns,
     validate_money_normalization,
 )
-from microcosm.build.reference_profiles import resolve_reference_profiles
+from microcosm.build.reference_profiles import (
+    REFERENCE_DOCUMENT_KEYS,
+    resolve_reference_profiles,
+)
 from microcosm.calibrate.ordered_kernels import OUTPUT_TYPES
 from microcosm.frame.concepts import ProvenanceClass, concept_for_column
 from microcosm.frame.kernels import missing_relation_inputs
@@ -135,6 +145,11 @@ from .evidence_contract import (
     WEIGHTS_AUDIT_TYPE,
     binding_relation_inputs,
     binding_view_entities,
+)
+from .income_evidence_kernels import (
+    INCOME_IDENTITY_REF,
+    NATIVE_BAND_REPORT_REF,
+    OMISSION_REGISTER_REF,
 )
 from .money_kernels import (
     MONEY_ANNUAL_TRANSFERS_REF,
@@ -210,6 +225,9 @@ SKELETON_KERNELS = CREATE_REFS | frozenset(
         WEIGHTS_AUDIT_REF,
         DONOR_RANGES_REF,
         SUPPORT_BOUNDS_REF,
+        INCOME_IDENTITY_REF,
+        OMISSION_REGISTER_REF,
+        NATIVE_BAND_REPORT_REF,
         "export.prepare@1",
         "export.readback@1",
         "transport.package@1",
@@ -2201,6 +2219,23 @@ def _check_structural_columns(spec: Mapping[str, object]) -> None:
         )
 
 
+def _check_view_bindings_have_a_closure(spec: Mapping[str, object]) -> None:
+    """Every binding that declares views needs the spec's input closure."""
+
+    if _has_resource(spec, _CLOSURE_RESOURCE):
+        return
+    named = sorted(
+        binding
+        for binding, row in _binding_modules(spec).items()
+        if binding_view_entities(row)
+    )
+    if named:
+        raise ValueError(
+            f"Rules bindings {named} declare views, but the spec has no "
+            f"{_CLOSURE_RESOURCE!r} resource to close their inputs."
+        )
+
+
 def _check_structural_rows_written(spec: Mapping[str, object], graph: Graph) -> None:
     """Every declared ``structural_columns`` row names a column the graph writes.
 
@@ -4113,7 +4148,9 @@ def _resource_param(
 
     Selected roots cannot be null; skeleton JSON roots must be objects.
     Entitlement JSON may also select lists. Value roots must not be objects.
-    Optional JSON fields remain unchanged.
+    Optional JSON fields remain unchanged, except that a whole-resource JSON
+    selection of a reference document keeps only ``REFERENCE_DOCUMENT_KEYS``;
+    a selection with a path keeps every field.
     """
 
     if set(value) - {"resource", "path", "encoding"} or "resource" not in value:
@@ -4149,6 +4186,25 @@ def _resource_param(
             raise ValueError(
                 f"Resource {name!r} path {list(path)!r} json selection must be an object."
             )
+        if (
+            not path
+            and isinstance(document, Mapping)
+            and "target_references" in document
+        ):
+            # The reference kernels refuse keys they do not read
+            # (target_kernels.parse_reference_document); the file keeps them.
+            # Every node that selects a whole reference document, whatever
+            # its kernel, receives this trimmed form. A node whose kernel
+            # needs another key of a raw reference file selects that key with
+            # a path; the view reference_profiles resolves has already dropped
+            # those keys. Activation's gap, exemption and holdout checks read
+            # only target_references, which the trim keeps; its profile
+            # resolution reads the raw file, as composition's does.
+            document = {
+                key: item
+                for key, item in document.items()
+                if key in REFERENCE_DOCUMENT_KEYS
+            }
         return canonical_json(document).decode("utf-8")
     if isinstance(document, Mapping):
         raise ValueError(
@@ -4257,10 +4313,11 @@ def transport_rules_node(
 def _require_relation_inputs(spec, binding_id, inputs) -> None:
     """A rules node slices its binding's relation and view dependencies whole.
 
-    A view binding's node must also slice, on the person entity, every input
-    the reviewed closure encodes (other than through a graph node) or
-    defaults on the view's logical entity: the engine would otherwise run
-    the view without a column the closure says the frame carries.
+    A view binding needs the spec's input closure. Its node must also slice,
+    on the person entity, every input the reviewed closure encodes (other
+    than through a graph node) or defaults on the view's logical entity: the
+    engine would otherwise run the view without a column the closure says the
+    frame carries.
     """
     document = transport_resource(spec, "axiom_rules_bindings")
     bindings = [
@@ -4290,8 +4347,13 @@ def _require_relation_inputs(spec, binding_id, inputs) -> None:
             f"Rules binding {binding_id!r} needs whole-table relation inputs {missing}."
         )
     logical = binding_view_entities(bindings[0])
-    if not logical or not _has_resource(spec, _CLOSURE_RESOURCE):
+    if not logical:
         return
+    if not _has_resource(spec, _CLOSURE_RESOURCE):
+        raise ValueError(
+            f"Rules binding {binding_id!r} runs views on {sorted(logical)}, but "
+            f"the spec has no {_CLOSURE_RESOURCE!r} resource to close their inputs."
+        )
     path = bindings[0].get("rulespec_path")
     closed = sorted(
         {
@@ -4567,6 +4629,7 @@ def compose_transport_graph(
     validate_transport_activation(spec)
     _check_unreached_requests(spec, config.engine_refs)
     _check_structural_columns(spec)
+    _check_view_bindings_have_a_closure(spec)
     from .entitlement import transport_extensions
 
     config = replace(config, extensions=transport_extensions(spec, config.extensions))

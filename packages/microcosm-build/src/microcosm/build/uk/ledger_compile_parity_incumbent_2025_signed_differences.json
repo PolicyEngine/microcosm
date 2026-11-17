@@ -1,11 +1,11 @@
 {
- "compiled_count": 1597,
+ "compiled_count": 1710,
  "counts_by_kind": {
   "calibration_drift": 564,
   "fixture_only": 44,
-  "ledger_only": 1004
+  "ledger_only": 1117
  },
- "difference_count": 1612,
+ "difference_count": 1725,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -751,6 +751,699 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 165128.75,
+   "name": "dwp.pip.cases_east_midlands_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15460.0,
+   "name": "dwp.pip.cases_east_midlands_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 136988.75,
+   "name": "dwp.pip.cases_east_midlands_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 177650.0,
+   "name": "dwp.pip.cases_east_midlands_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 47511.75,
+   "name": "dwp.pip.cases_east_midlands_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 92414.75,
+   "name": "dwp.pip.cases_east_midlands_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 170988.75,
+   "name": "dwp.pip.cases_east_of_england_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 14423.75,
+   "name": "dwp.pip.cases_east_of_england_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 146411.75,
+   "name": "dwp.pip.cases_east_of_england_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 166776.0,
+   "name": "dwp.pip.cases_east_of_england_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 69254.75,
+   "name": "dwp.pip.cases_east_of_england_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 95795.0,
+   "name": "dwp.pip.cases_east_of_england_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3490214.25,
+   "name": "dwp.pip.cases_england",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 181800.0,
+   "name": "dwp.pip.cases_england_aged_16_to_19",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 384149.5,
+   "name": "dwp.pip.cases_england_aged_16_to_24",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 202349.5,
+   "name": "dwp.pip.cases_england_aged_20_to_24",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 196997.5,
+   "name": "dwp.pip.cases_england_aged_25_to_29",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 419039.75,
+   "name": "dwp.pip.cases_england_aged_25_to_34",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 222042.25,
+   "name": "dwp.pip.cases_england_aged_30_to_34",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 248251.5,
+   "name": "dwp.pip.cases_england_aged_35_to_39",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 780871.75,
+   "name": "dwp.pip.cases_england_aged_35_to_49",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 262599.5,
+   "name": "dwp.pip.cases_england_aged_40_to_44",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 270020.75,
+   "name": "dwp.pip.cases_england_aged_45_to_49",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 343020.75,
+   "name": "dwp.pip.cases_england_aged_50_to_54",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1244108.25,
+   "name": "dwp.pip.cases_england_aged_50_to_64",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 425461.75,
+   "name": "dwp.pip.cases_england_aged_55_to_59",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 475625.75,
+   "name": "dwp.pip.cases_england_aged_60_to_64",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 662046.75,
+   "name": "dwp.pip.cases_england_aged_65_and_over",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 395530.5,
+   "name": "dwp.pip.cases_england_aged_65_to_69",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 199125.0,
+   "name": "dwp.pip.cases_england_aged_70_to_74",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 67391.25,
+   "name": "dwp.pip.cases_england_aged_75_and_over",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1823860.5,
+   "name": "dwp.pip.cases_england_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 144486.75,
+   "name": "dwp.pip.cases_england_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1521596.25,
+   "name": "dwp.pip.cases_england_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1772561.75,
+   "name": "dwp.pip.cases_england_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 705472.25,
+   "name": "dwp.pip.cases_england_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1011906.25,
+   "name": "dwp.pip.cases_england_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 240339.25,
+   "name": "dwp.pip.cases_london_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15032.25,
+   "name": "dwp.pip.cases_london_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 193466.75,
+   "name": "dwp.pip.cases_london_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 222332.5,
+   "name": "dwp.pip.cases_london_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 104702.5,
+   "name": "dwp.pip.cases_london_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 121805.5,
+   "name": "dwp.pip.cases_london_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 126445.25,
+   "name": "dwp.pip.cases_north_east_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 9630.25,
+   "name": "dwp.pip.cases_north_east_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 107983.0,
+   "name": "dwp.pip.cases_north_east_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 116531.25,
+   "name": "dwp.pip.cases_north_east_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 54430.0,
+   "name": "dwp.pip.cases_north_east_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 73099.0,
+   "name": "dwp.pip.cases_north_east_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 310037.0,
+   "name": "dwp.pip.cases_north_west_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 22476.0,
+   "name": "dwp.pip.cases_north_west_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 265405.25,
+   "name": "dwp.pip.cases_north_west_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 291581.25,
+   "name": "dwp.pip.cases_north_west_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 127927.75,
+   "name": "dwp.pip.cases_north_west_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 178406.0,
+   "name": "dwp.pip.cases_north_west_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 229595.75,
+   "name": "dwp.pip.cases_south_east_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 18222.75,
+   "name": "dwp.pip.cases_south_east_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 185335.0,
+   "name": "dwp.pip.cases_south_east_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 215238.75,
+   "name": "dwp.pip.cases_south_east_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 92183.25,
+   "name": "dwp.pip.cases_south_east_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 125730.0,
+   "name": "dwp.pip.cases_south_east_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 171489.0,
+   "name": "dwp.pip.cases_south_west_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 12983.0,
+   "name": "dwp.pip.cases_south_west_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 136125.25,
+   "name": "dwp.pip.cases_south_west_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 161057.0,
+   "name": "dwp.pip.cases_south_west_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 67894.5,
+   "name": "dwp.pip.cases_south_west_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 91645.0,
+   "name": "dwp.pip.cases_south_west_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 281007.75,
+   "name": "dwp.pip.cases_wales",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 10026.0,
+   "name": "dwp.pip.cases_wales_aged_16_to_19",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 13329.25,
+   "name": "dwp.pip.cases_wales_aged_20_to_24",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 14728.0,
+   "name": "dwp.pip.cases_wales_aged_25_to_29",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17144.5,
+   "name": "dwp.pip.cases_wales_aged_30_to_34",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19438.0,
+   "name": "dwp.pip.cases_wales_aged_35_to_39",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20118.0,
+   "name": "dwp.pip.cases_wales_aged_40_to_44",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20384.0,
+   "name": "dwp.pip.cases_wales_aged_45_to_49",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 26755.25,
+   "name": "dwp.pip.cases_wales_aged_50_to_54",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 34274.0,
+   "name": "dwp.pip.cases_wales_aged_55_to_59",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 40608.5,
+   "name": "dwp.pip.cases_wales_aged_60_to_64",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 35969.75,
+   "name": "dwp.pip.cases_wales_aged_65_to_69",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20931.75,
+   "name": "dwp.pip.cases_wales_aged_70_to_74",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 7299.25,
+   "name": "dwp.pip.cases_wales_aged_75_and_over",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 147586.0,
+   "name": "dwp.pip.cases_wales_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 11876.75,
+   "name": "dwp.pip.cases_wales_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 121530.75,
+   "name": "dwp.pip.cases_wales_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 159375.25,
+   "name": "dwp.pip.cases_wales_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 40469.5,
+   "name": "dwp.pip.cases_wales_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 81147.75,
+   "name": "dwp.pip.cases_wales_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 207791.0,
+   "name": "dwp.pip.cases_west_midlands_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20030.75,
+   "name": "dwp.pip.cases_west_midlands_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 173617.75,
+   "name": "dwp.pip.cases_west_midlands_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 227121.5,
+   "name": "dwp.pip.cases_west_midlands_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 58672.0,
+   "name": "dwp.pip.cases_west_midlands_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 115644.75,
+   "name": "dwp.pip.cases_west_midlands_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 202045.75,
+   "name": "dwp.pip.cases_yorkshire_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 16229.0,
+   "name": "dwp.pip.cases_yorkshire_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 176263.75,
+   "name": "dwp.pip.cases_yorkshire_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 194275.75,
+   "name": "dwp.pip.cases_yorkshire_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 82894.0,
+   "name": "dwp.pip.cases_yorkshire_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 117369.75,
+   "name": "dwp.pip.cases_yorkshire_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 138623908111.01526,
    "name": "dwp.state_pension.amount",
    "period": 2025,
@@ -1194,6 +1887,55 @@
    "kind": "ledger_only",
    "ledger_value": 3130000.0,
    "name": "dwp.uc.households_with_deduction",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 386617.5,
+   "name": "dwp.uc.people_aged_16_to_21",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 137557.75,
+   "name": "dwp.uc.people_aged_16_to_21_no_work_requirements",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 249061.5,
+   "name": "dwp.uc.people_aged_16_to_21_other_regimes",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 762585.25,
+   "name": "dwp.uc.people_aged_16_to_24",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 375967.75,
+   "name": "dwp.uc.people_aged_22_to_24",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 157008.5,
+   "name": "dwp.uc.people_aged_22_to_24_no_work_requirements",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 218958.75,
+   "name": "dwp.uc.people_aged_22_to_24_other_regimes",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -2566,6 +3308,20 @@
    "kind": "ledger_only",
    "ledger_value": 5500000000.0,
    "name": "hmrc.salary_sacrifice.it_relief_higher_rate",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19402730017.279205,
+   "name": "hmrc.scottish_income_tax.nsnd_outturn",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3036400.0,
+   "name": "hmrc.scottish_income_tax.nsnd_taxpayers",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -5595,196 +6351,196 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 561.168,
+   "ledger_value": 492.631,
    "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000001",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 7260.132,
+   "ledger_value": 6373.435,
    "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000002",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 2749.871,
+   "ledger_value": 2414.022,
    "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000003",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 2969.626,
+   "ledger_value": 2606.938,
    "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000004",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 4734.944,
+   "ledger_value": 4156.654,
    "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000005",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 25742.084,
+   "ledger_value": 22598.141,
    "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000006",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 117626.39,
+   "ledger_value": 103260.397,
    "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000007",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 70261.709,
+   "ledger_value": 61680.478,
    "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000008",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 15568.651,
+   "ledger_value": 13667.214,
    "name": "microcosm.high_value_homes.over_1_5m_by_region@E12000009",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 898.854,
+   "ledger_value": 789.075,
    "name": "microcosm.high_value_homes.over_1_5m_by_region@W92000004",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 2508.423,
+   "ledger_value": 2202.063,
    "name": "microcosm.high_value_homes.over_1m_by_region@E12000001",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 27590.583,
+   "ledger_value": 24220.879,
    "name": "microcosm.high_value_homes.over_1m_by_region@E12000002",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 13978.44,
+   "ledger_value": 12271.22,
    "name": "microcosm.high_value_homes.over_1m_by_region@E12000003",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 14399.878,
+   "ledger_value": 12641.186,
    "name": "microcosm.high_value_homes.over_1m_by_region@E12000004",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 22286.116,
+   "ledger_value": 19564.26,
    "name": "microcosm.high_value_homes.over_1m_by_region@E12000005",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 87553.535,
+   "ledger_value": 76860.411,
    "name": "microcosm.high_value_homes.over_1m_by_region@E12000006",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 272832.635,
+   "ledger_value": 239510.93,
    "name": "microcosm.high_value_homes.over_1m_by_region@E12000007",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 213894.568,
+   "ledger_value": 187771.111,
    "name": "microcosm.high_value_homes.over_1m_by_region@E12000008",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 56970.627,
+   "ledger_value": 50012.667,
    "name": "microcosm.high_value_homes.over_1m_by_region@E12000009",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 5536.777,
+   "ledger_value": 4860.557,
    "name": "microcosm.high_value_homes.over_1m_by_region@W92000004",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 2887.107,
+   "ledger_value": 2534.498,
    "name": "microcosm.high_value_homes.over_2m_by_region@E12000002",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 906.521,
+   "ledger_value": 795.805,
    "name": "microcosm.high_value_homes.over_2m_by_region@E12000003",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 962.333,
+   "ledger_value": 844.801,
    "name": "microcosm.high_value_homes.over_2m_by_region@E12000004",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 1482.074,
+   "ledger_value": 1301.065,
    "name": "microcosm.high_value_homes.over_2m_by_region@E12000005",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 9847.844,
+   "ledger_value": 8645.103,
    "name": "microcosm.high_value_homes.over_2m_by_region@E12000006",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 63281.388,
+   "ledger_value": 55552.68,
    "name": "microcosm.high_value_homes.over_2m_by_region@E12000007",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 29996.104,
+   "ledger_value": 26332.608,
    "name": "microcosm.high_value_homes.over_2m_by_region@E12000008",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 6354.494,
+   "ledger_value": 5578.404,
    "name": "microcosm.high_value_homes.over_2m_by_region@E12000009",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived estimate of the owner-occupied dwelling stock above a high value council tax surcharge (HVCTS) threshold in an English region or Wales (uk/high_value_home_stock_facts.json, fence high_value_home_stock_derived_estimate), compiled beside the Chronicle feed. No publisher counts such dwellings by region and the incumbent registry carries no row to compare, so the difference is the derived target itself. The row is the cross-grain control for the family's constituency and local-authority cells and binds on the local line only (calibration_lines; microcosm#1301)."
@@ -5940,6 +6696,13 @@
    "kind": "ledger_only",
    "ledger_value": 2565000.0,
    "name": "ons.households.english_regions@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 943415.518223629,
+   "name": "ons.neet.people_aged_16_to_24",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -7051,6 +7814,20 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 438614.5833333333,
+   "name": "ons.paye_rti.employees_aged_0_to_17",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3441394.4166666665,
+   "name": "ons.paye_rti.employees_aged_18_to_24",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 658357.0,
    "name": "ons.population.age_0",
    "period": 2025,
@@ -7310,6 +8087,13 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 490779.1666666667,
+   "name": "scotgov.adp.caseload_scotland",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 499000000.0,
    "name": "scotgov.bus.government_support",
    "period": 2025,
@@ -7319,6 +8103,13 @@
    "kind": "ledger_only",
    "ledger_value": 391000000.0,
    "name": "scotgov.bus.passenger_revenue",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 97737.5,
+   "name": "scotgov.carer_support_payment.in_payment_scotland",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

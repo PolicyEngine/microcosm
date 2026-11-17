@@ -1382,7 +1382,19 @@ def test_the_national_graph_review_invariant_is_kept(
 def test_the_review_registers_load_from_the_package():
     registers = REAL_REVIEW_REGISTERS()
     assert len(registers) == 4
-    assert all(registers)
+    # The input-mass register (the second) is signed per reference build
+    # since the enhanced-FRS reference retired (microcosm#1095): today the
+    # gross receipts microcosm#1550 stops writing, against both current builds.
+    degenerate, input_mass, exclusions, floor = registers
+    assert degenerate and exclusions and floor
+    assert {label: set(entries) for label, entries in input_mass.items()} == {
+        "microcosm-uk-2024-25-dense@uk-local-candidate-f100-s42-20261107T173210Z-38605444": {
+            "self_employment_gross_receipts"
+        },
+        "microcosm-uk-2024-25-national@uk-frs-calibration-attempt-20261107T020434Z-eeb6093e": {
+            "self_employment_gross_receipts"
+        },
+    }
 
 
 def test_out_inside_the_repository_is_refused(build_1, repo, capsys):

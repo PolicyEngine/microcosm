@@ -276,7 +276,8 @@ _REASON_LOAN_TYPE_RECIPIENTS = (
 _REASON_LOAN_TYPE_DOLLARS = (
     "FSA's notes don't say whether its Parent PLUS row leaves out loans the Secretary "
     "paid off through consolidation (34 CFR 685.220(f)), the stage's column holds "
-    "the balances it classifies as Parent PLUS, and every other family pins the total."
+    "the balances the stage classifies as Parent PLUS, consolidated or not, and "
+    "every other family pins the total."
 )
 _REASON_STAFFORD_SUBTOTAL = (
     "Stafford (Combined) is a subtotal of rows the table already lists."

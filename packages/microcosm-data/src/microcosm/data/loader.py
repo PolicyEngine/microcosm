@@ -55,6 +55,7 @@ from microcosm.data.release import (
     latest_release,
     line_pointer_path,
     missing_on_hub,
+    never_cached_offline,
 )
 from microcosm.data.releases_record import (
     RELEASES_RECORD_PATH,
@@ -63,12 +64,16 @@ from microcosm.data.releases_record import (
 )
 
 __all__ = [
+    "CertifiedRelease",
     "available",
     "available_variants",
     "resolve",
     "latest_year",
     "download",
+    "download_build_file",
+    "download_certified",
     "load",
+    "resolve_certified",
 ]
 
 _SHA256_PATTERN = re.compile(r"[0-9a-fA-F]{64}")
@@ -99,7 +104,7 @@ class _PackageCertification:
 
 
 @dataclass(frozen=True)
-class _CertifiedRelease:
+class CertifiedRelease:
     """A release's certified dataset: where it is and what it was built with.
 
     For a build-folder release, ``build`` is the build that was loaded,
@@ -115,6 +120,9 @@ class _CertifiedRelease:
     model: _PackageCertification
     core: _PackageCertification
     build: str | None = None
+
+
+_CertifiedRelease = CertifiedRelease
 
 
 class _CertifiedPackageCompatibilityError(ValueError):
@@ -466,10 +474,14 @@ def _certified_release_from_manifest(
             f"{artifact_repo_id!r} "
             f"does not match registry repo {spec.hf_repo!r}."
         )
-    if artifact_path != spec.filename:
+    accepted_paths = (
+        spec.dataset_filenames if build_folder_release else (spec.filename,)
+    )
+    if artifact_path not in accepted_paths:
+        expected = " or ".join(repr(name) for name in accepted_paths)
         raise ValueError(
             f"Release {release_id!r} {artifact_label} artifact path {artifact_path!r} "
-            f"does not match registry filename {spec.filename!r}."
+            f"does not match registry filename {expected}."
         )
     if not isinstance(artifact_sha256, str) or not _SHA256_PATTERN.fullmatch(
         artifact_sha256
@@ -547,20 +559,6 @@ def _pointer_for(
     )
 
 
-def _never_cached_offline(exc: BaseException) -> bool:
-    """Whether huggingface_hub is offline and the file was never cached.
-
-    Offline, the cache is all a load has, so a ``releases.json`` that was
-    never cached reads as absent, as the pointer files then do.
-    """
-    try:
-        from huggingface_hub import constants
-        from huggingface_hub.utils import LocalEntryNotFoundError
-    except ImportError:  # pragma: no cover - declared dependency
-        return False
-    return bool(constants.HF_HUB_OFFLINE) and isinstance(exc, LocalEntryNotFoundError)
-
-
 def _releases_record_bytes(
     spec: DatasetSpec, *, hub_download: _HubDownload
 ) -> bytes | None:
@@ -578,7 +576,7 @@ def _releases_record_bytes(
             repo_id=spec.hf_repo, filename=RELEASES_RECORD_PATH, repo_type="dataset"
         )
     except Exception as exc:
-        if missing_on_hub(exc) or _never_cached_offline(exc):
+        if missing_on_hub(exc) or never_cached_offline(exc):
             return None
         raise
     return Path(record_path).read_bytes()
@@ -707,9 +705,13 @@ def _resolve_certified_release(
 
 
 def _verified_download(
-    spec: DatasetSpec, *, build: str | None = None
+    spec: DatasetSpec,
+    *,
+    build: str | None = None,
+    hub_download: _HubDownload | None = None,
 ) -> tuple[Path, _CertifiedRelease]:
-    hub_download = _hub_download()
+    if hub_download is None:
+        hub_download = _hub_download()
     certified = _resolve_certified_release(spec, hub_download=hub_download, build=build)
     artifact_path = Path(
         hub_download(
@@ -762,6 +764,118 @@ def download(
     """
     spec = resolve(country, year, variant=variant)
     path, _ = _verified_download(spec, build=build)
+    return path
+
+
+def resolve_certified(
+    country: str,
+    year: int | None = None,
+    *,
+    variant: str = DEFAULT_VARIANT,
+    build: str | None = None,
+    hub_download: _HubDownload | None = None,
+) -> CertifiedRelease:
+    """Say which build :func:`download_certified` would download, without it.
+
+    Reads only the release record and the build's manifest, with the same
+    checks; the dataset itself is neither downloaded nor verified.
+    """
+    spec = resolve(country, year, variant=variant)
+    return _resolve_certified_release(spec, hub_download=hub_download, build=build)
+
+
+def download_certified(
+    country: str,
+    year: int | None = None,
+    *,
+    variant: str = DEFAULT_VARIANT,
+    build: str | None = None,
+    hub_download: _HubDownload | None = None,
+) -> tuple[Path, CertifiedRelease]:
+    """Download and SHA-verify a certified dataset, and say which build it is.
+
+    The same resolution and checks as :func:`download`, returning with the
+    path the build's record: its release, build, artifact path and SHA-256,
+    and the model and Core versions it was built with. Unlike :func:`load`,
+    it neither enforces the installed engine's versions nor constructs a
+    dataset, so a comparison can read a build under the engine it runs (a UK
+    cut compares its candidate with the current build this way).
+
+    Raises:
+        ImportError: If ``huggingface_hub`` is not installed.
+        ValueError: If release metadata or the artifact digest is invalid.
+    """
+    spec = resolve(country, year, variant=variant)
+    return _verified_download(spec, build=build, hub_download=hub_download)
+
+
+def download_build_file(
+    certified: CertifiedRelease,
+    key: str,
+    *,
+    hub_download: _HubDownload | None = None,
+) -> Path:
+    """Download one file a build's release manifest declares, SHA-verified.
+
+    ``key`` names an entry of the build's ``release_manifest.json``
+    ``artifacts``; the file is read from the build's own folder, which never
+    changes after publishing.
+
+    Raises:
+        ValueError: If the release keeps the tagged layout (no build folder),
+            the manifest declares no such artifact, or its digest differs.
+    """
+    if certified.build is None:
+        raise ValueError(
+            f"Release {certified.release_id!r} keeps the tagged layout; only a "
+            "build published into its own folder declares its files there."
+        )
+    if hub_download is None:
+        hub_download = _hub_download()
+    folder = build_folder(certified.release_id, certified.build)
+    manifest = _load_manifest(
+        Path(
+            hub_download(
+                repo_id=certified.artifact_repo_id,
+                filename=f"{folder}/release_manifest.json",
+                repo_type="dataset",
+            )
+        ),
+        repo_id=certified.artifact_repo_id,
+        release_id=certified.release_id,
+    )
+    artifacts = _required_mapping(
+        manifest, "artifacts", release_id=certified.release_id
+    )
+    artifact = artifacts.get(key)
+    if not isinstance(artifact, Mapping):
+        raise ValueError(
+            f"Build {certified.build!r} of release {certified.release_id!r} "
+            f"declares no artifact {key!r}."
+        )
+    name = artifact.get("path")
+    expected = artifact.get("sha256")
+    if not isinstance(name, str) or not name or "/" in name:
+        raise ValueError(
+            f"Build {certified.build!r} artifact {key!r} has no bare file name."
+        )
+    if not isinstance(expected, str) or not _SHA256_PATTERN.fullmatch(expected):
+        raise ValueError(
+            f"Build {certified.build!r} artifact {key!r} has no valid sha256."
+        )
+    path = Path(
+        hub_download(
+            repo_id=certified.artifact_repo_id,
+            filename=f"{folder}/{name}",
+            repo_type="dataset",
+        )
+    )
+    observed = _sha256(path)
+    if observed != expected.lower():
+        raise ValueError(
+            f"sha256 verification failed for build {certified.build!r} artifact "
+            f"{key!r}: expected {expected.lower()}; observed {observed}."
+        )
     return path
 
 

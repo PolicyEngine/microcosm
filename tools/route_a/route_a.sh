@@ -45,6 +45,13 @@ LOG=$RUN_ROOT/route_a.log
 : "${PREFLIGHT_NEW_LINEAGE_ARGS:=}" "${EARLY_START_AFTER_HEAVY:=0}" "${PRUNE_BASE_CHECKPOINTS:=0}"
 : "${RELEASE_DESPITE_PREFLIGHT_FAIL:=0}" "${RELEASE_EXTRA_ARGS:=}" "${EXPORT_MASS_REF_H5:=}"
 : "${RESOURCE_WAIT_HOURS:=12}"
+# uv sync takes the newest installed CPython unless told otherwise, and the
+# lock's torch wheels stop at cp314; a fresh worktree on 3.15 fails to sync.
+: "${UV_SYNC_PYTHON:=3.14}"
+# The release reads these two from its environment. Export a settings-file
+# value so the stages see what --resolve checked.
+[ -z "${MICROCOSM_TELEMETRY_REQUIRED+set}" ] || export MICROCOSM_TELEMETRY_REQUIRED
+[ -z "${MICROCOSM_EMITTER_COMMAND+set}" ] || export MICROCOSM_EMITTER_COMMAND
 
 # ---------------------------------------------------------------------------
 # Inputs, resolved and hashed on this machine on 2026-09-23 (see status.md).
@@ -92,6 +99,7 @@ FEED_PIN_REL=packages/microcosm-build/src/microcosm/build/us/chronicle_feed.json
 ASEC_PIN_REL=packages/microcosm-build/src/microcosm/build/us_runtime/asec_sources.py
 EDU_PIN_REL=packages/microcosm-build/src/microcosm/build/us_runtime/education_assistance_source.py
 SPM_ROLE_REL=packages/microcosm-build/src/microcosm/build/us_runtime/spm_independence_role.py
+EMITTER_FLOOR_REL=packages/microcosm-build/src/microcosm/build/minimum_emitter_version.json
 BASE_FLAGS="--stage --checkpoint-dir --asec-h5 --asec-h5-sha256 --puf-h5 --puf-source-year-csv --acs-h5 --asec-education-source --target-year --seed --n-estimators --ledger-facts --assign-congressional-districts --congressional-district-vintage-crosswalk --congressional-district-seed --block-ladder-artifact --out"
 RELEASE_FLAGS="--base-h5 --ledger-facts --ledger-facts-sha256 --qrf-tail-concentration-exclusions --ssi-take-up-prior-weight-basis --ssi-take-up-prior-weight-basis-sha256 --scf-summary-extract --out --release-id --checkpoint-root --seed"
 [ "$ROUTE_A_STAGING" = 0 ] && RELEASE_FLAGS="$RELEASE_FLAGS --no-staging"
@@ -181,7 +189,10 @@ check_commit() {  # $1 = build ref, $2 = preflight ref; fills COMMIT_BLOCKERS/CO
   if git -C "$MAIN" show "$full:$FEED_PIN_REL" 2>/dev/null | grep -q "\"facts_sha256\": \"$FEED_SHA\""; then
     COMMIT_NOTES+=("us/chronicle_feed.json at $full pins facts_sha256 $FEED_SHA")
   else
-    COMMIT_BLOCKERS+=("us/chronicle_feed.json at $full does not pin facts_sha256 $FEED_SHA (the release tool would refuse the feed)")
+    local pinned_feed
+    pinned_feed=$(git -C "$MAIN" show "$full:$FEED_PIN_REL" 2>/dev/null | \
+      "$PYTHON" -c 'import json, sys; print(json.load(sys.stdin).get("facts_sha256") or "")' 2>/dev/null)
+    COMMIT_BLOCKERS+=("us/chronicle_feed.json at $full does not pin facts_sha256 $FEED_SHA (the release tool would refuse the feed); it pins ${pinned_feed:-no readable facts_sha256}: set FEED to that feed's file, FEED_SHA to its digest and FEED_BYTES to its size")
   fi
   local s
   for s in $ASEC_2025_SHA $ASEC_2024_SHA $ASEC_2023_SHA; do
@@ -192,10 +203,16 @@ check_commit() {  # $1 = build ref, $2 = preflight ref; fills COMMIT_BLOCKERS/CO
     git -C "$MAIN" show "$full:$EDU_PIN_REL" 2>/dev/null | grep -q "$s" \
       || COMMIT_BLOCKERS+=("education_assistance_source.py at $full lacks the Census archive pin $s (the base would refuse that year's archive)")
   done
-  if [ "$(git -C "$MAIN" show "$full:$CROSSWALK_REL" 2>/dev/null | openssl dgst -sha256 -r | cut -c1-64)" = "$CROSSWALK_SHA" ]; then
-    COMMIT_NOTES+=("packaged CD vintage crosswalk at $full = $CROSSWALK_SHA")
+  local crosswalk
+  if ! git -C "$MAIN" cat-file -e "$full:$CROSSWALK_REL" 2>/dev/null; then
+    COMMIT_BLOCKERS+=("no packaged CD vintage crosswalk at $full ($CROSSWALK_REL)")
   else
-    COMMIT_BLOCKERS+=("packaged CD vintage crosswalk at $full is not $CROSSWALK_SHA")
+    crosswalk=$(git -C "$MAIN" show "$full:$CROSSWALK_REL" | openssl dgst -sha256 -r | cut -c1-64)
+    if [ "$crosswalk" = "$CROSSWALK_SHA" ]; then
+      COMMIT_NOTES+=("packaged CD vintage crosswalk at $full = $CROSSWALK_SHA")
+    else
+      COMMIT_BLOCKERS+=("packaged CD vintage crosswalk at $full is $crosswalk, not $CROSSWALK_SHA: set CROSSWALK_SHA to it once the change is reviewed")
+    fi
   fi
   if git -C "$MAIN" show "$full:tools/build_us_fiscal_refresh_release.py" 2>/dev/null | grep -q '_check_committed_us_ledger_feed_pin'; then
     COMMIT_NOTES+=("release tool at $full holds the feed to the committed pin")
@@ -245,6 +262,27 @@ check_commit() {  # $1 = build ref, $2 = preflight ref; fills COMMIT_BLOCKERS/CO
     git -C "$MAIN" branch -r --contains "$pfull" 2>/dev/null | grep -qv -- '->' \
       || COMMIT_BLOCKERS+=("preflight commit $pfull is on no origin branch")
   fi
+  check_emitter "$full"
+}
+
+check_emitter() {  # $1 = full build sha; adds to COMMIT_NOTES/COMMIT_BLOCKERS
+  # The release starts microcosm-emitter (MICROCOSM_EMITTER_COMMAND, then PATH)
+  # for collector telemetry and staging hand-overs, and never starts one older
+  # than the commit's minimum_emitter_version.json. With
+  # MICROCOSM_TELEMETRY_REQUIRED=1 such an emitter stops the release before it
+  # does any work; otherwise the release runs without telemetry.
+  # check_emitter.py repeats the release's checks without importing microcosm.
+  local full=$1 line
+  if ! git -C "$MAIN" cat-file -e "$full:$EMITTER_FLOOR_REL" 2>/dev/null; then
+    COMMIT_NOTES+=("no $EMITTER_FLOOR_REL at $full; emitter not checked")
+    return
+  fi
+  line=$(git -C "$MAIN" show "$full:$EMITTER_FLOOR_REL" | "$PYTHON" -I "$SCRIPT_DIR/check_emitter.py" 2>&1)
+  case "$line" in
+    "NOTE "*) COMMIT_NOTES+=("${line#NOTE }") ;;
+    "BLOCKER "*) COMMIT_BLOCKERS+=("${line#BLOCKER }") ;;
+    *) COMMIT_BLOCKERS+=("the emitter check at $full failed: ${line:-no output}") ;;
+  esac
 }
 
 refuse_bad_release_args() {
@@ -358,11 +396,23 @@ ensure_worktree() {  # $1 = full sha; sets WT
     log "created worktree $WT at $c"
   fi
   [ -z "$(git -C "$WT" status --porcelain)" ] || fail "worktree $WT is dirty"
-  if [ ! -f "$WT/.venv/.route_a_synced" ]; then
-    log "uv sync --all-packages --locked --extra us in $WT"
-    (cd "$WT" && "$UV" sync --all-packages --locked --extra us) >>"$LOG" 2>&1 || fail "uv sync in $WT"
+  local marker=$WT/.venv/.route_a_synced synced
+  if [ ! -f "$marker" ]; then
+    log "uv sync --python $UV_SYNC_PYTHON --all-packages --locked --extra us in $WT"
+    # uv refuses --locked beside UV_FROZEN=1, which a profile shell may export,
+    # so the sync drops it, as supervise.py does for the stages.
+    (cd "$WT" && unset UV_FROZEN && "$UV" sync --python "$UV_SYNC_PYTHON" --all-packages --locked --extra us) >>"$LOG" 2>&1 || fail "uv sync in $WT"
     "$WT/.venv/bin/python" -c 'import psutil, policyengine_us' >>"$LOG" 2>&1 || fail "venv in $WT lacks psutil/policyengine_us"
-    date '+%F %T' > "$WT/.venv/.route_a_synced"
+    printf '%s\npython=%s\n' "$(date '+%F %T')" "$UV_SYNC_PYTHON" > "$marker"
+  else
+    # A resumed chain keeps its venv; a changed interpreter setting would
+    # otherwise be ignored without a word.
+    synced=$(sed -n 's/^python=//p' "$marker")
+    if [ -z "$synced" ]; then
+      log "worktree $WT was synced before its interpreter was recorded; keeping its venv"
+    elif [ "$synced" != "$UV_SYNC_PYTHON" ]; then
+      fail "worktree $WT was synced with --python $synced, not UV_SYNC_PYTHON=$UV_SYNC_PYTHON: set it back, or remove $marker to re-sync"
+    fi
   fi
   [ -z "$(git -C "$WT" status --porcelain)" ] || fail "worktree $WT dirty after uv sync"
 }
@@ -371,7 +421,7 @@ ensure_worktree "$PC"; PW=$WT
 PY=$W/.venv/bin/python
 [ "$(sha_of "$W/$CROSSWALK_REL")" = "$CROSSWALK_SHA" ] || fail "packaged crosswalk digest in $W"
 PEUS=$("$PY" -c 'import importlib.metadata as m; print(m.version("policyengine-us"))')
-[ -x "$W/.venv/bin/microcosm-publish-release" ] || fail "no microcosm-publish-release in $W/.venv"
+[ -x "$W/.venv/bin/microcosm-publish-release-build" ] || fail "no microcosm-publish-release-build in $W/.venv"
 log "build worktree $W (policyengine-us $PEUS); preflight worktree $PW"
 
 # --- 2. Wait for the overnight chain to leave the machine. ---
@@ -612,7 +662,9 @@ fi
 RID=$("$PY" -c 'import json,sys; a=json.load(open(sys.argv[1]))["argv"]; print(a[a.index("--release-id")+1])' "$RUN/release-sup/COMMAND.json") \
   || fail "cannot read the release id from release-sup/COMMAND.json"
 REL_OUT=$RUN/release-out/$RID
-REL_DIR=$REL_OUT/releases/$RID
+# A national run writes its build into the national release's directory;
+# $RID is the build ID (microcosm#1570).
+REL_DIR=$REL_OUT/releases/microcosm-us-2024-national
 [ -f "$REL_DIR/release_manifest.json" ] || fail "release accepted but $REL_DIR/release_manifest.json is missing"
 log "release candidate $RID at $REL_DIR"
 
@@ -630,12 +682,15 @@ else
   log "preflight-release: $(cat "$RUN/preflight-release-sup/ACCEPTED"); report $RUN/preflight-release.json"
 fi
 
-# --- 8. Publisher preflight, offline: publish_cli.py returns after
-# prepare_release when --preflight-only is set (:325-331 on origin/main), and
-# builds no Hub client. Secrets are stripped as overnight_chain.sh does. ---
+# --- 8. Publisher preflight, offline: microcosm-publish-release-build checks
+# the build with its release contract and lists what it would publish when
+# --preflight-only is set, and starts no emitter. Secrets are stripped as
+# overnight_chain.sh does. It takes no --extra-file: the command publishes
+# every artifact the release manifest lists, a --scf-education-debt build's
+# two fit tables included. ---
 if ! stage_done publisher-preflight; then
   write_config publisher-preflight 24 16 22 7200 14400 "$W" "$PF_ENV" -- "${NOSECRETS[@]}" \
-    "PATH=$W/.venv/bin:/usr/bin:/bin:/usr/sbin:/sbin" "$W/.venv/bin/microcosm-publish-release" \
+    "PATH=$W/.venv/bin:/usr/bin:/bin:/usr/sbin:/sbin" "$W/.venv/bin/microcosm-publish-release-build" \
     "$REL_DIR" --repo-id policyengine/populace-us --artifact-root "$REL_OUT/artifacts" --preflight-only
   run_stage publisher-preflight 0 16 22
 fi
@@ -651,7 +706,7 @@ if [ "$PF_BLOCKED" = 0 ]; then
 fi
 "$PY" - "$OUTF" "$STATE" "$C" "$PC" "$PEUS" "$BASE_H5" "$BASE_SHA" "$RID" "$REL_DIR" "$REL_OUT/artifacts" \
   "$PFB" "$PFR" "$PUB_VERDICT" <<'EOF'
-import json, sys
+import json, shlex, sys
 (out, state, commit, pcommit, peus, base_h5, base_sha, rid, rel_dir, art, pfb, pfr, pub) = sys.argv[1:]
 json.dump({
     "state": state,
@@ -667,9 +722,12 @@ json.dump({
     "preflight_base": pfb,
     "preflight_release": pfr,
     "publisher_preflight_only": pub,
+    "publish_command": shlex.join(["uv", "run", "microcosm-publish-release-build", rel_dir, "--repo-id", "policyengine/populace-us", "--artifact-root", art]),
+    "promote_command": shlex.join(["uv", "run", "microcosm-publish-release-build", rel_dir, "--repo-id", "policyengine/populace-us", "--promote"]),
     "next": (
-        "Publication is Max's call: tools/publish_release.sh "
-        f"{rel_dir} --repo-id policyengine/populace-us --artifact-root {art}"
+        "Publication is Max's call: publish_command publishes the build into "
+        "its folder of the national release, and promote_command then makes "
+        "it the release's current build."
     ),
 }, open(out, "w"), indent=1)
 EOF

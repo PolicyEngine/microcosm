@@ -1,0 +1,79 @@
+{
+  "default_variant": "compact",
+  "entries": [
+    {
+      "build_folder_filename": null,
+      "country": "uk",
+      "engine_class": "UKSingleYearDataset",
+      "engine_module": "policyengine_uk.data",
+      "engine_package": "policyengine-uk",
+      "filename": "populace_uk_2023.h5",
+      "hf_repo": "policyengine/populace-uk-private",
+      "key": [
+        "uk",
+        2023,
+        "compact"
+      ],
+      "pointer_path": "latest.json",
+      "release": "populace-uk-2023",
+      "variant": "compact",
+      "year": 2023
+    },
+    {
+      "build_folder_filename": null,
+      "country": "uk",
+      "engine_class": "UKSingleYearDataset",
+      "engine_module": "policyengine_uk.data",
+      "engine_package": "policyengine-uk",
+      "filename": "microcosm_uk_2024_25.h5",
+      "hf_repo": "policyengine/populace-uk-private",
+      "key": [
+        "uk",
+        2025,
+        "compact"
+      ],
+      "pointer_path": "latest-national.json",
+      "release": "microcosm-uk-2024-25-national",
+      "variant": "compact",
+      "year": 2025
+    },
+    {
+      "build_folder_filename": null,
+      "country": "uk",
+      "engine_class": "UKSingleYearDataset",
+      "engine_module": "policyengine_uk.data",
+      "engine_package": "policyengine-uk",
+      "filename": "microcosm_uk_2024_25_dense.h5",
+      "hf_repo": "policyengine/populace-uk-private",
+      "key": [
+        "uk",
+        2025,
+        "dense"
+      ],
+      "pointer_path": "latest.json",
+      "release": "microcosm-uk-2024-25-dense",
+      "variant": "dense",
+      "year": 2025
+    },
+    {
+      "build_folder_filename": "microcosm_us_2024.h5",
+      "country": "us",
+      "engine_class": "USSingleYearDataset",
+      "engine_module": "policyengine_us.data",
+      "engine_package": "policyengine-us",
+      "filename": "populace_us_2024.h5",
+      "hf_repo": "policyengine/populace-us",
+      "key": [
+        "us",
+        2024,
+        "compact"
+      ],
+      "pointer_path": "latest.json",
+      "release": "microcosm-us-2024-national",
+      "variant": "compact",
+      "year": 2024
+    }
+  ],
+  "schema_name": "microcosm.release-contract.registry",
+  "schema_version": 1
+}

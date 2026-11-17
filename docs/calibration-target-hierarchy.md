@@ -84,7 +84,14 @@ metadata, not hints for constructing display text.
   label because an individual member-fact label does not describe the compiled
   target.
 - `layout.groupby_dimension` is first when it has a value. Its categorical
-  value label comes from `layout.groupby_value_label`.
+  value label comes from `layout.groupby_value_label`, and its `value_rank`
+  from `layout.groupby_ordinal`: the value's position, from 0, among the
+  source table's rows, so a reader can list the values in the source's order
+  (FSA's debt-size bands from "Less than 5K" to "200K+") rather than by
+  label. Every selected fact must give the same ordinal; otherwise, and for a
+  Microcosm-derived fact (`microcosm.derived_fact.*`), the value has no rank.
+  Chronicle gives the remaining dimensions' values no position, so they have
+  none either.
 - Remaining Chronicle `dimensions` ids are sorted. Chronicle must supply
   exactly one non-empty `dimension_labels` entry and one non-empty
   `dimension_value_labels` entry for each selected dimension and value.
@@ -191,6 +198,25 @@ so a category cannot appear under two providers either. Each value is listed
 under its own dimension. A geography id has one label and one level. The
 target's own label stays on the row, and every other field is schema 8's.
 
+A catalog value may carry a `rank`, the `value_rank` its schema 8 rows give
+it, for example `{"id": "debt_less_than_5k", "label": "Less than 5K",
+"rank": 0}`. A rank orders values within one source table, and two tables can
+place one value differently: the IRS SOI tables list the AGI band `50k_to_75k`
+at rows 5, 9 and 10, and the USDA SNAP state tables number the states
+within each region, so seven states share row 0. So the writer ranks a
+dimension's values only when no value is ranked two ways and no category
+gives two values one rank, and leaves every value of any other dimension
+unranked. The rows' dimension references stay `{id, value_id}`.
+
+Ranks order values within one category. A reader sorts the values that
+category's rows select by `rank` and puts unranked values last: the CMS
+Medicaid state dimension ranks 51 values and leaves the national `us` value
+unranked. Ranks do not order a dimension's whole list, because values from
+different categories can share a rank. On the pinned US feed, `age` holds
+the Census population bands and the SSI recipient bands, 21 values on 18
+ranks, and "Age 0 to 4" and "SSI federal payment recipients under 18" both
+have rank 1.
+
 Producers still assemble schema 8 (`CALIBRATION_DIAGNOSTICS_ASSEMBLY_SCHEMA_VERSION`);
 the writer publishes schema 9 (`catalog_calibration_diagnostics`). It refuses,
 with the failure code `label_conflict` and no file, rows that give one id more
@@ -242,8 +268,11 @@ The expected data flow is:
 4. `LedgerTargetReference` resolves the catalog relationship to a typed seed.
 5. Chronicle geography and dimensions complete `CalibrationHierarchy` while
    compiling a Chronicle-backed `TargetSpec`.
-6. Registry format 3 serializes and reloads that hierarchy. Format 2 remains
-   readable for historical artifacts.
+6. Registry format 4 serializes and reloads that hierarchy, with each
+   dimension value's `value_rank` where it has one. Format 3, whose
+   dimensions carry no rank, and format 2, which has no hierarchy, remain
+   readable for historical artifacts. A reader from before format 4 refuses
+   a format 4 file by its revision.
 7. Solver compilation carries the hierarchy unchanged from `TargetSpec` to
    `Target`.
 8. Diagnostics assembly (schema 8) serializes `targets[].hierarchy` without

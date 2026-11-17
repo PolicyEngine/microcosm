@@ -41,6 +41,7 @@ from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
 from functools import cache
 from importlib import resources as importlib_resources
+from importlib.resources.abc import Traversable
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any
@@ -73,9 +74,11 @@ __all__ = [
     "GeographySpineSpec",
     "ReleaseContractManifest",
     "ResolvedCountrySpec",
+    "country_resource",
     "country_stage_plan",
     "load_country_take_up_contract_projection",
     "load_country_spec",
+    "load_gates_manifest",
 ]
 
 #: Resource kinds admitted by the binding ``resource_manifest.schema.json``.
@@ -2155,6 +2158,99 @@ def load_country_take_up_contract_projection(
             "the authoritative take_up bundle projection."
         )
     return projection
+
+
+def country_resource(country: str, name: str) -> Traversable:
+    """The packaged resource ``name`` of ``country``'s spec package.
+
+    ``microcosm/build/<country>/<name>``, read through
+    :mod:`importlib.resources` so it resolves the same from a wheel as from
+    the source tree. It reads no ``country_package.json``: the closed resource
+    inventory is :func:`load_country_spec`'s to enforce. Bindings read the
+    registers their declared ``*_resource`` parameters name through here.
+
+    Raises:
+        ValueError: If ``country`` is not a lowercase ASCII country code.
+    """
+
+    if not (country.isascii() and country.isalpha() and country.islower()):
+        raise ValueError(
+            f"country must be a lowercase ASCII country code, got {country!r}."
+        )
+    return importlib_resources.files(f"microcosm.build.{country}").joinpath(name)
+
+
+def load_gates_manifest(country: str | Path) -> GatesManifest:
+    """Load and validate only the country's ``gates.json``.
+
+    The narrow seam for a build tool that needs its gate policy and nothing
+    else, as the US tools will (microcosm#1585 item 11). Like
+    :func:`load_country_take_up_contract_projection`, it reads
+    ``country_package.json`` only to find the declared row, then parses that
+    one file with the validator :func:`load_country_spec` uses
+    (:meth:`GatesManifest.from_mapping`). It runs no bundle load, file-closure
+    check or validation of any other resource, so an edit elsewhere in the
+    package cannot break a tool's gates, and it returns the manifest
+    ``load_country_spec(country).gates`` returns.
+
+    Args:
+        country: A country code (resolved inside ``microcosm.build``) or a
+            path to a country package directory.
+
+    Raises:
+        FileNotFoundError: If the package or its declared ``gates.json`` is
+            missing.
+        ValueError: If the package declares no ``legacy_json`` ``gates.json``
+            row, the file resolves outside the package or is not a file
+            holding a JSON mapping, or the manifest is malformed.
+    """
+
+    if isinstance(country, Path):
+        root = country
+    else:
+        root = Path(str(importlib_resources.files("microcosm.build").joinpath(country)))
+    package_path = root / "country_package.json"
+    if not package_path.exists():
+        raise FileNotFoundError(f"No country package at {package_path}.")
+    package = _require_mapping(
+        json.loads(package_path.read_text(encoding="utf-8")),
+        context="country_package.json",
+    )
+    declared_country = _require_non_empty_string(
+        package.get("country"), field_name="country", context="country_package.json"
+    )
+    if declared_country != root.name:
+        raise ValueError(
+            f"country_package.json declares country {declared_country!r} but "
+            f"lives in directory {root.name!r}."
+        )
+    rows = [
+        row
+        for row in _resolve_country_resource_rows(package.get("resources", []))
+        if row.path == "gates.json"
+    ]
+    if not rows or rows[0].kind != "legacy_json":
+        raise ValueError(
+            f"{root.name}: country_package.json declares no legacy_json "
+            "gates.json resource."
+        )
+    # The same checks, in the same order, as the full loader's resource loop.
+    resource_path = _country_resource_path(root, "gates.json")
+    if not resource_path.exists():
+        raise FileNotFoundError(
+            f"{root.name}: declared resource 'gates.json' is missing."
+        )
+    if not resource_path.resolve().is_relative_to(root.resolve()):
+        raise ValueError(
+            f"{root.name}: declared resource 'gates.json' resolves outside the "
+            "country package."
+        )
+    if not resource_path.is_file():
+        raise ValueError(f"{root.name}: declared resource 'gates.json' is not a file.")
+    payload = _require_mapping(
+        json.loads(resource_path.read_text(encoding="utf-8")), context="gates.json"
+    )
+    return GatesManifest.from_mapping(payload, country=declared_country)
 
 
 def load_country_spec(country: str | Path) -> ResolvedCountrySpec:

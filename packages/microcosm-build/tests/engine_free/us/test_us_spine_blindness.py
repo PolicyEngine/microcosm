@@ -312,10 +312,27 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "congressional_district_geography.py",
         "congressional_district_vintage.py",
         "congressional_district_vintage_crosswalk.py",
+        # Pinned county facts loader for the ACS-local county rung
+        # (microcosm#922): hashes, checks and projects Chronicle rows; assigns
+        # no households and applies no population treatment. Remains subject
+        # to the all-runtime source-identity scan.
+        "county_facts.py",
         # 2020 tract/county -> 2023 county-equivalent metadata and its gate;
         # writes calibration geography only, no population treatment.
         "county_vintage.py",
+        # Household location v1 (#696): one block per household within its
+        # finest source geography; every geography derives from the block.
+        # Reached by the stacked pool under --location-rule block_v1 and
+        # scanned there like every other reached module.
+        "block_location.py",
         "cps_carried.py",
+        # Parser for Census's CPS ASEC identified-county list (List 4); no
+        # population treatment.
+        "cps_identified_county_sources.py",
+        # Joins each CPS household's GTCO/GESTFIPS by its (source_year,
+        # source_household_id) key for the block_v1 draw; no source-spine
+        # read. Remains subject to the all-runtime source-identity scan.
+        "cps_source_geography.py",
         "demographics.py",
         "education_assistance_source.py",
         "eligibility_inputs.py",
@@ -346,6 +363,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "operator_boundary.py",  # Raw-stage validator; no population treatment.
         "org_wages.py",
         "parity_reference.py",
+        # Reviewed held-out population-structure diagnostic over the written
+        # H5; no population treatment.
+        "population_structure_holdout.py",
         "pregnancy.py",
         # Pinned-archive sidecar restore (PAW_TYP); no population treatment.
         "public_assistance_type_source.py",
@@ -376,6 +396,11 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "release_gate_preflight.py",
         "release_input_coverage.py",
         "release_target_parity.py",
+        # Consumer-artifact remedy for two retired stored inputs (microcosm#1263):
+        # renames the WIC draw (keeping stored decisions and defaulting missing
+        # ones to True) and drops a dead column. It reads no provenance column;
+        # the release tool passes the people who may lack a decision.
+        "retired_stored_inputs.py",
         "scf_auto_loans.py",
         # SCF 2025 federal student loan inputs (microcosm#1073); a donor-model
         # stage shaped like scf_auto_loans.
@@ -414,11 +439,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "spm_universe_source.py",
         # Reviewed held-out SSI/Social Security diagnostic; no population treatment.
         "ssi_social_security_holdout.py",
-        # Consumer-artifact remedy for two retired stored inputs (microcosm#1263):
-        # renames the WIC draw and drops a dead column. It reads no provenance
-        # column; the release tool passes the people who may lack a decision.
-        "retired_stored_inputs.py",
         "stacked_spine.py",  # Provenance owner (#578 revision); see owners list.
+        # Bake-off arm accounting, split mirror and ESS; evaluates support mixes,
+        # never transforms a population.
+        "support_mix.py",
         "support_provenance.py",
         "take_up.py",
         "take_up_contract.py",
@@ -3826,9 +3850,11 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
         # block_ladder_sources.py, whose CT_STATE_FIPS they import (#1376). All
         # are classified by the runtime registries and scanned below like every
         # reached module. 81 adds puf_source_schedule_e.py, the PUF donor's
-        # Schedule E line-32 and passive supplement (#1239).
-        assert len(runtime_graph) == 81, (
-            f"{tool.name} must reach the pinned 81-module runtime graph; "
+        # Schedule E line-32 and passive supplement (#1239). 83 adds
+        # block_location.py and cps_source_geography.py, which the
+        # --location-rule block_v1 household location reaches (#696).
+        assert len(runtime_graph) == 83, (
+            f"{tool.name} must reach the pinned 83-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

@@ -55,10 +55,13 @@ __all__ = [
     "specs_from_pe_surface",
 ]
 
-#: Format marker + revision for the JSON artifact.
+#: Format marker + revision for the JSON artifact. Revision 4 files may carry
+#: a ``value_rank`` on a hierarchy dimension; revision 3 files carry none, and
+#: revision 2 files have no hierarchy. A reader from before revision 4 would
+#: fail on the unexpected key, so the revision tells it to refuse the file.
 _FORMAT_KEY = "populace_target_registry"
-_FORMAT_VERSION = 3
-_READABLE_FORMAT_VERSIONS = frozenset((2, 3))
+_FORMAT_VERSION = 4
+_READABLE_FORMAT_VERSIONS = frozenset((2, 3, 4))
 
 #: Countries whose target registries refuse a geography id that carries more
 #: than one label (microcosm#1335). Every US target source labels a state with
@@ -218,11 +221,17 @@ class TargetSpec:
     def to_dict(self) -> dict[str, Any]:
         """The JSON-ready mapping form of the spec (``dataclasses.asdict``).
 
-        ``hierarchy`` becomes a nested mapping; :meth:`from_dict` restores it.
-        This is the one encoding every artifact that carries specs uses, so a
-        registry JSON file and a graph artifact serialize a spec identically.
+        ``hierarchy`` becomes a nested mapping
+        (:meth:`CalibrationHierarchy.to_dict`, which leaves out a dimension's
+        absent ``value_rank``, so a registry written before ranks existed
+        keeps its version); :meth:`from_dict` restores it. This is the one
+        encoding every artifact that carries specs uses, so a registry JSON
+        file and a graph artifact serialize a spec identically.
         """
-        return asdict(self)
+        raw = asdict(self)
+        if self.hierarchy is not None:
+            raw["hierarchy"] = self.hierarchy.to_dict()
+        return raw
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> TargetSpec:

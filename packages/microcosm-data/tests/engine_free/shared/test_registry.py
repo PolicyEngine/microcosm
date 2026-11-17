@@ -23,7 +23,11 @@ def test_us_2024_is_registered_with_a_complete_spec() -> None:
     assert spec.year == 2024
     assert spec.variant == DEFAULT_VARIANT
     assert spec.hf_repo == "policyengine/populace-us"
+    # The root file, and the file the builds moved by the switch keep; new
+    # builds of the national release declare the new name.
     assert spec.filename == "populace_us_2024.h5"
+    assert spec.build_folder_filename == "microcosm_us_2024.h5"
+    assert spec.release == "microcosm-us-2024-national"
     assert spec.engine_module == "policyengine_us.data"
     assert spec.engine_class == "USSingleYearDataset"
     assert spec.engine_package == "policyengine-us"
@@ -90,6 +94,8 @@ def test_register_is_idempotent_for_the_same_spec() -> None:
         engine_module="policyengine_us.data",
         engine_class="USSingleYearDataset",
         engine_package="policyengine-us",
+        release="microcosm-us-2024-national",
+        build_folder_filename="microcosm_us_2024.h5",
     )
     # Re-registering the identical spec must not raise (re-import safety).
     assert register(same) is same
@@ -181,10 +187,11 @@ def test_uk_2025_national_release_is_the_default_variant():
     )
 
 
-def test_only_the_uk_registry_entries_name_a_release():
-    """Every US entry keeps latest.json until the US stable releases are
-    agreed with the US data builder."""
+def test_the_registry_entries_that_name_a_release():
+    """Each entry that names a release reads it through releases.json once
+    its repository has one, and follows its pointer file until then."""
     assert {spec.key: spec.release for spec in REGISTRY.values() if spec.release} == {
+        ("us", 2024, DEFAULT_VARIANT): "microcosm-us-2024-national",
         ("uk", 2023, DEFAULT_VARIANT): "populace-uk-2023",
         ("uk", 2025, DEFAULT_VARIANT): "microcosm-uk-2024-25-national",
         ("uk", 2025, "dense"): "microcosm-uk-2024-25-dense",

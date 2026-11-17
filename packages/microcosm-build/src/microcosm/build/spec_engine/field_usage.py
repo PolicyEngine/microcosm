@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32609
-EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_785
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42394
+EXPECTED_AUTHORED_FIELD_COUNT = 32615
+EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9786
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42401
 
 
 class FieldUsageError(AssertionError):
@@ -362,15 +362,15 @@ _PINS: dict[str, tuple[int, str]] = {
     ),
     "calibration": (
         320,
-        "49a153b065b59950d910f9e2bcfcd7005e5babaecf9b41b1cc9704a7f20dcc5b",
+        "5336f77a10b2f0aa03f6bc221f3c5b8390adccaeed8ee3e7251292606a83a7fd",
     ),
     "catalog_columns": (
         1_593,
         "bdd9e79157590fade42d28cc2b5d5c8b58e13903af75375a0e3235c94d2a8339",
     ),
     "country_manifest": (
-        104,
-        "8a186065f5b8ffc59bc3f62fe927975e6f36bc1e913aa61761652c9a8aa67988",
+        110,
+        "368fe74c5a1ac00cc51079ffc1e13add27471d6daeaf2bf362cb321be9535619",
     ),
     "generated_authorities": (
         8_614,
@@ -449,8 +449,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "6a781915fd491d2c4b16d2b7d482f69cf362c904130093c59f9629f7a319269b",
     ),
     "resolved_seed_protocol": (
-        827,
-        "525ed8621baa2c6e0c0970a6cec85b3b250f8aadfe93750a08deb0d9f240f15e",
+        828,
+        "c358fa57ee3bf91f3b25df541cd6e4cf833e49f976a3d57b37006b7f5960b2fc",
     ),
     "resolved_seed_site_bindings": (
         277,

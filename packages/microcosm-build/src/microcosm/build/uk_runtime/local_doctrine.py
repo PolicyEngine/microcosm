@@ -115,17 +115,24 @@ def uk_weight_grains(grain_labels: Sequence[str]) -> list[str]:
 #: (microcosm#1207, ruling of 2026-10-14: a check on the rule, never a change
 #: to its arithmetic). Under the doctrine's rule DESNZ's local energy is one of
 #: nine local-authority families (about 2.8 % of the loss) and the BUS01 region
-#: journeys one of seventeen nation and region families (about 1.5 %); a
-#: surface or a rule that dilutes either below its floor is refused before
-#: the solve runs. Families are the census families (local) and the register
-#: families (national), as the rule reads them. María's ruling of 2026-10-15:
-#: 2.5 % and 1.25 %, checked under the doctrine's row-metadata rules only (the
-#: ``uniform`` and ``grain_equal`` overrides carry no family and stay usable
-#: for experiments; a release candidate refuses them anyway).
+#: journeys one of the nation and region families (seventeen at the ruling,
+#: about 1.5 %); a surface or a rule that dilutes either below its floor is
+#: refused before the solve runs. Families are the census families (local) and
+#: the register families (national), as the rule reads them. María's ruling of
+#: 2026-10-15: 2.5 % and 1.25 %, checked under the doctrine's row-metadata
+#: rules only (the ``uniform`` and ``grain_equal`` overrides carry no family
+#: and stay usable for experiments; a release candidate refuses them anyway).
+#: María's ruling of 2026-11-16 ("Lower the floor") takes bus to 1.15 %:
+#: binding England's PIP cases by age (her call 7 of 2026-11-11) made
+#: ``dwp_pip`` the twenty-first nation and region family of the dense surface,
+#: so the bus journeys' share fell from 1/20 to 1/21 of that grain's quarter
+#: (1.25 % to about 1.19 %). 1.15 % admits twenty-one families and refuses a
+#: twenty-second, so the next family bound at that grain comes back for a
+#: ruling.
 UK_LOCAL_FAMILY_LOSS_SHARE_FLOORS: Mapping[str, float] = MappingProxyType(
     {
         "domestic_energy": 0.025,
-        "dft_bus_journeys": 0.0125,
+        "dft_bus_journeys": 0.0115,
     }
 )
 

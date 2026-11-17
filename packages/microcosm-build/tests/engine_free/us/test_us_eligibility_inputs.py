@@ -649,9 +649,11 @@ class TestParentIdReworkRegressions:
 
     def test_legacy_frame_passes_through_untouched(self) -> None:
         # A --base-h5 input or an existing pool carries trusted eligibility
-        # values that differ from a raw re-derivation, and its raw
-        # (PH_SEQ, A_LINENO) keys may repeat after cloning; it must come out
-        # exactly as it went in, without parent ids.
+        # values that differ from a raw re-derivation. Without the CPS
+        # evidence column (PERIDNUM) its pointers cannot be told apart from
+        # ACS synthesized links, so it must come out exactly as it went in,
+        # without parent ids (TestCarriedFrameParentIds covers frames that
+        # carry the evidence).
         frame = with_us_eligibility_inputs(
             _us_frame(_plausible_rows()), seed=0, time_period=TIME_PERIOD
         )
@@ -737,3 +739,212 @@ class TestParentIdReworkRegressions:
         assert any("int32" in failure for failure in gate.failures)
         # The same links with int32-safe ids pass.
         assert us_eligibility_inputs_signal_gate(frame).passed
+
+
+def _carried(frame: Frame) -> Frame:
+    """The frame as a pre-#884 build stored it: every output but the ids."""
+
+    person = frame.table("person").drop(
+        columns=list(US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS)
+    )
+    return _replace_person(frame, person)
+
+
+def _with_cps_evidence(rows: list[dict]) -> list[dict]:
+    """Rows that carry a CPS PERIDNUM, as every ASEC-lineage row does."""
+
+    return [{"PERIDNUM": f"cps-{index}", **row} for index, row in enumerate(rows)]
+
+
+def _with_disability_signal(rows: list[dict]) -> list[dict]:
+    """Add a disabled adult in a household of their own.
+
+    A carried frame is trusted only when ``is_disabled`` carries signal;
+    otherwise the stage recomputes everything from the raw columns.
+    """
+
+    return [
+        *rows,
+        {"PERIDNUM": "cps-disabled", "PH_SEQ": 99, "A_LINENO": 1, "PEDISPHY": 1},
+    ]
+
+
+class TestCarriedFrameParentIds:
+    """microcosm#1185: ids for frames built before microcosm#884."""
+
+    def test_carried_frame_gains_the_ids_and_keeps_every_other_value(self) -> None:
+        derived = with_us_eligibility_inputs(
+            _us_frame(_with_cps_evidence(_plausible_rows())),
+            seed=0,
+            time_period=TIME_PERIOD,
+        )
+        carried_person = _carried(derived).table("person").copy()
+        # A carried value that a raw re-derivation would overwrite.
+        carried_person.loc[
+            carried_person.index[_VETERAN_INDEX], "veterans_benefits"
+        ] = 24_000.0
+        carried = _replace_person(derived, carried_person)
+
+        result = with_us_eligibility_inputs(carried, seed=0, time_period=TIME_PERIOD)
+        person = result.table("person")
+
+        for column in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS:
+            assert person[column].dtype == np.int64
+            assert person[column].tolist() == derived.table("person")[column].tolist()
+        pd.testing.assert_frame_equal(
+            person.drop(columns=list(US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS)),
+            carried_person,
+        )
+        assert person["veterans_benefits"].iloc[_VETERAN_INDEX] == 24_000.0
+        assert us_eligibility_inputs_signal_gate(result).passed
+        # A second pass is the identity.
+        assert with_us_eligibility_inputs(result, seed=0, time_period=TIME_PERIOD) is (
+            result
+        )
+
+    def test_support_clones_resolve_inside_their_own_household(self) -> None:
+        # A clone repeats its source's (PH_SEQ, A_LINENO); the frame's own
+        # household id keeps each pointer inside its copy of the household.
+        direct = with_us_eligibility_inputs(
+            _us_frame(
+                _with_disability_signal(
+                    _with_cps_evidence([{}, {"PEPAR1": 1, "A_AGE": 8}])
+                )
+            ),
+            seed=0,
+            time_period=TIME_PERIOD,
+        )
+        expanded = clone_us_frame_for_puf_support(direct)
+        person = expanded.table("person")
+        assert person.duplicated(["PH_SEQ", "A_LINENO"]).any()
+
+        result = with_us_eligibility_inputs(
+            _carried(expanded), seed=0, time_period=TIME_PERIOD
+        )
+        resolved = result.table("person")
+
+        for column in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS:
+            assert resolved[column].tolist() == person[column].tolist()
+        clone_column = support_clone_index_column("person")
+        for clone_index in sorted(resolved[clone_column].unique()):
+            arm = resolved[resolved[clone_column] == clone_index]
+            child = arm[arm["A_LINENO"] == 2].iloc[0]
+            parent = arm[arm["A_LINENO"] == 1].iloc[0]
+            assert child["parent_1_id"] == parent["person_id"]
+
+    def test_rows_without_cps_evidence_neither_point_nor_are_named(self) -> None:
+        # ACS rows carry synthesized reference-person links under the PEPAR
+        # names (acs_pums); acs_inputs reports them as unknown, and so does
+        # this resolution.
+        rows = [
+            {"PERIDNUM": "cps-1", "PH_SEQ": 1, "A_LINENO": 1},
+            {"PERIDNUM": "cps-2", "PH_SEQ": 1, "A_LINENO": 2, "PEPAR1": 1, "A_AGE": 8},
+            {"PERIDNUM": None, "PH_SEQ": 2, "A_LINENO": 1},
+            {"PERIDNUM": "", "PH_SEQ": 2, "A_LINENO": 2, "PEPAR1": 1, "A_AGE": 8},
+        ]
+        derived = with_us_eligibility_inputs(
+            _us_frame(_with_disability_signal(rows)), seed=0, time_period=TIME_PERIOD
+        )
+        result = with_us_eligibility_inputs(
+            _carried(derived), seed=0, time_period=TIME_PERIOD
+        )
+        person = result.table("person")
+
+        assert person["parent_1_id"].tolist() == [
+            0,
+            person["person_id"].iloc[0],
+            0,
+            0,
+            0,
+        ]
+        assert person["parent_2_id"].tolist() == [0, 0, 0, 0, 0]
+
+    def test_carried_frame_with_large_household_ids_resolves_exactly(self) -> None:
+        big = 2**53
+        rows = _with_cps_evidence(
+            [
+                {"PH_SEQ": 1, "A_LINENO": 1, "person_household_id": big},
+                {
+                    "PH_SEQ": 1,
+                    "A_LINENO": 2,
+                    "PEPAR1": 1,
+                    "A_AGE": 8,
+                    "person_household_id": big,
+                },
+                # big + 1 is the same float64 as big; line 1 here must not
+                # be confused with line 1 above.
+                {"PH_SEQ": 2, "A_LINENO": 1, "person_household_id": big + 1},
+                {
+                    "PH_SEQ": 2,
+                    "A_LINENO": 2,
+                    "PEPAR1": 1,
+                    "A_AGE": 8,
+                    "person_household_id": big + 1,
+                },
+            ]
+        )
+        derived = with_us_eligibility_inputs(
+            _us_frame(_with_disability_signal(rows)), seed=0, time_period=TIME_PERIOD
+        )
+        result = with_us_eligibility_inputs(
+            _carried(derived), seed=0, time_period=TIME_PERIOD
+        )
+        person = result.table("person")
+
+        assert person["parent_1_id"].iloc[1] == person["person_id"].iloc[0]
+        assert person["parent_1_id"].iloc[3] == person["person_id"].iloc[2]
+
+    def test_repeated_household_line_is_refused(self) -> None:
+        derived = with_us_eligibility_inputs(
+            _us_frame(
+                _with_disability_signal(
+                    _with_cps_evidence(
+                        [
+                            {"PH_SEQ": 1, "A_LINENO": 1},
+                            {"PH_SEQ": 2, "A_LINENO": 1, "person_household_id": 1},
+                        ]
+                    )
+                )
+            ),
+            seed=0,
+            time_period=TIME_PERIOD,
+        )
+        with pytest.raises(SourceRuntimeError, match="carried frame .* repeats line 1"):
+            with_us_eligibility_inputs(
+                _carried(derived), seed=0, time_period=TIME_PERIOD
+            )
+
+    def test_count_that_disagrees_with_the_pointers_is_refused(self) -> None:
+        derived = with_us_eligibility_inputs(
+            _us_frame(
+                _with_disability_signal(
+                    _with_cps_evidence([{}, {"PEPAR1": 1, "A_AGE": 8}])
+                )
+            ),
+            seed=0,
+            time_period=TIME_PERIOD,
+        )
+        person = _carried(derived).table("person").copy()
+        person.loc[person.index[0], "own_children_in_household"] = 2.0
+        with pytest.raises(SourceRuntimeError, match="disagree"):
+            with_us_eligibility_inputs(
+                _replace_person(derived, person), seed=0, time_period=TIME_PERIOD
+            )
+
+    def test_existing_parent_ids_are_never_rewritten(self) -> None:
+        derived = with_us_eligibility_inputs(
+            _us_frame(
+                _with_disability_signal(
+                    _with_cps_evidence([{}, {"PEPAR1": 1, "A_AGE": 8}])
+                )
+            ),
+            seed=0,
+            time_period=TIME_PERIOD,
+        )
+        person = derived.table("person").copy()
+        person["parent_1_id"] = 0
+        zeroed = _replace_person(derived, person)
+        assert (
+            with_us_eligibility_inputs(zeroed, seed=0, time_period=TIME_PERIOD)
+            is zeroed
+        )

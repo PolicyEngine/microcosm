@@ -1,0 +1,159 @@
+{
+ "processed_h5_by_income_year": [
+  {
+   "income_year": 2018,
+   "survey_year": 2019,
+   "households": 68345,
+   "distinct_h_idnum": 68345,
+   "share_households_in_prior_file": null,
+   "household_weight_total_millions": 128.67448709,
+   "household_weight_cv": 0.6025358837852475,
+   "household_weight_kish_share": 0.7336490761489285,
+   "homeownership_weighted": 0.6447575960568765,
+   "unemployment_compensation_recipients": 1723,
+   "earners_whole_record_imputed_weighted": 0.242330658014494,
+   "earners_item_allocated_weighted": 0.21330270102200033
+  },
+  {
+   "income_year": 2019,
+   "survey_year": 2020,
+   "households": 60460,
+   "distinct_h_idnum": 60460,
+   "share_households_in_prior_file": 0.3777704267284155,
+   "household_weight_total_millions": 128.58819972,
+   "household_weight_cv": 0.6099413348000816,
+   "household_weight_kish_share": 0.7288478698774934,
+   "homeownership_weighted": 0.6639244541559711,
+   "unemployment_compensation_recipients": 1563,
+   "earners_whole_record_imputed_weighted": 0.2381596300674719,
+   "earners_item_allocated_weighted": 0.2125500232438193
+  },
+  {
+   "income_year": 2020,
+   "survey_year": 2021,
+   "households": 62850,
+   "distinct_h_idnum": 62850,
+   "share_households_in_prior_file": 0.32513922036595067,
+   "household_weight_total_millions": 130.0231343,
+   "household_weight_cv": 0.5979707232435548,
+   "household_weight_kish_share": 0.7366108171432274,
+   "homeownership_weighted": 0.6575969944911564,
+   "unemployment_compensation_recipients": 10915,
+   "earners_whole_record_imputed_weighted": 0.2243862480395746,
+   "earners_item_allocated_weighted": 0.22633534476314407
+  },
+  {
+   "income_year": 2021,
+   "survey_year": 2022,
+   "households": 59148,
+   "distinct_h_idnum": 59148,
+   "share_households_in_prior_file": 0.34988503415161964,
+   "household_weight_total_millions": 131.31471499,
+   "household_weight_cv": 0.607226259555364,
+   "household_weight_kish_share": 0.7306076294779332,
+   "homeownership_weighted": 0.6544510986947999,
+   "unemployment_compensation_recipients": 4065,
+   "earners_whole_record_imputed_weighted": 0.22397363113999202,
+   "earners_item_allocated_weighted": 0.21762532030886778
+  },
+  {
+   "income_year": 2022,
+   "survey_year": 2023,
+   "households": 56839,
+   "distinct_h_idnum": 56839,
+   "share_households_in_prior_file": 0.34770140220623164,
+   "household_weight_total_millions": 131.66090909,
+   "household_weight_cv": 0.599646329065834,
+   "household_weight_kish_share": 0.7355235793912631,
+   "homeownership_weighted": 0.6592966302599605,
+   "unemployment_compensation_recipients": 1225,
+   "earners_whole_record_imputed_weighted": 0.2186550960443649,
+   "earners_item_allocated_weighted": 0.2167998316454706
+  },
+  {
+   "income_year": 2023,
+   "survey_year": 2024,
+   "households": 56251,
+   "distinct_h_idnum": 56251,
+   "share_households_in_prior_file": 0.339407299425788,
+   "household_weight_total_millions": 132.39192545,
+   "household_weight_cv": 0.5979118733636303,
+   "household_weight_kish_share": 0.7366490056630862,
+   "homeownership_weighted": 0.6563332517043623,
+   "unemployment_compensation_recipients": 1360,
+   "earners_whole_record_imputed_weighted": 0.2070184806918598,
+   "earners_item_allocated_weighted": 0.20988846004956252
+  },
+  {
+   "income_year": 2024,
+   "survey_year": 2025,
+   "households": 55762,
+   "distinct_h_idnum": 55762,
+   "share_households_in_prior_file": 0.34909077866647537,
+   "household_weight_total_millions": 134.96389280000002,
+   "household_weight_cv": 0.6017557642286367,
+   "household_weight_kish_share": 0.7341550977232084,
+   "homeownership_weighted": 0.6511854704001246,
+   "unemployment_compensation_recipients": 1400,
+   "earners_whole_record_imputed_weighted": 0.1932919011043821,
+   "earners_item_allocated_weighted": 0.215243237218826
+  }
+ ],
+ "pools": {
+  "2022-2023-2024": {
+   "households": 168852,
+   "distinct_h_idnum": 130294
+  },
+  "2020-2021-2022-2023-2024": {
+   "households": 290850,
+   "distinct_h_idnum": 211834
+  }
+ },
+ "public_use_archives_by_survey_year": [
+  {
+   "survey_year": 2022,
+   "income_year": 2021,
+   "persons": 152732,
+   "whole_supplement_imputed_weighted": 0.2046639035877903,
+   "bachelors_or_higher_25plus_weighted": 0.376611355994884
+  },
+  {
+   "survey_year": 2023,
+   "income_year": 2022,
+   "persons": 146133,
+   "whole_supplement_imputed_weighted": 0.1994541476607985,
+   "bachelors_or_higher_25plus_weighted": 0.3834978999842217
+  },
+  {
+   "survey_year": 2024,
+   "income_year": 2023,
+   "persons": 144265,
+   "whole_supplement_imputed_weighted": 0.19164278967548057,
+   "bachelors_or_higher_25plus_weighted": 0.38686143531005024
+  },
+  {
+   "survey_year": 2025,
+   "income_year": 2024,
+   "persons": 142125,
+   "whole_supplement_imputed_weighted": 0.1782697407007112,
+   "bachelors_or_higher_25plus_weighted": 0.39343967585037093
+  },
+  {
+   "survey_year": 2026,
+   "income_year": 2025,
+   "persons": 134729,
+   "whole_supplement_imputed_weighted": 0.16678632658230516,
+   "bachelors_or_higher_25plus_weighted": 0.4024180140213014
+  }
+ ],
+ "combined_unweighted_response_rate_by_survey_year": {
+  "source": "CPS ASEC technical documentation, Source and Accuracy statements (combined basic-CPS x ASEC household nonresponse), transcribed 2026-09-28",
+  "2019": 0.676,
+  "2020": 0.611,
+  "2021": 0.65,
+  "2022": 0.614,
+  "2023": 0.596,
+  "2024": 0.593,
+  "2025": 0.601
+ }
+}

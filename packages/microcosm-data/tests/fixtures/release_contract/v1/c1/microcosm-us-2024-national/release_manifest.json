@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "release": "microcosm-us-2024-national",
+  "build": "populace-us-2024-0000000-20260101",
+  "built_at": "2026-01-01T00:00:00+00:00",
+  "built_with_core_package": {
+    "name": "policyengine-core",
+    "version": "3.0.0"
+  },
+  "built_with_model_package": {
+    "name": "policyengine-us",
+    "version": "1.0.0"
+  },
+  "timing": {},
+  "ledger_artifact": null,
+  "gate_evidence": {
+    "esi_premiums": "not_evaluated",
+    "input_coverage": "not_evaluated",
+    "input_mass_parity": "not_evaluated",
+    "qrf_tail_concentration": "not_evaluated",
+    "reform_coverage_smoke": "not_evaluated",
+    "stored_inputs": "not_evaluated"
+  },
+  "fiscal_target_exclusion_receipt": {
+    "artifact": "us_source_coverage",
+    "path": "us_source_coverage.json",
+    "sha256": "2a4c5ce460a7c63b0c4bdfe379a1c91497d6eaf5f6286affe2b98984bfa8890e",
+    "key": "fiscal_target_exclusion_receipt",
+    "present": false,
+    "receipt_sha256": null
+  },
+  "warm_start_calibration": {
+    "enabled": false
+  },
+  "selection_source": {
+    "enabled": false
+  },
+  "default_dataset": null,
+  "documented_absent_inputs": {
+    "is_homeless": "No ASEC source: the CPS samples the housed population, so the pre-HR1 SNAP ABAWD homeless exemption cannot fire (PolicyEngine/microcosm#351).",
+    "was_in_foster_care": "No ASEC item for foster-care history, so the pre-HR1 former-foster-youth ABAWD exemption (7 CFR 273.24(c)(9)) cannot fire (PolicyEngine/microcosm#351).",
+    "is_snap_work_program_participant": "No ASEC item measures SNAP E&T or qualifying work-program participation, so compliance via program participation never fires; USDA reports E&T reaches a small minority of participants, so the always-False default understates compliance only modestly (PolicyEngine/microcosm#249).",
+    "weekly_snap_work_program_hours": "No ASEC item measures qualifying work-program hours, so combined work-plus-program hours toward the 20-hour ABAWD test omit program hours (PolicyEngine/microcosm#249).",
+    "is_snap_workfare_participant": "No ASEC item measures workfare participation under 7 CFR 273.7(m), which satisfies the ABAWD requirement regardless of hours; defaults False (PolicyEngine/microcosm#249)."
+  },
+  "data_package": {
+    "name": "microcosm-data",
+    "version": "0.1.0"
+  },
+  "default_datasets": {
+    "national": "microcosm_us_2024"
+  },
+  "compatible_core_packages": [
+    {
+      "name": "policyengine-core",
+      "specifier": "==3.0.0"
+    }
+  ],
+  "compatible_model_packages": [
+    {
+      "name": "policyengine-us",
+      "specifier": "==1.0.0"
+    }
+  ],
+  "calibration_diagnostics": {
+    "status": "available",
+    "schema_version": 9,
+    "sha256": "5f4fd23313e2a194098c6f044a847360fe995f97d21aed1dba25d0f606f1fb92"
+  },
+  "artifacts": {
+    "microcosm_us_2024": {
+      "kind": "microdata",
+      "path": "microcosm_us_2024.h5",
+      "repo_id": "policyengine/populace-us",
+      "sha256": "e5df1650192da1659359652a6f1218a18a07cba38bdb1e4f754a248e0ea6d40b",
+      "role": "dataset"
+    },
+    "microcosm_us_2024_calibration": {
+      "kind": "calibration",
+      "path": "microcosm_us_2024_calibration.npz",
+      "repo_id": "policyengine/populace-us",
+      "sha256": "d1356e9ae3fb9baea7e7860931eeb274874f5ac61fc0b87277fc8245eac0801f",
+      "role": "calibration_weights"
+    },
+    "calibration_diagnostics": {
+      "kind": "diagnostics",
+      "path": "calibration_diagnostics.json",
+      "repo_id": "policyengine/populace-us",
+      "sha256": "5f4fd23313e2a194098c6f044a847360fe995f97d21aed1dba25d0f606f1fb92",
+      "role": "calibration_diagnostics"
+    },
+    "us_source_coverage": {
+      "kind": "diagnostics",
+      "path": "us_source_coverage.json",
+      "repo_id": "policyengine/populace-us",
+      "sha256": "2a4c5ce460a7c63b0c4bdfe379a1c91497d6eaf5f6286affe2b98984bfa8890e",
+      "role": "us_source_coverage"
+    },
+    "us_ssi_take_up": {
+      "kind": "diagnostics",
+      "path": "us_ssi_take_up.json",
+      "repo_id": "policyengine/populace-us",
+      "sha256": "c70728a4a22f38943fdd5108865efad25dd389049c9d641639d8f984c9a5fe74",
+      "role": "us_ssi_take_up"
+    }
+  }
+}

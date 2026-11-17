@@ -33,8 +33,7 @@ _POLICY = ca.UKCarersAllowancePolicy(
 )
 _OUTPUT = ca.CARERS_ALLOWANCE_TAKE_UP_OUTPUT
 _INSIDE = ca.CARERS_ALLOWANCE_IN_HOUSEHOLD_HOURS
-#: The stub engine's disability test reads this person column.
-_DISABLED = "stub_severely_disabled"
+_LINK = ca.CARERS_ALLOWANCE_CARER_LINK
 
 
 class _Contract:
@@ -48,8 +47,7 @@ class _Contract:
 
 
 class _StubEngine:
-    """The engine's earnings test, weekly pay above the limit, and its
-    disability test, the frame's stub column."""
+    """The engine's earnings test: weekly pay above the limit."""
 
     country = "uk"
 
@@ -62,7 +60,6 @@ class _StubEngine:
         pay = person["employment_income"].to_numpy(dtype=float)
         return {
             ca.CARERS_ALLOWANCE_EARNINGS_TEST: pay / 52.0 > _LIMIT,
-            ca.CARERS_ALLOWANCE_DISABILITY_TEST: person[_DISABLED].to_numpy(bool),
             ca.CARERS_ALLOWANCE_EARNINGS: pay,
         }
 
@@ -91,7 +88,7 @@ def _frame(
     flag=None,
     time_period: str = "2024",
     in_household_hours=None,
-    member_disabled=None,
+    cares_for_disabled=None,
     means_tested=None,
 ):
     """A carer and the member they may care for in each household, in a
@@ -100,10 +97,10 @@ def _frame(
 
     The carers come first, in order, then the members. A carer gives their
     hours inside the household (``in_household_hours``, all of ``care_hours``
-    by default), and the member is severely disabled (``member_disabled``,
-    true by default), so by default every carer cares for a severely disabled
-    member (microcosm#1418). ``means_tested`` gives a carer's benefit unit a
-    reported universal credit amount (none by default)."""
+    by default), and the carer link holds them caring for a severely disabled
+    person (``cares_for_disabled``, true by default; A3, microcosm#1095).
+    ``means_tested`` gives a carer's benefit unit a reported universal credit
+    amount (none by default)."""
 
     n = len(care_hours)
     ids = np.arange(1, n + 1, dtype="int64")
@@ -122,7 +119,9 @@ def _frame(
             "carers_allowance_reported": reported,
             "employment_income": np.asarray(weekly_pay, dtype=float) * 52.0,
             _OUTPUT: reported > 0 if flag is None else np.asarray(flag, dtype=bool),
-            _DISABLED: np.zeros(n, dtype=bool),
+            _LINK: np.ones(n, dtype=bool)
+            if cares_for_disabled is None
+            else np.asarray(cares_for_disabled, dtype=bool),
             **_means_tested_columns(
                 np.zeros(n, dtype=bool) if means_tested is None else means_tested
             ),
@@ -139,9 +138,7 @@ def _frame(
             "carers_allowance_reported": np.zeros(n),
             "employment_income": np.zeros(n),
             _OUTPUT: np.zeros(n, dtype=bool),
-            _DISABLED: np.ones(n, dtype=bool)
-            if member_disabled is None
-            else np.asarray(member_disabled, dtype=bool),
+            _LINK: np.zeros(n, dtype=bool),
             **_means_tested_columns(np.zeros(n, dtype=bool)),
         }
     )
@@ -195,70 +192,27 @@ def test_eligibility_is_the_pool_no_report_and_over_the_limit() -> None:
 
 
 def test_the_pool_holds_carers_of_a_severely_disabled_person() -> None:
-    # Six carers: in-household carers with and without a disabled member,
-    # short hours, and three whose hours are not all inside the household.
+    # Six carers: in-household carers whom the carer link holds caring for a
+    # severely disabled person or not, short hours, and three whose hours are
+    # not all inside the household (A3, microcosm#1095).
     care = np.array([35.0, 50.0, 35.0, 20.0, 35.0, 100.0])
     inside = np.array([35.0, 50.0, 35.0, 20.0, 0.0, 20.0])
-    disabled_member = np.array([True, True, False, True, False, True])
-    reported = np.zeros(6, dtype=bool)
-    weights = np.ones(6)
-    # The in-household carers reporting nothing: two of three have a
-    # disabled member, so the other carers join below two thirds.
-    draws = np.array([0.9, 0.9, 0.9, 0.9, 0.5, 0.7])
+    link = np.array([True, True, False, True, True, False])
     result = ca.carers_allowance_pool(
         care_hours=care,
         in_household_hours=inside,
-        other_member_severely_disabled=disabled_member,
-        reported=reported,
-        weights=weights,
-        pool_draws=draws,
+        cares_for_severely_disabled_person=link,
         min_hours=35.0,
     )
-    assert result.share == pytest.approx(2 / 3)
     np.testing.assert_array_equal(
         result.in_household, [True, True, True, False, False, False]
     )
     np.testing.assert_array_equal(
         result.other, [False, False, False, False, True, True]
     )
-    # A disabled member alone does not bring short hours into the pool, and an
-    # other carer's own household plays no part.
+    # The link alone does not bring short hours into the pool, and it decides
+    # on either route.
     np.testing.assert_array_equal(result.pool, [True, True, False, False, True, False])
-
-
-def test_the_share_is_measured_on_in_household_carers_reporting_nothing() -> None:
-    # A reporter with no disabled member leaves the share alone, weights
-    # count, and with no in-household carer no other carer joins.
-    result = ca.carers_allowance_pool(
-        care_hours=np.array([35.0, 35.0, 35.0, 35.0]),
-        in_household_hours=np.array([35.0, 35.0, 35.0, 0.0]),
-        other_member_severely_disabled=np.array([True, False, False, False]),
-        reported=np.array([False, False, True, False]),
-        weights=np.array([3.0, 1.0, 5.0, 1.0]),
-        pool_draws=np.zeros(4),
-        min_hours=35.0,
-    )
-    assert result.share == pytest.approx(0.75)
-    none = ca.carers_allowance_pool(
-        care_hours=np.array([35.0]),
-        in_household_hours=np.array([0.0]),
-        other_member_severely_disabled=np.array([True]),
-        reported=np.array([False]),
-        weights=np.ones(1),
-        pool_draws=np.zeros(1),
-        min_hours=35.0,
-    )
-    assert none.share is None
-    assert not none.pool.any()
-
-
-def test_another_member_is_anyone_in_the_household_but_the_carer() -> None:
-    household = np.array([1, 1, 2, 2, 3])
-    disabled = np.array([True, False, True, True, True])
-    np.testing.assert_array_equal(
-        ca.other_member_severely_disabled(household, disabled),
-        [False, True, True, True, False],
-    )
 
 
 def _groups():
@@ -342,44 +296,38 @@ def test_the_draw_opens_the_flag_to_the_eligible_carers_only() -> None:
     assert evidence["drawn_share_of_over_limit_pool"] == pytest.approx(
         flag[eligible].mean()
     )
-    # Every carer here cares for a disabled member inside the household.
-    assert evidence["in_household_disabled_member_share"] == 1.0
+    # Every carer here gives the hours inside the household, and the link holds
+    # each caring for a severely disabled person.
+    assert evidence["pool_share_in_household"] == 1.0
+    assert evidence["pool_share_other"] is None
     assert evidence["over_limit_carers_support"] == "30+"
     assert evidence["over_limit_carers_weighted_persons"] == pytest.approx(600.0)
     assert evidence["eligible_in_household_support"] == "30+"
     assert evidence["eligible_other_support"] == 0
 
 
-def test_the_draw_leaves_out_carers_of_no_disabled_member_and_draws_the_others() -> (
-    None
-):
+def test_the_draw_reads_the_carer_link_on_both_routes() -> None:
     # Two hundred carers over the limit give their hours inside the household,
-    # half of them to a severely disabled member; two hundred more give none
-    # inside it and join at that half share on their pool uniform, whoever
-    # they live with.
+    # half of them to a severely disabled person by the carer link; two hundred
+    # more give none inside it, a quarter of them to such a person. At a rate
+    # of one, the claim flag is the link (A3, microcosm#1095).
     n_in, n_out = 200, 200
     n = n_in + n_out
-    member_disabled = np.r_[np.arange(n_in) % 2 == 0, np.ones(n_out, dtype=bool)]
+    link = np.r_[np.arange(n_in) % 2 == 0, np.arange(n_out) % 4 == 0]
     frame = _frame(
         care_hours=np.full(n, 35.0),
         reported=np.zeros(n),
         weekly_pay=np.full(n, 300.0),
         in_household_hours=np.r_[np.full(n_in, 35.0), np.zeros(n_out)],
-        member_disabled=member_disabled,
+        cares_for_disabled=link,
     )
     result = _run(frame, rate=1.0)
     person = result.frame.table("person")
-    # The outside carers are one stratum (no means-tested benefit, all paid one
-    # to two weekly rates over the limit). Equal weights put their midpoints a
-    # two-hundredth apart, so the rotated half-share arc holds exactly half of
-    # them whatever the stratum's start.
-    np.testing.assert_array_equal(
-        person[_OUTPUT].to_numpy()[:n_in], member_disabled[:n_in]
-    )
-    assert int(person[_OUTPUT].to_numpy()[n_in:n].sum()) == n_out // 2
+    np.testing.assert_array_equal(person[_OUTPUT].to_numpy()[:n], link)
     evidence = result.evidence()
-    assert evidence["in_household_disabled_member_share"] == pytest.approx(0.5)
-    assert evidence["pool_salt"] == ca.CARERS_ALLOWANCE_POOL_SALT
+    assert evidence["pool_share_in_household"] == pytest.approx(0.5)
+    assert evidence["pool_share_other"] == pytest.approx(0.25)
+    assert evidence["pool_rule"] == ca.CARERS_ALLOWANCE_POOL_RULE
     assert evidence["over_limit_carers_weighted_persons"] == pytest.approx(400.0)
     assert evidence["over_limit_in_household_support"] == "30+"
     assert evidence["over_limit_other_support"] == "30+"
@@ -456,7 +404,7 @@ def test_the_receipt_bands_support_copies_on_their_sources() -> None:
     assert evidence["eligible_weighted_persons"] == "<3"
     assert evidence["drawn_support"] == "<3"
     assert evidence["drawn_share_of_over_limit_pool"] == "<3"
-    assert evidence["in_household_disabled_member_share"] == "<3"
+    assert evidence["pool_share_in_household"] == "<3"
 
 
 def test_the_share_hides_a_small_side() -> None:
@@ -557,7 +505,6 @@ def test_each_stratum_claims_the_rate_of_its_eligible_weight() -> None:
         assert row["support"] == "30+"
         assert row["target"] == 0.6
         assert row["realised_share"] == pytest.approx(0.6, abs=0.06)
-    assert result.evidence()["pool_strata"] == []
     # Identity-keyed, so a rerun draws the same carers.
     rerun = _run(frame, rate=0.6).frame.table("person")[_OUTPUT].to_numpy()[:n]
     np.testing.assert_array_equal(rerun, flag)
@@ -577,25 +524,6 @@ def test_the_stage_refuses_a_take_up_stratum_off_its_share(monkeypatch) -> None:
         _run(frame, rate=0.6)
 
 
-def test_the_stage_refuses_a_pool_stratum_off_its_share(monkeypatch) -> None:
-    # The pool's draw is placed first; leave it unbalanced (every uniform at
-    # zero joins each stratum whole) and balance the take-up draw as usual.
-    combined, _, _, _ = _outside_pool_frame()
-    balanced = ca.weight_balanced_uniforms
-    calls = []
-
-    def pool_unbalanced(strata, draws, weights, **kwargs):
-        calls.append(len(draws))
-        if len(calls) == 1:
-            return np.zeros(len(draws))
-        return balanced(strata, draws, weights, **kwargs)
-
-    monkeypatch.setattr(ca, "weight_balanced_uniforms", pool_unbalanced)
-    with pytest.raises(ValueError, match="pool stratum .* more than one record"):
-        _run(combined, rate=1.0)
-    assert len(calls) == 2
-
-
 def test_a_stratum_may_miss_its_share_by_up_to_one_record() -> None:
     weights = np.array([1.0, 2.0, 3.0, 4.0])
     members = np.ones(4, dtype=bool)
@@ -608,12 +536,12 @@ def test_a_stratum_may_miss_its_share_by_up_to_one_record() -> None:
         np.array([False, True, True, True]),
         weights,
         0.5,
-        label="pool",
+        label="take-up",
     )
     # Taking every record misses by 5.
-    with pytest.raises(ValueError, match="pool stratum 0 misses its share"):
+    with pytest.raises(ValueError, match="take-up stratum 0 misses its share"):
         ca.assert_strata_within_one_record(
-            members, strata, np.ones(4, dtype=bool), weights, 0.5, label="pool"
+            members, strata, np.ones(4, dtype=bool), weights, 0.5, label="take-up"
         )
 
 
@@ -684,21 +612,25 @@ def test_a_stratum_keeps_its_start_unless_its_lowest_draw_member_changes() -> No
     assert start(without_lowest) != start(everyone)
 
 
-def _outside_pool_frame():
+def _two_route_frame():
     """Carers who give the hours outside the household, in eight strata, beside
-    an in-household half whose disabled members set the pool's share."""
+    an in-household group, each with every other carer held by the carer link
+    caring for a severely disabled person."""
 
     frame, stratum, n = _strata_frame(outside=True)
     inside, _, n_in = _strata_frame(n_per=10)
     person = pd.concat(
         [
-            frame.table("person").iloc[:n],
+            frame.table("person")
+            .iloc[:n]
+            .assign(**{_LINK: lambda df: np.arange(len(df)) % 2 == 0}),
             inside.table("person")
             .iloc[:n_in]
             .assign(
                 person_id=lambda df: df["person_id"] + 100_000,
                 person_household_id=lambda df: df["person_household_id"] + 10_000,
                 person_benunit_id=lambda df: df["person_benunit_id"] + 10_000,
+                **{_LINK: lambda df: np.arange(len(df)) % 2 == 0},
             ),
             frame.table("person").iloc[n:],
             inside.table("person")
@@ -707,7 +639,6 @@ def _outside_pool_frame():
                 person_id=lambda df: df["person_id"] + 100_000,
                 person_household_id=lambda df: df["person_household_id"] + 10_000,
                 person_benunit_id=lambda df: df["person_benunit_id"] + 10_000,
-                **{_DISABLED: lambda df: np.arange(len(df)) % 2 == 0},
             ),
         ],
         ignore_index=True,
@@ -738,26 +669,6 @@ def _outside_pool_frame():
     return combined, frame, stratum, n
 
 
-def test_the_outside_pool_draws_its_share_within_each_stratum() -> None:
-    # Every carer gives the hours outside the household: none is in the
-    # in-household base, so the share is that of a separate in-household half.
-    combined, frame, stratum, n = _outside_pool_frame()
-    result = _run(combined, rate=1.0)
-    out = result.frame.table("person")
-    flag = out.set_index("person_id")[_OUTPUT]
-    drawn = flag.loc[frame.table("person")["person_id"].to_numpy()[:n]].to_numpy()
-    share = result.evidence()["in_household_disabled_member_share"]
-    outside_weights = frame.weights_for("household").values
-    for code in np.unique(stratum):
-        members = stratum == code
-        claimed = float(outside_weights[members & drawn].sum())
-        assert (
-            abs(claimed - share * outside_weights[members].sum())
-            <= outside_weights[members].max()
-        )
-    assert len(result.evidence()["pool_strata"]) == 8
-
-
 def test_households_are_read_through_membership_not_position() -> None:
     # Two people to a household, the person table shuffled against the
     # households (group tables stay sorted by id), and a region, a weight and
@@ -775,13 +686,13 @@ def test_households_are_read_through_membership_not_position() -> None:
             "person_benunit_id": np.r_[household_ids, household_ids],
             "age": np.full(48, 45, dtype="int64"),
             # The first member cares 35 hours over the limit for the second,
-            # who is severely disabled and does not care.
+            # whom the carer link holds severely disabled, and who does not care.
             "care_hours": np.r_[np.full(24, 35.0), np.zeros(24)],
             _INSIDE: np.r_[np.full(24, 35.0), np.zeros(24)],
             "carers_allowance_reported": np.zeros(48),
             "employment_income": pay * 52.0,
             _OUTPUT: np.zeros(48, dtype=bool),
-            _DISABLED: np.r_[np.zeros(24, dtype=bool), np.ones(24, dtype=bool)],
+            _LINK: np.r_[np.ones(24, dtype=bool), np.zeros(24, dtype=bool)],
             **_means_tested_columns(np.zeros(48, dtype=bool)),
         }
     ).iloc[rng.permutation(48)]
@@ -1007,6 +918,7 @@ def test_the_graph_node_reads_the_lineage_and_rewrites_the_flag_on_its_own_bound
         ("household", "region"),
         ("person", "care_hours"),
         ("person", _INSIDE),
+        ("person", _LINK),
         ("person", "carers_allowance_reported"),
     } <= inputs
     assert [
@@ -1072,45 +984,47 @@ def test_the_stage_places_each_carer_by_their_identity_and_their_strata(
 ) -> None:
     # The re-review of microcosm#1420, B: the flags are the balanced positions
     # of the carers' own identity-keyed uniforms, rotated by their strata's
-    # member-keyed starts, against the pool share and then the rate. Dropping
-    # the starts, or drawing by row position, fails here.
-    combined, frame, _, n = _outside_pool_frame()
+    # member-keyed starts, against the rate. Dropping the starts, or drawing by
+    # row position, fails here. The pool is the carer link, so the take-up draw
+    # is the stage's one placement (A3, microcosm#1095).
+    combined, frame, _, n = _two_route_frame()
     rate = 0.6
     result, calls = _spied_run(monkeypatch, combined, rate=rate)
-    assert len(calls) == 2
-    pool_call, take_up_call = calls
+    assert len(calls) == 1
+    (take_up_call,) = calls
     flag = result.frame.table("person").set_index("person_id")[_OUTPUT]
-    positions = {}
-    for label, call, salt in (
-        ("pool", pool_call, ca.CARERS_ALLOWANCE_POOL_SALT),
-        ("take_up", take_up_call, _OUTPUT),
-    ):
-        people = _identities(combined, call["draws"], salt)
-        assert call["starts"] is not None, label
-        np.testing.assert_array_equal(
-            call["starts"],
-            ca.stratum_starts(
-                call["strata"], salt=salt, identities=people, draws=call["draws"]
-            ),
-        )
-        placed = weight_balanced_uniforms(
-            call["strata"], call["draws"], call["weights"], starts=call["starts"]
-        )
-        positions[label] = pd.Series(placed, index=people)
+    people = _identities(combined, take_up_call["draws"], _OUTPUT)
+    assert take_up_call["starts"] is not None
+    np.testing.assert_array_equal(
+        take_up_call["starts"],
+        ca.stratum_starts(
+            take_up_call["strata"],
+            salt=_OUTPUT,
+            identities=people,
+            draws=take_up_call["draws"],
+        ),
+    )
+    take_up = pd.Series(
+        weight_balanced_uniforms(
+            take_up_call["strata"],
+            take_up_call["draws"],
+            take_up_call["weights"],
+            starts=take_up_call["starts"],
+        ),
+        index=people,
+    )
     # The take-up draw opens the flag to the eligible carers it places below
     # the rate, and to no one else who reports nothing.
-    take_up = positions["take_up"]
     np.testing.assert_array_equal(flag.loc[take_up.index].to_numpy(), take_up < rate)
     # The outside carers are all over the limit and report nothing, so the
-    # take-up draw reaches exactly those the pool placed below its share.
-    share = result.evidence()["in_household_disabled_member_share"]
-    pool = positions["pool"]
+    # draw reaches exactly those the carer link holds.
+    person = combined.table("person").set_index("person_id")
     outside = frame.table("person")["person_id"].to_numpy()[:n]
-    assert set(pool.index) == set(outside)
-    assert set(take_up.index) & set(outside) == set(pool.index[pool < share])
-    # The take-up strata add the route to the pool's: no stratum mixes carers
-    # who give the hours inside the household with those who don't (the
-    # re-review of microcosm#1420, 6).
+    linked = set(outside[person.loc[outside, _LINK].to_numpy(dtype=bool)])
+    assert set(take_up.index) & set(outside) == linked
+    # The take-up strata hold the route: no stratum mixes carers who give the
+    # hours inside the household with those who don't (the re-review of
+    # microcosm#1420, 6).
     route = np.isin(take_up.index.to_numpy(), outside)
     assert route.any() and not route.all()
     for code in np.unique(take_up_call["strata"]):
@@ -1120,7 +1034,7 @@ def test_the_stage_places_each_carer_by_their_identity_and_their_strata(
 def test_the_stage_draws_the_same_carers_whatever_the_row_order() -> None:
     # The re-review of microcosm#1420, B: every draw and start is keyed on the
     # people, so permuting the person rows moves no flag.
-    combined, _, _, _ = _outside_pool_frame()
+    combined, _, _, _ = _two_route_frame()
     first = (
         _run(combined, rate=0.6).frame.table("person").set_index("person_id")[_OUTPUT]
     )

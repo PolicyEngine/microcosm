@@ -29,18 +29,19 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass, replace
+from collections.abc import Iterable, Mapping
+from dataclasses import replace
 from datetime import date, datetime
-from importlib.resources import files
 from types import MappingProxyType
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from microcosm.build.country_spec import country_resource
 from microcosm.build.gate_battery import (
     DEFAULT_REGISTRY,
+    EvaluatorBinding,
     EvidenceContext,
     GateBinding,
 )
@@ -124,6 +125,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     coerce_reviewed_exclusions,
     load_uk_local_area_support_exclusion_register,
     uk_default_input_mass_reviewed_exclusions,
+    uk_input_mass_carriers,
     uk_input_mass_parity_gate,
     uk_input_mass_totals,
 )
@@ -136,73 +138,10 @@ __all__ = [
 ]
 
 
-@dataclass(frozen=True)
-class UKGateBinding:
-    """A :class:`GateBinding` over a UK runtime evaluator.
-
-    Attributes:
-        name: The declared country-neutral gate name the battery expects
-            back.
-        evaluator: Runs the legacy UK gate over ``(context, parameters)``.
-            Declared parameters it does not consume pass through to the
-            gate call, so an unknown parameter raises and fails closed —
-            the same discipline as the battery's ``FunctionBinding``.
-        parameter_keys: The spec parameter keys the evaluator can route —
-            checked against every declared entry before any gate runs
-            (``validate_gate_parameters``), so a typo'd parameter is
-            refused at arm time instead of surfacing as a mid-battery
-            evaluator error. Fail-closed empty by default.
-        artifact_keys: Context artifact keys the gate needs; missing keys
-            resolve to ``evidence_absent`` before evaluation.
-        artifact_selector: Optional parameter-dependent override of
-            ``artifact_keys`` for bindings whose evidence artifact follows a
-            declared parameter.
-        needs_frame: Whether the gate reads the phase frame.
-        frame_predicate: Optional parameter-dependent override of
-            ``needs_frame`` for bindings that serve more than one declared
-            entry (the coverage gate runs frameless at preflight).
-        legacy_name: The UK-flavored name the legacy evaluator mints, when
-            it differs from ``name``; the verdict is re-minted under the
-            declared name. Any other unexpected name passes through so the
-            executor's name check fails it closed.
-        evidence: Optional hook producing the entry's ``evidence_sha256``
-            payload; ``None`` records no evidence hash.
-    """
-
-    name: str
-    evaluator: Callable[[EvidenceContext, Mapping[str, Any]], GateResult]
-    parameter_keys: frozenset[str] = frozenset()
-    artifact_keys: frozenset[str] = frozenset()
-    artifact_selector: Callable[[Mapping[str, Any]], frozenset[str]] | None = None
-    needs_frame: bool = True
-    frame_predicate: Callable[[Mapping[str, Any]], bool] | None = None
-    legacy_name: str | None = None
-    evidence: Callable[[EvidenceContext, Mapping[str, Any]], object] | None = None
-
-    def required_artifacts(self, parameters: Mapping[str, Any]) -> frozenset[str]:
-        if self.artifact_selector is not None:
-            return self.artifact_selector(parameters)
-        return self.artifact_keys
-
-    def requires_frame(self, parameters: Mapping[str, Any]) -> bool:
-        if self.frame_predicate is not None:
-            return self.frame_predicate(parameters)
-        return self.needs_frame
-
-    def evaluate(
-        self, context: EvidenceContext, parameters: Mapping[str, Any]
-    ) -> GateResult:
-        result = self.evaluator(context, parameters)
-        if self.legacy_name is not None and result.name == self.legacy_name:
-            result = replace(result, name=self.name)
-        return result
-
-    def evidence_payload(
-        self, context: EvidenceContext, parameters: Mapping[str, Any]
-    ) -> object | None:
-        if self.evidence is None:
-            return None
-        return self.evidence(context, parameters)
+#: The shared re-minting binding under the UK name its callers and tests use.
+#: It moved unchanged to the battery module, where the US bindings can share
+#: it (microcosm#1585 item 11).
+UKGateBinding = EvaluatorBinding
 
 
 # ---------------------------------------------------------------------------
@@ -257,9 +196,13 @@ def _evaluate_release_input_coverage(
         build_state = _uk_gate_surface(spine_frame)
     else:
         build_state = spine_frame
+    # The required inputs are the ones the cut's reference build carries
+    # (microcosm#1095); the artifact selector marks the gate evidence_absent
+    # when no reference surface arrived.
     return uk_release_input_coverage_gate(
         _uk_gate_surface(uk_release_export_frame(context.frame)),
         engine,
+        reference_surface=context.artifacts["reference_surface"],
         manifest=manifest,
         build_state_frame=build_state,
     )
@@ -276,7 +219,7 @@ def _coverage_required_artifacts(parameters: Mapping[str, Any]) -> frozenset[str
     # the calibrated frame.
     if parameters.get("check") == "manifest_current":
         return frozenset({"coverage_engine"})
-    return frozenset({"coverage_engine", "spine_frame"})
+    return frozenset({"coverage_engine", "spine_frame", "reference_surface"})
 
 
 def _evaluate_source_coverage(
@@ -846,9 +789,7 @@ def _evaluate_support(
         )
     donor_ranges: dict[str, tuple[float, float]] = {}
     for resource_name in resource_names:
-        resource = json.loads(
-            files("microcosm.build.uk").joinpath(str(resource_name)).read_text()
-        )
+        resource = json.loads(country_resource("uk", str(resource_name)).read_text())
         raw_bounds = resource.get("bounds")
         if not isinstance(raw_bounds, Mapping):
             raise ValueError(f"{resource_name} is missing bounds.")
@@ -1143,18 +1084,31 @@ def _validate_input_mass_exclusion_references(
     *,
     label: str,
 ) -> None:
-    unknown = sorted(set(register) - set(UK_INPUT_MASS_REFERENCE_REGISTRY))
-    if unknown:
+    from microcosm.build.uk_runtime.cut_reference import UK_CUT_REFERENCE_RELEASES
+
+    malformed = sorted(
+        name
+        for name in register
+        if name.count("@") != 1
+        or name.split("@", 1)[0] not in UK_CUT_REFERENCE_RELEASES
+        or not name.split("@", 1)[1]
+    )
+    if malformed:
         raise ValueError(
-            f"{label} names unknown input-mass reference(s) {unknown}; known "
-            f"references are {sorted(UK_INPUT_MASS_REFERENCE_REGISTRY)}."
+            f"{label} names {malformed}; an input-mass exclusion is signed for "
+            "one reference build, named <release>@<build> for a UK line "
+            "(microcosm#1095)."
         )
 
 
 def _resolve_input_mass_exclusions(
     context: EvidenceContext, *, reference: str
 ) -> tuple[Mapping[str, UKReviewedExclusion], str]:
-    """Active-reference input-mass exclusions and their content source."""
+    """The exclusions signed for this reference build, and their source.
+
+    ``reference`` is the build's ``<release>@<build>``; entries signed for
+    any other build are dormant (microcosm#1095).
+    """
 
     committed = uk_default_input_mass_reviewed_exclusions()
     _validate_input_mass_exclusion_references(
@@ -1302,7 +1256,7 @@ def _evaluate_geography_ladder(
 def _local_area_roster(
     resource: str, levels: tuple[str, ...]
 ) -> dict[str, tuple[str, ...]]:
-    payload = json.loads(files("microcosm.build.uk").joinpath(resource).read_text())
+    payload = json.loads(country_resource("uk", resource).read_text())
     declared = payload.get("levels")
     if not isinstance(declared, Mapping):
         raise ValueError(f"{resource} must expose a levels object.")
@@ -1475,10 +1429,14 @@ def _evaluate_weights_audit(
 def _evaluate_export_surface(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
+    # The reference side is the export surface of the cut's reference build,
+    # the current build of the line (microcosm#1095).
     parity = context.artifacts["parity_evidence"]
+    reference = context.artifacts["reference_surface"]
     return uk_export_surface_gate(
         parity.candidate_columns,
-        parity.reference_columns,
+        reference.export_columns,
+        reference_name=reference.label,
         **dict(parameters),
     )
 
@@ -1549,12 +1507,8 @@ def _target_surface_evidence(
     )
     crosswalk_resource = str(parameters["crosswalk_resource"])
     membership_resource = str(parameters["membership_resource"])
-    crosswalk_text = (
-        files("microcosm.build.uk").joinpath(crosswalk_resource).read_text()
-    )
-    membership_text = (
-        files("microcosm.build.uk").joinpath(membership_resource).read_text()
-    )
+    crosswalk_text = country_resource("uk", crosswalk_resource).read_text()
+    membership_text = country_resource("uk", membership_resource).read_text()
     candidate_targets = sorted(_local_default_candidate_surface(registry))
     reference_targets = sorted(_local_default_expected_surface(crosswalk_resource))
     reviewed_exclusions = _local_default_reviewed_exclusions(membership_resource)
@@ -1594,9 +1548,7 @@ def _local_default_candidate_surface(registry: object) -> frozenset[str]:
 
 
 def _local_default_expected_surface(crosswalk_resource: str) -> frozenset[str]:
-    crosswalk = json.loads(
-        files("microcosm.build.uk").joinpath(crosswalk_resource).read_text()
-    )
+    crosswalk = json.loads(country_resource("uk", crosswalk_resource).read_text())
     levels = crosswalk.get("levels")
     if not isinstance(levels, Mapping):
         raise ValueError(f"{crosswalk_resource} must expose levels.")
@@ -1653,9 +1605,7 @@ def _metric_area_scope(
 def _local_default_reviewed_exclusions(
     membership_resource: str,
 ) -> dict[str, str]:
-    membership = json.loads(
-        files("microcosm.build.uk").joinpath(membership_resource).read_text()
-    )
+    membership = json.loads(country_resource("uk", membership_resource).read_text())
     metric_by_target_id = _local_metric_by_target_id()
     reviewed: dict[str, str] = {}
     for deferral in membership.get("signed_deferrals", ()):
@@ -1766,6 +1716,12 @@ def _evaluate_input_mass_parity(
     register = kwargs.pop("reviewed_exclusions_resource", None)
     relative_tolerance = kwargs.pop("relative_tolerance", None)
     minimum_reference_total = kwargs.pop("minimum_reference_total", None)
+    maximum_relative_drop = kwargs.pop("maximum_relative_drop", None)
+    if maximum_relative_drop is None:
+        raise ValueError(
+            "uk/gates.json input_mass_parity declares no maximum_relative_drop; "
+            "the drop limit is part of the reviewed policy (microcosm#1095)."
+        )
     coerced_registry = coerce_input_mass_reference_registry(
         declared_registry, label="uk/gates.json input_mass_parity"
     )
@@ -1780,18 +1736,21 @@ def _evaluate_input_mass_parity(
             f"uk/gates.json declares input-mass reference {reference_name!r} "
             f"but known references are {sorted(coerced_registry)}."
         )
+    reference = context.artifacts["input_mass_reference"]
+    descriptor = coerced_registry[reference_name].descriptor_for(reference)
     if register != UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE:
         raise ValueError(
             f"uk/gates.json names exclusion register {register!r} but the "
             f"runtime loads {UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE!r}."
         )
     exclusions, _source = _resolve_input_mass_exclusions(
-        context, reference=reference_name
+        context, reference=reference.label
     )
     exclusions, out_of_line = _in_line(exclusions, context)
     policy = UKInputMassParityPolicy(
         relative_tolerance=relative_tolerance,
         minimum_reference_total=minimum_reference_total,
+        maximum_relative_drop=maximum_relative_drop,
         reviewed_exclusions=exclusions,
     )
     # The reference is compared against the surface the release ships: the
@@ -1800,12 +1759,14 @@ def _evaluate_input_mass_parity(
     # carries the spine's WAS property_wealth, which the reference also
     # stores, so comparing it there would call the signed exclusion stale
     # (microcosm#1106).
+    export_frame = uk_release_export_frame(context.frame)
     result = uk_input_mass_parity_gate(
-        uk_input_mass_totals(uk_release_export_frame(context.frame)),
-        context.artifacts["input_mass_reference"],
-        descriptor=coerced_registry[reference_name],
+        uk_input_mass_totals(export_frame),
+        reference,
+        descriptor=descriptor,
         policy=policy,
         now=_exclusion_clock(context),
+        candidate_carriers=uk_input_mass_carriers(export_frame),
         **kwargs,
     )
     return _with_out_of_line(result, context, out_of_line)
@@ -1817,10 +1778,11 @@ def _input_mass_reference_evidence(
     reference_name = str(parameters["reference"])
     reference = context.artifacts["input_mass_reference"]
     exclusions, source = _resolve_input_mass_exclusions(
-        context, reference=reference_name
+        context, reference=reference.label
     )
     return {
         "reference": reference_name,
+        "reference_label": reference.label,
         "reference_evidence_sha256": _input_mass_reference_evidence_sha256(reference),
         "exclusions_policy": source,
         "reviewed_exclusions": _exclusion_payload(exclusions),
@@ -1836,7 +1798,7 @@ def _evaluate_ledger_compile_parity(
     signed_resource = parameters.get("signed_differences_resource")
     if signed_resource is not None:
         signed_differences = json.loads(
-            files("microcosm.build.uk").joinpath(str(signed_resource)).read_text()
+            country_resource("uk", str(signed_resource)).read_text()
         )["differences"]
     target_period = parameters["target_period"]
     registry_artifact = _ledger_compile_parity_registry_artifact(parameters)
@@ -1858,9 +1820,7 @@ def _evaluate_ledger_compile_parity(
 
 
 def _load_ledger_compile_parity_fixture(fixture_resource: str) -> dict[str, Any]:
-    fixture = json.loads(
-        files("microcosm.build.uk").joinpath(fixture_resource).read_text()
-    )
+    fixture = json.loads(country_resource("uk", fixture_resource).read_text())
     if fixture_resource == LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE:
         return align_uk_local_registry_parity_fixture(fixture)
     # The national fixtures spell the incumbent's regional rows their own way;
@@ -1879,7 +1839,7 @@ def _ledger_compile_parity_evidence(
         registry_artifact=registry_artifact,
     )
     fixture_resource = str(parameters["fixture_resource"])
-    fixture_text = files("microcosm.build.uk").joinpath(fixture_resource).read_text()
+    fixture_text = country_resource("uk", fixture_resource).read_text()
     return {
         "registry_artifact": registry_artifact,
         "registry_version": getattr(registry, "version", None),
@@ -2367,7 +2327,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         name="export_surface",
         evaluator=_evaluate_export_surface,
         parameter_keys=frozenset({"allowed_extra_columns", "reviewed_exclusions"}),
-        artifact_keys=frozenset({"parity_evidence"}),
+        artifact_keys=frozenset({"parity_evidence", "reference_surface"}),
         needs_frame=False,
     ),
     "target_surface": UKGateBinding(
@@ -2405,6 +2365,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "reviewed_exclusions_resource",
                 "relative_tolerance",
                 "minimum_reference_total",
+                "maximum_relative_drop",
                 "candidate_name",
             }
         ),

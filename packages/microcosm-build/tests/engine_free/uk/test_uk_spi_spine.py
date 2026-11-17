@@ -318,27 +318,44 @@ def test_preclone_support_gate_passes_at_limit_and_fails_above() -> None:
         )
 
 
+def _fake_fit_label(targets: tuple[str, ...]) -> str:
+    return (
+        "stage1"
+        if "gift_aid" in targets
+        else "reference"
+        if "hmrc_spi_pay" in targets
+        else "stage2"
+    )
+
+
 class _FakeQRF:
     events: list[tuple[str, tuple[str, ...], list[float]]] = []
+    instances: list[_FakeQRF] = []
 
     def __init__(
-        self, n_estimators: int, seed: int, gate_calibration: str = "in_sample"
+        self,
+        n_estimators: int,
+        seed: int,
+        gate_calibration: str = "in_sample",
+        gate_level_columns: tuple[str | tuple[str, ...], ...] = (),
     ) -> None:
         self.seed = seed
         self.gate_calibration = gate_calibration
+        self.gate_level_columns = tuple(gate_level_columns)
+        # One-hot groups flattened, for the checks on what each forest got.
+        self.level_column_names = tuple(
+            name
+            for entry in self.gate_level_columns
+            for name in ((entry,) if isinstance(entry, str) else entry)
+        )
         self.targets: tuple[str, ...] = ()
         self.weight_kind = "unknown"
+        type(self).instances.append(self)
 
     def fit(self, frame, predictors, targets, weights, groups=None):
         self.targets = tuple(targets)
         self.weight_kind = weights
-        label = (
-            "stage1"
-            if "gift_aid" in self.targets
-            else "reference"
-            if "hmrc_spi_pay" in self.targets
-            else "stage2"
-        )
+        label = _fake_fit_label(self.targets)
         dividend = (
             frame.table("person")["dividend_income"].tolist()
             if "dividend_income" in frame.table("person")
@@ -353,6 +370,27 @@ class _FakeQRF:
     def gate_outcomes(self):
         outcome = None if self.gate_calibration == "in_sample" else "cross_fitted"
         return dict.fromkeys(self.targets, outcome)
+
+    def gate_levels(self):
+        # Every declared level column gets an offset on the first target only.
+        levels = tuple(f"{column}=1" for column in self.level_column_names)
+        return {
+            target: levels if position == 0 else ()
+            for position, target in enumerate(self.targets)
+        }
+
+    def gate_level_reports(self):
+        if not self.gate_level_columns:
+            return {}
+        return {
+            target: {
+                "fit": "offsets" if position == 0 else "no_supported_level",
+                "levels": list(levels),
+                "reference_levels": [],
+                "thin_levels": [],
+            }
+            for position, (target, levels) in enumerate(self.gate_levels().items())
+        }
 
     def sign_classes(self, target):
         return (0, 1)
@@ -612,6 +650,7 @@ def test_spi_spine_parsed_inputs_match_the_path_resolution(
     tmp_path: Path,
 ) -> None:
     _FakeQRF.events = []
+    _FakeQRF.instances = []
     monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
     monkeypatch.setattr(
         spi_income,
@@ -745,6 +784,49 @@ def test_spi_spine_parsed_inputs_match_the_path_resolution(
     pay_floor = path_transform.checkpoint_metadata()["evidence"]["employment_pay_floor"]
     assert pay_floor["step"] == "spi_employment_pay_floor_before_stage2"
     assert pay_floor["source"] == "engine-free fixture"
+    # The declared stage-1 level columns reach the tape forest and the
+    # reference forests, encoded as the forests read them; stage 2 has none.
+    by_fit: dict[str, list[_FakeQRF]] = {}
+    for fit in _FakeQRF.instances:
+        if fit.targets:
+            by_fit.setdefault(_fake_fit_label(fit.targets), []).append(fit)
+    assert set(by_fit) == {"stage1", "reference", "stage2"}
+    for label in ("stage1", "reference"):
+        for fit in by_fit[label]:
+            # The binaries go as columns, each categorical's one-hots as a group.
+            plain = [e for e in fit.gate_level_columns if isinstance(e, str)]
+            grouped = [e for e in fit.gate_level_columns if not isinstance(e, str)]
+            assert plain == ["has_pay", "has_trade"]
+            assert [group[0].rsplit("_", 1)[0] for group in grouped] == [
+                "spi_age_band",
+                "main_source",
+            ]
+            names = fit.level_column_names
+            assert any(column.startswith("spi_age_band_") for column in names)
+            assert any(column.startswith("main_source_") for column in names)
+    assert all(not fit.gate_level_columns for fit in by_fit["stage2"])
+    # The levels they got are in the evidence.
+    gate_level_evidence = path_transform.checkpoint_metadata()["evidence"][
+        "gate_levels"
+    ]
+    assert gate_level_evidence["declared"] == [
+        "spi_age_band",
+        "main_source",
+        "has_pay",
+        "has_trade",
+    ]
+    offsets = gate_level_evidence["offset_levels"]
+    assert any(key.startswith("uk_spi_2022_23_income:") for key in offsets)
+    assert any(key.startswith("uk_frs_reference_conditional:") for key in offsets)
+    # So does what each level fit came to, and the settings behind them.
+    fits = gate_level_evidence["level_fits"]
+    assert any(key.startswith("uk_spi_2022_23_income:") for key in fits)
+    assert any(key.startswith("uk_frs_reference_conditional:") for key in fits)
+    assert set(gate_level_evidence["settings"]) == {
+        "min_rows_per_sign_class",
+        "ridge",
+        "balance_tolerance",
+    }
 
 
 def test_income_stage_parameters_accept_the_committed_manifest() -> None:

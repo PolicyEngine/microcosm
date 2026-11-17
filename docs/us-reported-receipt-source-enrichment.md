@@ -1,8 +1,9 @@
 # Reported-receipt source-enrichment release
 
 This lane publishes the reported-receipt child of the US national default as
-its own release, so the ACS local-area chain can stage from a **published**
-donor with `--donor-release-manifest` (microcosm#978). The child is the
+a build of its own release, `microcosm-us-2024-receipt-donor`, which is never
+the repository's default, so the ACS local-area chain can stage from a
+**published** donor with `--donor-release-manifest` (microcosm#978). The child is the
 national default `populace-us-2024-spm-20260915` with three reported-receipt
 inputs added: `person.receives_wic`, `spm_unit.receives_snap` and
 `spm_unit.receives_tanf`.
@@ -22,9 +23,11 @@ A local-area release names its donor in `us_source_coverage.json`
 (`donor_release`). The staging tool pins that only when it is given the donor's
 `release_manifest.json`, and it then requires that manifest to carry exactly
 one microdata artifact whose SHA-256 equals the staging donor H5
-(`_donor_release_identity`,
-`tools/_legacy/build_us_acs_multispine_base.py:169-216`). The contract refuses
-a local-area release without it (`microcosm/data/contract.py:4468-4486`).
+(`_donor_release_identity` in `tools/_legacy/build_us_acs_multispine_base.py`).
+It names a donor in a build folder by `repo_id`, `release` and `build`, and a
+donor that keeps only its tag by `release_id` and `revision`. The contract
+refuses a local-area release without it, and reads either form with
+`microcosm.data.build_folder_manifests.referenced_build`.
 
 The national default does not carry the three receipt inputs the ACS transfer
 requires, so the local chain stages from the child that
@@ -37,25 +40,36 @@ manifest whose single microdata artifact is the child itself.
 ## The pinned parent
 
 Everything below is a constant in `microcosm/data/source_enrichment.py`, not a
-caller-supplied pin (`:140-202`):
+caller-supplied pin:
 
 | Constant | Value |
 | --- | --- |
-| `RECEIPT_PARENT_BUILD_ID` | `populace-us-2024-spm-20260915`, the release `latest.json` names |
+| `RECEIPT_PARENT_BUILD_ID` | `populace-us-2024-spm-20260915`, the build `latest.json` named before the US switch |
+| `PARENT_RELEASE_ID` | `microcosm-us-2024-national`, the release whose folder holds the parent |
 | `RECEIPT_PARENT_DATASET_SHA256` | `6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84` |
-| `RECEIPT_PARENT_FILES["parent_release_manifest.json"]` | `d5c9e2a3…c01`, that release's `release_manifest.json` |
+| `RECEIPT_PARENT_FILES["parent_release_manifest.json"]` | `d5c9e2a3…c01`, that build's tagged `release_manifest.json` |
 | `RECEIPT_PARENT_FILES["calibration_diagnostics.json"]` | `870449b4…40e`, Build P's schema-5 diagnostics |
 | `RECEIPT_PARENT_FILES["us_source_coverage.json"]` | `6406c868…ff5`, Build P's coverage |
-| `RECEIPT_DATASET_FILENAME` | `populace_us_2024_receipt_qualified.h5` |
+| `RECEIPT_RELEASE_ID` | `microcosm-us-2024-receipt-donor`, the release a new donor is a build of |
+| `RECEIPT_DATASET_FILENAME` | `microcosm_us_2024_receipt_qualified.h5`, that release's dataset file |
+| `TAGGED_RECEIPT_DATASET_FILENAME` | `populace_us_2024_receipt_qualified.h5`, the name the qualification gives the child, and the name a donor that keeps only its tag published |
 
 The same H5 bytes are also published as `populace-us-2024-spm-20260909`. The
-pinned id is `-20260915` because that is the release whose manifest bytes are
-pinned, and the one `latest.json` names.
+pinned ID is `-20260915` because that is the build whose manifest bytes are
+pinned, and the one `latest.json` named.
 
 The pinned parent release manifest hash-binds the parent H5 and every other
 parent file: its build manifest, SPM-role report, compatibility receipt and
-role evidence. Anyone can fetch those at the parent tag and check them against
-the carried manifest. The diagnostics and coverage bytes are Build P's own,
+role evidence. Anyone can fetch those at the parent's tag, which the US switch
+kept, and check them against the carried manifest. The switch also copied the
+parent into its build folder,
+`releases/microcosm-us-2024-national/populace-us-2024-spm-20260915/`, with the
+same files under the same names (its H5 is still `populace_us_2024.h5`) and
+both manifests rewritten into the build-folder layout; the rewritten release
+manifest's `migrated_from` records the tagged manifest's SHA-256. A new donor
+names its parent as that build: `repo_id`, `release` and `build`, with the
+dataset digest and the pinned files and no `revision`. The
+diagnostics and coverage bytes are Build P's own,
 which the SPM-role release inherited unchanged, and a test pins them equal to
 `PARENT_FILES`. So this lane grants no calibration an inheritance it did not
 already have. The child's calibration is still Build P's schema-5
@@ -83,10 +97,15 @@ lineage from `operation` (`:510`). Any other value, including a misspelling, is
 judged as the SPM-role lane and refused there. For a receipt child it
 checks:
 
+- **The release.** The candidate's directory must be
+  `releases/microcosm-us-2024-receipt-donor/`, both manifests must name that
+  release and the same new build, and each artifact must have its `role` and
+  no `revision`. A receipt child is refused as a build of any other release,
+  the national one included.
 - **Parent identity.** The parent H5 must have the pinned SHA-256. The report's
   `parent` block must equal the pinned identity exactly, and the three
-  inherited files must carry the pinned bytes. The release id must be new: not
-  Build P's id and not the parent's.
+  inherited files must carry the pinned bytes. The build ID must be new: not
+  Build P's ID and not the parent's.
 - **The child, replayed.** `compare_boolean_append` (`:635`,
   `microcosm/data/h5_boolean_append.py:189`) reruns the exhaustive comparison
   of the actual parent and candidate H5 files. Its result must equal the
@@ -102,10 +121,11 @@ checks:
   receipt's per-year and per-role breakdowns are not recounted, because the
   data shard cannot rederive them.
 - **One microdata artifact.** Exactly one microdata artifact, the child, at
-  `populace_us_2024_receipt_qualified.h5`, selected by
-  `default_datasets.national`. Any other filename is refused (`:602`), so no
-  publication of this donor can overwrite the default's root
-  `populace_us_2024.h5`. As in the role lane, the H5 lives only in the
+  `microcosm_us_2024_receipt_qualified.h5`, the receipt-donor release's
+  dataset file, selected by `default_datasets.national`. Any other filename is
+  refused, so the donor's H5 can never be the national release's
+  `microcosm_us_2024.h5`, which the national release's dataset-file check
+  also refuses for a donor. As in the role lane, the H5 lives only in the
   artifact root, never in the release directory.
 - **Producers, at certification and publication**
   (`_check_receipt_producers`, `:431`). Two identities are authenticated
@@ -157,7 +177,7 @@ policyengine-us 2.2.1 as Boolean inputs with no formula, on `person`,
 synthetic household through the real country Core and reads them back
 unchanged.
 
-## Never the default pointer
+## Never the default
 
 The receipt inputs change results. policyengine-us 2.2.1 reads them in, for
 example, WIC categorical eligibility
@@ -165,18 +185,21 @@ example, WIC categorical eligibility
 categorical eligibility
 (`variables/gov/usda/snap/eligibility/meets_snap_categorical_eligibility.py:21`).
 The published default omits them, so the model uses their `False` defaults.
-The child is a donor for the local chain, not a new default. The publisher's
-shared preparation therefore refuses to move `latest.json` to it
-(`microcosm/data/release.py:234-247`). Publish it with `--no-latest`, and with
-`--tag-only` so that `main` is untouched.
+The child is a donor for the local chain, not a new default. It is therefore a
+build of `microcosm-us-2024-receipt-donor`, a release of its own that is never
+the repository's default: publishing it, or making it that release's current
+build, never changes the national release or what `microcosm.data.load("us")`
+loads. The contract refuses it as a build of the national release, both by its
+lineage and by the national release's dataset-file check.
 
 ## Steps
 
 Every step up to the preflight is local and never contacts the Hub.
 
 1. **Qualify the parent** from a clean checkout. Pass the parent under its
-   published name, so that the child is named
-   `populace_us_2024_receipt_qualified.h5`:
+   published name, `populace_us_2024.h5`, so that the child is named
+   `populace_us_2024_receipt_qualified.h5`, the name the release builder reads
+   it under:
 
    ```bash
    env -u UV_FROZEN uv run --no-sync python tools/build_us_acs_donor_receipt_qualification.py \
@@ -197,19 +220,22 @@ Every step up to the preflight is local and never contacts the Hub.
      --release-id populace-us-2024-spm-receipts-YYYYMMDD
    ```
 
-   The tool derives nothing. It hard-links the child into
-   `candidate/artifacts/`, copying it only across devices, copies the receipt
-   and parent evidence, and writes the report and manifests. It runs the
-   contract, which replays the H5 comparison, and only then exposes the
-   directory atomically (`build_candidate`,
-   `tools/build_us_receipt_enrichment_release.py:178`). Compatibility is
+   `--release-id` is the new build's ID. The tool derives nothing. It
+   hard-links the child to
+   `candidate/artifacts/microcosm_us_2024_receipt_qualified.h5`, copying it
+   only across devices, copies the receipt and parent evidence into
+   `candidate/releases/microcosm-us-2024-receipt-donor/`, and writes the report
+   and both manifests, naming the release and the build. It runs the contract,
+   which replays the H5 comparison, and only then exposes the directory
+   atomically (`build_candidate` in
+   `tools/build_us_receipt_enrichment_release.py`). Compatibility is
    `pending`.
 
 3. **Validate** the pending candidate:
 
    ```bash
    python -m microcosm.data.source_enrichment \
-     --release-dir /path/to/candidate/releases/RELEASE_ID \
+     --release-dir /path/to/candidate/releases/microcosm-us-2024-receipt-donor \
      --parent-h5 /path/to/spm-20260915/populace_us_2024.h5 \
      --artifact-root /path/to/candidate/artifacts
    ```
@@ -220,34 +246,40 @@ Every step up to the preflight is local and never contacts the Hub.
 
    ```bash
    python -m microcosm.data.source_enrichment --certify \
-     --release-dir /path/to/candidate/releases/RELEASE_ID \
-     --output-dir /path/to/certified/releases/RELEASE_ID \
+     --release-dir /path/to/candidate/releases/microcosm-us-2024-receipt-donor \
+     --output-dir /path/to/certified/releases/microcosm-us-2024-receipt-donor \
      --parent-h5 /path/to/spm-20260915/populace_us_2024.h5 \
      --artifact-root /path/to/candidate/artifacts \
      --compatibility-wheel ... (four)
    ```
 
-5. **Preflight**, which constructs no Hub client:
+5. **Preflight**, which starts no emitter and reads nothing from the Hub:
 
    ```bash
-   microcosm-publish-release /path/to/certified/releases/RELEASE_ID \
+   microcosm-publish-release-build \
+     /path/to/certified/releases/microcosm-us-2024-receipt-donor \
      --repo-id policyengine/populace-us \
      --parent-h5 /path/to/spm-20260915/populace_us_2024.h5 \
      --artifact-root /path/to/candidate/artifacts \
      --compatibility-wheel ... (four) \
-     --no-latest --tag-only --preflight-only
+     --preflight-only
    ```
 
 6. **Publish.** This is a deliberate human step, once root has authorized it.
-   Use the same command through `tools/publish_release.sh`, without
-   `--preflight-only`. It creates the immutable tag `RELEASE_ID` and leaves
-   `main` and `latest.json` alone. Run it from a checkout in which every file
-   in both producer lists has the recorded bytes, such as the producer commit
-   itself.
+   Use the same command without `--preflight-only`. It hands the build to the
+   emitter, which publishes it into
+   `releases/microcosm-us-2024-receipt-donor/<build>/` and lists it in
+   `releases.json`; the national release is untouched. Run it from a checkout
+   in which every file in both producer lists has the recorded bytes, such as
+   the producer commit itself. The same command with `--promote` in place of
+   the publication options makes the build the donor release's current build,
+   which changes nothing the national loader reads.
 
 7. **Stage the local chain** from the published donor. Pass `--base-h5` the
    child and `--donor-release-manifest` the certified bundle's
-   `release_manifest.json`, then rerun the local build from staging.
+   `release_manifest.json`, then rerun the local build from staging. Staging
+   names the donor by `repo_id`, `release` and `build`, which
+   `referenced_build` places in the donor's folder at `main`.
 
 ## Local regression checks
 

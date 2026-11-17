@@ -1,0 +1,1 @@
+Add a support-mix bake-off (tools/bakeoff_us_support_mix.py, us_runtime/support_mix.py): CPS years vs ACS rows vs CPS location clones at fixed household budgets, calibrated with the production solver and scored on the hash-split holdout; memo in docs/us-support-mix-bakeoff.md.

@@ -59,7 +59,6 @@ diagnosed on release weights without rewriting the persisted decisions.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
@@ -71,6 +70,7 @@ import pandas as pd
 
 from microcosm.build.gates import GateResult
 from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
     PERSON_SUPPORT_CHANNEL_COLUMN,
@@ -501,15 +501,7 @@ def _normalize_targets(targets: Mapping[str, float]) -> dict[str, float]:
 
 
 def _stable_source_draw(source_id: str, *, seed: int) -> float:
-    value = int.from_bytes(
-        hashlib.blake2b(
-            f"{seed}:{_OUTPUT}:{source_id}".encode(),
-            digest_size=8,
-        ).digest(),
-        byteorder="big",
-        signed=False,
-    )
-    return value / float(2**64)
+    return float(stable_identity_uniforms((source_id,), seed=seed, salt=_OUTPUT)[0])
 
 
 def us_ssi_take_up_reporter_source_ids(frame: Frame) -> frozenset[str]:
@@ -1648,16 +1640,20 @@ def us_ssi_take_up_delivery_gate(
     per-target knob (microcosm#492). The under-18 band stays fenced pending
     microcosm#453/#509 and is reported in the details, never enforced.
 
-    ``enforcement_fences`` fences normally-enforced bands for a specific
-    ARM with a documented adjudication (the under-18 pattern extended):
-    on the dense full-pool arm, microcosm#508 delivered-weight recomputes
-    have not landed the adult pair in band on either observed frame —
+    ``enforcement_fences`` fences normally-enforced bands for one builder
+    arm with a documented adjudication (the under-18 pattern extended).
+    The US builder passes them on its ``--dense-default-dataset`` arm
+    only: on that arm's two observed full-pool frames, microcosm#508
+    delivered-weight recomputes have not landed the adult pair in band —
     P2's clean one-retry record, and P3's delivered-basis chain that
     ``ssi_take_up_prior_basis_from_artifact`` now refuses outright
     (microcosm#566/#567) — so its adult bands ship in the scorecard as
-    known boundaries rather than enforced contracts. The fence text
-    rides each fenced row; the sparse certified default passes no
-    fences and keeps hard enforcement.
+    known boundaries rather than enforced contracts. The builder keys
+    the fences on the flag alone, so a dense run whose selection source
+    first cuts the pool is fenced too. The fence text rides each fenced
+    row. The L0+refit arm (neither ``--exact-k`` nor
+    ``--dense-default-dataset``) and the ``--exact-k`` arm pass no fences
+    and keep hard enforcement.
     """
 
     expected_targets = _normalize_targets(targets)
