@@ -48,6 +48,9 @@ REAL_LOG = (
 #: workers, three chunks of 24 slices, seed 44), whose whole-second ties
 #: once left the rebuild unable to explain a worker start.
 TOY_LOG = REAL_LOG.with_name("toy-pool-12-workers-g44.log")
+#: Review r4's simulated 16-worker pool (seed 27) whose whole-second tie
+#: once booked a worker start at 0 s.
+TIE_LOG = REAL_LOG.with_name("sim-pool-16-workers-seed27-tie.log")
 #: The toy's own per-process records (float clock): its config, then each
 #: worker's init time and each task's start and end, from which the truth
 #: below is computed (review r4, MODEL-8).
@@ -336,6 +339,21 @@ def test_a_toy_pool_with_steady_state_starts_follows_its_own_timing() -> None:
     assert set(timing.chunk_seconds) == set(truth)
     for chunk, seconds in truth.items():
         assert -0.01 <= timing.chunk_seconds[chunk] / seconds - 1 <= 0.07, chunk
+
+
+def test_a_start_logged_in_its_submits_second_is_put_back_on_that_submit() -> None:
+    # Review r4, MODEL-7: in this simulated 16-worker pool (seed 27, whole
+    # seconds), slice 15 is stamped in the same second as the spawn of submit
+    # 55 but lands after it. Taken as a token, it dated submits 55 to 64 late
+    # and booked a start at 0 s with no note. A start can take no less than a
+    # second, so a start logged in the submit's own second is that submit's.
+    log = TIE_LOG.read_text().splitlines()
+    events = projection.parse_log(log).events
+    pool = projection._pool(events, "incumbent")
+    history = projection.reconstruct(pool, 16, max(event.at for event in events))
+    assert history is not None
+    assert all(cost >= 30 for cost in history.start_costs), history.start_costs
+    assert len(history.notes) == 1 and "came from earlier submits" in history.notes[0]
 
 
 def test_the_scorer_prints_after_receiving_after_its_next_submit() -> None:

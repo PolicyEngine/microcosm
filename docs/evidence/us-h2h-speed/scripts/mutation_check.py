@@ -91,7 +91,9 @@ MUTATIONS = {
         "    if end > time_line + 600:\n",
     ),
     "an unexplained start is never put back on its submit": (
-        "            while spawns < min(workers, len(inits)) and inits[spawns] < ready and taken:\n",
+        "            while (\n"
+        "                spawns < min(workers, len(inits)) and inits[spawns] <= ready and taken\n"
+        "            ):\n",
         "            while False:\n",
     ),
     "candidate starts count only after its first slice": (
@@ -116,6 +118,26 @@ MUTATIONS = {
     "streams that began late can still say GO": (
         '    verdict = "NO-GO" if reasons else "WAIT" if budget_unseen else "GO"\n',
         '    verdict = "NO-GO" if reasons else "GO"\n',
+    ),
+    "a start logged in its submit's second is taken as an earlier submit's": (
+        "inits[spawns] <= ready and taken\n",
+        "inits[spawns] < ready and taken\n",
+    ),
+    "a pool without its opening line is not a gap": (
+        "        if pool.opened is None and (pool.inits or pool.receives or pool.by_task):\n",
+        "        if False:\n",
+    ),
+    "the carried fill takes the slowest result, not one pooled ratio": (
+        'measured["candidate"], candidate.chunks, fill_prior, pooled=bool(carried)\n',
+        'measured["candidate"], candidate.chunks, fill_prior, pooled=False\n',
+    ),
+    "records from before started-at count as this attempt's": (
+        "    early = sum(1 for t in parsed.record_times if t < limits.started_at)\n",
+        "    early = 0\n",
+    ),
+    "streams with a hole report none": (
+        '            holes.append({"from_utc": _utc(reach), "to_utc": _utc(first)})\n',
+        "            pass\n",
     ),
     "before any record the stall allowance never starts": (
         "    last = max(seen, default=limits.started_at)\n",
