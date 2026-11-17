@@ -149,14 +149,29 @@ class TargetFitLifetimes:
 
     def record(self, target: str, model: object) -> None:
         self.fitted_targets.append(target)
+        gate = getattr(model, "gate", None)
         parts: list[tuple[str, object | None]] = [
             ("target model", model),
-            ("sign classifier", getattr(model, "gate", None)),
+            ("sign classifier", gate),
+            ("sign classifier bins", getattr(gate, "_bin_mapper", None)),
         ]
+        for stage in getattr(gate, "_predictors", None) or ():
+            parts.extend(("sign classifier tree", predictor) for predictor in stage)
         for sign in ("positive", "negative"):
             forest = getattr(model, sign, None)
+            regressor = getattr(forest, "model", None)
             parts.append((f"{sign} forest", forest))
-            parts.append((f"{sign} regressor", getattr(forest, "model", None)))
+            parts.append((f"{sign} regressor", regressor))
+            parts.extend(
+                (f"{sign} tree", tree)
+                for tree in getattr(regressor, "estimators_", None) or ()
+            )
+            # The quantile leaf store is not weakly referenceable, but the
+            # numpy array that owns its leaf values (the large allocation) is.
+            leaves = getattr(
+                getattr(regressor, "forest_", None), "y_train_leaves", None
+            )
+            parts.append((f"{sign} leaf array", getattr(leaves, "base", None)))
         for kind, part in parts:
             if part is not None:
                 self._references.append((target, kind, weakref.ref(part)))
@@ -185,9 +200,9 @@ def tracked_target_fits(
     """Check that each fitted target is freed before the next target's fit.
 
     Wraps ``RegimeGatedQRF._fit_target``: on entry it requires every object an
-    earlier call built (the target model, its sign classifier, its forests
-    and their regressors) to be dead, then records weak references to the new
-    ones. The garbage collector is off inside the block, so an object counts
+    earlier call built (the target model; its sign classifier with its bins
+    and trees; its forests with their regressors, trees and leaf-value
+    arrays) to be dead, then records weak references to the new ones. The garbage collector is off inside the block, so an object counts
     as freed only when nothing references it any more, which is when its
     memory goes back; a reference cycle would keep it alive and fail the
     check. Violations are also kept on the returned object, in case a caller

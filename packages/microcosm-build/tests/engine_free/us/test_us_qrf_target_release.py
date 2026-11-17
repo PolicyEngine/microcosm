@@ -35,6 +35,7 @@ from collections import Counter
 from importlib.metadata import version
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -361,3 +362,45 @@ def test_acs_transfer_refuses_a_target_drawn_under_another_regime(
 
     with pytest.raises(RuntimeError, match="reported regime 'misreported'"):
         _transfer_acs_fixture("shared", target_bank=target_bank)
+
+
+def _first_target_part(step: object, part: str) -> object:
+    regressor = step.fitted._target_models["first"].positive.model
+    if part == "leaf array":
+        return regressor.forest_.y_train_leaves.base
+    return regressor.estimators_[0]
+
+
+@pytest.mark.parametrize("part", ["leaf array", "tree"])
+def test_lifetime_check_notices_a_kept_part_of_an_earlier_forest(
+    part: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rng = np.random.default_rng(3)
+    donor = pd.DataFrame(
+        {
+            "x": rng.normal(size=200),
+            "first": rng.lognormal(size=200),
+            "second": rng.lognormal(size=200),
+        }
+    )
+    recipients = donor.loc[:, ["x"]]
+    model = RegimeGatedQRF(n_estimators=2, seed=4)
+    kept: list[object] = []
+    with tracked_target_fits(monkeypatch) as lifetimes:
+        state = model.start_chain(donor, ["x"], ["first", "second"], weights="none")
+        step = model.fit_draw_next(
+            donor,
+            recipients,
+            pd.DataFrame(index=donor.index),
+            state=state,
+            weights="none",
+        )
+        kept.append(_first_target_part(step, part))
+        priors = pd.DataFrame({"first": step.raw_draw}, index=donor.index)
+        state = step.state
+        del step
+        with pytest.raises(AssertionError, match=f"'first', 'positive {part}'"):
+            model.fit_draw_next(donor, recipients, priors, state=state, weights="none")
+
+    assert len(lifetimes.violations) == 1
