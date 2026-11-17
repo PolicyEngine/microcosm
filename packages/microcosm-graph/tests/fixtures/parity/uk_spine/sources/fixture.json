@@ -4187,7 +4187,7 @@
             "n_estimators": 4,
             "population": "uk_frs_raw_spine_base_support_channel claimants and partners (is_uc_claimant) aged 16 and over with taxable income under recipient_income_rule",
             "predictors": "the stage-1 predictors, encoded identically",
-            "receipt": "per target the analogue, the FRS regime and sign classes, the uniform source and the Kolmogorov-Smirnov distance of the sign uniforms and of the quantiles over positive rows from U[0,1), overall and by main_source over at least 10 rows (a statistical floor, as a distance over fewer says nothing); positive-row counts are rounded as every receipt count is, one or two rows reading <3; the counts in the stage evidence stay with the build and are not published",
+            "receipt": "per target the analogue, the FRS regime and sign classes, the uniform source and the Kolmogorov-Smirnov distance of the sign uniforms and of the quantiles over geographic clone 0's positive rows from U[0,1), overall and by main_source over at least 10 of those rows and three source households (a statistical floor, as a distance over fewer says nothing); positive rows are counted in distinct source households and rounded as every receipt count is, one or two reading <3; the counts in the stage evidence stay with the build and are not published",
             "seed": 45,
             "targets": "the stage-1 outputs with an FRS analogue, in stage-1 chain order",
             "weight": "household_weight",
@@ -4340,7 +4340,7 @@
           "kind": "floor_spi_employment_pay_at_minimum_wage",
           "pay_basis": "tape PAY is taxable pay, net of net-pay pension contributions and salary sacrifice; the minimum wage binds gross pay, and the engine reads employment_income (PAY + EPB + TAXTERM) as gross pay, so PAY alone is compared with the gross minimum and a twin at the minimum wage who pays net-pay contributions can be lifted by up to them",
           "reason": "stage 1 draws annual tape pay without hours and the tape holds part-year workers, so a twin reporting usual employee hours could draw a year's pay below what those hours earn at the minimum wage (uk-data#629)",
-          "receipt": "eligible and floored source households (rounded), weighted people, the weighted share floored, the weighted mean uplift and the amount added; figures on one or two source households are <3, and the floored weight, share and amount are given only where neither the floored nor the unfloored side rests on one or two; the hourly-pay check gives the weighted shares of the drawn employees below the minimum wage for their age before and after the floor, beside the FRS employees' share, each withheld beside a side on one or two, and the eligible rows still below their floor (banded, zero exact)",
+          "receipt": "eligible and floored source households (rounded), weighted people, the weighted share floored, the weighted mean uplift and the amount added; figures on one or two source households are <3, and the floored weight, share and amount are given only where neither the floored nor the unfloored side rests on one or two; the hourly-pay check gives the weighted shares of the drawn employees below the minimum wage for their age before and after the floor, beside the FRS employees' share, each withheld beside a side on one or two, and the source households of the eligible rows still below their floor, over every clone (banded, zero exact)",
           "rows": "drawn recipients other than reserved band carriers, whose twin has no trade (has_trade 0), an employee main job and usual hours above zero, and whose drawn PAY is positive; FRS rows, undrawn copies and every other leaf keep their values",
           "weeks_in_year": 52
         },
@@ -7381,11 +7381,11 @@
       ],
       "grain": "household",
       "nonnegative_outputs": [],
-      "notes": "Deterministically rescales owner rows by each region's factor: its public house-price reference over the unweighted mean of main_residence_value_rank_basis, the WAS chain's draw of the main residence, among its FRS-base owners. was_wealth keeps that draw beside the values it reads off each England and Wales owner's constituency, which it divides by the same factor, so the uprating returns those values to the constituency's knots (microcosm#931); Scotland's owners hold the draw itself, so the region's unweighted owner mean matches the reference as before. Northern Ireland has no reference row and is never scaled; empty and nonpositive regions are skipped. The unweighted mean follows the incumbent behavior. The factor has always scaled the property total; since microcosm#1063 it scales the total's other components in the frame as well (land, other houses, buildings), so an owner's property_wealth stays the sum of its components after the uprating. Mortgage debt is never uprated.",
+      "notes": "Deterministically rescales owner rows by each region's factor: its public house-price reference over the unweighted mean of main_residence_value_rank_basis, the WAS chain's draw of the main residence, among its FRS-base owners in geographic clone 0, so a frame of K clones keeps the one-clone factor. was_wealth keeps that draw beside the values it reads off each England and Wales owner's constituency, which it divides by the same factor, so the uprating returns those values to the constituency's knots (microcosm#931); Scotland's owners hold the draw itself, so the region's unweighted owner mean matches the reference as before. Northern Ireland has no reference row and is never scaled; empty and nonpositive regions are skipped. The unweighted mean follows the incumbent behavior. The factor has always scaled the property total; since microcosm#1063 it scales the total's other components in the frame as well (land, other houses, buildings), so an owner's property_wealth stays the sum of its components after the uprating. Mortgage debt is never uprated.",
       "operations": [
         {
           "denominator": "main_residence_value_rank_basis",
-          "factor": "avg_house_price / unweighted_mean(main_residence_value_rank_basis | region, FRS-base owners, main_residence_value > 0)",
+          "factor": "avg_house_price / unweighted_mean(main_residence_value_rank_basis | region, geographic clone 0's FRS-base owners, main_residence_value > 0)",
           "kind": "uprate_to_regional_reference",
           "owner_rows": "main_residence_value > 0",
           "resource": "regional_land_values.json",
@@ -9534,13 +9534,13 @@
         {
           "after_segment": 2,
           "constituency_column": "constituency_code",
-          "factor": "avg_house_price / unweighted_mean(drawn main_residence_value | region, FRS-base owners, >0), the regional property uprating's factor on the draw",
+          "factor": "avg_house_price / unweighted_mean(drawn main_residence_value | region, geographic clone 0's FRS-base owners, >0), the regional property uprating's factor on the draw",
           "kept": "Scotland, Northern Ireland, renters and owners without a positive draw keep the draw",
           "kind": "localise_main_residence_value",
           "knots": "high_value_home_value_knots.json",
           "knots_level": "constituency",
-          "method": "uk-spine-area-home-values-v1",
-          "rank": "weighted mid-rank of the drawn main_residence_value among the owner households of the FRS region with a positive draw, both support channels, at the stage's household weights, ties broken by a draw keyed on the household id",
+          "method": "uk-spine-area-home-values-v2",
+          "rank": "a point inside the row's weighted slice of the drawn main_residence_value among the owner households of its assigned constituency and geographic clone with a positive draw, both support channels, at the stage's household weights, ordered by the draw, ties broken by a draw keyed on the household id, each row's slice as wide as its weight and its point drawn keyed on the household id",
           "rank_basis_column": "main_residence_value_rank_basis",
           "region_map": {
             "EAST_MIDLANDS": "E12000004",
