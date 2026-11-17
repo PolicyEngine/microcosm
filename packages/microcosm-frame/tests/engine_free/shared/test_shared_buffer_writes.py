@@ -47,8 +47,9 @@ is what a failure reports.
       with ``copy=True``, of ``.to_numpy(copy=True)``, or of a random
       ``Generator`` draw (``_RANDOM_DRAW_METHODS``: ``rng.random(n)``, ...);
     - arithmetic or a comparison (``a - b``, ``a > 0``);
-    - ``.copy()`` with no arguments (except of ``.index`` or ``.columns``:
-      ``Index.copy()`` is shallow), or ``+``, ``*`` or ``|`` (which also
+    - ``.copy()`` with no arguments (except of ``.index`` or ``.columns``, or
+      a subscript of them: ``Index.copy()`` is shallow, and a slice of an
+      index shares its memory), or ``+``, ``*`` or ``|`` (which also
       join lists and dicts), or a slice of these, but not an item of them,
       because a copy or join of a dict or list shares its items;
     - a subscript of the others;
@@ -593,10 +594,14 @@ class _Scanner(ast.NodeVisitor):
         name = self._numpy.resolve(function)
         if name is None and isinstance(function, ast.Attribute):
             if function.attr == "copy":
-                # ``Index.copy()`` is shallow by default.
+                # ``Index.copy()`` is shallow by default, and a slice of an
+                # index shares the index's memory.
                 plain = not expression.args and not expression.keywords
-                of_an_index = isinstance(function.value, ast.Attribute) and (
-                    function.value.attr in ("index", "columns")
+                copied = function.value
+                while isinstance(copied, ast.Subscript):
+                    copied = copied.value
+                of_an_index = isinstance(copied, ast.Attribute) and (
+                    copied.attr in ("index", "columns")
                 )
                 return _COPY if plain and not of_an_index else None
             if function.attr == "to_numpy":
@@ -1000,6 +1005,14 @@ _REFUSED_SNIPPETS = {
     "ufunc_at_on_an_index_copy": (
         _in_function(
             "ids = table.index.copy()",
+            "np.add.at(ids, positions, 1)",
+            parameters="table, positions",
+        ),
+        _WRITES_INTO_EXISTING_ARRAY,
+    ),
+    "ufunc_at_on_a_copy_of_an_index_slice": (
+        _in_function(
+            "ids = table.index[1:].copy()",
             "np.add.at(ids, positions, 1)",
             parameters="table, positions",
         ),
