@@ -6,14 +6,28 @@ draws stay byte-identical to what the callers produced when they fitted every
 target first and predicted afterwards, and that no earlier target's fitted
 objects are alive when the next target's fit starts.
 
-The frozen digests were recorded by running origin/main 3b75cf151's
-``impute_us_org_wages`` and ``transfer_acs_inputs`` (which fitted every target,
-then predicted) on these fixtures, with and without single-threaded native
-libraries and QRF thread pools; both gave the same bytes.
+Two kinds of comparison:
+
+- In this process, against ``FitThenPredictQRF``: the real model run the old
+  way (one ``fit`` over every target, then one ``predict``) on the callers'
+  own inputs. These run on every platform.
+- Against SHA-256 digests of every output table, recorded by running
+  origin/main 3b75cf151's ``impute_us_org_wages`` and ``transfer_acs_inputs``
+  (which fitted every target, then predicted) on these fixtures. QRF draws are
+  bitwise reproducible only within one platform (see
+  ``docs/graph-qrf-cross-platform.md``), so the digests are kept per operating
+  system and machine: macOS arm64 natively, and Linux x86_64 (CI's platform)
+  under Docker emulation on Apple silicon. Python 3.13 and 3.14 gave the same
+  bytes on each, as did single-threaded native libraries and QRF thread
+  pools. On any other platform these tests skip.
+
+A change that is meant to move these outputs re-records the digests by
+running the code it starts from on each platform, not the changed code.
 """
 
 from __future__ import annotations
 
+import platform
 from collections import Counter
 from pathlib import Path
 
@@ -45,13 +59,78 @@ from test_support.microcosm_build.qrf_per_target import (
 )
 
 # ---------------------------------------------------------------------------
-# CPS-ORG wage imputation
+# origin/main's output digests, by platform
 # ---------------------------------------------------------------------------
 
-_ORG_ORIGIN_MAIN_DIGESTS = {
-    "carried": "e6cc97f0c8b7f14b052697c6f9f1ca5fa22fd6901a2d58fc7152b99b79f20727",
-    "wages": "cea79a74a73a82d531ef8e449933689a29a2a5dd6766e2477bbb9e74a3309d3c",
+_CARRIED = "e6cc97f0c8b7f14b052697c6f9f1ca5fa22fd6901a2d58fc7152b99b79f20727"
+_HOUSEHOLD = "afeb86cd88e684a8ade35d755d0600623c0fef67a4941c2de347ef7d3a99fd9c"
+
+_ORIGIN_MAIN_DIGESTS: dict[tuple[str, str], dict[str, dict]] = {
+    ("Darwin", "arm64"): {
+        "org": {
+            "carried": _CARRIED,
+            "wages": "cea79a74a73a82d531ef8e449933689a29a2a5dd6766e2477bbb9e74a3309d3c",
+        },
+        "acs": {
+            "shared": {
+                "person": "0cb0c10244a9dabeb32e5990d22a83ba03577047dbabd5554754269de72fb648",
+                "household": _HOUSEHOLD,
+                "tax_unit": "61592c687abd6d9ce359654b7ea6c57c9c37214c702195d4816e72106c59ecb1",
+            },
+            "extension": {
+                "person": "2f80f645419a7d0a11abc82dc3a10ffec808e9eac4a5be9683dfb1603917ab70",
+                "household": _HOUSEHOLD,
+                "tax_unit": "61592c687abd6d9ce359654b7ea6c57c9c37214c702195d4816e72106c59ecb1",
+            },
+            "two_targets_per_fit": {
+                "person": "ba46f5eb133e772d147c7600ddb5e8effe83f98cdf484bf0167b621debf3b33c",
+                "household": _HOUSEHOLD,
+                "tax_unit": "61592c687abd6d9ce359654b7ea6c57c9c37214c702195d4816e72106c59ecb1",
+            },
+        },
+    },
+    ("Linux", "x86_64"): {
+        "org": {
+            "carried": _CARRIED,
+            "wages": "76731096ec682835990da06233f08b712475ceb78ccf29d198396cc147097d60",
+        },
+        "acs": {
+            "shared": {
+                "person": "62d53e4838cc36bb24946a5bfdb75bd42107a5e74561c590d9cac0ae273e87d2",
+                "household": _HOUSEHOLD,
+                "tax_unit": "6c98d6272405549d61daf548764c7a459b5fe0a644acc6a9c640c469c74cf294",
+            },
+            "extension": {
+                "person": "18c385b4f77c2c895e63cfd8df40a01ff0ed624283003b13e7f6fd78265e6a94",
+                "household": _HOUSEHOLD,
+                "tax_unit": "6c98d6272405549d61daf548764c7a459b5fe0a644acc6a9c640c469c74cf294",
+            },
+            "two_targets_per_fit": {
+                "person": "cb91f8676be420d48610ea2b6c0726408d0aa427553f1ad2ef56627c0a515b16",
+                "household": _HOUSEHOLD,
+                "tax_unit": "6c98d6272405549d61daf548764c7a459b5fe0a644acc6a9c640c469c74cf294",
+            },
+        },
+    },
 }
+
+
+def _origin_main_digests() -> dict[str, dict]:
+    """This platform's recorded digests, or a skip where none were recorded."""
+
+    here = (platform.system(), platform.machine())
+    recorded = _ORIGIN_MAIN_DIGESTS.get(here)
+    if recorded is None:
+        pytest.skip(
+            f"origin/main's digests were recorded on {sorted(_ORIGIN_MAIN_DIGESTS)}, "
+            f"not {here}; the in-process comparisons cover this platform."
+        )
+    return recorded
+
+
+# ---------------------------------------------------------------------------
+# CPS-ORG wage imputation
+# ---------------------------------------------------------------------------
 
 
 def _impute_org_fixture() -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -65,12 +144,13 @@ def _impute_org_fixture() -> tuple[pd.DataFrame, pd.DataFrame]:
 
 
 def test_org_wage_imputation_reproduces_origin_main_bytes() -> None:
+    expected = _origin_main_digests()["org"]
     carried, wages = _impute_org_fixture()
 
     assert {
         "carried": table_bytes_digest(carried),
         "wages": table_bytes_digest(wages),
-    } == _ORG_ORIGIN_MAIN_DIGESTS
+    } == expected
     # The fixture draws both is_paid_hourly classes and positive wages.
     active = wages["hourly_wage"].to_numpy() > 0
     assert active.any() and not active.all()
@@ -120,24 +200,6 @@ _ACS_RUN_OPTIONS: dict[str, dict[str, object]] = {
     "two_targets_per_fit": {"max_targets_per_fit": 2},
 }
 
-_ACS_ORIGIN_MAIN_DIGESTS = {
-    "shared": {
-        "person": "0cb0c10244a9dabeb32e5990d22a83ba03577047dbabd5554754269de72fb648",
-        "household": "afeb86cd88e684a8ade35d755d0600623c0fef67a4941c2de347ef7d3a99fd9c",
-        "tax_unit": "61592c687abd6d9ce359654b7ea6c57c9c37214c702195d4816e72106c59ecb1",
-    },
-    "extension": {
-        "person": "2f80f645419a7d0a11abc82dc3a10ffec808e9eac4a5be9683dfb1603917ab70",
-        "household": "afeb86cd88e684a8ade35d755d0600623c0fef67a4941c2de347ef7d3a99fd9c",
-        "tax_unit": "61592c687abd6d9ce359654b7ea6c57c9c37214c702195d4816e72106c59ecb1",
-    },
-    "two_targets_per_fit": {
-        "person": "ba46f5eb133e772d147c7600ddb5e8effe83f98cdf484bf0167b621debf3b33c",
-        "household": "afeb86cd88e684a8ade35d755d0600623c0fef67a4941c2de347ef7d3a99fd9c",
-        "tax_unit": "61592c687abd6d9ce359654b7ea6c57c9c37214c702195d4816e72106c59ecb1",
-    },
-}
-
 
 def _transfer_acs_fixture(
     run: str,
@@ -177,9 +239,10 @@ def _table_digests(result: AcsTransferResult) -> dict[str, str]:
 
 @pytest.mark.parametrize("run", sorted(_ACS_RUN_OPTIONS))
 def test_acs_transfer_reproduces_origin_main_bytes(run: str) -> None:
+    expected = _origin_main_digests()["acs"][run]
     result = _transfer_acs_fixture(run)
 
-    assert _table_digests(result) == _ACS_ORIGIN_MAIN_DIGESTS[run]
+    assert _table_digests(result) == expected
     person = result.frame.table("person")
     for target in ("rental_income", "short_term_capital_gains"):
         values = person[target].to_numpy()
@@ -188,13 +251,27 @@ def test_acs_transfer_reproduces_origin_main_bytes(run: str) -> None:
 
 
 def test_banked_acs_transfer_reproduces_origin_main_bytes(tmp_path: Path) -> None:
+    expected = _origin_main_digests()["acs"]["shared"]
     cold = _transfer_acs_fixture("shared", target_bank=_bank_store(tmp_path / "bank"))
     resumed = _transfer_acs_fixture(
         "shared", target_bank=_bank_store(tmp_path / "bank")
     )
 
-    assert _table_digests(cold) == _ACS_ORIGIN_MAIN_DIGESTS["shared"]
-    assert _table_digests(resumed) == _ACS_ORIGIN_MAIN_DIGESTS["shared"]
+    assert _table_digests(cold) == expected
+    assert _table_digests(resumed) == expected
+
+
+def _assert_same_transfer(result: AcsTransferResult, reference: AcsTransferResult) -> None:
+    assert result.frame.entities == reference.frame.entities
+    for entity in reference.frame.entities:
+        pd.testing.assert_frame_equal(
+            result.frame.table(entity),
+            reference.frame.table(entity),
+            check_exact=True,
+        )
+    assert _table_digests(result) == _table_digests(reference)
+    assert result.imputed_inputs == reference.imputed_inputs
+    assert result.fit_records == reference.fit_records
 
 
 @pytest.mark.parametrize("run", sorted(_ACS_RUN_OPTIONS))
@@ -206,16 +283,22 @@ def test_acs_transfer_matches_fitting_every_target_first(
     monkeypatch.setattr(acs_transfer_module, "QRF", FitThenPredictQRF)
     reference = _transfer_acs_fixture(run)
 
-    assert result.frame.entities == reference.frame.entities
-    for entity in reference.frame.entities:
-        pd.testing.assert_frame_equal(
-            result.frame.table(entity),
-            reference.frame.table(entity),
-            check_exact=True,
-        )
-    assert _table_digests(result) == _table_digests(reference)
-    assert result.imputed_inputs == reference.imputed_inputs
-    assert result.fit_records == reference.fit_records
+    _assert_same_transfer(result, reference)
+
+
+def test_banked_acs_transfer_matches_fitting_every_target_first(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cold = _transfer_acs_fixture("shared", target_bank=_bank_store(tmp_path / "bank"))
+    resumed = _transfer_acs_fixture(
+        "shared", target_bank=_bank_store(tmp_path / "bank")
+    )
+    monkeypatch.setattr(acs_transfer_module, "QRF", FitThenPredictQRF)
+    reference = _transfer_acs_fixture("shared")
+
+    _assert_same_transfer(cold, reference)
+    _assert_same_transfer(resumed, reference)
 
 
 @pytest.mark.parametrize("banked", [False, True], ids=["in_memory", "banked"])
