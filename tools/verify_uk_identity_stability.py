@@ -22,11 +22,16 @@ from typing import NamedTuple
 import numpy as np
 import pandas as pd
 
+from microcosm.build.source_lineage import copy_paths
 from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime.area_home_values import (
     UKAreaHomeValuesResources,
     load_committed_area_home_values_resources,
     localise_area_home_values,
+)
+from microcosm.build.uk_runtime.childcare_copy_take_up import (
+    BENUNIT_SUPPORT_CLONE_INDEX,
+    CHILDCARE_COPY_TAKE_UP_STAGE_NAME,
 )
 from microcosm.build.uk_runtime.frs_brma import (
     _enum_name,
@@ -46,7 +51,10 @@ from microcosm.build.uk_runtime.frs_take_up import (
     uk_take_up_population_policy,
 )
 from microcosm.build.uk_runtime.geographic_clones import geographic_clone_count
-from microcosm.build.uk_runtime.household_lineage import UK_COPY_LINEAGE
+from microcosm.build.uk_runtime.household_lineage import (
+    UK_COPY_LINEAGE,
+    without_geographic_branch,
+)
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
     uk_build_identifier_frame,
@@ -152,6 +160,10 @@ def e4_identity_receipt(
     so by default (``reversed_stages`` unset) its rewrite counts as taken back
     and ``brma`` is compared bitwise; a frame that keeps a row the support
     channel copied is then refused (``_require_no_support_channel_copies``).
+    So is childcare_copy_take_up's: it re-draws the childcare columns it
+    declares on copies alone (``childcare_copy_take_up.copy_benunits``), so by
+    default they are compared bitwise too, and a frame that keeps a copy is
+    refused (``_require_no_childcare_copies``).
 
     ``lha_category`` is the Northern Ireland draw's predictor, aligned to the
     benefit-unit rows; a Great Britain unit's is not read. Without it,
@@ -190,6 +202,8 @@ def e4_identity_receipt(
         reversed_stages = _E4_SCOPE_REVERSALS
     if SPI_COPY_AREAS_STAGE_NAME in reversed_stages:
         _require_no_support_channel_copies(household)
+    if CHILDCARE_COPY_TAKE_UP_STAGE_NAME in reversed_stages:
+        _require_no_childcare_copies(benunit, household)
     # is_apprentice's rate among eligible employees reads the household
     # weights, which a row permutation carries with each household id.
     weight_by_household = dict(
@@ -376,7 +390,11 @@ def e4_identity_receipt(
             "far as the artifact restores it (lha_category_scope); "
             "spi_copy_areas rewrites it on the rows the SPI support channel "
             "copied alone, which the scope drops, so its rewrite is taken back "
-            "(a scoped frame keeping such a row is refused)"
+            "(a scoped frame keeping such a row is refused); "
+            "the childcare take-up columns: bitwise, frs_take_up's, since "
+            "childcare_copy_take_up re-draws them on copies alone, which the "
+            "scope drops, so its rewrite is taken back too (a scoped frame "
+            "keeping a copy is refused)"
         ),
         "columns_by_entity": {
             entity: list(values.columns) for entity, values in original.items()
@@ -626,6 +644,13 @@ def e5_identity_receipt(
     value, so it is not compared with the store and the receipt names the
     stages that wrote it: ``student_loans`` re-splits each household's
     student loan balance after ``was_wealth`` allocated it.
+
+    A frame that leaves no recomputed column to compare with the store (one
+    the artifact lacks, one a later stage rewrites, or none recomputed at
+    all, as on a release, whose boundary drops the uprating's declared
+    denominator) is refused, as e7 refuses an artifact without its layer: a
+    receipt that compared nothing must not pass. The refusal names the
+    columns and why each is not compared, never a value.
     """
 
     resource = regional_resource or load_regional_land_values_resource()
@@ -784,6 +809,8 @@ def e5_identity_receipt(
     mismatches: dict[str, list[str]] = {}
     stored_mismatches: dict[str, list[str]] = {}
     rewritten: dict[str, dict[str, list[str]]] = {}
+    compared: dict[str, list[str]] = {}
+    absent: list[str] = []
     stored_tables = {"household": household, "person": person}
     for entity, values in original.items():
         for column in values.columns:
@@ -801,6 +828,7 @@ def e5_identity_receipt(
             if column in stored_table.columns and column in rewritten_later:
                 rewritten.setdefault(entity, {})[column] = list(rewritten_later[column])
             elif column in stored_table.columns:
+                compared.setdefault(entity, []).append(column)
                 stored_rtol, stored_atol = stored_tolerances.get(
                     (entity, column), (rtol, atol)
                 )
@@ -811,6 +839,14 @@ def e5_identity_receipt(
                     atol=stored_atol,
                 ):
                     stored_mismatches.setdefault(entity, []).append(column)
+            else:
+                absent.append(f"{entity}.{column}")
+    if not compared:
+        raise ValueError(
+            _e5_nothing_compared(
+                absent=absent, rewritten=rewritten, not_recomputed=not_recomputed
+            )
+        )
     return {
         "check": "uk_e5_identity_stability",
         "permutation_seed": permutation_seed,
@@ -818,6 +854,9 @@ def e5_identity_receipt(
         "permutation_mismatches": mismatches,
         "matches_stored_columns": not stored_mismatches,
         "stored_column_mismatches": stored_mismatches,
+        "stored_columns_compared": {
+            entity: sorted(columns) for entity, columns in compared.items()
+        },
         "rewritten_later": rewritten,
         "uprating_denominator": denominator,
         "not_recomputed": not_recomputed,
@@ -832,7 +871,9 @@ def e5_identity_receipt(
             "re-summing allocations each cost one float rounding generation), "
             "except a column a stage after its own declares writing, which is "
             "not compared (rewritten_later names the stages), and a column "
-            "the artifact cannot recompute (not_recomputed names it); "
+            "the artifact cannot recompute (not_recomputed names it); a frame "
+            "that leaves no column to compare is refused "
+            "(stored_columns_compared names those compared); "
             "corporate_wealth fold not reconstructible from the artifact "
             "(components consumed) - unit-tested only"
         ),
@@ -844,6 +885,40 @@ def e5_identity_receipt(
             "determinism rather than identity-keyed row permutation"
         ),
     }
+
+
+def _e5_nothing_compared(
+    *,
+    absent: Sequence[str],
+    rewritten: Mapping[str, Mapping[str, Sequence[str]]],
+    not_recomputed: Mapping[str, Mapping[str, str]],
+) -> str:
+    """E5's refusal of a frame it compares no stored column on: each column
+    it recomputed and why it is not compared, and each it could not
+    recompute, by name."""
+
+    def named(columns: Sequence[str]) -> str:
+        return ", ".join(sorted(columns)) or "none"
+
+    later = [
+        f"{entity}.{column} ({', '.join(stages)})"
+        for entity, columns in rewritten.items()
+        for column, stages in columns.items()
+    ]
+    skipped = [
+        f"{entity}.{column}"
+        for entity, columns in not_recomputed.items()
+        for column in columns
+    ]
+    return (
+        "e5 identity receipt: the frame leaves E5 no recomputed column to "
+        "compare with the store, so a pass would certify nothing; e7 refuses "
+        "an artifact without its layer for the same reason. Recomputed but "
+        f"absent from the store: {named(absent)}. Rewritten by a later stage: "
+        f"{named(later)}. Not recomputed: {named(skipped)}. Run the check on "
+        "a frame that keeps a column the wealth stages wrote and no later "
+        "stage rewrites, such as the spine."
+    )
 
 
 #: The stage E5 recomputes the regional property uprating of.
@@ -3092,8 +3167,10 @@ def main() -> int:
         # weights the stages read, as far as the artifact restores them. The
         # engine runs clone by clone at the spine's clone count, as the
         # stages' did. The scope drops every row the SPI support channel
-        # copied, the only rows spi_copy_areas rewrites, so its rewrite is
-        # taken back too and brma is compared (microcosm#931).
+        # copied, the only rows spi_copy_areas rewrites, and every copy, the
+        # only rows childcare_copy_take_up re-draws, so both rewrites are
+        # taken back too and brma and the childcare columns are compared
+        # (microcosm#931).
         population_policy = uk_take_up_population_policy(uk_time_period(frame))
         receipt = e4_identity_receipt(
             _frame_as_draw_stages_saw(
@@ -3106,7 +3183,7 @@ def main() -> int:
             population_policy=population_policy,
             reversed_stages=(
                 *_reversals_applied(frame, UK_SPI_INCOME_BAND_DONORS_STAGE_NAME),
-                SPI_COPY_AREAS_STAGE_NAME,
+                *_E4_COPY_ONLY_STAGES,
             ),
         )
         ok = bool(
@@ -3121,7 +3198,8 @@ def main() -> int:
         # recomputation stops matching what the stages stored. Scope to the
         # population the stages saw, at the weights they read. No later
         # stage writes either property column (microcosm#931), so the scope
-        # takes no rewrite of them back.
+        # takes no rewrite of them back. A frame that leaves no stored column
+        # to compare, a release among them, is refused rather than passed.
         receipt = e5_identity_receipt(
             _frame_as_stage_saw(frame, _E5_FIRST_STAGE),
             permutation_seed=args.permutation_seed,
@@ -4282,12 +4360,56 @@ def _pre_salary_sacrifice_frame(frame):
 #: which replace it, keep their draw beside the value they write, so they
 #: need none (microcosm#931).
 _SCOPE_REVERSALS = (_SALARY_SACRIFICE_STAGE,)
-#: What E4 assumes of a frame it is handed scoped: those, and spi_copy_areas,
+#: The later stages that rewrite copies alone (microcosm#931), every one of
+#: which E4's scope drops (``_frame_as_draw_stages_saw``): spi_copy_areas,
 #: whose rewrites (brma among them) fall on the rows the SPI support channel
-#: copied alone, every one of which E4's scope drops
-#: (``_frame_as_draw_stages_saw``); E4 refuses a frame that keeps one
-#: (``_require_no_support_channel_copies``, microcosm#931).
-_E4_SCOPE_REVERSALS = (*_SCOPE_REVERSALS, SPI_COPY_AREAS_STAGE_NAME)
+#: copied, and childcare_copy_take_up, which re-draws the childcare take-up of
+#: every copy's benefit units (``childcare_copy_take_up.copy_benunits``). E4
+#: takes both rewrites back, so it compares the columns they declare, and
+#: refuses a frame that keeps a row either rewrites
+#: (``_require_no_support_channel_copies``, ``_require_no_childcare_copies``).
+_E4_COPY_ONLY_STAGES = (SPI_COPY_AREAS_STAGE_NAME, CHILDCARE_COPY_TAKE_UP_STAGE_NAME)
+#: What E4 assumes of a frame it is handed scoped: the scope's reversals, and
+#: the stages that rewrite copies alone.
+_E4_SCOPE_REVERSALS = (*_SCOPE_REVERSALS, *_E4_COPY_ONLY_STAGES)
+
+
+def _require_no_childcare_copies(
+    benunit: pd.DataFrame, household: pd.DataFrame
+) -> None:
+    """Refuse tables that keep a benefit unit childcare_copy_take_up re-draws.
+
+    That stage re-draws its childcare columns on copies alone
+    (``childcare_copy_take_up.copy_benunits``): the benefit units of a
+    household whose copy path, the geographic clones' branch aside, is not
+    empty, and a unit whose own support clone index is positive. E4 takes its
+    rewrite back, and so compares those columns with frs_take_up's draws, only
+    because its scope drops every copy (microcosm#931). The paths are read
+    through the shared reader on the UK's copy lineage, over the copy steps
+    the table carries: a step none of whose columns the table carries made no
+    copy in it, and a table carrying no lineage column at all holds no copy
+    (the reader refuses one that carries a step's column without the source).
+    A household that is a copy, or a unit whose support clone index is not 0,
+    is refused; the refusal names the stage and no count.
+    """
+
+    kept = False
+    if any(
+        column in household.columns
+        for column in (UK_COPY_LINEAGE.source, *UK_COPY_LINEAGE.copy_columns)
+    ):
+        _, paths = copy_paths(household, UK_COPY_LINEAGE)
+        kept = any(without_geographic_branch(paths))
+    if BENUNIT_SUPPORT_CLONE_INDEX in benunit.columns:
+        ordinals = pd.to_numeric(benunit[BENUNIT_SUPPORT_CLONE_INDEX], errors="coerce")
+        kept = kept or bool(ordinals.isna().any() or ordinals.ne(0).any())
+    if kept:
+        raise ValueError(
+            "E4 compares the childcare columns childcare_copy_take_up declares by "
+            "taking its rewrite back, which holds only where the frame keeps no "
+            "copy; the frame keeps a copy, so it is not scoped as E4's stages saw "
+            "it (_frame_as_draw_stages_saw)."
+        )
 
 
 def _require_no_support_channel_copies(household: pd.DataFrame) -> None:
