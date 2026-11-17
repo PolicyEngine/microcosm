@@ -456,6 +456,7 @@ from microcosm.frame import Frame, MassChange, WeightKind, Weights, read_frame_t
 from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSEngine,
     PolicyEngineUSVariableMetadataIndex,
+    us_dataset_through,
 )
 from microcosm.frame.units import US_SCHEMA
 
@@ -536,10 +537,10 @@ POST_EXPORT_RELATIVE_TOLERANCE = 5e-4
 # after recomputing again — the recompute moved 18-64 OUT of band while
 # improving 65+); that chain shape is now refused outright by the
 # chain-depth guard in ssi_take_up_prior_basis_from_artifact. The dense
-# diagnostic arm therefore FENCES its adult bands — the under-18 pattern
-# extended: the miss ships in the scorecard as a known boundary, never as
-# an enforced contract and never as saturation-as-success. The sparse
-# certified default passes no fences and keeps hard enforcement.
+# arm (--dense-default-dataset) therefore FENCES its adult bands — the
+# under-18 pattern extended: the miss ships in the scorecard as a known
+# boundary, never as an enforced contract and never as saturation-as-success.
+# The L0+refit and --exact-k arms pass no fences and keep hard enforcement.
 # RE-ADJUDICATES when microcosm#566's damped fixed-point protocol lands.
 _US_DENSE_SSI_FENCE_ADJUDICATION = (
     "Fenced for the dense diagnostic arm (microcosm#566/#567): "
@@ -1517,9 +1518,15 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=int,
         default=DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
         help=(
-            "Optimization epochs for each calibration stage. The default "
-            "matches the current L0+refit release run: L0 selection for 1,500 "
-            "epochs followed by a 1,500-epoch ordinary refit."
+            "Optimization epochs for each calibration stage (default "
+            f"{DEFAULT_US_FISCAL_CALIBRATION_EPOCHS:,}). "
+            "--dense-default-dataset and the full-pool --exact-k point run "
+            "one stage; the L0+refit arm and smaller --exact-k points run an "
+            "L0 selection stage and then a refit stage, and each stage runs "
+            "this many epochs. As of 2026-11-15, the US national calibrations "
+            "that PolicyEngine had tagged in policyengine/populace-us since "
+            "2026-07-01 ran the dense arm for 1,500 to 6,000 epochs; Build P, "
+            "the parent of populace-us-2024-spm-20260915, ran 6,000."
         ),
     )
     parser.add_argument("--learning-rate", type=float, default=0.02)
@@ -1544,11 +1551,18 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=float,
         default=DEFAULT_L0_REFIT_LAMBDA_SHARE,
         help=(
-            "Default national dataset sparsity control. The builder divides "
-            "this value by the candidate household count and uses the result "
-            "as the fixed L0 penalty before refitting ordinary calibration on "
-            "the selected support. The default 0.8 reproduces the current "
-            "57k-household US fiscal surface run from the 337k support."
+            f"L0 penalty share (default {DEFAULT_L0_REFIT_LAMBDA_SHARE}) for "
+            "the L0 selection stage of the L0+refit arm and of each --exact-k "
+            "point below the full pool. The L0+refit arm runs when the caller "
+            "sets neither --dense-default-dataset nor --exact-k. The builder "
+            "divides the share by the candidate household count and uses the "
+            "result as a fixed L0 penalty; the L0+refit arm then refits "
+            "ordinary calibration on the households its L0 gates keep. "
+            "--dense-default-dataset ignores it. As of 2026-11-15, none of "
+            "the US national calibrations that PolicyEngine had tagged in "
+            "policyengine/populace-us since 2026-07-01 ran an L0 stage; "
+            "docs/us-release-build-rule.md lists the households each one "
+            "calibrated."
         ),
     )
     parser.add_argument(
@@ -1569,21 +1583,35 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=float,
         default=None,
         help=(
-            "Override the L2 concentration penalty for the post-L0 refit "
-            "stage only — the stage that produces the shipped weights. "
-            "Defaults to --l2-lambda. Requires the sparse L0+refit default "
-            "dataset (incompatible with --dense-default-dataset, which has "
-            "no refit stage)."
+            "Override the L2 concentration penalty for the refit stage only. "
+            "The L0+refit arm and every --exact-k point write the refit "
+            "stage's weights, and at the full pool, --exact-k runs that stage "
+            "alone. Defaults to --l2-lambda. The builder refuses to combine "
+            "this flag with --dense-default-dataset, which has no refit "
+            "stage."
         ),
     )
     parser.add_argument(
         "--dense-default-dataset",
         action="store_true",
         help=(
-            "Diagnostic only: publish the dense no-L0 calibrated frame as the "
-            "default national dataset. Release builds should leave this unset "
-            "so microcosm_us_2024.h5 is the sparse L0+refit dataset that runs "
-            "on standard machines."
+            "Calibrate every candidate household in one solve with no L0 term "
+            "and write that frame as the default national dataset, "
+            "microcosm_us_2024.h5; the build manifest records "
+            "dataset.default.method: dense_no_l0. This arm also fences the "
+            "SSI take-up bands for ages 18-64 and 65+ (microcosm#566/#567), "
+            "so a delivery miss there ships in the scorecard. The other arms "
+            "count a miss of more than 5%% as a release-gate failure, which "
+            "fails the build unless the miss has an owner and "
+            "--evidence-release exports it. As of 2026-11-15, every US "
+            "national calibration that PolicyEngine had tagged in "
+            "policyengine/populace-us since 2026-07-01 came from this arm, "
+            "and docs/us-release-build-rule.md lists them. A selection source "
+            "(--selection-source-manifest or --selection-source-h5) first "
+            "cuts the candidates to the households it names; without one, the "
+            "solve covers every household the builder loads. The builder "
+            "refuses to combine this flag with --exact-k, and the L0+refit "
+            "arm runs when the caller sets neither."
         ),
     )
     parser.add_argument(
@@ -2060,7 +2088,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         )
     if args.refit_l2_lambda is not None and args.dense_default_dataset:
         parser.error(
-            "--refit-l2-lambda requires the sparse L0+refit default dataset; "
+            "--refit-l2-lambda sets the refit stage's penalty, but "
             "--dense-default-dataset has no refit stage (use --l2-lambda)."
         )
     if not args.no_staging and not args.staging_dir and not args.staging_repo_id:
@@ -3974,6 +4002,7 @@ def _aca_source_tax_unit_table_batched(
                 dataset=_dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
+                    period_only=True,
                 )
             )
             batch_tax_unit = _aca_source_tax_unit_table_from_simulation(
@@ -4188,6 +4217,7 @@ def _medicaid_person_eligibility(
                 dataset=_dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
+                    period_only=True,
                 )
             )
             batch_eligible = (
@@ -4275,6 +4305,7 @@ def _ssi_person_uncapped_amount(
                 dataset=_dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
+                    period_only=True,
                 )
             )
             batch_uncapped = calculate(batch_simulation)
@@ -4490,6 +4521,7 @@ def _snap_spm_unit_eligibility(
                 dataset=_dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
+                    period_only=True,
                 )
             )
             batch_eligible = (
@@ -4576,7 +4608,22 @@ def _dataset_from_frame(
     zero_variables: Iterable[str] = (),
     system=None,
     assert_no_formula_owned_columns: bool = True,
+    period_only: bool = False,
 ):
+    """The frame as a policyengine-us dataset for ``PERIOD``.
+
+    By default the dataset is the one year, and policyengine-us projects it
+    as a user's load does: it adds an uprated copy of every later year to its
+    last CPI-U year, stores them all, and copies them again into each branch
+    it opens. A read at a later year then gets the engine's own projected
+    inputs; post-export scoring plans keys in later years.
+
+    ``period_only`` holds ``PERIOD`` alone (``us_dataset_through``), for an
+    in-build simulation that reads only ``PERIOD`` (``_calculate_array``, and
+    the December SSI month). A later read on that dataset is not refused: the
+    engine carries or uprates leaf inputs itself and reads a stored
+    formula-owned column as its default, so only such a caller may ask.
+    """
     if assert_no_formula_owned_columns:
         _assert_no_formula_owned_columns(frame)
 
@@ -4590,7 +4637,7 @@ def _dataset_from_frame(
         if entity is not None and variable_name in tables[entity]:
             tables[entity][variable_name] = 0
     tables["household"]["household_weight"] = frame.weights_for("household").values
-    return USSingleYearDataset(
+    dataset = USSingleYearDataset(
         person=tables["person"],
         household=tables["household"],
         tax_unit=tables["tax_unit"],
@@ -4599,6 +4646,9 @@ def _dataset_from_frame(
         marital_unit=tables["marital_unit"],
         time_period=PERIOD,
     )
+    if not period_only:
+        return dataset
+    return us_dataset_through(dataset, PERIOD)
 
 
 def _calculate_array(
@@ -5349,6 +5399,9 @@ class _HouseholdBatchedPostExportScorer:
         if dataset_from_frame is None:
 
             def dataset_from_frame(batch_frame: Frame):
+                # Consumer plans read years after PERIOD (reform validation
+                # reaches past 2025), so the scorer keeps the engine's
+                # projection: it does not ask for PERIOD alone.
                 return _dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
@@ -5748,6 +5801,7 @@ def _reform_household_income_tax(
                 zero_variables=(reform_spec.neutralized_variable,),
                 system=system,
                 assert_no_formula_owned_columns=False,
+                period_only=True,
             )
             reformed = microsimulation_cls(
                 tax_benefit_system=reform_system,
@@ -7068,6 +7122,7 @@ def _materialize_base_simulation_columns(
                 dataset=_dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
+                    period_only=True,
                 )
             )
             try:
@@ -9317,7 +9372,7 @@ def _enforce_ssi_take_up_delivery(
     microcosm#507/#508: a miss beyond tolerance on release weights fails the
     build instead of shipping in the scorecard. ``enforcement_fences``
     (microcosm#566/#567) fences normally-enforced bands for the dense
-    diagnostic arm, where delivered-weight recomputes have not landed
+    arm (--dense-default-dataset), where delivered-weight recomputes have not landed
     the adult pair in band on either observed frame (P2's clean
     one-retry record; P3's refused delivered-basis chain) — fenced
     misses ship in the scorecard with their adjudication text instead
@@ -15987,9 +16042,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             targets=ssi_band_targets,
             release_dir=release_dir,
             telemetry=telemetry,
-            # The dense diagnostic arm fences its adult bands per the
-            # microcosm#566/#567 fence adjudication; the sparse certified
-            # arm passes no fences and keeps hard enforcement.
+            # The dense arm (--dense-default-dataset) fences its adult bands
+            # per the microcosm#566/#567 fence adjudication; the L0+refit and
+            # --exact-k arms pass no fences and keep hard enforcement.
             enforcement_fences=(
                 US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES
                 if args.dense_default_dataset

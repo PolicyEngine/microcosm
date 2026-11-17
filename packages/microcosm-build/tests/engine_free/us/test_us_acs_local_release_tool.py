@@ -74,6 +74,10 @@ _PACKAGE_ENGINE = stored_inputs.CertifiedEngine(
             "sstb_self_employment_income_before_lsr",
             "farm_operations_income",
             "partnership_self_employment_net_earnings",
+            # microcosm#1387: the line-32 leaves the self-employment gate reads.
+            "partnership_income",
+            "s_corp_income",
+            "passive_partnership_s_corp_income",
             *US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
         }
     ),
@@ -1273,7 +1277,9 @@ class _SelfEmploymentFrame:
         return self._person
 
 
-def _self_employment_person(sstb_on_acs: float) -> pd.DataFrame:
+def _self_employment_person(
+    sstb_on_acs: float, partnership_on_acs_semp: float = 0.0
+) -> pd.DataFrame:
     return pd.DataFrame(
         {
             "person_spine": ["acs_2024_1yr", "acs_2024_1yr", "asec_puf"],
@@ -1283,6 +1289,13 @@ def _self_employment_person(sstb_on_acs: float) -> pd.DataFrame:
             "sstb_self_employment_income_before_lsr": [sstb_on_acs, 0.0, 9_000.0],
             "farm_operations_income": [0.0, 0.0, 700.0],
             "partnership_self_employment_net_earnings": [0.0, 0.0, 300.0],
+            # microcosm#1387: the ASEC row's partnership income is outside
+            # the ACS selection, so it never affects the verdict.
+            "partnership_income": [2_000.0, partnership_on_acs_semp, 4_000.0],
+            "s_corp_income": [0.0, 3_000.0, 0.0],
+            "passive_partnership_s_corp_income": [0.0, 0.0, 0.0],
+            "person_tax_unit_id": [1, 2, 3],
+            "tax_unit_role_input": ["HEAD", "HEAD", "HEAD"],
         }
     )
 
@@ -1301,6 +1314,55 @@ def test_release_refuses_staging_that_stacks_self_employment_on_semp() -> None:
         module._require_acs_self_employment_identity(
             _SelfEmploymentFrame(
                 _self_employment_person(0.0).drop(columns=["person_spine"])
+            )
+        )
+
+
+def test_release_refuses_partnership_income_that_semp_already_holds() -> None:
+    """An ACS row's SEMP includes its partnership income (microcosm#1387).
+
+    A partnership draw on the ACS row that reports SEMP is refused; the same
+    amount on the ASEC row, and S-corp income on the ACS row, pass.
+    """
+
+    module = _load_tool_module()
+
+    with pytest.raises(SystemExit, match="ACS SEMP already includes"):
+        module._require_acs_self_employment_identity(
+            _SelfEmploymentFrame(
+                _self_employment_person(0.0, partnership_on_acs_semp=2_500.0)
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    ("partnership", "failure"),
+    (
+        (np.nan, "never modeled"),
+        (np.inf, "an infinite partnership"),
+        (-np.inf, "an infinite partnership"),
+    ),
+)
+def test_release_names_a_rebuild_only_for_income_counted_twice(
+    partnership: float, failure: str
+) -> None:
+    """A rebuild cures a double count, not a blank or infinite cell (#1387)."""
+
+    module = _load_tool_module()
+    person = _self_employment_person(0.0)
+    # The ACS row that reports SEMP: a blank partnership cell is unmodeled and
+    # an infinite one is not a dollar amount, so neither is counted twice.
+    person.loc[1, "partnership_income"] = partnership
+
+    with pytest.raises(SystemExit) as refused:
+        module._require_acs_self_employment_identity(_SelfEmploymentFrame(person))
+
+    assert failure in str(refused.value)
+    assert "must be rebuilt" not in str(refused.value)
+    with pytest.raises(SystemExit, match="must be rebuilt"):
+        module._require_acs_self_employment_identity(
+            _SelfEmploymentFrame(
+                _self_employment_person(0.0, partnership_on_acs_semp=2_500.0)
             )
         )
 
@@ -4016,6 +4078,11 @@ def _plausible_hours_frame():
         sstb_self_employment_income_before_lsr=0.0,
         farm_operations_income=0.0,
         partnership_self_employment_net_earnings=0.0,
+        # microcosm#1387: the line-32 leaves the gate also grades.
+        partnership_income=0.0,
+        s_corp_income=0.0,
+        passive_partnership_s_corp_income=0.0,
+        tax_unit_role_input="HEAD",
     )
     return Frame(
         {
@@ -5543,8 +5610,10 @@ def test_package_records_the_stored_input_gate_bound_to_the_packaged_bytes(
             "failures": [],
             "engine": "policyengine-us 2.2.1",
             "register_sha256": stored_inputs.register_sha256(),
-            # The ACS rows' base-spine tag, a reviewed register entry.
-            "registered_non_variables": ["person_spine"],
+            # The ACS rows' base-spine tag and the tax-unit role the
+            # self-employment gate reads (microcosm#1387), both reviewed
+            # register entries.
+            "registered_non_variables": ["person_spine", "tax_unit_role_input"],
             "artifact_sha256": result["root_artifact"]["sha256"],
             "checked_at_stage": "package",
         }
@@ -6893,8 +6962,10 @@ def test_do_calibrate_stamps_and_records_the_penalty_settings(
     assert summary["l2_basis"] == "chi_square"
     assert summary["mass_parametrization"] == "softmax"
     assert summary["chi_square_distance"] >= 0.0
-    exhausted = summary["softmax_cap_rounds_exhausted_epochs"]
-    assert isinstance(exhausted, int) and 0 <= exhausted <= 2
+    in_loop = summary["softmax_in_loop_max_cap_ratio"]
+    # The float32 slack test_l2_basis.py allows on small solves. It holds for
+    # this tiny surface only: the release surface reached 1 + 9.0e-6.
+    assert 0.0 < in_loop <= 1.0 + 1e-5
     assert summary["solver_settings"]["l2_basis"] == "chi_square"
     assert summary["solver_settings"]["mass_parametrization"] == "softmax"
     saved = np.load(args.checkpoint_dir / "weights_latest.npz")
@@ -7318,7 +7389,116 @@ def test_package_manifest_reads_a_legacy_summary_as_the_historical_solve(
     assert manifest["calibration"]["l2_basis"] == "record"
     assert manifest["calibration"]["mass_parametrization"] == "projection"
     assert manifest["calibration"]["chi_square_distance"] is None
-    assert manifest["calibration"]["softmax_cap_rounds_exhausted_epochs"] is None
+    assert manifest["calibration"]["softmax_in_loop_max_cap_ratio"] is None
+
+
+@pytest.mark.parametrize("exhausted_epochs", [713, 0])
+def test_package_refuses_a_softmax_summary_from_before_the_exact_cap_step(
+    tmp_path: Path, monkeypatch, exhausted_epochs: int
+) -> None:
+    """A softmax solve by the old cap step reaches no manifest (review R4).
+
+    Before microcosm#1096 a softmax solve recorded how many epochs ran out of
+    cap rounds, and nothing under the key the manifest carries now. Packaging
+    it would write null for that key: the value of a solve with no softmax
+    cap step. A count of 0 is a softmax solve by the old step all the same.
+    The refusal leaves no release directory either, empty or not: packaging
+    the checkpoint once it is calibrated again would find it and stop.
+    """
+
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    summary_path = args.checkpoint_dir / "calibration_summary.json"
+    summary = json.loads(summary_path.read_text())
+    summary.update(
+        mass_parametrization="softmax",
+        softmax_cap_rounds_exhausted_epochs=exhausted_epochs,
+    )
+    summary_path.write_text(json.dumps(summary))
+
+    with pytest.raises(
+        SystemExit,
+        match=(
+            rf"softmax_cap_rounds_exhausted_epochs={exhausted_epochs} and no "
+            r"softmax_in_loop_max_cap_ratio: this checkpoint's softmax solve "
+            r"predates the exact cap step .*Calibrate the checkpoint again "
+            r"before --stage package"
+        ),
+    ):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    release_dir = args.out.joinpath(*module.RELEASE_DIR_PARTS)
+    assert not release_dir.exists(), "a refusal leaves no release directory"
+
+
+@pytest.mark.parametrize(
+    ("recorded", "carried"),
+    [
+        ({"softmax_cap_rounds_exhausted_epochs": None}, None),
+        (
+            {
+                "mass_parametrization": "softmax",
+                "softmax_in_loop_max_cap_ratio": 1.0000087,
+            },
+            1.0000087,
+        ),
+        (
+            {"mass_parametrization": "softmax", "softmax_in_loop_max_cap_ratio": None},
+            None,
+        ),
+        (
+            {
+                "mass_parametrization": "softmax",
+                "softmax_cap_rounds_exhausted_epochs": 713,
+                "softmax_in_loop_max_cap_ratio": 1.0000087,
+            },
+            1.0000087,
+        ),
+    ],
+    ids=[
+        "projection-before-the-cap-step",
+        "softmax-with-the-cap-step",
+        "softmax-without-a-cap",
+        "both-keys",
+    ],
+)
+def test_package_carries_the_cap_receipt_of_a_summary_it_can_read(
+    tmp_path: Path, monkeypatch, recorded, carried
+) -> None:
+    """The summaries the refusal above leaves alone package as before.
+
+    A projection solve from before the exact cap step recorded the old key as
+    null. A softmax solve since records the new key: the largest in-loop
+    weight over its cap, or null without a cap. No tool writes both keys, but
+    a summary that holds the new one has its receipt, whatever else it holds.
+    The summary that records neither key is the legacy one in the test before
+    the refusal.
+    """
+
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    summary_path = args.checkpoint_dir / "calibration_summary.json"
+    summary = json.loads(summary_path.read_text())
+    summary.update(recorded)
+    summary_path.write_text(json.dumps(summary))
+
+    result = module.do_package(args)
+
+    manifest = json.loads(
+        (Path(result["release_dir"]) / "build_manifest.json").read_text()
+    )
+    assert manifest["calibration"][module.SOFTMAX_CAP_RECEIPT] == carried
+    assert module.PRE_EXACT_CAP_SOFTMAX_RECEIPT not in manifest["calibration"]
 
 
 def test_concentration_limitation_is_true_to_the_penalty_solved() -> None:

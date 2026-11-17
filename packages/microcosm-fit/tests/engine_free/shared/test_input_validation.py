@@ -24,7 +24,7 @@ import math
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import HealthCheck, assume, given, settings
+from hypothesis import HealthCheck, assume, example, given, settings
 from hypothesis import strategies as st
 
 from microcosm.fit import (
@@ -68,6 +68,9 @@ CALIBRATIONS = (
 )
 
 
+CROSS_FITTED_OUTCOMES = {GateOutcome.CROSS_FITTED, GateOutcome.CLASS_RATES}
+
+
 def _gated_donors() -> pd.DataFrame:
     """Donors for every regime, three of them gated."""
     x = np.tile(np.arange(12, dtype=float), 4)
@@ -96,8 +99,10 @@ def _fit_gated(seed: int = 7, calibration: str = GateCalibration.IN_SAMPLE):
     )
     if calibration != GateCalibration.IN_SAMPLE:
         # Every class has a row in every fold, so no gate falls back in-sample.
+        # A cross-fitted gate whose calibration falls back to the class rates
+        # (at seeds 5 and 14, for example) is cross-fitted all the same.
         gated = [outcome for outcome in model.gate_outcomes().values() if outcome]
-        assert gated and set(gated) == {GateOutcome.CROSS_FITTED}
+        assert gated and set(gated) <= CROSS_FITTED_OUTCOMES
     return model
 
 
@@ -133,7 +138,10 @@ def test_qrf_refuses_an_empty_forest() -> None:
 
 @pytest.mark.parametrize("seed", [True, 1.9, -1])
 def test_categorical_classifier_refuses_the_same_seeds(seed) -> None:
-    """``SeedSequence(True)`` is ``SeedSequence(1)``: two settings, one stream."""
+    """Main drew ``seed=True`` as seed 1: two settings, one stream.
+
+    ``1.9`` and ``-1`` constructed there and failed only at fit.
+    """
     with pytest.raises((TypeError, ValueError), match="seed must be an integer"):
         CategoricalClassifier(seed=seed)
 
@@ -471,7 +479,8 @@ def test_scores_refuse_a_stratum_of_the_wrong_length() -> None:
         )
 
 
-def test_scores_still_name_an_unknown_label() -> None:
+def test_scores_name_an_unknown_label() -> None:
+    """Main refused it without naming the label."""
     with pytest.raises(ValueError, match=r"one of classes; \['c'\]"):
         categorical_scores(_PROBA, np.array(["a", "b", "c"]), _CLASSES, np.ones(3))
 
@@ -492,8 +501,9 @@ def test_the_order_of_the_classes_moves_no_calibration_score() -> None:
     """The calibration fit fixes its first class's offset, so it read the order.
 
     With constant predictions the slope is unidentified: in sorted order the
-    fit falls back to class rates, but with the first two classes swapped it
-    reported a slope of about 0.70.
+    fit falls back to class rates. Main refused the swapped order ("Every label
+    must be one of classes"); the first version of this fix scored it in the
+    order given and reported a slope of about 0.70.
     """
     proba = np.tile([0.6, 0.3, 0.1], (3, 1))
     classes = np.arange(3)
@@ -503,6 +513,40 @@ def test_the_order_of_the_classes_moves_no_calibration_score() -> None:
     swapped = categorical_scores(proba[:, order], classes, classes[order], weights)
     assert swapped == base
     assert base["calibration_outcome"] == GateOutcome.CLASS_RATES
+
+
+def test_an_unsorted_order_main_scored_now_scores_as_sorted() -> None:
+    """Main scored these classes in the order given; they now score sorted.
+
+    Main's sorted search over ``[0, 2, 1]`` happens to find label 2 in place,
+    so main scored this input in the order given. Both orders fix class 0's
+    offset, but with one observed class the calibration is ill-posed, and the
+    order of the other two columns tips where its fit stops: on arm64 main
+    reported a slope of about 0.849, and the sorted order gives about 0.875.
+    That stop point is not portable, so the test pins only that the input
+    scores exactly as its sorted columns do, which main's did not. The
+    changelog lists this as a valid-input change.
+    """
+    proba = np.array(
+        [
+            [0.28, 0.33, 0.39],
+            [0.38, 0.44, 0.18],
+            [0.36, 0.45, 0.19],
+            [0.44, 0.33, 0.23],
+            [0.44, 0.44, 0.12],
+            [0.38, 0.54, 0.08],
+            [0.47, 0.41, 0.12],
+        ]
+    )
+    classes = np.array([0, 2, 1])
+    labels = np.full(len(proba), 2)
+    weights = np.ones(len(proba))
+    scores = categorical_scores(proba, labels, classes, weights)
+    order = np.argsort(classes)
+    in_order = categorical_scores(
+        np.ascontiguousarray(proba[:, order]), labels, classes[order], weights
+    )
+    assert scores == in_order
 
 
 @st.composite
@@ -650,7 +694,10 @@ def test_the_weighted_bootstrap_refuses_rows_without_weight() -> None:
 
 
 def test_a_fit_refuses_an_empty_training_table() -> None:
-    """Main fitted the target as degenerate zero and imputed 0 for everyone."""
+    """Unweighted, main fitted the target as degenerate zero and imputed 0.
+
+    (A weighted empty fit already raised "Weights sum to zero" there.)
+    """
     with pytest.raises(ValueError, match="at least one donor row"):
         RegimeGatedQRF(n_estimators=2).fit(
             pd.DataFrame({"x": [], "y": []}), ["x"], ["y"], weights="none"
@@ -696,8 +743,18 @@ def test_predict_from_uniforms_on_an_empty_batch_is_empty() -> None:
 
 @FITTING_PROPERTY
 @given(seed=st.integers(0, 2**32), calibration=st.sampled_from(CALIBRATIONS))
+@example(seed=7, calibration=GateCalibration.CROSS_FITTED)
+@example(seed=14, calibration=GateCalibration.CROSS_FITTED)
+@example(seed=7, calibration=GateCalibration.CROSS_FITTED_BALANCED)
+@example(seed=14, calibration=GateCalibration.CROSS_FITTED_BALANCED)
 def test_an_empty_batch_consumes_no_draws(seed, calibration) -> None:
-    """The next batch draws exactly as if the empty one had never run."""
+    """The next batch draws exactly as if the empty one had never run.
+
+    The examples pin both cross-fitted calibrations, at a seed whose gates all
+    calibrate out of fold here (7) and at one where a gate falls back to the
+    class rates here (14), so the generated draws need not reach them. Both
+    outcomes are the cross-fitted gate, and both take its zero-row return.
+    """
     used, fresh = _fit_gated(seed, calibration), _fit_gated(seed, calibration)
     used.predict(EMPTY_BATCH)
     recipients = pd.DataFrame({"x": np.arange(6, dtype=float)})
@@ -826,7 +883,10 @@ def test_distances_refuse_a_label_naming_two_columns(side) -> None:
 
 
 def _main_distance_features(recipients, donors, *, rank, presence, scaled):
-    """``donor_distance_features`` as main had it at ``dc00d158``, adapted.
+    """``donor_distance_features`` as main had it, adapted.
+
+    Its source is the same at ``dc00d158``, where this copy was taken, and at
+    ``52aea147``.
 
     The arguments are renamed and the rank helper is copied in; the coordinates are
     main's arithmetic, without the guards this branch adds.

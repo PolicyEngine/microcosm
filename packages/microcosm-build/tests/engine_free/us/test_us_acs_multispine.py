@@ -88,9 +88,13 @@ def test_json_ready_omits_empty_opt_in_transfer_pattern_regimes() -> None:
     assert selected["target_regimes"] == [["fixture_target", "positive_only"]]
 
 
+# microcosm#1387: the local lane's SEMP-covered partnership rule reaches the
+# shared transfer only when asked for; off, the call is exactly as before.
+@pytest.mark.parametrize("semp_covers", [False, True])
 def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
     monkeypatch,
     tmp_path,
+    semp_covers,
 ) -> None:
     events: list[tuple[Any, ...]] = []
     # A base with no SPM independence role: the ACS spine derives none.
@@ -175,6 +179,7 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
         donor_channel="puf_support",
         seed=19,
         n_estimators=37,
+        semp_covers_partnership_income=semp_covers,
     )
 
     assert events == [
@@ -191,6 +196,7 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
                 "seed": 19,
                 "n_estimators": 37,
                 "max_targets_per_fit": 8,
+                **({"semp_covers_partnership_income": True} if semp_covers else {}),
             },
         ),
         ("pool", base, transferred_acs, 0.4),

@@ -262,7 +262,7 @@ LEGACY_STAGING_REFRESH_RECIPE = (
 #: Table 2 state tables (broad totals, AGI bands, EITC by qualifying
 #: children). Build O selected it as ``full`` with congressional-district
 #: targets switched off (``include_congressional_district_targets=False`` at
-#: populace@77e2061); commit b7922b089 removed that switch, so no mode
+#: microcosm@77e2061); commit b7922b089 removed that switch, so no mode
 #: reproduced it until this one.
 #:
 #: ``totals`` keeps only the specs whose ``target_role`` is not
@@ -2729,6 +2729,41 @@ def _require_current_calibration(identity: dict, summary: dict, *, stage: str) -
         )
 
 
+#: What a softmax solve's summary recorded before the exact cap step
+#: (microcosm#1096): how many epochs ran out of renormalize-and-clamp rounds.
+PRE_EXACT_CAP_SOFTMAX_RECEIPT = "softmax_cap_rounds_exhausted_epochs"
+#: What it records since: the largest in-loop weight over its cap. ``None``
+#: for a solve with no softmax cap step (projection, or softmax uncapped).
+SOFTMAX_CAP_RECEIPT = "softmax_in_loop_max_cap_ratio"
+
+
+def _require_exact_cap_step_summary(summary: dict, *, stage: str) -> None:
+    """Refuse a softmax calibration summary from before the exact cap step.
+
+    The old receipt counts epochs and the new one is a weight-to-cap ratio,
+    so neither can stand in for the other. A summary that holds a count under
+    the old key and lacks the new key was solved by the old step, and the
+    manifest would carry ``None`` for the new key: the value of a solve with
+    no softmax cap step, over a capped softmax solve. A projection solve from
+    before the change recorded the old key as ``None``, and an older summary
+    records neither key; both read as before.
+    """
+
+    if (
+        summary.get(PRE_EXACT_CAP_SOFTMAX_RECEIPT) is not None
+        and SOFTMAX_CAP_RECEIPT not in summary
+    ):
+        raise SystemExit(
+            f"calibration_summary.json records {PRE_EXACT_CAP_SOFTMAX_RECEIPT}="
+            f"{summary[PRE_EXACT_CAP_SOFTMAX_RECEIPT]!r} and no "
+            f"{SOFTMAX_CAP_RECEIPT}: this checkpoint's softmax solve predates "
+            "the exact cap step (microcosm#1096), and the two receipts measure "
+            "different things. Calibrate the checkpoint again before --stage "
+            f"{stage}: run --stage calibrate without --resume (--resume keeps "
+            "a completed weights_latest.npz and this summary)."
+        )
+
+
 def load_checkpoint_surface(checkpoint_dir: Path, identity: dict | None = None):
     """The lean frame, design weights, registry, roles and matrix of a checkpoint.
 
@@ -3100,10 +3135,11 @@ def do_calibrate(args) -> None:
         "effective_sample_size": round(result.effective_sample_size, 1),
         "ess_fraction": round(result.effective_sample_size / n_households, 4),
         "chi_square_distance": round(result.chi_square_distance, 6),
-        # Softmax only: epochs whose cap rounds ran out (the last epoch batch).
-        "softmax_cap_rounds_exhausted_epochs": (
+        # Softmax only: the largest in-loop weight over its cap, before the
+        # closing projection (the last epoch batch).
+        "softmax_in_loop_max_cap_ratio": (
             result.options.get("iterate_selection_receipt") or {}
-        ).get("softmax_cap_rounds_exhausted_epochs"),
+        ).get("softmax_in_loop_max_cap_ratio"),
         "realized_max_weight_ratio": round(result.realized_max_weight_ratio, 4),
         "mass_conserved_ratio": round(
             float(result.weights.sum()) / float(design_weights.sum()), 6
@@ -5381,14 +5417,15 @@ def _require_ssi_take_up_handling(
 
 
 def _require_acs_self_employment_identity(frame):
-    """Refuse a frame whose ACS self-employment leaves add to SEMP (#1380).
+    """Refuse a frame whose ACS self-employment double-counts SEMP.
 
     Staging built before the ACS transfer zeroed donor self-employment
-    components carries them on top of SEMP, and so does any checkpoint
-    calibrated from it. Materialize and calibrate check the staging frame;
-    package checks the calibrated H5 it ships, so a historical checkpoint
-    cannot reach a release through qa and finalize alone. Returns the
-    passing gate.
+    components (#1380) carries them on top of SEMP, and staging built before
+    it kept partnership_income at zero where SEMP already holds it (#1387)
+    carries that on top too; so does any checkpoint calibrated from either.
+    Materialize and calibrate check the staging frame; package checks the
+    calibrated H5 it ships, so a historical checkpoint cannot reach a
+    release through qa and finalize alone. Returns the passing gate.
     """
 
     person = frame.table("person")
@@ -5409,10 +5446,36 @@ def _require_acs_self_employment_identity(frame):
         ),
     )
     if not gate.passed:
+        double_counted = any(
+            gate.details.get(key, 0) for key in _SELF_EMPLOYMENT_DOUBLE_COUNT_DETAILS
+        )
         raise SystemExit(
-            "ACS self-employment identity failed: " + "; ".join(gate.failures)
+            "ACS self-employment identity failed: "
+            + "; ".join(gate.failures)
+            + (
+                ". Staging, or a checkpoint calibrated from staging, built before "
+                "microcosm#1380 or #1387 must be rebuilt with the current ACS base "
+                "builder."
+                if double_counted
+                else "."
+            )
         )
     return gate
+
+
+#: Gate detail counts that mean income counted twice, which staging built
+#: before microcosm#1380 or #1387 carries; other failures (a malformed role,
+#: a blank or non-numeric value) need their input fixed, not a rebuild.
+_SELF_EMPLOYMENT_DOUBLE_COUNT_DETAILS = (
+    "mismatched_rows",
+    "blank_semp_nonzero_rows",
+    "non_acs_component_rows",
+    "base_and_sstb_rows",
+    "partnership_on_semp_rows",
+    "partnership_on_spouse_rows",
+    "partnership_on_blank_semp_rows",
+    "passive_without_line_32_rows",
+)
 
 
 def do_finalize(args) -> None:
@@ -6161,6 +6224,7 @@ def do_package(args) -> dict:
     soi_mode = _require_recorded_soi_mode(materialize_rss)
     _require_full_rung(identity)
     _require_current_calibration(identity, diagnostics, stage="package")
+    _require_exact_cap_step_summary(diagnostics, stage="package")
     _require_blocking_district_ess_gate(gate_report, args)
     calibrated_h5 = Path(args.out_h5)
     if not calibrated_h5.exists():
@@ -6296,8 +6360,9 @@ def do_package(args) -> dict:
     # release records as built-with.
     spm_measurement_gate = _require_spm_measurement(artifact_frame)
     package_hours_gate = _local_hours_gate(artifact_frame, staging_summary)
-    # microcosm#1380: a checkpoint calibrated from pre-fix staging stacks
-    # donor self-employment on SEMP; grade the bytes being packaged.
+    # microcosm#1380, #1387: a checkpoint calibrated from pre-fix staging
+    # stacks donor self-employment or partnership income on SEMP; grade the
+    # bytes being packaged.
     self_employment_gate = _require_acs_self_employment_identity(artifact_frame)
     del artifact_frame
     gc.collect()
@@ -6482,7 +6547,7 @@ def do_package(args) -> dict:
                 "effective_sample_size",
                 "ess_fraction",
                 "chi_square_distance",
-                "softmax_cap_rounds_exhausted_epochs",
+                "softmax_in_loop_max_cap_ratio",
                 "realized_max_weight_ratio",
                 "mass_conserved_ratio",
             )
@@ -6820,10 +6885,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "How the mass-conserving Adam solve holds the total "
             "(microcosm.calibrate mass_parametrization). 'projection' "
             "(default) is the historical per-step uniform shift; 'softmax' "
-            "optimizes total * softmax(log_w). At the ACS release's scale "
-            "softmax's per-step cap rounds run out on most epochs, so it "
-            "optimizes past the cap until the closing projection; the summary "
-            "records the count (docs/calibration-l2-basis.md)."
+            "optimizes total * softmax(log_w), projecting exactly onto the "
+            "capped simplex after every step; the summary records the largest "
+            "in-loop weight over its cap (docs/calibration-l2-basis.md)."
         ),
     )
     parser.add_argument("--seed", type=int, default=0)

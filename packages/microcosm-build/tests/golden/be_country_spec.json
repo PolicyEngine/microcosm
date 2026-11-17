@@ -1,11 +1,12 @@
 {
   "country": "be",
-  "fingerprint": "2a8d7b012245e62d3e906ebf70eb7952bb1f581185b0ef073c39a7bf139f4030",
+  "fingerprint": "93d4d1d225d07e69cec8a316b92a70c643f752701362b674d3dbc57ee65311a4",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_nuts1_admin_aggregates",
     "commune_fiscal_income_fit",
     "target_profile_coverage",
+    "release_input_coverage",
     "demographics_vs_statbel",
     "exported_nonzero",
     "formula_owned_export",
@@ -28,16 +29,18 @@
     "staging_repo": "policyengine/populace-be-staging"
   },
   "resource_hashes": {
-    "chronicle_feed.json": "71f3967cefa12d8ad6c4b955547bfc37e33183ee839b3edf3a43e0cb72559030",
-    "country_package.json": "b698d0a0cb99deb9071451f790915f054d02970aa8a544cac6865860cf60f386",
-    "gates.json": "85c07f713168058a081b40cf94da6a33035108ba7807e04818486032fb2ad580",
+    "axiom_input_closure.json": "bc40cbd6ae199d57b7d20548b2a052deb25ad9892a715dc90effd95d15012ef7",
+    "axiom_rules_bindings.json": "7b218789d46d64a743d5817fa7e79d1ac6213e290fe9646a5a323b24de8ed8ea",
+    "chronicle_feed.json": "291d9858510ec80baac4536bf4f821f85966f57f0a72be700889bbfeed0a4f4e",
+    "country_package.json": "204c8c06934160c856d86a9d6c5305d40e9b3a85713c11c3ab031bebb27fbe89",
+    "gates.json": "9704a0c86b324d4243365a320438b47a9d7d5a6af7ec2adfa1821ecb8d611f68",
     "geography_spine.json": "090b83a4fa511e691b8f1486bc4188e4170cf9d4a1239e7418d33d5020ceca50",
-    "holdout_references.json": "c9d32204b4c6364a95fcab066cbbc8b1b99dd49ef608e72c99009f01c7d1c942",
+    "holdout_references.json": "b5e58a5eb6c4bb441a4ffe8c4f31af215acb2a9001824b3fe9bba1fe4f3a8fae",
     "precal_references.json": "321bd4bd675b80c2e3241e19346fb191b72c8a0c101080dca27bae061c3edd89",
     "quantile_surfaces.json": "15405e47850ab9f1de1b953f524df9ea605c451311f6e19a06b8dd0932df3724",
-    "reference_aging.json": "e1eb7a4e5abc6aad77b822bf91b09ad1de0a22d349ee39b63b8bb787bd036404",
+    "reference_aging.json": "80be8af382328560fbecea5149fe4778cf05216b665de8dbbf904fd20450f1e8",
     "reference_intervals.json": "5c13dc32257d9d3c9b5cbbd14b79c229bbeb7037671778fdb8b09042693bb562",
-    "reference_inventory.json": "7aeab0e8ff01755238198f266fabe66bd939427f75b77e1954a0e6e2bd085850",
+    "reference_inventory.json": "c14d4d8e7099b884e20d18f940b82d5ebf72ed951c83b5812aeb726c953a96d7",
     "reference_profiles.json": "1f7eb7f7a5bde2484b423e12835c9ef5eb8351599c29d836e35a910897ead52a",
     "release_contract.json": "916d8cba095d05ee5bc0c3d1b8e165eb1cf22867b91f0adac01533448b394730",
     "source_stages.json": "3d0a362345894dc6ea230ebed7fec7ff99a972879dc60c06001635c1b4a1ec47",
@@ -47,7 +50,7 @@
     "spec/sources.yaml": "24ea9b8c9aac32175d1c75156af5549a05bb3f155fbb23968235f3ead2cbefda",
     "spec/spine.yaml": "981be4881954d7696fbabf1bc989f619577b6e5600262f1a9c20915461808d41",
     "spec/vintages.yaml": "1a10d5aedd24cdb2fc9544c7a0d444df0b06d4b089dcb769bf0a7de9218df696",
-    "target_references.json": "38178a5015b520061542c471cec70ac34702deccb29b586f6a59045656789465"
+    "target_references.json": "126275366fb1150b189393676d655fc09723a52869d4b0a1a1c3d0dfef5f74e1"
   },
   "resources": [
     "spec/bundle.yaml",
@@ -56,6 +59,8 @@
     "spec/sources.yaml",
     "spec/spine.yaml",
     "spec/vintages.yaml",
+    "axiom_input_closure.json",
+    "axiom_rules_bindings.json",
     "chronicle_feed.json",
     "gates.json",
     "geography_spine.json",
