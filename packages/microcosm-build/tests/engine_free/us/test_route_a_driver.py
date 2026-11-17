@@ -870,6 +870,31 @@ def test_release_rejects_invalid_staging_setting(tmp_path: Path, staging: str) -
     assert "ROUTE_A_STAGING" in result.stderr.decode()
 
 
+@pytest.mark.parametrize("rule", ["block_v2", "Block_v1", "block-v1", "legacy "])
+def test_an_unknown_location_rule_is_refused(tmp_path: Path, rule: str) -> None:
+    result = run_driver_settings(tmp_path, {"LOCATION_RULE": rule}, "\n")
+    assert result.returncode == 64
+    assert "LOCATION_RULE must be legacy or block_v1" in result.stderr.decode()
+
+
+@pytest.mark.parametrize("rule", [None, "legacy", "block_v1"])
+def test_check_commit_checks_the_location_flags_only_under_block_v1(
+    tmp_path: Path, rule: str | None
+) -> None:
+    overrides = {} if rule is None else {"LOCATION_RULE": rule}
+    result = run_driver_settings(tmp_path, overrides, '\nprintf "%s" "$BASE_FLAGS"\n')
+    assert result.returncode == 0, result.stderr.decode()
+    flags = result.stdout.decode().split()
+    # The legacy list is the published run's, so an older commit stays clear.
+    for flag in ("--ledger-facts", "--assign-congressional-districts"):
+        assert flag in flags
+    location = {"--location-rule", "--location-seed"}
+    if rule == "block_v1":
+        assert location <= set(flags)
+    else:
+        assert not location & set(flags)
+
+
 @pytest.mark.parametrize(
     "extra",
     [

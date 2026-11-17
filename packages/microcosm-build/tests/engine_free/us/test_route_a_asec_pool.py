@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import dataclasses
 import hashlib
+import importlib.util
 import json
 import re
 import subprocess
@@ -125,7 +126,9 @@ def _driver_rows(tmp_path: Path) -> dict[str, list[str]]:
     return rows
 
 
-def _driver_base_argv(tmp_path: Path) -> list[str]:
+def _driver_base_argv(
+    tmp_path: Path, overrides: dict[str, str] | None = None
+) -> list[str]:
     """The base command of route_a.sh section 4, as bash expands it."""
 
     source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
@@ -143,11 +146,15 @@ def _driver_base_argv(tmp_path: Path) -> list[str]:
             f"BASE_OUT={state}/{plan_lib.PUF_SUPPORT_BASE_OUT}",
             "base_disk=26",
             "BUILD_ENV='{}'",
+            # Section 4 fills the location arguments just before the command.
+            "base_location_args",
             match.group(0),
             "",
         ]
     )
-    result = run_driver_settings(tmp_path, _driver_settings(), commands)
+    result = run_driver_settings(
+        tmp_path, {**_driver_settings(), **(overrides or {})}, commands
+    )
     assert result.returncode == 0, result.stderr.decode()
     return result.stdout.decode().rstrip("\0").split("\0")
 
@@ -291,6 +298,73 @@ def test_the_driver_s_base_command_is_the_default_pool_registration_s(
         match for value in modal for match in re.findall(r"<input:([a-z0-9_]+)>", value)
     }
     assert named == set(plan.inputs) - {SEED.input}
+
+
+#: The SOI district draw that block_v1 replaces: two flags with a value, one without.
+_LEGACY_LOCATION_FLAGS = {
+    "--ledger-facts": 1,
+    "--assign-congressional-districts": 0,
+    "--congressional-district-seed": 1,
+}
+
+
+def _without(argv: list[str], flags: dict[str, int]) -> list[str]:
+    """``argv`` without each named flag and its value count."""
+
+    kept, index = [], 0
+    while index < len(argv):
+        if argv[index] in flags:
+            index += 1 + flags[argv[index]]
+            continue
+        kept.append(argv[index])
+        index += 1
+    return kept
+
+
+def _load_builder():
+    path = ROUTE_A_TOOLS.parent / "build_us_puf_support_base.py"
+    spec = importlib.util.spec_from_file_location("build_us_puf_support_base", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_block_v1_swaps_only_the_base_s_district_draw(tmp_path: Path) -> None:
+    # The default stays the published run's command: the differential test
+    # above holds it to the legacy Modal registration flag for flag.
+    legacy = _driver_base_argv(tmp_path)
+    assert "--location-rule" not in legacy
+    block_v1 = _driver_base_argv(tmp_path, {"LOCATION_RULE": "block_v1"})
+    assert not set(_LEGACY_LOCATION_FLAGS) & set(block_v1)
+    rule = block_v1.index("--location-rule")
+    assert block_v1[rule : rule + 4] == [
+        "--location-rule",
+        "block_v1",
+        "--location-seed",
+        "0",
+    ]
+    # Everything else is the legacy command: the same inputs, pool and order,
+    # with the crosswalk the release checks and the ladder the draw samples.
+    location = {"--location-rule": 1, "--location-seed": 1}
+    assert _without(block_v1, location) == _without(legacy, _LEGACY_LOCATION_FLAGS)
+    for flag in (
+        "--congressional-district-vintage-crosswalk",
+        "--block-ladder-artifact",
+    ):
+        assert block_v1[block_v1.index(flag) + 1] == legacy[legacy.index(flag) + 1]
+
+
+def test_the_base_tool_accepts_the_driver_s_block_v1_command(tmp_path: Path) -> None:
+    builder = _load_builder()
+    argv = _driver_base_argv(tmp_path, {"LOCATION_RULE": "block_v1"})
+    assert argv[1:3] == ["-B", "tools/build_us_puf_support_base.py"]
+    # The tool's own parser runs _validate_block_v1_args; it opens no file.
+    args = builder._parse_args(argv[3:])
+    assert args.location_rule == "block_v1"
+    assert args.location_seed == 0
+    assert args.ledger_facts is None
+    assert not args.assign_congressional_districts
 
 
 def _git(repo: Path, *args: str) -> str:

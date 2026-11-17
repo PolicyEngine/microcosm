@@ -125,6 +125,18 @@ first and set what its blockers name:
   so is a floor file without an `X.Y.Z` release, because the release refuses
   both. The driver exports both settings when the settings file sets them.
   Publisher preflight starts no emitter.
+- **Location rule.** `LOCATION_RULE` sets how the base locates households
+  (microcosm#1047, #696).
+  - `legacy`, the default, keeps the published run's command: a congressional
+    district drawn from SOI return counts, then a block within it.
+  - `block_v1` draws one 2020 census block per household within its CPS ASEC
+    source geography, and takes every other geography from that block. The
+    base then drops `--ledger-facts`, `--assign-congressional-districts` and
+    `--congressional-district-seed`, and passes
+    `--location-rule block_v1 --location-seed 0`. `--resolve` also checks that
+    the base tool at the commit declares those two flags.
+  - The driver refuses any other value. `block_v1` needs a block ladder that
+    carries each block's PUMA.
 
 The example retains the historical d122 dense whole-base national/state
 settings, batch size 2000, export-mass reference and d490 tail register from the

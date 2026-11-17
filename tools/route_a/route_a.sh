@@ -48,6 +48,17 @@ LOG=$RUN_ROOT/route_a.log
 # uv sync takes the newest installed CPython unless told otherwise, and the
 # lock's torch wheels stop at cp314; a fresh worktree on 3.15 fails to sync.
 : "${UV_SYNC_PYTHON:=3.14}"
+# The base's household location rule (microcosm#1047, #696). legacy, the
+# default, is the published run's: a congressional district drawn from SOI
+# return counts, then a block within it. block_v1 draws one 2020 census block
+# per household within its CPS ASEC source geography and takes every other
+# geography, the district included, from that block. It needs a block ladder
+# that carries each block's PUMA.
+: "${LOCATION_RULE:=legacy}"
+case "$LOCATION_RULE" in
+  legacy|block_v1) ;;
+  *) echo "LOCATION_RULE must be legacy or block_v1" >&2; exit 64 ;;
+esac
 # The release reads these two from its environment. Export a settings-file
 # value so the stages see what --resolve checked.
 [ -z "${MICROCOSM_TELEMETRY_REQUIRED+set}" ] || export MICROCOSM_TELEMETRY_REQUIRED
@@ -101,6 +112,9 @@ EDU_PIN_REL=packages/microcosm-build/src/microcosm/build/us_runtime/education_as
 SPM_ROLE_REL=packages/microcosm-build/src/microcosm/build/us_runtime/spm_independence_role.py
 EMITTER_FLOOR_REL=packages/microcosm-build/src/microcosm/build/minimum_emitter_version.json
 BASE_FLAGS="--stage --checkpoint-dir --asec-h5 --asec-h5-sha256 --puf-h5 --puf-source-year-csv --acs-h5 --asec-education-source --target-year --seed --n-estimators --ledger-facts --assign-congressional-districts --congressional-district-vintage-crosswalk --congressional-district-seed --block-ladder-artifact --out"
+# block_v1 passes two more flags. Checking them only then keeps a legacy build
+# of a commit from before #1047 free of a blocker.
+[ "$LOCATION_RULE" = block_v1 ] && BASE_FLAGS="$BASE_FLAGS --location-rule --location-seed"
 RELEASE_FLAGS="--base-h5 --ledger-facts --ledger-facts-sha256 --qrf-tail-concentration-exclusions --ssi-take-up-prior-weight-basis --ssi-take-up-prior-weight-basis-sha256 --scf-summary-extract --out --release-id --checkpoint-root --seed"
 [ "$ROUTE_A_STAGING" = 0 ] && RELEASE_FLAGS="$RELEASE_FLAGS --no-staging"
 for extra in $RELEASE_EXTRA_ARGS; do
@@ -308,6 +322,23 @@ report_resolution() {  # $1 = label of the ref checked
   for x in ${INPUT_PROBLEMS[@]+"${INPUT_PROBLEMS[@]}"}; do log "  INPUT PROBLEM: $x"; done
   for x in ${COMMIT_NOTES[@]+"${COMMIT_NOTES[@]}"}; do log "  commit ($1): $x"; done
   for x in ${COMMIT_BLOCKERS[@]+"${COMMIT_BLOCKERS[@]}"}; do log "  BLOCKER ($1): $x"; done
+}
+
+# The base's location arguments for LOCATION_RULE, into BASE_LOCATION_ARGS.
+# Call it once W is set. legacy keeps the published run's flags and order.
+# block_v1 drops the SOI district draw (--ledger-facts,
+# --assign-congressional-districts and its seed), because the base refuses
+# them beside --location-rule block_v1. It keeps the vintage crosswalk, which
+# the release checks, and the block ladder, which the draw samples.
+base_location_args() {
+  if [ "$LOCATION_RULE" = block_v1 ]; then
+    BASE_LOCATION_ARGS=(--congressional-district-vintage-crosswalk "$W/$CROSSWALK_REL"
+      --location-rule block_v1 --location-seed 0 --block-ladder-artifact "$LADDER")
+  else
+    BASE_LOCATION_ARGS=(--ledger-facts "$BASE_LEDGER_FACTS"
+      --assign-congressional-districts --congressional-district-vintage-crosswalk "$W/$CROSSWALK_REL"
+      --congressional-district-seed 0 --block-ladder-artifact "$LADDER")
+  fi
 }
 
 release_command() {
@@ -593,6 +624,7 @@ if ! stage_done base; then
   mkdir -p "$BASE_CKPT"
   have_ckpt=$(( $(du -sk "$BASE_CKPT" | cut -f1) / 1048576 ))
   base_disk=$(( 20 + 50 - have_ckpt )); [ $base_disk -lt 26 ] && base_disk=26
+  base_location_args
   write_config base 100 80 "$base_disk" 21600 64800 "$W" "$BUILD_ENV" -- "$PY" -B tools/build_us_puf_support_base.py \
     --stage all --checkpoint-dir "$BASE_CKPT" \
     --asec-h5 "2025=$STORAGE/census_cps_2025.h5" --asec-h5 "2024=$STORAGE/census_cps_2024.h5" --asec-h5 "2023=$STORAGE/census_cps_2023.h5" \
@@ -601,9 +633,7 @@ if ! stage_done base; then
     --asec-education-source "2023=$EDU/asecpub24csv.zip" --asec-education-source "2024=$EDU/asecpub25csv.zip" \
     --asec-education-source "2025=$EDU/asecpub26csv.zip" \
     --target-year 2024 --seed 0 --n-estimators 32 \
-    --ledger-facts "$BASE_LEDGER_FACTS" \
-    --assign-congressional-districts --congressional-district-vintage-crosswalk "$W/$CROSSWALK_REL" \
-    --congressional-district-seed 0 --block-ladder-artifact "$LADDER" \
+    "${BASE_LOCATION_ARGS[@]}" \
     --out "$BASE_OUT"
   run_stage base 0 80 "$base_disk"
 fi
