@@ -193,7 +193,14 @@ def test_continuous_target_without_a_cap_matches_the_library() -> None:
     assert leaves.shape[-1] > 1
 
 
-@pytest.mark.parametrize("cap", [16, np.int64(16), 0.0047])
+@pytest.mark.parametrize(
+    "cap",
+    [
+        pytest.param(16, id="integer"),
+        pytest.param(np.int64(16), id="numpy-integer"),
+        pytest.param(0.0047, id="fraction"),
+    ],
+)
 def test_near_discrete_target_over_the_cap_matches_the_library(
     monkeypatch, cap
 ) -> None:
@@ -568,12 +575,12 @@ def test_in_place_fill_leaves_unwritten_pages_unmapped() -> None:
     memory. The library's ``np.array(list)`` copy writes them all (a share of
     1.0). The array, over 40 MiB, is larger than glibc's largest mmap
     threshold, so it gets fresh pages; numpy's request for transparent huge
-    pages is turned off in the child, and glibc's ``MALLOC_PERTURB_`` and
-    ``GLIBC_TUNABLES`` (which can fill allocations or request huge pages) are
-    unset. About a quarter of the pages hold entries
-    with 16 KiB pages and a sixteenth with 4 KiB pages. With pages over
-    16 KiB, or huge pages always on at any size, most pages hold an entry,
-    so the test skips.
+    pages is turned off in the child, and glibc's ``MALLOC_PERTURB_`` and its
+    ``glibc.malloc`` tunables (which can fill allocations or request huge
+    pages) are removed from its environment. About a quarter of the pages
+    hold entries with 16 KiB pages and a sixteenth with 4 KiB pages. With
+    pages over 16 KiB, or huge pages always on at any size, most pages hold
+    an entry, so the test skips.
     """
     if not hasattr(os, "sysconf"):
         pytest.skip("os.sysconf is unavailable")
@@ -591,6 +598,14 @@ def test_in_place_fill_leaves_unwritten_pages_unmapped() -> None:
         for name, value in os.environ.items()
         if name not in {"MALLOC_PERTURB_", "GLIBC_TUNABLES"}
     }
+    # Keep unrelated tunables (some aarch64 setups need static TLS ones).
+    other_tunables = [
+        tunable
+        for tunable in os.environ.get("GLIBC_TUNABLES", "").split(":")
+        if tunable and not tunable.startswith("glibc.malloc.")
+    ]
+    if other_tunables:
+        environment["GLIBC_TUNABLES"] = ":".join(other_tunables)
     completed = subprocess.run(
         [sys.executable, "-c", _RESIDENT_SHARE_CHILD],
         capture_output=True,

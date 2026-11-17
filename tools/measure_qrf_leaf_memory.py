@@ -101,6 +101,7 @@ import gc
 import hashlib
 import importlib.metadata
 import json
+import math
 import os
 import platform
 import resource
@@ -454,58 +455,95 @@ def _child_command(arguments: argparse.Namespace, implementation: str) -> list[s
     return command
 
 
-def _nullable_fields(arguments: argparse.Namespace) -> set[str]:
-    """Return the result fields that may be null for this run's options."""
-    nullable = set()
+def _null_fields(arguments: argparse.Namespace) -> set[str]:
+    """Return the result fields that must be null for this run's options.
+
+    Every other required field must hold a value.
+    """
+    null = set()
     if arguments.no_digest:
-        nullable.add("leaf_array_sha256")
+        null.add("leaf_array_sha256")
     if arguments.shape == "wage":
-        nullable.add("max_samples_leaf")  # the wage forest has no cap
+        null.add("max_samples_leaf")  # the wage forest has no cap
     else:
-        nullable.add("rows_in_widest_leaf")
-    return nullable
+        null.add("rows_in_widest_leaf")
+    return null
+
+
+def _is_number(value: object) -> bool:
+    """Whether ``value`` is a finite int or float that fits in 64 bits."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return False
+    if isinstance(value, float):
+        return math.isfinite(value)
+    return abs(value) < 2**63
 
 
 def _result_problems(
-    result: dict[str, object], arguments: argparse.Namespace
+    result: dict[str, object], arguments: argparse.Namespace, implementation: str
 ) -> list[str]:
     """Describe what makes a child's result unusable; empty if nothing does."""
-    nullable = _nullable_fields(arguments)
+    must_be_null = _null_fields(arguments)
+    present = REQUIRED_RESULT_FIELDS & set(result)
     problems = []
     missing = sorted(REQUIRED_RESULT_FIELDS - set(result))
     if missing:
         problems.append("missing " + ", ".join(missing))
-    null = sorted(
-        field
-        for field in REQUIRED_RESULT_FIELDS & set(result)
-        if result[field] is None and field not in nullable
-    )
+    null = sorted(field for field in present - must_be_null if result[field] is None)
     if null:
         problems.append("null " + ", ".join(null))
+    not_null = sorted(
+        field for field in present & must_be_null if result[field] is not None
+    )
+    if not_null:
+        problems.append("should be null for these options: " + ", ".join(not_null))
+    numeric = NUMERIC_RESULT_FIELDS | {"rows_in_widest_leaf", "max_samples_leaf"}
     not_numbers = sorted(
         field
-        for field in NUMERIC_RESULT_FIELDS & set(result)
-        if result[field] is not None
-        and (
-            isinstance(result[field], bool)
-            or not isinstance(result[field], int | float)
-        )
+        for field in present & numeric
+        if result[field] is not None and not _is_number(result[field])
     )
     if not_numbers:
-        problems.append("not a number: " + ", ".join(not_numbers))
-    shape = result.get("leaf_array_shape")
-    if "leaf_array_shape" in result and not (
-        isinstance(shape, list) and all(isinstance(size, int) for size in shape)
+        problems.append("not a finite number: " + ", ".join(not_numbers))
+    if result.get("implementation", implementation) != implementation:
+        problems.append(f"implementation is not {implementation!r}")
+    if result.get("memory_measure", "resident_set") not in {
+        "physical_footprint",
+        "resident_set",
+    }:
+        problems.append("memory_measure is not a known measure")
+    digest = result.get("leaf_array_sha256")
+    if digest is not None and not (
+        isinstance(digest, str)
+        and len(digest) == 64
+        and all(character in "0123456789abcdef" for character in digest)
     ):
-        problems.append("leaf_array_shape is not a list of integers")
+        problems.append("leaf_array_sha256 is not a SHA-256 digest")
+    shape = result.get("leaf_array_shape")
+    if shape is not None and not (
+        isinstance(shape, list)
+        and len(shape) == 4
+        and all(
+            isinstance(size, int) and not isinstance(size, bool) and size >= 0
+            for size in shape
+        )
+    ):
+        problems.append("leaf_array_shape is not four non-negative integers")
     environment = result.get("environment")
-    if "environment" in result:
+    if environment is not None:
         if not isinstance(environment, dict):
             problems.append("environment is not an object")
         else:
             lacking = sorted(REQUIRED_ENVIRONMENT_FIELDS - set(environment))
             if lacking:
                 problems.append("environment missing " + ", ".join(lacking))
+            if not isinstance(environment.get("platform", ""), str):
+                problems.append("environment platform is not text")
+            if not _is_number(environment.get("page_size_bytes", 0)):
+                problems.append("environment page_size_bytes is not a number")
+            cpu_count = environment.get("cpu_count")
+            if cpu_count is not None and not _is_number(cpu_count):
+                problems.append("environment cpu_count is not a number")
     return problems
 
 
@@ -571,7 +609,7 @@ def _run_child(
             "JSON object"
         )
         return None, failure
-    problems = _result_problems(result, arguments)
+    problems = _result_problems(result, arguments, implementation)
     if problems:
         failure["message"] = (
             f"the {implementation} measurement's result is unusable: "
