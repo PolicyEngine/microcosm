@@ -30,8 +30,10 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # attested bytes.
     # The fit input checks from the microimpute bug-parity audit move the fit
     # kernels' bytes too.
+    # microcosm#1641's docstring and comment wording in solve and ssi_take_up
+    # moves it again.
     assert first.spec_sha256 == (
-        "d4fc68aa1ceee27700b15e89f668b3368d361ce9f9adbc5e506aed00ee9b27bc"
+        "cb9742d5089eddb8783ee1cb890206b33a35efe5ff572656dbd58a1b95ea1e28"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

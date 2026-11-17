@@ -195,7 +195,7 @@ solver:
     l1_lambda: 0.0
     l2_anchor_weights: null
 refit_contracts:
-  default_sparse:
+  l0_refit:
     support: selection_weight_above_prune_relative_atol
     subset_source: selection_stage_frame
     starting_weights: selection_stage_calibrated_weights
@@ -222,12 +222,12 @@ refit_contracts:
       source: run_request
       default: null
 release_modes:
-  default_sparse_l0_refit:
+  l0_refit:
     kernel: kernel:calibrate_l0_refit
     solver_ref: solver
     selection_contract_ref: solver.l0_contract
-    refit_contract_ref: refit_contracts.default_sparse
-  dense_diagnostic:
+    refit_contract_ref: refit_contracts.l0_refit
+  dense_no_l0:
     kernel: kernel:calibrate
     solver_ref: solver
     l0_mode: none

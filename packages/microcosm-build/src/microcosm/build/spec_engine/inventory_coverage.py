@@ -399,8 +399,11 @@ EXPECTED_HASHES = {
     # move both again; no valid input's draw changes. microcosm#1617's refusal
     # of a weightless class in the balanced gate's weights moves both again;
     # no fit reached it, and no draw changes.
-    "seed_map": "6474719c2fbd765114d104118fc9f265df4694c25fab6ddde6cf5974d069b522",
-    "seed_protocol": "d3a0baf888c2ac5a9d10980ec725f6cb4d1ca7de5f5e6624297858341c1a2035",
+    # microcosm#1641 moves both again: it rewords docstrings and a comment in
+    # solve and the delivery gate's docstring in ssi_take_up, which now names
+    # the builder's arms by flag; no draw, RNG rule, QRF target or solve changes.
+    "seed_map": "d756dc67535c04788e605bedb4cd6721cf715e5f5ce4be73d9b27420a61b3d50",
+    "seed_protocol": "2c57cbfb9dd0f132f9b5751eb8bc303f4b7e37430cd5e0b155aac0b0b8eaa42e",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

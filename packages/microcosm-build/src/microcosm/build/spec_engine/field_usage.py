@@ -362,7 +362,7 @@ _PINS: dict[str, tuple[int, str]] = {
     ),
     "calibration": (
         320,
-        "49a153b065b59950d910f9e2bcfcd7005e5babaecf9b41b1cc9704a7f20dcc5b",
+        "5336f77a10b2f0aa03f6bc221f3c5b8390adccaeed8ee3e7251292606a83a7fd",
     ),
     "catalog_columns": (
         1_593,
