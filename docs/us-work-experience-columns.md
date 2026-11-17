@@ -123,6 +123,20 @@ rows and binds the result to its hash, so an older green staging summary
 cannot bypass this requirement. The assembly-first nullable pool remains
 an intermediate input; its fiscal release applies that carry to every row.
 
+The one reviewed exception is the County Files proof of concept (#922,
+plan #1647). Its donor-patch tool, `tools/patch_us_acs_donor_columns.py`,
+restores the three columns on a copy of 766b7c7's donor, valued as the
+restoration and carry value them. Each donor person's `source_year` is its
+ASEC income year, so its member is the survey-year `source_year + 1` file,
+read through the pinned reader. `WEIND` and `WEMIND` join by exact
+`(source_year, PERIDNUM)`, many donor rows (an ASEC row and its PUF-support
+clones) to one member row. The tool refuses a donor person with no member row
+or more than one, and any row whose `source_household_id` (the Census
+`PH_SEQ`), `P_SEQ`, `A_LINENO`, `A_AGE`, `WKSWORK`, `POCCU2`, `PRDTRACE` or
+`PRDTHSP` differs from the member's. The columns are the output of
+`derive_us_org_occupation_inputs`, whose other outputs must equal the donor's
+own. Raw `WEIND`/`WEMIND` are not written.
+
 The 2026-10-23 branch refresh preserves main's current stage and graph
 structure, including its six ESI source fields alongside the industry
 restoration. Main's independent refusal of mixed ACS inputs with null ESI
