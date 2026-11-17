@@ -1501,7 +1501,8 @@ def build_calibration_contract() -> dict[str, object]:
         # mode shares the solver block. Its kernel and l0_contract.default_mode
         # are set by hand to the l0_refit arm's, and
         # _fiscal_release_cli_defaults reads its other defaults from a builder
-        # parse with neither flag set.
+        # parse with neither flag set. solver.l0.mode keeps the approved binding
+        # literal exact_k_projection, which neither of those sets.
         "release_modes": {
             "l0_refit": {
                 "kernel": _kernel_ref(solve.calibrate_l0_refit),

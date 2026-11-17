@@ -1643,7 +1643,7 @@ def us_ssi_take_up_delivery_gate(
     ``enforcement_fences`` fences normally-enforced bands for one builder
     arm with a documented adjudication (the under-18 pattern extended).
     The US builder passes them on its ``--dense-default-dataset`` arm
-    only: on that arm's two observed full-pool runs, microcosm#508
+    only: on that arm's two observed full-pool frames, microcosm#508
     delivered-weight recomputes have not landed the adult pair in band —
     P2's clean one-retry record, and P3's delivered-basis chain that
     ``ssi_take_up_prior_basis_from_artifact`` now refuses outright

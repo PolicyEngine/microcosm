@@ -1476,10 +1476,10 @@ def test_calibration_result_reports_weight_concentration(feasible_frame) -> None
 
 
 def test_refit_l0_selection_threads_l2_lambda_to_refit() -> None:
-    """The refit stage — the weights that ship — receives its own L2 penalty.
+    """The refit stage, which sets the returned weights, receives its own L2 penalty.
 
     The refit previously hardcoded ``l2_lambda=0.0``, so a concentration
-    penalty could shape support selection but never the published weights.
+    penalty could shape support selection but never the returned weights.
     The regression contract is *threading*, pinned via the recorded solver
     options: exactly what the hardcoded zero would have violated.
 

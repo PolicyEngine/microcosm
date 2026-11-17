@@ -400,8 +400,8 @@ EXPECTED_HASHES = {
     # microcosm#1641 moves both again: it rewords docstrings in solve and
     # ssi_take_up, and ssi_take_up's now names the builder's arms by flag; no
     # draw, RNG rule, QRF target or solve changes.
-    "seed_map": "b394824bc6889d7be249f40eace2bc688ffbbd3b35ac3e5956a62584739e5eea",
-    "seed_protocol": "1f0c278174a4944d4d8a29fa3dda4b55f89ba86c8e0b70d19d253c64f828b144",
+    "seed_map": "66464f34f733e698385e7930074aea50e3d352181d0e9731ef0a699fec2c85ed",
+    "seed_protocol": "be8c5cd773e3be74e4c9d87f18bd5a42a3307f20b53985c2489dbc13937e796e",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

@@ -1641,7 +1641,7 @@ def _optimize_proximal(
 
     final = (torch.clamp(ratio, min=0.0) * w0_t).detach().numpy().astype(np.float64)
     # Make sub-threshold residuals exact zeros so the reported n_nonzero and the
-    # shipped dataset agree on which records survived.
+    # returned weights agree on which records survived.
     final[final <= prune_atol] = 0.0
     if max_weight_ratio is not None:
         final = np.minimum(final, max_weight_ratio * w0)
