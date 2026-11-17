@@ -231,6 +231,13 @@ def _bool_values(series: pd.Series, *, what: str) -> np.ndarray:
     values = series.to_numpy(dtype=object)
     if all(isinstance(value, bool | np.bool_) for value in values):
         return values.astype(bool)
+    # Text refuses, "0" and "1" included: the bake-off's boolean cast reads
+    # any nonempty text as true, so a numeric reading would disagree with it.
+    text = next((value for value in values if isinstance(value, str | bytes)), None)
+    if text is not None:
+        raise ValueError(
+            f"{what} must hold booleans (or 0/1), not text such as {text!r}."
+        )
     numeric = pd.to_numeric(series, errors="coerce")
     if numeric.notna().all() and numeric.isin([0, 1]).all():
         return numeric.to_numpy() == 1

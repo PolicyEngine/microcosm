@@ -1603,6 +1603,38 @@ def test_spm_zero_adult_refuses_what_the_bakeoff_would_misread(breakage) -> None
 
 
 @pytest.mark.parametrize(
+    "column",
+    ["is_spm_independent_minor_role", "is_household_head", "is_household_spouse"],
+)
+@pytest.mark.parametrize("text", ["0", "1"])
+@pytest.mark.parametrize("layout", ["one_text_value", "string_dtype"])
+def test_spm_zero_adult_refuses_numeric_text_flags(column, text, layout) -> None:
+    # A numeric reading of "0" would call the 16-year-old a minor, while the
+    # bake-off's astype(bool) reads any nonempty text as true.
+    person = pd.DataFrame(
+        {
+            "person_household_id": [1, 1, 2],
+            "person_spm_unit_id": [10, 10, 20],
+            "age": [40.0, 10.0, 16.0],
+            "is_household_head": [True, False, False],
+            "is_household_spouse": [False, False, False],
+        }
+    )
+    household = pd.DataFrame({"household_id": [1, 2]})
+    if column == "is_spm_independent_minor_role":
+        person[column] = [True, False, False]
+    assert spm_zero_adult(person, household).tolist() == [False, True]
+    if layout == "one_text_value":
+        values = person[column].astype(object)
+        values.iloc[2] = text
+    else:
+        values = pd.Series(["1", "0", text], dtype="string")
+    person[column] = values
+    with pytest.raises(ValueError, match=f"person.{column} must hold booleans"):
+        spm_zero_adult(person, household)
+
+
+@pytest.mark.parametrize(
     ("table", "column", "refusal"),
     [
         ("household", "household_id", "household table has no household_id"),
