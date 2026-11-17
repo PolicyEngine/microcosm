@@ -407,7 +407,7 @@ def test_a_spine_definition_digest_is_recomputed_from_its_supports():
     where the conditioned supports are at hand the digest is recomputed from
     them (microcosm#931). The block the toy supports compose, registered in
     place of sources.yaml's, passes. A zero digest, which the format check
-    passes, and the digest of the definition at another seed fail, naming
+    passes, and the SHA-256 naming the definition at another seed fail, naming
     the field and no digest. Supports off the register are named instead,
     and a digest that is not one is left to the format check."""
     import hashlib
@@ -426,7 +426,7 @@ def test_a_spine_definition_digest_is_recomputed_from_its_supports():
     spec = _registered(block["support_pins"])
     assert uk_spine_definition_failures(block, payloads, spec=spec) == ()
     recomputed = (
-        "definition_sha256 is not the digest of the definition the registered "
+        "definition_sha256 does not name the definition the registered "
         "conditioned supports compose at the declared seed",
     )
     zero = {**block, "definition_sha256": "0" * 64}

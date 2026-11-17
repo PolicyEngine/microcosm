@@ -1199,9 +1199,9 @@ def _bound_spine_release_supports(
     """The conditioned supports a release candidate on a bound spine is held
     to, by system, or ``None`` for any other build (microcosm#931).
 
-    A bound spine's sidecar records the digest of the definition its areas
-    were drawn under, which the build recomputes from the conditioned
-    supports (``country_adapter.uk_spine_definition_failures``). So a release
+    A bound spine's sidecar names the definition its areas were drawn under
+    by its SHA-256, which the build recomputes from the conditioned supports
+    (``country_adapter.uk_spine_definition_failures``). So a release
     candidate on ``--input-h5`` requires the three ``--spine-support-*``
     flags (``spine_build.SPINE_SUPPORT_FLAGS``), each a file sources.yaml's
     conditioned register holds
@@ -1273,7 +1273,7 @@ def _require_release_candidate_spine(
     ``sidecar``'s ``resource_pins`` and ``stage_artifact_pins`` must be the
     package's for the stages it ran
     (:func:`~microcosm.build.uk_runtime.spine_build.uk_spine_package_pin_failures`),
-    and its block's ``definition_sha256`` the digest of the definition the
+    and its block's ``definition_sha256`` must name the definition the
     conditioned ``supports`` compose
     (:func:`~microcosm.build.uk_runtime.country_adapter.uk_spine_definition_failures`).
     A spine request composes both from the package and its supports here, so

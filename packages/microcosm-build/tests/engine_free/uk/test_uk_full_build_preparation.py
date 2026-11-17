@@ -648,8 +648,8 @@ def _all_edits(sidecar_path) -> None:
 #: What a release candidate's refusal names for each edit of a bound spine
 #: built from this package (microcosm#931).
 _ZERO_DIGEST = (
-    "its geography binding's definition_sha256 is not the digest of the "
-    "definition the registered conditioned supports compose at the declared seed"
+    "its geography binding's definition_sha256 does not name the definition "
+    "the registered conditioned supports compose at the declared seed"
 )
 _OLD_KNOTS = (
     "its sidecar's resource_pins.high_value_home_value_knots.json is not the "
