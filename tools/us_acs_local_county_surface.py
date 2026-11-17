@@ -33,6 +33,12 @@ RELIABILITY_FILENAME = "county_reliability.json"
 RELIABILITY_CSV_FILENAME = "county_reliability.csv"
 SUPPORT_FILENAME = "county_support.json"
 SURFACE_FILENAME = "county_surface.json"
+#: Where --county-drop-empty-soi-rows records each dropped SOI row: the
+#: county_surface.json receipt, the run identity, and the reliability report's
+#: top level, county cells and CSV column (microcosm#922).
+ZERO_MEASURE_SOI_ROWS_DROPPED = "zero_measure_soi_rows_dropped"
+#: The fields of a dropped row that the run identity keeps.
+_DROPPED_ROW_IDENTITY_FIELDS = ("target", "county_fips", "cell_members", "concept")
 #: Materialize-time validation inputs (microcosm#922): the public county
 #: design and the household measures it is scored on. Neither is a target:
 #: they never enter the registry, roles, matrix or loss.
@@ -1921,7 +1927,7 @@ def reliability_report(
 
 
 #: Columns of the flat per-county reliability CSV, in order.
-def reliability_csv_columns():
+def reliability_csv_columns(*, zero_measure_soi_rows=False):
     columns = [
         "county_fips",
         "state_fips",
@@ -1947,6 +1953,10 @@ def reliability_csv_columns():
         "median_household_income_public",
         "median_household_income_estimate",
     ]
+    # Only a --county-drop-empty-soi-rows run has this column, so every other
+    # run's CSV keeps its bytes.
+    if zero_measure_soi_rows:
+        columns.append(ZERO_MEASURE_SOI_ROWS_DROPPED)
     return columns
 
 
@@ -1956,9 +1966,12 @@ def reliability_csv(report):
     import io
 
     provisional = bool(report.get("grade_rule", {}).get("provisional", True))
+    dropped = ZERO_MEASURE_SOI_ROWS_DROPPED in report
     stream = io.StringIO()
     writer = csv.DictWriter(
-        stream, fieldnames=reliability_csv_columns(), lineterminator="\n"
+        stream,
+        fieldnames=reliability_csv_columns(zero_measure_soi_rows=dropped),
+        lineterminator="\n",
     )
     writer.writeheader()
 
@@ -2003,6 +2016,10 @@ def reliability_csv(report):
             entry = families.get(name) or {}
             row[f"{name}_abs_rel_error"] = entry.get("abs_rel_error")
             row[f"{name}_pro_rata_abs_rel_error"] = entry.get("pro_rata_abs_rel_error")
+        if dropped:
+            row[ZERO_MEASURE_SOI_ROWS_DROPPED] = ";".join(
+                cell.get(ZERO_MEASURE_SOI_ROWS_DROPPED) or []
+            )
         writer.writerow({key: cell_value(value) for key, value in row.items()})
     return stream.getvalue()
 
@@ -2446,7 +2463,8 @@ def add_arguments(parser):
         "--county-drop-empty-soi-rows",
         action="store_true",
         help=(
-            "Drop, with a receipt in county_surface.json and the run identity, "
+            "Drop, with a receipt in county_surface.json, the run identity and "
+            "the county reliability report (its cells and CSV), "
             "a county IRS SOI row that is empty although the county has "
             "households: every household's measure is 0 (for example AGI), "
             "and the state row stores no zero. Without the flag such a row "
@@ -2769,7 +2787,8 @@ def attach_surface(surface, materialized, frame, populations, args):
         dropped = zero_measure_soi_rows(
             county.specs, households, empty, county_column=column
         )
-        receipt["zero_measure_soi_rows_dropped"] = dropped
+        receipt[ZERO_MEASURE_SOI_ROWS_DROPPED] = dropped
+        args.zero_measure_soi_rows_dropped = dropped
         names = {row["target"] for row in dropped}
         refused = [name for name in empty if name not in names]
     (args.checkpoint_dir / SURFACE_FILENAME).write_text(json.dumps(receipt, indent=2))
@@ -2835,6 +2854,12 @@ def run_metadata(args, county_holdout):
     # Recorded only when set, so every other run identity keeps its bytes.
     if getattr(args, "county_drop_empty_soi_rows", False):
         metadata["county_drop_empty_soi_rows"] = True
+        # Each dropped row's county cell, for the reliability report: the
+        # calibrate stage grades those counties without the row.
+        metadata[ZERO_MEASURE_SOI_ROWS_DROPPED] = [
+            {field: row[field] for field in _DROPPED_ROW_IDENTITY_FIELDS}
+            for row in getattr(args, "zero_measure_soi_rows_dropped", [])
+        ]
     # Only a run that read county facts (or ran the county support step)
     # records them, so a no-county run identity keeps its pre-county bytes.
     for key, attribute in (
@@ -3011,7 +3036,40 @@ def _bound_report(summary, identity):
     report["unsupported_targets"] = identity.get("county_targets_dropped", [])
     if identity.get("county_support"):
         report["minimum_support"] = identity["county_support"]
+    if identity.get("county_drop_empty_soi_rows"):
+        _mark_dropped_soi_rows(report, identity)
     return report
+
+
+def _mark_dropped_soi_rows(report, identity):
+    """Name each SOI row --county-drop-empty-soi-rows dropped in its cells.
+
+    Calibration grades such a county without the row, so its cell and the CSV
+    say which rows it lacks; a combined cell's row marks every member county.
+    Every cell gets the list, empty when no row of its own was dropped.
+    """
+    rows = identity.get(ZERO_MEASURE_SOI_ROWS_DROPPED)
+    if rows is None:
+        if identity.get("county_targets_dropped"):
+            raise SystemExit(
+                "The run identity records --county-drop-empty-soi-rows and "
+                "dropped county targets, but not the dropped rows' county "
+                "cells (materialized by older code); re-run --stage "
+                "materialize with this code."
+            )
+        rows = []
+    cells = report["counties"]
+    for cell in cells.values():
+        cell[ZERO_MEASURE_SOI_ROWS_DROPPED] = []
+    for row in rows:
+        for member in row["cell_members"]:
+            if member not in cells:
+                raise SystemExit(
+                    f"Dropped SOI row {row['target']} covers county {member}, "
+                    "which the county reliability report does not grade."
+                )
+            cells[member][ZERO_MEASURE_SOI_ROWS_DROPPED].append(row["target"])
+    report[ZERO_MEASURE_SOI_ROWS_DROPPED] = json.loads(json.dumps(rows))
 
 
 def feed_path(feed):
