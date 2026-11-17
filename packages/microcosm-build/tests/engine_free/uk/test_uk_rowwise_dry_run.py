@@ -509,10 +509,10 @@ def test_driver_dry_run_rejects_broken_links(monkeypatch, tmp_path) -> None:
     )
     with pytest.raises(ValueError, match="person_household_id") as caught:
         builder.main()
-    # The plan refuses as the build does: by count, naming no id (microcosm#931).
+    # The plan refuses as the build does: by its condition, with no count and
+    # no id (microcosm#931).
     assert str(caught.value) == (
-        "person.person_household_id names a household absent from household on "
-        "1 person row(s)."
+        "person.person_household_id names a household absent from household."
     )
 
 
@@ -523,19 +523,18 @@ def test_driver_dry_run_rejects_broken_links(monkeypatch, tmp_path) -> None:
             "household",
             "household_id",
             2,
-            "household.household_id must be unique; 1 row(s) repeat an earlier "
+            "household.household_id must be unique; a row repeats an earlier "
             "row's value.",
         ),
         (
             "person",
             "person_benunit_id",
             848_484,
-            "person.person_benunit_id names a benunit absent from benunit on 1 "
-            "person row(s).",
+            "person.person_benunit_id names a benunit absent from benunit.",
         ),
     ],
 )
-def test_driver_dry_run_input_refusals_count_rows_and_name_no_id(
+def test_driver_dry_run_input_refusals_name_no_count_and_no_id(
     monkeypatch, tmp_path, table, column, value, refusal
 ) -> None:
     pytest.importorskip("tables")

@@ -25,11 +25,11 @@ So clone 0's key is the key the same rule gives the base household, clone
 ``k``'s the key it gives that household's clone ``k``, and growing K never
 changes an existing household's key.
 
-Refusals give counts, columns, dtypes and declared constants only, never a
-key, an id or a year of a row. The evidence gives the distinct source
-households rounded through ``receipt_counts`` (a household's clones counted
-once), that the keys are unique, the source and the vintages; no key is ever
-printed.
+Refusals name their condition, the columns, dtypes and declared constants
+only, never a count of rows, a key, an id or a year of a row. The evidence
+gives the distinct source households rounded through ``receipt_counts`` (a
+household's clones counted once), that the keys are unique, the source and the
+vintages; no key is ever printed.
 
 The spine's ``geographic_identity`` stage runs this step, right after
 ``geographic_expand``. Its declared operation, ``key_households_by_clone_path``,
@@ -230,12 +230,11 @@ def _vintages(years: np.ndarray, release: UKFRSRelease | None) -> list[str]:
     """Each household's FRS vintage, refusing years the release pins none for."""
 
     by_year = frs_vintages_by_source_year(release)
-    unmapped = int((~np.isin(years, np.fromiter(by_year, np.int64))).sum())
-    if unmapped:
+    if (~np.isin(years, np.fromiter(by_year, np.int64))).any():
         raise ValueError(
-            f"{unmapped} household(s) carry a {SOURCE_YEAR_COLUMN} that "
-            "frs_release.json pins no FRS vintage for; it pins the source "
-            f"year(s) {sorted(by_year)} (microcosm#931)."
+            f"Households carry a {SOURCE_YEAR_COLUMN} that frs_release.json pins "
+            f"no FRS vintage for; it pins the source year(s) {sorted(by_year)} "
+            "(microcosm#931)."
         )
     return [by_year[year] for year in years.tolist()]
 
@@ -252,7 +251,7 @@ def key_uk_households_by_clone_path(
     clone index. Rows, ids, weights, the mass log and the metadata are the
     frame's own.
 
-    Refused, by count or by name: a frame that already carries the key, or
+    Refused, by name: a frame that already carries the key, or
     lacks the clone index or an int64 ``source_household_id`` or
     ``source_year``; malformed lineage, through the shared reader; a source
     year the release pins no vintage for; and keys that are not unique.
@@ -282,11 +281,10 @@ def key_uk_households_by_clone_path(
         )
         for source, vintage, path in zip(sources.tolist(), vintages, paths, strict=True)
     ]
-    repeated = len(keys) - len(set(keys))
-    if repeated:
+    if len(set(keys)) != len(keys):
         raise ValueError(
-            f"{repeated} household(s) repeat an earlier household's geography key; "
-            "every household needs its own source and clone path (microcosm#931)."
+            "Households repeat an earlier household's geography key; every "
+            "household needs its own source and clone path (microcosm#931)."
         )
     keyed = household.copy()
     keyed[GEOGRAPHY_HOUSEHOLD_KEY_COLUMN] = pd.Series(

@@ -807,9 +807,9 @@ def test_spi_fill_rejects_missing_source_ids() -> None:
             entity="person",
             columns=["employment_income"],
         )
-    # Person 2002's copy names a source the donor lacks; the refusal counts
-    # the copy rows and names no id (microcosm#931).
-    assert str(caught.value).endswith("1 channel row(s) name a source it lacks.")
+    # Person 2002's copy names a source the donor lacks; the refusal names
+    # the condition, with no count and no id (microcosm#931).
+    assert str(caught.value).endswith("channel rows name a source it lacks.")
     assert "2002" not in str(caught.value)
 
     repeated = pd.concat([donor, donor.iloc[[0]]], ignore_index=True)
@@ -821,13 +821,14 @@ def test_spi_fill_rejects_missing_source_ids() -> None:
             columns=["employment_income"],
         )
     assert str(caught.value) == (
-        "donor.person_id must be unique; 1 row(s) repeat an earlier row's id."
+        "donor.person_id must be unique; a row repeats an earlier row's id."
     )
 
 
-def test_spi_support_input_refusals_count_rows_and_name_no_id() -> None:
-    """The support stage's uniqueness, link and selection refusals print counts
-    (microcosm#931); every id here is synthetic."""
+def test_spi_support_input_refusals_name_no_count_and_no_id() -> None:
+    """The support stage's uniqueness, link and selection refusals name their
+    condition, with no count and no id (microcosm#931); every id here is
+    synthetic."""
 
     person = person_frame()
     person.loc[3, "person_household_id"] = 777_777
@@ -838,7 +839,9 @@ def test_spi_support_input_refusals_count_rows_and_name_no_id() -> None:
             household=household_frame(),
             expected_spi_households=None,
         )
-    assert "on 1 person row(s)" in str(caught.value)
+    assert str(caught.value) == (
+        "person.person_household_id names a household absent from household."
+    )
     assert "777777" not in str(caught.value)
 
     household = household_frame()
@@ -851,7 +854,7 @@ def test_spi_support_input_refusals_count_rows_and_name_no_id() -> None:
             expected_spi_households=None,
         )
     assert str(caught.value) == (
-        "household.household_id must be unique; 1 row(s) repeat an earlier row's value."
+        "household.household_id must be unique; a row repeats an earlier row's value."
     )
 
     with pytest.raises(ValueError, match="absent from household") as caught:
@@ -861,7 +864,9 @@ def test_spi_support_input_refusals_count_rows_and_name_no_id() -> None:
             household=household_frame(),
             selected_household_ids=(1, 888_888),
         )
-    assert "contains 1 value(s)" in str(caught.value)
+    assert str(caught.value) == (
+        "selected_household_ids contains values absent from household."
+    )
     assert "888888" not in str(caught.value)
 
 
@@ -1439,7 +1444,7 @@ def test_the_share_counts_distinct_sources_and_refuses_an_unsourced_row() -> Non
             expected_spi_households=2,
         )
     assert str(caught.value) == (
-        "1 household row(s) carry no source_household_id; the SPI share counts "
+        "Household rows carry no source_household_id; the SPI share counts "
         "distinct source households."
     )
 
@@ -1577,19 +1582,17 @@ def test_an_empty_clone_stratum_is_refused_by_count() -> None:
         ),
         (
             pd.array([0, None, 1, 0, 1, 0, 1, 0], dtype="Int64"),
-            "1 household row(s) carry no 'household_clone_index'; the SPI prior "
+            "Household rows carry no 'household_clone_index'; the SPI prior "
             "allocation stratifies each geographic clone.",
         ),
         (
             np.asarray([0, -1, 1, -2, 0, 1, 0, 1], dtype="int64"),
-            "2 household row(s) carry a negative 'household_clone_index'; the SPI "
+            "Household rows carry a negative 'household_clone_index'; the SPI "
             "prior allocation stratifies each geographic clone.",
         ),
     ],
 )
-def test_the_clone_stratum_refuses_a_malformed_index_by_count(
-    values, message: str
-) -> None:
+def test_the_clone_stratum_refuses_a_malformed_index(values, message: str) -> None:
     person, benunit, household = _share_frames(8)
     with pytest.raises(ValueError) as caught:
         build_uk_spi_support_channel(

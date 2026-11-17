@@ -216,10 +216,10 @@ def test_validate_uk_rowwise_dataset_tables_rejects_broken_household_link() -> N
 
     with pytest.raises(ValueError, match="person_household_id") as caught:
         validate_uk_rowwise_dataset_tables(person, result.benunit, result.household)
-    # The refusals count rows and name no id (microcosm#931).
+    # The refusals name their condition, with no count and no id
+    # (microcosm#931).
     assert str(caught.value) == (
-        "person.person_household_id names a household absent from household on "
-        "1 person row(s)."
+        "person.person_household_id names a household absent from household."
     )
     person = result.person.copy()
     person.loc[0, "person_benunit_id"] = 987_654
@@ -231,7 +231,7 @@ def test_validate_uk_rowwise_dataset_tables_rejects_broken_household_link() -> N
     with pytest.raises(ValueError, match="must be unique") as caught:
         validate_uk_rowwise_dataset_tables(result.person, result.benunit, household)
     assert str(caught.value) == (
-        "household.household_id must be unique; 1 row(s) repeat an earlier row's value."
+        "household.household_id must be unique; a row repeats an earlier row's value."
     )
 
 

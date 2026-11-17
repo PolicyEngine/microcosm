@@ -367,29 +367,27 @@ def _assert_no_key_or_id(message: str, frame: Frame) -> None:
             assert str(household_id) not in message
 
 
-def test_a_year_the_release_pins_no_vintage_for_is_refused_by_count() -> None:
+def test_a_year_the_release_pins_no_vintage_for_is_refused() -> None:
     other = _expanded(2, time_period=str(_UNPINNED_EARLIER))
     with pytest.raises(
-        ValueError, match="^18 household\\(s\\) carry a source_year that frs_release"
+        ValueError, match="^Households carry a source_year that frs_release"
     ):
         key_uk_households_by_clone_path(other)
     expanded = _expanded(3)
     household = expanded.table("household").copy()
     household.loc[household.index[[1, 4, 7, 20]], SOURCE_YEAR_COLUMN] = _UNPINNED_LATER
-    with pytest.raises(
-        ValueError, match="^4 household\\(s\\) carry a source_year"
-    ) as error:
+    with pytest.raises(ValueError, match="^Households carry a source_year") as error:
         key_uk_households_by_clone_path(_with_household(expanded, household))
     _assert_no_key_or_id(str(error.value), expanded)
 
 
-def test_repeated_keys_are_refused_by_count() -> None:
+def test_repeated_keys_are_refused() -> None:
     expanded = _expanded(2)
     household = expanded.table("household").copy()
     # Clone 1 loses its clone index: its keys repeat clone 0's.
     household[_CLONE] = np.zeros(len(household), dtype=np.int64)
     with pytest.raises(
-        ValueError, match="^9 household\\(s\\) repeat an earlier household's geography"
+        ValueError, match="^Households repeat an earlier household's geography"
     ) as error:
         key_uk_households_by_clone_path(_with_household(expanded, household))
     _assert_no_key_or_id(str(error.value), expanded)
