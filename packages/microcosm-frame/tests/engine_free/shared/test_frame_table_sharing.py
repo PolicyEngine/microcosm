@@ -7,10 +7,11 @@ when pandas copy-on-write is on, so a frame built by ``replace_tables`` or
 frame. Copy-on-write keeps a write made through pandas on one frame from
 reaching the other. When copy-on-write is off (the pandas 2.x default), a
 shallow copy shares data even for ordinary pandas writes, so ``_adopt``
-deep-copies instead. To take that path, the ``copy_on_write_off`` fixture
-turns copy-on-write off under pandas 2.x and, under pandas 3, where it is
-always on, replaces the check ``_adopt`` makes. Every other test runs with
-copy-on-write on.
+deep-copies instead. Tests take that path through the ``copy_on_write_off``
+fixture, which turns copy-on-write off under pandas 2.x and, under pandas 3,
+where it is always on, replaces the check ``_adopt`` makes, or by replacing
+the check themselves (the parametrized ``cow_off`` cases). Every other test
+runs with copy-on-write on.
 """
 
 import importlib
@@ -107,7 +108,8 @@ def source_frame() -> Frame:
     )
 
 
-#: pandas 3 removed the copy-on-write switch along with this function.
+#: pandas 3 removed this function; its copy-on-write option is deprecated
+#: there and has no effect.
 _PANDAS_3 = not hasattr(pandas_config, "using_copy_on_write")
 
 
@@ -566,8 +568,8 @@ class TestCopyOnWriteCheck:
     """``_pandas_copy_on_write`` on each pandas it can run under.
 
     pandas 2.x provides ``pandas._config.using_copy_on_write``; pandas 3
-    removed it. The tests add or remove that function and replace the
-    version and the option reader to stand for each case.
+    removed it. The tests replace or remove that function, and replace the
+    version and the option reader, to stand for each case.
     """
 
     @staticmethod
