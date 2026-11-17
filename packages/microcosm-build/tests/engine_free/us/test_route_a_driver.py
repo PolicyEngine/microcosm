@@ -163,10 +163,10 @@ def test_overridden_feed_pin_still_verifies_digest_and_size(
         },
         """
 # Exercise the driver's registered release row with real tiny bytes; no
-# production input or git repository is read. Adapt its BSD stat call for CI.
+# production input or git repository is read. The driver's own size helper
+# runs, so this also proves it on the CI runner's (GNU) stat.
 registered_rows=$(input_rows)
 input_rows() { printf '%s\\n' "$registered_rows" | awk -F '|' '$1 == "release_ledger_facts"'; }
-stat() { "$PYTHON" -c 'import os,sys; print(os.stat(sys.argv[1]).st_size)' "$3"; }
 verify_inputs
 printf '%s\\n' "${#INPUT_PROBLEMS[@]}"
 """,
@@ -232,10 +232,9 @@ def test_block_v1_requires_the_ladder_s_puma_array(
         },
         """
 # Only the ladder row, with its true digest and size, so any problem is the
-# PUMA check's. Adapt the driver's BSD stat call for CI.
+# PUMA check's.
 registered_rows=$(input_rows)
 input_rows() { printf '%s\\n' "$registered_rows" | awk -F '|' '$1 == "block_ladder_npz"'; }
-stat() { "$PYTHON" -c 'import os,sys; print(os.stat(sys.argv[1]).st_size)' "$3"; }
 verify_inputs
 printf '%s\\n' ${INPUT_PROBLEMS[@]+"${INPUT_PROBLEMS[@]}"}
 """,
@@ -280,7 +279,6 @@ def test_an_input_openssl_cannot_read_is_unreadable_not_an_empty_digest(
         f"""
 registered_rows=$(input_rows)
 input_rows() {{ printf '%s\\n' "$registered_rows" | awk -F '|' '$1 == "release_ledger_facts"'; }}
-stat() {{ "$PYTHON" -c 'import os,sys; print(os.stat(sys.argv[1]).st_size)' "$3"; }}
 {openssl}
 if out=$(sha_of "{feed}"); then echo "sha_of ok [$out]"; else echo "sha_of failed [$out]"; fi
 verify_inputs
@@ -1242,3 +1240,52 @@ def test_route_a_hands_over_the_emitter_publication_commands() -> None:
     assert (
         f'shlex.join({command}, "--repo-id", "policyengine/populace-us", "--promote"])'
     ) in source
+
+
+def test_size_and_free_disk_helpers_run_on_this_host_s_stat_and_df(
+    tmp_path: Path,
+) -> None:
+    # GNU stat (Linux) takes -c %s and BSD stat (macOS) -f %z; df -P keeps one
+    # line per filesystem. Both helpers must work on whichever host runs them.
+    sized = tmp_path / "sized.bin"
+    sized.write_bytes(b"x" * 1234)
+    disk = tmp_path / "disk"
+    disk.mkdir()
+    result = run_driver_settings(
+        tmp_path,
+        {"DISK_PATH": str(disk)},
+        f"""
+file_bytes "{sized}"
+free_bytes
+""",
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    size, free = result.stdout.decode().split()
+    assert size == "1234"
+    assert int(free) > 0
+
+
+@pytest.mark.parametrize(("value", "status"), [("0", 0), ("1", 0), ("yes", 64)])
+def test_stop_before_release_accepts_only_zero_or_one(
+    tmp_path: Path, value: str, status: int
+) -> None:
+    result = run_driver_settings(
+        tmp_path, {"STOP_BEFORE_RELEASE": value}, '\necho "$STOP_BEFORE_RELEASE"\n'
+    )
+    assert result.returncode == status, result.stderr.decode()
+    if status == 0:
+        assert result.stdout.decode().strip() == value
+    else:
+        assert "STOP_BEFORE_RELEASE must be 0 or 1" in result.stderr.decode()
+
+
+def test_the_stop_before_release_sits_after_the_release_config_and_before_its_run() -> (
+    None
+):
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+    config = source.index('write_config release 110 "$RELEASE_RAM_GIB"')
+    stop = source.index(
+        'if [ "$STOP_BEFORE_RELEASE" = 1 ] && ! stage_done release; then'
+    )
+    run = source.index('run_stage release 0 "$RELEASE_RAM_GIB" 45')
+    assert config < stop < run

@@ -45,6 +45,13 @@ LOG=$RUN_ROOT/route_a.log
 : "${PREFLIGHT_NEW_LINEAGE_ARGS:=}" "${EARLY_START_AFTER_HEAVY:=0}" "${PRUNE_BASE_CHECKPOINTS:=0}"
 : "${RELEASE_DESPITE_PREFLIGHT_FAIL:=0}" "${RELEASE_EXTRA_ARGS:=}" "${EXPORT_MASS_REF_H5:=}"
 : "${RESOURCE_WAIT_HOURS:=12}"
+# 1 stops after the base, the base preflight and the release config, before
+# the multi-day release, so the operator can dry-run the release's gates on
+# this base (tools/dry_run_us_release_gates.py, microcosm#1042; ruled for the
+# next national build on 17 Nov 2026). Rerun with 0 to continue: accepted
+# stages are kept.
+: "${STOP_BEFORE_RELEASE:=0}"
+case "$STOP_BEFORE_RELEASE" in 0|1) ;; *) echo "STOP_BEFORE_RELEASE must be 0 or 1" >&2; exit 64 ;; esac
 # uv sync takes the newest installed CPython unless told otherwise, and the
 # lock's torch wheels stop at cp314; a fresh worktree on 3.15 fails to sync.
 : "${UV_SYNC_PYTHON:=3.14}"
@@ -164,7 +171,10 @@ sha_of() {
   [[ $out =~ ^[0-9a-f]{64}$ ]] || return 1
   printf '%s\n' "$out"
 }
-free_bytes() { df -k "$DISK_PATH" | awk 'NR==2 {print $4*1024}'; }
+# Portable on Linux and macOS: GNU stat takes -c %s and BSD stat -f %z, and
+# df -P keeps each filesystem on one line (Linux wraps a long device name).
+file_bytes() { stat -c %s "$1" 2>/dev/null || stat -f %z "$1"; }
+free_bytes() { df -Pk "$DISK_PATH" | awk 'NR==2 {print $4*1024}'; }
 
 INPUT_PROBLEMS=()
 verify_inputs() {  # fills INPUT_PROBLEMS; writes $RUN_ROOT/inputs.resolved.json
@@ -177,7 +187,7 @@ verify_inputs() {  # fills INPUT_PROBLEMS; writes $RUN_ROOT/inputs.resolved.json
     if [ ! -f "$path" ]; then
       status=missing; INPUT_PROBLEMS+=("$role missing: $path")
     else
-      asize=$(stat -f %z "$path")
+      asize=$(file_bytes "$path")
       if [ "$size" != "-" ] && [ "$asize" != "$size" ]; then
         status=size_mismatch; INPUT_PROBLEMS+=("$role size $asize != $size: $path")
       fi
@@ -687,7 +697,7 @@ if [ ! -f "$RUN/base.sha256" ] || [ "$BASE_H5" -nt "$RUN/base.sha256" ]; then
 fi
 BASE_SHA=$(cut -c1-64 "$RUN/base.sha256")
 [[ $BASE_SHA =~ ^[0-9a-f]{64}$ ]] || fail "$RUN/base.sha256 holds no sha256; delete it and rerun"
-log "base H5 $BASE_H5 sha256 $BASE_SHA ($(stat -f %z "$BASE_H5") bytes)"
+log "base H5 $BASE_H5 sha256 $BASE_SHA ($(file_bytes "$BASE_H5") bytes)"
 if [ "$PRUNE_BASE_CHECKPOINTS" = 1 ] && ls "$BASE_CKPT"/*.frame.h5 >/dev/null 2>&1; then
   log "PRUNE_BASE_CHECKPOINTS=1: removing base frame checkpoints ($(du -sh "$BASE_CKPT" | cut -f1)) after the base H5 was hashed"
   rm -f "$BASE_CKPT"/*.frame.h5
@@ -731,6 +741,12 @@ if ! stage_done release && ! result_accepted "$RUN/release-sup" 0 >/dev/null; th
   release_command
   write_config release 110 "$RELEASE_RAM_GIB" 45 "${RELEASE_WALL_SECONDS:-345600}" 2000000 "$W" "$BUILD_ENV" -- "${RELEASE_ARGV[@]}"
 fi
+if [ "$STOP_BEFORE_RELEASE" = 1 ] && ! stage_done release; then
+  log "STOP_BEFORE_RELEASE=1: stopped before the release. Dry-run it from $W with: $PY -B tools/dry_run_us_release_gates.py --release-config $RUN/release-config.json --json-out $RUN/release-dry-run.json ; then rerun with STOP_BEFORE_RELEASE=0"
+  echo "STOPPED $(date '+%F %T'): STOP_BEFORE_RELEASE=1; release config $RUN/release-config.json" > "$RUN/release.STOPPED"
+  exit 0
+fi
+rm -f "$RUN/release.STOPPED"
 if ! stage_done release; then
   run_stage release 0 "$RELEASE_RAM_GIB" 45 "Set PRUNE_BASE_CHECKPOINTS=1 in route_a.env to reclaim the base's frame checkpoints."
 fi

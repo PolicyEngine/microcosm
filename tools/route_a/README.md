@@ -13,6 +13,10 @@ staging telemetry by default; `ROUTE_A_STAGING=0` restores `--no-staging`.
 
 ## Configure and run
 
+For the next US national build (policyengine-us 2.145.3, `block_v1`), follow
+[the operator runbook](../../docs/us-national-build-runbook.md): it lists the
+settings, inputs, steps, times and stop points.
+
 Copy the example and edit its paths and commit before running:
 
 ```bash
@@ -165,8 +169,8 @@ By default the base uses the d713 CT-fixed ladder at
 `base-sup/ACCEPTED` skips the base stage. Merely pointing `LADDER` at new bytes
 does not rebuild a previously accepted base.
 
-The driver uses macOS `stat -f` and requires bash, git, openssl, uv and the
-configured paths. A file openssl cannot read is an input problem or a failed
+The driver runs on macOS and Linux (GNU or BSD `stat`, `df -P`) and requires
+bash, git, openssl, pgrep, uv and the configured paths. A file openssl cannot read is an input problem or a failed
 run, never an empty digest. Under launchd, macOS can refuse the system's own
 tools access to an external drive: on 2026-11-17, in a launchd job,
 `/usr/bin/openssl`, `/usr/bin/shasum` and `/usr/bin/python3` got "Operation
@@ -176,6 +180,38 @@ read the same files. Put Homebrew's `bin` before `/usr/bin` on such a job's
 runs `uv sync --all-packages --locked --extra us`, and checks that their Python
 can import psutil and policyengine-us. The supervised stages use that worktree's
 interpreter.
+
+## Running on Linux
+
+The driver is the same on Linux. Set the machine paths in `route_a.env` for that
+host, at least:
+
+- `DISK_PATH` to the filesystem that holds `RUN_ROOT` and the worktrees (the
+  example's `/System/Volumes/Data` is the macOS data volume), for example `/`
+  or the data disk's mount point;
+- `UV` to the uv executable (`command -v uv`) and `PYTHON` to an engine-free
+  `python3`;
+- `AGENT_SECRET` to an executable that prints the Hugging Face token when it is
+  called as `AGENT_SECRET get HUGGING_FACE_TOKEN_MAX` (the release's
+  `with_hf_token.sh` wrapper calls it, and only when staging is on).
+
+launchd is macOS only. On Linux, keep the run alive after you log out with tmux
+or a systemd user unit:
+
+```bash
+tmux new-session -d -s route-a 'bash tools/route_a/route_a.sh 2>&1 | tee -a route-a.console.log'
+```
+
+```bash
+systemd-run --user --unit route-a --working-directory "$PWD" \
+  --setenv=ROUTE_A_ENV="$PWD/tools/route_a/route_a.env" \
+  bash tools/route_a/route_a.sh
+loginctl enable-linger "$USER"   # keeps user units running after logout
+```
+
+The driver holds a lock under `RUN_ROOT`, so a second start refuses while the
+first runs. `journalctl --user -u route-a` shows a systemd run's console output;
+the driver's own log stays in `RUN_ROOT`.
 
 ## Stages and gates
 
