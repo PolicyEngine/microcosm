@@ -404,6 +404,8 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # The factor's mean is taken over FRS-base owners only, so the support
     # channel is a direct read, and over the declared denominator, the WAS
     # chain's draw that its area home values keep (microcosm#931).
+    # The factor's mean is over geographic clone 0's FRS-base owners, so the
+    # stage reads the clone index (microcosm#931).
     "regional_property_uprating": frozenset(
         {
             ("household", "region"),
@@ -414,6 +416,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "other_residential_property_value"),
             ("household", "non_residential_property_value"),
             ("household", "household_support_channel"),
+            ("household", "household_clone_index"),
         }
     ),
     # Engine-free: the landlords' profit and finance costs, the inputs that
