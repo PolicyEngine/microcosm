@@ -163,7 +163,13 @@ By default the base uses the d713 CT-fixed ladder at
 does not rebuild a previously accepted base.
 
 The driver uses macOS `stat -f` and requires bash, git, openssl, uv and the
-configured paths. It creates clean detached worktrees at the chosen commits,
+configured paths. A file openssl cannot read is an input problem or a failed
+run, never an empty digest. Under launchd, macOS can refuse the system's own
+tools access to an external drive: on 2026-11-17, in a launchd job,
+`/usr/bin/openssl`, `/usr/bin/shasum` and `/usr/bin/python3` got "Operation
+not permitted" there, while a Homebrew openssl and the worktree's Python
+read the same files. Put Homebrew's `bin` before `/usr/bin` on such a job's
+`PATH`, or copy the inputs to the internal disk. It creates clean detached worktrees at the chosen commits,
 runs `uv sync --all-packages --locked --extra us`, and checks that their Python
 can import psutil and policyengine-us. The supervised stages use that worktree's
 interpreter.
