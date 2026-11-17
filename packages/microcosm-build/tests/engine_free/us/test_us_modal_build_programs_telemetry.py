@@ -477,6 +477,8 @@ def test_the_acs_staging_builder_records_its_phases_up_to_a_failure(
         location_seed=0,
         location_clones=1,
         block_ladder=None,
+        # The parser's default: no default-valued donor column is allowed (#922).
+        allow_default_donor_column=None,
     )
     base = SimpleNamespace(weights_for=lambda unit: SimpleNamespace(total=1.0))
     monkeypatch.setattr(module, "_parse_args", lambda argv: args)
