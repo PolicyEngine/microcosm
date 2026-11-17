@@ -718,8 +718,7 @@ def _unplaced(pool: _Pool, history: History | None) -> set[int]:
 
 
 def _start_cost(history: History) -> float | None:
-    """The mean of the logged start costs: after a hole, used only once the
-    pool has logged a start for every worker (see ``project``)."""
+    """The mean of the logged start costs, or None before the first."""
 
     costs = history.start_costs
     return sum(costs) / len(costs) if costs else None
