@@ -27,14 +27,32 @@ writes the copy atomically, verifies it against the input, and writes a JSON
 receipt with both SHA-256 digests, the row counts per entity, each added
 column with its entity and reason, and the tool's commit.
 
+Two options record lineage (both optional):
+
+- ``--input-release-manifest`` is the published donor's
+  ``release_manifest.json``. The input's SHA-256 must match its one microdata
+  artifact, and the receipt records the donor build it names.
+- ``--release-manifest`` with ``--manifest-release`` and ``--manifest-build``
+  writes a release manifest in the build-folder layout that names the copy
+  and its receipt. Upload the copy, the receipt and this file (as
+  ``release_manifest.json``) to ``releases/<release>/<build>/`` in
+  ``--manifest-repo-id``, where ``referenced_build`` reads a build. R1's
+  ``--donor-release-manifest`` then verifies the copy against it and records
+  the copy's build as ``donor_release``, which the local-area release
+  contract requires before publication.
+
 Usage::
 
     python tools/patch_us_acs_donor_columns.py \\
         --input-h5 populace_us_2024_receipt_qualified.h5 \\
-        --output-h5 donor_patched_for_poc.h5
+        --input-release-manifest published_release_manifest.json \\
+        --output-h5 run/donor_patched_poc.h5 \\
+        --release-manifest run/release_manifest.json \\
+        --manifest-release RELEASE --manifest-build BUILD
 
-R1 then reads the copy with ``--base-h5 donor_patched_for_poc.h5`` and no
-``--donor-release-manifest`` (the copy's digest is not the published one).
+R1 then reads the copy with ``--base-h5 run/donor_patched_poc.h5`` and
+``--donor-release-manifest run/release_manifest.json``, or without a manifest
+(``donor_release`` is then null, and the publisher refuses the release).
 """
 
 # No ``from __future__ import annotations``: test loaders run this file
@@ -45,11 +63,13 @@ import hashlib
 import json
 import numbers
 import os
+import re
 import shutil
 import subprocess
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -61,6 +81,7 @@ from microcosm.build.us_runtime.h5_io import (
     assert_h5_unchanged,
     refuse_denied_pool_h5,
 )
+from microcosm.data.build_folder_manifests import referenced_build
 from microcosm.frame import put_frame_table, read_frame_table
 from microcosm.frame.materialize import _PYTABLES_FRAME_TABLE_CODEC_ATTR
 from microcosm.frame.units import US_SCHEMA
@@ -76,6 +97,15 @@ PURPOSE = (
 )
 _CONSUMER = f"US ACS donor column patch ({TOOL})"
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+
+#: The repository the amended ruling names for the copy (microcosm#1647).
+DEFAULT_MANIFEST_REPO_ID = "policyengine/populace-us-staging"
+#: The copy's dataset role: not a release role, so the release contract
+#: refuses the copy's folder as a release of its own.
+COPY_DATASET_ROLE = "proof_of_concept_donor_copy"
+#: A release or build name is one folder name (``releases/<release>/<build>``).
+_FOLDER_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+_REPO_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*")
 
 #: Each reviewed all-zero column and the reason its true values are unknown
 #: or zero on the donor. The fill must equal the engine default (0).
@@ -240,6 +270,166 @@ def asec_work_column_step(*args: object, **kwargs: object) -> PatchStep:
     )
 
 
+@dataclass(frozen=True)
+class CopyReleaseManifest:
+    """Where to write the copy's release manifest, and the build it names."""
+
+    path: Path
+    release: str
+    build: str
+    repo_id: str = DEFAULT_MANIFEST_REPO_ID
+
+    def __post_init__(self) -> None:
+        for name in ("release", "build"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not _FOLDER_NAME.fullmatch(value):
+                raise ValueError(
+                    f"The copy's manifest {name} must be one folder name "
+                    f"(letters, digits, '.', '_', '-'); got {value!r}."
+                )
+        if not isinstance(self.repo_id, str) or not _REPO_ID.fullmatch(self.repo_id):
+            raise ValueError(
+                f"The copy's manifest repo_id must be OWNER/NAME; got {self.repo_id!r}."
+            )
+
+    def identity(self) -> dict[str, str]:
+        return {
+            "path": str(Path(self.path).resolve()),
+            "repo_id": self.repo_id,
+            "release": self.release,
+            "build": self.build,
+            "folder": referenced_build(
+                {"repo_id": self.repo_id, "release": self.release, "build": self.build}
+            ).folder,
+        }
+
+
+def input_release_identity(manifest_path: Path, input_sha256: str) -> dict[str, object]:
+    """Verify the input against its published release manifest; name its build.
+
+    The manifest must carry exactly one microdata artifact, whose SHA-256 is
+    the input's, and name a build that ``referenced_build`` accepts: a build
+    folder (``release`` and ``build``) or a tag (``build.build_id`` and the
+    artifact's ``revision``).
+    """
+
+    manifest_path = Path(manifest_path)
+    try:
+        raw = manifest_path.read_bytes()
+        manifest = json.loads(raw)
+    except (OSError, ValueError) as error:
+        raise ValueError(
+            f"Cannot read --input-release-manifest {manifest_path}: {error}."
+        ) from error
+    artifacts = manifest.get("artifacts") if isinstance(manifest, dict) else None
+    if not isinstance(artifacts, dict):
+        raise ValueError(f"{manifest_path} carries no artifacts map.")
+    microdata = [
+        (name, entry)
+        for name, entry in artifacts.items()
+        if isinstance(entry, dict) and entry.get("kind") == "microdata"
+    ]
+    if len(microdata) != 1:
+        raise ValueError(
+            f"{manifest_path} must carry exactly one microdata artifact; found "
+            f"{sorted(name for name, _ in microdata)}."
+        )
+    name, entry = microdata[0]
+    if entry.get("sha256") != input_sha256:
+        raise ValueError(
+            f"--input-h5 has SHA-256 {input_sha256}, but {manifest_path} pins "
+            f"{entry.get('sha256')!r} for {name!r}."
+        )
+    build = manifest.get("build")
+    if isinstance(build, dict):
+        reference = {
+            "repo_id": entry.get("repo_id"),
+            "release_id": build.get("build_id"),
+            "revision": entry.get("revision"),
+        }
+    else:
+        reference = {
+            "repo_id": entry.get("repo_id"),
+            "release": manifest.get("release"),
+            "build": build,
+        }
+    try:
+        location = referenced_build(reference)
+    except ValueError as error:
+        raise ValueError(f"{manifest_path} names no readable build: {error}") from error
+    return {
+        "manifest": manifest_path.name,
+        "manifest_sha256": hashlib.sha256(raw).hexdigest(),
+        "artifact": name,
+        **{key: value for key, value in reference.items() if value is not None},
+        "folder": location.folder,
+        "sha256": input_sha256,
+    }
+
+
+def copy_release_manifest(
+    receipt: Mapping[str, Any],
+    *,
+    receipt_path: Path,
+    receipt_sha256: str,
+    target: CopyReleaseManifest,
+    built_at: str,
+) -> dict[str, object]:
+    """The copy's release manifest in the build-folder layout.
+
+    Its one microdata artifact is the copy, so R1's
+    ``--donor-release-manifest`` check (the base H5's SHA-256 against it)
+    passes on the copy only. ``derived_from`` names the input; ``patch``
+    names the tool, its commit, the receipt and the added columns.
+    """
+
+    output, source = receipt["output"], receipt["input"]
+    assert isinstance(output, Mapping) and isinstance(source, Mapping)
+    output_path = Path(str(output["path"]))
+    added = receipt["added_columns"]
+    assert isinstance(added, list)
+    return {
+        "schema_version": 1,
+        "release": target.release,
+        "build": target.build,
+        "built_at": built_at,
+        "dataset_role": COPY_DATASET_ROLE,
+        "is_default": False,
+        "issue": ISSUE,
+        "plan": PLAN,
+        "purpose": PURPOSE,
+        "derived_from": {
+            "file": Path(str(source["path"])).name,
+            "sha256": source["sha256"],
+            "rows": source["rows"],
+            "release": source.get("release"),
+        },
+        "patch": {
+            "tool": TOOL,
+            "tool_commit": receipt.get("tool_commit"),
+            "engine": receipt.get("engine"),
+            "receipt": Path(receipt_path).name,
+            "added_columns": [f"{r['entity']}.{r['column']}" for r in added],
+        },
+        "artifacts": {
+            output_path.stem: {
+                "kind": "microdata",
+                "path": output_path.name,
+                "repo_id": target.repo_id,
+                "sha256": output["sha256"],
+                "role": "dataset",
+            },
+            "patch_receipt": {
+                "kind": "receipt",
+                "path": Path(receipt_path).name,
+                "repo_id": target.repo_id,
+                "sha256": receipt_sha256,
+                "role": "patch_receipt",
+            },
+        },
+    }
+
+
 def build_patch_steps(
     *,
     zero_columns: Sequence[str],
@@ -262,6 +452,8 @@ def patch_donor_h5(
     receipt_path: Path,
     tool_identity: Mapping[str, object] | None = None,
     engine_identity: Mapping[str, object] | None = None,
+    input_release_manifest: Path | None = None,
+    release_manifest: CopyReleaseManifest | None = None,
 ) -> dict[str, object]:
     """Write the patched copy and its receipt; return the receipt.
 
@@ -269,13 +461,25 @@ def patch_donor_h5(
     reads. The copy starts as a byte copy of the input; only the entity
     tables a step changes are rewritten, through the shared frame-table
     codec, in their stored HDF format. The copy is verified before it
-    replaces ``output_h5``.
+    replaces ``output_h5``. ``input_release_manifest`` is checked before any
+    work; ``release_manifest`` is written last, after the receipt.
     """
 
     input_h5, output_h5 = Path(input_h5), Path(output_h5)
     receipt_path = Path(receipt_path)
-    _validate_paths(input_h5, output_h5, receipt_path)
+    _validate_paths(
+        input_h5,
+        output_h5,
+        receipt_path,
+        *(() if input_release_manifest is None else (Path(input_release_manifest),)),
+        *(() if release_manifest is None else (Path(release_manifest.path),)),
+    )
     input_sha256 = refuse_denied_pool_h5(input_h5, consumer=_CONSUMER)
+    input_release = (
+        None
+        if input_release_manifest is None
+        else input_release_identity(Path(input_release_manifest), input_sha256)
+    )
     with pd.HDFStore(input_h5, mode="r") as store:
         keys = sorted(store.keys())
         absent = [entity for entity in US_SCHEMA.entities if f"/{entity}" not in keys]
@@ -335,6 +539,7 @@ def patch_donor_h5(
             "path": str(input_h5.resolve()),
             "sha256": input_sha256,
             "rows": {entity: len(tables[entity]) for entity in US_SCHEMA.entities},
+            "release": input_release,
         },
         "output": {
             "path": str(output_h5.resolve()),
@@ -349,13 +554,34 @@ def patch_donor_h5(
         "added_columns": [r for r in columns if r["action"] == "added"],
         "kept_columns": [r for r in columns if r["action"] == "kept_existing"],
         "steps": step_receipts,
+        "release_manifest": (
+            None if release_manifest is None else release_manifest.identity()
+        ),
     }
-    receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    receipt_path.write_text(
-        json.dumps(receipt, indent=2, sort_keys=True, allow_nan=False) + "\n",
-        encoding="utf-8",
-    )
+    receipt_sha256 = _write_json(receipt_path, receipt)
+    if release_manifest is not None:
+        _write_json(
+            Path(release_manifest.path),
+            copy_release_manifest(
+                receipt,
+                receipt_path=receipt_path,
+                receipt_sha256=receipt_sha256,
+                target=release_manifest,
+                built_at=datetime.now(UTC).isoformat(timespec="seconds"),
+            ),
+        )
     return receipt
+
+
+def _write_json(path: Path, document: Mapping[str, object]) -> str:
+    """Write ``document`` as sorted, indented JSON; return the bytes' SHA-256."""
+
+    data = (
+        json.dumps(document, indent=2, sort_keys=True, allow_nan=False) + "\n"
+    ).encode("utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return hashlib.sha256(data).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -565,7 +791,9 @@ def _attribute_value(value: object) -> object:
     return value
 
 
-def _validate_paths(input_h5: Path, output_h5: Path, receipt_path: Path) -> None:
+def _validate_paths(
+    input_h5: Path, output_h5: Path, receipt_path: Path, *manifests: Path
+) -> None:
     if not input_h5.is_file():
         raise ValueError(f"--input-h5 is not a file: {input_h5}.")
     if output_h5.suffix != ".h5":
@@ -575,6 +803,12 @@ def _validate_paths(input_h5: Path, output_h5: Path, receipt_path: Path) -> None
         raise ValueError("--output-h5 must differ from --input-h5.")
     if receipt_path.resolve() in resolved:
         raise ValueError("--receipt must differ from --input-h5 and --output-h5.")
+    paths = [*resolved, receipt_path.resolve(), *(path.resolve() for path in manifests)]
+    if len(set(paths)) != len(paths):
+        raise ValueError(
+            "--input-h5, --output-h5, --receipt, --input-release-manifest and "
+            "--release-manifest must be different files."
+        )
 
 
 def _sha256(path: Path) -> str:
@@ -641,7 +875,42 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "more than one (default: every reviewed column)."
         ),
     )
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--input-release-manifest",
+        type=Path,
+        help=(
+            "The published donor's release_manifest.json. The input's SHA-256 "
+            "must match its one microdata artifact; the receipt records the "
+            "donor build it names."
+        ),
+    )
+    parser.add_argument(
+        "--release-manifest",
+        type=Path,
+        help=(
+            "Write a build-folder release manifest for the copy here, for R1's "
+            "--donor-release-manifest. Needs --manifest-release and "
+            "--manifest-build. Upload the copy, the receipt and this file (as "
+            "release_manifest.json) to releases/<release>/<build>/ in "
+            "--manifest-repo-id."
+        ),
+    )
+    parser.add_argument(
+        "--manifest-repo-id",
+        default=DEFAULT_MANIFEST_REPO_ID,
+        help=f"Repository the copy is uploaded to (default: {DEFAULT_MANIFEST_REPO_ID}).",
+    )
+    parser.add_argument("--manifest-release", help="Release folder name of the copy.")
+    parser.add_argument("--manifest-build", help="Build folder name of the copy.")
+    args = parser.parse_args(argv)
+    names = (args.manifest_release, args.manifest_build)
+    if args.release_manifest is None and any(name is not None for name in names):
+        parser.error("--manifest-release and --manifest-build need --release-manifest.")
+    if args.release_manifest is not None and any(name is None for name in names):
+        parser.error(
+            "--release-manifest needs --manifest-release and --manifest-build."
+        )
+    return args
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -654,6 +923,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             zero_columns=args.zero_column or list(REVIEWED_ZERO_COLUMNS),
             engine=PolicyEngineUSEngine(),
         )
+        release_manifest = (
+            None
+            if args.release_manifest is None
+            else CopyReleaseManifest(
+                path=args.release_manifest,
+                release=args.manifest_release,
+                build=args.manifest_build,
+                repo_id=args.manifest_repo_id,
+            )
+        )
         receipt = patch_donor_h5(
             args.input_h5,
             args.output_h5,
@@ -661,6 +940,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             receipt_path=receipt_path,
             tool_identity=current_tool_identity(),
             engine_identity=_engine_identity(),
+            input_release_manifest=args.input_release_manifest,
+            release_manifest=release_manifest,
         )
     except ValueError as error:
         raise SystemExit(f"Donor patch refused: {error}") from error

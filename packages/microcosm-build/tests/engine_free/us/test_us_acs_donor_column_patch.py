@@ -32,6 +32,8 @@ from microcosm.build.us_runtime.support_provenance import (
     support_clone_index_column,
     support_source_id_column,
 )
+from microcosm.data import contract
+from microcosm.data.build_folder_manifests import referenced_build
 from microcosm.frame import (
     US_SCHEMA,
     Frame,
@@ -174,7 +176,9 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _patch(tool, tmp_path: Path, donor: Path, *, engine: _Engine | None = None):
+def _patch(
+    tool, tmp_path: Path, donor: Path, *, engine: _Engine | None = None, **options
+):
     output = tmp_path / "out" / "donor_patched.h5"
     receipt_path = tmp_path / "out" / "donor_patched.receipt.json"
     receipt = tool.patch_donor_h5(
@@ -186,6 +190,7 @@ def _patch(tool, tmp_path: Path, donor: Path, *, engine: _Engine | None = None):
         receipt_path=receipt_path,
         tool_identity={"commit": "f" * 40, "tool_dirty": False},
         engine_identity={"package": "policyengine-us", "version": "fixture"},
+        **options,
     )
     return output, receipt_path, receipt
 
@@ -441,3 +446,163 @@ def test_table_format_donor_keeps_its_layout(tool, builder, tmp_path: Path) -> N
     assert after["person"]["strike_benefits"].tolist() == [0.0] * 4
     assert receipt["rewritten_tables"] == ["person"]
     builder._require_income_donor(builder._load_base_frame(output))
+
+
+_PUBLISHED_RELEASE = "microcosm-us-2024-receipt-donor"
+_PUBLISHED_BUILD = "populace-us-2024-spm-receipts-20260923"
+_COPY_RELEASE = "county-files-poc-donor"
+_COPY_BUILD = "spm-receipts-20260923-patched-20261117"
+
+
+def _published_manifest(sha256: str) -> dict:
+    """The published donor's release manifest, in the build-folder layout."""
+
+    return {
+        "schema_version": 1,
+        "release": _PUBLISHED_RELEASE,
+        "build": _PUBLISHED_BUILD,
+        "dataset_role": "national_default",
+        "is_default": False,
+        "artifacts": {
+            "donor": {
+                "kind": "microdata",
+                "path": "donor.h5",
+                "repo_id": "policyengine/populace-us",
+                "sha256": sha256,
+                "role": "dataset",
+            }
+        },
+    }
+
+
+def test_release_manifest_names_the_copy_for_r1_and_the_publisher(
+    tool, builder, tmp_path: Path
+) -> None:
+    donor = _write_donor(tmp_path / "donor.h5")
+    published = tmp_path / "published_release_manifest.json"
+    published.write_text(json.dumps(_published_manifest(_sha256(donor))))
+    manifest_path = tmp_path / "out" / "release_manifest.json"
+    target = tool.CopyReleaseManifest(
+        path=manifest_path, release=_COPY_RELEASE, build=_COPY_BUILD
+    )
+
+    output, receipt_path, receipt = _patch(
+        tool,
+        tmp_path,
+        donor,
+        input_release_manifest=published,
+        release_manifest=target,
+    )
+
+    # R1 verifies the copy against the manifest and names the copy's build.
+    identity = builder._donor_release_identity(manifest_path, _sha256(output))
+    assert {key: identity[key] for key in ("repo_id", "release", "build")} == {
+        "repo_id": "policyengine/populace-us-staging",
+        "release": _COPY_RELEASE,
+        "build": _COPY_BUILD,
+    }
+    assert identity["sha256"] == _sha256(output)
+    assert identity["dataset_role"] == tool.COPY_DATASET_ROLE
+    assert identity["is_default"] is False
+    copy_folder = f"releases/{_COPY_RELEASE}/{_COPY_BUILD}"
+    assert referenced_build(identity).folder == copy_folder
+    # The local-area release contract accepts it as the donor reference.
+    failures: list[str] = []
+    contract._check_local_area_donor_reference(identity, failures)
+    assert failures == []
+    # The published manifest still names the input, never the copy.
+    with pytest.raises(SystemExit, match="does not match its release manifest"):
+        builder._donor_release_identity(published, _sha256(output))
+
+    manifest = json.loads(manifest_path.read_text())
+    published_folder = f"releases/{_PUBLISHED_RELEASE}/{_PUBLISHED_BUILD}"
+    assert manifest["derived_from"]["sha256"] == _sha256(donor)
+    assert manifest["derived_from"]["release"]["folder"] == published_folder
+    assert manifest["artifacts"]["patch_receipt"] == {
+        "kind": "receipt",
+        "path": "donor_patched.receipt.json",
+        "repo_id": "policyengine/populace-us-staging",
+        "sha256": _sha256(receipt_path),
+        "role": "patch_receipt",
+    }
+    assert manifest["patch"]["added_columns"] == [
+        f"person.{column}" for column in _ZERO_COLUMNS
+    ]
+    assert receipt["input"]["release"]["folder"] == published_folder
+    assert receipt["input"]["release"]["manifest"] == published.name
+    assert receipt["release_manifest"]["folder"] == copy_folder
+    # The uploaded manifest names files, not this machine's paths.
+    assert str(tmp_path) not in manifest_path.read_text()
+
+
+def test_input_release_manifest_must_pin_the_input(tool, tmp_path: Path) -> None:
+    donor = _write_donor(tmp_path / "donor.h5")
+    published = tmp_path / "published_release_manifest.json"
+    published.write_text(json.dumps(_published_manifest("0" * 64)))
+
+    with pytest.raises(ValueError, match="pins '0000"):
+        _patch(tool, tmp_path, donor, input_release_manifest=published)
+
+    assert not (tmp_path / "out").exists()
+    unreadable = _published_manifest(_sha256(donor))
+    del unreadable["artifacts"]["donor"]["repo_id"]
+    published.write_text(json.dumps(unreadable))
+    with pytest.raises(ValueError, match="names no readable build"):
+        _patch(tool, tmp_path, donor, input_release_manifest=published)
+
+
+@pytest.mark.parametrize(
+    ("options", "match"),
+    [
+        ({"release": "a/b"}, "one folder name"),
+        ({"build": ""}, "one folder name"),
+        ({"repo_id": "populace-us-staging"}, "OWNER/NAME"),
+    ],
+)
+def test_copy_release_manifest_refuses_a_bad_build_name(
+    tool, tmp_path: Path, options: dict, match: str
+) -> None:
+    fields = {"release": _COPY_RELEASE, "build": _COPY_BUILD} | options
+    with pytest.raises(ValueError, match=match):
+        tool.CopyReleaseManifest(path=tmp_path / "release_manifest.json", **fields)
+
+
+def test_command_writes_the_copy_release_manifest_only_when_asked(
+    tool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import microcosm.frame.adapters.policyengine_us as adapter
+
+    donor = _write_donor(tmp_path / "donor.h5")
+    monkeypatch.setattr(adapter, "PolicyEngineUSEngine", _Engine)
+    monkeypatch.setattr(
+        tool, "current_tool_identity", lambda: {"commit": "c" * 40, "tool_dirty": False}
+    )
+    base = ["--input-h5", str(donor), "--output-h5", str(tmp_path / "patched.h5")]
+    manifest_path = tmp_path / "release_manifest.json"
+
+    assert (
+        tool.main(
+            [
+                *base,
+                "--release-manifest",
+                str(manifest_path),
+                "--manifest-release",
+                _COPY_RELEASE,
+                "--manifest-build",
+                _COPY_BUILD,
+            ]
+        )
+        == 0
+    )
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["artifacts"]["patched"]["sha256"] == _sha256(
+        tmp_path / "patched.h5"
+    )
+    assert manifest["release"] == _COPY_RELEASE
+    for partial in (
+        ["--release-manifest", str(manifest_path)],
+        ["--release-manifest", str(manifest_path), "--manifest-build", _COPY_BUILD],
+        ["--manifest-release", _COPY_RELEASE, "--manifest-build", _COPY_BUILD],
+    ):
+        with pytest.raises(SystemExit):
+            tool._parse_args([*base, *partial])

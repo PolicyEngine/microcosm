@@ -543,7 +543,8 @@ historical donors and staging files missing these inputs must be rebuilt
 through the exact ASEC restoration/fiscal carry and native ACS mapping.
 The one reviewed exception is the County Files proof of concept
 (microcosm#922): `tools/patch_us_acs_donor_columns.py` writes a patched copy of
-766b7c7's donor with a receipt, and the staging builder's
+766b7c7's donor with a receipt (and, when asked, a build-folder release manifest
+for the copy, for `--donor-release-manifest`), and the staging builder's
 `--allow-default-donor-column COLUMN=REASON` accepts named all-default donor
 columns and records each one in the staging summary. Neither changes a
 default.
