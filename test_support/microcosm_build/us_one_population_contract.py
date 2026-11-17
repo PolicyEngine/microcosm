@@ -62,6 +62,7 @@ from microcosm.build.us_runtime.one_population_contract import (
     ASSEMBLED_CHANNELS,
     CPS_SPINE_TAG,
     STRUCTURAL_COLUMNS,
+    to_assembled_provenance,
 )
 from microcosm.build.us_runtime.one_population_selection import (
     acs_unit_key,
@@ -784,6 +785,39 @@ def with_staging_union_columns(population: GeneratedPopulation) -> GeneratedPopu
 
 
 # ------------------------------------------------------ joined frame
+
+
+def staging_lineage(population: GeneratedPopulation) -> frozenset[tuple[str, int]]:
+    """The ACS persons' (``SERIALNO``, ``SPORDER``) pairs, as staging holds them.
+
+    The generated ACS tables are staging's rows for the selected households,
+    so their pairs are what the prepare step would read from staging.
+    """
+
+    household = population.acs_tables["household"]
+    person = population.acs_tables["person"]
+    serial = person["person_household_id"].map(
+        household.set_index("household_id")["SERIALNO"]
+    )
+    return frozenset(
+        zip(
+            serial.tolist(),
+            (int(value) for value in person["SPORDER"].tolist()),
+            strict=True,
+        )
+    )
+
+
+def assembled_frame(population: GeneratedPopulation) -> Frame:
+    """The contract's provenance rewrite of ``population``."""
+
+    return to_assembled_provenance(
+        population.cps_tables,
+        population.acs_tables,
+        cps_household_weights=population.cps_household_weights,
+        acs_household_weights=population.acs_household_weights,
+        staging_lineage=staging_lineage(population),
+    )
 
 
 def joined_frame(
