@@ -23,7 +23,7 @@ from test_support.microcosm_build.uk_calibration_run import _bound_checkpoint
 from test_support.microcosm_build.uk_full_build_cli import (
     geography_first_sidecar_fields,
     patch_support_register,
-    synthetic_spine_geography,
+    release_spine_supports,
 )
 from test_support.microcosm_build.uk_full_population_graph import spine_frame
 from test_support.microcosm_build.uk_ladder_rowwise_clone import (
@@ -506,8 +506,15 @@ def test_a_release_candidate_on_a_sampled_spine_is_refused(
     # A seed other than the role's default (578), so a seed the run did not
     # take from its spine shows.
     sampling = {"fraction": 0.1, "seed": 7, "rung_token": "f010"}
+    # A release candidate on a bound spine names the supports its area
+    # definition is recomputed from (microcosm#931); a spine request does not.
+    supports = (
+        release_spine_supports(monkeypatch, tmp_path / "supports")[0]
+        if route == "input_h5"
+        else []
+    )
     release = _dense_args(
-        route, request, tmp_path, "--release-candidate", sampling=sampling
+        route, request, tmp_path, "--release-candidate", *supports, sampling=sampling
     )
     with pytest.raises(ValueError, match="Sampled builds cannot request release"):
         cli.prepare_full_build(release)
@@ -557,65 +564,134 @@ def signing_key(monkeypatch):
     )
 
 
+def _as_release_spine(sidecar_path, block) -> None:
+    """Make a stand-in checkpoint's sidecar a release spine of this package:
+    its geography block the one the release supports compose, and its
+    resource and stage artifact pins the package's for its stages, as the
+    sidecar writer records them (microcosm#931)."""
+    sidecar = json.loads(sidecar_path.read_text())
+    sidecar["geography"] = dict(block)
+    sidecar.update(spine_build.uk_spine_package_pins(sidecar["stages"]))
+    sidecar_path.write_text(json.dumps(sidecar))
+
+
 def test_a_release_candidate_prepares_on_a_release_spine_at_the_doctrines_k(
     tmp_path, toy_ladder, stand_in_engine, signing_key, monkeypatch
 ):
     """A release candidate builds on a bound spine of the doctrine's 15
     geographic clones that the spine build made as a release candidate, whose
-    geography binding is a release's: here the stand-in's own block, on the
-    supports the register lists (microcosm#931)."""
+    geography binding is a release's, on the supports the register lists,
+    under the definition they compose, and whose recorded pins are the
+    package's (microcosm#931)."""
     pytest.importorskip("tables")
-    patch_support_register(monkeypatch)
+    supports, block = release_spine_supports(monkeypatch, tmp_path / "supports")
     args = _checkpoint_request(
         tmp_path,
         toy_ladder[1],
         "--release-candidate",
+        *supports,
         clones=15,
         posture="release_candidate",
     )
+    _as_release_spine(args.input_sidecar, block)
     prepared = cli.prepare_full_build(args)
     assert prepared.bindings["release_candidate"] is True
     assert prepared.bindings["spine"]["geographic_clone_count"] == 15
     assert prepared.bindings["spine"]["release_posture"] == "release_candidate"
-    assert prepared.bindings["geography"] == {
-        **synthetic_spine_geography(),
-        "geographic_clone_count": 15,
-    }
+    assert prepared.bindings["geography"] == {**block, "geographic_clone_count": 15}
     assert args.n_clones == 15
 
 
-def _legacy_assignment(sidecar_path) -> None:
+def _edit_sidecar(sidecar_path, change) -> None:
     sidecar = json.loads(sidecar_path.read_text())
-    sidecar["geography"]["assignment"] = "legacy"
+    change(sidecar)
     sidecar_path.write_text(json.dumps(sidecar))
 
 
+def _legacy_assignment(sidecar_path) -> None:
+    _edit_sidecar(
+        sidecar_path, lambda s: s["geography"].__setitem__("assignment", "legacy")
+    )
+
+
+def _zero_digest(sidecar_path) -> None:
+    _edit_sidecar(
+        sidecar_path,
+        lambda s: s["geography"].__setitem__("definition_sha256", "0" * 64),
+    )
+
+
+def _old_knots(sidecar_path) -> None:
+    """The knots' pin of another commit: a spine built before they moved."""
+    _edit_sidecar(
+        sidecar_path,
+        lambda s: s["resource_pins"].__setitem__(
+            "high_value_home_value_knots.json", "0" * 64
+        ),
+    )
+
+
+def _old_adult_table(sidecar_path) -> None:
+    _edit_sidecar(
+        sidecar_path,
+        lambda s: s["stage_artifact_pins"]["frs_spine"]["adult"].__setitem__(
+            "sha256", "0" * 64
+        ),
+    )
+
+
+def _all_edits(sidecar_path) -> None:
+    _zero_digest(sidecar_path)
+    _old_knots(sidecar_path)
+
+
+#: What a release candidate's refusal names for each edit of a bound spine
+#: built from this package (microcosm#931).
+_ZERO_DIGEST = (
+    "its geography binding's definition_sha256 is not the digest of the "
+    "definition the registered conditioned supports compose at the declared seed"
+)
+_OLD_KNOTS = (
+    "its sidecar's resource_pins.high_value_home_value_knots.json is not the "
+    "package's pin"
+)
+
+
 @pytest.mark.parametrize(
-    ("clones", "posture", "registered", "edit", "failures"),
+    ("clones", "posture", "edit", "failures"),
     [
         (
             7,
             "release_candidate",
-            True,
             None,
             ["its geographic clone count is K = 7, not the doctrine's K = 15"],
         ),
-        (15, "development", True, None, ["it was not built as a release candidate"]),
-        (15, "release_candidate", True, _legacy_assignment, _BINDING_FAILURES[:1]),
-        (15, "release_candidate", False, None, _BINDING_FAILURES[3:]),
+        (15, "development", None, ["it was not built as a release candidate"]),
+        (15, "release_candidate", _legacy_assignment, _BINDING_FAILURES[:1]),
+        (15, "release_candidate", _zero_digest, [_ZERO_DIGEST]),
+        (15, "release_candidate", _old_knots, [_OLD_KNOTS]),
+        (
+            15,
+            "release_candidate",
+            _old_adult_table,
+            [
+                "its sidecar's stage_artifact_pins.frs_spine.adult is not the "
+                "package's pin"
+            ],
+        ),
         (
             1,
             "development",
-            False,
-            None,
+            _all_edits,
             [
                 "its geographic clone count is K = 1, not the doctrine's K = 15",
                 "it was not built as a release candidate",
-                *_BINDING_FAILURES[3:],
+                _ZERO_DIGEST,
+                _OLD_KNOTS,
             ],
         ),
     ],
-    ids=["K", "posture", "assignment", "register", "all"],
+    ids=["K", "posture", "assignment", "zero-digest", "resource", "artifact", "all"],
 )
 def test_a_release_candidate_on_a_spine_a_release_cannot_build_on_is_refused(
     tmp_path,
@@ -625,31 +701,104 @@ def test_a_release_candidate_on_a_spine_a_release_cannot_build_on_is_refused(
     monkeypatch,
     clones,
     posture,
-    registered,
     edit,
     failures,
 ):
-    """A bound spine at another K, in another posture, or whose geography
-    binding is not a release's (another law, or pins off the conditioned
-    register) is refused as a release candidate's, naming every failure and K,
-    never a value (microcosm#931); the same spine builds a candidate."""
+    """A bound spine at another K, in another posture, whose geography
+    binding is not a release's (another law), whose definition digest is not
+    the one the conditioned supports compose (a zero digest), or whose
+    recorded resource or stage artifact pin is not the package's (a spine
+    built at another commit) is refused as a release candidate's, naming
+    every failure, the resource or artifact among them, and K, never a value
+    (microcosm#931); the same spine builds a candidate."""
     pytest.importorskip("tables")
-    if registered:
-        patch_support_register(monkeypatch)
+    supports, block = release_spine_supports(monkeypatch, tmp_path / "supports")
     args = _checkpoint_request(
-        tmp_path, toy_ladder[1], "--release-candidate", clones=clones, posture=posture
+        tmp_path,
+        toy_ladder[1],
+        "--release-candidate",
+        *supports,
+        clones=clones,
+        posture=posture,
     )
+    _as_release_spine(args.input_sidecar, block)
     if edit is not None:
         edit(args.input_sidecar)
     with pytest.raises(ValueError) as refused:
         cli.prepare_full_build(args)
     assert str(refused.value) == _RELEASE_CANDIDATE_SPINE + "; ".join(failures) + "."
+    assert "0" * 16 not in str(refused.value)
     candidate = _checkpoint_request(
         tmp_path / "candidate", toy_ladder[1], clones=clones, posture=posture
     )
+    _as_release_spine(candidate.input_sidecar, block)
     if edit is not None:
         edit(candidate.input_sidecar)
     assert cli.prepare_full_build(candidate).bindings["release_candidate"] is False
+
+
+def test_a_release_candidates_supports_are_held_before_any_input_is_read(
+    tmp_path, toy_ladder, stand_in_engine, signing_key, monkeypatch
+):
+    """A release candidate on a bound spine recomputes its area definition
+    from the three conditioned supports (microcosm#931), so it is refused
+    without them, and with one that sources.yaml's register does not hold,
+    naming the flags, before the spine is read; a build that is not a release
+    candidate on a bound spine reads no support, so the flags are refused
+    there."""
+    pytest.importorskip("tables")
+    supports, _ = release_spine_supports(monkeypatch, tmp_path / "supports")
+
+    def never(*args, **kwargs):
+        raise AssertionError("the spine is read after the supports are held")
+
+    monkeypatch.setattr(cli, "load_uk_national_frame", never)
+    missing = _checkpoint_request(
+        tmp_path / "missing",
+        toy_ladder[1],
+        "--release-candidate",
+        *supports[:2],
+        clones=15,
+        posture="release_candidate",
+    )
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_full_build(missing)
+    assert str(refused.value) == (
+        "--release-candidate on a bound spine requires --spine-support-scotland, "
+        "--spine-support-ni: the conditioned atomic-area supports its areas were "
+        "drawn on, from which the build recomputes its area definition "
+        "(microcosm#931)."
+    )
+    other = tmp_path / "other.npz"
+    other.write_bytes(b"not the registered support")
+    off_register = _checkpoint_request(
+        tmp_path / "off-register",
+        toy_ladder[1],
+        "--release-candidate",
+        "--spine-support-ew",
+        str(other),
+        *supports[2:],
+        clones=15,
+        posture="release_candidate",
+    )
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_full_build(off_register)
+    assert str(refused.value) == (
+        "--spine-support-ew is not the conditioned support sources.yaml "
+        "registers for uk_ew_output_area_2021: its SHA-256 or size is not the "
+        "register's (microcosm#931)."
+    )
+    unread = _checkpoint_request(
+        tmp_path / "unread", toy_ladder[1], *supports, clones=15
+    )
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_full_build(unread)
+    assert str(refused.value) == (
+        "--spine-support-ew, --spine-support-scotland, --spine-support-ni: only "
+        "a release candidate on a bound spine (--input-h5 with "
+        "--release-candidate) reads the conditioned supports, to recompute that "
+        "spine's area definition (microcosm#931)."
+    )
 
 
 @pytest.mark.parametrize("clones", [15, 7])

@@ -346,6 +346,16 @@ def test_certify_and_assemble_argv_parse(tmp_path):
     assert certify.release_id == cut.RELEASE_ID
     assert certify.reference_record == paths.reference_record
     assert certify.score_receipt == paths.score_receipt
+    # The certifier recomputes the spine's area definition from the
+    # conditioned supports the spine read, from the cut's inputs (microcosm#931).
+    from microcosm.build.uk_runtime import spine_build
+
+    for system, flag in spine_build.SPINE_SUPPORT_FLAGS.items():
+        assert getattr(
+            certify, spine_build._atomic_support_argument(flag)
+        ) == paths.input_file(
+            cut.CONDITIONED_SUPPORTS_DIRECTORY, cut.conditioned_support_file(system)
+        )
     assemble = _tool("assemble_uk_release_dir")._parse_args(
         cut.assemble_argv(paths, python="py")[2:]
     )

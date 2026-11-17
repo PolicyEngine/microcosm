@@ -270,6 +270,12 @@ def uk_spine_geography_binding_failures(
     and the dense release pre-flight a candidate's manifest. Each failure
     names a field and what it must be, never the value it holds, so a
     refusal carries names and K only.
+
+    It holds ``definition_sha256`` to its format alone: the digest is of a
+    definition composed from the supports' bytes, so its value is recomputed
+    only where they are at hand (:func:`uk_spine_definition_failures`), as a
+    release candidate's dense build on a bound spine and the national
+    certifier do.
     """
 
     from .atomic_area_conditioning import UK_SPINE_ATOMIC_AREA_DRAW_STREAM
@@ -318,6 +324,52 @@ def uk_spine_geography_binding_failures(
         if type(clones) is not int or clones != clone_count:
             failures.append(f"geographic_clone_count is not K = {clone_count}")
     return tuple(failures)
+
+
+def uk_spine_definition_failures(
+    binding: object,
+    supports: Mapping[str, bytes],
+    *,
+    spec: CountrySpec | None = None,
+) -> tuple[str, ...]:
+    """What a spine's ``definition_sha256`` fails of the one its supports
+    compose (microcosm#931).
+
+    ``supports`` holds the three conditioned supports' bytes, by system. The
+    definition the spine's area draw builds on them at its declared seed is
+    composed again, by the helper the sidecar writer calls
+    (:func:`uk_spine_geography_binding`), with this checkout's code, and the
+    block's ``definition_sha256`` must be its digest: a zero or invented
+    digest, or one of a definition another commit's code composed, fails.
+    The supports must be the conditioned ones ``sources.yaml`` registers
+    (:func:`uk_atomic_support_register` with ``conditioned=True``), or the
+    digest is not recomputed and that fails instead. A digest that is not a
+    SHA-256 hex digest is left to :func:`uk_spine_geography_binding_failures`
+    to name. Each failure names the field and what it must be, never a
+    digest.
+    """
+
+    register = uk_atomic_support_register(spec, conditioned=True)
+    if set(supports) != set(register) or any(
+        hashlib.sha256(supports[system]).hexdigest() != pin["sha256"]
+        or len(supports[system]) != pin["size_bytes"]
+        for system, pin in register.items()
+    ):
+        return (
+            "definition_sha256 is not recomputed: the supports given are not "
+            "the registered conditioned supports",
+        )
+    block = binding if isinstance(binding, Mapping) else {}
+    digest = block.get("definition_sha256")
+    if not (isinstance(digest, str) and _SHA256_HEX.fullmatch(digest)):
+        return ()
+    composed = uk_spine_geography_binding(supports, register=UK_SPINE_SUPPORT_REGISTER)
+    if digest != composed["definition_sha256"]:
+        return (
+            "definition_sha256 is not the digest of the definition the registered "
+            "conditioned supports compose at the declared seed",
+        )
+    return ()
 
 
 def build_uk_country_graph(

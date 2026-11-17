@@ -11,9 +11,12 @@ one closed identity join (spine report -> sidecar -> build record ->
 diagnostics -> candidate bytes). The spine's build sidecar must be the one
 the build record's digest names, and its geography binding a release's: one
 geographic clone, the areas drawn on the conditioned supports sources.yaml
-registers, checked before any gate runs; the candidate must carry no
-geographic clone index (microcosm#931). A candidate's shippability verdict
-comes only from the certification this driver writes.
+registers, under the definition those supports compose (recomputed from the
+three ``--spine-support-*`` files), with the resource and stage artifact
+pins of the package the certifier runs from, all checked before any gate
+runs; the candidate must carry no geographic clone index (microcosm#931). A
+candidate's shippability verdict comes only from the certification this
+driver writes.
 
 The battery always runs at release-candidate strictness: evidence_absent
 gaps block. The head-to-head score receipt is cross-pinned into the
@@ -208,6 +211,68 @@ def _nested(payload: object, *keys: str) -> object:
     return current
 
 
+def _verify_spine_package(sidecar: dict, args: argparse.Namespace) -> None:
+    """Refuse a spine built from another package than the certifier's.
+
+    The spine may have been built at another commit than the one certifying
+    it (microcosm#931), so the sidecar the calibration recorded is held to
+    this checkout's package: its ``resource_pins`` and ``stage_artifact_pins``
+    must be the package's for the stages it ran
+    (``spine_build.uk_spine_package_pin_failures``), and its geography
+    block's ``definition_sha256`` the digest of the definition the three
+    conditioned supports compose
+    (``country_adapter.uk_spine_definition_failures``). The supports are
+    ``--spine-support-ew``, ``--spine-support-scotland`` and
+    ``--spine-support-ni`` (``spine_build.SPINE_SUPPORT_FLAGS``), each held to
+    sources.yaml's conditioned register first. The refusal names flags,
+    fields, stages, resources and artifacts, never a digest or a path.
+    """
+
+    from microcosm.build.uk_runtime.country_adapter import (
+        uk_spine_definition_failures,
+    )
+    from microcosm.build.uk_runtime.spine_build import (
+        SPINE_SUPPORT_FLAGS,
+        _atomic_support_argument,
+        registered_atomic_support_payloads,
+        uk_spine_package_pin_failures,
+    )
+
+    paths = {
+        system: getattr(args, _atomic_support_argument(flag), None)
+        for system, flag in SPINE_SUPPORT_FLAGS.items()
+    }
+    missing = [
+        flag for system, flag in SPINE_SUPPORT_FLAGS.items() if paths[system] is None
+    ]
+    if missing:
+        raise SystemExit(
+            f"error: the certifier requires {', '.join(missing)}: the conditioned "
+            "atomic-area supports the spine's areas were drawn on, from which it "
+            "recomputes the spine's area definition (microcosm#931)."
+        )
+    try:
+        supports = registered_atomic_support_payloads(paths, flags=SPINE_SUPPORT_FLAGS)
+    except ValueError as refused:
+        raise SystemExit(f"error: {refused}") from refused
+    failures = [
+        *(
+            f"its geography binding's {failure}"
+            for failure in uk_spine_definition_failures(
+                sidecar.get("geography"), supports
+            )
+        ),
+        *(f"its {failure}" for failure in uk_spine_package_pin_failures(sidecar)),
+    ]
+    if failures:
+        raise SystemExit(
+            "error: a release certifies only a spine built from the package it is "
+            "certified with (microcosm#931); the spine sidecar fails it: "
+            + "; ".join(failures)
+            + "."
+        )
+
+
 def _refuse_clone_indexed_candidate(frame) -> None:
     """Refuse a national candidate that carries a geographic clone index.
 
@@ -313,6 +378,10 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
         _verify_spine_geography(sidecar)
     except UKReleaseCertificationError as refused:
         raise SystemExit(f"error: {refused}") from refused
+    # And to the package this certifier runs from, also before any gate: the
+    # spine's recorded resource and stage artifact pins, and its area
+    # definition, recomputed from the conditioned supports (microcosm#931).
+    _verify_spine_package(sidecar, args)
     append_phase(state, "inputs_bound")
 
     artifact = load_ledger_consumer_artifact(
@@ -543,6 +612,22 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--release-cut-gate-json", type=Path)
     parser.add_argument("--certification-json", type=Path)
     parser.add_argument("--logbook-prev-row-digest", type=_sha256)
+    # The spine's three conditioned supports, from which the certifier
+    # recomputes the spine's area definition; required where the inputs are
+    # bound (_verify_spine_package, microcosm#931).
+    from microcosm.build.uk_runtime.spine_build import SPINE_SUPPORT_FLAGS
+
+    for system, flag in SPINE_SUPPORT_FLAGS.items():
+        parser.add_argument(
+            flag,
+            type=Path,
+            help=(
+                f"The {system} conditioned atomic-area support the spine's "
+                "areas were drawn on, held to sources.yaml's conditioned "
+                "register; the certifier recomputes the spine's area "
+                "definition from the three (microcosm#931)."
+            ),
+        )
     args = parser.parse_args(argv)
     args.release_cut_gate_json = (
         args.release_cut_gate_json

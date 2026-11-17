@@ -57,8 +57,10 @@ with `agent-secret get microcosm/uk-gate-signing-key-team maxghenis`, and
 5. national dry run, then the national calibration
 6. re-score, only when the build's comparison with the reference is missing
    or names another candidate or reference
-7. certify (the certifier checks the spine's geography binding before any
-   gate runs)
+7. certify (before any gate runs, the certifier checks the spine's geography
+   binding, recomputes its area definition from the three conditioned
+   supports the spine read, and holds its recorded resource and stage
+   artifact pins to the checkout's package)
 8. stage-1 comparison, against the reference (`--previous-h5` names another
    file)
 9. assemble
