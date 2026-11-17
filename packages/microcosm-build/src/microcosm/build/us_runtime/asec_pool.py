@@ -343,6 +343,15 @@ def _remap_source_year(
     for column in ASEC_HOUSEHOLD_CARRY_COLUMNS:
         if column not in household:
             continue
+        # Duplicate household rows that disagree leave no one code to carry;
+        # dropping all but the first would also skip the others' validation.
+        codes = household[["H_SEQ", column]].drop_duplicates()
+        conflicting = codes["H_SEQ"][codes["H_SEQ"].duplicated()]
+        if not conflicting.empty:
+            raise ValueError(
+                f"ASEC {column} differs between duplicate household rows for "
+                f"source household id(s): {conflicting.drop_duplicates().head().tolist()}."
+            )
         by_household = (
             household[["H_SEQ", column]]
             .drop_duplicates("H_SEQ")

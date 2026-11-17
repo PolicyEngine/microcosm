@@ -16,9 +16,15 @@ from microcosm.build.us_runtime.base_pool import (
     spine_column,
     with_optional_acs_spine,
 )
+from microcosm.build.us_runtime.h5_io import write_nullable_us_h5
 from microcosm.build.us_runtime.puf_support import (
     clone_us_frame_for_puf_support,
     support_source_id_column,
+)
+from microcosm.build.us_runtime.spine_assembly import assemble_spines
+from microcosm.build.us_runtime.support_provenance import (
+    spine_source_id_column,
+    support_channel_column,
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
@@ -300,6 +306,48 @@ def test_the_landlord_fields_survive_the_puf_clone_and_the_acs_spine(
         assert table.loc[~acs, column].tolist() == household[column].tolist()
 
 
+def test_the_landlord_fields_survive_assembly_the_clone_and_the_h5_export(
+    tmp_path: Path,
+) -> None:
+    # Review r1: production assembles the CPS and ACS spines first, clones the
+    # assembled frame (the preassembled branch the stacked PUF pass takes),
+    # then writes the nullable H5. The codes survive each step, an ACS
+    # household is left missing, and the export reads back as written.
+    current = tmp_path / "asec_2024.h5"
+    _write_asec(current, households=[(1, 1), (3, 1), (4, 1), (7, 1)])
+    frame, _ = build_pooled_asec_unit_frame(
+        [AsecSource(year=2024, path=current)],
+        target_year=2024,
+    )
+    codes = frame.table("household").set_index("household_id")[
+        ["H_TENURE", "HPUBLIC", "HLORENT"]
+    ]
+
+    assembled = assemble_spines(
+        {"asec": frame, "acs": _one_acs_household()},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    cloned = clone_us_frame_for_puf_support(assembled)
+    household = cloned.table("household")
+    channel = household[support_channel_column("household")]
+    assert (channel == "acs").sum() == 2
+    assert (channel == "asec").sum() == 2 * len(codes)
+
+    path = tmp_path / "export.h5"
+    write_nullable_us_h5(cloned, path, period=2024, artifact_kind="test")
+    written = pd.read_hdf(path, key="household")
+    assert len(written) == len(household)
+    spine_id = written[spine_source_id_column("household")]
+    for column in ("H_TENURE", "HPUBLIC", "HLORENT"):
+        on_acs = written.loc[written[support_channel_column("household")] == "acs"]
+        assert on_acs[column].isna().all()
+        on_asec = written[support_channel_column("household")] == "asec"
+        expected = codes.loc[spine_id[on_asec], column].to_numpy()
+        assert written.loc[on_asec, column].astype("int64").tolist() == (
+            expected.tolist()
+        )
+
+
 def test_a_landlord_field_missing_from_one_pooled_year_is_refused(
     tmp_path: Path,
 ) -> None:
@@ -327,6 +375,30 @@ def test_a_landlord_code_outside_the_census_values_is_refused(
 
     with pytest.raises(ValueError, match=r"HPUBLIC must be 0, 1 or 2.*\[1\]"):
         pool_asec_sources([AsecSource(year=2024, path=current)])
+
+
+def test_duplicate_household_rows_that_disagree_are_refused(tmp_path: Path) -> None:
+    # Review r1: duplicate H_SEQ rows kept the first row's codes and skipped
+    # the rest's validation. Rows that agree still pool.
+    current = tmp_path / "asec_2024.h5"
+    _write_asec(current, households=[(1, 1), (3, 1)])
+    household = pd.read_hdf(current, key="household")
+    agreeing = pd.concat([household, household.iloc[[0]]], ignore_index=True)
+    agreeing.to_hdf(current, key="household", mode="a")
+    pooled = pool_asec_sources([AsecSource(year=2024, path=current)])
+    assert pooled.person["HPUBLIC"].notna().all()
+
+    for column, value in (("HPUBLIC", 9), ("HLORENT", 1), ("H_TENURE", 3)):
+        conflicting = household.iloc[[0]].copy()
+        conflicting[column] = value
+        pd.concat([household, conflicting], ignore_index=True).to_hdf(
+            current, key="household", mode="a"
+        )
+        with pytest.raises(
+            ValueError,
+            match=rf"{column} differs between duplicate household rows.*\[1\]",
+        ):
+            pool_asec_sources([AsecSource(year=2024, path=current)])
 
 
 def test_sources_without_the_landlord_fields_still_pool(tmp_path: Path) -> None:
