@@ -11,6 +11,16 @@ from microcosm.build.us_runtime.asec_pool import (
     load_asec_h5_tables,
     pool_asec_sources,
 )
+from microcosm.build.us_runtime.base_pool import (
+    ACS_2024_1YR_SPINE,
+    spine_column,
+    with_optional_acs_spine,
+)
+from microcosm.build.us_runtime.puf_support import (
+    clone_us_frame_for_puf_support,
+    support_source_id_column,
+)
+from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 pytest.importorskip("microunit")
 pytest.importorskip("tables")
@@ -232,6 +242,62 @@ def test_the_landlord_fields_ride_on_the_household_table_unchanged(
     assert household["HLORENT"].tolist() == [0, 1, 0, 2]
     for column in ("HPUBLIC", "HLORENT"):
         assert column not in frame.table("person")
+
+
+def _one_acs_household() -> Frame:
+    tables = {
+        "person": pd.DataFrame(
+            {
+                "person_id": [1],
+                "person_household_id": [1],
+                "person_tax_unit_id": [10],
+                "person_spm_unit_id": [100],
+                "person_family_id": [1_000],
+                "person_marital_unit_id": [10_000],
+            }
+        ),
+        "household": pd.DataFrame(
+            {"household_id": [1], "state_fips": [6], "puma": ["0600101"]}
+        ),
+        "tax_unit": pd.DataFrame({"tax_unit_id": [10]}),
+        "spm_unit": pd.DataFrame({"spm_unit_id": [100]}),
+        "family": pd.DataFrame({"family_id": [1_000]}),
+        "marital_unit": pd.DataFrame({"marital_unit_id": [10_000]}),
+    }
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {"household": Weights(np.asarray([50.0]), WeightKind.DESIGN)},
+    )
+
+
+def test_the_landlord_fields_survive_the_puf_clone_and_the_acs_spine(
+    tmp_path: Path,
+) -> None:
+    # Both PUF clone halves keep their CPS household's codes; an ACS
+    # household, which has no such field, is left missing.
+    current = tmp_path / "asec_2024.h5"
+    _write_asec(current, households=[(1, 1), (3, 1), (4, 1), (7, 1)])
+    frame, _ = build_pooled_asec_unit_frame(
+        [AsecSource(year=2024, path=current)],
+        target_year=2024,
+    )
+
+    cloned = clone_us_frame_for_puf_support(frame)
+    household = cloned.table("household")
+    source = frame.table("household").set_index("household_id")
+    origin = household[support_source_id_column("household")].to_numpy()
+    assert len(household) == 2 * len(source)
+    for column in ("H_TENURE", "HPUBLIC", "HLORENT"):
+        assert household[column].tolist() == source.loc[origin, column].tolist()
+
+    pooled = with_optional_acs_spine(cloned, _one_acs_household())
+    table = pooled.table("household")
+    acs = (table[spine_column("household")] == ACS_2024_1YR_SPINE).to_numpy()
+    assert acs.sum() == 1
+    for column in ("H_TENURE", "HPUBLIC", "HLORENT"):
+        assert table.loc[acs, column].isna().all()
+        assert table.loc[~acs, column].tolist() == household[column].tolist()
 
 
 def test_a_landlord_field_missing_from_one_pooled_year_is_refused(
