@@ -5557,6 +5557,168 @@ def test_the_council_tax_check_keeps_the_stage_match() -> None:
     )
 
 
+def _whole_tables_without_excluded_regions(household, person, regions, **_columns):
+    """The excluded-region step as it read before it selected columns: the
+    same refusals and the same rows, with every column of both tables. The
+    columns the check reads (``_columns``) are not used."""
+
+    for entity, table, column in (
+        ("household", household, "household_id"),
+        ("household", household, "region"),
+        ("person", person, "person_household_id"),
+    ):
+        if list(table.columns).count(column) != 1:
+            raise ValueError(f"the {entity} table must hold one {column} column")
+    ids = household["household_id"]
+    if ids.isna().any() or ids.duplicated().any():
+        raise ValueError("household_id must name each household once")
+    excluded = household["region"].isin(list(regions)).to_numpy(dtype=bool)
+    leaves = person["person_household_id"].isin(ids[excluded]).to_numpy(dtype=bool)
+    return household.loc[~excluded], person.loc[~leaves]
+
+
+def _with_unread_columns(household, person):
+    """``household`` and ``person`` with invented columns the check does not
+    read."""
+
+    return (
+        household.assign(
+            tenure_type="OWNED_OUTRIGHT", rent=np.arange(len(household), dtype=float)
+        ),
+        person.assign(
+            age=np.arange(len(person), dtype=np.int64) + 20, employment_income=0.0
+        ),
+    )
+
+
+def _council_tax_verdict_cases():
+    """Tables the check passes, fails and refuses, by name."""
+
+    def edited(table, row, column, value):
+        table = table.copy()
+        table.loc[row, column] = value
+        return table
+
+    household, person = _council_tax_households(), _council_tax_persons()
+    yield "within the bill", household, person
+    yield (
+        "a rebate above its bill",
+        edited(household, 0, "council_tax_rebate", 1201.0),
+        person,
+    )
+    yield (
+        "a summed reduction above its bill",
+        household,
+        edited(person, 1, "council_tax_benefit_reported", 501.0),
+    )
+    yield "a NaN rebate", edited(household, 1, "council_tax_rebate", np.nan), person
+    yield (
+        "a negative reduction",
+        household,
+        edited(person, 2, "council_tax_benefit_reported", -0.5),
+    )
+    yield (
+        "an excluded household above its bill",
+        edited(household, 3, "council_tax_rebate", 75.0),
+        edited(person, 4, "council_tax_benefit_reported", 75.0),
+    )
+    yield (
+        "no household left",
+        household.iloc[[3]].reset_index(drop=True),
+        person.iloc[[4]].reset_index(drop=True),
+    )
+    yield (
+        "a person of no household",
+        household,
+        edited(person, 2, "person_household_id", 99),
+    )
+    yield "no bill column", household.drop(columns=["council_tax"]), person
+    yield "a bill that is text", household.assign(council_tax="1200"), person
+    yield (
+        "a repeated rebate column",
+        pd.concat([household, household[["council_tax_rebate"]]], axis=1),
+        person,
+    )
+    yield "a shared household id", edited(household, 2, "household_id", 14), person
+
+
+@pytest.mark.parametrize(
+    ("household", "person"),
+    [
+        pytest.param(household, person, id=name)
+        for name, household, person in _council_tax_verdict_cases()
+    ],
+)
+def test_the_council_tax_check_keeps_its_verdicts_when_it_copies_only_what_it_reads(
+    monkeypatch, household, person
+) -> None:
+    """The check copies only the columns it reads of the households and
+    persons it keeps (microcosm#931). On tables with columns it does not read,
+    its verdict, failures and details are those it gave when it copied every
+    column, on frames it passes, fails and refuses."""
+
+    from microcosm.build.uk_runtime import stage_health
+
+    household, person = _with_unread_columns(household, person)
+    selected = _council_tax_gate(household, person)
+    monkeypatch.setattr(
+        stage_health,
+        "_without_excluded_regions",
+        _whole_tables_without_excluded_regions,
+    )
+    whole = _council_tax_gate(household, person)
+
+    assert (selected.passed, selected.failures, selected.details) == (
+        whole.passed,
+        whole.failures,
+        whole.details,
+    )
+
+
+def test_the_excluded_region_step_copies_only_the_columns_read() -> None:
+    from microcosm.build.uk_runtime import stage_health
+
+    household, person = _with_unread_columns(
+        _council_tax_households(), _council_tax_persons()
+    )
+    regions = ("NORTHERN_IRELAND",)
+
+    kept_household, kept_person = stage_health._without_excluded_regions(
+        household,
+        person,
+        regions,
+        household_columns=("household_id", "council_tax", "council_tax_rebate"),
+        person_columns=("person_household_id", "council_tax_benefit_reported"),
+    )
+
+    assert list(kept_household.columns) == [
+        "household_id",
+        "council_tax",
+        "council_tax_rebate",
+    ]
+    assert list(kept_person.columns) == [
+        "person_household_id",
+        "council_tax_benefit_reported",
+    ]
+    whole_household, whole_person = _whole_tables_without_excluded_regions(
+        household, person, regions
+    )
+    pd.testing.assert_frame_equal(
+        kept_household, whole_household[list(kept_household.columns)]
+    )
+    pd.testing.assert_frame_equal(kept_person, whole_person[list(kept_person.columns)])
+    # A column named twice is copied once, and one the table lacks is left
+    # out, for the check's own refusal to name.
+    twice, _ = stage_health._without_excluded_regions(
+        household,
+        person,
+        regions,
+        household_columns=("household_id", "council_tax", "council_tax", "absent"),
+        person_columns=("person_household_id",),
+    )
+    assert list(twice.columns) == ["household_id", "council_tax"]
+
+
 # --- The packaged council-tax gate (microcosm#931) -----------------------------------
 #
 # uk_council_tax_reduction_within_bill declares the council-tax check on
