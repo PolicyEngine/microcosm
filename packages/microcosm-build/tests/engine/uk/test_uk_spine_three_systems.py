@@ -34,6 +34,10 @@ At one geographic clone and at two:
   Ireland copies' households alone, and gives those copies the BRMAs
   frs_brma's draw gives them on that call's frame, keyed on their own benefit
   units; Great Britain's copies read the layer for their new areas;
+- that call, which the adapter's population guard does not judge, gives the
+  copies the LHA_category, and so the BRMAs, a call over the whole frame the
+  stage cut it from gives them, which at two clones runs clone by clone under
+  the guard;
 - private_rent re-draws every Great Britain private renter's rent, the
   households' and their copies', off the list of the BRMA those stages gave
   it, so every such BRMA has a list for the renter's bedrooms, and leaves
@@ -59,10 +63,18 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.uk_runtime.brma_area_layer import NI_SYSTEM, area_brmas
-from microcosm.build.uk_runtime.frs_brma import UKFRSBRMAStageTransform
+from microcosm.build.uk_runtime.frs_brma import (
+    UK_BRMA_DECLARED_SEEDS,
+    UK_BRMA_PREDICTORS,
+    UKFRSBRMAStageTransform,
+    draw_household_brmas,
+)
+from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
 from microcosm.build.uk_runtime.local_authority_input import (
     local_authority_keys_missing_from_engine,
 )
+from microcosm.build.uk_runtime.national_frame import uk_time_period
+from microcosm.build.uk_runtime.rfdr_area_layer import RFDR_COLUMN
 from microcosm.build.uk_runtime.spi_support import (
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
     support_channel_column,
@@ -84,6 +96,7 @@ from microcosm.build.uk_runtime.spine_geography import (
     UKLocalAuthorityStageTransform,
     UKRFDRStageTransform,
     UKSPICopyAreasStageTransform,
+    load_committed_brma_counts,
     load_committed_brma_layer,
 )
 from microcosm.build.uk_runtime.spine_private_rent import (
@@ -105,11 +118,13 @@ _CHANNEL = support_channel_column("household")
 
 @dataclass
 class _RecordingEngine:
-    """The installed UK engine, keeping each call's frame and simulations."""
+    """The installed UK engine, keeping each call's frame and simulations,
+    and the values it returned."""
 
     clones: int
     engine: PolicyEngineUKEngine = field(init=False)
     calls: list[tuple[Frame, int]] = field(default_factory=list)
+    results: list[dict[str, np.ndarray]] = field(default_factory=list)
     country: str = "uk"
 
     def __post_init__(self) -> None:
@@ -117,7 +132,9 @@ class _RecordingEngine:
 
     def materialize(self, frame, variables, period):
         self.calls.append((frame, self.engine.simulation_batches(frame)))
-        return self.engine.materialize(frame, variables, period)
+        values = self.engine.materialize(frame, variables, period)
+        self.results.append(values)
+        return values
 
 
 def _stage(name: str):
@@ -349,6 +366,99 @@ def test_the_copy_stage_draws_northern_ireland_copies_on_one_engine_call(
     # Every other row keeps the BRMA area_brma gave it.
     base = ids[~copies]
     assert drawn.loc[base].equals(_brmas(run["brma"]).loc[base]), f"K={clones}"
+
+
+def _copy_call_frame(run) -> Frame:
+    """The frame spi_copy_areas cut its engine call's frame from: the frame it
+    returns, with the BRMA and fuel-relief flag each row carried into the
+    stage, since the stage writes those two after its call."""
+
+    after = run["copy_areas"]
+    before = run["copied"].table("household")
+    household = after.table("household").copy()
+    assert household.index.equals(before.index)
+    for column in ("brma", RFDR_COLUMN):
+        household[column] = before[column]
+    tables = {entity: after.table(entity) for entity in after.entities}
+    tables["household"] = household
+    return Frame(
+        tables,
+        after.schema,
+        {"household": after.weights_for("household")},
+        after.strata,
+        mass_log=after.mass_log,
+        metadata=after.metadata,
+    )
+
+
+def test_the_copy_stages_sub_pool_call_gives_what_a_whole_frame_call_gives(
+    run,
+) -> None:
+    """spi_copy_areas reads the Northern Ireland copies' LHA_category on one
+    simulation over their households alone (C-9). The adapter's population
+    guard judges only a call it runs clone by clone, so it does not judge
+    this one, and the stage rests it on LHA_category reading only a
+    household's own bedroom entitlement and shared-rate status. This holds
+    the call to one over the whole frame the stage cut it from, which at
+    K = 2 runs clone by clone under the guard: the copies' LHA_category, and
+    the BRMAs frs_brma's draw gives them on it, are the same. So an engine
+    whose LHA_category came to read beyond a household's own benefit units
+    fails here, rather than moving the copies' BRMAs with no refusal
+    (microcosm#931)."""
+
+    clones = run["clones"]
+    ((scratch, _),) = run["copy_engine"].calls
+    (sub_pool,) = run["copy_engine"].results
+    whole = _copy_call_frame(run)
+    household = whole.table("household")
+    copies = (
+        household["household_id"]
+        .isin(scratch.table("household")["household_id"])
+        .to_numpy()
+    )
+    # The call's frame is the whole frame's rows of those households, without
+    # the clone index.
+    pd.testing.assert_frame_equal(
+        household.loc[copies]
+        .drop(columns=ladder_clone_index_column("household"))
+        .set_index("household_id")
+        .sort_index()
+        .sort_index(axis=1),
+        scratch.table("household")
+        .set_index("household_id")
+        .sort_index()
+        .sort_index(axis=1),
+        check_exact=True,
+    )
+    pooled_engine = _RecordingEngine(clones)
+    pooled = pooled_engine.materialize(whole, UK_BRMA_PREDICTORS, uk_time_period(whole))
+    ((_, simulations),) = pooled_engine.calls
+    assert simulations == clones, f"The whole frame's call at K={clones}"
+    (lha,) = UK_BRMA_PREDICTORS
+    units = scratch.table("benunit")["benunit_id"].to_numpy()
+    by_unit = pd.Series(
+        np.asarray(pooled[lha], dtype=object),
+        index=whole.table("benunit")["benunit_id"].to_numpy(),
+    )
+    assert by_unit.loc[units].equals(
+        pd.Series(np.asarray(sub_pool[lha], dtype=object), index=units)
+    ), f"Northern Ireland copies' {lha} at K={clones}"
+    counts, _ = load_committed_brma_counts()
+    drawn = draw_household_brmas(
+        whole.table("person"),
+        whole.table("benunit"),
+        household.loc[copies],
+        lha_category=pooled[lha],
+        count_resource=counts,
+        seed=UK_BRMA_DECLARED_SEEDS["brma"],
+    )
+    np.testing.assert_array_equal(
+        np.asarray(drawn, dtype=object),
+        _brmas(run["copy_areas"])
+        .loc[household.loc[copies, "household_id"].to_numpy()]
+        .to_numpy(dtype=object),
+        err_msg=f"Northern Ireland copies' BRMAs at K={clones}",
+    )
 
 
 def test_private_rent_re_draws_great_britain_renters_on_the_stages_brmas(
