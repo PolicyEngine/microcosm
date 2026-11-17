@@ -331,11 +331,11 @@ _STEP_ULPS = {G1: 1, SPI: 3, DONORS: 5}
 
 _HOUSEHOLDS = 90
 _PERIOD = "2024"
-#: Invented design weights' seed. The test asserts the premise this seed
-#: gives, that ``spi_support_channel``'s and ``spi_income_band_donors``'
-#: exact-total corrections both move a row of the one-clone frame, so the
-#: corrected rows' class is exercised.
-_WEIGHT_SEED = 4
+#: Invented design weights' seed (:func:`_design_weights`). The test asserts
+#: the premise this seed gives, that ``spi_support_channel``'s and
+#: ``spi_income_band_donors``' exact-total corrections both move a row of the
+#: one-clone frame, so the corrected rows' class is exercised.
+_WEIGHT_SEED = 11
 #: Given to ``spi_support_channel``, so no engine is needed.
 _STATE_PENSION_AGE = 66
 #: ``spi_support_channel``'s declared count times this is the share's expected
@@ -362,6 +362,17 @@ _CGT_TOP_CELLS = {_EXHAUSTED_BAND: {250_000: 1e9}, _CROSSING_BAND: {250_000: 1_0
 #: The invented tape's pay at each of its six total-income levels: two below
 #: GBP 200,000, then one in each reserved band.
 _TAPE_PAY = (30_000.0, 80_000.0, 260_000.0, 620_000.0, 1_300_000.0, 2_600_000.0)
+
+
+def _design_weights(seed: int, low: float, high: float, size: int) -> np.ndarray:
+    """Invented design weights, uniform on ``[low, high)``, the same on every
+    platform. ``Generator.uniform`` computes ``low + (high - low) * u`` in C,
+    which a compiler may fuse into one rounding (it does on arm64 macOS), so
+    its last bits, and with them which rows an exact-total correction moves,
+    differ by platform. NumPy's ufuncs round the product and the sum apart on
+    every platform."""
+
+    return low + (high - low) * np.random.default_rng(seed).random(size)
 
 
 def _base_frame() -> Frame:
@@ -409,9 +420,7 @@ def _base_frame() -> Frame:
         person=person,
         benunit=tables.benunit,
         household=household,
-        household_weights=np.random.default_rng(_WEIGHT_SEED).uniform(
-            200.0, 900.0, _HOUSEHOLDS
-        ),
+        household_weights=_design_weights(_WEIGHT_SEED, 200.0, 900.0, _HOUSEHOLDS),
         time_period=_PERIOD,
         weight_kind=WeightKind.DESIGN,
     )
@@ -1302,7 +1311,7 @@ def test_rule_b_puts_the_correction_on_a_copy_at_seven_and_thirteen_clones(
 #: The stages the invented frame goes through, in spine order.
 _DRAW_STAGES = _in_roster_order(G1, TAKE_UP, PERSON_DRAWS)
 _TAKE_UP_HOUSEHOLDS = 60
-#: Invented design weights' seed.
+#: Invented design weights' seed (:func:`_design_weights`).
 _TAKE_UP_WEIGHT_SEED = 11
 #: The three anchored draws' rate and the apprentices' rate per head. At
 #: these, each of the four draws counted once over every clone moves clone 0
@@ -1403,8 +1412,8 @@ def _take_up_frame() -> Frame:
         person=pd.DataFrame(people),
         benunit=pd.DataFrame(units),
         household=pd.DataFrame(households),
-        household_weights=np.random.default_rng(_TAKE_UP_WEIGHT_SEED).uniform(
-            150.0, 1_500.0, _TAKE_UP_HOUSEHOLDS
+        household_weights=_design_weights(
+            _TAKE_UP_WEIGHT_SEED, 150.0, 1_500.0, _TAKE_UP_HOUSEHOLDS
         ),
         time_period=_PERIOD,
         weight_kind=WeightKind.DESIGN,
