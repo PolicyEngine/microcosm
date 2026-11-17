@@ -612,3 +612,77 @@ def test_fetch_reuses_cache_only_when_member_sha_matches(tmp_path) -> None:
     )
     assert result == cached
     assert result.read_bytes() == b"pinned-payload"
+
+
+def test_the_republished_extract_is_pinned_and_converted_to_2022_dollars() -> None:
+    # microcosm#1368: the Fed replaced scfp2022s.zip on 2026-10-09 with a file
+    # in 2025 dollars; the original 2022-dollar member stays readable by name.
+    from microcosm.build.us_runtime import scf_wealth
+
+    assert scf_wealth.SCF_2022_SUMMARY_EXTRACT_ZIP_SHA256 == (
+        "d4e139c69f6acf72c47512c7a204ae9a38d263781a9f0f51cdaecdf101d2d657"
+    )
+    assert scf_wealth.SCF_2022_SUMMARY_EXTRACT_MEMBER_SHA256 == (
+        "6ff73d5206ed9344a955ba66f8edee2d9f74297188f03e823346413cfacfc4e0"
+    )
+    assert scf_wealth.SCF_2022_SUMMARY_EXTRACT_ORIGINAL_MEMBER_SHA256 == (
+        "6b8dd2d935a76ed225ddebc80fb2db22a467f0c80d9a1acaa67b4584aa4bafd1"
+    )
+    assert scf_wealth.SCF_2022_SUMMARY_EXTRACT_2025_DOLLAR_FACTOR == 4789 / 4376
+    manifest_artifact = next(
+        artifact
+        for artifact in us_scf_wealth_stage_spec().artifacts
+        if artifact.get("member") == scf_wealth.SCF_2022_SUMMARY_EXTRACT_MEMBER
+    )
+    assert manifest_artifact["sha256"] == (
+        scf_wealth.SCF_2022_SUMMARY_EXTRACT_ZIP_SHA256
+    )
+    assert manifest_artifact["member_sha256"] == (
+        scf_wealth.SCF_2022_SUMMARY_EXTRACT_MEMBER_SHA256
+    )
+
+
+@pytest.mark.parametrize("case", ["republished", "original", "other"])
+def test_read_converts_only_the_republished_extract(
+    tmp_path, monkeypatch, case: str
+) -> None:
+    from microcosm.build.us_runtime import scf_wealth
+
+    raw = _raw_scf_summary()
+    raw.loc[0, "liq"] = -1.0  # a missing-data sentinel keeps its code
+    path = tmp_path / "rscfp2022.dta"
+    raw.to_stata(path, write_index=False)
+    digest = scf_wealth._sha256_hexdigest(path.read_bytes())
+    if case == "republished":
+        monkeypatch.setattr(
+            scf_wealth, "SCF_2022_SUMMARY_EXTRACT_MEMBER_SHA256", digest
+        )
+    elif case == "original":
+        monkeypatch.setattr(
+            scf_wealth, "SCF_2022_SUMMARY_EXTRACT_ORIGINAL_MEMBER_SHA256", digest
+        )
+
+    read = scf_wealth.read_scf_2022_summary_extract(path)
+
+    factor = scf_wealth.SCF_2022_SUMMARY_EXTRACT_2025_DOLLAR_FACTOR
+    divisor = factor if case == "republished" else 1.0
+    for column in scf_wealth.SCF_2022_SUMMARY_EXTRACT_DOLLAR_COLUMNS:
+        if column not in raw.columns:
+            continue
+        expected = raw[column].to_numpy(dtype=np.float64) / divisor
+        if column == "liq":
+            expected[0] = -1.0
+        np.testing.assert_allclose(read[column].to_numpy(), expected, rtol=1e-12)
+    for column in raw.columns:
+        if column not in scf_wealth.SCF_2022_SUMMARY_EXTRACT_DOLLAR_COLUMNS:
+            np.testing.assert_array_equal(
+                read[column].to_numpy(), raw[column].to_numpy()
+            )
+    assert read.attrs[scf_wealth.SCF_2022_SUMMARY_EXTRACT_READ_ATTR] == {
+        "member_sha256": digest,
+        "dollars": {
+            "republished": "2025_dollars_converted_to_2022_dollars",
+            "original": "2022_dollars",
+            "other": "unpinned_file_read_as_is",
+        }[case],
+    }

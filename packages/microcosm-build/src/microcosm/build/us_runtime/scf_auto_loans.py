@@ -40,6 +40,7 @@ from microcosm.build.us_runtime.scf_wealth import (
     _recipient_cps_race,
     _scf_summary_predictor_table,
     _sum_present,
+    read_scf_2022_summary_extract,
 )
 from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
@@ -223,7 +224,9 @@ def load_scf_2022_auto_loan_donor(
     """Join SCF summary/full implicates and derive the two retired targets."""
 
     join_columns = ["y1", "yy1"]
-    summary = pd.read_stata(summary_extract_path, convert_categoricals=False)
+    # The summary extract's income predictors in 2022 dollars, like the full
+    # file's loan amounts (microcosm#1368).
+    summary = read_scf_2022_summary_extract(summary_extract_path)
     try:
         full = pd.read_stata(
             full_extract_path,

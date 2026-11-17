@@ -152,7 +152,7 @@ block_ladder_npz|$LADDER|$LADDER_SHA|$LADDER_BYTES|LADDER_SHA; default d713: Con
 release_ledger_facts|$FEED|$FEED_SHA|$FEED_BYTES|us/chronicle_feed.json facts_sha256
 ${TAIL:+qrf_tail_exclusions|$TAIL|${QRF_TAIL_EXCLUSIONS_SHA:-9bd497dc0d03dd793b53a228979e99408e62fdd2430bdd0d04df5fc7576e6229}|-|operator-supplied register; the release records its sha in diagnostics}
 ssi_take_up_prior_basis|$SSI|$SSI_SHA|4782|--ssi-take-up-prior-weight-basis-sha256
-scf_summary_extract|$SCF|6b8dd2d935a76ed225ddebc80fb2db22a467f0c80d9a1acaa67b4584aa4bafd1|24904185|us/source_stages.json, us_runtime/scf_wealth.py
+scf_summary_extract|$SCF|6ff73d5206ed9344a955ba66f8edee2d9f74297188f03e823346413cfacfc4e0|34487960|us/source_stages.json, us_runtime/scf_wealth.py (the Fed's 2026-10-09 republication, microcosm#1368)
 EOF
 }
 

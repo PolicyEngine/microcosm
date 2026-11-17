@@ -121,8 +121,12 @@ from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
 
 __all__ = [
+    "SCF_2022_SUMMARY_EXTRACT_2025_DOLLAR_FACTOR",
+    "SCF_2022_SUMMARY_EXTRACT_DOLLAR_COLUMNS",
     "SCF_2022_SUMMARY_EXTRACT_MEMBER",
     "SCF_2022_SUMMARY_EXTRACT_MEMBER_SHA256",
+    "SCF_2022_SUMMARY_EXTRACT_ORIGINAL_MEMBER_SHA256",
+    "SCF_2022_SUMMARY_EXTRACT_READ_ATTR",
     "SCF_2022_SUMMARY_EXTRACT_URL",
     "SCF_2022_SUMMARY_EXTRACT_ZIP_SHA256",
     "SCF_FINANCIAL_ASSET_TARGET_COMPONENTS",
@@ -141,6 +145,7 @@ __all__ = [
     "impute_us_scf_financial_assets",
     "impute_us_scf_net_worth",
     "load_scf_2022_financial_asset_donor",
+    "read_scf_2022_summary_extract",
     "us_scf_wealth_signal_gate",
     "us_scf_wealth_stage_spec",
     "us_scf_wealth_summary",
@@ -167,13 +172,46 @@ SCF_2022_SUMMARY_EXTRACT_MEMBER = "rscfp2022.dta"
 #: a fixed public artifact, so the build pins both digests and refuses any
 #: payload that does not match — a silently reissued vintage cannot slip in
 #: (the ``build_us_block_ladder_artifact._sha256`` provenance convention).
-#: Verified against the Federal Reserve download on 2026-07-09.
+#: The Federal Reserve replaced the file on 2026-10-09, when it published the
+#: 2025 SCF: the extract it serves now states every dollar value in 2025
+#: dollars, and the original 2022-dollar file is no longer served
+#: (microcosm#1368). These pins are that republished file, verified against
+#: the Federal Reserve download on 2026-11-17 (3,715,841-byte zip, 34,487,960-
+#: byte member). Its records and weights are the original's (the weighted
+#: shares of nonzero, positive and negative net worth are unchanged), and
+#: :func:`read_scf_2022_summary_extract` converts its dollar columns back to
+#: 2022 dollars.
 SCF_2022_SUMMARY_EXTRACT_ZIP_SHA256 = (
-    "3bb4d890ae2463ff6039ec7692e375f544dd98a55a37ca2cb2340354b9cc9d80"
+    "d4e139c69f6acf72c47512c7a204ae9a38d263781a9f0f51cdaecdf101d2d657"
 )
 SCF_2022_SUMMARY_EXTRACT_MEMBER_SHA256 = (
+    "6ff73d5206ed9344a955ba66f8edee2d9f74297188f03e823346413cfacfc4e0"
+)
+#: The original 2022-dollar member (pinned 2026-07-09, served until
+#: 2026-10-09). A file with this digest is already in 2022 dollars and is read
+#: as it is.
+SCF_2022_SUMMARY_EXTRACT_ORIGINAL_MEMBER_SHA256 = (
     "6b8dd2d935a76ed225ddebc80fb2db22a467f0c80d9a1acaa67b4584aa4bafd1"
 )
+#: The republished extract's dollar values are the 2022 values times the
+#: Fed's CPI-U-RS ratio for 2025 over 2022 (4789 / 4376), as its tables apply
+#: it; dividing by the same ratio restores 2022 dollars (microcosm#1368).
+SCF_2022_SUMMARY_EXTRACT_2025_DOLLAR_FACTOR = 4789 / 4376
+#: The extract's dollar columns that Microcosm reads: the asset and net-worth
+#: targets and the three income predictors. Every other column read (weight,
+#: age, sex, race, marital status, children, implicate keys) is not dollars.
+SCF_2022_SUMMARY_EXTRACT_DOLLAR_COLUMNS: tuple[str, ...] = (
+    "liq",
+    "stocks",
+    "nmmf",
+    "bond",
+    "networth",
+    "wageinc",
+    "intdivinc",
+    "ssretinc",
+)
+#: ``DataFrame.attrs`` key recording which extract was read and how.
+SCF_2022_SUMMARY_EXTRACT_READ_ATTR = "scf_2022_summary_extract"
 #: Federal Reserve econres rejects the default urllib user-agent (HTTP 403), so
 #: the fetch presents a browser user-agent.
 _SCF_HTTP_USER_AGENT = (
@@ -560,6 +598,44 @@ def fetch_scf_2022_summary_extract(
     return target
 
 
+def read_scf_2022_summary_extract(path: str | Path) -> pd.DataFrame:
+    """Read the SCF 2022 summary extract with its dollar columns in 2022 dollars.
+
+    The file is identified by its SHA-256. The republished extract
+    (:data:`SCF_2022_SUMMARY_EXTRACT_MEMBER_SHA256`) states dollars in 2025
+    dollars, so each of :data:`SCF_2022_SUMMARY_EXTRACT_DOLLAR_COLUMNS` is
+    divided by :data:`SCF_2022_SUMMARY_EXTRACT_2025_DOLLAR_FACTOR`; a missing-
+    data sentinel code keeps its value. The original 2022-dollar extract
+    (:data:`SCF_2022_SUMMARY_EXTRACT_ORIGINAL_MEMBER_SHA256`) and any other
+    file, such as a test fixture, are read as they are, so no file is converted
+    twice. ``attrs[SCF_2022_SUMMARY_EXTRACT_READ_ATTR]`` records the digest and
+    which case applied.
+    """
+
+    source = Path(path)
+    digest = _sha256_hexdigest(source.read_bytes())
+    raw = pd.read_stata(source, convert_categoricals=False)
+    if digest == SCF_2022_SUMMARY_EXTRACT_MEMBER_SHA256:
+        for column in SCF_2022_SUMMARY_EXTRACT_DOLLAR_COLUMNS:
+            if column not in raw.columns:
+                continue
+            values = pd.to_numeric(raw[column], errors="coerce")
+            raw[column] = values.where(
+                values.isin(_SCF_SENTINELS),
+                values / SCF_2022_SUMMARY_EXTRACT_2025_DOLLAR_FACTOR,
+            )
+        dollars = "2025_dollars_converted_to_2022_dollars"
+    elif digest == SCF_2022_SUMMARY_EXTRACT_ORIGINAL_MEMBER_SHA256:
+        dollars = "2022_dollars"
+    else:
+        dollars = "unpinned_file_read_as_is"
+    raw.attrs[SCF_2022_SUMMARY_EXTRACT_READ_ATTR] = {
+        "member_sha256": digest,
+        "dollars": dollars,
+    }
+    return raw
+
+
 def load_scf_2022_financial_asset_donor(path: str | Path) -> pd.DataFrame:
     """Read the SCF 2022 summary extract into a financial-asset donor table.
 
@@ -577,7 +653,7 @@ def load_scf_2022_financial_asset_donor(path: str | Path) -> pd.DataFrame:
         ValueError: If the extract is missing a required source column.
     """
 
-    raw = pd.read_stata(path, convert_categoricals=False)
+    raw = read_scf_2022_summary_extract(path)
     required = {
         "liq",
         "stocks",
