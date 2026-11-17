@@ -1276,10 +1276,11 @@ class _InPlaceLeafQRF(RandomForestQuantileRegressor):
     messages name this class instead of ``RandomForestQuantileRegressor``. A
     ``max_samples_leaf`` so large that the whole forest's array exceeds the
     largest size numpy can describe raises numpy's ``ValueError`` here, where
-    the library, allocating one tree at a time, raises ``MemoryError``. When
-    the one allocation fails, it fails before any tree's ``random`` calls,
-    so Python's ``random`` state differs from the library's after that
-    failed fit.
+    the library, allocating one tree at a time, raises ``MemoryError``. A
+    failed allocation here comes before any tree's ``random`` calls. So with a
+    leaf cap set, if the library gets past at least one tree before its own
+    allocation or its final copy fails, Python's ``random`` state can differ
+    from the library's after that failed fit.
 
     The saving lasts while pages stay untouched. Pages of an ``np.zeros``
     array take no memory until something touches them. A write makes a page

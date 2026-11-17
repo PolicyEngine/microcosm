@@ -147,6 +147,11 @@ REQUIRED_RESULT_FIELDS = frozenset(
         "environment",
     }
 )
+#: Required fields that may hold null: no digest under --no-digest, no row
+#: count for the near-discrete shape, and no cap for an uncapped forest.
+NULLABLE_RESULT_FIELDS = frozenset(
+    {"leaf_array_sha256", "rows_in_widest_leaf", "max_samples_leaf"}
+)
 #: Marks the child's result line on standard output.
 RESULT_PREFIX = "measure_qrf_leaf_memory result: "
 #: scikit-learn accepts integer seeds below 2**32.
@@ -475,13 +480,30 @@ def _run_child(
         for line in completed.stdout.splitlines()
         if line.startswith(RESULT_PREFIX)
     ]
-    try:
-        result = json.loads(marked[-1])
-    except (IndexError, json.JSONDecodeError):
-        result = None
-    if not isinstance(result, dict) or not REQUIRED_RESULT_FIELDS <= set(result):
+    if not marked:
         failure["message"] = (
             f"the {implementation} measurement exited without printing a result"
+        )
+        return None, failure
+    try:
+        result = json.loads(marked[-1])
+    except json.JSONDecodeError:
+        result = None
+    if not isinstance(result, dict):
+        failure["message"] = (
+            f"the {implementation} measurement printed a result that is not a "
+            "JSON object"
+        )
+        return None, failure
+    missing = sorted(
+        field
+        for field in REQUIRED_RESULT_FIELDS
+        if field not in result
+        or (result[field] is None and field not in NULLABLE_RESULT_FIELDS)
+    )
+    if missing:
+        failure["message"] = (
+            f"the {implementation} measurement's result lacks " + ", ".join(missing)
         )
         return None, failure
     return result, None
@@ -653,9 +675,9 @@ def _parse_arguments(argv: list[str] | None) -> argparse.Namespace:
             )
         if arguments.shape == "wage" and distinct <= _DISCRETE_Y_UNIQUE_MAX:
             parser.error(
-                f"with --rows {arguments.rows} the wage target has only {distinct} "
-                "distinct values, so _fit_forest would cap its leaves as a "
-                "near-discrete target; raise --rows"
+                f"with --rows {arguments.rows} and --seed {arguments.seed} the wage "
+                f"target has only {distinct} distinct values, so _fit_forest would "
+                "cap its leaves as a near-discrete target; raise --rows"
             )
     return arguments
 

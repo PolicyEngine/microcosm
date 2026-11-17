@@ -82,7 +82,7 @@ def _near_discrete_donors(
 def _sample_weights(seed: int, rows: int) -> np.ndarray:
     """Positive weights with a fifth of the rows at exactly zero.
 
-    The library's zero-weight filter runs on every leaf. With a fifth of the
+    The library's weight filter runs on every leaf. With a fifth of the
     weights at zero no leaf empties;
     ``test_weighted_leaves_that_empty_get_the_library_placeholder`` covers that.
     """
@@ -250,9 +250,10 @@ def test_weighted_samples_match_the_library(max_samples_leaf) -> None:
 def test_weighted_leaves_that_empty_get_the_library_placeholder(
     monkeypatch, max_samples_leaf
 ) -> None:
-    """A leaf whose entries the zero-weight filter removes holds ``[0]``.
+    """A leaf whose entries the weight filter removes holds ``[0]``.
 
-    Nine in ten weights are zero, so some leaves empty. Both classes hand the
+    Nine in ten weights are zero, so the filter, which reads another row's
+    weight for each entry, empties some leaves. Both classes hand the
     filtered leaves to quantile-forest's compiled helper, which records how
     many hold the placeholder. With a cap of one entry the helper is not
     used, and only the arrays are compared.
@@ -297,12 +298,16 @@ def test_weight_filter_matches_the_library_for_tiny_zero_and_negative_weights(
     """quantile-forest 1.4.2's weight filter is copied as it is.
 
     It looks up each entry's weight by the draw's position minus one, not by
-    the drawn row, so it keeps or drops entries by another row's weight. Tiny,
-    zero and negative weights all reach the comparison it makes.
+    the drawn row, so it keeps or drops entries by another row's weight. Tiny
+    and zero weights reach the comparison it makes, and so do negative ones
+    before scikit-learn 1.9, which refuses them while growing the trees.
     """
     predictors, target = _continuous_donors(seed=18, rows=600)
     generator = np.random.default_rng(18)
-    weights = generator.choice([-1.0, 0.0, 1e-3, 0.04, 0.5, 2.0, 3.0], len(target))
+    levels = [-1.0, 0.0, 1e-3, 0.04, 0.5, 2.0, 3.0]
+    if parse_version(sklearn.__version__) >= parse_version("1.9.0"):
+        levels.remove(-1.0)
+    weights = generator.choice(levels, len(target))
     _assert_same_fit(
         predictors,
         target,
@@ -464,13 +469,18 @@ def test_scikit_learn_1_9_bootstrap_arguments_match_the_library(monkeypatch) -> 
 
 
 def test_fit_leaves_the_warning_filters_as_they_were() -> None:
-    """The copy silences ``apply``'s warning only inside ``catch_warnings``."""
+    """The copy silences ``apply``'s warning only inside ``catch_warnings``.
+
+    With context-aware warnings (the default on free-threaded builds) the
+    active filters live in a context variable, which ``_get_filters`` reads.
+    """
+    active_filters = getattr(warnings, "_get_filters", lambda: warnings.filters)
     predictors, target = _continuous_donors(seed=24, rows=150)
-    before = list(warnings.filters)
+    before = list(active_filters())
     qrf._InPlaceLeafQRF(n_estimators=2, max_samples_leaf=None, random_state=5).fit(
         predictors, target
     )
-    assert warnings.filters == before
+    assert list(active_filters()) == before
 
 
 def _fit_outcome(model_class, predictors, target, weights) -> tuple[object, object]:
@@ -553,18 +563,34 @@ def test_in_place_fill_leaves_unwritten_pages_unmapped() -> None:
     memory. The library's ``np.array(list)`` copy writes them all (a share of
     1.0). The array, over 40 MiB, is larger than glibc's largest mmap
     threshold, so it gets fresh pages; numpy's request for transparent huge
-    pages is turned off in the child.
+    pages is turned off in the child, and glibc's ``MALLOC_PERTURB_``, which
+    fills allocations, is unset. About a quarter of the pages hold entries
+    with 16 KiB pages and a sixteenth with 4 KiB pages. With pages over
+    16 KiB, or huge pages always on at any size, most pages hold an entry,
+    so the test skips.
     """
-    huge_page_setting = Path("/sys/kernel/mm/transparent_hugepage/enabled")
-    if huge_page_setting.exists() and "[always]" in huge_page_setting.read_text():
-        pytest.skip("transparent huge pages are always on")
+    if os.sysconf("SC_PAGE_SIZE") > 16 * 2**10:
+        pytest.skip("memory pages are larger than 16 KiB")
+    huge_page_settings = Path("/sys/kernel/mm/transparent_hugepage")
+    for setting in [
+        huge_page_settings / "enabled",
+        *huge_page_settings.glob("hugepages-*/enabled"),
+    ]:
+        if setting.exists() and "[always]" in setting.read_text():
+            pytest.skip(f"transparent huge pages are always on ({setting})")
+    environment = {
+        name: value
+        for name, value in os.environ.items()
+        if name not in {"MALLOC_PERTURB_", "MALLOC_PERTURB"}
+    }
     completed = subprocess.run(
         [sys.executable, "-c", _RESIDENT_SHARE_CHILD],
         capture_output=True,
         text=True,
-        check=True,
-        env={**os.environ, "OMP_NUM_THREADS": "1"},
+        check=False,
+        env={**environment, "OMP_NUM_THREADS": "1"},
     )
+    assert completed.returncode == 0, completed.stderr
     reading = completed.stdout.strip().splitlines()[-1]
     if reading == "unavailable":
         pytest.skip("mincore is unavailable")
