@@ -1184,11 +1184,13 @@ def _fill_tree_leaves(
     """Write one tree's leaf-to-training-row map into ``tree_leaves``.
 
     The body is quantile-forest 1.4.2's
-    ``BaseForestQuantileRegressor._get_y_train_leaves_slice`` with one
-    change: it writes into the caller's slice of the forest-wide array instead
-    of allocating a zeroed array of its own and returning it. Every other step,
-    including the grouping helper, the global ``random.seed``/``random.shuffle``
-    calls and the order of the writes, is the library's.
+    ``BaseForestQuantileRegressor._get_y_train_leaves_slice``, except that it
+    writes into the caller's slice of the forest-wide array instead of
+    allocating a zeroed array of its own and returning it. So it takes no
+    ``max_node_count``, which only sized that array, and it checks that the
+    compiled helper wrote into the slice. Every other step, including the
+    grouping helper, the global ``random.seed``/``random.shuffle`` calls and the
+    order of the writes, is the library's.
 
     Args:
         tree_leaves: This tree's zeroed ``(nodes, outputs, width)`` slice of the
@@ -1257,22 +1259,27 @@ class _InPlaceLeafQRF(RandomForestQuantileRegressor):
     then copies the list into the final array with ``np.array(list)``. That
     copy writes every byte, padding included, so the whole padded array
     becomes resident memory, and for a while both the per-tree arrays and the
-    copy exist. Pages of an ``np.zeros`` array that are never written cost no
-    resident memory.
+    copy exist.
 
     This subclass allocates the final array once and writes each tree's
     entries straight into that tree's slice (:func:`_fill_tree_leaves`). The
     width, ``apply``, bootstrap replay and rank computation are the library's
     own, as are the ``random.seed``/``random.shuffle`` calls in tree order and
     the dtype, shape and C order of the result, so the array is byte-identical
-    to the library's and so is every prediction. Only the private
-    ``_get_y_train_leaves`` is replaced, so :meth:`fit` and
-    :meth:`_get_y_train_leaves` refuse any quantile-forest release other than
-    :data:`_SUPPORTED_QUANTILE_FOREST_VERSION`.
+    to the library's and so is every prediction. It replaces the private
+    ``_get_y_train_leaves`` and wraps :meth:`fit` only to check the version:
+    both refuse any quantile-forest release other than
+    :data:`_SUPPORTED_QUANTILE_FOREST_VERSION`. scikit-learn's validation
+    messages name this class instead of ``RandomForestQuantileRegressor``.
 
-    Pickling a fitted forest, or deep-copying it, still writes the full padded
-    array: quantile-forest's ``QuantileForest.__reduce__`` hands the whole
-    array to pickle.
+    The saving lasts while pages stay untouched. Pages of an ``np.zeros``
+    array take no memory until something touches them. A write makes a page
+    resident, and on macOS so does a read: prediction reads each leaf row it
+    reaches, and pickling or deep-copying a fitted forest reads the whole
+    array, because quantile-forest's ``QuantileForest.__reduce__`` hands all
+    of it to pickle, which also writes it out in full. On Linux a read maps a
+    shared zero page instead, but where transparent huge pages are granted a
+    first write makes a whole 2 MiB region resident.
     """
 
     def fit(self, X, y, sample_weight=None, sparse_pickle=False):  # noqa: N803

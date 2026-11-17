@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import inspect
+import math
 import pickle
 import random
 import tomllib
@@ -28,6 +29,7 @@ import pandas as pd
 import pytest
 import quantile_forest
 from quantile_forest import RandomForestQuantileRegressor
+from quantile_forest import _quantile_forest as quantile_forest_module
 from sklearn.base import clone
 
 from microcosm.fit import fit, qrf
@@ -73,8 +75,9 @@ def _near_discrete_donors(
 def _sample_weights(seed: int, rows: int) -> np.ndarray:
     """Positive weights with a fifth of the rows at exactly zero.
 
-    The library drops zero-weight rows from each leaf, and refills a leaf
-    that empties with a placeholder, so both branches run.
+    The library's zero-weight filter runs on every leaf. With a fifth of the
+    weights at zero no leaf empties;
+    ``test_weighted_leaves_that_empty_get_the_library_placeholder`` covers that.
     """
     generator = np.random.default_rng(seed)
     weights = generator.uniform(0.1, 3.0, rows)
@@ -183,8 +186,15 @@ def test_continuous_target_without_a_cap_matches_the_library() -> None:
     assert leaves.shape[-1] > 1
 
 
-def test_near_discrete_target_over_the_cap_matches_the_library(monkeypatch) -> None:
-    """Leaves larger than the cap are shuffled and truncated identically."""
+@pytest.mark.parametrize("cap", [16, 0.0047])
+def test_near_discrete_target_over_the_cap_matches_the_library(
+    monkeypatch, cap
+) -> None:
+    """Leaves larger than the cap are shuffled and truncated identically.
+
+    The fractional cap is 0.0047 of 3,000 rows, 14.1, which the library rounds
+    up to 15.
+    """
     shuffle_calls: list[int] = []
     original_shuffle = random.shuffle
 
@@ -193,19 +203,19 @@ def test_near_discrete_target_over_the_cap_matches_the_library(monkeypatch) -> N
         return original_shuffle(sequence)
 
     monkeypatch.setattr(random, "shuffle", counting_shuffle)
-    cap = 16
     predictors, target = _near_discrete_donors(seed=2)
     leaves = _assert_same_fit(predictors, target, max_samples_leaf=cap)
-    assert leaves.shape[-1] == cap
+    width = cap if isinstance(cap, int) else math.ceil(cap * len(target))
+    assert leaves.shape[-1] == width == (16 if isinstance(cap, int) else 15)
     # Both fits shuffled the same leaves, each larger than the cap, before
     # truncating them; the library fit ran first.
     half = len(shuffle_calls) // 2
     assert half > 0
     assert shuffle_calls[:half] == shuffle_calls[half:]
-    assert min(shuffle_calls) > cap
+    assert min(shuffle_calls) > width
 
 
-@pytest.mark.parametrize("max_samples_leaf", [None, 5])
+@pytest.mark.parametrize("max_samples_leaf", [None, 5, 1])
 def test_several_outputs_match_the_library(max_samples_leaf) -> None:
     predictors, first = _continuous_donors(seed=3)
     generator = np.random.default_rng(3)
@@ -229,11 +239,45 @@ def test_weighted_samples_match_the_library(max_samples_leaf) -> None:
     )
 
 
+def test_weighted_leaves_that_empty_get_the_library_placeholder(
+    monkeypatch,
+) -> None:
+    """A leaf whose entries the zero-weight filter removes holds ``[0]``.
+
+    Nine in ten weights are zero, so some leaves empty. Both classes hand the
+    filtered leaves to quantile-forest's compiled helper, which records how
+    many hold the placeholder.
+    """
+    placeholders: list[int] = []
+    original_map = quantile_forest_module.map_indices_to_leaves
+
+    def recording_map(**arguments):
+        placeholders.append(
+            sum(
+                isinstance(values, list) and values == [0]
+                for values in arguments["leaf_values_list"]
+            )
+        )
+        return original_map(**arguments)
+
+    monkeypatch.setattr(quantile_forest_module, "map_indices_to_leaves", recording_map)
+    predictors, target = _continuous_donors(seed=15, rows=500)
+    generator = np.random.default_rng(15)
+    weights = generator.uniform(0.1, 3.0, len(target))
+    weights[generator.random(len(target)) < 0.9] = 0.0
+    _assert_same_fit(predictors, target, sample_weight=weights, max_samples_leaf=None)
+    half = len(placeholders) // 2
+    assert half == 6
+    assert placeholders[:half] == placeholders[half:]
+    assert sum(placeholders[half:]) > 0
+
+
 @pytest.mark.parametrize(
     "parameters",
     [
         pytest.param({}, id="library-default-one-sample-per-leaf"),
-        pytest.param({"max_samples_leaf": 0.02}, id="fractional-cap"),
+        # 0.021 of 400 rows is 8.4, which the library rounds up to 9.
+        pytest.param({"max_samples_leaf": 0.021}, id="fractional-cap"),
         pytest.param({"max_samples_leaf": None, "bootstrap": False}, id="no-bootstrap"),
         pytest.param({"max_samples_leaf": 9, "max_samples": 0.5}, id="half-bootstrap"),
         pytest.param(
@@ -242,7 +286,11 @@ def test_weighted_samples_match_the_library(max_samples_leaf) -> None:
     ],
 )
 def test_other_forest_settings_match_the_library(parameters) -> None:
-    """Settings microcosm does not use still give the library's array."""
+    """Other forest settings still give the library's array.
+
+    ``_fit_forest`` passes a fractional cap when a chain configuration asks
+    for one; the bootstrap settings are ones microcosm leaves at the default.
+    """
     predictors, target = _continuous_donors(seed=5, rows=400)
     _assert_same_fit(predictors, target, **parameters)
 
@@ -250,6 +298,37 @@ def test_other_forest_settings_match_the_library(parameters) -> None:
 def test_parallel_tree_fitting_matches_the_library() -> None:
     predictors, target = _continuous_donors(seed=6)
     _assert_same_fit(predictors, target, max_samples_leaf=None, n_jobs=-1)
+
+
+def test_fill_refuses_a_helper_that_returns_a_copy(monkeypatch) -> None:
+    """If the compiled helper stopped writing into its argument, fitting fails.
+
+    A copy would leave the preallocated slice at zero, so every leaf would
+    read as empty.
+    """
+    original_map = quantile_forest_module.map_indices_to_leaves
+
+    def copying_map(**arguments):
+        arguments["y_train_leaves_slice"] = arguments["y_train_leaves_slice"].copy()
+        return original_map(**arguments)
+
+    monkeypatch.setattr(quantile_forest_module, "map_indices_to_leaves", copying_map)
+    predictors, target = _continuous_donors(seed=16, rows=100)
+    model = qrf._InPlaceLeafQRF(n_estimators=2, max_samples_leaf=None, random_state=0)
+    with pytest.raises(RuntimeError, match="returned a copy"):
+        model.fit(predictors, target)
+
+
+def test_sparse_pickle_reaches_the_library() -> None:
+    predictors, target = _continuous_donors(seed=17, rows=200)
+    model = qrf._InPlaceLeafQRF(n_estimators=3, max_samples_leaf=None, random_state=2)
+    model.fit(predictors, target, sparse_pickle=True)
+    assert model.forest_.sparse_pickle
+    restored = pickle.loads(pickle.dumps(model))
+    _assert_byte_identical(
+        np.asarray(restored.forest_.y_train_leaves),
+        np.asarray(model.forest_.y_train_leaves),
+    )
 
 
 # ----------------------------------------------------------------------------
