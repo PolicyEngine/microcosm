@@ -361,7 +361,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#922's county facts pin, two declared legacy resources,
             # moves it.
             # microcosm#1543's fit input checks in microcosm.fit.qrf move it again.
-            "spec_sha256": "9ad067de4d9e5ac8a70734886963145c35983b4e385177e43a04da162b700b31",
+            "spec_sha256": "4e2b6c19661079b1c75ab694d043c76d22f52465e7b01d37dc499a3611ca6d8c",
         },
     }
 

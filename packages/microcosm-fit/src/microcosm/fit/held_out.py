@@ -79,6 +79,14 @@ def stratified_folds(
 
     With ``groups`` whole groups are dealt, each with the rarest class it
     contains, so rows that share a group are never split across folds.
+
+    Once :func:`can_deal_folds` holds, every class sits in every fold when rows
+    are dealt. When groups are dealt, only the rarest class (the first in
+    sorted order, if several tie) is sure to: another class can sit in one
+    fold. Even so, with three or more folds every fold's training rows (the
+    other folds) hold two classes or more whenever ``labels`` do. With two
+    folds they may hold a single class, which :func:`out_of_fold_proba`
+    handles.
     """
     labels = np.asarray(labels)
     return _qrf._stratified_folds(
@@ -98,10 +106,21 @@ def out_of_fold_proba(
     """Out-of-fold class probabilities for every row of ``table``.
 
     Each fold's rows are scored by the model fitted on the other folds. The
-    result maps ``"model"`` to the model's probabilities, each fitted learner's
-    name (``"boosted"``, ``"spline_logit"``) to its own, and ``"marginal"`` to
-    the training folds' weighted class shares; ``"classes"`` holds the column
-    order, the sorted categories of ``table[target]``.
+    result maps ``"model"`` to the model's probabilities, each learner some
+    fold fitted (``"boosted"``, ``"spline_logit"``) to its own, and
+    ``"marginal"`` to the training folds' weighted class shares;
+    ``"classes"`` holds the column order, the sorted categories of
+    ``table[target]``.
+
+    A fold whose training rows hold a single class fits no learner, and the
+    model gives that fold's rows the class with certainty. Each learner's rows
+    in that fold take the model's probabilities, so none is left at zero, and
+    the model, the learners and the constant are scored on the same rows; the
+    model and the learners differ only where a learner was fitted. When
+    ``table[target]`` holds two classes or more, folds from
+    :func:`stratified_folds` after :func:`can_deal_folds` reach this only when
+    they deal whole groups into exactly two folds. A learner that no fold
+    fitted, as when ``table[target]`` holds one class, stays out of the result.
     """
     weights = np.asarray(weights, dtype=np.float64)
     folds = np.asarray(folds)
@@ -116,6 +135,7 @@ def out_of_fold_proba(
         result[:, np.searchsorted(classes, fitted_classes)] = proba
         return result
 
+    single_class = np.zeros(len(table), dtype=bool)
     for fold in np.unique(folds):
         train, test = folds != fold, folds == fold
         fitted = model.fit(
@@ -123,6 +143,8 @@ def out_of_fold_proba(
         )
         scored = {"model": fitted.predict_proba(table.loc[test])}
         scored.update(fitted.component_proba(table.loc[test]))
+        if len(fitted.classes_) == 1:
+            single_class |= test
         shares = pd.Series(weights[train]).groupby(labels[train]).sum()
         shares = shares.reindex(classes, fill_value=0.0).to_numpy()
         for name, proba in scored.items():
@@ -130,6 +152,10 @@ def out_of_fold_proba(
             out[name][test] = full(fitted.classes_, proba)
         out.setdefault("marginal", np.zeros((len(table), len(classes))))
         out["marginal"][test] = shares / shares.sum()
+    if single_class.any():
+        # No learner was fitted for these rows, so their rows are still zeros.
+        for name in out.keys() - {"classes", "model", "marginal"}:
+            out[name][single_class] = out["model"][single_class]
     return out
 
 
@@ -192,8 +218,7 @@ def _scored_inputs(
         raise ValueError(
             f"{int(off.sum())} row(s) of proba do not sum to 1 (within "
             f"{PROBABILITY_SUM_TOLERANCE:g}); each row must be a distribution "
-            "over the classes. A row of zeros usually means a learner was not "
-            "fitted for that row's fold."
+            "over the classes. A row of zeros means nothing scored that row."
         )
     if w.shape != (n,):
         raise ValueError(f"weights need one value per label ({n}), got {w.shape}.")

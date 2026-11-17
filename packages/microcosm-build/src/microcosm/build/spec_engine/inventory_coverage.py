@@ -396,9 +396,11 @@ EXPECTED_HASHES = {
     # partnership step changes acs_transfer's attested bytes. Off its flag no
     # draw, RNG rule or QRF target changes.
     # microcosm#1543's fit input checks (the microimpute bug-parity audit)
-    # move both again; no valid input's draw changes.
-    "seed_map": "d5898b936de9db3546d01b8d2986d6bfd7c66836aa1619afc453350d3ffddc7d",
-    "seed_protocol": "206be396c145873c7f3c5078c56a55b59d851af0ec68ff4c4cff9b7b8cbc99ec",
+    # move both again; no valid input's draw changes. microcosm#1617's refusal
+    # of a weightless class in the balanced gate's weights moves both again;
+    # no fit reached it, and no draw changes.
+    "seed_map": "6474719c2fbd765114d104118fc9f265df4694c25fab6ddde6cf5974d069b522",
+    "seed_protocol": "d3a0baf888c2ac5a9d10980ec725f6cb4d1ca7de5f5e6624297858341c1a2035",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
