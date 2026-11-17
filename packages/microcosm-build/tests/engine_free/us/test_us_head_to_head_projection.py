@@ -896,11 +896,12 @@ def test_a_start_lost_in_a_hole_holds_a_time_no_go_until_every_worker_starts() -
 
 def test_the_hold_reaches_pools_a_hole_could_cut_and_a_stall_still_stops() -> None:
     # A pool's start lines can be lost only in a hole that ends once the pool
-    # opened and begins before its release line, and a released pool's starts
-    # matter only while they still set the candidate's start cost. In this
-    # pool the incumbent logs 8 starts for 9 workers and releases at +1,957 s;
-    # the candidate opens at +2,017 s and logs its first start at +2,138 s.
-    # Each restart here loses nothing.
+    # opened and begins before its release line, and a released incumbent's
+    # starts matter while the candidate's estimate reads any of its timing. In
+    # this pool the incumbent logs 8 starts for 9 workers and releases at
+    # +1,957 s; the candidate opens at +2,017 s, logs its first start at
+    # +2,138 s and paces from its own chunk from +2,545 s. Each restart here
+    # loses nothing.
     run = _run(
         workers=9,
         incumbent_seconds=[224],
@@ -935,10 +936,16 @@ def test_the_hold_reaches_pools_a_hole_could_cut_and_a_stall_still_stops() -> No
 
     # A restart after the incumbent's release line cannot have cut its starts.
     assert judge(2000, 2100)["starts_unconfirmed"] == {"candidate": "0 of 9"}
-    # One inside the incumbent's pool holds it until the candidate starts.
+    # One inside the incumbent's pool holds it while the candidate paces from
+    # the incumbent's slices, past the candidate's first start.
     assert judge(1500, 2100)["starts_unconfirmed"] == {"incumbent": "8 of 9"}
-    report = judge(1500, 2200)
+    paced = judge(1500, 2540)
+    assert paced["starts_unconfirmed"] == {"incumbent": "8 of 9"}
+    assert paced["verdict"] == "GO"
+    assert paced["estimate"]["pace_from"] == "incumbent x prior"
+    report = judge(1500, 2545)
     assert "starts_unconfirmed" not in report and report["verdict"] == "GO"
+    assert report["estimate"]["pace_from"] == "candidate"
     # The hold acts on the time line only: when the log stops after a
     # restart, the estimate climbs past the budget and waits, and the stall
     # check stops the run once no record has come for its 3,600 s floor.
@@ -947,6 +954,89 @@ def test_the_hold_reaches_pools_a_hole_could_cut_and_a_stall_still_stops() -> No
     stalled = judge(2000, 2138 + 3601, log_until=2200)
     assert stalled["verdict"] == "NO-GO" and stalled["starts_unconfirmed"]
     assert stalled["reasons"][0].startswith("stall:")
+
+
+def test_a_lost_incumbent_start_holds_while_the_candidate_paces_from_it() -> None:
+    # Pool 94 of the lost-lines search's seed 3, with one start cost (34 s)
+    # for every start: a restart at +634 s that does not replay loses the
+    # incumbent's first worker start line. The rebuild then places that
+    # worker's slices on another and reads the incumbent's 62 s chunk as
+    # 127.3 s, and the candidate, paced from it, reads 495 s late at +1,385 s,
+    # past a budget with 265 s to spare. Round 7's first hold let go at the
+    # candidate's first start (+1,184 s) and gave NO-GO. The incumbent now
+    # stays unconfirmed until the candidate paces from its own chunk
+    # (+1,475 s), when the estimate is the intact log's.
+    run = _run(
+        workers=10,
+        incumbent_seconds=[62],
+        candidate_seconds=[52],
+        incumbent_slices=15,
+        candidate_slices=97,
+        start_cost=34,
+        first_slice_extra=122,
+    )
+    limits = _limits(workers=10, max_wall_seconds=2859, prior=_prior(run))
+    for poll, held in ((1184, True), (1385, True), (1470, True), (1475, False)):
+        at = START + poll
+        log = run.log(at)
+        intact = projection.project(projection.parse_log(log), limits, at)
+        report = projection.project(
+            projection.parse_logs(_lose(log, 634, 635)), limits, at
+        )
+        assert intact["verdict"] == "GO", poll
+        assert report["estimate"]["measured_chunk_seconds"]["incumbent"] == {"1": 127.3}
+        if held:
+            assert report["verdict"] == "WAIT", poll
+            assert report["starts_unconfirmed"] == {"incumbent": "9 of 10"}
+            assert report["estimate"]["pace_from"] == "incumbent x prior"
+            assert _estimated_end(report) > START + 2859
+        else:
+            assert report["verdict"] == "GO" and "starts_unconfirmed" not in report
+            assert report["estimate"]["pace_from"] == "candidate"
+            assert _estimated_end(report) == _estimated_end(intact)
+
+
+def test_the_hold_lasts_while_the_candidate_fill_carries_the_incumbent() -> None:
+    # Two chunks and fewer incumbent slices than two per worker, so a lost
+    # incumbent start leaves no log gap: a restart at +634 s that does not
+    # replay loses the first start, and the rebuild reads the incumbent's
+    # second chunk as 118.8 s for 62 s slices. From +1,475 s the candidate
+    # paces from its own first chunk, but its fill for the second carries the
+    # incumbent's departure from the prior and reads 190.6 s late, past a
+    # budget with 100 s to spare. The hold lasts until the candidate has
+    # measured both chunks (+1,720 s), when the estimate is the intact log's.
+    run = _run(
+        workers=10,
+        incumbent_seconds=[62, 62],
+        candidate_seconds=[52, 52],
+        incumbent_slices=7,
+        candidate_slices=40,
+        start_cost=34,
+        first_slice_extra=122,
+    )
+    limits = _limits(workers=10, max_wall_seconds=2624, prior=_prior(run))
+    for poll, held in ((1475, True), (1715, True), (1720, False)):
+        at = START + poll
+        log = run.log(at)
+        intact = projection.project(projection.parse_log(log), limits, at)
+        report = projection.project(
+            projection.parse_logs(_lose(log, 634, 635)), limits, at
+        )
+        assert intact["verdict"] == "GO", poll
+        assert "log_gap" not in report
+        assert report["estimate"]["pace_from"] == "candidate"
+        carries = any(
+            "carries the incumbent" in note for note in report["estimator_notes"]
+        )
+        if held:
+            assert carries
+            assert report["verdict"] == "WAIT", poll
+            assert report["starts_unconfirmed"] == {"incumbent": "9 of 10"}
+            assert _estimated_end(report) == _estimated_end(intact) + 190.6
+        else:
+            assert not carries
+            assert report["verdict"] == "GO" and "starts_unconfirmed" not in report
+            assert _estimated_end(report) == _estimated_end(intact)
 
 
 def test_a_lossless_restart_reads_as_the_intact_log_and_holds_only_a_no_go() -> None:

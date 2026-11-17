@@ -1948,12 +1948,18 @@ line arrives, a lost one becomes `log_gap` when the parent takes its
 result. A start line lost there leaves the rebuild a worker short and its
 start cost off, which makes the estimate read late, the false-stop
 direction, until the rebuild needs the missing worker and shows `log_gap`.
-No later line tells that from a restart that lost nothing, but each worker
-prints its start line once, so a pool that has logged a start for every
-worker has lost none. Until then, after a hole that could hold the pool's
-start lines (one ending once the pool opened and beginning before its
-release line), a time `NO-GO` is held as `WAIT` (`starts_unconfirmed`); a
-stall still stops the run. A newest stream with nothing in it yet beside an
+In a pool with fewer slices than two per worker it may never need it, and
+it places that worker's slices on another, so the pool's measured slice
+times read long too (in a simulated pool, a lost 34 s start read 62 s
+slices as 127 s). No later line tells that from a restart that lost
+nothing, but each worker prints its start line once, so a pool that has
+logged a start for every worker has lost none. Until then, after a hole
+that could hold the pool's start lines (one ending once the pool opened
+and beginning before its release line), a time `NO-GO` is held as `WAIT`
+(`starts_unconfirmed`): for the incumbent, past its release, for as long as
+the candidate's estimate reads its timing (its start cost, pace or
+first-slice extra, or its departures from the prior for a chunk the
+candidate has not measured). A stall still stops the run. A newest stream with nothing in it yet beside an
 earlier one with records may be a hole that has not ended: the estimate and
 the stall check wait for its first record (`newest_stream_empty`). A
 stream that begins in the very second the earlier ones reached and repeats
@@ -1999,9 +2005,9 @@ It answers one of three verdicts:
 - `NO-GO` when the estimated end is past the tool's budget, or the log has
   stalled. The budget is the plan's 14,505 s from `started-at`, or less
   when the runner's `BUDGET:` line (or an `ATTEMPTS:` line) says so. A
-  stall is no
-  scorer line for an hour, or for four times the slowest slice if that is
-  longer, counted from `started-at` until the first line arrives.
+  stall is no scorer line for an hour, or for four times the slowest slice
+  if that is longer, counted from `started-at` until the first line
+  arrives.
 - `GO` otherwise.
 
 How the estimate has done so far:

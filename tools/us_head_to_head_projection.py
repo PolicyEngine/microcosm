@@ -80,12 +80,17 @@ from one that lost nothing, but each worker prints its start line once, so a
 pool that has logged a start for every worker has lost none. Until then,
 after a hole that could hold its start lines (one that ends once the pool
 has opened and begins before the pool's release line), a time NO-GO waits
-(``starts_unconfirmed``); a stall still stops the run. A released pool's
-starts count only while they still set the candidate's start cost, before
-its first start line. A pool that never starts every worker stays held, and
-in the simulated d844 shape the last start comes 15 start costs after the
-first (4,500 s at 300 s each), so a restart there can delay a stop by about
-that long. A newest stream holding nothing yet beside an earlier one that
+(``starts_unconfirmed``); a stall still stops the run. A lost start also
+misplaces the pool's slices in the rebuild, so its measured slice times and
+first-slice extra are off too (a lost 34 s start read a 62 s chunk as
+127 s), and the candidate reads the incumbent's start cost, pace, first-slice
+extra and, for chunks it has not measured, departures from the prior. So a
+released incumbent's starts count while the estimate reads any of its
+timing: until the candidate has its own start cost, first-slice extra and
+pace, and no chunk it has not measured carries the incumbent's departures.
+A pool that never starts every worker stays held, and in the simulated d844
+shape the last start comes 15 start costs after the first (4,500 s at 300 s
+each), so a restart there can delay a stop by about that long. A newest stream holding nothing yet beside an earlier one that
 has records may be a hole that has not ended: the estimate and the stall
 check wait for its first record (``newest_stream_empty``). A stream that
 begins in the very second the streams before it end and repeats records
@@ -1109,8 +1114,13 @@ def project(parsed: Parsed, limits: Limits, now: float) -> dict[str, object]:
     # a pool that has logged a start for every worker has lost none: until
     # then, after a hole that could hold the pool's start lines (it ends once
     # the pool has opened and begins before its release line), a time NO-GO
-    # waits. A released pool's starts still feed the estimate only as the
-    # incumbent's start cost, until the candidate logs a start of its own.
+    # waits. A released incumbent short of starts stays unconfirmed while the
+    # estimate reads any of its timing: a lost start also misplaces its
+    # slices in the rebuild, so its measured slice seconds and first-slice
+    # extra are off too (a lost 34 s start read a 62 s chunk as 127 s, and
+    # the candidate, paced from it, 495 s late), and the candidate takes its
+    # start cost, pace, first-slice extra and, for chunks the candidate has
+    # not measured, its departures from the prior.
     released = {
         name: min(
             (
@@ -1124,21 +1134,17 @@ def project(parsed: Parsed, limits: Limits, now: float) -> dict[str, object]:
         )
         for name, _ in pools
     }
-    unconfirmed = {
+    short = {
         name: len(pool.inits)
         for name, pool in pools
         if pool.opened is not None
         and len(pool.inits) < workers
-        and (released[name] is None or (name == "incumbent" and not candidate.inits))
         and any(
             end >= pool.opened and (released[name] is None or start < released[name])
             for start, end in holes
         )
     }
-    if unconfirmed:
-        report["starts_unconfirmed"] = {
-            name: f"{logged} of {workers}" for name, logged in unconfirmed.items()
-        }
+    unconfirmed = {name: n for name, n in short.items() if released[name] is None}
     # The newest stream (streams come in the watcher's order) holding nothing
     # yet while an earlier one does: a restart that has delivered nothing, so
     # whatever the app printed since the last record may be lost. It is not a
@@ -1201,6 +1207,13 @@ def project(parsed: Parsed, limits: Limits, now: float) -> dict[str, object]:
         ]
     else:
         estimate, notes, why = _estimate(incumbent, candidate, limits, now)
+    reads_incumbent = estimate is None or estimate.pop("reads_incumbent")
+    if "incumbent" in short and reads_incumbent:
+        unconfirmed["incumbent"] = short["incumbent"]
+    if unconfirmed:
+        report["starts_unconfirmed"] = {
+            name: f"{logged} of {workers}" for name, logged in unconfirmed.items()
+        }
     if budget_unseen:
         waiting.append(budget_unseen_reason)
     if estimate is None and why:
@@ -1290,6 +1303,8 @@ def _estimate(
     measured = {name: found.chunk_seconds for name, found in timings.items()}
     inc_cost = timings["incumbent"].start_cost
     cand_cost = timings["candidate"].start_cost or inc_cost
+    # Whether the candidate's estimate reads any of the incumbent's timing.
+    reads_incumbent = timings["candidate"].start_cost is None
     if measured["candidate"]:
         assert candidate.chunks is not None
         fill_prior: Sequence[float] = prior.candidate
@@ -1314,6 +1329,7 @@ def _estimate(
             measured["candidate"], candidate.chunks, fill_prior, pooled=bool(carried)
         )
         if carried and len(seconds) > len(measured["candidate"]):
+            reads_incumbent = True
             more.append(
                 f"the candidate's fill carries the incumbent's measured chunks "
                 f"{sorted(carried)} against the prior"
@@ -1329,6 +1345,7 @@ def _estimate(
         }
         more.append("candidate pace: the incumbent's, times the prior ratio")
         pace_from = "incumbent x prior"
+        reads_incumbent = True
     else:
         return (
             None,
@@ -1345,7 +1362,8 @@ def _estimate(
         inc_seconds, inc_notes = {}, []
     inc_extra = timings["incumbent"].first_extra(inc_seconds)
     cand_extra = timings["candidate"].first_extra(seconds)
-    cand_extra = inc_extra if cand_extra is None else cand_extra
+    if cand_extra is None:
+        cand_extra, reads_incumbent = inc_extra, True
     # Both artifacts share the registry's chunks; the candidate's slices per
     # chunk come from its own lines once one prints, else from the prior.
     cand_slices = candidate.slices_per_chunk or prior.candidate_slices
@@ -1379,6 +1397,7 @@ def _estimate(
     else:
         # The incumbent is still scoring (or its pool is done and the
         # candidate is loading): its replay, then the candidate's whole pool.
+        reads_incumbent = True
         inc_history = histories["incumbent"]
         if inc_history is None or not incumbent.slices_per_chunk or inc_cost is None:
             return None, notes, "no start cost or incumbent shape yet"
@@ -1407,6 +1426,7 @@ def _estimate(
     return (
         {
             "end": last + limits.post_scoring_seconds,
+            "reads_incumbent": reads_incumbent,
             "pace_from": pace_from,
             "measured_chunk_seconds": {
                 name: {str(c): round(s, 1) for c, s in values.items()}

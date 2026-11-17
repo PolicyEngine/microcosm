@@ -195,9 +195,27 @@ MUTATIONS = {
         "            end >= pool.opened and (released[name] is None or start < released[name])\n",
         "            end >= pool.opened\n",
     ),
-    "a released incumbent stays held after the candidate's first start": (
-        '        and (released[name] is None or (name == "incumbent" and not candidate.inits))\n',
-        '        and (released[name] is None or name == "incumbent")\n',
+    "a released incumbent is never held": (
+        '    if "incumbent" in short and reads_incumbent:\n',
+        "    if False:\n",
+    ),
+    "a released incumbent's hold lifts at the candidate's first start": (
+        '    reads_incumbent = estimate is None or estimate.pop("reads_incumbent")\n',
+        "    reads_incumbent = estimate is None or (\n"
+        '        estimate.pop("reads_incumbent") and not candidate.inits\n'
+        "    )\n",
+    ),
+    "a released incumbent stays held for the rest of the run": (
+        '    reads_incumbent = estimate is None or estimate.pop("reads_incumbent")\n',
+        '    reads_incumbent = estimate is None or estimate.pop("reads_incumbent") or 1\n',
+    ),
+    "a pace from the incumbent does not hold it": (
+        '        pace_from = "incumbent x prior"\n        reads_incumbent = True\n',
+        '        pace_from = "incumbent x prior"\n',
+    ),
+    "a fill carrying the incumbent does not hold it": (
+        "            reads_incumbent = True\n            more.append(\n",
+        "            more.append(\n",
     ),
     "unconfirmed starts hold no NO-GO": (
         "    if end > time_line and unconfirmed:\n",
