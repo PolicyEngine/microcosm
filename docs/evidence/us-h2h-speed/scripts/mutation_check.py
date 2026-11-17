@@ -143,6 +143,14 @@ MUTATIONS = {
         "    last = max(seen, default=limits.started_at)\n",
         "    last = max(seen, default=now)\n",
     ),
+    "a rebuild that starts slices after they end is not a gap": (
+        "        if unplaced and name not in log_gap:\n",
+        "        if False:\n",
+    ),
+    "an ATTEMPTS: line stands in for the BUDGET line": (
+        "        and not parsed.budget_lines\n",
+        "        and not parsed.budget_seconds\n",
+    ),
 }
 
 

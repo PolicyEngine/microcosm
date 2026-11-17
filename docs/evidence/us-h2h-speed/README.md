@@ -231,11 +231,14 @@ has measured chunks of its own, its unmeasured ones scale by one ratio
 pooled over them, carrying the incumbent's departures. A candidate that
 does not share them still reads late: by about 800 s in review r4's
 scenario with the real pool's departures (the run fitted by 898 s, so
-the estimate still passed it, by 105 s). A single slice running far past its chunk's pace is taken to run
-as far past it again, which past its midpoint can be late by up to its
-remaining time. One 3,000 s straggler among 40 s slices can stop a run
-that fits; the real pool's slowest chunk-5 slice was 1.29 times its mean,
-which moves no verdict.
+the estimate still passed it, by 105 s). A single slice running far past
+its chunk's pace is taken to run as far past it again. That reads early
+until the poll passes the midpoint of the pace and the slice's real time,
+then late, by up to its real time less the pace as the poll nears its end.
+One 3,000 s straggler among 40 s slices reads 1,530 s late polled 2,285 s
+in, and up to 2,960 s late just before it ends, so it can stop a run that
+fits; the real pool's slowest chunk-5 slice was 1.29 times its mean, which
+moves no verdict.
 
 What this rests on:
 

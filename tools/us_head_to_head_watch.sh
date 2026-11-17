@@ -104,7 +104,8 @@ app_state() {
   local listing rc
   listing=$("$MODAL" app list --json 2>/dev/null) || return 2
   printf '%s' "$listing" | "$PYTHON" -c '
-import json, sys
+import json, re, sys
+from datetime import datetime
 apps = json.load(sys.stdin)
 if not isinstance(apps, list) or not apps or not all(
     isinstance(app, dict) and isinstance(app.get("App ID"), str) for app in apps
@@ -116,10 +117,20 @@ if app is None:
 if "State" not in app or "Stopped at" not in app:
     sys.exit(2)
 state, at = app["State"], app["Stopped at"]
+def stamp(value):
+    # modal --json prints it with isoformat(sep=" ", timespec="seconds")
+    # (modal/_utils/time_utils.py), as in 2026-11-16 05:00:00-05:00.
+    if not isinstance(value, str) or not re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d+)?([+-]\d{2}:\d{2}|Z)?", value
+    ):
+        return False
+    try:
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return True
 # The CLI gives null or a timestamp; any other value is a shape not known.
-if not isinstance(state, str) or not (
-    at is None or (isinstance(at, str) and at.strip())
-):
+if not isinstance(state, str) or not (at is None or stamp(at)):
     sys.exit(2)
 stopped = at is not None or state == "stopped"
 sys.exit(11 if stopped else 10)
@@ -286,7 +297,7 @@ while true; do
   note "rc=$RC verdict=$VERDICT $(printf '%s' "$OUT" | tr -d '\n')"
   if [ "$GAP" = gap ] && [ "$gap_alarmed" -eq 0 ]; then
     gap_alarmed=1
-    alarm "the log streams lost lines or began late (log_gap in go-no-go.log): after a late start the estimate gives no GO, after lost slice or opening lines no estimate at all; the stall check and the runner's budget still bound the run"
+    alarm "the log streams lost lines or began late (log_gap in go-no-go.log): after a late start the estimate gives no GO, after lost slice, opening or worker-start lines no estimate at all; the stall check and the runner's budget still bound the run"
   fi
   if [ "$HOLE" = hole ] && [ "$hole_alarmed" -eq 0 ]; then
     hole_alarmed=1

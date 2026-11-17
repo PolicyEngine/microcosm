@@ -629,6 +629,57 @@ def test_a_restarted_stream_that_does_not_replay_leaves_a_hole() -> None:
     assert replayed["verdict"] == _judge(run, limits, at)["verdict"]
 
 
+def test_a_worker_start_lost_in_a_hole_is_a_log_gap_not_a_no_go() -> None:
+    # Review r5: a d844-shaped pool (the measured slice times, 300 s starts)
+    # whose stream restarts at +360 s without replaying, losing the
+    # incumbent's worker start at +364 s. The parent's later lines do not
+    # reveal it, so it was no log gap: the rebuild ran a worker short, dated
+    # three slices to end before they start, and the estimate read 1,593 s
+    # late, a NO-GO for a run that fits. Such a rebuild is now a log gap: WAIT,
+    # and the stall check still stops a hung run.
+    weights = json.loads(WEIGHTS.read_text())
+    run = _run(
+        workers=16,
+        incumbent_seconds=[round(s) for s in weights["incumbent_mean_slice_seconds"]],
+        candidate_seconds=[round(s) for s in weights["candidate_mean_slice_seconds"]],
+        incumbent_slices=29,
+        candidate_slices=177,
+        start_cost=300,
+        first_slice_extra=5,
+        load_seconds=64,
+        candidate_load_seconds=11,
+        scorecard_seconds=600,
+    )
+    assert 14_000 < run.tool_end - START < 14_505
+    limits = _limits(
+        workers=16, max_wall_seconds=14_505, prior=projection._prior(WEIGHTS)
+    )
+    at = START + 1200
+    log = run.log(at)
+    intact = projection.project(projection.parse_log(log), limits, at)
+    assert intact["verdict"] == "GO" and "log_gap" not in intact
+
+    def offset(line: str) -> float | None:
+        times = projection.parse_log([line]).record_times
+        return times[0] - START if times else None
+
+    lost = [line for line in log if (t := offset(line)) is not None and 360 <= t <= 370]
+    assert len(lost) == 1 and "initializing incumbent" in lost[0]
+    first = [line for line in log if (t := offset(line)) is None or t < 360]
+    second = [line for line in log if (t := offset(line)) is not None and t > 370]
+    damaged = projection.parse_logs([first, second])
+    report = projection.project(damaged, limits, at)
+    assert report["verdict"] == "WAIT", report
+    assert report["log_gap"] == {
+        "incumbent": "3 slices end before the rebuild starts them"
+    }
+    assert len(report["stream_holes"]) == 1
+    assert any("rebuild starts them" in reason for reason in report["reasons"])
+    # The stall check still runs: an hour with no record is a NO-GO.
+    hung = projection.project(damaged, limits, at + 3601)
+    assert hung["verdict"] == "NO-GO" and hung["reasons"][0].startswith("stall:")
+
+
 def test_a_prior_off_on_one_chunk_moves_the_first_estimate_by_its_share() -> None:
     # Both artifacts run chunk 1 at 1.1 times the prior and the rest as the
     # prior says. The first estimate sees only the incumbent's chunk 1 and
@@ -953,20 +1004,20 @@ def test_the_runners_budget_lines_shorten_the_deadline() -> None:
         "BUDGET: the tool may run 9000s (limited by container_timeout)",
     ]
     parsed = projection.parse_log(lines)
-    assert parsed.budget_seconds == [9405, 9000]
+    assert parsed.budget_seconds == [9405, 9000] and parsed.budget_lines == 1
     report = projection.project(parsed, _limits(max_wall_seconds=14505), START)
     assert report["budget_seconds"] == 9000
     assert report["deadline_utc"] == sim.stamp(START + 9000)
 
 
-def test_streams_that_began_after_the_runners_budget_line_never_say_go() -> None:
+def test_streams_without_the_runners_budget_line_say_go_only_when_all_scored() -> None:
     # Review r4: a stream that begins late can miss the runner's only line
     # shortening the deadline (BUDGET:, or an earlier attempt's ATTEMPTS:) and
     # judge against the plan's whole budget. The runner prints a BUDGET line
-    # before the tool starts, so scorer records without one mean the streams
-    # began late: GO becomes WAIT and the report carries ``log_gap``, which
-    # the watcher alarms on. A budget line only shortens the deadline, so a
-    # NO-GO against the plan's budget still holds.
+    # just before the tool starts, so scorer records without one mean the
+    # streams began late or lost it: GO becomes WAIT and the report carries
+    # ``log_gap``, which the watcher alarms on. The BUDGET line only shortens
+    # the deadline, so a NO-GO against the plan's budget still holds.
     run = _run(
         workers=4,
         incumbent_seconds=[40],
@@ -989,6 +1040,22 @@ def test_streams_that_began_after_the_runners_budget_line_never_say_go() -> None
     assert projection.project(projection.parse_log(late), tight, at)["verdict"] == (
         "NO-GO"
     )
+    # An ATTEMPTS: line comes before staging and its budget can be longer
+    # than BUDGET's (cut to the class timeout), so it does not stand in for
+    # the BUDGET line, though it still shortens the deadline (review r5).
+    attempts = (
+        "ATTEMPTS: 1 earlier unfinished attempt(s); tool budget for this "
+        f"attempt {10**8}s"
+    )
+    kept = projection.project(projection.parse_log([attempts, *late]), limits, at)
+    assert kept["verdict"] == "WAIT" and kept["log_gap"] == {"runner": "no BUDGET line"}
+    assert kept["budget_seconds"] == 10**8
+    # The one GO without it: a candidate that has scored every slice, since
+    # stopping then would only throw the scores away.
+    done = run.candidate.end
+    scored = [line for line in run.log(done) if not line.startswith("BUDGET:")]
+    final = projection.project(projection.parse_log(scored), limits, done)
+    assert final["verdict"] == "GO" and "every slice" in final["reasons"][0]
     # Before the tool's first output there is nothing to miss yet.
     empty = projection.project(projection.parse_log([]), limits, START + 1)
     assert "log_gap" not in empty

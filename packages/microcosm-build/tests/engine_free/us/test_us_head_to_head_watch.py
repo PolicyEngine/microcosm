@@ -62,8 +62,9 @@ case "$1 $2" in
     n=$(( $(cat "$D/list-count" 2>/dev/null || echo 0) + 1 ))
     echo "$n" > "$D/list-count"
     # FAKE_LIST_SEQ names each read's answer in turn (the last repeats):
-    # live, stopped, gone, fail, warning, dict, empty, nostate, falsestop or
-    # emptystop (a "Stopped at" that is neither null nor a timestamp).
+    # live, stopped, gone, fail, warning, dict, empty, nostate, or a "Stopped
+    # at" that is neither null nor a timestamp: falsestop, emptystop,
+    # wordstop ("garbage"), nullstop ("null") or zerostop ("0").
     mode=
     if [ -n "${FAKE_LIST_SEQ:-}" ]; then
       mode=$(printf '%s' "$FAKE_LIST_SEQ" | tr ',' '\n' | sed -n "${n}p")
@@ -87,8 +88,14 @@ case "$1 $2" in
       nostate)
         printf '[{"App ID": "%s", "Description": "d844"}]\n' "${FAKE_APP:-ap-test}"
         exit 0 ;;
-      falsestop|emptystop)
-        if [ "$mode" = falsestop ]; then at=false; else at='""'; fi
+      falsestop|emptystop|wordstop|nullstop|zerostop)
+        case $mode in
+          falsestop) at=false ;;
+          emptystop) at='""' ;;
+          wordstop) at='"garbage"' ;;
+          nullstop) at='"null"' ;;
+          zerostop) at='"0"' ;;
+        esac
         printf '[{"App ID": "%s", "State": "ephemeral (detached)", "Stopped at": %s}]\n' \
           "${FAKE_APP:-ap-test}" "$at"
         exit 0 ;;
@@ -329,7 +336,19 @@ def test_bad_arguments_and_a_missing_start_time_are_refused(tmp_path) -> None:
 
 @pytest.mark.parametrize(
     "answer",
-    ["warning", "dict", "empty", "nostate", "fail", "falsestop", "emptystop", "gone"],
+    [
+        "warning",
+        "dict",
+        "empty",
+        "nostate",
+        "fail",
+        "falsestop",
+        "emptystop",
+        "wordstop",
+        "nullstop",
+        "zerostop",
+        "gone",
+    ],
 )
 def test_an_unreadable_list_after_a_stop_is_never_taken_as_stopped(
     tmp_path, answer

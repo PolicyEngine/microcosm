@@ -56,7 +56,10 @@ seconds per slice is the mean over its slices other than workers' first
 ones (``min_slices`` at least). A result the parent took whose slice line is
 missing means the log streams lost lines: the rebuild stops there and the
 report carries ``log_gap``. So does a pool whose worker, slice or receive
-lines are there without its opening line, which no rebuild can place. A
+lines are there without its opening line, which no rebuild can place, and
+a rebuild that starts slices after they end: the mark a lost worker-start
+line leaves, which the parent's later lines cannot reveal (no intact
+simulated log gives one; review r5). A
 stretch that no stream covers between the first record and the last is
 reported as ``stream_holes``: the shape a restarted stream leaves when it
 does not replay what the app printed. A hole alone changes no verdict.
@@ -80,9 +83,12 @@ of the starts logged so far (the incumbent's until the candidate's pool
 logs one, slice or not), so a candidate whose workers start slower reads
 early, toward GO, until its first start line. A first slice costs the mean
 extra measured so far. A running slice already past its chunk's pace is
-taken to run as far past it again; past the slice's midpoint that can be
-late by up to the slice's remaining time, so one long straggler can give a
-NO-GO to a run that fits. While the
+taken to run as far past it again. That reads early until the poll passes
+the midpoint of the pace and the slice's real time, then late, by up to the
+slice's real time less its pace as the poll nears its end: a 3,000 s
+straggler among 40 s slices reads 1,530 s late polled 2,285 s in, and up to
+2,960 s late just before it ends (review r5). So one long straggler can give
+a NO-GO to a run that fits. While the
 incumbent is still scoring, its replay comes first and the candidate's
 whole pool follows at once (loading the candidate is left out), with the
 prior's slices per chunk. A fixed allowance for the comparison and
@@ -189,6 +195,11 @@ class Parsed:
     events: list[Event] = field(default_factory=list)
     #: The tool's budget for this attempt, where the runner printed one.
     budget_seconds: list[int] = field(default_factory=list)
+    #: How many of those came from a ``BUDGET:`` line, which the runner
+    #: prints just before it starts the tool. An ``ATTEMPTS:`` line comes
+    #: earlier, before staging, and its budget can be longer: ``BUDGET:``
+    #: cuts it to the time left before the class timeout.
+    budget_lines: int = 0
     notes: list[str] = field(default_factory=list)
     #: The time of every scorer boundary line, the pool's or not.
     record_times: list[float] = field(default_factory=list)
@@ -205,9 +216,10 @@ def _epoch(stamp: str) -> float:
 
 def _records(
     lines: Iterable[str],
-) -> tuple[list[tuple[str, Event]], list[int], list[float]]:
-    """The scorer records, the runner's budget seconds and the time of every
-    scorer boundary line in one stream.
+) -> tuple[list[tuple[str, Event]], list[int], int, list[float]]:
+    """The scorer records, the runner's budget seconds, how many of those
+    were ``BUDGET:`` lines, and the time of every scorer boundary line in one
+    stream.
 
     A line may carry any prefix, and two processes writing at once can put
     two records on one line, so every record on a line counts.
@@ -215,10 +227,13 @@ def _records(
 
     records: list[tuple[str, Event]] = []
     budgets: list[int] = []
+    budget_lines = 0
     times: list[float] = []
     for line in lines:
-        for pattern in (_ATTEMPTS, _BUDGET):
-            budgets.extend(int(m["seconds"]) for m in pattern.finditer(line))
+        budgets.extend(int(m["seconds"]) for m in _ATTEMPTS.finditer(line))
+        found_budgets = [int(m["seconds"]) for m in _BUDGET.finditer(line)]
+        budgets.extend(found_budgets)
+        budget_lines += len(found_budgets)
         times.extend(_epoch(m["at"]) for m in _ANY_RECORD.finditer(line))
         # A worker's "after scoring ... slice s/S" line also fits the parent's
         # "after scoring ..." shape; a span a worker record holds is the worker's.
@@ -255,7 +270,7 @@ def _records(
             else:
                 event = Event(**common)
             records.append((match.group(0), event))
-    return records, budgets, times
+    return records, budgets, budget_lines, times
 
 
 def parse_logs(streams: Sequence[Iterable[str]]) -> Parsed:
@@ -273,8 +288,9 @@ def parse_logs(streams: Sequence[Iterable[str]]) -> Parsed:
     events: dict[str, Event] = {}
     seen = 0
     for stream in streams:
-        records, budgets, times = _records(stream)
+        records, budgets, budget_lines, times = _records(stream)
         parsed.budget_seconds.extend(budgets)
+        parsed.budget_lines += budget_lines
         parsed.record_times.extend(times)
         parsed.stream_times.append(sorted(times))
         counts: dict[str, int] = {}
@@ -609,6 +625,24 @@ class Timing:
         return sum(extras) / len(extras) if extras else None
 
 
+def _unplaced(pool: _Pool, history: History | None) -> set[int]:
+    """Slices that end before the rebuild starts them, or that it never starts.
+
+    On an intact log there are none: none in 600 simulated pools of the
+    property tests' ranges, 2,243 polls of d844-shaped pools or the three
+    logs in the tests (review r5). A lost worker-start line leaves them: the
+    rebuild then has one worker too few and dates later slices late.
+    """
+
+    if history is None:
+        return set()
+    return {
+        task
+        for task, at in pool.by_task.items()
+        if (began := history.started.get(task)) is None or at < began
+    }
+
+
 def timing(pool: _Pool, history: History | None, need: int) -> Timing:
     if history is None:
         return Timing({}, {}, [], None, [])
@@ -622,18 +656,19 @@ def timing(pool: _Pool, history: History | None, need: int) -> Timing:
     firsts = set(history.firsts)
     regular: dict[int, list[float]] = {}
     first: list[tuple[int, float]] = []
-    odd = 0
+    unplaced = _unplaced(pool, history)
     for task, at in pool.by_task.items():
-        began = history.started.get(task)
-        if began is None or at < began:
-            odd += 1
+        if task in unplaced:
             continue
+        began = history.started[task]
         chunk = (task - 1) // per_chunk + 1
         if task in firsts:
             first.append((chunk, at - began))
         else:
             regular.setdefault(chunk, []).append(at - began)
-    notes = [f"{odd} slices end before the model starts them"] if odd else []
+    notes = (
+        [f"{len(unplaced)} slices end before the model starts them"] if unplaced else []
+    )
     seconds = {c: sum(v) / len(v) for c, v in regular.items() if len(v) >= need}
     costs = history.start_costs
     return Timing(
@@ -891,13 +926,15 @@ def project(parsed: Parsed, limits: Limits, now: float) -> dict[str, object]:
             f"{workers} workers: a restarted container or recycling, which the "
             "estimate does not model"
         )
+    pools = (("incumbent", incumbent), ("candidate", candidate))
+    histories = {name: reconstruct(pool, workers, now) for name, pool in pools}
     gaps = {
         name: history.gaps
-        for name, pool in (("incumbent", incumbent), ("candidate", candidate))
-        if (history := reconstruct(pool, workers, now)) is not None and history.gaps
+        for name, history in histories.items()
+        if history is not None and history.gaps
     }
     log_gap: dict[str, object] = {name: tasks[:5] for name, tasks in gaps.items()}
-    for name, pool in (("incumbent", incumbent), ("candidate", candidate)):
+    for name, pool in pools:
         if pool.opened is None and (pool.inits or pool.receives or pool.by_task):
             # Without the opening line the pool cannot be rebuilt, and the
             # estimate would replay all of it from now.
@@ -914,21 +951,38 @@ def project(parsed: Parsed, limits: Limits, now: float) -> dict[str, object]:
             "so the rebuilt pool is wrong in an unknown direction; the early stop "
             "is off and the runner's budget bounds the run"
         )
-    # The runner's BUDGET line comes before the tool's first output, so a log
-    # with scorer records but no budget line began late and may have missed a
-    # budget line that shortens the deadline. A budget line can only shorten
-    # it, so NO-GO against the plan's budget still holds; GO does not.
+    for name, pool in pools:
+        # A lost line the parent's later lines cannot reveal, such as a worker
+        # start in a stretch a restarted stream did not replay, still shows:
+        # the rebuild has a worker too few and starts later slices after they
+        # end (review r5).
+        unplaced = len(_unplaced(pool, histories[name]))
+        if unplaced and name not in log_gap:
+            log_gap[name] = f"{unplaced} slices end before the rebuild starts them"
+            waiting.append(
+                f"the {name}'s rebuilt pool has {unplaced} slices that end before "
+                "the rebuild starts them, which no intact simulated log gives: a "
+                "line it dates starts by (a worker start, say) is likely missing, "
+                "so the rebuilt pool is wrong in an unknown direction; the early "
+                "stop is off and the runner's budget bounds the run"
+            )
+    # The runner's BUDGET line comes just before the tool's first output, so a
+    # log with scorer records but no BUDGET line began late or lost it, and
+    # may have missed the line that shortens the deadline most. An ATTEMPTS:
+    # line comes before staging and its budget can be longer, so it does not
+    # stand in. The BUDGET line only shortens the deadline, so NO-GO against
+    # the shortest budget seen still holds; GO does not.
     budget_unseen = (
         limits.budget_line_required
-        and not parsed.budget_seconds
+        and not parsed.budget_lines
         and (bool(events) or any(t <= now for t in parsed.record_times))
     )
     budget_unseen_reason = (
         "the streams hold scorer records but not the runner's BUDGET line, "
-        "printed before the tool starts: they began late and may have missed "
-        "a shorter budget (BUDGET: or ATTEMPTS:), so the verdict is WAIT rather "
-        "than GO; NO-GO against the plan's max_wall_seconds still holds, since "
-        "a budget line only shortens it"
+        "printed just before the tool starts: they began late or lost it, and "
+        "it can be shorter than the plan's max_wall_seconds or an ATTEMPTS: "
+        "line, so the verdict is WAIT rather than GO; NO-GO against the "
+        "shortest budget seen still holds, since the BUDGET line only shortens it"
     )
     if budget_unseen:
         log_gap["runner"] = "no BUDGET line"
@@ -937,9 +991,17 @@ def project(parsed: Parsed, limits: Limits, now: float) -> dict[str, object]:
     holes = _stream_holes(parsed.stream_times, now)
     if holes:
         report["stream_holes"] = holes
-    estimate, notes, why = (
-        (None, [], None) if waiting else _estimate(incumbent, candidate, limits, now)
-    )
+    if waiting:
+        # No estimate, but what the rebuild noticed still helps read the gap.
+        estimate, why = None, None
+        notes = [
+            f"{name}: {note}"
+            for name, history in histories.items()
+            if history is not None
+            for note in history.notes
+        ]
+    else:
+        estimate, notes, why = _estimate(incumbent, candidate, limits, now)
     if budget_unseen:
         waiting.append(budget_unseen_reason)
     if estimate is None and why:

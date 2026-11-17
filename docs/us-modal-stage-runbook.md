@@ -1914,14 +1914,19 @@ against a live app), so start the watcher as soon as the app id is known,
 before the runner has pulled and staged its inputs. Slice lines a restart
 misses show up as `log_gap` once the
 parent's later lines arrive; a lost pool-opening line shows up as `log_gap`
-as soon as that pool's other lines do. A restarted stream that does not
+as soon as that pool's other lines do; a lost worker-start line, which the
+parent's later lines cannot reveal, shows up as `log_gap` once the rebuild
+starts a slice after it ends (no intact simulated log does that). A
+restarted stream that does not
 replay leaves a stretch no stream covers, reported as `stream_holes`; a
 hole alone changes no verdict but raises its own alarm, once, since a lost
 line can hide in it. `log_gap` raises a separate alarm, once, so a lost line
 found after a hole is still reported. The runner prints its `BUDGET:` line just
 before it starts the tool, every time, so streams with scorer lines but no
-`BUDGET:` line began late and may have missed a shorter budget: that is
-`log_gap` too (`"runner"`). Every
+`BUDGET:` line began late or lost it and may have missed a shorter budget:
+that is `log_gap` too (`"runner"`). An `ATTEMPTS:` line, printed before
+staging, does not stand in for it: its budget can be longer, since
+`BUDGET:` cuts it to the time left before the class timeout. Every
 ten minutes the watcher runs `tools/us_head_to_head_projection.py` on those
 files, the plan, `started-at` and the chunk weights. The projection:
 
@@ -1937,12 +1942,15 @@ It answers one of three verdicts:
 - `WAIT` until a chunk has three measured slices. In the simulated grid,
   that is 600 to 3,000 s in. Also `WAIT` while the streams have lost lines
   (the report's `log_gap`: the parent took a result whose slice line is
-  missing, or a pool's lines came without its opening line), because the
-  rebuilt pool is then wrong in an unknown direction, and while the streams
-  began late (no `BUDGET:` line), when it is never `GO` but a `NO-GO`
-  against the plan's budget still holds. The watcher raises `ALARM` once
-  when either happens, or on `stream_holes`; after lost slice or opening
-  lines only the stall check and the runner's budget can end the run early.
+  missing, a pool's lines came without its opening line, or the rebuild
+  starts slices after they end), because the rebuilt pool is then wrong in
+  an unknown direction, and while the streams began late (no `BUDGET:`
+  line), when it is `GO` only once the candidate has scored every slice
+  (stopping then would throw the scores away) but a `NO-GO` against the
+  shortest budget seen still holds. The watcher raises `ALARM` once when
+  either happens, or on `stream_holes`; after lost slice, opening or
+  worker-start lines only the stall check and the runner's budget can end
+  the run early.
 - `NO-GO` when the estimated end is past the tool's budget, or the log has
   stalled. The budget is the plan's 14,505 s from `started-at`, or less
   when the runner's `BUDGET:` line (or an `ATTEMPTS:` line) says so. A
