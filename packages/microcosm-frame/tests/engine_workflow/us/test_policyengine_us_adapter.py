@@ -620,6 +620,114 @@ class TestWriteDataset:
             adapter.write_dataset(us_bundle, tmp_path / "bundle.csv", period=2024)
 
 
+_SOCIAL_SECURITY_COMPONENTS = (
+    "social_security_retirement",
+    "social_security_disability",
+    "social_security_survivors",
+    "social_security_dependents",
+)
+
+
+def _with_person_columns(bundle: Frame, columns: dict[str, list[float]]) -> Frame:
+    person = bundle.person.copy()
+    for name, values in columns.items():
+        person[name] = values
+    return Frame(
+        {
+            name: (person if name == "person" else bundle.table(name))
+            for name in bundle.entities
+        },
+        US_SCHEMA,
+        {"household": bundle.weights_for("household")},
+    )
+
+
+class TestMigratedSocialSecurityInputs:
+    """policyengine-us migrates the four public components to ``_reported``.
+
+    The component names have formulas now, but the engine's constructor moves
+    a stored component to its pure ``<name>_reported`` input, so either name
+    is a storable input and the engine rejects a dataset storing both.
+    """
+
+    def test_the_engine_declares_the_four_components(self, adapter) -> None:
+        from microcosm.frame.adapters.policyengine_us import (
+            PolicyEngineUSVariableMetadataIndex,
+        )
+
+        migrated = adapter._migrated_inputs()
+        assert migrated == set(_SOCIAL_SECURITY_COMPONENTS)
+        # The import-free index reads the same declaration from source.
+        assert PolicyEngineUSVariableMetadataIndex()._migrated_inputs == migrated
+
+    def test_components_and_their_sources_are_storable_inputs(self, adapter) -> None:
+        names = set(adapter.variables())
+        for component in _SOCIAL_SECURITY_COMPONENTS:
+            assert component in names
+            assert f"{component}_reported" in names
+        assert adapter.formula_owned_outputs(_SOCIAL_SECURITY_COMPONENTS) == set()
+        assert adapter.formula_owned_outputs(["social_security"]) == {"social_security"}
+
+    def test_components_have_their_declared_defaults_like_other_inputs(
+        self, adapter
+    ) -> None:
+        # The input surface and the default surface agree: a pool that fills
+        # a missing input cell finds a default for every listed input.
+        defaults = adapter.default_values(
+            [*_SOCIAL_SECURITY_COMPONENTS, "social_security"]
+        )
+        assert defaults == dict.fromkeys(_SOCIAL_SECURITY_COMPONENTS, 0)
+        inputs = adapter.variables()
+        assert set(adapter.default_values(inputs)) <= set(inputs)
+
+    def test_a_component_stored_under_its_public_name_reaches_the_engine(
+        self, adapter, us_bundle, tmp_path
+    ) -> None:
+        stored = [10_000.0, 0.0, 5_000.0]
+        bundle = _with_person_columns(
+            us_bundle,
+            {
+                "social_security_retirement": stored,
+                "social_security_disability": [0.0, 2_000.0, 0.0],
+                "social_security_survivors": [0.0, 0.0, 0.0],
+                "social_security_dependents": [0.0, 0.0, 0.0],
+            },
+        )
+
+        path = tmp_path / "components.h5"
+        adapter.write_dataset(bundle, path, period=2024)
+        assert path.exists()
+
+        values = adapter.materialize(
+            bundle,
+            ["social_security_retirement", "social_security_retirement_reported"],
+            2024,
+        )
+        np.testing.assert_allclose(values["social_security_retirement"], stored)
+        np.testing.assert_allclose(
+            values["social_security_retirement_reported"], stored
+        )
+
+    def test_a_component_stored_under_both_names_blocks_the_write(
+        self, adapter, us_bundle, tmp_path
+    ) -> None:
+        bundle = _with_person_columns(
+            us_bundle,
+            {
+                "social_security_retirement": [10_000.0, 0.0, 5_000.0],
+                "social_security_retirement_reported": [10_000.0, 0.0, 5_000.0],
+            },
+        )
+
+        path = tmp_path / "both_names.h5"
+        with pytest.raises(
+            ValueError,
+            match=r"both the migrated name .* \['social_security_retirement'\]",
+        ):
+            adapter.write_dataset(bundle, path, period=2024)
+        assert not path.exists()
+
+
 class TestEndToEnd:
     def test_weighted_accounting_matches_materialized_engine_totals(
         self, adapter, us_bundle

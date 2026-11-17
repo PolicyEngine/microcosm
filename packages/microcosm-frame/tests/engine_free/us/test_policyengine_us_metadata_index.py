@@ -25,7 +25,7 @@ _EXPECTED_STATE_MFS = frozenset(
     "de_taxable_income de_agi ia_standard_deduction ia_itemized_deductions "
     "ia_taxable_income ia_agi ky_standard_deduction ky_itemized_deductions "
     "ky_taxable_income ms_standard_deduction ms_itemized_deductions "
-    "ms_taxable_income mt_standard_deduction mt_itemized_deductions "
+    "ms_taxable_income mt_agi mt_standard_deduction mt_itemized_deductions "
     "mt_taxable_income".split()
 )
 # policyengine-us 2.x installs spm-calculator's measurement variables into the
@@ -293,7 +293,7 @@ def test_generated_snapshot_covers_the_pinned_default_system() -> None:
     )
 
     assert set(generated) == formula_owned | _EXPECTED_PUF | _EXPECTED_SPM_INPUTS
-    assert len(generated) == 119
+    assert len(generated) == 120
     assert {name for name, item in generated.items() if item.formula_owned} == (
         formula_owned
     )
@@ -319,9 +319,9 @@ def test_generated_snapshot_covers_the_pinned_default_system() -> None:
         assert (metadata.entity, metadata.dtype, metadata.period) == expected
 
     index = module.PolicyEngineUSVariableMetadataIndex()
-    assert len(index._definitions) == 6_167
-    assert len(index.variables()) == 926
-    assert len(index.formula_owned_outputs(index._definitions)) == 5_241
+    assert len(index._definitions) == 7_796
+    assert len(index.variables()) == 1_334
+    assert len(index.formula_owned_outputs(index._definitions)) == 6_462
     assert index.formula_owned_outputs(["AK", "e00700", "ar_agi", "mi_surtax"]) == {
         "AK",
         "ar_agi",
@@ -424,3 +424,85 @@ def test_installed_index_distinguishes_absent_extra_from_broken_layout(
     with pytest.raises(ImportError, match="requires the 'policyengine-us' package"):
         module._installed_policyengine_us_variable_sources()
     module._installed_policyengine_us_variable_sources.cache_clear()
+
+
+_MIGRATED_SOCIAL_SECURITY = frozenset(
+    {
+        "social_security_retirement",
+        "social_security_disability",
+        "social_security_survivors",
+        "social_security_dependents",
+    }
+)
+
+
+def test_engine_migrated_social_security_names_are_storable_inputs() -> None:
+    """policyengine-us migrates the four public components to ``_reported``.
+
+    Their classes have formulas, but the engine moves a stored component to
+    its ``_reported`` source, so each is a storable input on its own and a
+    formula-owned column next to its ``_reported`` input.
+    """
+
+    _installed_package()
+    index = module.PolicyEngineUSVariableMetadataIndex()
+
+    assert index._migrated_inputs == _MIGRATED_SOCIAL_SECURITY
+    assert _MIGRATED_SOCIAL_SECURITY <= set(index.variables())
+    assert {f"{name}_reported" for name in _MIGRATED_SOCIAL_SECURITY} <= set(
+        index.variables()
+    )
+    assert not index.formula_owned_outputs(_MIGRATED_SOCIAL_SECURITY)
+    # The total stays formula-owned.
+    assert index.formula_owned_outputs(["social_security"]) == {"social_security"}
+
+    import pandas as pd
+
+    alone = {"person": pd.DataFrame({"social_security_retirement": [1.0]})}
+    both = {
+        "person": pd.DataFrame(
+            {
+                "social_security_retirement": [1.0],
+                "social_security_retirement_reported": [1.0],
+            }
+        )
+    }
+    assert index._engine_computed_columns(alone, period=2024) == set()
+    assert index._engine_computed_columns(both, period=2024) == {
+        "social_security_retirement"
+    }
+
+
+def test_migrated_input_declaration_is_read_without_the_engine(tmp_path: Path) -> None:
+    assert module._policyengine_us_migrated_inputs(tmp_path) == frozenset()
+
+    declaration = tmp_path / module._MIGRATED_INPUTS_MODULE
+    declaration.parent.mkdir(parents=True)
+    declaration.write_text(
+        'OTHER = "x"\nSOCIAL_SECURITY_COMPONENTS = ("first", "second")\n',
+        encoding="utf-8",
+    )
+    assert module._policyengine_us_migrated_inputs(tmp_path) == {"first", "second"}
+
+    declaration.write_text("OTHER = 1\n", encoding="utf-8")
+    assert module._policyengine_us_migrated_inputs(tmp_path) == frozenset()
+
+    declaration.write_text(
+        "SOCIAL_SECURITY_COMPONENTS = tuple(name for name in NAMES)\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError, match="not a literal collection"):
+        module._policyengine_us_migrated_inputs(tmp_path)
+
+    declaration.write_text("SOCIAL_SECURITY_COMPONENTS = (1, 2)\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="collection of variable names"):
+        module._policyengine_us_migrated_inputs(tmp_path)
+
+
+def test_a_migrated_name_conflicts_only_with_its_own_reported_input() -> None:
+    migrated = frozenset({"first", "second"})
+
+    assert module._migrated_input_conflicts(migrated, {"first", "second"}) == set()
+    assert module._migrated_input_conflicts(
+        migrated, {"first", "first_reported", "second_reported"}
+    ) == {"first"}

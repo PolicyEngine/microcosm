@@ -17,6 +17,7 @@ already guarantees them. The one thing it adds is the ``household_weight``
 column, materialized from the frame's typed household weights.
 """
 
+import ast
 import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -31,6 +32,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.frame.adapters._policyengine_us_helper_reviews import HelperReview
 from microcosm.frame.adapters._policyengine_us_source_index import (
     ConsumerReceipt,
     _PolicyEngineUSSourceIndex,
@@ -89,6 +91,88 @@ _FORMULA_OWNED_COMPAT_COLUMNS = frozenset(
         "social_security",
     }
 )
+# PolicyEngine-US declares the public Social Security component names its
+# constructor migrates to their sources (policyengine-us 2.1xx): each
+# component may be stored under that name, which the engine moves to the pure
+# ``<name>_reported`` input, or under the ``_reported`` name itself, never
+# both. The names have formulas, so the declaration, read off the installed
+# engine, is what makes them storable inputs here.
+_MIGRATED_INPUTS_MODULE = "tools/social_security_inputs.py"
+_MIGRATED_INPUTS_DECLARATION = "SOCIAL_SECURITY_COMPONENTS"
+_MIGRATED_INPUT_SOURCE_SUFFIX = "_reported"
+
+
+def _validated_migrated_inputs(declared: object, *, source: str) -> frozenset[str]:
+    if not isinstance(declared, (tuple, list, frozenset)) or not all(
+        isinstance(name, str) and name for name in declared
+    ):
+        raise RuntimeError(
+            f"{source}.{_MIGRATED_INPUTS_DECLARATION} must be a collection of "
+            f"variable names; got {declared!r}."
+        )
+    return frozenset(declared)
+
+
+def _policyengine_us_migrated_inputs(package_root: Path) -> frozenset[str]:
+    """The public input names the installed engine migrates, read import-free.
+
+    Empty when the installed wheel has no such declaration (it migrates
+    nothing, and those names classify by their own formulas as before).
+    """
+
+    path = package_root / _MIGRATED_INPUTS_MODULE
+    if not path.is_file():
+        return frozenset()
+    tree = ast.parse(path.read_text(), filename=str(path))
+    for statement in tree.body:
+        if isinstance(statement, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == _MIGRATED_INPUTS_DECLARATION
+            for target in statement.targets
+        ):
+            try:
+                declared = ast.literal_eval(statement.value)
+            except ValueError as exc:
+                raise RuntimeError(
+                    f"{path}: {_MIGRATED_INPUTS_DECLARATION} is not a literal "
+                    "collection of variable names."
+                ) from exc
+            return _validated_migrated_inputs(declared, source=str(path))
+    return frozenset()
+
+
+def _engine_migrated_inputs(policyengine_us: Any) -> frozenset[str]:
+    """The public input names the imported engine migrates (empty if none)."""
+
+    import importlib
+
+    module_name = f"{policyengine_us.__name__}.tools.social_security_inputs"
+    try:
+        module = importlib.import_module(module_name)
+    except ModuleNotFoundError as exc:
+        if exc.name == module_name:
+            return frozenset()
+        raise
+    declared = getattr(module, _MIGRATED_INPUTS_DECLARATION, None)
+    if declared is None:
+        return frozenset()
+    return _validated_migrated_inputs(declared, source=module_name)
+
+
+def _migrated_input_conflicts(
+    migrated: frozenset[str], present: Iterable[str]
+) -> set[str]:
+    """Migrated names stored together with their ``_reported`` input.
+
+    PolicyEngine-US rejects a dataset that stores a component under both
+    names, so such a migrated name is not a storable input.
+    """
+
+    present = set(present)
+    return {
+        name
+        for name in migrated
+        if name in present and f"{name}{_MIGRATED_INPUT_SOURCE_SUFFIX}" in present
+    }
 
 
 @dataclass(frozen=True)
@@ -126,7 +210,7 @@ _PERIOD_BY_DEFINITION: dict[str, str] = {"year": "year", "month": "month"}
 # Regenerate with:
 #   uv run python tools/refresh_us_generated_variable_audit.py
 # The block below is generated from the installed wheels; never edit a
-# digest or a name by hand. 119 default-system variables are
+# digest or a name by hand. 120 default-system variables are
 # created outside ordinary top-level ``class ...(Variable)``
 # declarations, so the snapshot is tied to every source and activation
 # surface that produced it: a changed wheel fails closed until this
@@ -134,28 +218,28 @@ _PERIOD_BY_DEFINITION: dict[str, str] = {"year": "year", "month": "month"}
 # formula-owned output. A name policyengine_us.spm.DATASET_SOURCE_INPUTS
 # declares source-deliverable is recorded as an input leaf despite its
 # fallback formula; spm.py is pinned so that declaration cannot drift.
-_GENERATED_SOURCE_VERSION = "2.2.1"
+_GENERATED_SOURCE_VERSION = "2.145.3"
 _GENERATED_SOURCE_SHA256: dict[str, str] = {
-    "model_api.py": "d7edb7436b84733f179fe223376fb588bb7a3ad6817d119703faeb599d4bb9c7",
+    "model_api.py": "b72b379785fcea35123e81475b304616ac71d693b3b63bc477ab6cbcec553d8a",
     "reforms/reforms.py": (
-        "b4077ecee0342080f9a738422f2275479f1b8923366700aece79ef92c64baa61"
+        "93b62fd1e85be4afcf6402013367653dc3566c40f0d801522a5bba9fc95f89af"
     ),
     "reforms/states/mi/surtax.py": (
-        "e1d0c0207c46243d3509b22b15fbdc07aa02b4df9461f7b93bec872dc7124ea9"
+        "7b9ff5915df57d3d1d7901980d60dd82bf7e7479b5fe3c4f6268c50df1f61278"
     ),
-    "spm.py": "baa69c0d1163bdc55f7dc9ac85645c2b75e5519c8b72ec54fd57787a22164d5a",
-    "system.py": "1c8539dcb8aeba4973823887895f5cd42bb9a2ee1270b0a947c9e7c185571302",
+    "spm.py": "cc00856cfe25f3a87b1ec28301dbfefe36f77598b3f7f82e2d8fc81e913d0129",
+    "system.py": "37b9652565ebf209bd3649751d1c9e221d184ca9d571db120f21541002cbd2bb",
     "variables/gov/puf.py": (
         "17545c43549ecf34016107bc8ed2dce25a53610afb802431a1b0ea6724215e7b"
     ),
     "variables/gov/states/tax/income/_generate_state_mfs_variables.py": (
-        "a0c9decd81b6eb76ac7edcddfc913d89ee86e0f18d8c51702bcb2a015dc2fabe"
+        "1b8a262ce480871dc03fc013b7342c736c0ddd3c1d4e6e9f36c0c60c4413c13e"
     ),
     "variables/household/demographic/geographic/state/in_state.py": (
         "a3792c642387b652752461c85c03e5a9cb39fab55b4e038270374dd7e7d8aa60"
     ),
 }
-_GENERATED_SPM_SOURCE_VERSION = "1.0.0"
+_GENERATED_SPM_SOURCE_VERSION = "1.1.0"
 _GENERATED_SPM_SOURCE_SHA256: dict[str, str] = {
     "policyengine_adapter.py": (
         "aa5c20cd94abd3287bec097e6f3544f1c822d708cf63cf34c9ce294c3a1e85f7"
@@ -191,7 +275,7 @@ _GENERATED_VARIABLE_GROUPS: tuple[tuple[tuple[str, ...], str, str, str, bool], .
             "ia_standard_deduction ia_taxable_income "
             "ky_itemized_deductions ky_standard_deduction "
             "ky_taxable_income ms_itemized_deductions "
-            "ms_standard_deduction ms_taxable_income "
+            "ms_standard_deduction ms_taxable_income mt_agi "
             "mt_itemized_deductions mt_standard_deduction "
             "mt_taxable_income".split()
         ),
@@ -245,12 +329,14 @@ def _index_policyengine_us_sources(
     variables_root: Path,
     *,
     parameters_root: Path | None = None,
+    helper_reviews: Mapping[str, HelperReview] | None = None,
 ) -> _PolicyEngineUSSourceIndex:
     """Thin adapter hook over the single combined source-index implementation."""
 
     return _build_policyengine_us_source_index(
         variables_root,
         parameters_root=parameters_root,
+        helper_reviews=helper_reviews,
     )
 
 
@@ -395,6 +481,20 @@ def _installed_policyengine_us_variable_sources() -> _PolicyEngineUSSourceIndex:
     )
 
 
+@lru_cache(maxsize=1)
+def _installed_policyengine_us_migrated_inputs() -> frozenset[str]:
+    try:
+        package = distribution("policyengine-us")
+    except PackageNotFoundError as exc:
+        raise ImportError(
+            "The PolicyEngine-US metadata index requires the 'policyengine-us' "
+            "package. Install it with 'microcosm-frame[policyengine]'."
+        ) from exc
+    return _policyengine_us_migrated_inputs(
+        Path(package.locate_file("policyengine_us"))
+    )
+
+
 class PolicyEngineUSVariableMetadataIndex:
     """Import-free PolicyEngine-US variable metadata read from installed source.
 
@@ -412,6 +512,9 @@ class PolicyEngineUSVariableMetadataIndex:
         self._definitions = source_index.definitions
         self._consumers = source_index.consumers
         self._engine_version = distribution("policyengine-us").version
+        # Public names the engine migrates to their sources: storable inputs
+        # although their classes have formulas.
+        self._migrated_inputs = _installed_policyengine_us_migrated_inputs()
 
     def variable_metadata(self, name: str) -> VariableMetadata:
         definition = self._definitions.get(name)
@@ -437,7 +540,7 @@ class PolicyEngineUSVariableMetadataIndex:
             name
             for name, definition in self._definitions.items()
             if name not in _FORMULA_OWNED_COMPAT_COLUMNS
-            and not definition.formula_owned
+            and (name in self._migrated_inputs or not definition.formula_owned)
         )
 
     def consumer_receipts(self, name: str) -> tuple[ConsumerReceipt, ...]:
@@ -512,7 +615,8 @@ class PolicyEngineUSVariableMetadataIndex:
         return set(requested & _FORMULA_OWNED_COMPAT_COLUMNS) | {
             name
             for name in requested
-            if (definition := self._definitions.get(name)) is not None
+            if name not in self._migrated_inputs
+            and (definition := self._definitions.get(name)) is not None
             and definition.formula_owned
         }
 
@@ -531,13 +635,20 @@ class PolicyEngineUSVariableMetadataIndex:
                 US_SCHEMA.membership_column(group),
             )
         }
-        return set(present & _FORMULA_OWNED_COMPAT_COLUMNS) | {
-            name
-            for name in present
-            if name not in structural
-            and (definition := self._definitions.get(name)) is not None
-            and definition.computed_at(period)
-        }
+        # A migrated name is a storable input, unless its ``_reported``
+        # input is stored too (the engine rejects both).
+        return (
+            set(present & _FORMULA_OWNED_COMPAT_COLUMNS)
+            | _migrated_input_conflicts(self._migrated_inputs, present)
+            | {
+                name
+                for name in present
+                if name not in structural
+                and name not in self._migrated_inputs
+                and (definition := self._definitions.get(name)) is not None
+                and definition.computed_at(period)
+            }
+        )
 
 
 def _engine_dataset_source_inputs(policyengine_us: Any) -> frozenset[str]:
@@ -736,7 +847,7 @@ class PolicyEngineUSEngine:
             ImportError: If ``policyengine_us`` is not installed.
         """
         system_variables = self._tax_benefit_system().variables
-        source_inputs = self._dataset_source_inputs()
+        source_inputs = self._dataset_source_inputs() | self._migrated_inputs()
         return sorted(
             name
             for name, variable in system_variables.items()
@@ -767,7 +878,7 @@ class PolicyEngineUSEngine:
             ImportError: If ``policyengine_us`` is not installed.
         """
         variables = self._tax_benefit_system().variables
-        source_inputs = self._dataset_source_inputs()
+        source_inputs = self._dataset_source_inputs() | self._migrated_inputs()
         flagged: set[str] = set()
         for name in names:
             if name in _FORMULA_OWNED_COMPAT_COLUMNS:
@@ -874,26 +985,29 @@ class PolicyEngineUSEngine:
     def default_values(self, names: Sequence[str]) -> dict[str, object]:
         """Return engine default values for the given input variable names.
 
-        Only names the tax-benefit system knows as non-formula input
-        variables with a declared default are returned; unknown names and
-        formula-owned variables are silently omitted, so callers can pass a
-        whole export surface. Declared dataset source inputs are also omitted:
-        permission to store an observation is not permission to invent one.
-        Enum defaults are normalized to their stored
-        member name (the representation datasets persist).
+        Only names the tax-benefit system knows as input variables with a
+        declared default are returned: non-formula inputs and the public
+        names the engine migrates to their ``_reported`` sources, which
+        :meth:`variables` lists as inputs too. Unknown names and formula-owned
+        variables are silently omitted, so callers can pass a whole export
+        surface. Declared dataset source inputs are also omitted: permission
+        to store an observation is not permission to invent one. Enum
+        defaults are normalized to their stored member name (the
+        representation datasets persist).
 
         Raises:
             ImportError: If ``policyengine_us`` is not installed.
         """
         variables = self._tax_benefit_system().variables
         source_inputs = self._dataset_source_inputs()
+        migrated = self._migrated_inputs()
         defaults: dict[str, object] = {}
         for name in names:
             variable = variables.get(name)
             if (
                 variable is None
                 or name in source_inputs
-                or _is_engine_computed(variable)
+                or (name not in migrated and _is_engine_computed(variable))
             ):
                 continue
             default = getattr(variable, "default_value", None)
@@ -1032,8 +1146,11 @@ class PolicyEngineUSEngine:
             missing_required.append(column)
 
         forbidden_present = set(contract.forbidden).intersection(present_columns)
-        formula_owned_present = self._engine_computed_columns(
-            tables, period=period
+        migrated_conflicts = _migrated_input_conflicts(
+            self._migrated_inputs(), present_columns
+        )
+        formula_owned_present = (
+            self._engine_computed_columns(tables, period=period) - migrated_conflicts
         ) | set(contract.formula_owned_excluded).intersection(present_columns)
         unexpected: set[str] = set()
         if contract.closed:
@@ -1051,6 +1168,7 @@ class PolicyEngineUSEngine:
             forbidden_present
             or missing_required
             or formula_owned_present
+            or migrated_conflicts
             or unexpected
             or enum_domain_failures
         ):
@@ -1058,7 +1176,10 @@ class PolicyEngineUSEngine:
                 "Export contract violated; nothing was written. Missing "
                 f"required column(s): {sorted(missing_required)}; forbidden "
                 f"column(s) present: {sorted(forbidden_present)}; formula-owned "
-                f"column(s) present: {sorted(formula_owned_present)}; unexpected column(s) "
+                f"column(s) present: {sorted(formula_owned_present)}; column(s) "
+                "stored under both the migrated name and its "
+                f"{_MIGRATED_INPUT_SOURCE_SUFFIX!r} input: "
+                f"{sorted(migrated_conflicts)}; unexpected column(s) "
                 f"present: {sorted(unexpected)}; enum-domain violation(s): "
                 f"{enum_domain_failures}."
             )
@@ -1076,6 +1197,15 @@ class PolicyEngineUSEngine:
         if cached is None:
             cached = _engine_dataset_source_inputs(self._import_policyengine_us())
             self._dataset_source_inputs_cache = cached
+        return cached
+
+    def _migrated_inputs(self) -> frozenset[str]:
+        """Public names the engine migrates to their ``_reported`` sources."""
+
+        cached = getattr(self, "_migrated_inputs_cache", None)
+        if cached is None:
+            cached = _engine_migrated_inputs(self._import_policyengine_us())
+            self._migrated_inputs_cache = cached
         return cached
 
     def _import_policyengine_us(self) -> Any:
@@ -1177,17 +1307,24 @@ class PolicyEngineUSEngine:
         writer is called, after checking aggregate deltas.
         """
         variables = self._tax_benefit_system().variables
-        source_inputs = self._dataset_source_inputs()
+        migrated = self._migrated_inputs()
+        source_inputs = self._dataset_source_inputs() | migrated
         present = {column for frame in tables.values() for column in frame.columns}
         structural = self._structural_columns()
-        return set(present & _FORMULA_OWNED_COMPAT_COLUMNS) | {
-            column
-            for column in present
-            if column not in structural
-            and column not in source_inputs
-            and column in variables
-            and _is_engine_computed(variables[column], period=period)
-        }
+        # A migrated name is a storable input, unless its ``_reported`` input
+        # is stored too (the engine rejects both).
+        return (
+            set(present & _FORMULA_OWNED_COMPAT_COLUMNS)
+            | _migrated_input_conflicts(migrated, present)
+            | {
+                column
+                for column in present
+                if column not in structural
+                and column not in source_inputs
+                and column in variables
+                and _is_engine_computed(variables[column], period=period)
+            }
+        )
 
     def _enum_domain_failures(
         self,
