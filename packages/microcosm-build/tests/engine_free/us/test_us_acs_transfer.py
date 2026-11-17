@@ -879,7 +879,7 @@ def test_explicit_transfer_adds_requested_model_inputs(
     )
 
 
-def test_large_target_family_is_split_to_bound_retained_qrf_forests(
+def test_large_target_family_is_split_into_bounded_chained_batches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     targets = tuple(f"wide_target_{index:02d}" for index in range(11))

@@ -277,8 +277,10 @@ def table_bytes_digest(table: pd.DataFrame) -> str:
     a categorical column also contributes its categories and their order.
     Other columns contribute ``pandas.util.hash_pandas_object`` values, which
     are not byte-exact: in an object column ``None`` and ``NaN`` hash alike,
-    as do mixed values with the same ``str`` (``1`` and ``"1"``). The tests'
-    output tables have numeric and boolean columns only.
+    as do mixed values with the same ``str`` (``1`` and ``"1"``). The frozen
+    digests' output tables have numeric and boolean columns only; the
+    joint-codec comparison, whose tables hold strings, also compares the
+    frames exactly.
     """
 
     digest = hashlib.sha256()

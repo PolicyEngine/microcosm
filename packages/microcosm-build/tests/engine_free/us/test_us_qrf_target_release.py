@@ -23,8 +23,9 @@ Two kinds of comparison:
   libraries that compute the draws match the recording
   (``_RECORDED_DEPENDENCIES``); elsewhere these tests skip.
 
-A change that is meant to move these outputs re-records the digests by
-running the code it starts from on each platform, not the changed code.
+A change that is meant to move these outputs replaces the digests with ones
+recorded from its own code on each platform (and states why the outputs
+move); any other change must leave them passing.
 """
 
 from __future__ import annotations
