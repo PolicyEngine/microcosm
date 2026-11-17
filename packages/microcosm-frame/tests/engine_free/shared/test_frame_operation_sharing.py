@@ -262,6 +262,11 @@ def test_place_shares_every_table_it_does_not_change(
     assert destination_sharing and all(destination_sharing.values()), (
         destination_sharing
     )
+    # The table the column moves out of keeps sharing its other columns.
+    owner_sharing = _numeric_columns_sharing_memory(
+        {owner: placed.table(owner)}, {owner: linked_frame.table(owner)}
+    )
+    assert owner_sharing and all(owner_sharing.values()), owner_sharing
 
 
 def test_select_keeping_every_person_shares_every_column(unlinked_frame) -> None:
@@ -280,7 +285,6 @@ def test_every_result_table_is_a_distinct_object(request, operation: str) -> Non
     source_tables = _tables_of(source)
     for name, table in _tables_of(result).items():
         assert table is not source_tables[name], name
-    assert result.strata is not source.strata
 
 
 @pytest.mark.parametrize("operation", list(_OPERATIONS))

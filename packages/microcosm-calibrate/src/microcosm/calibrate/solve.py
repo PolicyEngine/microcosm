@@ -295,7 +295,8 @@ class CalibrationResult:
             memory (:meth:`~microcosm.frame.Frame.with_weights` does not copy
             tables).
         weight_entity: The entity whose weights were calibrated.
-        weights: The calibrated weight values (also on :attr:`frame`).
+        weights: The calibrated weight values (also on :attr:`frame`, when
+            the result carries one).
         initial_weights: The input weight values. These remain the frame's
             original weights even when the optimizer is initialized from
             ``warm_start_weights``.
@@ -337,7 +338,8 @@ class CalibrationResult:
             learned gate state.
 
     The result is a frozen record; the calibrated frame is the primary product
-    and every operator downstream consumes :attr:`frame`.
+    and every operator downstream consumes :attr:`frame`, except a caller that
+    asked for weights and diagnostics only (``return_frame=False``).
     """
 
     frame: Frame | None
