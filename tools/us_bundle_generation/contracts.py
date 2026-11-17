@@ -63,16 +63,20 @@ _TAKE_UP_PROGRAM_VARIABLES = (
     ("chip", "takes_up_chip_if_eligible"),
     ("basic_health_program", "takes_up_basic_health_program_if_eligible"),
     ("medicare", "takes_up_medicare_if_eligible"),
+    ("medicare_part_d", "takes_up_medicare_part_d_if_eligible"),
     ("ssi", "takes_up_ssi_if_eligible"),
     ("dc_ptc", "takes_up_dc_ptc"),
     ("head_start", "takes_up_head_start_if_eligible"),
     ("early_head_start", "takes_up_early_head_start_if_eligible"),
     ("housing_assistance", "takes_up_housing_assistance_if_eligible"),
     ("wic", "takes_up_wic_if_eligible"),
+    ("csfp", "takes_up_csfp_if_eligible"),
+    ("school_meals", "takes_up_school_meals_if_eligible"),
     ("aca", "takes_up_aca_if_eligible"),
     ("ca_premium_subsidy", "takes_up_ca_premium_subsidy_if_eligible"),
     ("co_premium_assistance", "takes_up_co_premium_assistance_if_eligible"),
     ("nm_premium_assistance", "takes_up_nm_premium_assistance_if_eligible"),
+    ("ak_permanent_fund_dividend", "takes_up_ak_permanent_fund_dividend_if_eligible"),
 )
 _TAKE_UP_PROGRAM_COUNT = len(_TAKE_UP_PROGRAM_VARIABLES)
 _TAKE_UP_SOURCE_RESOURCE = "source_stages.json"
@@ -994,8 +998,10 @@ def _build_take_up_contract_cached() -> dict[str, object]:
         programs.append(row)
 
     ownership_counts = Counter(str(row["ownership"]) for row in programs)
+    # policyengine-us 2.145 added four take-up inputs left at their engine
+    # default (Medicare Part D, CSFP, school meals, Alaska PFD): 11 engine-owned.
     expected_ownership_counts = {
-        "engine": 7,
+        "engine": 11,
         "measured": 1,
         "mixed": 1,
         "modeled": 7,

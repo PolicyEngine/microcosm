@@ -103,16 +103,20 @@ EXPECTED_PROGRAM_IDS = (
     "chip",
     "basic_health_program",
     "medicare",
+    "medicare_part_d",
     "ssi",
     "dc_ptc",
     "head_start",
     "early_head_start",
     "housing_assistance",
     "wic",
+    "csfp",
+    "school_meals",
     "aca",
     "ca_premium_subsidy",
     "co_premium_assistance",
     "nm_premium_assistance",
+    "ak_permanent_fund_dividend",
 )
 
 EXPECTED_TAKE_UP_MECHANISMS: Mapping[str, tuple[str, tuple[str, ...], str]] = {
@@ -135,6 +139,7 @@ EXPECTED_TAKE_UP_MECHANISMS: Mapping[str, tuple[str, tuple[str, ...], str]] = {
         "rate_unsourced",
     ),
     "medicare": ("measured", ("measured_map",), "out_of_scope"),
+    "medicare_part_d": ("engine", ("engine_default",), "rate_unsourced"),
     "ssi": (
         "modeled",
         ("probability_seed", "delivery_gate"),
@@ -149,6 +154,8 @@ EXPECTED_TAKE_UP_MECHANISMS: Mapping[str, tuple[str, tuple[str, ...], str]] = {
         "out_of_scope",
     ),
     "wic": ("modeled", ("probability_seed",), "out_of_scope"),
+    "csfp": ("engine", ("engine_default",), "rate_unsourced"),
+    "school_meals": ("engine", ("engine_default",), "rate_unsourced"),
     "aca": (
         "modeled",
         (
@@ -169,6 +176,11 @@ EXPECTED_TAKE_UP_MECHANISMS: Mapping[str, tuple[str, tuple[str, ...], str]] = {
         "rate_unsourced",
     ),
     "nm_premium_assistance": (
+        "engine",
+        ("engine_default",),
+        "rate_unsourced",
+    ),
+    "ak_permanent_fund_dividend": (
         "engine",
         ("engine_default",),
         "rate_unsourced",
