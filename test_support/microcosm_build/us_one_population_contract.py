@@ -65,8 +65,11 @@ from microcosm.build.us_runtime.one_population_contract import (
     to_assembled_provenance,
 )
 from microcosm.build.us_runtime.one_population_selection import (
+    RULE_VERSION,
+    SelectionManifest,
     acs_unit_key,
     cps_unit_key,
+    keys_sha256,
 )
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
     PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN,
@@ -853,6 +856,44 @@ def joined_frame(
         US_SCHEMA,
         {"household": Weights(weights, WeightKind.IMPORTANCE)},
         metadata=metadata,
+    )
+
+
+def selection_manifest(population: GeneratedPopulation) -> SelectionManifest:
+    """PR 1's selection manifest for selecting every generated household.
+
+    The key digests and counts are the generated keys'; the other fields
+    are coherent placeholders (the contract reads only the keys' digests and
+    counts).
+    """
+
+    by_year: dict[int, int] = {}
+    for key in population.cps_keys:
+        year = int(key.split("|", 1)[0])
+        by_year[year] = by_year.get(year, 0) + 1
+    group_quarters = int(
+        (population.acs_tables["household"]["TYPEHUGQ"] != 1).sum()
+        if len(population.acs_tables["household"])
+        else 0
+    )
+    return SelectionManifest(
+        rule_version=RULE_VERSION,
+        salt="d2283-generated-population",
+        replicate=0,
+        budget=len(population.cps_keys) + len(population.acs_keys),
+        include_group_quarters=True,
+        drop_spm_zero_adult=True,
+        acs_households=len(population.acs_keys),
+        acs_eligible=len(population.acs_keys),
+        acs_spm_zero_adult=0,
+        acs_group_quarters=group_quarters,
+        cps_income_years=tuple(sorted(by_year)),
+        n_cps=len(population.cps_keys),
+        n_acs=len(population.acs_keys),
+        n_cps_by_income_year=tuple(sorted(by_year.items())),
+        threshold_draw=None,
+        selected_acs_keys_sha256=keys_sha256(population.acs_keys),
+        cps_keys_sha256=keys_sha256(population.cps_keys),
     )
 
 

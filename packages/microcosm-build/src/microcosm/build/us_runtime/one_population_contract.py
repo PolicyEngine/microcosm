@@ -34,20 +34,39 @@ from __future__ import annotations
 import numbers
 from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 import pandas as pd
 
+from microcosm.build.source_runtime import SourceRuntimeError
+from microcosm.build.us_runtime.esi_premiums import (
+    US_ESI_EMPLOYER_PREMIUM_COLUMN,
+    refuse_unassigned_us_esi_premiums,
+)
 from microcosm.build.us_runtime.one_population_selection import (
     SelectionManifest,
+    acs_unit_key,
     cps_unit_key,
+    keys_sha256,
 )
+from microcosm.build.us_runtime.puf_capital_gains_tail import (
+    PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_DONOR_AGI_BAND_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_DONOR_FILING_STATUS_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_DONOR_SYNTHETIC_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN,
+)
+from microcosm.build.us_runtime.spm_composition import check_spm_composition
 from microcosm.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_CAPITAL_GAINS_TAIL_CLONE_INDEX,
     PUF_TAX_DETAIL_CLONE_INDEX,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    SPINE_ASSEMBLY_MANIFEST_KEY,
+    require_assembled_support_provenance,
     spine_assembly_manifest,
     spine_source_id_column,
     support_channel_column,
@@ -64,6 +83,8 @@ __all__ = [
     "ASSEMBLED_CHANNELS",
     "CPS_SPINE_TAG",
     "ENGINE_PERIOD",
+    "PUF_TAIL_TAX_UNIT_COLUMNS",
+    "RELEASE_WRITTEN_INPUTS",
     "STRUCTURAL_COLUMNS",
     "EngineVariableIndex",
     "OnePopulationContractError",
@@ -143,6 +164,142 @@ _CPS = "CPS"
 _ACS = "ACS"
 #: The boundary name the assembly validator reports.
 _BOUNDARY = "one-population provenance"
+#: The consumer name the ESI premium refusal reports.
+_CONSUMER = "d2283 one-population contract"
+
+#: The six tax-unit provenance columns the capital-gains tail transfer
+#: writes on every tax unit, with non-null defaults where it applies no donor
+#: (``puf_capital_gains_tail.py`` :1697-1711). Not
+#: ``PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS``, which is the section 1250
+#: gain leg.
+PUF_TAIL_TAX_UNIT_COLUMNS = (
+    PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_DONOR_SYNTHETIC_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_DONOR_FILING_STATUS_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_DONOR_AGI_BAND_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN,
+)
+
+#: The column suffix location cloning adds to every entity table
+#: (``block_location.LOCATION_CLONE_INDEX_COLUMN``; a test pins the two).
+_LOCATION_CLONE_INDEX_SUFFIX = "_location_clone_index"
+
+#: The household type codes the ACS loader keeps (1 housing unit, 2
+#: institutional and 3 non-institutional group quarters).
+_ACS_HOUSEHOLD_TYPES = (1, 2, 3)
+
+_SCF_ASSETS_EVIDENCE = (
+    "scf_wealth stage: with_us_scf_wealth_inputs re-imputes all three asset "
+    "columns on every person when any value is not finite "
+    "(U/scf_wealth.py:1031; pass-through only when assets and net worth both "
+    "carry signal, :1129; rewrite, :1149)"
+)
+_ORG_EVIDENCE = (
+    "org_wages stage: with_us_org_wages_inputs re-imputes the family on every "
+    "entry and passes through only when each stored output equals the "
+    "recomputed one, which a null never does (U/org_wages.py:990, :965, "
+    ":1046); otherwise it writes every output on every person (:1050)"
+)
+_OTHER_HEALTH_INSURANCE_EVIDENCE = (
+    "other_health_insurance_premiums stage: "
+    "with_us_other_health_insurance_inputs raises if a stage output misses a "
+    "person (U/other_health_insurance.py:906) and writes it on every person "
+    "(:913-915)"
+)
+_ACA_EVIDENCE = (
+    "aca_marketplace_inputs stage: _with_aca_marketplace_source_outputs raises "
+    "if the output misses a tax unit and writes both columns on every tax unit "
+    "(tools/build_us_fiscal_refresh_release.py:4113, :4119)"
+)
+
+#: The engine inputs the release tool's always-on producers rewrite on every
+#: row, or refuse on a null, so prepare may leave them null on ACS rows (the
+#: null-input clause, R6, exempts them; d2283 Q1 (a)). Each entry is the
+#: column and its evidence, re-read at this module's commit: the stage
+#: (whose ``us/source_stages.json`` ``outputs`` name the column; a test pins
+#: that) and the lines that rewrite every row or raise on a null.
+#:
+#: Left out, so prepare must fill them on ACS rows: producers that pass a
+#: frame through when the column carries signal after dropping nulls
+#: (``is_snap_abawd_discretionary_exempt``, the three SCF auto-loan columns,
+#: the two SIPP vehicle columns, the two SIPP tip columns), a stage's source
+#: column (``health_insurance_premiums_without_medicare_part_b``), declared
+#: outputs nothing on Route A writes (the ``scf_*`` and education-debt
+#: columns), and ``takes_up_snap_if_eligible``. SNAP state take-up does
+#: rewrite that one on every SPM unit and raise on a null
+#: (U/snap_state_take_up.py:282-290), but the SNAP take-up stage before it
+#: passes ACS nulls through (U/snap_take_up.py:231-239, :274-277), and the
+#: release's SNAP take-up gate (tools/build_us_fiscal_refresh_release.py:14414)
+#: grades that frame through ``to_numpy(dtype=bool)``
+#: (U/snap_take_up.py:319), which reads a NaN as take-up, a None as no
+#: take-up and refuses a ``pd.NA``: it misgrades ACS nulls.
+RELEASE_WRITTEN_INPUTS: Mapping[str, str] = MappingProxyType(
+    {
+        "bank_account_assets": _SCF_ASSETS_EVIDENCE,
+        "bond_assets": _SCF_ASSETS_EVIDENCE,
+        "stock_assets": _SCF_ASSETS_EVIDENCE,
+        "net_worth": (
+            "scf_wealth stage: with_us_scf_wealth_inputs re-imputes net_worth "
+            "on every household when any value is not finite "
+            "(U/scf_wealth.py:1048, :1129; rewrite, :1157)"
+        ),
+        "meets_ssi_disability_criteria": (
+            "ssi_disability_criteria stage: with_us_ssi_disability_criteria "
+            "passes through only when every value is finite, 0/1 and equal to "
+            "its prediction, else writes the prediction on every person "
+            "(U/ssi_disability_criteria.py:1160, :1167)"
+        ),
+        "takes_up_head_start_if_eligible": (
+            "sipp_head_start stage: with_us_sipp_head_start_input passes "
+            "through only when every value is finite, 0/1 and equal to its "
+            "prediction, else writes the prediction on every person "
+            "(U/sipp_head_start.py:740, :747)"
+        ),
+        "takes_up_ssi_if_eligible": (
+            "ssi_take_up stage: with_us_ssi_take_up passes through only a "
+            "boolean column with no null equal to its assignment, else writes "
+            "the assignment on every person (U/ssi_take_up.py:1260-1261, "
+            ":1268)"
+        ),
+        "would_file_taxes_voluntarily": (
+            "voluntary_filing_input stage: with_us_voluntary_filing_input "
+            "passes through only when every value is finite, 0/1 and equal to "
+            "its prediction, else writes the prediction on every tax unit "
+            "(U/voluntary_filing.py:934, :941)"
+        ),
+        **dict.fromkeys(
+            (
+                "cps_race",
+                "is_hispanic",
+                "detailed_occupation_recode",
+                "detailed_industry_recode",
+                "major_industry_recode",
+                "worked_last_year",
+                "has_never_worked",
+                "is_military",
+                "is_computer_scientist",
+                "is_executive_administrative_professional",
+                "is_farmer_fisher",
+                "hourly_wage",
+                "is_paid_hourly",
+                "is_union_member_or_covered",
+                "fsla_overtime_premium",
+            ),
+            _ORG_EVIDENCE,
+        ),
+        "takes_up_aca_if_eligible": _ACA_EVIDENCE,
+        "selected_marketplace_plan_benchmark_ratio": _ACA_EVIDENCE,
+        "takes_up_medicaid_if_eligible": (
+            "medicaid_take_up stage: with_us_medicaid_take_up raises if any "
+            "person is unassigned and writes every person "
+            "(U/medicaid_take_up.py:319, :323)"
+        ),
+        "other_health_insurance_premiums": _OTHER_HEALTH_INSURANCE_EVIDENCE,
+        "health_insurance_premiums": _OTHER_HEALTH_INSURANCE_EVIDENCE,
+        "is_self_employed": _OTHER_HEALTH_INSURANCE_EVIDENCE,
+    }
+)
 
 
 class OnePopulationContractError(ValueError):
@@ -567,7 +724,7 @@ def _lineage_pairs(
 
 def _require_acs_lineage(
     tables: Mapping[str, pd.DataFrame],
-    staging: frozenset[tuple[str, int]],
+    staging: frozenset[tuple[str, int]] | None,
 ) -> None:
     """P7: every ACS row's ``SERIALNO``/``SPORDER`` lineage survives.
 
@@ -575,8 +732,9 @@ def _require_acs_lineage(
     an integer, with (``SERIALNO``, ``SPORDER``) unique per ACS person through
     the household link; ``source_household_id`` equals the linked
     household's ``household_spine_source_id`` (staging's native id);
-    ``source_person_id`` is ``str(SPORDER)``; ``source_year`` is 2024; and
-    the persons' (``SERIALNO``, ``SPORDER``) set equals staging's.
+    ``source_person_id`` is ``str(SPORDER)``; ``source_year`` is 2024; and,
+    when ``staging`` is given, the persons' (``SERIALNO``, ``SPORDER``) set
+    equals staging's.
     """
 
     rule = "ACS lineage does not survive"
@@ -648,6 +806,8 @@ def _require_acs_lineage(
             f"{rule}: {_SOURCE_YEAR} must be {_ACS_SOURCE_YEAR} on every ACS person; "
             f"{wrong_year} differ."
         )
+    if staging is None:
+        return
     selected = frozenset(
         zip(lineage["serial"].tolist(), lineage["sporder"].tolist(), strict=True)
     )
@@ -959,48 +1119,699 @@ def _engine_columns(
 # ----------------------------------------------------------- the contract
 
 
+def _frame_tables(frame: Frame) -> dict[str, pd.DataFrame]:
+    return {entity: frame.table(entity) for entity in US_SCHEMA.entities}
+
+
+def _origin_of_channel(channel: object) -> str | None:
+    if channel in _CPS_CHANNELS:
+        return _CPS
+    if channel == ACS_SUPPORT_CHANNEL:
+        return _ACS
+    return None
+
+
+def _require_assembled_columns(tables: Mapping[str, pd.DataFrame]) -> None:
+    """R1, first part: every entity assembled, provenance complete, channels known."""
+
+    rule = "Incomplete assembled provenance"
+    assembled = [
+        entity
+        for entity in US_SCHEMA.entities
+        if spine_source_id_column(entity) in tables[entity]
+    ]
+    if not assembled:
+        raise OnePopulationContractError(
+            f"{rule}: the frame is not assembled; no entity carries its "
+            "'<entity>_spine_source_id' (build it with to_assembled_provenance)."
+        )
+    if len(assembled) != len(US_SCHEMA.entities):
+        unassembled = [e for e in US_SCHEMA.entities if e not in assembled]
+        raise OnePopulationContractError(
+            "Mixed assembled and unassembled provenance: "
+            f"{unassembled} lack their spine source id while {assembled} carry "
+            "it; every entity of the frame must be assembled."
+        )
+    for entity in US_SCHEMA.entities:
+        table = tables[entity]
+        try:
+            require_assembled_support_provenance(table, entity=entity)
+        except ValueError as exc:
+            raise OnePopulationContractError(f"{rule}: {exc}") from exc
+        _, channel, clone, spine_source, _ = _provenance_columns(entity)
+        for column in (channel, clone, spine_source):
+            nulls = int(table[column].isna().sum())
+            if nulls:
+                raise OnePopulationContractError(
+                    f"{rule}: {column!r} has {nulls} null value(s)."
+                )
+        unknown = _unexpected(table[channel], ASSEMBLED_CHANNELS)
+        if unknown:
+            raise OnePopulationContractError(
+                f"Rows must carry one of the assembled channels "
+                f"{list(ASSEMBLED_CHANNELS)}; {channel!r} holds {unknown[:5]}."
+            )
+
+
+def _split_origins(
+    tables: Mapping[str, pd.DataFrame],
+) -> dict[str, dict[str, pd.DataFrame]]:
+    """Each entity's CPS rows (``asec``, ``puf_tax_detail``) and ACS rows."""
+
+    origins: dict[str, dict[str, pd.DataFrame]] = {_CPS: {}, _ACS: {}}
+    for entity in US_SCHEMA.entities:
+        table = tables[entity]
+        origin = table[support_channel_column(entity)].map(_origin_of_channel)
+        for name in (_CPS, _ACS):
+            origins[name][entity] = table.loc[origin.eq(name).to_numpy()]
+    return origins
+
+
+def _require_assembled_cps_values(tables: Mapping[str, pd.DataFrame]) -> None:
+    """P5 on the frame's CPS rows: Route A's labels, spine id = source id."""
+
+    for entity in US_SCHEMA.entities:
+        table = tables[entity]
+        source, channel, clone, spine_source, spine = _provenance_columns(entity)
+        sources = _integral_ids(
+            table[source], refusal=f"CPS {source!r} must hold source ids"
+        )
+        clones = _integral_ids(
+            table[clone], refusal=f"CPS {clone!r} must hold clone indices"
+        )
+        spine_sources = _integral_ids(
+            table[spine_source], refusal=f"CPS {spine_source!r} must hold source ids"
+        )
+        bad_clones = sorted(set(clones.tolist()) - set(_CPS_CLONE_INDICES))
+        if bad_clones:
+            raise OnePopulationContractError(
+                "CPS clone indices must be 0, 1 or 2 (Route A's native rows, PUF "
+                f"tax-detail copies and capital-gains tail copies); {clone!r} "
+                f"holds {bad_clones[:5]}."
+            )
+        native = table[channel].eq(BASE_ASEC_SUPPORT_CHANNEL).to_numpy()
+        disagree = int(np.count_nonzero(native != (clones == 0)))
+        if disagree:
+            raise OnePopulationContractError(
+                f"CPS rows must carry channel {BASE_ASEC_SUPPORT_CHANNEL!r} exactly "
+                f"on clone index 0; {disagree} {entity!r} row(s) disagree."
+            )
+        differs = int(np.count_nonzero(spine_sources != sources))
+        if differs:
+            raise OnePopulationContractError(
+                f"CPS rows' spine source id must equal their source id (the "
+                f"parent export's rows are their own spine records); {differs} "
+                f"{entity!r} row(s) differ in {spine_source!r}."
+            )
+        if spine in table:
+            tags = table[spine]
+            wrong = tags.notna() & tags.ne(CPS_SPINE_TAG)
+            if wrong.any():
+                raise OnePopulationContractError(
+                    f"CPS rows carry a spine tag other than {CPS_SPINE_TAG!r} in "
+                    f"{spine!r}: {sorted({repr(tag) for tag in tags[wrong]})[:5]}; "
+                    "staging tags the donor's rows "
+                    f"{CPS_SPINE_TAG!r}."
+                )
+
+
+def _require_assembled_acs_values(tables: Mapping[str, pd.DataFrame]) -> None:
+    """P5 on the frame's ACS rows: staging's labels, source id = pooled id."""
+
+    for entity in US_SCHEMA.entities:
+        table = tables[entity]
+        source, _, clone, spine_source, spine = _provenance_columns(entity)
+        id_column = US_SCHEMA.entity_id_column(entity)
+        ids = _integral_ids(
+            table[id_column], refusal=f"ACS {id_column!r} must hold ids"
+        )
+        sources = _integral_ids(
+            table[source], refusal=f"ACS {source!r} must hold source ids"
+        )
+        clones = _integral_ids(
+            table[clone], refusal=f"ACS {clone!r} must hold clone indices"
+        )
+        natives = _integral_ids(
+            table[spine_source], refusal=f"ACS {spine_source!r} must hold source ids"
+        )
+        bad_clones = sorted(set(clones.tolist()) - {0})
+        if bad_clones:
+            raise OnePopulationContractError(
+                f"ACS rows must carry clone index 0; {clone!r} holds {bad_clones[:5]}."
+            )
+        differs = int(np.count_nonzero(sources != ids))
+        if differs:
+            raise OnePopulationContractError(
+                f"ACS rows' source id must equal their pooled id "
+                f"({id_column!r}), as assembly writes it; {differs} {entity!r} "
+                "row(s) differ."
+            )
+        offsets = sorted(set((ids - natives).tolist()))
+        if len(offsets) > 1:
+            raise OnePopulationContractError(
+                f"ACS {entity!r} ids must sit one constant offset from staging's "
+                f"native source ids (staging shifts each entity's ids by one "
+                f"amount); found offsets {offsets[:5]}."
+            )
+        if spine in table:
+            tags = table[spine]
+            wrong = tags.notna() & tags.ne(ACS_SUPPORT_CHANNEL)
+            if wrong.any():
+                raise OnePopulationContractError(
+                    f"ACS rows carry a spine tag other than {ACS_SUPPORT_CHANNEL!r} "
+                    f"in {spine!r}: {sorted({repr(tag) for tag in tags[wrong]})[:5]}."
+                )
+
+
+def _require_assembly_record(frame: Frame) -> None:
+    """R1, last part: the clone-0 record, three channels, validated."""
+
+    record = frame.metadata.get(SPINE_ASSEMBLY_MANIFEST_KEY)
+    channels = record.get("channels") if isinstance(record, Mapping) else None
+    if record is not None and (
+        isinstance(channels, str | bytes)
+        or not isinstance(channels, Iterable)
+        or tuple(channels) != ASSEMBLED_CHANNELS
+    ):
+        raise OnePopulationContractError(
+            f"Incomplete assembled provenance: the spine assembly record must "
+            f"declare the channels {list(ASSEMBLED_CHANNELS)}, got {channels!r}."
+        )
+    try:
+        validate_assembly_provenance(frame, boundary=_BOUNDARY)
+    except ValueError as exc:
+        raise OnePopulationContractError(
+            f"Incomplete assembled provenance: {exc}"
+        ) from exc
+
+
+def _require_provenance(
+    frame: Frame,
+    tables: Mapping[str, pd.DataFrame],
+    staging: frozenset[tuple[str, int]] | None,
+) -> dict[str, dict[str, pd.DataFrame]]:
+    """R1: the assembled form, complete; P5's value rules, Q3, P6b, P6, P7.
+
+    Returns each origin's rows.
+    """
+
+    _require_assembled_columns(tables)
+    origins = _split_origins(tables)
+    _require_assembled_cps_values(origins[_CPS])
+    _require_assembled_acs_values(origins[_ACS])
+    _require_spine_tags(origins)
+    _require_disjoint_ids(origins)
+    try:
+        _require_unique_source_ranks(origins)
+    except OnePopulationContractError:
+        raise
+    except ValueError as exc:
+        raise OnePopulationContractError(
+            f"Incomplete assembled provenance: {exc}"
+        ) from exc
+    acs = origins[_ACS]
+    if len(acs["household"]) or len(acs[US_SCHEMA.person_entity]):
+        _require_acs_lineage(acs, staging)
+    _require_assembly_record(frame)
+    return origins
+
+
+def _require_one_location(tables: Mapping[str, pd.DataFrame]) -> None:
+    """R11: no table carries a location-clone index column."""
+
+    marked = sorted(
+        f"{entity}.{column}"
+        for entity, table in tables.items()
+        for column in table.columns
+        if isinstance(column, str) and column.endswith(_LOCATION_CLONE_INDEX_SUFFIX)
+    )
+    if marked:
+        raise OnePopulationContractError(
+            f"A household with more than one location: {marked[:5]} mark location "
+            "clones; the contract allows one location per household, so no table "
+            f"may carry a '*{_LOCATION_CLONE_INDEX_SUFFIX}' column."
+        )
+
+
+def _require_selected_keys(
+    origins: Mapping[str, Mapping[str, pd.DataFrame]],
+    manifest: SelectionManifest,
+) -> None:
+    """R2: one native row per CPS key, one row per ACS household, as selected."""
+
+    acs_households = origins[_ACS]["household"]
+    try:
+        acs_keys = (
+            [acs_unit_key(serial) for serial in acs_households[_SERIALNO]]
+            if len(acs_households)
+            else []
+        )
+    except (KeyError, ValueError) as exc:
+        raise OnePopulationContractError(
+            f"ACS households need a SERIALNO key: {exc}"
+        ) from exc
+    counts = pd.Series(acs_keys, dtype=object).value_counts()
+    repeated = sorted(counts.index[counts.gt(1)].tolist())
+    if repeated:
+        raise OnePopulationContractError(
+            f"An ACS household with more than one row: {repeated[:5]} repeat."
+        )
+    if (len(acs_keys), keys_sha256(acs_keys)) != (
+        manifest.n_acs,
+        manifest.selected_acs_keys_sha256,
+    ):
+        raise OnePopulationContractError(
+            "ACS keys do not match the selection manifest: the frame holds "
+            f"{len(acs_keys)} ACS household key(s) with digest "
+            f"{keys_sha256(acs_keys)}; the manifest selected {manifest.n_acs} with "
+            f"digest {manifest.selected_acs_keys_sha256}."
+        )
+
+    cps = origins[_CPS]
+    if len(cps[US_SCHEMA.person_entity]):
+        units = cps_unit_ids(cps[US_SCHEMA.person_entity])
+    else:
+        units = pd.DataFrame(
+            {"income_year": [], "unit_id": [], "key": []},
+            index=pd.Index([], dtype=np.int64, name="household_id"),
+        )
+    household = cps["household"].set_index(US_SCHEMA.id_column("household"))
+    clone = household[support_clone_index_column("household")].reindex(units.index)
+    native = units.loc[clone.eq(0).to_numpy()]
+    counts = native["key"].value_counts()
+    repeated = sorted(counts.index[counts.gt(1)].tolist())
+    if repeated:
+        raise OnePopulationContractError(
+            "A CPS key without exactly one native row: "
+            f"{len(repeated)} key(s) have more than one clone-0 household, such "
+            f"as {repeated[:3]}."
+        )
+    orphaned = sorted(set(units["key"]) - set(native["key"]))
+    if orphaned:
+        raise OnePopulationContractError(
+            "A CPS key without exactly one native row: "
+            f"{len(orphaned)} clone household key(s) have no clone-0 household, "
+            f"such as {orphaned[:3]}."
+        )
+    by_year = tuple(
+        (int(year), int(n))
+        for year, n in native["income_year"].value_counts().sort_index().items()
+    )
+    observed = (len(native), by_year, keys_sha256(native["key"]))
+    expected = (
+        manifest.n_cps,
+        manifest.n_cps_by_income_year,
+        manifest.cps_keys_sha256,
+    )
+    if observed != expected:
+        raise OnePopulationContractError(
+            "CPS keys do not match the selection manifest: the frame's clone-0 "
+            f"households give (count, by income year, digest) {observed}; the "
+            f"manifest selected {expected}."
+        )
+
+
+def _require_congressional_districts(household: pd.DataFrame) -> None:
+    """R12: a positive, integral CD with its state's prefix on every household."""
+
+    rule = "A household without a congressional district"
+    cd_column = "congressional_district_geoid"
+    missing = [c for c in (cd_column, "state_fips") if c not in household]
+    if missing:
+        raise OnePopulationContractError(
+            f"{rule}: the household table lacks {missing}."
+        )
+    cd = _integral_ids(
+        household[cd_column],
+        refusal=f"{rule}: {cd_column!r} must be an integral geoid on every household",
+    )
+    states = _integral_ids(
+        household["state_fips"],
+        refusal=f"{rule}: 'state_fips' must be integral on every household",
+    )
+    if (cd <= 0).any():
+        raise OnePopulationContractError(
+            f"{rule}: {int((cd <= 0).sum())} household(s) hold a non-positive "
+            f"{cd_column!r}."
+        )
+    wrong = (cd // 100) != states
+    if wrong.any():
+        raise OnePopulationContractError(
+            f"{rule}: {int(wrong.sum())} household(s) hold a {cd_column!r} whose "
+            "state prefix (geoid // 100) differs from state_fips, such as "
+            f"{cd[wrong][:3].tolist()}."
+        )
+
+
+def _require_acs_household_type(acs_household: pd.DataFrame) -> None:
+    """T1: ``TYPEHUGQ`` 1, 2 or 3 on every ACS household.
+
+    TODO(#1610): once #1610 lands, add its wider rules: every CPS household
+    carries a valid ``HRHTYPE`` once any does, no household carries both
+    codes, and every person carries valid ``A_EXPRRP``, ``A_MARITL``, ``age``
+    and ``is_female``.
+    """
+
+    if not len(acs_household):
+        return
+    rule = (
+        f"{_TYPEHUGQ} must be 1, 2 or 3 on every ACS household (#1610's "
+        "household materializer reads it to leave group quarters out)"
+    )
+    if _TYPEHUGQ not in acs_household:
+        raise OnePopulationContractError(f"{rule}; the household table lacks it.")
+    values = acs_household[_TYPEHUGQ]
+    bad = ~values.map(
+        lambda value: (
+            isinstance(value, numbers.Real)
+            and not isinstance(value, bool | np.bool_)
+            and value in _ACS_HOUSEHOLD_TYPES
+        )
+    ).astype(bool)
+    if bad.any():
+        raise OnePopulationContractError(
+            f"{rule}; {int(bad.sum())} ACS household(s) hold "
+            f"{values[bad].head(5).tolist()!r}."
+        )
+
+
+def _require_esi_premium(frame: Frame) -> None:
+    """R4: the ESI employer premium present on persons and never null."""
+
+    if US_ESI_EMPLOYER_PREMIUM_COLUMN not in frame.table(US_SCHEMA.person_entity):
+        raise OnePopulationContractError(
+            f"A null ESI premium: the person table lacks "
+            f"{US_ESI_EMPLOYER_PREMIUM_COLUMN!r}, so every person's premium is "
+            "missing (the release's ESI signal gate fails without it)."
+        )
+    try:
+        refuse_unassigned_us_esi_premiums(frame, consumer=_CONSUMER)
+    except SourceRuntimeError as exc:
+        raise OnePopulationContractError(f"A null ESI premium: {exc}") from exc
+
+
+def _require_classified_adults(frame: Frame) -> None:
+    """R5: every SPM unit has a classified adult (FAIL and errors refuse)."""
+
+    rule = "An SPM unit has no classified adult"
+    try:
+        result = check_spm_composition(frame)
+    except ValueError as exc:
+        raise OnePopulationContractError(
+            f"{rule}: the composition check cannot run: {exc}"
+        ) from exc
+    if result.status != "PASS":
+        failures = "; ".join(str(failure) for failure in result.failures)
+        raise OnePopulationContractError(f"{rule}: {result.summary}. {failures}")
+
+
+def _null_counts(
+    tables: Mapping[str, pd.DataFrame], columns: Collection[str]
+) -> dict[str, int]:
+    return {
+        f"{entity}.{column}": int(table[column].isna().sum())
+        for entity, table in tables.items()
+        for column in sorted(set(columns).intersection(table.columns))
+        if table[column].isna().any()
+    }
+
+
+def _require_filled_inputs(
+    tables: Mapping[str, pd.DataFrame], inputs: frozenset[str]
+) -> None:
+    """R6: no null in an engine input at 2024, outside the release-written list."""
+
+    gaps = _null_counts(tables, inputs - set(RELEASE_WRITTEN_INPUTS))
+    if gaps:
+        raise OnePopulationContractError(
+            f"A null in an engine input at 2024: {gaps} (null rows per column). "
+            "Prepare must fill every engine input on every row; only the "
+            "always-on producers' outputs in RELEASE_WRITTEN_INPUTS may be left "
+            "null."
+        )
+
+
+def _require_tail_columns(tax_unit: pd.DataFrame) -> None:
+    """R7: the six PUF tail provenance columns on every tax unit."""
+
+    rule = "A null PUF tail column on a tax unit"
+    missing = [c for c in PUF_TAIL_TAX_UNIT_COLUMNS if c not in tax_unit]
+    if missing:
+        raise OnePopulationContractError(f"{rule}: the tax-unit table lacks {missing}.")
+    gaps = _null_counts({"tax_unit": tax_unit}, PUF_TAIL_TAX_UNIT_COLUMNS)
+    if gaps:
+        raise OnePopulationContractError(f"{rule}: {gaps} (null rows per column).")
+
+
+def _tail_donor_set(parent_tail_donor_ids: object) -> frozenset[int]:
+    if isinstance(parent_tail_donor_ids, str | bytes | Mapping) or not isinstance(
+        parent_tail_donor_ids, Collection
+    ):
+        raise TypeError(
+            "parent_tail_donor_ids must be a set of int donor ids, got "
+            f"{type(parent_tail_donor_ids).__name__}."
+        )
+    if any(
+        isinstance(value, bool | np.bool_) or not isinstance(value, numbers.Integral)
+        for value in parent_tail_donor_ids
+    ):
+        raise TypeError("parent_tail_donor_ids must hold int donor ids only.")
+    return frozenset(int(value) for value in parent_tail_donor_ids)
+
+
+def _require_parent_tail_donors(tax_unit: pd.DataFrame, parent: frozenset[int]) -> None:
+    """R8: the applied tail donor ids equal the parent's, as a set."""
+
+    rule = "The tail donor set differs from the parent's"
+    applied_values = tax_unit[PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN]
+    is_flag = applied_values.map(
+        lambda value: (
+            isinstance(value, bool | np.bool_)
+            or (isinstance(value, numbers.Real) and value in (0, 1))
+        )
+    ).astype(bool)
+    if not is_flag.all():
+        raise OnePopulationContractError(
+            f"{rule}: {PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN!r} holds non-flag "
+            f"values {applied_values[~is_flag].head(3).tolist()!r}."
+        )
+    applied = applied_values.astype(bool).to_numpy()
+    donors = _integral_ids(
+        tax_unit.loc[applied, PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN],
+        refusal=f"{rule}: applied donor ids must be integers",
+    )
+    found = frozenset(int(value) for value in donors.tolist())
+    if found != parent:
+        missing = sorted(parent - found)
+        extra = sorted(found - parent)
+        raise OnePopulationContractError(
+            f"{rule}: {len(missing)} parent donor(s) missing (such as "
+            f"{missing[:3]}) and {len(extra)} donor(s) the parent never applied "
+            f"(such as {extra[:3]}). The comparison is of donor ids only, never "
+            "weights."
+        )
+
+
+def _declarations(declared_absences: object) -> Mapping[str, str]:
+    if declared_absences is None:
+        return {}
+    if not isinstance(declared_absences, Mapping):
+        raise TypeError(
+            "declared_absences must map each column to its owner's decision, got "
+            f"{type(declared_absences).__name__}."
+        )
+    for column, decision in declared_absences.items():
+        if not isinstance(column, str) or not isinstance(decision, str):
+            raise TypeError(
+                "declared_absences must map str columns to str decisions, got "
+                f"{column!r}: {decision!r}."
+            )
+        if not decision.strip():
+            raise OnePopulationContractError(
+                f"A declared absence needs its owner's decision; {column!r} has none."
+            )
+    return declared_absences
+
+
+def _require_declared_absences(
+    origins: Mapping[str, Mapping[str, pd.DataFrame]],
+    engine: _EngineColumns,
+    register: Mapping[str, str],
+    declared: Mapping[str, str],
+) -> None:
+    """R10: a register column CPS rows fill and ACS rows null is declared.
+
+    Engine inputs at 2024 are R6's (it refuses any null), so this covers
+    model-named columns no engine variable names: register entries.
+    """
+
+    from microcosm.data.stored_inputs import is_model_named
+
+    gaps: dict[str, str] = {}
+    for entity in US_SCHEMA.entities:
+        cps = origins[_CPS][entity]
+        acs = origins[_ACS][entity]
+        if not len(cps) or not len(acs):
+            continue
+        for column in cps.columns:
+            if (
+                not is_model_named(column)
+                or column in engine.known
+                or column not in register
+                or column in RELEASE_WRITTEN_INPUTS
+                or column in declared
+            ):
+                continue
+            acs_nulls = int(acs[column].isna().sum())
+            if acs_nulls and not cps[column].isna().any():
+                gaps[f"{entity}.{column}"] = f"{acs_nulls} of {len(acs)} ACS rows"
+    if gaps:
+        raise OnePopulationContractError(
+            "A model-named column filled on CPS rows is null on ACS rows without "
+            f"a declared absence: {gaps}. Fill it on ACS rows, or declare it in "
+            "the absences file with its owner's decision."
+        )
+
+
 def require_one_population(
     frame: Frame,
     manifest: SelectionManifest,
     *,
     parent_tail_donor_ids: frozenset[int],
     declared_absences: Mapping[str, str] | None = None,
+    staging_lineage: Collection[tuple[str, int]] | None = None,
     variable_index: EngineVariableIndex | None = None,
     register: Mapping[str, str] | None = None,
 ) -> None:
     """Refuse a joined frame that breaks any clause of the contract.
 
-    The clauses, in the order they run: assembled provenance (R1); one native
-    row per CPS key and one row per ACS household, against ``manifest`` (R2);
-    no column the engine computes at 2024 (R3); no null ESI premium and the
-    premium present (R4); a classified adult in every SPM unit (R5); no null
-    in an engine input at 2024 outside the always-on producers' listed
-    outputs (R6); no null PUF tail column on a tax unit (R7); the tail donor
-    set equal to ``parent_tail_donor_ids`` (R8); every stored lower-case
-    column an engine variable or registered (R9); a model-named column filled
-    on CPS rows and null on ACS rows only when ``declared_absences`` declares
-    it (R10); no location-clone index column (R11); a congressional district
-    on every household (R12); ``TYPEHUGQ`` on every ACS household (T1).
+    The clauses run in a fixed order, so a corrupted cell refuses for its own
+    reason, and each message names its clause's rule:
+
+    - R1, incomplete assembled provenance: every entity assembled (none
+      mixed), complete source id, channel, clone index and spine source id,
+      only the three assembled channels; P5's value rules per origin (CPS:
+      clone index 0, 1 or 2, ``asec`` exactly on clone 0, spine source id =
+      source id, tag ``asec_puf``; ACS: clone index 0, source id = pooled id,
+      one id offset from the native id, tag ``acs_2024_1yr``); a non-null
+      spine tag on every row; P6b (ids and memberships within an origin); P6
+      (no repeated (source id, rank)); P7 (the ACS rows' ``SERIALNO`` and
+      ``SPORDER`` lineage, against ``staging_lineage`` when given); and the
+      clone-0 spine assembly record declaring the three channels, checked by
+      :func:`~microcosm.build.us_runtime.support_provenance.validate_assembly_provenance`.
+    - R11, more than one location: no table carries a
+      ``*_location_clone_index`` column. Location cloning is the only
+      multi-location mechanism, and geography columns are household-level.
+    - R2, one native row per CPS key and one row per ACS household: ACS
+      households' :func:`~microcosm.build.us_runtime.one_population_selection.acs_unit_key`
+      keys unique; each CPS key (:func:`cps_unit_ids`) on exactly one clone-0
+      household, clones only beside it; both key sets equal to ``manifest``'s
+      by count, by income year (CPS) and
+      :func:`~microcosm.build.us_runtime.one_population_selection.keys_sha256`.
+    - R12, a congressional district on every household: non-null, positive,
+      integral ``congressional_district_geoid`` whose state prefix
+      (geoid // 100) is the household's ``state_fips``, as staging checks
+      donor districts. The release's CD-vintage preflight needs only one
+      positive district (REL:13578-13582, check at :3500-3522), and its
+      every-household rule (``_integer_geography_codes``) runs only when CD
+      targets are materialized, which Route A's national surface drops. The
+      clause keeps every household's district for a future CD surface and
+      for the local lane, which reads the same H5.
+    - T1: ``TYPEHUGQ`` 1, 2 or 3 on every ACS household (see
+      :func:`_require_acs_household_type` for #1610's wider rules).
+    - R3: no column the engine computes at 2024 (the release's export guard,
+      ``computed_at(2024)``, not the lane's year-blind rule).
+    - R9: no stored lower-case column that is neither an engine variable
+      (inputs and formulas alike) nor a key of ``register``.
+    - R4: the ESI employer premium on the person table, never null
+      (:func:`~microcosm.build.us_runtime.esi_premiums.refuse_unassigned_us_esi_premiums`).
+    - R5: a classified adult in every SPM unit
+      (:func:`~microcosm.build.us_runtime.spm_composition.check_spm_composition`
+      returning FAIL, or unable to run, refuses).
+    - R6: no null in an engine input at 2024 (known, not structural, not
+      computed at 2024, so a variable whose only formula starts after 2024
+      counts) on any row, except :data:`RELEASE_WRITTEN_INPUTS`.
+    - R7: the six :data:`PUF_TAIL_TAX_UNIT_COLUMNS` on every tax unit, never
+      null.
+    - R8: the ids of the tail donors applied on the frame's tax units equal
+      ``parent_tail_donor_ids`` as a set. No weight is compared, so
+      ``assert_puf_capital_gains_tail_survives_selection`` (whose weight check
+      fires on the child's new starting weights) is not used.
+    - R10: a model-named register column (no engine variable; R6 owns
+      engine inputs) filled on every CPS row of its entity and null on some
+      ACS row, unless ``declared_absences`` names it. The release-written
+      list is the only exemption, never a stage's declared outputs whole.
 
     Args:
-        frame: The joined frame, built from :func:`to_assembled_provenance`.
+        frame: The joined frame, built by :func:`to_assembled_provenance`.
         manifest: PR 1's selection manifest for the same selection.
         parent_tail_donor_ids: The parent export's applied capital-gains tail
-            donor ids.
-        declared_absences: Column to the owner's decision, for each
-            model-named column ACS rows lack by decision.
+            donor ids (PR 4 reads them from the export's tax-unit columns).
+        declared_absences: Column to the owner's decision, for each register
+            column ACS rows lack by decision.
+        staging_lineage: Staging's (``SERIALNO``, ``SPORDER``) pairs for the
+            selected ACS persons; ``None`` checks the lineage's form only.
         variable_index: The engine's variable classes at 2024. ``None`` uses
-            :class:`PolicyEngineUSVariableIndex`.
+            :class:`PolicyEngineUSVariableIndex`, built at call time.
         register: The stored non-variable register. ``None`` uses
-            ``microcosm.data.stored_inputs.US_STORED_NON_VARIABLE_COLUMNS``.
+            ``microcosm.data.stored_inputs.US_STORED_NON_VARIABLE_COLUMNS``,
+            imported at call time.
 
     Raises:
         OnePopulationContractError: Naming the first clause the frame breaks.
+        TypeError: If an argument has the wrong type.
     """
 
-    raise NotImplementedError(
-        "require_one_population is built in a later phase of d2283 PR 2."
+    if not isinstance(frame, Frame):
+        raise TypeError(f"frame must be a Frame, got {type(frame).__name__}.")
+    if frame.schema != US_SCHEMA:
+        raise OnePopulationContractError(
+            "Incomplete assembled provenance: the frame must use the US schema."
+        )
+    if not isinstance(manifest, SelectionManifest):
+        raise TypeError(
+            f"manifest must be a SelectionManifest, got {type(manifest).__name__}."
+        )
+    parent_donors = _tail_donor_set(parent_tail_donor_ids)
+    declared = _declarations(declared_absences)
+    staging = None if staging_lineage is None else _lineage_pairs(staging_lineage)
+    if register is None:
+        from microcosm.data.stored_inputs import US_STORED_NON_VARIABLE_COLUMNS
+
+        register = US_STORED_NON_VARIABLE_COLUMNS
+
+    tables = _frame_tables(frame)
+    origins = _require_provenance(frame, tables, staging)  # R1 (P5-P7, P6b)
+    _require_one_location(tables)  # R11
+    _require_selected_keys(origins, manifest)  # R2
+    _require_congressional_districts(tables["household"])  # R12
+    _require_acs_household_type(origins[_ACS]["household"])  # T1
+
+    engine = _engine_columns(tables, variable_index)
+    if engine.computed:  # R3
+        raise OnePopulationContractError(
+            "A column the engine computes at 2024 is stored: "
+            f"{sorted(engine.computed)}; the engine would overwrite it, so the "
+            "export must not carry it."
+        )
+    from microcosm.data.stored_inputs import undefined_stored_inputs
+
+    undefined = undefined_stored_inputs(  # R9
+        _present_columns(tables),
+        engine_variables=engine.known,
+        register=register,
     )
+    if undefined:
+        raise OnePopulationContractError(
+            "A stored lower-case column is neither an engine variable nor "
+            f"registered: {list(undefined)}; the engine would ignore it."
+        )
+    _require_esi_premium(frame)  # R4
+    _require_classified_adults(frame)  # R5
+    _require_filled_inputs(tables, engine.inputs)  # R6
+    _require_tail_columns(tables["tax_unit"])  # R7
+    _require_parent_tail_donors(tables["tax_unit"], parent_donors)  # R8
+    _require_declared_absences(origins, engine, register, declared)  # R10
 
 
 def combined_spm_role_record(

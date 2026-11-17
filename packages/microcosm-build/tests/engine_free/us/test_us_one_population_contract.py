@@ -10,11 +10,20 @@ validator with a clone-0, three-channel record.
 
 Phase 1 covers the provenance rewrite (``to_assembled_provenance``: X3, X4,
 X6 and one refusal per P5, P6, P6b and P7 rule) and ``cps_unit_ids``.
+
+Phase 2 covers ``require_one_population``: the valid generated population
+passes in both forms; X1 as a table of single-cell corruptions (a few add or
+drop a column, where no single cell can break the clause), one or more per
+clause, each refusing with its own clause's message; a Hypothesis property
+over null cells of the checked columns; the clause order; the exempt list
+pinned to its stages' declared outputs; and a ``weeks_worked``-like column
+(no formula at 2024) refused under R6.
 """
 
 from __future__ import annotations
 
 import ast
+import dataclasses
 import hashlib
 import inspect
 import json
@@ -23,12 +32,15 @@ import re
 import numpy as np
 import pandas as pd
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from microcosm.build.gates import GateResult
 from microcosm.build.us_runtime import one_population_contract as contract
 from microcosm.build.us_runtime import one_population_selection as selection
 from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
 from microcosm.build.us_runtime.base_pool import ASEC_PUF_SPINE
+from microcosm.build.us_runtime.block_location import LOCATION_CLONE_INDEX_COLUMN
 from microcosm.build.us_runtime.multispine_pool import (
     POOL_ENGINE_INPUT_PROJECTION_CONTRACT,
 )
@@ -37,12 +49,15 @@ from microcosm.build.us_runtime.one_population_contract import (
     ASSEMBLED_CHANNELS,
     CPS_SPINE_TAG,
     ENGINE_PERIOD,
+    PUF_TAIL_TAX_UNIT_COLUMNS,
+    RELEASE_WRITTEN_INPUTS,
     STRUCTURAL_COLUMNS,
     EngineVariableIndex,
     OnePopulationContractError,
     PolicyEngineUSVariableIndex,
     _engine_columns,
     cps_unit_ids,
+    require_one_population,
     to_assembled_provenance,
 )
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
@@ -88,6 +103,7 @@ from test_support.microcosm_build.us_one_population_contract import (
     joined_frame,
     lock_engine_inputs,
     role_shares,
+    selection_manifest,
     spm_role_gate_record,
     staging_lineage,
     with_spm_role_record,
@@ -139,6 +155,7 @@ class TestModuleSurface:
         assert keyword_only(contract.require_one_population) == {
             "parent_tail_donor_ids",
             "declared_absences",
+            "staging_lineage",
             "variable_index",
             "register",
         }
@@ -1557,3 +1574,1003 @@ class TestCpsUnitIds:
             person.loc[row, "source_year"] = person.loc[row, "source_year"] - 1
         with pytest.raises(OnePopulationContractError, match=re.escape(message)):
             cps_unit_ids(person)
+
+
+# ------------------------------- phase 2: require_one_population (R1-R12, T1)
+
+
+@pytest.fixture(scope="module")
+def assembled(population):
+    return assembled_frame(population)
+
+
+def _require(population, frame: Frame, **overrides) -> None:
+    kwargs = {
+        "parent_tail_donor_ids": population.tail_donor_ids,
+        "variable_index": StandInVariableIndex.from_lock(),
+    }
+    kwargs.update(overrides)
+    manifest = kwargs.pop("manifest", None) or selection_manifest(population)
+    require_one_population(frame, manifest, **kwargs)
+
+
+def _tables(frame: Frame) -> dict[str, pd.DataFrame]:
+    return {entity: frame.table(entity).copy() for entity in frame.entities}
+
+
+def _rebuild(
+    frame: Frame,
+    tables: dict[str, pd.DataFrame],
+    *,
+    metadata=None,
+) -> Frame:
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata if metadata is None else metadata,
+    )
+
+
+def _origin_mask(table: pd.DataFrame, entity: str, origin: str) -> np.ndarray:
+    channel = table[support_channel_column(entity)]
+    if origin == "acs":
+        return channel.eq(ACS_2024_1YR_SPINE).to_numpy()
+    return channel.ne(ACS_2024_1YR_SPINE).to_numpy()
+
+
+def _row(table: pd.DataFrame, entity: str, origin: str, *, clone=None, where=None):
+    """Position of the first row of ``origin`` (and clone index, predicate)."""
+
+    mask = np.array(_origin_mask(table, entity, origin), dtype=bool)
+    if clone is not None:
+        mask &= table[support_clone_index_column(entity)].to_numpy() == clone
+    if where is not None:
+        mask &= np.asarray(where, dtype=bool)
+    return int(np.flatnonzero(mask)[0])
+
+
+def _cell(frame: Frame, entity: str, column: str, value, *, origin, **row):
+    tables = _tables(frame)
+    table = tables[entity]
+    _set(table, _row(table, entity, origin, **row), column, value)
+    return _rebuild(frame, tables)
+
+
+def _with_column(frame: Frame, entity: str, column: str, values) -> Frame:
+    tables = _tables(frame)
+    tables[entity][column] = values
+    return _rebuild(frame, tables)
+
+
+def _without_column(frame: Frame, entity: str, column: str) -> Frame:
+    tables = _tables(frame)
+    tables[entity] = tables[entity].drop(columns=[column])
+    return _rebuild(frame, tables)
+
+
+def _household_sizes(person: pd.DataFrame, column: str) -> np.ndarray:
+    return person[column].map(person[column].value_counts()).to_numpy()
+
+
+def _acs_null_on_cps(frame: Frame, entity: str, column: str, value) -> Frame:
+    """``column`` filled with ``value`` on CPS rows and null on ACS rows."""
+
+    table = frame.table(entity)
+    acs = _origin_mask(table, entity, "acs")
+    return _with_column(
+        frame,
+        entity,
+        column,
+        pd.Series(np.where(acs, None, value), index=table.index, dtype=object),
+    )
+
+
+class TestRequireOnePopulation:
+    @pytest.mark.parametrize("form", _FORMS)
+    @pytest.mark.parametrize("seed", _SEEDS)
+    def test_a_valid_population_passes(self, seed, form) -> None:
+        population = _form(generate_population(seed), form)
+        frame = assembled_frame(population)
+        _require(population, frame)
+        _require(population, frame, staging_lineage=staging_lineage(population))
+
+    def test_a_frame_with_no_acs_row_passes(self, population) -> None:
+        # T1 and P7 are vacuous, R2's ACS half is the empty key set and
+        # R10 has no ACS row to read.
+        empty_acs = {
+            entity: population.acs_tables[entity].iloc[:0]
+            for entity in US_SCHEMA.entities
+        }
+        frame = to_assembled_provenance(
+            population.cps_tables,
+            empty_acs,
+            cps_household_weights=population.cps_household_weights,
+            acs_household_weights=np.array([]),
+            staging_lineage=frozenset(),
+        )
+        manifest = dataclasses.replace(
+            selection_manifest(population),
+            n_acs=0,
+            selected_acs_keys_sha256=selection.keys_sha256(()),
+        )
+        assert "SERIALNO" not in frame.table("household")
+        _require(population, frame, manifest=manifest, staging_lineage=frozenset())
+
+    def test_the_default_index_is_built_at_call_time(
+        self, population, assembled, monkeypatch
+    ) -> None:
+        built: list[object] = []
+
+        def fake_default():
+            built.append(None)
+            return StandInVariableIndex.from_lock()
+
+        monkeypatch.setattr(contract, "PolicyEngineUSVariableIndex", fake_default)
+        assert built == []
+        _require(population, assembled, variable_index=None)
+        assert len(built) == 1
+
+    def test_the_default_register_is_the_stored_inputs_register(
+        self, population, assembled
+    ) -> None:
+        frame = _with_column(
+            assembled, "person", "cps_employment_income_last_year", 0.0
+        )
+        with pytest.raises(
+            OnePopulationContractError,
+            match=re.escape("['cps_employment_income_last_year']"),
+        ):
+            _require(population, frame)
+        register = {
+            **US_STORED_NON_VARIABLE_COLUMNS,
+            "cps_employment_income_last_year": "test auxiliary column",
+        }
+        _require(population, frame, register=register)
+
+    def test_tail_donors_are_compared_without_weights(
+        self, population, assembled
+    ) -> None:
+        tables = _tables(assembled)
+        tables["tax_unit"]["puf_capital_gains_tail_transfer_weight"] *= 3.0
+        weights = assembled.weights_for("household")
+        frame = Frame(
+            tables,
+            assembled.schema,
+            {"household": type(weights)(weights.values * 2.0, weights.kind)},
+            assembled.strata,
+            mass_log=assembled.mass_log,
+            metadata=assembled.metadata,
+        )
+        _require(population, frame)
+
+    def test_a_post_2024_formula_column_with_nulls_refuses_under_r6(
+        self, population, assembled, stand_in
+    ) -> None:
+        # weeks_worked has only a 2025 formula at policyengine-us 2.2.1: the
+        # year-blind input list (the lock) lacks it and R3 does not refuse
+        # it, so R6's year-aware input rule is what catches a null.
+        assert "weeks_worked" not in lock_engine_inputs()
+        frame = _acs_null_on_cps(assembled, "person", "weeks_worked", 52.0)
+        tables = {entity: frame.table(entity) for entity in frame.entities}
+        assert "weeks_worked" not in stand_in.computed_at_2024(tables)
+        assert "weeks_worked" in stand_in.inputs_at_2024(tables)
+        n_acs = int(_origin_mask(frame.table("person"), "person", "acs").sum())
+        with pytest.raises(
+            OnePopulationContractError,
+            match=re.escape(
+                f"A null in an engine input at 2024: {{'person.weeks_worked': {n_acs}}}"
+            ),
+        ):
+            _require(population, frame)
+        _require(population, _with_column(assembled, "person", "weeks_worked", 52.0))
+
+    def test_a_register_column_absent_on_acs_rows_needs_a_declaration(
+        self, population, assembled
+    ) -> None:
+        register = {
+            **US_STORED_NON_VARIABLE_COLUMNS,
+            "cps_employment_income_last_year": "test auxiliary column",
+        }
+        frame = _acs_null_on_cps(
+            assembled, "person", "cps_employment_income_last_year", 1.0
+        )
+        with pytest.raises(
+            OnePopulationContractError,
+            match=re.escape("'person.cps_employment_income_last_year'"),
+        ):
+            _require(population, frame, register=register)
+        _require(
+            population,
+            frame,
+            register=register,
+            declared_absences={
+                "cps_employment_income_last_year": "owner: ACS has no prior year"
+            },
+        )
+        with pytest.raises(
+            OnePopulationContractError,
+            match=re.escape("A declared absence needs its owner's decision"),
+        ):
+            _require(
+                population,
+                frame,
+                register=register,
+                declared_absences={"cps_employment_income_last_year": "  "},
+            )
+
+    def test_a_stage_output_outside_the_exempt_list_is_not_exempt(
+        self, population, assembled
+    ) -> None:
+        # scf_wealth declares the education-debt columns, but only an opt-in
+        # stage writes them: R10 does not exempt a stage's outputs whole.
+        assert "federal_student_loan_balance" in US_STORED_NON_VARIABLE_COLUMNS
+        assert "federal_student_loan_balance" not in RELEASE_WRITTEN_INPUTS
+        frame = _acs_null_on_cps(
+            assembled, "person", "federal_student_loan_balance", 0.0
+        )
+        with pytest.raises(
+            OnePopulationContractError,
+            match=re.escape(
+                "A model-named column filled on CPS rows is null on ACS rows "
+                "without a declared absence: {'person.federal_student_loan_balance'"
+            ),
+        ):
+            _require(population, frame)
+
+    def test_a_release_written_input_may_be_null_on_acs_rows(
+        self, population, assembled
+    ) -> None:
+        frame = _acs_null_on_cps(
+            assembled, "person", "takes_up_medicaid_if_eligible", True
+        )
+        _require(population, frame)
+        not_exempt = _acs_null_on_cps(
+            assembled, "spm_unit", "takes_up_snap_if_eligible", True
+        )
+        with pytest.raises(
+            OnePopulationContractError,
+            match=re.escape("'spm_unit.takes_up_snap_if_eligible'"),
+        ):
+            _require(population, not_exempt)
+
+    def test_arguments_are_type_checked(self, population, assembled) -> None:
+        with pytest.raises(TypeError, match="frame must be a Frame"):
+            _require(population, assembled.table("person"))
+        with pytest.raises(TypeError, match="manifest must be a SelectionManifest"):
+            require_one_population(
+                assembled, {}, parent_tail_donor_ids=population.tail_donor_ids
+            )
+        with pytest.raises(TypeError, match="parent_tail_donor_ids must hold int"):
+            _require(population, assembled, parent_tail_donor_ids={True})
+        with pytest.raises(TypeError, match="declared_absences must map"):
+            _require(population, assembled, declared_absences=["x"])
+
+
+class TestExemptList:
+    """RELEASE_WRITTEN_INPUTS: d2283 Q1 (a), re-read at the module's commit."""
+
+    @staticmethod
+    def _stage_outputs() -> dict[str, list[str]]:
+        from importlib.resources import files
+
+        payload = json.loads(
+            files("microcosm.build.us")
+            .joinpath("source_stages.json")
+            .read_text(encoding="utf-8")
+        )
+        return {stage["stage"]: stage["outputs"] for stage in payload["stages"]}
+
+    def test_each_entry_names_a_stage_that_declares_it(self) -> None:
+        outputs = self._stage_outputs()
+        for column, evidence in RELEASE_WRITTEN_INPUTS.items():
+            match = re.match(r"(\w+) stage: ", evidence)
+            assert match, (column, evidence)
+            stage = match.group(1)
+            assert stage in outputs, (column, stage)
+            assert column in outputs[stage], (column, stage)
+
+    def test_each_entry_cites_its_lines(self) -> None:
+        for column, evidence in RELEASE_WRITTEN_INPUTS.items():
+            assert re.search(r"\w+\.py:\d+", evidence), column
+
+    def test_the_list_is_the_decided_list(self) -> None:
+        outputs = self._stage_outputs()
+        assert set(RELEASE_WRITTEN_INPUTS) == {
+            "bank_account_assets",
+            "bond_assets",
+            "stock_assets",
+            "net_worth",
+            "meets_ssi_disability_criteria",
+            "takes_up_head_start_if_eligible",
+            "takes_up_ssi_if_eligible",
+            "would_file_taxes_voluntarily",
+            *outputs["org_wages"],
+            *outputs["aca_marketplace_inputs"],
+            "takes_up_medicaid_if_eligible",
+            "other_health_insurance_premiums",
+            "health_insurance_premiums",
+            "is_self_employed",
+        }
+        assert len(outputs["org_wages"]) == 15
+        not_exempt = {
+            # SNAP take-up passes ACS nulls to a gate that misgrades them.
+            "takes_up_snap_if_eligible",
+            # Pass-through producers.
+            "is_snap_abawd_discretionary_exempt",
+            "auto_loan_balance",
+            "auto_loan_interest",
+            "qualified_passenger_vehicle_loan_interest",
+            *outputs["vehicle_assets"],
+            *outputs["sipp_tips"],
+            # A stage's source column.
+            "health_insurance_premiums_without_medicare_part_b",
+            # The hours stage is skipped on the pool branch.
+            *outputs["hours_worked"],
+        }
+        assert not_exempt.isdisjoint(RELEASE_WRITTEN_INPUTS)
+        assert not any(
+            column.startswith("scf_") or "student_loan" in column
+            for column in RELEASE_WRITTEN_INPUTS
+        )
+
+    def test_every_entry_is_an_engine_input_in_the_lock(self) -> None:
+        # So R10 (register entries only) never sees one: each is R6's.
+        assert set(RELEASE_WRITTEN_INPUTS) <= set(lock_engine_inputs())
+
+    def test_module_constants_match_their_sources(self) -> None:
+        assert contract._LOCATION_CLONE_INDEX_SUFFIX == (
+            "_" + LOCATION_CLONE_INDEX_COLUMN
+        )
+        assert set(PUF_TAIL_TAX_UNIT_COLUMNS) == set(TAIL_PROVENANCE_DEFAULTS)
+        assert "unrecaptured_section_1250_gain" not in PUF_TAIL_TAX_UNIT_COLUMNS
+
+
+# X1: one or more corruptions per clause. Each takes the population and its
+# valid assembled frame and returns the corrupted frame and any argument
+# overrides. All but a few change one cell; the exceptions add or drop a
+# column or the record, where no single cell can break the clause (R1's
+# assembled form, R3, R9, R11, R4's presence, R5's age, R7's presence).
+
+
+def _r1_not_assembled(p, f):
+    return joined_frame(p, metadata=f.metadata), {}
+
+
+def _r1_mixed(p, f):
+    return _without_column(f, "tax_unit", "tax_unit_spine_source_id"), {}
+
+
+def _r1_null_source(p, f):
+    return _cell(f, "person", "person_source_id", None, origin="cps", clone=1), {}
+
+
+def _r1_null_clone(p, f):
+    return _cell(
+        f, "household", "household_support_clone_index", None, origin="acs"
+    ), {}
+
+
+def _r1_null_spine_source(p, f):
+    return _cell(f, "spm_unit", "spm_unit_spine_source_id", None, origin="cps"), {}
+
+
+def _r1_unknown_channel(p, f):
+    return _cell(f, "family", "family_support_channel", "acs", origin="acs"), {}
+
+
+def _r1_record_missing(p, f):
+    return _rebuild(f, _tables(f), metadata={}), {}
+
+
+def _r1_record_two_channels(p, f):
+    record = clone_zero_assembly_record(f)[SPINE_ASSEMBLY_MANIFEST_KEY]
+    counts = {
+        entity: {
+            channel: count
+            for channel, count in by_channel.items()
+            if channel != PUF_TAX_DETAIL_SUPPORT_CHANNEL
+        }
+        for entity, by_channel in record["native_row_counts"].items()
+    }
+    metadata = {
+        SPINE_ASSEMBLY_MANIFEST_KEY: {
+            **record,
+            "channels": (BASE_ASEC_SUPPORT_CHANNEL, ACS_2024_1YR_SPINE),
+            "native_row_counts": counts,
+        }
+    }
+    return _rebuild(f, _tables(f), metadata=metadata), {}
+
+
+def _r1_cross_grain(p, f):
+    # A clone-1 person moves into its clone-0 household (the clone-1
+    # household keeps another member): only the validator's cross-grain
+    # check reads a person's channel against its household's.
+    tables = _tables(f)
+    person = tables["person"]
+    where = _household_sizes(person, "person_household_id") > 1
+    row = _row(person, "person", "cps", clone=1, where=where)
+    household = int(person["person_household_id"].iloc[row])
+    _set(person, row, "person_household_id", household - p.clone_multiplier)
+    return _rebuild(f, tables), {}
+
+
+def _p5_cps_clone_three(p, f):
+    return _cell(
+        f, "household", "household_support_clone_index", 3, origin="cps", clone=1
+    ), {}
+
+
+def _p5_cps_asec_on_a_clone(p, f):
+    return _cell(
+        f, "tax_unit", "tax_unit_support_channel", "asec", origin="cps", clone=1
+    ), {}
+
+
+def _p5_cps_spine_source_moves(p, f):
+    table = f.table("spm_unit")
+    value = int(table["spm_unit_spine_source_id"].iloc[_row(table, "spm_unit", "cps")])
+    return _cell(f, "spm_unit", "spm_unit_spine_source_id", value + 1, origin="cps"), {}
+
+
+def _p5_cps_wrong_spine_tag(p, f):
+    return _cell(f, "family", "family_spine", ACS_2024_1YR_SPINE, origin="cps"), {}
+
+
+def _p5_cps_non_integer_source(p, f):
+    return _cell(f, "person", "person_source_id", 1.5, origin="cps", clone=0), {}
+
+
+def _p5_acs_clone_index(p, f):
+    return _cell(
+        f, "marital_unit", "marital_unit_support_clone_index", 1, origin="acs"
+    ), {}
+
+
+def _p5_acs_source_not_pooled(p, f):
+    table = f.table("person")
+    value = int(table["person_source_id"].iloc[_row(table, "person", "acs")])
+    return _cell(f, "person", "person_source_id", value + 10**6, origin="acs"), {}
+
+
+def _p5_acs_offset_varies(p, f):
+    table = f.table("family")
+    value = int(table["family_spine_source_id"].iloc[_row(table, "family", "acs")])
+    return _cell(f, "family", "family_spine_source_id", value + 1000, origin="acs"), {}
+
+
+def _p5_acs_wrong_spine_tag(p, f):
+    return _cell(f, "household", "household_spine", ASEC_PUF_SPINE, origin="acs"), {}
+
+
+def _q3_null_spine_tag(p, f):
+    return _cell(f, "tax_unit", "tax_unit_spine", None, origin="acs"), {}
+
+
+def _p6b_acs_person_in_a_cps_group(p, f):
+    tables = _tables(f)
+    person = tables["person"]
+    where = _household_sizes(person, "person_spm_unit_id") > 1
+    row = _row(person, "person", "acs", where=where)
+    spm_unit = tables["spm_unit"]
+    cps_unit = int(spm_unit["spm_unit_id"].iloc[_row(spm_unit, "spm_unit", "cps")])
+    _set(person, row, "person_spm_unit_id", cps_unit)
+    return _rebuild(f, tables), {}
+
+
+def _p6_tail_copy_relabelled(p, f):
+    return _cell(
+        f, "household", "household_support_clone_index", 1, origin="cps", clone=2
+    ), {}
+
+
+def _acs_person_in_a_household_of_two(f) -> tuple[dict, int, int]:
+    tables = _tables(f)
+    person = tables["person"]
+    where = _household_sizes(person, "person_household_id") > 1
+    row = _row(person, "person", "acs", where=where)
+    household = person["person_household_id"].iloc[row]
+    other = int(
+        np.flatnonzero(
+            (person["person_household_id"] == household).to_numpy()
+            & (np.arange(len(person)) != row)
+        )[0]
+    )
+    return tables, row, other
+
+
+def _p7_sporder_repeats(p, f):
+    tables, row, other = _acs_person_in_a_household_of_two(f)
+    person = tables["person"]
+    _set(person, row, "SPORDER", person["SPORDER"].iloc[other])
+    return _rebuild(f, tables), {}
+
+
+def _p7_source_person_id_moves(p, f):
+    return _cell(f, "person", "source_person_id", "99", origin="acs"), {}
+
+
+def _p7_serialno_null(p, f):
+    return _cell(f, "household", "SERIALNO", None, origin="acs"), {}
+
+
+def _p7_staging_lacks_a_person(p, f):
+    lineage = sorted(staging_lineage(p))
+    return f, {"staging_lineage": frozenset(lineage[1:])}
+
+
+def _r11_location_clone_column(p, f):
+    return _with_column(f, "household", "household_location_clone_index", 0), {}
+
+
+def _r2_peridnum_disagrees(p, f):
+    tables = _tables(f)
+    person = tables["person"]
+    where = _household_sizes(person, "person_household_id") > 1
+    row = _row(person, "person", "cps", clone=0, where=where)
+    value = person["PERIDNUM"].iloc[row]
+    _set(person, row, "PERIDNUM", ("1" if value[0] != "1" else "2") + value[1:])
+    return _rebuild(f, tables), {}
+
+
+def _r2_two_native_rows_share_a_key(p, f):
+    # A one-person native household takes another native household's
+    # H_IDNUM (its own clone keeps the old one).
+    tables = _tables(f)
+    person = tables["person"]
+    sizes = _household_sizes(person, "person_household_id")
+    row = _row(person, "person", "cps", clone=0, where=sizes == 1)
+    other = _row(
+        person,
+        "person",
+        "cps",
+        clone=0,
+        where=person["person_household_id"].to_numpy()
+        != person["person_household_id"].iloc[row],
+    )
+    _set(person, row, "PERIDNUM", person["PERIDNUM"].iloc[other][:20] + "01")
+    return _rebuild(f, tables), {}
+
+
+def _r2_acs_household_not_selected(p, f):
+    return _cell(f, "household", "SERIALNO", "2024HU9999999", origin="acs"), {}
+
+
+def _r2_manifest_counts_differ(p, f):
+    manifest = dataclasses.replace(selection_manifest(p), n_cps=len(p.cps_keys) - 1)
+    return f, {"manifest": manifest}
+
+
+def _r12_null_district(p, f):
+    return _cell(f, "household", "congressional_district_geoid", None, origin="cps"), {}
+
+
+def _r12_wrong_state_prefix(p, f):
+    table = f.table("household")
+    state = int(table["state_fips"].iloc[_row(table, "household", "acs")])
+    return _cell(
+        f,
+        "household",
+        "congressional_district_geoid",
+        (state + 1) * 100 + 1,
+        origin="acs",
+    ), {}
+
+
+def _r12_non_positive_district(p, f):
+    return _cell(f, "household", "congressional_district_geoid", -601, origin="cps"), {}
+
+
+def _t1_typehugq_out_of_domain(p, f):
+    return _cell(f, "household", "TYPEHUGQ", 4, origin="acs"), {}
+
+
+def _t1_typehugq_null(p, f):
+    return _cell(f, "household", "TYPEHUGQ", None, origin="acs"), {}
+
+
+def _r3_computed_column(p, f):
+    return _with_column(f, "spm_unit", "snap", 0.0), {}
+
+
+def _r3_compat_aggregate(p, f):
+    return _with_column(f, "person", "social_security", 0.0), {}
+
+
+def _r9_unregistered_column(p, f):
+    return _with_column(f, "person", "would_claim_wic", True), {}
+
+
+def _r4_null_premium(p, f):
+    return _cell(
+        f, "person", "employer_sponsored_insurance_premiums", None, origin="acs"
+    ), {}
+
+
+def _r4_premium_missing(p, f):
+    return _without_column(f, "person", "employer_sponsored_insurance_premiums"), {}
+
+
+def _r5_minor_head_loses_role(p, f):
+    person = f.table("person")
+    where = (person["age"] == 17).to_numpy() & person["is_household_head"].to_numpy(
+        dtype=bool
+    )
+    return _cell(f, "person", SPM_ROLE, False, origin="acs", where=where), {}
+
+
+def _r5_no_age(p, f):
+    return _without_column(f, "person", "age"), {}
+
+
+def _r6_null_tip_income(p, f):
+    return _cell(f, "person", "tip_income", None, origin="acs"), {}
+
+
+def _r6_null_is_female_on_a_tail_copy(p, f):
+    return _cell(f, "person", "is_female", None, origin="cps", clone=2), {}
+
+
+def _r7_null_tail_column(p, f):
+    return _cell(
+        f,
+        "tax_unit",
+        "puf_capital_gains_tail_donor_agi_band_index",
+        None,
+        origin="acs",
+    ), {}
+
+
+def _r7_tail_column_missing(p, f):
+    return _without_column(f, "tax_unit", "puf_capital_gains_tail_transfer_weight"), {}
+
+
+def _r8_donor_moves(p, f):
+    applied = f.table("tax_unit")[PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN].to_numpy(
+        dtype=bool
+    )
+    return _cell(
+        f,
+        "tax_unit",
+        PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN,
+        1,
+        origin="cps",
+        where=applied,
+    ), {}
+
+
+def _r8_unapplied_unit_applies(p, f):
+    applied = f.table("tax_unit")[PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN].to_numpy(
+        dtype=bool
+    )
+    return _cell(
+        f,
+        "tax_unit",
+        PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN,
+        True,
+        origin="cps",
+        where=~applied,
+    ), {}
+
+
+def _r10_register_column_null_on_acs(p, f):
+    return _cell(f, "person", "source_row_id", None, origin="acs"), {}
+
+
+_FRAME_REFUSALS = [
+    # R1: incomplete assembled provenance (form, completeness, record).
+    (_r1_not_assembled, "Incomplete assembled provenance: the frame is not assembled"),
+    (_r1_mixed, "Mixed assembled and unassembled provenance: ['tax_unit'] lack"),
+    (
+        _r1_null_source,
+        "Incomplete assembled provenance: assembled support metadata requires "
+        "complete non-null 'person_source_id'",
+    ),
+    (
+        _r1_null_clone,
+        "Incomplete assembled provenance: 'household_support_clone_index' has 1 null",
+    ),
+    (
+        _r1_null_spine_source,
+        "Incomplete assembled provenance: 'spm_unit_spine_source_id' has 1 null",
+    ),
+    (_r1_unknown_channel, "Rows must carry one of the assembled channels"),
+    (
+        _r1_record_missing,
+        "Incomplete assembled provenance: one-population provenance: "
+        "receipt-validated support provenance has no assembly manifest",
+    ),
+    (
+        _r1_record_two_channels,
+        "Incomplete assembled provenance: the spine assembly record must declare",
+    ),
+    (_r1_cross_grain, "cross-grain provenance disagrees with the assembly manifest"),
+    # P5: each origin's value rules on the assembled frame.
+    (_p5_cps_clone_three, "CPS clone indices must be 0, 1 or 2"),
+    (
+        _p5_cps_asec_on_a_clone,
+        "CPS rows must carry channel 'asec' exactly on clone index 0; 1 'tax_unit'",
+    ),
+    (
+        _p5_cps_spine_source_moves,
+        "CPS rows' spine source id must equal their source id",
+    ),
+    (_p5_cps_wrong_spine_tag, "CPS rows carry a spine tag other than 'asec_puf'"),
+    (
+        _p5_cps_non_integer_source,
+        "CPS 'person_source_id' must hold source ids: 1 value(s) are not integers",
+    ),
+    (_p5_acs_clone_index, "ACS rows must carry clone index 0"),
+    (_p5_acs_source_not_pooled, "ACS rows' source id must equal their pooled id"),
+    (_p5_acs_offset_varies, "ACS 'family' ids must sit one constant offset"),
+    (
+        _p5_acs_wrong_spine_tag,
+        "ACS rows carry a spine tag other than 'acs_2024_1yr'",
+    ),
+    (_q3_null_spine_tag, "A null spine tag: 1 ACS 'tax_unit' row(s)"),
+    # P6b and P6.
+    (
+        _p6b_acs_person_in_a_cps_group,
+        "Memberships do not resolve: 1 ACS person(s)' 'person_spm_unit_id' match "
+        "no ACS spm_unit row",
+    ),
+    (
+        _p6_tail_copy_relabelled,
+        "A (source id, rank) pair repeats in 'household'",
+    ),
+    # P7: SERIALNO/SPORDER lineage.
+    (
+        _p7_sporder_repeats,
+        "ACS lineage does not survive: (SERIALNO, SPORDER) repeats on 2 ACS",
+    ),
+    (
+        _p7_source_person_id_moves,
+        "ACS lineage does not survive: source_person_id differs from str(SPORDER)",
+    ),
+    (
+        _p7_serialno_null,
+        "ACS lineage does not survive: every ACS household needs a non-empty "
+        "string SERIALNO",
+    ),
+    (
+        _p7_staging_lacks_a_person,
+        "differs from staging's for the selected households; 0 missing",
+    ),
+    # R11.
+    (_r11_location_clone_column, "A household with more than one location"),
+    # R2.
+    (_r2_peridnum_disagrees, "CPS unit ids: persons of one household disagree"),
+    (
+        _r2_two_native_rows_share_a_key,
+        "A CPS key without exactly one native row: 1 key(s) have more than one "
+        "clone-0 household",
+    ),
+    (
+        _r2_acs_household_not_selected,
+        "ACS keys do not match the selection manifest",
+    ),
+    (_r2_manifest_counts_differ, "CPS keys do not match the selection manifest"),
+    # R12.
+    (
+        _r12_null_district,
+        "A household without a congressional district: "
+        "'congressional_district_geoid' must be an integral geoid on every "
+        "household: 1 value(s) are null",
+    ),
+    (
+        _r12_wrong_state_prefix,
+        "A household without a congressional district: 1 household(s) hold a "
+        "'congressional_district_geoid' whose state prefix",
+    ),
+    (
+        _r12_non_positive_district,
+        "A household without a congressional district: 1 household(s) hold a "
+        "non-positive",
+    ),
+    # T1.
+    (
+        _t1_typehugq_out_of_domain,
+        "TYPEHUGQ must be 1, 2 or 3 on every ACS household",
+    ),
+    (_t1_typehugq_null, "1 ACS household(s) hold [nan]"),
+    # R3.
+    (_r3_computed_column, "A column the engine computes at 2024 is stored: ['snap']"),
+    (
+        _r3_compat_aggregate,
+        "A column the engine computes at 2024 is stored: ['social_security']",
+    ),
+    # R9.
+    (
+        _r9_unregistered_column,
+        "A stored lower-case column is neither an engine variable nor registered: "
+        "['would_claim_wic']",
+    ),
+    # R4.
+    (_r4_null_premium, "A null ESI premium: d2283 one-population contract: ESI"),
+    (_r4_premium_missing, "A null ESI premium: the person table lacks"),
+    # R5.
+    (_r5_minor_head_loses_role, "An SPM unit has no classified adult: 1 of"),
+    (
+        _r5_no_age,
+        "An SPM unit has no classified adult: the composition check cannot run",
+    ),
+    # R6.
+    (
+        _r6_null_tip_income,
+        "A null in an engine input at 2024: {'person.tip_income': 1}",
+    ),
+    (
+        _r6_null_is_female_on_a_tail_copy,
+        "A null in an engine input at 2024: {'person.is_female': 1}",
+    ),
+    # R7.
+    (
+        _r7_null_tail_column,
+        "A null PUF tail column on a tax unit: "
+        "{'tax_unit.puf_capital_gains_tail_donor_agi_band_index': 1}",
+    ),
+    (
+        _r7_tail_column_missing,
+        "A null PUF tail column on a tax unit: the tax-unit table lacks",
+    ),
+    # R8.
+    (
+        _r8_donor_moves,
+        "The tail donor set differs from the parent's: 1 parent donor(s) missing",
+    ),
+    (
+        _r8_unapplied_unit_applies,
+        "The tail donor set differs from the parent's: 0 parent donor(s) missing "
+        "(such as []) and 1 donor(s) the parent never applied (such as [-1])",
+    ),
+    # R10.
+    (
+        _r10_register_column_null_on_acs,
+        "A model-named column filled on CPS rows is null on ACS rows without a "
+        "declared absence: {'person.source_row_id': '1 of",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("corrupt", "message"),
+    _FRAME_REFUSALS,
+    ids=[corrupt.__name__.lstrip("_") for corrupt, _ in _FRAME_REFUSALS],
+)
+def test_each_clause_refuses_with_its_own_message(
+    population, assembled, corrupt, message
+) -> None:
+    frame, overrides = corrupt(population, assembled)
+    with pytest.raises(OnePopulationContractError, match=re.escape(message)):
+        _require(population, frame, **overrides)
+
+
+def test_frame_refusal_messages_are_distinct() -> None:
+    messages = [message for _, message in _FRAME_REFUSALS]
+    assert len(set(messages)) == len(messages)
+
+
+def test_every_clause_has_a_corruption() -> None:
+    prefixes = {corrupt.__name__.split("_")[1] for corrupt, _ in _FRAME_REFUSALS}
+    assert prefixes >= {
+        "p5",
+        "p6",
+        "p6b",
+        "p7",
+        "q3",
+        *(f"r{number}" for number in range(1, 13)),
+        "t1",
+    }
+
+
+@pytest.mark.parametrize(
+    ("corruptions", "message"),
+    [
+        # R1 (P5) before R2, R6 and R12.
+        (
+            (_p5_acs_clone_index, _r2_peridnum_disagrees, _r12_null_district),
+            "ACS rows must carry clone index 0",
+        ),
+        # R2 before R12 and T1.
+        (
+            (_r12_null_district, _t1_typehugq_null, _r2_peridnum_disagrees),
+            "CPS unit ids: persons of one household disagree",
+        ),
+        # R3 before R9.
+        ((_r9_unregistered_column, _r3_computed_column), "computes at 2024"),
+        # R4 before R5 and R6.
+        ((_r6_null_tip_income, _r5_minor_head_loses_role, _r4_null_premium), "ESI"),
+        # R6 and R7 before R8 and R10.
+        (
+            (_r10_register_column_null_on_acs, _r8_donor_moves, _r7_null_tail_column),
+            "A null PUF tail column",
+        ),
+        (
+            (_r10_register_column_null_on_acs, _r6_null_tip_income),
+            "A null in an engine input at 2024",
+        ),
+    ],
+)
+def test_clauses_run_in_their_fixed_order(
+    population, assembled, corruptions, message
+) -> None:
+    frame = assembled
+    for corrupt in corruptions:
+        frame, overrides = corrupt(population, frame)
+        assert overrides == {}
+    with pytest.raises(OnePopulationContractError, match=re.escape(message)):
+        _require(population, frame)
+
+
+# Property: a null in any checked cell refuses. "Checked" means some clause
+# reads every value of the column on those rows; an exempt column, or a
+# register column on a CPS row (R10 reads it only on ACS rows), is not.
+def _checked_cells(population, frame: Frame) -> list[tuple[str, str, str]]:
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    inputs = StandInVariableIndex.from_lock().inputs_at_2024(tables)
+    cells = [
+        (entity, column, "any")
+        for entity in US_SCHEMA.entities
+        for column in (
+            support_source_id_column(entity),
+            support_channel_column(entity),
+            support_clone_index_column(entity),
+            spine_source_id_column(entity),
+            f"{entity}_spine",
+        )
+    ]
+    cells += [
+        ("household", "congressional_district_geoid", "any"),
+        ("household", "state_fips", "any"),
+        ("household", "SERIALNO", "acs"),
+        ("household", "TYPEHUGQ", "acs"),
+        ("person", "SPORDER", "acs"),
+        ("person", "source_household_id", "acs"),
+        ("person", "source_person_id", "acs"),
+        ("person", "source_row_id", "acs"),
+        ("person", "source_year", "any"),
+        ("person", "PERIDNUM", "cps"),
+        *(("tax_unit", column, "any") for column in PUF_TAIL_TAX_UNIT_COLUMNS),
+    ]
+    cells += [
+        (entity, column, "any")
+        for entity in US_SCHEMA.entities
+        for column in sorted(inputs - set(RELEASE_WRITTEN_INPUTS))
+        if column in tables[entity]
+    ]
+    return sorted(set(cells))
+
+
+@pytest.fixture(scope="module")
+def checked_cells(population, assembled):
+    return _checked_cells(population, assembled)
+
+
+def test_the_checked_cells_cover_the_engine_inputs(checked_cells) -> None:
+    columns = {column for _, column, _ in checked_cells}
+    assert {"age", SPM_ROLE, "tip_income", "employer_sponsored_insurance_premiums"} <= (
+        columns
+    )
+    assert "takes_up_ssi_if_eligible" not in columns
+
+
+@settings(max_examples=60, deadline=None, database=None)
+@given(data=st.data())
+def test_a_null_in_any_checked_cell_refuses(
+    population, assembled, checked_cells, data
+) -> None:
+    entity, column, origin = data.draw(st.sampled_from(checked_cells))
+    table = assembled.table(entity)
+    if origin == "any":
+        rows = np.arange(len(table))
+    else:
+        rows = np.flatnonzero(_origin_mask(table, entity, origin))
+    row = int(data.draw(st.sampled_from(rows.tolist())))
+    tables = _tables(assembled)
+    _set(tables[entity], row, column, None)
+    frame = _rebuild(assembled, tables)
+    with pytest.raises(OnePopulationContractError):
+        _require(population, frame)
