@@ -2242,34 +2242,50 @@ def test_clearing_the_installed_parameter_cache_frees_the_cached_system(
 ) -> None:
     """The release tool clears the cache after its start-up check, so the
     tax-benefit system the check built is not kept for the whole run; the next
-    caller builds it again."""
+    caller builds it again. The real cached function runs, on stand-ins for the
+    engine packages."""
     import gc
+    import sys
+    import types
     import weakref
 
-    class TaxBenefitSystem:
-        """A stand-in for the reformed PolicyEngine-US system."""
+    class ParameterTree:
+        """A stand-in for the reformed system's parameter tree."""
 
-    built: list[weakref.ref] = []
+    trees_built: list[weakref.ref] = []
 
-    def build_installed_parameter_stages():
-        system = TaxBenefitSystem()
-        built.append(weakref.ref(system))
-        return {}, system
+    class CountryTaxBenefitSystem:
+        def __init__(self, reform=()):
+            self.parameters = ParameterTree()
+            trees_built.append(weakref.ref(self.parameters))
 
-    monkeypatch.setattr(
-        coverage_module,
-        "_installed_parameter_stages",
-        functools.cache(build_installed_parameter_stages),
-    )
-    first = coverage_module._installed_parameter_stages()
-    assert coverage_module._installed_parameter_stages() is first
-    del first
-    gc.collect()
-    assert built[0]() is not None
+    class Reform:
+        """A stand-in for policyengine-core's reform base class."""
 
-    coverage_module.clear_installed_list_parameter_baseline_cache()
-    gc.collect()
+    engine = types.ModuleType("policyengine_us")
+    engine.CountryTaxBenefitSystem = CountryTaxBenefitSystem
+    core = types.ModuleType("policyengine_core")
+    reforms = types.ModuleType("policyengine_core.reforms")
+    reforms.Reform = Reform
+    core.reforms = reforms
+    monkeypatch.setitem(sys.modules, "policyengine_us", engine)
+    monkeypatch.setitem(sys.modules, "policyengine_core", core)
+    monkeypatch.setitem(sys.modules, "policyengine_core.reforms", reforms)
+    cached = coverage_module._installed_parameter_stages
+    cached.cache_clear()
+    try:
+        first = cached()
+        assert cached() is first
+        del first
+        gc.collect()
+        assert len(trees_built) == 1 and trees_built[0]() is not None
 
-    assert built[0]() is None
-    coverage_module._installed_parameter_stages()
-    assert len(built) == 2
+        coverage_module.clear_installed_list_parameter_baseline_cache()
+        gc.collect()
+
+        assert trees_built[0]() is None
+        cached()
+        assert len(trees_built) == 2
+    finally:
+        # No stand-in system stays cached for a later test.
+        cached.cache_clear()

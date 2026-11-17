@@ -27,8 +27,53 @@ _DONOR_LOADERS = (
 )
 
 
+#: Locals of ``_main`` that hold an object this module checks is freed.
+_FREED_NAMES = frozenset(
+    {
+        "acs_predictor_join_result",
+        "base_frame",
+        "ladder_outcome",
+        "release_engine",
+        "result",
+    }
+)
+#: Attributes through which such a local reaches another large object.
+_HOLDING_ATTRIBUTES = frozenset(
+    {"frame", "matrix", "problem", "refit", "result", "selection"}
+)
+#: The statements in ``_main`` that bind another name, or a container, to one
+#: of those objects or a large part of one, in source order. Any other such
+#: binding would keep the object alive after its ``del`` or drop.
+_EXPECTED_ALIAS_BINDINGS = (
+    # The pre-selection frame on the frozen-support path. It is another object
+    # than the base_frame deleted after the export check, and outlives it.
+    "selection_candidate_frame = base_frame",
+    # The join's frame becomes the working frame; the result is deleted.
+    "base_frame = acs_predictor_join_result.frame",
+    # Rebound to the matrix-free result before the export.
+    "result = ladder_outcome.result",
+)
+
+
 class _LargeObject:
     """A stand-in for a frame or table that a weak reference can follow."""
+
+
+def _holds_a_freed_object(node: ast.AST) -> bool:
+    """Whether an expression evaluates to, or contains, a checked object."""
+    if isinstance(node, ast.Name):
+        return node.id in _FREED_NAMES
+    if isinstance(node, ast.Attribute):
+        return node.attr in _HOLDING_ATTRIBUTES and _holds_a_freed_object(node.value)
+    if isinstance(node, ast.Starred):
+        return _holds_a_freed_object(node.value)
+    if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+        return any(_holds_a_freed_object(element) for element in node.elts)
+    if isinstance(node, ast.Dict):
+        return any(
+            value is not None and _holds_a_freed_object(value) for value in node.values
+        )
+    return False
 
 
 def _main_function(builder) -> ast.FunctionDef:
@@ -80,6 +125,19 @@ def _calls_named(tree: ast.AST, name: str) -> list[ast.Call]:
 def _execute(statements: list[ast.stmt], namespace: dict, label: str) -> None:
     module = ast.Module(body=statements, type_ignores=[])
     exec(compile(module, label, "exec"), namespace)
+
+
+def test_main_binds_no_other_name_to_a_freed_object(builder) -> None:
+    """A second name would keep an object alive after its ``del`` or drop."""
+    main = _main_function(builder)
+    bindings = sorted(
+        (node.lineno, ast.unparse(node))
+        for node in ast.walk(main)
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr))
+        and node.value is not None
+        and _holds_a_freed_object(node.value)
+    )
+    assert tuple(statement for _, statement in bindings) == _EXPECTED_ALIAS_BINDINGS
 
 
 def test_main_keeps_only_the_receipt_of_the_acs_predictor_join(builder) -> None:
@@ -183,6 +241,9 @@ def test_main_passes_each_donor_table_straight_into_its_stage(builder) -> None:
         and node.id.endswith("_donor")
     }
     assert donor_names == set()
+    # A cached loader would keep its table for the process, whatever _main does.
+    for loader in _DONOR_LOADERS:
+        assert not hasattr(getattr(builder, loader), "cache_info"), loader
 
 
 def test_main_frees_base_frame_after_the_export_input_mass_check(builder) -> None:
@@ -245,14 +306,13 @@ def test_the_export_input_mass_check_frees_its_reference_when_it_returns(
 
     def gate(candidate, base, *, reference_frame, **options):
         assert candidate is export_frame and base is base_frame
-        gate_calls.append(
-            {
-                "reference_frame": weakref.ref(reference_frame)
-                if reference_frame is not None
-                else None,
-                **options,
-            }
-        )
+        if reference_frame is None:
+            reference = None
+        elif reference_frame is loaded[-1][1]():
+            reference = "loaded"
+        else:
+            reference = "other"
+        gate_calls.append({"reference": reference, **options})
         if options["relative_tolerance"] < 0:
             raise RuntimeError("the gate failed")
         return verdict
@@ -267,23 +327,22 @@ def test_the_export_input_mass_check_frees_its_reference_when_it_returns(
     assert returned is verdict
     ((loaded_path, reference),) = loaded
     assert loaded_path == reference_h5
-    assert gate_calls[0]["reference_frame"] is reference
-    assert {
-        key: value for key, value in gate_calls[0].items() if key != "reference_frame"
-    } == (_check_options(builder))
+    assert gate_calls[0] == {"reference": "loaded", **_check_options(builder)}
     gc.collect()
     assert reference() is None
 
     # A check that raises frees its reference once the error is handled.
     failing = {**_check_options(builder), "relative_tolerance": -1.0}
-    try:
+    with pytest.raises(RuntimeError, match="the gate failed") as raised:
         builder._export_input_mass_gate_with_reference_h5(
             export_frame, base_frame, reference_h5=reference_h5, **failing
         )
-    except RuntimeError as error:
-        assert str(error) == "the gate failed"
+    # The traceback holds the check's frame, and so the reference, until the
+    # error is released, as _main's except clause does at its end.
+    del raised
     gc.collect()
-    assert len(loaded) == 2 and loaded[1][1]() is None
+    assert len(loaded) == 2 and gate_calls[1]["reference"] == "loaded"
+    assert loaded[1][1]() is None
 
     # Without a reference H5 the check compares against base_frame and loads
     # nothing.
@@ -294,7 +353,7 @@ def test_the_export_input_mass_check_frees_its_reference_when_it_returns(
         is verdict
     )
     assert len(loaded) == 2
-    assert gate_calls[-1]["reference_frame"] is None
+    assert gate_calls[-1]["reference"] is None
 
 
 def test_main_frees_the_release_engine_after_writing_the_dataset(builder) -> None:
@@ -333,13 +392,14 @@ def test_main_drops_the_constraint_matrix_before_rebinding_the_ladder_outcome(
     ladder_rebound = next(
         index
         for index, node in enumerate(main.body)
-        if isinstance(node, ast.If)
+        if index > frames_dropped
+        and isinstance(node, ast.If)
         and ast.unparse(node.test)
         == "isinstance(ladder_outcome, ExactKLadderCalibration)"
     )
     assert frames_dropped < matrix_dropped < ladder_rebound
     assert statements[matrix_dropped + 1 : ladder_rebound] == []
-    # Every reader of the calibration result comes after the drop.
+    # The solves, which need the matrix, run before the drop.
     calibration_calls = [
         node.lineno
         for node in ast.walk(main)
@@ -349,9 +409,15 @@ def test_main_drops_the_constraint_matrix_before_rebinding_the_ladder_outcome(
     ]
     assert calibration_calls
     assert max(calibration_calls) < main.body[matrix_dropped].lineno
-    surface_reads = _calls_named(main, "target_surface_payload")
-    assert surface_reads
-    assert all(call.lineno > main.body[matrix_dropped].lineno for call in surface_reads)
+    # After the drop, the release tool's own code never reads a matrix's
+    # entries: nothing in it reads ``.matrix`` or calls ``.estimates``. The
+    # calibrate package's readers are tested with a dropped matrix there.
+    tool = ast.parse(Path(builder.__file__).read_text())
+    assert [
+        f"{node.lineno}: {ast.unparse(node)}"
+        for node in ast.walk(tool)
+        if isinstance(node, ast.Attribute) and node.attr in {"matrix", "estimates"}
+    ] == []
 
 
 def test_main_clears_the_coverage_cache_after_the_start_up_check(builder) -> None:
@@ -361,26 +427,27 @@ def test_main_clears_the_coverage_cache_after_the_start_up_check(builder) -> Non
     check = statements.index("assert_release_input_coverage_manifest_current()")
     assert statements[check + 1] == "clear_installed_list_parameter_baseline_cache()"
     assert statements.count("clear_installed_list_parameter_baseline_cache()") == 1
+    # Nothing in _main fills the cache again; the reform-coverage smoke, after
+    # the H5 write, is the next reader.
+    cleared_line = main.body[check + 1].lineno
+    for filler in (
+        "assert_release_input_coverage_manifest_current",
+        "resolve_probe_parameter_changes",
+        "installed_list_parameter_baseline",
+        "_installed_parameter_stages",
+    ):
+        assert all(call.lineno < cleared_line for call in _calls_named(main, filler))
 
 
 def test_main_export_statements_leave_only_the_matrix_shape_and_nonzero_count(
-    builder, monkeypatch
+    builder,
 ) -> None:
-    """At the export write, each constraint matrix is replaced by its shape and
-    nonzero count, and the target surface the diagnostics record is unchanged."""
-    monkeypatch.setattr(builder, "_assert_no_formula_owned_columns", lambda frame: None)
+    """After ``_main``'s drop statements, each constraint matrix is replaced by
+    its shape and nonzero count, and the target surface is unchanged."""
     from microcosm.calibrate import calibrate_l0_refit
 
     for full_pool in (True, False):
         target_frame, targets = _small_calibration_problem()
-        base_frame = Frame(
-            {
-                "person": target_frame.table("person"),
-                "household": target_frame.table("household").drop(columns="x"),
-            },
-            target_frame.schema,
-            {"household": target_frame.weights_for("household")},
-        )
         result = (
             calibrate(target_frame, targets, epochs=3, mass="conserve", seed=0)
             if full_pool
@@ -419,7 +486,6 @@ def test_main_export_statements_leave_only_the_matrix_shape_and_nonzero_count(
         )
         namespace = {
             **vars(builder),
-            "base_frame": base_frame,
             "result": result,
             "ladder_outcome": ladder_outcome,
         }
@@ -492,3 +558,66 @@ def test_dropping_the_constraint_matrix_leaves_the_written_calibration_unchanged
     )
     assert builder._in_sample_estimates(dropped) == builder._in_sample_estimates(result)
     assert builder._in_sample_targets(dropped) == builder._in_sample_targets(result)
+
+
+def test_dropping_the_constraint_matrix_leaves_the_release_diagnostics_unchanged(
+    builder, small_frame, tmp_path
+) -> None:
+    """The release's calibration_diagnostics.json, written the way _main writes
+    it, is byte-identical with and without the constraint matrix."""
+    from microcosm.calibrate import (
+        CalibrationHierarchy,
+        HierarchyCategory,
+        HierarchyGeography,
+        HierarchyNode,
+        without_constraint_matrix,
+    )
+
+    registry = TargetRegistry(
+        (
+            TargetSpec(
+                name="income",
+                entity="person",
+                measure="income",
+                value=500_000.0,
+                source="fixture",
+                hierarchy=CalibrationHierarchy(
+                    provider=HierarchyNode("irs_soi", "IRS Statistics of Income"),
+                    category=HierarchyCategory("irs_soi.income", "Income", "irs_soi"),
+                    geography=HierarchyGeography("0400000US06", "California", "state"),
+                    dimensions=(),
+                    target=HierarchyNode("income", "Income"),
+                ),
+            ),
+        ),
+        country="us",
+    )
+    result = calibrate(small_frame, registry.to_target_set(), epochs=3, seed=0)
+    passing_gate = builder.GateResult(
+        name="passing", passed=True, details={"checked": True}
+    )
+    written = {}
+    for label, calibrated in (
+        ("original", result),
+        ("dropped", without_constraint_matrix(result)),
+    ):
+        release_dir = tmp_path / label
+        release_dir.mkdir()
+        outcome = builder._write_release_calibration_diagnostics(
+            result=calibrated,
+            target_surface=builder.target_surface_payload(calibrated),
+            release_dir=release_dir,
+            registry=registry,
+            base_dataset_sha256="0" * 64,
+            compilation={"dropped_target_names": []},
+            target_profile_gate=passing_gate,
+            health_input_gate=passing_gate,
+            base_population_gate=passing_gate,
+            support_value_repairs={},
+            audit_export_targets=False,
+            gate_failures=[],
+            default_dataset={"method": "dense_no_l0", "final_loss": result.final_loss},
+        )
+        assert outcome.status == "available", outcome
+        written[label] = (release_dir / "calibration_diagnostics.json").read_bytes()
+    assert written["dropped"] == written["original"]
