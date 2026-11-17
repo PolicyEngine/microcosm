@@ -45,8 +45,10 @@ What the later d2283 PRs owe this library:
 
 - PR 3 flips four strict xfails of the whole-frame differential: the
   weeks-unemployed UC-rule scope, Medicare take-up, retirement
-  contributions and retirement distributions (their ``_asec_source_mask``
-  reads the stored channel on the assembled form).
+  contributions and retirement distributions. On the assembled form the
+  weeks UC rows key on the stored channel and clone index
+  (``weeks_unemployed.py`` :1366-1373), and the other three readers'
+  ``_asec_source_mask`` returns the stored-``asec`` rows.
 - PR 4 (prepare) fills on ACS rows every engine input outside
   :data:`RELEASE_WRITTEN_INPUTS`, ``takes_up_snap_if_eligible`` included
   (the SNAP take-up gate misgrades an ACS null), and runs the reviewed
@@ -2453,14 +2455,9 @@ def _entry(
 
 
 def _absence_kind(
-    entity: str,
-    column: str,
-    declared: Mapping[str, str],
-    *,
-    origin: str,
-    rows: int,
-) -> tuple[str, str, tuple[str, ...], dict[str, object]]:
-    """The kind of a column null on ``origin``'s rows that the other carries."""
+    column: str, declared: Mapping[str, str]
+) -> tuple[str, str, tuple[str, ...], dict[str, object]] | None:
+    """The kind of a column one origin lacks, or ``None`` if it has none."""
 
     from microcosm.data.stored_inputs import is_model_named
 
@@ -2481,12 +2478,7 @@ def _absence_kind(
             (),
             {"decision": declared[column]},
         )
-    raise OnePopulationContractError(
-        f"A column one origin lacks has no absence kind: {entity!r}.{column!r} is "
-        f"null on {rows} {origin} row(s) the other origin fills. It is "
-        "model-named and not release-written, so prepare must fill it or the "
-        "owner must declare its absence with a decision."
-    )
+    return None
 
 
 def absences(
@@ -2593,6 +2585,7 @@ def absences(
     }
     entries: list[dict[str, object]] = []
     used: set[str] = set()
+    gaps: dict[str, str] = {}
     for entity in US_SCHEMA.entities:
         table, mass = tables[entity], masses[entity]
         for column in table.columns:
@@ -2605,13 +2598,13 @@ def absences(
                 lacking = null & mass.origin_rows(origin)
                 if not lacking.any() or not (~null & mass.origin_rows(other)).any():
                     continue
-                kind, evidence, readers, detail = _absence_kind(
-                    entity,
-                    column,
-                    declared,
-                    origin=origin,
-                    rows=int(lacking.sum()),
-                )
+                classified = _absence_kind(column, declared)
+                if classified is None:
+                    gaps[f"{entity}.{column}"] = (
+                        f"null on {int(lacking.sum())} {origin} row(s)"
+                    )
+                    continue
+                kind, evidence, readers, detail = classified
                 if kind == _OWNER_DECLARED:
                     used.add(column)
                 entries.append(
@@ -2627,6 +2620,13 @@ def absences(
                         detail=detail,
                     )
                 )
+    if gaps:
+        raise OnePopulationContractError(
+            f"A column one origin lacks has no absence kind: {gaps}. Each is "
+            "model-named and not release-written, and the other origin holds "
+            "values in it, so prepare must fill it or its owner must declare "
+            "the absence with a decision."
+        )
     stale = sorted(set(declared) - used)
     if stale:
         raise OnePopulationContractError(

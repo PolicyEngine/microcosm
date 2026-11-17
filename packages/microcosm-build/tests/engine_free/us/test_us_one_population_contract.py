@@ -2870,6 +2870,28 @@ def test_the_role_records_refusals_are_live_against_the_gate(assembled) -> None:
     assert stale["persons_joined"] == spm_role_gate_record(assembled)["persons_joined"]
 
 
+@pytest.mark.parametrize("form", _FORMS)
+@pytest.mark.parametrize("seed", _SEEDS)
+def test_a_cps_record_derived_before_the_join_is_accepted(seed, form) -> None:
+    # PR 4 derives the CPS record on the selected CPS rows before they meet
+    # the ACS rows: the join must keep their order and the digest's dtypes.
+    population = _form(generate_population(seed), form)
+    frame = assembled_frame(population)
+    person = population.cps_tables["person"]
+    record = {
+        "persons_joined": len(person),
+        "table_rows": len(person),
+        "native_spm_units": len(population.cps_tables["spm_unit"]),
+        "true_role_persons": int(person[SPM_ROLE].sum()),
+        "person_role_binding_sha256": _role_binding_sha256(person),
+    }
+    combined = combined_spm_role_record(record, staging_role_receipt(frame), frame)
+    assert (
+        combined["origins"]["CPS"]["person_role_binding_sha256"]
+        == (record["person_role_binding_sha256"])
+    )
+
+
 # -------------------------------------------- phase 3: absences (A1, Q2)
 
 
@@ -3087,7 +3109,8 @@ class TestAbsences:
         with pytest.raises(
             OnePopulationContractError,
             match=re.escape(
-                "A column one origin lacks has no absence kind: 'person'.'parent_1_id'"
+                "A column one origin lacks has no absence kind: "
+                "{'person.parent_1_id': 'null on"
             ),
         ):
             _absences(frame)
@@ -3284,7 +3307,8 @@ _ABSENCE_REFUSALS = [
     (
         "undeclared",
         lambda f: {"frame": _acs_null_on_cps(f, "tax_unit", "filing_status_input", 1)},
-        "A column one origin lacks has no absence kind: 'tax_unit'.'filing_status_input'",
+        "A column one origin lacks has no absence kind: "
+        "{'tax_unit.filing_status_input': 'null on",
     ),
     (
         "undeclared reverse",
@@ -3302,7 +3326,7 @@ _ABSENCE_REFUSALS = [
             )
         },
         "A column one origin lacks has no absence kind: "
-        "'person'.'acs_social_security_income' is null on",
+        "{'person.acs_social_security_income': 'null on",
     ),
 ]
 
@@ -3330,6 +3354,26 @@ def test_absences_refuse_with_their_own_message(
 def test_absence_refusal_messages_are_distinct() -> None:
     messages = [message for _, _, message in _ABSENCE_REFUSALS]
     assert len(set(messages)) == len(messages)
+
+
+def test_every_kindless_column_is_listed_in_one_refusal(assembled) -> None:
+    # One refusal names every gap, in both directions, so a first live run
+    # lists them all at once.
+    frame = _acs_null_on_cps(assembled, "person", "parent_1_id", 3)
+    acs = _origin_mask(frame.table("person"), "person", "acs")
+    frame = _with_column(
+        frame,
+        "person",
+        "acs_social_security_income",
+        pd.Series(np.where(acs, 1.0, None), dtype=object),
+    )
+    with pytest.raises(OnePopulationContractError) as raised:
+        _absences(frame)
+    message = str(raised.value)
+    assert f"'person.parent_1_id': 'null on {int(acs.sum())} ACS row(s)'" in message
+    assert (
+        f"'person.acs_social_security_income': 'null on {int((~acs).sum())} CPS row(s)'"
+    ) in message
 
 
 # ------------------------- phase 3: X2, N-2's kinds on a generated population
