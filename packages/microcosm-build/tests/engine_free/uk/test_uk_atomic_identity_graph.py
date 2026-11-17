@@ -314,12 +314,12 @@ def test_identity_refusals(tmp_path, defect):
         message = "negative"
     elif defect == "unknown_channel":
         rows[2] = (11, 1, "puf", 1, False, 0, "LONDON")
-        message = "support channel"
+        message = "spi_support_channel"
     elif defect == "duplicate_lineage":
         rows[2] = (11, 1, "frs", 0, False, 0, "LONDON")
         message = "not unique"
     elif defect == "copy_flag_index_disagree":
-        message = "support-copy flag and support copy index disagree"
+        message = "'cgt_support_split' marker and ordinal disagree"
     elif defect == "negative_copy_index":
         rows[6] = (1001, 2, "frs", 0, False, -1, "SCOTLAND")
         message = "negative"
@@ -420,6 +420,6 @@ def test_residential_arm_flag_and_index_must_agree(tmp_path):
 
     frame = lineage_frame(RESIDENTIAL_ROWS, mutate=clear_flag)
     with pytest.raises(
-        NodeRejectedError, match="residential-arm flag and arm index disagree"
+        NodeRejectedError, match="'cgt_residential_split' marker and ordinal disagree"
     ):
         run_identity(frame, tmp_path, k=1)

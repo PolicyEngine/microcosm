@@ -478,6 +478,31 @@ UNCLASSIFIED_IMPORTS = MappingProxyType(
             FULL_PROBLEM,
             NATIONAL,
         ),
+        # The target kernels hash receipt_counts beside weighted_integrity
+        # (8ea0ee182), and its floors read true sources through the shared
+        # lineage reader on the UK's declaration, the national schema and the
+        # shared source column (microcosm#931). The move's derived binding
+        # rule replaces this record.
+        "microcosm.build.uk_runtime.receipt_counts -> microcosm.build.source_lineage": (
+            FULL_TARGETS,
+            FULL_PROBLEM,
+            NATIONAL,
+        ),
+        "microcosm.build.uk_runtime.receipt_counts -> microcosm.build.uk_runtime.household_lineage": (
+            FULL_TARGETS,
+            FULL_PROBLEM,
+            NATIONAL,
+        ),
+        "microcosm.build.uk_runtime.receipt_counts -> microcosm.build.uk_runtime.national_frame": (
+            FULL_TARGETS,
+            FULL_PROBLEM,
+            NATIONAL,
+        ),
+        "microcosm.build.uk_runtime.receipt_counts -> microcosm.frame.concepts": (
+            FULL_TARGETS,
+            FULL_PROBLEM,
+            NATIONAL,
+        ),
         "microcosm.build.uk_runtime.full_measure -> microcosm.build.uk_runtime.rowwise_dataset": (
             FULL_TARGETS,
             FULL_PROBLEM,

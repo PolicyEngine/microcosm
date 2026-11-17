@@ -84,6 +84,8 @@ def _reference_frame():
         {
             "household_id": np.arange(1, 6, dtype="int64"),
             "household_source_id": np.asarray([101, 101, 102, 103, 104]),
+            # The true source each floor counts (microcosm#931).
+            "source_household_id": np.asarray([101, 101, 102, 103, 104]),
         }
     )
     person = pd.DataFrame(
@@ -210,6 +212,8 @@ def test_the_evidence_reads_a_dense_line_file(tmp_path: Path) -> None:
             {
                 "household_id": [1, 2, 3],
                 "household_source_id": [11, 12, 13],
+                # The true source each floor counts (microcosm#931).
+                "source_household_id": [11, 12, 13],
                 "household_weight": [10.0, 20.0, 30.0],
                 "region": ["LONDON", "WALES", "LONDON"],
             }
