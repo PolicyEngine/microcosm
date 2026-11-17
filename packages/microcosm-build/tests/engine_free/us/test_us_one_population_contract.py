@@ -778,10 +778,62 @@ class TestProvenanceRewrite:
             )
         )
         assert actual == expected
-        # The sort moved ACS households among CPS ones only if ids interleave;
-        # either way the household table is sorted by id.
         ids = frame.table("household")["household_id"].to_numpy()
         assert (np.diff(ids) > 0).all()
+
+    def test_weights_follow_households_through_a_real_sort(self, population) -> None:
+        # The generated tables arrive sorted, so the sort above is the
+        # identity. Here both origins' household rows (with their weights)
+        # and one other group table come in shuffled.
+        rng = np.random.default_rng(7)
+        cps = {entity: table.copy() for entity, table in population.cps_tables.items()}
+        acs = {entity: table.copy() for entity, table in population.acs_tables.items()}
+        cps_order = rng.permutation(len(cps["household"]))
+        acs_order = rng.permutation(len(acs["household"]))
+        cps["household"] = cps["household"].iloc[cps_order].reset_index(drop=True)
+        acs["household"] = acs["household"].iloc[acs_order].reset_index(drop=True)
+        cps["tax_unit"] = cps["tax_unit"].iloc[::-1].reset_index(drop=True)
+        cps_weights = population.cps_household_weights[cps_order]
+        acs_weights = population.acs_household_weights[acs_order]
+        frame = to_assembled_provenance(
+            cps,
+            acs,
+            cps_household_weights=cps_weights,
+            acs_household_weights=acs_weights,
+            staging_lineage=staging_lineage(population),
+        )
+        given = np.concatenate(
+            [cps["household"]["household_id"], acs["household"]["household_id"]]
+        )
+        expected = dict(
+            zip(
+                given.tolist(),
+                np.concatenate([cps_weights, acs_weights]).tolist(),
+                strict=True,
+            )
+        )
+        household = frame.table("household")["household_id"].to_numpy()
+        assert household.tolist() != given.tolist()
+        assert (np.diff(household) > 0).all()
+        assert (np.diff(frame.table("tax_unit")["tax_unit_id"].to_numpy()) > 0).all()
+        actual = dict(
+            zip(
+                household.tolist(),
+                frame.weights_for("household").values.tolist(),
+                strict=True,
+            )
+        )
+        assert actual == expected
+        # Same frame as the sorted inputs give, row for row.
+        reference = assembled_frame(population)
+        for entity in US_SCHEMA.entities:
+            pd.testing.assert_frame_equal(
+                frame.table(entity), reference.table(entity), check_like=True
+            )
+        np.testing.assert_array_equal(
+            frame.weights_for("household").values,
+            reference.weights_for("household").values,
+        )
 
     def test_inputs_are_not_mutated(self, population) -> None:
         cps = {entity: table.copy() for entity, table in population.cps_tables.items()}
@@ -912,7 +964,13 @@ def route_a():
 
 
 def test_role_readers_match_route_a_with_no_acs_row(route_a, population) -> None:
-    """X4: with no ACS row, the role readers return Route A's series."""
+    """X4: with no ACS row, the role readers return Route A's series.
+
+    The Route A fixture is built by the production clone and tail operators
+    (see ``route_a``), not from the generator's hand-written CPS half, so the
+    differential does not rest on the generator restating Route A's labels.
+    The ACS input is the generator's ACS tables cut to zero rows.
+    """
 
     tables = {entity: route_a.table(entity) for entity in route_a.entities}
     empty_acs = {
@@ -1371,11 +1429,26 @@ def test_union_form_refuses_a_fractional_sporder(population) -> None:
         _rewrite(union, {"acs": acs, "lineage": staging_lineage(population)})
 
 
-def test_a_corrupted_input_raises_before_the_frame_does(population) -> None:
-    # The contract's own refusal, not the Frame constructor's ValueError.
-    corruption = _ids_collide_across_origins(population)
-    with pytest.raises(OnePopulationContractError):
-        _rewrite(population, corruption)
+def test_a_cross_grain_channel_mismatch_fails_the_validator(population) -> None:
+    # No P5-P7 rule reads a person's channel against its groups'; the
+    # assembly validator does, and its ValueError comes back as the
+    # contract's error. A native CPS person moves into its household's
+    # PUF tax-detail copy (the native household keeps another member).
+    cps = _copies(population, "cps")
+    person = cps["person"]
+    native = person["person_support_clone_index"] == 0
+    sizes = person["person_household_id"].map(
+        person.loc[native, "person_household_id"].value_counts()
+    )
+    row = int(np.flatnonzero(native.to_numpy() & (sizes.to_numpy() > 1))[0])
+    household = int(person["person_household_id"].iloc[row])
+    _set(person, row, "person_household_id", household + population.clone_multiplier)
+    with pytest.raises(
+        OnePopulationContractError,
+        match=re.escape("The joined one-population frame is not valid")
+        + ".*cross-grain provenance disagrees",
+    ):
+        _rewrite(population, {"cps": cps})
 
 
 # ------------------------------------------------------------ cps_unit_ids
