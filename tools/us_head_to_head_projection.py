@@ -65,34 +65,36 @@ a rebuild that does not fit the log: one that starts slices after they
 end, meets a submit that took no token and started no worker it can see,
 or counts starts it cannot explain. Those are the marks lost worker-start
 lines leave, which the parent's later lines cannot reveal; no intact
-simulated log gives one (review r5). A stretch that no stream covers
-between the first record and the last is reported as ``stream_holes``: the
-shape a restarted stream leaves when it does not replay what the app
-printed. A slice line lost in it reads as a straggler before any log gap can
-show, so after a hole the verdict waits while a slice that began before the
-hole ended has no line (``hole_suspects``); a start under way whose line was
-lost reads as overdue, so it waits likewise for a start that began before
-the hole ended (``hole_start_suspects``). A start line lost in it merges two
-starts into one that reads twice as long; starts come one at a time, so that
-start's span (its submit to its line) holds the hole (``starts_across_holes``).
-The start cost is then the lesser of the mean over every logged start and
-the mean over those whose span holds no hole: the estimate rises with the
-start cost, so a restart that lost nothing never reads later than the intact
-log. The rebuild is a worker short until the model needs the lost worker and
-finds no line for it (a log gap), and meanwhile its replay starts one worker
-more than remain, so it can read late by about a start for each line lost,
-or early. After a hole a NO-GO therefore waits while the estimate is past the
-line by less than the longer of the start cost used and the spans that hold
-a hole (``hole_margin_seconds``). A newest stream holding nothing yet beside
-an earlier one that has records may be a hole that has not ended: the
-estimate and the stall check wait for its first record
-(``newest_stream_empty``). A stream that begins in the very second the
-streams before it end and repeats records they showed there is reported in
-``restart_overlaps`` (see ``parse_logs``). These rules come from searching
-simulated pools with stretches of their logs removed, for a damaged log that
-gives NO-GO where the intact one gives GO (``docs/evidence/us-h2h-speed``):
-what the search did not find is not ruled out. Streams are read in the
-watcher's order, ``app-2.log`` before ``app-10.log``.
+simulated log gives one (review r5). A stretch that no stream covers between
+the first record and the last is reported as ``stream_holes``: the shape a
+restarted stream leaves when it does not replay what the app printed. A
+slice line lost in it reads as a straggler before any log gap can show, so
+after a hole the verdict waits while a slice that began before the hole
+ended has no line (``hole_suspects``). A start line lost in it leaves the
+rebuild a worker short until the model needs the lost worker and finds no
+line for it (a log gap), and meanwhile the estimate reads late: its replay
+starts one worker more than remain, and the mean start cost, without the
+lost start, can be far off (review r6: a lost 78 s start among 119 to 328 s
+ones read 460 s late). No later line tells a restart that lost a start line
+from one that lost nothing, but each worker prints its start line once, so a
+pool that has logged a start for every worker has lost none. Until then,
+after a hole that could hold its start lines (one that ends once the pool
+has opened and begins before the pool's release line), a time NO-GO waits
+(``starts_unconfirmed``); a stall still stops the run. A released pool's
+starts count only while they still set the candidate's start cost, before
+its first start line. A pool that never starts every worker stays held, and
+in the simulated d844 shape the last start comes 15 start costs after the
+first (4,500 s at 300 s each), so a restart there can delay a stop by about
+that long. A newest stream holding nothing yet beside an earlier one that
+has records may be a hole that has not ended: the estimate and the stall
+check wait for its first record (``newest_stream_empty``). A stream that
+begins in the very second the streams before it end and repeats records
+they showed there is reported in ``restart_overlaps`` (see ``parse_logs``).
+These rules come from searching simulated pools with stretches of their
+logs removed, for a damaged log that gives NO-GO where the intact one gives
+GO (``docs/evidence/us-h2h-speed``): what the search did not find is not
+ruled out. Streams are read in the watcher's order, ``app-2.log`` before
+``app-10.log``.
 Records from before ``--started-at`` mean the streams hold an earlier
 attempt's log; the verdict waits.
 
@@ -109,16 +111,16 @@ departed from theirs, through one ratio pooled over the candidate's
 measured chunks. A candidate that does not share a departure still reads
 late: in review r4's scenario (the incumbent's chunk 5 at 1.147 times its
 prior, the candidate at its prior) by about 800 s. A start costs the mean of
-the starts logged so far (after a hole, see above; the incumbent's until the
-candidate's pool logs one whose span holds no hole, slice or not), so a
-candidate whose workers start slower reads early, toward GO, until then. A
-first slice costs the mean extra measured so far. A running slice already
-past its chunk's pace is taken to run as far past it again. That reads early
-until the poll passes the midpoint of the pace and the slice's real time,
-then late, by up to the slice's real time less its pace as the poll nears
-its end: a 3,000 s straggler among 40 s slices reads 1,530 s late polled
-2,285 s in, and up to 2,960 s late just before it ends (review r5). So one
-long straggler can give a NO-GO to a run that fits. While the
+the starts logged so far (the incumbent's until the candidate's pool logs
+one, slice or not), so a candidate whose workers start slower reads early,
+toward GO, until its first start line. A first slice costs the mean extra
+measured so far. A running slice already past its chunk's pace is taken to
+run as far past it again. That reads early until the poll passes the
+midpoint of the pace and the slice's real time, then late, by up to the
+slice's real time less its pace as the poll nears its end: a 3,000 s
+straggler among 40 s slices reads 1,530 s late polled 2,285 s in, and up to
+2,960 s late just before it ends (review r5). So one long straggler can give
+a NO-GO to a run that fits. While the
 incumbent is still scoring, its replay comes first and the candidate's
 whole pool follows at once (loading the candidate is left out), with the
 prior's slices per chunk. A fixed allowance for the comparison and
@@ -527,8 +529,6 @@ class History:
     #: only the tie note, a start put back on its submit, comes from intact
     #: logs, and it is not among these.
     unexplained: list[str] = field(default_factory=list)
-    #: Each logged start's triggering submit and line, beside its cost.
-    start_spans: list[tuple[float, float]] = field(default_factory=list)
 
 
 def reconstruct(
@@ -553,7 +553,6 @@ def reconstruct(
 
     submitted: dict[int, float] = {}
     start_costs: list[float] = []
-    start_spans: list[tuple[float, float]] = []
     taken = spawns = count = 0
     blocked: float | None = None
     opening = min(2 * workers, total)
@@ -566,7 +565,6 @@ def reconstruct(
         elif spawns < workers:
             if spawns < len(inits):
                 start_costs.append(inits[spawns] - clock)
-                start_spans.append((clock, inits[spawns]))
                 clock = max(clock, inits[spawns])
                 spawns += 1
             elif receives:
@@ -625,7 +623,6 @@ def reconstruct(
                 submitted[2 * workers + task] = ready
                 if spawns < len(inits) and inits[spawns] >= ready:
                     start_costs.append(inits[spawns] - ready)
-                    start_spans.append((ready, inits[spawns]))
                     parent_free = inits[spawns]
                     spawns += 1
                 elif receipt is not None:
@@ -679,7 +676,6 @@ def reconstruct(
         notes=notes + unexplained,
         gaps=gaps,
         unexplained=unexplained,
-        start_spans=start_spans,
     )
 
 
@@ -721,80 +717,24 @@ def _unplaced(pool: _Pool, history: History | None) -> set[int]:
     }
 
 
-def _costs_clear_of(
-    history: History, holes: Sequence[tuple[float, float]]
-) -> list[float]:
-    """Start costs whose span (triggering submit to start line) holds no hole.
+def _start_cost(history: History) -> float | None:
+    """The mean of the logged start costs: after a hole, used only once the
+    pool has logged a start for every worker (see ``project``)."""
 
-    Under the model starts come one at a time, the parent blocked through
-    each, so a start line lost in a hole merges two starts into one span that
-    holds the hole and reads as twice the cost. A logged line is never inside
-    a hole, so every span either holds a hole whole or misses it."""
-
-    return [
-        cost
-        for cost, (began, ended) in zip(
-            history.start_costs, history.start_spans, strict=True
-        )
-        if not any(began <= start and ended >= end for start, end in holes)
-    ]
-
-
-def _hole_margin(
-    histories: Mapping[str, History | None],
-    holes: Sequence[tuple[float, float]],
-    start_seconds: Mapping[str, float | None],
-) -> float:
-    """How late the estimate can read after a hole, from lost start lines.
-
-    A start line lost in a hole leaves the rebuild a worker short, so its
-    replay starts one worker more than remain and reads late by about a
-    start (review r6). A hole that held several start lines merges them all
-    into one span that holds the hole, at least a start long for each, so
-    the margin is the longer of the start cost used and the spans that hold
-    a hole, summed over both pools."""
-
-    costs = [cost for cost in start_seconds.values() if cost]
-    across = sum(
-        ended - began
-        for history in histories.values()
-        if history is not None
-        for began, ended in history.start_spans
-        if any(began <= start and ended >= end for start, end in holes)
-    )
-    return max([across, *costs])
-
-
-def _start_cost(history: History, holes: Sequence[tuple[float, float]]) -> float | None:
-    """The start cost the estimate uses: the mean of the logged starts, or of
-    those whose span holds no hole when that is less.
-
-    A span that holds a hole may be two starts, one line lost, and reads as
-    one start twice as long. But a hole proves no line lost, and starts need
-    not cost the same: leaving out a fast start whose line survived raises
-    the mean and can stop a run that fits (review r6). The estimate rises
-    with the start cost, so the lesser mean never reads later than the
-    intact log would on a restart that lost nothing, and it still leaves out
-    a merged span that would read late."""
-
-    clear = _costs_clear_of(history, holes)
-    if not clear:
-        return None
-    every = history.start_costs
-    return min(sum(clear) / len(clear), sum(every) / len(every))
+    costs = history.start_costs
+    return sum(costs) / len(costs) if costs else None
 
 
 def timing(
     pool: _Pool,
     history: History | None,
     need: int,
-    holes: Sequence[tuple[float, float]] = (),
 ) -> Timing:
     if history is None:
         return Timing({}, {}, [], None, [])
     if not pool.slices_per_chunk:
         # No slice yet: no pace, but the starts logged so far are measured.
-        return Timing({}, {}, [], _start_cost(history, holes), list(history.notes))
+        return Timing({}, {}, [], _start_cost(history), list(history.notes))
     per_chunk = pool.slices_per_chunk
     firsts = set(history.firsts)
     regular: dict[int, list[float]] = {}
@@ -817,7 +757,7 @@ def timing(
         chunk_seconds=seconds,
         chunk_slices={c: len(v) for c, v in regular.items() if c in seconds},
         firsts=first,
-        start_cost=_start_cost(history, holes),
+        start_cost=_start_cost(history),
         notes=notes + history.notes,
     )
 
@@ -1163,19 +1103,43 @@ def project(parsed: Parsed, limits: Limits, now: float) -> dict[str, object]:
         report["stream_holes"] = [
             {"from_utc": _utc(start), "to_utc": _utc(end)} for start, end in holes
         ]
-        # A start whose span holds a hole may be two starts, the first one's
-        # line lost: its cost is left out of the measured start cost.
-        across = {
-            name: dropped
-            for name, history in histories.items()
-            if history is not None
-            and (
-                dropped := len(history.start_costs)
-                - len(_costs_clear_of(history, holes))
-            )
+    # A start line lost in a hole leaves the rebuild a worker short and its
+    # start cost off, which no later line reveals until the model needs the
+    # lost worker, and it reads late by more than a start when the lost start
+    # was a cheap one (review r6). Each worker prints its start line once, so
+    # a pool that has logged a start for every worker has lost none: until
+    # then, after a hole that could hold the pool's start lines (it ends once
+    # the pool has opened and begins before its release line), a time NO-GO
+    # waits. A released pool's starts still feed the estimate only as the
+    # incumbent's start cost, until the candidate logs a start of its own.
+    released = {
+        name: min(
+            (
+                e.at
+                for e in events
+                if e.artifact == name
+                and e.kind == "parent"
+                and e.what == "after releasing"
+            ),
+            default=None,
+        )
+        for name, _ in pools
+    }
+    unconfirmed = {
+        name: len(pool.inits)
+        for name, pool in pools
+        if pool.opened is not None
+        and len(pool.inits) < workers
+        and (released[name] is None or (name == "incumbent" and not candidate.inits))
+        and any(
+            end >= pool.opened and (released[name] is None or start < released[name])
+            for start, end in holes
+        )
+    }
+    if unconfirmed:
+        report["starts_unconfirmed"] = {
+            name: f"{logged} of {workers}" for name, logged in unconfirmed.items()
         }
-        if across:
-            report["starts_across_holes"] = across
     # The newest stream (streams come in the watcher's order) holding nothing
     # yet while an earlier one does: a restart that has delivered nothing, so
     # whatever the app printed since the last record may be lost. It is not a
@@ -1227,33 +1191,6 @@ def project(parsed: Parsed, limits: Limits, now: float) -> dict[str, object]:
                 "estimate waits until each line arrives or the parent takes that "
                 "result (a log gap); the runner's budget bounds the run meanwhile"
             )
-        # The same for a worker start: one the rebuild has under way that
-        # began before the hole ended may have finished inside it, its line
-        # lost, and then reads as overdue, the estimate climbing a second a
-        # second with no slice running to hold it (review r6, scenario C).
-        starting = {
-            name: history.blocked_since
-            for name, history in histories.items()
-            if history is not None
-            and history.blocked_since is not None
-            and history.blocked_since < hole_end
-        }
-        if starting:
-            report["hole_start_suspects"] = {
-                name: _utc(at) for name, at in starting.items()
-            }
-            waiting.append(
-                "a log stream restarted without replaying (a hole), and "
-                + ", ".join(
-                    f"the {name}'s worker start under way since {_utc(at)}"
-                    for name, at in starting.items()
-                )
-                + " began before it ended and has no line yet: if it finished in "
-                "the hole its line is lost and it would read as overdue, so the "
-                "estimate waits until the line arrives or the rebuild stops "
-                "fitting the log (a log gap); the runner's budget bounds the run "
-                "meanwhile"
-            )
     if waiting:
         # No estimate, but what the rebuild noticed still helps read the gap.
         estimate, why = None, None
@@ -1264,7 +1201,7 @@ def project(parsed: Parsed, limits: Limits, now: float) -> dict[str, object]:
             for note in history.notes
         ]
     else:
-        estimate, notes, why = _estimate(incumbent, candidate, limits, now, holes)
+        estimate, notes, why = _estimate(incumbent, candidate, limits, now)
     if budget_unseen:
         waiting.append(budget_unseen_reason)
     if estimate is None and why:
@@ -1291,21 +1228,19 @@ def project(parsed: Parsed, limits: Limits, now: float) -> dict[str, object]:
     time_line = deadline - limits.time_margin * budget
     reasons: list[str] = []
     held: list[str] = []
-    margin = _hole_margin(histories, holes, estimate["start_seconds"]) if holes else 0.0
-    if holes:
-        report["hole_margin_seconds"] = round(margin, 1)
-    if end > time_line >= end - margin:
-        # After a hole the rebuild can be a worker start short, or several
-        # when the hole held several start lines, and then it reads late by
-        # about that many starts (review r6). A stop cannot be taken back, so
-        # within that margin the estimate waits.
+    if end > time_line and unconfirmed:
         held.append(
             f"time: estimated end {_utc(end)} is past {_utc(time_line)} by "
             f"{end - time_line:.0f} s, but a log stream restarted without "
-            "replaying, and a start line lost in the hole makes the estimate "
-            f"read late by about a start for each one lost ({margin:.0f} s "
-            "here); it waits, and stops the run once the estimate is past the "
-            "line by more than that"
+            "replaying after "
+            + " and ".join(
+                f"the {name}'s pool opened, which has logged {logged} of its "
+                f"{workers} worker starts"
+                for name, logged in unconfirmed.items()
+            )
+            + ": a start line lost in the hole would make the estimate read "
+            "late, and only a start for every worker shows none was lost, so it "
+            "waits until then; a stall and the runner's budget still stop the run"
         )
     elif end > time_line:
         reasons.append(
@@ -1338,7 +1273,6 @@ def _estimate(
     candidate: _Pool,
     limits: Limits,
     now: float,
-    holes: Sequence[tuple[float, float]] = (),
 ) -> tuple[dict | None, list[str], str | None]:
     """The estimated end and its inputs, or None and why not yet."""
 
@@ -1348,8 +1282,8 @@ def _estimate(
         "candidate": reconstruct(candidate, workers, now),
     }
     timings = {
-        "incumbent": timing(incumbent, histories["incumbent"], need, holes),
-        "candidate": timing(candidate, histories["candidate"], need, holes),
+        "incumbent": timing(incumbent, histories["incumbent"], need),
+        "candidate": timing(candidate, histories["candidate"], need),
     }
     notes = [
         f"{name}: {note}" for name, found in timings.items() for note in found.notes

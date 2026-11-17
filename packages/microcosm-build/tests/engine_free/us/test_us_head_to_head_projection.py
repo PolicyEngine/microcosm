@@ -233,8 +233,7 @@ _DAMAGE = (
     "log_gap",
     "stream_holes",
     "hole_suspects",
-    "hole_start_suspects",
-    "starts_across_holes",
+    "starts_unconfirmed",
     "newest_stream_empty",
     "restart_overlaps",
     "records_before_start",
@@ -839,16 +838,16 @@ def test_a_d844_slice_line_lost_in_a_hole_is_held_twice_over() -> None:
     assert "took no token" in report["log_gap"]["incumbent"]
 
 
-def test_a_start_whose_span_holds_a_hole_is_left_out_of_the_start_cost() -> None:
-    # Before review r6, from a search of random pools: a restart at +2,259 s
+def test_a_start_lost_in_a_hole_holds_a_time_no_go_until_every_worker_starts() -> None:
+    # From a search of random pools before review r6: a restart at +2,259 s
     # that does not replay loses one candidate worker start in its opening.
-    # The rebuild pairs the next start with the wrong submit and reads one
-    # start as taking twice as long: as one stream, NO-GO at 4,112 s against
-    # a 4,007 s budget for a run whose estimate from the intact log is
-    # 3,672 s. Starts come one at a time, so the merged start's span holds the
-    # hole; its cost is left out, and the estimate passes the run. Without the
-    # lost worker the rebuild is a worker short; it becomes a log gap at the
-    # next poll.
+    # The rebuild pairs the next start with the wrong submit, so it reads one
+    # start as taking twice as long (a mean of 181.5 s for 121 s starts) and
+    # is a worker short: 4,112 s where the intact log says 3,672 s, a NO-GO
+    # against a 4,007 s budget when the streams are joined as one. The
+    # candidate's pool has logged 2 of its 9 worker starts, so a lost start
+    # line cannot be ruled out, and a time NO-GO waits; the rebuild stops
+    # fitting the log (a log gap) by the next poll.
     run = _run(
         workers=9,
         incumbent_seconds=[224],
@@ -863,49 +862,49 @@ def test_a_start_whose_span_holds_a_hole_is_left_out_of_the_start_cost() -> None
     log, streams = _cut(run, at, 2259, 2264)
     lost = [line for line in log if line not in streams[0] + streams[1]]
     assert len(lost) == 1 and "initializing candidate" in lost[0]
-    assert projection.project(projection.parse_log(log), limits, at)["verdict"] == "GO"
+    intact = projection.project(projection.parse_log(log), limits, at)
+    assert intact["verdict"] == "GO"
+    assert intact["estimate"]["estimated_tool_seconds_from_start"] == 3672
     joined = projection.project(
         projection.parse_log([*streams[0], *streams[1]]), limits, at
     )
     assert joined["verdict"] == "NO-GO" and "log_gap" not in joined
     report = projection.project(projection.parse_logs(streams), limits, at)
-    assert report["verdict"] == "GO", report
-    assert report["starts_across_holes"] == {"candidate": 1}
-    assert report["estimate"]["start_seconds"]["candidate"] == 121
-    # The rebuild is a start short, so it reads late by about a start
-    # (review r6, SF-4): 3,793 s against the intact log's 3,672 s. The
-    # margin after a hole, the merged start's span of two starts, holds a
-    # budget the late reading alone would fail.
-    assert report["estimate"]["estimated_tool_seconds_from_start"] == 3793
-    assert report["hole_margin_seconds"] == 242
+    assert report["verdict"] == "WAIT", report
+    assert report["starts_unconfirmed"] == {"candidate": "2 of 9"}
+    assert report["estimate"]["start_seconds"]["candidate"] == 181.5
+    assert report["estimate"]["estimated_tool_seconds_from_start"] == 4112
+    assert "logged 2 of its 9 worker starts" in report["reasons"][0]
+    # The hold acts only on a time NO-GO: a budget the late reading still
+    # passes is a GO, and a budget the intact log fails waits too, which is
+    # what the hold costs.
     for budget, intact_verdict, verdict in (
+        (4200, "GO", "GO"),
         (3750, "GO", "WAIT"),
-        (3700, "GO", "WAIT"),
-        (3550, "NO-GO", "NO-GO"),
+        (3550, "NO-GO", "WAIT"),
     ):
         tight = _limits(workers=9, max_wall_seconds=budget, prior=_prior(run))
         intact = projection.project(projection.parse_log(log), tight, at)
         damaged = projection.project(projection.parse_logs(streams), tight, at)
         assert (intact["verdict"], damaged["verdict"]) == (intact_verdict, verdict)
-        if verdict == "WAIT":
-            assert "a start for each one lost (242 s here)" in damaged["reasons"][0]
+        assert damaged["starts_unconfirmed"] == {"candidate": "2 of 9"}
     later = START + 2684
     log, streams = _cut(run, later, 2259, 2264)
     report = projection.project(projection.parse_logs(streams), limits, later)
     assert report["verdict"] == "WAIT" and "candidate" in report["log_gap"]
 
 
-def test_a_lossless_restart_never_reads_slower_starts_than_it_saw() -> None:
+def test_a_lossless_restart_reads_as_the_intact_log_and_holds_only_a_no_go() -> None:
     # Review r6 (Sol, S1): the d844 shape with the first worker start of each
     # pool taking 100 s and every later one 320 s, and a stream that restarts
     # at +64 s, as the incumbent's pool opens, without replaying but losing
-    # nothing. The first start's span (+64 s to +164 s) holds that boundary,
-    # so it was left out, and the start cost became the later starts' 320 s
-    # instead of the logged mean: NO-GO at 14,684 s for a run that fits. The
-    # start cost is now the lesser of the two means, which never reads later
-    # than the intact log on a restart that lost nothing.
+    # nothing. Round 6 left the first start out of the start cost, read the
+    # later starts' 320 s instead of the logged mean, and gave NO-GO at
+    # 14,684 s for a run that fits. The start cost is the logged mean again,
+    # so the estimate is the intact log's; the incumbent's pool is marked
+    # unconfirmed until it logs its 16th start, which holds only a time NO-GO.
     run, limits = _d844(start_cost=[100] + [320] * 15), _d844_limits()
-    for poll in (600, 1200, 2400):
+    for poll, logged in ((600, 2), (1200, 4), (2400, 7), (4800, 15), (6000, None)):
         at = START + poll
         log = run.log(at)
         offsets = [_offset(line) for line in log]
@@ -927,15 +926,20 @@ def test_a_lossless_restart_never_reads_slower_starts_than_it_saw() -> None:
         assert intact["verdict"] == report["verdict"] == "GO", (poll, report)
         assert report["estimate"] == intact["estimate"], poll
         assert len(report["stream_holes"]) == 1
-        assert report["starts_across_holes"] == {"incumbent": 1}
+        if logged is None:
+            assert "starts_unconfirmed" not in report, poll
+        else:
+            assert report["starts_unconfirmed"] == {"incumbent": f"{logged} of 16"}
     assert intact["estimate"]["estimated_tool_seconds_from_start"] < 14_505
 
 
 def test_a_restart_that_loses_nothing_holds_the_verdict_one_poll() -> None:
     # The d844 shape, a stream that restarts at +4,800 s without replaying
     # but loses nothing. At the +4,800 s poll the new stream is still empty,
-    # so the slices running then are suspects and the verdict waits; by the
-    # next poll their lines have arrived and it is the intact log's again.
+    # so the verdict waits; by the next poll its lines have arrived and it is
+    # the intact log's again. The incumbent's 16th worker start (+4,864 s)
+    # shows its pool lost no start line, and the candidate's pool opened
+    # after the hole, so neither is unconfirmed.
     run, limits = _d844(), _d844_limits()
     for poll, held in ((4800, True), (5400, False), (6000, False)):
         at = START + poll
@@ -953,14 +957,13 @@ def test_a_restart_that_loses_nothing_holds_the_verdict_one_poll() -> None:
         intact = projection.project(projection.parse_log(log), limits, at)
         report = projection.project(projection.parse_logs([first, second]), limits, at)
         assert intact["verdict"] == "GO"
+        assert "starts_unconfirmed" not in report
         if held:
             assert report["verdict"] == "WAIT" and report["newest_stream_empty"]
             assert "hole_suspects" not in report
         else:
             assert report["verdict"] == "GO" and "hole_suspects" not in report
-            # Nothing was lost, so nothing reads late; the margin is reported.
             assert report["estimate"] == intact["estimate"]
-            assert report["hole_margin_seconds"] == 300
 
 
 def test_a_restarted_stream_that_has_delivered_nothing_holds_the_estimate() -> None:
@@ -1086,8 +1089,11 @@ def test_slice_suspects_after_a_real_hole_hold_on_their_own() -> None:
     assert report["verdict"] == "WAIT", report
     assert report["hole_suspects"] == {"candidate": [2, 3]}
     assert len(report["stream_holes"]) == 1
-    for other in ("newest_stream_empty", "hole_start_suspects", "log_gap", "estimate"):
+    for other in ("newest_stream_empty", "log_gap", "estimate"):
         assert other not in report, other
+    # The candidate's 8 slices never start all 14 workers, so its starts stay
+    # unconfirmed, but that holds only a time NO-GO, and there is no estimate.
+    assert report["starts_unconfirmed"] == {"candidate": "3 of 14"}
     assert len(report["reasons"]) == 1
     assert "2 of the candidate's slices began before it ended" in report["reasons"][0]
 
@@ -1114,14 +1120,14 @@ def test_suspects_count_from_the_end_of_the_hole() -> None:
     assert "7 of the candidate's slices" in report["reasons"][0]
 
 
-def test_a_start_under_way_across_a_hole_waits_for_its_line() -> None:
+def test_a_start_lost_in_a_hole_waits_once_it_reads_as_a_no_go() -> None:
     # Review r6, scenario C: a restart that does not replay loses the
     # candidate's worker-start line at +4,477 s. The rebuild still has that
     # start under way and no slice running, so nothing else holds, and the
     # estimate climbs a second a second: NO-GO from +4,700 s against a
-    # 9,900 s budget, where the intact log says 9,731 s. A start that began
-    # before the hole ended and has no line now holds, until the rebuild
-    # stops fitting the log (a log gap) at +4,800 s.
+    # 9,900 s budget, where the intact log says 9,731 s. The candidate's pool
+    # has logged 1 of its 14 starts, so the time NO-GO waits, until the
+    # rebuild stops fitting the log (a log gap) at +4,800 s.
     run = _run(
         workers=14,
         incumbent_seconds=[157],
@@ -1132,7 +1138,11 @@ def test_a_start_under_way_across_a_hole_waits_for_its_line() -> None:
         first_slice_extra=109,
     )
     limits = _limits(workers=14, max_wall_seconds=9900, prior=_prior(run))
-    for poll in (4500, 4700, 4743):
+    for poll, verdict, estimated in (
+        (4500, "GO", 9754),
+        (4700, "WAIT", 9954),
+        (4743, "WAIT", 9997),
+    ):
         at = START + poll
         log, streams = _cut(run, at, 4477, 4478)
         lost = [line for line in log if line not in streams[0] + streams[1]]
@@ -1141,11 +1151,13 @@ def test_a_start_under_way_across_a_hole_waits_for_its_line() -> None:
         assert intact["verdict"] == "GO"
         assert intact["estimate"]["estimated_tool_seconds_from_start"] == 9731
         report = projection.project(projection.parse_logs(streams), limits, at)
-        assert report["verdict"] == "WAIT", report
-        assert set(report["hole_start_suspects"]) == {"candidate"}
-        for other in ("newest_stream_empty", "hole_suspects", "log_gap", "estimate"):
+        assert report["verdict"] == verdict, report
+        assert report["estimate"]["estimated_tool_seconds_from_start"] == estimated
+        assert report["starts_unconfirmed"] == {"candidate": "1 of 14"}
+        for other in ("newest_stream_empty", "hole_suspects", "log_gap"):
             assert other not in report, other
-        assert "worker start under way" in report["reasons"][0]
+        if verdict == "WAIT":
+            assert "logged 1 of its 14 worker starts" in report["reasons"][0]
     at = START + 4800
     report = projection.project(
         projection.parse_logs(_cut(run, at, 4477, 4478)[1]), limits, at

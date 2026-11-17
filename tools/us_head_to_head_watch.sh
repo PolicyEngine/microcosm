@@ -357,7 +357,7 @@ while true; do
   fi
   if [ "$HOLE" = hole ] && [ "$hole_alarmed" -eq 0 ]; then
     hole_alarmed=1
-    alarm "a restarted log stream did not replay what the app printed before it (stream_holes in go-no-go.log): the estimate waits while a slice or worker start that began before the hole ended has no line (hole_suspects, hole_start_suspects), takes the start cost without a start whose span holds the hole when that is less (starts_across_holes), and holds a NO-GO until the estimate is past the line by more than hole_margin_seconds; a lost line the estimate can prove raises the gap alarm on its own and keeps it waiting for good; the stall check and the runner's budget still bound the run"
+    alarm "a restarted log stream did not replay what the app printed before it (stream_holes in go-no-go.log): the estimate waits while a slice that began before the hole ended has no line (hole_suspects), and a time NO-GO waits while a pool the hole could reach has logged fewer worker starts than workers (starts_unconfirmed), since a lost start line makes the estimate read late; a lost line the estimate can prove raises the gap alarm on its own and keeps it waiting for good; the stall check and the runner's budget still bound the run"
   fi
   if [ "$RC" -eq 3 ] && [ "$VERDICT" = "NO-GO" ]; then
     AGE=$(( $(date +%s) - STREAM_SINCE ))
