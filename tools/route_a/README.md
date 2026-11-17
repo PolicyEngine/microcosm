@@ -136,7 +136,15 @@ first and set what its blockers name:
     `--location-rule block_v1 --location-seed 0`. `--resolve` also checks that
     the base tool at the commit declares those two flags.
   - The driver refuses any other value. `block_v1` needs a block ladder that
-    carries each block's PUMA.
+    carries each block's PUMA (see **Block ladder**).
+- **Block ladder.** `LADDER_SHA` and `LADDER_BYTES` default to the published
+  run's ladder (d713, rebuilt at microcosm#1072). A build with another ladder
+  sets `LADDER`, `LADDER_SHA` and `LADDER_BYTES` together.
+  - Under `block_v1`, `verify_inputs` also lists the ladder's arrays with
+    `PYTHON`. It refuses a ladder without the per-block `puma` array that
+    `load_us_location_ladder` requires, and names a file it cannot read.
+  - `tools/build_us_block_ladder_artifact.py` on main writes that array.
+    Rebuild the ladder with it and set the three settings to the new file.
 
 The example retains the historical d122 dense whole-base national/state
 settings, batch size 2000, export-mass reference and d490 tail register from the
@@ -146,10 +154,11 @@ release-defeating, selection, evidence, exact-k, staging and driver-owned
 overrides listed in `refuse_bad_release_args`, including `--flag=value` forms.
 Use `ROUTE_A_STAGING=0` to opt out; `--no-staging` in extra arguments is refused.
 
-The next base uses the d713 CT-fixed ladder at
+By default the base uses the d713 CT-fixed ladder at
 `$PE/_build_artifacts/us-ct-cbsa/us_block_ladder_2020.npz`, verified against
-sha256 `6840b990acdfa2003d7723da5595e3cfff7205a4fa3d8d6206ed835c85c3f233`
-and 18,991,218 bytes. Use a fresh `RUN_ROOT` for that attempt: an existing
+`LADDER_SHA` (default
+`6840b990acdfa2003d7723da5595e3cfff7205a4fa3d8d6206ed835c85c3f233`) and
+`LADDER_BYTES` (default 18,991,218). Use a fresh `RUN_ROOT` for that attempt: an existing
 `base-sup/ACCEPTED` skips the base stage. Merely pointing `LADDER` at new bytes
 does not rebuild a previously accepted base.
 

@@ -11,6 +11,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -177,6 +178,76 @@ printf '%s\\n' "${#INPUT_PROBLEMS[@]}"
     assert report["inputs"][0]["status"] == (
         "ok" if mismatch is None else f"{mismatch}_mismatch"
     )
+
+
+@pytest.mark.parametrize("override", [False, True])
+def test_ladder_pins_keep_defaults_or_settings_overrides(
+    tmp_path: Path, override: bool
+) -> None:
+    overrides = {"LADDER_SHA": "d" * 64, "LADDER_BYTES": "456"} if override else {}
+    result = run_driver_settings(tmp_path, overrides, "\ninput_rows\n")
+    assert result.returncode == 0, result.stderr.decode()
+    rows = {
+        row[0]: row[1:]
+        for row in (line.split("|") for line in result.stdout.decode().splitlines())
+    }
+    # The default is the published run's d713 ladder.
+    assert rows["block_ladder_npz"][1:3] == (
+        ["d" * 64, "456"]
+        if override
+        else [
+            "6840b990acdfa2003d7723da5595e3cfff7205a4fa3d8d6206ed835c85c3f233",
+            "18991218",
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    ("rule", "members", "problem"),
+    [
+        ("block_v1", ("block_geoid.npy", "puma.npy"), None),
+        ("block_v1", ("block_geoid.npy",), "has no per-block puma array"),
+        ("block_v1", None, "could not be read to list its arrays"),
+        ("legacy", ("block_geoid.npy",), None),
+    ],
+)
+def test_block_v1_requires_the_ladder_s_puma_array(
+    tmp_path: Path, rule: str, members: tuple[str, ...] | None, problem: str | None
+) -> None:
+    ladder = tmp_path / "ladder.npz"
+    if members is None:
+        ladder.write_bytes(b"not a zip archive\n")
+    else:
+        with zipfile.ZipFile(ladder, "w") as archive:
+            for name in members:
+                archive.writestr(name, b"fixture")
+    payload = ladder.read_bytes()
+    result = run_driver_settings(
+        tmp_path,
+        {
+            "LOCATION_RULE": rule,
+            "LADDER": str(ladder),
+            "LADDER_SHA": hashlib.sha256(payload).hexdigest(),
+            "LADDER_BYTES": str(len(payload)),
+        },
+        """
+# Only the ladder row, with its true digest and size, so any problem is the
+# PUMA check's. Adapt the driver's BSD stat call for CI.
+registered_rows=$(input_rows)
+input_rows() { printf '%s\\n' "$registered_rows" | awk -F '|' '$1 == "block_ladder_npz"'; }
+stat() { "$PYTHON" -c 'import os,sys; print(os.stat(sys.argv[1]).st_size)' "$3"; }
+verify_inputs
+printf '%s\\n' ${INPUT_PROBLEMS[@]+"${INPUT_PROBLEMS[@]}"}
+""",
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    problems = [line for line in result.stdout.decode().splitlines() if line]
+    if problem is None:
+        assert problems == []
+    else:
+        assert len(problems) == 1
+        assert problem in problems[0]
+        assert str(ladder) in problems[0]
 
 
 def _tiny_main(tmp_path: Path, files: dict[str, str]) -> tuple[Path, str]:

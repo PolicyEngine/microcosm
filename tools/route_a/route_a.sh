@@ -74,6 +74,13 @@ esac
 # crosswalk at its chosen commit when those inputs have changed on main.
 : "${FEED_SHA:=b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801}"
 : "${FEED_BYTES:=164603204}"
+# The block ladder's pins default to the published run's ladder, the d713
+# Connecticut-fixed ladder rebuilt at microcosm#1072 (af98853e). A build with
+# another ladder, such as a block_v1 build, sets LADDER, LADDER_SHA and
+# LADDER_BYTES together. Under block_v1, verify_inputs also requires the
+# per-block PUMA array (#1047).
+: "${LADDER_SHA:=6840b990acdfa2003d7723da5595e3cfff7205a4fa3d8d6206ed835c85c3f233}"
+: "${LADDER_BYTES:=18991218}"
 # The base stage reads the feed only for the SOI congressional-district return
 # counts. On 2026-09-23 the pinned feed and the 2026-09-16 base feed
 # (consumer_facts_builde_aging_v5.jsonl, a5d34d4a...) gave the same 436-row
@@ -134,7 +141,7 @@ asec_education_2023_zip|$EDU/asecpub24csv.zip|$ASEC_EDU_2023_SHA|148664101|us_ru
 asec_education_2024_zip|$EDU/asecpub25csv.zip|$ASEC_EDU_2024_SHA|147271429|us_runtime/education_assistance_source.py ASEC_EDUCATION_ASSISTANCE_ARCHIVES
 asec_education_2025_zip|$EDU/asecpub26csv.zip|$ASEC_EDU_2025_SHA|139103894|us_runtime/education_assistance_source.py ASEC_EDUCATION_ASSISTANCE_ARCHIVES
 base_ledger_facts|$BASE_LEDGER_FACTS|$BASE_LEDGER_FACTS_SHA|-|us/chronicle_feed.json when it is the pinned feed
-block_ladder_npz|$LADDER|6840b990acdfa2003d7723da5595e3cfff7205a4fa3d8d6206ed835c85c3f233|18991218|d713: Connecticut-fixed ladder rebuilt at microcosm#1072 (af98853e); _build_artifacts/us-ct-cbsa/verify_vs_route_a.json
+block_ladder_npz|$LADDER|$LADDER_SHA|$LADDER_BYTES|LADDER_SHA; default d713: Connecticut-fixed ladder rebuilt at microcosm#1072 (af98853e); _build_artifacts/us-ct-cbsa/verify_vs_route_a.json
 release_ledger_facts|$FEED|$FEED_SHA|$FEED_BYTES|us/chronicle_feed.json facts_sha256
 ${TAIL:+qrf_tail_exclusions|$TAIL|${QRF_TAIL_EXCLUSIONS_SHA:-9bd497dc0d03dd793b53a228979e99408e62fdd2430bdd0d04df5fc7576e6229}|-|operator-supplied register; the release records its sha in diagnostics}
 ssi_take_up_prior_basis|$SSI|$SSI_SHA|4782|--ssi-take-up-prior-weight-basis-sha256
@@ -178,6 +185,31 @@ verify_inputs() {  # fills INPUT_PROBLEMS; writes $RUN_ROOT/inputs.resolved.json
   done < <(input_rows)
   printf '\n ]\n}\n' >> "$json"
   mv "$json" "$RUN_ROOT/inputs.resolved.json"
+  if [ "$LOCATION_RULE" = block_v1 ] && [ -f "$LADDER" ]; then
+    ladder_has_puma "$LADDER"
+    case $? in
+      0) ;;
+      1) INPUT_PROBLEMS+=("block_ladder_npz has no per-block puma array, which --location-rule block_v1 needs: rebuild it on main with tools/build_us_block_ladder_artifact.py and set LADDER, LADDER_SHA and LADDER_BYTES: $LADDER") ;;
+      *) INPUT_PROBLEMS+=("block_ladder_npz could not be read to list its arrays: $LADDER") ;;
+    esac
+  fi
+}
+
+# 0 when the block ladder NPZ holds the per-block PUMA array (puma.npy) that
+# block_v1's load_us_location_ladder requires; 1 when it does not; 2 when the
+# file cannot be read as an NPZ.
+ladder_has_puma() {
+  "$PYTHON" - "$1" 2>/dev/null <<'PY'
+import sys
+import zipfile
+
+try:
+    with zipfile.ZipFile(sys.argv[1]) as archive:
+        names = archive.namelist()
+except Exception:
+    sys.exit(2)
+sys.exit(0 if "puma.npy" in names else 1)
+PY
 }
 
 COMMIT_BLOCKERS=()
