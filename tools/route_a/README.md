@@ -73,7 +73,9 @@ first and set what its blockers name:
   once the change is reviewed.
 - **Interpreter.** A fresh worktree syncs with
   `uv sync --python "$UV_SYNC_PYTHON"` (default `3.14`). Without it uv takes
-  the newest installed CPython, and the lock's torch wheels stop at 3.14.
+  the newest installed CPython, and the lock's torch wheels stop at 3.14. The
+  sync marker records the setting, and a resumed chain whose setting changed
+  stops rather than keep the old venv silently.
 - **Emitter.** `--resolve` reports the `microcosm-emitter` the release would
   start against the commit's `minimum_emitter_version.json`.
   `check_emitter.py` repeats the release's checks without importing

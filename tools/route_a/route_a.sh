@@ -379,11 +379,21 @@ ensure_worktree() {  # $1 = full sha; sets WT
     log "created worktree $WT at $c"
   fi
   [ -z "$(git -C "$WT" status --porcelain)" ] || fail "worktree $WT is dirty"
-  if [ ! -f "$WT/.venv/.route_a_synced" ]; then
+  local marker=$WT/.venv/.route_a_synced synced
+  if [ ! -f "$marker" ]; then
     log "uv sync --python $UV_SYNC_PYTHON --all-packages --locked --extra us in $WT"
     (cd "$WT" && "$UV" sync --python "$UV_SYNC_PYTHON" --all-packages --locked --extra us) >>"$LOG" 2>&1 || fail "uv sync in $WT"
     "$WT/.venv/bin/python" -c 'import psutil, policyengine_us' >>"$LOG" 2>&1 || fail "venv in $WT lacks psutil/policyengine_us"
-    date '+%F %T' > "$WT/.venv/.route_a_synced"
+    printf '%s\npython=%s\n' "$(date '+%F %T')" "$UV_SYNC_PYTHON" > "$marker"
+  else
+    # A resumed chain keeps its venv; a changed interpreter setting would
+    # otherwise be ignored without a word.
+    synced=$(sed -n 's/^python=//p' "$marker")
+    if [ -z "$synced" ]; then
+      log "worktree $WT was synced before its interpreter was recorded; keeping its venv"
+    elif [ "$synced" != "$UV_SYNC_PYTHON" ]; then
+      fail "worktree $WT was synced with --python $synced, not UV_SYNC_PYTHON=$UV_SYNC_PYTHON: set it back, or remove $marker to re-sync"
+    fi
   fi
   [ -z "$(git -C "$WT" status --porcelain)" ] || fail "worktree $WT dirty after uv sync"
 }

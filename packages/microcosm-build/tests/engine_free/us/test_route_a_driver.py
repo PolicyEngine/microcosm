@@ -499,6 +499,60 @@ def test_emitter_command_lookup_follows_the_release(tmp_path: Path) -> None:
     _assert_problem(relative, "is the relative path 'bin/microcosm-emitter'", True)
 
 
+def test_a_relative_path_entry_before_the_emitter_is_refused(
+    tmp_path: Path,
+) -> None:
+    """``shutil.which`` searches relative and empty PATH entries against the
+    working directory, and the stages run in the build worktree."""
+
+    local = tmp_path / "bin"
+    local.mkdir()
+    _emitter_stub(local, _GOOD_EMITTER, name="microcosm-emitter")
+    required = {"MICROCOSM_TELEMETRY_REQUIRED": "1"}
+    relative = _emitter_line(
+        _FLOOR, {**required, "PATH": "bin:/usr/bin:/bin"}, cwd=tmp_path
+    )
+    _assert_problem(relative, "the relative PATH entry 'bin' comes before", True)
+    empty = _emitter_line(_FLOOR, {**required, "PATH": ":/usr/bin:/bin"}, cwd=local)
+    _assert_problem(empty, "an empty PATH entry (the working directory)", True)
+    # Found in an absolute entry first: the relative one after it is never
+    # searched.
+    absolute = tmp_path / "abs"
+    absolute.mkdir()
+    found = _emitter_stub(absolute, _GOOD_EMITTER, name="microcosm-emitter")
+    line = _emitter_line(
+        _FLOOR, {**required, "PATH": f"{absolute}:bin:/usr/bin"}, cwd=tmp_path
+    )
+    assert line.startswith(f"NOTE microcosm-emitter 0.16.0 at {found} "), line
+    # An absolute MICROCOSM_EMITTER_COMMAND does not search PATH.
+    line = _emitter_line(
+        _FLOOR,
+        {**required, "PATH": "bin:/usr/bin", "MICROCOSM_EMITTER_COMMAND": str(found)},
+        cwd=tmp_path,
+    )
+    assert line.startswith(f"NOTE microcosm-emitter 0.16.0 at {found} "), line
+
+
+@pytest.mark.parametrize("required", [False, True])
+def test_undecodable_version_output_is_a_failed_run_as_in_the_release(
+    tmp_path: Path, required: bool
+) -> None:
+    """The release catches any exception from ``version`` (a decoding error
+    included) and goes on without an emitter unless telemetry is required."""
+
+    stub = write_executable(
+        tmp_path / "bytes-emitter",
+        "#!/bin/bash\n"
+        f"printf '%s\\n' {shlex.quote(_GOOD_EMITTER)}\n"
+        "printf '\\377\\n' >&2\n",
+    )
+    env = {"MICROCOSM_EMITTER_COMMAND": str(stub)}
+    if required:
+        env["MICROCOSM_TELEMETRY_REQUIRED"] = "1"
+    line = _emitter_line(_FLOOR, env)
+    _assert_problem(line, "could not be run (UnicodeDecodeError)", required)
+
+
 def test_a_version_command_that_hangs_is_cut_off(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -587,6 +641,35 @@ def test_driver_settings_reach_the_emitter_check_and_the_stages(tmp_path: Path) 
     assert exported.stdout.decode().splitlines() == ["1", good]
 
 
+def test_the_emitter_floor_is_read_at_the_requested_commit(tmp_path: Path) -> None:
+    """``--resolve`` reads the floor of the commit it checks, not of the
+    checkout: an older commit with a lower floor accepts an older emitter."""
+
+    main, older = _tiny_main(
+        tmp_path, {_EMITTER_FLOOR_REL: '{"minimum_emitter_version": "0.13.0"}\n'}
+    )
+    (main / _EMITTER_FLOOR_REL).write_text(_FLOOR, encoding="utf-8")
+    git = ["git", "-C", str(main), "-c", "user.name=fixture"]
+    git += ["-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false"]
+    git += ["-c", "core.hooksPath=/dev/null"]
+    subprocess.run([*git, "commit", "-qam", "raise"], check=True, timeout=20)
+    old = str(
+        _emitter_stub(
+            tmp_path, '{"emitter_version": "0.13.0", "protocol_versions": [1]}'
+        )
+    )
+    settings = {
+        "MAIN": str(main),
+        "MICROCOSM_TELEMETRY_REQUIRED": "1",
+        "MICROCOSM_EMITTER_COMMAND": old,
+    }
+    assert _driver_emitter(tmp_path, settings, older) == [
+        f"NOTE microcosm-emitter 0.13.0 at {old} meets the commit's floor 0.13.0"
+    ]
+    line = _driver_emitter(tmp_path, settings, "HEAD")
+    assert len(line) == 1 and "older than the commit's floor 0.16.0" in line[0]
+
+
 def test_emitter_check_skips_a_commit_without_a_floor(tmp_path: Path) -> None:
     main, sha = _tiny_main(tmp_path, {"README.md": "fixture\n"})
     assert _driver_emitter(
@@ -596,12 +679,14 @@ def test_emitter_check_skips_a_commit_without_a_floor(tmp_path: Path) -> None:
     ) == [f"NOTE no {_EMITTER_FLOOR_REL} at {sha}; emitter not checked"]
 
 
-@pytest.mark.parametrize("setting", [None, "3.13"])
-def test_worktree_sync_names_its_interpreter(
-    tmp_path: Path, setting: str | None
-) -> None:
-    """A fresh worktree's uv sync names an interpreter the lock has wheels
-    for; without one uv takes the newest installed CPython."""
+_SYNC_SHA = "d" * 40
+
+
+def _ensure_worktree(
+    tmp_path: Path, overrides: dict[str, str], marker: str | None = None
+) -> tuple[subprocess.CompletedProcess[bytes], Path]:
+    """Run ``ensure_worktree`` with stub ``git`` and ``uv``; ``marker`` is an
+    earlier sync's ``.route_a_synced`` in a worktree that already exists."""
 
     recorded = tmp_path / "uv-args"
     uv = write_executable(
@@ -612,6 +697,10 @@ def test_worktree_sync_names_its_interpreter(
         "printf '#!/bin/bash\\nexit 0\\n' > .venv/bin/python\n"
         "chmod +x .venv/bin/python\n",
     )
+    if marker is not None:
+        venv = tmp_path / "wt_root" / f"microcosm-route-a-{_SYNC_SHA[:12]}" / ".venv"
+        venv.mkdir(parents=True)
+        (venv / ".route_a_synced").write_text(marker, encoding="utf-8")
     commands = (
         "\ngit() {\n"
         '  case "$3" in\n'
@@ -620,16 +709,27 @@ def test_worktree_sync_names_its_interpreter(
         '    rev-parse) printf "%s\\n" "$FIXTURE_SHA" ;;\n'
         "  esac\n"
         "}\n"
-        f"FIXTURE_SHA={'d' * 40}\n"
+        f"FIXTURE_SHA={_SYNC_SHA}\n"
         + _function("ensure_worktree")
         + '\nensure_worktree "$FIXTURE_SHA"\n'
     )
     run_root = tmp_path / "run-root"
     run_root.mkdir()
-    overrides = {"UV": str(uv), "RUN_ROOT": str(run_root)}
-    if setting is not None:
-        overrides["UV_SYNC_PYTHON"] = setting
-    result = _input_settings_result(tmp_path, overrides, commands)
+    result = _input_settings_result(
+        tmp_path, {"UV": str(uv), "RUN_ROOT": str(run_root), **overrides}, commands
+    )
+    return result, recorded
+
+
+@pytest.mark.parametrize("setting", [None, "3.13"])
+def test_worktree_sync_names_its_interpreter(
+    tmp_path: Path, setting: str | None
+) -> None:
+    """A fresh worktree's uv sync names an interpreter the lock has wheels
+    for; without one uv takes the newest installed CPython."""
+
+    overrides = {} if setting is None else {"UV_SYNC_PYTHON": setting}
+    result, recorded = _ensure_worktree(tmp_path, overrides)
     assert result.returncode == 0, result.stderr.decode()
     assert recorded.read_text(encoding="utf-8").splitlines() == [
         "sync",
@@ -640,6 +740,34 @@ def test_worktree_sync_names_its_interpreter(
         "--extra",
         "us",
     ]
+    marker = tmp_path / "wt_root" / f"microcosm-route-a-{_SYNC_SHA[:12]}"
+    synced = (marker / ".venv" / ".route_a_synced").read_text(encoding="utf-8")
+    assert synced.splitlines()[1] == f"python={setting or '3.14'}"
+
+
+@pytest.mark.parametrize(
+    ("marker", "setting", "outcome"),
+    [
+        ("2026-11-16 10:00:00\npython=3.14\n", None, "kept"),
+        ("2026-11-16 10:00:00\npython=3.13\n", "3.13", "kept"),
+        ("2026-11-16 10:00:00\n", None, "unrecorded"),
+        ("2026-11-16 10:00:00\npython=3.13\n", None, "refused"),
+    ],
+)
+def test_a_resumed_worktree_keeps_its_venv_only_for_the_same_interpreter(
+    tmp_path: Path, marker: str, setting: str | None, outcome: str
+) -> None:
+    overrides = {} if setting is None else {"UV_SYNC_PYTHON": setting}
+    result, recorded = _ensure_worktree(tmp_path, overrides, marker)
+    out = result.stdout.decode()
+    assert not recorded.exists(), "a synced worktree is not synced again"
+    if outcome == "refused":
+        assert result.returncode == 1
+        assert "was synced with --python 3.13, not UV_SYNC_PYTHON=3.14" in out
+        assert (tmp_path / "run-root" / "ROUTE_A_FAILED").exists()
+        return
+    assert result.returncode == 0, result.stderr.decode()
+    assert ("before its interpreter was recorded" in out) == (outcome == "unrecorded")
 
 
 def test_shell_scripts_are_valid_bash() -> None:

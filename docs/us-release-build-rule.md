@@ -53,7 +53,10 @@ which route A (`tools/route_a/route_a.sh`) drives:
    refuses a command-line ASEC digest that differs from its year's pin
    (section 4).
 
-The `--exact-k` arm still waits on chronicle#277. A build from a newer main
+The `--exact-k` arm still waits on a reviewed feed re-pin. Chronicle fixed
+chronicle#277 in `b571381f` (merged 28 September 2026 in `0ca1c0d6`), but
+`us/chronicle_feed.json` pins Chronicle `41b2fb2b`, which predates the fix. A
+build from a newer main
 commit needs settings beyond the commit; "A build from main" in
 `tools/route_a/README.md` lists them.
 

@@ -14,7 +14,10 @@ worktree exists:
   needs ``protocol_versions`` to be a list of integers holding 1.
 
 The stages run in the build worktree, so a relative command path, which
-``shutil.which`` resolves against the working directory, is refused here.
+``shutil.which`` resolves against the working directory, is refused here, and
+so is a bare command when ``PATH`` reaches a relative or empty entry (the
+working directory) before a directory that holds it: either could find a
+different emitter, or none, in the worktree.
 
 usage: check_emitter.py < minimum_emitter_version.json
 Prints one line, ``NOTE <text>`` or ``BLOCKER <text>``, and exits 0.
@@ -53,6 +56,23 @@ def _floor(text: str) -> str | None:
     return None
 
 
+def _relative_entry(candidate: str) -> str | None:
+    """The first relative or empty ``PATH`` entry ``shutil.which`` searches
+    before an absolute one that holds ``candidate``, or None."""
+
+    path = os.environ.get("PATH")
+    if not path:
+        # Unset: which falls back to CS_PATH or os.defpath, both absolute.
+        # Empty: which finds nothing.
+        return None
+    for entry in path.split(os.pathsep):
+        if not os.path.isabs(entry):
+            return entry
+        if shutil.which(candidate, path=entry) is not None:
+            return None
+    return None
+
+
 def _problem(floor: str, required: bool) -> tuple[str | None, str]:
     """Why the release would not start an emitter it accepts (None if it
     would), and what the accepted emitter is."""
@@ -64,6 +84,20 @@ def _problem(floor: str, required: bool) -> tuple[str | None, str]:
             f"{COMMAND_VARIABLE} is the relative path {candidate!r}; the stages "
             "run in the build worktree, so give an absolute path"
         ), ""
+    if os.sep not in candidate:
+        entry = _relative_entry(candidate)
+        if entry is not None:
+            where = (
+                "an empty PATH entry (the working directory)"
+                if entry == ""
+                else f"the relative PATH entry {entry!r}"
+            )
+            return (
+                f"{where} comes before any directory holding {candidate}; the "
+                "stages run in the build worktree, where it could find a "
+                "different emitter or none, so make PATH's entries absolute or "
+                f"set {COMMAND_VARIABLE} to an absolute path"
+            ), ""
     command = shutil.which(candidate)
     if command is None:
         looked = (
@@ -85,7 +119,7 @@ def _problem(floor: str, required: bool) -> tuple[str | None, str]:
         )
     except subprocess.TimeoutExpired:
         return f"`{command} version` did not answer within {TIMEOUT_SECONDS:g} s", ""
-    except OSError as error:
+    except Exception as error:  # as the release does: undecodable output too
         return f"`{command} version` could not be run ({type(error).__name__})", ""
     if answer.returncode != 0:
         return f"`{command} version` exited {answer.returncode}", ""
