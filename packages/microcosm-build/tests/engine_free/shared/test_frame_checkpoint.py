@@ -19,6 +19,7 @@ from microcosm.frame import (
     EntitySchema,
     Frame,
     LinkSpec,
+    MassChange,
     MassChangeRecord,
     WeightKind,
     Weights,
@@ -741,3 +742,121 @@ def test_legacy_string_specs_restore_python_storage() -> None:
             path=Path("legacy.h5"),
             label="person.label",
         )
+
+
+def test_loader_keeps_the_decoded_columns_without_copying(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The loaded frame holds the columns the loader decoded, not a copy.
+
+    The loader builds its one frame through ``Frame._adopt``, so reading a
+    checkpoint holds one copy of the data instead of the decoded columns plus
+    the constructor's copy of them.
+    """
+    path = tmp_path / "frame.h5"
+    write_frame_checkpoint(path, _checkpoint_frame())
+    decoded: dict[str, pd.Series] = {}
+    read_series = frame_checkpoint_module._read_series
+
+    def recording_read_series(group, spec, input_path, *, label):
+        series = read_series(group, spec, input_path, label=label)
+        decoded[label] = series
+        return series
+
+    monkeypatch.setattr(frame_checkpoint_module, "_read_series", recording_read_series)
+
+    loaded = load_frame_checkpoint(path).frame
+
+    compared = []
+    for name, table in frame_checkpoint_module._frame_tables(loaded):
+        for column in table.select_dtypes("number").columns:
+            assert np.shares_memory(
+                table[column].to_numpy(), decoded[f"{name}.{column}"].to_numpy()
+            ), f"{name}.{column}"
+            compared.append(f"{name}.{column}")
+            # The decoded arrays are fresh and writable, as the constructor's
+            # copies were, so a pandas write into the loaded frame still works.
+            table.loc[table.index[0], column] = table[column].iloc[0]
+    assert {"person.float_measure", "household.household_income"} <= set(compared)
+
+
+def _without_links(frame: Frame) -> Frame:
+    """The frame with its link tables dropped, which ``Frame.select`` requires."""
+
+    return Frame(
+        {entity: frame.table(entity) for entity in frame.entities},
+        EntitySchema(
+            person_entity=frame.schema.person_entity,
+            group_entities=frame.schema.group_entities,
+        ),
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def _doubled_household_weights(frame: Frame) -> Frame:
+    current = frame.weights_for("household")
+    return frame.with_weights(
+        "household",
+        Weights(current.values * 2.0, WeightKind.CALIBRATED),
+        mass=MassChange(factor=2.0, reason="test calibration"),
+    )
+
+
+#: Operations that build their result through ``Frame._adopt``.
+_ADOPTING_OPERATIONS = {
+    "with_weights": _doubled_household_weights,
+    "place person to household": lambda frame: frame.place(
+        "small_integer", "household", how="sum"
+    ),
+    "place household to person": lambda frame: frame.place(
+        "household_income", "person", how="broadcast"
+    ),
+    "place a string to firm": lambda frame: frame.place(
+        "string_label", "firm", how="first"
+    ),
+    "select every person": lambda frame: _without_links(frame).select(
+        np.ones(frame.n("person"), dtype=bool)
+    ),
+    "select two persons": lambda frame: _without_links(frame).select(
+        np.asarray([True, False, True])
+    ),
+    "no operation": lambda frame: frame,
+}
+
+
+@pytest.mark.parametrize("source", ["constructed", "loaded"])
+@pytest.mark.parametrize("operation", list(_ADOPTING_OPERATIONS))
+def test_adopted_frames_write_the_bytes_of_copied_frames(
+    tmp_path: Path, source: str, operation: str
+) -> None:
+    """Sharing tables instead of copying them leaves checkpoint bytes unchanged.
+
+    The reference rebuilds the same frame through the copying constructor,
+    which is how these operations built their result before they moved to
+    ``Frame._adopt``. Both checkpoints are written in this process, so the
+    comparison does not depend on HDF5 library bytes that differ between
+    platforms.
+    """
+    frame = _checkpoint_frame()
+    if source == "loaded":
+        write_frame_checkpoint(tmp_path / "source.h5", frame)
+        frame = load_frame_checkpoint(tmp_path / "source.h5").frame
+    derived = _ADOPTING_OPERATIONS[operation](frame)
+    copied = Frame(
+        dict(frame_checkpoint_module._frame_tables(derived)),
+        derived.schema,
+        {entity: derived.weights_for(entity) for entity in derived.weighted_entities},
+        derived.strata,
+        mass_log=derived.mass_log,
+        metadata=derived.metadata,
+    )
+
+    write_frame_checkpoint(tmp_path / "derived.h5", derived)
+    write_frame_checkpoint(tmp_path / "copied.h5", copied)
+
+    assert (tmp_path / "derived.h5").read_bytes() == (
+        tmp_path / "copied.h5"
+    ).read_bytes()

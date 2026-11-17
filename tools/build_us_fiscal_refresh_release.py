@@ -15936,9 +15936,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             "refit_initial_loss": _finite_or_none(result.initial_loss),
             "refit_final_loss": _finite_or_none(result.final_loss),
         }
-    # Frame.with_weights copies the target tables into each calibrated frame.
-    # Drop the input now and replace those result frames after building the
-    # clean export from base_frame and the calibrated weights below.
+    # Each calibrated frame shares the target tables' memory with target_frame
+    # (Frame.with_weights does not copy them), so the tables are freed only
+    # once both references are gone: drop the input now, and replace those
+    # result frames after building the clean export from base_frame and the
+    # calibrated weights below.
     del target_frame
     if telemetry is not None:
         telemetry.stage(

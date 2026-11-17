@@ -358,10 +358,12 @@ reform and does not replace this sweep.
 (method, batch size, batch count, each stage's baseline keys and periods), and
 `reform_coverage_smoke.json` records what the smoke scored under
 `post_export_scoring`. Poverty rows stay record-only. Before the export write
-the build frees the target frame and the calibration result's target tables:
-`Frame.with_weights` copies every table, target columns included. Dense and
-L0 results drop those frames; exact-k substitutes the clean export frame for
-its receipt's later household-count check. The fixture sweep does not measure
+the build frees the target frame and the calibration result's target tables.
+`Frame.with_weights` shares every table's memory with its input, target
+columns included, so the tables are freed only once both the target frame and
+the result frames are dropped. Dense and L0 results drop those frames; exact-k
+substitutes the clean export frame for its receipt's later household-count
+check. The fixture sweep does not measure
 memory or wall time of the batched stages at full size.
 
 ## Probing an export on a household subsample

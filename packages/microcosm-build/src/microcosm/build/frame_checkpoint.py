@@ -175,9 +175,14 @@ def load_frame_checkpoint(
 ) -> LoadedFrameCheckpoint:
     """Load a checkpoint and reconstruct its schema, data, and audit metadata.
 
+    The frame takes the decoded tables without copying them when pandas
+    copy-on-write is on (:meth:`~microcosm.frame.Frame._adopt`), so each
+    loaded table keeps one internal block per column; values, dtypes and the
+    bytes a rewrite produces are unchanged.
+
     ``frame_metadata`` lets a caller restore separately bound
     :class:`~microcosm.frame.Frame` metadata during the loader's one Frame
-    construction. This avoids a second full-table copy for large checkpoints.
+    construction. This avoids building a second frame for large checkpoints.
     The caller remains responsible for validating that metadata against its
     own artifact identity or embedded external metadata.
     """
@@ -299,7 +304,10 @@ def load_frame_checkpoint(
         )
     mass_log = _mass_log_from_metadata(stored_metadata, input_path)
     try:
-        frame = Frame(
+        # The decoded tables have no other owner, so the frame takes them
+        # without copying (under pandas copy-on-write): reading a checkpoint
+        # holds one copy of its data, not the decoded columns plus a copy.
+        frame = Frame._adopt(
             tables,
             schema,
             weights,
