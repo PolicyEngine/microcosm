@@ -1,5 +1,6 @@
 """Exact factor arithmetic, evidence and replay without country assumptions."""
 
+import hashlib
 from copy import deepcopy
 from datetime import date
 from decimal import Decimal
@@ -19,10 +20,12 @@ from microcosm.build.reference_factors import (
     resolve_reference_factor,
     validate_factor_context,
 )
+from microcosm.build.reference_profiles import validate_reference_factor_evidence
 from microcosm.graph.canonical import canonical_json
 from test_support.microcosm_build.reference_factors import (
     factor_context_fixture,
     factor_fixture,
+    published_projection_fixture,
 )
 
 
@@ -625,3 +628,524 @@ def test_factor_purposes_are_closed_and_additive(purpose):
     declaration["purpose"] = "money"
     with pytest.raises(ValueError, match="Unknown factor purpose"):
         resolve_reference_factor(declaration, facts, identity)
+
+
+# ---------------------------------------------------------------------------
+# Version 1 keeps its behaviour beside the published-projection operation
+# ---------------------------------------------------------------------------
+
+
+def test_version_1_refuses_a_projection_source_slot_with_todays_message():
+    declaration, facts, identity = factor_fixture()
+    declaration["source_schedule"][0]["validation"]["assertion"] = "source_projection"
+    with pytest.raises(ValueError) as error:
+        resolve_reference_factor(declaration, facts, identity)
+    assert str(error.value) == "Source schedule requires observations."
+
+
+def test_version_1_refuses_a_projection_target_slot_with_todays_message():
+    declaration, facts, identity = factor_fixture()
+    declaration["target_schedule"][0]["validation"]["assertion"] = "source_projection"
+    with pytest.raises(ValueError) as error:
+        resolve_reference_factor(declaration, facts, identity)
+    assert str(error.value) == "Target schedules prefer observations only."
+
+
+def test_version_1_refuses_the_new_field_set_under_its_own_name():
+    declaration, facts, identity = factor_fixture()
+    del declaration["growth"], declaration["projection_policy"]
+    with pytest.raises(ValueError) as error:
+        resolve_reference_factor(declaration, facts, identity)
+    assert str(error.value) == (
+        "Factor declaration missing fields: ['growth', 'projection_policy']."
+    )
+
+
+# The identity factor_fixture() builds at frequency 2, as literals, so a later
+# change to the fixture's schema constants cannot move a version-1 pin.
+_PINNED_IDENTITY = {
+    "source_commit": "c" * 40,
+    "facts_sha256": "a" * 64,
+    "manifest_sha256": "b" * 64,
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v1",
+    "consumer_fact_schema_versions": ["chronicle.consumer_fact.v4"],
+    "consumer_fact_schema_sha256": "d" * 64,
+    "fact_row_count": 4,
+}
+
+
+def _version_1_case(case):
+    if case == "growth_zero":
+        return factor_fixture(feed_identity=_PINNED_IDENTITY)
+    if case == "growth_none":
+        declaration, facts, identity = factor_fixture(
+            feed_identity=_PINNED_IDENTITY, frequency=1
+        )
+        declaration["growth"] = None
+        return declaration, facts, identity
+    if case == "growth_three_inexact":
+        return factor_fixture(
+            feed_identity=_PINNED_IDENTITY,
+            growth="3",
+            expected_numerator=_oracle_factor("100", "110", "3", 2, 6)[0],
+        )
+    assert case == "diagnostic_all_observed"
+    declaration, facts, identity = factor_fixture(feed_identity=_PINNED_IDENTITY)
+    observed = deepcopy(facts[-2])
+    observed["aggregate_fact_key"] = "target-1"
+    observed["period"]["value"] = declaration["target_schedule"][1]["selector"][
+        "period_value"
+    ]
+    observed["period_coverage"] = declaration["target_schedule"][1]["validation"][
+        "period_coverage"
+    ]
+    facts.append(observed)
+    declaration["purpose"] = "diagnostic"
+    declaration["growth"] = None
+    return declaration, facts, identity
+
+
+# Copied from a baseline frozen at microcosm 17fecf5e3, before the
+# published-projection operation was added, and never regenerated from a later
+# tree (rf-projection-op-20261117 baseline/at-17fecf5e3, SHA256SUMS digest
+# f9bc283354ccb9532bf573be86f6958a0040e09dc889fb9a7a03f340446339e3). Per case:
+# the operational numerator over 10**6, receipt declaration_sha256, the sha256
+# of the canonical receipt bytes, receipt_sha256, and the raw declaration's
+# document hash.
+_VERSION_1_BYTES = {
+    "growth_zero": (
+        1100000,
+        "657f24fe7b87c12b5f2f4cc2fd494f2a4e1b9c154de08e41cbf304c094ae8638",
+        "1bb03c0fb36cb0371a1339b083c6bd75b7bb822f49ad8e97602e137ddbc518e3",
+        "cb48d93f9a0ae6611813bde4ec018826ab309fac2d55dafd6080459343332ee2",
+        "657f24fe7b87c12b5f2f4cc2fd494f2a4e1b9c154de08e41cbf304c094ae8638",
+    ),
+    "growth_none": (
+        1100000,
+        "628263adb6a682a8f1585aa14264361dcf093becec9ac2da646cda7d17f16abc",
+        "be2e0b141858796bb71a942e955aeaea390fcabd4480de59a1b53e7b15c8c858",
+        "7e6cfea668e1e5a993da7a112ccf78a1d27f287a2b37617ae919bc121a3a4e87",
+        "628263adb6a682a8f1585aa14264361dcf093becec9ac2da646cda7d17f16abc",
+    ),
+    "growth_three_inexact": (
+        1108189,
+        "5077f75703a82ca339e54fa0890fd701cfba35d6c93c950fcfe9f0aa4878e38e",
+        "03a1c32a62e1de682a08524182dbb6eb81e7f4e7bca5ea41e18acdd988fefc3c",
+        "db7f13a047fe39ca2409cba9135541f668eac8121cb8f138cf1080d42685b1f3",
+        "5077f75703a82ca339e54fa0890fd701cfba35d6c93c950fcfe9f0aa4878e38e",
+    ),
+    "diagnostic_all_observed": (
+        1100000,
+        "e80da08ee25c80cd032df855fe18af83d3e12932b5c2a69fd830b15f86c5301f",
+        "6db434da6062283ded02c39a472be38371ca97193ebffb64322796d7898dbdc0",
+        "c3dbba1e129c79a99244eaea9e6037f4169784ffd731880e5997775722a6708c",
+        "e80da08ee25c80cd032df855fe18af83d3e12932b5c2a69fd830b15f86c5301f",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(_VERSION_1_BYTES))
+def test_version_1_bytes_match_the_frozen_baseline(case):
+    numerator, declaration_sha, receipt_bytes_sha, receipt_sha, raw_sha = (
+        _VERSION_1_BYTES[case]
+    )
+    declaration, facts, identity = _version_1_case(case)
+    assert factor_document_sha256(declaration) == raw_sha
+    factor, receipt = resolve_reference_factor(declaration, facts, identity)
+    assert factor == {"numerator": numerator, "denominator": 10**6}
+    assert receipt["declaration_sha256"] == declaration_sha
+    assert hashlib.sha256(canonical_json(receipt)).hexdigest() == receipt_bytes_sha
+    assert receipt["receipt_sha256"] == receipt_sha
+
+
+# ---------------------------------------------------------------------------
+# The published-projection operation
+# ---------------------------------------------------------------------------
+
+_PUBLISHED = "published_projection_period_average_ratio"
+
+
+def _rehashed(receipt):
+    body = {key: value for key, value in receipt.items() if key != "receipt_sha256"}
+    return {**body, "receipt_sha256": factor_document_sha256(body)}
+
+
+def _entry(declaration, factor, receipt):
+    return {
+        "declaration": declaration,
+        "operational_factor": factor,
+        "receipt": receipt,
+    }
+
+
+def test_the_new_operation_refuses_version_1_fields():
+    declaration, facts, identity = factor_fixture()
+    declaration["operation"] = _PUBLISHED
+    with pytest.raises(ValueError) as error:
+        resolve_reference_factor(declaration, facts, identity)
+    assert str(error.value) == (
+        "Unknown factor declaration fields: ['growth', 'projection_policy']."
+    )
+
+
+def test_published_projection_resolves_and_records_the_projection():
+    declaration, facts, identity = published_projection_fixture()
+    factor, receipt = resolve_reference_factor(declaration, facts, identity)
+    assert factor == {"numerator": 1100000, "denominator": 1000000}
+    assert set(receipt) == {
+        "schema_version",
+        "operation",
+        "operation_version",
+        "factor_id",
+        "declaration_sha256",
+        "feed_identity",
+        "source_period",
+        "target_period",
+        "target_assertion",
+        "source_schedule",
+        "target_schedule",
+        "subperiods_per_year",
+        "denominator_mean",
+        "numerator_mean",
+        "unrounded_factor",
+        "rounding",
+        "operational_factor",
+        "validity",
+        "evidence",
+        "decision_references",
+        "receipt_sha256",
+    }
+    assert receipt["target_assertion"] == "source_projection"
+    assert [slot["assertion"] for slot in receipt["target_schedule"]] == [
+        "source_projection"
+    ]
+    assert [slot["assertion"] for slot in receipt["source_schedule"]] == ["observation"]
+    assert _fraction(receipt["unrounded_factor"]) == Fraction(11, 10)
+    assert (receipt["operation"], receipt["operation_version"]) == (_PUBLISHED, 1)
+    assert receipt["declaration_sha256"] == factor_document_sha256(declaration)
+    replay_reference_factor(declaration, facts, identity, factor, receipt)
+
+    pin = {**identity, "country": "toy", "build": "prose"}
+    revised_factor, revised_receipt = resolve_reference_factor(declaration, facts, pin)
+    assert revised_factor == factor
+    assert revised_receipt == receipt
+    assert revised_receipt["feed_identity"] == identity
+    replay_reference_factor(declaration, facts, pin, factor, receipt)
+
+
+def test_published_projection_refuses_a_projection_source():
+    declaration, facts, identity = published_projection_fixture()
+    entry = _entry(declaration, *resolve_reference_factor(declaration, facts, identity))
+    slot = declaration["source_schedule"][0]
+    slot["validation"]["assertion"] = "source_projection"
+    slot["selector"]["assertion"] = "source_projection"
+    facts[0]["assertion"] = "source_projection"
+    message = "Source schedule requires observations."
+    with pytest.raises(ValueError) as error:
+        resolve_reference_factor(declaration, facts, identity)
+    assert str(error.value) == message
+    with pytest.raises(ValueError) as error:
+        validate_factor_context({"schema_version": 1, "factors": [entry]})
+    assert str(error.value) == message
+
+
+def test_published_projection_refuses_an_observation_target():
+    declaration, facts, identity = published_projection_fixture()
+    entry = _entry(declaration, *resolve_reference_factor(declaration, facts, identity))
+    declared = deepcopy(declaration)
+    declared["target_schedule"][0]["validation"]["assertion"] = "observation"
+    message = "Published-projection target schedules require source_projection slots."
+    with pytest.raises(ValueError) as error:
+        resolve_reference_factor(declared, facts, identity)
+    assert str(error.value) == message
+    with pytest.raises(ValueError) as error:
+        validate_factor_context(
+            {"schema_version": 1, "factors": [{**entry, "declaration": declared}]}
+        )
+    assert str(error.value) == message
+
+    # Declared a projection, but the selector and the fact are observations.
+    observed_facts = deepcopy(facts)
+    observed_facts[-1]["assertion"] = "observation"
+    mismatched = deepcopy(declaration)
+    mismatched["target_schedule"][0]["selector"]["assertion"] = "observation"
+    with pytest.raises(ValueError) as error:
+        resolve_reference_factor(mismatched, observed_facts, identity)
+    assert str(error.value) == "Factor operand assertion mismatch."
+    # A selector's assertion filters on the fact's, so it then finds nothing.
+    with pytest.raises(ValueError) as error:
+        resolve_reference_factor(declaration, observed_facts, identity)
+    assert str(error.value) == "Factor selector must resolve exactly once; found 0."
+
+
+@pytest.mark.parametrize("purpose", [*sorted(FACTOR_PURPOSES), "money"])
+def test_published_projection_admits_money_only(purpose):
+    declaration, facts, identity = published_projection_fixture()
+    factor, receipt = resolve_reference_factor(declaration, facts, identity)
+    if purpose == "money_normalization_input":
+        assert factor == declaration["expected_operational_factor"]
+        context = {
+            "schema_version": 1,
+            "factors": [_entry(declaration, factor, receipt)],
+        }
+        assert list(validate_factor_context(context, [declaration["id"]])) == [
+            declaration["id"]
+        ]
+        return
+    message = (
+        "Unknown factor purpose."
+        if purpose == "money"
+        else f"Factor purpose {purpose!r} is not admitted by {_PUBLISHED}, "
+        "which ages money only."
+    )
+    refused = {**declaration, "purpose": purpose}
+    with pytest.raises(ValueError) as error:
+        resolve_reference_factor(refused, facts, identity)
+    assert str(error.value) == message
+    # The decode path never resolves: the declaration check alone refuses, before
+    # the stale factor and receipt are read.
+    entry, entry_id = _entry(refused, factor, receipt), refused["id"]
+    with pytest.raises(ValueError) as error:
+        validate_factor_context({"schema_version": 1, "factors": [entry]}, [entry_id])
+    assert str(error.value) == message
+    with pytest.raises(ValueError) as error:
+        validate_reference_factor_evidence({"selected_factors": {entry_id: entry}})
+    assert str(error.value) == message
+
+
+def _drop(key):
+    def mutate(declaration):
+        del declaration[key]
+
+    return mutate
+
+
+def _set(key, value):
+    def mutate(declaration):
+        declaration[key] = value
+
+    return mutate
+
+
+def _target_offset(declaration):
+    declaration["target_schedule"][0]["projection_offset"] = 0
+
+
+def _digits(declaration):
+    declaration["rounding"]["digits"] = 19
+
+
+def _expected_denominator(declaration):
+    declaration["expected_operational_factor"] = {
+        "numerator": 11000000,
+        "denominator": 10**7,
+    }
+
+
+def _expired(declaration):
+    declaration["validity"]["valid_until"] = "2001-12-31"
+
+
+def _prose_identity(declaration):
+    declaration["feed_identity"] = {**declaration["feed_identity"], "build": "Prose"}
+
+
+_PUBLISHED_FIELDS = (
+    "schema_version",
+    "id",
+    "operation",
+    "operation_version",
+    "purpose",
+    "feed_identity",
+    "source_period",
+    "target_period",
+    "source_schedule",
+    "target_schedule",
+    "subperiods_per_year",
+    "rounding",
+    "expected_operational_factor",
+    "validity",
+    "evidence",
+    "decision_references",
+)
+
+
+@pytest.mark.parametrize(
+    "mutate,message",
+    [
+        (_set("growth", None), "Unknown factor declaration fields"),
+        (
+            _set("projection_policy", "observed_preferred_latest_contiguous"),
+            "Unknown factor declaration fields",
+        ),
+        (_set("unknown", "field"), "Unknown factor declaration fields"),
+        *((_drop(key), "missing fields") for key in _PUBLISHED_FIELDS),
+        (_target_offset, "Unknown factor schedule slot fields"),
+        (_set("operation_version", 2), "Unknown factor operation or operation version"),
+        (
+            _set("operation_version", True),
+            "Unknown factor operation or operation version",
+        ),
+        (_set("target_period", "2002"), "requires an integer target_period"),
+        (_set("target_period", True), "requires an integer target_period"),
+        (_set("target_period", None), "requires an integer target_period"),
+        (_set("schema_version", 2), "schema_version 1"),
+        (_set("subperiods_per_year", 0), "subperiods_per_year"),
+        (_set("subperiods_per_year", 13), "subperiods_per_year"),
+        (_digits, "rounding digits"),
+        (_expected_denominator, r"positive p / 10\*\*digits"),
+        (_expired, "expired"),
+        (_prose_identity, "Unknown factor declaration feed identity fields"),
+    ],
+)
+def test_published_projection_field_set_is_closed(mutate, message):
+    declaration, facts, identity = published_projection_fixture()
+    mutate(declaration)
+    with pytest.raises(ValueError, match=message):
+        resolve_reference_factor(declaration, facts, identity)
+
+
+@pytest.mark.parametrize(
+    "target,expected", [("2000001", 1000000), ("2000003", 1000002)]
+)
+def test_published_projection_rounds_once_half_even(target, expected):
+    declaration, facts, identity = published_projection_fixture(
+        source_levels=("2000000",),
+        target_levels=(target,),
+        expected_numerator=expected,
+    )
+    factor, receipt = resolve_reference_factor(declaration, facts, identity)
+    assert factor == {"numerator": expected, "denominator": 10**6}
+    assert _fraction(receipt["unrounded_factor"]) == Fraction(int(target), 2000000)
+
+
+def test_published_projection_weighted_period_means():
+    # (100*1 + 104*3) / 4 = 103 and (110*1 + 118*3) / 4 = 116.
+    declaration, facts, identity = published_projection_fixture(
+        frequency=2,
+        source_levels=("100", "104"),
+        target_levels=("110", "118"),
+        weights=("1", "3"),
+        expected_numerator=1126214,
+    )
+    factor, receipt = resolve_reference_factor(declaration, facts, identity)
+    assert _fraction(receipt["denominator_mean"]) == Fraction(103)
+    assert _fraction(receipt["numerator_mean"]) == Fraction(116)
+    assert _fraction(receipt["unrounded_factor"]) == Fraction(116, 103)
+    assert factor == {"numerator": 1126214, "denominator": 10**6}
+    assert [slot["weight"] for slot in receipt["target_schedule"]] == ["1", "3"]
+
+
+def test_published_projection_refuses_a_wrong_expected_factor():
+    declaration, facts, identity = published_projection_fixture(
+        expected_numerator=1100001
+    )
+    with pytest.raises(ValueError) as refused:
+        resolve_reference_factor(declaration, facts, identity)
+    assert str(refused.value) == (
+        "Declared expected factor mismatch: computed "
+        "{'numerator': 1100000, 'denominator': 1000000}; re-declaration is required."
+    )
+
+
+def test_published_projection_refuses_another_feed():
+    declaration, facts, identity = published_projection_fixture()
+    pin = {**identity, "fact_row_count": identity["fact_row_count"] + 1}
+    with pytest.raises(ValueError) as refused:
+        resolve_reference_factor(declaration, facts, pin)
+    assert str(refused.value) == (
+        "Factor feed identity mismatch; re-declaration is required."
+    )
+
+
+@pytest.mark.parametrize(
+    "source,target,message",
+    [
+        ("0", "110", "Factor denominator operands must be positive."),
+        ("-100", "-110", "Factor denominator operands must be positive."),
+        ("100", "0", "Published-projection target operands must be positive."),
+        ("100", "-110", "Published-projection target operands must be positive."),
+    ],
+)
+def test_published_projection_refuses_non_positive_operands(source, target, message):
+    # A positive expectation, so the declaration check cannot refuse first. Two
+    # negative levels would otherwise give a positive factor that validates.
+    declaration, facts, identity = published_projection_fixture(
+        source_levels=(source,), target_levels=(target,), expected_numerator=1100000
+    )
+    with pytest.raises(ValueError) as refused:
+        resolve_reference_factor(declaration, facts, identity)
+    assert str(refused.value) == message
+
+
+@settings(max_examples=70, deadline=None)
+@example(source=2, target=1, digits=0)
+@example(source=2000000, target=2000001, digits=6)
+@given(
+    source=st.integers(1, 10**12),
+    target=st.integers(1, 10**12),
+    digits=st.integers(0, 18),
+)
+def test_published_projection_matches_fraction_oracle(source, target, digits):
+    # The built-in round on a Fraction takes ties to even; no production helper.
+    expected = round(Fraction(target, source) * 10**digits)
+    declaration, facts, identity = published_projection_fixture(
+        source_levels=(str(source),),
+        target_levels=(str(target),),
+        digits=digits,
+        expected_numerator=expected,
+    )
+    if expected == 0:
+        with pytest.raises(
+            ValueError, match="Expected operational factor must be positive"
+        ):
+            resolve_reference_factor(declaration, facts, identity)
+        return
+    factor, receipt = resolve_reference_factor(declaration, facts, identity)
+    assert factor == {"numerator": expected, "denominator": 10**digits}
+    assert receipt == _rehashed(receipt)
+    assert canonical_json(receipt)
+    replay_reference_factor(declaration, facts, identity, factor, receipt)
+
+
+def test_published_projection_validates_and_replays_beside_version_1():
+    context, facts, identity = factor_context_fixture()
+    declaration, projection_facts, _ = published_projection_fixture(
+        feed_identity=identity
+    )
+    factor, receipt = resolve_reference_factor(declaration, projection_facts, identity)
+    entry = _entry(declaration, factor, receipt)
+    context["factors"].append(entry)
+    selected = validate_factor_context(context)
+    assert selected == {"toy_factor": context["factors"][0], declaration["id"]: entry}
+    version_1 = context["factors"][0]
+    replay_reference_factor(
+        version_1["declaration"],
+        facts,
+        identity,
+        version_1["operational_factor"],
+        version_1["receipt"],
+    )
+    replay_reference_factor(declaration, projection_facts, identity, factor, receipt)
+    require_current_factors(selected, today=date(2050, 1, 1))
+    with pytest.raises(ValueError, match="expired or not yet valid"):
+        require_current_factors(selected, today=date(2100, 1, 1))
+
+    relabelled = _entry(
+        declaration,
+        factor,
+        _rehashed({**receipt, "operation": "projected_period_average_ratio"}),
+    )
+    with pytest.raises(ValueError) as error:
+        validate_factor_context({"schema_version": 1, "factors": [relabelled]})
+    assert str(error.value) == "Factor declaration and receipt are incompatible."
+
+    tampered = _entry(
+        declaration, factor, _rehashed({**receipt, "target_assertion": "observation"})
+    )
+    assert validate_factor_context({"schema_version": 1, "factors": [tampered]})
+    with pytest.raises(ValueError) as error:
+        replay_reference_factor(
+            declaration, projection_facts, identity, factor, tampered["receipt"]
+        )
+    assert str(error.value) == "Factor replay differs from declared result or evidence."
