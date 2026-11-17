@@ -207,6 +207,8 @@ def _drop_band_d(code: str) -> Callable[[dict[str, Any]], None]:
         (_set_band_d("E06000001", "0.00"), "not a positive decimal amount"),
         (_set_band_d("E06000001", ""), "not a positive decimal amount"),
         (_set_band_d("E06000001", 4321.07), "not a positive decimal amount"),
+        (_set_band_d("E06000001", "4321.075"), "more than two decimal places"),
+        (_set_band_d("E06000001", "4321.070"), "more than two decimal places"),
         (_set_field("kind", "uk_council_tax_band_d"), "kind must be"),
         (_set_field("fiscal_year", "2025-26"), "fiscal_year must be"),
         (_set_field("local_authority_vintage", "2024_lad"), "vintage must be"),
@@ -226,6 +228,8 @@ def _drop_band_d(code: str) -> Callable[[dict[str, Any]], None]:
         "zero",
         "blank",
         "json-number",
+        "off-pence",
+        "third-decimal-place",
         "kind",
         "fiscal-year",
         "vintage",
@@ -244,6 +248,26 @@ def test_refuses_an_england_wales_payload_outside_the_closed_world(
     with pytest.raises(UKCouncilTaxBandDError, match=message) as refusal:
         load_uk_council_tax_band_d(england_wales_payload=payload)
     _assert_quotes_no_amount(str(refusal.value))
+
+
+@pytest.mark.parametrize(
+    ("code", "text"),
+    [
+        ("E06000001", "4321.5"),
+        ("E06000001", "4321"),
+        ("W06000015", "4321.071234"),
+    ],
+    ids=["england-one-place", "england-whole-pounds", "wales-unrounded"],
+)
+def test_england_at_pence_and_wales_unrounded_are_loaded(code, text) -> None:
+    """England's amounts may have up to two decimal places, Wales's any."""
+
+    payload = copy.deepcopy(_packaged(UK_BAND_D_ENGLAND_WALES_RESOURCE))
+    payload["band_d"][code] = text
+
+    loaded = load_uk_council_tax_band_d(england_wales_payload=payload)
+
+    assert loaded.band_d[code] == Fraction(Decimal(text))
 
 
 def test_a_code_written_twice_in_the_packaged_resource_is_refused(

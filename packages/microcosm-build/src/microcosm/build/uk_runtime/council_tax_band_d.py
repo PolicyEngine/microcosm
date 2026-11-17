@@ -23,8 +23,9 @@ resolves every drawn area:
 as a :class:`fractions.Fraction` through :class:`decimal.Decimal`. It refuses a
 code outside the roster's Great Britain codes, a Northern Ireland code
 (Northern Ireland levies domestic rates, not council tax), a missing or
-repeated authority, and a value that is not a positive finite decimal. Every
-value is used as published: none is overridden.
+repeated authority, a value that is not a positive finite decimal, and an
+English value written with more than two decimal places, since England's
+amounts are at pence. Every value is used as published: none is overridden.
 
 The statute (:func:`uk_statutory_council_tax`) multiplies an authority's Band
 D by its band's proportion, by nation. England and Wales take 6, 7, 8, 9, 11,
@@ -131,10 +132,14 @@ UK_BAND_D_PENCE_TOLERANCE = Fraction(Decimal(UK_BAND_D_PENCE_TOLERANCE_TEXT))
 #: covers E and W codes, the Scottish resource S codes, and Northern Ireland's N
 #: codes have no Band D.
 _ENGLAND_WALES_LETTERS = "EW"
+_ENGLAND_LETTER = "E"
 _SCOTLAND_LETTERS = "S"
 _NORTHERN_IRELAND_LETTER = "N"
 
 _DECIMAL = re.compile(r"[0-9]+(?:\.[0-9]+)?")
+#: A decimal at pence: at most two decimal places, as the tool writes
+#: England's amounts.
+_PENCE_DECIMAL = re.compile(r"[0-9]+(?:\.[0-9]{1,2})?")
 
 
 class UKCouncilTaxBandDError(ValueError):
@@ -337,6 +342,13 @@ def _england_wales_band_d(payload: Mapping[str, Any]) -> dict[str, Fraction]:
         _nation_code(code, _ENGLAND_WALES_LETTERS, resource=resource)
         where = f"{resource}: the Band D of {code!r}"
         amounts[code] = band_d_decimal(text, where=where)
+        # Wales's amounts are the published decimals, unrounded; England's
+        # are at pence.
+        if code.startswith(_ENGLAND_LETTER) and not _PENCE_DECIMAL.fullmatch(text):
+            raise UKCouncilTaxBandDError(
+                f"{where} has more than two decimal places; England's amounts "
+                "are at pence."
+            )
     return amounts
 
 
