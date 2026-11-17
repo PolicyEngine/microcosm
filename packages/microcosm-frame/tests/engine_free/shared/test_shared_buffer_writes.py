@@ -41,17 +41,23 @@ is what a failure reports.
     ``np.<ufunc>.at``, which writes even into a read-only array, unless that
     array is created in the function. Created means:
 
-    - a call of a NumPy function that allocates
+    - a call, not itself given ``out=``, of a NumPy function that allocates
       (``_ALLOCATING_NUMPY_FUNCTIONS``: ``np.zeros``, ``np.empty_like``,
-      ``np.where``, ...), of a ufunc, or of ``np.array`` without ``copy=``,
-      not itself given ``out=``;
-    - ``.copy()`` with no arguments;
-    - a subscript of one of these;
+      ``np.where``, ...), of a ufunc, of ``np.array`` without ``copy=`` or
+      with ``copy=True``, of ``.to_numpy(copy=True)``, or of a random
+      ``Generator`` draw (``_RANDOM_DRAW_METHODS``: ``rng.random(n)``, ...);
+    - arithmetic or a comparison (``a * b``, ``a > 0``);
+    - ``.copy()`` with no arguments, or a slice of it, but not an item of
+      it, because a copy of a dict or list shares its items;
+    - a subscript of the others;
     - a local name, or a subscript of one, whose every assignment in the
       function is one of these or ``None``, with at least one that is not
       ``None``. A parameter, a name declared ``global`` or ``nonlocal``, and
       a name bound any other way in the function (a loop, comprehension or
       ``with`` target, unpacking, an import) are not created.
+
+    ``.astype()`` does not count as created: a pandas object's conversion
+    to its own type shares its memory.
 
 ``setflags``, ``Series.array[i] = value``, ``._ndarray``, ``._mgr``,
 ``np.copyto`` and ``out=`` are the writes first identified as unprotected.
@@ -130,6 +136,20 @@ _REVIEWED_FINDINGS: dict[tuple[str, str, str, str, str], str] = {
     ),
 }
 
+#: The functions a reviewed reason rests on, by repository-relative path and
+#: name, with a digest of each one's source. A change to one needs the
+#: reasons that name it reviewed again.
+_REVIEWED_HELPERS: dict[tuple[str, str], str] = {
+    (
+        "tools/verify_uk_identity_stability.py",
+        "_pre_clone_household_weights",
+    ): "5edc525581d7",
+    (
+        "tools/verify_uk_identity_stability.py",
+        "_pre_residential_household_weights",
+    ): "e39cc12da417",
+}
+
 _MAKES_ARRAY_WRITABLE = "makes-array-writable"
 _WRITES_THROUGH_SERIES_ARRAY = "writes-through-series-array"
 _PANDAS_PRIVATE_ATTRIBUTE = "pandas-private-attribute"
@@ -184,6 +204,22 @@ _ALLOCATING_NUMPY_FUNCTIONS = frozenset(
     }
 )
 
+#: NumPy random Generator methods that draw a new array.
+_RANDOM_DRAW_METHODS = frozenset(
+    {
+        "random",
+        "normal",
+        "uniform",
+        "integers",
+        "choice",
+        "permutation",
+        "standard_normal",
+        "exponential",
+        "poisson",
+        "binomial",
+    }
+)
+
 #: ndarray methods, and NumPy random Generator methods, that take ``out``.
 _METHODS_WITH_OUT = frozenset(
     {
@@ -224,6 +260,10 @@ _TRIGGER_TEXT = re.compile(
 
 _NESTED_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
 
+#: What ``_created_kind`` returns: a new array, or a ``.copy()``.
+_NEW_ARRAY = "new array"
+_COPY = "copy"
+
 
 @dataclass(frozen=True)
 class Finding:
@@ -257,6 +297,18 @@ def _keyword(call: ast.Call, name: str) -> ast.keyword | None:
     return next((keyword for keyword in call.keywords if keyword.arg == name), None)
 
 
+def _is_true_constant(expression: ast.expr) -> bool:
+    return isinstance(expression, ast.Constant) and expression.value is True
+
+
+def _is_slice(index: ast.expr) -> bool:
+    """Whether a subscript's index is a slice (``a[1:]``, ``a[:, 0:2]``)."""
+
+    if isinstance(index, ast.Tuple):
+        return any(isinstance(part, ast.Slice) for part in index.elts)
+    return isinstance(index, ast.Slice)
+
+
 def _is_own_object(expression: ast.expr) -> bool:
     return isinstance(expression, ast.Name) and expression.id in _OWN_OBJECT_NAMES
 
@@ -269,12 +321,25 @@ def _is_series_array(expression: ast.expr) -> bool:
     )
 
 
+def _statements(tree: ast.Module) -> Iterator[ast.AST]:
+    """Every statement at any depth, without entering expressions."""
+
+    stack: list[ast.AST] = list(reversed(tree.body))
+    while stack:
+        node = stack.pop()
+        yield node
+        for field_name in ("body", "orelse", "finalbody", "handlers", "cases"):
+            children = getattr(node, field_name, None)
+            if isinstance(children, list):
+                stack.extend(reversed(children))
+
+
 class _NumpyNames:
     """The names one module binds to NumPy (``np``, ``from numpy import add``)."""
 
     def __init__(self, tree: ast.Module) -> None:
         self._aliases: dict[str, str] = {}
-        for node in ast.walk(tree):
+        for node in _statements(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     if alias.name == "numpy" or alias.name.startswith("numpy."):
@@ -495,40 +560,52 @@ class _Scanner(ast.NodeVisitor):
 
     # Created arrays --------------------------------------------------------
 
-    def _allocates(self, call: ast.Call) -> bool:
-        if _keyword(call, "out") is not None:
-            return False
-        function = call.func
-        if (
-            isinstance(function, ast.Attribute)
-            and function.attr == "copy"
-            and not call.args
-            and not call.keywords
-        ):
-            return True
+    def _created_kind(self, expression: ast.expr) -> str | None:
+        """``"array"`` for a new array, ``"copy"`` for a ``.copy()`` (which
+        may be a container's copy, sharing its items), or ``None``."""
+
+        if isinstance(expression, (ast.BinOp, ast.UnaryOp, ast.Compare)):
+            return _NEW_ARRAY
+        if not isinstance(expression, ast.Call) or _keyword(expression, "out"):
+            return None
+        function = expression.func
+        if isinstance(function, ast.Attribute):
+            if function.attr == "copy":
+                plain = not expression.args and not expression.keywords
+                return _COPY if plain else None
+            if function.attr == "to_numpy":
+                copy = _keyword(expression, "copy")
+                return _NEW_ARRAY if copy and _is_true_constant(copy.value) else None
+            if function.attr in _RANDOM_DRAW_METHODS:
+                return _NEW_ARRAY
         name = self._numpy.resolve(function)
         if name is None:
-            return False
+            return None
         if name == "numpy.array":
-            return _keyword(call, "copy") is None
+            copy = _keyword(expression, "copy")
+            return _NEW_ARRAY if copy is None or _is_true_constant(copy.value) else None
         if name.removeprefix("numpy.") in _ALLOCATING_NUMPY_FUNCTIONS:
-            return True
-        return isinstance(_numpy_object(name), np.ufunc)
+            return _NEW_ARRAY
+        return _NEW_ARRAY if isinstance(_numpy_object(name), np.ufunc) else None
 
     def _is_created(self, expression: ast.expr) -> bool:
+        items_taken = False
         while isinstance(expression, ast.Subscript):
+            items_taken = items_taken or not _is_slice(expression.slice)
             expression = expression.value
-        if isinstance(expression, ast.Call):
-            return self._allocates(expression)
-        if not isinstance(expression, ast.Name):
+        if isinstance(expression, ast.Name):
+            assignments = self._scopes[-1].assignments_of(expression.id)
+            if assignments is None:
+                return False
+            values = [value for value in assignments if not _is_none(value)]
+            if not values or any(value is None for value in values):
+                return False
+            kinds = [self._created_kind(value) for value in values]
+        else:
+            kinds = [self._created_kind(expression)]
+        if None in kinds:
             return False
-        assignments = self._scopes[-1].assignments_of(expression.id)
-        if assignments is None:
-            return False
-        values = [value for value in assignments if not _is_none(value)]
-        return bool(values) and all(
-            isinstance(value, ast.Call) and self._allocates(value) for value in values
-        )
+        return not (items_taken and _COPY in kinds)
 
     # Rules -----------------------------------------------------------------
 
@@ -606,7 +683,9 @@ class _Scanner(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
-        self._check_target(node, node.target, node.value)
+        # An annotation without a value writes nothing.
+        if node.value is not None:
+            self._check_target(node, node.target, node.value)
         self.generic_visit(node)
 
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
@@ -669,7 +748,8 @@ def workspace_scan() -> _WorkspaceScan:
     for path in scanned_files(_REPOSITORY):
         relative = path.relative_to(_REPOSITORY).as_posix()
         paths.add(relative)
-        findings.extend(scan_source(path.read_text(encoding="utf-8"), relative))
+        # utf-8-sig drops a byte-order mark, which ast.parse refuses.
+        findings.extend(scan_source(path.read_text(encoding="utf-8-sig"), relative))
     return _WorkspaceScan(frozenset(paths), tuple(findings))
 
 
@@ -702,6 +782,28 @@ def test_every_reviewed_finding_still_occurs(workspace_scan: _WorkspaceScan) -> 
         "These reviewed findings no longer occur as reviewed. The expression "
         "or its enclosing function changed, so review it again and update "
         "its key, or remove the entry."
+    )
+
+
+def test_the_functions_reviewed_reasons_rest_on_are_unchanged() -> None:
+    changed: list[str] = []
+    for (relative, name), digest in _REVIEWED_HELPERS.items():
+        source = (_REPOSITORY / relative).read_text(encoding="utf-8-sig")
+        function = next(
+            node
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == name
+        )
+        segment = ast.get_source_segment(source, function) or ""
+        current = hashlib.sha256(segment.encode("utf-8")).hexdigest()[:12]
+        if current != digest:
+            changed.append(f"{relative}:{name} now has digest {current!r}")
+
+    assert not changed, (
+        "A reviewed reason in _REVIEWED_FINDINGS rests on these functions, "
+        "which changed. Review the reasons that name them again, then update "
+        "_REVIEWED_HELPERS.\n" + "\n".join(changed)
     )
 
 
@@ -793,6 +895,61 @@ _REFUSED_SNIPPETS = {
     "series_array_annotated": (
         "series.array[0]: float = 1.0\n",
         _WRITES_THROUGH_SERIES_ARRAY,
+    ),
+    "out_parameter_rebound_on_one_path": (
+        _in_function(
+            "if flag:",
+            "    values = np.zeros(3)",
+            "np.add.at(values, [0], 1)",
+            parameters="values, flag",
+        ),
+        _WRITES_INTO_EXISTING_ARRAY,
+    ),
+    "out_lambda_parameter_shadowing_a_module_array": (
+        _NUMPY
+        + "values = np.zeros(3)\n"
+        + "add_one = lambda values: np.add(values, 1, out=values)\n",
+        _WRITES_INTO_EXISTING_ARRAY,
+    ),
+    "out_name_only_ever_none": (
+        _in_function("buffer = None", "np.add(1, 1, out=buffer)", parameters=""),
+        _WRITES_INTO_EXISTING_ARRAY,
+    ),
+    "out_nonlocal_name": (
+        _NUMPY
+        + "def outer():\n"
+        + "    buffer = np.zeros(3)\n"
+        + "    def inner():\n"
+        + "        nonlocal buffer\n"
+        + "        buffer = np.zeros(3)\n"
+        + "        np.add(1, 1, out=buffer)\n"
+        + "    return inner\n",
+        _WRITES_INTO_EXISTING_ARRAY,
+    ),
+    "out_imported_name_shadowing_a_new_array": (
+        _in_function(
+            "buffer = np.zeros(3)",
+            "import buffer",
+            "np.add(1, 1, out=buffer)",
+            parameters="",
+        ),
+        _WRITES_INTO_EXISTING_ARRAY,
+    ),
+    "ufunc_at_on_an_item_of_a_copied_dict": (
+        _in_function(
+            "updated = columns.copy()",
+            'np.add.at(updated["income"], [0], 100)',
+            parameters="columns",
+        ),
+        _WRITES_INTO_EXISTING_ARRAY,
+    ),
+    "out_astype": (
+        _in_function(
+            "converted = series.astype(float)",
+            "np.add(converted, 1, out=converted)",
+            parameters="series",
+        ),
+        _WRITES_INTO_EXISTING_ARRAY,
     ),
     "series_array_unpacked": (
         "series.array[0], other = 1.0, 2.0\n",
@@ -1094,6 +1251,28 @@ _ACCEPTED_SNIPPETS = {
         parameters="positions, size",
     ),
     "ufunc_without_out": _NUMPY + "total = np.add(left, right)\n",
+    "out_copies_the_failure_message_suggests": _in_function(
+        "weights = np.array(frame.w, copy=True)",
+        "np.add.at(weights, positions, 1)",
+        "values = frame.x.to_numpy(copy=True)",
+        "np.add(values, 1, out=values)",
+        parameters="frame, positions",
+    ),
+    "out_arithmetic_and_draws": _in_function(
+        "product = left * right",
+        "np.add(product, 1, out=product)",
+        "positive = left > 0",
+        "np.logical_not(positive, out=positive)",
+        "draws = rng.random(size)",
+        "np.multiply(draws, 2, out=draws)",
+        parameters="left, right, rng, size",
+    ),
+    "out_slice_of_a_copy": _in_function(
+        "totals = first.copy()",
+        "np.cumsum(later, out=totals[1:])",
+        parameters="first, later",
+    ),
+    "annotation_without_a_value": ('series.array[0]: float\nvalues.flags["W"]: bool\n'),
 }
 
 

@@ -149,14 +149,16 @@ class Frame:
         ``.asi8``, private pandas attributes, an array made writable,
         ``ufunc.at``, ``np.copyto`` or ``out=``
         (``test_shared_buffer_writes.py`` refuses the direct forms of some of
-        these in the workspace's source), and through what ``.values`` and ``to_numpy()`` return for
-        extension-typed columns. ``.values`` returns the column's own
-        extension array, for example for the nullable integer, float and
-        boolean types, ``category`` and python-backed strings, and under
-        pandas 2.x for pyarrow-backed types. ``to_numpy()`` returns a
-        writable view of the column's data for, for example, the nullable
-        integer, float and boolean types when the column has no missing
-        value, python-backed strings, and sparse columns without gaps.
+        these in ``packages/*/src/`` and ``tools/``), and through what
+        ``.values`` and ``to_numpy()`` return for extension-typed columns.
+        ``.values`` returns the column's own extension array, and a write
+        into it reaches every frame sharing the column, for example for the
+        nullable integer, float and boolean types, ``category`` and
+        python-backed strings, and under pandas 2.x pyarrow-backed types.
+        ``to_numpy()`` returns a writable view of the column's data for, for
+        example, the nullable integer, float and boolean types when the
+        column has no missing value, python-backed strings, and sparse
+        columns without gaps.
 
         When copy-on-write is off (the pandas 2.x default), a shallow copy
         shares data even for ordinary pandas writes, so the tables and strata
