@@ -25,10 +25,13 @@ It computes the value R2 stores, with R2's own functions and the engine:
   and spouse (``irs_gross_income``), and only an adult can be a head or a
   spouse. A household whose income is all on dependents, or on a tax unit
   without an adult, has an AGI of 0 unless a deduction makes it negative.
-- R2's take-up stages fill some ``NEVER_DEFAULT_FILLED`` columns on the ACS
-  rows before its fill step. The check holds back such a column while it is
-  null; the AGI does not read it. A null in one that the AGI reads is
-  refused, as R2 refuses it.
+- R2's stages fill some ``NEVER_DEFAULT_FILLED`` columns on the ACS rows
+  before its fill step (``stage_filled_never_default``, shared with the
+  reviewed-fill pre-check). The check holds back such a column while its
+  nulls are on ACS rows only and the AGI does not read it. It refuses every
+  other null in a never-default column, as R2's fill step does: a null on a
+  donor row, a null in a column that no R2 stage fills, and a null the AGI
+  reads.
 - With ``--puma-ladder`` it applies R2's own minimum-support moves
   (``plan_minimum_support`` with ``--county-min-support``, default R2's 3)
   and takes the county list from the ladder, as R2 does.
@@ -87,6 +90,7 @@ _TOOLS = Path(__file__).resolve().parent
 if str(_TOOLS) not in sys.path:
     sys.path.insert(0, str(_TOOLS))
 
+import check_us_acs_local_reviewed_fills as reviewed_fills  # noqa: E402
 import us_acs_local_county_surface as county_surface  # noqa: E402
 
 from microcosm.frame import Frame  # noqa: E402
@@ -130,39 +134,60 @@ def hold_back_null_runtime_columns(
     frame: Frame,
     *,
     never_default_filled: Collection[tuple[str, str]],
+    stage_filled: Collection[tuple[str, str]],
     agi_inputs: Collection[str],
 ) -> tuple[Frame, dict[str, list[str]]]:
-    """Drop the null never-default columns the AGI does not read.
+    """Drop the null never-default columns that R2's stages fill first.
 
-    R2's take-up stages fill such columns on the ACS rows before its fill
-    step, and its fill step refuses any null left in one. For the AGI alone
-    a column outside the AGI's inputs does not matter, so the check holds it
-    back. A null in a never-default column that the AGI reads is refused:
-    R2 refuses it too.
+    R2's stages fill the ``stage_filled`` columns on the ACS rows before its
+    fill step, and the fill step refuses any null left in a never-default
+    column. So the check holds back a null column only when an R2 stage fills
+    it, every null is on an ACS row (the ``<entity>_spine`` tag) and the AGI
+    does not read it. Every other null in a never-default column is refused,
+    as R2 refuses it.
     """
 
+    from microcosm.build.us_runtime.base_pool import spine_column
+
     agi_inputs = frozenset(agi_inputs)
+    stage_filled = frozenset(stage_filled)
     held: dict[str, list[str]] = {}
     tables = {}
     refused = []
     for entity in frame.entities:
         table = frame.table(entity)
-        null = sorted(
+        tag = spine_column(entity)
+        null = []
+        for column in sorted(
             column
             for owner, column in never_default_filled
             if owner == entity
             and column in table.columns
             and table[column].isna().any()
-        )
-        refused.extend(f"{entity}.{column}" for column in null if column in agi_inputs)
+        ):
+            name = f"{entity}.{column}"
+            missing = table[column].isna()
+            if (entity, column) not in stage_filled:
+                refused.append(f"{name}: no R2 stage fills it (re-run staging)")
+            elif tag not in table.columns:
+                refused.append(f"{name}: no {tag} column places its null rows")
+            elif off := int((missing & table[tag].ne(county_surface.ACS_SPINE)).sum()):
+                refused.append(
+                    f"{name}: null on {off} non-ACS row(s); R2's stages fill "
+                    "the ACS rows only"
+                )
+            elif column in agi_inputs:
+                refused.append(f"{name}: the AGI reads it")
+            else:
+                null.append(column)
         if null:
             held[entity] = null
             table = table.drop(columns=null)
         tables[entity] = table
     if refused:
         raise SystemExit(
-            f"Null never-default-filled column(s) that the AGI reads: {refused}. "
-            "R2's materialize stage refuses these nulls too (fill_reviewed_nulls)."
+            "Null never-default-filled column(s) that R2's materialize stage "
+            f"refuses too (fill_reviewed_nulls): {'; '.join(refused)}."
         )
     if not held:
         return frame, held
@@ -200,6 +225,7 @@ def household_agi(
     projected, held = hold_back_null_runtime_columns(
         projected,
         never_default_filled=release.NEVER_DEFAULT_FILLED,
+        stage_filled=reviewed_fills.stage_filled_never_default(release),
         agi_inputs=agi_engine_inputs(PolicyEngineUSVariableMetadataIndex()),
     )
     fills, drift = release.fill_reviewed_nulls(
