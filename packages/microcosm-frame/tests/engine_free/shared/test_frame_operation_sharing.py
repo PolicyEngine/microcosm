@@ -81,7 +81,9 @@ def _weights() -> dict[str, Weights]:
 
 
 def _strata() -> pd.Series:
-    return pd.Series(["cps", "cps", "puf", "puf"], index=pd.RangeIndex(4))
+    # Object dtype, so ``to_numpy()`` returns the stored array and a memory
+    # comparison of strata is meaningful.
+    return pd.Series(["cps", "cps", "puf", "puf"], index=pd.RangeIndex(4), dtype=object)
 
 
 @pytest.fixture
@@ -243,6 +245,9 @@ def test_with_weights_shares_every_column_with_the_source(linked_frame) -> None:
     )
     assert ("jobs", "hours") in sharing
     assert all(sharing.values()), sharing
+    assert np.shares_memory(
+        reweighted.strata.to_numpy(), linked_frame.strata.to_numpy()
+    )
 
 
 @pytest.mark.parametrize(
@@ -335,7 +340,11 @@ def test_a_pandas_write_to_the_source_leaves_the_result_unchanged(
     _assert_matches_snapshot(result, before)
 
 
-@pytest.mark.parametrize("operation", list(_OPERATIONS))
+# Selecting a strict subset of persons copies their rows whatever ``_adopt``
+# does, so only operations that can share memory are checked here.
+@pytest.mark.parametrize(
+    "operation", [name for name in _OPERATIONS if name != "select one household"]
+)
 def test_operations_deep_copy_when_copy_on_write_is_off(
     request, copy_on_write_off: None, operation: str
 ) -> None:
@@ -344,6 +353,7 @@ def test_operations_deep_copy_when_copy_on_write_is_off(
     sharing = _numeric_columns_sharing_memory(_tables_of(result), _tables_of(source))
     assert sharing, "the comparison found no numeric columns"
     assert not any(sharing.values()), sharing
+    assert not np.shares_memory(result.strata.to_numpy(), source.strata.to_numpy())
 
 
 def _fragmented_frame() -> Frame:

@@ -1466,8 +1466,8 @@ class Frame:
         Returns:
             A new validated bundle containing the masked persons, the group
             rows they reference, the matching weight slices, and the matching
-            strata, built through :meth:`_adopt` without a further copy of
-            the selected tables.
+            strata, built through :meth:`_adopt`: under pandas copy-on-write
+            the selected tables are not copied a second time.
 
         Raises:
             NotImplementedError: If the frame carries link tables (links are
@@ -1525,7 +1525,8 @@ class Frame:
                 )
         strata = self._strata.loc[mask]
         # Row selection makes new DataFrame objects, so the result can own
-        # them; with every person kept they still share the source's memory.
+        # them; under copy-on-write, with every person kept, they still share
+        # the source's memory.
         return Frame._adopt(
             tables,
             self._schema,
