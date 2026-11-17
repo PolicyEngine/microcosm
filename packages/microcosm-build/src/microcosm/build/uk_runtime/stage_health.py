@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 import re
 from collections.abc import Mapping
@@ -31,14 +32,20 @@ def uk_stage_health_gate(
     check: str,
     parameters: Mapping[str, object],
     frame: object | None = None,
+    geography: object | None = None,
+    supports: object | None = None,
 ) -> GateResult:
     """Evaluate one spine-stage receipt against spec-declared thresholds.
 
-    ``frame`` is the gate phase's frame, which three checks read: the band
+    ``frame`` is the gate phase's frame, which four checks read: the band
     donor check recomputes a capped seating's seats there, the copy area
-    check compares each copy with its parent there, and the council-tax
-    check holds each household's reductions within its bill there
-    (microcosm#931).
+    check compares each copy with its parent there, the council-tax check
+    holds each household's reductions within its bill there, and the area
+    mapping check re-derives every household's ladder there (microcosm#931).
+    ``geography`` and ``supports`` are the spine's geography block and the
+    bytes of the conditioned supports it pins, which the area mapping check
+    alone reads (:data:`SPINE_GEOGRAPHY_ARTIFACT`,
+    :data:`ATOMIC_AREA_SUPPORTS_ARTIFACT`).
     """
 
     if evidence.get("stage") not in {stage, _legacy_receipt_stage(stage)}:
@@ -145,7 +152,14 @@ def uk_stage_health_gate(
     if check == "sub_major_draw":
         return _sub_major_draw_gate(stage, evidence, parameters)
     if check == "atomic_mapping_integrity":
-        return _atomic_mapping_integrity_gate(stage, evidence, parameters)
+        return _atomic_mapping_integrity_gate(
+            stage,
+            evidence,
+            parameters,
+            frame=frame,
+            geography=geography,
+            supports=supports,
+        )
     if check == "area_home_values":
         return _area_home_values_gate(stage, evidence, parameters)
     if check == "copy_area_agreement":
@@ -5198,24 +5212,64 @@ def _declared_names(value: object) -> tuple[str, ...] | None:
     return tuple(str(item) for item in value)
 
 
+#: The evidence artifacts the area mapping check reads beside its receipt and
+#: the phase's frame (microcosm#931): the spine's geography block, as the
+#: spine build's sidecar records it
+#: (``country_adapter.uk_spine_geography_binding``), and the bytes of the
+#: conditioned supports that block pins, by system. The spine gate kernel
+#: hands both to the gates of a node that carries the block
+#: (``graph_evidence.uk_spine_geography_artifacts``).
+SPINE_GEOGRAPHY_ARTIFACT = "spine_geography"
+ATOMIC_AREA_SUPPORTS_ARTIFACT = "atomic_area_supports"
+
+
 def _atomic_mapping_integrity_gate(
     stage: str,
     evidence: Mapping[str, object],
     parameters: Mapping[str, object],
+    *,
+    frame: object | None,
+    geography: object | None,
+    supports: object | None,
 ) -> GateResult:
-    """An area stage's ladders passed the shared mapping-integrity check
+    """An area stage's record agrees with the spine's geography binding, and
+    the phase's frame holds the areas and ladders that binding gives
     (microcosm#931).
 
     The spine's area draw (``atomic_area_assign``) and its SPI-copy area stage
-    (``spi_copy_areas``) validate every drawn ladder through the shared
+    (``spi_copy_areas``) validate every ladder they draw through the shared
     operator and refuse to finish unless it passes, recording the outcome,
-    its scope and the digests of the definition and the supports. This check
-    reads that record: the outcome is one the gate accepts
-    (``accepted_outcomes``, by default ``pass``; the copy stage records
-    ``not_run`` on a frame without a copy), the scope is the declared
-    ``validation_scope``, the definition's digest is a SHA-256 digest, and
-    the supports' digests are one SHA-256 digest per declared support system.
-    Its texts name the field, never a value.
+    its scope, the definition's SHA-256 and each support's. The record shows
+    only what the stage wrote, so this check holds three things:
+
+    - the record: the outcome is one the gate accepts (``accepted_outcomes``,
+      by default ``pass``; the copy stage records ``not_run`` on a frame
+      without a copy), and the scope is the declared ``validation_scope``;
+    - the binding: the record's ``definition_sha256`` is the one
+      ``geography``, the spine's geography block, gives, and its
+      ``support_sha256`` gives each declared support system, and no other,
+      the SHA-256 the block's ``support_pins`` give it;
+    - the frame: ``supports`` hold, for each declared system, the bytes whose
+      SHA-256 and size the block pins, and the area draw's definition on
+      them (``uk_conditioned_assignment_definition`` at the spine's seed) is
+      the one the block names. On that definition every household of the
+      phase's frame is checked as the area draw checks the rows it places:
+      its level is re-derived from its stored draw inputs (``uk_draw_inputs``,
+      ``uk_draw_levels``, ``uk_draw_frame``), and the shared validation
+      (``atomic_geography.validate_geography``) runs on its stored
+      assignment and ladder columns. So each ladder column must be the one
+      the support maps the stored area to, and each area must lie in its
+      household's region, and in its IMD decile where the household's level
+      keeps the decile. At the assembled boundary those are the rows the
+      area draw placed; at the transferred boundary every row, the copies'
+      among them.
+
+    Run without the block, the supports or a frame the check fails; in a
+    battery, whose stage-health binding declares the frame and both
+    artifacts for it, such a gate is evidence_absent first.
+    Its details are names and booleans, and its texts name the field or give
+    the shared operator's own refusal, which names columns and declared
+    constants only, never a value or a count.
     """
 
     check = "atomic_mapping_integrity"
@@ -5244,27 +5298,174 @@ def _atomic_mapping_integrity_gate(
             failures.append(
                 f"{stage}: {check}: the validation's scope is not the declared scope."
             )
-    if not _is_sha256(evidence.get("definition_sha256")):
+    definition = evidence.get("definition_sha256")
+    if not _is_sha256(definition):
         failures.append(f"{stage}: {check}: definition_sha256 is not a SHA-256 digest.")
-    supports = evidence.get("support_sha256")
+    recorded = evidence.get("support_sha256")
     if (
-        not isinstance(supports, Mapping)
-        or sorted(str(system) for system in supports) != systems
-        or not all(_is_sha256(digest) for digest in supports.values())
+        not isinstance(recorded, Mapping)
+        or sorted(str(system) for system in recorded) != systems
+        or not all(_is_sha256(digest) for digest in recorded.values())
     ):
         failures.append(
             f"{stage}: {check}: support_sha256 is not one SHA-256 digest per "
             "declared support system."
         )
+        recorded = {}
+    pins = _binding_pins(geography, systems)
+    agrees: bool | None = None
+    frame_failure: str | None = None
+    if pins is None:
+        failures.append(
+            f"{stage}: {check}: the spine's geography binding is absent, or gives "
+            "no definition_sha256 and one support pin for each declared support "
+            "system."
+        )
+    else:
+        bound_definition, bound_pins = pins
+        same_definition = definition == bound_definition
+        same_supports = all(
+            recorded.get(system) == bound_pins[system]["sha256"] for system in systems
+        )
+        if not same_definition:
+            failures.append(
+                f"{stage}: {check}: definition_sha256 is not the spine's geography "
+                "binding's."
+            )
+        if not same_supports:
+            failures.append(
+                f"{stage}: {check}: support_sha256 is not, for each declared "
+                "support system, the SHA-256 the spine's geography binding pins."
+            )
+        agrees = same_definition and same_supports
+        frame_failure = _stored_areas_failure(
+            frame, supports, bound_definition, bound_pins
+        )
+        if frame_failure is not None:
+            failures.append(f"{stage}: {check}: {frame_failure}")
     details = {
         "outcome": outcome if outcome in accepted else None,
         "accepted_outcomes": list(accepted),
         "validation_scope": scope,
         "support_systems": systems,
+        "agrees_with_binding": agrees,
+        "frame_holds": None if pins is None else frame_failure is None,
     }
     if failures:
         return _fail(stage, check, failures, details)
     return _pass(stage, check, details)
+
+
+def _binding_pins(
+    geography: object, systems: list[str]
+) -> tuple[str, dict[str, Mapping[str, object]]] | None:
+    """The definition's SHA-256 and each declared system's support pin the
+    spine's geography block gives, or ``None`` where it is no block that
+    gives a SHA-256 for the definition and a pin (a SHA-256 and an integer
+    size) for each declared system and no other."""
+
+    if not isinstance(geography, Mapping):
+        return None
+    definition = geography.get("definition_sha256")
+    pins = geography.get("support_pins")
+    if (
+        not _is_sha256(definition)
+        or not isinstance(pins, Mapping)
+        or sorted(str(system) for system in pins) != systems
+    ):
+        return None
+    if not all(
+        isinstance(pins[system], Mapping)
+        and _is_sha256(pins[system].get("sha256"))
+        and type(pins[system].get("size_bytes")) is int
+        for system in systems
+    ):
+        return None
+    return str(definition), {system: pins[system] for system in systems}
+
+
+def _stored_areas_failure(
+    frame: object | None,
+    supports: object | None,
+    definition_sha256: str,
+    pins: Mapping[str, Mapping[str, object]],
+) -> str | None:
+    """Why the phase's frame does not hold the areas and ladders the spine's
+    geography binding gives, or ``None`` where it does.
+
+    ``supports`` must hold, for each system ``pins`` names, the bytes whose
+    SHA-256 and size it pins, and the area draw's definition on them the
+    one ``definition_sha256`` names. Then, as the area draw checks the rows
+    it places, every household's level is re-derived from its stored draw
+    inputs and the shared validation runs on its stored assignment and
+    ladder columns, so no draw is repeated. A refusal is the draw inputs'
+    or the shared operator's own, which name columns and declared constants
+    only (microcosm#931).
+    """
+
+    from microcosm.build.atomic_geography import (
+        decode_atomic_support,
+        validate_geography,
+    )
+    from microcosm.build.uk_runtime.atomic_area_conditioning import (
+        UK_SPINE_AREA_COLUMNS,
+        UK_SPINE_ATOMIC_AREA_SEED,
+        uk_conditioned_assignment_definition,
+        uk_draw_frame,
+        uk_draw_inputs,
+        uk_draw_levels,
+    )
+    from microcosm.graph.canonical import canonical_json
+
+    if not (
+        isinstance(supports, Mapping)
+        and sorted(str(system) for system in supports) == sorted(pins)
+        and all(
+            type(supports[system]) is bytes
+            and hashlib.sha256(supports[system]).hexdigest() == pins[system]["sha256"]
+            and len(supports[system]) == pins[system]["size_bytes"]
+            for system in pins
+        )
+    ):
+        return (
+            "the supports the check reads are not those the spine's geography "
+            "binding pins."
+        )
+    if frame is None or not hasattr(frame, "table"):
+        return "the check reads the phase's frame, which is absent."
+    payloads = {system: supports[system] for system in pins}
+    try:
+        definition = uk_conditioned_assignment_definition(
+            payloads, seed=UK_SPINE_ATOMIC_AREA_SEED
+        )
+    except ValueError as error:
+        return f"the pinned supports give no area draw definition: {error}"
+    if hashlib.sha256(canonical_json(definition)).hexdigest() != definition_sha256:
+        return (
+            "the area draw's definition on the pinned supports is not the one the "
+            "spine's geography binding names."
+        )
+    decoded = {system: decode_atomic_support(payloads[system]) for system in pins}
+    try:
+        household = frame.table("household")
+    except (KeyError, ValueError):
+        return "the phase's frame lacks a household table."
+    missing = [
+        column for column in UK_SPINE_AREA_COLUMNS if column not in household.columns
+    ]
+    if missing:
+        return f"the phase's household table lacks {missing}."
+    try:
+        inputs = uk_draw_inputs(household)
+        drawn = uk_draw_frame(inputs, uk_draw_levels(inputs, definition, decoded))
+        validate_geography(
+            pd.concat([drawn, household[list(UK_SPINE_AREA_COLUMNS)]], axis=1),
+            definition,
+            decoded,
+        )
+    except ValueError as error:
+        return f"the phase's frame fails the shared mapping-integrity check: {error}"
+    return None
 
 
 #: The WAS stage evidence's block the area home values check reads

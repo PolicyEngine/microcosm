@@ -6,6 +6,7 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
+from pathlib import Path
 
 from microcosm.graph import (
     ArtifactInput,
@@ -42,9 +43,11 @@ from ..stage_evidence import (
     encode_stage_evidence,
 )
 from . import battery_bindings, stage_health
+from .atomic_area_support import CONDITIONED_SOURCES, SYSTEMS
 from .cgt_asset_type import CGT_ASSET_TYPE_DOMAIN
 from .frs_relationships import CHRONICLE_ONS_HOUSEHOLD_TYPE_VALUE_IDS
 from .gate_scopes import UK_SPINE_GATE_SCOPE, uk_scoped_gate_manifest
+from .geography_first_roster import ATOMIC_AREA_ASSIGN_STAGE
 from .graph import UK_SPINE_ASSEMBLED_FINAL_STAGE
 
 #: The spine checkpoint's build state the terminal gates read as the spine
@@ -174,6 +177,41 @@ def uk_spine_gate_artifacts(engine: object) -> dict[str, object]:
     }
 
 
+#: The spine gate node parameter that carries the spine's geography block,
+#: and the graph sources such a node reads: the three conditioned supports,
+#: by the ids sources.yaml declares them under, in the systems' order, as the
+#: area stages read them (microcosm#931).
+SPINE_GEOGRAPHY_PARAM = "spine_geography"
+_SUPPORT_SOURCES = tuple(CONDITIONED_SOURCES[system] for system in SYSTEMS)
+
+
+def uk_spine_geography_artifacts(context: KernelContext) -> dict[str, object]:
+    """The spine's geography block and the conditioned supports' bytes, for
+    the gates of a node that carries the block (microcosm#931).
+
+    A gate node built with the spine's ``geography`` block
+    (:func:`add_uk_spine_gate_nodes`) carries it as its
+    :data:`SPINE_GEOGRAPHY_PARAM` parameter and reads the three conditioned
+    supports as graph sources, whose paths the executor verifies against the
+    node's key. They are handed on under the names the area mapping check
+    reads (``stage_health.SPINE_GEOGRAPHY_ARTIFACT`` and
+    ``stage_health.ATOMIC_AREA_SUPPORTS_ARTIFACT``), and that check holds the
+    bytes to the block's pins itself. A node without the parameter hands
+    neither, and that check is evidence_absent.
+    """
+
+    block = context.params.get(SPINE_GEOGRAPHY_PARAM)
+    if block is None:
+        return {}
+    return {
+        stage_health.SPINE_GEOGRAPHY_ARTIFACT: json.loads(str(block)),
+        stage_health.ATOMIC_AREA_SUPPORTS_ARTIFACT: {
+            system: Path(context.sources[CONDITIONED_SOURCES[system]]).read_bytes()
+            for system in SYSTEMS
+        },
+    }
+
+
 def load_spine_stage_artifacts(
     manifest, store, *, stage_names: Sequence[str]
 ) -> dict[str, dict[str, object]]:
@@ -218,6 +256,7 @@ def add_uk_spine_gate_nodes(
     engine_identity: str,
     release_candidate: bool = False,
     synthetic_smoke: bool = False,
+    geography: Mapping[str, object] | None = None,
 ) -> Graph:
     """Attach gates to exact assembled/transferred versions and stored evidence.
 
@@ -226,6 +265,17 @@ def add_uk_spine_gate_nodes(
     ``synthetic_smoke`` mirrors the driver's ``GateBatteryRun`` posture: a
     data-only fixture is not the population its facts describe, so
     population-fact gates never block such a run.
+
+    ``geography`` is the spine's geography block
+    (``country_adapter.uk_spine_geography_binding``), which the spine build's
+    preparation composes before any stage runs (microcosm#931). Given it,
+    each phase whose stages include the area draw carries it as its
+    :data:`SPINE_GEOGRAPHY_PARAM` parameter and reads the three conditioned
+    supports as graph sources, which the graph must declare, so the phase's
+    area mapping gates hold the area stages' records to the block and
+    re-derive the areas from the phase's frame
+    (:func:`uk_spine_geography_artifacts`). Without it those gates are
+    evidence_absent.
     """
     from .gate_phase_codes import UK_SPINE_GATE_PHASE_CODE
     from .graph import uk_spine_endpoint
@@ -239,6 +289,15 @@ def add_uk_spine_gate_nodes(
         raise ValueError("a synthetic smoke build cannot be a release candidate.")
     if any(node.kernel == UKSpineGateKernel.ref for node in graph.nodes):
         raise ValueError("Spine gate nodes are already registered.")
+    binding = None if geography is None else json.dumps(dict(geography), sort_keys=True)
+    if binding is not None:
+        declared = {source.name for source in graph.sources}
+        undeclared = [name for name in _SUPPORT_SOURCES if name not in declared]
+        if undeclared:
+            raise ValueError(
+                "The spine's geography block binds its gates to the conditioned "
+                f"supports, which the graph does not declare as sources: {undeclared}."
+            )
     compiled = compile_graph(graph)
     endpoint = uk_spine_endpoint(graph)
     stages = endpoint.stage_names
@@ -262,12 +321,14 @@ def add_uk_spine_gate_nodes(
         if phase == "transferred" and end == len(stages):
             continue
         code = UK_SPINE_GATE_PHASE_CODE.get(phase)
+        bound = binding is not None and ATOMIC_AREA_ASSIGN_STAGE in phase_stages
         nodes.append(
             Node(
                 id=f"spine.gates.{phase}",
                 kernel=UKSpineGateKernel.ref,
                 inputs=inputs,
                 population=population,
+                sources=_SUPPORT_SOURCES if bound else (),
                 artifact_inputs=tuple(
                     ArtifactInput(
                         stage,
@@ -303,6 +364,7 @@ def add_uk_spine_gate_nodes(
                     "engine_identity": engine_identity,
                     "release_candidate": release_candidate,
                     "synthetic_smoke": synthetic_smoke,
+                    **({SPINE_GEOGRAPHY_PARAM: binding} if bound else {}),
                 },
                 description=f"Evaluate the {phase} spine battery against its exact population and stage evidence.",
             )
@@ -363,7 +425,10 @@ class UKSpineGateKernel(KernelBase):
     or missing is refused whenever it runs, and no spine gate evaluates its
     phase under a key that names other phase code. A record stored under the
     node's key is reused without running the kernel, so the check does not
-    guard a cache hit.
+    guard a cache hit. A phase that places areas, on a spine whose geography
+    block is bound, also carries the block (``spine_geography``) and reads the
+    conditioned supports as graph sources, both of which its area mapping
+    gates read (:func:`uk_spine_geography_artifacts`, microcosm#931).
     """
 
     ref = "uk.spine-gates@1"
@@ -381,15 +446,27 @@ class UKSpineGateKernel(KernelBase):
 
     def implementation_hash(self) -> str:
         import microcosm.calibrate.geography_constants as geography_constants
+        import microcosm.graph.canonical as graph_canonical
+        import microcosm.graph.randomness as graph_randomness
         from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
         from microcosm.graph.canonical import canonical_json
 
-        from .. import gates, stage_evidence
+        from .. import (
+            atomic_geography,
+            atomic_support_conditioning,
+            gates,
+            source_lineage,
+            stage_evidence,
+        )
         from . import (
+            atomic_area_conditioning,
+            atomic_area_support,
             council_tax_constants,
             graph_kernels,
+            household_lineage,
             national_frame,
             receipt_counts,
+            rowwise_geography,
         )
         from .solve_scope import uk_solve_fingerprint
 
@@ -405,9 +482,18 @@ class UKSpineGateKernel(KernelBase):
         # review of microcosm#1420, finding 5), with the receipt bands of the
         # take-up checks both phases declare (receipt_counts); the enum
         # gate's nation partition (council_tax_constants, the region tier);
-        # and the engine the kernel is built with, through which each phase's
-        # enum gates resolve a domain no artifact supplies (the engine
-        # adapter's PolicyEngineUKEngine.enum_domain). What only one phase's
+        # the area mapping check both phases declare (microcosm#931), which
+        # builds the area draw's definition on the conditioned supports and
+        # re-derives each household's level and ladder through the shared
+        # operator (atomic_geography, atomic_support_conditioning, the UK's
+        # declarations in atomic_area_conditioning and atomic_area_support,
+        # the FRS region codes in rowwise_geography, canonical_json and the
+        # keyed uniforms the operator's module holds), reading the support
+        # channel's copies off the copy lineage (source_lineage,
+        # household_lineage); and the engine the kernel is built with,
+        # through which each phase's enum gates resolve a domain no artifact
+        # supplies (the engine adapter's PolicyEngineUKEngine.enum_domain).
+        # What only one phase's
         # gates compute through is that phase's own code, a node param that
         # run checks (UK_SPINE_GATE_PHASE_CODE, in gate_phase_codes, which this
         # hash leaves out): the energy level, for one, re-keys the transferred
@@ -432,6 +518,15 @@ class UKSpineGateKernel(KernelBase):
                         council_tax_constants,
                         geography_constants,
                         uk_engine_adapter,
+                        atomic_geography,
+                        atomic_support_conditioning,
+                        atomic_area_conditioning,
+                        atomic_area_support,
+                        rowwise_geography,
+                        graph_canonical,
+                        graph_randomness,
+                        source_lineage,
+                        household_lineage,
                     ),
                     "country_resources": uk_solve_fingerprint(),
                 }
@@ -519,7 +614,11 @@ class UKSpineGateKernel(KernelBase):
             phase,
             EvidenceContext(
                 frame=frame,
-                artifacts={**evidence, **uk_spine_gate_artifacts(self.engine)},
+                artifacts={
+                    **evidence,
+                    **uk_spine_gate_artifacts(self.engine),
+                    **uk_spine_geography_artifacts(context),
+                },
             ),
             registry=battery_bindings.UK_GATE_REGISTRY,
         )

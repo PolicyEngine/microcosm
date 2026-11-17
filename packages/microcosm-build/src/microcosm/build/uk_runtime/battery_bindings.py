@@ -95,7 +95,11 @@ from microcosm.build.uk_runtime.release_input_coverage import (
     uk_release_input_coverage_gate,
 )
 from microcosm.build.uk_runtime.source_runtime import UK_NONNEGATIVE_OUTPUTS_BY_STAGE
-from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
+from microcosm.build.uk_runtime.stage_health import (
+    ATOMIC_AREA_SUPPORTS_ARTIFACT,
+    SPINE_GEOGRAPHY_ARTIFACT,
+    uk_stage_health_gate,
+)
 from microcosm.build.uk_runtime.terminal_gates import (
     UKZeroWeightStratumDeclaration,
     _household_weights,
@@ -273,20 +277,36 @@ def _evaluate_calibration_reference_coverage(
 #: The stage-health checks that read the phase's frame beside their stage's
 #: receipt: the band donors' check recomputes a capped seating's seats from
 #: the transferred phase's frame, the copy area check compares each copy with
-#: its parent there, and the council-tax check holds each household's
-#: reductions within its bill there (microcosm#931). Every other check reads
-#: its receipt alone and runs without a frame.
+#: its parent there, the council-tax check holds each household's reductions
+#: within its bill there, and the area mapping check re-derives every
+#: household's ladder from its phase's frame (microcosm#931). Every other
+#: check reads its receipt alone and runs without a frame.
 _STAGE_HEALTH_FRAME_CHECKS = frozenset(
     {
         "spi_income_band_donor_support",
         "copy_area_agreement",
         "council_tax_reduction_within_bill",
+        "atomic_mapping_integrity",
     }
 )
+#: The one stage-health check that reads evidence artifacts beside the stage
+#: evidence: the area mapping check reads the spine's geography block and the
+#: bytes of the conditioned supports it pins, which the spine gate kernel
+#: hands the gates of a node that carries the block (microcosm#931). Without
+#: them its gate is evidence_absent.
+_STAGE_HEALTH_BINDING_CHECK = "atomic_mapping_integrity"
 
 
 def _stage_health_requires_frame(parameters: Mapping[str, Any]) -> bool:
     return parameters.get("check") in _STAGE_HEALTH_FRAME_CHECKS
+
+
+def _stage_health_required_artifacts(parameters: Mapping[str, Any]) -> frozenset[str]:
+    if parameters.get("check") == _STAGE_HEALTH_BINDING_CHECK:
+        return frozenset(
+            {"stage_evidence", SPINE_GEOGRAPHY_ARTIFACT, ATOMIC_AREA_SUPPORTS_ARTIFACT}
+        )
+    return frozenset({"stage_evidence"})
 
 
 def _evaluate_stage_health(
@@ -299,12 +319,17 @@ def _evaluate_stage_health(
     receipt = evidence_by_stage.get(stage)
     if not isinstance(receipt, Mapping):
         raise ValueError(f"stage_evidence has no receipt object for {stage!r}.")
+    binding = parameters.get("check") == _STAGE_HEALTH_BINDING_CHECK
     return uk_stage_health_gate(
         evidence=receipt,
         stage=stage,
         check=str(parameters["check"]),
         parameters=parameters,
         frame=context.frame if _stage_health_requires_frame(parameters) else None,
+        geography=context.artifacts.get(SPINE_GEOGRAPHY_ARTIFACT) if binding else None,
+        supports=(
+            context.artifacts.get(ATOMIC_AREA_SUPPORTS_ARTIFACT) if binding else None
+        ),
     )
 
 
@@ -2315,9 +2340,12 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),
+        # The area mapping check reads the spine's geography block and the
+        # supports it pins too (microcosm#931).
+        artifact_selector=_stage_health_required_artifacts,
         needs_frame=False,
-        # The band donors', the copy area and the council-tax checks read the
-        # phase's frame (microcosm#931).
+        # The band donors', the copy area, the council-tax and the area
+        # mapping checks read the phase's frame (microcosm#931).
         frame_predicate=_stage_health_requires_frame,
         evidence=_stage_health_evidence,
     ),
@@ -2515,6 +2543,8 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
 #: these instead. test_uk_graph derives the set from the registry and holds
 #: this list to it exactly.
 UK_GATE_REGISTRY_MODULES: tuple[str, ...] = (
+    "microcosm.build.atomic_geography",
+    "microcosm.build.atomic_support_conditioning",
     "microcosm.build.bounded_amounts",
     "microcosm.build.chronicle_epoch",
     "microcosm.build.copy_agreement",
@@ -2524,6 +2554,8 @@ UK_GATE_REGISTRY_MODULES: tuple[str, ...] = (
     "microcosm.build.ledger_targets",
     "microcosm.build.source_lineage",
     "microcosm.build.stochastic_assignment",
+    "microcosm.build.uk_runtime.atomic_area_conditioning",
+    "microcosm.build.uk_runtime.atomic_area_support",
     "microcosm.build.uk_runtime.battery_bindings",
     "microcosm.build.uk_runtime.bus_fare_pricing",
     "microcosm.build.uk_runtime.bus_support_pricing",
@@ -2571,6 +2603,8 @@ UK_GATE_REGISTRY_MODULES: tuple[str, ...] = (
     "microcosm.calibrate.target",
     "microcosm.frame.adapters.policyengine_uk",
     "microcosm.frame.materialize",
+    "microcosm.graph.canonical",
+    "microcosm.graph.randomness",
 )
 
 
