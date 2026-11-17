@@ -203,6 +203,7 @@ from microcosm.build.uk_runtime.property_components import (
 from microcosm.build.uk_runtime.property_purchases import (
     UKPropertyPurchasesStageTransform,
 )
+from microcosm.build.uk_runtime.receipt_counts import outside_work_trees
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
@@ -535,7 +536,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "node's entry, peak and exit RSS and its wall time, the spine's "
             "memory guard (microcosm#931). A node's record keeps the message of "
             "a failure it raised, so keep the directory private, outside every "
-            "staged output; the build refuses one inside the repository."
+            "staged output; the build refuses one inside any git work tree."
         ),
     )
     parser.add_argument(
@@ -791,22 +792,24 @@ def _validate_stage_profile_dir(directory: Path) -> None:
     the node has run, so a path that is not a directory, or a profile there
     of another schema, would fail the build after its first node and lose
     that node's result. A record keeps the message of a failure its node
-    raised, so the directory must also lie outside the repository. Each
-    refusal is a fixed sentence.
+    raised, so the directory must also lie outside every git work tree, as
+    ``receipt_counts.outside_work_trees`` holds the tools' licensed outputs:
+    this checkout, another one, or this one spelled in another case on a
+    case-insensitive volume. Each refusal is a fixed sentence.
     """
 
     target = Path(directory).expanduser().resolve()
     if target.exists() and not target.is_dir():
         raise ValueError("--stage-profile-dir must name a directory.")
-    repository = _REPOSITORY.resolve()
-    if (repository / "pyproject.toml").is_file() and (
-        target == repository or repository in target.parents
-    ):
+    try:
+        outside_work_trees(target, what="a stage profile")
+    except SystemExit:
+        # The wider check names the paths; this refusal stays a fixed sentence.
         raise ValueError(
-            "--stage-profile-dir must lie outside the repository: a stage "
+            "--stage-profile-dir must lie outside every git work tree: a stage "
             "profile keeps the message of a failure its node raised, so it "
             "stays private."
-        )
+        ) from None
     existing = target / STAGE_PROFILE_FILENAME
     if existing.exists():
         try:
