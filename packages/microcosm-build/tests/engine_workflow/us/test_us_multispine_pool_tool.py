@@ -1233,7 +1233,7 @@ def test_pool_envelope_v7_preserves_stacked_bank_identity_but_rejects_v6(
         )
     capsys.readouterr()
 
-    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 7
+    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 8
     assert identity() == current_identity
     current_store = pool_tool._PoolStageCheckpointStore(
         checkpoint_root,

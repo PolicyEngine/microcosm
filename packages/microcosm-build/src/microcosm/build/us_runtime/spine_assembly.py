@@ -41,6 +41,8 @@ __all__ = ["assemble_spines"]
 _CHANNEL_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 _SUPPORT_CLONE_INDEX = 0
 _SHARE_RTOL = 1e-12
+# Every integer in [-2**53, 2**53] has an exact float64 representation.
+_FLOAT64_EXACT_INTEGER_BOUND = 2**53
 
 
 def assemble_spines(
@@ -62,8 +64,18 @@ def assemble_spines(
 
     Source frames must already use the same US schema and column dtypes for
     every column they share.  Source-specific columns are carried with missing
-    values on other sources.  Measured values in the inputs are copied without
-    modification; only structural IDs can be remapped to avoid collisions.
+    values on other sources.  An integer column (NumPy or pandas nullable,
+    signed or unsigned) that some source lacks is carried as ``float64`` with
+    ``NaN`` on that source's rows, so the result stays numeric and writable to
+    table-format HDF.  For NumPy integers this is the union a plain
+    ``pd.concat`` makes; pandas nullable integers are cast to ``float64`` as
+    well, since PyTables has no type for them.  A value outside +/-2**53,
+    which ``float64`` cannot hold exactly, is refused.  Float, datetime and
+    timedelta source-specific columns keep their dtype with ``NaN``/``NaT``;
+    boolean and other source-specific columns are padded with ``None`` in an
+    object column.  Columns every source carries keep their dtype.  Measured
+    values in the inputs are copied without modification; only structural IDs
+    can be remapped to avoid collisions.
 
     Args:
         spines: Two or more peer source frames keyed by stable source channel.
@@ -344,6 +356,13 @@ def _column_dtypes(
             table = frames[channel].table(entity)
             for column in table:
                 dtypes.setdefault(column, table[column].dtype)
+        for column in _padded_integer_columns(
+            frames,
+            ordered_channels,
+            entity=entity,
+            dtypes=dtypes,
+        ):
+            dtypes[column] = np.dtype(np.float64)
         spine_source_id, source_id, support_channel, clone_index = (
             _support_metadata_columns(entity)
         )
@@ -361,6 +380,54 @@ def _column_dtypes(
         dtypes[clone_index] = np.dtype(np.int64)
         result[entity] = dtypes
     return result
+
+
+def _padded_integer_columns(
+    frames: Mapping[str, Frame],
+    ordered_channels: tuple[str, ...],
+    *,
+    entity: str,
+    dtypes: Mapping[str, Any],
+) -> list[str]:
+    """Return integer columns some source lacks, after an exactness check.
+
+    These columns are carried as ``float64`` with ``NaN`` where a source has
+    no value: an object column of integers and ``None`` cannot be written to
+    table-format HDF, and pandas nullable integers have no PyTables type
+    either.  Every carried value must survive the cast exactly.
+    """
+
+    padded: list[str] = []
+    for column, dtype in dtypes.items():
+        if not pd.api.types.is_integer_dtype(dtype):
+            continue
+        carriers = [
+            channel
+            for channel in ordered_channels
+            if column in frames[channel].table(entity)
+        ]
+        if len(carriers) == len(ordered_channels):
+            continue
+        for channel in carriers:
+            values = frames[channel].table(entity)[column].dropna()
+            if values.empty:
+                continue
+            low = int(values.min())
+            high = int(values.max())
+            if (
+                low < -_FLOAT64_EXACT_INTEGER_BOUND
+                or high > _FLOAT64_EXACT_INTEGER_BOUND
+            ):
+                lacking = [other for other in ordered_channels if other not in carriers]
+                raise ValueError(
+                    f"Spine {channel!r} {entity!r} column {column!r} is absent "
+                    f"from spine(s) {lacking}, so assembly carries it as "
+                    "float64 with NaN there, but its values span "
+                    f"[{low}, {high}], beyond the +/-2**53 range float64 "
+                    "holds exactly."
+                )
+        padded.append(column)
+    return padded
 
 
 def _id_offsets(
@@ -443,10 +510,20 @@ def _align_table(
 ) -> pd.DataFrame:
     aligned = table.copy()
     for column in columns:
+        dtype = dtypes[column]
         if column not in aligned:
             aligned[column] = _missing_series(
                 len(aligned),
-                dtype=dtypes[column],
+                dtype=dtype,
+                index=aligned.index,
+            )
+        elif dtype == np.dtype(np.float64) and pd.api.types.is_integer_dtype(
+            aligned[column].dtype
+        ):
+            # An integer column another source lacks; _padded_integer_columns
+            # has already checked every value survives the cast exactly.
+            aligned[column] = pd.Series(
+                aligned[column].to_numpy(dtype=np.float64, na_value=np.nan),
                 index=aligned.index,
             )
     return aligned.loc[:, columns]

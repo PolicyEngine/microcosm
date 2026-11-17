@@ -592,3 +592,328 @@ def test_three_spine_output_is_invariant_across_all_input_permutations() -> None
         assert result.mass_log == baseline.mass_log
 
     assert len(seen_orders) == 6
+
+
+def _with_columns(frame: Frame, entity: str, columns: dict[str, object]) -> Frame:
+    tables = {name: frame.table(name).copy(deep=True) for name in frame.entities}
+    for column, values in columns.items():
+        tables[entity][column] = values
+    return Frame(
+        tables,
+        frame.schema,
+        {name: frame.weights_for(name) for name in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+    )
+
+
+def _asec_with_cps_only_integer_carries() -> Frame:
+    # CPS-only integer carries: household tenure (H_TENURE today; HPUBLIC and
+    # HLORENT ride the same path), raw person codes, and the unsigned and
+    # pandas-nullable integer storages a source could use.
+    asec = _with_columns(
+        _asec_frame(),
+        "household",
+        {
+            "H_TENURE": np.asarray([1, 3], dtype=np.int64),
+            "HPUBLIC": np.asarray([0, 2], dtype=np.int64),
+        },
+    )
+    return _with_columns(
+        asec,
+        "person",
+        {
+            "A_HGA": np.asarray([39, 43], dtype=np.int64),
+            "A_FLAG": np.asarray([0, 255], dtype=np.uint8),
+            "NULLABLE_CODE": pd.array([7, None], dtype="Int64"),
+            "NULLABLE_UNSIGNED_CODE": pd.array([3, None], dtype="UInt8"),
+            "ALL_MISSING_CODE": pd.array([None, None], dtype="Int64"),
+        },
+    )
+
+
+def _acs_with_typehugq() -> Frame:
+    # An ACS-only integer carry, padded on CPS rows, with no unfilled boolean:
+    # an object boolean plus None is table-writable only once a CPS producer
+    # fills it (see the boolean test below).
+    return _with_columns(
+        _acs_frame(),
+        "household",
+        {"TYPEHUGQ": np.asarray([1], dtype=np.int64)},
+    )
+
+
+def _acs_with_acs_only_columns() -> Frame:
+    return _with_columns(
+        _acs_with_typehugq(),
+        "person",
+        {"is_female": np.asarray([True], dtype=bool)},
+    )
+
+
+def test_assemble_spines__pads_source_only_integer_columns_as_float64() -> None:
+    result = assemble_spines(
+        {
+            "asec": _asec_with_cps_only_integer_carries(),
+            "acs": _acs_with_acs_only_columns(),
+        },
+        household_mass_shares={"asec": 0.75, "acs": 0.25},
+    )
+
+    household = result.table("household")
+    acs_households = household[support_channel_column("household")].eq("acs")
+    for column, expected in {"H_TENURE": [1.0, 3.0], "HPUBLIC": [0.0, 2.0]}.items():
+        assert household[column].dtype == np.dtype(np.float64), column
+        assert household.loc[~acs_households, column].tolist() == expected
+        assert household.loc[acs_households, column].isna().all()
+    assert household["TYPEHUGQ"].dtype == np.dtype(np.float64)
+    assert household.loc[acs_households, "TYPEHUGQ"].tolist() == [1.0]
+    assert household.loc[~acs_households, "TYPEHUGQ"].isna().all()
+    # A column every spine carries keeps its integer dtype and values.
+    assert household["state_fips"].dtype == np.dtype(np.int64)
+    assert household["state_fips"].tolist() == [6, 36, 12]
+
+    person = result.table("person")
+    acs_people = person[support_channel_column("person")].eq("acs")
+    for column, expected in {
+        "A_HGA": [39.0, 43.0],
+        "A_FLAG": [0.0, 255.0],
+    }.items():
+        assert person[column].dtype == np.dtype(np.float64), column
+        assert person.loc[~acs_people, column].tolist() == expected
+        assert person.loc[acs_people, column].isna().all()
+    for column, expected in {
+        "NULLABLE_CODE": 7.0,
+        "NULLABLE_UNSIGNED_CODE": 3.0,
+    }.items():
+        # pandas nullable integers become float64, not Float64: a plain
+        # concat with NaN padding would give Float64, which PyTables refuses.
+        assert person[column].dtype == np.dtype(np.float64), column
+        assert person.loc[~acs_people, column].iloc[0] == expected
+        assert person[column].isna().tolist() == [False, True, True]
+    assert person["ALL_MISSING_CODE"].dtype == np.dtype(np.float64)
+    assert person["ALL_MISSING_CODE"].isna().all()
+    assert person["age"].dtype == np.dtype(np.int64)
+    # Booleans are not widened: the source-operator merge reads padded booleans
+    # as object booleans plus None (multispine_pool._merge_source_operator_outputs).
+    assert person["is_female"].dtype == np.dtype(object)
+    assert person["is_female"].tolist() == [None, None, True]
+
+
+def test_assemble_spines__padding_leaves_columns_every_spine_carries_unchanged() -> (
+    None
+):
+    asec = _asec_frame()
+    acs = _acs_frame()
+    result = assemble_spines(
+        {"asec": asec, "acs": acs},
+        household_mass_shares={"asec": 0.75, "acs": 0.25},
+    )
+    padded = assemble_spines(
+        {"asec": _asec_with_cps_only_integer_carries(), "acs": acs},
+        household_mass_shares={"asec": 0.75, "acs": 0.25},
+    )
+
+    for entity in US_SCHEMA.entities:
+        shared = result.table(entity)
+        assert_frame_equal(padded.table(entity).loc[:, shared.columns], shared)
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        np.asarray([1, 2**53 + 1], dtype=np.int64),
+        np.asarray([-(2**53) - 1, 0], dtype=np.int64),
+        np.asarray([1, 2**63], dtype=np.uint64),
+    ],
+    ids=["above_bound", "below_bound", "uint64_above_bound"],
+)
+def test_assemble_spines__refuses_integers_float64_cannot_hold_exactly(
+    values: np.ndarray,
+) -> None:
+    asec = _with_columns(_asec_frame(), "person", {"WIDE_CODE": values})
+
+    with pytest.raises(
+        ValueError,
+        match=r"'person' column 'WIDE_CODE' is absent from spine\(s\) \['acs'\]",
+    ):
+        assemble_spines(
+            {"asec": asec, "acs": _acs_frame()},
+            household_mass_shares={"asec": 0.75, "acs": 0.25},
+        )
+
+
+def test_assemble_spines__keeps_integers_at_the_float64_exact_bound() -> None:
+    at_bound = _with_columns(
+        _asec_frame(),
+        "person",
+        {
+            "WIDE_CODE": np.asarray([-(2**53), 2**53], dtype=np.int64),
+            "WIDE_UNSIGNED_CODE": np.asarray([0, 2**53], dtype=np.uint64),
+        },
+    )
+    result = assemble_spines(
+        {"asec": at_bound, "acs": _acs_frame()},
+        household_mass_shares={"asec": 0.75, "acs": 0.25},
+    )
+    person = result.table("person")
+    values = person["WIDE_CODE"].to_numpy()
+    assert values[:2].tolist() == [float(-(2**53)), float(2**53)]
+    assert int(values[1]) == 2**53
+    assert int(person["WIDE_UNSIGNED_CODE"].to_numpy()[1]) == 2**53
+
+
+def _three_spines_with_tenure(future_tenure: int) -> dict[str, Frame]:
+    # H_TENURE on two of three spines: the anchor and a later carrier.
+    return {
+        "asec": _with_columns(
+            _asec_frame(),
+            "household",
+            {"H_TENURE": np.asarray([1, 3], dtype=np.int64)},
+        ),
+        "acs": _acs_frame(),
+        "future_survey": _with_columns(
+            _acs_frame(),
+            "household",
+            {"H_TENURE": np.asarray([future_tenure], dtype=np.int64)},
+        ),
+    }
+
+
+def test_assemble_spines__checks_exactness_on_every_carrying_spine() -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"Spine 'future_survey' 'household' column 'H_TENURE' is absent "
+        r"from spine\(s\) \['acs'\]",
+    ):
+        assemble_spines(
+            _three_spines_with_tenure(2**53 + 1),
+            household_mass_shares={"asec": 0.5, "acs": 0.25, "future_survey": 0.25},
+        )
+
+
+def test_assemble_spines__integer_carry_on_two_of_three_spines_is_order_free() -> None:
+    frames = _three_spines_with_tenure(2)
+    shares = {"asec": 0.5, "acs": 0.25, "future_survey": 0.25}
+    baseline: Frame | None = None
+
+    for order in permutations(frames):
+        result = assemble_spines(
+            {channel: frames[channel] for channel in order},
+            household_mass_shares={channel: shares[channel] for channel in order},
+        )
+        household = result.table("household")
+        channel = household[support_channel_column("household")]
+        assert household["H_TENURE"].dtype == np.dtype(np.float64)
+        assert household.loc[channel.eq("asec"), "H_TENURE"].tolist() == [1.0, 3.0]
+        assert household.loc[channel.eq("future_survey"), "H_TENURE"].tolist() == [2.0]
+        assert household.loc[channel.eq("acs"), "H_TENURE"].isna().all()
+        if baseline is None:
+            baseline = result
+            continue
+        for entity in US_SCHEMA.entities:
+            assert_frame_equal(result.table(entity), baseline.table(entity))
+
+
+def test_assembled_integer_carries_round_trip_through_table_format_hdf(
+    tmp_path,
+) -> None:
+    """Assembly, then the PUF clone, then the national release writer's
+    put_frame_table(format="table") path, with integer carries padded both
+    ways (CPS-only codes on ACS rows, ACS-only TYPEHUGQ on CPS rows)."""
+
+    from microcosm.frame import put_frame_table, read_frame_table
+
+    assembled = assemble_spines(
+        {"asec": _asec_with_cps_only_integer_carries(), "acs": _acs_with_typehugq()},
+        household_mass_shares={"asec": 0.75, "acs": 0.25},
+    )
+    result = clone_us_frame_for_puf_support(assembled)
+    path = tmp_path / "cloned.h5"
+    with pd.HDFStore(path, mode="w") as store:
+        for entity in US_SCHEMA.entities:
+            put_frame_table(
+                store,
+                entity,
+                result.table(entity),
+                preferred_format="table",
+                data_columns=True,
+            )
+    with pd.HDFStore(path, mode="r") as store:
+        for entity in US_SCHEMA.entities:
+            assert store.get_storer(entity).is_table, entity
+            restored = read_frame_table(store, entity)
+            original = result.table(entity)
+            assert list(restored.columns) == list(original.columns)
+            for column in original.columns:
+                if pd.api.types.is_numeric_dtype(original[column].dtype):
+                    assert restored[column].dtype == original[column].dtype, column
+                    np.testing.assert_array_equal(
+                        restored[column].to_numpy(),
+                        original[column].to_numpy(),
+                    )
+    household = result.table("household")
+    acs_households = household[support_channel_column("household")].eq("acs")
+    assert household.index.size == 2 * assembled.table("household").index.size
+    for column, carrier in {
+        "H_TENURE": ~acs_households,
+        "TYPEHUGQ": acs_households,
+    }.items():
+        assert household[column].dtype == np.dtype(np.float64), column
+        assert household.loc[carrier, column].notna().all(), column
+        assert household.loc[~carrier, column].isna().all(), column
+
+
+def test_padded_boolean_columns_write_as_table_format_after_the_cps_fill(
+    tmp_path,
+) -> None:
+    """A padded ACS-only boolean is table-writable once its CPS producer runs.
+
+    ``is_female`` is ACS-native (acs_inputs.map_acs_native_inputs) and a
+    declared output of the CPS-scope ``derive_us_cps_carried_inputs``; the
+    source chain drops the union's all-null column before the CPS kernel and
+    merges the kernel's booleans back here.
+    """
+
+    from microcosm.build.us_runtime.multispine_pool import (
+        _merge_source_operator_outputs,
+    )
+    from microcosm.frame import put_frame_table, read_frame_table
+
+    assembled = assemble_spines(
+        {"asec": _asec_frame(), "acs": _acs_with_acs_only_columns()},
+        household_mass_shares={"asec": 0.75, "acs": 0.25},
+    )
+    person = assembled.table("person")
+    cps_rows = person[support_channel_column("person")].eq("asec").to_numpy()
+    projection = assembled.select(cps_rows)
+    operated = _with_columns(
+        projection,
+        "person",
+        {"is_female": np.asarray([False, True], dtype=bool)},
+    )
+    merged, rows = _merge_source_operator_outputs(
+        assembled,
+        operated,
+        {"person": frozenset({"is_female"})},
+        operator_name="derive_us_cps_carried_inputs",
+    )
+
+    assert rows == {"person": 2}
+    merged_person = merged.table("person")
+    assert isinstance(merged_person["is_female"].dtype, pd.BooleanDtype)
+    assert merged_person["is_female"].tolist() == [False, True, True]
+    path = tmp_path / "merged.h5"
+    with pd.HDFStore(path, mode="w") as store:
+        put_frame_table(
+            store,
+            "person",
+            merged_person,
+            preferred_format="table",
+            data_columns=True,
+        )
+    with pd.HDFStore(path, mode="r") as store:
+        assert store.get_storer("person").is_table
+        restored = read_frame_table(store, "person")
+    assert restored["is_female"].dtype == np.dtype(bool)
+    assert restored["is_female"].tolist() == [False, True, True]
