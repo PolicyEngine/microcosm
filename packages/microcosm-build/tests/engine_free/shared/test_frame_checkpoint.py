@@ -5,6 +5,7 @@ import json
 import os
 import stat
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
@@ -745,8 +746,19 @@ def test_legacy_string_specs_restore_python_storage() -> None:
         )
 
 
+@pytest.fixture
+def copy_on_write_on() -> Iterator[None]:
+    """Turn copy-on-write on under pandas 2.x; pandas 3 always has it on."""
+
+    if int(pd.__version__.split(".", 1)[0]) >= 3:
+        yield
+        return
+    with pd.option_context("mode.copy_on_write", True):
+        yield
+
+
 def test_loader_keeps_the_decoded_columns_without_copying(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, copy_on_write_on: None
 ) -> None:
     """The loaded frame holds the columns the loader decoded, not a copy.
 

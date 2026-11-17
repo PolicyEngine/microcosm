@@ -11,7 +11,7 @@ copy-on-write check to take that path, because pandas 3 always has it on.
 """
 
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 
 import numpy as np
 import pandas as pd
@@ -113,6 +113,17 @@ def unlinked_frame() -> Frame:
         _strata(),
         metadata={"stage": "source"},
     )
+
+
+@pytest.fixture(autouse=True)
+def copy_on_write_on() -> Iterator[None]:
+    """Turn copy-on-write on under pandas 2.x; pandas 3 always has it on."""
+
+    if int(pd.__version__.split(".", 1)[0]) >= 3:
+        yield
+        return
+    with pd.option_context("mode.copy_on_write", True):
+        yield
 
 
 @pytest.fixture

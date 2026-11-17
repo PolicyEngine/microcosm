@@ -2,6 +2,7 @@
 
 # ruff: noqa: F403, F405
 import weakref
+from collections.abc import Iterator
 
 from test_support.microcosm_build.us_post_export_scoring import *
 
@@ -1175,7 +1176,20 @@ def test_main_frees_the_target_frame_before_the_export(builder) -> None:
     assert reads and max(reads) < deleted_at
 
 
-def test_calibration_leaves_its_input_frame_unchanged_and_unreferenced() -> None:
+@pytest.fixture
+def copy_on_write_on() -> Iterator[None]:
+    """Turn copy-on-write on under pandas 2.x; pandas 3 always has it on."""
+
+    if int(pd.__version__.split(".", 1)[0]) >= 3:
+        yield
+        return
+    with pd.option_context("mode.copy_on_write", True):
+        yield
+
+
+def test_calibration_leaves_its_input_frame_unchanged_and_unreferenced(
+    copy_on_write_on: None,
+) -> None:
     """The premise of ``del target_frame``.
 
     ``calibrate`` keeps no reference to its input frame and leaves it

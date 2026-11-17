@@ -885,10 +885,10 @@ class Frame:
         that needs only the checked weights, such as
         ``calibrate(return_frame=False)``, calls this instead of building a
         frame it would discard. The constructor's checks, which
-        :meth:`with_weights` runs when it builds the frame, are not run: the
-        weight vector's length, and every table invariant this frame passed
-        when it was built. Those fail only if a caller changed a table in
-        place since (see :meth:`revalidate`).
+        :meth:`with_weights` runs when it builds the frame, are not run: that
+        the weight vector's length matches the entity table, and every table
+        invariant this frame passed when it was built (those fail only if a
+        caller changed a table in place since; see :meth:`revalidate`).
 
         Returns:
             The :class:`~microcosm.frame.weights.MassChangeRecord` a

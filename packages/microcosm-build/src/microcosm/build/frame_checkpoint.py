@@ -178,7 +178,10 @@ def load_frame_checkpoint(
     The frame takes the decoded tables without copying them when pandas
     copy-on-write is on (:meth:`~microcosm.frame.Frame._adopt`), so each
     loaded table keeps one internal block per column; values, dtypes and the
-    bytes a rewrite produces are unchanged.
+    bytes a rewrite produces are unchanged. A pandas fixed-format HDF write,
+    which stores one dataset per internal block, can therefore group a loaded
+    table's columns into different datasets than a write of the same table
+    built in memory; the values read back by column name are the same.
 
     ``frame_metadata`` lets a caller restore separately bound
     :class:`~microcosm.frame.Frame` metadata during the loader's one Frame
