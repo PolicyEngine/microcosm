@@ -1785,7 +1785,8 @@
       "phase": "assembled",
       "criticality": "release_blocking",
       "parameters": {
-        "check": "ssi_take_up"
+        "check": "ssi_take_up",
+        "prior_epsilon": 1e-09
       },
       "notes": "US national release (tools/build_us_fiscal_refresh_release.py): the SSI take-up stage's diagnostics against the registry's band targets. Raises at once today."
     },
@@ -2051,7 +2052,8 @@
       "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {
-        "check": "ssi_take_up"
+        "check": "ssi_take_up",
+        "prior_epsilon": 1e-09
       },
       "notes": "US national release (tools/build_us_fiscal_refresh_release.py): the SSI take-up law on the export frame. Joins the terminal batch, which raises before the H5 write."
     },
@@ -2136,7 +2138,8 @@
       "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {
-        "check": "release_gate_failures"
+        "check": "release_gate_failures",
+        "us_critical_target_improvement_max_abs_relative_error": 0.25
       },
       "notes": "US national release (tools/build_us_fiscal_refresh_release.py): the calibration's own gates (critical target fits, the SOI Table 1.4 fit, finite and falling loss) with the pre-solve gates they re-read; build_manifest gates.calibration records them. Joins the terminal batch, which raises before the H5 write."
     },
@@ -2241,7 +2244,8 @@
       "phase": "assembled",
       "criticality": "release_blocking",
       "parameters": {
-        "check": "self_employment_identity"
+        "check": "self_employment_identity",
+        "acs_self_employment_identity_tolerance": 1.0
       },
       "notes": "US ACS local release (tools/build_us_acs_local_release.py): the ACS self-employment leaves add to SEMP on the staging frame. Its refusal exits at once."
     },
@@ -2254,7 +2258,8 @@
         "check": "ssi_medicaid_take_up_signal",
         "residual_relative_tolerance": 1e-09,
         "saturated_relative_tolerance": 1e-06,
-        "acs_local_ssi_band_relative_tolerance": 0.05
+        "acs_local_ssi_band_relative_tolerance": 0.05,
+        "us_medicaid_enrollment_tolerance": 0.02
       },
       "notes": "US ACS local release (tools/build_us_acs_local_release.py): ACS SSI and Medicaid take-up after materialize assigns them; the verdict is recorded in run_identity.json. Exits at once on failure."
     },
@@ -2274,7 +2279,8 @@
       "phase": "assembled",
       "criticality": "release_blocking",
       "parameters": {
-        "check": "self_employment_identity"
+        "check": "self_employment_identity",
+        "acs_self_employment_identity_tolerance": 1.0
       },
       "notes": "US ACS local release (tools/build_us_acs_local_release.py): the self-employment identity again, when calibrate writes the calibrated artifact. Its refusal exits at once."
     },
@@ -2356,6 +2362,14 @@
         "discretionary_share_factors": [
           0.5,
           1.5
+        ],
+        "head_start_share_factors": [
+          0.5,
+          1.5
+        ],
+        "eligible_take_up_share_band": [
+          0.005,
+          0.25
         ]
       },
       "notes": "US ACS local release (tools/build_us_acs_local_release.py): SNAP and TANF take-up on both spines. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
@@ -2366,7 +2380,15 @@
       "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {
-        "check": "immigration_signal"
+        "check": "immigration_signal",
+        "non_citizen_share_band": [
+          0.03,
+          0.12
+        ],
+        "undocumented_anchor_relative_band": [
+          0.5,
+          1.6
+        ]
       },
       "notes": "US ACS local release (tools/build_us_acs_local_release.py): immigration labels and entry clocks. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
     },
@@ -2417,7 +2439,8 @@
         "check": "ssi_medicaid_take_up_signal",
         "residual_relative_tolerance": 1e-09,
         "saturated_relative_tolerance": 1e-06,
-        "acs_local_ssi_band_relative_tolerance": 0.05
+        "acs_local_ssi_band_relative_tolerance": 0.05,
+        "us_medicaid_enrollment_tolerance": 0.02
       },
       "notes": "US ACS local release (tools/build_us_acs_local_release.py): ACS SSI and Medicaid take-up on the calibrated bytes. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
     },
@@ -2503,7 +2526,8 @@
       "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {
-        "check": "self_employment_identity"
+        "check": "self_employment_identity",
+        "acs_self_employment_identity_tolerance": 1.0
       },
       "notes": "US ACS local release (tools/build_us_acs_local_release.py): the self-employment identity on the packaged bytes. Package re-grades the bytes it packages and raises at once."
     },
