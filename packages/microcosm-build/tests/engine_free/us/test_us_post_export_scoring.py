@@ -1231,10 +1231,19 @@ def test_calibration_leaves_its_input_frame_unchanged_and_unreferenced() -> None
     )
     assert frameless.frame is None
     np.testing.assert_array_equal(frameless.weights, result.weights)
-    input_household_table = weakref.ref(frame.table("household"))
-    del frame, result
+    # Follow the input's income column to the array that owns its memory.
+    income_values = frame.table("person")["income"].to_numpy()
+    while isinstance(income_values.base, np.ndarray):
+        income_values = income_values.base
+    input_income_memory = weakref.ref(income_values)
+    del income_values, frame
     gc.collect()
-    assert input_household_table() is None
+    # The calibrated frame alone keeps the input's column memory alive...
+    assert input_income_memory() is not None
+    del result
+    gc.collect()
+    # ...and a result built with return_frame=False keeps none of it.
+    assert input_income_memory() is None
 
 
 def test_calibration_results_drop_their_frames_and_keep_everything_else(

@@ -466,8 +466,8 @@ class L0RefitResult:
     selected_mask: np.ndarray
 
     @property
-    def frame(self) -> Frame:
-        """The post-L0-refit sparse frame."""
+    def frame(self) -> Frame | None:
+        """The post-L0-refit sparse frame (``None`` if the refit carries none)."""
         return self.refit.frame
 
     @property
@@ -2628,9 +2628,12 @@ def calibrate(
             for a caller that needs only the weights and diagnostics, so the
             result keeps nothing of the input's tables alive. Every other
             field is the same, and the calibrated weights pass the same
-            checks :meth:`~microcosm.frame.Frame.with_weights` makes (forward
-            kind transition, the mass policy), so a vector that breaks them
-            is refused either way.
+            weight checks :meth:`~microcosm.frame.Frame.with_weights` makes
+            (forward kind transition, the mass policy), so a vector that
+            breaks them is refused either way. Building the frame also
+            re-checks the input frame's table invariants; without a frame
+            they are not re-checked (they already held when the input frame
+            was built, unless a caller changed its tables in place since).
 
     Returns:
         A :class:`CalibrationResult` with the calibrated frame (``None`` when
@@ -3293,7 +3296,8 @@ def _apply_weights(
     generic reason naming the calibration.
 
     With ``return_frame=False`` no frame is built: the weights go through the
-    same checks ``Frame.with_weights`` makes, and ``None`` is returned.
+    same weight checks ``Frame.with_weights`` makes
+    (``Frame._checked_weight_change``), and ``None`` is returned.
     """
     if mass == CONSERVE_MASS:
         from microcosm.frame import CONSERVE_MASS as FRAME_CONSERVE
@@ -3491,6 +3495,14 @@ def refit_l0_selection(
         selected_mask = selection.weights > (
             _PRUNE_REL_ATOL * float(np.mean(selection.initial_weights))
         )
+        if selection.frame is None:
+            raise ValueError(
+                "refit_l0_selection selects the survivors from the selection's "
+                "calibrated frame, and this selection carries none (it was "
+                "calibrated with return_frame=False). Calibrate the selection "
+                "with return_frame=True, or pass support and k for an exact-k "
+                "refit, which selects from the original frame."
+            )
         subset_source = selection.frame
         selected_inclusion_probabilities = None
     else:

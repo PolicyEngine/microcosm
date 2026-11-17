@@ -879,12 +879,16 @@ class Frame:
     ) -> MassChangeRecord | None:
         """Check a replacement of ``entity``'s weights without building a frame.
 
-        Runs every check :meth:`with_weights` makes before it builds the new
-        frame, with the same errors: the entity name, the argument types, the
-        kind transition, and the mass policy. A caller that needs only the
-        checked weights, such as ``calibrate(return_frame=False)``, calls this
-        instead of building a frame it would discard. The length check is the
-        frame constructor's and runs only when a frame is built.
+        Runs every check :meth:`with_weights` makes on the new weights before
+        it builds the new frame, with the same errors: the entity name, the
+        argument types, the kind transition, and the mass policy. A caller
+        that needs only the checked weights, such as
+        ``calibrate(return_frame=False)``, calls this instead of building a
+        frame it would discard. The constructor's checks, which
+        :meth:`with_weights` runs when it builds the frame, are not run: the
+        weight vector's length, and every table invariant this frame passed
+        when it was built. Those fail only if a caller changed a table in
+        place since (see :meth:`revalidate`).
 
         Returns:
             The :class:`~microcosm.frame.weights.MassChangeRecord` a

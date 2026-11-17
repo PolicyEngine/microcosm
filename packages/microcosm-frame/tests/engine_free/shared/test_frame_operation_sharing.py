@@ -280,6 +280,7 @@ def test_every_result_table_is_a_distinct_object(request, operation: str) -> Non
     source_tables = _tables_of(source)
     for name, table in _tables_of(result).items():
         assert table is not source_tables[name], name
+    assert result.strata is not source.strata
 
 
 @pytest.mark.parametrize("operation", list(_OPERATIONS))

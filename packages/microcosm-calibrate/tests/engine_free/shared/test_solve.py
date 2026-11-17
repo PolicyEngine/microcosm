@@ -2442,3 +2442,28 @@ def test_calibrate_refuses_a_return_frame_that_is_not_a_bool(feasible_frame) -> 
 
     with pytest.raises(TypeError, match="return_frame must be a bool"):
         calibrate(frame, targets, epochs=2, return_frame="False")
+
+
+def test_refit_l0_selection_refuses_a_selection_without_a_frame(
+    feasible_frame,
+) -> None:
+    """The thresholded refit selects survivors from the selection's frame."""
+    frame, truths = feasible_frame(n=60)
+    targets = TargetSet(
+        (
+            _population_target(truths["population"], 1.0),
+            _income_target(truths["income"], 1.0),
+        )
+    )
+    selection = calibrate(
+        frame,
+        targets,
+        epochs=20,
+        seed=0,
+        target_records=20,
+        mass="conserve",
+        return_frame=False,
+    )
+
+    with pytest.raises(ValueError, match="calibrated with return_frame=False"):
+        refit_l0_selection(frame, targets, selection, epochs=5, mass="conserve")
