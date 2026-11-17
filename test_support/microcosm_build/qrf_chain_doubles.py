@@ -12,7 +12,7 @@ module provides:
 - :func:`tracked_target_fits`, which keeps weak references to each fitted
   target and checks, when the next target's fit starts, that they are dead;
 - :func:`table_bytes_digest`, a SHA-256 of a table's index and columns, exact
-  to the byte for numeric and boolean columns.
+  to the byte for NumPy bool, integer and float columns.
 """
 
 from __future__ import annotations
@@ -172,7 +172,8 @@ class TargetFitLifetimes:
                 for tree in getattr(regressor, "estimators_", None) or ()
             )
             # The quantile leaf store is not weakly referenceable, but the
-            # numpy array that owns its leaf values (the large allocation) is.
+            # numpy array that owns its per-leaf training-row positions (the
+            # large, zero-padded allocation) is.
             leaves = getattr(
                 getattr(regressor, "forest_", None), "y_train_leaves", None
             )
@@ -207,8 +208,8 @@ def tracked_target_fits(
     Wraps ``RegimeGatedQRF._fit_target``: on entry it requires every object an
     earlier call built (the target model; its sign classifier with its bins,
     trees and their node arrays; its forests with their regressors, trees and
-    leaf-value arrays) to be dead, then records weak references to the new
-    ones.
+    arrays of per-leaf training-row positions) to be dead, then records weak
+    references to the new ones.
 
     The garbage collector is off inside the block, so an object counts as
     freed only when nothing references it any more, which is when its memory
@@ -217,8 +218,9 @@ def tracked_target_fits(
     Two parts cannot be weakly referenced and are not checked directly:
     scikit-learn's compiled ``Tree`` node storage (each tree's ``tree_``) and
     quantile-forest's ``QuantileForest`` leaf store (each regressor's
-    ``forest_``; only the array owning its leaf values is checked, not its
-    ``y_train`` values). Each belongs to a tracked object and is freed with
+    ``forest_``; only the array behind ``y_train_leaves``, each leaf's
+    training-row positions, is checked, not the training values in
+    ``y_train``). Each belongs to a tracked object and is freed with
     it, unless something references it directly, which this check cannot
     see.
 
@@ -272,13 +274,13 @@ def _update_digest(
 def table_bytes_digest(table: pd.DataFrame) -> str:
     """SHA-256 over a table's index and columns: names, dtypes and value bytes.
 
-    Numeric and boolean columns contribute their raw bytes, so a float that
+    NumPy bool, integer and float columns contribute their raw bytes, so a float that
     differs in its last bit (or a ``-0.0`` for a ``0.0``) changes the digest;
     a categorical column also contributes its categories and their order.
     Other columns contribute ``pandas.util.hash_pandas_object`` values, which
     are not byte-exact: in an object column ``None`` and ``NaN`` hash alike,
     as do mixed values with the same ``str`` (``1`` and ``"1"``). The frozen
-    digests' output tables have numeric and boolean columns only; the
+    digests' output tables have NumPy bool, integer and float columns only; the
     joint-codec comparison, whose tables hold strings, also compares the
     frames exactly.
     """

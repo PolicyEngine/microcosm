@@ -23,9 +23,12 @@ Two kinds of comparison:
   libraries that compute the draws match the recording
   (``_RECORDED_DEPENDENCIES``); elsewhere these tests skip.
 
-A change that is meant to move these outputs replaces the digests with ones
-recorded from its own code on each platform (and states why the outputs
-move); any other change must leave them passing.
+A change that is meant to move these outputs records new digests from its
+own code on each platform, says why the outputs move, and renames what here
+says the digests come from origin/main 3b75cf151 (this text,
+``_ORIGIN_MAIN_DIGESTS``, ``_origin_main_digests`` and the
+``*_reproduces_origin_main_bytes`` tests). Any other change must leave them
+passing.
 """
 
 from __future__ import annotations
