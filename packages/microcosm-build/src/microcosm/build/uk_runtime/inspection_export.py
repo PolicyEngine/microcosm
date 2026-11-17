@@ -90,8 +90,12 @@ class UKInspectionExportPrepareKernel(graph_terminal.UKExportPrepareKernel):
         bindings["artifacts"] = {
             name: value.key for name, value in context.artifacts.items()
         }
+        # The year the weights were solved at, which the export node carries
+        # and the description requires, as the export kernel passes it.
         descriptor = graph_terminal.describe_uk_export(
-            context_frame(context), bindings=bindings
+            context_frame(context),
+            bindings=bindings,
+            solve_year=int(context.params["solve_year"]),
         )
         return KernelResult(artifacts={"export_descriptor": canonical_json(descriptor)})
 
