@@ -233,7 +233,8 @@ tables:
 On top of those sit the slim aging frame, a fraction of S, and about 2 GB of
 cell counts and engine objects. That comes to roughly 5.3 × S + 2 GB, or 55
 to 80 GB. Run it alone on the 128 GiB host. The calibration result's frame
-copy is released before the export. The write and the loader check each hold
+shares the calibrated frame's tables instead of copying them, and the result is
+released before the export. The write and the loader check each hold
 about 2.5 × S.
 
 **Wall time.** Roughly 30 to 60 minutes for two years on an otherwise idle
