@@ -154,8 +154,8 @@ class Frame:
         boolean types, ``category`` and python-backed strings, and under
         pandas 2.x for pyarrow-backed types. ``to_numpy()`` returns a
         writable view of the column's data for, for example, the nullable
-        integer, float and boolean types and python-backed strings when the
-        column has no missing value, and sparse columns without gaps.
+        integer, float and boolean types when the column has no missing
+        value, python-backed strings, and sparse columns without gaps.
 
         When copy-on-write is off (the pandas 2.x default), a shallow copy
         shares data even for ordinary pandas writes, so the tables and strata
@@ -991,9 +991,9 @@ class Frame:
                 for example).
             ValueError: If ``entity`` is not declared by the schema, a value's
                 length does not match the table, or the new columns break a
-                constructor invariant (a name another table already carries,
-                an ``{entity}_weight`` name on a table whose entity has no
-                typed weights, or broken linkage).
+                constructor invariant (for example a name another table
+                already carries, a reserved ``{entity}_weight`` name, a
+                duplicated or missing id, or broken linkage).
         """
 
         table = self.table(entity).copy(deep=False)

@@ -21,15 +21,14 @@ and refuses them. Each rule's name is what a failure reports.
     (such as ``to_numpy()``), which is the writable array behind a
     read-only view.
 
-    Writes are item assignment, ``__setitem__``, ``fill``, ``sort`` and the
-    other in-place ndarray methods, ``fillna(copy=False)``, ``out=``,
-    ``shuffle`` and the in-place NumPy functions below, into the view or
-    into an item of it (a row of a two-dimensional view is a view too).
-    ``+=`` and the other augmented assignments count only into a view
-    itself, because an item of a one-dimensional view is a scalar, which
-    ``+=`` rebinds; and not into a name, or an item of a container, bound
-    only to ``.array``, an extension array, for which ``+=`` builds a new
-    array.
+    Writes are item assignment, ``__setitem__``, ``out=``, ``shuffle`` and
+    the in-place NumPy functions below, into the view or into an item of it
+    (a row of a two-dimensional view is a view too). ``fill``, ``sort``
+    and the other in-place ndarray methods, ``fillna(copy=False)``, ``+=``
+    and the other augmented assignments count only on a view itself (a
+    slice of it is one), because an item of a one-dimensional view is a
+    scalar; and ``+=`` not on a name, or an item of a container, bound only
+    to ``.array``, an extension array, for which ``+=`` builds a new array.
 
     The written expression reaches the view through:
 
@@ -82,7 +81,9 @@ and refuses them. Each rule's name is what a failure reports.
       ``.flatten()``, or a NumPy function that always allocates
       (``_ALLOCATING_NUMPY_FUNCTIONS``: ``np.zeros``, ``np.where``,
       ``np.concatenate``, ...), when not given an output array;
-    - ``np.array`` without ``copy=``, or ``to_numpy(copy=True)``;
+    - ``np.array`` without ``copy=``, ``to_numpy(copy=True)``, or a
+      ``.copy()`` of ``.values`` or of a library or array-method call;
+    - the output array of a call given one that is created;
     - a view, piece (``np.split``), subscript or item (a loop target,
       also in a comprehension, or unpacking) of one of these. ``np.clip``,
       ``np.round`` and ``np.take`` count only as views here: given a
@@ -115,8 +116,8 @@ it does not refuse:
     example for the nullable integer, float and boolean types,
     ``category`` and python-backed strings, and under pandas 2.x for
     pyarrow-backed types), and ``to_numpy()`` a writable view of the
-    column's data (for example for the nullable types and python-backed
-    strings without missing values, and sparse columns without gaps);
+    column's data (for example for the nullable types without missing
+    values, python-backed strings, and sparse columns without gaps);
   - through a pandas object built with ``copy=False`` over another object's
     array;
   - into ``np.asarray(index)``, which is writable although the index is
@@ -128,8 +129,11 @@ it does not refuse:
     object arrays;
   - names reached dynamically (``getattr(np, name)``, ``**{"out": array}``,
     ``*arguments``), library functions bound by unpacking or through a
-    second alias, and positional ``out`` given to ndarray methods;
-  - containers filled inside a comprehension;
+    second alias, and positional ``out`` given to any method;
+  - containers filled inside a comprehension, comprehension loop targets
+    captured with ``:=``, and subscripts or attributes used as ``for`` or
+    ``with`` targets;
+  - ``.base`` read through a name (``values = s.to_numpy(); values.base``);
   - items of a container the function did not build;
   - array libraries other than NumPy and SciPy (``torch.from_numpy`` of a
     read-only view returns a writable tensor).
@@ -139,9 +143,10 @@ it does not refuse:
     a parameter rebound to a new array, and a name rebound from a view to a
     new array, count as before.
   - A boolean or integer array index gives a copy, but counts as indexing.
-  - ``name[key] = view`` into a parameter or other array the function did
-    not create counts as filling a container, though for an array it
-    copies.
+  - ``name[key] = view`` into a parameter, a ``.copy()`` of one, or another
+    array the function did not create counts as filling a container,
+    though for an array it copies; and a list from ``np.split`` of a
+    created array counts as an array, so it is not followed as a container.
   - ``.astype()`` counts as not created, because a pandas object's
     same-type conversion shares its memory.
 
@@ -442,7 +447,8 @@ _VIEW_NUMPY_FUNCTIONS = frozenset(
 
 #: NumPy functions that return new memory for an ndarray or an extension
 #: array, but, given a Series or DataFrame, call its method, whose result can
-#: share the object's memory: never counted as created.
+#: share the object's memory. They are not views of ndarrays or extension
+#: arrays, and count as created only as views of a created array.
 _PANDAS_SHARING_NUMPY_FUNCTIONS = frozenset(
     f"numpy.{name}" for name in ("clip", "round", "around", "take")
 )
@@ -811,16 +817,21 @@ class _Scope:
             ):
                 method = child.func.attr
                 held = self._held[child.func.value.id]
-                keywords = [keyword.value for keyword in child.keywords]
+                # ``insert(index, value)`` and ``setdefault(key, value)`` put
+                # in only their second argument.
+                values = (
+                    child.args[1:] if method in ("insert", "setdefault") else child.args
+                )
                 if method in _ITEM_ADDING_METHODS:
-                    held.extend(
-                        (value, 0, _ONE_ITEM) for value in (*child.args, *keywords)
-                    )
+                    held.extend((value, 0, _ONE_ITEM) for value in values)
                 elif method == "extend":
-                    held.extend((value, 0, _ITEMS) for value in child.args)
+                    held.extend((value, 0, _ITEMS) for value in values)
                 elif method == "update":
-                    held.extend((value, 0, _ENTRIES) for value in child.args)
-                    held.extend((value, 0, _ONE_ITEM) for value in keywords)
+                    held.extend((value, 0, _ENTRIES) for value in values)
+                    for keyword in child.keywords:
+                        # ``**mapping`` puts in the mapping's values.
+                        kind = _ENTRIES if keyword.arg is None else _ONE_ITEM
+                        held.append((keyword.value, 0, kind))
 
 
 class _ComprehensionScope:
@@ -1041,6 +1052,9 @@ def _library_object(dotted_name: str) -> object | None:
             found: object = importlib.import_module(".".join(parts[:split]))
         except ImportError:
             continue
+        except Exception:
+            # A module that fails to import names nothing the scan can use.
+            return None
         for part in parts[split:]:
             found = getattr(found, part, None)
             if found is None:
@@ -1086,6 +1100,14 @@ def _is_ufunc_method(dotted_name: str, methods: Iterable[str]) -> bool:
     return method in methods and isinstance(_library_object(owner), np.ufunc)
 
 
+def _is_slice(index: ast.expr) -> bool:
+    """Whether a subscript's index is a slice (``a[1:]``, ``a[:, 0:2]``)."""
+
+    if isinstance(index, ast.Tuple):
+        return any(isinstance(part, ast.Slice) for part in index.elts)
+    return isinstance(index, ast.Slice)
+
+
 def _is_false_constant(expression: ast.expr) -> bool:
     return isinstance(expression, ast.Constant) and not expression.value
 
@@ -1114,7 +1136,11 @@ def _copy_is_off(call: ast.Call, position: int | None = None) -> bool:
         and len(call.args) > position
         and not any(isinstance(argument, ast.Starred) for argument in call.args)
     ):
-        value = call.args[position]
+        positional = call.args[position]
+        # Other methods of the same name take other arguments there (an
+        # ndarray's ``astype(dtype, order)``), so only the constant False
+        # counts.
+        return isinstance(positional, ast.Constant) and positional.value is False
     return value is not None and not _is_true_constant(value)
 
 
@@ -1395,8 +1421,11 @@ class _Scanner:
         return levels
 
     def _call_newness(self, call: ast.Call, lookup: _NameLookup | None) -> int:
-        if self._output_arguments(call):
-            return _NOT_NEW
+        outputs = self._output_arguments(call)
+        if outputs:
+            # The result is the output array (or None, for ``ufunc.at`` and
+            # the in-place functions): as new as the outputs are.
+            return min(self._newness(output, lookup) for output in outputs)
         name = self._resolve(call.func)
         function = call.func
         if name is not None:
@@ -1446,13 +1475,17 @@ class _Scanner:
             deep = _keyword(call, "deep")
             if deep is not None and not _is_true_constant(deep.value):
                 return _NOT_NEW
-            if not call.args:
-                return _NEW_OBJECT
-            first = call.args[0]
-            if isinstance(first, ast.Constant) and (
-                first.value is True or isinstance(first.value, str)
+            first = call.args[0] if call.args else None
+            if first is not None and not (
+                isinstance(first, ast.Constant)
+                and (first.value is True or isinstance(first.value, str))
             ):
-                return _NEW_OBJECT
+                return _NOT_NEW
+            # A copy of an array is a new array; of anything else (a dict, a
+            # list), possibly a shallow copy whose items are shared.
+            return (
+                _NEW_ARRAY if self._is_array_expression(function.value) else _NEW_OBJECT
+            )
         return _NOT_NEW
 
     def _newness(self, expression: ast.expr, lookup: _NameLookup | None = None) -> int:
@@ -1542,7 +1575,11 @@ class _Scanner:
             for name, level in self._newness_table(scope).items()
             if level == _NEW_ARRAY
         }
+        library_names = self._libraries.bound_names | self._libraries.derived_names
         for name in scope.held_names():
+            if name in library_names:
+                # ``np.append(...)`` is a library call, not a container fill.
+                continue
             for value, items_taken, kind in scope.held_values(name):
                 if kind == _BY_KEY and name in new_arrays:
                     continue
@@ -1636,7 +1673,10 @@ class _Scanner:
                 return _view_of(self._view_level(expression.value, lookup))
             return _NO_VIEW
         if isinstance(expression, ast.Subscript):
-            return _item_of(self._view_level(expression.value, lookup))
+            container = self._view_level(expression.value, lookup)
+            if _is_slice(expression.slice):
+                return container
+            return _item_of(container)
         if isinstance(expression, ast.NamedExpr):
             return self._view_level(expression.value, lookup)
         if isinstance(expression, ast.Starred):
@@ -1763,9 +1803,16 @@ class _Scanner:
                     if positional <= _ELEMENT
                     else min(positional, _holder_of(_items_taken(positional, 2)))
                 )
+                named = nearest(
+                    keyword.value for keyword in call.keywords if keyword.arg
+                )
+                unpacked = nearest(
+                    keyword.value for keyword in call.keywords if keyword.arg is None
+                )
                 return min(
                     from_items,
-                    _holder_of(nearest(keyword.value for keyword in call.keywords)),
+                    _holder_of(named),
+                    _NO_VIEW if unpacked <= _ELEMENT else unpacked,
                 )
             if function.id in _SAME_ITEMS_BUILTINS:
                 return _items_holder_of(nearest(arguments))
@@ -1866,7 +1913,9 @@ class _Scanner:
                 if flag is not None and not _is_false_constant(flag):
                     self._report(node, _MAKES_ARRAY_WRITABLE)
             elif self._writes_into_receiver(node, function.attr):
-                if self._reaches_writable_view(function.value):
+                # Only on a view itself: an item of a one-dimensional view is
+                # a scalar, and ``label.partition(" ")`` is a string method.
+                if self._view_level(function.value) == _IS_VIEW:
                     self._report(node, _WRITES_THROUGH_WRITABLE_VIEW)
         for written in self._output_arguments(node):
             self._check_written_array(node, written)
@@ -2125,6 +2174,43 @@ def _in_function(*body_lines: str, parameters: str = "series") -> str:
 
 #: Snippets the scan must refuse, with the one rule each must report.
 _REFUSED_SNIPPETS = {
+    # Round-six cases.
+    "slice_of_a_view_augmented": (
+        _in_function("head = np.asarray(series.array)[:3]", "head += 1"),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "loop_over_a_slice_of_views_augmented": (
+        _in_function(
+            "arrays = [np.asarray(frame[name].array) for name in names]",
+            "for values in arrays[1:]:",
+            "    values -= arrays[0]",
+            parameters="frame, names",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "array_of_a_slice_of_a_view_augmented": (
+        _in_function("values = np.asarray(series.array[1:])", "values += 1"),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_through_dict_of_an_unpacked_mapping": (
+        _in_function(
+            "by_name = {name: frame[name].array for name in names}",
+            "copied = dict(**by_name)",
+            'copied["income"][0] = 1',
+            parameters="frame, names",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "series_array_through_update_with_an_unpacked_mapping": (
+        _in_function(
+            "by_name = {name: frame[name].array for name in names}",
+            "holder = {}",
+            "holder.update(**by_name)",
+            'holder["income"][0] = 1',
+            parameters="frame, names",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
     # Round-five cases.
     **{
         f"series_array_filled_with_{method}": (
@@ -3056,6 +3142,40 @@ def test_the_scanner_refuses_each_unprotected_write(source: str, rule: str) -> N
 #: Snippets the scan must accept: reads, read-only flags, and writes into
 #: arrays the same function created.
 _ACCEPTED_SNIPPETS = {
+    # Round-six cases.
+    "string_methods_on_labels_from_views": _in_function(
+        'for code, label in zip(frame["c"].array, frame["l"].array):',
+        '    head, _, rest = label.partition(" ")',
+        parameters="frame",
+    ),
+    "output_array_of_a_call_reused": _in_function(
+        "share = np.divide(part, total, out=np.zeros_like(part), where=total > 0)",
+        "np.clip(share, 0, 1, out=share)",
+        parameters="part, total",
+    ),
+    "copy_of_an_array_filled_by_key": _in_function(
+        "matrix = np.asarray(template).copy()",
+        "for row, column in enumerate(columns):",
+        "    matrix[row] = frame[column].array",
+        "    matrix[row] /= matrix[row].sum()",
+        parameters="template, frame, columns",
+    ),
+    "numpy_append_is_not_a_fill": _in_function(
+        'extended = np.append(frame["x"].array, 0.0)',
+        "grid = np.copy(base)",
+        "grid[mask] += 1",
+        parameters="frame, base, mask",
+    ),
+    "extension_arrays_set_by_default_scaled": _in_function(
+        "columns = {}",
+        'columns.setdefault("a", frame["a"].array)',
+        'columns["a"] *= 2',
+        parameters="frame",
+    ),
+    "astype_given_an_order_written": _in_function(
+        "converted = np.asarray(series.array).astype(np.float64, 'C')",
+        "converted[0] = 1",
+    ),
     # Round-five cases.
     "new_array_filled_by_key_from_views": _in_function(
         "matrix = np.empty((len(columns), size))",
@@ -3432,9 +3552,9 @@ def test_a_changed_function_changes_the_finding_key() -> None:
 
 
 def test_a_deep_chain_of_comprehension_generators_is_scanned_quickly() -> None:
-    """Comprehension loop targets are cached. Without the cache every
-    generator doubles the work, so forty of them would take days; the alarm
-    turns that into a failure instead of a hang."""
+    """Comprehension loop targets are cached, for both rules. Without the
+    cache every generator doubles the work, so forty of them would take
+    days; the alarm turns that into a failure instead of a hang."""
 
     if not hasattr(signal, "setitimer"):
         pytest.skip("needs signal.setitimer")
@@ -3443,6 +3563,15 @@ def test_a_deep_chain_of_comprehension_generators_is_scanned_quickly() -> None:
         for index in range(1, 41)
     )
     source = _in_function("chain_0 = series.array", f"[chain_40.fill(0) {generators}]")
+    branches = " ".join(
+        f"for chain_{index} in (chain_{index - 1} if flag else chain_{index - 1})"
+        for index in range(1, 41)
+    )
+    newness_source = _in_function(
+        "chain_0 = np.zeros((2, 2))",
+        f"[np.add(chain_40, 1, out=chain_40) {branches}]",
+        parameters="flag",
+    )
 
     def stop(_signal_number: int, _frame: object) -> None:
         raise TimeoutError("the scan did not finish within 30 seconds")
@@ -3451,6 +3580,7 @@ def test_a_deep_chain_of_comprehension_generators_is_scanned_quickly() -> None:
     signal.setitimer(signal.ITIMER_REAL, 30)
     try:
         findings = scan_source(source, "snippet.py")
+        findings += scan_source(newness_source, "snippet.py")
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous)
