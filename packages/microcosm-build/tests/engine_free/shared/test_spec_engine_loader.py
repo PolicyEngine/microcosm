@@ -28,8 +28,10 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # microcosm#1096's exact softmax cap projection in solve moves it too.
     # microcosm#1387's SEMP-covered partnership step moves acs_transfer's
     # attested bytes.
+    # The fit input checks from the microimpute bug-parity audit move the fit
+    # kernels' bytes too.
     assert first.spec_sha256 == (
-        "2c0c53e232fe2f79d45c7da5a7d706d3f4e8d9c07d134d78f14cdf1a23866b2d"
+        "b7c843a1c77a70b49428c9977c4111f138e7cd0b46a61c7cc3ab88636d1920bd"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

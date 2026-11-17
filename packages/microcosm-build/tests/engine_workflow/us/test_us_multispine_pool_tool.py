@@ -360,7 +360,8 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # acs_transfer's attested bytes.
             # microcosm#922's county facts pin, two declared legacy resources,
             # moves it.
-            "spec_sha256": "3fd1a3840bd8769b5fa674ab51d3db9a92450e40bf09d5cf9894add726c4c4b8",
+            # microcosm#1543's fit input checks in microcosm.fit.qrf move it again.
+            "spec_sha256": "9ad067de4d9e5ac8a70734886963145c35983b4e385177e43a04da162b700b31",
         },
     }
 
