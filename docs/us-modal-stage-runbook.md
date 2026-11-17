@@ -795,6 +795,12 @@ the years newest first as `route_a.sh` passes them. Its commit,
 operator fills it. Replace `pending` in its run id with the commit's first 12
 characters, as the rerun's launch sequence did.
 
+The template builds a `legacy` base. Its registration passes the legacy
+location flags, and the location flags are runner-owned, so no plan can switch
+the base to `block_v1` (microcosm#1047). A build with Route A's
+`LOCATION_RULE=block_v1` builds its base with `route_a.sh` itself and does not
+hand a Modal base to Route A.
+
 It takes twelve inputs, one more than the rerun:
 
 - the 2025, 2024 and 2023 ASEC H5s;

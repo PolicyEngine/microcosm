@@ -657,8 +657,9 @@ fi
 # asecpub23csv.zip, in every mode; it is not a pooled year. The driver passes
 # no --asec-2023-weeks-unemployed-source: the base fetches the archive into
 # ~/.cache/microcosm/cps/asec_2023/ (the prefetch above warms it) and checks
-# its pin, and the Modal registration seeds the same cache, so a local base
-# and a Modal base lock the same run config.
+# its pin, and the Modal registration seeds the same cache, so a local legacy
+# base and a Modal base lock the same run config. The Modal registration keeps
+# the legacy location flags, so a LOCATION_RULE=block_v1 base is local only.
 BASE_CKPT=$RUN/base-checkpoints
 BASE_OUT=$RUN/base-out
 BASE_H5=$BASE_OUT/base_populace_us_2024_puf_support.h5

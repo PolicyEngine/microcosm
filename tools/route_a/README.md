@@ -137,6 +137,9 @@ first and set what its blockers name:
     the base tool at the commit declares those two flags.
   - The driver refuses any other value. `block_v1` needs a block ladder that
     carries each block's PUMA (see **Block ladder**).
+  - `block_v1` is for a base that the driver builds itself. The Modal base
+    registration keeps the legacy location flags, so a Modal base is always a
+    `legacy` base (see "Modal base hand-off").
 - **Block ladder.** `LADDER_SHA` and `LADDER_BYTES` default to the published
   run's ladder (d713, rebuilt at microcosm#1072). A build with another ladder
   sets `LADDER`, `LADDER_SHA` and `LADDER_BYTES` together.
@@ -279,6 +282,11 @@ copies with `verify-receipt --prefix base-out --strict`, writes `base.sha256`,
 moves old local checkpoints aside, stores the receipt/comparison/run-context
 evidence in `base-sup`, and writes `ACCEPTED` last. Set that block's `RUN` to
 `$RUN_ROOT/run-<12-character-build-commit>` before rerunning this driver.
+
+A Modal base is a `legacy` base. Its registration passes the legacy location
+flags, and no plan can pass `--location-rule`. Do not hand a Modal base to a
+run with `LOCATION_RULE=block_v1`. The driver skips a base stage that is
+already accepted, so the release would use the `legacy` base.
 
 The committed Modal example plan and local reference target the historical
 `4b57d15a2` base and its `7ba39b95…` ladder. They do not qualify a new CT-fixed
