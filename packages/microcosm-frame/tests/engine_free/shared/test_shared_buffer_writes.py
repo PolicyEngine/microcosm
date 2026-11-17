@@ -968,9 +968,11 @@ class _LibraryNames:
                 )
                 for target in targets:
                     derived.update(
-                        name.id
-                        for name in ast.walk(target)
-                        if isinstance(name, ast.Name)
+                        bound.id
+                        for bound, _value, _items in _target_names(
+                            target, node.value, 0
+                        )
+                        if isinstance(bound, ast.Name)
                     )
         self.derived_names = frozenset(derived)
 
@@ -1042,6 +1044,10 @@ class _TriggerLines:
 # Library lookups -----------------------------------------------------------
 
 
+def _import_module(name: str) -> object:
+    return importlib.import_module(name)
+
+
 @functools.cache
 def _library_object(dotted_name: str) -> object | None:
     """The NumPy or SciPy object a dotted name names, importing its module."""
@@ -1049,7 +1055,7 @@ def _library_object(dotted_name: str) -> object | None:
     parts = dotted_name.split(".")
     for split in range(len(parts), 0, -1):
         try:
-            found: object = importlib.import_module(".".join(parts[:split]))
+            found: object = _import_module(".".join(parts[:split]))
         except ImportError:
             continue
         except Exception:
@@ -1501,7 +1507,7 @@ class _Scanner:
             container = self._newness(expression.value, lookup)
             if container == _NEW_ARRAY:
                 return _NEW_ARRAY
-            if container == _NEW_OBJECT and isinstance(expression.slice, ast.Slice):
+            if container == _NEW_OBJECT and _is_slice(expression.slice):
                 return _NEW_OBJECT
             return _NOT_NEW
         if isinstance(expression, ast.IfExp):
@@ -1575,9 +1581,8 @@ class _Scanner:
             for name, level in self._newness_table(scope).items()
             if level == _NEW_ARRAY
         }
-        library_names = self._libraries.bound_names | self._libraries.derived_names
         for name in scope.held_names():
-            if name in library_names:
+            if self._resolve(ast.Name(id=name, ctx=ast.Load())) is not None:
                 # ``np.append(...)`` is a library call, not a container fill.
                 continue
             for value, items_taken, kind in scope.held_values(name):
@@ -1618,9 +1623,13 @@ class _Scanner:
         if not isinstance(expression, ast.Call):
             return False
         function = expression.func
-        return self._resolve(function) is not None or (
-            isinstance(function, ast.Attribute)
-            and function.attr in (*_VIEW_METHODS, "astype")
+        name = self._resolve(function)
+        if name is not None:
+            # ``np.split`` and the like return lists.
+            return name not in _SPLITTING_NUMPY_FUNCTIONS
+        return isinstance(function, ast.Attribute) and function.attr in (
+            *_VIEW_METHODS,
+            "astype",
         )
 
     def _is_container(self, expression: ast.expr) -> bool:
@@ -1912,6 +1921,10 @@ class _Scanner:
                     flag = node.args[0]
                 if flag is not None and not _is_false_constant(flag):
                     self._report(node, _MAKES_ARRAY_WRITABLE)
+            elif function.attr == "__setitem__":
+                # Like item assignment: into a view or an item of one.
+                if self._reaches_writable_view(function.value):
+                    self._report(node, _WRITES_THROUGH_WRITABLE_VIEW)
             elif self._writes_into_receiver(node, function.attr):
                 # Only on a view itself: an item of a one-dimensional view is
                 # a scalar, and ``label.partition(" ")`` is a string method.
@@ -1969,9 +1982,11 @@ class _Scanner:
             ) == _IS_VIEW and not self._bound_only_to_extension_arrays(target.id):
                 self._report(node, _WRITES_THROUGH_WRITABLE_VIEW)
         elif isinstance(target, ast.Subscript):
+            # Into a view through indexing, or into a view a holder holds
+            # (``arrays[0] += 1``; ``arrays[1:] += more`` only rebinds items).
             container = self._view_level(target.value)
             if container <= _ELEMENT or (
-                _item_of(container) == _IS_VIEW
+                self._view_level(target) == _IS_VIEW
                 and not self._holds_only_extension_arrays(target.value)
             ):
                 self._report(node, _WRITES_THROUGH_WRITABLE_VIEW)
@@ -1984,11 +1999,24 @@ class _Scanner:
         timedelta and period data.
         """
 
-        bindings = self._bindings(name) or []
+        return self._names_extension_array(ast.Name(id=name, ctx=ast.Load()), set())
+
+    def _names_extension_array(self, expression: ast.expr, following: set[str]) -> bool:
+        """Whether ``expression`` is ``x.array``, a slice of it, or a local
+        name bound only to one of these."""
+
+        while isinstance(expression, ast.Subscript):
+            expression = expression.value
+        if _is_extension_array_expression(expression):
+            return True
+        if not isinstance(expression, ast.Name) or expression.id in following:
+            return False
+        following.add(expression.id)
+        bindings = self._bindings(expression.id) or []
         return bool(bindings) and all(
             items_taken == 0
             and value is not None
-            and _is_extension_array_expression(value)
+            and self._names_extension_array(value, following)
             for value, items_taken in bindings
         )
 
@@ -2174,6 +2202,34 @@ def _in_function(*body_lines: str, parameters: str = "series") -> str:
 
 #: Snippets the scan must refuse, with the one rule each must report.
 _REFUSED_SNIPPETS = {
+    # Round-seven cases.
+    "fills_beside_a_masked_assignment_elsewhere": (
+        _NUMPY
+        + "def mask_incomplete(group_values, complete):\n"
+        + "    group_values[~complete] = np.nan\n"
+        + "def scale(frame, names):\n"
+        + "    group_values = []\n"
+        + "    for name in names:\n"
+        + "        group_values.append(np.asarray(frame[name].array))\n"
+        + "    for values in group_values:\n"
+        + "        values *= 2\n",
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "setitem_call_on_a_row_of_a_view": (
+        _in_function(
+            "rows = np.atleast_2d(np.asarray(series.array))",
+            "rows[0].__setitem__(0, 1)",
+        ),
+        _WRITES_THROUGH_WRITABLE_VIEW,
+    ),
+    "out_item_of_a_copied_split": (
+        _in_function(
+            "pieces = np.split(values, 2).copy()",
+            "np.add(pieces[0], 1, out=pieces[0])",
+            parameters="values",
+        ),
+        _WRITES_INTO_EXISTING_ARRAY,
+    ),
     # Round-six cases.
     "slice_of_a_view_augmented": (
         _in_function("head = np.asarray(series.array)[:3]", "head += 1"),
@@ -3142,6 +3198,31 @@ def test_the_scanner_refuses_each_unprotected_write(source: str, rule: str) -> N
 #: Snippets the scan must accept: reads, read-only flags, and writes into
 #: arrays the same function created.
 _ACCEPTED_SNIPPETS = {
+    # Round-seven cases.
+    "column_slices_of_copied_and_computed_matrices": _in_function(
+        "result = matrix.copy()",
+        "np.clip(result[:, 0], 0, None, out=result[:, 0])",
+        "weighted = values * weights[:, None]",
+        "np.maximum(weighted[:, 0], 0, out=weighted[:, 0])",
+        parameters="matrix, values, weights",
+    ),
+    "slice_of_an_extension_array_through_a_name": _in_function(
+        'values = frame["x"].array',
+        "tail = values[1:]",
+        "tail -= values[:-1]",
+        parameters="frame",
+    ),
+    "slice_of_a_list_of_views_extended": _in_function(
+        "arrays = [np.asarray(frame[name].array) for name in names]",
+        "arrays[1:] += [other]",
+        parameters="frame, names, other",
+    ),
+    "extension_arrays_inserted_scaled": _in_function(
+        "columns = []",
+        'columns.insert(0, frame["a"].array)',
+        "columns[0] *= 2",
+        parameters="frame",
+    ),
     # Round-six cases.
     "string_methods_on_labels_from_views": _in_function(
         'for code, label in zip(frame["c"].array, frame["l"].array):',
@@ -3586,3 +3667,26 @@ def test_a_deep_chain_of_comprehension_generators_is_scanned_quickly() -> None:
         signal.signal(signal.SIGALRM, previous)
 
     assert findings == []
+
+
+def test_a_module_that_fails_to_import_does_not_stop_the_scan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def import_module(name: str) -> object:
+        if name.startswith("numpy.broken"):
+            raise RuntimeError("this module cannot be imported here")
+        return importlib.import_module(name)
+
+    monkeypatch.setitem(globals(), "_import_module", import_module)
+    _library_object.cache_clear()
+    _positional_outputs.cache_clear()
+    try:
+        findings = scan_source(
+            _in_function("np.broken.helper(values, out=values)", parameters="values"),
+            "snippet.py",
+        )
+    finally:
+        _library_object.cache_clear()
+        _positional_outputs.cache_clear()
+
+    assert [finding.rule for finding in findings] == [_WRITES_INTO_EXISTING_ARRAY]

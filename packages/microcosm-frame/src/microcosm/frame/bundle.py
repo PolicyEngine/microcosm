@@ -144,9 +144,10 @@ class Frame:
         DataFrame objects afterwards: a write to the same object changes this
         frame.
 
-        Copy-on-write does not protect raw writes into the shared memory:
-        through ``Series.array``, private pandas attributes, an array made
-        writable, ``ufunc.at``, ``np.copyto`` or ``out=``
+        Copy-on-write does not protect raw writes into the shared memory, for
+        example through ``Series.array``, the ``.base`` of a read-only view,
+        ``.asi8``, private pandas attributes, an array made writable,
+        ``ufunc.at``, ``np.copyto`` or ``out=``
         (``test_shared_buffer_writes.py`` refuses these in the workspace's
         source), and through what ``.values`` and ``to_numpy()`` return for
         extension-typed columns. ``.values`` returns the column's own
@@ -166,8 +167,8 @@ class Frame:
         Arguments and validation are the constructor's: every invariant is
         checked and the same errors are raised, except that a table that is
         not a DataFrame raises ``TypeError`` before any table is stored or
-        checked (the constructor fails on such a table later, with an error
-        that depends on the object). Weights are stored as given (their arrays are
+        checked (the constructor stores whatever the table's ``copy()``
+        returns and checks that). Weights are stored as given (their arrays are
         read-only), and the strata are shallow-copied when copy-on-write is
         on.
 
@@ -924,7 +925,7 @@ class Frame:
         )
 
     def replace_tables(self, /, **changed_tables: pd.DataFrame) -> "Frame":
-        """Return a new frame with some entity or link tables replaced.
+        """Return a new frame with some entity or link tables replaced or added.
 
         The new frame holds a shallow copy of each replacement and of every
         other table, so when pandas copy-on-write is on it shares their memory
@@ -932,12 +933,13 @@ class Frame:
         pandas to either side never reaches the other. Each frame still holds
         its own DataFrame objects, so the caller may go on writing to the
         DataFrames it passed. Raw writes into the shared memory are not
-        protected (see :meth:`_adopt`). Weights, strata, the mass log and metadata are
-        carried unchanged. When copy-on-write is off, every table is
-        deep-copied instead (see :meth:`_adopt`).
+        protected (see :meth:`_adopt`). Weights, strata, the mass log and
+        metadata are carried unchanged. When copy-on-write is off, every
+        table is deep-copied instead.
 
         Args:
-            **changed_tables: Replacement tables keyed by entity or link name.
+            **changed_tables: Replacement tables, or declared link tables to
+                add, keyed by entity or link name.
 
         Returns:
             A new validated frame.
@@ -987,13 +989,14 @@ class Frame:
             A new validated frame.
 
         Raises:
-            TypeError: If pandas cannot assign a value as a column (a set,
-                for example).
-            ValueError: If ``entity`` is not declared by the schema, a value's
-                length does not match the table, or the new columns break a
-                constructor invariant (for example a name another table
-                already carries, a reserved ``{entity}_weight`` name, a
-                duplicated or missing id, or broken linkage).
+            TypeError, ValueError: As pandas raises them when it cannot
+                assign a value as a column (for example a set, a value of the
+                wrong length, or a two-dimensional array).
+            ValueError: If ``entity`` is not declared by the schema, or the
+                new columns break a constructor invariant (for example a
+                name another table already carries, a reserved
+                ``{entity}_weight`` name, a duplicated or missing id, or
+                broken linkage).
         """
 
         table = self.table(entity).copy(deep=False)
