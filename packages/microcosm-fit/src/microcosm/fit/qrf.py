@@ -1220,8 +1220,9 @@ def _fill_tree_leaves(
 
         for leaf in range(len(leaf_values_list)):
             if sample_weight is not None:
-                # quantile-forest 1.4.2 drops entries whose weight is not
-                # positive this way.
+                # quantile-forest 1.4.2's filter, copied as it is: it looks
+                # up each entry's weight by the draw's position minus one, not
+                # by the drawn row.
                 weight_mask = sample_weight[leaf_values_list[leaf] - 1] > 0
                 leaf_values_list[leaf] = leaf_values_list[leaf][weight_mask]
             if leaf_subsample:
@@ -1275,7 +1276,10 @@ class _InPlaceLeafQRF(RandomForestQuantileRegressor):
     messages name this class instead of ``RandomForestQuantileRegressor``. A
     ``max_samples_leaf`` so large that the whole forest's array exceeds the
     largest size numpy can describe raises numpy's ``ValueError`` here, where
-    the library, allocating one tree at a time, raises ``MemoryError``.
+    the library, allocating one tree at a time, raises ``MemoryError``. When
+    the one allocation fails, it fails before any tree's ``random`` calls,
+    so Python's ``random`` state differs from the library's after that
+    failed fit.
 
     The saving lasts while pages stay untouched. Pages of an ``np.zeros``
     array take no memory until something touches them. A write makes a page

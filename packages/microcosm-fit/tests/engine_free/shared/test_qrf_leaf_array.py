@@ -20,15 +20,20 @@ from __future__ import annotations
 import importlib.metadata
 import inspect
 import math
+import os
 import pickle
 import random
+import subprocess
+import sys
 import tomllib
 import warnings
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 import quantile_forest
+import sklearn
 from quantile_forest import RandomForestQuantileRegressor
 from quantile_forest import _quantile_forest as quantile_forest_module
 from sklearn.base import clone
@@ -286,10 +291,15 @@ def test_weighted_leaves_that_empty_get_the_library_placeholder(
 
 
 @pytest.mark.parametrize("max_samples_leaf", [None, 5])
-def test_weight_filter_drops_every_weight_that_is_not_positive(
+def test_weight_filter_matches_the_library_for_tiny_zero_and_negative_weights(
     max_samples_leaf,
 ) -> None:
-    """Small positive weights stay; zero and negative weights go, as in 1.4.2."""
+    """quantile-forest 1.4.2's weight filter is copied as it is.
+
+    It looks up each entry's weight by the draw's position minus one, not by
+    the drawn row, so it keeps or drops entries by another row's weight. Tiny,
+    zero and negative weights all reach the comparison it makes.
+    """
     predictors, target = _continuous_donors(seed=18, rows=600)
     generator = np.random.default_rng(18)
     weights = generator.choice([-1.0, 0.0, 1e-3, 0.04, 0.5, 2.0, 3.0], len(target))
@@ -404,29 +414,38 @@ def test_dataframe_predictors_give_the_library_warnings_and_array() -> None:
 
 
 def test_scikit_learn_1_9_bootstrap_arguments_match_the_library(monkeypatch) -> None:
-    """Under scikit-learn 1.9 both classes pass the helpers the same weights.
+    """Under scikit-learn 1.9 both classes pass the helpers ``sample_weight_``.
 
-    scikit-learn 1.9 adds a ``sample_weight`` argument to its private
-    bootstrap helpers, and quantile-forest 1.4.2 passes ``sample_weight_``
-    when it finds 1.9 or later. The installed scikit-learn is older, so the
-    test reports 1.9 and wraps the helpers to record that argument and drop it.
+    scikit-learn 1.9 adds a required ``sample_weight`` argument to its private
+    bootstrap helpers, and quantile-forest 1.4.2 passes the fit's
+    ``sample_weight_`` when it finds 1.9 or later. The test reports 1.9 and
+    wraps the helpers to record whether they received that exact array. Under
+    an older scikit-learn the wrappers then drop it before calling the
+    installed helpers; under 1.9 or later they pass it on.
     """
-    recorded: list[tuple[str, object]] = []
+    recorded: list[tuple[str, bool]] = []
     original_count = quantile_forest_module._get_n_samples_bootstrap
     original_indices = quantile_forest_module._generate_sample_indices
+    installed_takes_weights = parse_version(sklearn.__version__) >= parse_version(
+        "1.9.0"
+    )
+    predictors, target = _continuous_donors(seed=22, rows=300)
+    weights = np.random.default_rng(22).uniform(0.5, 2.0, len(target))
 
     def count_with_weights(n_samples, max_samples, sample_weight):
-        recorded.append(
-            ("count", None if sample_weight is None else sample_weight.sum())
-        )
+        recorded.append(("count", sample_weight is weights))
+        if installed_takes_weights:
+            return original_count(n_samples, max_samples, sample_weight)
         return original_count(n_samples, max_samples)
 
     def indices_with_weights(
         random_state, n_samples, n_samples_bootstrap, sample_weight
     ):
-        recorded.append(
-            ("indices", None if sample_weight is None else sample_weight.sum())
-        )
+        recorded.append(("indices", sample_weight is weights))
+        if installed_takes_weights:
+            return original_indices(
+                random_state, n_samples, n_samples_bootstrap, sample_weight
+            )
         return original_indices(random_state, n_samples, n_samples_bootstrap)
 
     monkeypatch.setattr(
@@ -438,14 +457,118 @@ def test_scikit_learn_1_9_bootstrap_arguments_match_the_library(monkeypatch) -> 
     monkeypatch.setattr(
         quantile_forest_module, "_generate_sample_indices", indices_with_weights
     )
-    predictors, target = _continuous_donors(seed=22, rows=300)
-    weights = np.random.default_rng(22).uniform(0.5, 2.0, len(target))
     _assert_same_fit(predictors, target, sample_weight=weights, max_samples_leaf=None)
-    # One count and one index call per tree (six trees), for each class.
-    half = len(recorded) // 2
-    assert half == 7
-    assert recorded[:half] == recorded[half:]
-    assert all(weight_sum == pytest.approx(weights.sum()) for _, weight_sum in recorded)
+    # One count call, then one index call per tree (six trees), for each class.
+    expected = [("count", True)] + [("indices", True)] * 6
+    assert recorded == expected + expected
+
+
+def test_fit_leaves_the_warning_filters_as_they_were() -> None:
+    """The copy silences ``apply``'s warning only inside ``catch_warnings``."""
+    predictors, target = _continuous_donors(seed=24, rows=150)
+    before = list(warnings.filters)
+    qrf._InPlaceLeafQRF(n_estimators=2, max_samples_leaf=None, random_state=5).fit(
+        predictors, target
+    )
+    assert warnings.filters == before
+
+
+def _fit_outcome(model_class, predictors, target, weights) -> tuple[object, object]:
+    """Fit and return the leaf array's bytes, or the exception it raised."""
+    model = model_class(n_estimators=3, max_samples_leaf=None, random_state=0)
+    try:
+        model.fit(predictors, target, sample_weight=weights)
+    except Exception as error:  # the exception itself is the outcome compared
+        return type(error), str(error).replace(model_class.__name__, "<forest>")
+    return "fitted", np.asarray(model.forest_.y_train_leaves).tobytes()
+
+
+@pytest.mark.parametrize("case", ["several-outputs", "one-row"])
+def test_weighted_fits_the_library_refuses_are_refused_alike(case) -> None:
+    """quantile-forest 1.4.2 fails on these weighted fits; so does the copy."""
+    predictors, first = _continuous_donors(seed=25, rows=200)
+    if case == "several-outputs":
+        target = np.column_stack([first, first * 2.0])
+    else:
+        predictors, target = predictors[:1], first[:1]
+    weights = np.linspace(0.5, 2.0, len(predictors))
+    library = _fit_outcome(RandomForestQuantileRegressor, predictors, target, weights)
+    in_place = _fit_outcome(qrf._InPlaceLeafQRF, predictors, target, weights)
+    assert library[0] is IndexError
+    assert in_place == library
+
+
+#: Run in a fresh Python process, so the forest's array gets pages no earlier
+#: allocation in the test session has written. A large allocation can reuse
+#: memory freed earlier in the process, which ``calloc`` then zeroes, writing
+#: every page. Prints the share of the array's pages that are mapped, or
+#: "unavailable" when ``mincore`` cannot be called.
+_RESIDENT_SHARE_CHILD = """
+import ctypes
+import ctypes.util
+import os
+
+import numpy as np
+from numpy._core import multiarray
+
+from microcosm.fit import qrf
+
+# A transparent huge page makes 2 MiB resident at the first write.
+multiarray._set_madvise_hugepage(False)
+generator = np.random.default_rng(26)
+predictors = generator.integers(0, 12, size=(3000, 2)).astype(np.float64)
+target = generator.choice([0.0, 0.25, 0.5, 1.0], size=3000, p=[0.85, 0.05, 0.05, 0.05])
+model = qrf._InPlaceLeafQRF(
+    n_estimators=8, max_samples_leaf=4096, random_state=3, n_jobs=1
+)
+model.fit(predictors, target)
+leaves = np.asarray(model.forest_.y_train_leaves)
+assert leaves.nbytes > 40 * 2**20, leaves.nbytes
+library_path = ctypes.util.find_library("c")
+if library_path is None:
+    print("unavailable")
+    raise SystemExit(0)
+libc = ctypes.CDLL(library_path, use_errno=True)
+libc.mincore.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p]
+libc.mincore.restype = ctypes.c_int
+page = os.sysconf("SC_PAGE_SIZE")
+start = leaves.ctypes.data
+aligned = start - start % page
+length = start + leaves.nbytes - aligned
+pages = -(-length // page)
+status = (ctypes.c_ubyte * pages)()
+if libc.mincore(aligned, length, status) != 0:
+    print("unavailable")
+    raise SystemExit(0)
+print(float(np.mean(np.frombuffer(status, dtype=np.uint8) & 1)))
+"""
+
+
+def test_in_place_fill_leaves_unwritten_pages_unmapped() -> None:
+    """Most pages of a capped forest's padded array are never touched.
+
+    Each node's row is 4,096 entries (32 KiB) wide, and a leaf's few entries
+    sit at the start of its row, so rows of internal nodes and most of each
+    leaf row are never written, and ``mincore`` reports those pages as not in
+    memory. The library's ``np.array(list)`` copy writes them all (a share of
+    1.0). The array, over 40 MiB, is larger than glibc's largest mmap
+    threshold, so it gets fresh pages; numpy's request for transparent huge
+    pages is turned off in the child.
+    """
+    huge_page_setting = Path("/sys/kernel/mm/transparent_hugepage/enabled")
+    if huge_page_setting.exists() and "[always]" in huge_page_setting.read_text():
+        pytest.skip("transparent huge pages are always on")
+    completed = subprocess.run(
+        [sys.executable, "-c", _RESIDENT_SHARE_CHILD],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={**os.environ, "OMP_NUM_THREADS": "1"},
+    )
+    reading = completed.stdout.strip().splitlines()[-1]
+    if reading == "unavailable":
+        pytest.skip("mincore is unavailable")
+    assert float(reading) < 0.6
 
 
 def test_sparse_pickle_reaches_the_library() -> None:

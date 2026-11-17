@@ -87,7 +87,9 @@ If one measurement fails, for example because the operating system stopped
 the library run for using too much memory, the other still runs, the report
 shows what completed, and the exit code is 1. The exit code is also 1 when
 the two leaf arrays differ, since the memory comparison then compares
-different arrays.
+different arrays. In ``--json`` output each failure gives the child's exit
+code (negative when a signal stopped it, as Python's ``subprocess`` reports
+it), the signal's number and name, and a message.
 """
 
 from __future__ import annotations
@@ -119,6 +121,34 @@ SHAPES = ("wage", "near-discrete")
 DEFAULT_TREES = {"wage": 100, "near-discrete": 32}
 DEFAULT_ROWS = {"wage": 10_000, "near-discrete": 10_000}
 DEFAULT_ROWS_IN_WIDEST_LEAF = 250
+#: Fields the parent reads from every child result.
+REQUIRED_RESULT_FIELDS = frozenset(
+    {
+        "implementation",
+        "class",
+        "leaf_array_shape",
+        "leaf_array_dtype",
+        "leaf_array_bytes",
+        "leaf_array_sha256",
+        "memory_measure",
+        "peak_bytes_after_fit",
+        "fit_peak_growth_bytes",
+        "peak_resident_set_bytes_before_fit",
+        "peak_resident_set_bytes_after_fit",
+        "fit_seconds",
+        "shape",
+        "rows",
+        "trees",
+        "rows_in_widest_leaf",
+        "seed",
+        "n_jobs",
+        "trees_at_once",
+        "max_samples_leaf",
+        "environment",
+    }
+)
+#: Marks the child's result line on standard output.
+RESULT_PREFIX = "measure_qrf_leaf_memory result: "
 #: scikit-learn accepts integer seeds below 2**32.
 SEED_LIMIT = 2**32
 _RUSAGE_INFO_V4 = 4
@@ -398,11 +428,11 @@ def _child_command(arguments: argparse.Namespace, implementation: str) -> list[s
     return command
 
 
-def _signal_name(number: int) -> str:
+def _signal_name(number: int) -> str | None:
     try:
         return signal.Signals(number).name
     except ValueError:
-        return f"signal {number}"
+        return None
 
 
 def _run_child(
@@ -418,11 +448,13 @@ def _run_child(
     failure: dict[str, object] = {
         "implementation": implementation,
         "exit_code": completed.returncode,
+        "signal_number": None,
         "signal": None,
     }
     if completed.returncode < 0:
-        stopped_by = _signal_name(-completed.returncode)
-        failure["signal"] = stopped_by
+        failure["signal_number"] = -completed.returncode
+        failure["signal"] = _signal_name(-completed.returncode)
+        stopped_by = failure["signal"] or f"signal {-completed.returncode}"
         failure["message"] = (
             f"the {implementation} measurement was stopped by {stopped_by}"
             + (
@@ -438,12 +470,16 @@ def _run_child(
             f"{completed.returncode}; its error is on standard error"
         )
         return None, failure
-    lines = completed.stdout.strip().splitlines()
+    marked = [
+        line[len(RESULT_PREFIX) :]
+        for line in completed.stdout.splitlines()
+        if line.startswith(RESULT_PREFIX)
+    ]
     try:
-        result = json.loads(lines[-1])
+        result = json.loads(marked[-1])
     except (IndexError, json.JSONDecodeError):
         result = None
-    if not isinstance(result, dict):
+    if not isinstance(result, dict) or not REQUIRED_RESULT_FIELDS <= set(result):
         failure["message"] = (
             f"the {implementation} measurement exited without printing a result"
         )
@@ -610,15 +646,15 @@ def _parse_arguments(argv: list[str] | None) -> argparse.Namespace:
         from microcosm.fit.qrf import _DISCRETE_Y_UNIQUE_MAX
 
         distinct = len(np.unique(_donors(arguments)[1]))
-        if arguments.shape == "near-discrete" and distinct < 2:
+        if distinct < 2:
             parser.error(
-                f"with --rows {arguments.rows} the near-discrete target has "
-                f"{distinct} distinct value; raise --rows"
+                f"with --rows {arguments.rows} and --seed {arguments.seed} the "
+                f"{arguments.shape} target has one value; raise --rows"
             )
         if arguments.shape == "wage" and distinct <= _DISCRETE_Y_UNIQUE_MAX:
             parser.error(
                 f"with --rows {arguments.rows} the wage target has only {distinct} "
-                f"distinct values, so _fit_forest would cap its leaves as a "
+                "distinct values, so _fit_forest would cap its leaves as a "
                 "near-discrete target; raise --rows"
             )
     return arguments
@@ -627,7 +663,7 @@ def _parse_arguments(argv: list[str] | None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     arguments = _parse_arguments(argv)
     if arguments.child is not None:
-        print(json.dumps(_fit_in_this_process(arguments)))
+        print(RESULT_PREFIX + json.dumps(_fit_in_this_process(arguments)))
         return 0
 
     implementations = (
