@@ -31,6 +31,7 @@ from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSVariableMetadataIndex,
 )
+from test_support.microcosm_build.qrf_chain_doubles import FitPredictChainDouble
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -158,7 +159,7 @@ def _plausible_surface() -> Frame:
     return _frame(person)
 
 
-class _ConstantQRF:
+class _ConstantQRF(FitPredictChainDouble):
     """Deterministic stand-in: 25.0/hr, everyone paid hourly."""
 
     def __init__(self, **kwargs):

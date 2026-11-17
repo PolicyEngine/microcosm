@@ -36,6 +36,7 @@ from microcosm.frame import US_SCHEMA, EntitySchema, Frame, WeightKind, Weights
 from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSVariableMetadataIndex,
 )
+from test_support.microcosm_build.qrf_chain_doubles import FitPredictChainDouble
 
 SCHEMA = EntitySchema(group_entities=("household", "tax_unit"))
 
@@ -440,7 +441,7 @@ def _channel_copy(
     )
 
 
-class _MeanQRF:
+class _MeanQRF(FitPredictChainDouble):
     calls: list[dict[str, object]] = []
 
     def __init__(self, *, n_estimators: int, seed: int) -> None:
