@@ -407,6 +407,17 @@ def test_main_runs_the_gate_in_the_batch_and_checks_the_written_h5(builder):
     def assigned_from(node, name):
         return isinstance(node, ast.Assign) and calls(node.value, name)
 
+    def site_call(value, name):
+        # A check may run inside its gate battery shadow site (microcosm#1585
+        # item 11): `shadow_value` evaluates the lambda it is given at once
+        # and returns its value, so the check still runs once, here.
+        if isinstance(value, ast.Call) and ast.unparse(value.func) == "shadow_value":
+            thunk = value.args[1]
+            assert isinstance(thunk, ast.Lambda) and not thunk.args.args
+            value = thunk.body
+        assert isinstance(value, ast.Call) and ast.unparse(value.func) == name
+        return value
+
     gate = position(
         lambda node: assigned_from(node, "_stored_input_gate_failures"),
         "stored-input gate assignment",
@@ -415,9 +426,7 @@ def test_main_runs_the_gate_in_the_batch_and_checks_the_written_h5(builder):
     assert isinstance(target, ast.Tuple)
     failures_name = target.elts[0].id
     details_name = target.elts[1].id
-    gate_call = next(
-        inner for inner in ast.walk(body[gate].value) if isinstance(inner, ast.Call)
-    )
+    gate_call = site_call(body[gate].value, "_stored_input_gate_failures")
     assert {kw.arg: ast.unparse(kw.value) for kw in gate_call.keywords} == {
         "stage": "US_FISCAL_STORED_INPUTS_STAGE"
     }
@@ -450,8 +459,8 @@ def test_main_runs_the_gate_in_the_batch_and_checks_the_written_h5(builder):
         "post-write check",
     )
     (premise_name,) = (target.id for target in body[premise].targets)
-    check_call = next(
-        inner for inner in ast.walk(body[premise].value) if isinstance(inner, ast.Call)
+    check_call = site_call(
+        body[premise].value, "_written_stored_input_verdict_mismatch"
     )
     assert [ast.unparse(arg) for arg in check_call.args] == [
         "dataset_path",

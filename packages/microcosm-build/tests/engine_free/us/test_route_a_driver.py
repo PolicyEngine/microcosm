@@ -11,6 +11,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,7 @@ import pytest
 from test_support.microcosm_build.route_a_driver import (
     ROUTE_A_TOOLS,
     SECRET_ALIASES,
+    run_driver_settings,
     write_executable,
 )
 from test_support.paths import paths_for
@@ -104,37 +106,6 @@ def _example_extra_args() -> str:
     return result.stdout.decode()
 
 
-def _input_settings_result(
-    tmp_path: Path, overrides: dict[str, str], commands: str
-) -> subprocess.CompletedProcess[bytes]:
-    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
-    prefix, delimiter, _ = source.partition("FETCH_OK=1\n")
-    assert delimiter
-    # Only initialize settings and define functions. The remainder fetches
-    # refs and may launch stages, so this harness never executes it.
-    script = tmp_path / "input-settings-check.sh"
-    script.write_text(prefix + commands, encoding="utf-8")
-    required = (
-        "PE MAIN WT_ROOT RUN_ROOT CHAIN_ROOT CHAIN_LOG DISK_PATH UV PYTHON "
-        "STORAGE EDU FEED LADDER SSI SCF AGENT_SECRET"
-    ).split()
-    settings = {key: str(tmp_path / key.lower()) for key in required}
-    settings.update(PYTHON=sys.executable, **overrides)
-    settings_path = tmp_path / "route_a.env"
-    settings_path.write_text(
-        "\n".join(f"{key}={shlex.quote(value)}" for key, value in settings.items())
-        + "\n",
-        encoding="utf-8",
-    )
-    return subprocess.run(
-        ["bash", str(script)],
-        env={"PATH": os.environ["PATH"], "ROUTE_A_ENV": str(settings_path)},
-        capture_output=True,
-        check=False,
-        timeout=20,
-    )
-
-
 @pytest.mark.parametrize("override", [False, True])
 def test_feed_and_crosswalk_pins_keep_defaults_or_settings_overrides(
     tmp_path: Path, override: bool
@@ -154,7 +125,7 @@ def test_feed_and_crosswalk_pins_keep_defaults_or_settings_overrides(
         if override
         else {}
     )
-    result = _input_settings_result(
+    result = run_driver_settings(
         tmp_path,
         overrides,
         '\ninput_rows\nprintf "crosswalk|%s\\n" "$CROSSWALK_SHA"\n',
@@ -181,7 +152,7 @@ def test_overridden_feed_pin_still_verifies_digest_and_size(
     feed = tmp_path / "new-feed.jsonl"
     payload = b'{"fixture": "new release feed"}\n'
     feed.write_bytes(payload)
-    result = _input_settings_result(
+    result = run_driver_settings(
         tmp_path,
         {
             "FEED": str(feed),
@@ -209,6 +180,76 @@ printf '%s\\n' "${#INPUT_PROBLEMS[@]}"
     )
 
 
+@pytest.mark.parametrize("override", [False, True])
+def test_ladder_pins_keep_defaults_or_settings_overrides(
+    tmp_path: Path, override: bool
+) -> None:
+    overrides = {"LADDER_SHA": "d" * 64, "LADDER_BYTES": "456"} if override else {}
+    result = run_driver_settings(tmp_path, overrides, "\ninput_rows\n")
+    assert result.returncode == 0, result.stderr.decode()
+    rows = {
+        row[0]: row[1:]
+        for row in (line.split("|") for line in result.stdout.decode().splitlines())
+    }
+    # The default is the published run's d713 ladder.
+    assert rows["block_ladder_npz"][1:3] == (
+        ["d" * 64, "456"]
+        if override
+        else [
+            "6840b990acdfa2003d7723da5595e3cfff7205a4fa3d8d6206ed835c85c3f233",
+            "18991218",
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    ("rule", "members", "problem"),
+    [
+        ("block_v1", ("block_geoid.npy", "puma.npy"), None),
+        ("block_v1", ("block_geoid.npy",), "has no per-block puma array"),
+        ("block_v1", None, "could not be read to list its arrays"),
+        ("legacy", ("block_geoid.npy",), None),
+    ],
+)
+def test_block_v1_requires_the_ladder_s_puma_array(
+    tmp_path: Path, rule: str, members: tuple[str, ...] | None, problem: str | None
+) -> None:
+    ladder = tmp_path / "ladder.npz"
+    if members is None:
+        ladder.write_bytes(b"not a zip archive\n")
+    else:
+        with zipfile.ZipFile(ladder, "w") as archive:
+            for name in members:
+                archive.writestr(name, b"fixture")
+    payload = ladder.read_bytes()
+    result = run_driver_settings(
+        tmp_path,
+        {
+            "LOCATION_RULE": rule,
+            "LADDER": str(ladder),
+            "LADDER_SHA": hashlib.sha256(payload).hexdigest(),
+            "LADDER_BYTES": str(len(payload)),
+        },
+        """
+# Only the ladder row, with its true digest and size, so any problem is the
+# PUMA check's. Adapt the driver's BSD stat call for CI.
+registered_rows=$(input_rows)
+input_rows() { printf '%s\\n' "$registered_rows" | awk -F '|' '$1 == "block_ladder_npz"'; }
+stat() { "$PYTHON" -c 'import os,sys; print(os.stat(sys.argv[1]).st_size)' "$3"; }
+verify_inputs
+printf '%s\\n' ${INPUT_PROBLEMS[@]+"${INPUT_PROBLEMS[@]}"}
+""",
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    problems = [line for line in result.stdout.decode().splitlines() if line]
+    if problem is None:
+        assert problems == []
+    else:
+        assert len(problems) == 1
+        assert problem in problems[0]
+        assert str(ladder) in problems[0]
+
+
 @pytest.mark.parametrize(
     "openssl",
     [
@@ -229,7 +270,7 @@ def test_an_input_openssl_cannot_read_is_unreadable_not_an_empty_digest(
     feed = tmp_path / "new-feed.jsonl"
     payload = b'{"fixture": "feed"}\n'
     feed.write_bytes(payload)
-    result = _input_settings_result(
+    result = run_driver_settings(
         tmp_path,
         {
             "FEED": str(feed),
@@ -342,7 +383,7 @@ def test_stale_feed_and_crosswalk_blockers_name_the_commits_pins(
             _CROSSWALK_REL: crosswalk,
         },
     )
-    result = _input_settings_result(
+    result = run_driver_settings(
         tmp_path,
         {"MAIN": str(main), "FEED_SHA": "a" * 64, "CROSSWALK_SHA": "b" * 64},
         _report_lines(f"\ncheck_commit {sha} {sha}\n"),
@@ -370,7 +411,7 @@ def test_a_missing_crosswalk_blocks_without_naming_a_digest(tmp_path: Path) -> N
         tmp_path,
         {_FEED_PIN_REL: json.dumps({"facts_sha256": "c" * 64}) + "\n"},
     )
-    result = _input_settings_result(
+    result = run_driver_settings(
         tmp_path,
         {"MAIN": str(main), "FEED_SHA": "c" * 64},
         _report_lines(f"\ncheck_commit {sha} {sha}\n"),
@@ -395,7 +436,7 @@ def test_matching_feed_and_crosswalk_pins_are_notes_not_blockers(
             _CROSSWALK_REL: crosswalk,
         },
     )
-    result = _input_settings_result(
+    result = run_driver_settings(
         tmp_path,
         {"MAIN": str(main), "FEED_SHA": "c" * 64, "CROSSWALK_SHA": digest},
         _report_lines(f"\ncheck_commit {sha} {sha}\n"),
@@ -661,7 +702,7 @@ def test_a_telemetry_setting_the_release_refuses_blocks(
 
 
 def _driver_emitter(tmp_path: Path, overrides: dict[str, str], sha: str) -> list[str]:
-    result = _input_settings_result(
+    result = run_driver_settings(
         tmp_path,
         overrides,
         _report_lines(
@@ -692,7 +733,7 @@ def test_driver_settings_reach_the_emitter_check_and_the_stages(tmp_path: Path) 
     assert _driver_emitter(
         tmp_path, {**required, "MICROCOSM_EMITTER_COMMAND": good}, sha
     ) == [f"NOTE microcosm-emitter 0.16.0 at {good} meets the commit's floor 0.16.0"]
-    exported = _input_settings_result(
+    exported = run_driver_settings(
         tmp_path,
         {**required, "MICROCOSM_EMITTER_COMMAND": good},
         "\nprintenv MICROCOSM_TELEMETRY_REQUIRED\nprintenv MICROCOSM_EMITTER_COMMAND\n",
@@ -790,7 +831,7 @@ def _ensure_worktree(
     )
     run_root = tmp_path / "run-root"
     run_root.mkdir()
-    result = _input_settings_result(
+    result = run_driver_settings(
         tmp_path, {"UV": str(uv), "RUN_ROOT": str(run_root), **overrides}, commands
     )
     return result, recorded
@@ -957,6 +998,31 @@ def test_release_rejects_invalid_staging_setting(tmp_path: Path, staging: str) -
     )
     assert result.returncode != 0
     assert "ROUTE_A_STAGING" in result.stderr.decode()
+
+
+@pytest.mark.parametrize("rule", ["block_v2", "Block_v1", "block-v1", "legacy "])
+def test_an_unknown_location_rule_is_refused(tmp_path: Path, rule: str) -> None:
+    result = run_driver_settings(tmp_path, {"LOCATION_RULE": rule}, "\n")
+    assert result.returncode == 64
+    assert "LOCATION_RULE must be legacy or block_v1" in result.stderr.decode()
+
+
+@pytest.mark.parametrize("rule", [None, "legacy", "block_v1"])
+def test_check_commit_checks_the_location_flags_only_under_block_v1(
+    tmp_path: Path, rule: str | None
+) -> None:
+    overrides = {} if rule is None else {"LOCATION_RULE": rule}
+    result = run_driver_settings(tmp_path, overrides, '\nprintf "%s" "$BASE_FLAGS"\n')
+    assert result.returncode == 0, result.stderr.decode()
+    flags = result.stdout.decode().split()
+    # The legacy list is the published run's, so an older commit stays clear.
+    for flag in ("--ledger-facts", "--assign-congressional-districts"):
+        assert flag in flags
+    location = {"--location-rule", "--location-seed"}
+    if rule == "block_v1":
+        assert location <= set(flags)
+    else:
+        assert not location & set(flags)
 
 
 @pytest.mark.parametrize(
