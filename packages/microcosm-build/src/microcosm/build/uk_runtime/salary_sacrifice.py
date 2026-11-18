@@ -30,6 +30,7 @@ from microcosm.build.uk_runtime.cgt_structure import (
     _assert_closed_world_operations,
 )
 from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
+from microcosm.build.uk_runtime.household_lineage import collapse_geographic_clones
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -43,8 +44,8 @@ from microcosm.build.uk_runtime.qrf_gates import (
 )
 from microcosm.build.uk_runtime.receipt_counts import (
     distinct_count,
+    record_source_households,
     small_cell_share,
-    source_household_ids,
     support_band,
 )
 from microcosm.build.uk_runtime.spi_support import support_channel_column
@@ -379,7 +380,7 @@ def draw_spi_bonuses(
     groups = [[cell] for cell in range(len(edges) + 1)]
 
     def donor_sources(group: list[int]) -> int:
-        return len(pd.unique(sources[paid_donors & np.isin(raw_cells, group)]))
+        return distinct_count(sources, paid_donors & np.isin(raw_cells, group))
 
     position = len(groups) - 1
     while len(groups) > 1 and position >= 0:
@@ -612,8 +613,22 @@ def impute_salary_sacrifice(
         index=household["household_id"],
     )
     person_weights = person_households.map(household_weights).to_numpy(dtype=float)
+    # The forest trains on each asked respondent once: their geographic
+    # clones that agree on the predictors and the sacrifice fold into their
+    # first row with their weight, clones that differ stay rows of their own,
+    # and every other copy stays its own row; a frame without geographic
+    # clones keeps every row and weight
+    # (household_lineage.collapse_geographic_clones, microcosm#931).
+    kept, fit_weights = collapse_geographic_clones(
+        {"person": person, "household": household},
+        "person",
+        training_mask.to_numpy(dtype=bool),
+        person_weights,
+        inputs=numeric[[*SALSAC_PREDICTORS, SALSAC_OUTPUT]].reset_index(drop=True),
+    )
+    training_mask = pd.Series(kept, index=training_mask.index)
     training = numeric.loc[training_mask, [*SALSAC_PREDICTORS, SALSAC_OUTPUT]].copy()
-    training["_fit_weight"] = person_weights[training_mask.to_numpy()]
+    training["_fit_weight"] = fit_weights[kept]
     model = _qrf_class()(
         n_estimators=SALSAC_QRF_ESTIMATORS,
         seed=SALSAC_QRF_SEED,
@@ -733,12 +748,11 @@ def impute_salary_sacrifice(
             f"{bonus_resource['data_year']}, but the frame's period is "
             f"{uk_time_period(frame)!r}."
         )
-    source_ids = person_households.map(
-        pd.Series(
-            source_household_ids(household, stage="The salary-sacrifice stage"),
-            index=household["household_id"].to_numpy(),
-        )
-    ).to_numpy()
+    source_ids = record_source_households(
+        {"person": person, "household": household},
+        "person",
+        stage="The salary-sacrifice stage",
+    )
     spi_draw = draw_spi_bonuses(
         bonus=bonus_source,
         employment_income=employment_income,

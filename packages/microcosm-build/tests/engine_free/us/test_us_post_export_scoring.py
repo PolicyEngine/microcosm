@@ -808,11 +808,14 @@ def test_calibration_diagnostics_carry_the_post_export_plan(
 
 
 def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
-    """(i) Neither _main nor the reform-validation and demographics writers
-    call default_simulate_factory or construct a Microsimulation, and _main
-    feeds the smoke from the batched scorer."""
+    """(i) Neither _main, certification, nor the reform-validation and
+    demographics writers call default_simulate_factory or construct a
+    Microsimulation, and certification feeds the smoke from the batched
+    scorer. Certification (``_certify_us_build``) runs from the build record
+    ``_main`` writes after the H5 (microcosm#1585 item 11, PR 4a)."""
     for name in (
         "_main",
+        "_certify_us_build",
         "_write_reform_validation",
         "_write_demographics",
         "_write_ssi_social_security_holdout",
@@ -824,13 +827,15 @@ def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
         assert "Microsimulation" not in called, name
         assert "USSingleYearDataset" not in called, name
 
-    source, tree = _function_source(builder, "_main")
+    main_source, main_tree = _function_source(builder, "_main")
+    source, tree = _function_source(builder, "_certify_us_build")
     calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
+    main_calls = [node for node in ast.walk(main_tree) if isinstance(node, ast.Call)]
 
-    def calls_to(name: str) -> list[ast.Call]:
+    def calls_to(name: str, among=None) -> list[ast.Call]:
         return [
             call
-            for call in calls
+            for call in (calls if among is None else among)
             if name
             in (getattr(call.func, "id", None), getattr(call.func, "attr", None))
         ]
@@ -839,12 +844,16 @@ def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
     assert [ast.unparse(call) for call in calls_to("_open_post_export_scorer")] == [
         "_open_post_export_scorer(post_export_scoring_plan, dataset_path)"
     ]
-    # It opens the file this run has just written, never a previous run's
-    # bytes at the same path (microcosm#443), and before the smoke scores.
-    (write_call,) = calls_to("write_dataset")
+    # It opens the file the build wrote, which the record pins by digest
+    # (never a previous run's bytes at the same path, microcosm#443), and
+    # before the smoke scores. The record is written after the H5.
+    (write_call,) = calls_to("write_dataset", main_calls)
+    (record_call,) = calls_to("_write_us_build_record", main_calls)
+    assert write_call.lineno < record_call.lineno
+    assert not calls_to("_open_post_export_scorer", main_calls)
     (open_call,) = calls_to("_open_post_export_scorer")
     (smoke_gate_call,) = calls_to("us_reform_coverage_smoke_gate")
-    assert write_call.lineno < open_call.lineno < smoke_gate_call.lineno
+    assert open_call.lineno < smoke_gate_call.lineno
     # The smoke's served baseline is its own recorded plan, with that plan's
     # reform pass count for progress (#1556), and the gate reads that
     # consumer's seam.
@@ -905,7 +914,7 @@ def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
     assert demographics_call.lineno < sha_assignments[0].lineno < manifest_call.lineno
     diagnostics_call = next(
         node
-        for node in ast.walk(tree)
+        for node in ast.walk(main_tree)
         if isinstance(node, ast.Call)
         and getattr(node.func, "id", None) == "_write_release_calibration_diagnostics"
     )
@@ -944,14 +953,23 @@ def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
     ] == "post_export_scoring"
     # The plan is recorded (never raised) before the diagnostics, and its own
     # failure joins the terminal batch ahead of the export write.
-    recorded = source.index(
+    recorded = main_source.index(
         "post_export_scoring_plan = _record_post_export_scoring_plan("
     )
-    joined = source.index(
+    joined = main_source.index(
         "terminal_gate_failures.extend(post_export_scoring_plan.terminal_failures())"
     )
-    assert recorded < source.index("_write_release_calibration_diagnostics(") < joined
-    assert joined < source.index("release_engine.write_dataset(")
+    assert (
+        recorded < main_source.index("_write_release_calibration_diagnostics(") < joined
+    )
+    assert joined < main_source.index("release_engine.write_dataset(")
+    # Certification scores the plan the build recorded: it rebuilds it and
+    # refuses one that differs (microcosm#1585 item 11, PR 4a).
+    assert "post_export_scoring_plan=post_export_scoring_plan" in main_source
+    assert (
+        "post_export_scoring_plan = record.post_export_scoring_plan(args, result=result)"
+        in source
+    )
 
 
 def test_main_opens_the_scorer_its_plan_recorded(
@@ -1451,7 +1469,7 @@ def test_scored_sha_is_bound_at_load_and_checked_by_the_manifest(
     with pytest.raises(ValueError, match="not opened on this scorer"):
         scorer.finish_consumer(other.open_consumer("fixture", ()))
 
-    _, tree = _function_source(builder, "_main")
+    _, tree = _function_source(builder, "_certify_us_build")
     manifest_call = next(
         node
         for node in ast.walk(tree)

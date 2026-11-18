@@ -145,6 +145,7 @@ from microcosm.build.uk_runtime.receipt_counts import (
     UK_WITHHELD,
     distinct_carriers,
     extreme_count,
+    record_source_households,
     small_cell_share,
     support_band,
 )
@@ -412,6 +413,9 @@ def add_frs_annual_income_spells(
         job=tables["job"],
         interview=interview,
         earnings_growth=load_earnings_growth(),
+        person_sources=record_source_households(
+            frame, "person", stage=FRS_ANNUAL_INCOME_STAGE_NAME, before_copies=True
+        ),
     )
     output = person.copy()
     for column in FRS_ANNUAL_INCOME_OUTPUT_COLUMNS:
@@ -455,6 +459,7 @@ def derive_frs_annual_income_spells(
     job: pd.DataFrame,
     interview: pd.Series,
     earnings_growth: float,
+    person_sources: np.ndarray,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     """Person-aligned descriptors and their aggregate receipt.
 
@@ -462,7 +467,11 @@ def derive_frs_annual_income_spells(
     (``person_id`` = sernum * 1000 + person). ``adult`` and ``job`` are the
     pinned tabs after :func:`normalize_ids`; ``interview`` is the interview date
     by ``household_id``. ``person_weights`` are the household weights each
-    person row carries.
+    person row carries, and ``person_sources`` each person's true source
+    household, which the receipt counts support by
+    (``receipt_counts.record_source_households``). A caller without the
+    frame's lineage passes ``own_source_households`` itself, so no table is
+    counted by its rows unawares (microcosm#931).
     """
 
     person_ids = person["person_id"].to_numpy()
@@ -470,6 +479,9 @@ def derive_frs_annual_income_spells(
     weights = np.asarray(person_weights, dtype=float)
     if weights.shape != (rows,):
         raise ValueError("person weights must align with the person table.")
+    household_sources = np.asarray(person_sources)
+    if household_sources.shape != (rows,):
+        raise ValueError("person sources must align with the person table.")
     raw = adult.drop_duplicates("person_id").set_index("person_id")
     if len(raw) != len(adult):
         raise ValueError("FRS adult.tab carries a person twice.")
@@ -623,7 +635,9 @@ def derive_frs_annual_income_spells(
         )
         / WINDOW_MONTHS
     )
-    ratio, ratio_support = pay_concept_ratio(person_ids, weights, job, working)
+    ratio, ratio_support = pay_concept_ratio(
+        person_ids, weights, job, working, household_sources=household_sources
+    )
     usual = _numeric(main, "ugross")
     observed = employee_leaver & np.isfinite(usual) & (usual > 0)
     weekly_rate = np.zeros(rows)
@@ -752,6 +766,7 @@ def derive_frs_annual_income_spells(
     receipt = _receipt(
         person,
         weights=weights,
+        household_sources=household_sources,
         descriptors=descriptors,
         current=current,
         se_current=se_current,
@@ -773,16 +788,21 @@ def pay_concept_ratio(
     weights: np.ndarray,
     job: pd.DataFrame,
     working: np.ndarray,
+    *,
+    household_sources: np.ndarray,
 ) -> tuple[float, int]:
     """Weighted UGRSPAY / UGROSS on current employee main jobs reporting both.
 
     UGRSPAY is the DV pay the spine's ``employment_income`` sums; UGROSS is the
     usual gross pay the survey asks of a current job whose last pay was not
     usual and of a recent leaver's last job. Measured job by job on one job per
-    person, so a second job's pay never enters it.
+    person, so a second job's pay never enters it. Its support is counted in
+    the true source households of the jobs' holders (``household_sources``,
+    one per person).
     """
 
     weight_by_person = pd.Series(weights, index=person_ids)
+    source_by_person = pd.Series(household_sources, index=person_ids)
     working_by_person = pd.Series(np.asarray(working, dtype=bool), index=person_ids)
     jobs = job.loc[
         (_numeric(job, "jobtype") == 1)
@@ -800,7 +820,9 @@ def pay_concept_ratio(
     )
     usual = _numeric(jobs, "ugross")
     dv = _numeric(jobs, "ugrspay")
-    support = distinct_carriers(jobs["household_id"].to_numpy(), job_weights)
+    support = distinct_carriers(
+        source_by_person.reindex(jobs["person_id"].to_numpy()).to_numpy(), job_weights
+    )
     denominator = float(np.nansum(job_weights * usual))
     # Fewer than three reporting households only flags: the receipt prints the
     # ratio "<3" and the gate reads it unmeasured, since a small-cell rule
@@ -898,6 +920,7 @@ def _receipt(
     person: pd.DataFrame,
     *,
     weights: np.ndarray,
+    household_sources: np.ndarray,
     descriptors: pd.DataFrame,
     current: np.ndarray,
     se_current: np.ndarray,
@@ -911,10 +934,8 @@ def _receipt(
     earnings_growth: float,
     employment_share: np.ndarray,
 ) -> dict[str, object]:
-    households = person["person_household_id"].to_numpy()
-
     def carriers(mask: np.ndarray) -> int:
-        return distinct_carriers(households[mask], weights[mask])
+        return distinct_carriers(household_sources[mask], weights[mask])
 
     def weighted(values: np.ndarray, mask: np.ndarray) -> float | str:
         return small_cell_share(float((weights * values)[mask].sum()), carriers(mask))

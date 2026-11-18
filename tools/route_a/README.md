@@ -1,15 +1,30 @@
 # Route A release driver
 
-`route_a.sh` builds a US PUF-support base, builds a fiscal-refresh release
-candidate from that base, a build of `microcosm-us-2024-national`, runs
-`preflight_us_release_gates.py` twice and runs `microcosm-publish-release-build`
-with `--preflight-only`. It leaves a hand-off with `published: false`.
-Publication remains a separate manual step that Max authorizes.
+`route_a.sh` builds a US PUF-support base, then a fiscal-refresh release
+build from that base, a build of `microcosm-us-2024-national`, and stops. The
+build is written and checked by its own gates, but it is not publishable: the
+run ends with `ROUTE_A_BUILT.json`, so the build can be evaluated first
+(microcosm#1585 item 11, PR 4a).
+
+`route_a.sh --certify` (or `ROUTE_A_CERTIFY=1`) on the same `RUN_ROOT` skips
+the accepted stages and certifies that build with
+`tools/certify_us_national_build.py`, which runs the release's post-export
+checks on the written H5 and writes the manifests publication requires. Once
+the build is accepted, the driver does not hash the raw inputs again, since
+certification reads none of them. It then runs `preflight_us_release_gates.py`
+against the release manifest and `microcosm-publish-release-build` with
+`--preflight-only`, and leaves a hand-off with `published: false`. Publication
+remains a separate manual step that Max authorizes. Only a run with
+`--certify` is a from-scratch build and certification receipt: a run that
+stops at `ROUTE_A_BUILT.json` has not been through the post-export checks or
+either preflight.
 
 The driver, `supervise.py`, `sample_series.py`, `check_flags.py` and
 `with_hf_token.sh` live together here. The driver, supervisor and sampler
-originated in the off-repository Route A tooling. The release stage now enables
-staging telemetry by default; `ROUTE_A_STAGING=0` restores `--no-staging`.
+originated in the off-repository Route A tooling. The release and certify
+stages enable staging telemetry by default; `ROUTE_A_STAGING=0` restores
+`--no-staging` for both; when the build staged and its certification does not,
+the build manifest records the opt-out.
 
 ## Configure and run
 
@@ -39,7 +54,7 @@ All machine locations come from the settings file:
 | `CHAIN_ROOT`, `CHAIN_LOG` | Previous overnight chain's supervisor run parent and chain log |
 | `DISK_PATH` | Filesystem checked by the driver's free-space wait |
 | `UV`, `PYTHON` | uv executable and engine-free interpreter for the static parser check |
-| `STORAGE`, `EDU` | Processed ASEC/PUF/ACS inputs and the three ASEC education person archives |
+| `STORAGE`, `EDU` | Processed ASEC/PUF/ACS inputs and the pooled years' three ASEC Census person archives (see "ASEC pool") |
 | `FEED`, `LADDER`, `SSI`, `SCF` | Pinned Ledger feed, block ladder, SSI prior basis and SCF summary extract |
 | `AGENT_SECRET` | Credential helper executable used by the release wrapper |
 | `EXPORT_MASS_REF_H5`, `QRF_TAIL_EXCLUSIONS` | Export-mass reference and optional tail exclusion register |
@@ -52,6 +67,33 @@ the build commit; with gate preflights enabled it must be on a remote branch.
 The static release flag check
 reads `add_argument` declarations without importing the release tool, including
 flags in `RELEASE_EXTRA_ARGS`.
+
+## ASEC pool
+
+The base pools main's default ASEC years,
+`asec_sources.ASEC_DEFAULT_POOL_INCOME_YEARS`: income years 2023-2025 (ASEC
+2024-2026), passed newest first. Max moved Route A to this pool from the first
+certified build after November 2026 (d2603, 7 November 2026). `STORAGE` holds
+`census_cps_2025.h5`, `census_cps_2024.h5` and `census_cps_2023.h5`, and `EDU`
+holds `asecpub26csv.zip`, `asecpub25csv.zip` and `asecpub24csv.zip`.
+`tools/fetch_us_asec_sources.py` resolves each H5 against its pin and prints
+its path; copy or link the file into `STORAGE` under its own name.
+`fetch_asec_education_assistance_source(year, cache_dir=EDU)` downloads an
+archive into `EDU`, verifies it and extracts its person file there.
+`--resolve` hashes them all. The base also reads the LKWEEKS sidecar, the
+income-2022 archive `asecpub23csv.zip`, in every mode. The driver passes no
+path for it: the prefetch stage fills the fetcher's cache,
+`~/.cache/microcosm/cps/asec_2023/`, and the base checks the pin there.
+
+The driver writes each year and pin out. Its build-commit check refuses a
+commit whose `asec_sources.py` or `education_assistance_source.py` lacks one of
+them. `test_route_a_asec_pool.py` fails when the pooled years leave the
+default pool or a pin leaves its registry, so the PR that pins a newer year
+moves Route A too. Builds through the November 2026 certified build pooled
+2022-2024. Each keeps the driver of its own commit, and main keeps their Modal
+registrations, so their plans still validate.
+
+## Resolving
 
 `--resolve` (also `--dry-run`) fetches refs, hashes registered inputs, writes
 `inputs.resolved.json`, reports commit blockers and launches no stages. It exits
@@ -98,6 +140,29 @@ first and set what its blockers name:
   so is a floor file without an `X.Y.Z` release, because the release refuses
   both. The driver exports both settings when the settings file sets them.
   Publisher preflight starts no emitter.
+- **Location rule.** `LOCATION_RULE` sets how the base locates households
+  (microcosm#1047, #696).
+  - `legacy`, the default, keeps the published run's command: a congressional
+    district drawn from SOI return counts, then a block within it.
+  - `block_v1` draws one 2020 census block per household within its CPS ASEC
+    source geography, and takes every other geography from that block. The
+    base then drops `--ledger-facts`, `--assign-congressional-districts` and
+    `--congressional-district-seed`, and passes
+    `--location-rule block_v1 --location-seed 0`. `--resolve` also checks that
+    the base tool at the commit declares those two flags.
+  - The driver refuses any other value. `block_v1` needs a block ladder that
+    carries each block's PUMA (see **Block ladder**).
+  - `block_v1` is for a base that the driver builds itself. The Modal base
+    registration keeps the legacy location flags, so a Modal base is always a
+    `legacy` base (see "Modal base hand-off").
+- **Block ladder.** `LADDER_SHA` and `LADDER_BYTES` default to the published
+  run's ladder (d713, rebuilt at microcosm#1072). A build with another ladder
+  sets `LADDER`, `LADDER_SHA` and `LADDER_BYTES` together.
+  - Under `block_v1`, `verify_inputs` also lists the ladder's arrays with
+    `PYTHON`. It refuses a ladder without the per-block `puma` array that
+    `load_us_location_ladder` requires, and names a file it cannot read.
+  - `tools/build_us_block_ladder_artifact.py` on main writes that array.
+    Rebuild the ladder with it and set the three settings to the new file.
 
 The example retains the historical d122 dense whole-base national/state
 settings, batch size 2000, export-mass reference and d490 tail register from the
@@ -107,15 +172,22 @@ release-defeating, selection, evidence, exact-k, staging and driver-owned
 overrides listed in `refuse_bad_release_args`, including `--flag=value` forms.
 Use `ROUTE_A_STAGING=0` to opt out; `--no-staging` in extra arguments is refused.
 
-The next base uses the d713 CT-fixed ladder at
+By default the base uses the d713 CT-fixed ladder at
 `$PE/_build_artifacts/us-ct-cbsa/us_block_ladder_2020.npz`, verified against
-sha256 `6840b990acdfa2003d7723da5595e3cfff7205a4fa3d8d6206ed835c85c3f233`
-and 18,991,218 bytes. Use a fresh `RUN_ROOT` for that attempt: an existing
+`LADDER_SHA` (default
+`6840b990acdfa2003d7723da5595e3cfff7205a4fa3d8d6206ed835c85c3f233`) and
+`LADDER_BYTES` (default 18,991,218). Use a fresh `RUN_ROOT` for that attempt: an existing
 `base-sup/ACCEPTED` skips the base stage. Merely pointing `LADDER` at new bytes
 does not rebuild a previously accepted base.
 
 The driver uses macOS `stat -f` and requires bash, git, openssl, uv and the
-configured paths. It creates clean detached worktrees at the chosen commits,
+configured paths. A file openssl cannot read is an input problem or a failed
+run, never an empty digest. Under launchd, macOS can refuse the system's own
+tools access to an external drive: on 2026-11-17, in a launchd job,
+`/usr/bin/openssl`, `/usr/bin/shasum` and `/usr/bin/python3` got "Operation
+not permitted" there, while a Homebrew openssl and the worktree's Python
+read the same files. Put Homebrew's `bin` before `/usr/bin` on such a job's
+`PATH`, or copy the inputs to the internal disk. It creates clean detached worktrees at the chosen commits,
 runs `uv sync --all-packages --locked --extra us`, and checks that their Python
 can import psutil and policyengine-us. The supervised stages use that worktree's
 interpreter.
@@ -132,7 +204,8 @@ overnight chain is alive, unless `EARLY_START_AFTER_HEAVY=1` and its log records
 | `prefetch` | Fetches the ASEC unemployment archive, SCF summary/full extracts, SIPP financial-assets/tips donors and ORG donor through the release's fetch helpers. Exit 0 is required before release. An initial failure lets the base proceed; release retries it. |
 | `base` | Runs `build_us_puf_support_base.py --stage all` on the pinned raw inputs, with seed 0, 32 estimators, target year 2024, district assignment/crosswalk and block ladder. Requires exit 0 and the expected H5, then hashes it. |
 | `preflight-base` | Runs `preflight_us_release_gates.py` on that H5 and the pinned feed, with the configured new-lineage mode and optional export-mass reference. Accepts 0 (clean) or 2 (AT-RISK); `RELEASE_DESPITE_PREFLIGHT_FAIL=1` also accepts 1 here. |
-| `release` | Runs `build_us_fiscal_refresh_release.py --base-h5` with the feed, SSI basis, SCF extract and configured release arguments; its `--release-id` is the build ID. Requires exit 0 and `<release-out>/releases/microcosm-us-2024-national/release_manifest.json`. Staging telemetry is enabled for this stage. |
+| `release` | Runs `build_us_fiscal_refresh_release.py --base-h5` with the feed, SSI basis, SCF extract and configured release arguments; its `--release-id` is the build ID. Requires exit 0 and `<release-out>/build_record.json`. Staging telemetry is enabled for this stage. Without `--certify` the run ends here with `ROUTE_A_BUILT.json`. |
+| `certify` | With `--certify` only: runs `tools/certify_us_national_build.py <release-out>`. Certification stages where its build staged, in a run of its own, so with `ROUTE_A_STAGING=1` it gets the release stage's staging credential; with `ROUTE_A_STAGING=0` it runs as the release stage does, online without the HF credential variables, and with `--no-staging`. Requires exit 0 and `<release-out>/releases/microcosm-us-2024-national/release_manifest.json`. |
 | `preflight-release` | Repeats the release-gate preflight with the candidate's release manifest. Accepts 0 or 2. |
 | `publisher-preflight` | Runs `microcosm-publish-release-build --preflight-only` against the release directory, `<release-out>/releases/microcosm-us-2024-national`, where a national run writes its build, and the artifacts. Requires exit 0. The command checks the build with its release contract, prints what it would publish, and starts no emitter. It takes no `--extra-file`: the command publishes every artifact the release manifest lists, including the two SCF education-debt fit tables of a release run with `--scf-education-debt` in `RELEASE_EXTRA_ARGS`. |
 
@@ -140,8 +213,9 @@ Both gate preflights and the publisher preflight remove the HF credential
 variables and Slack webhook variables, set `POPULACE_RELEASE_ENV=/dev/null` and
 `HF_HUB_OFFLINE=1`. The base and prefetch retain their original command and
 `PYTHONUNBUFFERED=1` configuration. An empty `PREFLIGHT_NEW_LINEAGE_ARGS` records
-both gate preflights as `BLOCKED`, permits the build, and ends with
-`ROUTE_A_BLOCKED.json` and exit 4 instead of `ROUTE_A_DONE.json`.
+both gate preflights as `BLOCKED`, permits the build, and ends with exit 4:
+after a run without `--certify`, with `ROUTE_A_BUILT.json`; after
+certification, with `ROUTE_A_BLOCKED.json` instead of `ROUTE_A_DONE.json`.
 
 Every stage runs through the supervisor's admission check and limits:
 
@@ -151,6 +225,7 @@ Every stage runs through the supervisor's admission check and limits:
 | base | 100 | 80 | max(26, 70 − checkpoint GiB) | 21600 | 64800 |
 | gate preflights | 24 | 16 | 22 | 3600 | 7200 |
 | release | 110 | `RELEASE_RAM_GIB` (example: 50) | 45 | `RELEASE_WALL_SECONDS` (example: 345600) | 2000000 |
+| certify | 110 | `RELEASE_RAM_GIB` (example: 50) | 45 | `CERTIFY_WALL_SECONDS` (default: 345600) | 2000000 |
 | publisher preflight | 24 | 16 | 22 | 7200 | 14400 |
 
 The driver waits up to `RESOURCE_WAIT_HOURS` (example: 12) for admission and
@@ -174,7 +249,11 @@ is waited for, and failed/refused directories are moved aside. Base stages
 resume by completed checkpoint prefix. Failed release attempts get a new
 release ID while retaining the shared checkpoint root. With
 `PRUNE_BASE_CHECKPOINTS=1`, base `*.frame.h5` files are removed after hashing the
-finished H5. The hand-off file written at the end (`ROUTE_A_DONE.json` or
+finished H5. A run without `--certify` ends with `ROUTE_A_BUILT.json`, which
+records the build, its directory and record and the base preflight's verdict,
+and says how to certify it. A failed certification is its own stage, so a
+rerun with `--certify` repeats only it, never the build. After certification
+the hand-off file written at the end (`ROUTE_A_DONE.json` or
 `ROUTE_A_BLOCKED.json`) records the candidate paths and preflight verdicts,
 plus two manual commands the driver never runs: `publish_command` publishes
 the build through the emitter into its folder of `microcosm-us-2024-national`,
@@ -226,6 +305,11 @@ moves old local checkpoints aside, stores the receipt/comparison/run-context
 evidence in `base-sup`, and writes `ACCEPTED` last. Set that block's `RUN` to
 `$RUN_ROOT/run-<12-character-build-commit>` before rerunning this driver.
 
+A Modal base is a `legacy` base. Its registration passes the legacy location
+flags, and no plan can pass `--location-rule`. Do not hand a Modal base to a
+run with `LOCATION_RULE=block_v1`. The driver skips a base stage that is
+already accepted, so the release would use the `legacy` base.
+
 The committed Modal example plan and local reference target the historical
 `4b57d15a2` base and its `7ba39b95…` ladder. They do not qualify a new CT-fixed
 base: its plan and comparison evidence must match the chosen commit and CT
@@ -241,7 +325,8 @@ shell tracing, removes inherited HF credential aliases, calls the configured
 `agent-secret get HUGGING_FACE_TOKEN_MAX` at run time, refuses a failed/empty
 lookup, exports `HF_TOKEN` and immediately `exec`s the release. It does not put
 the returned value into argv, a config or a log. Do not fetch a token before
-starting the driver. With `ROUTE_A_STAGING=0`, the release gets `--no-staging`,
+starting the driver. The certify stage starts the same way. With
+`ROUTE_A_STAGING=0`, the release and certification get `--no-staging`,
 inherited HF credential variables are removed and the wrapper is not called.
 
 The release parser defaults to `policyengine/populace-us-staging` and reads
@@ -264,14 +349,19 @@ stride grows past ten only when the run's solves total more than 24,000
 epochs. Because each solve's rows start at epoch 1, the epoch falls wherever
 the refit begins, even when `--epochs` is ten or fewer. The builder emits
 stages for loading the base, source enrichments, target compilation,
-calibration, export/gates, diagnostics and manifests, and uploads attached
-diagnostics as they are written. Completion records status `passed`; reported
-failures record status `failed`.
+calibration, export/gates and diagnostics, and uploads attached diagnostics
+as they are written. Completion records status `passed`; reported failures
+record status `failed`. Certification opens a staging run of its own,
+`<release-id>-certify`, where its build staged: its stages are the post-export
+checks and the manifests, it attaches their files, and a failed certification
+records `failed` there. The release's build manifest names that run as its
+staging run and the build's inside it, so the publisher's staging check reads
+the run that scored what it publishes.
 
 Telemetry is written locally under
-`<release-out>/staging/runs/<release-id>/` and uploaded under
-`runs/<release-id>/`, with `run_manifest.json`, `latest_staging.json` and
-`runs.json` allowing discovery. The base, donor prefetch, offline preflights
+`<release-out>/staging/runs/<run-id>/` and uploaded under `runs/<run-id>/`,
+with `run_manifest.json`, `latest_staging.json` and `runs.json` allowing
+discovery. The base, donor prefetch, offline preflights
 and supervisor resource series do not emit these staging records. If uploads
 fail, dashboard visibility is not guaranteed. A staging upload does not publish
 the build or change `releases.json` in `policyengine/populace-us`.

@@ -41,9 +41,19 @@ def test_the_narrow_loader_reads_no_other_resource(tmp_path) -> None:
 
 
 def test_the_narrow_loader_refuses_what_the_full_loader_refuses(tmp_path) -> None:
-    # The US package declares no gates.json yet; the loader never falls back.
+    # A package that declares no gates.json row; the loader never falls back.
+    undeclared = _package_copy(tmp_path / "undeclared", "be")
+    package = json.loads(
+        (undeclared / "country_package.json").read_text(encoding="utf-8")
+    )
+    package["resources"] = [
+        row for row in package["resources"] if row["path"] != "gates.json"
+    ]
+    (undeclared / "country_package.json").write_text(
+        json.dumps(package), encoding="utf-8"
+    )
     with pytest.raises(ValueError, match="no legacy_json gates.json"):
-        load_gates_manifest("us")
+        load_gates_manifest(undeclared)
     root = _package_copy(tmp_path, "be")
     gates = json.loads((root / "gates.json").read_text(encoding="utf-8"))
     gates["phases"] = ["exported"]
