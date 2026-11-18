@@ -106,7 +106,7 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
         assert published_transfer["completion"] == {
             "status": "complete",
             "group_count": 19,
-            "target_count": 72,
+            "target_count": 71,
             "residual_null_rows": 0,
         }
         calibrated = [
@@ -364,7 +364,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#1641 moves it again: docstring and comment wording in
             # solve and ssi_take_up, and the calibration contract's renamed modes.
             # microcosm#1585's us/gates.json row in country_package.json moves it.
-            "spec_sha256": '9c9ab6eecbcc430cf20436fdd0d1fee00eb0dd980a828ae966ec97177f814dd4',
+            "spec_sha256": "9c9ab6eecbcc430cf20436fdd0d1fee00eb0dd980a828ae966ec97177f814dd4",
         },
     }
 

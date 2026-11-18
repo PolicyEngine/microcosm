@@ -55,8 +55,7 @@ def test_the_inputs_the_acs_native_reasons_name_are_engine_inputs():
     for name in sorted(named_inputs):
         assert name in system.variables, name
         assert (
-            not system.variables[name].formulas
-            or name in SOCIAL_SECURITY_COMPONENTS
+            not system.variables[name].formulas or name in SOCIAL_SECURITY_COMPONENTS
         ), name
     assert not _ACS_NATIVE_AMOUNTS & set(system.variables)
 

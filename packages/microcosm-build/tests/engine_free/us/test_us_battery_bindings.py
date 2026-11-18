@@ -80,15 +80,16 @@ SCOPE_PINS: dict[str, dict[str, str]] = {
     },
     "us_national": {
         # Moved by the SSI take-up and release-gate entries that pin the
-        # thresholds they compare against (review of #1635, round 2).
+        # thresholds they compare against (review of #1635, round 2), and by
+        # the QRF tail gate's notes, which now say it grades base weights.
         "gates_manifest_sha256": (
-            "356b3387360ca77862c6684d4267710601eb96c5e29986615f58eb7346aca71c"
+            "b8ba3be11d457574507990ccc3604b0fb8604da3fd3cc8faec18c1673691a617"
         ),
         "policy_sha256": (
             "8be8670ce4f58b10c34d58b994645885b0d8758a4996c4f77797ddfbb698d8bb"
         ),
         "spec_fingerprint": (
-            "5226397586571f99f94526636a05e7bd4cb91fc9e7ab50c6e3dbe0a2f0952782"
+            "c30378bb106e2e963d65a63f8b1b087b064baf52d1f1c2d919ca1a59cc4ddd74"
         ),
     },
     "us_local": {

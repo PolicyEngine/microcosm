@@ -142,11 +142,11 @@ def test_constant_derived_domain_counts_are_complete(
     assert len(compiled_schedule["waves"]) == 6
     assert (
         compiled_schedule["schedule_sha256"]
-        == 'c9225891a5ce3522460d805ea047b96082f3befb704e4b8e886d27a4b73ea889'
+        == "c9225891a5ce3522460d805ea047b96082f3befb704e4b8e886d27a4b73ea889"
     )
     assert (
         compiled_schedule["payload_sha256"]
-        == 'edab6fccc230b5a3c772de5da2c84a72c4d7f4ce77bebafb510beede672e3649'
+        == "edab6fccc230b5a3c772de5da2c84a72c4d7f4ce77bebafb510beede672e3649"
     )
 
     assert len(take_up["programs"]) == 21

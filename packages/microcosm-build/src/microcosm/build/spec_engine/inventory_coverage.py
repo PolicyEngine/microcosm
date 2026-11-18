@@ -362,12 +362,12 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "51082a05e7ff8d2c901a9c0de54fdee7378f241cb377a9c0ddeeb12b1fc2db69",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": '90345ce0983f346297801be3e840e6f5cc384bf5615e8609fef8ba5ba98ed0e1',
+    "full_checkpoint": "90345ce0983f346297801be3e840e6f5cc384bf5615e8609fef8ba5ba98ed0e1",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
     "graph_nodes": "379cd14352d2ce812f1c828a48a60823090c20d5437a4ce34d4a28ced2b8cf7c",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
     "late_families": "69134b2aece677e1e71d98f423f2c92e5a82380aa7ebf4d415ffba9142d0e31e",
-    "late_resource_semantics": 'c4218cf5d569caa6ef83b53f2b1563ab2cd52ed159e72da27db5921b18a87cad',
+    "late_resource_semantics": "c4218cf5d569caa6ef83b53f2b1563ab2cd52ed159e72da27db5921b18a87cad",
     "late_schedule": "c9225891a5ce3522460d805ea047b96082f3befb704e4b8e886d27a4b73ea889",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "dbb5314f85727d4734a37b5e2de9d775a3044e362a18d831521460e1d261ac98",
@@ -414,9 +414,9 @@ EXPECTED_HASHES = {
     # microcosm#1641 moves both again: it rewords docstrings and a comment in
     # solve and the delivery gate's docstring in ssi_take_up, which now names
     # the builder's arms by flag; no draw, RNG rule, QRF target or solve changes.
-    "seed_map": 'ecee028549c18bfd82a705fea001898f6417fbc4b8335bc2d3d39023eec075ff',
-    "seed_protocol": 'ee5ea0223aef229a3dd31508c028e0ca13bd623a944611cac7bdfe2a15900718',
-    "source_manifest": '777ba41a83bf75ee00937f694a08208e93dcd7c91c9d096d316affd67d424267',
+    "seed_map": "ecee028549c18bfd82a705fea001898f6417fbc4b8335bc2d3d39023eec075ff",
+    "seed_protocol": "ee5ea0223aef229a3dd31508c028e0ca13bd623a944611cac7bdfe2a15900718",
+    "source_manifest": "777ba41a83bf75ee00937f694a08208e93dcd7c91c9d096d316affd67d424267",
     "take_up": "ca44532ca9e93e169e07acfd35d57efbacc1297b07006c4e546e05802efc420c",
     "tail": "f7f8282d48dbf1e01016cd551f5a0de289911140048d20812c920ace0d092936",
 }

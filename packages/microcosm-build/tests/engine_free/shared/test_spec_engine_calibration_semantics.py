@@ -31,7 +31,7 @@ _TEST_PATHS = paths_for("microcosm-build")
 ROOT = _TEST_PATHS.repository
 US_ROOT = ROOT / "packages/microcosm-build/src/microcosm/build/us"
 CANONICAL_LEGACY_PROJECTION_SHA256 = (
-    '08614132d6e1868443e6d74dfd31b37bd8c5d18d7f0261ff7961437240284bf8'
+    "08614132d6e1868443e6d74dfd31b37bd8c5d18d7f0261ff7961437240284bf8"
 )
 
 

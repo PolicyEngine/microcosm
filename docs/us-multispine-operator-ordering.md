@@ -943,9 +943,9 @@ Registry schema version 17 and execution-receipt contract version 4 bind the
 canonical input declarations, outputs, edges, waves, exact kind-specific
 virtual-resource bindings, content-hashed execution-row schema, and immutable
 transition authority version 2. The schedule SHA-256 is
-`f1fb754e6ade602be394837bc0d7d091f2fba4b4b83fb00f59a0258fe56eb5da`;
+`c9225891a5ce3522460d805ea047b96082f3befb704e4b8e886d27a4b73ea889`;
 the full payload SHA-256 is
-`76a79c9d05cfde1ec1c812de530b5080e6bc212f9c9e693eba628711d6f553e1`.
+`edab6fccc230b5a3c772de5da2c84a72c4d7f4ce77bebafb510beede672e3649`.
 Reversing registry iteration produces those same bytes.
 
 The virtual-resource payload ledger is independently versioned: ACS-universe
