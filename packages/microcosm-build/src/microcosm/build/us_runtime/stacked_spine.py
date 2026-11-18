@@ -5679,10 +5679,13 @@ def _validate_late_resource_binding(
                     f"{boundary}: attested legacy primary-QRF worker changed."
                 )
         else:
+            # Outside the ``try``: a live environment that cannot be bound
+            # reports its own error, not a malformed recorded binding.
+            live_worker = _late_primary_qrf_worker_execution_binding()
             try:
                 semantically_equal = worker_identity_runtime.primary_qrf_worker_bindings_semantically_equal(
                     recorded_worker,
-                    _late_primary_qrf_worker_execution_binding(),
+                    live_worker,
                     boundary=f"{boundary}: late primary-QRF worker",
                 )
             except ValueError as exc:
@@ -11963,8 +11966,9 @@ def _run_stacked_puf_pass_evaluate(
             resume_status = "resumed"
             # The sidecar's bytes are retained on resume, so the receipt must
             # carry the sidecar's own authenticated self-digest: the live
-            # binding's digest hashes the current audit aliases, which may
-            # differ from the relocated sidecar's without changing meaning.
+            # binding's digest hashes the current audit aliases and thread
+            # controls, which may differ from the sidecar's without changing
+            # meaning.
             reported_input_binding_sha256 = observed_input_binding["sha256"]
         else:
             if checkpoint_dir.exists() and any(checkpoint_dir.iterdir()):

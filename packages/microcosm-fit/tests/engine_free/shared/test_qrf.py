@@ -10,6 +10,7 @@ input, and that a fixed seed makes a freshly fitted model reproducible.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import numpy as np
 import pandas as pd
@@ -726,26 +727,54 @@ def test_targetwise_chain_refuses_config_prefix_order_and_index_drift(
         QRFChainState.from_dict(drifted_order)
 
 
-def test_targetwise_chain_locks_resolved_fit_threading(
+def test_targetwise_chain_continues_under_a_different_fit_width(
     correlated_targets_frame,
     monkeypatch,
 ) -> None:
-    """A subprocess cannot silently resume under a different fit width."""
+    """Each step may use another width; draws and saved state do not change."""
     monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
     frame, _ = correlated_targets_frame(seed=5, n=80)
     recipient = frame.table("person").iloc[:20].loc[:, ["x"]].copy()
     model = RegimeGatedQRF(n_estimators=3, seed=29)
-    state = model.start_chain(frame, ["x"], ["first", "second"])
-    assert state.fit_n_jobs == 1
+    initial_state = model.start_chain(frame, ["x"], ["first", "second"])
+    assert initial_state.fit_n_jobs == 1
 
-    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "2")
-    with pytest.raises(ValueError, match="model configuration changed"):
-        model.fit_draw_next(
-            frame,
-            recipient,
-            pd.DataFrame(index=recipient.index),
-            state=state,
-        )
+    def run_chain(fit_jobs_per_step: tuple[str, str]):
+        state = initial_state
+        priors = pd.DataFrame(index=recipient.index)
+        draws = []
+        for fit_jobs in fit_jobs_per_step:
+            monkeypatch.setenv("POPULACE_FIT_N_JOBS", fit_jobs)
+            step = model.fit_draw_next(frame, recipient, priors, state=state)
+            draws.append(step.raw_draw.tobytes())
+            priors = priors.assign(**{step.target: step.raw_draw})
+            state = step.state
+        return draws, state
+
+    unchanged_draws, unchanged_state = run_chain(("1", "1"))
+    changed_draws, changed_state = run_chain(("2", "3"))
+
+    assert changed_draws == unchanged_draws
+    assert changed_state.fit_n_jobs == 1
+    assert changed_state.to_dict() == unchanged_state.to_dict()
+
+
+def test_chain_state_equality_ignores_the_recorded_fit_width(
+    correlated_targets_frame,
+    monkeypatch,
+) -> None:
+    """The width stays in the saved mapping but does not distinguish states."""
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    frame, _ = correlated_targets_frame(seed=5, n=80)
+    state = RegimeGatedQRF(n_estimators=3, seed=29).start_chain(
+        frame, ["x"], ["first", "second"]
+    )
+    other_width = replace(state, fit_n_jobs=2)
+
+    assert other_width == state
+    assert other_width.to_dict() != state.to_dict()
+    assert replace(state, seed=30) != state
 
 
 def test_fit_n_jobs_unset_preserves_historical_default(monkeypatch) -> None:

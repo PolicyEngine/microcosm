@@ -491,12 +491,14 @@ class _MeanFitted:
 
 def _run_bank_fixture(
     target_bank: AcsTransferTargetBankStore | None = None,
+    *,
+    seed: int = 37,
 ) -> AcsTransferResult:
     return transfer_acs_inputs(
         _recipient_frame(),
         _donor_frame(),
         target_families={"person": {_BANK_FAMILY: _BANK_TARGETS}},
-        seed=37,
+        seed=seed,
         n_estimators=1,
         target_bank=target_bank,
         regime_evidence_targets=tuple(("person", target) for target in _BANK_TARGETS),
@@ -1273,6 +1275,70 @@ def test_target_bank_interrupt_resumes_durable_prefix_byte_identically(
         sources=("checkpoint", "rebuilt", "rebuilt"),
         load_statuses=("resumed", "missing", "missing"),
     )
+
+
+def test_target_bank_reuses_targets_under_a_changed_fit_job_count(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _lock_bank_fixture_threads(monkeypatch)
+    uninterrupted = _run_bank_fixture(_bank_store(tmp_path / "uninterrupted-bank"))
+
+    bank_root = tmp_path / "interrupted-bank"
+    interrupted_bank = _bank_store(bank_root)
+    durable_write = interrupted_bank.write_target
+
+    def interrupt_after_first_durable_target(checkpoint) -> None:
+        durable_write(checkpoint)
+        if checkpoint.target_index == 0:
+            raise RuntimeError("fixture interrupt after durable ACS target 0")
+
+    monkeypatch.setattr(
+        interrupted_bank,
+        "write_target",
+        interrupt_after_first_durable_target,
+    )
+    with pytest.raises(RuntimeError, match="fixture interrupt"):
+        _run_bank_fixture(interrupted_bank)
+
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "2")
+    resumed_bank = _bank_store(bank_root)
+    resumed = _run_bank_fixture(resumed_bank)
+    _assert_transfer_results_exact(resumed, uninterrupted)
+    _assert_bank_receipt(
+        resumed_bank,
+        sources=("checkpoint", "rebuilt", "rebuilt"),
+        load_statuses=("resumed", "missing", "missing"),
+    )
+
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "3")
+    complete_bank = _bank_store(bank_root)
+    reloaded = _run_bank_fixture(complete_bank)
+    _assert_transfer_results_exact(reloaded, uninterrupted)
+    _assert_bank_receipt(
+        complete_bank,
+        sources=("checkpoint", "checkpoint", "checkpoint"),
+        load_statuses=("resumed", "resumed", "resumed"),
+    )
+
+
+def test_target_bank_rebuilds_targets_saved_from_another_chain_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _lock_bank_fixture_threads(monkeypatch)
+    bank_root = tmp_path / "bank"
+    _run_bank_fixture(_bank_store(bank_root), seed=37)
+
+    other_seed_bank = _bank_store(bank_root)
+    _run_bank_fixture(other_seed_bank, seed=38)
+
+    targets = _assert_bank_receipt(
+        other_seed_bank,
+        sources=("rebuilt", "rebuilt", "rebuilt"),
+        load_statuses=("invalid_rebuild", "invalid_rebuild", "invalid_rebuild"),
+    )
+    assert "predecessor state" in targets["0"]["invalid_checkpoint"]["message"]
 
 
 def test_target_bank_identity_mismatch_rebuilds_only_stale_target(

@@ -223,7 +223,7 @@ def allow_logbook_network(
 def _session_primary_qrf_worker_identities():
     """Attest the real installed worker once; retain pristine identities by key.
 
-    Additional lock/control keys (such as the sealed legacy lock) are populated
+    Additional lock keys (such as the sealed legacy lock) are populated
     by the real code on first use in ordinary tests, never by a fabricated identity.
     Import lazily so unrelated build tests need neither US extras nor a probe.
     """

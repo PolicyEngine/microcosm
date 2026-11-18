@@ -62,7 +62,7 @@ import numbers
 import os
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 import joblib
 import numpy as np
@@ -1387,10 +1387,12 @@ def _fit_n_jobs() -> int:
     negative ``n_jobs`` when it starts the fit's and ``apply``'s threads, as
     ``joblib.cpu_count() + 1 + n_jobs``, so ``-1`` already counts only the
     CPUs the process may use (see :func:`default_predict_workers`). Chain
-    states and the primary-QRF worker identity record the literal ``-1``,
-    not that count. If the environment variable is present it must be a
-    strict positive base-10 integer; in particular, an empty string is an
-    invalid configured value rather than a second spelling of "unset".
+    states and the ``audit_thread_controls`` of the primary-QRF worker binding
+    record the literal ``-1``, not that count, and no resume compares either
+    record: the count changes no draw. If the environment variable is present
+    it must be a strict positive base-10 integer; in particular, an empty
+    string is an invalid configured value rather than a second spelling of
+    "unset".
 
     Raises:
         ValueError: If ``POPULACE_FIT_N_JOBS`` is set to anything other than a
@@ -1430,7 +1432,7 @@ def default_predict_workers() -> int:
 
     Raises:
         ValueError: If ``LOKY_MAX_CPU_COUNT`` is not an integer, which joblib
-            refuses, or joblib cannot read the cgroup CPU quota.
+            refuses, or joblib cannot parse the cgroup CPU quota.
     """
     try:
         return joblib.cpu_count()
@@ -1438,8 +1440,8 @@ def default_predict_workers() -> int:
         raise ValueError(
             "Cannot size the QRF draw's thread pool: joblib.cpu_count() failed "
             f"with LOKY_MAX_CPU_COUNT={os.environ.get('LOKY_MAX_CPU_COUNT')!r} "
-            f"({error}). Set LOKY_MAX_CPU_COUNT to an integer, or set "
-            f"{_PREDICT_WORKERS_ENV}."
+            f"({error}). LOKY_MAX_CPU_COUNT must be unset or an integer, and "
+            "the process's cgroup CPU quota must be readable."
         ) from error
 
 
@@ -1724,6 +1726,11 @@ class QRFChainState:
     fingerprint only when the chain was started with ``groups``, so the state
     of an in-sample, ungrouped chain, and any state written before either
     existed, reads the same.
+
+    ``fit_n_jobs`` records the ``POPULACE_FIT_N_JOBS`` value in force when the
+    chain started. It stays in :meth:`to_dict`, so saved states keep their
+    bytes, but it takes no part in equality and no step compares it: each step
+    fits with the live value, and the thread count changes no draw.
     """
 
     predictors: tuple[str, ...]
@@ -1737,7 +1744,7 @@ class QRFChainState:
     max_samples_leaf: int | float | None
     max_samples_leaf_kind: str
     seed: int
-    fit_n_jobs: int
+    fit_n_jobs: int = field(compare=False)
     donor_index: _IndexIdentity
     recipient_index: _IndexIdentity | None
     fit_rng_state_json: str
@@ -2610,7 +2617,11 @@ class RegimeGatedQRF:
         )
 
     def _validate_chain_config(self, state: QRFChainState) -> None:
-        """Refuse any model configuration drift across subprocesses."""
+        """Refuse drift in any setting that can change the draws.
+
+        The fit thread count is not one of them, so a chain may continue under
+        another ``POPULACE_FIT_N_JOBS``.
+        """
         if self.gate_level_columns:
             raise ValueError(
                 "The checkpointed QRF chain does not carry gate_level_columns yet; "
@@ -2622,7 +2633,6 @@ class RegimeGatedQRF:
             self.max_samples_leaf,
             _max_samples_leaf_kind(self.max_samples_leaf),
             self.seed,
-            _fit_n_jobs(),
             self.gate_calibration,
         )
         expected = (
@@ -2631,7 +2641,6 @@ class RegimeGatedQRF:
             state.max_samples_leaf,
             state.max_samples_leaf_kind,
             state.seed,
-            state.fit_n_jobs,
             state.gate_calibration,
         )
         if actual != expected or actual[3] != expected[3]:

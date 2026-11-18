@@ -1479,7 +1479,7 @@ archives.
   `experiments/us-acs-local-hours-rebuild-20260922/run-resources-and-staging-excerpt.json`
   measured 103,104.6 CPU-s over 7,218.1 s of wall, 14.3 cores on average.
   The QRF forest uses `n_jobs=-1` when `POPULACE_FIT_N_JOBS` is unset, and
-  prediction sizes its pool from `os.cpu_count()` when
+  prediction sizes its pool from `joblib.cpu_count()` when
   `POPULACE_FIT_PREDICT_WORKERS` is unset (`microcosm.fit.qrf`). Sixteen
   cores accommodate the observed average with 1.7 cores of headroom; the
   limit throttles use above sixteen. Neither the average nor the request

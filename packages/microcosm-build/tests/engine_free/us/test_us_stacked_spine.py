@@ -3274,17 +3274,17 @@ def test_primary_qrf_worker_identity_memo_ignores_thread_controls(
     "name", ("POPULACE_FIT_N_JOBS", "POPULACE_FIT_PREDICT_WORKERS")
 )
 @pytest.mark.parametrize("value", ("0", "01", "invalid"))
-def test_primary_qrf_worker_identity_memo_refuses_invalid_environment(
+def test_primary_qrf_worker_binding_refuses_invalid_environment_before_attesting(
     _worker_identity_memo_inputs,
     monkeypatch: pytest.MonkeyPatch,
     name: str,
     value: str,
 ) -> None:
-    monkeypatch.setenv(name, "1")
-    worker_identity_module.primary_qrf_worker_semantic_identity()
+    _source, calls = _worker_identity_memo_inputs
     monkeypatch.setenv(name, value)
     with pytest.raises(ValueError, match=name):
-        worker_identity_module.primary_qrf_worker_semantic_identity()
+        worker_identity_module.primary_qrf_worker_execution_binding()
+    assert calls == []
 
 
 def test_primary_qrf_worker_identity_memo_binds_lock(

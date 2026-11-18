@@ -1296,6 +1296,73 @@ def test_outer_stage_resume_rejects_changed_builder_code(
         )
 
 
+def _resumable_builder_args(
+    builder,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    monkeypatch.setattr(
+        builder,
+        "_builder_code_identity",
+        lambda: {"source_sha256": "builder"},
+    )
+    return builder._parse_args(
+        [
+            "--base-h5",
+            str(tmp_path / "base.h5"),
+            "--puf-h5",
+            str(tmp_path / "puf.h5"),
+            "--out",
+            str(tmp_path / "out"),
+            "--without-block-ladder",
+            "--checkpoint-dir",
+            str(tmp_path / "checkpoints"),
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    "variable",
+    ("POPULACE_FIT_N_JOBS", "POPULACE_FIT_PREDICT_WORKERS"),
+)
+def test_outer_stage_resume_accepts_a_changed_qrf_thread_count(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    variable: str,
+) -> None:
+    builder = _load_support_builder_module()
+    args = _resumable_builder_args(builder, monkeypatch, tmp_path)
+    monkeypatch.delenv(variable, raising=False)
+    first_config = builder._open_stage_runtime(args).context.run_config
+    assert first_config["thread_environment"][variable] is None
+
+    monkeypatch.setenv(variable, "3")
+    resumed = builder._open_stage_runtime(args)
+
+    assert resumed.context.run_config == first_config
+
+
+@pytest.mark.parametrize(
+    ("variable", "first_value", "changed_value"),
+    (("OMP_NUM_THREADS", "1", "2"), ("PYTHONHASHSEED", "0", "1")),
+)
+def test_outer_stage_resume_refuses_other_changed_environment_values(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    variable: str,
+    first_value: str,
+    changed_value: str,
+) -> None:
+    builder = _load_support_builder_module()
+    args = _resumable_builder_args(builder, monkeypatch, tmp_path)
+    monkeypatch.setenv(variable, first_value)
+    builder._open_stage_runtime(args)
+
+    monkeypatch.setenv(variable, changed_value)
+    with pytest.raises(ValueError, match="run_config differs"):
+        builder._open_stage_runtime(args)
+
+
 def test_puf_donor_builder_threads_explicit_source_year_agi(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

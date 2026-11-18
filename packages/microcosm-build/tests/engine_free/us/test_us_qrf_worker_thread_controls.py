@@ -10,7 +10,8 @@ and out of the semantic identity. Everything that compares a recorded worker
 with the live one reads only the semantic identity: loading a pool for
 release or scoring, resuming the primary-QRF checkpoint, the pool's
 checkpoint identity, and the spec engine's worker resolution. A pool built on
-an 18-CPU host therefore loads under the release tool's 16-CPU cap.
+an 18-CPU host therefore loads under the release tool's 16-CPU cap, and a
+checkpoint started under one pair of counts resumes under another.
 
 Schema-1 bindings, which kept the counts in
 ``semantic_identity.environment.semantic_controls``, still validate, so a pool
@@ -29,6 +30,7 @@ import joblib
 from microcosm.build.spec_engine import imputation_semantics
 from test_support.microcosm_build.us_stacked_spine import *
 
+REAL_JOBLIB_CPU_COUNT = joblib.cpu_count
 FIT_JOBS_ENV = "POPULACE_FIT_N_JOBS"
 PREDICT_WORKERS_ENV = "POPULACE_FIT_PREDICT_WORKERS"
 JOBLIB_FALLBACK = "joblib_cpu_count_fallback"
@@ -45,6 +47,7 @@ BINDING_KEYS = {
 BASE_HOST = (None, None, 18)
 RELEASE_UNDER_CPU_CAP = (None, None, 16)
 OVERRIDDEN = ("2", "9", 4)
+RESUME_ON_ANOTHER_HOST = ("5", "9", 4)
 THREAD_SETTINGS = (BASE_HOST, RELEASE_UNDER_CPU_CAP, OVERRIDDEN)
 
 
@@ -63,9 +66,19 @@ def _apply_thread_setting(
             monkeypatch.setenv(name, value)
 
     def patched_cpu_count(only_physical_cores: bool = False) -> int:
-        return joblib_cpu_count
+        # A physical-core count that differs, so a caller asking for it shows.
+        return joblib_cpu_count + 100 if only_physical_cores else joblib_cpu_count
 
     monkeypatch.setattr(joblib, "cpu_count", patched_cpu_count)
+
+
+def _use_real_joblib_cpu_count(
+    monkeypatch: pytest.MonkeyPatch, loky_max_cpu_count: str
+) -> None:
+    for name in (FIT_JOBS_ENV, PREDICT_WORKERS_ENV):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(joblib, "cpu_count", REAL_JOBLIB_CPU_COUNT)
+    monkeypatch.setenv("LOKY_MAX_CPU_COUNT", loky_max_cpu_count)
 
 
 def _binding_under(
@@ -224,7 +237,7 @@ def test_primary_checkpoint_resources_resume_under_other_thread_controls(
     recorded = stacked_spine_module.stacked_late_primary_resource_receipts(
         donor, **arguments
     )
-    _apply_thread_setting(monkeypatch, OVERRIDDEN)
+    _apply_thread_setting(monkeypatch, RESUME_ON_ANOTHER_HOST)
     live = stacked_spine_module.stacked_late_primary_resource_receipts(
         donor, **arguments
     )
@@ -314,7 +327,7 @@ def test_primary_qrf_checkpoint_resumes_under_other_thread_controls(
     sidecar_bytes = sidecar_path.read_bytes()
     assert initialized["resume_status"] == "initialized"
 
-    _apply_thread_setting(monkeypatch, OVERRIDDEN)
+    _apply_thread_setting(monkeypatch, RESUME_ON_ANOTHER_HOST)
     live_binding = input_binding()
     assert live_binding["sha256"] != json.loads(sidecar_bytes)["sha256"], (
         "the recorded thread controls must move the live sidecar digest"
@@ -323,6 +336,85 @@ def test_primary_qrf_checkpoint_resumes_under_other_thread_controls(
 
     assert resumed["resume_status"] == "resumed"
     assert sidecar_path.read_bytes() == sidecar_bytes
+
+
+@pytest.mark.parametrize("loky_max_cpu_count", ["1", "2"])
+def test_unset_prediction_workers_record_the_real_joblib_cpu_count(
+    monkeypatch: pytest.MonkeyPatch, loky_max_cpu_count: str
+) -> None:
+    _use_real_joblib_cpu_count(monkeypatch, loky_max_cpu_count)
+    expected = REAL_JOBLIB_CPU_COUNT()
+    assert 1 <= expected <= int(loky_max_cpu_count)
+
+    controls = worker_identity_module.primary_qrf_worker_execution_binding()[
+        "audit_thread_controls"
+    ][PREDICT_WORKERS_ENV]
+
+    assert controls == {
+        "configured": None,
+        "resolved": expected,
+        "resolution": JOBLIB_FALLBACK,
+    }
+
+
+def test_pool_recorded_under_a_larger_loky_cap_loads_under_a_smaller_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The release tool's ``LOKY_MAX_CPU_COUNT`` cap, with joblib unpatched."""
+    _use_real_joblib_cpu_count(monkeypatch, "2")
+    if REAL_JOBLIB_CPU_COUNT() < 2:
+        pytest.skip("needs at least two usable CPUs")
+    recorded = _fixture_primary_execution_config_binding()
+    _use_real_joblib_cpu_count(monkeypatch, "1")
+    live_controls = worker_identity_module.primary_qrf_worker_execution_binding()[
+        "audit_thread_controls"
+    ]
+
+    recorded_controls = recorded["qrf"]["worker_execution"]["audit_thread_controls"]
+    assert recorded_controls[PREDICT_WORKERS_ENV]["resolved"] == 2
+    assert live_controls[PREDICT_WORKERS_ENV]["resolved"] == 1
+    _validate_primary_config_against_live_worker(
+        recorded, boundary="pool load under a smaller CPU cap"
+    )
+
+
+@pytest.mark.parametrize(
+    ("variable", "configured", "message"),
+    (
+        ("LOKY_MAX_CPU_COUNT", "four", "LOKY_MAX_CPU_COUNT"),
+        (FIT_JOBS_ENV, "0", FIT_JOBS_ENV),
+        (PREDICT_WORKERS_ENV, "two", PREDICT_WORKERS_ENV),
+    ),
+)
+def test_a_live_worker_that_cannot_be_bound_is_not_blamed_on_the_pool(
+    monkeypatch: pytest.MonkeyPatch, variable: str, configured: str, message: str
+) -> None:
+    """The error names the live setting, not "worker binding is malformed"."""
+    _apply_thread_setting(monkeypatch, BASE_HOST)
+    recorded = _fixture_primary_execution_config_binding()
+    _use_real_joblib_cpu_count(monkeypatch, "2")
+    monkeypatch.setenv(variable, configured)
+
+    with pytest.raises(ValueError, match=message) as refusal:
+        _validate_primary_config_against_live_worker(
+            recorded, boundary="pool load with a bad live setting"
+        )
+    assert "malformed" not in str(refusal.value)
+
+
+def test_identity_recomputed_under_other_thread_controls_is_unchanged(
+    _worker_identity_memo_inputs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A later process attests afresh; its counts must not reach the identity."""
+    _source, calls = _worker_identity_memo_inputs
+    _apply_thread_setting(monkeypatch, BASE_HOST)
+    first = deepcopy(worker_identity_module.primary_qrf_worker_semantic_identity())
+    worker_identity_module.clear_primary_qrf_worker_identity_cache()
+    _apply_thread_setting(monkeypatch, RESUME_ON_ANOTHER_HOST)
+    second = worker_identity_module.primary_qrf_worker_semantic_identity()
+
+    assert len(calls) == 2
+    assert second == first
 
 
 def test_pool_checkpoint_identity_ignores_thread_controls(

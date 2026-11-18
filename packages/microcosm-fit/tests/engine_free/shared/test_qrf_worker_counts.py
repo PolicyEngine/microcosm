@@ -62,7 +62,8 @@ def _cpu_count_unlike_os(monkeypatch: pytest.MonkeyPatch) -> int:
     joblib_cpu_count = (os.cpu_count() or 1) + 3
 
     def patched_cpu_count(only_physical_cores: bool = False) -> int:
-        return joblib_cpu_count
+        # A physical-core count that differs, so a caller asking for it shows.
+        return joblib_cpu_count + 100 if only_physical_cores else joblib_cpu_count
 
     monkeypatch.setattr(joblib, "cpu_count", patched_cpu_count)
     return joblib_cpu_count
@@ -106,6 +107,20 @@ def test_malformed_loky_max_cpu_count_is_named_in_the_error(
         _predict_workers()
     monkeypatch.setenv(PREDICT_WORKERS_ENV, "2")
     assert _predict_workers() == 2
+
+
+@pytest.mark.parametrize("loky_max_cpu_count", ["1", "2"])
+def test_unset_prediction_workers_follow_the_real_joblib_cpu_count(
+    loky_max_cpu_count: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unpatched joblib honours ``LOKY_MAX_CPU_COUNT``, so the draw does too."""
+    monkeypatch.delenv(PREDICT_WORKERS_ENV, raising=False)
+    monkeypatch.setenv("LOKY_MAX_CPU_COUNT", loky_max_cpu_count)
+
+    width = _predict_workers()
+
+    assert width == joblib.cpu_count()
+    assert 1 <= width <= int(loky_max_cpu_count)
 
 
 def test_fit_jobs_default_stays_minus_one_under_joblib_cpu_count(

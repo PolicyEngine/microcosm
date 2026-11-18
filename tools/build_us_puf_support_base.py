@@ -929,11 +929,7 @@ def _run_staged_all(
     """
 
     pipeline_steps = _pipeline_steps_for(args)
-    runtime = StageRuntime(
-        args.checkpoint_dir,
-        _pipeline_for(args),
-        run_config=_stage_run_config(args),
-    )
+    runtime = _open_stage_runtime(args)
     completed_prefix = runtime.context.completed
     remaining = pipeline_steps[len(completed_prefix) :]
     if not remaining and completed_prefix == pipeline_steps:
@@ -1065,6 +1061,26 @@ def _pooled_income_years(args: argparse.Namespace) -> tuple[int, ...]:
         raw_year, _, _ = value.partition("=")
         years.append(int(raw_year))
     return tuple(sorted(set(years)))
+
+
+#: QRF thread counts the first run records and a resume does not compare: they
+#: change no imputed value. The BLAS and OpenMP thread counts and
+#: PYTHONHASHSEED in ``thread_environment`` stay compared.
+_RESUME_IGNORED_RUN_CONFIG_PATHS = (
+    ("thread_environment", "POPULACE_FIT_N_JOBS"),
+    ("thread_environment", "POPULACE_FIT_PREDICT_WORKERS"),
+)
+
+
+def _open_stage_runtime(args: argparse.Namespace) -> StageRuntime:
+    """Open the checkpoint directory, refusing a resume with changed settings."""
+
+    return StageRuntime(
+        args.checkpoint_dir,
+        _pipeline_for(args),
+        run_config=_stage_run_config(args),
+        resume_ignored_run_config_paths=_RESUME_IGNORED_RUN_CONFIG_PATHS,
+    )
 
 
 def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
@@ -2350,11 +2366,7 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
             f"--location-rule {_location_rule(args)} pipeline "
             f"{list(pipeline_steps)}."
         )
-    runtime = StageRuntime(
-        args.checkpoint_dir,
-        _pipeline_for(args),
-        run_config=_stage_run_config(args),
-    )
+    runtime = _open_stage_runtime(args)
     if args.stage in runtime.context.completed:
         if args.stage == "source_construction" and args.asec_h5 is not None:
             _require_completed_source_receipt_matches_pins(

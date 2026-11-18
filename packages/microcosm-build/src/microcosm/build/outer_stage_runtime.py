@@ -12,7 +12,7 @@ import hashlib
 import json
 import os
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -222,7 +222,12 @@ class LoadedStageCheckpoint:
 
 
 class StageRuntime:
-    """Advance and resume one exact prefix of an immutable stage pipeline."""
+    """Advance and resume one exact prefix of an immutable stage pipeline.
+
+    ``resume_ignored_run_config_paths`` names values inside ``run_config``, each
+    as its sequence of nested keys, that the first run records and a resume
+    does not compare. The recorded run config keeps the first run's values.
+    """
 
     def __init__(
         self,
@@ -230,11 +235,13 @@ class StageRuntime:
         pipeline: StagePipeline,
         *,
         run_config: Mapping[str, object] | None = None,
+        resume_ignored_run_config_paths: Iterable[tuple[str, ...]] = (),
     ) -> None:
         if not isinstance(pipeline, StagePipeline):
             raise TypeError("pipeline must be a StagePipeline.")
         self._root = Path(checkpoint_dir)
         self._pipeline = pipeline
+        self._resume_ignored_run_config_paths = tuple(resume_ignored_run_config_paths)
         self._context_path = self._root / OUTER_STAGE_CONTEXT_FILENAME
         requested_config = (
             None
@@ -271,15 +278,30 @@ class StageRuntime:
     def require_run_config(self, expected: Mapping[str, object]) -> dict[str, object]:
         """Require the resume arguments to equal the locked first-run config."""
 
-        normalized = _normalize_json_mapping(expected, label="run_config")
         context = self._load_context()
-        if normalized != context.run_config:
+        if self._resume_compared_run_config(
+            expected
+        ) != self._resume_compared_run_config(context.run_config):
             raise ValueError(
                 "outer-stage run_config differs from the locked run context; "
                 "start a new checkpoint directory for changed build inputs."
             )
         self._context = context
         return _normalize_json_mapping(context.run_config, label="run_config")
+
+    def _resume_compared_run_config(
+        self, run_config: Mapping[str, object]
+    ) -> dict[str, object]:
+        """Return a copy of ``run_config`` without the values a resume skips."""
+
+        compared = _normalize_json_mapping(run_config, label="run_config")
+        for *parent_keys, final_key in self._resume_ignored_run_config_paths:
+            parent: object = compared
+            for key in parent_keys:
+                parent = parent.get(key) if isinstance(parent, dict) else None
+            if isinstance(parent, dict):
+                parent.pop(final_key, None)
+        return compared
 
     def require_ready(self, stage_name: str) -> None:
         """Require that exactly the named stage's predecessor prefix completed."""

@@ -507,6 +507,48 @@ def test_target_subprocess_chain_matches_monolith_raw_bits_and_final_frame(
     run_primary_puf_qrf_chain(checkpoint_dir)
 
 
+def test_primary_qrf_chain_resumes_under_changed_thread_counts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rebuilt targets are the same bytes under other thread counts."""
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
+    checkpoint_dir = tmp_path / "primary_qrf"
+    initialize_primary_puf_qrf_chain(
+        _expanded_frame(),
+        _donor(),
+        checkpoint_dir,
+        predictors=_PREDICTORS,
+        person_outputs=_PERSON_OUTPUTS,
+        tax_unit_outputs=_TAX_UNIT_OUTPUTS,
+        n_estimators=2,
+        seed=3,
+    )
+    run_primary_puf_qrf_chain(
+        checkpoint_dir,
+        environment={
+            "POPULACE_FIT_N_JOBS": "1",
+            "POPULACE_FIT_PREDICT_WORKERS": "1",
+        },
+    )
+    later_targets = sorted((checkpoint_dir / "targets").glob("*.h5"))[1:]
+    assert later_targets
+    original_bytes = {path: path.read_bytes() for path in later_targets}
+    for path in later_targets:
+        path.unlink()
+
+    run_primary_puf_qrf_chain(
+        checkpoint_dir,
+        environment={
+            "POPULACE_FIT_N_JOBS": "2",
+            "POPULACE_FIT_PREDICT_WORKERS": "3",
+        },
+    )
+
+    assert {path: path.read_bytes() for path in later_targets} == original_bytes
+
+
 def test_resumed_earnings_chain_keeps_children_out_of_allocation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

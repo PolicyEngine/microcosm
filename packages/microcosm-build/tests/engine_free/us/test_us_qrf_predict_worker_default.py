@@ -34,7 +34,8 @@ SCHEMA_4_FALLBACK = "os_cpu_count_fallback"
 
 def _patch_joblib_cpu_count(monkeypatch: pytest.MonkeyPatch, value: int) -> None:
     def patched_cpu_count(only_physical_cores: bool = False) -> int:
-        return value
+        # A physical-core count that differs, so a caller asking for it shows.
+        return value + 100 if only_physical_cores else value
 
     monkeypatch.setattr(joblib, "cpu_count", patched_cpu_count)
 
@@ -221,14 +222,25 @@ def test_schema_4_projection_records_an_unset_count_as_schema_4_code_did(
     recorded = deepcopy(projected)
     recorded["argv_template"][0] = relocated_python
     recorded["interpreter"]["executable"] = relocated_python
-    recorded["environment"]["semantic_controls"][PREDICT_WORKERS_ENV] = dict(
-        schema_4_controls
-    )
     assert (
         worker_identity_module._legacy_worker_execution_mismatch_paths(
             recorded, projected
         )
         == worker_identity_module.LEGACY_WORKER_PERMITTED_MISMATCHES
+    )
+    # The frozen comparison still includes the counts: a sealed record with
+    # another count is not just the two permitted interpreter paths.
+    recorded["environment"]["semantic_controls"][PREDICT_WORKERS_ENV] = {
+        "configured": "18",
+        "resolved": 18,
+        "resolution": "environment_override",
+    }
+    mismatches = worker_identity_module._legacy_worker_execution_mismatch_paths(
+        recorded, projected
+    )
+    assert mismatches != worker_identity_module.LEGACY_WORKER_PERMITTED_MISMATCHES
+    assert (
+        f"environment.semantic_controls.{PREDICT_WORKERS_ENV}.configured" in mismatches
     )
 
 

@@ -557,8 +557,8 @@ newly claimed outer route.
 
 #### Portable primary-QRF `worker_execution` identity
 
-Worker identity schema v1 separates semantic authentication from launcher
-aliases. `semantic_identity` binds the interpreter-launcher bytes, the exact
+Worker identity schema v2 separates semantic authentication from launcher
+aliases and thread counts. `semantic_identity` binds the interpreter-launcher bytes, the exact
 loaded Python runtime library (or the executable for a static build), and a
 digest of the source and extension bytes for stdlib modules observed during or
 present after a clean worker import. It also binds implementation, version and
@@ -566,9 +566,9 @@ ABI, cache tag,
 canonical `pyvenv.cfg` fields, worker-module source, the statically resolved
 Python closure plus every Microcosm namespace file opened by that clean import,
 the exact approved `uv.lock`, installed-distribution/RECORD and combined
-transitive environment/code digests, arguments after `argv[0]` with `argv[0]`
-replaced by `{python_interpreter}`, and configured/resolved fit-job and
-prediction-worker controls. `TORCH_DEVICE_BACKEND_AUTOLOAD=0` is a forced,
+transitive environment/code digests, and arguments after `argv[0]` with
+`argv[0]` replaced by `{python_interpreter}`.
+`TORCH_DEVICE_BACKEND_AUTOLOAD=0` is a forced,
 bound worker-bootstrap override applied before the QRF runtime can import
 Torch. Before the clean import, identity construction enumerates
 all installed `torch.backends` entry-point declarations, refuses duplicate
@@ -577,8 +577,13 @@ binds declarations belonging to selected distributions. Authentication
 compares that payload and its
 `semantic_identity_sha256`, so byte-identical interpreters reached through
 different worktrees remain the same worker. `audit_aliases` records absolute
-`sys_executable`, `sys_prefix`, and raw `argv_template_0`, but those aliases are
-never compared for authentication.
+`sys_executable`, `sys_prefix`, and raw `argv_template_0`, and
+`audit_thread_controls` records the configured and resolved fit-job and
+prediction-worker counts. Neither field is compared for authentication: the
+counts change no imputed value, and an unset prediction-worker count follows
+the machine. Schema v1 records, which kept the counts in `semantic_identity`,
+still validate, and a pool holding one is refused because its worker identity
+changed.
 
 A schema-9 gate-failed pool receives no implicit alias exception. Its only
 relocation path is the scoring-only loader with an operator-supplied

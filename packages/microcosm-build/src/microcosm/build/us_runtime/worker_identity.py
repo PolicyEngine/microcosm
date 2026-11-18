@@ -25,11 +25,12 @@ from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 
 #: Schema 2 records the fit-job and prediction-worker counts in
-#: ``audit_thread_controls``, outside the semantic identity that every
-#: recorded-versus-live comparison reads. The counts change no imputed value
-#: (``microcosm-fit``'s ``test_qrf_worker_counts.py``), and an unset
-#: prediction-worker count follows the machine, so a pool built on one host
-#: stays comparable on another.
+#: ``audit_thread_controls``, outside the semantic identity that recorded-versus-
+#: live comparisons read. The counts change no imputed value (``microcosm-fit``'s
+#: ``test_qrf_worker_counts.py``), and an unset prediction-worker count follows
+#: the machine, so a pool built on one host stays comparable on another. The one
+#: exception is the frozen schema-4 record that the scoring-only relocation of a
+#: sealed pool compares field by field, counts included.
 PRIMARY_QRF_WORKER_IDENTITY_SCHEMA_VERSION = 2
 #: Schema 1 kept the counts in ``semantic_identity.environment.semantic_controls``.
 #: Those records still validate; they never equal a schema-2 identity.
@@ -1380,7 +1381,7 @@ def primary_qrf_worker_semantic_identity(
     """Return the shared canonical worker identity, excluding launcher aliases.
 
     A process's interpreter, source tree, and installed distributions are
-    attested once per process for each lock and bound-environment combination.
+    attested once per process for each lock.
     Anything that deliberately mutates them must call
     ``clear_primary_qrf_worker_identity_cache()`` before reattesting. The
     returned object graph is shared across calls and must be treated as read-only.
