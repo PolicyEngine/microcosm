@@ -220,8 +220,8 @@ def allow_logbook_network(
 
 
 # The US build tools evaluate their gates through the shared gate battery in
-# shadow (microcosm#1585 item 11). A finished shadow fails the run on any
-# entry it did not observe, and the tests here stand stubs in for whole
+# shadow (microcosm#1585 item 11). A finished shadow flags and warns about
+# any entry it did not observe, and the tests here stand stubs in for whole
 # stages, whose gate sites a stub skips; so every test runs the tools with
 # their shadows off. The shadow's own tests turn them back on with
 # ``arm_us_tool_gate_shadows`` (test_support.microcosm_build.us_gate_shadow).

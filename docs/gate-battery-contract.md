@@ -341,10 +341,11 @@ gate an `--allow-*` flag waives today matches if it fails in both, a crash
 in today's code matches an `evaluation_error`, and a gate today's code did
 not evaluate matches `evidence_absent`. The shadow writes its scope's
 report and the comparison beside the tool's outputs (never inside a
-release directory), and never fails the build. A finished run flags a
+release directory), and, once armed, never fails the build. A finished run flags a
 verdict difference in the comparison (`verdict_difference`) and prints a
 warning, because today's gates decide until the flip, and today's own
-exception always propagates unchanged. When today's code stops, the phase it stopped in is recorded
+exception always propagates unchanged. If the comparison cannot be
+written, the warning says so and still lists the differences. When today's code stops, the phase it stopped in is recorded
 only if every entry there without an outcome is one today's code never
 reached. The run refuses a phase that marks unreached an entry it
 evaluated, but a scope rebuilt from stages run as separate processes

@@ -431,9 +431,9 @@ def test_a_runtime_override_explains_its_difference(tmp_path, capsys) -> None:
 
 
 def test_shadow_files_it_cannot_clear_or_write_only_warn(tmp_path, capsys) -> None:
-    # Neither arming the shadow nor finishing it may fail the build: here the
-    # comparison's directory is a file, so it can be neither cleared nor
-    # written, even on a finished run.
+    # Neither clearing the shadow's files nor writing them may fail the build:
+    # here the comparison's directory is a file, so it can be neither cleared
+    # nor written, even on a finished run.
     blocker = tmp_path / "blocked"
     blocker.write_text("a file where the shadow's directory would go\n")
     report, _ = shadow_file_paths(tmp_path, "us_test")
@@ -464,6 +464,50 @@ def test_shadow_files_it_cannot_clear_or_write_only_warn(tmp_path, capsys) -> No
     assert payload["run_completed"] is True
     assert any("could not clear" in line for line in payload["shadow_errors"])
     assert "could not write" in capsys.readouterr().err
+
+
+def test_a_difference_is_printed_when_the_comparison_cannot_be_written(
+    tmp_path, capsys
+) -> None:
+    # With no comparison file, the warning is the only record of a difference,
+    # so a finished run prints it after the write fault.
+    blocker = tmp_path / "blocked"
+    blocker.write_text("a file where the shadow's directory would go\n")
+    report, _ = shadow_file_paths(tmp_path, "us_test")
+    comparison = blocker / "us_test.gate_battery_shadow_comparison.json"
+    shadow = GateBatteryShadow(
+        _two_phase_gates(),
+        scope="us_test",
+        release_id="us-test-build",
+        report_path=report,
+        comparison_path=comparison,
+        registry=_registry(),
+    )
+    # Today's code passes at a looser cap than the spec declares.
+    shadow.gate(
+        "us_test_alpha",
+        lambda: ALPHA(1.5, cap=2.0),
+        EvidenceContext(artifacts={"alpha_value": 1.5}),
+    )
+    shadow.gate(
+        "us_test_beta",
+        lambda: BETA(0.5),
+        EvidenceContext(artifacts={"beta_value": 0.5}),
+    )
+    shadow.gate(
+        "us_test_final",
+        lambda: ALPHA(0.5),
+        EvidenceContext(artifacts={"alpha_value": 0.5}),
+    )
+    payload = shadow.finish()
+    assert payload["verdict_difference"] is True
+    assert not comparison.exists()
+    err = capsys.readouterr().err
+    assert f"could not write {comparison}" in err
+    warning = err[err.index("scope 'us_test' disagrees with today's gates") :]
+    assert f"its comparison could not be written to {comparison}" in warning
+    assert "the build's exit is unchanged" in warning
+    assert "  - [us_test_alpha] " in warning
 
 
 def test_an_unwired_entry_is_flagged_on_a_finished_run(tmp_path) -> None:

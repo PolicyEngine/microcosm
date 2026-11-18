@@ -54,28 +54,30 @@ from test_support.microcosm_build.us_gate_shadow import (
 WIRED_SCOPES = ("us_base", "us_pool", "us_national", "us_local")
 
 #: Each scope's pinned digests. They move only when the scope's entries,
-#: parameters, phases or the manifest's policy line do.
+#: parameters, phases or the manifest's policy line do. The policy line's
+#: shadow sentence moved every scope's manifest digest and fingerprint
+#: (review of #1635, round 3).
 SCOPE_PINS: dict[str, dict[str, str]] = {
     "us_base": {
         "gates_manifest_sha256": (
-            "b919d3a37e9aeadd507568a30c274d325a84b32c8706e1407dc9ac1626fef5ce"
+            "edaac2f8318d1abb694d6e88f31e236fb13b5cce74ca8067947541d3a3509463"
         ),
         "policy_sha256": (
             "1a86c63cc20a6259c3349cc9dd831f0571d8c7e82e1ba77f06e4c4a102274e22"
         ),
         "spec_fingerprint": (
-            "4ce5ca7abaef48a6026be8d120862761cf8a457904690b0e59e4a501828f43da"
+            "66cf423d4cf2e9685d2cb58aca3e4a3b8dfad4327a25d9889c0426230957b1b4"
         ),
     },
     "us_pool": {
         "gates_manifest_sha256": (
-            "31dfdd5dc38129e08979e3a47822b3c61891b489b9140b40ec80dc6aba791355"
+            "f5e76c30e9f958690777777f2f40dd48bfc4cb804fac62f1c81518006fc3006e"
         ),
         "policy_sha256": (
             "98ff80d5bbe6f7a11f3ee3f63cae5f953fc6607559de22e2f552fe3e1f06d872"
         ),
         "spec_fingerprint": (
-            "cc1eeadceb9ea05efe81b5594c23832dd05e9fedbdd25c3cb1cfc52355c12047"
+            "395968f4f14021d59ca902ecb2a3561da78c617231d12dd4966ae83ef1226215"
         ),
     },
     "us_national": {
@@ -83,26 +85,26 @@ SCOPE_PINS: dict[str, dict[str, str]] = {
         # thresholds they compare against (review of #1635, round 2), and by
         # the QRF tail gate's notes, which now say it grades base weights.
         "gates_manifest_sha256": (
-            "b8ba3be11d457574507990ccc3604b0fb8604da3fd3cc8faec18c1673691a617"
+            "717f1daa916ec31879f1cfddba32738a98e5055ee6ad5b8451cad277ddbd055c"
         ),
         "policy_sha256": (
             "8be8670ce4f58b10c34d58b994645885b0d8758a4996c4f77797ddfbb698d8bb"
         ),
         "spec_fingerprint": (
-            "c30378bb106e2e963d65a63f8b1b087b064baf52d1f1c2d919ca1a59cc4ddd74"
+            "417365f8ee874eebb3ce242fe3c5b95bca0f049b3ac5f2f9aa13e1e8330deb35"
         ),
     },
     "us_local": {
         # Moved by the entries that pin the thresholds they compare against
         # (review of #1635, rounds 1 and 2).
         "gates_manifest_sha256": (
-            "50d2d77198074ae355655c4717e3bd108e71b73c518521b8285c53ade37c6adb"
+            "e436bc1fc2ce141270e49684e43e2546881ba93969f42e0ae7092857d509ed0f"
         ),
         "policy_sha256": (
             "8c0a58ddee2fd707ba2e45d285c197b689c11723281e7f925965ff33d65ace21"
         ),
         "spec_fingerprint": (
-            "7ac8b2657c007f178afde6c23782c6934b98d120d3ed4f53f68d1ad4e9a88906"
+            "6b329c7dd72713c127dcd917e62aaa875e6b87f2b072c76db3724e8dace0bc08"
         ),
     },
 }
