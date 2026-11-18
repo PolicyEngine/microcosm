@@ -363,9 +363,10 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#1543's fit input checks in microcosm.fit.qrf move it again.
             # microcosm#1641 moves it again: docstring and comment wording in
             # solve and ssi_take_up, and the calibration contract's renamed modes.
+            # microcosm#1585's us/gates.json row in country_package.json moves it.
             # The ACS transfer fitting and drawing one QRF target at a time
             # moves it again (acs_transfer's attested bytes; no draw changes).
-            "spec_sha256": "affbcac5cd7d3ddf2a22e548729a7923441d243ecb75ad0de4586f75c6d159ee",
+            "spec_sha256": "3d4c3de1c9ed715c48c36091dd873a9caed8e8b9c097ee76483d26cf5e43f46f",
         },
     }
 

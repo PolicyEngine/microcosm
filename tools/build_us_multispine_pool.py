@@ -51,7 +51,8 @@ import re
 import subprocess
 import time
 import uuid
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, fields, is_dataclass, replace
 from datetime import UTC, datetime
 from enum import Enum
@@ -68,6 +69,7 @@ from microcosm.build.frame_checkpoint import (
     write_frame_checkpoint,
 )
 from microcosm.build.frame_sampling import EXACT_COUNT_RULE
+from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.gates import (
     FitWeightRecord,
     GateReport,
@@ -106,6 +108,7 @@ from microcosm.build.us_runtime.acs_transfer_bank import AcsTransferTargetBankSt
 from microcosm.build.us_runtime.asec_checkpoint import (
     load_asec_raw_stage_checkpoint,
 )
+from microcosm.build.us_runtime.battery_bindings import us_gate_registry
 from microcosm.build.us_runtime.block_location import (
     US_BLOCK_LOCATION_RULE_ID,
     US_LOCATION_RULE_BLOCK_V1,
@@ -135,6 +138,16 @@ from microcosm.build.us_runtime.cps_source_geography import (
 from microcosm.build.us_runtime.eligibility_inputs import (
     US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS,
     US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS,
+)
+from microcosm.build.us_runtime.gate_scopes import us_scoped_gate_manifest
+from microcosm.build.us_runtime.gate_shadow import (
+    GATE_BATTERY_SHADOW_DIRECTORY,
+    GateBatteryShadow,
+    active_gate_shadow,
+    shadow_file_paths,
+    shadow_gate,
+    shadow_not_run,
+    tool_gate_shadows_enabled,
 )
 from microcosm.build.us_runtime.h5_io import (
     POPULACE_BLOCK_LADDER_SHA256_ATTR,
@@ -2485,10 +2498,19 @@ def _assign_stacked_household_geography(
         household,
         boundary="stacked post-assembly geography assignment",
     )
-    gate = us_puma_ladder_gate(
-        household,
-        assigned.weights_for("household").values,
-        assign_tract=False,
+    gate = shadow_gate(
+        "us_pool_puma_ladder",
+        lambda: us_puma_ladder_gate(
+            household,
+            assigned.weights_for("household").values,
+            assign_tract=False,
+        ),
+        lambda: EvidenceContext(
+            artifacts={
+                "household": household,
+                "household_weights": assigned.weights_for("household").values,
+            }
+        ),
     )
     if not gate.passed:
         raise ValueError(
@@ -2608,8 +2630,20 @@ def _block_location_gate_report(
 ) -> GateReport:
     return GateReport(
         (
-            us_block_location_gate(household, ladder),
-            us_puma_ladder_gate(household, weights, assign_tract=False),
+            shadow_gate(
+                "us_pool_block_location",
+                lambda: us_block_location_gate(household, ladder),
+                lambda: EvidenceContext(
+                    artifacts={"household": household, "location_ladder": ladder}
+                ),
+            ),
+            shadow_gate(
+                "us_pool_puma_ladder",
+                lambda: us_puma_ladder_gate(household, weights, assign_tract=False),
+                lambda: EvidenceContext(
+                    artifacts={"household": household, "household_weights": weights}
+                ),
+            ),
         )
     )
 
@@ -4895,6 +4929,13 @@ def build_stacked_pool(
         )
         resume_stage = resume.stage
         if resume_stage in {"transferred", "simulated"}:
+            for entry_id in ("us_pool_hours_worked", "us_pool_weights_audit"):
+                shadow_not_run(
+                    entry_id,
+                    f"resumed from the {resume_stage} checkpoint, which carries "
+                    "this gate's passing receipt",
+                )
+        if resume_stage in {"transferred", "simulated"}:
             _validate_stacked_post_puf_stage_receipt(
                 current,
                 receipts,
@@ -5089,7 +5130,13 @@ def build_stacked_pool(
                 "Stacked late-producer DAG emitted no post-PUF transfer receipt."
             )
         fit_records.extend(late_stage.transfer_result.fit_records)
-        weights_audit = weights_audit_gate(fit_records)
+        weights_audit = shadow_gate(
+            "us_pool_weights_audit",
+            lambda: weights_audit_gate(fit_records),
+            lambda: EvidenceContext(
+                artifacts={"fit_weight_records": list(fit_records)}
+            ),
+        )
         if not weights_audit.passed:
             raise ValueError(
                 "Stacked imputation weights audit failed:\n  "
@@ -5242,13 +5289,24 @@ def build_stacked_pool(
         )
         assert_stacked_tail_cells_preserved(simulation_frame, tail_manifest)
 
-    completeness = stacked_completeness_gate(
-        simulation_frame,
-        tail_manifest=tail_manifest,
+    terminal_evidence = EvidenceContext(
+        frame=simulation_frame, artifacts={"tail_manifest": tail_manifest}
     )
-    battery = by_origin_battery(
-        simulation_frame,
-        tail_manifest=tail_manifest,
+    completeness = shadow_gate(
+        "us_pool_stacked_completeness",
+        lambda: stacked_completeness_gate(
+            simulation_frame,
+            tail_manifest=tail_manifest,
+        ),
+        terminal_evidence,
+    )
+    battery = shadow_gate(
+        "us_pool_by_origin_battery",
+        lambda: by_origin_battery(
+            simulation_frame,
+            tail_manifest=tail_manifest,
+        ),
+        terminal_evidence,
     )
     # Manifest conversion is itself the final canonical-authority check and
     # deliberately happens before publication or readiness is asserted.
@@ -6695,6 +6753,12 @@ def _main_stacked(args: argparse.Namespace) -> int:
                     timestamp=started_ts,
                 )
                 _append_phase(state, "checkpoint_loaded")
+                for entry_id in ("us_pool_puma_ladder", "us_pool_block_location"):
+                    shadow_not_run(
+                        entry_id,
+                        f"resumed from the {resume.stage} checkpoint, which "
+                        "carries the geography assignment's receipt",
+                    )
                 if resume.stage == "assembled":
                     acs_rent_donor = load_acs_2022_rent_donor(args.acs_rent_h5)
                     puf_donor, _puf_donor_build = _load_puf_donor(args)
@@ -6723,6 +6787,10 @@ def _main_stacked(args: argparse.Namespace) -> int:
                 sample_seed=args.sample_seed,
             )
             if geography_contract is None:
+                shadow_not_run(
+                    "us_pool_block_location",
+                    "the legacy location rule draws no block",
+                )
                 puma_ladder = load_us_puma_ladder(args.puma_ladder)
                 (
                     stack_frame,
@@ -6929,7 +6997,55 @@ def main(argv: list[str] | None = None) -> int:
                 "--legacy-two-spine."
             )
         return _main_legacy(args)
-    return _main_stacked(args)
+    with _armed_pool_gate_shadow(args):
+        return _main_stacked(args)
+
+
+#: This tool's scope of us/gates.json, evaluated in shadow beside the stacked
+#: path's gates (microcosm#1585 item 11, PR 2 of 4). The legacy two-spine path
+#: runs without it.
+US_POOL_GATE_SCOPE = "us_pool"
+
+
+def _pool_gate_shadow_directory(args: argparse.Namespace) -> Path:
+    """``<out dir>/<pool stem>.gate_battery_shadow``, beside the pool's files."""
+
+    out = Path(args.out).resolve()
+    return out.parent / f"{out.stem}.{GATE_BATTERY_SHADOW_DIRECTORY}"
+
+
+def _pool_gate_shadow(args: argparse.Namespace) -> GateBatteryShadow:
+    report_path, comparison_path = shadow_file_paths(
+        _pool_gate_shadow_directory(args), US_POOL_GATE_SCOPE
+    )
+    return GateBatteryShadow(
+        us_scoped_gate_manifest(US_POOL_GATE_SCOPE),
+        scope=US_POOL_GATE_SCOPE,
+        release_id=f"us-multispine-pool:{Path(args.out).name}",
+        report_path=report_path,
+        comparison_path=comparison_path,
+        registry=us_gate_registry(US_POOL_GATE_SCOPE, tool=globals()),
+    )
+
+
+@contextmanager
+def _armed_pool_gate_shadow(
+    args: argparse.Namespace,
+) -> Iterator[GateBatteryShadow | None]:
+    """Arm the stacked path's shadow; finish it when the build returns.
+
+    It finishes after every file today's build writes, its Logbook row
+    included, and records a verdict difference without failing the run or
+    changing them. With the switch off (the test suite) the build runs
+    without one.
+    """
+
+    if not tool_gate_shadows_enabled():
+        yield None
+        return
+    shadow = _pool_gate_shadow(args)
+    with shadow, active_gate_shadow(shadow):
+        yield shadow
 
 
 if __name__ == "__main__":
