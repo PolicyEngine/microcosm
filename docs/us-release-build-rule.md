@@ -16,11 +16,12 @@ build as a standing check afterwards.
 
 Since a build and its certification are two steps
 ([Build, then certify](#build-then-certify)), a receipt and the standing check
-need both halves: the build from raw sources, its certification, and the
-release-gate and publisher preflights. A Route A run without `--certify`
-stops at `ROUTE_A_BUILT.json`, before the post-export checks and both
-preflights, so it shows the build half only. The same run continued with
-`route_a.sh --certify` on its `RUN_ROOT` makes the receipt.
+need both halves: the build from raw sources, its certification, and the two
+preflights on the certified build, the release-gate preflight on its release
+manifest and the publisher's `--preflight-only` check. A Route A run without
+`--certify` stops at `ROUTE_A_BUILT.json`, before the post-export checks and
+those two preflights, so it shows the build half only. The same run continued
+with `route_a.sh --certify` on its `RUN_ROOT` makes the receipt.
 
 A dataset earns default status separately, by beating the incumbent. The rule
 main enforces is microcosm#578's: the candidate beats the incumbent on the
@@ -110,7 +111,9 @@ A US national build and its certification are two steps (microcosm#1585 item
   dashboard, and a failed certification marks that run failed. The build
   manifest's `staging` block, which the publisher checks, is certification's,
   with the build's inside it under `build`. A build that did not stage is
-  certified without staging; `--no-staging` opts certification out.
+  certified without staging. The publisher accepts a stated opt-out in that
+  block, so certification refuses `--no-staging` for a build that staged, and
+  a `--staging-run-id` that names the build or its staging run.
 - **A failed release gate.** A build whose terminal gates fail still writes
   its H5, its calibration weights, its #568 weight evidence and its record,
   so it can be evaluated, and exits with the same "Release gates failed" error
@@ -119,7 +122,11 @@ A US national build and its certification are two steps (microcosm#1585 item
   replacing them. Certification refuses a record that carries release-gate
   failures, unless the build is evidence-tier, and refuses any build whose
   release directory holds the #568 weight evidence, which only a failed build
-  writes. Input gates still stop the build where they fail.
+  writes. Its files are for evaluation only: a later build refuses any file
+  under its `--out` as its base, selection source, input-mass reference or
+  warm start, and the post-export probe refuses its release directory as the
+  reference (the probe may still score its H5). Input gates still stop the
+  build where they fail.
 - **Timing.** Both manifests' `timing` blocks carry `build_seconds` and
   `certify_seconds`; `total_build_seconds` is their sum.
 - **Drivers.** Route A (`tools/route_a/route_a.sh`) stops after the build with

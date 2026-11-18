@@ -2254,6 +2254,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         )
     except ValueError as error:
         parser.error(str(error))
+    for attribute, flag in _OPTIONS_READING_AN_EARLIER_BUILD:
+        path = getattr(args, attribute)
+        failed = None if path is None else _failed_build_holding(path)
+        if failed is not None:
+            parser.error(
+                f"{flag} {path} belongs to {failed}. A failed build's files are "
+                "kept to evaluate it, not to build on."
+            )
     return args
 
 
@@ -2648,14 +2656,7 @@ def _refuse_overwriting_a_build_awaiting_certification(release_root: Path) -> No
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         payload = None
-    try:
-        failed = (
-            bool(payload["terminal_gate_failures"])
-            and not (payload["settings"]["evidence_release"])
-        )
-    except (KeyError, TypeError):
-        failed = False
-    if failed:
+    if _recorded_release_gate_failures(payload):
         return
     awaiting = (
         f"{release_root} holds a finished build awaiting certification "
@@ -2675,6 +2676,97 @@ def _refuse_overwriting_a_build_awaiting_certification(release_root: Path) -> No
         f"{awaiting}. Certify it with {_certify_command(release_root)}, or "
         "choose a new --out for this build."
     )
+
+
+def _recorded_release_gate_failures(payload: object) -> list[str]:
+    """The release-gate failures in a build record that refuse its build.
+
+    A build whose release gates fail records them and is never certified
+    (microcosm#1585 item 11, PR 4a). An evidence-tier build records the
+    failures its owners own and is certified with them, so none of its
+    failures refuse it. A payload that is not a build record has none.
+    """
+
+    try:
+        failures = payload["terminal_gate_failures"]
+        evidence_release = payload["settings"]["evidence_release"]
+    except (KeyError, TypeError):
+        return []
+    if evidence_release or not isinstance(failures, list):
+        return []
+    return [str(line) for line in failures]
+
+
+#: The #568 weight evidence. Only a build whose release gates fail writes it,
+#: and a green build removes any it finds.
+US_FAILED_BUILD_WEIGHT_EVIDENCE = (
+    FINAL_HOUSEHOLD_WEIGHTS_FILENAME,
+    FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME,
+    FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME,
+)
+
+#: The options that read a file of an earlier build: an H5 as the base, the
+#: selection source or an input-mass reference, and calibration weights as
+#: the warm start.
+_OPTIONS_READING_AN_EARLIER_BUILD = (
+    ("base_h5", "--base-h5"),
+    ("selection_source_h5", "--selection-source-h5"),
+    ("input_mass_reference_h5", "--input-mass-reference-h5"),
+    ("export_input_mass_reference_h5", "--export-input-mass-reference-h5"),
+    ("warm_start_calibration_npz", "--warm-start-calibration-npz"),
+)
+
+
+def _failed_build_holding(path: Path) -> str | None:
+    """The build whose release gates failed that ``path`` belongs to, or None.
+
+    A build whose release gates fail still writes its H5, its calibration
+    weights and its record, so it can be evaluated (microcosm#1585 item 11,
+    PR 4a). Nothing reads its files as a build's: a later build refuses them
+    as its base, selection source, input-mass reference or warm start, and
+    the post-export probe refuses its release directory as the reference. A
+    path belongs to the build whose record sits in the nearest directory
+    above it. That build failed if its record carries failures that refuse
+    it, or if its release directory holds the #568 weight evidence. Like the
+    record's digest, this stops a mistake, not an edit, until certification
+    signs (PR 4b).
+    """
+
+    target = Path(path).resolve()
+    for release_root in target.parents:
+        record_path = release_root / US_BUILD_RECORD_FILENAME
+        if not record_path.is_file():
+            continue
+        try:
+            payload = json.loads(record_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(payload, dict) or payload.get("kind") != US_BUILD_RECORD_KIND:
+            continue
+        build = f"build {payload.get('build')} ({record_path})"
+        failures = _recorded_release_gate_failures(payload)
+        if failures:
+            return (
+                f"{build}, which failed {len(failures)} release gate(s) when it "
+                "was built"
+            )
+        try:
+            release_dir = release_root / payload["layout"]["release_dir"]
+        except (KeyError, TypeError):
+            return None
+        evidence = [
+            name
+            for name in US_FAILED_BUILD_WEIGHT_EVIDENCE
+            if (release_dir / name).exists()
+        ]
+        if evidence:
+            return (
+                f"{build}, whose release directory holds the weight evidence a "
+                f"build writes when its release gates fail ({', '.join(evidence)}; "
+                "microcosm#568)"
+            )
+        return None
+    return None
 
 
 #: Files the release manifest declares whenever they exist, written only by
@@ -13676,7 +13768,14 @@ def _write_us_build_record(release_root: Path, record: Mapping[str, object]) -> 
     """
 
     path = release_root / US_BUILD_RECORD_FILENAME
-    record = {key: value for key, value in record.items() if key != "record_sha256"}
+    # Digested as certification reads it back: JSON writes every key as a
+    # string, so a mapping keyed otherwise would digest differently once read.
+    record = json.loads(
+        json.dumps(
+            {key: value for key, value in record.items() if key != "record_sha256"},
+            allow_nan=False,
+        )
+    )
     record["record_sha256"] = _us_build_record_digest(record)
     text = json.dumps(record, indent=1, allow_nan=False) + "\n"
     staged = path.with_name(f".{path.name}.tmp")
@@ -13880,16 +13979,18 @@ def _certify_parser() -> argparse.ArgumentParser:
         "--no-staging",
         action="store_true",
         help=(
-            "Certify without a staging run, even where the build staged; "
-            "hosted telemetry remains active. A build that did not stage is "
-            "certified without one regardless."
+            "Certify without a staging run, as a build that did not stage is "
+            "certified regardless; hosted telemetry remains active. Refused "
+            "for a build that staged: the publisher checks certification's "
+            "staging run, so that build is certified in one."
         ),
     )
     parser.add_argument(
         "--staging-run-id",
         help=(
-            "The certification's staging run id. Defaults to the build's "
-            "staging run id with -certify appended."
+            "The certification's staging run id, never the build's own, since "
+            "a staging run's files start afresh when it opens. Defaults to the "
+            "build's staging run id with -certify appended."
         ),
     )
     parser.add_argument(
@@ -13917,24 +14018,19 @@ def _certify_progress(
     4a). Certification stages where its build did, to the build's repository
     and prefix, in a run of its own, since a staging run's files start afresh
     when it opens. A build that did not stage (``--no-staging``, which
-    ``--exact-k`` requires) is certified without staging, and
-    ``--no-staging`` opts certification out.
+    ``--exact-k`` requires) is certified without staging. A build that
+    staged is always certified in a staging run:
+    :func:`_refuse_certification_staging_options` refuses ``--no-staging``
+    for it.
     """
 
     settings = record.staging_settings
-    reason = (
-        "--no-staging"
-        if args.no_staging
-        else "the build did not stage (--no-staging)"
-        if settings["no_staging"]
-        else None
-    )
-    if reason is not None:
+    if settings["no_staging"]:
         return _BuildProgress(
             run_id=run_id,
             emitter=emitter,
             staging_bundle=None,
-            staging_opt_out_reason=reason,
+            staging_opt_out_reason="the build did not stage (--no-staging)",
         )
     staging_dir = args.staging_dir
     if staging_dir is None and not settings["repo_id"]:
@@ -13957,6 +14053,40 @@ def _certify_progress(
     )
 
 
+def _refuse_certification_staging_options(
+    args: argparse.Namespace, record: _USBuildRecord
+) -> None:
+    """Refuse the staging options that would publish a staged build unstaged.
+
+    The publisher checks the build manifest's top-level ``staging`` block,
+    which is certification's, and accepts a stated opt-out there. So a build
+    that staged is certified in a staging run (``--no-staging`` is refused),
+    and in a run of its own: a run reopened under the build's id would start
+    the build's files afresh.
+    """
+
+    build_run = record.staging.get("run_id")
+    if args.no_staging and not record.staging_settings["no_staging"]:
+        raise SystemExit(
+            f"Build {record.build} staged"
+            + (f" (run {build_run})" if build_run else "")
+            + ", so it is certified in a staging run of its own: the publisher "
+            "checks certification's staging block and would accept an opt-out "
+            "there. Certify it without --no-staging, with the build's staging "
+            "credential."
+        )
+    if args.staging_run_id is not None and args.staging_run_id in {
+        build_run,
+        record.build,
+    }:
+        raise SystemExit(
+            f"--staging-run-id {args.staging_run_id} names build {record.build} "
+            "or its staging run; certification stages in a run of its own, "
+            "since a staging run's files start afresh when it opens. Choose "
+            f"another, or leave it out for {build_run or record.build}-certify."
+        )
+
+
 def certify_main(argv: Sequence[str] | None = None) -> None:
     """Certify a finished build from its record (microcosm#1585 item 11, PR 4a).
 
@@ -13973,22 +14103,19 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
     global _ACTIVE_EMITTER
     args = _certify_parser().parse_args(argv)
     record = _read_us_build_record(args.build_dir / US_BUILD_RECORD_FILENAME)
-    if record.terminal_gate_failures and not record.settings["evidence_release"]:
+    _refuse_certification_staging_options(args, record)
+    failures = _recorded_release_gate_failures(record.payload)
+    if failures:
         raise SystemExit(
-            f"Build {record.build} failed {len(record.terminal_gate_failures)} "
-            "release gate(s) when it was built, so it cannot be certified: "
-            + "; ".join(record.terminal_gate_failures)
+            f"Build {record.build} failed {len(failures)} release gate(s) when "
+            "it was built, so it cannot be certified: " + "; ".join(failures)
         )
     # Only a build whose release gates failed writes the #568 weight
     # evidence (a green build removes any it finds), so its presence refuses
     # the build whatever its record says.
     weight_evidence = [
         name
-        for name in (
-            FINAL_HOUSEHOLD_WEIGHTS_FILENAME,
-            FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME,
-            FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME,
-        )
+        for name in US_FAILED_BUILD_WEIGHT_EVIDENCE
         if (record.release_dir / name).exists()
     ]
     if weight_evidence:
@@ -14198,11 +14325,10 @@ def _start_national_gate_shadow(args: argparse.Namespace, *, release_id: str) ->
     """Arm this run's gate battery in shadow (finished in :func:`main`).
 
     The preflight gates run before ``_main`` refuses to reuse a certified
-    release directory or an --out that holds a build awaiting certification,
-    so a build's shadow holds its files until
+    release directory, so a build's shadow holds its files until
     :func:`_release_national_gate_shadow_files`: a refused rerun leaves the
-    shadow files of the build it protects as they were. A dry run's files go
-    beside its own report and are not held.
+    certified build's shadow files as they were. A dry run's files go beside
+    its own report and are not held.
     """
 
     global _ACTIVE_GATE_SHADOW
@@ -14229,8 +14355,7 @@ def _start_national_gate_shadow(args: argparse.Namespace, *, release_id: str) ->
 
 
 def _release_national_gate_shadow_files() -> None:
-    """Let the armed shadow write, once neither a certified release dir nor a
-    build awaiting certification is reused."""
+    """Let the armed shadow write, once no certified release dir is reused."""
 
     if _ACTIVE_GATE_SHADOW is not None:
         _ACTIVE_GATE_SHADOW.release_files()
@@ -14658,6 +14783,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     _refuse_skipped_checks_left_files(
         args.out.resolve() / "releases" / _release_for_build(args), args
     )
+    if dry_run is None:
+        # A build stops at its record (microcosm#1585 item 11, PR 4a), so an
+        # --out awaiting certification carries no release manifest yet.
+        _refuse_overwriting_a_build_awaiting_certification(args.out.resolve())
     pinned_incumbent_payload: dict[str, object] | None = None
     pinned_incumbent_sha256: str | None = None
     if args.exact_k is not None:
@@ -14978,8 +15107,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # --checkpoint-root beneath releases/<release> must not mutate a certified
     # directory before the raise (microcosm#568 round 4).
     _refuse_certified_release_dir_reuse(release_dir)
-    if dry_run is None:
-        _refuse_overwriting_a_build_awaiting_certification(release_root)
     _release_national_gate_shadow_files()
     checkpoint_root, target_materialization_cache_dir, target_frame_checkpoint_path = (
         _resolve_checkpoint_paths(args, artifact_root=artifact_root)

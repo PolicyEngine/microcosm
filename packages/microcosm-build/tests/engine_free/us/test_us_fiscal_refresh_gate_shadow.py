@@ -364,14 +364,7 @@ def test_main_lets_the_shadow_write_only_after_the_certified_dir_refusal(
     )
     statements = [ast.unparse(statement) for statement in main_fn.body]
     refusal = statements.index("_refuse_certified_release_dir_reuse(release_dir)")
-    # A build stops at its record (#1585 item 11, PR 4a), so a rerun is also
-    # refused an --out that holds a build awaiting certification; the shadow
-    # writes only once both refusals have passed.
-    assert statements[refusal + 1] == (
-        "if dry_run is None:\n"
-        "    _refuse_overwriting_a_build_awaiting_certification(release_root)"
-    )
-    assert statements[refusal + 2] == "_release_national_gate_shadow_files()"
+    assert statements[refusal + 1] == "_release_national_gate_shadow_files()"
     starts = [
         index
         for index, statement in enumerate(statements)

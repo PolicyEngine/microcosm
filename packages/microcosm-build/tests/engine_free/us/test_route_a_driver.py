@@ -1260,6 +1260,15 @@ def test_route_a_stops_after_the_build_and_certifies_only_when_asked() -> None:
     preflight = source.index("run_stage preflight-release")
     assert built < handoff < certify < certified < preflight
     assert '"$RUN_ROOT/ROUTE_A_BUILT.json"' in source
+    # A build-only run whose base preflight is blocked exits 4, as a
+    # certified one does; the example settings name the switch.
+    built_only = source[handoff:certify]
+    assert built_only.index('if [ "$PF_BLOCKED" = 1 ]; then') < built_only.index(
+        "exit 4"
+    )
+    assert built_only.index("exit 4") < built_only.index("exit 0")
+    example = (ROUTE_A_TOOLS / "route_a.env.example").read_text(encoding="utf-8")
+    assert ': "${ROUTE_A_CERTIFY=0}"' in example
     # The certify stage runs the command certify_command builds, in the
     # release stage's environment.
     assert (
@@ -1281,8 +1290,7 @@ def _certify_argv(staging: str | None) -> list[str]:
     script += "\n".join(
         f"{key}={shlex.quote(value)}" for key, value in settings.items()
     )
-    script += "\nNOSECRETS=(/usr/bin/env -u HF_TOKEN HF_HUB_OFFLINE=1)\n"
-    script += "unset ROUTE_A_STAGING\n"
+    script += "\nunset ROUTE_A_STAGING\n"
     if staging is not None:
         script += f"ROUTE_A_STAGING={shlex.quote(staging)}\n"
     script += _function("certify_command")
@@ -1297,8 +1305,9 @@ def _certify_argv(staging: str | None) -> list[str]:
 @pytest.mark.parametrize("staging", [None, "1", "0"])
 def test_certification_stages_like_the_release(staging: str | None) -> None:
     """Certification opens a staging run where its build staged, so it gets
-    the release stage's staging credential; without staging it runs offline
-    and without secrets (microcosm#1585 item 11, PR 4a)."""
+    the release stage's staging credential; without staging it runs as the
+    release stage does, online and without the HF tokens (microcosm#1585
+    item 11, PR 4a)."""
     argv = _certify_argv(staging)
     command = [
         "/fixture/worktree/.venv/bin/python",
@@ -1307,14 +1316,20 @@ def test_certification_stages_like_the_release(staging: str | None) -> None:
         "/fixture/release-out",
     ]
     if staging == "0":
-        assert argv == [
+        release = _release_argv("0")
+        launcher = release[: release.index(sys.executable)]
+        assert launcher == [
             "/usr/bin/env",
             "-u",
             "HF_TOKEN",
-            "HF_HUB_OFFLINE=1",
-            *command,
-            "--no-staging",
+            "-u",
+            "HUGGING_FACE_HUB_TOKEN",
+            "-u",
+            "HUGGINGFACE_HUB_TOKEN",
+            "-u",
+            "HUGGING_FACE_TOKEN_MAX",
         ]
+        assert argv == [*launcher, *command, "--no-staging"]
     else:
         assert argv == [
             str(ROUTE_A_TOOLS / "with_hf_token.sh"),

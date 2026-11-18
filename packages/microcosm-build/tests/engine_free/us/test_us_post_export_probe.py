@@ -589,6 +589,42 @@ def test_the_target_surface_resolves_from_an_uncertified_builds_record(
     )
 
 
+def test_a_failed_build_is_no_reference(probe_tool, builder, tmp_path, capsys) -> None:
+    """A failed build keeps its H5 to be evaluated, which the probe may score
+    as --export, but its release directory is refused as the reference
+    (review of #1672)."""
+    out = tmp_path / "out"
+    release_dir = out / "releases" / "microcosm-us-2024-national"
+    release_dir.mkdir(parents=True)
+    (out / "build_record.json").write_text(
+        json.dumps(
+            {
+                "kind": builder.US_BUILD_RECORD_KIND,
+                "build": "populace-us-2024-failed",
+                "layout": {"release_dir": "releases/microcosm-us-2024-national"},
+                "settings": {"evidence_release": False},
+                "terminal_gate_failures": ["Input coverage failed: x"],
+            }
+        )
+    )
+    argv = [
+        "--export",
+        str(tmp_path / "sample.h5"),
+        "--out",
+        str(tmp_path / "probe"),
+        "--reference-release-dir",
+        str(release_dir),
+    ]
+
+    with pytest.raises(SystemExit):
+        probe_tool.main(argv)
+    assert (
+        f"--reference-release-dir {release_dir} belongs to build "
+        "populace-us-2024-failed" in capsys.readouterr().err
+    )
+    assert not (tmp_path / "probe").exists()
+
+
 def test_census_with_a_receipt_is_refused(
     probe_tool, builder, fake_reforms, chain, tmp_path
 ) -> None:

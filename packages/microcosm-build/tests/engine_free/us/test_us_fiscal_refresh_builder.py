@@ -19976,7 +19976,12 @@ def test_a_build_that_must_send_telemetry_stops_before_any_input_without_an_emit
 
 
 def _build_record_fixture(
-    builder, tmp_path: Path, *, terminal_gate_failures=(), staging_settings=None
+    builder,
+    tmp_path: Path,
+    *,
+    terminal_gate_failures=(),
+    staging=None,
+    staging_settings=None,
 ) -> tuple[Path, dict]:
     """A minimal finished build: the files certification reads, and its record.
 
@@ -20076,7 +20081,7 @@ def _build_record_fixture(
         medicaid_take_up_diagnostics={"states": []},
         snap_state_take_up_diagnostics={"states": []},
         timing={"calibration_seconds": 1.0, "build_seconds": 3.0},
-        staging={"enabled": False, "reason": "--no-staging"},
+        staging=staging or {"enabled": False, "reason": "--no-staging"},
         staging_settings=staging_settings
         or {
             "no_staging": True,
@@ -20429,17 +20434,21 @@ def test_certification_stages_where_its_build_staged(
     the manifests; it follows the build's choice and destination."""
     builder = _load_builder_module()
     emitter = SimpleNamespace(client=None, available=False)
-    args = builder._certify_parser().parse_args([str(tmp_path / "build")])
 
     # A build that did not stage (--exact-k requires that) is certified
-    # without staging, and so is any build certified with --no-staging.
+    # without staging, with --no-staging or without it.
     path, _ = _build_record_fixture(builder, tmp_path)
     record = builder._read_us_build_record(path)
-    progress = builder._certify_progress(
-        args, record=record, run_id="b-certify", emitter=emitter
-    )
-    assert progress.staging_bundle is None
-    assert progress.staging_opt_out_reason == "the build did not stage (--no-staging)"
+    for argv in ([str(path.parent)], [str(path.parent), "--no-staging"]):
+        args = builder._certify_parser().parse_args(argv)
+        builder._refuse_certification_staging_options(args, record)
+        progress = builder._certify_progress(
+            args, record=record, run_id="b-certify", emitter=emitter
+        )
+        assert progress.staging_bundle is None
+        assert (
+            progress.staging_opt_out_reason == "the build did not stage (--no-staging)"
+        )
     assert builder._staging_manifest_block(progress) == {
         "enabled": False,
         "reason": "the build did not stage (--no-staging)",
@@ -20458,13 +20467,6 @@ def test_certification_stages_where_its_build_staged(
         },
     )
     record = builder._read_us_build_record(path)
-    opted_out = builder._certify_parser().parse_args([str(path.parent), "--no-staging"])
-    assert (
-        builder._certify_progress(
-            opted_out, record=record, run_id="b-certify", emitter=emitter
-        ).staging_opt_out_reason
-        == "--no-staging"
-    )
     # A build that staged is certified into the same repository and prefix.
     built: dict[str, object] = {}
 
@@ -20521,6 +20523,188 @@ def test_a_build_refuses_an_out_awaiting_certification(tmp_path: Path) -> None:
     path.write_text("not json")
     with pytest.raises(RuntimeError, match="awaiting certification"):
         builder._refuse_overwriting_a_build_awaiting_certification(root)
+
+
+def test_certification_refuses_to_unstage_a_build_that_staged(tmp_path: Path) -> None:
+    """The publisher checks certification's staging block and accepts a
+    stated opt-out there, so --no-staging is refused for a build that staged,
+    and so is a --staging-run-id naming the build or its staging run, before
+    certification touches the build (review of #1672)."""
+    builder = _load_builder_module()
+    path, _ = _build_record_fixture(
+        builder,
+        tmp_path,
+        staging={
+            "enabled": True,
+            "run_id": "build-run",
+            "repo_id": "policyengine/populace-us-staging",
+            "uploads_succeeded": 4,
+        },
+        staging_settings={
+            "no_staging": False,
+            "repo_id": "policyengine/populace-us-staging",
+            "prefix": "builds",
+            "upload_interval_seconds": 12.0,
+        },
+    )
+    earlier = (
+        path.parent
+        / "releases"
+        / builder.US_NATIONAL_RELEASE_ID
+        / "reform_validation.json"
+    )
+    earlier.write_text('{"an earlier attempt": true}')
+
+    with pytest.raises(
+        SystemExit,
+        match=r"Build populace-us-2024-test-build staged \(run build-run\), so it "
+        "is certified in a staging run of its own",
+    ):
+        builder.certify_main([str(path.parent), "--no-staging"])
+    for run_id in ("build-run", "populace-us-2024-test-build"):
+        with pytest.raises(
+            SystemExit, match=f"--staging-run-id {run_id} names build"
+        ) as refusal:
+            builder.certify_main([str(path.parent), "--staging-run-id", run_id])
+        assert str(refusal.value).endswith("leave it out for build-run-certify.")
+    # Refused before a rerun removes an earlier attempt's outputs.
+    assert earlier.read_text() == '{"an earlier attempt": true}'
+
+
+def test_the_build_record_digests_what_certification_reads_back(
+    tmp_path: Path,
+) -> None:
+    """JSON writes every key as a string, so the build digests its record as
+    certification reads it back: a mapping keyed by integers, or by integers
+    and strings, still matches its digest (review of #1672)."""
+    builder = _load_builder_module()
+    path, payload = _build_record_fixture(builder, tmp_path)
+    payload["manifest"]["dropped"] = {2: "two", 10: "ten"}
+    payload["timing"] = {**payload["timing"], 3: 1.0}
+
+    builder._write_us_build_record(path.parent, payload)
+
+    record = builder._read_us_build_record(path)
+    assert record.manifest_inputs["dropped"] == {"2": "two", "10": "ten"}
+    assert record.timing["3"] == 1.0
+
+
+def test_a_rerun_into_an_out_awaiting_certification_stops_before_any_work(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """main refuses an --out holding a build awaiting certification with its
+    first refusals, before the base download, any output directory or the
+    gate shadow's files, and leaves the build as it was (review of #1672)."""
+    builder = _load_builder_module()
+    path, _ = _build_record_fixture(builder, tmp_path)
+    out = path.parent
+
+    def files() -> dict[Path, bytes]:
+        return {
+            file.relative_to(out): file.read_bytes()
+            for file in out.rglob("*")
+            if file.is_file()
+        }
+
+    before = files()
+    monkeypatch.setattr(builder, "_git_dirty", lambda: False)
+    monkeypatch.setattr(
+        builder,
+        "_download_base_h5",
+        lambda: pytest.fail("the rerun reached the base download"),
+    )
+
+    with pytest.raises(
+        RuntimeError, match="holds a finished build awaiting certification"
+    ):
+        builder.main(
+            [
+                "--ledger-facts",
+                str(tmp_path / "facts.jsonl"),
+                "--out",
+                str(out),
+                "--release-id",
+                "populace-us-2024-rerun",
+                "--no-staging",
+            ]
+        )
+    assert files() == before
+
+
+def test_a_failed_build_holds_every_file_under_its_out(tmp_path: Path) -> None:
+    """A path belongs to the build whose record is nearest above it. That
+    build failed if its record carries failures that refuse it, or its
+    release directory holds the #568 weight evidence; an evidence-tier
+    build's owned failures certify (review of #1672)."""
+    builder = _load_builder_module()
+    path, payload = _build_record_fixture(builder, tmp_path)
+    record_path = path.resolve()
+    h5 = path.parent / payload["files"]["dataset"]["path"]
+    release_dir = path.parent / payload["layout"]["release_dir"]
+
+    assert builder._failed_build_holding(h5) is None
+    assert builder._failed_build_holding(tmp_path / "elsewhere.h5") is None
+
+    payload["terminal_gate_failures"] = ["Input coverage failed: x"]
+    builder._write_us_build_record(path.parent, payload)
+    failed = (
+        f"build populace-us-2024-test-build ({record_path}), which failed 1 "
+        "release gate(s) when it was built"
+    )
+    for held in (h5, release_dir, path.parent / "checkpoints" / "frame.h5"):
+        assert builder._failed_build_holding(held) == failed
+
+    payload["settings"]["evidence_release"] = True
+    builder._write_us_build_record(path.parent, payload)
+    assert builder._failed_build_holding(h5) is None
+
+    (release_dir / builder.FINAL_HOUSEHOLD_WEIGHTS_FILENAME).write_bytes(b"w")
+    assert builder._failed_build_holding(h5) == (
+        f"build populace-us-2024-test-build ({record_path}), whose release "
+        "directory holds the weight evidence a build writes when its release "
+        f"gates fail ({builder.FINAL_HOUSEHOLD_WEIGHTS_FILENAME}; microcosm#568)"
+    )
+
+
+@pytest.mark.parametrize(
+    ("flag", "role"),
+    [
+        ("--base-h5", "dataset"),
+        ("--selection-source-h5", "dataset"),
+        ("--input-mass-reference-h5", "dataset"),
+        ("--export-input-mass-reference-h5", "dataset"),
+        ("--warm-start-calibration-npz", "calibration_weights"),
+    ],
+)
+def test_a_later_build_refuses_a_failed_builds_files(
+    tmp_path: Path, capsys, flag: str, role: str
+) -> None:
+    """A failed build keeps its H5 and calibration weights to be evaluated,
+    not built on: each option that reads an earlier build's file refuses
+    them, and reads a green build's as before (review of #1672)."""
+    builder = _load_builder_module()
+    path, payload = _build_record_fixture(builder, tmp_path)
+    file = path.parent / payload["files"][role]["path"]
+    argv = [
+        "--ledger-facts",
+        str(tmp_path / "facts.jsonl"),
+        "--out",
+        str(tmp_path / "next"),
+        "--no-staging",
+        flag,
+        str(file),
+    ]
+
+    assert getattr(builder._parse_args(argv), flag[2:].replace("-", "_")) == file
+
+    payload["terminal_gate_failures"] = ["Input coverage failed: x"]
+    builder._write_us_build_record(path.parent, payload)
+    with pytest.raises(SystemExit):
+        builder._parse_args(argv)
+    assert (
+        f"{flag} {file} belongs to build populace-us-2024-test-build"
+        in capsys.readouterr().err
+    )
 
 
 def test_a_record_of_an_earlier_schema_names_the_code_that_built_it(

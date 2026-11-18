@@ -3185,7 +3185,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "defaults --reference-smoke, --reference-validation, "
         "--reference-build-manifest and --calibration-diagnostics to its files. "
         "A build not yet certified works too: its target surface then comes "
-        "from the build_record.json in its --out directory",
+        "from the build_record.json in its --out directory. A build whose "
+        "release gates failed is refused",
     )
     parser.add_argument(
         "--reference-smoke",
@@ -3240,6 +3241,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="rows per chunked source read (default: sized from 128 MiB)",
     )
     args = parser.parse_args(argv)
+    if args.reference_release_dir is not None:
+        # A failed build keeps its H5 to be evaluated, which the probe may
+        # score as --export, but it is no reference (microcosm#1585 item 11).
+        failed = load_builder()._failed_build_holding(args.reference_release_dir)
+        if failed is not None:
+            parser.error(
+                f"--reference-release-dir {args.reference_release_dir} belongs "
+                f"to {failed}. A failed build can be scored as --export, but "
+                "not taken as the reference."
+            )
 
     receipt_path = args.sample_receipt
     if receipt_path is None:

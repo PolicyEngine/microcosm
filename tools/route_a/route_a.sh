@@ -420,13 +420,15 @@ release_command() {
 
 certify_command() {
   # Certification stages where its build staged, in a run of its own, so it
-  # needs the release stage's staging credential; without staging it runs
-  # offline and without secrets (microcosm#1585 item 11, PR 4a).
+  # needs the release stage's staging credential. Without staging it runs as
+  # the release stage does: online, without the HF tokens. Certification
+  # refuses --no-staging for a build that staged (microcosm#1585 item 11,
+  # PR 4a).
   local -a staging=() launcher=()
   case "${ROUTE_A_STAGING-1}" in
   0)
     staging=(--no-staging)
-    launcher=("${NOSECRETS[@]}")
+    launcher=(/usr/bin/env -u HF_TOKEN -u HUGGING_FACE_HUB_TOKEN -u HUGGINGFACE_HUB_TOKEN -u HUGGING_FACE_TOKEN_MAX)
     ;;
   1)
     launcher=("$TOKEN_WRAPPER" "$AGENT_SECRET")
@@ -815,6 +817,10 @@ json.dump({
     ),
 }, open(out, "w"), indent=1)
 EOF
+  if [ "$PF_BLOCKED" = 1 ]; then
+    log "ROUTE A BUILT, BLOCKED: build $RID at $REL_OUT; the release-gate preflight needs the new-lineage mode; not certified; nothing published"
+    exit 4
+  fi
   log "ROUTE A BUILT: build $RID at $REL_OUT; not certified (rerun with --certify to certify it); nothing published"
   exit 0
 fi
