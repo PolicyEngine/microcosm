@@ -1,0 +1,1 @@
+Report held-out SNAP caseload composition against the federal income and resource tests, and take-up among eligible units, at the release's weights in `us_snap_caseload_composition_holdout.json`, beside USDA's estimates in 91 FR 72454; validation only, never a calibration target, take-up input or release gate (#647).

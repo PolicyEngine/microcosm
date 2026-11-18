@@ -458,6 +458,29 @@ includes PolicyEngine/policyengine-us#10106, which falls back to the earliest
 input year, so the holdout now reports payers. A Part with no weighted payer
 never reports a Trustees comparison. It is held out the same way: no
 calibration row, no release refusal.
+It also writes `us_snap_caseload_composition_holdout.json`: the SPM units
+receiving SNAP, split by whether they pass the federal gross and net income
+tests and the federal resource test, and take-up among eligible units,
+nationally and by state at the release's weights (microcosm#647). A unit is
+eligible on its December `is_snap_eligible` and receives when its annual
+`snap` is also positive: policyengine-core reports a monthly true-or-false
+variable for a year as its December value. A unit failing an income test and
+the resource test counts under income, as in USDA's shares. Persons are the
+unit's `snap_unit_size`, which leaves out the members SNAP excludes. Each
+unit's state and weight are the engine's own for the unit
+(`spm_unit_state_fips` and the weights on the result), never a household
+value mapped to its units, which shares the value out by head count. Units
+with `receives_snap`, the survey report the take-up stage anchors on, are
+split into those receiving, those eligible with no benefit and those the
+engine finds not eligible. The report lists
+the states where the share of eligible units carrying
+`takes_up_snap_if_eligible`, or receiving, reaches 0.999; the take-up stage's
+own diagnostic measures saturation at pre-calibration weights. The national
+shares sit beside USDA's estimates in its 2026 proposed rule on categorical
+eligibility (91 FR 72454, at 72457 and 72459): 5.4% of participating
+households above an income limit and 11.5% above the resource limit alone. It
+is held out the same way: no calibration row, no take-up input, no release
+refusal.
 It also writes `us_population_structure_holdout.json` from the written H5
 alone (no engine): marital status of people 65+ by sex (ACS 2024 B12002),
 people 65+ living alone (ACS 2024 B09021), people receiving Social Security in

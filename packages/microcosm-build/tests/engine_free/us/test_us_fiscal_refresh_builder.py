@@ -7249,6 +7249,40 @@ def _run_green_register_release(
                 def simulate(reform):
                     return SimpleNamespace(calculate=calculate)
 
+            if name == "snap_caseload_composition_holdout":
+                captured["snap_holdout_scored"] = self.dataset_path
+                record.update(
+                    baseline_passes=1,
+                    reform_passes=0,
+                    reform_systems=0,
+                    n_batches=1,
+                    max_batch_households=2,
+                )
+
+                def calculate(variable, period):
+                    assert period == builder.PERIOD
+                    # Two eligible, receiving units: a one-person California
+                    # unit over the resource limit and a three-person Texas
+                    # unit within every federal limit.
+                    values = {
+                        "snap": [1_200.0, 2_400.0],
+                        "is_snap_eligible": [True, True],
+                        "meets_snap_gross_income_test": [True, True],
+                        "meets_snap_net_income_test": [True, True],
+                        "meets_snap_asset_test": [False, True],
+                        "snap_assets": [9_000.0, 0.0],
+                        "takes_up_snap_if_eligible": [True, True],
+                        "receives_snap": [False, True],
+                        "snap_unit_size": [1, 3],
+                        "spm_unit_state_fips": [6.0, 48.0],
+                    }
+                    return builder._PostExportValues(
+                        np.array(values[variable]), np.array([2.0, 3.0])
+                    )
+
+                def simulate(reform):
+                    return SimpleNamespace(calculate=calculate)
+
             return SimpleNamespace(name=name, simulate=simulate, record=lambda: record)
 
         def finish_consumer(self, scoring):
@@ -7385,6 +7419,9 @@ def _run_green_register_release(
         assert captured["planned_reform_passes"]["reform_coverage_smoke"] == 0
     # The holdouts score no reform, so _main gives them no count.
     assert captured["planned_reform_passes"]["ssi_social_security_holdout"] is None
+    assert (
+        captured["planned_reform_passes"]["snap_caseload_composition_holdout"] is None
+    )
     assert captured["scorer_opened_on"] == captured["written_dataset"]
     assert captured["holdout_scored"] == captured["written_dataset"]
     assert captured["scorer_closed"] is True
@@ -7414,6 +7451,25 @@ def _run_green_register_release(
     assert part_b["weighted_aggregate_premiums"] == pytest.approx(2 * 12 * 69.90)
     assert part_d["weighted_payers"] == 2
     assert part_d["weighted_aggregate_premiums"] == pytest.approx(2 * 12 * 12.90)
+    assert captured["snap_holdout_scored"] == captured["written_dataset"]
+    snap_holdout_path = release_dir / "us_snap_caseload_composition_holdout.json"
+    snap_holdout = json.loads(snap_holdout_path.read_text())
+    assert snap_holdout["status"] == "available"
+    assert snap_holdout["release_id"] == release_id
+    assert snap_holdout["enforced"] is False
+    assert snap_holdout["used_for_calibration"] is False
+    assert snap_holdout["benchmark"]["citation"] == "91 FR 72454"
+    snap_national = snap_holdout["national"]
+    assert snap_national["take_up"]["receiving_share_of_eligible_units"] == 1
+    snap_composition = snap_national["composition"]
+    assert snap_composition["income_failing"]["weighted_units"] == 0
+    assert snap_composition["asset_only"]["share_of_receiving_units"] == (
+        pytest.approx(0.4)
+    )
+    assert snap_composition["within_federal_limits"][
+        "share_of_receiving_units"
+    ] == pytest.approx(0.6)
+    assert [row["state_fips"] for row in snap_holdout["states"]] == ["06", "48"]
     # The population-structure holdout reads the written H5 only after the
     # scorer closes. The harness H5 holds placeholder bytes, so the step
     # records the report as unavailable and the release still publishes it.
@@ -7500,12 +7556,17 @@ def _run_green_register_release(
         assert block["post_export_scoring"] == {
             "dataset_sha256": build_manifest["dataset"]["sha256"],
             "consumers": (
-                ["ssi_social_security_holdout", "medicare_irmaa_holdout"]
+                [
+                    "ssi_social_security_holdout",
+                    "medicare_irmaa_holdout",
+                    "snap_caseload_composition_holdout",
+                ]
                 if skipped_smoke
                 else [
                     "reform_coverage_smoke",
                     "ssi_social_security_holdout",
                     "medicare_irmaa_holdout",
+                    "snap_caseload_composition_holdout",
                 ]
             ),
         }
@@ -7530,6 +7591,13 @@ def _run_green_register_release(
         "repo_id": builder.REPO_ID,
         "sha256": hashlib.sha256(population_path.read_bytes()).hexdigest(),
         "role": "us_population_structure_holdout",
+    }
+    assert artifacts["us_snap_caseload_composition_holdout"] == {
+        "kind": "diagnostics",
+        "path": snap_holdout_path.name,
+        "repo_id": builder.REPO_ID,
+        "sha256": hashlib.sha256(snap_holdout_path.read_bytes()).hexdigest(),
+        "role": "us_snap_caseload_composition_holdout",
     }
     if not skipped_smoke:
         smoke = json.loads((release_dir / "reform_coverage_smoke.json").read_text())
@@ -10320,6 +10388,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "demographics",
         "ssi_social_security_holdout",
         "medicare_irmaa_holdout",
+        "snap_caseload_composition_holdout",
     ]
     assert captured["diagnostics"]["default_dataset"] == {
         "method": "l0_refit",
@@ -14014,6 +14083,79 @@ def test_build_manifests_selects_medicare_irmaa_holdout_for_publication(
     assert holdout["release_id"] == release_id
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
     assert manifest["artifacts"]["us_medicare_irmaa_holdout"] == {
+        "kind": "diagnostics",
+        "path": filename,
+        "repo_id": builder.REPO_ID,
+        "revision": release_id,
+        "sha256": hashlib.sha256(holdout_path.read_bytes()).hexdigest(),
+    }
+    assert filename in _release_manifest_release_artifacts(release_dir)
+    failures: list[str] = []
+    _check_release_manifest(manifest, release_id, failures)
+    _check_local_artifact_hashes(release_dir, manifest, failures)
+    assert failures == []
+
+
+@pytest.mark.parametrize(
+    "scoring_available", (True, False), ids=("available", "unavailable")
+)
+def test_build_manifests_selects_snap_caseload_composition_holdout_for_publication(
+    monkeypatch, tmp_path, scoring_available
+) -> None:
+    from microcosm.build.us_runtime.snap_caseload_composition_holdout import (
+        SNAP_CASELOAD_COMPOSITION_HOLDOUT_VARIABLES,
+        snap_caseload_composition_holdout_payload,
+    )
+    from microcosm.data.contract import (
+        _check_local_artifact_hashes,
+        _check_release_manifest,
+    )
+    from microcosm.data.release import _release_manifest_release_artifacts
+
+    builder = _load_builder_module()
+    release_id, release_dir, artifact_root = _gate_evidence_release_dir(
+        builder, monkeypatch, tmp_path, coverage={}
+    )
+
+    def score_holdout(name, consumer, **kwargs):
+        assert name == "snap_caseload_composition_holdout"
+        if not scoring_available:
+            raise RuntimeError("holdout scoring is unavailable")
+        values = (
+            [1_200.0, 0.0],
+            [True, True],
+            [False, True],
+            [True, True],
+            [True, True],
+            [0.0, 0.0],
+            [True, False],
+            [False, False],
+            [2, 1],
+            [6, 6],
+        )
+        units = pd.DataFrame(
+            dict(zip(SNAP_CASELOAD_COMPOSITION_HOLDOUT_VARIABLES, values, strict=True))
+        )
+        units["weight"] = [1.0, 2.0]
+        return snap_caseload_composition_holdout_payload(units, period=builder.PERIOD)
+
+    monkeypatch.setattr(builder, "_score_post_export_consumer", score_holdout)
+    builder._write_snap_caseload_composition_holdout(
+        release_dir=release_dir,
+        dataset_path=artifact_root / builder.DATASET_FILENAME,
+        release_id=release_id,
+    )
+    builder._build_manifests(
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root)
+    )
+
+    filename = "us_snap_caseload_composition_holdout.json"
+    holdout_path = release_dir / filename
+    holdout = json.loads(holdout_path.read_text())
+    assert holdout["status"] == ("available" if scoring_available else "unavailable")
+    assert holdout["release_id"] == release_id
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert manifest["artifacts"]["us_snap_caseload_composition_holdout"] == {
         "kind": "diagnostics",
         "path": filename,
         "repo_id": builder.REPO_ID,

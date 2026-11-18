@@ -409,6 +409,11 @@ from microcosm.build.us_runtime.release_input_coverage import (
     project_ecps_parity_known_gap_names,
     us_release_input_coverage_signal_counts,
 )
+from microcosm.build.us_runtime.snap_caseload_composition_holdout import (
+    snap_caseload_composition_holdout_from_sim,
+    snap_caseload_composition_holdout_unavailable,
+    write_snap_caseload_composition_holdout,
+)
 from microcosm.build.us_runtime.ssi_social_security_holdout import (
     ssi_social_security_holdout_from_sim,
     ssi_social_security_holdout_unavailable,
@@ -5801,6 +5806,15 @@ def _medicare_irmaa_holdout_consumer(simulate) -> dict[str, Any]:
         return medicare_irmaa_holdout_unavailable(error, period=PERIOD)
 
 
+def _snap_caseload_composition_holdout_consumer(simulate) -> dict[str, Any]:
+    try:
+        return snap_caseload_composition_holdout_from_sim(simulate(None), period=PERIOD)
+    except Exception as error:
+        # As for the SSI holdout: an optional diagnostic adds no failure to
+        # plan discovery when its inputs are unavailable (microcosm#647).
+        return snap_caseload_composition_holdout_unavailable(error, period=PERIOD)
+
+
 def _reform_validation_consumer(
     *, result, release_id: str
 ) -> Callable[[Callable[[Any], Any] | None], dict[str, Any]]:
@@ -5839,6 +5853,9 @@ def _post_export_consumers(
         consumers["demographics"] = _demographics_consumer
     consumers["ssi_social_security_holdout"] = _ssi_social_security_holdout_consumer
     consumers["medicare_irmaa_holdout"] = _medicare_irmaa_holdout_consumer
+    consumers["snap_caseload_composition_holdout"] = (
+        _snap_caseload_composition_holdout_consumer
+    )
     return consumers
 
 
@@ -11656,6 +11673,37 @@ def _write_medicare_irmaa_holdout(
     )
 
 
+def _write_snap_caseload_composition_holdout(
+    *,
+    release_dir: Path,
+    dataset_path: Path,
+    release_id: str,
+    post_export_scorer: _HouseholdBatchedPostExportScorer | None = None,
+    baseline_plan: Sequence[PostExportKey] | None = None,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+) -> None:
+    """Report held-out SNAP composition and take-up; never refuses a release."""
+    try:
+        payload = _score_post_export_consumer(
+            "snap_caseload_composition_holdout",
+            _snap_caseload_composition_holdout_consumer,
+            dataset_path=dataset_path,
+            post_export_scorer=post_export_scorer,
+            baseline_plan=baseline_plan,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+        )
+        payload["release_id"] = release_id
+    except Exception as error:
+        # Reporting is observational, including an unavailable measurement.
+        # It must not introduce a new release refusal or calibration target.
+        payload = snap_caseload_composition_holdout_unavailable(
+            error, period=PERIOD, release_id=release_id
+        )
+    write_snap_caseload_composition_holdout(
+        payload, release_dir / "us_snap_caseload_composition_holdout.json"
+    )
+
+
 def _write_population_structure_holdout(
     *, release_dir: Path, dataset_path: Path, release_id: str
 ) -> None:
@@ -12338,6 +12386,20 @@ def _build_manifests(
                     )
                 }
                 if (release_dir / "us_medicare_irmaa_holdout.json").exists()
+                else {}
+            ),
+            **(
+                {
+                    "us_snap_caseload_composition_holdout": _artifact_entry(
+                        "us_snap_caseload_composition_holdout.json",
+                        _sha256(
+                            release_dir / "us_snap_caseload_composition_holdout.json"
+                        ),
+                        kind="diagnostics",
+                        revision=release_id,
+                    )
+                }
+                if (release_dir / "us_snap_caseload_composition_holdout.json").exists()
                 else {}
             ),
             **(
@@ -14555,6 +14617,7 @@ US_CERTIFICATION_OUTPUT_FILES = (
     "demographics.json",
     "us_ssi_social_security_holdout.json",
     "us_medicare_irmaa_holdout.json",
+    "us_snap_caseload_composition_holdout.json",
     "us_population_structure_holdout.json",
     "us_source_coverage.json",
     "us_take_up_participation.json",
@@ -19946,6 +20009,24 @@ def _certify_us_build(
         telemetry.attach_artifact(
             "us_medicare_irmaa_holdout",
             release_dir / "us_medicare_irmaa_holdout.json",
+        )
+        telemetry.stage(
+            "snap_caseload_composition_holdout",
+            message="Writing held-out SNAP caseload composition and take-up.",
+        )
+    _write_snap_caseload_composition_holdout(
+        release_dir=release_dir,
+        dataset_path=dataset_path,
+        release_id=release_id,
+        post_export_scorer=post_export_scorer,
+        baseline_plan=post_export_scoring_plan.baseline_plan(
+            "snap_caseload_composition_holdout"
+        ),
+    )
+    if telemetry is not None:
+        telemetry.attach_artifact(
+            "us_snap_caseload_composition_holdout",
+            release_dir / "us_snap_caseload_composition_holdout.json",
         )
     # Every post-export engine stage has run; free the scorer's batch frames.
     # The manifest must pin the bytes those stages scored, and both manifests

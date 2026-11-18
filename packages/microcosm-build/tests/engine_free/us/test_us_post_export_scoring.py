@@ -465,6 +465,7 @@ def test_recording_dry_runs_construct_no_engine(
         "demographics",
         "ssi_social_security_holdout",
         "medicare_irmaa_holdout",
+        "snap_caseload_composition_holdout",
     ]
     smoke_keys = {
         (probe.budget_measure, int(probe.period or builder.PERIOD), None)
@@ -483,6 +484,18 @@ def test_recording_dry_runs_construct_no_engine(
         ("gross_medicare_part_b_premium_if_enrolled", builder.PERIOD, None),
         ("base_part_b_premium", builder.PERIOD, None),
         ("income_adjusted_part_d_premium_surcharge", builder.PERIOD, None),
+    )
+    assert plan.baseline_plan("snap_caseload_composition_holdout") == (
+        ("snap", builder.PERIOD, None),
+        ("is_snap_eligible", builder.PERIOD, None),
+        ("meets_snap_gross_income_test", builder.PERIOD, None),
+        ("meets_snap_net_income_test", builder.PERIOD, None),
+        ("meets_snap_asset_test", builder.PERIOD, None),
+        ("snap_assets", builder.PERIOD, None),
+        ("takes_up_snap_if_eligible", builder.PERIOD, None),
+        ("receives_snap", builder.PERIOD, None),
+        ("snap_unit_size", builder.PERIOD, None),
+        ("spm_unit_state_fips", builder.PERIOD, None),
     )
     validation = plan.baseline_plan("reform_validation")
     assert ("income_tax", builder.PERIOD, None) in validation
@@ -506,6 +519,7 @@ def test_recording_dry_runs_construct_no_engine(
         "demographics",
         "ssi_social_security_holdout",
         "medicare_irmaa_holdout",
+        "snap_caseload_composition_holdout",
     ]
 
 
@@ -578,6 +592,98 @@ def test_medicare_irmaa_holdout_discovery_error_does_not_fail_the_plan(
     assert plan.terminal_failures() == []
     assert plan.baseline_plan("medicare_irmaa_holdout") == ()
     assert builder._medicare_irmaa_holdout_consumer(None)["status"] == "unavailable"
+
+
+def test_snap_caseload_composition_holdout_is_invariant_to_household_batch_size(
+    builder, tmp_path
+) -> None:
+    frame = _nested_frame()
+    consumer = builder._snap_caseload_composition_holdout_consumer
+    reference = consumer(_unbatched_simulate(frame, _EngineLog()))
+    assert reference["status"] == "available"
+    national = reference["national"]
+    # The fixture's unit of household 4 is not eligible; every other unit
+    # receives: 300 + 500 + 700 + 1,300 + 1,700 + 1,900.
+    assert national["receiving"]["weighted_units"] == 6_400
+    assert national["benefit_outside_december_eligibility"]["weighted_units"] == 1_100
+    composition = national["composition"]
+    # Households 3 and 6 fail the gross test and household 5 the net test.
+    assert composition["income_failing"]["weighted_units"] == 3_700
+    # Household 2 passes both and fails the resource test.
+    assert composition["asset_only"]["weighted_units"] == 500
+    assert composition["within_federal_limits"]["weighted_units"] == 2_200
+    # Household 7 is eligible without the take-up flag.
+    assert national["take_up"]["flagged_weighted_units"] == 4_500
+    assert [row["state_fips"] for row in reference["states"]] == [
+        "06",
+        "24",
+        "36",
+        "48",
+    ]
+    for batch_size in (1, 2, None):
+        log = _EngineLog()
+        scorer = _scorer(builder, frame, log, batch_size, tmp_path / str(batch_size))
+        plan = builder._record_post_export_baseline_plan(consumer)
+        scoring = scorer.open_consumer("snap_caseload_composition_holdout", plan)
+        payload = consumer(scoring.simulate)
+        assert payload == reference
+        record = scorer.finish_consumer(scoring)
+        assert record["baseline_passes"] == 1
+        assert record["reform_passes"] == record["reform_systems"] == 0
+        assert len(log.constructions) == scorer.n_batches
+        scorer.close()
+
+
+def test_snap_caseload_composition_holdout_measurement_error_is_report_only(
+    builder, monkeypatch, tmp_path
+) -> None:
+    def unavailable(*args, **kwargs):
+        raise ValueError("fixture unavailable")
+
+    monkeypatch.setattr(builder, "_score_post_export_consumer", unavailable)
+    builder._write_snap_caseload_composition_holdout(
+        release_dir=tmp_path,
+        dataset_path=tmp_path / "fixture.h5",
+        release_id="fixture",
+    )
+    payload = json.loads(
+        (tmp_path / "us_snap_caseload_composition_holdout.json").read_text()
+    )
+    assert payload["status"] == "unavailable"
+    assert payload["error"] == "ValueError: fixture unavailable"
+    assert payload["enforced"] is False
+    assert payload["used_for_calibration"] is False
+
+
+def test_snap_caseload_composition_holdout_discovery_error_does_not_fail_the_plan(
+    builder, monkeypatch
+) -> None:
+    def unavailable(*args, **kwargs):
+        raise KeyError("snap_assets")
+
+    monkeypatch.setattr(
+        builder, "snap_caseload_composition_holdout_from_sim", unavailable
+    )
+    args = SimpleNamespace(
+        skip_reform_coverage_smoke=True,
+        skip_reform_validation=True,
+        skip_out_of_sample_reforms=True,
+        skip_demographics=True,
+        maximum_microsim_batch_size=3,
+    )
+    plan = builder._record_post_export_scoring_plan(
+        args,
+        n_households=7,
+        result=_empty_calibration_result(),
+        release_id="fixture",
+    )
+    assert plan.error is None
+    assert plan.terminal_failures() == []
+    assert plan.baseline_plan("snap_caseload_composition_holdout") == ()
+    assert (
+        builder._snap_caseload_composition_holdout_consumer(None)["status"]
+        == "unavailable"
+    )
 
 
 def test_ssi_social_security_holdout_is_invariant_to_household_batch_size(
@@ -739,6 +845,7 @@ def test_an_unbuildable_plan_is_recorded_and_refused_not_raised(
         "demographics",
         "ssi_social_security_holdout",
         "medicare_irmaa_holdout",
+        "snap_caseload_composition_holdout",
     ]
     empty = builder._PostExportScoringPlan(
         n_households=7, maximum_batch_size=3, baseline_plans={}
@@ -820,6 +927,7 @@ def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
         "_write_demographics",
         "_write_ssi_social_security_holdout",
         "_write_medicare_irmaa_holdout",
+        "_write_snap_caseload_composition_holdout",
     ):
         _, tree = _function_source(builder, name)
         called = _called_names(tree)
