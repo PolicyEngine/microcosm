@@ -54,7 +54,13 @@ from microcosm.build.us_runtime.support_provenance import (
     support_clone_index_column,
     support_source_id_column,
 )
-from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+from microcosm.frame import (
+    US_SCHEMA,
+    Frame,
+    SharedColumnChangedError,
+    WeightKind,
+    Weights,
+)
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -3660,3 +3666,22 @@ def test_legacy_stacked_manifest_refuses_h5_location_rule_attrs(
 
     with pytest.raises(ValueError, match="legacy-rule manifest"):
         load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_nullable_h5_writer_refuses_a_frame_whose_shared_column_changed(
+    tmp_path: Path,
+) -> None:
+    source = _pool_frame()
+    shared = source.replace_tables()
+    np.add.at(source.table("person")["person_id"].to_numpy(), [0], 1)
+
+    with pytest.raises(SharedColumnChangedError) as raised:
+        write_nullable_us_h5(
+            shared,
+            tmp_path / "pool.h5",
+            period=2024,
+            artifact_kind=LEGACY_NULLABLE_STAGING_ARTIFACT_KIND,
+        )
+
+    assert raised.value.changed_columns == (("person", "person_id"),)
+    assert list(tmp_path.iterdir()) == []

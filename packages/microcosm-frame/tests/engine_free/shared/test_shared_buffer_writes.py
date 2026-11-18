@@ -138,6 +138,26 @@ _REVIEWED_FINDINGS: dict[tuple[str, str, str, str, str], str] = {
         "np.asarray(...).copy() from the household weights. Review again if "
         "either of those functions changes."
     ),
+    (
+        "packages/microcosm-frame/src/microcosm/frame/shared_columns.py",
+        "_column_buffers",
+        "pandas-private-attribute",
+        "values._data",
+        "cd4f137b0cd2",
+    ): (
+        "Read only, so the shared-column check can hash a nullable column's "
+        "values. pandas has no public access to them when values are missing."
+    ),
+    (
+        "packages/microcosm-frame/src/microcosm/frame/shared_columns.py",
+        "_column_buffers",
+        "pandas-private-attribute",
+        "values._mask",
+        "cd4f137b0cd2",
+    ): (
+        "Read only, so the shared-column check can hash a nullable column's "
+        "missing-value mask. pandas exposes only a copy of it."
+    ),
 }
 
 #: The functions a reviewed reason rests on, by repository-relative path and

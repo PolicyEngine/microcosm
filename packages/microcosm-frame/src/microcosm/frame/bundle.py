@@ -25,7 +25,10 @@ The constructor deep-copies every table it is given. :meth:`Frame.replace_tables
 :meth:`Frame.with_columns`, :meth:`Frame.with_weights`, :meth:`Frame.place` and
 :meth:`Frame.select` instead build a frame that shares the memory of every
 unchanged column with its source frame when pandas copy-on-write is on, and
-deep-copy when it is off (see :meth:`Frame._adopt`).
+deep-copy when it is off (see :meth:`Frame._adopt`). Those operations record a
+digest of each column they start sharing, and :meth:`Frame.check_shared_columns`
+compares the digests so that a raw write into shared memory is found before
+the frame is written (see :mod:`microcosm.frame.shared_columns`).
 """
 
 import re
@@ -38,6 +41,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.frame.schema import EntitySchema
+from microcosm.frame.shared_columns import check_shared_columns, record_shared_columns
 from microcosm.frame.weights import (
     MassChange,
     MassChangeRecord,
@@ -160,7 +164,9 @@ class Frame:
         ``to_numpy()`` returns a writable view of the column's data for, for
         example, the nullable integer, float and boolean types when the
         column has no missing value, python-backed strings, and sparse
-        columns without gaps.
+        columns without gaps. :meth:`check_shared_columns` finds such a write
+        afterwards, for columns a frame operation recorded when it started
+        sharing them.
 
         When copy-on-write is off (the pandas 2.x default), a shallow copy
         shares data even for ordinary pandas writes, so the tables and strata
@@ -247,6 +253,22 @@ class Frame:
         self._validate_global_columns()
         self._validate_weights()
         self._validate_reserved_weight_columns()
+
+    def check_shared_columns(self) -> None:
+        """Refuse this frame if a raw write changed a column it shares.
+
+        Every table, link table and the strata are compared with the digests
+        recorded when frame operations started sharing their columns. Writers
+        of checkpoints and outputs call this first. Columns that were never
+        shared have no digest and cost nothing here.
+
+        Raises:
+            SharedColumnChangedError: Naming each changed table and column.
+        """
+        check_shared_columns(
+            {**self._tables, **self._link_tables},
+            strata=self._strata,
+        )
 
     def revalidate(self) -> None:
         """Re-run every constructor invariant against the current state.
@@ -940,11 +962,11 @@ class Frame:
         from them through :meth:`_adopt` therefore shares this frame's column
         memory under copy-on-write but never its DataFrame objects, so a
         write made through pandas to either frame cannot reach the other.
+        The columns are recorded for :meth:`check_shared_columns`.
         """
-        return {
-            name: table.copy(deep=False)
-            for name, table in {**self._tables, **self._link_tables}.items()
-        }
+        tables = {**self._tables, **self._link_tables}
+        _record_columns_being_shared(tables, strata=self._strata)
+        return {name: table.copy(deep=False) for name, table in tables.items()}
 
     @staticmethod
     def _mass_change_record(
@@ -1004,10 +1026,8 @@ class Frame:
         """
 
         _require_dataframes(changed_tables)
-        tables = {
-            name: table.copy(deep=False)
-            for name, table in {**self._tables, **self._link_tables}.items()
-        }
+        tables = self._shallow_table_copies()
+        _record_columns_being_shared(changed_tables)
         tables.update(
             {name: table.copy(deep=False) for name, table in changed_tables.items()}
         )
@@ -1504,6 +1524,11 @@ class Frame:
             )
 
         person_entity = self._schema.person_entity
+        every_person_kept = bool(mask.all())
+        # A table keeps sharing its source's memory only when every row stays.
+        tables_kept_whole: dict[str, pd.DataFrame] = {}
+        if every_person_kept:
+            tables_kept_whole[person_entity] = person
         tables: dict[str, pd.DataFrame] = {person_entity: person.loc[mask]}
         weights: dict[str, Weights] = {}
         if person_entity in self._weights:
@@ -1518,6 +1543,8 @@ class Frame:
             referenced = np.unique(membership)
             table = self._tables[group]
             keep = table[self._schema.id_column(group)].isin(referenced).to_numpy()
+            if keep.all():
+                tables_kept_whole[group] = table
             tables[group] = table.loc[keep].reset_index(drop=True)
             if group in self._weights:
                 existing = self._weights[group]
@@ -1525,8 +1552,12 @@ class Frame:
                     existing.values[keep], kind=existing.kind
                 )
         strata = self._strata.loc[mask]
+        _record_columns_being_shared(
+            tables_kept_whole,
+            strata=self._strata if every_person_kept else None,
+        )
         # Row selection makes new DataFrame objects, so the result can own
-        # them; under copy-on-write, with every person kept, they still share
+        # them; under copy-on-write, a table that kept every row still shares
         # the source's memory.
         return Frame._adopt(
             tables,
@@ -1614,6 +1645,14 @@ def _require_dataframes(tables: Mapping[str, Any]) -> None:
                 f"Table {name!r} must be a pandas DataFrame, got "
                 f"{type(table).__name__}."
             )
+
+
+def _record_columns_being_shared(
+    tables: Mapping[str, pd.DataFrame], *, strata: pd.Series | None = None
+) -> None:
+    """Record columns a new frame will share; nothing is shared without copy-on-write."""
+    if _pandas_copy_on_write():
+        record_shared_columns(tables, strata=strata)
 
 
 def _pandas_copy_on_write() -> bool:

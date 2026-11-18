@@ -23,9 +23,11 @@ from microcosm.frame import (
     LinkSpec,
     MassChange,
     MassChangeRecord,
+    SharedColumnChangedError,
     WeightKind,
     Weights,
 )
+from microcosm.frame import shared_columns as shared_columns_module
 
 
 def _checkpoint_frame() -> Frame:
@@ -1096,3 +1098,39 @@ def test_adopted_frames_write_the_bytes_of_copied_frames(
     assert (tmp_path / "derived.h5").read_bytes() == (
         tmp_path / "copied.h5"
     ).read_bytes()
+
+
+def test_writer_refuses_a_frame_whose_shared_column_changed(tmp_path: Path) -> None:
+    source = _checkpoint_frame()
+    shared = source.replace_tables()
+    np.add.at(source.table("person")["float_measure"].to_numpy(), [0], 1.0)
+
+    with pytest.raises(SharedColumnChangedError) as raised:
+        write_frame_checkpoint(tmp_path / "frame.h5", shared)
+
+    assert raised.value.changed_columns == (("person", "float_measure"),)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_loading_hashes_nothing_until_a_loaded_column_is_shared(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "frame.h5"
+    write_frame_checkpoint(path, _checkpoint_frame())
+    hashed_lengths: list[int] = []
+    original_digest = shared_columns_module._buffer_digest
+
+    def counting_digest(buffer: np.ndarray) -> bytes:
+        hashed_lengths.append(len(buffer))
+        return original_digest(buffer)
+
+    monkeypatch.setattr(shared_columns_module, "_buffer_digest", counting_digest)
+
+    loaded = load_frame_checkpoint(path).frame
+    assert hashed_lengths == []
+
+    shared = loaded.replace_tables()
+    assert hashed_lengths != []
+    np.add.at(loaded.table("person")["float_measure"].to_numpy(), [0], 1.0)
+    with pytest.raises(SharedColumnChangedError):
+        shared.check_shared_columns()

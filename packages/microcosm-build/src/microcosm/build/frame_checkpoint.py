@@ -94,10 +94,16 @@ def write_frame_checkpoint(
     *,
     metadata: Mapping[str, object] | None = None,
 ) -> Path:
-    """Atomically write a deterministic checkpoint, one column at a time."""
+    """Atomically write a deterministic checkpoint, one column at a time.
+
+    Raises:
+        SharedColumnChangedError: If a raw write changed a column the frame
+            shares. Nothing is written.
+    """
 
     if not isinstance(frame, Frame):
         raise TypeError(f"frame must be a Frame, got {type(frame).__name__}.")
+    frame.check_shared_columns()
     external_metadata = _normalize_external_metadata(metadata)
     checkpoint_metadata = _checkpoint_metadata(frame, external_metadata)
 

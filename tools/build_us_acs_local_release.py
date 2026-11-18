@@ -1747,9 +1747,11 @@ def extract_struct_tables(frame, *, county_column="county_fips", county_run=Fals
     """Small structural/geography copies so the big frame can be freed early.
 
     ``county_run`` keeps what county reliability needs after a reload
-    (:func:`us_acs_local_county_surface.struct_columns`).
+    (:func:`us_acs_local_county_surface.struct_columns`). The lean checkpoint
+    is written from these copies, so shared columns are checked here.
     """
 
+    frame.check_shared_columns()
     households = frame.table("household")
     struct_columns = [
         column for column in LEAN_HOUSEHOLD_COLUMNS if column in households.columns

@@ -3033,6 +3033,7 @@ def _write_target_frame_checkpoint(
 ) -> dict[str, object]:
     import h5py
 
+    frame.check_shared_columns()
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_name(f"{path.name}.tmp")
     if tmp_path.exists():

@@ -1,0 +1,1 @@
+Every build now checks columns that frames share. Frame operations record a SHA-256 digest of each column when they start sharing it, and checkpoint and output writers compare the digests first. A raw write that changed shared memory raises `SharedColumnChangedError`, naming each changed table and column, before anything is written.
