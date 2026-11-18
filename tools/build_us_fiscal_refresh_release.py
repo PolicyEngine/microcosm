@@ -69,6 +69,7 @@ import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
+from importlib.resources import files as package_files
 from pathlib import Path, PurePosixPath
 from types import MethodType, SimpleNamespace
 from typing import Any
@@ -82,7 +83,6 @@ from microcosm.build.calibration_epoch_telemetry import (
     calibration_epoch_stride,
     forwards_calibration_epoch,
 )
-from microcosm.build.country_spec import country_resource
 from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.gates import (
     GateResult,
@@ -12096,10 +12096,11 @@ def _fiscal_target_source_provenance(
 _EVIDENCE_ISSUE_REF_RE = re.compile(r"#\d+|github\.com/\S+/(?:issues|pull)/\d+")
 
 #: The standing failure-pattern -> owner register of an evidence-tier
-#: certification (microcosm#506), a US country resource rather than this
-#: tool's source, so that a sign-off changes that file alone and a build can
-#: be certified at the commit that makes it (microcosm#1585 item 11, as a UK
-#: cut is certified at its sign-off's head). Only owner-adjudicated families
+#: certification (microcosm#506), a packaged US runtime data file rather than
+#: this tool's source, so that a sign-off changes that file alone and a build
+#: can be certified at the commit that makes it (microcosm#1585 item 11, as a
+#: UK cut is certified at its sign-off's head). It is not a country resource:
+#: no part of the US spec reads it, so a sign-off moves no spec digest. Only owner-adjudicated families
 #: belong there: the two dense blockers named in the #506 brief, the SOI
 #: Table 1.4 dollar blanket (#487) and the dense QRF tail-concentration set
 #: (#481, with the #487 uprating interaction). Any other recorded failure
@@ -12110,9 +12111,17 @@ US_EVIDENCE_FAILURE_OWNERS_KIND = "us_evidence_failure_owners"
 #: The register's path in the repository, which a later certifying commit
 #: may change (:func:`_certification_may_change`).
 US_EVIDENCE_FAILURE_OWNERS_REGISTER = (
-    "packages/microcosm-build/src/microcosm/build/us/"
+    "packages/microcosm-build/src/microcosm/build/us_runtime/data/"
     + US_EVIDENCE_FAILURE_OWNERS_RESOURCE
 )
+
+
+def _standing_evidence_failure_owners_file():
+    """The packaged standing owners register, as this checkout holds it."""
+
+    return package_files("microcosm.build.us_runtime.data").joinpath(
+        US_EVIDENCE_FAILURE_OWNERS_RESOURCE
+    )
 
 
 def _evidence_owner_pairs(
@@ -12136,7 +12145,7 @@ def _evidence_owner_pairs(
 def _read_standing_evidence_failure_owners(text: str) -> tuple[tuple[str, str], ...]:
     """The standing register's ``(pattern, owner)`` pairs, in its order."""
 
-    source = f"the US {US_EVIDENCE_FAILURE_OWNERS_RESOURCE} register"
+    source = f"the US standing {US_EVIDENCE_FAILURE_OWNERS_RESOURCE} register"
     payload = json.loads(text)
     if (
         not isinstance(payload, dict)
@@ -12162,9 +12171,7 @@ def _read_standing_evidence_failure_owners(text: str) -> tuple[tuple[str, str], 
 #: The standing register, as this checkout packages it.
 US_EVIDENCE_FAILURE_OWNERS: tuple[tuple[str, str], ...] = (
     _read_standing_evidence_failure_owners(
-        country_resource("us", US_EVIDENCE_FAILURE_OWNERS_RESOURCE).read_text(
-            encoding="utf-8"
-        )
+        _standing_evidence_failure_owners_file().read_text(encoding="utf-8")
     )
 )
 
@@ -14427,7 +14434,7 @@ class _Certification:
             },
         }
         if self.evidence_release:
-            register = country_resource("us", US_EVIDENCE_FAILURE_OWNERS_RESOURCE)
+            register = _standing_evidence_failure_owners_file()
             block["evidence_failure_owners"] = {
                 "standing_register": {
                     "path": US_EVIDENCE_FAILURE_OWNERS_REGISTER,

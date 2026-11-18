@@ -16,7 +16,7 @@ the build into `microcosm-us-2024-national`; `evidence` certifies it into
 `microcosm-us-2024-evidence`, never the US default, once every failure has an
 owner, from `ROUTE_A_EVIDENCE_FAILURE_OWNERS` (an absolute path to a JSON
 object of failure pattern and owner issue) or the standing register,
-`packages/microcosm-build/src/microcosm/build/us/evidence_failure_owners.json`.
+`packages/microcosm-build/src/microcosm/build/us_runtime/data/evidence_failure_owners.json`.
 Once the build is accepted, the driver does not hash the raw inputs again,
 since certification reads none of them. It then runs
 `preflight_us_release_gates.py` against the release manifest and

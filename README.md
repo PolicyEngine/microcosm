@@ -893,7 +893,7 @@ validation checks failed. A build has no tier (microcosm#1585 item 11):
 `tools/certify_us_national_build.py <out> --evidence-release` certifies a
 finished build at the evidence tier, recording every failed check with an
 owner issue, from `--evidence-failure-owners` or the standing register
-(`us/evidence_failure_owners.json`), in the release manifest's
+(`us_runtime/data/evidence_failure_owners.json`), in the release manifest's
 `known_failures` block, or refuses. It places the build in
 `<out>/releases/microcosm-us-2024-evidence/`, under its build ID with an
 `-evidence-` segment, and prints the same two commands. `microcosm-publish-release-build` checks a build of that release

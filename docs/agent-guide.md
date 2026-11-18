@@ -477,7 +477,7 @@ has no tier: certification chooses it, and `--evidence-release` with an owner
 for every failure certifies a build whose release gates failed. It may run at
 a later commit than the build's only when that commit changes nothing but
 tests, docs, changelog fragments and the standing evidence owners register
-(`us/evidence_failure_owners.json`). To check
+(`us_runtime/data/evidence_failure_owners.json`). To check
 the post-export stages on a written export without certifying it,
 subsample it and probe it as
 [the release build rule](us-release-build-rule.md#probing-an-export-on-a-household-subsample)

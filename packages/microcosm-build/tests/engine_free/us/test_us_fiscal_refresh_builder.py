@@ -461,12 +461,15 @@ def test_certification_places_the_build_s_own_files_in_its_tier_s_release(
 
 
 def test_the_standing_evidence_owners_are_a_packaged_register() -> None:
-    """The standing owners are the US country resource
+    """The standing owners are the packaged US runtime data file
     evidence_failure_owners.json, not the tool's source, so a sign-off is a
     change to that file alone, which a later certifying commit may make
     (microcosm#1585 item 11). Its path in the repository is the one the
-    certification rule allows."""
-    from microcosm.build.country_spec import country_resource
+    certification rule allows. It is no country resource, so a sign-off
+    moves no US spec digest or field count."""
+    from importlib.resources import files
+
+    from microcosm.build.country_spec import load_country_spec
 
     builder = _load_builder_module()
     assert builder.US_EVIDENCE_FAILURE_OWNERS == (
@@ -477,12 +480,18 @@ def test_the_standing_evidence_owners_are_a_packaged_register() -> None:
         ),
     )
     repository = Path(builder.__file__).resolve().parents[1]
-    packaged = country_resource("us", builder.US_EVIDENCE_FAILURE_OWNERS_RESOURCE)
+    packaged = files("microcosm.build.us_runtime.data").joinpath(
+        builder.US_EVIDENCE_FAILURE_OWNERS_RESOURCE
+    )
     assert (
         repository / builder.US_EVIDENCE_FAILURE_OWNERS_REGISTER
     ).read_bytes() == packaged.read_bytes()
     assert builder._certification_may_change(
         builder.US_EVIDENCE_FAILURE_OWNERS_REGISTER
+    )
+    assert not any(
+        resource.endswith(builder.US_EVIDENCE_FAILURE_OWNERS_RESOURCE)
+        for resource in load_country_spec("us").resources
     )
     payload = json.loads(packaged.read_text())
     assert all(entry["reason"].strip() for entry in payload["owners"])
@@ -529,7 +538,7 @@ def test_the_standing_evidence_owners_are_a_packaged_register() -> None:
         ("tools/route_a/README.md", True),
         ("experiments/us-release-dry-run-margin-evidence.md", True),
         (
-            "packages/microcosm-build/src/microcosm/build/us/evidence_failure_owners.json",
+            "packages/microcosm-build/src/microcosm/build/us_runtime/data/evidence_failure_owners.json",
             True,
         ),
         ("tools/build_us_fiscal_refresh_release.py", False),

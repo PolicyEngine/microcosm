@@ -93,7 +93,7 @@ A US national build and its certification are two steps (microcosm#1585 item
     `populace-us-2024-`. Every failure, the build's and certification's, must
     match an owner pattern, from `--evidence-failure-owners FILE` first, then
     the standing register
-    (`packages/microcosm-build/src/microcosm/build/us/evidence_failure_owners.json`),
+    (`packages/microcosm-build/src/microcosm/build/us_runtime/data/evidence_failure_owners.json`),
     and rides the release manifest's `known_failures`. At least one failure
     must exist, a QRF tail-concentration register mismatch is never owned, and
     an `--exact-k` build, a build of the national release, is never evidence.
