@@ -48,6 +48,14 @@
      },
      "observed_geography": {
       "$ref": "defs.schema.json#/$defs/identifier"
+     },
+     "observed_constraints": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+       "$ref": "defs.schema.json#/$defs/identifier"
+      }
      }
     }
    }

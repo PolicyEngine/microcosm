@@ -32,7 +32,11 @@ from microcosm.build.money_normalization import (
     selected_money_factors,
     validate_money_normalization,
 )
-from microcosm.build.reference_factors import FACTOR_PURPOSES
+from microcosm.build.reference_factors import (
+    FACTOR_PURPOSES,
+    factor_document_sha256,
+    resolve_reference_factor,
+)
 from microcosm.graph.canonical import canonical_json
 from test_support.microcosm_build.money_normalization import (
     DIMENSION,
@@ -43,6 +47,9 @@ from test_support.microcosm_build.money_normalization import (
     rate_feed_form,
     toy_declaration,
     write_money_feed,
+)
+from test_support.microcosm_build.reference_factors import (
+    published_projection_fixture,
 )
 
 PROPERTY = settings(
@@ -890,3 +897,26 @@ def test_the_three_declared_factors_bound_two_step_difference_to_one_cent(
     assert abs(two - one) <= 1
     arrays, *_ = _normalize([value], rate="1.654", factor=_factor(factor))
     assert int(arrays["person", "rental_income_cents"][0]) == two
+
+
+def test_money_normalization_applies_a_published_projection_factor_unchanged():
+    # Money normalization reads only the keys both factor operations keep.
+    declaration, facts, identity = published_projection_fixture(
+        source_year=2024, target_year=2027
+    )
+    factor, receipt = resolve_reference_factor(declaration, facts, identity)
+    entry = {
+        "declaration": declaration,
+        "operational_factor": factor,
+        "receipt": receipt,
+    }
+    money = validate_money_normalization(toy_declaration())
+    assert check_money_factor(entry, money) == (factor["numerator"], 6)
+    assert money_factor_inputs(entry, money) == {
+        "factor_id": declaration["id"],
+        "numerator": factor["numerator"],
+        "digits": 6,
+        "declaration_sha256": receipt["declaration_sha256"],
+        "receipt_sha256": receipt["receipt_sha256"],
+    }
+    assert receipt["declaration_sha256"] == factor_document_sha256(declaration)

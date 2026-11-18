@@ -1,0 +1,259 @@
+"""ACS local runs the gate battery in shadow, stage by stage (#1585 item 11).
+
+``tools/build_us_acs_local_release.py`` may run each ``--stage`` as its own
+process, so every stage saves what it observed beside the checkpoint and the
+scope's report and comparison are rebuilt from every stage saved so far.
+Only a finished package stage decides. These tests drive the stage seam with
+stand-in gates; no stage runs.
+"""
+
+from __future__ import annotations
+
+import json
+from types import SimpleNamespace
+
+import pytest
+
+from microcosm.build.gates import GateResult
+from microcosm.build.us_runtime.gate_scopes import us_scoped_gate_manifest
+from microcosm.build.us_runtime.gate_shadow import (
+    US_GATE_SHADOW_SWITCH,
+    current_gate_shadow,
+    shadow_file_paths,
+    shadow_not_run,
+)
+from test_support.microcosm_build.us_gate_shadow import (
+    arm_us_tool_gate_shadows,
+    load_us_gate_tool,
+    observe_entries,
+    stand_in_gates,
+)
+
+
+@pytest.fixture(autouse=True)
+def _tool_shadows_on(monkeypatch) -> None:
+    arm_us_tool_gate_shadows(monkeypatch)
+
+
+#: Which stage evaluates each entry (the qa stage has none).
+STAGE_ENTRIES = {
+    "materialize": (
+        "us_local_hours_materialize",
+        "us_local_self_employment_identity_materialize",
+        "us_local_ssi_medicaid_take_up_materialize",
+    ),
+    "calibrate": (
+        "us_local_hours_calibrate",
+        "us_local_self_employment_identity_calibrate",
+    ),
+    "qa": (),
+    "finalize": (
+        "us_local_hours_finalize",
+        "us_local_puma_ladder",
+        "us_local_hours_worked",
+        "us_local_take_up",
+        "us_local_immigration",
+        "us_local_work_disability",
+        "us_local_income_transfer",
+        "us_local_ssi_disability",
+        "us_local_ssi_medicaid_take_up_finalize",
+        "us_local_receipt_anchors",
+        "us_local_reviewed_fill_consumers_finalize",
+        "us_local_district_ess_collapse",
+    ),
+    "package": (
+        "us_local_stored_inputs",
+        "us_local_work_experience_inputs",
+        "us_local_spm_measurement",
+        "us_local_hours_package",
+        "us_local_self_employment_identity_package",
+        "us_local_reviewed_fill_consumers_package",
+    ),
+}
+
+
+@pytest.fixture
+def acs():
+    return load_us_gate_tool("us_local")
+
+
+def _args(tmp_path):
+    return SimpleNamespace(
+        checkpoint_dir=tmp_path / "checkpoints",
+        district_ess_relative_floor=0.25,
+        district_ess_floor=15.0,
+    )
+
+
+def _run_stage(acs, args, stage, *, legacy=None):
+    with acs._local_gate_shadow_stage(args, stage):
+        observe_entries("us_local", acs, STAGE_ENTRIES[stage], legacy=legacy)
+        if stage == "finalize":
+            shadow_not_run(
+                "us_local_block_location",
+                "the staging used the legacy location rule; no block ladder",
+            )
+
+
+def _comparison(args):
+    _, comparison = shadow_file_paths(acs_directory(args), "us_local")
+    return json.loads(comparison.read_text())
+
+
+def acs_directory(args):
+    return args.checkpoint_dir / "gate_battery_shadow"
+
+
+def test_the_stage_map_covers_the_scope() -> None:
+    covered = {entry_id for ids in STAGE_ENTRIES.values() for entry_id in ids}
+    covered.add("us_local_block_location")
+    assert covered == {entry.id for entry in us_scoped_gate_manifest("us_local").gates}
+
+
+def test_separate_stage_processes_add_up_to_one_finished_run(
+    tmp_path, monkeypatch, acs
+) -> None:
+    args = _args(tmp_path)
+    stand_in_gates(monkeypatch, "us_local", acs)
+    _run_stage(acs, args, "materialize")
+    after_materialize = _comparison(args)
+    assert after_materialize["run_completed"] is False
+    assert after_materialize["stopped_at"] == "after the materialize stage"
+    for stage in ("calibrate", "qa", "finalize", "package"):
+        _run_stage(acs, args, stage)
+    payload = _comparison(args)
+    assert payload["run_completed"] is True
+    assert payload["verdict_difference"] is False
+    assert payload["phases_recorded"] == ["assembled", "terminal"]
+    for stage in STAGE_ENTRIES:
+        assert (acs_directory(args) / f"{stage}.observations.json").is_file()
+
+
+def test_with_the_switch_off_a_stage_touches_no_shadow_file(
+    tmp_path, monkeypatch, acs
+) -> None:
+    args = _args(tmp_path)
+    stand_in_gates(monkeypatch, "us_local", acs)
+    _run_stage(acs, args, "materialize")
+    saved = acs_directory(args) / "materialize.observations.json"
+    before = saved.read_bytes()
+    monkeypatch.setenv(US_GATE_SHADOW_SWITCH, "off")
+    with acs._local_gate_shadow_stage(args, "materialize") as shadow:
+        assert shadow is None
+        assert current_gate_shadow() is None
+    # A rerun with the switch off neither discards nor rewrites what was saved.
+    assert saved.read_bytes() == before
+
+
+def test_a_finalize_stop_is_recorded_and_its_rerun_starts_clean(
+    tmp_path, monkeypatch, acs
+) -> None:
+    args = _args(tmp_path)
+    stand_in_gates(monkeypatch, "us_local", acs, failing={"take_up_signal"})
+    for stage in ("materialize", "calibrate", "qa"):
+        _run_stage(acs, args, stage)
+    with pytest.raises(SystemExit, match="hard gate failure"):
+        with acs._local_gate_shadow_stage(args, "finalize"):
+            observe_entries("us_local", acs, STAGE_ENTRIES["finalize"])
+            raise SystemExit("finalize: hard gate failure(s): take-up")
+    payload = _comparison(args)
+    assert payload["stopped_by"]["type"] == "SystemExit"
+    (take_up,) = [row for row in payload["entries"] if row["id"] == "us_local_take_up"]
+    assert take_up["match"] is True and take_up["battery"]["status"] == "failed"
+    # Rerunning an earlier stage discards its own and every later stage's file.
+    (acs_directory(args) / "package.observations.json").write_text("{}")
+    _run_stage(acs, args, "calibrate")
+    assert not (acs_directory(args) / "finalize.observations.json").exists()
+    assert not (acs_directory(args) / "package.observations.json").exists()
+
+
+def test_starting_a_stage_clears_the_scope_files_it_outdates(
+    tmp_path, monkeypatch, acs
+) -> None:
+    # Starting a stage discards its own and every later stage's observations,
+    # so the scope's report and comparison built from them go at once: a
+    # stage killed before its end must not leave a finished run's verdict.
+    args = _args(tmp_path)
+    stand_in_gates(monkeypatch, "us_local", acs)
+    for stage in STAGE_ENTRIES:
+        _run_stage(acs, args, stage)
+    report, comparison = shadow_file_paths(acs_directory(args), "us_local")
+    assert report.is_file()
+    assert json.loads(comparison.read_text())["run_completed"] is True
+    # The qa stage declares no entry, and it still outdates the later ones.
+    with acs._local_gate_shadow_stage(args, "qa"):
+        assert not comparison.exists()
+        assert not report.exists()
+        assert not (acs_directory(args) / "package.observations.json").exists()
+    # Its end rebuilds them from the stages left: a run stopped after qa.
+    payload = _comparison(args)
+    assert payload["run_completed"] is False
+    assert payload["stopped_at"] == "after the qa stage"
+
+
+def test_a_stage_that_saved_nothing_is_never_named_unreached(
+    tmp_path, monkeypatch, acs
+) -> None:
+    # A phase carried in from other processes holds outcomes, not the ids the
+    # run evaluated (#1609), so the shadow's own unreached list is the only
+    # check here. Finalize's entries ran, but its file is gone, as when its
+    # save failed: the package stop must not name them unreached.
+    args = _args(tmp_path)
+    stand_in_gates(monkeypatch, "us_local", acs, failing={"stored_inputs"})
+    for stage in ("materialize", "calibrate", "qa", "finalize"):
+        _run_stage(acs, args, stage)
+    (acs_directory(args) / "finalize.observations.json").unlink()
+    with pytest.raises(SystemExit, match="hard gate failure"):
+        with acs._local_gate_shadow_stage(args, "package"):
+            observe_entries("us_local", acs, ("us_local_stored_inputs",))
+            raise SystemExit("package: hard gate failure(s): stored inputs")
+    payload = _comparison(args)
+    assert payload["observations_missing"] == [
+        "the finalize stage saved no observations"
+    ]
+    assert payload["phases_recorded"] == ["assembled"]
+    assert payload["blocked_at_phase"] is None
+
+
+def test_a_difference_is_recorded_without_failing_the_package_stage(
+    tmp_path, monkeypatch, acs, capsys
+) -> None:
+    args = _args(tmp_path)
+    stand_in_gates(monkeypatch, "us_local", acs, failing={"local_hours_signal"})
+    for stage in ("materialize", "calibrate", "qa"):
+        _run_stage(acs, args, stage)
+    passing = GateResult(name="acs_local_hours_signal", passed=True)
+    legacy = {
+        entry_id: (lambda: passing)
+        for entry_id in ("us_local_hours_finalize", "us_local_hours_package")
+    }
+    # Earlier stages record and go on, whatever they saw.
+    _run_stage(acs, args, "finalize", legacy=legacy)
+    # Today's gates still decide: the package stage finishes.
+    _run_stage(acs, args, "package", legacy=legacy)
+    payload = _comparison(args)
+    assert payload["run_completed"] is True
+    assert payload["verdict_difference"] is True
+    differing = [row["id"] for row in payload["differences"]]
+    assert differing and all(entry.startswith("us_local_hours") for entry in differing)
+    assert "scope 'us_local' disagrees with today's gates" in capsys.readouterr().err
+
+
+def test_a_package_stage_finishes_when_its_shadow_files_fail(
+    tmp_path, monkeypatch, acs, capsys
+) -> None:
+    # The shadow never stops a stage: here the package stage's observation
+    # files can be neither cleared at its start, saved, nor read back.
+    args = _args(tmp_path)
+    stand_in_gates(monkeypatch, "us_local", acs)
+    for stage in ("materialize", "calibrate", "qa", "finalize"):
+        _run_stage(acs, args, stage)
+
+    def unreachable(args, stage):
+        raise OSError("observations unreachable")
+
+    monkeypatch.setattr(acs, "_local_stage_observations", unreachable)
+    _run_stage(acs, args, "package")
+    out = capsys.readouterr().out
+    assert "gate battery shadow could not clear earlier files" in out
+    assert "gate battery shadow could not be rebuilt" in out

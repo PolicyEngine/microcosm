@@ -24,6 +24,7 @@ import pandas as pd
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.frs_spine import UC_CAPITAL_UNAVAILABLE
+from microcosm.build.uk_runtime.household_lineage import collapse_geographic_clones
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -64,6 +65,12 @@ UC_CAPITAL_INVESTMENT_INCOME = (
 #: GBP 6,000, 16,000, 50,000 and 200,000 of capital yield at 4%, then above.
 UC_CAPITAL_INCOME_BAND_EDGES = (0.0, 240.0, 640.0, 2_000.0, 8_000.0)
 UC_CAPITAL_IMPLIED_YIELD = 0.04
+#: The donors a cell needs before it stops widening. It counts the cell's
+#: donor benefit-unit rows after the geographic fold, so a high-value
+#: support copy counts as a donor of its own. It is a row threshold, not a
+#: disclosure floor. Whether it should count true sources is for the
+#: geography-first move's audit of K-sensitive constants (microcosm#931),
+#: since switching it can move outputs.
 UC_CAPITAL_MINIMUM_CELL_DONORS = 20
 #: The declared order in which a cell short of donors widens; reporter status
 #: is never coarsened.
@@ -345,6 +352,7 @@ def cohere_uc_capital(
         levels = _redraw_spi_capital(
             benunit,
             person=person,
+            household=household,
             weights=weights,
             reporter=reporter,
             base=base,
@@ -628,6 +636,7 @@ def _redraw_spi_capital(
     benunit: pd.DataFrame,
     *,
     person: pd.DataFrame,
+    household: pd.DataFrame,
     weights: np.ndarray,
     reporter: np.ndarray,
     base: np.ndarray,
@@ -642,6 +651,10 @@ def _redraw_spi_capital(
     dependent-children band. A cell with fewer than ``minimum_cell_donors``
     donors widens in the declared ``UC_CAPITAL_COARSENING`` order; reporter
     status is never coarsened, and an empty reporter-status pool refuses.
+    Each survey benefit unit donates once, its geographic clones that agree
+    on its cell and capital folded into its first row with their weight, so
+    a cell's donor count does not grow with identical clones
+    (``household_lineage.collapse_geographic_clones``, microcosm#931).
     Returns the number of redrawn units drawn at each level.
     """
 
@@ -651,8 +664,24 @@ def _redraw_spi_capital(
     couple = frs_uc_couple_mask(person, benunit)
     income_band = _investment_income_band(investment)
     last_band = len(UC_CAPITAL_INCOME_BAND_EDGES)
-    # Domain-validated upstream: every non-sentinel value is >= 0.
-    donor = base & (capital >= 0.0) & (weights > 0.0)
+    # Domain-validated upstream: every non-sentinel value is >= 0. A donor's
+    # clones fold where they agree on its cell and the capital it donates;
+    # clones that differ donate apart, each with its clones' weight.
+    donor, donor_weight = collapse_geographic_clones(
+        {"person": person, "benunit": benunit, "household": household},
+        "benunit",
+        base & (capital >= 0.0) & (weights > 0.0),
+        weights,
+        inputs=pd.DataFrame(
+            {
+                "reporter": np.asarray(reporter),
+                "income_band": np.asarray(income_band),
+                "couple": np.asarray(couple),
+                "child_band": np.asarray(child_band),
+                "capital": np.asarray(capital),
+            }
+        ),
+    )
     target_ids = benunit["benunit_id"].to_numpy()
     draws = stable_identity_uniforms(
         target_ids,
@@ -720,7 +749,7 @@ def _redraw_spi_capital(
             {
                 "benunit_id": target_ids[donor_cell],
                 "capital": source_capital[donor_cell],
-                "weight": weights[donor_cell],
+                "weight": donor_weight[donor_cell],
             }
         ).sort_values(["capital", "benunit_id"], kind="mergesort")
         donor_values = donor_rows["capital"].to_numpy(dtype=float)

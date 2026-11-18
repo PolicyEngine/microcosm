@@ -48,6 +48,8 @@ def _frame():
             "household_id": [1, 2, 3],
             "region": ["WALES", "WALES", "WALES"],
             "household_source_id": [1, 2, 3],
+            # The true source each floor counts (microcosm#931).
+            "source_household_id": [1, 2, 3],
             "household_is_spi_synthetic": [False, False, False],
             # The engine adapter's dataset reads these on every household.
             "council_tax": [0.0, 0.0, 0.0],
