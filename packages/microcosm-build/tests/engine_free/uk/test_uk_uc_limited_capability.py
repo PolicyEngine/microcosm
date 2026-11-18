@@ -429,10 +429,14 @@ def test_a_cell_under_three_households_draws_at_its_groups_rate_over_every_age()
     assert over_fifty["source"] == "pooled_by_condition"
     assert over_fifty["support"] == "<3"
     assert over_fifty["rate"] == "withheld"
+    # The draws take 0.4, but the receipt withholds it: beside the young cell's
+    # printed 0.5 it would give back the one LCWRA household among the cells it
+    # withholds, the 50-and-over claim (Vahid's review of
+    # PolicyEngine/microcosm#1663).
     assert imputation["pooled"]["proxy_flags"] == {
         "linked_claims": 10,
         "support": "10-29",
-        "rate": 0.4,
+        "rate": "withheld",
         "own_esa_award_claims": {"linked_claims": 0, "support": 0, "rate": "withheld"},
     }
     # Every linked claim is on the no-condition side, so its group over every
@@ -580,3 +584,129 @@ def test_a_cell_under_three_households_takes_its_condition_groups_rate() -> None
         imputation["pooled_by_condition"]["proxy_flags"]["limits_a_lot"]["support"]
         == "3-9"
     )
+
+
+def test_a_group_rate_beside_a_withheld_cell_it_would_give_back_is_withheld() -> None:
+    # Vahid's example (review of PolicyEngine/microcosm#1663): two cells print
+    # 0.4 and a one-household cell is withheld, so a group rate above or below
+    # 0.4 would say which way that household went.
+    a_lot = UC_LIMITED_CAPABILITY_CONDITION_CELL
+    people = [
+        # Linked claims the proxy flags, with the condition, aged 25 to 49 and
+        # 50 or over: four of ten LCWRA in each.
+        *[_single(unit, "LCWRA", True) for unit in range(1, 5)],
+        *[_single(unit, "NONE", True) for unit in range(5, 11)],
+        *[_single(unit, "LCWRA", True) for unit in range(11, 15)],
+        *[_single(unit, "NONE", True) for unit in range(15, 21)],
+        # One young linked LCWRA claim with the condition.
+        _single(21, "LCWRA", True),
+    ]
+    ages = [40] * 10 + [60] * 10 + [20]
+    result = assign_uc_limited_capability(
+        _frame(people, ages=ages, conditions=[a_lot] * len(people)),
+        engine_answers=_answers(people),
+    )
+    imputation = result.evidence()["imputation"]
+    cells = imputation["cells"]
+    assert cells["25_to_49"]["proxy_flags"]["limits_a_lot"]["rate"] == 0.4
+    assert cells["50_and_over"]["proxy_flags"]["limits_a_lot"]["rate"] == 0.4
+    assert cells["16_to_24"]["proxy_flags"]["limits_a_lot"]["rate"] == "withheld"
+    group = imputation["pooled_by_condition"]["proxy_flags"]["limits_a_lot"]
+    assert group["support"] == "10-29"
+    assert group["rate"] == "withheld"
+    # The proxy group over every age is the same claims, so it is withheld too.
+    assert imputation["pooled"]["proxy_flags"]["rate"] == "withheld"
+
+
+def test_a_group_rate_prints_where_its_withheld_cells_together_pass_the_floor() -> None:
+    people = [
+        # Linked claims the proxy flags, without the condition. Young: two of
+        # three LCWRA; aged 25 to 49: one of three. Each cell is withheld, but
+        # together they hold three LCWRA households and three others.
+        *[_single(unit, "LCWRA", True) for unit in (1, 2)],
+        _single(3, "NONE", True),
+        _single(4, "LCWRA", True),
+        *[_single(unit, "NONE", True) for unit in (5, 6)],
+        # Aged 50 or over: half of six.
+        *[_single(unit, "LCWRA", True) for unit in (7, 8, 9)],
+        *[_single(unit, "NONE", True) for unit in (10, 11, 12)],
+    ]
+    ages = [20] * 3 + [40] * 3 + [60] * 6
+    result = assign_uc_limited_capability(
+        _frame(people, ages=ages), engine_answers=_answers(people)
+    )
+    imputation = result.evidence()["imputation"]
+    cells = imputation["cells"]
+    assert cells["16_to_24"]["proxy_flags"]["no_limit_a_lot"]["rate"] == "withheld"
+    assert cells["25_to_49"]["proxy_flags"]["no_limit_a_lot"]["rate"] == "withheld"
+    assert cells["50_and_over"]["proxy_flags"]["no_limit_a_lot"]["rate"] == 0.5
+    assert (
+        imputation["pooled_by_condition"]["proxy_flags"]["no_limit_a_lot"]["rate"]
+        == 0.5
+    )
+    assert imputation["pooled"]["proxy_flags"]["rate"] == 0.5
+
+
+def test_an_own_esa_group_rate_beside_a_withheld_own_esa_cell_is_withheld() -> None:
+    people = [
+        # Linked claims the proxy flags with their own ESA award: aged 25 to 49,
+        # half of six LCWRA; one young LCWRA claim.
+        *[_single(unit, "LCWRA", True) for unit in (1, 2, 3)],
+        *[_single(unit, "NONE", True) for unit in (4, 5, 6)],
+        _single(7, "LCWRA", True),
+        # Without an award: aged 25 to 49, half of six.
+        *[_single(unit, "LCWRA", True) for unit in (8, 9, 10)],
+        *[_single(unit, "NONE", True) for unit in (11, 12, 13)],
+    ]
+    ages = [40] * 6 + [20] + [40] * 6
+    esa = [True] * 7 + [False] * 6
+    result = assign_uc_limited_capability(
+        _frame(people, ages=ages), engine_answers=_answers(people, esa=esa)
+    )
+    imputation = result.evidence()["imputation"]
+    own = "own_esa_award_claims"
+    assert (
+        imputation["cells"]["25_to_49"]["proxy_flags"]["no_limit_a_lot"][own]["rate"]
+        == 0.5
+    )
+    assert (
+        imputation["cells"]["16_to_24"]["proxy_flags"]["no_limit_a_lot"][own]["rate"]
+        == "withheld"
+    )
+    assert (
+        imputation["pooled_by_condition"]["proxy_flags"]["no_limit_a_lot"][own]["rate"]
+        == "withheld"
+    )
+    assert imputation["pooled"]["proxy_flags"][own]["rate"] == "withheld"
+    # The claims without an award print where nothing inside them is withheld.
+    assert imputation["pooled"]["proxy_flags"]["rate"] == 0.5
+
+
+def test_a_couple_takes_the_condition_side_when_either_claimant_reports_it() -> None:
+    # Vahid's review of PolicyEngine/microcosm#1663: the cell's condition side
+    # reads every claimant, not only the first.
+    a_lot = UC_LIMITED_CAPABILITY_CONDITION_CELL
+    couples = []
+    conditions = []
+    for unit, carrier in (
+        (1, "LCWRA"),
+        (2, "LCWRA"),
+        (3, "LCWRA"),
+        (4, "NONE"),
+        (5, "NONE"),
+        (6, "NONE"),
+    ):
+        couples += [
+            (unit, unit, carrier, False, False, False, True, False),
+            (unit, unit, "NOT_LINKED", False, False, False, True, False),
+        ]
+        # Only the partner reports the condition.
+        conditions += ["NO_CONDITION", a_lot]
+    result = assign_uc_limited_capability(
+        _frame(couples, ages=[40] * len(couples), conditions=conditions),
+        engine_answers=_answers(couples),
+    )
+    cells = result.evidence()["imputation"]["cells"]["25_to_49"]["proxy_does_not"]
+    assert cells["limits_a_lot"]["linked_claims"] == "3-9"
+    assert cells["limits_a_lot"]["rate"] == 0.5
+    assert cells["no_limit_a_lot"]["linked_claims"] == 0

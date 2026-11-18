@@ -89,6 +89,7 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
     distinct_count,
     rounded_count,
     source_household_ids,
@@ -523,17 +524,25 @@ def assign_uc_limited_capability(
         mask[rows] = True
         return mask
 
+    def floor_holds(rows: list[int]) -> bool:
+        # The rule a printed rate meets: its LCWRA claims and the rest each
+        # rest on three source households or more.
+        mask = rows_mask(rows)
+        return (
+            distinct_count(sources, mask & is_lcwra, weights) >= UK_DISCLOSURE_FLOOR
+            and distinct_count(sources, mask & ~is_lcwra, weights)
+            >= UK_DISCLOSURE_FLOOR
+        )
+
     def measured_rate(rows: list[int]) -> tuple[float | None, dict[str, object]]:
         mask = rows_mask(rows)
         support = distinct_count(sources, mask, weights)
-        lcwra_support = distinct_count(sources, mask & is_lcwra, weights)
-        other_support = distinct_count(sources, mask & ~is_lcwra, weights)
         total = float(weights[mask].sum())
         rate = float(weights[mask & is_lcwra].sum()) / total if total > 0 else None
-        usable = support >= 3 and rate is not None
+        usable = support >= UK_DISCLOSURE_FLOOR and rate is not None
         # The rate prints only where its LCWRA claims and the rest each rest on
         # three source households or more, so neither part comes back from it.
-        printable = usable and lcwra_support >= 3 and other_support >= 3
+        printable = usable and floor_holds(rows)
         entry: dict[str, object] = {
             "linked_claims": rounded_count(len(rows)),
             "support": support_band(support),
@@ -590,6 +599,49 @@ def assign_uc_limited_capability(
                 )[1]
                 rates[(band, side, cond)] = rate
                 cells[band][side][cond] = entry
+
+    # A group's rate printed beside the cells inside it gives back what the
+    # withheld ones hold: with the other cells' rates, it tells which way a
+    # one-household cell went (Vahid's review of PolicyEngine/microcosm#1663).
+    # So a group prints only where the claims of its withheld cells, together,
+    # pass the floor a cell's rate does, and each proxy group over every age
+    # only where those of its withheld condition groups do. The draws keep
+    # every rate; only the receipt withholds.
+    def withhold_by_difference(
+        by_cell: dict[tuple[str, str, str], list[int]],
+        cell_entry,
+        group_entry,
+        side_entry,
+    ) -> None:
+        for side in sides:
+            behind_side: list[int] = []
+            for cond in conditions:
+                hidden = [
+                    row
+                    for band in bands
+                    if cell_entry(band, side, cond)["rate"] == "withheld"
+                    for row in by_cell[(band, side, cond)]
+                ]
+                group = group_entry(side, cond)
+                if hidden and not floor_holds(hidden):
+                    group["rate"] = "withheld"
+                if group["rate"] == "withheld":
+                    behind_side.extend(hidden)
+            if behind_side and not floor_holds(behind_side):
+                side_entry(side)["rate"] = "withheld"
+
+    withhold_by_difference(
+        cell_rows,
+        lambda band, side, cond: cells[band][side][cond],
+        lambda side, cond: pooled_by_condition[(side, cond)][1],
+        lambda side: pooled[side][1],
+    )
+    withhold_by_difference(
+        own_esa_rows,
+        lambda band, side, cond: cells[band][side][cond]["own_esa_award_claims"],
+        lambda side, cond: pooled_by_condition[(side, cond)][1]["own_esa_award_claims"],
+        lambda side: pooled[side][1]["own_esa_award_claims"],
+    )
 
     # The imputed claims: every other benefit unit with a claimant outside the
     # SPI rows whose claimants hold no ESA award of their own, in benefit unit

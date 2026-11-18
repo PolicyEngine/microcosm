@@ -1389,3 +1389,52 @@ def test_redraw_counts_young_people_holding_the_element_for_its_fit() -> None:
             lcwra_target=10.0,
             young_lcwra_target=10.0,
         )
+
+
+def test_a_units_young_people_holding_the_element_are_its_young_and_flagged() -> None:
+    # Vahid's review of PolicyEngine/microcosm#1663: the count is young people
+    # who hold the flag, in units whose award includes the element; counting
+    # the young alone or the flagged alone would not give these.
+    person = pd.DataFrame(
+        {
+            "person_benunit_id": [1, 1, 2, 2, 3, 4],
+            uc_take_up.UC_TAKE_UP_LCWRA_FLAG: [True, True, False, True, True, True],
+        }
+    )
+    # Unit 1: two young people with the flag. Unit 2: a young person without it
+    # and an older partner with it. Unit 3: a young person with it, whose award
+    # would not include the element. Unit 4: an older person with it.
+    young = np.asarray([True, True, True, False, True, False])
+    lcwra_units = np.asarray([True, True, False, True])
+
+    counts = uc_take_up.young_people_holding_the_element(
+        person, np.asarray([1, 2, 3, 4]), young, lcwra_units
+    )
+
+    assert counts.tolist() == [2.0, 0.0, 0.0, 0.0]
+
+
+def test_the_joint_solve_records_its_rounds_and_whether_it_converged(
+    monkeypatch,
+) -> None:
+    # Two fits: the logs settle inside the cap.
+    _, two = _young_lcwra_pool(young_lcwra_people=None, young_lcwra_target=None)[0]
+    solve = two["lcwra_fit"]["joint_solve"]
+    assert solve["converged"] is True
+    assert solve["claims_settled"] is True
+    assert 1 < solve["rounds"] < solve["round_cap"] == uc_take_up._JOINT_ROUNDS
+
+    # Three fits: a log keeps moving inside a stretch of equal claims, so the
+    # cap stops the solve, but its last round changed no unit's claim.
+    _, three = _young_lcwra_pool()[0]
+    assert three["lcwra_fit"]["joint_solve"]["claims_settled"] is True
+
+    # Stopped by the cap after one round, the receipt says neither.
+    monkeypatch.setattr(uc_take_up, "_JOINT_ROUNDS", 1)
+    _, capped = _young_lcwra_pool()[0]
+    assert capped["lcwra_fit"]["joint_solve"] == {
+        "rounds": 1,
+        "round_cap": 1,
+        "converged": False,
+        "claims_settled": False,
+    }

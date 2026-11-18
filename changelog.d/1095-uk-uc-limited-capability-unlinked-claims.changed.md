@@ -13,9 +13,12 @@ Universal Credit claims without a linked DWP record now take an imputed limited 
 - The linked rules then assign the flags, with the claim's first claimant in place of the UC row's person.
 - Claims in which a claimant has their own ESA award keep the proxy, since the award carries DWP's determination. Linked claims with one stay out of the rates, so each rate is measured on the kind of claim that draws from it.
 
-**The receipt** adds each cell's rate, and each proxy and condition group's, and beside it the rate of the linked claims with their own ESA award that the cell leaves out. A rate is printed only where its LCWRA claims and the rest each rest on three source households or more.
+**The receipt** adds each cell's rate, and each proxy and condition group's, and beside it the rate of the linked claims with their own ESA award that the cell leaves out.
+- A rate is printed only where its LCWRA claims and the rest each rest on three source households or more.
+- A group's rate is printed only where the claims of the withheld cells inside it, together, pass that floor. A proxy group's rate over every age prints only where those of its withheld condition groups do. Otherwise, beside the cells it holds, a group's rate would tell which way a withheld one-household cell went (Vahid's review of PolicyEngine/microcosm#1663).
 
 **The take-up redraw** can hold young people with the element to a count of their own (`uc_take_up`, PolicyEngine/microcosm#1663).
 - With a young count, the drawn units in which a young claimant or partner would hold the element claim at a third odds ratio, in place of the LCWRA fit's.
 - It is solved in turn with the age fit's ratio and the LCWRA fit's.
 - The stage passes no young count until Chronicle carries the fact (PolicyEngine/chronicle#442). Until then the redraw is unchanged.
+- The receipt's LCWRA fit now records the joint solve's rounds against its cap, whether the ratios' logs settled within the tolerance, and whether its last round left every unit's claim as the round before did. A solve can stop on the cap while one log still moves inside a stretch of equal claims.

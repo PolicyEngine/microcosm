@@ -397,6 +397,32 @@ _JOINT_ROUNDS = 8
 _JOINT_TOLERANCE = 1e-4
 
 
+def young_people_holding_the_element(
+    person: pd.DataFrame,
+    benunit_ids: np.ndarray,
+    young: np.ndarray,
+    lcwra_units: np.ndarray,
+) -> np.ndarray:
+    """Each benefit unit's young people holding the LCWRA element, for its fit.
+
+    The unit's claimants and partners aged 16 to 24 (``young``) who hold
+    ``uc_limited_capability_for_WRA``, counted only where the unit's award
+    would include the element (``lcwra_units``), in ``benunit_ids``' order.
+    """
+
+    flagged = person[UC_TAKE_UP_LCWRA_FLAG].fillna(False).to_numpy(dtype=bool)
+    per_unit = (
+        pd.Series((np.asarray(young, dtype=bool) & flagged).astype(np.float64))
+        .groupby(person["person_benunit_id"].to_numpy())
+        .sum()
+        .reindex(benunit_ids)
+        .fillna(0.0)
+        .to_numpy()
+    )
+    # Only a unit whose award would include the element pays it.
+    return np.where(np.asarray(lcwra_units, dtype=bool), per_unit, 0.0)
+
+
 def uc_award_bands(award: np.ndarray) -> np.ndarray:
     """Each unit's award band index, or -1 where it has no award.
 
@@ -1192,6 +1218,15 @@ def assign_award_band_take_up(
     lcwra_status: str | None = None
     young_lcwra_theta: float | None = None
     young_lcwra_status: str | None = None
+    # How many rounds the joint solve took; whether it stopped on the
+    # tolerance rather than the round cap; and whether its last round left
+    # every unit's claim as the round before did, which a capped stop can
+    # still reach where a ratio's log moves inside a stretch of equal claims
+    # (Vahid's review of PolicyEngine/microcosm#1663: a capped stop read as a
+    # fit).
+    joint_rounds = 0
+    joint_converged = False
+    joint_claims_settled = False
     if lcwra_units is not None:
         # The ratios in turn, each with the others held, until no log moves
         # more than the tolerance (María's choices of 2026-11-11; the young
@@ -1203,7 +1238,9 @@ def assign_award_band_take_up(
         def held_ratio(log: float | None) -> float | None:
             return None if log is None else float(np.exp(log))
 
+        previous_claims: np.ndarray | None = None
         for _ in range(_JOINT_ROUNDS):
+            joint_rounds += 1
             before_round = (log_young, log_lcwra, log_young_lcwra)
             if young_people is not None:
                 held_lcwra = float(np.exp(log_lcwra))
@@ -1234,12 +1271,22 @@ def assign_award_band_take_up(
                     float(young_lcwra_target),
                     "young_lcwra",
                 )
+            round_claims = realize(
+                held_ratio(log_young),
+                float(np.exp(log_lcwra)),
+                held_ratio(log_young_lcwra),
+            )
+            joint_claims_settled = previous_claims is not None and bool(
+                np.array_equal(round_claims, previous_claims)
+            )
+            previous_claims = round_claims
             if all(
                 now is None or abs(now - then) <= _JOINT_TOLERANCE
                 for now, then in zip(
                     (log_young, log_lcwra, log_young_lcwra), before_round, strict=True
                 )
             ):
+                joint_converged = True
                 break
         theta = held_ratio(log_young)
         lcwra_theta = float(np.exp(log_lcwra))
@@ -1397,6 +1444,12 @@ def assign_award_band_take_up(
                 else UK_WITHHELD
             ),
             "target_unreachable": lcwra_status,
+            "joint_solve": {
+                "rounds": joint_rounds,
+                "round_cap": _JOINT_ROUNDS,
+                "converged": joint_converged,
+                "claims_settled": joint_claims_settled,
+            },
         }
         if young_lcwra_people is not None:
             carried = sources(entitled_gb & young_lcwra_unit)
@@ -1663,17 +1716,9 @@ def redraw_uc_take_up(
                 f"UC take-up's young LCWRA fit reads person.{UC_TAKE_UP_LCWRA_FLAG}, "
                 "which uc_limited_capability stores before it."
             )
-        flagged = person[UC_TAKE_UP_LCWRA_FLAG].fillna(False).to_numpy(dtype=bool)
-        per_unit = (
-            pd.Series((young & flagged).astype(np.float64))
-            .groupby(person["person_benunit_id"].to_numpy())
-            .sum()
-            .reindex(benunit["benunit_id"].to_numpy())
-            .fillna(0.0)
-            .to_numpy()
+        young_lcwra_people = young_people_holding_the_element(
+            person, benunit["benunit_id"].to_numpy(), young, lcwra_units
         )
-        # Only a unit whose award would include the element pays it.
-        young_lcwra_people = np.where(lcwra_units, per_unit, 0.0)
     would_claim, receipt = assign_award_band_take_up(
         award=award,
         family=family,
