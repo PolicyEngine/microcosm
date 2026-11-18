@@ -57,7 +57,64 @@ not open files on an external drive (`Operation not permitted`). `sha_of` runs t
 those jobs a Homebrew build came first and read every input on that drive, so `--resolve` reported no input
 problems. The worktree's Python read a file there that `/usr/bin/python3` could not open.
 
-### 2. A rerun from `main` must set the feed and crosswalk pins, or the driver refuses (`from the code`)
+### 2. The driver needs the original SCF 2022 summary extract, which the Federal Reserve replaced (`predicted`)
+
+`scf_wealth.py` pins two digests for the SCF 2022 summary extract, one for the zip at
+`https://www.federalreserve.gov/econres/files/scfp2022s.zip` and one for its member `rscfp2022.dta`
+([scf_wealth.py#L161-L176](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/packages/microcosm-build/src/microcosm/build/us_runtime/scf_wealth.py#L161-L176)).
+The Federal Reserve replaced that zip on 9 October 2026
+([#1368](https://github.com/PolicyEngine/microcosm/issues/1368)). On 18 November 2026 (UTC), `curl -sI` of the URL
+reported a length of 3,715,841 bytes and a last-modified date of 9 October 2026. The same day, a
+[comment on #1368](https://github.com/PolicyEngine/microcosm/issues/1368#issuecomment-6966217460) reported the
+sha256 of the replacement's member and its size, 34,487,960 bytes.
+
+`verify_inputs` checks the file that `SCF` names against the member pin and the original member's size, 24,904,185
+bytes
+([route_a.sh#L106-L106](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/route_a.sh#L106-L106)).
+It records `$role missing: $path` for a missing file, and `$role size $asize != $size: $path` and
+`$role sha256 $actual != $sha: $path` for the replacement zip's member
+([route_a.sh#L127-L137](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/route_a.sh#L127-L137)).
+The run then stops with `input problems (see above)`, as in entry 1.
+
+The prefetch stage calls `fetch_scf_2022_summary_extract()` with no arguments, so the fetch ignores `SCF` and looks
+in its own cache, `~/.cache/microcosm/scf`
+([route_a.sh#L488-L502](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/route_a.sh#L488-L502),
+[scf_wealth.py#L521-L527](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/packages/microcosm-build/src/microcosm/build/us_runtime/scf_wealth.py#L521-L527)).
+Without a network call, it returns a cached `rscfp2022.dta` whose digest equals the member pin
+([#L528-L533](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/packages/microcosm-build/src/microcosm/build/us_runtime/scf_wealth.py#L528-L533)).
+Otherwise it downloads the zip and checks the zip pin before the member pin
+([#L535-L558](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/packages/microcosm-build/src/microcosm/build/us_runtime/scf_wealth.py#L535-L558)).
+The replacement zip, whose digest #1368 gives as `d4e139c6…`, fails that check, and the fetch raises
+`SCF 2022 summary-extract zip failed sha-256 verification: expected {expected_zip_sha256}, got {digest}.`
+([#L541-L547](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/packages/microcosm-build/src/microcosm/build/us_runtime/scf_wealth.py#L541-L547)).
+The driver logs a first failure and goes on, with
+`prefetch failed (see $RUN/prefetch-sup/run.log); the base proceeds and the release retries the prefetch`
+([route_a.sh#L503-L508](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/route_a.sh#L503-L508)).
+After the base preflight of entry 7, the driver runs the prefetch again and stops on a second failure, before the
+release starts
+([#L575-L576](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/route_a.sh#L575-L576),
+[#L470-L475](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/route_a.sh#L470-L475)).
+It logs `FAIL: prefetch <result>; log $RUN/prefetch-sup/run.log`, with the start of the stage's `RESULT.json` as
+`<result>`
+([#L111-L115](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/route_a.sh#L111-L115)).
+The supervisor writes the stage's output, the fetch's zip message included, to that `run.log`
+([supervise.py#L96-L102](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/supervise.py#L96-L102)).
+
+A driver run passes both checks when the file `SCF` names and the cached member match the member pin. The
+release then reads `SCF` through `--scf-summary-extract` in place of the fetch
+([route_a.sh#L277-L277](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/route_a.sh#L277-L277),
+[build_us_fiscal_refresh_release.py#L14805-L14818](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/build_us_fiscal_refresh_release.py#L14805-L14818)).
+A release-tool run without that flag calls the same fetch
+([#L1741-L1752](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/build_us_fiscal_refresh_release.py#L1741-L1752)),
+and on a machine whose cache lacks the original member it stops at the zip check. `--resolve` runs `verify_inputs`
+but never the prefetch
+([route_a.sh#L287-L298](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/route_a.sh#L287-L298)),
+so it passes a run whose cache lacks the original member. The fetch checks a cached member against the member pin
+alone, so the prefetch passes with a copy of the original member at `~/.cache/microcosm/scf/rscfp2022.dta`. On a
+machine with no copy, the driver has no setting that passes either check, and #1368 tracks pointing the fetch at a
+copy of the original zip.
+
+### 3. A rerun from `main` must set the feed and crosswalk pins, or the driver refuses (`from the code`)
 
 The driver keeps the published run's feed and crosswalk pins as its defaults on purpose
 ([route_a.sh#L55-L56](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/route_a.sh#L55-L56),
@@ -91,7 +148,7 @@ The 18 October rerun runbook's first script stops sooner, with
 `REFUSED: main changed the release feed; review its pins/settings`
 ([us-route-a-rerun-20261018.md#L191-L192](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/docs/us-route-a-rerun-20261018.md#L191-L192)).
 
-### 3. `uv sync` stops on the host's interpreter or on `UV_FROZEN` (`predicted`)
+### 4. `uv sync` stops on the host's interpreter or on `UV_FROZEN` (`predicted`)
 
 `ensure_worktree` runs `"$UV" sync --all-packages --locked --extra us` with no `--python`, and it stops with
 `uv sync in $WT` when the sync fails
@@ -116,7 +173,7 @@ When an agent starts the driver from such a shell, it stops at the same `uv sync
 an agent ran the same sync command outside the driver at the pinned commit, with `UV_PYTHON=3.14` and without
 `UV_FROZEN`, and it completed.
 
-### 4. The base needs 80 GiB of available RAM locally, or a lineage match on Modal (`predicted`)
+### 5. The base needs 80 GiB of available RAM locally, or a lineage match on Modal (`predicted`)
 
 The driver admits a local base only with 80 GiB of available RAM and, before any checkpoint exists, 70 GiB of
 free disk, and it caps the base at 100 GiB RSS
@@ -147,7 +204,7 @@ even inside its 1e-12 relative tolerance
 ([lineage_class_check.py#L112-L122](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/lineage_class_check.py#L112-L122),
 [#L138-L138](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/lineage_class_check.py#L138-L138)).
 
-### 5. The installed emitter predates the 0.16.0 minimum (`predicted`)
+### 6. An emitter older than the 0.16.0 minimum stops a build that requires telemetry (`from the code`)
 
 A build starts the separately installed `microcosm-emitter` as its child process, for telemetry, Orrery graph
 publication and the Hugging Face hand-over of staging run files
@@ -172,7 +229,7 @@ A local base starts the first emitter, after parsing its arguments and before re
 [#L865-L870](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/build_us_puf_support_base.py#L865-L870)).
 After a Modal base, the release starts the first emitter once it has parsed its arguments
 ([build_us_fiscal_refresh_release.py#L13434-L13446](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/build_us_fiscal_refresh_release.py#L13434-L13446)),
-so on that path the base preflight of entry 6 runs first
+so on that path the base preflight of entry 7 runs first
 ([route_a.sh#L560-L566](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/route_a.sh#L560-L566)).
 
 The driver never sets the variable itself, since it gives its base and release stages only `PYTHONUNBUFFERED`
@@ -189,7 +246,11 @@ hand-overs and queues no Orrery graph publication
 ([#L192-L202](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/packages/microcosm-build/src/microcosm/build/telemetry_emitter.py#L192-L202),
 [#L574-L583](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/packages/microcosm-build/src/microcosm/build/telemetry_emitter.py#L574-L583)).
 
-### 6. The preflight can stop the driver on exit 1 (`from the code`)
+On 18 November 2026 (UTC), `uv tool list` on a Mac that runs these builds reported `microcosm-emitter v0.13.0`.
+An agent then ran `uv tool install --python 3.14 'microcosm-emitter==0.16.0'` there, and `uv tool list` reported
+`microcosm-emitter v0.16.0`.
+
+### 7. The preflight can stop the driver on exit 1 (`from the code`)
 
 The driver runs `tools/preflight_us_release_gates.py` on the base with `--ledger-facts "$FEED"`, and it accepts exit 0
 (clean) or 2 (at risk) unless `RELEASE_DESPITE_PREFLIGHT_FAIL=1`
@@ -213,7 +274,7 @@ export-mass check found two columns under their bands at base weights.
 `social_security_survivors` held $67.8 billion against $80.5 billion to $241.5 billion. The preflight asks an agent
 to confirm that calibration targets each column; this run measured neither column after calibration.
 
-### 7. The QRF tail register must match the new export's concentrated columns (`predicted`)
+### 8. The QRF tail register must match the new export's concentrated columns (`predicted`)
 
 At its terminal batch, after calibration, the release evaluates the QRF tail-concentration gate on the export and
 raises `Release gates failed: ...` on any failure in the batch
@@ -236,23 +297,93 @@ and the driver's comment asks for a register measured on the export that ships
 A base built at the pinned commit brings its own concentrated columns, so a register from another export
 will likely fail here.
 
-### 8. If #1635 merges first, its gate shadow can fail a finished base or release (`predicted`)
+### 9. If #1635 merges first, its gate shadow can stop a base or release as the tool starts (`from the code`)
 
 [#1635](https://github.com/PolicyEngine/microcosm/pull/1635), unmerged at the pinned commit, runs each US gate's
-`us/gates.json` entry in shadow beside today's gate. When a tool finishes, the shadow fails the run on a verdict
-difference that no threshold override explains
-([gate_shadow.py#L11-L16](https://github.com/PolicyEngine/microcosm/blob/2c34c57f0628a97598dda0c020242d429d6bb01b/packages/microcosm-build/src/microcosm/build/us_runtime/gate_shadow.py#L11-L16),
-[#L33-L39](https://github.com/PolicyEngine/microcosm/blob/2c34c57f0628a97598dda0c020242d429d6bb01b/packages/microcosm-build/src/microcosm/build/us_runtime/gate_shadow.py#L33-L39),
+`us/gates.json` entry in shadow beside today's gate. Every real run arms it unless `MICROCOSM_US_GATE_SHADOW=off`
+([gate_shadow.py#L43-L46](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/packages/microcosm-build/src/microcosm/build/us_runtime/gate_shadow.py#L43-L46),
+[#L115-L125](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/packages/microcosm-build/src/microcosm/build/us_runtime/gate_shadow.py#L115-L125),
 read at the pull request's
-[head commit](https://github.com/PolicyEngine/microcosm/commit/2c34c57f0628a97598dda0c020242d429d6bb01b)).
-Every real run arms it unless `MICROCOSM_US_GATE_SHADOW=off`
-([#L41-L44](https://github.com/PolicyEngine/microcosm/blob/2c34c57f0628a97598dda0c020242d429d6bb01b/packages/microcosm-build/src/microcosm/build/us_runtime/gate_shadow.py#L41-L44),
-[#L114-L124](https://github.com/PolicyEngine/microcosm/blob/2c34c57f0628a97598dda0c020242d429d6bb01b/packages/microcosm-build/src/microcosm/build/us_runtime/gate_shadow.py#L114-L124)),
-and #1635 arms it in both the base tool
-([build_us_puf_support_base.py#L992-L994](https://github.com/PolicyEngine/microcosm/blob/2c34c57f0628a97598dda0c020242d429d6bb01b/tools/build_us_puf_support_base.py#L992-L994))
-and the release tool
-([build_us_fiscal_refresh_release.py#L13820-L13820](https://github.com/PolicyEngine/microcosm/blob/2c34c57f0628a97598dda0c020242d429d6bb01b/tools/build_us_fiscal_refresh_release.py#L13820-L13820),
-[#L13438-L13445](https://github.com/PolicyEngine/microcosm/blob/2c34c57f0628a97598dda0c020242d429d6bb01b/tools/build_us_fiscal_refresh_release.py#L13438-L13445)).
+[head commit](https://github.com/PolicyEngine/microcosm/commit/455d466e99540b50eea8543f0d788ce015d51191)).
+On a verdict difference, today's gates set the build's exit: when a tool finishes, the shadow writes its comparison
+file and then prints each difference under
+`warning: US gate battery shadow for scope '<scope>' disagrees with today's gates`
+([#L11-L18](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/packages/microcosm-build/src/microcosm/build/us_runtime/gate_shadow.py#L11-L18),
+[#L372-L393](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/packages/microcosm-build/src/microcosm/build/us_runtime/gate_shadow.py#L372-L393),
+[#L1013-L1043](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/packages/microcosm-build/src/microcosm/build/us_runtime/gate_shadow.py#L1013-L1043)).
+The shadow records a fault in its own evaluation, or in clearing an earlier run's files, as a shadow error, and it
+warns when it cannot write its comparison
+([#L504-L516](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/packages/microcosm-build/src/microcosm/build/us_runtime/gate_shadow.py#L504-L516),
+[#L613-L622](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/packages/microcosm-build/src/microcosm/build/us_runtime/gate_shadow.py#L613-L622),
+[#L1020-L1034](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/packages/microcosm-build/src/microcosm/build/us_runtime/gate_shadow.py#L1020-L1034)).
+
+A fault while a tool builds its shadow raises at the start. The release tool builds it once it has hashed its base and
+named the release, before its first gate, and `main` re-raises the fault
+([build_us_fiscal_refresh_release.py#L13806-L13839](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/tools/build_us_fiscal_refresh_release.py#L13806-L13839),
+[#L13874-L13879](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/tools/build_us_fiscal_refresh_release.py#L13874-L13879),
+[#L13426-L13452](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/tools/build_us_fiscal_refresh_release.py#L13426-L13452)).
+The driver runs the base with `--stage all --checkpoint-dir`
+([route_a.sh#L522-L523](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/route_a.sh#L522-L523)),
+so the base tool builds the parent's shadow before the first stage starts, and each stage builds its own
+([build_us_puf_support_base.py#L893-L935](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/tools/build_us_puf_support_base.py#L893-L935),
+[#L948-L963](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/tools/build_us_puf_support_base.py#L948-L963),
+[#L1074-L1079](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/tools/build_us_puf_support_base.py#L1074-L1079)).
+A fault in a stage's setup fails that stage, and the parent stops with
+`Checkpointed stage {stage!r} failed with exit code {completed.returncode}.`
+([#L968-L986](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/tools/build_us_puf_support_base.py#L968-L986)).
 The driver accepts only exit 0 from the base and from the release
 ([route_a.sh#L534-L534](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/route_a.sh#L534-L534),
 [#L585-L587](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/route_a.sh#L585-L587)).
+
+The staged base locks its run config in the checkpoint directory before it builds the shadow, and with the switch
+`off` the tool adds `gate_battery_shadow: off` to that config
+([build_us_puf_support_base.py#L949-L953](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/tools/build_us_puf_support_base.py#L949-L953),
+[#L1356-L1362](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/tools/build_us_puf_support_base.py#L1356-L1362)).
+The stage runtime refuses a resume there that changes the switch, either way, with
+`outer-stage run_config differs from the locked run context; start a new checkpoint directory for changed build inputs.`
+([outer_stage_runtime.py#L244-L248](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/packages/microcosm-build/src/microcosm/build/outer_stage_runtime.py#L244-L248),
+[#L271-L280](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/packages/microcosm-build/src/microcosm/build/outer_stage_runtime.py#L271-L280)).
+The driver keeps those checkpoints in `$RUN/base-checkpoints`, inside the run folder for its commit
+([route_a.sh#L329-L329](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/route_a.sh#L329-L329),
+[#L515-L515](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/route_a.sh#L515-L515)).
+To turn the shadow off for an unfinished base, as after a setup fault, an agent sets a new `RUN_ROOT` or moves
+`$RUN/base-checkpoints` aside, and the base starts over
+([route_a.sh#L519-L519](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/route_a.sh#L519-L519),
+[outer_stage_runtime.py#L249-L256](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/packages/microcosm-build/src/microcosm/build/outer_stage_runtime.py#L249-L256)).
+The driver never exports `MICROCOSM_US_GATE_SHADOW`, so a stage sees the switch only when the run's environment or
+an `export` line in the settings file carries it
+([route_a.sh#L32-L34](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/route_a.sh#L32-L34),
+[supervise.py#L84-L85](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/supervise.py#L84-L85)).
+
+An agent reads the shadow's result from its comparison file: `us_national.gate_battery_shadow_comparison.json` under
+`<out>/gate_battery_shadow/<release>/` for the release, and `us_base.gate_battery_shadow_comparison.json` under
+`<out>/gate_battery_shadow/` for the base
+([build_us_fiscal_refresh_release.py#L13264-L13280](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/tools/build_us_fiscal_refresh_release.py#L13264-L13280),
+[build_us_puf_support_base.py#L1003-L1014](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/tools/build_us_puf_support_base.py#L1003-L1014),
+[gate_shadow.py#L128-L137](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/packages/microcosm-build/src/microcosm/build/us_runtime/gate_shadow.py#L128-L137)).
+Its `verdict_difference` turns true on any difference that no threshold override explains and on any shadow error
+([#L1157-L1161](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/packages/microcosm-build/src/microcosm/build/us_runtime/gate_shadow.py#L1157-L1161),
+[#L1199-L1200](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/packages/microcosm-build/src/microcosm/build/us_runtime/gate_shadow.py#L1199-L1200)),
+and the supervisor sends a stage's stderr, the warning included, to that stage's `run.log`
+([supervise.py#L96-L102](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/supervise.py#L96-L102)).
+When the shadow of a finished run cannot write its comparison, it prints `could not write <path>` and then each
+difference under a warning that says `its comparison could not be written to <path>`
+([gate_shadow.py#L1020-L1043](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/packages/microcosm-build/src/microcosm/build/us_runtime/gate_shadow.py#L1020-L1043),
+[#L372-L393](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/packages/microcosm-build/src/microcosm/build/us_runtime/gate_shadow.py#L372-L393)).
+After that write fault, an agent finds the differences only in the stage's `run.log`.
+The shadow pairs today's `not_run`
+with the battery's `evidence_absent` as a match, so the comparison lists an entry today's code skipped as matching,
+with `not_run` in its `legacy.status`
+([#L230-L236](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/packages/microcosm-build/src/microcosm/build/us_runtime/gate_shadow.py#L230-L236),
+[#L268-L270](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/packages/microcosm-build/src/microcosm/build/us_runtime/gate_shadow.py#L268-L270),
+[#L746-L758](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/packages/microcosm-build/src/microcosm/build/us_runtime/gate_shadow.py#L746-L758)).
+The driver refuses a selection source or `--exact-k` in `RELEASE_EXTRA_ARGS`, and the template's value carries no
+`--input-mass-reference-h5` or `--scf-education-debt`
+([route_a.sh#L241-L245](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/route_a.sh#L241-L245),
+[#L272-L279](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/route_a.sh#L272-L279),
+[route_a.env.example#L46-L46](https://github.com/PolicyEngine/microcosm/blob/c7a5f96796ac6a16e7c520925e2517e9abbc8512/tools/route_a/route_a.env.example#L46-L46)).
+A run on those settings records six `us_national` entries as not run
+([build_us_fiscal_refresh_release.py#L7968-L7972](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/tools/build_us_fiscal_refresh_release.py#L7968-L7972),
+[#L14206-L14211](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/tools/build_us_fiscal_refresh_release.py#L14206-L14211),
+[#L15536-L15540](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/tools/build_us_fiscal_refresh_release.py#L15536-L15540),
+[#L16312-L16317](https://github.com/PolicyEngine/microcosm/blob/455d466e99540b50eea8543f0d788ce015d51191/tools/build_us_fiscal_refresh_release.py#L16312-L16317)).
