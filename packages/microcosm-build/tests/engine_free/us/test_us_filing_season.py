@@ -9,7 +9,10 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from microcosm.build.us_runtime.filing_season import filing_season_comparison
+from microcosm.build.us_runtime.filing_season import (
+    PROCESSED_RETURN_DOMAIN,
+    filing_season_comparison,
+)
 from microcosm.build.us_runtime.fiscal_targets import (
     compile_us_fiscal_target_registry,
     us_fiscal_target_exclusion_receipt,
@@ -39,11 +42,46 @@ def _fact(year, measure, value, *, week=30, band="all", unit="count"):
     )
     fact["period"]["type"] = "tax_year"
     fact["observed_measure"]["unit"] = unit
+    fact["universe_constraints"] = {
+        "domain": PROCESSED_RETURN_DOMAIN,
+        "constraints": [
+            {
+                "variable": key,
+                "operator": "==",
+                "role": "filter",
+                "value": fact["dimensions"][key],
+            }
+            for key in ("filing_season_week", "processing_cutoff")
+        ],
+    }
     return fact
 
 
 def _compare(rows):
     return filing_season_comparison(rows, first_year=2024, last_year=2025, week=30)
+
+
+def test_rejects_incompatible_processing_universe():
+    first = _fact(2024, "return_count", 100)
+    last = _fact(2025, "return_count", 100)
+    last["universe_constraints"]["constraints"][0]["value"] = 29
+    with pytest.raises(ValueError, match="Incompatible IRS processing universe"):
+        _compare([first, last])
+
+
+def test_rejects_unequal_income_bands_with_the_same_label():
+    facts = [_fact(y, "return_count", 100, band="low") for y in (2024, 2025)]
+    for fact, upper in zip(facts, (1000, 2000), strict=True):
+        fact["universe_constraints"]["constraints"].append(
+            {
+                "variable": "us:statutes/26/62#adjusted_gross_income",
+                "operator": "<",
+                "value": upper,
+                "unit": "usd",
+            }
+        )
+    with pytest.raises(ValueError, match="Inconsistent AGI bounds"):
+        _compare(facts)
 
 
 def test_annual_compiler_keeps_reviewed_eitc_and_ignores_partial_observations():

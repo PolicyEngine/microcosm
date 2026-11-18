@@ -7,6 +7,10 @@ from datetime import date
 from math import isfinite
 from typing import Any
 
+PROCESSED_RETURN_DOMAIN = (
+    "current_tax_year_individual_returns_initially_processed_by_filing_season_cutoff"
+)
+
 
 def filing_season_comparison(
     facts: Iterable[Mapping[str, Any]], *, first_year: int, last_year: int, week: int
@@ -23,6 +27,7 @@ def filing_season_comparison(
     years = (first_year, last_year)
     cells: dict[tuple[str, str], dict[int, int | float]] = {}
     units: dict[str, str] = {}
+    income_bounds_by_band = {}
     cutoffs: dict[int, str] = {}
     for fact in facts:
         dims = fact.get("dimensions", {})
@@ -38,6 +43,29 @@ def filing_season_comparison(
         year = int(period["value"])
         if year not in years:
             continue
+        universe = fact.get("universe_constraints", {})
+        income_range = dims["income_range"]
+        income_variable = "us:statutes/26/62#adjusted_gross_income"
+        constraints = universe.get("constraints", [])
+        filters = {
+            (c.get("variable"), c.get("operator"), str(c.get("value")))
+            for c in constraints
+            if c.get("variable") != income_variable
+        }
+        if universe.get("domain") != PROCESSED_RETURN_DOMAIN or filters != {
+            ("processing_cutoff", "==", str(dims.get("processing_cutoff"))),
+            ("filing_season_week", "==", str(week)),
+        }:
+            raise ValueError(
+                f"Incompatible IRS processing universe or cutoff for TY{year}, week {week}."
+            )
+        bounds = frozenset(
+            (c.get("operator"), c.get("value"), c.get("unit"))
+            for c in constraints
+            if c.get("variable") == income_variable
+        )
+        if income_bounds_by_band.setdefault(income_range, bounds) != bounds:
+            raise ValueError(f"Inconsistent AGI bounds for {income_range}.")
         cutoff = date.fromisoformat(dims["processing_cutoff"])
         if (
             cutoff.year != year + 1
@@ -48,9 +76,15 @@ def filing_season_comparison(
             )
         measure_id = measure["source_measure_id"]
         unit = measure["unit"]
+        if (
+            measure_id in {"return_count", "total_itemized_deductions_returns"}
+            and unit != "count"
+        ):
+            raise ValueError(
+                f"Inconsistent units for {measure_id}: itemization rates require return counts."
+            )
         if units.setdefault(measure_id, unit) != unit:
             raise ValueError(f"Inconsistent units for {measure_id}.")
-        income_range = dims["income_range"]
         value = fact["value"]
         if type(value) not in (float, int) or not isfinite(value):
             raise ValueError(f"Non-numeric observation for {measure_id} in TY{year}.")
