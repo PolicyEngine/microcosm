@@ -69,7 +69,6 @@ from dataclasses import dataclass, replace
 import numpy as np
 import pandas as pd
 import quantile_forest
-from quantile_forest import RandomForestQuantileRegressor
 from sklearn.ensemble import HistGradientBoostingClassifier
 
 from microcosm.fit.model import (
@@ -1252,7 +1251,7 @@ def _fill_tree_leaves(
             )
 
 
-class _InPlaceLeafQRF(RandomForestQuantileRegressor):
+class _InPlaceLeafQRF(quantile_forest.RandomForestQuantileRegressor):
     """A quantile forest whose leaf array is filled in place.
 
     After growing its trees, quantile-forest maps every leaf to the training
@@ -1273,14 +1272,14 @@ class _InPlaceLeafQRF(RandomForestQuantileRegressor):
     ``_get_y_train_leaves`` and wraps :meth:`fit` only to check the version:
     both refuse any quantile-forest release other than
     :data:`_SUPPORTED_QUANTILE_FOREST_VERSION`. scikit-learn's validation
-    messages name this class instead of ``RandomForestQuantileRegressor``. A
-    ``max_samples_leaf`` so large that the whole forest's array exceeds the
-    largest size numpy can describe raises numpy's ``ValueError`` here, where
-    the library, allocating one tree at a time, raises ``MemoryError``. A
-    failed allocation here comes before any tree's ``random`` calls. So with a
-    leaf cap set, if the library gets past at least one tree before its own
-    allocation or its final copy fails, Python's ``random`` state can differ
-    from the library's after that failed fit.
+    messages name this class. A ``max_samples_leaf`` so large that the whole
+    forest's array exceeds the largest size numpy can describe raises numpy's
+    ``ValueError`` here, where the library, allocating one tree at a time,
+    raises ``MemoryError``. A failed allocation here comes before any tree's
+    ``random`` calls. So with a leaf cap set, if the library gets past at
+    least one tree before its own allocation or its final copy fails,
+    Python's ``random`` state can differ from the library's after that failed
+    fit.
 
     The saving lasts while pages stay untouched. Pages of an ``np.zeros``
     array take no memory until something touches them. A write makes a page
@@ -1404,13 +1403,13 @@ _SERIALIZED_FOREST_N_JOBS = 1
 class _Forest:
     """A fitted quantile forest plus the feature columns it was fit on."""
 
-    model: RandomForestQuantileRegressor
+    model: _InPlaceLeafQRF
     columns: tuple[str, ...]
 
     def __getstate__(self) -> dict[str, object]:
         """Return a worker-count-neutral pickle payload.
 
-        ``RandomForestQuantileRegressor.n_jobs`` controls only runtime
+        ``_InPlaceLeafQRF.n_jobs`` controls only runtime
         parallelism. A shallow model copy lets serialization pin that field
         without mutating the fitted object that will perform the first draw.
         """
@@ -1423,7 +1422,7 @@ class _Forest:
         """Restore the current runtime worker setting after trusted loading."""
 
         model = state["model"]
-        if not isinstance(model, RandomForestQuantileRegressor):
+        if not isinstance(model, _InPlaceLeafQRF):
             raise TypeError("Serialized QRF forest model has an invalid type.")
         columns = state["columns"]
         if not isinstance(columns, tuple) or any(

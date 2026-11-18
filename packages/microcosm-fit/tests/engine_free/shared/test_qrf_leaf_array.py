@@ -848,6 +848,18 @@ def test_subclass_pickles_and_clones_like_the_library_class() -> None:
     assert cloned.get_params() == model.get_params()
 
 
+def test_forest_refuses_a_pickled_library_class_model() -> None:
+    """A stored forest must hold the in-place class, not the library's."""
+    predictors, target = _continuous_donors(seed=11, rows=120)
+    library_model = RandomForestQuantileRegressor(
+        n_estimators=2, max_samples_leaf=None, random_state=3, n_jobs=1
+    )
+    library_model.fit(predictors, target)
+    payload = pickle.dumps(qrf._Forest(model=library_model, columns=("a", "b", "c")))
+    with pytest.raises(TypeError, match="invalid type"):
+        pickle.loads(payload)
+
+
 # ----------------------------------------------------------------------------
 # The exact quantile-forest version the override mirrors
 # ----------------------------------------------------------------------------
