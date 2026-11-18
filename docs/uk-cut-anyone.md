@@ -188,7 +188,7 @@ is what admits a builder to the licensed inputs.
 | NTS 2002-2024 (6 tabs) | `policyengine-uk-data-private` `nts_2002_24.zip` @ `559b69e9` | fetched, every member matches its pin |
 | LCFS 2024-25 (2 tabs) | `policyengine-uk-data-private` `lcfs_2024_25.zip` @ `11051052` (a repack of the extracted files) | fetched, every member matches its pin |
 | APS April 2024-March 2025 (1 tab) | `policyengine-uk-data-private` `aps_2024_25.zip` @ `ebebd1e0` (a repack of the extracted files) | fetched, the member matches its pin |
-| Conditioned atomic-area supports (3 files, microcosm#931) | not hosted yet: no location is named | pinned to `sources.yaml`'s conditioned register, which the spine holds `--atomic-support-ew`, `--atomic-support-scotland` and `--atomic-support-ni` to. Until a location is named, `fetch` refuses them unless the three files `tools/build_uk_conditioned_area_supports.py` writes are already in `inputs/atomic_area_supports/`, where they are verified like any other input |
+| Conditioned atomic-area supports (3 files, microcosm#931) | `policyengine/microcosm-uk-build-inputs` `atomic-area-supports/<the sha256 of their pins as canonical JSON>/`, read at main | pinned to `sources.yaml`'s conditioned register, which the spine holds `--atomic-support-ew`, `--atomic-support-scotland` and `--atomic-support-ni` to. They are the files `tools/build_uk_conditioned_area_supports.py` writes from public statistics only. The path follows the register, so each re-pin needs its set hosted at the path `run_uk_cut.py inputs` prints. Files already in `inputs/atomic_area_supports/` are verified like any other input and kept |
 
 ### NTS, LCFS and APS
 
@@ -456,6 +456,62 @@ It commits. It pushes and opens a draft only when asked. The pull request
 body lists what needs a person: the UC floor acceptance, any dataset overlays
 certification dropped, warnings and failing tests.
 
+## The dense spine alone
+
+The dense line's spine carries 15 geographic clones of every household
+(microcosm#931), so it needs far more memory than the national cut's
+one-clone spine. `dense-spine` builds only that spine, on a machine large
+enough for it. The dense calibration then runs wherever the spine's files
+are copied to.
+
+```bash
+cd <clean checkout of the commit to build>
+uv sync --all-packages --locked --extra uk
+export HF_TOKEN=…
+MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY="$(security find-generic-password -a "$USER" -s microcosm-uk-gate-signing-key -w)" \
+  uv run --no-sync python tools/run_uk_cut.py dense-spine --label k15
+# a pushed commit not on main also takes --allow-off-main '<who agreed and why>'
+```
+
+It fetches every input but the Chronicle artifact. Then it checks the
+checkout, the environment, the signing key, the registers' expiries and the
+host: 400 GB of free disk by default, which `--min-free-gb` changes. A
+release-candidate spine is shippable only once a registered key signs it,
+so the key must be registered **active** ([Signing keys](#signing-keys)). It
+needs no emitter, reference or publication access, and its telemetry stays
+local. It builds the spine as a release candidate at 15 clones, with
+`--stage-profile-dir`:
+
+| Path | What it holds |
+|---|---|
+| `cuts/<label>-<sha9>/dense-spine/` | the spine H5 with its `.sha256`, `.build.json`, `.spine_gates.json` and `.hmrc_replay.json` sidecars, and the checkpoint store a resumed build reads |
+| `cuts/<label>-<sha9>/dense-spine-profile/stage_profile.json` | each graph node's peak memory and wall time. A node that fails keeps its failure message there, so the folder lies outside every checkout |
+| `cuts/<label>-<sha9>/dense-spine-handoff/` | hard links to the files a dense build binds, and to the profile |
+
+The command is resumable: a done spine is not built again, and an
+unfinished attempt stays until `--retry-spine` moves it, and its profile,
+aside. Once the spine is done, the command prints its upload, a separate,
+deliberate call that needs `HF_TOKEN` to write to
+`policyengine/microcosm-uk-build-inputs`:
+
+```bash
+uv run --no-sync hf upload policyengine/microcosm-uk-build-inputs \
+  <work dir>/cuts/<label>-<sha9>/dense-spine-handoff spines/<label>-<sha9> \
+  --repo-type dataset --commit-message 'UK dense spine <label>-<sha9> (microcosm#931)'
+```
+
+A dense build binds the uploaded spine with `--input-h5`, `--input-sha256`
+(the digest in the `.sha256` file) and, for a release candidate,
+`--spine-support-ew`, `--spine-support-scotland` and `--spine-support-ni`.
+The bound spine's gate digests, resource pins and policyengine-uk must be
+the checkout's, so build the dense line at the spine's commit.
+
+**Cost.** No full-sample spine at 15 clones has run yet. The one-clone
+full-sample spine took 46 minutes, 21 GB of peak memory and a 15 GB
+checkpoint store (17 Nov); a 10% sample at 15 clones peaked at 18 GiB
+(11 Nov). From those, expect about 40 to 80 GiB of peak memory, 6 to 12
+hours and up to 250 GB of disk. The profile records the real figures.
+
 ## Regions: the dense cut
 
 policyengine.py routes constituency and local-authority runs only to a dense
@@ -465,7 +521,8 @@ policyengine-uk before a dense cut on that version exists. There are four
 routes:
 
 1. **Ship together.** Build a dense cut on the same version, from a spine of
-   15 clones built as a release candidate (the
+   15 clones built as a release candidate ([The dense spine
+   alone](#the-dense-spine-alone), then the
    [dense runbook](uk-dense-release-assembly-runbook-762.md)). This is correct
    but slow. Like every cut since microcosm#931, it needs the three
    conditioned atomic-area supports (see [Inputs](#inputs)).

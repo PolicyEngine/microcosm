@@ -414,9 +414,11 @@ release whose build recorded staging telemetry that never reached its repo
 publishes without the flag. `tools/run_uk_cut.py`
 ([uk-cut-anyone.md](uk-cut-anyone.md)) runs a UK national cut's steps in
 order from one checkout, each skipped once its outputs exist and verify. It
-fetches each input by its pin, except the three conditioned atomic-area
-supports, which no location hosts yet: `fetch` takes them only from
-`inputs/atomic_area_supports/`, verified against `sources.yaml`'s register.
+fetches each input by its pin; the three conditioned atomic-area supports
+come from `policyengine/microcosm-uk-build-inputs`, under the sha256 of their
+`sources.yaml` pins. Its `dense-spine` command builds only the dense line's
+15-clone spine, with its memory profile, and prints the upload that hands the
+spine to a dense build elsewhere.
 It hands the signing key, which must be registered in
 `microcosm.data.gate_signing_keys`, only to the steps that sign or verify. It
 does not complete a cut today. The national step refuses until the
