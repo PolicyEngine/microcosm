@@ -46,6 +46,7 @@ from microcosm.build.uk_runtime.spi_support import (
 )
 from microcosm.build.uk_runtime.terminal_gates import UKZeroWeightStratumDeclaration
 from microcosm.frame import WeightKind
+from test_support.microcosm_build.uk_spi_income import SPIChainDouble
 
 
 def _base_frame(*, time_period: str = "2023") -> object:
@@ -328,7 +329,7 @@ def _fake_fit_label(targets: tuple[str, ...]) -> str:
     )
 
 
-class _FakeQRF:
+class _FakeQRF(SPIChainDouble):
     events: list[tuple[str, tuple[str, ...], list[float]]] = []
     instances: list[_FakeQRF] = []
 

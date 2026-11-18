@@ -1177,6 +1177,81 @@ class UKSPIIncomeImputationResult:
 
 
 @dataclass(frozen=True)
+class _FitGateEvidence:
+    """What the stage's receipts read from one fitted QRF, without its forests.
+
+    A fitted model holds every target's forests, so the stage keeps this in
+    its place once it has finished drawing from the model. The methods are the
+    ones :mod:`~microcosm.build.uk_runtime.qrf_gates` reads from a fitted model.
+    """
+
+    weight_kind: str
+    outcomes: Mapping[str, str | None]
+    levels: Mapping[str, tuple[str, ...]]
+    level_reports: Mapping[str, dict[str, object]]
+
+    def gate_outcomes(self) -> dict[str, str | None]:
+        return dict(self.outcomes)
+
+    def gate_levels(self) -> dict[str, tuple[str, ...]]:
+        return dict(self.levels)
+
+    def gate_level_reports(self) -> dict[str, dict[str, object]]:
+        return {name: dict(report) for name, report in self.level_reports.items()}
+
+
+def _fit_gate_evidence(
+    fitted: Any, *, read_outcomes: bool, read_levels: bool
+) -> _FitGateEvidence:
+    """Read a fitted QRF's receipts, only those this run's result reports."""
+
+    level_reports = getattr(fitted, "gate_level_reports", None)
+    return _FitGateEvidence(
+        weight_kind=fitted.weight_kind,
+        outcomes=fitted.gate_outcomes() if read_outcomes else {},
+        levels=fitted.gate_levels() if read_levels else {},
+        level_reports=(
+            level_reports() if read_levels and level_reports is not None else {}
+        ),
+    )
+
+
+def _fit_draw_stage2_target(
+    model: Any,
+    frame: Frame,
+    recipients: pd.DataFrame,
+    prior_draws: pd.DataFrame,
+    *,
+    state: Any,
+    quantiles: np.ndarray,
+    sign_uniforms: np.ndarray,
+    groups: np.ndarray,
+    read_gate_outcomes: bool,
+) -> tuple[Any, np.ndarray, dict[str, str]]:
+    """Fit and draw the chain's next stage-2 target.
+
+    Returns the next chain state, the draw and the target's gate outcome. The
+    step result holds the target's forests, so returning without it frees them
+    before the next target is fitted.
+    """
+
+    step = model.fit_draw_next(
+        frame,
+        recipients,
+        prior_draws,
+        state=state,
+        weights="importance",
+        quantiles=quantiles,
+        sign_uniforms=sign_uniforms,
+        groups=groups,
+    )
+    outcomes = (
+        gate_outcomes(FRS_ONLY_FIT_NAME, step.fitted) if read_gate_outcomes else {}
+    )
+    return step.state, step.raw_draw, outcomes
+
+
+@dataclass(frozen=True)
 class _SPIDonorFingerprint:
     """Stable-file identity binding a reviewed hash to the parsed donor bytes."""
 
@@ -1591,6 +1666,10 @@ def impute_uk_spi_income_support(
     stage1_level_kwargs = (
         {"gate_level_columns": stage1_level_columns} if stage1_level_columns else {}
     )
+    # The receipts this run reports, read from each model before it is freed.
+    read_stage1_gate_outcomes = stage1_gate_calibration != UK_DEFAULT_GATE_CALIBRATION
+    read_stage2_gate_outcomes = stage2_gate_calibration != UK_DEFAULT_GATE_CALIBRATION
+    read_stage1_gate_levels = bool(stage1_level_columns)
     qrf_cls = _qrf_class()
     stage1 = qrf_cls(
         n_estimators=n_estimators,
@@ -1613,8 +1692,9 @@ def impute_uk_spi_income_support(
     assert_analogue_map_covers(SPI_INCOME_QRF_OUTPUT_COLUMNS)
     reference_weights = training_weights.loc[reference_people]
     reference_targets = list(analogue_targets(SPI_INCOME_QRF_OUTPUT_COLUMNS))
-    reference_weight_kind: dict[str, str] = {}
-    reference_fits: list[Any] = []
+    # One entry per fold; the fold's forests are freed once it has located its
+    # recipients.
+    reference_evidence: list[_FitGateEvidence] = []
 
     def fit_reference(encoded: pd.DataFrame, observed: pd.DataFrame):
         frame = _person_fit_frame(
@@ -1635,8 +1715,13 @@ def impute_uk_spi_income_support(
             weights="importance",
             groups=person.loc[encoded.index, "person_household_id"].to_numpy(),
         )
-        reference_weight_kind.setdefault("kind", fitted.weight_kind)
-        reference_fits.append(fitted)
+        reference_evidence.append(
+            _fit_gate_evidence(
+                fitted,
+                read_outcomes=read_stage1_gate_outcomes,
+                read_levels=read_stage1_gate_levels,
+            )
+        )
         return fitted
 
     training_folds, used_folds = cell_fold_ids(
@@ -1683,6 +1768,14 @@ def impute_uk_spi_income_support(
         quantiles=transport.quantiles,
         sign_uniforms=transport.sign_uniforms,
     )
+    # Nothing draws from the stage-1 forests again, so they are freed before
+    # stage 2 is fitted.
+    stage1_evidence = _fit_gate_evidence(
+        stage1,
+        read_outcomes=read_stage1_gate_outcomes,
+        read_levels=read_stage1_gate_levels,
+    )
+    del stage1
     _validate_predictions(
         stage1_draws,
         expected=SPI_INCOME_QRF_OUTPUT_COLUMNS,
@@ -1862,42 +1955,47 @@ def impute_uk_spi_income_support(
     )
     # Stage 2 deliberately derives a distinct RNG stream from the single
     # reviewed stage seed; changing this edits the derivation convention.
-    stage2 = qrf_cls(
+    stage2_model = qrf_cls(
         n_estimators=n_estimators,
         seed=seed + 1,
         gate_calibration=stage2_gate_calibration,
-    ).fit(
+    )
+    stage2_groups = training_person["person_household_id"].to_numpy()
+    # The chain fits and draws one target at a time, so one target's forests
+    # are in memory at once. Its fit stream and each target's conditioning are
+    # those of one fit over every target followed by predict_from_uniforms.
+    stage2_state = stage2_model.start_chain(
         stage2_frame,
         list(encoded_train.columns),
         list(stage2_outputs),
         weights="importance",
-        groups=training_person["person_household_id"].to_numpy(),
+        groups=stage2_groups,
     )
+    stage2_weight_kind = stage2_state.weight_kind
     stage2_keys = integer_record_keys(
         person.loc[spi_age_domain, "person_id"].to_numpy(),
         label="SPI stage-2 person_id",
     )
-    stage2_draws = stage2.predict_from_uniforms(
-        encoded_target,
-        quantiles={
-            target: stable_identity_uniforms(
-                stage2_keys,
-                seed=seed + 1,
-                salt=f"{FRS_ONLY_FIT_NAME}:{_STAGE2_SALT_NAMES.get(target, target)}",
-            )
-            for target in stage2_outputs
-        },
-        sign_uniforms={
-            target: stable_identity_uniforms(
-                stage2_keys,
-                seed=seed + 1,
-                salt=(
-                    f"{FRS_ONLY_FIT_NAME}:{_STAGE2_SALT_NAMES.get(target, target)}:sign"
-                ),
-            )
-            for target in stage2_outputs
-        },
-    )
+    stage2_draws = pd.DataFrame(index=encoded_target.index)
+    stage2_gate_outcomes: dict[str, str] = {}
+    while not stage2_state.is_complete:
+        target = stage2_state.next_target
+        salt = f"{FRS_ONLY_FIT_NAME}:{_STAGE2_SALT_NAMES.get(target, target)}"
+        stage2_state, stage2_draw, target_gate_outcomes = _fit_draw_stage2_target(
+            stage2_model,
+            stage2_frame,
+            encoded_target,
+            stage2_draws,
+            state=stage2_state,
+            quantiles=stable_identity_uniforms(stage2_keys, seed=seed + 1, salt=salt),
+            sign_uniforms=stable_identity_uniforms(
+                stage2_keys, seed=seed + 1, salt=f"{salt}:sign"
+            ),
+            groups=stage2_groups,
+            read_gate_outcomes=read_stage2_gate_outcomes,
+        )
+        stage2_draws[target] = stage2_draw
+        stage2_gate_outcomes.update(target_gate_outcomes)
     _validate_predictions(
         stage2_draws,
         expected=stage2_outputs,
@@ -1961,9 +2059,9 @@ def impute_uk_spi_income_support(
     return UKSPIIncomeImputationResult(
         person=person,
         fit_weight_records=(
-            FitWeightRecord(SPI_DONOR_FIT_NAME, stage1.weight_kind),
-            FitWeightRecord(SPI_TRANSPORT_FIT_NAME, reference_weight_kind["kind"]),
-            FitWeightRecord(FRS_ONLY_FIT_NAME, stage2.weight_kind),
+            FitWeightRecord(SPI_DONOR_FIT_NAME, stage1_evidence.weight_kind),
+            FitWeightRecord(SPI_TRANSPORT_FIT_NAME, reference_evidence[0].weight_kind),
+            FitWeightRecord(FRS_ONLY_FIT_NAME, stage2_weight_kind),
         ),
         donor_path=donor_path,
         donor_sha256=(
@@ -1998,31 +2096,23 @@ def impute_uk_spi_income_support(
         gift_anchor=gift_anchor,
         donor_frame=donor_frame_receipt,
         gate_outcomes={
-            **(
-                {}
-                if stage1_gate_calibration == UK_DEFAULT_GATE_CALIBRATION
-                else {
-                    **gate_outcomes(SPI_DONOR_FIT_NAME, stage1),
-                    **pooled_gate_outcomes(SPI_TRANSPORT_FIT_NAME, reference_fits),
-                }
-            ),
-            **(
-                {}
-                if stage2_gate_calibration == UK_DEFAULT_GATE_CALIBRATION
-                else gate_outcomes(FRS_ONLY_FIT_NAME, stage2)
-            ),
+            **gate_outcomes(SPI_DONOR_FIT_NAME, stage1_evidence),
+            **pooled_gate_outcomes(SPI_TRANSPORT_FIT_NAME, reference_evidence),
+            **stage2_gate_outcomes,
         },
         gate_levels=(
             {
                 "declared": list(stage1_gate_level_columns),
                 "settings": gate_level_settings_receipt(),
                 "offset_levels": {
-                    **gate_levels(SPI_DONOR_FIT_NAME, stage1),
-                    **pooled_gate_levels(SPI_TRANSPORT_FIT_NAME, reference_fits),
+                    **gate_levels(SPI_DONOR_FIT_NAME, stage1_evidence),
+                    **pooled_gate_levels(SPI_TRANSPORT_FIT_NAME, reference_evidence),
                 },
                 "level_fits": {
-                    **gate_level_reports(SPI_DONOR_FIT_NAME, stage1),
-                    **pooled_gate_level_reports(SPI_TRANSPORT_FIT_NAME, reference_fits),
+                    **gate_level_reports(SPI_DONOR_FIT_NAME, stage1_evidence),
+                    **pooled_gate_level_reports(
+                        SPI_TRANSPORT_FIT_NAME, reference_evidence
+                    ),
                 },
             }
             if stage1_level_columns
