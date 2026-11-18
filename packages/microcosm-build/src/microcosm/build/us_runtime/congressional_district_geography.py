@@ -8,11 +8,13 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.us_runtime.congressional_district_vintage import (
+    SOI_CD_2022_RECORD_SET,
+    SOI_CD_2023_RECORD_SET,
+)
 from microcosm.frame import Frame
 
-SOI_CONGRESSIONAL_DISTRICT_RECORD_SET_ID = (
-    "irs_soi.ty2023.congressional_district_2022.all_returns"
-)
+SOI_CONGRESSIONAL_DISTRICT_RECORD_SET_ID = SOI_CD_2022_RECORD_SET
 CONGRESSIONAL_DISTRICT_GEOID_COLUMN = "congressional_district_geoid"
 
 
@@ -27,10 +29,21 @@ def congressional_district_distribution_from_ledger_facts(
     the existing Microcosm convention ``state_fips * 100 + 00``.
     """
 
+    facts = tuple(facts)
+    # A 2023 file's raw rows are 118th-plan districts. Only sample its
+    # district weights after the compiler's 118th-to-current translation.
+    selected = SOI_CD_2022_RECORD_SET
+    if any(
+        _mapping_at(f, "layout").get("record_set_id") == SOI_CD_2023_RECORD_SET
+        and _mapping_at(f, "lineage").get("target_geography_vintage")
+        == "119th_congress"
+        for f in facts
+    ):
+        selected = SOI_CD_2023_RECORD_SET
     district_rows: list[dict[str, Any]] = []
     state_total_rows: list[dict[str, Any]] = []
     for fact in facts:
-        if not _is_cd_return_count_fact(fact):
+        if not _is_cd_return_count_fact(fact, selected):
             continue
         value = _numeric_value(fact)
         if value <= 0.0:
@@ -210,12 +223,12 @@ def congressional_district_assignment_summary(
     }
 
 
-def _is_cd_return_count_fact(fact: Mapping[str, Any]) -> bool:
+def _is_cd_return_count_fact(fact: Mapping[str, Any], record_set_id: str) -> bool:
     layout = _mapping_at(fact, "layout")
     observed_measure = _mapping_at(fact, "observed_measure")
     dimensions = _mapping_at(fact, "dimensions")
     return (
-        layout.get("record_set_id") == SOI_CONGRESSIONAL_DISTRICT_RECORD_SET_ID
+        layout.get("record_set_id") == record_set_id
         and observed_measure.get("source_measure_id") == "return_count"
         and (dimensions.get("filing_status") or "all") == "all"
         and (dimensions.get("income_range") or "all") == "all"

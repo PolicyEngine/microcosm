@@ -304,6 +304,44 @@ def test_county_population_spec_carries_county_hierarchy() -> None:
     assert record["county_fips"] == "01001"
 
 
+def test_county_shares_follow_latest_complete_period_within_target_year():
+    parents = [_state_spec(), _state_spec("adjusted_gross_income", 250.0)]
+    counties = {1001: 50.0, 1003: 50.0}
+
+    def row(year, code, measure, value):
+        fact = _fact(code, measure, value)
+        fact["period"]["value"] = year
+        fact["layout"]["record_set_id"] = f"irs_soi.ty{year}.county_totals"
+        return fact
+
+    facts = [
+        row(2022, code, measure, 100.0)
+        for measure in ("return_count", "adjusted_gross_income")
+        for code in ("01001", "01003")
+    ] + [
+        row(2023, "01001", "return_count", 1.0),
+        row(2023, "01003", "return_count", 3.0),
+        row(2023, "01001", "adjusted_gross_income", 1.0),
+        row(2025, "01001", "return_count", 5.0),
+        row(2025, "01003", "return_count", 5.0),
+    ]
+    surface = _county().state_county_soi_surface(parents, facts, counties)
+    blocks = {b["concept"]: b for b in surface.receipt["blocks"]}
+    assert blocks["return_count"]["county_source_year"] == 2023
+    assert blocks["adjusted_gross_income"]["county_source_year"] == 2022
+    assert blocks["adjusted_gross_income"]["skipped_incomplete_years"] == [2023]
+    values = {
+        (spec.metadata["source_measure_id"], spec.metadata["county_fips"]): spec.value
+        for spec in surface.specs
+    }
+    assert values == {
+        ("return_count", "01001"): 25,
+        ("return_count", "01003"): 75,
+        ("adjusted_gross_income", "01001"): 125,
+        ("adjusted_gross_income", "01003"): 125,
+    }
+
+
 def test_county_soi_reconciles_only_existing_broad_state_concepts() -> None:
     parents = [
         _state_spec(),

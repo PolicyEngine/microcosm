@@ -313,7 +313,7 @@ def state_cd_soi_surface(
         soi_specs: Every compiled ``irs_soi`` spec (the ``full`` surface).
         state_surface_predicate: The ``state`` mode's predicate; its specs
             (Historic Table 2) are the state surface.
-        crosswalk: The 117th->119th CD crosswalk the compiler used; it names
+        crosswalk: The source-to-119th CD crosswalk the compiler used; it names
             each state's source-plan and current-plan districts.
         crosswalk_sha256: Recorded in the receipt.
         level_bridges: District-file-only measure -> sibling measure whose
@@ -728,7 +728,9 @@ def state_cd_soi_surface(
             for measure, values in sorted(factors_by_measure.items())
         },
         "crosswalk": {
-            "source_plan": "117th_congress",
+            "source_plan": "118th_congress"
+            if str(crosswalk["source_geography_id"].iloc[0]).startswith("5001800US")
+            else "117th_congress",
             "target_plan": "119th_congress",
             "method": "packaged 2020-block population crosswalk",
             "sha256": crosswalk_sha256,
