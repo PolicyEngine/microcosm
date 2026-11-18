@@ -17,7 +17,7 @@ import importlib.util
 import re
 import sys
 from pathlib import Path
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -105,17 +105,38 @@ class _FakeEngineLedger:
         self.reform_systems: list[object] = []
 
 
+def _rebinding_copy(original):
+    """A shallow copy as policyengine-core 3.36's ``clone`` makes it: a bound
+    method of the original kept on the instance is bound to the copy (3.32's
+    ``clone`` copies it as is, as ``copy.copy`` does)."""
+
+    duplicate = copy.copy(original)
+    for key, value in list(vars(duplicate).items()):
+        if isinstance(value, MethodType) and value.__self__ is original:
+            setattr(duplicate, key, MethodType(value.__func__, duplicate))
+    return duplicate
+
+
 class _FakeHolders:
-    """policyengine-core's holder view: the periods each variable is known for."""
+    """policyengine-core's holder view: the periods each variable is known for.
+
+    ``clone_branches``: False makes each branch a fresh holder view; True
+    copies the parent as core 3.32's ``clone`` does; ``"rebind"`` copies it as
+    core 3.36's does (:func:`_rebinding_copy`)."""
 
     def __init__(self, known: dict[str, tuple[str, ...]] | None = None) -> None:
         self.known = {name: list(periods) for name, periods in (known or {}).items()}
         self.branches: dict[str, _FakeHolders] = {}
-        self.clone_branches = False
+        self.clone_branches: bool | str = False
 
     def get_branch(self, name: str):
         if name not in self.branches:
-            branch = copy.copy(self) if self.clone_branches else _FakeHolders()
+            if self.clone_branches == "rebind":
+                branch = _rebinding_copy(self)
+            elif self.clone_branches:
+                branch = copy.copy(self)
+            else:
+                branch = _FakeHolders()
             branch.branches = {}
             branch.known = {}
             self.branches[name] = branch
@@ -140,7 +161,7 @@ def _install_fake_engine(
     aggregate_household: int | None = None,
     aggregate_reform_only: bool = False,
     aggregate_in_baseline: bool = False,
-    clone_branches: bool = False,
+    clone_branches: bool | str = False,
     stored_inputs: dict[str, tuple[str, ...]] | None = None,
 ):
     """``aggregate_reads`` maps a variable to the population aggregates its

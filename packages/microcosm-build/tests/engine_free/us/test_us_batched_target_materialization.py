@@ -325,7 +325,7 @@ def test_batched_base_simulation_refuses_an_aggregate_first_reached_in_last_batc
 
 
 @pytest.mark.parametrize("branch_depth", [1, 2])
-@pytest.mark.parametrize("clone_branches", [False, True])
+@pytest.mark.parametrize("clone_branches", [False, True, "rebind"])
 def test_batched_base_simulation_reads_aggregates_held_by_live_branches(
     monkeypatch, branch_depth, clone_branches
 ) -> None:
@@ -344,7 +344,7 @@ def test_batched_base_simulation_reads_aggregates_held_by_live_branches(
         )
 
 
-@pytest.mark.parametrize("clone_branches", [False, True])
+@pytest.mark.parametrize("clone_branches", [False, True, "rebind"])
 def test_batched_base_simulation_reads_aggregates_held_by_deleted_branches(
     monkeypatch, clone_branches
 ) -> None:
@@ -386,9 +386,50 @@ def test_batched_base_simulation_refuses_a_stored_aggregate_input(
     assert all(simulation.dataset is None for simulation in ledger.simulations)
 
 
+@pytest.mark.parametrize("clone_branches", [True, "rebind"])
+def test_branch_hook_retains_branches_under_both_core_clone_behaviours(
+    clone_branches,
+) -> None:
+    """Core 3.32's clone copies the parent's bound get_branch wrapper; core
+    3.36's binds it to the copy (microcosm#1676). Either way every branch is
+    retained, each branch's own branches are too, and the originals return."""
+
+    builder = _load_builder_module()
+    simulation = _FakeHolders()
+    simulation.clone_branches = clone_branches
+    with builder._record_engine_branches(simulation):
+        child = simulation.get_branch("child")
+        grandchild = child.get_branch("grandchild")
+        retained = simulation._target_materialization_branches
+        assert [id(item) for item in retained] == [
+            id(simulation),
+            id(child),
+            id(grandchild),
+        ]
+        assert child.get_branch.__self__ is child
+    assert "get_branch" not in vars(simulation)
+    assert "get_branch" not in vars(child)
+    assert "_target_materialization_branches" not in vars(simulation)
+
+
+def test_branch_hook_refuses_a_simulation_copied_outside_get_branch() -> None:
+    """A copy made outside get_branch carries the wrapper, bound to the copy
+    as core 3.36's clone binds it, but was never recorded: its get_branch
+    refuses rather than make a branch nothing retains."""
+
+    builder = _load_builder_module()
+    simulation = _FakeHolders()
+    with builder._record_engine_branches(simulation):
+        stray = _rebinding_copy(simulation)
+        with pytest.raises(RuntimeError, match=r"was not recorded"):
+            stray.get_branch("branch")
+    assert "get_branch" not in vars(simulation)
+
+
+@pytest.mark.parametrize("clone_branches", [True, "rebind"])
 @pytest.mark.parametrize("aggregate_in_baseline", [False, True])
 def test_batched_reform_simulation_refuses_population_aggregates(
-    monkeypatch, aggregate_in_baseline
+    monkeypatch, aggregate_in_baseline, clone_branches
 ) -> None:
     builder = _load_builder_module()
     ledger = _install_fake_engine(
@@ -400,7 +441,7 @@ def test_batched_reform_simulation_refuses_population_aggregates(
         aggregate_delete_branch=True,
         aggregate_reform_only=True,
         aggregate_in_baseline=aggregate_in_baseline,
-        clone_branches=True,
+        clone_branches=clone_branches,
     )
     with pytest.raises(ValueError, match=r"computed medicaid_slcsp_state_denominator@"):
         builder._materialize_target_frame(

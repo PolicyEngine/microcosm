@@ -7015,8 +7015,18 @@ def _record_engine_branches(simulation):
     originals: dict[int, tuple[object, object, bool]] = {}
     seen: set[int] = set()
 
+    def recorded(current):
+        entry = originals.get(id(current))
+        if entry is None:
+            raise RuntimeError(
+                "A simulation carries the target-materialization get_branch "
+                "wrapper but was not recorded, so its branches cannot be "
+                "retained: it was copied outside get_branch."
+            )
+        return entry
+
     def get_branch(current, *args, **kwargs):
-        branch = originals[id(current)][1](*args, **kwargs)
+        branch = recorded(current)[1](*args, **kwargs)
         retain(branch, parent=current)
         return branch
 
@@ -7034,13 +7044,7 @@ def _record_engine_branches(simulation):
                 # underlying method and bind it to the child.
                 owner = original.__self__
                 source = owner if id(owner) in originals else parent
-                if source is None or id(source) not in originals:
-                    raise RuntimeError(
-                        "A simulation branch carries the target-materialization "
-                        "get_branch wrapper from a simulation that was not "
-                        "recorded; its original method cannot be recovered."
-                    )
-                _, parent_original, had_instance_method = originals[id(source)]
+                _, parent_original, had_instance_method = recorded(source)
                 original = MethodType(parent_original.__func__, current)
             originals[id(current)] = (current, original, had_instance_method)
             current.get_branch = MethodType(get_branch, current)
