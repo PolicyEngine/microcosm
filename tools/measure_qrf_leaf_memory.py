@@ -65,7 +65,8 @@ duplicates rows as it does for weighted survey donors.
   so most pages are never written, and the in-place fill saves most of the
   array as well as the second copy.
 
-The defaults finish in under a minute on a laptop and need a few GB. Memory
+The defaults are sized to finish in minutes on a laptop and to need a few GB;
+only smaller runs have been measured. Memory
 grows roughly in proportion to rows times width (the cap, for
 ``near-discrete``) times trees, so raise ``--rows`` with care::
 
