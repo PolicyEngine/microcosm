@@ -7424,6 +7424,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "_assert_cd_vintage_support_matches",
         lambda h5_path, crosswalk_metadata, **kwargs: None,
     )
+    # The stub base is not an HDF5 file, and it records no location rule.
+    monkeypatch.setattr(builder, "_read_base_location_attributes", lambda h5_path: {})
     if terminal_mode == "telemetry":
 
         class LiveTelemetry:

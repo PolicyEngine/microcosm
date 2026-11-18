@@ -17684,9 +17684,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # microcosm#443: #437 dropped this call while inserting the batched raise,
     # so attempts 13/14 smoke-scored a stale artifact from a prior run.
     release_engine.write_dataset(export_frame, dataset_path, period=PERIOD)
-    # microcosm#1047/#1647: before anything binds the file's sha256, carry the
-    # base's household-location rule onto it (metadata only; no column moves).
-    _write_release_location_attributes(dataset_path, base_location_attributes)
     # microcosm#1026: the stored-input gate above graded a model of the
     # writer's output; the written bytes are graded whatever the gate reached
     # and must earn the same verdict (no refusal, if the gate could not
@@ -17708,6 +17705,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     )
     if stored_input_premise_failure is not None:
         raise RuntimeError(stored_input_premise_failure)
+    # microcosm#1047/#1647: before anything binds the file's sha256, carry the
+    # base's household-location rule onto it (root attributes only; no
+    # column moves, so the stored-input verdict above still holds).
+    _write_release_location_attributes(dataset_path, base_location_attributes)
     # Route A remediation (microcosm#956): every post-export stage below (the
     # smoke, reform validation, demographics) scores THIS file through one
     # household-batched scorer instead of one whole-pool Microsimulation each.
