@@ -20503,6 +20503,49 @@ def test_a_build_refuses_an_out_awaiting_certification(tmp_path: Path) -> None:
         builder._refuse_overwriting_a_build_awaiting_certification(root)
 
 
+def test_a_record_of_an_earlier_schema_names_the_code_that_built_it(
+    tmp_path: Path,
+) -> None:
+    """A record an earlier commit wrote carries no digest of itself. It is
+    refused as a record of another schema, not as an edited one, and so is a
+    rerun into its --out, both naming the code that can certify it; a failed
+    one may still be built over."""
+    builder = _load_builder_module()
+    path, _ = _build_record_fixture(builder, tmp_path)
+    current = builder.US_BUILD_RECORD_SCHEMA_VERSION
+    older = {
+        key: value
+        for key, value in json.loads(path.read_text()).items()
+        if key != "record_sha256"
+    }
+    older["schema_version"] = current - 1
+    path.write_text(json.dumps(older))
+    advice = f"Certify the build with the code it was built with ({'c' * 40})"
+
+    with pytest.raises(RuntimeError) as refused:
+        builder._read_us_build_record(path)
+    assert (
+        f"has build record schema {current - 1}; this tool reads schema {current}. "
+        f"{advice}, or build it again into a new --out."
+    ) in str(refused.value)
+    assert "record_sha256" not in str(refused.value)
+
+    with pytest.raises(RuntimeError) as refused:
+        builder._refuse_overwriting_a_build_awaiting_certification(path.parent)
+    assert (
+        f"awaiting certification ({builder.US_BUILD_RECORD_FILENAME}) with build "
+        f"record schema {current - 1}, which this tool does not read. {advice}, "
+        "or choose a new --out for this build."
+    ) in str(refused.value)
+
+    older["terminal_gate_failures"] = ["Input coverage failed: x"]
+    path.write_text(json.dumps(older))
+    builder._refuse_overwriting_a_build_awaiting_certification(path.parent)
+    assert builder._certify_with_its_own_code({}) == (
+        "Certify the build with the code it was built with"
+    )
+
+
 def test_certify_main_refuses_packages_other_than_the_builds(
     tmp_path: Path, monkeypatch
 ) -> None:

@@ -95,13 +95,15 @@ A US national build and its certification are two steps (microcosm#1585 item
   an edit after the build is refused; anyone who recomputes the digest can
   still change it, until certification signs (PR 4b). Certification rebuilds
   the scoring plan and refuses one that differs from the recorded plan.
-- **Refusals.** Certification refuses a record whose files changed after the
-  build, or a file it would read that appeared after the build; a checkout at
-  another commit, or with changes outside the build directory; packages other
-  than the ones the build was built with (`runtime` in the record), since the
-  manifests name those as the build's; and a release directory that already
-  carries a release manifest. A build refuses an `--out` that holds a build
-  awaiting certification; a failed build's `--out` may be built into again.
+- **Refusals.** Certification refuses a record of another schema, naming the
+  commit that built it, whose code can certify it; a record whose files
+  changed after the build, or a file it would read that appeared after the
+  build; a checkout at another commit, or with changes outside the build
+  directory; packages other than the ones the build was built with (`runtime`
+  in the record), since the manifests name those as the build's; and a release
+  directory that already carries a release manifest. A build refuses an
+  `--out` that holds a build awaiting certification; a failed build's `--out`
+  may be built into again.
 - **Staging.** Certification opens a staging run of its own where its build
   staged (the build's run id with `-certify` appended, to the build's staging
   repository), so the post-export verdicts and the manifests reach the staging

@@ -2616,7 +2616,8 @@ def _refuse_overwriting_a_build_awaiting_certification(release_root: Path) -> No
     and :func:`_refuse_certified_release_dir_reuse` would let a rerun
     overwrite it. A build whose release gates failed can never be certified,
     so a rerun into its --out still replaces it, as it did before builds
-    wrote a record.
+    wrote a record. A record of another schema is refused the same way, and
+    the refusal names the code that can certify it.
     """
 
     path = Path(release_root) / US_BUILD_RECORD_FILENAME
@@ -2624,19 +2625,35 @@ def _refuse_overwriting_a_build_awaiting_certification(release_root: Path) -> No
         return
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        payload = None
+    try:
         failed = (
             bool(payload["terminal_gate_failures"])
             and not (payload["settings"]["evidence_release"])
         )
-    except (OSError, ValueError, KeyError, TypeError):
+    except (KeyError, TypeError):
         failed = False
-    if not failed:
+    if failed:
+        return
+    awaiting = (
+        f"{release_root} holds a finished build awaiting certification "
+        f"({US_BUILD_RECORD_FILENAME})"
+    )
+    if (
+        isinstance(payload, dict)
+        and payload.get("schema_version") != US_BUILD_RECORD_SCHEMA_VERSION
+    ):
         raise RuntimeError(
-            f"{release_root} holds a finished build awaiting certification "
-            f"({US_BUILD_RECORD_FILENAME}). Certify it with "
-            f"{_certify_command(release_root)}, or choose a new --out for this "
-            "build."
+            f"{awaiting} with build record schema "
+            f"{payload.get('schema_version')!r}, which this tool does not read. "
+            f"{_certify_with_its_own_code(payload)}, or choose a new --out for "
+            "this build."
         )
+    raise RuntimeError(
+        f"{awaiting}. Certify it with {_certify_command(release_root)}, or "
+        "choose a new --out for this build."
+    )
 
 
 #: Files the release manifest declares whenever they exist, written only by
@@ -13243,7 +13260,10 @@ def _is_release_refusal(error: BaseException) -> bool:
 #: publisher requires.
 US_BUILD_RECORD_FILENAME = "build_record.json"
 US_BUILD_RECORD_KIND = "microcosm_us_national_build_record"
-US_BUILD_RECORD_SCHEMA_VERSION = 1
+#: Schema 2 added the build's provenance (``built_at``, ``runtime``), its
+#: staging settings and the record's own digest (``record_sha256``). A record
+#: of another schema is certified with the code that built it.
+US_BUILD_RECORD_SCHEMA_VERSION = 2
 #: The options of the build that its post-export checks read. Certification
 #: takes them from the record, never from its own command line, so a build is
 #: certified exactly as it was configured.
@@ -13691,6 +13711,15 @@ class _USBuildRecord:
         )
 
 
+def _certify_with_its_own_code(payload: Mapping[str, object]) -> str:
+    """Where a record of another schema certifies: with the code that built it."""
+
+    code = payload.get("code")
+    commit = code.get("git_commit") if isinstance(code, dict) else None
+    built_with = f" ({commit})" if isinstance(commit, str) and commit else ""
+    return f"Certify the build with the code it was built with{built_with}"
+
+
 def _read_us_build_record(path: Path) -> _USBuildRecord:
     """Read a build record and check the files it pins are the build's."""
 
@@ -13701,10 +13730,13 @@ def _read_us_build_record(path: Path) -> _USBuildRecord:
         raise RuntimeError(f"Cannot read the build record {path}: {error}") from error
     if not isinstance(payload, dict) or payload.get("kind") != US_BUILD_RECORD_KIND:
         raise RuntimeError(f"{path} is not a US national build record.")
+    # Before the digest: a record of another schema need not carry one.
     if payload.get("schema_version") != US_BUILD_RECORD_SCHEMA_VERSION:
         raise RuntimeError(
             f"{path} has build record schema {payload.get('schema_version')!r}; "
-            f"this tool reads schema {US_BUILD_RECORD_SCHEMA_VERSION}."
+            f"this tool reads schema {US_BUILD_RECORD_SCHEMA_VERSION}. "
+            f"{_certify_with_its_own_code(payload)}, or build it again into a "
+            "new --out."
         )
     if payload.get("record_sha256") != _us_build_record_digest(payload):
         raise RuntimeError(
