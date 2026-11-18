@@ -4,8 +4,9 @@ This runbook is for the operator who runs the next US national build. That is th
 first build on policyengine-us 2.145.3, policyengine-core 3.36.1 and
 spm-calculator 1.1.0, with `block_v1` household location. The build runs through
 `tools/route_a/route_a.sh` (see [tools/route_a/README.md](../tools/route_a/README.md)).
-The driver ends with a local release candidate and a hand-off. It publishes
-nothing. Publication and promotion stay Max's decision.
+Since #1672 the driver builds the release and stops with `ROUTE_A_BUILT.json`;
+`route_a.sh --certify` then certifies that build and ends with a hand-off. It
+publishes nothing. Publication and promotion stay Max's decision.
 
 The settings below come from María's rulings of 17 November 2026. Two decisions
 are still Max's, and they come before step 2:
@@ -28,6 +29,7 @@ Max's.
 | Tools | bash, git, openssl, pgrep, uv, CPython 3.14 | `UV_SYNC_PYTHON=3.14`: the lock's torch wheels stop at cp314 |
 | Base stage | 80 GiB free RAM to start; RSS cap 100 GiB; 6 h wall cap | `route_a.sh` base config |
 | Release stage | 50 GiB free RAM to start; RSS cap 110 GiB; 45 GiB free disk to start; 96 h wall cap | `route_a.sh` release config |
+| Certify stage | The release stage's limits (`CERTIFY_WALL_SECONDS` sets its wall cap) | `route_a.sh` certify config |
 | Disk | About 50 GiB for the base (44 GB of frame checkpoints and a 2.35 GB H5 on 16 September), plus the release's checkpoints | `route_a.sh` base notes |
 | Telemetry | `microcosm-emitter` 0.16.0 or newer on `PATH` (or `MICROCOSM_EMITTER_COMMAND`) | `minimum_emitter_version.json` |
 | Secret | `AGENT_SECRET`: an executable that prints the Hugging Face token for `get HUGGING_FACE_TOKEN_MAX` | `with_hf_token.sh` (only with staging on) |
@@ -155,24 +157,44 @@ cd "$WT_ROOT/microcosm-route-a-<first 12 characters of COMMIT>"
   ask: the planned fix skips QRF outputs no release-year engine variable reads.
 - Send back: the table the tool prints and `release-dry-run.json`.
 
-### Step 4: release, release preflight and publisher preflight (33 to 57 hours)
+### Step 4: build the release (about 7 to 9 hours)
 
 ```bash
 STOP_BEFORE_RELEASE=0 bash tools/route_a/route_a.sh
 ```
 
-- The driver keeps the accepted base and preflight and starts the release. The
-  last dense build (b5db384, 19 October) took 203,482 s in all; 13,470 s of it
-  ran through calibration, and the rest was export, terminal gates and
-  post-export scoring.
-- Success: `release-sup/ACCEPTED` is 0, the release manifest exists, the release
-  preflight verdict is 0 or 2, and `publisher --preflight-only` prints
-  `{"valid": true ...}`. The driver writes the hand-off with `published: false`.
-- Send back: the hand-off file, `route_a.log`, the release directory's
-  `release_manifest.json`, `calibration_diagnostics.json`,
-  `qrf_tail_concentration.json` and `input_mass_parity.json`, and the
-  `gate_battery_shadow` directory under the release output. Do not upload or
-  publish anything yourself.
+- The driver keeps the accepted base and preflight, builds the release (through
+  calibration, the export and the release gates) and stops. The 19 October and
+  3 November runs reached their terminal gates 8.3 and 6.5 hours in.
+- Pass no tier flag (`--evidence-release`): a build has no tier, and
+  certification chooses it (section 7).
+- Success: `release-sup/ACCEPTED` is 0, `<release-out>/build_record.json`
+  exists, and the run ends with `ROUTE_A_BUILT.json`.
+- Send back: `ROUTE_A_BUILT.json`, `route_a.log`, `build_record.json`, the
+  build's `calibration_diagnostics.json`, `qrf_tail_concentration.json` and
+  `input_mass_parity.json`, and the `gate_battery_shadow` directory beside the
+  release output.
+
+### Step 5: certify, then the two preflights (about 48 hours)
+
+```bash
+bash tools/route_a/route_a.sh --certify
+```
+
+- On the same `RUN_ROOT`, the driver skips the accepted stages, does not hash
+  the raw inputs again, and runs `tools/certify_us_national_build.py` on the
+  build. Certification runs the post-export checks (the reform-coverage smoke,
+  reform validation, demographics) on the written H5 and writes the manifests.
+  On 19 October these checks took about 48 of the run's 56.5 hours.
+- Then it runs the release-gate preflight on the release manifest and the
+  publisher's `--preflight-only` check, and writes the hand-off
+  (`ROUTE_A_DONE.json` or `ROUTE_A_BLOCKED.json`) with `published: false`.
+- A failed certification reruns alone with `--certify`; the build is never
+  rerun.
+- Success: the release manifest exists, the release-gate preflight verdict is 0
+  or 2, and `publisher --preflight-only` prints `{"valid": true ...}`.
+- Send back: the hand-off file, `route_a.log` and `release_manifest.json`. Do
+  not upload or publish anything yourself.
 
 ## 5. Stop and ask
 
@@ -188,7 +210,7 @@ Stop, keep every file, and report when:
   warns, so the release still finishes: read the file after the release and
   report it with the hand-off.
 - **S4** the supervisor stops a stage at a cap (RSS, wall, CPU or disk).
-- **S5** the reform-coverage smoke fails on a probe definition.
+- **S5** certification's reform-coverage smoke fails on a probe definition.
 
 Max's failure log (#1654) is the place for new observed stops.
 
@@ -213,10 +235,16 @@ Max's failure log (#1654) is the place for new observed stops.
 - Time and memory on the new engine, which projects one more year (to 2036) in
   post-export scoring.
 
-## 7. When certification becomes a final opt-in step
+## 7. Build, then certify: the behavior to expect
 
-María plans to move the data-quality checks into a final step that runs only when
-asked, to enable publication. This runbook follows today's inline gates. When
-that change lands, the terminal gates and post-export scoring in step 4 (about
-53 of the 56.5 hours on 19 October) move into that step, and steps 1 to 3 stay as
-they are.
+#1672 split the release into a build and a certification. María's rulings on
+it (18 November 2026) change two things in its first version. A follow-up PR
+brings both before this build, so expect this behavior, not #1672's:
+
+- **Certification may run at a later commit than the build's,** as for the UK.
+  A fix that lands between steps 4 and 5 does not need a new build.
+- **A build has no tier.** Certification chooses it (certified or evidence),
+  so the build passes no `--evidence-release`.
+
+Route A still stops after the build by default (`ROUTE_A_CERTIFY=0`); step 5
+asks for certification with `--certify`.
