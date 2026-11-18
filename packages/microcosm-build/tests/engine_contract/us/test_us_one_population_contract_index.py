@@ -12,9 +12,15 @@ from __future__ import annotations
 
 import pandas as pd
 
+from microcosm.build.us_runtime.multispine_pool import (
+    POOL_ENGINE_INPUT_PROJECTION_CONTRACT,
+)
 from microcosm.build.us_runtime.one_population_contract import (
     STRUCTURAL_COLUMNS,
     PolicyEngineUSVariableIndex,
+)
+from microcosm.frame.adapters.policyengine_us import (
+    PolicyEngineUSVariableMetadataIndex,
 )
 from test_support.microcosm_build.us_one_population_contract import (
     SPM_ROLE,
@@ -25,6 +31,14 @@ from test_support.microcosm_build.us_one_population_contract import (
     StandInVariableIndex,
     lock_engine_inputs,
 )
+
+
+def test_the_lock_inputs_are_the_installed_engine_inputs() -> None:
+    # The stand-in's inputs are the lock's 926 names; the installed index's
+    # year-blind input list must be the same names.
+    installed = frozenset(PolicyEngineUSVariableMetadataIndex().variables())
+    assert installed == frozenset(lock_engine_inputs())
+    assert len(installed) == POOL_ENGINE_INPUT_PROJECTION_CONTRACT.input_count
 
 
 def _every_classified_name() -> dict[str, pd.DataFrame]:
