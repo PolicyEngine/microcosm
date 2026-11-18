@@ -48,13 +48,18 @@ an engine: its input list is the engine ABI lock's committed projection (the
 926 names ``variables()`` returned at policyengine-us 2.2.1), plus explicit
 small sets of names computed at 2024 and of names whose only formula starts
 after 2024.
+
+:func:`reader_population` is the whole-frame differential's (X5) ASEC-only
+population: a Route A frame made by the production clone and tail operators,
+carrying every :data:`READER_GATES` reader's raw source columns, on which
+each of those gates passes, and its provenance rewrite with no ACS row.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from functools import cache
 from importlib.resources import files
@@ -63,6 +68,11 @@ from types import MappingProxyType
 import numpy as np
 import pandas as pd
 
+from microcosm.build.us_runtime.alimony import us_alimony_signal_gate
+from microcosm.build.us_runtime.medicare_take_up import (
+    US_MEDICARE_TAKE_UP_REQUIRED_SOURCE_COLUMNS,
+    us_medicare_take_up_signal_gate,
+)
 from microcosm.build.us_runtime.one_population_contract import (
     ACS_SUPPORT_CHANNEL,
     ASSEMBLED_CHANNELS,
@@ -85,8 +95,23 @@ from microcosm.build.us_runtime.puf_capital_gains_tail import (
     PUF_CAPITAL_GAINS_TAIL_DONOR_SYNTHETIC_COLUMN,
     PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN,
 )
+from microcosm.build.us_runtime.puf_support import clone_us_frame_for_puf_support
+from microcosm.build.us_runtime.retirement_contributions import (
+    US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS,
+    US_RETIREMENT_CONTRIBUTION_REQUIRED_SOURCE_COLUMNS,
+    us_retirement_contributions_signal_gate,
+)
+from microcosm.build.us_runtime.retirement_distributions import (
+    US_RETIREMENT_DISTRIBUTION_OUTPUT_COLUMNS,
+    US_RETIREMENT_DISTRIBUTION_REQUIRED_SOURCE_COLUMNS,
+    us_retirement_distributions_signal_gate,
+)
 from microcosm.build.us_runtime.spm_independence_role import (
     US_SPM_INDEPENDENCE_ROLE_PROVENANCE_KEY,
+)
+from microcosm.build.us_runtime.ssi_take_up import (
+    US_SSI_TAKE_UP_ANCHOR,
+    us_ssi_take_up_reporter_source_ids,
 )
 from microcosm.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
@@ -96,7 +121,19 @@ from microcosm.build.us_runtime.support_provenance import (
     support_clone_index_column,
     support_source_id_column,
 )
+from microcosm.build.us_runtime.weeks_unemployed import us_weeks_unemployed_signal_gate
+from microcosm.build.us_runtime.wic_claim import (
+    US_WIC_CLAIM_REQUIRED_SOURCE_COLUMNS,
+    us_wic_claim_signal_gate,
+)
+from microcosm.build.us_runtime.workers_compensation import (
+    US_WORKERS_COMPENSATION_REQUIRED_SOURCE_COLUMNS,
+    us_workers_compensation_signal_gate,
+)
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+from test_support.microcosm_build.us_tail_clone_fixtures import (
+    with_capital_gains_tail_copies,
+)
 
 # ------------------------------------------------------ stand-in index
 
@@ -1079,3 +1116,456 @@ def _check_role_bands(frame: Frame) -> None:
             raise AssertionError(
                 f"Generated {label} {value:.4f} is outside [{lower}, {upper}]."
             )
+
+
+# ------------------------------------- X5: a Route A frame for the readers
+
+#: The provenance-reading gates d2283's whole-frame differential (X5) runs:
+#: six of the seven assembled-form readers F-19 lists (alimony, Medicare
+#: take-up, both retirement families, WIC, workers' compensation; the
+#: seventh, ``acs_local_hours``, has no release gate), the weeks-unemployed
+#: gate (in F-19's first count of nine; PR 3 owns its UC-rule scope) and
+#: the SSI take-up reporter lineage (a reviewed caller of
+#: ``support_gate_source_channel_series``; the SSI gate itself grades
+#: diagnostics built from an engine-computed ``uncapped_ssi``).
+READER_GATES: Mapping[str, Callable[[Frame], object]] = MappingProxyType(
+    {
+        "alimony": us_alimony_signal_gate,
+        "medicare_take_up": us_medicare_take_up_signal_gate,
+        "retirement_contributions": us_retirement_contributions_signal_gate,
+        "retirement_distributions": us_retirement_distributions_signal_gate,
+        "ssi_take_up_reporters": us_ssi_take_up_reporter_source_ids,
+        "weeks_unemployed": us_weeks_unemployed_signal_gate,
+        "wic_claim": us_wic_claim_signal_gate,
+        "workers_compensation": us_workers_compensation_signal_gate,
+    }
+)
+
+#: Each reader's raw ASEC source columns, all on the reader frame.
+READER_SOURCE_COLUMNS: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "alimony": ("OI_VAL", "OI_OFF"),
+        "medicare_take_up": US_MEDICARE_TAKE_UP_REQUIRED_SOURCE_COLUMNS,
+        "retirement_contributions": US_RETIREMENT_CONTRIBUTION_REQUIRED_SOURCE_COLUMNS,
+        "retirement_distributions": US_RETIREMENT_DISTRIBUTION_REQUIRED_SOURCE_COLUMNS,
+        "ssi_take_up_reporters": (US_SSI_TAKE_UP_ANCHOR,),
+        "weeks_unemployed": ("LKWEEKS", "unemployment_compensation"),
+        "wic_claim": US_WIC_CLAIM_REQUIRED_SOURCE_COLUMNS,
+        "workers_compensation": US_WORKERS_COMPENSATION_REQUIRED_SOURCE_COLUMNS,
+    }
+)
+
+#: The WIC gate's source-local identity on a frame without spine ids.
+WIC_SOURCE_TRIPLE = ("source_year", "source_household_id", "source_person_id")
+
+_READER_WEIGHT = 1_000.0
+#: One single's household weighs a tenth of the rest, so the Keogh
+#: distribution it carries sits inside the gate's 0.5% share bound.
+_READER_LIGHT_WEIGHT = 100.0
+#: A distribution slot: (code column, amount column).
+_DST_SLOTS = tuple(
+    (f"DST_SC{suffix}", f"DST_VAL{suffix}") for suffix in ("1", "2", "1_YNG", "2_YNG")
+)
+_DST_OUTPUT_BY_CODE = dict(enumerate(US_RETIREMENT_DISTRIBUTION_OUTPUT_COLUMNS, 1))
+
+
+@dataclass(frozen=True)
+class ReaderPopulation:
+    """The X5 reader population in both provenance forms.
+
+    ``route_a`` is the Route A (unassembled) frame; ``assembled`` is
+    :func:`~microcosm.build.us_runtime.one_population_contract.to_assembled_provenance`
+    of its tables with no ACS row. ``reporters`` are the native persons with
+    a direct ``SSI_VAL`` report (as ``person_source_id`` strings) and
+    ``clone_only_ssi`` the person whose clone rows alone carry one.
+    """
+
+    route_a: Frame
+    assembled: Frame
+    reporters: frozenset[str]
+    clone_only_ssi: str
+
+
+def _reader_households() -> list[tuple[float, list[dict[str, object]]]]:
+    """200 native persons in 120 households; ``group`` names each role."""
+
+    households: list[tuple[float, list[dict[str, object]]]] = []
+
+    def person(group: str, age: int, female: bool, **extra: object) -> dict:
+        return {"group": group, "age": age, "is_female": female, **extra}
+
+    # WIC: postpartum mothers with infants, pregnant women, young children.
+    # Claims by category: postpartum 2 of 4, infant 3 of 4, pregnant 1 of 2,
+    # child 2 of 4, so every category share sits inside its band.
+    for index in range(4):
+        households.append(
+            (
+                _READER_WEIGHT,
+                [
+                    person("mother", 24 + 2 * index, True, children=1, wic=index < 2),
+                    person("infant", 0, index % 2 == 0, wic=index < 3),
+                ],
+            )
+        )
+    for index in range(2):
+        households.append(
+            (
+                _READER_WEIGHT,
+                [
+                    person(
+                        "pregnant", 25 + 5 * index, True, pregnant=True, wic=index == 0
+                    ),
+                    person("partner", 27 + 5 * index, False),
+                ],
+            )
+        )
+    for index in range(4):
+        households.append(
+            (
+                _READER_WEIGHT,
+                [
+                    person("parent", 30 + 2 * index, index % 2 == 0, children=1),
+                    person("child", 1 + index, index % 2 == 1, wic=index < 2),
+                ],
+            )
+        )
+    # Medicare: 40 enrolled persons, a fifth of the person weight.
+    for index in range(20):
+        households.append(
+            (
+                _READER_WEIGHT,
+                [
+                    person("elder", 66 + index % 14, False),
+                    person("elder", 65 + index % 14, True),
+                ],
+            )
+        )
+    for index in range(50):
+        households.append(
+            (
+                _READER_WEIGHT,
+                [
+                    person("worker", 25 + index % 38, False),
+                    person("worker", 24 + index % 38, True),
+                ],
+            )
+        )
+    for index in range(39):
+        households.append(
+            (_READER_WEIGHT, [person("single", 22 + index % 40, index % 2 == 0)])
+        )
+    households.append((_READER_LIGHT_WEIGHT, [person("light", 60, False)]))
+    return households
+
+
+def _reader_native_frame() -> tuple[Frame, dict[str, np.ndarray]]:
+    """The native ASEC rows, each producer's direct-source output written.
+
+    Returns the frame and, by group, the person positions in its person
+    table (for choosing who carries a rare measure).
+    """
+
+    rows: list[dict[str, object]] = []
+    household_ids: list[int] = []
+    weights: list[float] = []
+    marital_unit = 0
+    for household_index, (weight, members) in enumerate(_reader_households()):
+        household_id = household_index + 1
+        household_ids.append(household_id)
+        weights.append(weight)
+        couple = len(members) == 2 and all(member["age"] >= 18 for member in members)
+        for line, member in enumerate(members, 1):
+            if line == 1 or not couple:
+                marital_unit += 1
+            rows.append(
+                {
+                    **member,
+                    "person_household_id": household_id,
+                    "person_marital_unit_id": marital_unit,
+                    "line": line,
+                }
+            )
+    table = pd.DataFrame(rows)
+    count = len(table)
+    group = table["group"].to_numpy(dtype=object)
+    positions = {
+        name: np.flatnonzero(group == name) for name in sorted(set(group.tolist()))
+    }
+    age = table["age"].to_numpy(dtype=np.int64)
+    adult = age >= 15
+
+    def zeros() -> np.ndarray:
+        return np.zeros(count, dtype=np.float64)
+
+    workers, elders, singles = (
+        positions["worker"],
+        positions["elder"],
+        positions["single"],
+    )
+    # Weeks unemployed: five LKWEEKS reports; unemployment compensation on
+    # two of them and on one person with none (the clones' UC scope).
+    lkweeks = np.where(adult, 0, -1).astype(np.int64)
+    lkweeks[workers[:5]] = 20
+    unemployment = zeros()
+    unemployment[workers[[0, 1, 5]]] = 4_000.0
+    # Workers' compensation: one direct report.
+    wc = zeros()
+    wc[workers[6]] = 12_000.0
+    # Other income: alimony (code 20), strike benefits (12), another code.
+    oi_off = np.zeros(count, dtype=np.int64)
+    oi_val = zeros()
+    for position, code, amount in (
+        (singles[0], 20, 6_000.0),
+        (singles[1], 12, 800.0),
+        (singles[2], 7, 400.0),
+    ):
+        oi_off[position], oi_val[position] = code, amount
+    alimony_expense = zeros()
+    alimony_expense[singles[3]] = 3_000.0
+    # Retirement contributions: one leaf per contributor.
+    wages = np.where(np.isin(np.arange(count), workers), 40_000.0, 0.0)
+    self_employment = zeros()
+    self_employment[workers[12]] = 20_000.0
+    retcb = zeros()
+    contributions = {
+        column: zeros() for column in US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS
+    }
+    for offset, column in enumerate(US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS):
+        amount = 5_000.0 - 1_000.0 * offset
+        retcb[workers[8 + offset]] = amount
+        contributions[column][workers[8 + offset]] = amount
+    # Retirement distributions: every account code, a two-slot sum, an
+    # "other" code (7) with no leaf, and Keogh on the light household.
+    dst_codes = {code: np.zeros(count, dtype=np.int64) for code, _ in _DST_SLOTS}
+    dst_amounts = {amount: zeros() for _, amount in _DST_SLOTS}
+    for position, slot, code, amount in (
+        (elders[0], 0, 1, 8_000.0),
+        (elders[1], 0, 2, 5_000.0),
+        (elders[2], 0, 3, 4_000.0),
+        (elders[2], 1, 4, 3_000.0),
+        (positions["light"][0], 2, 5, 2_000.0),
+        (elders[3], 3, 6, 1_500.0),
+        (elders[4], 0, 7, 900.0),
+        (elders[5], 0, 4, 2_500.0),
+        (elders[5], 1, 4, 500.0),
+    ):
+        code_column, amount_column = _DST_SLOTS[slot]
+        dst_codes[code_column][position] = code
+        dst_amounts[amount_column][position] = amount
+    distributions = {
+        column: zeros() for column in US_RETIREMENT_DISTRIBUTION_OUTPUT_COLUMNS
+    }
+    for code_column, amount_column in _DST_SLOTS:
+        for code, column in _DST_OUTPUT_BY_CODE.items():
+            hit = dst_codes[code_column] == code
+            distributions[column][hit] += dst_amounts[amount_column][hit]
+    # SSI: two direct reports.
+    ssi = zeros()
+    ssi[elders[6]] = 9_000.0
+    ssi[singles[5]] = 4_000.0
+    # Medicare: every elder enrolled; other adults not; children NIU.
+    mcare = np.where(np.isin(np.arange(count), elders), 1, np.where(adult, 2, 0))
+
+    household_of = table["person_household_id"].to_numpy(dtype=np.int64)
+    person = pd.DataFrame(
+        {
+            "person_id": np.arange(1, count + 1, dtype=np.int64),
+            "person_household_id": household_of,
+            "person_tax_unit_id": household_of,
+            "person_spm_unit_id": household_of,
+            "person_family_id": household_of,
+            "person_marital_unit_id": table["person_marital_unit_id"].astype("int64"),
+            "age": age,
+            "is_female": table["is_female"].astype(bool),
+            "is_pregnant": table.get("pregnant", pd.Series(False, index=table.index))
+            .fillna(False)
+            .astype(bool),
+            "own_children_in_household": table.get(
+                "children", pd.Series(0, index=table.index)
+            )
+            .fillna(0)
+            .astype("int64"),
+            "source_year": np.full(count, 2024, dtype=np.int64),
+            "source_household_id": household_of,
+            "source_person_id": table["line"].astype(str).astype(object),
+            "LKWEEKS": lkweeks,
+            "unemployment_compensation": unemployment,
+            "weeks_unemployed": np.where(lkweeks == -1, 0, lkweeks).astype(np.float64),
+            "MCARE": mcare.astype(np.int64),
+            "takes_up_medicare_if_eligible": mcare == 1,
+            "WC_VAL": wc,
+            "workers_compensation": wc.copy(),
+            "OI_OFF": oi_off,
+            "OI_VAL": oi_val,
+            "alimony_income": np.where(oi_off == 20, oi_val, 0.0),
+            "strike_benefits": np.where(oi_off == 12, oi_val, 0.0),
+            "miscellaneous_income": np.where(np.isin(oi_off, (12, 20)), 0.0, oi_val),
+            "alimony_expense": alimony_expense,
+            "WSAL_VAL": wages,
+            "SEMP_VAL": self_employment,
+            "RETCB_VAL": retcb,
+            **contributions,
+            **dst_codes,
+            **dst_amounts,
+            **distributions,
+            US_SSI_TAKE_UP_ANCHOR: ssi,
+            "takes_up_wic_if_eligible": table.get(
+                "wic", pd.Series(False, index=table.index)
+            )
+            .fillna(False)
+            .astype(bool),
+        }
+    )
+    ids = np.asarray(household_ids, dtype=np.int64)
+    tables = {
+        "person": person,
+        "household": pd.DataFrame({"household_id": ids}),
+        "tax_unit": pd.DataFrame({"tax_unit_id": ids}),
+        "spm_unit": pd.DataFrame({"spm_unit_id": ids}),
+        "family": pd.DataFrame({"family_id": ids}),
+        "marital_unit": pd.DataFrame(
+            {"marital_unit_id": np.arange(1, marital_unit + 1, dtype=np.int64)}
+        ),
+    }
+    frame = Frame(
+        tables,
+        US_SCHEMA,
+        {"household": Weights(np.asarray(weights), WeightKind.DESIGN)},
+    )
+    return frame, positions
+
+
+def _on_clones(person: pd.DataFrame, column: str, values: Mapping[int, float]) -> None:
+    """Write ``values`` (by native person id) on every clone row, in place."""
+
+    clone = person["person_support_clone_index"].to_numpy() > 0
+    source = person["person_source_id"].to_numpy(dtype=np.int64)
+    for native_id, value in values.items():
+        person.loc[clone & (source == native_id), column] = value
+
+
+def reader_population() -> ReaderPopulation:
+    """An ASEC-only population for the whole-frame differential (d2283 X5).
+
+    The native rows (:func:`_reader_native_frame`) carry every reader's raw
+    ASEC source columns and each producer's direct-source output. The
+    production operators then make Route A's labels, as X4's fixture does:
+    ``clone_us_frame_for_puf_support`` adds a PUF tax-detail copy (clone 1,
+    ``puf_tax_detail``) of every household on all six entities, writing
+    ``<entity>_source_id`` and halving the weights, and
+    ``with_capital_gains_tail_copies`` adds tail copies (clone 2) of three
+    households: a WIC infant's, a UC recipient's and a contributor's.
+
+    Clone rows then take stand-ins for the PUF imputations where Route A's
+    gates do not reconcile clones against the source, so a reader whose
+    assembled mask wrongly took clone rows would show it: weeks positive
+    only where unemployment compensation is (the clones' UC rule), a
+    workers' compensation amount unlike ``WC_VAL`` and one with none, an
+    alimony amount unlike the ``OI_VAL`` split and one with none, every
+    contribution and distribution leaf scaled, and an ``SSI_VAL`` report on
+    a person whose native row has none. Medicare and WIC clones copy their
+    natives: Route A's Medicare gate reconciles every row against ``MCARE``,
+    and its WIC gate refuses a clone whose claim differs from its source
+    person's.
+
+    The WIC gate keys clones by the source triple (``source_year``,
+    ``source_household_id``, ``source_person_id``) on Route A and by
+    ``person_source_id`` once assembled. The triple is unique per native
+    person and both columns are copied to every clone, so the two keys
+    partition the rows alike.
+
+    Raises:
+        AssertionError: If any reader's gate fails on the Route A frame, so
+            a differential never compares two failing gates.
+    """
+
+    native, positions = _reader_native_frame()
+    cloned = clone_us_frame_for_puf_support(native)
+    household = cloned.table("household")
+    clone_one = household["household_support_clone_index"].to_numpy() == 1
+    sources = household.loc[clone_one, "household_source_id"].to_numpy(dtype=np.int64)
+    native_person = native.table("person")
+
+    def household_of(position: int) -> int:
+        return int(native_person["person_household_id"].iloc[position])
+
+    tail_sources = [
+        household_of(positions["infant"][0]),
+        household_of(positions["worker"][0]),
+        household_of(positions["worker"][8]),
+    ]
+    if not set(tail_sources) <= set(sources.tolist()):
+        raise AssertionError("A tail source household has no PUF tax-detail copy.")
+    route_a = with_capital_gains_tail_copies(cloned, tail_sources)
+
+    def native_id(group: str, index: int) -> int:
+        return int(native_person["person_id"].iloc[positions[group][index]])
+
+    tables = {entity: route_a.table(entity).copy() for entity in route_a.entities}
+    person = tables["person"]
+    clone = person["person_support_clone_index"].to_numpy() > 0
+    uc = person["unemployment_compensation"].to_numpy(dtype=np.float64)
+    person.loc[clone, "weeks_unemployed"] = np.where(uc[clone] > 0.0, 10.0, 0.0)
+    _on_clones(
+        person,
+        "workers_compensation",
+        {native_id("worker", 6): 15_000.0, native_id("worker", 7): 3_000.0},
+    )
+    _on_clones(
+        person,
+        "alimony_income",
+        {native_id("single", 0): 7_500.0, native_id("single", 4): 2_000.0},
+    )
+    for column in (
+        *US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS,
+        *US_RETIREMENT_DISTRIBUTION_OUTPUT_COLUMNS,
+    ):
+        factor = 1.2 if column in US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS else 0.9
+        person.loc[clone, column] = person.loc[clone, column] * factor
+    clone_only_ssi = native_id("single", 6)
+    _on_clones(person, US_SSI_TAKE_UP_ANCHOR, {clone_only_ssi: 2_000.0})
+    route_a = Frame(
+        tables,
+        route_a.schema,
+        {entity: route_a.weights_for(entity) for entity in route_a.weighted_entities},
+        route_a.strata,
+        mass_log=route_a.mass_log,
+        metadata=route_a.metadata,
+    )
+    reporters = frozenset(
+        str(native_id(group, index)) for group, index in (("elder", 6), ("single", 5))
+    )
+    _check_reader_gates(route_a, reporters=reporters)
+
+    empty_acs = {
+        entity: table.iloc[:0]
+        for entity, table in generate_population(0).acs_tables.items()
+    }
+    assembled = to_assembled_provenance(
+        tables,
+        empty_acs,
+        cps_household_weights=route_a.weights_for("household").values,
+        acs_household_weights=np.array([]),
+        staging_lineage=frozenset(),
+    )
+    return ReaderPopulation(
+        route_a=route_a,
+        assembled=assembled,
+        reporters=reporters,
+        clone_only_ssi=str(clone_only_ssi),
+    )
+
+
+def _check_reader_gates(frame: Frame, *, reporters: frozenset[str]) -> None:
+    failures: dict[str, object] = {}
+    for name, reader in READER_GATES.items():
+        result = reader(frame)
+        if isinstance(result, frozenset):
+            if result != reporters:
+                failures[name] = sorted(result)
+        elif not result.passed:
+            failures[name] = list(result.failures)
+    if failures:
+        raise AssertionError(
+            f"Route A reader gates fail on the reader frame: {failures}."
+        )

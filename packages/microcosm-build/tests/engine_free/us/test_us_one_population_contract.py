@@ -27,6 +27,16 @@ readers pinned to the predictor join, the fill manifest checked against the
 frame, deterministic JSON), X2 (N-2's kinds on a generated population with
 an injected register) and X7 (group quarters add nothing to household-type
 targets, skipped until PolicyEngine/microcosm#1610's materializer imports).
+
+Phase 4 covers X5, the whole-frame differential: on an ASEC-only population
+(Route A's labels: ``asec`` clone 0, ``puf_tax_detail`` clones), each
+provenance-reading gate returns the same verdict and statistics before and
+after ``to_assembled_provenance`` with no ACS row, one parametrized case per
+reader. The four readers Route A's clone label moves (the weeks UC-rule
+scope, Medicare take-up and both retirement families) are strict expected
+failures naming PR 3, with a companion check that each moves only its named
+fields; ``acs_local_hours`` is left out, its donor prep refusing the
+assembled population.
 """
 
 from __future__ import annotations
@@ -36,7 +46,9 @@ import dataclasses
 import hashlib
 import inspect
 import json
+import math
 import re
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -47,6 +59,7 @@ from hypothesis import strategies as st
 from microcosm.build.gates import GateResult
 from microcosm.build.us_runtime import one_population_contract as contract
 from microcosm.build.us_runtime import one_population_selection as selection
+from microcosm.build.us_runtime.acs_local_hours import prepare_acs_local_hours_donor
 from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
 from microcosm.build.us_runtime.base_pool import ASEC_PUF_SPINE
 from microcosm.build.us_runtime.block_location import LOCATION_CLONE_INDEX_COLUMN
@@ -105,6 +118,8 @@ from microcosm.data.stored_inputs import (
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind
 from test_support.microcosm_build.us_one_population_contract import (
+    READER_GATES,
+    READER_SOURCE_COLUMNS,
     RELEASE_WRITTEN_ON_ACS,
     SPM_ROLE,
     STAND_IN_COMPAT_AGGREGATES,
@@ -112,6 +127,7 @@ from test_support.microcosm_build.us_one_population_contract import (
     STAND_IN_FORMULA_AFTER_2024,
     STAND_IN_STRUCTURAL_FORMULAS,
     TAIL_PROVENANCE_DEFAULTS,
+    WIC_SOURCE_TRIPLE,
     StandInVariableIndex,
     assembled_frame,
     clone_zero_assembly_record,
@@ -120,6 +136,7 @@ from test_support.microcosm_build.us_one_population_contract import (
     generate_population,
     joined_frame,
     lock_engine_inputs,
+    reader_population,
     role_shares,
     selection_manifest,
     spm_role_gate_record,
@@ -3569,3 +3586,307 @@ def test_group_quarters_add_nothing_to_household_type_targets(assembled) -> None
             frame, {"household_type": "all"}
         )
     assert (housing[~group_quarters] == 1).all()
+
+
+# ------------- phase 4: X5, the whole-frame differential (BP, K-21, Q4)
+
+#: The fields each moved reader's statistics change in (d2283 Q4: CPS clones
+#: keep Route A's ``puf_tax_detail`` label once assembled). PR 3 owns all four.
+_X5_MOVED_FIELDS: dict[str, frozenset[str]] = {
+    "medicare_take_up": frozenset({"source_rows"}),
+    "retirement_contributions": frozenset(
+        {
+            "allocation_mismatch_rows",
+            "source_positive_rows",
+            "source_reconciliation_rows",
+            "source_rows",
+            "source_total",
+        }
+    ),
+    "retirement_distributions": frozenset({"source_rows"}),
+    "weeks_unemployed": frozenset({"uc_constraint_rows"}),
+}
+
+_X5_PR3_REASONS: dict[str, str] = {
+    "medicare_take_up": (
+        "d2283 PR 3 flips this. Medicare take-up: once assembled, "
+        "_asec_source_mask keeps only rows whose stored channel is asec "
+        "(medicare_take_up.py:134-146), so MCARE reconciliation leaves out the "
+        "clone rows Route A checks; source_mismatch_count can only fall, which "
+        "can move the gate from fail to pass (:306-308)."
+    ),
+    "retirement_contributions": (
+        "d2283 PR 3 flips this. Retirement contributions: once assembled, the "
+        "source and reconciliation masks keep only stored-asec rows "
+        "(retirement_contributions.py:172-193) where Route A takes every row, "
+        "so five source fields move; the verdict does not."
+    ),
+    "retirement_distributions": (
+        "d2283 PR 3 flips this. Retirement distributions: once assembled, the "
+        "source mask keeps only stored-asec rows "
+        "(retirement_distributions.py:274-295) where Route A takes every row, "
+        "so source_rows moves and clone-row DST codes go unvalidated; "
+        "reconciliation does not move."
+    ),
+    "weeks_unemployed": (
+        "d2283 PR 3 flips this. Weeks unemployed, the UC-rule scope: once "
+        "assembled it is (asec & clone) | (non-asec & native) "
+        "(weeks_unemployed.py:1366-1373), so CPS clones labelled "
+        "puf_tax_detail leave it, where Route A puts every clone in it (:1351)."
+    ),
+}
+
+#: Runtime modules that test the assembled discriminator only as writers or
+#: provenance owners, not as gate readers.
+_X5_WRITERS = frozenset(
+    {
+        "__init__",
+        "one_population_contract",
+        "puf_support",
+        "spine_agreement",
+        "spine_assembly",
+        "stacked_spine",
+        "support_provenance",
+    }
+)
+
+
+@pytest.fixture(scope="module")
+def readers():
+    return reader_population()
+
+
+def _x5_statistics(result: object) -> object:
+    """A reader's verdict and summary statistics, as plain data."""
+
+    if isinstance(result, GateResult):
+        return {
+            "name": result.name,
+            "passed": result.passed,
+            "failures": list(result.failures),
+            "details": result.details,
+        }
+    if isinstance(result, frozenset):
+        return sorted(result)
+    raise TypeError(f"Unexpected reader result {type(result).__name__}.")
+
+
+def _x5_differences(route_a: object, assembled: object, path=()) -> list[tuple]:
+    """Every path at which two readers' statistics differ.
+
+    Exact: both frames hold the same person rows in the same order with the
+    same weights (see the fixture test), so equal statistics are the same
+    sums, bit for bit. NaN equals NaN.
+    """
+
+    if isinstance(route_a, dict) and isinstance(assembled, dict):
+        differences: list[tuple] = []
+        for key in sorted(set(route_a) | set(assembled), key=str):
+            if key not in route_a or key not in assembled:
+                differences.append((*path, key))
+            else:
+                differences.extend(
+                    _x5_differences(route_a[key], assembled[key], (*path, key))
+                )
+        return differences
+    if isinstance(route_a, (list, tuple)) and isinstance(assembled, (list, tuple)):
+        if len(route_a) != len(assembled):
+            return [path]
+        differences = []
+        for index, (left, right) in enumerate(zip(route_a, assembled, strict=True)):
+            differences.extend(_x5_differences(left, right, (*path, index)))
+        return differences
+    if (
+        isinstance(route_a, float)
+        and isinstance(assembled, float)
+        and math.isnan(route_a)
+        and math.isnan(assembled)
+    ):
+        return []
+    return [] if route_a == assembled else [path]
+
+
+def _x5_run(readers, reader: str) -> tuple[object, object]:
+    gate = READER_GATES[reader]
+    return (
+        _x5_statistics(gate(readers.route_a)),
+        _x5_statistics(gate(readers.assembled)),
+    )
+
+
+def test_x5_covers_every_assembled_form_reader() -> None:
+    """The readers are F-19's: every runtime module that tests the assembled
+    discriminator itself, less writers and owners, plus every caller of the
+    physical-channel accessor.
+
+    ``acs_local_hours`` is the one such module with no release gate; its
+    case is the donor-prep refusal below.
+    """
+
+    runtime = Path(inspect.getfile(contract)).parent
+    sources = {
+        path.stem: path.read_text(encoding="utf-8") for path in runtime.glob("*.py")
+    }
+    discriminator = re.compile(
+        r"has_assembled_support_metadata|spine_source_id_column\("
+    )
+    testing = {name for name, text in sources.items() if discriminator.search(text)}
+    callers = {
+        name
+        for name, text in sources.items()
+        if "support_gate_source_channel_series(" in text
+    } - {"support_provenance"}
+    modules = {gate.__module__.rsplit(".", 1)[1] for gate in READER_GATES.values()}
+    assert testing - _X5_WRITERS == (modules - {"ssi_take_up"}) | {"acs_local_hours"}
+    assert callers <= modules
+    assert set(READER_SOURCE_COLUMNS) == set(READER_GATES)
+    assert set(_X5_MOVED_FIELDS) == set(_X5_PR3_REASONS)
+    assert set(_X5_MOVED_FIELDS) <= set(READER_GATES)
+
+
+def test_the_reader_frame_exercises_every_reader(readers) -> None:
+    """X5's preconditions, outside every expected failure.
+
+    A strict xfail cannot pass for want of data, and an equal pair of
+    statistics is not two failing gates: the frame has clone rows (indices
+    0, 1 and 2) on every entity and each reader's raw source columns; every
+    Route A gate passes and takes its source branch; clone rows differ from
+    the source wherever Route A does not reconcile them, so a reader whose
+    assembled mask took clone rows would show; and the WIC gate's two
+    clone keys (the source triple on Route A, ``person_source_id`` once
+    assembled) partition the rows alike.
+    """
+
+    route_a, assembled = readers.route_a, readers.assembled
+    person = route_a.table("person")
+    for entity in US_SCHEMA.entities:
+        table = route_a.table(entity)
+        assert set(table[support_clone_index_column(entity)]) == {0, 1, 2}, entity
+        assert spine_source_id_column(entity) not in table
+        assert spine_source_id_column(entity) in assembled.table(entity)
+    for reader, columns in READER_SOURCE_COLUMNS.items():
+        assert set(columns) <= set(person.columns), reader
+        assert set(columns) <= set(assembled.table("person").columns), reader
+    assert (
+        person["person_id"].tolist() == assembled.table("person")["person_id"].tolist()
+    )
+    np.testing.assert_array_equal(
+        route_a.resolve_weights("person").values,
+        assembled.resolve_weights("person").values,
+    )
+
+    results = {name: gate(route_a) for name, gate in READER_GATES.items()}
+    for name, result in results.items():
+        if isinstance(result, GateResult):
+            assert result.passed, (name, result.failures)
+    assert results["ssi_take_up_reporters"] == readers.reporters
+    assert readers.clone_only_ssi not in results["ssi_take_up_reporters"]
+    clone = person["person_support_clone_index"].to_numpy() > 0
+    assert int(results["alimony"].details["asec_source_rows"]) == int((~clone).sum())
+    for name in ("medicare_take_up", "workers_compensation"):
+        assert "source_rows" in results[name].details, name
+    for name in ("retirement_contributions", "retirement_distributions"):
+        assert int(results[name].details["source_rows"]) == len(person), name
+    weeks = results["weeks_unemployed"].details
+    assert not weeks["source_missing"]
+    assert int(weeks["source_reconciliation_rows"]) == int((~clone).sum())
+    assert int(weeks["uc_constraint_rows"]) == int(clone.sum())
+    assert int(results["wic_claim"].details["clone_group_count"]) == int((~clone).sum())
+
+    def differs(column: str, expected) -> bool:
+        return bool((clone & (person[column].to_numpy() != expected)).any())
+
+    oi_off = person["OI_OFF"].to_numpy()
+    oi_val = person["OI_VAL"].to_numpy(dtype=np.float64)
+    assert differs("workers_compensation", person["WC_VAL"].to_numpy())
+    assert differs("alimony_income", np.where(oi_off == 20, oi_val, 0.0))
+    lkweeks = person["LKWEEKS"].to_numpy()
+    assert differs("weeks_unemployed", np.where(lkweeks == -1, 0, lkweeks))
+    weeks_positive = person["weeks_unemployed"].to_numpy() > 0
+    uc_positive = person["unemployment_compensation"].to_numpy() > 0
+    assert (clone & weeks_positive).any()
+    assert not (clone & weeks_positive & ~uc_positive).any()
+    native_values = person.loc[~clone].set_index("person_source_id")
+    for column in (
+        "traditional_401k_contributions_desired",
+        "taxable_401k_distributions",
+    ):
+        expected = person["person_source_id"].map(native_values[column]).to_numpy()
+        assert differs(column, expected), column
+    ssi_clone = clone & (
+        person["person_source_id"].astype(str).eq(readers.clone_only_ssi).to_numpy()
+    )
+    assert (person.loc[ssi_clone, "SSI_VAL"] > 0).all() and ssi_clone.any()
+
+    triple = person[list(WIC_SOURCE_TRIPLE)].astype(str).agg(":".join, axis=1)
+    source = person["person_source_id"]
+    assert triple.groupby(source).nunique().max() == 1
+    assert source.groupby(triple).nunique().max() == 1
+
+
+_X5_CASES = [
+    pytest.param(
+        name,
+        id=name,
+        marks=pytest.mark.xfail(
+            strict=True, raises=AssertionError, reason=_X5_PR3_REASONS[name]
+        ),
+    )
+    if name in _X5_PR3_REASONS
+    else pytest.param(name, id=name)
+    for name in sorted(READER_GATES)
+]
+
+
+@pytest.mark.parametrize("reader", _X5_CASES)
+def test_assembled_readers_return_route_a_statistics(readers, reader) -> None:
+    """X5 (BP): on an ASEC-only population every provenance-reading gate
+    returns Route A's verdict and statistics after the rewrite.
+
+    Run once on the Route A frame and once on its
+    ``to_assembled_provenance`` with no ACS row. The four readers whose
+    assembled branch moves under Route A's clone label are strict expected
+    failures, each naming PR 3; the WIC frame's two clone partitions agree
+    (see the fixture test), so the WIC case compares one partition.
+    """
+
+    route_a, assembled = _x5_run(readers, reader)
+    assert _x5_differences(route_a, assembled) == []
+
+
+@pytest.mark.parametrize("reader", sorted(_X5_MOVED_FIELDS))
+def test_a_moved_reader_moves_only_its_named_fields(readers, reader) -> None:
+    """Outside the expected failure, a moved reader keeps its verdict and
+    every statistic but the fields named for it, and Route A's value of
+    those fields counts the clone rows (true before and after PR 3)."""
+
+    route_a, assembled = _x5_run(readers, reader)
+    moved = {("details", field) for field in _X5_MOVED_FIELDS[reader]}
+    assert set(_x5_differences(route_a, assembled)) <= moved
+    assert route_a["passed"] and assembled["passed"]
+    person = readers.route_a.table("person")
+    clones = int((person["person_support_clone_index"] > 0).sum())
+    details = route_a["details"]
+    if reader == "weeks_unemployed":
+        assert details["uc_constraint_rows"] == clones > 0
+    else:
+        assert details["source_rows"] == len(person) > clones
+    if reader == "retirement_contributions":
+        assert details["source_reconciliation_rows"] == len(person)
+        source = person["RETCB_VAL"].to_numpy() > 0
+        assert details["source_positive_rows"] == int(source.sum())
+        assert details["allocation_mismatch_rows"] > 0
+
+
+def test_the_local_hours_donor_refuses_the_assembled_population(readers) -> None:
+    """X5 leaves ``acs_local_hours`` out: it has no release gate, and its
+    donor prep refuses an assembled frame (``acs_local_hours.py:227-237``).
+
+    The Route A frame passes that check and stops later, at the raw hours
+    columns this fixture does not carry.
+    """
+
+    with pytest.raises(ValueError, match="explicit legacy ASEC observation roles"):
+        prepare_acs_local_hours_donor(readers.assembled, seed=0, period=2024)
+    with pytest.raises(ValueError, match="requires complete raw ASEC"):
+        prepare_acs_local_hours_donor(readers.route_a, seed=0, period=2024)
