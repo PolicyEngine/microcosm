@@ -80,6 +80,12 @@ _PACKAGE_ENGINE = stored_inputs.CertifiedEngine(
             "partnership_income",
             "s_corp_income",
             "passive_partnership_s_corp_income",
+            # The stored-input register follows the locked engine, which
+            # defines the tax-unit role as an input (policyengine-us#9617), so
+            # the stand-in defines it too. Its label stays the reviewed-fill
+            # register's engine until that register's re-review
+            # (microcosm#1675).
+            "tax_unit_role_input",
             *US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
         }
     ),
@@ -5616,10 +5622,10 @@ def test_package_records_the_stored_input_gate_bound_to_the_packaged_bytes(
             "failures": [],
             "engine": "policyengine-us 2.2.1",
             "register_sha256": stored_inputs.register_sha256(),
-            # The ACS rows' base-spine tag and the tax-unit role the
-            # self-employment gate reads (microcosm#1387), both reviewed
-            # register entries.
-            "registered_non_variables": ["person_spine", "tax_unit_role_input"],
+            # The ACS rows' base-spine tag, a reviewed register entry. The
+            # tax-unit role the self-employment gate reads (microcosm#1387) is
+            # an engine input (policyengine-us#9617), so it is not one.
+            "registered_non_variables": ["person_spine"],
             "artifact_sha256": result["root_artifact"]["sha256"],
             "checked_at_stage": "package",
         }
