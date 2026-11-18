@@ -1,4 +1,4 @@
-"""The thread settings the US base and local-area commands give themselves.
+"""The thread settings the US base and ACS staging commands give themselves.
 
 The commands name the thread count each numerical library already uses, so
 that it is recorded and is in place before the libraries load. On Linux the
@@ -28,9 +28,9 @@ REPOSITORY = paths_for("microcosm-build").repository
 HELPER_PATH = REPOSITORY / "tools" / "us_build_thread_environment.py"
 RELEASE_TOOL = "tools/build_us_fiscal_refresh_release.py"
 BASE_TOOL = "tools/build_us_puf_support_base.py"
-LOCAL_AREA_COMMAND = "tools/build_us_acs_multispine_base.py"
-LOCAL_AREA_IMPLEMENTATION = "tools/_legacy/build_us_acs_multispine_base.py"
-BUILD_COMMANDS = (BASE_TOOL, LOCAL_AREA_COMMAND, LOCAL_AREA_IMPLEMENTATION)
+ACS_STAGING_COMMAND = "tools/build_us_acs_multispine_base.py"
+ACS_STAGING_IMPLEMENTATION = "tools/_legacy/build_us_acs_multispine_base.py"
+BUILD_COMMANDS = (BASE_TOOL, ACS_STAGING_COMMAND, ACS_STAGING_IMPLEMENTATION)
 
 OPENMP = "OMP_NUM_THREADS"
 OPENBLAS = "OPENBLAS_NUM_THREADS"
@@ -137,7 +137,7 @@ def test_cpu_affinity_sets_the_count_and_numexpr_counts_online_cpus(
 
 @pytest.mark.parametrize(
     ("configured", "expected"),
-    (("2", "2"), ("4,2", "4"), (" 3 ", "3"), ("007", "7")),
+    (("2", "2"), ("007", "7")),
 )
 def test_an_openmp_count_already_set_is_used_for_the_others(
     helper: ModuleType,
@@ -150,13 +150,39 @@ def test_an_openmp_count_already_set_is_used_for_the_others(
     assert environment == _every_variable(expected, **{OPENMP: configured})
 
 
-@pytest.mark.parametrize("configured", ("", "0", "-1", "many", "٣"))
-def test_an_openmp_value_without_a_count_is_kept_and_not_copied(
+def test_a_blank_openmp_value_counts_as_unset(
+    helper: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    environment = _defaults_for(helper, monkeypatch, {OPENMP: ""})
+
+    assert environment == _every_variable("6", **{OPENMP: ""})
+
+
+@pytest.mark.parametrize("configured", ("+4", "4,2", " 3 ", "0", "-1", "many", "٣"))
+def test_libraries_read_an_unusual_openmp_value_themselves(
     helper: ModuleType, monkeypatch: pytest.MonkeyPatch, configured: str
 ) -> None:
+    """OpenBLAS and numexpr parse these differently, so neither gets a copy."""
+
     environment = _defaults_for(helper, monkeypatch, {OPENMP: configured})
 
-    assert environment == _every_variable("6", **{OPENMP: configured})
+    assert environment == {OPENMP: configured, VECLIB: "6"}
+
+
+@pytest.mark.parametrize(
+    ("source", "left_unset"),
+    ((OPENBLAS_FALLBACK, OPENBLAS), (NUMEXPR_MAXIMUM, NUMEXPR)),
+)
+def test_libraries_read_their_own_unusual_values_themselves(
+    helper: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    source: str,
+    left_unset: str,
+) -> None:
+    environment = _defaults_for(helper, monkeypatch, {source: "+3"})
+
+    assert left_unset not in environment
+    assert environment[MKL] == "6"
 
 
 def test_values_already_set_are_kept(
@@ -201,7 +227,9 @@ def test_numexpr_follows_openmp_and_then_its_maximum(
 def test_nothing_is_set_when_the_usable_cpus_are_unknown(
     helper: ModuleType, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert _defaults_for(helper, monkeypatch, usable_cpus=None) == {}
+    environment = _defaults_for(helper, monkeypatch, usable_cpus=None, online_cpus=None)
+
+    assert environment == {}
 
 
 def test_numexpr_uses_the_usable_count_when_online_cpus_are_unknown(
@@ -425,11 +453,19 @@ def _library_results(
     (
         (),
         ((OPENMP, "2"),),
+        ((OPENMP, "+4"),),
         ((OPENBLAS_FALLBACK, "2"),),
         ((NUMEXPR_MAXIMUM, "3"),),
         ((NUMEXPR_MAXIMUM, "3"), (OPENMP, "2")),
     ),
-    ids=("nothing", "openmp", "openblas_fallback", "numexpr_maximum", "both"),
+    ids=(
+        "nothing",
+        "openmp",
+        "openmp_with_sign",
+        "openblas_fallback",
+        "numexpr_maximum",
+        "both",
+    ),
 )
 def test_the_settings_keep_thread_counts_and_result_bytes(
     settings: tuple[tuple[str, str], ...],
