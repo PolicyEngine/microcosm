@@ -369,17 +369,26 @@ class _Observation:
     explained_by: tuple[str, ...]
 
 
-def _disagreement_warning(scope: str, differences: Sequence[str], path: Path) -> str:
+def _disagreement_warning(
+    scope: str, differences: Sequence[str], path: Path, *, written: bool = True
+) -> str:
     """The warning a finished run prints when the battery disagrees.
 
-    Printed only after both shadow files are on disk. Today's gates still
-    decide, so the build's exit is the one they gave.
+    Printed once the shadow has tried to write its files. When the comparison
+    could not be written, the warning says so and is the only record of the
+    differences. Today's gates still decide, so the build's exit is the one
+    they gave.
     """
 
     lines = "\n".join(f"  - {line}" for line in differences)
+    where = (
+        f"comparison: {path}"
+        if written
+        else f"its comparison could not be written to {path}"
+    )
     return (
         f"warning: US gate battery shadow for scope {scope!r} disagrees with "
-        f"today's gates (comparison: {path}). Today's gates still decide, so "
+        f"today's gates ({where}). Today's gates still decide, so "
         f"the build's exit is unchanged:\n{lines}"
     )
 
@@ -495,7 +504,7 @@ class GateBatteryShadow:
     def _clear_stale_files(self) -> None:
         # A rerun into the same output directory must not leave an earlier
         # attempt's shadow files looking like this run's when it stops before
-        # writing its own. Never raises, so arming the shadow cannot stop a
+        # writing its own. Never raises, so clearing them cannot stop a
         # build: a fault is recorded as a shadow error.
         try:
             for stale in (self._run.report_path, self._comparison_path):
@@ -941,7 +950,8 @@ class GateBatteryShadow:
         an outcome, so it is recorded only when today's code reached none of
         them and no observations are missing; otherwise it stays unrecorded
         rather than mark a gate that ran as never reached. A shadow file that
-        cannot be written is a warning too.
+        cannot be written is a warning too, and a finished run's differences
+        are printed all the same, since the warning is then their only record.
 
         Returns:
             The comparison payload written to disk, or an empty mapping when a
@@ -1007,22 +1017,27 @@ class GateBatteryShadow:
             stopped_by=stopped_by,
             stopped_at=stopped_at,
         )
+        written = True
         try:
             _atomic_write_json(self._comparison_path, payload)
         except Exception as exc:  # noqa: BLE001 - the shadow never fails a build
             # A shadow file that cannot be written must neither fail the build
-            # nor replace today's own exception (or deliberate stop).
+            # nor replace today's own exception (or deliberate stop). The
+            # differences are still printed below: without the file, the
+            # warning is their only record.
+            written = False
             print(
                 f"warning: US gate battery shadow for scope {self._scope!r} "
                 f"could not write {self._comparison_path}: "
                 f"{type(exc).__name__}: {exc}",
                 file=sys.stderr,
             )
-            return payload
         differences = self.differences()
         if completed and differences:
             print(
-                _disagreement_warning(self._scope, differences, self._comparison_path),
+                _disagreement_warning(
+                    self._scope, differences, self._comparison_path, written=written
+                ),
                 file=sys.stderr,
             )
         return payload

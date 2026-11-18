@@ -1,7 +1,7 @@
 {
   "version": 1,
   "country": "us",
-  "policy": "US gates declared as data for the shared battery (microcosm#1585 item 11, microcosm#611), one scope per build tool. PR 2 of 4 runs them in shadow: each US tool still gates as it did, evaluates the declared entry beside each gate on the same evidence, and fails the run on a verdict difference. A threshold the gate reads from a module constant is declared at today's value and pinned equal to that constant until the flip makes this file the only source; one the gate takes as a keyword is routed from here. Waivers stay the tools' --allow-* flags, which the shadow records by entry id. Gate names and phases are the shared vocabulary's, pending Max's Step 0 answer.",
+  "policy": "US gates declared as data for the shared battery (microcosm#1585 item 11, microcosm#611), one scope per build tool. PR 2 of 4 runs them in shadow: each US tool still gates as it did, evaluates the declared entry beside each gate on the same evidence, and records a verdict difference in its comparison file with a warning, while today's gates still decide the run's exit. A threshold the gate reads from a module constant is declared at today's value and pinned equal to that constant until the flip makes this file the only source; one the gate takes as a keyword is routed from here. Waivers stay the tools' --allow-* flags, which the shadow records by entry id. Gate names and phases are the shared vocabulary's, pending Max's Step 0 answer.",
   "phases": [
     "preflight",
     "assembled",
