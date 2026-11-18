@@ -101,7 +101,7 @@ def test_weighted_qrf_writes_only_puf_channel_and_allocates_by_employment(
 def test_policyengine_us_17646_contract_is_person_year_input_in_ald_graph() -> None:
     from policyengine_us import CountryTaxBenefitSystem
 
-    assert version("policyengine-us") == "2.2.1"
+    assert version("policyengine-us") == "2.145.3"
     system = CountryTaxBenefitSystem()
     variable = system.variables["educator_expense"]
 
@@ -111,12 +111,15 @@ def test_policyengine_us_17646_contract_is_person_year_input_in_ald_graph() -> N
     assert variable.default_value == 0
     assert (
         variable.uprating
-        == "calibration.gov.cbo.income_by_source.adjusted_gross_income"
+        == "calibration.gov.cbo.income_by_source.adjusted_gross_income_per_capita"
     )
-    assert system.variables["above_the_line_deductions"].adds == (
-        "gov.irs.ald.deductions"
-    )
-    assert "educator_expense" in system.parameters.gov.irs.ald.deductions("2024-01-01")
+    # above_the_line_deductions sums gov.irs.ald.deductions in a formula
+    # (tax_unit_non_dep_add) in 2.145.3, not through adds; the abolition probe
+    # tests below show that the list edit removes the deduction. The list
+    # names the capped deduction built from the input, not the input.
+    deductions = system.parameters.gov.irs.ald.deductions("2024-01-01")
+    assert "educator_expense_ald" in deductions
+    assert "educator_expense" not in deductions
 
 
 _ALD_DEDUCTIONS = "gov.irs.ald.deductions"
@@ -184,7 +187,7 @@ def test_shipped_abolition_probe_has_positive_sign_and_binds_live(abolition) -> 
     assert probe.min_abs_effect == 1_000_000.0
     assert probe.parameter_changes == {}
     edit = ListParameterEdit(
-        period="2024-01-01.2024-12-31", remove=("educator_expense",)
+        period="2024-01-01.2024-12-31", remove=("educator_expense_ald",)
     )
     assert probe.list_edits == {_ALD_DEDUCTIONS: edit}
 
@@ -198,8 +201,10 @@ def test_shipped_abolition_probe_has_positive_sign_and_binds_live(abolition) -> 
     # holds exactly that list over the edit period and the baseline outside it.
     deductions = baseline.tax_benefit_system.parameters.get_child(_ALD_DEDUCTIONS)
     reformed_deductions = reformed_system.parameters.get_child(_ALD_DEDUCTIONS)
-    assert "educator_expense" in deductions(edit.start)
-    expected = [item for item in deductions(edit.start) if item != "educator_expense"]
+    assert "educator_expense_ald" in deductions(edit.start)
+    expected = [
+        item for item in deductions(edit.start) if item != "educator_expense_ald"
+    ]
     assert resolve_probe_parameter_changes(probe) == {
         _ALD_DEDUCTIONS: {edit.period: expected}
     }
@@ -230,8 +235,9 @@ def test_abolition_probe_removes_exactly_the_educator_deduction(
     abolition, educator_expense: int, employment_income: int
 ) -> None:
     # Invariant: for any educator expense and wage, the reform lowers
-    # above-the-line deductions by exactly the expense and never lowers income
-    # tax, so the probe's positive reform-minus-baseline sign holds per unit.
+    # above-the-line deductions by exactly the engine's capped educator
+    # deduction and never lowers income tax, so the probe's positive
+    # reform-minus-baseline sign holds per unit.
     from policyengine_us import Simulation
 
     _, reformed_system = abolition
@@ -243,7 +249,9 @@ def test_abolition_probe_removes_exactly_the_educator_deduction(
         baseline.calculate("above_the_line_deductions", 2024)[0]
         - reformed.calculate("above_the_line_deductions", 2024)[0]
     )
-    assert deduction_drop == pytest.approx(float(educator_expense), abs=0.01)
+    capped = baseline.calculate("educator_expense_ald", 2024)[0]
+    assert capped <= float(educator_expense) + 0.01
+    assert deduction_drop == pytest.approx(capped, abs=0.01)
     assert (
         reformed.calculate("income_tax", 2024)[0]
         >= baseline.calculate("income_tax", 2024)[0] - 0.01

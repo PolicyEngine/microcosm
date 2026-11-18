@@ -205,6 +205,10 @@ Max's failure log (#1654) is the place for new observed stops.
   (`tenant_pays_utilities`, `living_arrangements_allow_for_food_preparation`
   and `estate_income_would_be_qualified`).
 - `block_v1` with the rent fix (#1444) on a fresh base: county and district fit.
+- The voluntary-filing PTC probe in the reform-coverage smoke (floor $100M).
+  policyengine-us 2.145.3 lets a tax unit that takes up ACA coverage claim the
+  credit without filing for another reason, so neutralizing voluntary filing
+  now moves the credit only for units that do not take up coverage.
 - Time and memory on the new engine, which projects one more year (to 2036) in
   post-export scoring.
 

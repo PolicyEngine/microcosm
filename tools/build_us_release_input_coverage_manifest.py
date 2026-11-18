@@ -1456,12 +1456,15 @@ REFORM_COVERAGE_PROBES = [
         "min_abs_effect": 100_000_000.0,
         "reason": (
             "PolicyEngine-US includes would_file_taxes_voluntarily in "
-            "tax_unit_is_filer alongside required and credit filers. "
-            "Neutralizing only the restored SIPP filing-response leaf therefore "
-            "removes ACA premium tax credits from otherwise eligible voluntary "
-            "filers, so baseline-minus-neutralized aca_ptc must be positive. "
-            "With the filing leaf absent or degenerate, this isolated response "
-            "channel scores exactly $0."
+            "tax_unit_is_filer alongside required and credit filers. In "
+            "2.145.3 the premium tax credit goes to a tax unit that files for "
+            "any reason or takes up ACA coverage with a positive credit "
+            "(files_return_for_aca_ptc). Neutralizing only the restored SIPP "
+            "filing-response leaf therefore removes the credit from otherwise "
+            "eligible voluntary filers who do not take up coverage, so "
+            "baseline-minus-neutralized aca_ptc must be positive. With the "
+            "filing leaf absent or degenerate, this isolated response channel "
+            "scores exactly $0."
         ),
         "issue": "PolicyEngine/microcosm#312",
     },

@@ -4,11 +4,11 @@
 from test_support.microcosm_build.us_energy_subsidy import *
 
 
-def test_policyengine_2_2_1_contract_and_live_neutralization() -> None:
+def test_policyengine_2_145_3_contract_and_live_neutralization() -> None:
     from policyengine_core.reforms import Reform
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
-    assert version("policyengine-us") == "2.2.1"
+    assert version("policyengine-us") == "2.145.3"
     variable = CountryTaxBenefitSystem().variables[_OUTPUT]
     assert variable.is_input_variable()
     assert variable.entity.key == "spm_unit"

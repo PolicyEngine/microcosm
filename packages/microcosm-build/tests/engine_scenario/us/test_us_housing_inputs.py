@@ -29,7 +29,7 @@ def test_policyengine_us_live_housing_take_up_neutralization() -> None:
 
     from microcosm.build.us_runtime.reform_coverage_smoke import _build_reform
 
-    assert version("policyengine-us") == "2.2.1"
+    assert version("policyengine-us") == "2.145.3"
     situation = {
         "people": {
             "adult": {
@@ -68,5 +68,14 @@ def test_policyengine_us_live_housing_take_up_neutralization() -> None:
     neutralized = Simulation(situation=situation, reform=_build_reform(probe))
 
     assert baseline.calculate("is_eligible_for_housing_assistance", 2024)[0]
-    assert baseline.calculate("housing_assistance", 2024)[0] == pytest.approx(11_975)
+    # policyengine-us 2.145.3 adds the utility allowance to the rent in HUD
+    # gross rent (tenant_pays_utilities defaults to True), so the assistance
+    # is the rent plus that allowance less the minimum total tenant payment.
+    allowance = baseline.calculate("hud_utility_allowance", 2024)[0]
+    assert baseline.calculate("hud_gross_rent", 2024)[0] == pytest.approx(
+        12_000 + allowance
+    )
+    assert baseline.calculate("housing_assistance", 2024)[0] == pytest.approx(
+        12_000 + allowance - baseline.calculate("hud_ttp", 2024)[0]
+    )
     assert neutralized.calculate("housing_assistance", 2024)[0] == 0

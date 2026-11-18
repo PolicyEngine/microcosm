@@ -4,12 +4,12 @@
 from test_support.microcosm_build.us_voluntary_filing import *
 
 
-def test_policyengine_2_2_1_contract_and_aca_ptc_neutralization() -> None:
+def test_policyengine_2_145_3_contract_and_aca_ptc_neutralization() -> None:
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
     from microcosm.build.us_runtime.reform_coverage_smoke import _build_reform
 
-    assert version("policyengine-us") == "2.2.1"
+    assert version("policyengine-us") == "2.145.3"
     variable = CountryTaxBenefitSystem().variables[_OUTPUT]
     assert variable.is_input_variable()
     assert variable.entity.key == "tax_unit"
@@ -30,6 +30,11 @@ def test_policyengine_2_2_1_contract_and_aca_ptc_neutralization() -> None:
                 "filing_status": {2024: "SINGLE"},
                 _OUTPUT: {2024: True},
                 "tax_unit_is_required_to_file": {2024: False},
+                # policyengine-us 2.145.3 lets a tax unit that takes up ACA
+                # coverage claim the credit without filing for another reason
+                # (files_return_for_aca_ptc), so the voluntary-filing gate
+                # binds on a unit that does not take it up.
+                "takes_up_aca_if_eligible": {2024: False},
                 "eligible_for_refundable_credits": {2024: False},
                 "would_file_if_eligible_for_refundable_credit": {2024: False},
                 "slcsp": {"2024-01": 11_600},
