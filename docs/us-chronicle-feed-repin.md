@@ -106,27 +106,30 @@ machine on 2026-11-13; the run notes are not in this repository.
 A later main re-pin can fold these pairs into the main scope only by retiring
 the county pin in the same change.
 
-The two pins move together. When the county facts were pinned at `3e9d3a0`,
-the main feed was at `41b2fb2` (the split pin). Until the combined re-pin, the
-main pin may also name one feed cut on the split pin that the US feed owner
-allowed; `test_us_chronicle_county_facts.py` names it, and a later cut replaces
-it. A cut is the split pin, or the cut before it, plus whole Chronicle packages
-whose git trees equal Chronicle main's, built with `41b2fb2`'s Chronicle code
-changed only in `SOURCE_PACKAGE_ALIASES`. Its re-pin report keeps every earlier
-row byte for byte, or the cut brings its own reviewed check of the rows it
-changes, and it adds or changes no target that the ACS local lane selects
-from the main feed (cite a compile of those selections on both feeds). The
-lane is the only reader of both pins. Its county-facts rung takes state IRS SOI
-parents from the main feed, and its calibration selects state SNAP, state
-Medicaid enrollment, the state IRS SOI slice (with the state HT2 child tax
-credit cells) and the SSI age bands from the same feed (`state_admin_surface`
-and `acs_local_ssi_medicaid_take_up_targets` in
+The two pins move together. When microcosm#922 pinned the county facts at
+`3e9d3a0`, the main pin named `41b2fb2` (the split pin). Until the combined
+re-pin, the main pin may also name one feed cut on the split pin that the US
+feed owner allowed; `test_us_chronicle_county_facts.py` names it until the
+owner allows a later cut in its place. An operator builds a cut from the split
+pin, or the cut before it, plus whole Chronicle packages whose git trees equal
+Chronicle main's, using `41b2fb2`'s Chronicle code with changes only to
+`SOURCE_PACKAGE_ALIASES`. The cut's re-pin report keeps every earlier row byte
+for byte, or the operator brings a reviewed check of the rows the cut changes.
+Either way, the cut adds, removes or changes no target that the ACS local lane
+selects from the main feed, and the operator cites a compile that gives
+identical selections on the cut and on the main feed it replaces. Only the lane
+reads both pins. Its county-facts rung takes state IRS SOI parents from the
+main feed, and its calibration selects state SNAP, state Medicaid enrollment,
+the state IRS SOI slice (with the state HT2 child tax credit cells) and the SSI
+age bands from the same feed (`state_admin_surface` and
+`acs_local_ssi_medicaid_take_up_targets` in
 `tools/build_us_acs_local_release.py`). So such a cut leaves the lane's inputs
-unchanged. Today the cut is `60266a3` (microcosm#880, through microcosm#1610).
-On it the lane selects the same 4,380 targets, SSI age bands and Medicaid
-enrollment table as on `41b2fb2` (checked 17 November 2026 at main `5499382`).
-Any other main re-pin starts at or after `3e9d3a0` and rebuilds and re-pins
-the county facts at the same commit, so a US build reads one Chronicle base.
+unchanged. Today the US feed owner allows `60266a3`, the cut that
+microcosm#1610 pins for microcosm#880. On it the lane selects the same 4,380
+targets, SSI age bands and Medicaid enrollment table as on `41b2fb2`, in
+compiles of both feeds at main `5499382` on 17 November 2026. Any other main
+re-pin starts at or after `3e9d3a0` and rebuilds and re-pins the county facts
+at the same commit, so a US build reads one Chronicle base.
 
 The combined re-pin moves both pins to one Chronicle main commit at or after
 chronicle#430's merge `b428468d`, rebuilds both feeds and retires the allowed
