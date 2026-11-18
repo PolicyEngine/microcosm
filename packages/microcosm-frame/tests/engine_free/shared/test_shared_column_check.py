@@ -19,6 +19,7 @@ import pytest
 from microcosm.frame import (
     EntitySchema,
     Frame,
+    LinkSpec,
     MassChange,
     SharedColumnChangedError,
     WeightKind,
@@ -57,6 +58,7 @@ def _source_frame() -> Frame:
             "born_utc": pd.date_range("2000-01-01", periods=_PERSON_COUNT, tz="UTC"),
             "born_month": pd.period_range("2000-01", periods=_PERSON_COUNT, freq="M"),
             "rare_count": pd.arrays.SparseArray([0, 1, 0, 2]),
+            "size_band": pd.Categorical([10, 20, 10, 20]),
         }
     )
     household = pd.DataFrame(
@@ -162,6 +164,18 @@ def _add_at_into_sparse_values(column: pd.Series) -> None:
     np.add.at(column.array.sp_values, [0], 1)
 
 
+def _move_a_sparse_value(column: pd.Series) -> None:
+    column.array.sp_index.indices[0] = 0
+
+
+def _change_a_category(column: pd.Series) -> None:
+    np.asarray(column.array.categories.array)[0] = 999
+
+
+def _mark_a_value_missing(column: pd.Series) -> None:
+    column.array._mask[0] = True
+
+
 _RAW_WRITES: dict[str, tuple[str, Callable[[pd.Series], None]]] = {
     "to_numpy on Int64": ("count_complete", _write_through_to_numpy),
     "to_numpy on Float64": ("amount_complete", _write_through_to_numpy),
@@ -177,6 +191,9 @@ _RAW_WRITES: dict[str, tuple[str, Callable[[pd.Series], None]]] = {
     "add.at on time-zone dates": ("born_utc", _add_at_into_datetime_integers),
     "add.at on periods": ("born_month", _add_at_into_datetime_integers),
     "add.at on sparse values": ("rare_count", _add_at_into_sparse_values),
+    "sparse positions": ("rare_count", _move_a_sparse_value),
+    "category values": ("size_band", _change_a_category),
+    "mask of Int64": ("count_complete", _mark_a_value_missing),
 }
 
 
@@ -230,15 +247,75 @@ def test_a_group_table_kept_whole_by_a_partial_select_is_checked() -> None:
     assert raised.value.changed_columns == (("household", "rent"),)
 
 
-def test_a_raw_write_into_shared_strata_is_named() -> None:
+@pytest.mark.parametrize("operation", sorted(_SHARING_OPERATIONS))
+def test_a_raw_write_into_shared_strata_is_named(operation: str) -> None:
     source = _source_frame()
-    result = _reweighted(source)
+    result = _SHARING_OPERATIONS[operation](source)
 
     np.asarray(source.strata.array)[1] = "changed"
 
     with pytest.raises(SharedColumnChangedError) as raised:
         result.check_shared_columns()
     assert raised.value.changed_columns == (("strata", "strata"),)
+
+
+def test_a_raw_write_into_a_shared_link_table_is_named() -> None:
+    schema = EntitySchema(
+        group_entities=("household",),
+        links=(
+            LinkSpec(name="visits", left_entity="person", right_entity="household"),
+        ),
+    )
+    source_tables = {
+        entity: _source_frame().table(entity) for entity in ("person", "household")
+    }
+    visits = pd.DataFrame(
+        {
+            "person_id": np.array([0, 2], dtype="int64"),
+            "household_id": np.array([2, 1], dtype="int64"),
+            "hours": np.array([1.0, 2.0]),
+        }
+    )
+    source = Frame(
+        {**source_tables, "visits": visits},
+        schema,
+        {"household": Weights(np.array([100.0, 200.0]), WeightKind.DESIGN)},
+    )
+    result = _reweighted(source)
+
+    _add_at_into_to_numpy(source.link("visits")["hours"])
+
+    with pytest.raises(SharedColumnChangedError) as raised:
+        result.check_shared_columns()
+    assert raised.value.changed_columns == (("visits", "hours"),)
+
+
+def test_the_constructor_refuses_tables_with_a_changed_shared_column() -> None:
+    """It deep-copies, so the frame it built could not show the change."""
+
+    source = _source_frame()
+    result = _reweighted(source)
+    _add_at_into_to_numpy(source.table("person")["income"])
+
+    with pytest.raises(SharedColumnChangedError) as raised:
+        Frame(
+            {entity: result.table(entity) for entity in result.entities},
+            result.schema,
+            {"household": result.weights_for("household")},
+        )
+    assert raised.value.changed_columns == (("person", "income"),)
+
+
+def test_the_constructor_still_reports_a_table_that_is_not_a_dataframe() -> None:
+    source = _source_frame()
+    _reweighted(source)
+
+    with pytest.raises(AttributeError):
+        Frame(
+            {"person": "not a table", "household": source.table("household")},
+            source.schema,
+            {"household": source.weights_for("household")},
+        )
 
 
 def test_every_changed_column_is_named_at_once() -> None:
@@ -323,7 +400,59 @@ def test_replacing_a_column_after_its_sharer_is_gone_passes_the_check() -> None:
     result.check_shared_columns()
 
 
+@pytest.mark.parametrize(
+    ("column_name", "accumulation"),
+    [
+        ("count_with_gap", "cumsum"),
+        ("count_with_gap", "cummax"),
+        ("count_with_gap", "cummin"),
+    ],
+)
+def test_pandas_overwriting_masked_values_does_not_trip_the_check(
+    column_name: str, accumulation: str
+) -> None:
+    """pandas rewrites the stored values behind a missing entry here."""
+
+    source = _source_frame()
+    result = _reweighted(source)
+
+    getattr(source.table("person")[column_name], accumulation)()
+
+    result.check_shared_columns()
+    source.check_shared_columns()
+
+
+def test_a_caller_may_keep_writing_to_a_table_it_passed_to_replace_tables() -> None:
+    source = _source_frame()
+    table = source.table("person").copy()
+    first = source.replace_tables(person=table)
+    del first
+    gc.collect()
+
+    table.loc[table.index[0], "income"] = 99.0
+
+    source.replace_tables(person=table).check_shared_columns()
+
+
+def test_an_in_place_pandas_write_after_sharing_ended_is_reported() -> None:
+    """With no other table on the memory, pandas writes into it directly."""
+
+    source = _source_frame()
+    result = _reweighted(source)
+    del source
+    gc.collect()
+
+    person = result.table("person")
+    person.loc[person.index[0], "income"] = -1.0
+
+    with pytest.raises(SharedColumnChangedError) as raised:
+        result.check_shared_columns()
+    assert raised.value.changed_columns == (("person", "income"),)
+    assert "pandas write" in str(raised.value)
+
+
 def test_freed_memory_is_forgotten() -> None:
+    gc.collect()
     before = shared_columns_module._tracked_owner_count()
     table = pd.DataFrame({"income": np.arange(1_000, dtype=float)})
     shared_columns_module.record_shared_columns({"person": table})
@@ -345,15 +474,16 @@ def test_a_new_array_at_a_freed_address_is_not_compared() -> None:
     del table
     gc.collect()
 
-    # The allocator usually hands the same block back; try until it does, so
-    # the test exercises the reused address whenever the platform allows it.
+    # The allocator usually hands the same block back; the test means nothing
+    # unless it did.
     arrays = [np.ones(size) for _ in range(32)]
     reused = [
         array for array in arrays if array.__array_interface__["data"][0] == address
     ]
-    replacement = reused[0] if reused else arrays[0]
+    if not reused:
+        pytest.skip("the allocator did not reuse the freed address")
 
-    check_shared_columns({"person": pd.DataFrame({"income": replacement}, copy=False)})
+    check_shared_columns({"person": pd.DataFrame({"income": reused[0]}, copy=False)})
 
 
 def _counted_digests(monkeypatch: pytest.MonkeyPatch) -> list[int]:
@@ -362,9 +492,9 @@ def _counted_digests(monkeypatch: pytest.MonkeyPatch) -> list[int]:
     hashed_lengths: list[int] = []
     original = shared_columns_module._buffer_digest
 
-    def counting_digest(buffer: np.ndarray) -> bytes:
-        hashed_lengths.append(len(buffer))
-        return original(buffer)
+    def counting_digest(stored: shared_columns_module._StoredArray) -> bytes:
+        hashed_lengths.append(len(stored.values))
+        return original(stored)
 
     monkeypatch.setattr(shared_columns_module, "_buffer_digest", counting_digest)
     return hashed_lengths

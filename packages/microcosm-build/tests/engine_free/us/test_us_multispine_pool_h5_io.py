@@ -3671,9 +3671,11 @@ def test_legacy_stacked_manifest_refuses_h5_location_rule_attrs(
 def test_nullable_h5_writer_refuses_a_frame_whose_shared_column_changed(
     tmp_path: Path,
 ) -> None:
-    source = _pool_frame()
+    # The writer converts object strings to new arrays before writing them, so
+    # only a check of the frame itself can see this column.
+    source = _pool_frame_with_object_strings_on_every_entity()
     shared = source.replace_tables()
-    np.add.at(source.table("person")["person_id"].to_numpy(), [0], 1)
+    np.asarray(source.table("person")["PERIDNUM"].array)[0] = "changed"
 
     with pytest.raises(SharedColumnChangedError) as raised:
         write_nullable_us_h5(
@@ -3683,5 +3685,5 @@ def test_nullable_h5_writer_refuses_a_frame_whose_shared_column_changed(
             artifact_kind=LEGACY_NULLABLE_STAGING_ARTIFACT_KIND,
         )
 
-    assert raised.value.changed_columns == (("person", "person_id"),)
+    assert raised.value.changed_columns == (("person", "PERIDNUM"),)
     assert list(tmp_path.iterdir()) == []

@@ -1120,9 +1120,9 @@ def test_loading_hashes_nothing_until_a_loaded_column_is_shared(
     hashed_lengths: list[int] = []
     original_digest = shared_columns_module._buffer_digest
 
-    def counting_digest(buffer: np.ndarray) -> bytes:
-        hashed_lengths.append(len(buffer))
-        return original_digest(buffer)
+    def counting_digest(stored: shared_columns_module._StoredArray) -> bytes:
+        hashed_lengths.append(len(stored.values))
+        return original_digest(stored)
 
     monkeypatch.setattr(shared_columns_module, "_buffer_digest", counting_digest)
 

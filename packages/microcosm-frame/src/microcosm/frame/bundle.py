@@ -26,9 +26,10 @@ The constructor deep-copies every table it is given. :meth:`Frame.replace_tables
 :meth:`Frame.select` instead build a frame that shares the memory of every
 unchanged column with its source frame when pandas copy-on-write is on, and
 deep-copy when it is off (see :meth:`Frame._adopt`). Those operations record a
-digest of each column they start sharing, and :meth:`Frame.check_shared_columns`
-compares the digests so that a raw write into shared memory is found before
-the frame is written (see :mod:`microcosm.frame.shared_columns`).
+digest of each column of this frame they start sharing, and
+:meth:`Frame.check_shared_columns` compares the digests, which finds a raw write
+into memory the checked frame still holds (see
+:mod:`microcosm.frame.shared_columns`).
 """
 
 import re
@@ -119,6 +120,9 @@ class Frame:
         mass_log: tuple[MassChangeRecord, ...] = (),
         metadata: Mapping[str, Any] | None = None,
     ) -> None:
+        # The deep copies made below could not show an earlier raw write.
+        if isinstance(tables, Mapping):
+            check_shared_columns(tables, strata=strata)
         self._assemble(
             tables,
             schema,
@@ -1027,7 +1031,6 @@ class Frame:
 
         _require_dataframes(changed_tables)
         tables = self._shallow_table_copies()
-        _record_columns_being_shared(changed_tables)
         tables.update(
             {name: table.copy(deep=False) for name, table in changed_tables.items()}
         )
