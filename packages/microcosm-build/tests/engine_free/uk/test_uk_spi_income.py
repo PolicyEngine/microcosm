@@ -3,7 +3,15 @@
 # ruff: noqa: F403, F405
 from dataclasses import replace as _replace
 
+from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime.national_frame import uk_national_frame as _uk_frame
+from microcosm.build.uk_runtime.spi_rank_transport import (
+    cell_fold_ids,
+    cross_fit_transport,
+    identity_uniforms,
+)
+from microcosm.build.uk_runtime.spi_support import support_source_id_column
+from test_support.microcosm_build.uk_clone_first_frames import GEOGRAPHIC_RADIX
 from test_support.microcosm_build.uk_geographic_clones import with_geographic_clones
 from test_support.microcosm_build.uk_spi_income import *
 
@@ -185,6 +193,67 @@ def test_spi_carer_link_is_taken_again_from_the_channels_benefits() -> None:
     )
     assert none is None
     assert column not in passed
+
+
+def test_spi_carer_link_share_counts_the_frs_channels_true_sources() -> None:
+    """On the clone-first spine the FRS channel holds every geographic clone
+    (microcosm#931): the share the copies' outside carers are drawn at rests
+    on two survey households here, in four clone households, so the receipt
+    withholds it, as it would at one clone. The draw still reads the share."""
+
+    from microcosm.build.uk_runtime.frs_spine import (
+        FRS_CARE_HELPER_BIT,
+        FRS_CARE_OUTSIDE_BIT,
+    )
+
+    column = frs_disability.CARER_LINK_COLUMN
+    member = (1 << FRS_CARE_HELPER_BIT) | (1 << 2)
+    outside = (1 << FRS_CARE_HELPER_BIT) | (1 << FRS_CARE_OUTSIDE_BIT)
+    rows = []
+    # Survey households 1 and 2 at two clones: each clone's carer gives the
+    # line to member 2, whose daily living component qualifies.
+    for clone in (0, 1):
+        for survey in (1, 2):
+            household = survey + clone * GEOGRAPHIC_RADIX
+            shift = clone * GEOGRAPHIC_RADIX
+            rows.append((survey * 1000 + 1 + shift, household, member, 35.0, "NONE"))
+            rows.append((survey * 1000 + 2 + shift, household, 0, 0.0, "STANDARD"))
+    # An SPI copy of survey household 1 whose carer cares outside the home.
+    rows.append((101001, 101, outside, 35.0, "NONE"))
+    person = pd.DataFrame(
+        rows,
+        columns=[
+            "person_id",
+            "person_household_id",
+            "frs_care_recipients",
+            "care_hours",
+            "pip_dl_category",
+        ],
+    ).assign(
+        aa_category="NONE",
+        dla_sc_category="NONE",
+        carers_allowance_reported=0.0,
+        **{column: False},
+    )
+    household_ids = [1, 2, 1 + GEOGRAPHIC_RADIX, 2 + GEOGRAPHIC_RADIX, 101]
+    household = pd.DataFrame(
+        {
+            "household_id": household_ids,
+            "household_weight": [1.0] * len(household_ids),
+            "household_source_id": [1, 2, 1, 2, 1],
+            "source_household_id": [1, 2, 1, 2, 1],
+        }
+    )
+    spi_channel = person["person_household_id"].eq(101)
+
+    result, receipt = spi_income._refresh_carer_link(
+        person.copy(), household, spi_channel=spi_channel, min_hours=35.0
+    )
+
+    assert receipt["share"] == "<3"
+    assert receipt["share_support"] == "<3"
+    by_id = dict(zip(result["person_id"], result[column], strict=True))
+    assert by_id[101001]
 
 
 def test_spi_esa_group_returns_to_the_engines_default_on_redrawn_rows() -> None:
@@ -1397,6 +1466,34 @@ def test_spi_pay_floor_receipt_counts_source_households_not_copies() -> None:
     )
 
 
+def test_spi_pay_floor_counts_are_source_households_at_three_clones() -> None:
+    """Three geographic clones of every row, each at a third of its weight,
+    give the one-clone receipt's counts: support and the rows left below their
+    floor count distinct source households (microcosm#931)."""
+
+    rows = [
+        {"age": 40, "weekly_hours": 35, "pay": pay, "source": 100 + index // 2}
+        for index, pay in enumerate([1_000.0] * 12 + [90_000.0] * 10)
+    ]
+    receipts = {}
+    for clones in (1, 3):
+        cloned = [
+            {**row, "weight": 100.0 / clones} for _ in range(clones) for row in rows
+        ]
+        receipts[clones] = _floor(*_pay_floor_frames(cloned))[1]
+    for receipt in receipts.values():
+        assert receipt["eligible"]["source_households"] == 10
+        assert receipt["floored"]["source_households"] == "3-9"
+    check = {
+        clones: receipt["hourly_pay_check"] for clones, receipt in receipts.items()
+    }
+    assert check[3]["eligible_rows_below_their_floor_after"] == 0
+    assert (
+        check[3]["spi_drawn_employees"]["source_households"]
+        == (check[1]["spi_drawn_employees"]["source_households"])
+    )
+
+
 def test_spi_pay_floor_compares_the_drawn_rows_with_frs_employees() -> None:
     # Ten FRS employees on the minimum wage and ten below it beside twelve
     # drawn rows the floor lifts: half the FRS rows are below the minimum wage.
@@ -1535,6 +1632,50 @@ def _geographic_clones_of(support):
     )
 
 
+#: The id columns a geographic clone mints, with each copy's source id: the
+#: support channel runs after the geographic expansion on the clone-first
+#: spine, so each clone's copies copy that clone's own FRS rows.
+_CLONE_MINTED_COLUMNS = {
+    "person": ("person_id", "person_household_id", "person_benunit_id"),
+    "benunit": ("benunit_id",),
+    "household": ("household_id",),
+}
+
+
+def _clone_first_support(support, n_clones: int):
+    """The support as the clone-first spine makes it, at ``n_clones`` clones.
+
+    Clone ``k`` repeats every row, SPI copies included, with its ids and its
+    copy's source id minted at ``k`` in the copy-id table's
+    ``geographic_support`` field, its household's ``household_clone_index``
+    ``k``, the same ``source_household_id`` and its household's weight over
+    ``n_clones``. Each table is in id order, as the spine stacks the support
+    channel's copies after every clone's FRS rows.
+    """
+
+    tables = {}
+    for entity, columns in _CLONE_MINTED_COLUMNS.items():
+        table = getattr(support, entity)
+        clones = []
+        for k in range(n_clones):
+            clone = table.copy()
+            for column in (*columns, support_source_id_column(entity)):
+                if k:
+                    clone[column] = copy_id_table.mint(
+                        clone[column], "geographic_support", k
+                    )
+            if entity == "household":
+                clone["household_clone_index"] = np.full(len(clone), k, np.int64)
+                clone["household_weight"] = clone["household_weight"] / n_clones
+            clones.append(clone)
+        tables[entity] = (
+            pd.concat(clones, ignore_index=True)
+            .sort_values(columns[0], kind="stable")
+            .reset_index(drop=True)
+        )
+    return _replace(support, **tables)
+
+
 def test_a_household_table_carrying_the_artifact_clone_index_is_refused(
     monkeypatch, tmp_path
 ) -> None:
@@ -1612,3 +1753,257 @@ def test_geographic_clones_train_the_frs_forests_as_their_survey_records(
         assert (cloned_kind, cloned_gate) == (kind, gate)
         np.testing.assert_array_equal(cloned_groups, groups)
         np.testing.assert_array_equal(cloned_weights, weights)
+
+
+def _impute_recording_transport(monkeypatch, frame, donor_path, *, translate=True):
+    """Run the stage on ``frame``, recording what it hands the transport.
+
+    Returns the stage's result, the transport call's keyword arguments and
+    the transport's result. ``translate=False`` drops the twin identities
+    the stage passes, so the twin check reads each copy's own identity, as
+    it did before the stage translated it through its fold.
+
+    The stage reads the DWP disability rates from the engine when none are
+    supplied, and the engine-free tier installs no engine: fixed stand-in
+    rates keep the helper hermetic, whatever ran before it in the process
+    (microcosm#931).
+    """
+
+    from microcosm.build.uk_runtime import frs_disability
+    from test_support.microcosm_build.uk_frs_disability import _category_rates, _flags
+
+    monkeypatch.setattr(
+        frs_disability,
+        "uk_dwp_disability_category_rates",
+        lambda year: _category_rates(),
+    )
+    monkeypatch.setattr(
+        frs_disability, "uk_dwp_disability_flag_rates", lambda year: _flags()
+    )
+    calls = []
+
+    def recording(*args, **kwargs):
+        kwargs = {**kwargs, "allow_in_sample": True}
+        if not translate:
+            kwargs.pop("twin_identities")
+        transport = cross_fit_transport(*args, **kwargs)
+        calls.append((kwargs, transport))
+        return transport
+
+    monkeypatch.setattr(spi_income, "cross_fit_transport", recording)
+    result = impute_uk_spi_income_support(
+        frame,
+        donor_path,
+        seed=9,
+        n_estimators=3,
+        donor_sample_size=None,
+        state_pension_age=66,
+        allow_in_sample_reference=True,
+        stage1_gate_calibration="cross_fitted",
+    )
+    ((kwargs, transport),) = calls
+    return result, kwargs, transport
+
+
+def _same_transport(first, second) -> bool:
+    return first.receipt == second.receipt and all(
+        first.quantiles[target].tobytes() == second.quantiles[target].tobytes()
+        and first.sign_uniforms[target].tobytes()
+        == second.sign_uniforms[target].tobytes()
+        for target in SPI_INCOME_QRF_OUTPUT_COLUMNS
+    )
+
+
+def test_the_forests_fold_receipt_is_absent_at_one_clone_and_rounded_at_three(
+    monkeypatch, tmp_path
+) -> None:
+    """The stage records how its forests' geographic fold met their survey
+    records only on more than one clone, counted in true source households
+    and rounded (microcosm#931)."""
+
+    support = _dead_support()
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+    alone, _, _ = _impute_recording_transport(monkeypatch, support, donor_path)
+    assert alone.geographic_fold is None
+    one, _, _ = _impute_recording_transport(
+        monkeypatch, _clone_first_support(support, 1), donor_path
+    )
+    assert one.geographic_fold is None
+    three, _, _ = _impute_recording_transport(
+        monkeypatch, _clone_first_support(support, 3), donor_path
+    )
+    # Four FRS households train the forests; no clone differs from another.
+    assert three.geographic_fold == {
+        "clone_count": 3,
+        "records": "3-9",
+        "varied_records": 0,
+        "varied_share": 0,
+    }
+
+
+def test_the_twin_check_reaches_every_clones_copies(monkeypatch, tmp_path) -> None:
+    """On the clone-first spine each clone's SPI copies copy that clone's own
+    FRS rows, and the forests train on clone 0's rows, which the other
+    clones fold into. The stage translates each copy's twin through the fold
+    for the twin check alone: clone 1's copies are checked against their
+    twin's fold too, and a fold-key cell moved on one of them is refused,
+    while every copy's uniforms stay keyed on its own twin, so clone 1 draws
+    apart from clone 0. On one clone the two keys are the same and the
+    transport is the one the untranslated check gives (microcosm#931)."""
+
+    support = _dead_support()
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+
+    alone, kwargs, transport = _impute_recording_transport(
+        monkeypatch, support, donor_path
+    )
+    assert kwargs["twin_identities"].tobytes() == kwargs["identities"].tobytes()
+    untranslated, _, before = _impute_recording_transport(
+        monkeypatch, support, donor_path, translate=False
+    )
+    assert _same_transport(transport, before)
+    pd.testing.assert_frame_equal(alone.person, untranslated.person, check_exact=True)
+
+    two = _clone_first_support(support, 2)
+    _, kwargs, transport = _impute_recording_transport(monkeypatch, two, donor_path)
+    identities, twins = kwargs["identities"], kwargs["twin_identities"]
+    clone_one = identities >= GEOGRAPHIC_RADIX
+    assert int(clone_one.sum()) == int((~clone_one).sum()) == 4
+    # Each copy keeps its own twin's id; the check reads clone 1's twins on
+    # the clone-0 rows they folded into, which the forests train on.
+    assert twins[~clone_one].tolist() == identities[~clone_one].tolist()
+    assert (
+        twins[clone_one].tolist() == (identities[clone_one] - GEOGRAPHIC_RADIX).tolist()
+    )
+    assert set(twins.tolist()) <= set(kwargs["training_identities"].tolist())
+    for target in SPI_INCOME_QRF_OUTPUT_COLUMNS:
+        placed = identity_uniforms(identities, target=target, part="quantile", seed=9)
+        np.testing.assert_array_equal(transport.quantiles[target], placed)
+        assert not np.isin(placed[clone_one], placed[~clone_one]).any()
+
+    # A gender flip that moves a clone-1 copy off its twin's fold.
+    predictors = kwargs["recipient_predictors"]
+    fold_call = {
+        "folds": kwargs["folds"],
+        "seed": kwargs["seed"],
+        "used": kwargs["used"],
+    }
+    flipped = predictors["gender"].map({"MALE": "FEMALE", "FEMALE": "MALE"})
+    folds, _ = cell_fold_ids(predictors, **fold_call)
+    moved, _ = cell_fold_ids(predictors.assign(gender=flipped), **fold_call)
+    candidates = np.flatnonzero(clone_one & (moved != folds))
+    assert candidates.size
+    label = predictors.index[candidates[0]]
+    person = two.person.copy()
+    person.loc[label, "gender"] = flipped.loc[label]
+    mutated = _replace(two, person=person)
+    # Before the translation the check could not see clone 1's twins.
+    _impute_recording_transport(monkeypatch, mutated, donor_path, translate=False)
+    with pytest.raises(ValueError, match="differs from its twin's"):
+        _impute_recording_transport(monkeypatch, mutated, donor_path)
+
+
+def _with_one_differing_clone(support):
+    """``support`` with clone 1 of its first FRS record reporting more dividends.
+
+    Dividends are a forest input that moves no fold-key cell and keeps the
+    row a reference row, so the record's two clones differ only on what the
+    forests read, as a stage run per area could leave them. Returns the
+    support and the transport key of the clone that differs.
+    """
+
+    person = support.person.copy()
+    clone = person["person_household_id"].map(
+        support.household.set_index("household_id")["household_clone_index"]
+    )
+    frs = person[support_channel_column("person")].eq(
+        spi_income.BASE_FRS_SUPPORT_CHANNEL
+    )
+    clone_one = frs & clone.eq(1)
+    first = person.loc[clone_one, "person_id"].min()
+    varied = clone_one & person["person_id"].eq(first)
+    person.loc[varied, "dividend_income"] += 1.0
+    key = person.loc[varied, "person_source_id"].item()
+    return _replace(support, person=person), key
+
+
+def test_differing_clones_with_spine_keys_train_apart_under_their_own_keys(
+    monkeypatch, tmp_path
+) -> None:
+    """On the clone-first spine geographic_expand mints each clone's ids
+    before the support channel keys every row on its own id, so each clone's
+    FRS rows carry their own transport key. Two clones of one record that
+    differ on what the forests read stay training rows of their own after the
+    fold, each under its own key, and the stage runs; clone 1's copies of the
+    record find their twin on clone 1's row (microcosm#931)."""
+
+    support = _dead_support()
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+    two = _clone_first_support(support, 2)
+    agreeing_result, agreeing, _ = _impute_recording_transport(
+        monkeypatch, two, donor_path
+    )
+    differing_support, key = _with_one_differing_clone(two)
+    folded_keys = agreeing["training_identities"].tolist()
+    assert key not in folded_keys
+
+    differing_result, differing, _ = _impute_recording_transport(
+        monkeypatch, differing_support, donor_path
+    )
+    keys = differing["training_identities"]
+    assert pd.Index(keys).is_unique
+    assert sorted(keys.tolist()) == sorted([*folded_keys, key])
+    assert key in differing["twin_identities"].tolist()
+    assert agreeing_result.geographic_fold["varied_records"] == 0
+    assert differing_result.geographic_fold["varied_records"] != 0
+
+
+def test_differing_clones_that_share_a_key_are_refused_before_the_transport(
+    monkeypatch, tmp_path
+) -> None:
+    """Clones made after the support channel, as the dense pool makes them,
+    keep their record's transport key. Two that differ on what the forests
+    read stay training rows of their own after the fold, so the stage refuses
+    the frame by its cause before the transport meets the repeated key
+    (microcosm#931)."""
+
+    support = _dead_support()
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+    pooled, key = _with_one_differing_clone(_geographic_clones_of(support))
+    frs = pooled.person[support_channel_column("person")].eq(
+        spi_income.BASE_FRS_SUPPORT_CHANNEL
+    )
+    assert int((frs & pooled.person["person_source_id"].eq(key)).sum()) == 2
+
+    calls = []
+    monkeypatch.setattr(
+        spi_income,
+        "cross_fit_transport",
+        lambda *args, **kwargs: calls.append(kwargs),
+    )
+    with pytest.raises(
+        ValueError, match="made after the support channel share its key"
+    ):
+        impute_uk_spi_income_support(
+            pooled,
+            donor_path,
+            seed=9,
+            n_estimators=3,
+            donor_sample_size=None,
+            state_pension_age=66,
+            allow_in_sample_reference=True,
+            stage1_gate_calibration="cross_fitted",
+        )
+    assert not calls

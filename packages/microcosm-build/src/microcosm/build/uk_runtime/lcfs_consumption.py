@@ -67,6 +67,7 @@ from microcosm.build.uk_runtime.gambling_participation import (
     gambling_participation_operation,
     top_up_gambling_participation,
 )
+from microcosm.build.uk_runtime.geographic_clones import geographic_clone_count
 from microcosm.build.uk_runtime.household_income import (
     UK_HBAI_GROSS_INCOME_DEDUCTIONS,
     UK_HBAI_NET_INCOME_PREDICTOR,
@@ -97,6 +98,7 @@ from microcosm.build.uk_runtime.qrf_gates import (
     gate_outcomes,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    distinct_count,
     extreme_count,
     floored_share,
     rounded_count,
@@ -1110,10 +1112,15 @@ class UKLCFSConsumptionStageTransform:
             gate_calibration=_qrf_gate_calibration(self.stage),
         )
         clip_result = support_clip_to_donor(
-            imputation.draws, donor, exempt=support_clip_exempt(self.stage)
+            imputation.draws,
+            donor,
+            exempt=support_clip_exempt(self.stage),
+            clone_count=geographic_clone_count(
+                frame.table("household"), stage=UK_LCFS_CONSUMPTION_STAGE_NAME
+            ),
         )
         household_draws, shares_outside = clip_excise_shares(
-            clip_result.clipped, shares
+            clip_result.clipped, shares, sources=sources
         )
         prepayment = lcfs_prepayment_meter(
             self.stage,
@@ -4748,18 +4755,25 @@ def excise_spending(draws: pd.DataFrame) -> pd.DataFrame:
 def clip_excise_shares(
     draws: pd.DataFrame,
     shares: Mapping[str, tuple[str, tuple[str, ...], tuple[str, ...]]],
+    *,
+    sources: np.ndarray | None = None,
 ) -> tuple[pd.DataFrame, dict[str, int | str]]:
     """Hold each drawn share to [0, 1], counting the draws held.
 
     The chain draws a share from donor values, which lie in the interval, so
-    the count is zero unless the chain stops doing so.
+    the count is zero unless the chain stops doing so. It counts the distinct
+    source households whose draws were held, over every clone (``sources``,
+    one per row when omitted), so it is zero exactly when no draw was.
     """
 
     held = draws.copy()
+    sources = np.arange(len(held)) if sources is None else np.asarray(sources)
     outside: dict[str, int | str] = {}
     for name in shares:
         values = held[name].to_numpy(dtype=float)
-        outside[name] = extreme_count(int(((values < 0.0) | (values > 1.0)).sum()))
+        outside[name] = extreme_count(
+            distinct_count(sources, (values < 0.0) | (values > 1.0))
+        )
         held[name] = np.clip(values, 0.0, 1.0)
     return held, outside
 
@@ -5517,6 +5531,7 @@ def support_clip_to_donor(
     donor: pd.DataFrame,
     *,
     exempt: set[str] | None = None,
+    clone_count: int = 1,
 ) -> UKSupportClipResult:
     return support_clip_to_donor_with_receipt(
         draws,
@@ -5524,6 +5539,7 @@ def support_clip_to_donor(
         columns=UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
         stage=UK_LCFS_CONSUMPTION_STAGE_NAME,
         exempt=exempt,
+        clone_count=clone_count,
     )
 
 

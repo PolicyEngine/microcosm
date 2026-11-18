@@ -42,16 +42,18 @@ or `uv sync --all-packages --all-extras`. To keep both countries set up, point
 
 PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
 `engine-uk`, `integration-uk`, `wheels`, and `installed-emitter` jobs, plus the
-`select-countries` orchestration job and the `ci` job.
+`select-countries` orchestration job and the `ci` job. The same workflow's
+`engine-uk-after-merge` job runs on pushes to `main` only, after merge.
 
 `ci` gives the `main` ruleset one check that covers the country jobs. It fails
 unless every other job passed, or skipped because `select-countries` succeeded
-and reported `false` for its country. A skipped matrix job reports under its
-unexpanded name, so a ruleset cannot require `engine-us` or `engine-uk` by
-name. The ruleset also names each other check that runs on every pull
-request: `lint`, `wheels`, `select-countries`, `installed-emitter` and both
-`engine-free` legs. When `engine-free`'s matrix changes, change the ruleset
-too, because a leg's check name holds its Python version.
+and reported `false` for its country, or skipped because it runs after merge
+and the run's event (`GITHUB_EVENT_NAME`) is not a push. A skipped matrix job
+reports under its unexpanded name, so a ruleset cannot require `engine-us` or
+`engine-uk` by name. The ruleset also names each other check that runs on
+every pull request: `lint`, `wheels`, `select-countries`, `installed-emitter`
+and both `engine-free` legs. When `engine-free`'s matrix changes, change the
+ruleset too, because a leg's check name holds its Python version.
 
 The workflow runs on a pull request only when it targets `main`. Retargeting a
 pull request to `main` starts no run, because GitHub reports a base change as
@@ -60,7 +62,11 @@ request retargets, push a commit or close and reopen it, then merge once its
 checks pass.
 
 The plan names the jobs the selection may leave out: each job whose test
-groups all need the same country's engine. The lint job runs
+groups all need the same country's engine. It also names the jobs that run
+after merge: each job whose test groups are all marked `after_merge`. Such a
+job's `if` is `github.event_name == 'push'` and it needs no selection; `ci`
+needs it, so a push must run it, and `require-results` passes its skip on any
+other event. The lint job runs
 `tools/ci_test_plan.py verify-workflow`, which parses the workflow with PyYAML
 and refuses:
 
@@ -71,6 +77,7 @@ and refuses:
 - a job the selection may leave out that doesn't need `select-countries`, and
   a job that needs one the selection may leave out, unless both follow the
   same country's selection;
+- a job that needs an after-merge job, unless it runs after merge too;
 - a `ci` job that lacks `if: always()`, omits a job from `needs`, or does
   anything but check out the repository and run `require-results` on its
   `needs` context;
@@ -268,6 +275,9 @@ of these directories below its package's `tests/` directory:
   aging, fiscal refresh, release preparation, scoring, or another complete data
   workflow. Every module in this category runs in a fresh pytest process.
 - `engine/uk/`: imports or executes the UK engine.
+- `engine_after_merge/uk/`: imports or executes the UK engine but is too slow for
+  every pull request; runs through the `engine-uk-after-merge` job on pushes to
+  main only, after merge.
 - `integration/uk/`: runs serially through the `integration-uk` job with the
   explicit `--run-integration` option.
 - `installed_emitter/shared/`: starts the separately installed
@@ -401,11 +411,23 @@ grades every waiver register on the staged frame before the solve; see README
 "Dry-running the release's registers". Publication also refuses a
 release whose build recorded staging telemetry that never reached its repo
 (`--allow-missing-staging` overrides); a build that declared `--no-staging`
-publishes without the flag. A UK national cut runs end to end with
-`tools/run_uk_cut.py` ([uk-cut-anyone.md](uk-cut-anyone.md)): inputs fetched
-by pin, a signing key registered in `microcosm.data.gate_signing_keys`, and
-an inspection-only `--publish`. Never publish or promote artifacts as a side
-effect of another task. A UK rowwise run's **staged** bundle
+publishes without the flag. `tools/run_uk_cut.py`
+([uk-cut-anyone.md](uk-cut-anyone.md)) runs a UK national cut's steps in
+order from one checkout, each skipped once its outputs exist and verify. It
+fetches each input by its pin; the three conditioned atomic-area supports
+come from `policyengine/microcosm-uk-build-inputs`, under the sha256 of their
+`sources.yaml` pins. Its `dense-spine` command builds only the dense line's
+15-clone spine, with its memory profile, and prints the upload that hands the
+spine to a dense build elsewhere.
+It hands the signing key, which must be registered in
+`microcosm.data.gate_signing_keys`, only to the steps that sign or verify. It
+does not complete a cut today. The national step refuses until the
+degenerate-surface register's `household.atomic_area_basis` exclusion applies
+on the national line. The publication steps (the publish preflight, which
+`all` always runs, and the inspection-only `--publish`) still build the
+tagged publisher's arguments, which `prepare_release` refuses for the national
+release ([release contract](release-contract.md)). Never publish or promote
+artifacts as a side effect of another task. A UK rowwise run's **staged** bundle
 (`staged/<run_id>/` in the private repository, written by the build itself)
 is inspection evidence, not a release: it never moves `releases/` or
 `latest.json` and is not loadable through the certified loader. The build's

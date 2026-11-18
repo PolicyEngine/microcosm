@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# The CI job whose files run: engine-uk, or engine-uk-after-merge.
+job="${1:-engine-uk}"
 files=()
 while IFS= read -r file; do files+=("$file"); done < <(
-  uv run --no-sync python tools/ci_test_plan.py list-job engine-uk
+  uv run --no-sync python tools/ci_test_plan.py list-job "$job"
 )
 
 # Keep country-engine execution serial so each process stays within its

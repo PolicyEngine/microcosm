@@ -30,7 +30,12 @@ from microcosm.build.uk_runtime.cgt_structure import (
     _assert_closed_world_operations,
 )
 from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
-from microcosm.build.uk_runtime.household_lineage import collapse_geographic_clones
+from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
+from microcosm.build.uk_runtime.household_lineage import (
+    GEOGRAPHIC_FOLD_EVIDENCE,
+    fold_geographic_clones,
+    geographic_fold_receipt,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -168,14 +173,17 @@ BONUS_SACRIFICE_MOVE = (
 #: An SPI-channel adult's pay is the tape's, and the FRS bonus it carries is
 #: its twin's, so the two do not belong together (Vahid's review of #1383,
 #: item 6). It draws a bonus share of pay from a base-FRS adult paid alike
-#: instead (María's ruling of 2026-10-24); FRS rows keep their own bonus.
+#: instead (María's ruling of 2026-10-24); FRS rows keep their own bonus. It
+#: draws within its own geographic clone, from cells pooled over every clone
+#: (microcosm#931; :func:`draw_spi_bonuses`).
 BONUS_SACRIFICE_SPI_DRAW = (
     "an SPI-channel adult with pay draws the bonus share of pay "
     "(frs_bonus_amount over employment_income) of a base-FRS adult with pay in "
-    "the same pay cell, by person weight, keyed on person_id; the cells are the "
-    "base-FRS paid adults' weighted pay quantiles at spi_cell_quantiles, and a "
-    "cell with fewer than spi_min_donor_sources donor source households joins "
-    "the one below"
+    "the same pay cell and the same geographic clone (household_clone_index; a "
+    "spine without it is one clone), by person weight, keyed on person_id; the "
+    "cells are the base-FRS paid adults' weighted pay quantiles over every clone "
+    "at spi_cell_quantiles, and a cell with fewer than spi_min_donor_sources "
+    "donor source households joins the one below, and the lowest the one above"
 )
 BONUS_SACRIFICE_SPI_CELL_QUANTILES = (
     0.1,
@@ -343,14 +351,29 @@ def draw_spi_bonuses(
     source_ids: np.ndarray,
     donors: np.ndarray,
     spi: np.ndarray,
+    clone_indices: np.ndarray | None = None,
 ) -> UKSpiBonusDraw:
     """Each SPI-channel adult's bonus, as a share of pay drawn from FRS adults.
 
-    ``donors`` marks the base-FRS adults (no clone, no support copy) and
-    ``spi`` the SPI-channel adults. Each SPI adult with pay takes the bonus
-    share of pay of one donor with pay in its pay cell, drawn by person weight
-    on a uniform keyed on its own ``person_id`` (``BONUS_SACRIFICE_SPI_DRAW``);
-    an SPI adult without pay has no bonus. Every other row keeps its own.
+    ``donors`` marks the base-FRS adults (no capital-gains clone, no support
+    copy) and ``spi`` the SPI-channel adults. Each SPI adult with pay takes
+    the bonus share of pay of one donor with pay in its pay cell, drawn by
+    person weight on a uniform keyed on its own ``person_id``
+    (``BONUS_SACRIFICE_SPI_DRAW``); an SPI adult without pay has no bonus.
+    Every other row keeps its own.
+
+    ``clone_indices`` gives each row's geographic clone (microcosm#931), 0
+    throughout a one-clone spine; None, for a frame without
+    ``household_clone_index``, puts every row in clone 0. The pay cells and the
+    donor-source floor pool every clone's donors, the floor counted in
+    distinct ``source_ids``. Each SPI adult draws from the donors of its own
+    clone in its cell, in id order, on the same keyed uniform. So a frame of
+    one clone draws as before, value for value. Where the clones agree on the
+    donors' pay, clone 0 of ``K``, whose ids are the one-clone ids, draws on
+    the one-clone pool at ``w / K``, up to the 1/K split's rounding, which can
+    move a pooled cell edge where a quantile falls exactly on a cumulative
+    weight share. A cell with no donor in an SPI adult's clone is refused,
+    without a count.
     """
 
     bonus = np.maximum(np.asarray(bonus, dtype=float), 0.0)
@@ -404,19 +427,50 @@ def draw_spi_bonuses(
         salt=BONUS_SACRIFICE_SPI_DRAW_SALT,
     )
     ids = np.asarray(person_ids)
+    clones = (
+        np.zeros(len(pay), dtype=np.int64)
+        if clone_indices is None
+        else np.asarray(clone_indices)
+    )
     for cell in np.unique(cells[recipients]):
-        pool = np.flatnonzero(paid_donors & (cells == cell))
-        if not len(pool):
-            raise ValueError("An SPI-channel bonus pay cell has no donor to draw.")
-        pool = pool[np.argsort(ids[pool], kind="stable")]
-        pool_cumulative = np.cumsum(weights[pool]) / weights[pool].sum()
-        takers = np.flatnonzero(recipients & (cells == cell))
-        picks = np.minimum(
-            np.searchsorted(pool_cumulative, uniforms[takers], side="right"),
-            len(pool) - 1,
-        )
-        drawn[takers] = share[pool[picks]] * pay[takers]
+        in_cell = cells == cell
+        # The cell's SPI adults in each clone draw from that clone's donors
+        # alone; with one clone, from the whole cell.
+        for clone in np.unique(clones[recipients & in_cell]):
+            members = in_cell & (clones == clone)
+            pool = np.flatnonzero(paid_donors & members)
+            if not len(pool):
+                raise ValueError(
+                    "An SPI-channel bonus pay cell has no donor to draw in an "
+                    "SPI adult's geographic clone."
+                )
+            pool = pool[np.argsort(ids[pool], kind="stable")]
+            pool_cumulative = np.cumsum(weights[pool]) / weights[pool].sum()
+            takers = np.flatnonzero(recipients & members)
+            picks = np.minimum(
+                np.searchsorted(pool_cumulative, uniforms[takers], side="right"),
+                len(pool) - 1,
+            )
+            drawn[takers] = share[pool[picks]] * pay[takers]
     return UKSpiBonusDraw(bonus=drawn, recipients=recipients, cells=len(groups))
+
+
+def _geographic_clone_indices(
+    person_households: pd.Series, households: pd.DataFrame
+) -> np.ndarray | None:
+    """Each person's geographic clone: its household's ``household_clone_index``.
+
+    ``households`` is indexed by ``household_id``. None without the column,
+    which is one clone; the spine's ``geographic_expand`` stage writes it on
+    every household, 0 throughout a one-clone spine (microcosm#931). The stage's
+    geographic fold reads the column first, as the ``geographic_support``
+    branch's ordinals, and refuses one that is not a nonnegative integer.
+    """
+
+    column = ladder_clone_index_column("household")
+    if column not in households.columns:
+        return None
+    return person_households.map(households[column]).to_numpy(dtype=np.int64)
 
 
 @dataclass(frozen=True)
@@ -448,6 +502,9 @@ class UKSalarySacrificeResult:
     bonus_receipt: Mapping[str, object] | None = None
     #: The fit's gate outcome, when the gate is not in-sample.
     gate_outcomes: Mapping[str, str] | None = None
+    #: How the forest's geographic fold met its survey records
+    #: (``household_lineage.geographic_fold_receipt``); None on one clone.
+    geographic_fold: Mapping[str, object] | None = None
 
     def evidence(self) -> dict[str, object]:
         return {
@@ -500,6 +557,11 @@ class UKSalarySacrificeResult:
                 {UK_GATE_OUTCOMES_EVIDENCE: dict(self.gate_outcomes)}
                 if self.gate_outcomes
                 else {}
+            ),
+            **(
+                {}
+                if self.geographic_fold is None
+                else {GEOGRAPHIC_FOLD_EVIDENCE: dict(self.geographic_fold)}
             ),
         }
 
@@ -615,17 +677,23 @@ def impute_salary_sacrifice(
     person_weights = person_households.map(household_weights).to_numpy(dtype=float)
     # The forest trains on each asked respondent once: their geographic
     # clones that agree on the predictors and the sacrifice fold into their
-    # first row with their weight, clones that differ stay rows of their own,
-    # and every other copy stays its own row; a frame without geographic
-    # clones keeps every row and weight
-    # (household_lineage.collapse_geographic_clones, microcosm#931).
-    kept, fit_weights = collapse_geographic_clones(
-        {"person": person, "household": household},
+    # lowest-id clone with their weight, clones that differ stay rows of
+    # their own, and every other copy stays its own row; a frame without
+    # geographic clones keeps every row and weight
+    # (household_lineage.fold_geographic_clones, microcosm#931). On more than
+    # one clone the evidence records the fold.
+    lineage_tables = {"person": person, "household": household}
+    fold = fold_geographic_clones(
+        lineage_tables,
         "person",
         training_mask.to_numpy(dtype=bool),
         person_weights,
         inputs=numeric[[*SALSAC_PREDICTORS, SALSAC_OUTPUT]].reset_index(drop=True),
     )
+    geographic_fold = geographic_fold_receipt(
+        lineage_tables, "person", fold, stage="The salary-sacrifice stage"
+    )
+    kept, fit_weights = fold.kept, fold.weights
     training_mask = pd.Series(kept, index=training_mask.index)
     training = numeric.loc[training_mask, [*SALSAC_PREDICTORS, SALSAC_OUTPUT]].copy()
     training["_fit_weight"] = fit_weights[kept]
@@ -753,6 +821,8 @@ def impute_salary_sacrifice(
         "person",
         stage="The salary-sacrifice stage",
     )
+    # Each SPI adult draws a bonus share from its own geographic clone's
+    # donors: its household's clone index, or clone 0 without the column.
     spi_draw = draw_spi_bonuses(
         bonus=bonus_source,
         employment_income=employment_income,
@@ -763,6 +833,7 @@ def impute_salary_sacrifice(
             channels.eq("frs") & ~clones.astype(bool) & ~support_copies.astype(bool)
         ).to_numpy(),
         spi=channels.ne("frs").to_numpy(),
+        clone_indices=_geographic_clone_indices(person_households, households),
     )
     bonus = convert_bonuses_to_bonus_sacrifice(
         bonus=spi_draw.bonus,
@@ -885,6 +956,7 @@ def impute_salary_sacrifice(
             if SALSAC_QRF_GATE_CALIBRATION != UK_DEFAULT_GATE_CALIBRATION
             else None
         ),
+        geographic_fold=geographic_fold,
     )
 
 

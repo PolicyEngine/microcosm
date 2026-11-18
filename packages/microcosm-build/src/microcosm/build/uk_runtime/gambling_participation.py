@@ -810,8 +810,10 @@ def top_up_gambling_participation(
             }
         receipt["keys"][key] = {
             **entry,
+            # The source households whose added households carry no stake,
+            # over every clone: zero exactly when no added household does.
             "added_without_stake": extreme_count(
-                int(((regular | occasional) & ~(topped > 0)).sum())
+                distinct_count(source_ids, (regular | occasional) & ~(topped > 0))
             ),
             "propensity": propensity_receipt,
             "stake_training_rows": rounded_count(int(played.sum())),

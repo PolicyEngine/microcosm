@@ -19,6 +19,7 @@ from microcosm.build.uk_runtime.donor_uprating import (
     uprating_operation,
 )
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+from microcosm.build.uk_runtime.geographic_clones import geographic_clone_count
 from microcosm.build.uk_runtime.household_income import (
     UK_HBAI_GROSS_INCOME_VARIABLES,
     etb_disposable_income,
@@ -147,7 +148,13 @@ class UKETBVATStageTransform:
             household_ids=frame.table("household")["household_id"].to_numpy(),
             salt=_qrf_salt(self.stage),
         )
-        clip_result = support_clip_to_donor(imputed, donor)
+        clip_result = support_clip_to_donor(
+            imputed,
+            donor,
+            clone_count=geographic_clone_count(
+                frame.table("household"), stage=UK_ETB_VAT_STAGE_NAME
+            ),
+        )
         imputed = clip_result.clipped
         household = frame.table("household").copy()
         household["full_rate_vat_expenditure_rate"] = imputed[
@@ -398,13 +405,14 @@ def impute_etb_vat(
 
 
 def support_clip_to_donor(
-    draws: pd.DataFrame, donor: pd.DataFrame
+    draws: pd.DataFrame, donor: pd.DataFrame, *, clone_count: int = 1
 ) -> UKSupportClipResult:
     return support_clip_to_donor_with_receipt(
         draws,
         donor,
         columns=UK_ETB_VAT_OUTPUT_COLUMNS,
         stage=UK_ETB_VAT_STAGE_NAME,
+        clone_count=clone_count,
     )
 
 

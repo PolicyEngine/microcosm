@@ -1,0 +1,7 @@
+Remove three helpers that nothing has read since the spine took the dense line's localisation (#931).
+
+- **`frs_brma`.** `UKFRSBRMAStageTransform` and `add_frs_brma`, the retired FRS BRMA stage's transform and its frame wrapper, go with the imports only they used. The draw the spine's BRMA stages run, `draw_household_brmas`, stays with its helpers, the count resource's loader and the declared seeds and salts.
+- **`source_lineage`.** `collapse_replicas`, which returned `fold_replicas`' kept rows and weights alone, goes. The UK fits fold through `household_lineage.fold_geographic_clones`, which calls `fold_replicas`.
+- **`graph_atomic_geography`.** `atomic_geography_nodes`, the builder that composed the shared geography nodes for the dense graph, goes. The four kernels and `register_atomic_geography_kernels` stay: New Zealand's transport graph declares the nodes itself, and the UK spine runs the operator in process.
+- **What moves.** Keys only, no value: every node whose kernel hashes one of the three modules re-keys.
+- **Tests.** The builder's own refusal tests go. The executor and typed-gate tests of the shared nodes build the four nodes by hand. The household-lineage projector's acceptance test feeds its keys to the shared operator, as the spine's area stages run it. The BRMA tests and the spine's Northern Ireland reference read `draw_household_brmas`, and the lineage tests read `fold_replicas`.

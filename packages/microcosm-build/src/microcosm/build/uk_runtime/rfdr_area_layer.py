@@ -11,11 +11,15 @@ declares its own translation into postcode districts, unit postcodes and
 excluded units, beside the notice's own districts (``tools/build_uk_rfdr_area_layer.py``). The tool reads
 the ONS postcode lookup and flags every 2021 output area of England and Wales
 and 2022 output area of Scotland whose postcodes mostly lie in the scheme;
-``uk/rfdr_area_layer.json`` lists them. The post-geography node
-``uk.full.geography.rfdr`` sets the flag on each placed household from its
-assigned output area. Northern Ireland has no area in the scheme. The
-national line has no areas, so it leaves the engine's default of false
-(María's ruling of 2026-10-28).
+``uk/rfdr_area_layer.json`` lists them. The clone-first spine's fuel-relief
+stage (``spine_geography.UKRFDRStageTransform``, G5 of microcosm#931) sets the
+flag on each household from the output area the spine draws it, and holds
+the layer to the spine's supports: every output area the layer flags must be
+an area of its system's support (:func:`area_flags`' ``roster``). Northern
+Ireland has no area in the scheme. A dataset built from a spine without
+areas carries no flag and keeps the engine's default of false, as María's
+ruling of 2026-10-28 set for the national line while it built on such spines;
+it now builds only on a spine that assigns areas (microcosm#931).
 
 Everything here is pure and depends on the standard library, numpy and
 pandas only, so the build tool can load this module by path.
@@ -36,7 +40,6 @@ __all__ = [
     "METHOD_VERSION",
     "RFDR_AREA_LAYER_SOURCE",
     "RFDR_COLUMN",
-    "RFDR_LOCALISATION_MODES",
     "SCHEMA_VERSION",
     "SYSTEMS",
     "RFDRAreaLayer",
@@ -52,10 +55,7 @@ SCHEMA_VERSION = 1
 METHOD_VERSION = "uk-rfdr-area-layer-v1"
 #: Graph source name of the committed layer bytes.
 RFDR_AREA_LAYER_SOURCE = "uk_rfdr_area_layer"
-#: ``area`` sets each placed Great Britain household's flag from its assigned
-#: output area; ``none`` leaves the engine's default on every clone.
-RFDR_LOCALISATION_MODES = ("none", "area")
-#: The policyengine-uk household input the node writes.
+#: The policyengine-uk household input the spine's fuel-relief stage sets.
 RFDR_COLUMN = "in_rural_fuel_duty_relief_area"
 #: The support systems the layer covers, by the output-area code they read.
 SYSTEMS: Mapping[str, str] = {
@@ -245,29 +245,59 @@ def area_flags(
     area_system: Iterable[object],
     area_code: Iterable[object],
     require_flagged: bool = True,
+    roster: Mapping[str, Iterable[object]] | None = None,
 ) -> tuple[np.ndarray, dict[str, int]]:
     """Each household's flag from its assigned output area.
 
     A Great Britain household is in the scheme when the layer lists its area;
     a Northern Ireland household never is. Any other support system refuses,
     since the layer cannot say where it is. A Great Britain code that is not a
-    well-formed output-area code of its system refuses too, and so does a
-    system (England and Wales, or Scotland) with households none of which is
-    flagged: either would let a change of code format or vintage publish its
-    households unflagged (Anthony's reviews of microcosm#1420). The zero-flag
-    refusal holds only with ``require_flagged``, which a full-scale build
-    sets: a sampled rung places so few England and Wales households (41 of
-    188,880 output areas are in the scheme) that it can miss them all by
-    chance (Vahid's review and the independent review of microcosm#1420).
+    well-formed output-area code of its system refuses too: it would let a
+    change of code format publish its households unflagged (Anthony's reviews
+    of microcosm#1420). Against a change of code vintage, a caller holds the
+    layer to either check, or both:
+
+    - ``roster`` gives the areas of each Great Britain system's support.
+      Every output area the layer flags must be one of its system's, so a
+      layer and a support of different vintages refuse whatever the
+      households drew. The clone-first spine's fuel-relief stage passes its
+      supports' areas (microcosm#931, C-6).
+    - ``require_flagged`` refuses a system (England and Wales, or Scotland)
+      with households none of which is flagged. It suits a full-scale build
+      only: a sampled rung places so few England and Wales households (41 of
+      188,880 output areas are in the scheme) that it can miss them all by
+      chance (Vahid's review and the independent review of microcosm#1420).
+
+    The unknown-system, roster and malformed-code refusals name no value of
+    a household and no code, and count nothing. Returns the flags and exact
+    row counts by system; callers round counts before any receipt.
     """
 
     systems = np.asarray(list(area_system), dtype=object)
     codes = np.asarray(list(area_code), dtype=object)
     if len(systems) != len(codes):
         raise ValueError("area_system and area_code must align.")
-    unknown = sorted({str(system) for system in systems} - {*SYSTEMS, NI_SYSTEM})
-    if unknown:
-        raise ValueError(f"RFDR flags read no support system {unknown}.")
+    known = {*SYSTEMS, NI_SYSTEM}
+    if any(str(system) not in known for system in systems):
+        raise ValueError(
+            f"RFDR flags read households of the support systems {sorted(known)} "
+            "only; area_system holds another value."
+        )
+    if roster is not None:
+        if not isinstance(roster, Mapping) or any(
+            system not in roster for system in SYSTEMS
+        ):
+            raise ValueError(
+                "RFDR flags hold the layer to a roster of support areas for each "
+                f"Great Britain system {sorted(SYSTEMS)}."
+            )
+        for system, flagged in layer.areas.items():
+            if not flagged <= {str(code) for code in roster[system]}:
+                raise ValueError(
+                    f"The RFDR layer flags {system} output areas that system's "
+                    "support does not hold: the layer and the support must carry "
+                    "one code vintage (microcosm#931)."
+                )
     flags = np.zeros(len(codes), dtype=bool)
     counts: dict[str, int] = {}
     for system, flagged in layer.areas.items():
@@ -280,8 +310,8 @@ def area_flags(
         ]
         if malformed:
             raise ValueError(
-                f"RFDR flags read {len(malformed)} {system} code(s) that are not "
-                f"well-formed output-area codes (first: {malformed[0]!r})."
+                f"RFDR flags read {system} code(s) that are not well-formed "
+                "output-area codes."
             )
         flags[rows] = np.asarray([code in flagged for code in codes[rows]], dtype=bool)
         if require_flagged and rows.any() and not flags[rows].any():

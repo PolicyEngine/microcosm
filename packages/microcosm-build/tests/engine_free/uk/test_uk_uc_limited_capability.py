@@ -23,6 +23,7 @@ from microcosm.build.uk_runtime.uc_limited_capability import (
     assign_uc_limited_capability,
 )
 from microcosm.frame import WeightKind
+from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
 
 # One row per person: benefit unit, household, carrier, SPI household, and the
 # engine's answers (WRA, LCW, assessed claimant, carer).
@@ -149,6 +150,29 @@ def test_the_receipt_withholds_cells_under_three_households() -> None:
         for entry in sides.values():
             assert entry["weighted"] == "withheld"
     assert receipt["linked_claims"] == "3-9"
+
+
+def test_the_receipt_counts_clone_zero_source_households_at_any_k() -> None:
+    """At K = 3 the receipt's claims, branches and changed people count as at
+    K = 1: in distinct source households among geographic clone 0's rows, so
+    a household's clones count once, where counts of rows would read three
+    times as many (microcosm#931)."""
+
+    frame = _frame()
+    receipts = {}
+    for clones in (1, 3):
+        answers = {name: np.tile(values, clones) for name, values in _answers().items()}
+        receipts[clones] = assign_uc_limited_capability(
+            frame if clones == 1 else clone_first_frame(frame, clones),
+            engine_answers=answers,
+        ).evidence()
+    for key in ("linked_claims", "branches", "people_changed"):
+        assert receipts[3][key] == receipts[1][key], key
+    for status, sides in receipts[1]["status_against_the_proxy"].items():
+        for side, entry in sides.items():
+            cloned = receipts[3]["status_against_the_proxy"][status][side]
+            assert cloned["claims"] == entry["claims"], (status, side)
+            assert cloned["support"] == entry["support"], (status, side)
 
 
 def test_weights_and_mass_pass_through() -> None:

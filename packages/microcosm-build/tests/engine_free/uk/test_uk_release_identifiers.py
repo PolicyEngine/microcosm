@@ -36,6 +36,8 @@ from microcosm.build.uk_runtime.national_frame import (
 )
 from microcosm.build.uk_runtime.weight_year import uk_dataset_year_frame
 from microcosm.frame import WeightKind
+from microcosm.frame.adapters.engine_identifiers import identifier_columns
+from microcosm.frame.adapters.policyengine_uk import UK_ENGINE_IDENTIFIERS, UK_SCHEMA
 from test_support.microcosm_build.uk_graph_terminal import _frame as _ladder_frame
 
 # Two copies of a three-household survey, numbered the way the clone stages
@@ -187,6 +189,19 @@ def test_range_failures_name_the_column_only() -> None:
     assert uk_identifier_range_failures(edge) == [f"Written 'household_id' {above}"]
 
 
+def test_the_release_range_is_the_engine_adapters_declared_width() -> None:
+    # The release rule keeps its own ranker and range for the released file,
+    # and the engine adapter declares how policyengine-core stores the same
+    # columns in each simulation (microcosm#931). Until the release rule moves
+    # onto the shared rank step, the two widths are held equal here, and the
+    # range check covers the columns the declaration covers.
+    assert np.iinfo(UK_ENGINE_IDENTIFIERS.stored_dtype).max == UK_ENGINE_IDENTIFIER_MAX
+    above = "has a value above the 32-bit range policyengine-uk stores."
+    assert set(uk_identifier_range_failures(_tables())) == {
+        f"Written {column!r} {above}" for column in identifier_columns(UK_SCHEMA)
+    }
+
+
 def test_the_release_frame_leaves_renumbered_and_loads_back_to_the_build(
     tmp_path,
 ) -> None:
@@ -256,6 +271,44 @@ def test_the_national_readback_passes_the_release_and_refuses_build_identifiers(
         "policyengine-uk stores."
     ) in report["failures"]
     assert not any(str(COPY) in failure for failure in report["failures"])
+
+
+def test_the_national_readback_expects_the_national_lines_export(tmp_path) -> None:
+    """The national writer and the graph's readback hold one export: the
+    national line's, which leaves a one-clone spine's geographic clone indices
+    behind (microcosm#931). A calibrated one-clone geography-first spine
+    written that way reads back as its population; written as the dense
+    line's export writes it, clone indices kept, it does not."""
+    pytest.importorskip("tables")
+    from test_support.microcosm_build.uk_full_population_graph import spine_frame
+
+    spine = spine_frame(1)
+    calibrated = uk_national_frame(
+        **{
+            entity: spine.table(entity) for entity in ("person", "benunit", "household")
+        },
+        time_period="2024",
+        weight_kind=WeightKind.CALIBRATED,
+        household_weights=spine.weights_for("household").values,
+    )
+    national = write_uk_national_frame(
+        uk_dataset_year_frame(
+            uk_release_export_frame(calibrated, line="national"), solve_year=2025
+        ),
+        tmp_path / "national.h5",
+    )
+    report = _readback(calibrated, national)
+    assert report["passed"] is True and report["outcome"] == "pass"
+
+    kept = write_uk_national_frame(
+        uk_dataset_year_frame(uk_release_export_frame(calibrated), solve_year=2025),
+        tmp_path / "clone-indices-kept.h5",
+    )
+    report = _readback(calibrated, kept)
+    assert report["passed"] is False and report["outcome"] == "fail"
+    assert report["failures"] == [
+        "Written national H5 content identity differs from the calibrated population."
+    ]
 
 
 def test_the_national_readback_refuses_a_repeated_identifier(tmp_path) -> None:

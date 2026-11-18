@@ -20,11 +20,14 @@ hierarchy classes the compiled surface is built from (with
 ``microcosm.calibrate.target``, which the registry imports). The transport
 compile modules already hashed those three.
 
-The exclusions cover only the listed modules' own imports. A second test
-walks every module each target and problem kernel hashes, its own module and
-the modules hashed beside this tuple included, and records the imports no
-review has classified yet (microcosm#1497). This module is not hashed, so an
-edit to a reason re-keys nothing; an edit to the tuple re-keys the kernels.
+The exclusions cover only the listed modules' own imports, and keep a module
+off the list, not out of a kernel's hash. Each target and problem kernel also
+hashes, beside this tuple, every first-party module its own code computes
+through, some of the excluded ones among them: the derived binding rule in
+test_uk_graph holds each kernel's hash to that, in place of the per-kernel
+import record microcosm#1497 kept (microcosm#931). This module is not hashed,
+so an edit to a reason re-keys nothing; an edit to the tuple re-keys the
+kernels.
 """
 
 from __future__ import annotations
@@ -70,6 +73,11 @@ UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
     "microcosm.calibrate.hierarchy",
     "microcosm.calibrate.registry",
     "microcosm.calibrate.target",
+    # The dense measure step corrects each per-clone engine block to the
+    # pool's share denominator and judges the whole-population formulas it
+    # runs with these, against the UK declaration (microcosm#931).
+    "microcosm.frame.adapters.engine_population",
+    "microcosm.frame.adapters.policyengine_uk_population",
 )
 
 EXCLUDED_DIRECT_IMPORTS: Mapping[str, str] = MappingProxyType(

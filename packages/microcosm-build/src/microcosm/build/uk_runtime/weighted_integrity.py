@@ -134,7 +134,10 @@ from microcosm.build.gates import (
     input_mass_parity_gate,
 )
 from microcosm.build.input_mass import PERSON_REFERENCE_COLUMNS, input_mass_totals
-from microcosm.build.uk_runtime.national_frame import UK_EXPORTED_WEIGHT_COLUMNS
+from microcosm.build.uk_runtime.national_frame import (
+    UK_EXPORTED_WEIGHT_COLUMNS,
+    UK_RELEASE_LINES,
+)
 from microcosm.frame import Frame
 
 __all__ = [
@@ -150,7 +153,6 @@ __all__ = [
     "UKInputMassReferenceDescriptor",
     "UKReviewedExclusion",
     "UK_INPUT_MASS_REFERENCE_REGISTRY",
-    "UK_RELEASE_LINES",
     "UK_SINCE_BASELINE_LEFT_REASONS",
     "coerce_input_mass_reference_registry",
     "coerce_reviewed_exclusions",
@@ -326,9 +328,6 @@ _REVIEWED_EXCLUSION_FIELDS = frozenset(
 )
 #: An entry may name the release lines whose evidence earned it.
 _REVIEWED_EXCLUSION_OPTIONAL_FIELDS = frozenset({"release_lines"})
-#: The UK release lines a gate context can declare (``release_line``): the
-#: national seam and the geographic K-clone pool of the local line.
-UK_RELEASE_LINES = frozenset({"national", "local"})
 
 
 @dataclass(frozen=True)

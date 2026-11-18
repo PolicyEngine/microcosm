@@ -13,10 +13,13 @@ import numpy as np
 
 from microcosm.graph.canonical import canonical_json
 
-#: Structural branches in spine order: the SPI support channel, the CGT
-#: support split (copy ``k`` of a household, microcosm#1045), the incidence
-#: clone, the residential split of a gaining clone (arm ``k`` of the clone,
-#: microcosm#1063 item 7) and the geographic pool expansion.
+#: Structural branches in path order, the order every key lists them: the SPI
+#: support channel (its SPI copies and income band donors), the CGT support
+#: split (copy ``k`` of a household, microcosm#1045), high-value home support
+#: (microcosm#1240), the incidence clone, the residential split of a gaining
+#: clone (arm ``k`` of the clone, microcosm#1063 item 7) and the geographic
+#: clones (microcosm#931). The spine runs them in another order: it clones
+#: first, and makes high-value copies before the CGT support split.
 _BRANCHES = (
     "spi_support_channel",
     "cgt_support_split",
@@ -41,11 +44,13 @@ def household_draw_key(
 ) -> str:
     """Encode an original-source ID and explicit ordered clone branch path.
 
-    Every full-spine household needs a distinct key. Branch ordinals are
-    supplied lineage identities, never sample row counters. Original branches
-    should use their declared ordinal consistently; growing a pool must not
-    change an existing path. Calibration K, weights, income, and final offset
-    IDs are deliberately not inputs. Exact IDs above 2**53 remain distinct.
+    Each geographic clone, SPI copy and income band donor takes a distinct
+    key; a copy a later step makes keeps its parent's key, with its area
+    (microcosm#931). Branch ordinals are supplied lineage identities, never
+    sample row counters. Original branches should use their declared ordinal
+    consistently; growing K must not change an existing path. The clone
+    count, weights, income and copy ids are deliberately not inputs. Exact
+    IDs above 2**53 remain distinct.
     """
     _require(
         all(

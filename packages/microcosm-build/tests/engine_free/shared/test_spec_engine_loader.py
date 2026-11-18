@@ -32,8 +32,10 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # kernels' bytes too.
     # microcosm#1641's docstring and comment wording in solve and ssi_take_up
     # moves it again.
+    # microcosm#931's keyed helpers move stochastic_assignment's attested
+    # bytes.
     assert first.spec_sha256 == (
-        "cb9742d5089eddb8783ee1cb890206b33a35efe5ff572656dbd58a1b95ea1e28"
+        "cd4840b18c9d6f2fc65b7e02daf7d09a7e88e231ab9aa2f5fcb68347586360f2"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

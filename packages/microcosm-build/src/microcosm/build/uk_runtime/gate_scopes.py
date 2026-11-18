@@ -1,0 +1,149 @@
+"""The UK spine and local gate scopes, and the scoped gate manifest.
+
+All three lived in ``calibration_run``, the national calibration runner. The
+full build's gate battery computes through them: both its phases build the
+spine gate manifest (``graph_evidence.uk_spine_gate_manifest``) and classify
+the local gates (``full_gates.classify_full_gate_outcomes``), and the dense
+solve keys on the source preflight. So the battery's shared hash binds this
+small module instead of all of ``calibration_run`` (microcosm#931), as the
+target kernels hash ``ledger_surface`` (microcosm#1492). That keeps the
+runner out of the full gate kernels' own hashes and the preflight's own
+code. The calibrated gates' own code still binds the runner, whose admin
+totals and CGT projection artifact their gate context is built with, so in
+the in-graph build an edit elsewhere in the runner re-keys only the
+calibrated gates and what follows them. On a bound spine the checkpoint,
+whose kernel hashes the runner, still re-keys the preflight and the solve
+keyed on it. ``calibration_run`` re-exports all three for its other callers,
+beside the calibration, national and local diagnostic scopes it keeps.
+"""
+
+from __future__ import annotations
+
+from microcosm.build.country_spec import GatesManifest, load_country_spec
+from microcosm.build.gate_battery import scoped_gate_manifest
+
+UK_LOCAL_GATE_SCOPE = (
+    "uk_local_geography_ladder_post_calibration",
+    "uk_local_area_support",
+    "uk_local_target_fit",
+    "uk_local_per_family_fit",
+    "uk_local_weight_ratio",
+    "uk_local_weight_ess",
+)
+
+UK_SPINE_GATE_SCOPE = (
+    "uk_stage_was_wealth_support",
+    "uk_stage_was_wealth_coherence",
+    "uk_stage_was_lisa_support",
+    "uk_stage_was_lisa_anchor",
+    "uk_stage_high_value_home_support_mass",
+    "uk_stage_property_components",
+    "uk_stage_nts_bus_travel_support",
+    "uk_stage_nts_bus_travel_facts",
+    "uk_stage_uc_deduction_attributes",
+    "uk_stage_lcfs_consumption_support",
+    "uk_stage_lcfs_consumption_energy_rake",
+    "uk_stage_lcfs_consumption_bus_pricing",
+    "uk_stage_lcfs_consumption_road_fuel_incidence",
+    "uk_stage_lcfs_consumption_road_fuel_level",
+    "uk_stage_lcfs_consumption_recomposed_totals",
+    "uk_stage_lcfs_consumption_excise_quantities",
+    "uk_stage_lcfs_consumption_gambling_participation",
+    "uk_stage_lcfs_consumption_basis",
+    "uk_stage_etb_vat_support",
+    "uk_stage_etb_services_support",
+    "uk_stage_etb_services_support_pricing",
+    "uk_stage_frs_hmrc_spine_leaves_signal",
+    "uk_stage_frs_annual_income_spells",
+    "uk_stage_spi_support_channel_mass",
+    "uk_stage_hmrc_spi_income_spine_identity",
+    "uk_stage_hmrc_spi_income_spine_hourly_pay",
+    "uk_stage_spi_benefit_coherence",
+    "uk_stage_uc_take_up",
+    "uk_stage_pension_credit_take_up",
+    "uk_stage_child_benefit_take_up",
+    "uk_stage_cgt_incidence_clone_mass",
+    "uk_stage_cgt_support_split_mass",
+    "uk_stage_cgt_residential_split_mass",
+    "uk_stage_spi_income_band_donors_support",
+    "uk_stage_hmrc_cgt_gains_spine_summary",
+    "uk_stage_hmrc_cgt_asset_type_spine_summary",
+    "uk_stage_cgt_incidence_anchor_composition",
+    "uk_stage_salary_sacrifice_realization",
+    "uk_stage_student_loans_realization",
+    "uk_stage_age_tail_targets",
+    "uk_stage_frs_relationships_composition",
+    "uk_stage_area_home_values_ranking",
+    # The spine geography gates (microcosm#931): the area draw's mapping
+    # integrity at the assembled boundary, which closes after area_brma; the
+    # SPI-copy area stage's, and each later copy's agreement with its parent
+    # on the areas, at the transferred boundary, after spi_copy_areas.
+    "uk_atomic_area_mapping_integrity",
+    "uk_spi_copy_area_mapping_integrity",
+    "uk_copy_area_agreement",
+    # Each household's council-tax reductions within its bill at the
+    # transferred boundary, outside Northern Ireland (microcosm#931):
+    # council_tax_localise is the last spine stage that writes the bill and
+    # the reductions, and the copies made after it inherit them; the copy
+    # area check above also holds those copies to their parents on the bill
+    # and the rebate.
+    "uk_council_tax_reduction_within_bill",
+    "uk_stage_property_purchases_fit",
+    "uk_stage_uc_legacy_closure_take_up_contract",
+    "uk_stage_frs_person_draws_apprentices",
+    # The take-up flags at their drawing stages, before calibration (María's
+    # ruling of 2026-10-29, microcosm#1095).
+    "uk_stage_frs_take_up_signal",
+    "uk_stage_frs_person_draws_take_up_signal",
+    "uk_stage_frs_household_draws_take_up_signal",
+    "uk_stage_childcare_copy_take_up_signal",
+    "uk_stage_isa_subscriptions_invariants",
+    "uk_stage_isa_subscriptions",
+    "uk_stage_company_cars_invariants",
+    "uk_stage_spi_employment_shell_fit",
+    "uk_stage_aps_occupation_fit",
+    # Weight-independent like the BRMA enum below, and its column exists from
+    # frs_relationships onward (#791).
+    "uk_ons_household_type_enum_domain",
+    # Weight-independent; the column exists only from hmrc_cgt_asset_type_spine
+    # onward, so it is checked at the transferred boundary, and its domain is
+    # declared by the stage module (microcosm#725).
+    "uk_capital_gains_asset_type_enum_domain",
+    # Weight-independent; spi_housing_shell is the last spine stage that writes
+    # the band, so the transferred boundary checks every row's nation
+    # (microcosm#1278).
+    "uk_council_tax_band_domain",
+    # Weight-independent; spi_copy_areas is the last spine stage that writes
+    # brma and local_authority (the SPI copies and income band donors draw
+    # their own, microcosm#931), so the transferred boundary checks every
+    # row's, as for the band above. The BRMA gate replaces the local battery's
+    # retired recheck (uk_local_brma_enum_domain).
+    "uk_brma_enum_domain",
+    "uk_local_authority_enum_domain",
+    # The geography ladder on the transferred frame, the SPI copies' own
+    # ladders and the national line's among them (C-31, microcosm#931).
+    "uk_geography_ladder",
+)
+
+
+def uk_scoped_gate_manifest(
+    scope: tuple[str, ...] | frozenset[str],
+    *,
+    phases: tuple[str, ...],
+    policy_suffix: str,
+    source: GatesManifest | None = None,
+) -> GatesManifest:
+    """Filter the declared UK gate spec to one battery's scope.
+
+    The shared :func:`~microcosm.build.gate_battery.scoped_gate_manifest`,
+    which every scoped producer calls through here (spine build, calibration
+    seam, release cut). ``source`` lets a caller
+    that already holds a loaded spec — or a hermetic test that stubs one —
+    supply it; the default is the committed package spec.
+    """
+
+    if source is None:
+        source = load_country_spec("uk").gates
+    return scoped_gate_manifest(
+        source, scope, phases=phases, policy_suffix=policy_suffix
+    )

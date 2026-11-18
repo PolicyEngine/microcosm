@@ -2,9 +2,10 @@
 """Build the area-to-BRMA layer from Chronicle's raw registrations (microcosm#1262).
 
 Every 2021 LSOA of England and Wales and every 2022 output area of Scotland
-is placed in one Broad Rental Market Area, so the post-geography node
-``uk.full.geography.brma`` can read a placed household's BRMA off its
-assigned area. Writes ``uk/brma_area_layer.json`` and its provenance sidecar.
+is placed in one Broad Rental Market Area, so the spine's ``area_brma`` and
+``spi_copy_areas`` stages can read a household's BRMA off its assigned area
+(microcosm#931), as the retired dense node ``uk.full.geography.brma`` did.
+Writes ``uk/brma_area_layer.json`` and its provenance sidecar.
 
 - England and Wales: each LSOA's population-weighted centroid in the VOA
   (May 2020) or Rent Officers Wales (May 2012) BRMA polygons; each output

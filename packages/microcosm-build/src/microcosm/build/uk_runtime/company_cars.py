@@ -68,7 +68,12 @@ on identity, so reordering rows moves none:
 
 Receipts carry rounded counts, support bands and weighted aggregates only, each
 aggregate withheld when a cell it rests on has fewer source households than the
-disclosure floor. They are at the stage's weights, before calibration.
+disclosure floor. They are at the stage's weights, before calibration. A count
+of cars or holders is a count of distinct source households among geographic
+clone 0's rows (``receipt_counts.record_clone_zero_rows``), a household's
+copies once, since each clone draws its own cars; a count of rows that break
+an invariant counts distinct source households over every clone, so a break in
+any clone fails the check.
 """
 
 from __future__ import annotations
@@ -115,6 +120,7 @@ from microcosm.build.uk_runtime.receipt_counts import (
     UK_DISCLOSURE_FLOOR,
     distinct_count,
     extreme_count,
+    record_clone_zero_rows,
     record_source_households,
     rounded_count,
     small_cell_share,
@@ -832,6 +838,8 @@ def draw_list_prices(
     *,
     donor: WASCompanyCarDonor,
     spec: CompanyCarsSpec,
+    sources: np.ndarray | None = None,
+    counted: np.ndarray | None = None,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """Each holder's list price, in the build year's money.
 
@@ -842,13 +850,26 @@ def draw_list_prices(
     than the declared minimum. A uniform draw starts no lower than the declared
     minimum list price, the least the SPI carve-out keeps a car at, so band 1's
     starts there rather than at zero.
+
+    The receipt counts each route's holders in distinct source households
+    (``sources``, one per holder when omitted) among the ``counted`` holders
+    (geographic clone 0's on the spine; every holder when omitted).
     """
 
     bands = np.asarray(bands, dtype=int)
     electric = np.asarray(electric, dtype=bool)
     uniforms = _uniforms(ids, spec.price_seed, f"{spec.price_salt}:price")
     prices = np.zeros(len(bands), dtype=float)
-    routes: dict[str, int] = {}
+    sources = np.arange(len(bands)) if sources is None else np.asarray(sources)
+    counted = (
+        np.ones(len(bands), dtype=bool)
+        if counted is None
+        else np.asarray(counted, dtype=bool)
+    )
+    routes: dict[str, np.ndarray] = {}
+
+    def _route(key: str, rows: np.ndarray) -> None:
+        routes[key] = routes.get(key, np.zeros(len(bands), dtype=bool)) | rows
 
     def _households(mask: np.ndarray) -> int:
         return len(set(donor.household[mask].tolist()))
@@ -859,8 +880,7 @@ def draw_list_prices(
                 prices[rows] = _weighted_quantile(
                     donor.price[mask], donor.weight[mask], uniforms[rows]
                 )
-                key = f"{route}:donor_level_{level}"
-                routes[key] = routes.get(key, 0) + int(rows.sum())
+                _route(f"{route}:donor_level_{level}", rows)
                 return
         raise _NoDonorError(route)
 
@@ -883,9 +903,7 @@ def draw_list_prices(
                 except _NoDonorError:
                     upper = spec.open_band_fallback_upper_gbp
                     prices[class_rows] = low + uniforms[class_rows] * (upper - low)
-                    routes[f"band_{band}:uniform"] = routes.get(
-                        f"band_{band}:uniform", 0
-                    ) + int(class_rows.sum())
+                    _route(f"band_{band}:uniform", class_rows)
             continue
         inside = (donor.price > low) & (donor.price <= float(high))
         try:
@@ -893,9 +911,7 @@ def draw_list_prices(
         except _NoDonorError:
             floor = max(low, spec.minimum_scaled_list_price_gbp)
             prices[rows] = floor + uniforms[rows] * (float(high) - floor)
-            routes[f"band_{band}:uniform"] = routes.get(
-                f"band_{band}:uniform", 0
-            ) + int(rows.sum())
+            _route(f"band_{band}:uniform", rows)
     unknown = bands == FRS_COMPANY_CAR_PRICE_BAND_UNKNOWN
     for is_electric in (True, False):
         class_rows = unknown & (electric == is_electric)
@@ -917,7 +933,8 @@ def draw_list_prices(
         raise CompanyCarsError("a holder drew no positive list price.")
     return prices, {
         "routes": {
-            route: rounded_count(count) for route, count in sorted(routes.items())
+            route: rounded_count(distinct_count(sources, rows & counted))
+            for route, rows in sorted(routes.items())
         }
     }
 
@@ -1101,6 +1118,8 @@ def carve_spi_benefits(
     fuel_benefit: np.ndarray,
     contribution_cap: float,
     spec: CompanyCarsSpec,
+    sources: np.ndarray | None = None,
+    counted: np.ndarray | None = None,
 ) -> SPICarveOut:
     """Fit each tape row's car benefits inside its EPB and PAY.
 
@@ -1120,6 +1139,10 @@ def carve_spi_benefits(
     less contributions up to the cap, times the appropriate percentage (the
     stage leaves availability and private-use payments at their defaults), so
     scaling the price above zero contributions scales the benefit exactly.
+
+    The receipt counts holders in distinct source households (``sources``,
+    one per row when omitted) among the ``counted`` rows (geographic clone
+    0's on the spine; every row when omitted).
     """
 
     epb = np.maximum(np.asarray(epb, dtype=float), 0.0)
@@ -1148,30 +1171,36 @@ def carve_spi_benefits(
         fit["keep"], fit["price"], 0.0
     )
     moved = np.maximum(fit["benefit"] - epb, 0.0)
+    sources = np.arange(len(epb)) if sources is None else np.asarray(sources)
+    counted = (
+        np.ones(len(epb), dtype=bool)
+        if counted is None
+        else np.asarray(counted, dtype=bool)
+    )
+
+    def count(mask: np.ndarray) -> int | str:
+        return rounded_count(distinct_count(sources, mask & counted))
+
     receipt = {
-        "holders": rounded_count(int(len(epb))),
+        "holders": count(np.ones(len(epb), dtype=bool)),
         # The rows without EPB and those of them that keep their car; the rows
         # with EPB whose car takes more than it, the rest from PAY; and the rows
         # whose car takes all of their PAY, leaving TAXTERM as their cash pay.
-        "holders_without_epb": rounded_count(int(without_epb.sum())),
-        "kept_without_epb": rounded_count(int((without_epb & fit["keep"]).sum())),
-        "kept_with_epb_topped_up_from_pay": rounded_count(
-            int((~without_epb & fit["keep"] & (moved > 0.0)).sum())
+        "holders_without_epb": count(without_epb),
+        "kept_without_epb": count(without_epb & fit["keep"]),
+        "kept_with_epb_topped_up_from_pay": count(
+            ~without_epb & fit["keep"] & (moved > 0.0)
         ),
-        "kept_leaving_no_pay": rounded_count(
-            int((fit["keep"] & (spi_pay > 0.0) & (spi_pay - moved <= 0.005)).sum())
+        "kept_leaving_no_pay": count(
+            fit["keep"] & (spi_pay > 0.0) & (spi_pay - moved <= 0.005)
         ),
-        "cap_below_epb_and_pay_for_the_employee_contribution": rounded_count(
-            int((budget < np.minimum(source, pay)).sum())
+        "cap_below_epb_and_pay_for_the_employee_contribution": count(
+            budget < np.minimum(source, pay)
         ),
-        "cars_the_employee_contribution_scales_or_drops": rounded_count(
-            int(room_costs.sum())
-        ),
-        "private_fuel_dropped": rounded_count(
-            int((fit["fuel_dropped"] & fit["keep"]).sum())
-        ),
-        "list_price_scaled": rounded_count(int(fit["scaled"].sum())),
-        "dropped_below_minimum_price": rounded_count(int(fit["dropped"].sum())),
+        "cars_the_employee_contribution_scales_or_drops": count(room_costs),
+        "private_fuel_dropped": count(fit["fuel_dropped"] & fit["keep"]),
+        "list_price_scaled": count(fit["scaled"]),
+        "dropped_below_minimum_price": count(fit["dropped"]),
     }
     return SPICarveOut(
         keep=fit["keep"],
@@ -1279,6 +1308,9 @@ def impute_company_cars(
     spi = table["spi"].to_numpy(bool)
     tape = table["tape"].to_numpy(bool)
     sources = table["source_household"].to_numpy()
+    # A count of cars or holders reads geographic clone 0's rows, a count of
+    # rows breaking an invariant every clone's (microcosm#931).
+    counted = record_clone_zero_rows(frame, "person")
     bands = table["price_band"].to_numpy(int)
     epb = table["epb"].to_numpy(float)
     spi_pay = table["spi_pay"].to_numpy(float)
@@ -1293,6 +1325,9 @@ def impute_company_cars(
     def total(values: np.ndarray, mask: np.ndarray) -> float | str | None:
         return _guarded(float((weights * values)[mask].sum()), support(mask))
 
+    def count(mask: np.ndarray) -> int | str:
+        return rounded_count(distinct_count(sources, mask & counted))
+
     fuel_codes = table["fuel_code"].to_numpy(int)
     reported_fuel = table["private_fuel"].to_numpy(bool)
     fuel, drawn = assign_fuel_types(
@@ -1303,11 +1338,20 @@ def impute_company_cars(
         statistics=statistics,
         spec=spec,
     )
-    drawn_with_private_fuel = int((drawn & reported_fuel[holders]).sum())
+    drawn_rows = np.zeros(len(holders), dtype=bool)
+    drawn_rows[holders] = drawn
+    reported_rows = np.zeros(len(holders), dtype=bool)
+    reported_rows[holders] = drawn & reported_fuel[holders]
     hybrid = fuel_codes[holders] == FRS_COMPANY_CAR_FUEL_HYBRID
     electric = fuel == ELECTRIC
     prices, price_receipt = draw_list_prices(
-        bands[holders], electric, ids[holders], donor=donor, spec=spec
+        bands[holders],
+        electric,
+        ids[holders],
+        donor=donor,
+        spec=spec,
+        sources=sources[holders],
+        counted=counted[holders],
     )
     contributions = np.minimum(table["contribution"].to_numpy(float)[holders], prices)
     co2, electric_range, co2_receipt = draw_co2_emissions(
@@ -1348,7 +1392,7 @@ def impute_company_cars(
     tape_holders = holders & tape
     scaled_away = np.zeros(len(pay))
     scaled = np.zeros(len(pay), dtype=bool)
-    carve_receipt: dict[str, Any] = {"holders": rounded_count(0)}
+    carve_receipt: dict[str, Any] = {"holders": 0}
     identity_error = 0.0
     if tape_holders.any():
         car_benefit, fuel_benefit = benefits(_frame_with(frame, person, None))
@@ -1365,6 +1409,8 @@ def impute_company_cars(
             fuel_benefit=np.asarray(fuel_benefit, dtype=float)[rows],
             contribution_cap=contribution_cap,
             spec=spec,
+            sources=sources[rows],
+            counted=counted[rows],
         )
         dropped = rows[~carve.keep]
         scaled[rows] = carve.scaled
@@ -1429,9 +1475,7 @@ def impute_company_cars(
         given_up[rows] = carve.list_price_given_up_for_the_contribution
         carve_receipt = {
             **carve.receipt,
-            "uc_gainful_self_employment_on_the_carved_pay": rounded_count(
-                int(newly_gainful.sum())
-            ),
+            "uc_gainful_self_employment_on_the_carved_pay": count(newly_gainful),
             "weighted_benefit_carved_gbp": total(carved, holders & tape),
             # The EPB the tape rows' holders drew, and the benefits above it
             # that moved from PAY into EPB.
@@ -1465,20 +1509,20 @@ def impute_company_cars(
     ]
     receipt = {
         "holders": {
-            "frs_channel": rounded_count(int((holders & ~spi).sum())),
-            "spi_channel_tape": rounded_count(int((holders & tape).sum())),
-            "spi_channel_twin_pay": rounded_count(int((holders & spi & ~tape).sum())),
+            "frs_channel": count(holders & ~spi),
+            "spi_channel_tape": count(holders & tape),
+            "spi_channel_twin_pay": count(holders & spi & ~tape),
             # The tape rows that keep their car on a drawn EPB of zero.
             "spi_channel_tape_without_epb": {
-                "count": rounded_count(int((holders & without_epb).sum())),
+                "count": count(holders & without_epb),
                 "weighted": total(np.ones(len(pay)), holders & without_epb),
             },
             "support": support_band(support(holders)),
             "weighted": total(np.ones(len(pay)), holders),
         },
         "fuel": {
-            "drawn_unknown": rounded_count(int(drawn.sum())),
-            "drawn_with_private_fuel": rounded_count(drawn_with_private_fuel),
+            "drawn_unknown": count(drawn_rows),
+            "drawn_with_private_fuel": count(reported_rows),
             "weighted_shares": {
                 name: _guarded(
                     float(weights[holders & (fuel_type == name)].sum())
@@ -1523,8 +1567,9 @@ def impute_company_cars(
             "max_abs_pay_identity_error_gbp": identity_error,
         },
         "checks": {
-            # Zero exact, and a count of rows that break one banded as the
-            # other stages band theirs, so a failing build never records 1 to 9.
+            # Zero exact, and the source households whose rows break one, over
+            # every clone, banded as the other stages band theirs, so a failing
+            # build never records 1 to 9.
             "violations": {
                 name: extreme_count(count)
                 for name, count in _violations(
@@ -1539,11 +1584,10 @@ def impute_company_cars(
                     spi_pay_and_epb_change=output_spi_pay
                     + output_epb
                     - (spi_pay + epb),
+                    sources=sources,
                 ).items()
             },
-            "frs_holders_without_pay": rounded_count(
-                int((holders & ~spi & (pay <= 0)).sum())
-            ),
+            "frs_holders_without_pay": count(holders & ~spi & (pay <= 0)),
         },
     }
     return _frame_with(frame, person, UK_COMPANY_CARS_MASS_CONSERVATION_REASON), receipt
@@ -1560,13 +1604,47 @@ def _violations(
     employee_contributions: np.ndarray,
     spi_pay: np.ndarray,
     spi_pay_and_epb_change: np.ndarray,
+    sources: np.ndarray | None = None,
 ) -> dict[str, int]:
     """Counts of rows breaking an invariant every population keeps; all zero.
 
     ``pay`` is the stage's output pay, ``epb`` and ``spi_pay`` the tape rows'
     output EPB and PAY, ``spi_pay_and_epb_change`` how far their sum moved, and
     ``employee_contributions`` the tape rows' net-pay contributions (zero
-    elsewhere)."""
+    elsewhere). Each count is of the distinct source households whose rows
+    break the invariant, over every clone (``sources``, one per row when
+    omitted), so a count is zero exactly when no row breaks it."""
+
+    sources = np.arange(len(holders)) if sources is None else np.asarray(sources)
+    return {
+        name: distinct_count(sources, rows)
+        for name, rows in _violation_rows(
+            columns,
+            holders=holders,
+            tape=tape,
+            epb=epb,
+            carved=carved,
+            pay=pay,
+            employee_contributions=employee_contributions,
+            spi_pay=spi_pay,
+            spi_pay_and_epb_change=spi_pay_and_epb_change,
+        ).items()
+    }
+
+
+def _violation_rows(
+    columns: Mapping[str, np.ndarray],
+    *,
+    holders: np.ndarray,
+    tape: np.ndarray,
+    epb: np.ndarray,
+    carved: np.ndarray,
+    pay: np.ndarray,
+    employee_contributions: np.ndarray,
+    spi_pay: np.ndarray,
+    spi_pay_and_epb_change: np.ndarray,
+) -> dict[str, np.ndarray]:
+    """The rows breaking each invariant :func:`_violations` counts."""
 
     price = columns[LIST_PRICE]
     co2 = columns[CO2_EMISSIONS]
@@ -1584,32 +1662,26 @@ def _violations(
         | (fuel != DEFAULT_FUEL_TYPE)
     )
     return {
-        "non_finite_values": int((~finite).sum()),
-        "negative_values": int(
-            np.logical_or.reduce([values < 0 for values in numbers]).sum()
-        ),
-        "holder_without_list_price": int((holders & ~(price > 0)).sum()),
-        "inputs_without_a_car": int(without_car.sum()),
-        "unknown_fuel_type": int((holders & ~np.isin(fuel, ENGINE_FUEL_TYPES)).sum()),
-        "emitting_car_without_co2": int((holders & ~electric & (co2 < 1)).sum()),
-        "electric_car_with_co2": int((holders & electric & (co2 != 0)).sum()),
-        "private_fuel_on_an_electric_car": int((private & electric).sum()),
-        "contributions_above_list_price": int((contributions > price + 1e-6).sum()),
-        "electric_range_outside_1_to_50_g_km": int(
-            ((electric_range > 0) & ((co2 < 1) | (co2 > 50))).sum()
-        ),
-        "spi_benefit_above_epb": int((tape & (carved > epb + 1e-6)).sum()),
+        "non_finite_values": ~finite,
+        "negative_values": np.logical_or.reduce([values < 0 for values in numbers]),
+        "holder_without_list_price": holders & ~(price > 0),
+        "inputs_without_a_car": without_car,
+        "unknown_fuel_type": holders & ~np.isin(fuel, ENGINE_FUEL_TYPES),
+        "emitting_car_without_co2": holders & ~electric & (co2 < 1),
+        "electric_car_with_co2": holders & electric & (co2 != 0),
+        "private_fuel_on_an_electric_car": private & electric,
+        "contributions_above_list_price": contributions > price + 1e-6,
+        "electric_range_outside_1_to_50_g_km": (electric_range > 0)
+        & ((co2 < 1) | (co2 > 50)),
+        "spi_benefit_above_epb": tape & (carved > epb + 1e-6),
         # salary_sacrifice refuses a net-pay contribution above the pay that
         # remains, so the carve-out keeps it within the carved pay.
-        "employee_contribution_above_carved_pay": int(
-            (tape & (employee_contributions > np.maximum(pay, 0.0) + 1e-6)).sum()
-        ),
+        "employee_contribution_above_carved_pay": tape
+        & (employee_contributions > np.maximum(pay, 0.0) + 1e-6),
         # The benefits a row without EPB moves into EPB come out of its PAY.
         # Written so a NaN counts.
-        "spi_pay_below_zero": int((tape & ~(spi_pay >= -1e-6)).sum()),
-        "spi_pay_and_epb_moved": int(
-            (tape & ~(np.abs(spi_pay_and_epb_change) <= 1e-6)).sum()
-        ),
+        "spi_pay_below_zero": tape & ~(spi_pay >= -1e-6),
+        "spi_pay_and_epb_moved": tape & ~(np.abs(spi_pay_and_epb_change) <= 1e-6),
     }
 
 

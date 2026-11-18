@@ -514,8 +514,9 @@ def uk_weight_summary(
 
 #: Lineage columns that identify a support-split family: every copy the split
 #: created shares its root's source household, support channel, support clone
-#: index and clone flag. These are the geography identity kernel's inputs
-#: (microcosm#932) less the copy flag and index, so on the national spine only
+#: index and clone flag. These are the first six lineage columns a household's
+#: clone path is read from (``household_lineage.UK_HOUSEHOLD_LINEAGE_COLUMNS``)
+#: less the support split's copy flag and index, so on the national spine only
 #: the split creates rows that agree on all four; on a K-expanded frame the
 #: geographic clone index (:func:`uk_support_family_geographic_clone_column`)
 #: joins the key, so each geographic clone folds only its own copies
@@ -533,7 +534,8 @@ UK_RESIDENTIAL_ARM_FLAG_COLUMN = "household_is_cgt_residential_clone"
 
 
 def uk_support_family_geographic_clone_column() -> str:
-    """The household geographic clone-index column ``uk.full.expand`` writes."""
+    """The household geographic clone-index column, which the spine's
+    ``geographic_expand`` stage writes (microcosm#931)."""
 
     from microcosm.build.uk_runtime.rowwise_dataset import ladder_clone_index_column
 
@@ -549,12 +551,14 @@ def uk_support_family_weights(
     clone side, its clone and the copies' clones) sum to one weight, so the
     max-to-median ratio and the ESS fraction read the quantity the June
     certification measured on a frame without copies, not the number of
-    copies. The key is the explicit lineage the geography identity keys on,
-    less the copy flag and index: on a geographically expanded frame the
-    clone-index column is part of it, so the K clones of a household stay
-    apart and only their own copies fold onto each. A table without the copy
-    flag, or with no copy, folds to itself. A table with copies but without
-    the family key columns refuses.
+    copies. The key is the household lineage columns
+    (``household_lineage.UK_HOUSEHOLD_LINEAGE_COLUMNS``) less the support
+    split's copy flag and index and the residential split's arm flag and
+    index: on a geographically expanded frame the clone-index column is part
+    of it, so the K clones of a household stay apart and only their own
+    copies fold onto each. A table without the copy flag, or with no copy,
+    folds to itself. A table with copies but without the family key columns
+    refuses.
     """
 
     weights = pd.to_numeric(household["household_weight"], errors="coerce").to_numpy(

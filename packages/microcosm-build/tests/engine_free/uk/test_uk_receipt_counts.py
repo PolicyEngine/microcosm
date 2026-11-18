@@ -147,7 +147,10 @@ _KEPT_TENS: dict[str, tuple[tuple[str, int], ...]] = {
     "uk_runtime/size_evaluation.py": (("(values > 10)", 1),),
     "uk_runtime/spi_dependency.py": (("goes to HMRC at least ten", 2),),
     "uk/spec/sources.yaml": (
-        ("over at least 10 rows (a statistical floor", 1),
+        (
+            "over at least 10 of those rows and three source households (a statistical floor",
+            1,
+        ),
         # The zero-emission share's pooling floor, a statistical floor
         # (microcosm#1095 B3, J2).
         ("minimum_zero_emission_cars: 10", 1),
@@ -182,6 +185,13 @@ _KEPT_TENS: dict[str, tuple[tuple[str, int], ...]] = {
         ("goes to HMRC at least ten working days", 1),
     ),
     "tools/graph_uk_spine_fixture.py": (("4 <= band <= 9", 1),),
+    # The band edge of the BRMA distribution tool's shares (microcosm#931): a
+    # cell whose counts read "3-9" prints no benefit-unit share or z, which
+    # would narrow that band; its counts follow the floor of three.
+    "tools/emit_uk_brma_distribution.py": (
+        ("SHARE_MINIMUM_SOURCES = 10", 1),
+        ("withheld in a cell resting on fewer than ten source households", 1),
+    ),
 }
 #: The hand-written UK JSON files; the generated ones repeat what these say.
 _UK_HAND_WRITTEN_JSON = (
@@ -378,6 +388,10 @@ def test_a_cell_is_counted_by_the_same_rule() -> None:
 _ROW_IDENTITY_COLUMNS = frozenset(
     {"household_id", "person_household_id", "household_source_id"}
 )
+#: Attributes that hold such a column's values: a field named for the rows'
+#: households, as the carer link's routes hold each person's household
+#: (``frs_disability._CarerRoutes.households``), so a count of it counts rows.
+_ROW_IDENTITY_ATTRIBUTES = frozenset({"households"})
 #: Counts of those columns that are no floor: structural checks over rows,
 #: that every benefit unit sits in one household and every SPI band donor
 #: holds exactly one carrier. Each entry names the phrase holding the count
@@ -456,11 +470,16 @@ def _row_identity(
                 return True
             node = node.value
         elif isinstance(node, ast.Attribute):
-            if node.attr in _ROW_IDENTITY_COLUMNS:
+            if node.attr in _ROW_IDENTITY_COLUMNS | _ROW_IDENTITY_ATTRIBUTES:
                 return True
             if node.attr not in _VALUE_KEEPING_ATTRIBUTES:
                 return False
             node = node.value
+        elif isinstance(node, ast.IfExp):
+            # Either branch's values can reach the count.
+            return _row_identity(node.body, names, constants) or _row_identity(
+                node.orelse, names, constants
+            )
         elif isinstance(node, ast.Call):
             name = _call_name(node)
             if isinstance(node.func, ast.Attribute) and name in _VALUE_KEEPING_METHODS:
@@ -594,9 +613,10 @@ def test_no_uk_floor_counts_rows_by_their_household_ids() -> None:
     household's copies as sources of their own. Over the UK runtime and the UK
     tools, a distinct count (``distinct_count``, ``distinct_carriers``,
     ``nunique``, ``value_counts``, or ``len`` of a ``set`` or ``unique``) of
-    such a column, or of a name holding one, must be named in
-    ``_KEPT_ROW_COUNTS``; floors count through
-    ``receipt_counts.record_source_households`` instead.
+    such a column, or of a name, a ``households`` field or either branch of a
+    conditional holding one, must be named in ``_KEPT_ROW_COUNTS``; floors
+    count through ``receipt_counts.record_source_households`` instead, or,
+    before the first copying step, ``receipt_counts.own_source_households``.
     """
 
     import ast
@@ -671,6 +691,9 @@ def test_no_uk_floor_counts_rows_by_their_household_ids() -> None:
         'KEY = "household_source_id"\nn = households[KEY].nunique()',
         'KEY = "household_id"\nn = households.groupby(KEY).ngroups',
         'ids = households["household_id"].to_numpy()\nn = distinct_count(ids)',
+        "n = len(set(routes.households.tolist()))",
+        "keys = routes.households if keys is None else keys\n"
+        "n = len(set(keys[base].tolist()))",
     ],
 )
 def test_the_static_scan_sees_every_form_of_a_row_count(source) -> None:
@@ -688,6 +711,8 @@ def test_the_static_scan_sees_every_form_of_a_row_count(source) -> None:
         'n = len(households.drop_duplicates("region"))',
         'n = distinct_count(record_source_households(tables, "household", stage=s))',
         'KEY = "household_id"\nn = len(households)',
+        "keys = own_source_households(person) if keys is None else keys\n"
+        "n = len(set(keys[base].tolist()))",
     ],
 )
 def test_the_static_scan_passes_counts_of_other_keys(source) -> None:

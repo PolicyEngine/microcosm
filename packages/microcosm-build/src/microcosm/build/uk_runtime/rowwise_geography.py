@@ -363,11 +363,9 @@ def assign_household_geography(
 
     result = pd.concat(clone_frames, ignore_index=True)
     if result["household_id"].duplicated().any():
-        duplicates = result.loc[result["household_id"].duplicated(), "household_id"]
         raise ValueError(
             "remapped 'household_id' values are not unique; id_multiplier is "
-            "too small for household cloning. Duplicate value(s): "
-            f"{list(map(str, duplicates.unique()[:5]))}."
+            "too small for household cloning: a row repeats an earlier row's id."
         )
     return RowwiseGeographyAssignment(
         household=result,
@@ -524,11 +522,10 @@ def clone_entity_frame(
     result = pd.concat(clones, ignore_index=True)
     for column in unique_input_columns:
         if result[column].duplicated().any():
-            duplicates = result.loc[result[column].duplicated(), column].unique()
             raise ValueError(
                 f"remapped {column!r} values are not unique; id_multiplier "
-                "is too small for linked entity cloning. Duplicate value(s): "
-                f"{list(map(str, duplicates[:5]))}."
+                "is too small for linked entity cloning: a row repeats an "
+                "earlier row's id."
             )
     return result
 
@@ -579,10 +576,9 @@ def _prepare_households(
     if frame["household_id"].isna().any():
         raise ValueError("household_id contains missing values.")
     if frame["household_id"].duplicated().any():
-        duplicates = frame.loc[frame["household_id"].duplicated(), "household_id"]
         raise ValueError(
-            "household_id must be unique before cloning; duplicate value(s): "
-            f"{list(map(str, duplicates.unique()[:5]))}."
+            "household_id must be unique before cloning; a row repeats an "
+            "earlier row's id."
         )
     weights = pd.to_numeric(frame["household_weight"], errors="coerce")
     if weights.isna().any():
@@ -854,13 +850,14 @@ def _remap_ids(
     values = pd.to_numeric(pd.Series(ids), errors="raise").astype("int64").to_numpy()
     if clone_index == 0:
         return values.copy()
-    offset = clone_index * id_multiplier
-    max_value = int(values.max()) if len(values) else 0
-    if max_value > 0 and offset > np.iinfo(np.int64).max - max_value:
+    # Exact: the offset is a Python integer and is compared, never cast, so an
+    # offset beyond int64 is refused rather than wrapped. The message names
+    # the clone index, never a count, an id or the multiplier.
+    offset = int(clone_index) * int(id_multiplier)
+    largest = int(np.iinfo(np.int64).max)
+    if len(values) and (offset > largest or bool((values > largest - offset).any())):
         raise ValueError(
-            "clone ID remapping would overflow int64: clone_index "
-            f"{clone_index} x id_multiplier {id_multiplier} + max id "
-            f"{max_value} exceeds the representable range."
+            f"clone ID remapping would overflow int64 at clone index {clone_index}."
         )
     return values + offset
 

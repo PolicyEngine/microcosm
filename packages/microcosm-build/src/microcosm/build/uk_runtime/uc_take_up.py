@@ -129,6 +129,7 @@ from microcosm.build.uk_runtime.receipt_counts import (
     UK_WITHHELD,
     distinct_count,
     extreme_count,
+    record_clone_zero_rows,
     record_source_households,
     rounded_count,
     small_cell_share,
@@ -796,6 +797,7 @@ def assign_award_band_take_up(
     young_target: float | None = None,
     lcwra_units: np.ndarray | None = None,
     lcwra_target: float | None = None,
+    counted: np.ndarray | None = None,
 ) -> tuple[np.ndarray, dict[str, object]]:
     """Reporters claim; drawn units claim at their pool's residual rate.
 
@@ -823,6 +825,12 @@ def assign_award_band_take_up(
     A drawn unit claims where its uniform falls below the pool's realized rate
     (``_realized_rate``), so units claim in the order of their uniform and the
     early draw's claimants keep claiming wherever the rate rises.
+
+    The receipt's counts of units are distinct source households
+    (``source_ids``): the drawn, moved, kept and changed units among the
+    ``counted`` units (geographic clone 0's on the spine, every unit when
+    omitted), since each clone draws its own claims, and the units breaking
+    one of the draw's rules over every unit, so a break in any clone counts.
     """
 
     award = np.asarray(award, dtype=np.float64)
@@ -842,6 +850,11 @@ def assign_award_band_take_up(
     gb = np.asarray(great_britain, dtype=bool)
     source_ids = np.asarray(source_ids)
     shape = award.shape
+    counted = (
+        np.ones(shape, dtype=bool)
+        if counted is None
+        else np.asarray(counted, dtype=bool)
+    )
     for name, values in (
         ("family", family),
         ("population", population),
@@ -854,6 +867,7 @@ def assign_award_band_take_up(
         ("draws", draws),
         ("great_britain", gb),
         ("source_ids", source_ids),
+        ("counted", counted),
     ):
         if values.shape != shape:
             raise ValueError(f"UC take-up {name} must align to the benefit units.")
@@ -1191,23 +1205,29 @@ def assign_award_band_take_up(
             "pools": sum(1 for pool in pools if pool["family_type"] == name),
         }
     changed = would_claim != previous
+
+    def units(mask: np.ndarray) -> int | str:
+        return rounded_count(distinct_count(source_ids, mask & counted))
+
     receipt: dict[str, object] = {
         "families": families_out,
         "pools": pools_out,
         "minimum_pool_sources": int(minimum_pool_sources),
         # Zero exact, as the gate reads it; any other count in bands.
-        "reporters_not_claiming": extreme_count(int((reporter & ~would_claim).sum())),
+        "reporters_not_claiming": extreme_count(
+            distinct_count(source_ids, reporter & ~would_claim)
+        ),
         "changed_outside_draw": extreme_count(
-            int((changed & ~drawable & ~reporter).sum())
+            distinct_count(source_ids, changed & ~drawable & ~reporter)
         ),
-        "drawn_units": rounded_count(int(drawable.sum())),
-        "drawn_units_northern_ireland": rounded_count(int((drawable & ~gb).sum())),
-        "moved_units": rounded_count(int((entitled & moved & ~reporter).sum())),
-        "legacy_kept_units": rounded_count(
-            int((entitled & population & legacy_kept & ~reporter & ~moved).sum())
+        "drawn_units": units(drawable),
+        "drawn_units_northern_ireland": units(drawable & ~gb),
+        "moved_units": units(entitled & moved & ~reporter),
+        "legacy_kept_units": units(
+            entitled & population & legacy_kept & ~reporter & ~moved
         ),
-        "set_true": rounded_count(int((changed & would_claim).sum())),
-        "set_false": rounded_count(int((changed & ~would_claim).sum())),
+        "set_true": units(changed & would_claim),
+        "set_false": units(changed & ~would_claim),
     }
     if young_people is not None:
         carried = sources(entitled_gb & young_unit)
@@ -1436,6 +1456,9 @@ def redraw_uc_take_up(
         "benunit",
         stage="The UC take-up stage",
     )
+    counted = record_clone_zero_rows(
+        {"person": person, "benunit": benunit, "household": household}, "benunit"
+    )
     # A unit the engine moves off its legacy benefits claims at the closure
     # with the probability ``uc_legacy_closure_take_up`` gives it; this stage
     # leaves its flag alone, so the closure's share already claiming, and so
@@ -1508,6 +1531,7 @@ def redraw_uc_take_up(
         young_target=young_target,
         lcwra_units=lcwra_units,
         lcwra_target=lcwra_target,
+        counted=counted,
     )
     kept_off = esa_kept & stored & great_britain
     esa_kept_receipt = {

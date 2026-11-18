@@ -322,6 +322,34 @@ def test_top_up_keeps_the_diarys_stakes_and_stakes_every_added_household() -> No
     ]
 
 
+def test_added_households_without_a_stake_count_by_source_household(
+    monkeypatch,
+) -> None:
+    """A broken stake model that leaves every added household without a stake
+    counts them by source household: households that are copies or clones of
+    two survey households read "<3" however many rows they hold
+    (microcosm#931)."""
+
+    from microcosm.build.uk_runtime import gambling_participation
+
+    inputs = participation_inputs()
+    inputs["sources"] = np.asarray(inputs["household_ids"]) % 2
+    monkeypatch.setattr(
+        gambling_participation,
+        "_positive_stakes",
+        lambda donor_features, donor_stakes, donor_weights, recipient_features, *a, **k: (
+            np.zeros(len(recipient_features)),
+            "explicit",
+        ),
+    )
+    # With no stake drawn the amount scale divides by zero; the count is what
+    # this test reads.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        result = top_up_gambling_participation(**inputs)
+    for key in UK_GAMBLING_PARTICIPATION_KEYS:
+        assert result.receipt["keys"][key]["added_without_stake"] == "<3"
+
+
 def test_occasional_players_take_the_declared_share_of_a_drawn_stake() -> None:
     inputs = participation_inputs()
     low = top_up_gambling_participation(**inputs)

@@ -27,6 +27,7 @@ from microcosm.build.uk_runtime.pip_points import (
     store_pip_points,
 )
 from microcosm.frame import WeightKind
+from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
 
 _GROUPS = [name for name, _, _ in PIP_AGE_GROUPS]
 
@@ -125,7 +126,7 @@ def test_draws_keep_every_award_and_leave_non_recipients_unassessed() -> None:
             uniforms=rng.uniform(size=count),
             distributions=distributions[component],
         )
-        assert fallbacks == 0
+        assert not fallbacks.any()
         assert (points[~recipient] == PIP_NOT_ASSESSED).all()
         none = recipient & (category == "NONE")
         standard = recipient & (category == "STANDARD")
@@ -167,7 +168,7 @@ def test_an_age_group_with_no_share_in_range_takes_the_all_ages_row() -> None:
         distributions=distributions["daily_living"],
     )
     assert points[0] >= 12 and 8 <= points[1] < 12
-    assert fallbacks == 1
+    assert fallbacks.tolist() == [True, False]
 
 
 def _frame(categories, ages, regions, sources):
@@ -292,6 +293,38 @@ def test_a_country_on_fewer_than_three_households_shows_no_weighted_count() -> N
     assert by_country["england"] == {"records": "3-9", "support": "3-9", "weighted": 30}
     # Wales's one household holds no recipient.
     assert by_country["wales"] == {"records": 0, "support": 0, "weighted": 0}
+
+
+def test_the_receipt_counts_clone_zero_source_households_at_any_k() -> None:
+    """At K = 3 the recipients, their countries, awards and fallbacks count as
+    at K = 1: in distinct source households among geographic clone 0's rows,
+    where counts of rows would read three times as many (microcosm#931)."""
+
+    awards = [("ENHANCED", "STANDARD"), ("NONE", "ENHANCED"), ("STANDARD", "NONE")]
+    frame = _frame(
+        awards * 8,
+        ages=[18, 25, 45] * 8,
+        regions=["WALES", "LONDON", "SCOTLAND"] * 8,
+        # Two people's households are copies of one survey household.
+        sources=[1000 + index // 2 for index in range(24)],
+    )
+    rows = _rows()
+    receipts = {
+        clones: store_pip_points(
+            frame if clones == 1 else clone_first_frame(frame, clones),
+            distributions=pip_points_distributions_from_rows(rows),
+        ).evidence()
+        for clones in (1, 3)
+    }
+    one, three = receipts[1], receipts[3]
+    assert one["recipients"] == 10
+    assert three["recipients"] == one["recipients"]
+    assert three["recipients_by_country"] == one["recipients_by_country"]
+    for component in ("daily_living", "mobility"):
+        for key in ("fallbacks", "by_award"):
+            assert (
+                three["components"][component][key] == one["components"][component][key]
+            ), (component, key)
 
 
 def test_store_pip_points_is_the_points_only_writer_and_needs_its_inputs() -> None:

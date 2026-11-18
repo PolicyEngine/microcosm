@@ -8,13 +8,8 @@ import pandas as pd
 import pytest
 
 from microcosm.build import atomic_geography
-from microcosm.build.graph_atomic_geography import (
-    atomic_geography_nodes,
-    register_atomic_geography_kernels,
-)
 from microcosm.build.uk_runtime.atomic_area_support import (
     IDENTITY_COLUMN,
-    SOURCES,
     uk_atomic_assignment_definition,
 )
 from microcosm.build.uk_runtime.atomic_household_identity import household_draw_key
@@ -375,7 +370,7 @@ class _SelectKernel(KernelBase):
         )
 
 
-def test_actual_expand_filter_receipts_feed_shared_atomic_graph_and_replay(tmp_path):
+def test_actual_expand_filter_receipts_feed_the_shared_atomic_operator(tmp_path):
     ids = np.arange(1, 4, dtype=np.int64)
     person = pd.DataFrame(
         {
@@ -488,89 +483,41 @@ def test_actual_expand_filter_receipts_feed_shared_atomic_graph_and_replay(tmp_p
     )
     support_payloads = payloads()
     definition = uk_atomic_assignment_definition(support_payloads, seed=43)
-    all_columns = (*columns, Owned("household", IDENTITY_COLUMN, "string"))
-    atomic_nodes = atomic_geography_nodes(
-        definition, all_columns, base="keyed", emit_validation_artifact=True
-    )
-    assignment_graph = compile_graph(
-        Graph(
-            "uk",
-            (
-                SourceRef("invented", "raw-bytes-v1"),
-                *(SourceRef(SOURCES[s], "raw-bytes-v1") for s in support_payloads),
-            ),
-            (
-                Node(
-                    "keyed",
-                    _FrameKernel.ref,
-                    structural=StructuralDelta.CREATE,
-                    sources=("invented",),
-                    outputs=all_columns,
-                ),
-                *atomic_nodes,
-            ),
-        )
-    )
-    source_paths = {"invented": source}
-    for system, payload in support_payloads.items():
-        path = tmp_path / (system + ".npz")
-        path.write_bytes(payload)
-        source_paths[SOURCES[system]] = path
-    atomic_registry = KernelRegistry()
-    atomic_registry.register(_FrameKernel(keyed))
-    register_atomic_geography_kernels(atomic_registry)
-    atomic_store = ContentStore(tmp_path / "atomic-store")
-    assigned = run_graph(
-        assignment_graph,
-        sources=source_paths,
-        store=atomic_store,
-        kernels=atomic_registry,
-    )
-    required = run_graph(
-        assignment_graph,
-        sources=source_paths,
-        store=atomic_store,
-        kernels=atomic_registry,
-        resume="require",
-    )
-    assert len(assigned.nodes) == 7 and all(n.hit for n in required.nodes.values())
-    actual = assigned.population("keyed")
-    for entity in keyed.entities:
-        pd.testing.assert_frame_equal(
-            actual.table(entity)[list(keyed.table(entity))],
-            keyed.table(entity),
-            check_index_type=False,
-        )
-    np.testing.assert_array_equal(
-        actual.weights_for("household").values, keyed.weights_for("household").values
-    )
-    pd.testing.assert_series_equal(actual.strata, keyed.strata, check_index_type=False)
-    assert actual.metadata == keyed.metadata and actual.mass_log == keyed.mass_log
-    assert assigned.nodes["geography.gate"].receipt["outcome"] == "pass"
     supports = {
         k: atomic_geography.decode_atomic_support(v)
         for k, v in support_payloads.items()
     }
-    reordered = keyed.table("household").iloc[::-1]
-    expected = atomic_geography.assign_atomic(reordered, definition, supports)
-    for c in expected:
+    # The spine runs the shared operator in process on the projected keys:
+    # each household's area is keyed on its own key, whatever the row order,
+    # and the derived ladder passes the shared validation.
+    household = keyed.table("household")
+    assigned = atomic_geography.assign_atomic(household, definition, supports)
+    reordered = atomic_geography.assign_atomic(
+        household.iloc[::-1], definition, supports
+    )
+    for c in assigned:
         pd.testing.assert_series_equal(
-            expected[c].astype(pd.StringDtype(storage="python")).reset_index(drop=True),
-            actual.table("household")[c]
+            reordered[c]
             .iloc[::-1]
             .astype(pd.StringDtype(storage="python"))
             .reset_index(drop=True),
+            assigned[c].astype(pd.StringDtype(storage="python")).reset_index(drop=True),
             check_names=False,
         )
+    placed = pd.concat([household, assigned], axis=1)
+    derived = atomic_geography.derive_geography(placed, definition, supports)
+    receipt = atomic_geography.validate_geography(
+        pd.concat([placed, derived], axis=1), definition, supports
+    )
+    assert receipt["outcome"] == "pass"
 
     (tmp_path / "acceptance.json").write_text(
         json.dumps(
             {
-                "scope": "invented actual shared CREATE/EXPAND/FILTER and atomic graph; pure descriptive lineage helper",
+                "scope": "invented actual shared CREATE/EXPAND/FILTER graph and atomic operator; pure descriptive lineage helper",
                 "lineage_nodes": len(cold.nodes),
                 "lineage_required_hits": sum(n.hit for n in replay.nodes.values()),
-                "atomic_nodes": len(assigned.nodes),
-                "atomic_required_hits": sum(n.hit for n in required.nodes.values()),
+                "assigned_households": len(assigned),
                 "root_households": frame.n("household"),
                 "expanded_households": expanded.n("household"),
                 "selected_households": selected.n("household"),

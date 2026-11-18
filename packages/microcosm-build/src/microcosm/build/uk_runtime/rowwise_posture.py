@@ -14,7 +14,7 @@ only, the calibration-seam doctrine (:mod:`national_doctrine`) and its six
 in-process gates; the seam-shaped build record it emits is what
 ``tools/certify_uk_release_cut.py`` certifies. ``dense`` is the K-clone joint
 national + local surface under the local doctrine (:mod:`local_doctrine`)
-and the seven local gates; its dense pool is the intermediate the exact-K
+and the six local gates; its dense pool is the intermediate the exact-K
 local-area cuts are drawn from.
 
 Every value here is a reviewed constant. Changing one is a doctrine change:
@@ -67,9 +67,6 @@ UK_DENSE_LEARNING_RATE = 0.15
 #: since #762; every dense receipt reads ``s42``).
 UK_DENSE_SEED = 42
 
-#: The constituency vintage the dense role requires from the ladder.
-UK_DENSE_CONSTITUENCY_VINTAGE = "2024_pcon"
-
 
 @dataclass(frozen=True)
 class UKRowwisePosture:
@@ -83,7 +80,6 @@ class UKRowwisePosture:
     seed: int
     target_weight_rule: str
     allowed_target_weight_rules: tuple[str, ...]
-    expected_constituency_vintage: str | None
     gate_scope: tuple[str, ...]
     gate_posture: str
     gate_policy_suffix: str
@@ -153,10 +149,6 @@ class UKRowwisePosture:
                 "the posture's target_weight_rule must be its doctrine's: "
                 f"{self.target_weight_rule!r} vs "
                 f"{self.doctrine.target_weight_rule!r}."
-            )
-        if (self.expected_constituency_vintage is None) != (not self.ladder_required):
-            raise ValueError(
-                "a constituency vintage is expected exactly on the ladder role."
             )
         if not self.gate_scope:
             raise ValueError("posture gate_scope must name at least one gate.")
@@ -241,7 +233,6 @@ UK_ROWWISE_NATIONAL_POSTURE = UKRowwisePosture(
     seed=UK_NATIONAL_SOLVE_DOCTRINE.seed,
     target_weight_rule=UK_NATIONAL_SOLVE_DOCTRINE.target_weight_rule,
     allowed_target_weight_rules=("family_equal", "uniform"),
-    expected_constituency_vintage=None,
     gate_scope=tuple(UK_CALIBRATION_GATE_SCOPE),
     gate_posture="calibration_seam",
     gate_policy_suffix="calibration_seam_scope",
@@ -272,7 +263,6 @@ UK_ROWWISE_DENSE_POSTURE = UKRowwisePosture(
         "uniform",
         *UK_LOCAL_ROW_METADATA_RULES,
     ),
-    expected_constituency_vintage=UK_DENSE_CONSTITUENCY_VINTAGE,
     gate_scope=tuple(UK_LOCAL_GATE_SCOPE),
     gate_posture="local_candidate",
     gate_policy_suffix="local_candidate",

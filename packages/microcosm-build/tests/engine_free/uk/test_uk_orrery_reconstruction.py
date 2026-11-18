@@ -800,7 +800,6 @@ def test_maintained_uk_dense_declaration_reconstructs_within_orrery_limits(tmp_p
     full = uk_full_graph(
         UKFullBuildConfig(
             calibration_year=2025,
-            geography_assignment="legacy",
             calibration=UKGraphCalibrationConfig(),
         ),
         spine=spine,

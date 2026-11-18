@@ -9,6 +9,7 @@ import io
 import json
 import os
 import re
+import shlex
 import zipfile
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -44,6 +45,7 @@ def test_every_declared_input_resolves_to_a_committed_pin():
         "aps_2024_25",
         "hmrc_personal_incomes_ods",
         "chronicle_uk",
+        "atomic_area_supports",
     }
     for source in sources.values():
         assert source.files
@@ -91,6 +93,50 @@ def test_the_runner_pins_are_the_build_pins():
         for pin in sources[key].files:
             assert pin.sha256 == stage_pins[pin.name]["sha256"]
             assert pin.size_bytes == stage_pins[pin.name]["size_bytes"]
+
+
+def test_the_conditioned_supports_are_pinned_to_the_register_the_spine_reads():
+    """The spine requires the three conditioned atomic-area supports whenever
+    atomic_area_assign runs, which the packaged roster always schedules, and
+    holds each file to sources.yaml's conditioned register (microcosm#931).
+    The runner pins them to that register and passes each under its flag."""
+
+    from microcosm.build.uk_runtime import spine_build
+    from microcosm.build.uk_runtime.country_adapter import (
+        uk_atomic_support_register,
+    )
+
+    register = uk_atomic_support_register(conditioned=True)
+    supports = {s.key: s for s in cut.load_input_sources()}["atomic_area_supports"]
+    assert dict(cut.CONDITIONED_SUPPORT_FLAGS) == dict(
+        spine_build._ATOMIC_SUPPORT_FLAGS
+    )
+    assert [(pin.name, pin.sha256, pin.size_bytes) for pin in supports.files] == [
+        (
+            cut.conditioned_support_file(system),
+            register[system]["sha256"],
+            register[system]["size_bytes"],
+        )
+        for system in cut.CONDITIONED_SUPPORT_FLAGS
+    ]
+    paths = cut.CutPaths(Path("/w"), "t", "a" * 40)
+    args = spine_build._parse_args(
+        cut.spine_argv(paths, python="py", staging_local_only=True)[2:]
+    )
+    for system, flag in cut.CONDITIONED_SUPPORT_FLAGS.items():
+        assert getattr(
+            args, spine_build._atomic_support_argument(flag)
+        ) == paths.input_file(supports.directory, cut.conditioned_support_file(system))
+
+
+def test_a_member_outside_the_conditioned_register_is_refused(tmp_path):
+    manifest = json.loads(cut.CUT_INPUTS.read_text())
+    (raw,) = [s for s in manifest["sources"] if s["key"] == "atomic_area_supports"]
+    raw["members"] = [*raw["members"], "uk_ew_output_area_2021_support.npz"]
+    path = tmp_path / "uk_cut_inputs.json"
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(cut.CutError, match="not a conditioned atomic-area support"):
+        cut.load_input_sources(path)
 
 
 def test_the_chronicle_path_follows_the_feed_pin(tmp_path):
@@ -295,6 +341,16 @@ def test_certify_and_assemble_argv_parse(tmp_path):
     assert certify.release_id == cut.RELEASE_ID
     assert certify.reference_record == paths.reference_record
     assert certify.score_receipt == paths.score_receipt
+    # The certifier recomputes the spine's area definition from the
+    # conditioned supports the spine read, from the cut's inputs (microcosm#931).
+    from microcosm.build.uk_runtime import spine_build
+
+    for system, flag in spine_build.SPINE_SUPPORT_FLAGS.items():
+        assert getattr(
+            certify, spine_build._atomic_support_argument(flag)
+        ) == paths.input_file(
+            cut.CONDITIONED_SUPPORTS_DIRECTORY, cut.conditioned_support_file(system)
+        )
     assemble = _tool("assemble_uk_release_dir")._parse_args(
         cut.assemble_argv(paths, python="py")[2:]
     )
@@ -458,6 +514,41 @@ def test_a_missing_upload_is_reported_with_its_note(tmp_path):
     )
     assert result[0].status == "missing"
     assert "upload nts.zip" in result[0].detail
+
+
+def test_files_hosted_nowhere_yet_are_refused_unless_placed_by_hand(tmp_path):
+    """A source pinned but hosted nowhere yet, as the conditioned supports
+    were before the build-inputs repository held them (microcosm#931): fetch
+    refuses it with its note, and keeps files an operator placed in the
+    inputs once they match their pins."""
+
+    data = {"a.npz": b"alpha support", "b.npz": b"beta support"}
+    source = cut.InputSource(
+        key="atomic_area_supports",
+        kind="hf_files",
+        directory="atomic_area_supports",
+        files=tuple(
+            cut.PinnedFile(name, _sha(value), len(value))
+            for name, value in data.items()
+        ),
+        upload_note="the location is named later",
+    )
+    hub = FakeHub(tmp_path, {})
+    (refused,) = cut.fetch_inputs([source], tmp_path / "inputs", downloader=hub)
+    assert refused.status == "refused"
+    assert "no repository is named for these files yet" in refused.detail
+    assert "the location is named later" in refused.detail
+    assert hub.downloads == 0
+    placed = tmp_path / "inputs/atomic_area_supports"
+    placed.mkdir(parents=True)
+    (placed / "a.npz").write_bytes(data["a.npz"])
+    (placed / "b.npz").write_bytes(b"not the pinned support")
+    (still,) = cut.fetch_inputs([source], tmp_path / "inputs", downloader=hub)
+    assert still.status == "refused"
+    (placed / "b.npz").write_bytes(data["b.npz"])
+    (present,) = cut.fetch_inputs([source], tmp_path / "inputs", downloader=hub)
+    assert present.status == "present"
+    assert hub.downloads == 0
 
 
 def test_the_archive_digest_is_checked_when_pinned(tmp_path):
@@ -1609,3 +1700,250 @@ def test_a_pinned_reference_build_is_fetched_and_never_silently_moved(tmp_path):
         write_evidence=_stub_evidence,
     )
     assert (moved.build, moved.selection) == (REFERENCE_BUILD, "pinned")
+
+
+# --------------------------------------------------------------------------- #
+# The dense line's spine, built alone (microcosm#931)                           #
+# --------------------------------------------------------------------------- #
+
+
+def test_the_supports_path_follows_the_conditioned_register(monkeypatch):
+    """The supports are hosted under their pins' fingerprint, so a re-pin of
+    sources.yaml's conditioned register moves the path with no edit to the
+    inputs manifest, and an older checkout still finds the files it pins."""
+
+    supports = {s.key: s for s in cut.load_input_sources()}["atomic_area_supports"]
+    pins = cut.conditioned_support_pins()
+    fingerprint = _sha(
+        json.dumps(pins, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    )
+    assert (supports.repo_id, supports.repo_type, supports.revision) == (
+        cut.BUILD_INPUTS_REPO,
+        "dataset",
+        None,
+    )
+    assert supports.path_in_repo == f"atomic-area-supports/{fingerprint}"
+    raw = next(
+        s
+        for s in json.loads(cut.CUT_INPUTS.read_text())["sources"]
+        if s["key"] == "atomic_area_supports"
+    )
+    assert not re.search(r"[0-9a-f]{64}", json.dumps(raw))
+    repinned = {name: {**pin, "sha256": "f" * 64} for name, pin in pins.items()}
+    monkeypatch.setattr(cut, "conditioned_support_pins", lambda: repinned)
+    moved = {s.key: s for s in cut.load_input_sources()}["atomic_area_supports"]
+    assert moved.path_in_repo != supports.path_in_repo
+    assert [pin.sha256 for pin in moved.files] == ["f" * 64] * 3
+
+
+def test_the_dense_spine_is_a_release_candidate_at_the_doctrine_clones():
+    """It parses under the spine's own parser, which refuses a release
+    candidate at any count but one or the doctrine's on a roster that does
+    not assign areas; the national cut's spine keeps one clone."""
+
+    from microcosm.build.uk_runtime import spine_build
+    from microcosm.build.uk_runtime.local_doctrine import UK_LOCAL_CLONE_COUNT
+
+    paths = cut.CutPaths(Path("/w"), "t", "a" * 40)
+    args = spine_build._parse_args(cut.dense_spine_argv(paths, python="py")[2:])
+    assert args.release_candidate is True
+    assert args.n_clones == UK_LOCAL_CLONE_COUNT
+    assert str(args.spine_h5) == str(paths.dense_spine_h5)
+    assert str(args.stage_profile_dir) == str(paths.dense_spine_profile)
+    assert args.staging_local_only is True
+    national = cut.spine_argv(paths, python="py", staging_local_only=True)
+    assert "--n-clones" not in national
+    assert "--stage-profile-dir" not in national
+    assert paths.dense_spine_dir != paths.spine_dir
+    assert paths.dense_spine_profile.parent == paths.cut
+
+
+def test_the_dense_spine_fetches_every_input_but_the_chronicle_artifact():
+    keys = {s.key for s in cut.load_input_sources()}
+    assert cut.SPINE_INPUT_KEYS == keys - {"chronicle_uk"}
+    paths = cut.CutPaths(Path("/w"), "t", "0" * 40)
+    fetched = {
+        str(paths.input_file(s.directory, pin.name))
+        for s in cut.load_input_sources()
+        if s.key in cut.SPINE_INPUT_KEYS
+        for pin in s.files
+    }
+    values = [
+        a
+        for a in cut.dense_spine_argv(paths, python="py")[2:]
+        if a.startswith("/w/inputs/")
+    ]
+    assert values
+    for value in values:
+        assert value in fetched or value == str(paths.inputs / "frs_2024_25")
+
+
+class FakeDenseSpine:
+    """Stands in for the spine tool: writes a dense spine where it is told."""
+
+    def __init__(self, *, fail: bool = False) -> None:
+        self.calls = 0
+        self.argv: list[str] = []
+        self.env: dict[str, str] = {}
+        self.fail = fail
+
+    def __call__(self, argv, cwd, log_path, env) -> int:
+        self.calls += 1
+        self.argv, self.env = argv, env
+        h5 = Path(argv[argv.index("--spine-h5") + 1])
+        profile = Path(argv[argv.index("--stage-profile-dir") + 1])
+        report = {
+            "shippable": not self.fail,
+            "attestation": {"signing_key_sha256": "e" * 64},
+        }
+        h5.with_suffix(".spine_gates.json").write_text(json.dumps(report))
+        (profile / "stage_profile.json").write_text('{"schema_version": 1}')
+        if self.fail:
+            return 1
+        h5.write_bytes(b"dense spine")
+        h5.with_name(h5.name + ".sha256").write_text(
+            f"{_sha(b'dense spine')}  {h5.name}\n"
+        )
+        h5.with_suffix(".build.json").write_text("{}")
+        h5.with_suffix(".hmrc_replay.json").write_text("{}")
+        return 0
+
+
+def _dense_runner(tmp_path: Path, fake: FakeDenseSpine):
+    paths = _paths(tmp_path)
+    runner = cut.Runner(
+        paths=paths, sources={}, python="py", execute=fake, log=lambda _: None
+    )
+    return runner, paths
+
+
+def test_a_dense_spine_is_built_once_then_handed_over(tmp_path, monkeypatch):
+    from microcosm.data.gate_signing_keys import UK_GATE_SIGNING_KEY_ENV
+
+    monkeypatch.setenv(UK_GATE_SIGNING_KEY_ENV, "a key")
+    fake = FakeDenseSpine()
+    runner, paths = _dense_runner(tmp_path, fake)
+    cut.run_dense_spine(runner)
+    cut.run_dense_spine(runner)
+    assert fake.calls == 1
+    # A release-candidate spine is shippable only once signed.
+    assert fake.env[UK_GATE_SIGNING_KEY_ENV] == "a key"
+    assert not paths.spine_dir.exists()
+    files = cut.dense_spine_handoff(paths)
+    assert [file.name for file in files] == [
+        *cut.DENSE_SPINE_BOUND_FILES,
+        *cut.DENSE_SPINE_EXTRA_FILES,
+        "stage_profile.json",
+    ]
+    for file in files:
+        assert file.parent == paths.dense_spine_handoff
+        origin = (
+            paths.dense_spine_profile
+            if file.name == "stage_profile.json"
+            else paths.dense_spine_dir
+        )
+        assert file.samefile(origin / file.name)
+    assert cut.dense_spine_handoff(paths) == files
+    command = shlex.split(cut.dense_spine_upload_command(paths))
+    assert command[:6] == [
+        "uv",
+        "run",
+        "--no-sync",
+        "hf",
+        "upload",
+        cut.BUILD_INPUTS_REPO,
+    ]
+    assert command[6:8] == [str(paths.dense_spine_handoff), "spines/test-" + "a" * 9]
+    assert command[command.index("--repo-type") + 1] == "dataset"
+
+
+def test_an_unfinished_dense_spine_is_kept_and_moved_aside_only_on_retry(tmp_path):
+    fake = FakeDenseSpine(fail=True)
+    runner, paths = _dense_runner(tmp_path, fake)
+    with pytest.raises(cut.CutError, match="dense-spine exited 1"):
+        cut.run_dense_spine(runner)
+    with pytest.raises(cut.CutError, match="--retry-spine"):
+        cut.run_dense_spine(runner)
+    assert fake.calls == 1
+    with pytest.raises(cut.CutError, match="no dense spine to hand over"):
+        cut.dense_spine_handoff(paths)
+    fake.fail = False
+    cut.run_dense_spine(runner, retry=True)
+    assert fake.calls == 2
+    kept = sorted(p.name.split(".failed-")[0] for p in paths.cut.glob("*.failed-*"))
+    assert kept == ["dense-spine", "dense-spine-profile"]
+    assert cut.spine_done(paths, paths.dense_spine_h5)[0]
+
+
+def test_the_dense_spine_checks_what_it_needs_and_nothing_else(tmp_path, monkeypatch):
+    """Git, the environment, the key, the registers and a larger disk floor;
+    never the reference, the Hub's write access, the contract pins or the
+    target surfaces, which only a national cut needs."""
+
+    def passing(name):
+        return lambda *a, **k: [cut.Check(name, True, "ok")]
+
+    seen = {}
+
+    def host(work_dir, **kwargs):
+        seen.update(kwargs)
+        return [cut.Check("host", True, "ok")]
+
+    monkeypatch.setattr(cut, "git_checks", passing("git"))
+    monkeypatch.setattr(cut, "environment_checks", passing("environment"))
+    monkeypatch.setattr(
+        cut, "signing_key_check", lambda **k: cut.Check("key", True, "")
+    )
+    monkeypatch.setattr(
+        cut, "register_expiry_check", lambda today: cut.Check("registers", True, "")
+    )
+    monkeypatch.setattr(cut, "host_checks", host)
+    for name in (
+        "hub_checks",
+        "contract_pin_check",
+        "surfaces_check",
+        "run_reference",
+        "run_spine",
+        "run_national",
+    ):
+        monkeypatch.setattr(
+            cut, name, lambda *a, _name=name, **k: pytest.fail(f"called {_name}")
+        )
+    args = cut._parse(["dense-spine", "--label", "test", "--work-dir", str(tmp_path)])
+    assert args.min_free_gb == cut.DENSE_SPINE_MIN_FREE_GB
+    fake = FakeDenseSpine()
+    runner, paths = _dense_runner(tmp_path, fake)
+    with redirect_stdout(io.StringIO()) as out:
+        assert cut.dense_spine_command(args, paths, {}, runner=runner) == 0
+    assert seen["min_free_gb"] == cut.DENSE_SPINE_MIN_FREE_GB
+    assert cut.dense_spine_upload_command(paths) in out.getvalue()
+    monkeypatch.setattr(
+        cut, "host_checks", lambda work_dir, **k: [cut.Check("free disk", False, "")]
+    )
+    unbuilt = FakeDenseSpine()
+    second, second_paths = _dense_runner(tmp_path / "second", unbuilt)
+    with redirect_stdout(io.StringIO()):
+        assert cut.dense_spine_command(args, second_paths, {}, runner=second) == 1
+    assert unbuilt.calls == 0
+    assert cut._parse(["all", "--label", "x"]).min_free_gb == 60.0
+    assert (
+        cut._parse(["dense-spine", "--label", "x", "--min-free-gb", "10"]).min_free_gb
+        == 10.0
+    )
+
+
+def test_the_dense_spine_command_fetches_only_the_spine_inputs(tmp_path, monkeypatch):
+    seen = {}
+
+    def fetch(sources, inputs_dir, *, downloader, reverify, only):
+        seen["only"] = only
+        return []
+
+    monkeypatch.setattr(cut, "fetch_inputs", fetch)
+    monkeypatch.setattr(cut, "dense_spine_command", lambda args, paths, sources: 0)
+    work = ["--label", "t", "--work-dir", str(tmp_path)]
+    assert cut.main(["dense-spine", *work]) == 0
+    assert seen["only"] == set(cut.SPINE_INPUT_KEYS)
+    assert cut.main(["dense-spine", *work, "--only", "spi_2022_23"]) == 0
+    assert seen["only"] == {"spi_2022_23"}
+    assert cut.main(["dense-spine", *work, "--only", "chronicle_uk"]) == 2

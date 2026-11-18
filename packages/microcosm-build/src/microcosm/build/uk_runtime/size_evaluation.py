@@ -14,16 +14,17 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime.diagnostics import (
     uk_fit_by_family,
     uk_weight_summary,
 )
+from microcosm.build.uk_runtime.geographic_clones import GEOGRAPHIC_COPY_ID_FIELD
 from microcosm.build.uk_runtime.national_frame import UK_BUILD_IDENTIFIER_COLUMNS
 from microcosm.build.uk_runtime.receipt_counts import (
     SOURCE_HOUSEHOLD_COLUMN,
     source_household_ids,
 )
-from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
 
 __all__ = [
     "PRE_REGISTERED_OUTCOMES_V1",
@@ -495,19 +496,47 @@ def fit_tables(run: RowwiseRun) -> dict[str, Any]:
     }
 
 
-def _source_multiplier(
-    weights: pd.DataFrame,
-    spine_weights: pd.DataFrame | None,
-) -> tuple[int, str]:
-    if spine_weights is not None:
-        return (
-            id_multiplier_for_values(spine_weights["household_id"].tolist()),
-            "spine",
-        )
-    originals = weights.loc[weights["clone_index"] == 0, "household_id"]
-    if originals.empty:
-        raise ValueError("cannot infer source-id multiplier without clone_index == 0")
-    return 10 ** len(str(int(originals.max()))), "inferred_from_clone_zero_ids"
+def _integer_ids(values: pd.Series, *, label: str) -> np.ndarray:
+    """An id column as exact int64; a non-integer column is refused, not cast."""
+
+    if not pd.api.types.is_integer_dtype(values.dtype):
+        raise TypeError(f"{label} must be an integer column, not {values.dtype}.")
+    return values.to_numpy(dtype=np.int64)
+
+
+#: The refusal of a dataset whose rows are not the clone-first spine's. Fixed
+#: text: it names the layout and the field, never a count, an id or a value.
+_NOT_CLONE_FIRST = (
+    "The dataset's household ids are not in the clone-first layout, where "
+    "each geographic clone's id holds its clone_index at the copy-id table's "
+    f"{GEOGRAPHIC_COPY_ID_FIELD!r} field (microcosm#931). A dataset of the "
+    "older dense layout, which offset each clone's ids by a multiplier, is "
+    "evaluated with the tools of the commit that built it."
+)
+
+
+def _clone_first_ids(weights: pd.DataFrame) -> np.ndarray:
+    """Each dataset row's spine household id: its own id, once the layout holds.
+
+    A dense dataset's rows are its spine's rows (microcosm#931): the spine's
+    ``geographic_expand`` stage mints clone ``k`` of each household in the
+    copy-id table's ``geographic_support`` field at ordinal ``k``, and the
+    dense line samples, clones and renumbers nothing of its own. So every
+    row's ordinal there must equal its ``clone_index``, and the decode is the
+    identity. A row that does not hold to it, as every clone above zero of
+    the older dense layout does, refuses the dataset; there is no path for
+    the older layout (the identity tool's rule of 8 Nov). Exact int64.
+    """
+
+    ids = _integer_ids(weights["household_id"], label="household_id")
+    clone_index = _integer_ids(weights["clone_index"], label="clone_index")
+    # A negative id holds no copy-id field (and the table refuses one by
+    # count), so it is refused here first, in the same words.
+    if bool((ids < 0).any()) or not np.array_equal(
+        copy_id_table.ordinal(ids, GEOGRAPHIC_COPY_ID_FIELD), clone_index
+    ):
+        raise ValueError(_NOT_CLONE_FIRST)
+    return ids
 
 
 def _ratio_summary(ratios: Sequence[float] | np.ndarray) -> dict[str, float]:
@@ -527,17 +556,27 @@ def weight_tables(
     run: RowwiseRun,
     *,
     spine_weights: pd.DataFrame | None = None,
-    n_clones: int | None = None,
 ) -> dict[str, Any]:
-    """Summarize shipped weights, source support, and design stretch."""
+    """Summarize shipped weights, source support, and design stretch.
+
+    A dataset's rows are its clone-first spine's (microcosm#931), so its ids
+    decode through the copy-id table (``_clone_first_ids``): each row's spine
+    household is itself, and a dataset in another layout is refused. Source
+    support counts each row's true source where the file keeps it
+    (``source_household_basis`` ``source_household_id``); otherwise only the
+    geographic clones fold back, to clone 0's id, copies apart
+    (``geographic_support_parent``). A dense run's design weight is its spine
+    row's own weight in ``spine_weights``, keyed on the spine's household
+    ids, with no division by the clone count: the spine's expansion gave
+    each clone its share of its household's weight.
+    """
 
     manifest_weights = _mapping(run.manifest.get("weights"))
     reference = manifest_weights.get("stretch_reference", "pool_design")
     result: dict[str, Any] = {
         "summary": None,
         "distinct_source_households": None,
-        "source_id_multiplier": None,
-        "source_id_multiplier_basis": None,
+        "source_household_basis": None,
         "stretch": {
             "reference": reference,
             "vs_ht_baseline_max": manifest_weights.get(
@@ -552,27 +591,26 @@ def weight_tables(
         weight_frame = run.selection[
             ["household_id", "refit_weight", "clone_index"]
         ].rename(columns={"refit_weight": "household_weight"})
+    ids = None
     if weight_frame is not None:
         values = weight_frame["household_weight"].to_numpy(dtype=np.float64)
         result["summary"] = uk_weight_summary(values)
+        ids = _clone_first_ids(weight_frame)
         if SOURCE_HOUSEHOLD_COLUMN in weight_frame:
             # Every copy and clone keeps its true source, so a source with
             # copies counts once (receipt_counts).
-            multiplier, basis = None, SOURCE_HOUSEHOLD_COLUMN
+            basis = SOURCE_HOUSEHOLD_COLUMN
             base_ids = source_household_ids(
                 weight_frame, stage="The dataset-size evaluation"
             )
         else:
-            # Without the column only the geographic clones fold back: the id
-            # arithmetic recovers each spine household, copies apart.
-            multiplier, basis = _source_multiplier(weight_frame, spine_weights)
-            base_ids = (
-                weight_frame["household_id"].to_numpy(dtype=np.int64)
-                - weight_frame["clone_index"].to_numpy(dtype=np.int64) * multiplier
-            )
+            # Without the column only the geographic clones fold back: each
+            # row's id with its geographic_support digits cleared is clone 0's,
+            # and copies stay apart.
+            basis = "geographic_support_parent"
+            base_ids = copy_id_table.parent(ids, GEOGRAPHIC_COPY_ID_FIELD)
         result["distinct_source_households"] = int(np.unique(base_ids).size)
-        result["source_id_multiplier"] = multiplier
-        result["source_id_multiplier_basis"] = basis
+        result["source_household_basis"] = basis
         if run.selection is not None:
             counts = pd.Series(base_ids).value_counts()
             result["clones_per_source"] = {
@@ -596,22 +634,24 @@ def weight_tables(
         result["stretch"]["vs_pool_design"] = _ratio_summary(
             run.selection["refit_weight"].to_numpy(dtype=np.float64) / design
         )
-    elif spine_weights is not None and weight_frame is not None:
-        clones = n_clones or int(
-            _mapping(run.manifest.get("parameters")).get("n_clones")
+    elif spine_weights is not None and ids is not None:
+        # Each row's spine household is itself (the clone-first decode), and
+        # its design weight the spine row's own: no division by K.
+        source_map = pd.Series(
+            spine_weights["household_weight"].to_numpy(dtype=np.float64),
+            index=pd.Index(
+                _integer_ids(spine_weights["household_id"], label="spine household_id")
+            ),
         )
-        multiplier = int(result["source_id_multiplier"])
-        source_map = spine_weights.set_index("household_id")["household_weight"]
-        base_ids = (
-            weight_frame["household_id"].to_numpy(dtype=np.int64)
-            - weight_frame["clone_index"].to_numpy(dtype=np.int64) * multiplier
-        )
-        try:
-            design = source_map.loc[base_ids].to_numpy(dtype=np.float64) / clones
-        except KeyError as exc:
+        if not source_map.index.is_unique:
+            raise ValueError("The spine weights carry a household id twice.")
+        # Checked before the lookup: a failed .loc raises a KeyError that
+        # lists every missing id, and chaining it would print them.
+        if not bool(pd.Index(ids).isin(source_map.index).all()):
             raise ValueError(
-                "spine weights do not cover every source household"
-            ) from exc
+                "The spine weights do not cover every dataset row's spine household."
+            )
+        design = source_map.loc[ids].to_numpy(dtype=np.float64)
         ratios = weight_frame["household_weight"].to_numpy(dtype=np.float64) / design
         summary = _ratio_summary(ratios)
         recorded = _optional_float(

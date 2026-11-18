@@ -3,8 +3,8 @@
 
 Each extends the registered support of its system (``sources.yaml`` role
 ``uk_atomic_area_support``, built by ``build_uk_atomic_area_supports.py``)
-with the columns the geography-first draw conditions on. Only that move binds
-them; today's build binds the registered supports.
+with the columns the geography-first draw conditions on. Five spine stages
+read them, the area draw ``atomic_area_assign`` first (microcosm#931).
 
 - ``imd_decile``: the area's deprivation decile at the 2019 vintage of each
   nation's index (IoD 2019, WIMD 2019, SIMD 2020v2, NIMDM 2017), the vintage

@@ -334,6 +334,53 @@ def _receipt_stage(name: str, fit_kind: str):
     )
 
 
+def test_the_support_clip_receipt_gives_the_frames_clone_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every geographic clone's draws are clipped, so the clip receipt gives
+    the frame's clone count from two clones up, for the support-clip check to
+    multiply its row allowances by; a one-clone receipt keeps its form
+    (microcosm#931)."""
+
+    from microcosm.build.uk_runtime import etb_vat as module
+    from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
+
+    donor = pd.DataFrame({"full_rate_vat_expenditure_rate": [0.1, 0.2]})
+    monkeypatch.setattr(module, "assert_rules_engine_country", lambda *_: None)
+    monkeypatch.setattr(module, "etb_vat_configuration", lambda _stage: {})
+    monkeypatch.setattr(module, "clean_etb_vat_table", lambda raw, **_: donor)
+    monkeypatch.setattr(module, "recipient_predictors", lambda *_: pd.DataFrame())
+
+    def impute(*_args, household_ids, **_kwargs):
+        # Each pair of households draws one rate below the donor's range and
+        # one above it.
+        rates = np.resize([0.05, 0.25], len(household_ids))
+        return (
+            pd.DataFrame({"full_rate_vat_expenditure_rate": rates}),
+            module.FitWeightRecord("etb_vat:test", "explicit"),
+        )
+
+    monkeypatch.setattr(module, "impute_etb_vat", impute)
+
+    def clip(frame) -> dict:
+        transform = module.UKETBVATStageTransform(
+            stage=_receipt_stage("etb_vat", "fit_weighted_qrf"),
+            engine=object(),
+            donor=donor,
+        )
+        transform(frame)
+        return transform.checkpoint_metadata()["evidence"]["support_clip"]
+
+    one = clip(_receipt_frame())
+    assert set(one) == {"columns"}
+    rate = one["columns"]["full_rate_vat_expenditure_rate"]
+    assert (rate["clipped_low_rows"], rate["clipped_high_rows"]) == (1, 1)
+    cloned = clip(clone_first_frame(_receipt_frame(), 3))
+    assert cloned["clone_count"] == 3
+    rate = cloned["columns"]["full_rate_vat_expenditure_rate"]
+    assert (rate["clipped_low_rows"], rate["clipped_high_rows"]) == (3, 3)
+
+
 def test_stage_transform_records_its_mass_conservation_receipt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

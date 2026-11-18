@@ -1,20 +1,22 @@
 """The area-to-BRMA layer and each placed household's BRMA (microcosm#1262).
 
-The spine's ``frs_brma`` stage draws a household's Broad Rental Market Area
-within its FRS region before any household has an area, so every geographic
-clone of a household used to carry the same BRMA wherever it was placed, and
-its Local Housing Allowance rate described a different place from its local
-authority and constituency.
+The spine's ``frs_brma`` stage drew a household's Broad Rental Market Area
+within its FRS region before any household had an area, so no household's
+BRMA followed the area it was placed in, and its Local Housing Allowance rate
+described a different place from its local authority and constituency.
+``area_brma`` took its place (microcosm#931).
 
 ``uk/brma_area_layer.json`` places every 2021 LSOA of England and Wales and
 every 2022 output area of Scotland in one BRMA, by population-weighted
 centroid in the published BRMA polygons (Scotland corrected by Rent Service
 Scotland's postcode lookup); ``tools/build_uk_brma_area_layer.py`` rebuilds
-it from Chronicle's raw registrations. The post-geography node
-``uk.full.geography.brma`` reads a placed household's BRMA off its assigned
-area, as its local authority and constituency are read. Northern Ireland has
-no open BRMA geography and keeps the spine's draw. The national line has no
-areas and keeps the spine's draw everywhere.
+it from Chronicle's raw registrations. The clone-first spine's BRMA stage
+(``spine_geography.UKAreaBRMAStageTransform``, G4 of microcosm#931) reads each
+Great Britain household's BRMA off the area the spine draws it, as its local
+authority and constituency are read. Northern Ireland has no open BRMA
+geography: its households keep the BRMA ``frs_brma``'s draw gives them from
+the census counts within their region, keyed on each benefit unit
+(``frs_brma.draw_household_brmas``).
 
 Everything here is pure and depends on the standard library, numpy and
 pandas only, so the build tool can load this module by path.
@@ -32,7 +34,6 @@ import numpy as np
 
 __all__ = [
     "BRMA_AREA_LAYER_SOURCE",
-    "BRMA_LOCALISATION_MODES",
     "GRAINS",
     "KIND",
     "METHOD_VERSION",
@@ -52,9 +53,6 @@ SCHEMA_VERSION = 1
 METHOD_VERSION = "uk-brma-area-layer-v1"
 #: Graph source name of the committed layer bytes.
 BRMA_AREA_LAYER_SOURCE = "uk_brma_area_layer"
-#: ``area`` reads each placed Great Britain household's BRMA off its assigned
-#: area; ``none`` leaves the spine's regional draw on every clone.
-BRMA_LOCALISATION_MODES = ("none", "area")
 NI_SYSTEM = "uk_ni_data_zone_2021"
 
 

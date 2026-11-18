@@ -12,6 +12,17 @@ can cut at the policyengine-uk version their checkout locks::
     uv run --no-sync python tools/run_uk_cut.py preflight --label sat24
     uv run --no-sync python tools/run_uk_cut.py all --label sat24
     uv run --no-sync python tools/run_uk_cut.py all --label sat24 --publish
+    uv run --no-sync python tools/run_uk_cut.py dense-spine --label k15
+
+``dense-spine`` builds only the dense line's spine (microcosm#931): a
+release candidate at the local doctrine's geographic clones, on the same
+pinned inputs, with the spine's per-node memory profile beside it, in
+``<cut>/dense-spine/``. It needs no reference, emitter or publication
+access, and it fetches every input but the Chronicle artifact. Once the
+spine is done it links the files a dense build binds, and the profile, into
+``<cut>/dense-spine-handoff/`` and prints the command that uploads them to
+the build-inputs repository; like publication, that upload is a separate,
+deliberate call.
 
 ``all`` is resumable: each step first checks whether its outputs already
 exist and verify (the done-check), and skips if so. A step that fails leaves
@@ -88,12 +99,41 @@ SPINE_NAME = "uk_frs_spine_2024_25.h5"
 PUBLISH_REPO = "policyengine/populace-uk-private"
 TELEMETRY_REPO = "policyengine/populace-uk-staging"
 STAGING_BRANCH = f"release-staging/{RELEASE_ID}"
+#: Where the inputs the Hub holds nowhere else live, and where a dense spine
+#: built elsewhere is handed over (``dense-spine``'s printed upload).
+BUILD_INPUTS_REPO = "policyengine/microcosm-uk-build-inputs"
+#: The inputs a spine reads: every declared source but the Chronicle
+#: artifact, which only the national and dense calibrations read.
+SPINE_INPUT_KEYS = frozenset(
+    {
+        "frs_2024_25",
+        "spi_2022_23",
+        "was_round_8",
+        "etb_1977_2024",
+        "nts_2002_2024",
+        "lcfs_2024_25",
+        "aps_2024_25",
+        "hmrc_personal_incomes_ods",
+        "atomic_area_supports",
+    }
+)
+#: A dense spine's free-disk floor. The f100 spine's checkpoint store took
+#: about 15 GB at one clone, and the store grows with the clones (microcosm#931).
+DENSE_SPINE_MIN_FREE_GB = 400.0
 
 
 #: The steps that sign gate reports (spine, national, certify) or verify them
 #: (assembly and publication). Every other step and check runs without the key.
 KEY_STEPS = frozenset(
-    {"spine", "national", "certify", "assemble", "publish-preflight", "publish"}
+    {
+        "spine",
+        "dense-spine",
+        "national",
+        "certify",
+        "assemble",
+        "publish-preflight",
+        "publish",
+    }
 )
 
 
@@ -190,11 +230,64 @@ def committed_source_pins(uk_dir: Path = UK_DIR) -> dict[str, dict[str, Any]]:
     return pins
 
 
+#: The spine's flag for each system's conditioned atomic-area support, in the
+#: systems' order (microcosm#931). The spine requires all three whenever
+#: atomic_area_assign runs, which the packaged roster always schedules, and
+#: holds each file to the sha256 and size sources.yaml registers for it
+#: before any stage runs.
+CONDITIONED_SUPPORT_FLAGS: Mapping[str, str] = {
+    "uk_ew_output_area_2021": "--atomic-support-ew",
+    "uk_scotland_output_area_2022": "--atomic-support-scotland",
+    "uk_ni_data_zone_2021": "--atomic-support-ni",
+}
+#: The inputs directory the conditioned supports are installed in.
+CONDITIONED_SUPPORTS_DIRECTORY = "atomic_area_supports"
+
+
+def conditioned_support_file(system: str) -> str:
+    """The file a system's conditioned support is fetched as: its source id,
+    as ``tools/build_uk_conditioned_area_supports.py`` writes it."""
+
+    from microcosm.build.uk_runtime.atomic_area_support import CONDITIONED_SOURCES
+
+    return f"{CONDITIONED_SOURCES[system]}.npz"
+
+
+def conditioned_support_pins() -> dict[str, dict[str, Any]]:
+    """Each conditioned atomic-area support's pin, by the file it is fetched
+    as: the sha256 and size sources.yaml's conditioned register holds, the
+    register the spine holds each ``--atomic-support-*`` file to."""
+
+    from microcosm.build.uk_runtime.country_adapter import (
+        uk_atomic_support_register,
+    )
+
+    register = uk_atomic_support_register(conditioned=True)
+    return {
+        conditioned_support_file(system): {
+            "sha256": str(register[system]["sha256"]),
+            "size_bytes": int(register[system]["size_bytes"]),
+        }
+        for system in CONDITIONED_SUPPORT_FLAGS
+    }
+
+
+def conditioned_supports_fingerprint() -> str:
+    """The folder the conditioned supports are hosted under: the sha256 of
+    their pins as canonical JSON, so a re-pin of the register moves the path
+    and the files an older checkout reads stay where it looks."""
+
+    pins = conditioned_support_pins()
+    canonical = json.dumps(pins, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 #: The ``*_pin`` selectors a source may carry, each naming the committed pin
 #: a field is read from. Any other ``*_pin`` is refused, never ignored.
 PIN_SELECTORS: Mapping[str, frozenset[str]] = {
     "archive_sha256_pin": frozenset({"frs_release"}),
-    "path_in_repo_pin": frozenset({"chronicle_feed"}),
+    "path_in_repo_pin": frozenset({"chronicle_feed", "conditioned_atomic_supports"}),
+    "members_pin": frozenset({"conditioned_atomic_supports"}),
 }
 
 
@@ -222,6 +315,7 @@ def load_input_sources(
     feed = json.loads((uk_dir / "chronicle_feed.json").read_text())
     frs_release = json.loads((uk_dir / "frs_release.json").read_text())
     extra = manifest.get("file_pins", {})
+    conditioned: dict[str, dict[str, Any]] | None = None
     sources: list[InputSource] = []
     for raw in manifest["sources"]:
         _check_pin_selectors(raw)
@@ -233,10 +327,24 @@ def load_input_sources(
             # The hosted artifact sits under its Chronicle commit, so the
             # path follows every re-pin of chronicle_feed.json.
             path_in_repo = f"{path_in_repo}/{feed['source_commit']}"
+        elif raw.get("path_in_repo_pin") == "conditioned_atomic_supports":
+            # The hosted supports sit under their pins' fingerprint, so the
+            # path follows every re-pin of the conditioned register.
+            path_in_repo = f"{path_in_repo}/{conditioned_supports_fingerprint()}"
         url = None
         files: list[PinnedFile] = []
         for member in raw["members"]:
-            if key == "chronicle_uk":
+            if raw.get("members_pin") == "conditioned_atomic_supports":
+                if conditioned is None:
+                    conditioned = conditioned_support_pins()
+                if member not in conditioned:
+                    raise CutError(
+                        f"{key}: {member} is not a conditioned atomic-area support "
+                        "sources.yaml registers."
+                    )
+                pin = conditioned[member]
+                files.append(PinnedFile(member, pin["sha256"], pin["size_bytes"]))
+            elif key == "chronicle_uk":
                 digest = {
                     "manifest.json": feed["manifest_sha256"],
                     "consumer_facts.jsonl": feed["facts_sha256"],
@@ -533,6 +641,13 @@ def _fetch_source(
     pending = [
         pin for pin in source.files if not verified.matches(paths[pin.name], pin)
     ]
+    if source.kind in {"hf_zip_members", "hf_files"} and source.repo_id is None:
+        # Its files are pinned, but where they are hosted is not named yet:
+        # files placed by hand are verified and kept above, never fetched.
+        raise CutError(
+            f"{source.key}: no repository is named for these files yet"
+            + (f"; {source.upload_note}" if source.upload_note else ".")
+        )
     if source.kind == "hf_zip_members":
         archive = downloader.hf_file(
             repo_id=source.repo_id,
@@ -604,6 +719,27 @@ class CutPaths:
         return self.spine_dir / SPINE_NAME
 
     @property
+    def dense_spine_dir(self) -> Path:
+        """The dense line's spine (``dense-spine``), apart from the national
+        cut's one-clone spine, so neither step ever reads the other's."""
+        return self.cut / "dense-spine"
+
+    @property
+    def dense_spine_h5(self) -> Path:
+        return self.dense_spine_dir / SPINE_NAME
+
+    @property
+    def dense_spine_profile(self) -> Path:
+        """The dense spine's per-node memory profile. A node's record keeps
+        the message of a failure it raised, so it lies outside the spine's
+        folder and outside every git work tree (the work dir)."""
+        return self.cut / "dense-spine-profile"
+
+    @property
+    def dense_spine_handoff(self) -> Path:
+        return self.cut / "dense-spine-handoff"
+
+    @property
     def run_dir(self) -> Path:
         return self.cut / "national"
 
@@ -662,8 +798,20 @@ class CutPaths:
         return self.inputs / directory / name
 
 
-def spine_argv(paths: CutPaths, *, python: str, staging_local_only: bool) -> list[str]:
-    """The spine command, every input taken from the verified inputs dir."""
+def spine_argv(
+    paths: CutPaths,
+    *,
+    python: str,
+    staging_local_only: bool,
+    spine_h5: Path | None = None,
+    n_clones: int = 1,
+    stage_profile_dir: Path | None = None,
+) -> list[str]:
+    """The spine command, every input taken from the verified inputs dir.
+
+    The national cut's spine takes the defaults: one geographic clone, at
+    ``paths.spine_h5``. ``dense_spine_argv`` asks for the dense line's.
+    """
 
     def tab(directory: str, name: str) -> str:
         return str(paths.input_file(directory, name))
@@ -688,11 +836,40 @@ def spine_argv(paths: CutPaths, *, python: str, staging_local_only: bool) -> lis
         "--etb-tab", tab("etb_1977_2024", "householdv2_1977-2024.tab"),
         "--aps-tab", tab("aps_2024_25", "apsp_a24m25_eul_pwta22.tab"),
         "--release-candidate",
-        "--spine-h5", str(paths.spine_h5),
+        "--spine-h5", str(paths.spine_h5 if spine_h5 is None else spine_h5),
     ]  # fmt: skip
+    # The conditioned atomic-area supports the area stages draw on
+    # (microcosm#931), held by the spine to sources.yaml's register.
+    for system, flag in CONDITIONED_SUPPORT_FLAGS.items():
+        argv += [
+            flag,
+            tab(CONDITIONED_SUPPORTS_DIRECTORY, conditioned_support_file(system)),
+        ]
+    if n_clones != 1:
+        argv += ["--n-clones", str(n_clones)]
+    if stage_profile_dir is not None:
+        argv += ["--stage-profile-dir", str(stage_profile_dir)]
     if staging_local_only:
         argv.append("--staging-local-only")
     return argv
+
+
+def dense_spine_argv(paths: CutPaths, *, python: str) -> list[str]:
+    """The dense line's spine (microcosm#931): a release candidate at the
+    local doctrine's geographic clones, the only count other than one a
+    release-candidate spine takes, with the per-node memory profile the
+    plan's guard reads. Its telemetry stays local."""
+
+    from microcosm.build.uk_runtime.local_doctrine import UK_LOCAL_CLONE_COUNT
+
+    return spine_argv(
+        paths,
+        python=python,
+        staging_local_only=True,
+        spine_h5=paths.dense_spine_h5,
+        n_clones=UK_LOCAL_CLONE_COUNT,
+        stage_profile_dir=paths.dense_spine_profile,
+    )
 
 
 def national_argv(
@@ -777,6 +954,19 @@ def certify_argv(
         "--reference-record", str(paths.reference_record),
         "--release-id", RELEASE_ID,
     ]  # fmt: skip
+    # The conditioned supports the spine read, from which the certifier
+    # recomputes the spine's area definition (microcosm#931).
+    from microcosm.build.uk_runtime.spine_build import SPINE_SUPPORT_FLAGS
+
+    for system, flag in SPINE_SUPPORT_FLAGS.items():
+        argv += [
+            flag,
+            str(
+                paths.input_file(
+                    CONDITIONED_SUPPORTS_DIRECTORY, conditioned_support_file(system)
+                )
+            ),
+        ]
     if logbook_prev_row_digest:
         argv += ["--logbook-prev-row-digest", logbook_prev_row_digest]
     return argv
@@ -842,21 +1032,26 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
-def spine_sha256(paths: CutPaths) -> str | None:
-    sidecar = paths.spine_h5.with_name(paths.spine_h5.name + ".sha256")
+def spine_sha256(paths: CutPaths, h5: Path | None = None) -> str | None:
+    h5 = paths.spine_h5 if h5 is None else h5
+    sidecar = h5.with_name(h5.name + ".sha256")
     try:
         return sidecar.read_text().split()[0]
     except (FileNotFoundError, IndexError):
         return None
 
 
-def spine_done(paths: CutPaths) -> tuple[bool, str]:
-    """A complete spine: H5, sidecars, matching digest, shippable gate report."""
+def spine_done(paths: CutPaths, h5: Path | None = None) -> tuple[bool, str]:
+    """A complete spine: H5, sidecars, matching digest, shippable gate report.
 
-    h5 = paths.spine_h5
+    ``h5`` names another spine of the cut (the dense spine's); by default the
+    national cut's.
+    """
+
+    h5 = paths.spine_h5 if h5 is None else h5
     if not h5.exists():
         return False, "no spine yet"
-    recorded = spine_sha256(paths)
+    recorded = spine_sha256(paths, h5)
     for suffix in (".build.json", ".spine_gates.json"):
         if not h5.with_suffix(suffix).exists():
             return False, f"spine sidecar {h5.with_suffix(suffix).name} is missing"
@@ -1529,6 +1724,111 @@ def run_spine(runner: Runner, *, staging_local_only: bool, retry: bool = False) 
         raise CutError(f"the spine finished but is not usable: {detail}")
 
 
+_SPINE_STEM = SPINE_NAME.removesuffix(".h5")
+#: What a dense build binds from a spine it did not build: the H5
+#: (``--input-h5``), its digest (``--input-sha256``), its build sidecar and
+#: its gate report.
+DENSE_SPINE_BOUND_FILES = (
+    SPINE_NAME,
+    f"{SPINE_NAME}.sha256",
+    f"{_SPINE_STEM}.build.json",
+    f"{_SPINE_STEM}.spine_gates.json",
+)
+#: Handed over beside them when the spine wrote it: the HMRC replay report.
+DENSE_SPINE_EXTRA_FILES = (f"{_SPINE_STEM}.hmrc_replay.json",)
+
+
+def run_dense_spine(runner: Runner, *, retry: bool = False) -> None:
+    """Build the dense line's spine once; resumable like every step.
+
+    An unfinished attempt is kept. With ``--retry-spine`` it moves aside
+    with its memory profile, so a profile never mixes two attempts.
+    """
+
+    paths = runner.paths
+    done, detail = spine_done(paths, paths.dense_spine_h5)
+    if done:
+        runner.log(f"[dense-spine] done: {detail}")
+        return
+    started = [
+        path
+        for path in (paths.dense_spine_dir, paths.dense_spine_profile)
+        if path.exists() and any(path.iterdir())
+    ]
+    if started:
+        if not retry:
+            raise CutError(
+                f"{paths.dense_spine_dir} holds an unfinished spine attempt "
+                f"({detail}); pass --retry-spine to move it aside and build a "
+                "fresh one."
+            )
+        stamp = f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}"
+        for path in (paths.dense_spine_dir, paths.dense_spine_profile):
+            if path.exists():
+                aside = path.with_name(f"{path.name}.failed-{stamp}")
+                path.rename(aside)
+                runner.log(f"[dense-spine] moved the unfinished attempt to {aside}")
+    paths.dense_spine_dir.mkdir(parents=True, exist_ok=True)
+    paths.dense_spine_profile.mkdir(mode=0o700, parents=True, exist_ok=True)
+    runner.run("dense-spine", dense_spine_argv(paths, python=runner.python))
+    done, detail = spine_done(paths, paths.dense_spine_h5)
+    if not done:
+        raise CutError(f"the dense spine finished but is not usable: {detail}")
+
+
+def dense_spine_handoff(paths: CutPaths) -> list[Path]:
+    """Link a done dense spine's files and its memory profile into
+    ``<cut>/dense-spine-handoff/``, the folder the printed upload sends.
+
+    Nothing leaves the machine here. Hard links take no space; a filesystem
+    without them gets copies. Returns the handed-over files.
+    """
+
+    from microcosm.build.stage_profile import STAGE_PROFILE_FILENAME
+
+    done, detail = spine_done(paths, paths.dense_spine_h5)
+    if not done:
+        raise CutError(f"no dense spine to hand over: {detail}")
+    required = [paths.dense_spine_dir / name for name in DENSE_SPINE_BOUND_FILES]
+    missing = [path.name for path in required if not path.is_file()]
+    if missing:
+        raise CutError(f"the dense spine lacks {', '.join(missing)}.")
+    optional = [
+        *(paths.dense_spine_dir / name for name in DENSE_SPINE_EXTRA_FILES),
+        paths.dense_spine_profile / STAGE_PROFILE_FILENAME,
+    ]
+    handoff = paths.dense_spine_handoff
+    handoff.mkdir(parents=True, exist_ok=True)
+    files = [*required, *(path for path in optional if path.is_file())]
+    for source in files:
+        target = handoff / source.name
+        if target.exists():
+            if target.samefile(source):
+                continue
+            # An earlier attempt's link or copy; the spine itself is untouched.
+            target.unlink()
+        try:
+            os.link(source, target)
+        except OSError:
+            shutil.copy2(source, target)
+    return [handoff / source.name for source in files]
+
+
+def dense_spine_upload_command(paths: CutPaths) -> str:
+    """The deliberate upload of the hand-off folder to the build-inputs
+    repository, under ``spines/<label>-<commit9>/``."""
+
+    name = f"{paths.label}-{paths.commit[:9]}"
+    return shlex.join(
+        [
+            "uv", "run", "--no-sync", "hf", "upload", BUILD_INPUTS_REPO,
+            str(paths.dense_spine_handoff), f"spines/{name}",
+            "--repo-type", "dataset",
+            "--commit-message", f"UK dense spine {name} (microcosm#931)",
+        ]
+    )  # fmt: skip
+
+
 def run_reference(
     runner: Runner,
     *,
@@ -1969,17 +2269,25 @@ def _parse(argv: Sequence[str] | None) -> argparse.Namespace:
     )
     parser.add_argument(
         "command",
-        choices=("status", "fetch", "preflight", "all", "inputs"),
+        choices=("status", "fetch", "preflight", "all", "inputs", "dense-spine"),
         help=(
             "status: where each step stands; fetch: install and verify every "
             "input; preflight: every check, nothing built; all: fetch, "
             "preflight, then each step not already done; inputs: print the "
-            "resolved input pins"
+            "resolved input pins; dense-spine: fetch the spine's inputs, "
+            "check, then build only the dense line's spine (microcosm#931)"
         ),
     )
     parser.add_argument("--label", help="names the cut's directory, e.g. sat24")
     parser.add_argument("--work-dir", type=Path, default=DEFAULT_WORK_DIR)
-    parser.add_argument("--min-free-gb", type=float, default=60.0)
+    parser.add_argument(
+        "--min-free-gb",
+        type=float,
+        help=(
+            f"the free-disk floor (default 60, or {DENSE_SPINE_MIN_FREE_GB:.0f} "
+            "for dense-spine)"
+        ),
+    )
     parser.add_argument(
         "--reservation-tool",
         type=Path,
@@ -2047,6 +2355,10 @@ def _parse(argv: Sequence[str] | None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if (args.reservation_tool is None) != (args.reservation_caller is None):
         parser.error("--reservation-tool and --reservation-caller go together.")
+    if args.min_free_gb is None:
+        args.min_free_gb = (
+            DENSE_SPINE_MIN_FREE_GB if args.command == "dense-spine" else 60.0
+        )
     # Steps run from different working directories (assembly and publication
     # from the release directory), so every path must be absolute.
     args.work_dir = args.work_dir.expanduser().resolve()
@@ -2107,6 +2419,53 @@ def preflight(args: argparse.Namespace, paths: CutPaths) -> list[Check]:
     return checks
 
 
+def dense_spine_preflight(args: argparse.Namespace, paths: CutPaths) -> list[Check]:
+    """What a dense spine needs: a clean, pushed checkout, the environment
+    built from it, a key registered to sign (a release-candidate spine is
+    shippable only once signed), unexpired registers and the host. It reads
+    no reference and starts no emitter: its telemetry stays local and it
+    publishes nothing."""
+
+    checks = git_checks(allow_off_main=args.allow_off_main)
+    checks += environment_checks()
+    checks.append(signing_key_check())
+    checks.append(register_expiry_check(date.today()))
+    checks += host_checks(
+        paths.work_dir,
+        min_free_gb=args.min_free_gb,
+        reservation_tool=args.reservation_tool,
+        reservation_caller=args.reservation_caller,
+    )
+    return checks
+
+
+def dense_spine_command(
+    args: argparse.Namespace,
+    paths: CutPaths,
+    sources: Mapping[str, InputSource],
+    *,
+    runner: Runner | None = None,
+) -> int:
+    """Preflight, build the dense spine, hand it over, print its upload."""
+
+    print("preflight:")
+    if not _print_checks(dense_spine_preflight(args, paths)):
+        print("Preflight failed; nothing was built.")
+        return 1
+    runner = runner or Runner(paths=paths, sources=sources)
+    run_dense_spine(runner, retry=args.retry_spine)
+    files = dense_spine_handoff(paths)
+    digest = spine_sha256(paths, paths.dense_spine_h5)
+    print(f"\ndense spine {digest} done; handed over in {paths.dense_spine_handoff}:")
+    for file in files:
+        print(f"  {file.name}")
+    print(
+        "Next (a separate, deliberate call): upload it to the build-inputs "
+        f"repository:\n  {dense_spine_upload_command(paths)}"
+    )
+    return 0
+
+
 def status(paths: CutPaths, *, check_current=None, check_withdrawal=None) -> None:
     print(f"cut {paths.cut}")
     for name, check in (
@@ -2164,6 +2523,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                             "kind": s.kind,
                             "repo_id": s.repo_id,
                             "revision": s.revision,
+                            "path_in_repo": s.path_in_repo,
                             "files": {p.name: p.sha256 for p in s.files},
                         }
                         for key, s in sources.items()
@@ -2173,14 +2533,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return 0
         work = args.work_dir
-        if args.command in {"fetch", "all"}:
+        if args.command in {"fetch", "all", "dense-spine"}:
             print("inputs:")
+            only = set(args.only) if args.only else None
+            if args.command == "dense-spine":
+                only = (
+                    set(SPINE_INPUT_KEYS) if only is None else only & SPINE_INPUT_KEYS
+                )
+                if not only:
+                    raise CutError("--only names none of the spine's inputs.")
             results = fetch_inputs(
                 list(sources.values()),
                 work / "inputs",
                 downloader=HubDownloader(work / "cache" / "hf"),
                 reverify=args.reverify,
-                only=set(args.only) if args.only else None,
+                only=only,
             )
             if not _print_fetch(results):
                 print("Some inputs are not available; see docs/uk-cut-anyone.md.")
@@ -2191,6 +2558,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "status":
             status(paths)
             return 0
+        if args.command == "dense-spine":
+            return dense_spine_command(args, paths, sources)
         print("preflight:")
         if not _print_checks(preflight(args, paths)):
             print("Preflight failed; nothing was built.")

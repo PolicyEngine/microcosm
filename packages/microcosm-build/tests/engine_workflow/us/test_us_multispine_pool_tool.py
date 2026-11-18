@@ -364,7 +364,9 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#1641 moves it again: docstring and comment wording in
             # solve and ssi_take_up, and the calibration contract's renamed modes.
             # microcosm#1585's us/gates.json row in country_package.json moves it.
-            "spec_sha256": "0088d3f69666b09e28b94bbf8b1b2f07ebf0b8a32cec6d0a8358b568a7f35ac6",
+            # microcosm#931's keyed helpers move it through
+            # stochastic_assignment's attested bytes.
+            "spec_sha256": "2a95528d5404f643f9dc07d08dec7f4786b764f68b2e1efb0ebedb863f4c6f6f",
         },
     }
 

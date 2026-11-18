@@ -6,8 +6,14 @@ clone pool at the problem's design weights. They come from the frame of
 calibration. Beside each row's rewritten rent and BRMA, it carries its spine
 household's from ``uk.full.spine_checkpoint``: a matched before and after for
 ``uk.full.geography.brma`` and ``uk.full.private_rent``. Pool rows are matched
-to their spine household by the key the rent node ranks with
+to their spine household by the key the retired rent node ranked with
 (``property_localisation.spine_household_keys``).
+
+Both nodes retired from the dense line in microcosm#931. The spine's own
+``area_brma`` stage now reads each Great Britain household's BRMA off its
+drawn area, and its ``private_rent`` stage each Great Britain private rent
+off its BRMA's list of rents, so the tool reads only dense runs built before
+then.
 
 The table is licensed output. It stays in the run's audit directory, outside
 every git work tree, which the tool checks before it loads anything. Loading

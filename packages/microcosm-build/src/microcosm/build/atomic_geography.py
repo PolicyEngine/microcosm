@@ -23,6 +23,8 @@ from microcosm.graph.canonical import canonical_json
 from microcosm.graph.randomness import keyed_uniform
 
 RELATIONS = frozenset({"exact", "best_fit", "official_tabulation", "inferred_modal"})
+#: The scope :func:`validate_geography`'s receipt records for its checks.
+ATOMIC_GEOGRAPHY_VALIDATION_SCOPE = "atomic_geography_mapping_integrity"
 _U53 = 2**53
 
 
@@ -628,7 +630,7 @@ def validate_geography(
                 )
     return {
         "outcome": "pass",
-        "scope": "atomic_geography_mapping_integrity",
+        "scope": ATOMIC_GEOGRAPHY_VALIDATION_SCOPE,
         "households": len(households),
         "support_sha256": {k: v.sha256 for k, v in sorted(supports.items())},
         "definition_sha256": hashlib.sha256(canonical_json(spec)).hexdigest(),

@@ -213,13 +213,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "6b58c92b17862758f0d994e7ef72d4fad270c3db9667ad84b92cf552c5fc581e"
+    "01af5154c36c3e7b323d5f195d9c5e3a8e6ed4b8c3f57f1f6503357c1afcb66f"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "6d54957d276c2738833b27f4cfe67450d430e39267356dc8964c506a25e9904d"
+    "587ba8d51ddd8b4e6d638378c6bada7ec5a61f360bd3af9257335d5372d8e83b"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "e0504f39332bce9be72529e1836a6c5079820ab22a6add5208a0390f589a2ce0"
+    "36247b85833c8001026c6b71f65920e5c56a334fe991adb3aebe0707e580b2cd"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "a6ebc171cadf45b691a2b83632bc1f87f3116ad31aebf073e3786ce90ecc0307"
@@ -341,7 +341,7 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
-    "uk_stage_regional_home_values_ranking": (
+    "uk_stage_area_home_values_ranking": (
         "stage_health",
         "transferred",
         None,
@@ -366,6 +366,11 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_stage_company_cars_invariants": ("stage_health", "transferred", None),
     "uk_stage_spi_employment_shell_fit": ("stage_health", "transferred", None),
     "uk_stage_aps_occupation_fit": ("stage_health", "transferred", None),
+    # The spine geography gates (microcosm#931).
+    "uk_atomic_area_mapping_integrity": ("stage_health", "assembled", None),
+    "uk_spi_copy_area_mapping_integrity": ("stage_health", "transferred", None),
+    "uk_copy_area_agreement": ("stage_health", "transferred", None),
+    "uk_council_tax_reduction_within_bill": ("stage_health", "transferred", None),
     "uk_stage_frs_take_up_signal": (
         "stage_health",
         "assembled",
@@ -436,7 +441,9 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_aggregate_admin": ("aggregate_admin", "terminal", "aggregate_vs_admin"),
     "uk_export_surface": ("export_surface", "terminal", "export_surface"),
     "uk_take_up_signal": ("take_up_signal", "terminal", "take_up_signal"),
-    "uk_brma_enum_domain": ("enum_domain", "assembled", "enum_domain"),
+    "uk_brma_enum_domain": ("enum_domain", "transferred", "enum_domain"),
+    "uk_local_authority_enum_domain": ("enum_domain", "transferred", "enum_domain"),
+    "uk_geography_ladder": ("spine_agreement", "transferred", None),
     "uk_ons_household_type_enum_domain": ("enum_domain", "assembled", "enum_domain"),
     "uk_capital_gains_asset_type_enum_domain": (
         "enum_domain",
@@ -483,7 +490,6 @@ UK_GATE_BATTERY_ENTRIES = {
         "terminal",
         None,
     ),
-    "uk_local_brma_enum_domain": ("enum_domain", "terminal", "enum_domain"),
     "uk_local_area_support": ("area_support", "terminal", None),
     "uk_local_target_fit": ("target_fit", "terminal", None),
     "uk_local_per_family_fit": ("per_family_fit", "terminal", None),
@@ -1200,12 +1206,14 @@ def _terminal_gate_details(name: str) -> dict:
             }
         }
     if name == "enum_domain":
-        # Mirrors enum_domain_gate's detail block.
+        # Mirrors the UK enum_domain binding's detail block, which rebuilds the
+        # shared gate's without its counts or examples of values outside the
+        # domain (battery_bindings._count_free_enum_domain_result, C-32,
+        # microcosm#931).
         return {
             "columns_checked": 1,
-            "invalid_counts": {},
-            "invalid_examples": {},
             "allowed_values": {"brma": ["CENTRAL_LONDON"]},
+            "columns_outside_domain": [],
         }
     if name == "column_implication":
         # Mirrors _evaluate_column_implication's composite detail block.
@@ -1471,7 +1479,7 @@ def _gate_battery_payload(
         "uk_stage_cgt_incidence_anchor_composition": "cgt_incidence_anchor",
         "uk_stage_salary_sacrifice_realization": "salary_sacrifice",
         "uk_stage_student_loans_realization": "student_loans",
-        "uk_stage_regional_home_values_ranking": "regional_home_values",
+        "uk_stage_area_home_values_ranking": "was_wealth",
         "uk_stage_property_purchases_fit": "property_purchases",
         "uk_stage_uc_legacy_closure_take_up_contract": "uc_legacy_closure_take_up",
         "uk_stage_frs_person_draws_apprentices": "frs_person_draws",
@@ -1480,6 +1488,10 @@ def _gate_battery_payload(
         "uk_stage_company_cars_invariants": "company_cars",
         "uk_stage_spi_employment_shell_fit": "spi_employment_shell",
         "uk_stage_aps_occupation_fit": "aps_occupation",
+        "uk_atomic_area_mapping_integrity": "atomic_area_assign",
+        "uk_spi_copy_area_mapping_integrity": "spi_copy_areas",
+        "uk_copy_area_agreement": "cgt_residential_split",
+        "uk_council_tax_reduction_within_bill": "council_tax_localise",
         "uk_stage_frs_take_up_signal": "frs_take_up",
         "uk_stage_frs_person_draws_take_up_signal": "frs_person_draws",
         "uk_stage_frs_household_draws_take_up_signal": "frs_household_draws",
@@ -1526,11 +1538,20 @@ def _gate_battery_payload(
                 "worst_year": 2030,
                 "bound": 73_000.0,
             }
-        elif entry_id.startswith("uk_local_") or entry_id in UK_DIAGNOSTIC_ENTRY_IDS:
+        elif (
+            entry_id in contract._UK_DENSE_GATE_ENTRY_IDS
+            or entry_id in UK_DIAGNOSTIC_ENTRY_IDS
+        ):
             # Local candidate gates are explicitly excluded from national
             # certification, and the microcosm#1240 high-value homes gates are
             # report-only; this full-report fixture needs only their
             # authenticated envelope, not candidate-only evidence details.
+            # (uk_local_authority_enum_domain is a spine gate, not one of
+            # them, whatever its prefix, microcosm#931.)
+            details = {}
+        elif gate == "spine_agreement":
+            # The spine's ladder gate (microcosm#931): the contract checks no
+            # detail of it, so the fixture needs only its envelope.
             details = {}
         elif gate == "stage_health":
             details = {

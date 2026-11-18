@@ -1,5 +1,6 @@
 """Invented support controls; no survey, Census or administrative files are read."""
 
+import hashlib
 import json
 from copy import deepcopy
 from dataclasses import replace
@@ -11,12 +12,17 @@ import pytest
 from microcosm.build import atomic_geography as geo
 from microcosm.build.graph_atomic_geography import (
     ATOMIC_GEOGRAPHY_VALIDATION_TYPE,
-    atomic_geography_nodes,
+    ATOMIC_SUPPORT_TYPE,
+    AtomicAssignKernel,
+    AtomicDeriveKernel,
+    AtomicGeographyGateKernel,
+    AtomicSupportImportKernel,
     register_atomic_geography_kernels,
 )
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from microcosm.graph import (
     ArtifactInput,
+    ArtifactOutput,
     ArtifactType,
     Capabilities,
     ContentStore,
@@ -27,6 +33,7 @@ from microcosm.graph import (
     KernelResult,
     Node,
     Owned,
+    Slice,
     SourceRef,
     StructuralDelta,
     compile_graph,
@@ -187,6 +194,46 @@ def test_stage_law_uses_declared_weights_at_each_level():
     index = geo._SupportIndex(supports["invented_block"])
     assert index.pick((("region", "R"),), spec["systems"][0]["stages"][0], 0.49) == "A"
     assert index.pick((("region", "R"),), spec["systems"][0]["stages"][0], 0.5) == "B"
+
+
+def test_every_draw_key_binds_identity_system_level_and_both_digests(monkeypatch):
+    """Each draw is keyed on the household's identity, its system's id, the
+    stage's level, the bound definition's digest and the support's digest, on
+    the declared stream, so a draw moves with any of them: the operator's
+    draw-key law, which every term of the key is held to here and the pinned
+    draws below hold through the definition's digest (microcosm#931)."""
+
+    households, spec, supports, _ = fixture()
+    spec["systems"][0]["stages"] = [
+        {"level": "puma", "weight": "households"},
+        {"level": "area", "weight": "population"},
+    ]
+    recorded = []
+    keyed_uniform = geo.keyed_uniform
+
+    def recording(*, stream, keys):
+        recorded.append((tuple(stream), list(keys)))
+        return keyed_uniform(stream=stream, keys=keys)
+
+    monkeypatch.setattr(geo, "keyed_uniform", recording)
+    geo.assign_atomic(households, spec, supports)
+    definition = hashlib.sha256(
+        canonical_json(geo.validate_assignment_spec(spec))
+    ).hexdigest()
+    (system,) = spec["systems"]
+    support = supports[system["id"]]
+    identities = list(households[spec["identity"]].itertuples(index=False, name=None))
+    # The spec's own check draws on its stream with no key; the draws key every
+    # household.
+    draws = [(stream, keys) for stream, keys in recorded if keys]
+    assert [stream for stream, _ in draws] == [tuple(spec["stream"])] * 2
+    assert [keys for _, keys in draws] == [
+        [
+            (*identity, system["id"], stage["level"], definition, support.sha256)
+            for identity in identities
+        ]
+        for stage in system["stages"]
+    ]
 
 
 def test_declarations_without_weight_by_keep_their_bytes_and_draws():
@@ -490,6 +537,68 @@ class _InventedSpine(KernelBase):
         )
 
 
+def _geography_nodes(spec, *, base, emit_validation_artifact=False):
+    """The four shared geography nodes over ``base``'s households, wired by
+    hand: one support import per system, then assignment, derivation and the
+    gate, each reading the declaration's household inputs."""
+
+    inputs = set(spec["identity"])
+    for system in spec["systems"]:
+        inputs.update(system["selector"])
+        inputs.update(c["input"] for c in system["constraints"])
+        inputs.update(
+            s["weight_by"]["input"] for s in system["stages"] if "weight_by" in s
+        )
+        if system["observed_area"]:
+            inputs.add(system["observed_area"])
+    assignment = tuple(spec["outputs"].values())
+    layers = tuple(
+        sorted({layer["output"] for s in spec["systems"] for layer in s["layers"]})
+    )
+    imports, artifacts = [], []
+    for i, system in enumerate(spec["systems"]):
+        name = f"geography.support.{i}"
+        imports.append(
+            Node(
+                id=name,
+                kernel=AtomicSupportImportKernel.ref,
+                population=base,
+                sources=(system["source"],),
+                params={"source": system["source"], "system": system["id"]},
+                artifact_outputs=(ArtifactOutput("support", ATOMIC_SUPPORT_TYPE),),
+            )
+        )
+        artifacts.append(
+            ArtifactInput(system["id"], name, "support", ATOMIC_SUPPORT_TYPE)
+        )
+
+    def node(suffix, kernel, read, write=()):
+        return Node(
+            id=f"geography.{suffix}",
+            kernel=kernel.ref,
+            population=base,
+            inputs=(Slice("household", tuple(sorted(read))),),
+            outputs=tuple(Owned("household", c, "string") for c in write),
+            params={
+                "definition": canonical_json(spec).decode(),
+                "stream": tuple(spec["stream"]),
+            },
+            artifact_inputs=tuple(artifacts),
+            artifact_outputs=(
+                (ArtifactOutput("validation", ATOMIC_GEOGRAPHY_VALIDATION_TYPE),)
+                if suffix == "gate" and emit_validation_artifact
+                else ()
+            ),
+        )
+
+    return (
+        *imports,
+        node("assign", AtomicAssignKernel, inputs, assignment),
+        node("derive", AtomicDeriveKernel, inputs | set(assignment), layers),
+        node("gate", AtomicGeographyGateKernel, inputs | set(assignment) | set(layers)),
+    )
+
+
 @pytest.mark.parametrize("emit_validation_artifact", (False, True))
 def test_real_executor_cold_warm_and_changed_source_identity(
     tmp_path, emit_validation_artifact
@@ -509,8 +618,8 @@ def test_real_executor_cold_warm_and_changed_source_identity(
         structural=StructuralDelta.CREATE,
         outputs=columns,
     )
-    nodes = atomic_geography_nodes(
-        spec, columns, base=base.id, emit_validation_artifact=emit_validation_artifact
+    nodes = _geography_nodes(
+        spec, base=base.id, emit_validation_artifact=emit_validation_artifact
     )
     graph = compile_graph(
         Graph(
@@ -573,41 +682,6 @@ def test_real_executor_cold_warm_and_changed_source_identity(
     assert changed.nodes["geography.assign"].key != cold.nodes["geography.assign"].key
 
 
-def test_graph_builder_refuses_input_overwrites_and_duplicate_inventory():
-    _, spec, _, _ = fixture()
-    columns = tuple(
-        Owned("household", c, "string")
-        for c in ("source_record", "observed_region", "observed_puma")
-    )
-    with pytest.raises(ValueError, match="overwrite"):
-        atomic_geography_nodes(
-            spec, (*columns, Owned("household", "block", "string")), base="spine"
-        )
-    with pytest.raises(ValueError, match="repeats"):
-        atomic_geography_nodes(spec, (*columns, columns[0]), base="spine")
-    with pytest.raises(ValueError, match="missing"):
-        atomic_geography_nodes(spec, columns[1:], base="spine")
-    altered = deepcopy(spec)
-    altered["outputs"]["area"] = "observed_region"
-    with pytest.raises(ValueError, match="overwritten"):
-        atomic_geography_nodes(altered, columns, base="spine")
-
-
-def test_graph_builder_reads_the_weight_by_input():
-    _, spec, _ = banded_fixture()
-    columns = tuple(
-        Owned("household", c, "string")
-        for c in ("source_record", "observed_region", "observed_puma")
-    )
-    with pytest.raises(ValueError, match="missing"):
-        atomic_geography_nodes(spec, columns, base="spine")
-    nodes = atomic_geography_nodes(
-        spec, (*columns, Owned("household", "observed_band", "string")), base="spine"
-    )
-    assign = next(node for node in nodes if node.id == "geography.assign")
-    assert "observed_band" in assign.inputs[0].columns
-
-
 @pytest.mark.parametrize("defect", ("missing", "type"))
 def test_typed_geography_gate_edge_refuses_invalid_producer_contract(defect):
     _, spec, _, _ = fixture()
@@ -622,8 +696,8 @@ def test_typed_geography_gate_edge_refuses_invalid_producer_contract(defect):
         structural=StructuralDelta.CREATE,
         outputs=columns,
     )
-    nodes = atomic_geography_nodes(
-        spec, columns, base=base.id, emit_validation_artifact=(defect != "missing")
+    nodes = _geography_nodes(
+        spec, base=base.id, emit_validation_artifact=(defect != "missing")
     )
     edge_type = (
         ArtifactType("invented.wrong_gate", 1)

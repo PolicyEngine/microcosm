@@ -167,6 +167,63 @@ def test_the_annual_measures_tax_each_persons_year(tmp_path) -> None:
     assert set(receipt["computed_measures"]) == set(UK_ANNUAL_INCOME_MEASURES)
 
 
+def test_the_other_spells_grow_by_the_engines_own_growth_series(tmp_path) -> None:
+    """The other spells grow by the series policyengine-uk's dataset
+    projection carries the input by, read from the engine's parameters: the
+    same factor in every engine block and in one engine over the pool
+    (microcosm#931). Pinned to the engine's own uprating map, and to no path
+    that projects the input otherwise."""
+
+    from policyengine_uk.data import economic_assumptions
+
+    from microcosm.build.uk_runtime import measure_simulation
+
+    declared = measure_simulation._ANNUAL_INCOME_OTHER_SPELLS_GROWTH
+    with_other_spells = {
+        name
+        for name, _share, other in measure_simulation._ANNUAL_INCOME_INPUTS
+        if other is not None
+    }
+    assert set(declared) == with_other_spells
+    uprating = economic_assumptions._uprating_index_map()
+    # The dataset stores pay as employment_income, which the simulation moves
+    # to employment_income_before_lsr once projected.
+    stored_as = {"employment_income_before_lsr": "employment_income"}
+    custom = (
+        set(economic_assumptions.DATASET_UPRATING_EXCLUSIONS)
+        | set(economic_assumptions.COUNTRY_UPRATED_INPUTS)
+        | set(economic_assumptions.YEAR_SPECIFIC_INPUTS)
+        | set(economic_assumptions.BEREAVEMENT_SPLIT_INPUTS)
+        | set(economic_assumptions.RESIDENTIAL_PROPERTY_INPUTS)
+    )
+    for name, series in declared.items():
+        for column in {name, stored_as.get(name, name)}:
+            listed = {index for index, names in uprating.items() if column in names}
+            assert listed == {series}, column
+            assert column not in custom, column
+
+    resolver = UKMeasureResolver(
+        simulation_source=None,
+        frame=_frame(**_DESCRIPTORS),
+        scratch_dir=tmp_path,
+        year=2025,
+    )
+    resolver.compute("person", "employment_income_annual")
+    factors = resolver.receipt()["annual_income_measures"][
+        "other_spells_engine_factors"
+    ]
+    growth = resolver.simulation.tax_benefit_system.parameters.get_child(
+        declared["employment_income_before_lsr"]
+    )
+    assert factors == {"employment_income_before_lsr": 1.0 + float(growth("2025"))}
+    pay, _ = resolver.compute("person", "employment_income")
+    np.testing.assert_allclose(
+        np.asarray(pay, dtype=float)[0] / 30_000.0,
+        factors["employment_income_before_lsr"],
+        rtol=1e-6,
+    )
+
+
 def test_the_income_tax_rows_read_the_tax_before_the_winter_fuel_charge(
     tmp_path,
 ) -> None:

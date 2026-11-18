@@ -1,6 +1,9 @@
 """Tests split from packages/microcosm-build/tests/test_uk_uc_reporter_redraw.py."""
 
 # ruff: noqa: F403, F405
+import json
+
+from microcosm.build.uk_runtime.household_lineage import GEOGRAPHIC_FOLD_EVIDENCE
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from test_support.microcosm_build.uk_geographic_clones import with_geographic_clones
 from test_support.microcosm_build.uk_uc_reporter_redraw import *
@@ -527,3 +530,71 @@ def test_clones_that_differ_on_a_predictor_train_as_variants_at_their_share() ->
         zip(table.loc[unit, "benunit_investment_income"], weights[unit], strict=True)
     ) == [(200.0, 1.0), (700.0, 1.0)]
     assert sorted(weights[~unit].tolist()) == [3.0, 4.0, 5.0]
+
+
+def test_the_forests_fold_receipt_is_absent_at_one_clone_and_rounded_at_three() -> None:
+    """The stage records how its forest's geographic fold met the screened
+    benefit units only on more than one clone, so a one-clone frame's
+    evidence keeps its bytes; the counts are true source households, rounded
+    (microcosm#931)."""
+
+    alone = redraw_spi_reported_uc(
+        _frame(), engine=_StubEngine(), qrf_factory=_StubQRFFactory()
+    )
+    assert GEOGRAPHIC_FOLD_EVIDENCE not in alone.evidence()
+    three = redraw_spi_reported_uc(
+        with_geographic_clones(_frame(), n_clones=3),
+        engine=_StubEngine(),
+        qrf_factory=_StubQRFFactory(),
+    )
+    # Four screened FRS units in four households train the forest.
+    assert three.evidence()[GEOGRAPHIC_FOLD_EVIDENCE] == {
+        "clone_count": 3,
+        "records": "3-9",
+        "varied_records": 0,
+        "varied_share": 0,
+    }
+
+
+def _with_landlords(pool, person_ids: tuple[int, ...]):
+    """``pool`` with more property income on each of ``person_ids``."""
+
+    person = pool.table("person").copy()
+    for person_id in person_ids:
+        rows = person["person_id"] == person_id
+        assert rows.sum() == 1
+        person.loc[rows, "property_income"] += 500.0
+    return uk_national_frame(
+        person=person,
+        benunit=pool.table("benunit"),
+        household=pool.table("household"),
+        household_weights=pool.weights_for("household").values,
+        weight_kind=pool.weights_for("household").kind,
+        time_period="2024",
+    )
+
+
+def test_one_and_two_varied_units_give_the_same_fold_receipt_bytes() -> None:
+    """Clones drawn apart in one training unit's household and in two read
+    "<3", count and share alike, so the two receipts are the same bytes
+    (microcosm#931)."""
+
+    pool = with_geographic_clones(_frame())
+    receipts = []
+    # Clone 1 of units 101 and 102's first members: ids move by 10,000 per
+    # clone.
+    for landlords in ((11011,), (11011, 11021)):
+        result = redraw_spi_reported_uc(
+            _with_landlords(pool, landlords),
+            engine=_StubEngine(),
+            qrf_factory=_StubQRFFactory(),
+        )
+        receipt = result.evidence()[GEOGRAPHIC_FOLD_EVIDENCE]
+        receipts.append(json.dumps(receipt, sort_keys=True))
+    assert receipts[0] == receipts[1]
+    assert json.loads(receipts[0]) == {
+        "clone_count": 2,
+        "records": "3-9",
+        "varied_records": "<3",
+        "varied_share": "<3",
+    }

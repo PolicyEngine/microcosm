@@ -57,7 +57,11 @@ from microcosm.build.uk_runtime.frs_hmrc_source import (
     FRS_HMRC_SRP_REGULAR_CODE5_COLUMN,
     FRS_HMRC_UBISJA_COLUMN,
 )
-from microcosm.build.uk_runtime.receipt_counts import rounded_count
+from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    distinct_count,
+    rounded_count,
+)
 from microcosm.build.uk_runtime.spi_support import (
     SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
     SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN,
@@ -89,9 +93,10 @@ SPI_TRANSPORT_KEY_COLUMN = "person_source_id"
 #: Taxable savings interest on the twin: the FRS interest outside ISAs
 #: (microcosm#1360), the concept the tape's INCBBS leaf holds.
 TAXABLE_SAVINGS_INTEREST_ANALOGUE = "taxable_savings_interest"
-#: Per-group uniformity is reported only over at least this many rows: a
-#: statistical floor, as a uniformity distance over fewer says nothing, not the
-#: disclosure floor (receipt_counts.UK_DISCLOSURE_FLOOR).
+#: Per-group uniformity is reported only over at least this many of geographic
+#: clone 0's rows: a statistical floor, as a uniformity distance over fewer
+#: says nothing. A group must also rest on the disclosure floor of distinct
+#: source households (receipt_counts.UK_DISCLOSURE_FLOOR) among those rows.
 SPI_TRANSPORT_GROUP_MINIMUM_ROWS = 10
 #: The reference forest is cross-fitted in this many folds keyed on the
 #: predictor cell; a frame with fewer distinct cells uses one fold per cell.
@@ -285,6 +290,9 @@ def cross_fit_transport(
     folds: int,
     allow_in_sample: bool = False,
     outputs: Sequence[str] = SPI_INCOME_QRF_OUTPUT_COLUMNS,
+    twin_identities: np.ndarray | None = None,
+    sources: np.ndarray | None = None,
+    counted: np.ndarray | None = None,
 ) -> SPITransportResult:
     """Locate every recipient on a reference forest that never saw its cell.
 
@@ -295,6 +303,19 @@ def cross_fit_transport(
     forest that locates a copy was fitted without its twin. Each fold's
     recipients are located by :func:`transport_uniforms`; the receipt is
     assembled over every recipient and names the folds.
+
+    ``identities`` keys every recipient's uniforms. ``twin_identities``, one
+    per recipient and ``identities`` by default, names the training row that
+    holds each recipient's twin, and is read only to check that a recipient
+    takes its twin's fold. The two differ where the training rows fold a
+    twin's geographic clones into another clone's row: the twin is then
+    held by that row, while the copy keeps the uniforms keyed on its own
+    twin (microcosm#931).
+
+    ``sources`` (each recipient's true source household, one per recipient
+    when omitted) and ``counted`` (geographic clone 0's recipients, every
+    recipient when omitted) shape the uniformity receipt
+    (:func:`transport_uniforms`).
     """
 
     assert_analogue_map_covers(outputs)
@@ -302,6 +323,13 @@ def cross_fit_transport(
     identities = np.asarray(identities)
     if identities.shape != (n,):
         raise ValueError("SPI transport identities must have one entry per recipient.")
+    twin_identities = (
+        identities if twin_identities is None else np.asarray(twin_identities)
+    )
+    if twin_identities.shape != (n,):
+        raise ValueError(
+            "SPI transport twin identities must have one entry per recipient."
+        )
     if len(observed) != n or not observed.index.equals(encoded_recipients.index):
         raise ValueError("SPI transport observed analogues must align to recipients.")
     if len(training_folds) != len(encoded_training):
@@ -317,14 +345,15 @@ def cross_fit_transport(
     # over the same cells at the same fold count, so a recipient's fold is its
     # twin's fold; the twins the training rows hold are checked, so a cell
     # value that moved between twin and copy cannot put a twin's forest on
-    # its copy.
+    # its copy. A twin is found by its twin identity, so the check reaches
+    # the copies of every geographic clone, folded or not.
     recipient_folds, _ = cell_fold_ids(
         recipient_predictors, folds=folds, seed=seed, used=used
     )
     twin_folds = pd.Series(training_folds, index=training_identities)
     if not twin_folds.index.is_unique:
         raise ValueError("training identities must be unique (one row per twin).")
-    twins = twin_folds.reindex(identities)
+    twins = twin_folds.reindex(twin_identities)
     known = twins.notna().to_numpy()
     if known.any() and not np.array_equal(
         twins.to_numpy()[known].astype(np.int64), recipient_folds[known]
@@ -384,6 +413,8 @@ def cross_fit_transport(
             groups=None,
             seed=seed,
             outputs=outputs,
+            sources=None if sources is None else np.asarray(sources)[score],
+            counted=None if counted is None else np.asarray(counted)[score],
         )
         for target in outputs:
             quantiles[target][score] = part.quantiles[target]
@@ -432,10 +463,19 @@ def cross_fit_transport(
             ),
             "identity_rows_from_degenerate_folds": int(degenerate_rows[target]),
             "kolmogorov": _uniformity(
-                sign_uniforms[target], quantiles[target], positive
+                sign_uniforms[target],
+                quantiles[target],
+                positive,
+                sources=sources,
+                counted=counted,
             ),
             "by_group": _uniformity_by_group(
-                sign_uniforms[target], quantiles[target], positive, groups
+                sign_uniforms[target],
+                quantiles[target],
+                positive,
+                groups,
+                sources=sources,
+                counted=counted,
             ),
         }
     receipt = {
@@ -492,6 +532,8 @@ def transport_uniforms(
     groups: np.ndarray | None,
     seed: int,
     outputs: Sequence[str] = SPI_INCOME_QRF_OUTPUT_COLUMNS,
+    sources: np.ndarray | None = None,
+    counted: np.ndarray | None = None,
 ) -> SPITransportResult:
     """Locate every drawn recipient's twin on the reference forest.
 
@@ -501,6 +543,12 @@ def transport_uniforms(
     row-aligned with ``encoded_recipients``. ``identities`` keys the placement
     and identity uniforms; ``groups`` labels each recipient for the per-group
     uniformity receipt (the ``main_source`` bridge level).
+
+    The uniformity receipt measures geographic clone 0's recipients
+    (``counted``, every recipient when omitted), since each clone draws its
+    own copies, and counts its positive rows in distinct source households
+    (``sources``, one per recipient when omitted), a household's copies once
+    (microcosm#931).
     """
 
     assert_analogue_map_covers(outputs)
@@ -571,10 +619,19 @@ def transport_uniforms(
             "reference_regime": regimes.get(target),
             "reference_classes": classes.get(target),
             "kolmogorov": _uniformity(
-                sign_uniforms[target], quantiles[target], positive
+                sign_uniforms[target],
+                quantiles[target],
+                positive,
+                sources=sources,
+                counted=counted,
             ),
             "by_group": _uniformity_by_group(
-                sign_uniforms[target], quantiles[target], positive, groups
+                sign_uniforms[target],
+                quantiles[target],
+                positive,
+                groups,
+                sources=sources,
+                counted=counted,
             ),
         }
     receipt = {
@@ -613,20 +670,40 @@ def _kolmogorov(values: np.ndarray) -> float | None:
     )
 
 
-def _uniformity(
-    sign: np.ndarray, quantile: np.ndarray, positive: np.ndarray | None
-) -> dict[str, Any]:
-    """Uniformity of the sign uniforms, and of the quantiles over positive rows."""
+def _recipient_records(
+    size: int, sources: np.ndarray | None, counted: np.ndarray | None
+) -> tuple[np.ndarray, np.ndarray]:
+    """Each recipient's true source household and whether the receipt reads it:
+    one source per recipient and every recipient when not given."""
 
-    rows = np.ones(len(sign), dtype=bool) if positive is None else positive
-    positive_rows = int(rows.sum())
+    return (
+        np.arange(size) if sources is None else np.asarray(sources),
+        np.ones(size, dtype=bool) if counted is None else np.asarray(counted, bool),
+    )
+
+
+def _uniformity(
+    sign: np.ndarray,
+    quantile: np.ndarray,
+    positive: np.ndarray | None,
+    *,
+    sources: np.ndarray | None = None,
+    counted: np.ndarray | None = None,
+) -> dict[str, Any]:
+    """Uniformity of the sign uniforms, and of the quantiles over positive rows,
+    among the ``counted`` rows (:func:`transport_uniforms`)."""
+
+    sources, counted = _recipient_records(len(sign), sources, counted)
+    sign, quantile, sources = sign[counted], quantile[counted], sources[counted]
+    rows = np.ones(len(sign), dtype=bool) if positive is None else positive[counted]
     return {
         "rows": int(len(sign)),
         "sign": _kolmogorov(sign),
-        # The count is rounded as every receipt count is (receipt_counts): one
-        # or two rows read "<3" (CD171 5.2.1). The distances need ten rows, a
-        # statistical floor, as the by-group receipt's do.
-        "positive_rows": rounded_count(positive_rows),
+        # The positive rows in distinct source households, rounded as every
+        # receipt count is (receipt_counts): one or two read "<3" (CD171
+        # 5.2.1). The distances need rows, a statistical floor, as the
+        # by-group receipt's do.
+        "positive_rows": rounded_count(distinct_count(sources, rows)),
         "quantile": _kolmogorov(quantile[rows]) if rows.any() else None,
     }
 
@@ -636,18 +713,34 @@ def _uniformity_by_group(
     quantile: np.ndarray,
     positive: np.ndarray | None,
     groups: np.ndarray | None,
+    *,
+    sources: np.ndarray | None = None,
+    counted: np.ndarray | None = None,
 ) -> dict[str, Any] | None:
+    """Each group's uniformity among the ``counted`` rows, or None where they
+    fall below the statistical floor of rows or rest on fewer than the
+    disclosure floor's source households."""
+
     if groups is None:
         return None
-    groups = np.asarray(groups)
+    groups = np.asarray(groups).astype(str)
+    sources, counted = _recipient_records(len(groups), sources, counted)
     out: dict[str, Any] = {}
-    for label in sorted({str(value) for value in groups.tolist()}):
-        mask = groups.astype(str) == label
-        if int(mask.sum()) < SPI_TRANSPORT_GROUP_MINIMUM_ROWS:
+    for label in sorted(set(groups[counted].tolist())):
+        mask = groups == label
+        rows = mask & counted
+        if (
+            int(rows.sum()) < SPI_TRANSPORT_GROUP_MINIMUM_ROWS
+            or distinct_count(sources, rows) < UK_DISCLOSURE_FLOOR
+        ):
             out[label] = None
             continue
         out[label] = _uniformity(
-            sign[mask], quantile[mask], None if positive is None else positive[mask]
+            sign[mask],
+            quantile[mask],
+            None if positive is None else positive[mask],
+            sources=sources[mask],
+            counted=counted[mask],
         )
     return out
 

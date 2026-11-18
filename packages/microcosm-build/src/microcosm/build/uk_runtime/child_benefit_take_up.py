@@ -46,6 +46,12 @@ early draw and is never opted out.
 The in-payment audit counts ``claims and not opted out``. New-contract opt-out
 candidates match the installed baseline payment-suppression rule; the receipt
 is still a draw audit, not a fresh model run or evidence of population fit.
+
+The receipt counts the eligible child rows, overall and at each single year of
+age, among geographic clone 0's rows (microcosm#931): the rows a one-clone
+frame has, so the stage gate's row floor and its sampling band read the same
+count at every clone count. Its weighted figures and realised rates are taken
+over every clone.
 """
 
 from __future__ import annotations
@@ -60,6 +66,7 @@ import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.uk_runtime.frs_take_up import geographic_clone_zero_rows
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
@@ -454,6 +461,9 @@ def redraw_child_benefit_take_up(
         weights=weights,
         draws=claim_draws,
         statistics=statistics,
+        # Each eligible child's person row is geographic clone 0's or not, so
+        # the receipt's row counts are one clone's (microcosm#931).
+        child_clone_zero=geographic_clone_zero_rows(frame, "person")[eligible_child],
     )
     opt_out, opt_out_receipt = assign_child_benefit_opt_outs(
         claims=claims,
@@ -528,17 +538,24 @@ def solve_child_benefit_claim_rates(
     child_reporter: np.ndarray,
     child_weights: np.ndarray,
     claim_rates: Mapping[int, float],
+    child_clone_zero: np.ndarray | None = None,
 ) -> tuple[dict[int, float], list[dict[str, object]]]:
     """Non-reporter claim rate by key age, and one receipt row per age.
 
     ``child_*`` describe the eligible children: own age, the family's key age
     (its eldest eligible child's), whether the family reports, and the weight.
+    ``child_clone_zero`` flags the children whose rows are geographic clone
+    0's (where it is not given, every child's, as on a one-clone frame): each
+    row's ``eligible_child_rows`` counts the age's children among them, so the
+    count does not grow with the clone count (microcosm#931). The rates and
+    the weighted figures are taken over every child.
     """
 
     child_ages = np.asarray(child_ages, dtype=np.int64)
     child_key_ages = np.asarray(child_key_ages, dtype=np.int64)
     child_reporter = np.asarray(child_reporter, dtype=bool)
     child_weights = np.asarray(child_weights, dtype=np.float64)
+    counted = _clone_zero_children(child_clone_zero, len(child_ages))
     unknown = sorted(set(child_ages.tolist()) - set(claim_rates))
     if unknown:
         raise ValueError(
@@ -574,7 +591,7 @@ def solve_child_benefit_claim_rates(
             {
                 "age": int(age),
                 "published_rate": float(claim_rates[age]),
-                "eligible_child_rows": int(of_age.sum()),
+                "eligible_child_rows": int((of_age & counted).sum()),
                 "eligible_children": eligible,
                 "reporter_children": reporting,
                 "residual_rate_unclipped": raw,
@@ -586,6 +603,19 @@ def solve_child_benefit_claim_rates(
     return residual, rows
 
 
+def _clone_zero_children(child_clone_zero: np.ndarray | None, count: int) -> np.ndarray:
+    """One flag per eligible child: ``child_clone_zero``, or every child where
+    it is not given. A misaligned array is refused in a fixed sentence that
+    names no count."""
+
+    if child_clone_zero is None:
+        return np.ones(count, dtype=bool)
+    flags = np.asarray(child_clone_zero, dtype=bool)
+    if flags.shape != (count,):
+        raise ValueError("child_clone_zero must hold one flag per eligible child.")
+    return flags
+
+
 def assign_child_benefit_claims(
     *,
     child_units: np.ndarray,
@@ -595,12 +625,16 @@ def assign_child_benefit_claims(
     weights: np.ndarray,
     draws: np.ndarray,
     statistics: UKChildBenefitStatistics,
+    child_clone_zero: np.ndarray | None = None,
 ) -> tuple[np.ndarray, dict[str, object]]:
     """Family claims: reporters, and the rest at their key age's solved rate.
 
     ``child_units`` holds each eligible child's benefit-unit position and
     ``child_ages`` its whole age; ``eldest`` is each unit's eldest eligible
-    child's age, or -1 for a unit without one.
+    child's age, or -1 for a unit without one. ``child_clone_zero`` flags the
+    children whose rows are geographic clone 0's, among whom the receipt's
+    ``eligible_child_rows`` are counted, overall and by age (where it is not
+    given, every child, as on a one-clone frame; microcosm#931).
     """
 
     child_units = np.asarray(child_units, dtype=np.int64)
@@ -609,6 +643,7 @@ def assign_child_benefit_claims(
     reporter = np.asarray(reporter, dtype=bool)
     weights = np.asarray(weights, dtype=np.float64)
     draws = np.asarray(draws, dtype=np.float64)
+    counted = _clone_zero_children(child_clone_zero, len(child_units))
     family = eldest >= 0
     child_weights = weights[child_units]
     residual, rows = solve_child_benefit_claim_rates(
@@ -617,6 +652,7 @@ def assign_child_benefit_claims(
         child_reporter=reporter[child_units],
         child_weights=child_weights,
         claim_rates=statistics.claim_rates,
+        child_clone_zero=counted,
     )
     unit_rate = np.zeros(len(eldest), dtype=np.float64)
     unit_rate[family] = np.asarray([residual[int(age)] for age in eldest[family]])
@@ -652,7 +688,7 @@ def assign_child_benefit_claims(
             float(child_weights[child_claims].sum()) / total if total > 0.0 else None
         ),
         "eligible_children": total,
-        "eligible_child_rows": int(len(child_units)),
+        "eligible_child_rows": int(counted.sum()),
         "eligible_families": float(weights[family].sum()),
         "eligible_family_units": int(family.sum()),
         "reporter_families": float(weights[family & reporter].sum()),

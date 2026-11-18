@@ -19,6 +19,9 @@ from microcosm.build.stochastic_assignment import (
     integer_record_keys,
     stable_identity_uniforms,
 )
+from microcosm.build.uk_runtime.annuity_trust_column import (
+    ANNUITY_AND_TRUST_INCOME_COLUMN,
+)
 from microcosm.build.uk_runtime.frs_annual_income import (
     ANNUAL_SHARE_COLUMNS,
     EMPLOYMENT_INCOME_ANNUAL_SHARE,
@@ -38,7 +41,6 @@ from microcosm.build.uk_runtime.frs_hmrc_source import (
     FRS_HMRC_UBISJA_COLUMN,
 )
 from microcosm.build.uk_runtime.frs_spine import (
-    ANNUITY_AND_TRUST_INCOME_COLUMN,
     FRS_LANDLORD_CARRIER_COLUMN,
     ISA_INTEREST_COLUMN,
     WEEKS_IN_YEAR,
@@ -48,7 +50,10 @@ from microcosm.build.uk_runtime.hmrc_income import (
     LOSS_RELIEF_COLUMN,
     self_employment_income_after_loss_relief,
 )
-from microcosm.build.uk_runtime.household_lineage import collapse_geographic_clones
+from microcosm.build.uk_runtime.household_lineage import (
+    fold_geographic_clones,
+    geographic_fold_receipt,
+)
 from microcosm.build.uk_runtime.pension_coherence import (
     cap_net_pay_contributions,
     coherence_receipt,
@@ -70,6 +75,7 @@ from microcosm.build.uk_runtime.receipt_counts import (
     distinct_count,
     extreme_count,
     floored_share,
+    record_clone_zero_rows,
     record_source_households,
     rounded_count,
     small_cell_share,
@@ -1075,7 +1081,11 @@ def _floor_employment_pay_at_minimum_wage(
         * floor.weeks_in_year
         * floor.hourly_rate(reference["age"].to_numpy(dtype=np.float64))
     )
-    below_their_floor = int((eligible & (floored_pay < minimum * (1.0 - 1e-12))).sum())
+    # The source households whose eligible rows stay below their floor, over
+    # every clone: zero exactly when no row does (microcosm#931).
+    below_their_floor = distinct_count(
+        sources, eligible & (floored_pay < minimum * (1.0 - 1e-12))
+    )
     hourly_pay_check = {
         "spi_drawn_employees": {
             "source_households": rounded_count(eligible_sources),
@@ -1174,6 +1184,9 @@ class UKSPIIncomeImputationResult:
     #: The predictor levels each stage-1 gate's calibration offsets on their
     #: own, for a stage 1 that declares ``gate_level_columns``.
     gate_levels: Mapping[str, object] | None = None
+    #: How the FRS forests' geographic fold met their survey records
+    #: (``household_lineage.geographic_fold_receipt``); None on one clone.
+    geographic_fold: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -1530,20 +1543,24 @@ def impute_uk_spi_income_support(
     if not training_people.any():
         raise ValueError("FRS-only stage has no canonical base training rows.")
     # Both forests train on each survey record once: its geographic clones
-    # that agree on what the forests read fold into its first row with their
-    # weight, clones that differ stay rows of their own, and every other
-    # copy stays its own row; a frame without geographic clones keeps every
-    # row and weight (household_lineage.collapse_geographic_clones,
-    # microcosm#931).
-    kept, training_weight_values = collapse_geographic_clones(
-        {"person": person, "household": household},
+    # that agree on what the forests read fold into its lowest-id clone with
+    # their weight, clones that differ stay rows of their own, and every
+    # other copy stays its own row; a frame without geographic clones keeps
+    # every row and weight (household_lineage.fold_geographic_clones,
+    # microcosm#931). On more than one clone the evidence records the fold.
+    lineage_tables = {"person": person, "household": household}
+    fold = fold_geographic_clones(
+        lineage_tables,
         "person",
         training_people.to_numpy(dtype=bool),
         person_weights.to_numpy(dtype=np.float64),
         inputs=_forest_inputs(person, household),
     )
-    training_people = pd.Series(kept, index=person.index)
-    training_weights = pd.Series(training_weight_values, index=person.index)
+    geographic_fold = geographic_fold_receipt(
+        lineage_tables, "person", fold, stage="The SPI income stage"
+    )
+    training_people = pd.Series(fold.kept, index=person.index)
+    training_weights = pd.Series(fold.weights, index=person.index)
     # The reference forest's population mirrors the draw's: FRS claimants and
     # partners aged 16 and over with taxable income under the same rule.
     reference_people = (
@@ -1648,23 +1665,59 @@ def impute_uk_spi_income_support(
             "the person table (the support lineage column the manifest declares)."
         )
     identity_column = SPI_TRANSPORT_KEY_COLUMN
+    # The transport keys its training rows on this column and refuses a key
+    # it meets twice. On the clone-first spine every clone carries its own:
+    # geographic_expand mints each clone's ids before the support channel
+    # keys every row on its own id, so clones that the fold above keeps
+    # apart, as they differ on what the forests read, train under keys of
+    # their own. Clones made after the support channel (the dense pool's)
+    # share their record's key, so a frame whose differing clones would meet
+    # the transport under one key is refused here, by its cause
+    # (microcosm#931).
+    training_identities = person.loc[reference_people, identity_column].to_numpy()
+    if not pd.Index(training_identities).is_unique:
+        raise ValueError(
+            "The SPI income stage's transport training rows repeat a "
+            f"{identity_column} after the geographic fold: clones of one survey "
+            "record made after the support channel share its key, and clones "
+            "that differ on what the forests read stay training rows of their "
+            "own. On the clone-first spine each clone carries its own key "
+            "(microcosm#931)."
+        )
+    recipient_identities = person.loc[spi_people, identity_column].to_numpy()
+    # The transport's uniformity receipt reads geographic clone 0's recipients
+    # and counts them in true source households (microcosm#931).
+    recipient_rows = spi_people.to_numpy(dtype=bool)
     transport = cross_fit_transport(
         fit_reference,
         training_predictors=reference_predictors,
         encoded_training=encoded_reference,
         training_observed=observed_analogues(person.loc[reference_people]),
         training_folds=training_folds,
-        training_identities=person.loc[reference_people, identity_column].to_numpy(),
+        training_identities=training_identities,
         used=used_folds,
         recipient_predictors=recipient_predictors,
         encoded_recipients=encoded_recipient,
         observed=observed_analogues(person.loc[spi_people]),
-        identities=person.loc[spi_people, identity_column].to_numpy(),
+        identities=recipient_identities,
         groups=recipient_predictors["main_source"].to_numpy(),
         seed=seed,
         folds=SPI_TRANSPORT_FOLDS,
         allow_in_sample=allow_in_sample_reference,
         outputs=SPI_INCOME_QRF_OUTPUT_COLUMNS,
+        # A copy's twin may have folded into its record's lowest-id clone
+        # above, so the twin check finds the twin where the training rows
+        # hold it, while each copy's uniforms stay keyed on its own twin
+        # (microcosm#931).
+        twin_identities=_folded_twin_identities(
+            person[identity_column].to_numpy(),
+            fold.representative,
+            recipient_identities,
+        ),
+        sources=record_source_households(
+            lineage_tables, "person", stage="The SPI income stage"
+        )[recipient_rows],
+        counted=record_clone_zero_rows(lineage_tables, "person")[recipient_rows],
     )
     # The tape forest reads a located sign uniform as the reference's gate
     # wrote it only when both gates order the same classes (microcosm#840): a
@@ -2028,6 +2081,7 @@ def impute_uk_spi_income_support(
             if stage1_level_columns
             else None
         ),
+        geographic_fold=geographic_fold,
     )
 
 
@@ -3322,6 +3376,38 @@ def _forest_inputs(person: pd.DataFrame, household: pd.DataFrame) -> pd.DataFram
     )
 
 
+def _folded_twin_identities(
+    identities: np.ndarray, representative: np.ndarray, recipients: np.ndarray
+) -> np.ndarray:
+    """Each recipient's twin as the folded training rows hold it.
+
+    ``identities`` is every person's transport key, ``representative`` the
+    stage's geographic fold's map of each training row to the row it trains
+    on (-1 off the training rows), and ``recipients`` the recipients' keys,
+    each its own twin's. A twin folded into another clone's row is held by
+    that row, so its key reads as that row's; every other key is returned as
+    it is. Without geographic clones no training row folds into another, so
+    the recipients' keys come back unchanged (microcosm#931).
+    """
+
+    rows = np.flatnonzero(representative >= 0)
+    folded = rows[representative[rows] != rows]
+    recipients = np.asarray(recipients)
+    if not folded.size:
+        return recipients
+    held = pd.Index(identities[folded])
+    if not held.is_unique:
+        raise ValueError(
+            "The SPI income forests' folded training rows repeat a transport "
+            "key, so a copy's twin would be ambiguous."
+        )
+    position = held.get_indexer(recipients)
+    twins = recipients.copy()
+    found = position >= 0
+    twins[found] = identities[representative[folded[position[found]]]]
+    return twins
+
+
 def _person_predictors(
     person: pd.DataFrame,
     household: pd.DataFrame,
@@ -4049,8 +4135,13 @@ def _refresh_carer_link(
         )
         .to_numpy()
     )
+    # The FRS channel holds every geographic clone of each survey household,
+    # so the share's households are counted as true sources (microcosm#931).
     share = frs_disability.carer_link_share(
-        person.loc[~channel], weights=weights[~channel], min_hours=float(min_hours)
+        person.loc[~channel],
+        weights=weights[~channel],
+        min_hours=float(min_hours),
+        support_keys=sources[~channel],
     )
     link, evidence = frs_disability.derive_carer_link(
         person.loc[channel],
@@ -4058,6 +4149,11 @@ def _refresh_carer_link(
         min_hours=float(min_hours),
         share=share,
         support_keys=sources[channel],
+        # The evidence counts the channel's carers in true source households
+        # among geographic clone 0's rows (microcosm#931).
+        counted=record_clone_zero_rows(
+            {"person": person, "household": household}, "person"
+        )[channel],
     )
     before = person.loc[channel, column].to_numpy(dtype=bool)
     changed = sources[channel][before != link]
