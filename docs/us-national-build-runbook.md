@@ -6,20 +6,20 @@ spm-calculator 1.1.0, with `block_v1` household location. The build runs through
 `tools/route_a/route_a.sh` (see [tools/route_a/README.md](../tools/route_a/README.md)).
 Since #1672 the driver builds the release and stops with `ROUTE_A_BUILT.json`;
 `route_a.sh --certify` then certifies that build and ends with a hand-off. It
-publishes nothing. Publication and promotion stay Max's decision.
+publishes nothing.
 
-The settings below come from María's rulings of 17 November 2026. Two decisions
-are still Max's, and they come before step 2:
+The settings below come from María's rulings of 17 and 18 November 2026. On the
+hosts, staging and publication she ruled on 18 November:
 
-- **M1, base host.** A `block_v1` base runs only locally: the Modal plan keeps the
-  legacy location flags. So the base needs a host with 80 GiB of free RAM and the
-  PUF inputs.
-- **M3, staging upload.** With `ROUTE_A_STAGING=1` the release uploads its
-  progress and diagnostics to `policyengine/populace-us-staging`. They are
-  PUF-derived. Without Max's yes, set `ROUTE_A_STAGING=0`.
-
-M2 (the release host and PUF placement on it) and M5 (publication) are also
-Max's.
+- **M1, base host:** the base runs locally for now. A `block_v1` base cannot run
+  on Modal today, since the Modal plan keeps the legacy location flags.
+- **M2, build and certification host:** a laptop with enough memory for the
+  limits in section 1, with the PUF inputs on it.
+- **M3, staging upload:** yes. With `ROUTE_A_STAGING=1` the build and its
+  certification upload progress and diagnostics to
+  `policyengine/populace-us-staging`.
+- **M4:** #1365 is closed as superseded by #1676.
+- **M5, publication and promotion:** María decides, and coordinates with Max.
 
 ## 1. Host
 
@@ -43,7 +43,7 @@ unit on Linux (README, "Running on Linux").
 | --- | --- | --- | --- |
 | ASEC pool (d2603, #1559) | `STORAGE` | `census_cps_2023.h5`, `census_cps_2024.h5`, `census_cps_2025.h5` | The driver's `ASEC_*_SHA` |
 | ASEC person archives | `EDU` | `asecpub24csv.zip`, `asecpub25csv.zip`, `asecpub26csv.zip` | The driver's `ASEC_EDU_*_SHA` |
-| PUF and ACS donors | `STORAGE` | As the published run | Their stages check them. PUF-derived: placement is Max's call (M2) |
+| PUF and ACS donors | `STORAGE` | As the published run | Their stages check them. PUF-derived: they stay on the build laptop (M2) |
 | Feed | `FEED`, `FEED_SHA`, `FEED_BYTES` | Build it, see below | `facts_sha256` `1d45a89c28177a95371b4cc4068d3657c7bf12bd8edad7c82fe25bf453f9ea07` |
 | Block ladder (F18) | `LADDER`, `LADDER_SHA`, `LADDER_BYTES` | `us_block_ladder_2020.npz`, staged at `policyengine/populace-us-staging` `inputs/us-block-ladder/528085de/` | `528085de8b4a9ba3ba3f25e841158c8f2807e790f00bf084ba5dc4378a7d1217`, 19,098,783 bytes |
 | District crosswalk | `CROSSWALK_SHA` | Packaged in the build commit | `a347303fff3fea145f758488c43cb94355df5a8cb5e512552b2ee3791d2aa233` |
@@ -84,7 +84,7 @@ FEED_SHA=1d45a89c28177a95371b4cc4068d3657c7bf12bd8edad7c82fe25bf453f9ea07
 FEED_BYTES=<its size in bytes>
 CROSSWALK_SHA=a347303fff3fea145f758488c43cb94355df5a8cb5e512552b2ee3791d2aa233
 MICROCOSM_TELEMETRY_REQUIRED=1
-ROUTE_A_STAGING=1            # 0 unless Max says yes to the staging upload (M3)
+ROUTE_A_STAGING=1            # staging upload ruled yes (M3, 18 November)
 DENSE_RELEASE_D122=1
 PRUNE_BASE_CHECKPOINTS=1
 UV_SYNC_PYTHON=3.14
