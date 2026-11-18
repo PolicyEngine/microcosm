@@ -27,6 +27,10 @@ from microcosm.build.us_runtime.acs_inputs import (
     with_acs_spm_independence_role,
     without_acs_group_quarters_children,
 )
+from microcosm.build.us_runtime.acs_local_esi_premiums import (
+    acs_local_esi_premium_transfer_target_families,
+    with_acs_local_esi_premium_anchor,
+)
 from microcosm.build.us_runtime.acs_local_hours import (
     acs_local_hours_transfer_target_families,
     complete_acs_local_under15_hours,
@@ -118,6 +122,8 @@ def build_optional_acs_multispine(
     hours_donor_factory: Callable[[Frame], tuple[Frame, Frame, dict[str, object]]]
     | None = None,
     hours_under15_policy: str | None = None,
+    esi_premium_donor_factory: Callable[[Frame], tuple[Frame, dict[str, object]]]
+    | None = None,
     work_disability_inputs: bool = False,
     income_transfer: bool = False,
     native_receipt_anchors: bool = False,
@@ -170,8 +176,17 @@ def build_optional_acs_multispine(
     own-partnership income, so a ``partnership_income`` draw is kept at zero
     where the row's or its tax unit's SEMP accounts for it (see
     :func:`~microcosm.build.us_runtime.acs_transfer.keep_semp_covered_partnership_income`).
-    Only the shared call receives it; the hours and income passes do not
-    draw ``partnership_income``.
+    Only the shared call receives it; the hours, income and ESI passes do
+    not draw ``partnership_income``.
+    ``esi_premium_donor_factory`` (the ACS local lane, microcosm#454)
+    qualifies the base as the donor of the employer premium and returns its
+    ASEC observation role. The premium then reaches the ACS rows through its
+    own ASEC-only pass, after the income pass and immediately before the
+    shared transfer, so the hours and income passes see the frame they saw
+    without it. After pooling, the frame is held to the donor rows' premium
+    per unit of household mass
+    (:func:`~.acs_local_esi_premiums.with_acs_local_esi_premium_anchor`). Its
+    receipt is ``provenance["local_esi_premiums"]``.
 
     Large intermediate frames are released as soon as the next stage has
     materialized its own frame.  This cannot make the final dense pool small,
@@ -362,6 +377,32 @@ def build_optional_acs_multispine(
         )
         income_receipt["resolved_donor_channel"] = income.resolved_donor_channel
         del income
+    esi_fit_records = ()
+    esi_imputed_inputs = ()
+    esi_donor_channel = None
+    esi_source = None
+    if esi_premium_donor_factory is not None:
+        # Local lane only (microcosm#454). The premium follows measured wages,
+        # so it fits on the ASEC observation role like usual hours, not on the
+        # PUF-detail role the tax details use: that role's wages are
+        # PUF-imputed. It runs last before the shared transfer, so the hours
+        # and income passes see exactly the frame they see without it.
+        esi_donor, esi_source = esi_premium_donor_factory(base)
+        esi_transfer = transfer_acs_inputs(
+            mapped_frame,
+            esi_donor,
+            target_families=acs_local_esi_premium_transfer_target_families(),
+            donor_spine=donor_spine,
+            donor_channel=BASE_ASEC_SUPPORT_CHANNEL,
+            seed=seed,
+            n_estimators=n_estimators,
+            max_targets_per_fit=max_targets_per_fit,
+        )
+        mapped_frame = esi_transfer.frame
+        esi_fit_records = tuple(esi_transfer.fit_records)
+        esi_imputed_inputs = tuple(esi_transfer.imputed_inputs)
+        esi_donor_channel = esi_transfer.resolved_donor_channel
+        del esi_transfer, esi_donor
     transferred = transfer_acs_inputs(
         mapped_frame,
         base,
@@ -380,10 +421,16 @@ def build_optional_acs_multispine(
     del mapped_frame
     adult_care_gate = _require_recipient_adult_care_structure(transferred.frame)
     fit_records = (
-        hours_fit_records + income_fit_records + tuple(transferred.fit_records)
+        hours_fit_records
+        + income_fit_records
+        + esi_fit_records
+        + tuple(transferred.fit_records)
     )
     imputed_provenance = _json_ready_sequence(
-        hours_imputed_inputs + income_imputed_inputs + tuple(transferred.imputed_inputs)
+        hours_imputed_inputs
+        + income_imputed_inputs
+        + esi_imputed_inputs
+        + tuple(transferred.imputed_inputs)
     )
     deferred_inputs = tuple(transferred.deferred_inputs)
     if block_location:
@@ -442,6 +489,11 @@ def build_optional_acs_multispine(
         )
     pooled = with_optional_acs_spine(base, transferred_frame, **pool_options)
     del transferred_frame
+    esi_anchor = None
+    if esi_premium_donor_factory is not None:
+        # Pooling has set each spine's share of household mass; the anchor
+        # reads it from the live frame.
+        pooled, esi_anchor = with_acs_local_esi_premium_anchor(pooled)
 
     provenance = {
         "enabled": True,
@@ -470,6 +522,11 @@ def build_optional_acs_multispine(
         provenance["local_hours_source"] = hours_source
     if modeled_hours is not None:
         provenance["hours_modeled_completion"] = modeled_hours
+    if esi_premium_donor_factory is not None:
+        provenance["fit_configuration"]["esi_premium_donor_channel"] = esi_donor_channel
+        provenance["local_esi_premiums"] = _json_ready_mapping(
+            {"source": esi_source, "anchor": esi_anchor}
+        )
     if income_receipt is not None:
         provenance["fit_configuration"]["income_donor_channel"] = income_receipt[
             "resolved_donor_channel"
