@@ -181,8 +181,12 @@ Stop, keep every file, and report when:
 - **S1** a preflight or the dry run exits 1.
 - **S2** a terminal release gate fails. Watch `partnership_income` and
   `social_security_survivors` in input-mass parity.
-- **S3** the #1635 gate shadow fails a finished release on a verdict difference
-  only.
+- **S3** the gate shadow's comparison
+  (`us_national.gate_battery_shadow_comparison.json` in the release's
+  `gate_battery_shadow` directory) records a verdict difference or a shadow
+  error, or the file is missing. Since #1635's second round the shadow only
+  warns, so the release still finishes: read the file after the release and
+  report it with the hand-off.
 - **S4** the supervisor stops a stage at a cap (RSS, wall, CPU or disk).
 - **S5** the reform-coverage smoke fails on a probe definition.
 
