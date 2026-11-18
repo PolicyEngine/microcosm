@@ -18947,6 +18947,13 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             release_dir / FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME,
         ):
             stale_evidence.unlink(missing_ok=True)
+    # What the written file fails, its stored-input premise and the export
+    # audit below, is recorded with the release-gate failures, on a green
+    # build too, so its H5 never stands without a record that marks it
+    # failed (review of #1672). No tier certifies it: the evidence tier
+    # relaxes gate verdicts, never the written artifact's own checks
+    # (microcosm#506), so the record lists these apart.
+    artifact_integrity_failures: list[str] = []
     dataset_path = artifact_root / dataset_filename
     # The export H5 write: everything below (reform smoke, take-up contract,
     # release manifest sha) reads THIS file, and it must be written only after
@@ -18973,13 +18980,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             [] if mismatch is None else [mismatch]
         ),
     )
-    # What the written file fails, its stored-input premise here and the
-    # export audit below, is recorded with the release-gate failures, on a
-    # green build too, so its H5 never stands without a record that marks it
-    # failed (review of #1672). No tier certifies it: the evidence tier
-    # relaxes gate verdicts, never the written artifact's own checks
-    # (microcosm#506), so the record lists these apart.
-    artifact_integrity_failures: list[str] = []
     if stored_input_premise_failure is not None:
         artifact_integrity_failures.append(stored_input_premise_failure)
         terminal_gate_failures.append(stored_input_premise_failure)
@@ -19016,7 +19016,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         release_root / f"base_{base_h5.name}",
         authenticated_pool_h5=authenticated_pool_h5,
     )
-    if terminal_gate_failures:
+    if build_refusal is not None or artifact_integrity_failures:
         # The refusal names every failure the record carries, those found
         # after the H5 write included. A build whose written file failed its
         # own checks exits as a refusal (exit 1), not with
