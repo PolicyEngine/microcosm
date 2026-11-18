@@ -1281,7 +1281,11 @@ def _open_stage_runtime(args: argparse.Namespace) -> StageRuntime:
 
 
 def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
-    """Return the canonical inputs and settings locked across stage resumes."""
+    """Return the canonical inputs and settings recorded by the first run.
+
+    A resume must supply equal values, except for
+    ``_RESUME_IGNORED_RUN_CONFIG_PATHS``.
+    """
 
     def path(value: Path | None) -> str | None:
         return None if value is None else str(value.resolve())

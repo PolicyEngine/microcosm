@@ -276,7 +276,10 @@ class StageRuntime:
         return self.context.metadata
 
     def require_run_config(self, expected: Mapping[str, object]) -> dict[str, object]:
-        """Require the resume arguments to equal the locked first-run config."""
+        """Require the resume arguments to equal the first-run config.
+
+        Values named by ``resume_ignored_run_config_paths`` are not compared.
+        """
 
         context = self._load_context()
         if self._resume_compared_run_config(

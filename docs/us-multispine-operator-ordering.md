@@ -254,7 +254,7 @@ by_origin_battery
    contract 4, transition authority 2, and resource-semantics receipt 2. The
    primary execution config is version 6 (it binds the recipient-share bound,
    #1259), its portable worker identity is
-   version 1, and its checkpoint input sidecar is version 2. The companion pool
+   version 2, and its checkpoint input sidecar is version 2. The companion pool
    manifest uses schema version 10.
    Older outer authority or materializer payloads are stale; primary-QRF
    version 6 remains current.
@@ -546,12 +546,13 @@ primary-QRF schema, manifest name, and exact target order; the physical
 checkpoint directory basename must independently equal that bound identity.
 The execution-config receipt resolves and hashes the actual predictor/output
 sequences, all 65 optional allocation/passthrough reads, clone fraction/seed,
-QRF seed/estimator count, worker module/interpreter/argv and reviewed fit
-environment, strict-recipient and null-preserving doctrines, the once-resolved
+QRF seed/estimator count, worker module/interpreter/argv and environment
+policy, strict-recipient and null-preserving doctrines, the once-resolved
 aggregate-disaggregation spec and SOI AGI-band bytes/semantics, every tail
 selection/topcode/five-times/concentration control, and enabled audit sinks.
 The same three receipts form an exact SHA-bound sidecar beside the primary-QRF
-manifest; resume refuses a missing or different sidecar, including a
+manifest; resume refuses a missing sidecar or one that differs in anything but
+the worker's `audit_aliases` and `audit_thread_controls`, including a
 same-row-count donor with changed bytes. This closes stale-bank reuse under a
 newly claimed outer route.
 
@@ -976,7 +977,7 @@ and valid. Neither receipt authorizes an upstream null.
 | PUF raw predictor sources | Every filing-status, count, and income component is observed in its declared source universe. Raw WAGP/SEMP authority is present and agrees with mapped leaves; a cross-grain source collision is rejected. A null on any eligible member fails before coercion. | Structure supplies status/count; ACS-native or ASEC-carried earnings supply earnings; early transfer supplies interest, dividends, and gains. | No. ACS under-15 WAGP/SEMP blanks are an exact source-universe state, not transfer starvation; all other source nulls fail. |
 | PUF tax-unit features | Every clone-1 recipient has a finite feature vector. Post-aggregation NaN, `+inf`, and `-inf` are counted by named predictor and rejected before fitting; none is coerced or snapped to zero. | Universe-aware person sums plus tax-unit structural inputs. | No. Eligible member values must be complete; the only special case is an all-child unit whose numeric-zero predictor is explicitly owned and counted by the named universe-zero rule. |
 | Primary QRF banks and chain | Donor/recipient banks are immutable; target order and RNG prefix are contiguous; all targets complete; live recipient identity, source-universe receipt, and feature digest match before finalization. | The processed full PUF donor and strict recipient checkpoint initialized above. | No. Mutation or missing receipt invalidates the bank; it cannot resume under legacy semantics. |
-| Outer pool checkpoint identity and resume | Primary-QRF schema v6, primary execution config v5, portable worker identity v1, tail-manifest schema v2, late-registry schema v17/receipt contract v4, outer stacked materializer v13/authority v12, stacked pool-stage materializer v7, pool manifest schema v10, and the ACS-universe, QBI-mutation, tail-support, late-DAG, and signed virtual-resource-semantics identities must match exactly before any cached stage is discovered. The retiring legacy envelope remains manifest schema v4/materializer v3. | Fresh input pins, live stack receipt, scale controls, code identity, and all semantic contract identities. | No. An older stacked materializer or authority payload is stale; a self-consistent old receipt cannot reopen a checkpoint. Primary-QRF v6 remains current. |
+| Outer pool checkpoint identity and resume | Primary-QRF schema v6, primary execution config v5, portable worker identity v2, tail-manifest schema v2, late-registry schema v17/receipt contract v4, outer stacked materializer v13/authority v12, stacked pool-stage materializer v7, pool manifest schema v10, and the ACS-universe, QBI-mutation, tail-support, late-DAG, and signed virtual-resource-semantics identities must match exactly before any cached stage is discovered. The retiring legacy envelope remains manifest schema v4/materializer v3. | Fresh input pins, live stack receipt, scale controls, code identity, and all semantic contract identities. | No. An older stacked materializer or authority payload is stale; a self-consistent old receipt cannot reopen a checkpoint. Primary-QRF v6 remains current. |
 | Clone-2 capital-gains tail | Each filing status requires as many eligible recipient households as selected q99.5 donors. Eligibility requires unique single-tax-unit PUF-detail lineage and half-weight capacity for the global maximum assigned donor weight. An adequate status assigns every selected donor once; a thin status skips as a whole with a named, counted `insufficient_support` receipt. | Completed clone-1 QRF output and full PUF tail donors. At 1%, `SINGLE` and `HEAD_OF_HOUSEHOLD` attach, `JOINT` and `SEPARATE` skip, and zero-requirement `SURVIVING_SPOUSE` is `not_applicable`. | No widening or partial attachment is permitted. All 22 AGI bands provide nearest-first fallback only inside a status. Universe-aware PUF recipients remain eligible, including explicitly receipted empty-universe tax units. |
 | Late producer DAG | Before any callback, all declared inputs are filled on their required scopes or carry an input-specific counted absence receipt; numeric inputs are finite. The exact derived order, readiness rows, once-only source finalizer, and bounded transfer receipts must validate. | ACS earnings-universe materialization, primary PUF/tail, 16 source producers, and 19 bounded transfer groups execute in six derived waves. | No. The refusing producer names the unfilled input and its declared producing stage. A cycle fails at import with its path. |
 | Late transfer completion | Every declared PUF-clone or ASEC source-producer cell is nonnull; all complementary recipients are filled; the allowed count for both unmodeled and residual rows is zero. | Forty-five PUF and 29 source targets, with two overlaps, supply the 72-target late surface. | No. A missing producer or recipient value is terminal at this boundary. |

@@ -1359,6 +1359,11 @@ def _schema_4_thread_controls() -> dict[str, object]:
 
 
 def _semantic_environment() -> dict[str, object]:
+    """Return the environment policy, which names variables but holds no counts.
+
+    ``bound_names`` lists the thread-count variables among those the worker
+    binding covers; their values are in ``audit_thread_controls``.
+    """
     return {
         "policy": (
             "inherit_parent_environment_with_bound_fit_controls_and_forced_overrides"

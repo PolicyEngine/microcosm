@@ -511,7 +511,12 @@ def test_primary_qrf_chain_resumes_under_changed_thread_counts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Rebuilt targets are the same bytes under other thread counts."""
+    """A resume under other counts is accepted and rewrites the same files.
+
+    The fixture is too small for the counts to change the draw's chunks; the
+    byte-identity tests with real thread pools are in ``microcosm-fit``'s
+    ``test_qrf_worker_counts.py``.
+    """
     monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
     monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
     checkpoint_dir = tmp_path / "primary_qrf"

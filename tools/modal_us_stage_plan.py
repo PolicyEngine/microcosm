@@ -859,7 +859,9 @@ RUNNER_SMOKE = ToolSpec(
 # from the completed prefix (_run_staged_all), with its whole run config
 # (input paths and digests, settings, code identity, thread variables)
 # locked in stage_run_context.json; a resume whose config differs is
-# refused. Every path the tool records is the same in every attempt of a
+# refused (the tool now records the two POPULACE_FIT_* thread variables
+# without comparing them). Every path the tool records is the same in
+# every attempt of a
 # run (/work/inputs/..., /work/state/...), and so are the image, the plan's
 # environment and the class, so a later attempt of the same run_id should
 # resume where the last one stopped. The placement is non-preemptible, so

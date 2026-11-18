@@ -314,9 +314,8 @@ def test_chained_fit_draw_next_is_byte_identical_across_thread_counts(
 ) -> None:
     """Target-at-a-time chain steps draw the same bytes at any thread count.
 
-    Each run starts its own chain, because a chain state refuses a resume
-    under a different fit job count. The second target conditions on the
-    first target's raw draws, so a difference in the first would carry on.
+    The second target conditions on the first target's raw draws, so a
+    difference in the first would carry on.
     """
     frame = make_person_frame(_donor_columns(seed=13), _donor_weights(seed=13))
     recipients = _recipients(seed=13)
@@ -339,6 +338,37 @@ def test_chained_fit_draw_next_is_byte_identical_across_thread_counts(
 
     serial = _run_under(monkeypatch, SERIAL, run)
     _assert_byte_identical(serial, _run_under(monkeypatch, setting, run))
+
+
+def test_chain_changing_fit_jobs_between_steps_draws_the_same_bytes(
+    make_person_frame, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each step fits with the live count; draws and saved state do not move."""
+    frame = make_person_frame(_donor_columns(seed=13), _donor_weights(seed=13))
+    recipients = _recipients(seed=13)
+    targets = ["signed", "follower"]
+    monkeypatch.setenv(PREDICT_WORKERS_ENV, "1")
+
+    def run_chain(fit_jobs_per_target: tuple[str, str]):
+        monkeypatch.setenv(FIT_JOBS_ENV, fit_jobs_per_target[0])
+        model = RegimeGatedQRF(n_estimators=N_ESTIMATORS, seed=41)
+        state = model.start_chain(frame, ["x", "z"], targets)
+        raw_priors = pd.DataFrame(index=recipients.index)
+        draws: dict[str, np.ndarray] = {}
+        for fit_jobs in fit_jobs_per_target:
+            monkeypatch.setenv(FIT_JOBS_ENV, fit_jobs)
+            step = model.fit_draw_next(frame, recipients, raw_priors, state=state)
+            assert set(_forest_fit_jobs(step.fitted._target_models)) == {int(fit_jobs)}
+            draws[step.target] = np.array(step.raw_draw)
+            raw_priors[step.target] = step.raw_draw
+            state = step.state
+        return draws, state
+
+    unchanged_draws, unchanged_state = run_chain(("1", "1"))
+    changed_draws, changed_state = run_chain(("1", str(SEVERAL)))
+
+    _assert_byte_identical(unchanged_draws, changed_draws)
+    assert changed_state.to_dict() == unchanged_state.to_dict()
 
 
 def test_unset_prediction_workers_size_the_draw_pool_from_joblib(
