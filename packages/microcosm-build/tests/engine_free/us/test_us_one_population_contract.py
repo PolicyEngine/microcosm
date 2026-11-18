@@ -4889,6 +4889,8 @@ def test_a_clone_only_defect_moves_only_its_named_fields(
     assert set(_x5_differences(route_a, assembled)) <= moved
     assert not route_a["passed"]
     assert route_a["failures"] == [failure]
+    # The assembled gate fails for no other reason (true before and after).
+    assert set(assembled["failures"]) <= {failure}
     person = population.route_a.table("person")
     clones = int((person["person_support_clone_index"] > 0).sum())
     details = route_a["details"]
