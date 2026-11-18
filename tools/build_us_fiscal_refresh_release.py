@@ -2254,13 +2254,13 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         )
     except ValueError as error:
         parser.error(str(error))
-    for attribute, flag in _OPTIONS_READING_AN_EARLIER_BUILD:
+    for attribute, flag in _REFERENCE_H5_OPTIONS:
         path = getattr(args, attribute)
         failed = None if path is None else _failed_build_holding(path)
         if failed is not None:
             parser.error(
-                f"{flag} {path} belongs to {failed}. A failed build's files are "
-                "kept to evaluate it, not to build on."
+                f"{flag} {path} belongs to {failed}. A failed build is never "
+                "the reference a gate judges this build against."
             )
     return args
 
@@ -2705,15 +2705,14 @@ US_FAILED_BUILD_WEIGHT_EVIDENCE = (
     FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME,
 )
 
-#: The options that read a file of an earlier build: an H5 as the base, the
-#: selection source or an input-mass reference, and calibration weights as
-#: the warm start.
-_OPTIONS_READING_AN_EARLIER_BUILD = (
-    ("base_h5", "--base-h5"),
-    ("selection_source_h5", "--selection-source-h5"),
+#: The options whose H5 is the reference a gate judges this build against.
+#: A failed build's files are refused there. As a starting point (--base-h5,
+#: --selection-source-h5, --warm-start-calibration-npz) they are allowed:
+#: they can cut a rerun's time while its data is fixed, and the build's own
+#: gates judge its result.
+_REFERENCE_H5_OPTIONS = (
     ("input_mass_reference_h5", "--input-mass-reference-h5"),
     ("export_input_mass_reference_h5", "--export-input-mass-reference-h5"),
-    ("warm_start_calibration_npz", "--warm-start-calibration-npz"),
 )
 
 
@@ -2722,9 +2721,9 @@ def _failed_build_holding(path: Path) -> str | None:
 
     A build whose release gates fail still writes its H5, its calibration
     weights and its record, so it can be evaluated (microcosm#1585 item 11,
-    PR 4a). Nothing reads its files as a build's: a later build refuses them
-    as its base, selection source, input-mass reference or warm start, and
-    the post-export probe refuses its release directory as the reference. A
+    PR 4a), and its files may start a later build. No gate judges against
+    it: a later build refuses its files as an input-mass reference, and the
+    post-export probe refuses its release directory as the reference. A
     path belongs to the build whose record sits in the nearest directory
     above it. That build failed if its record carries failures that refuse
     it, or if its release directory holds the #568 weight evidence. Like the
@@ -13979,10 +13978,11 @@ def _certify_parser() -> argparse.ArgumentParser:
         "--no-staging",
         action="store_true",
         help=(
-            "Certify without a staging run, as a build that did not stage is "
-            "certified regardless; hosted telemetry remains active. Refused "
-            "for a build that staged: the publisher checks certification's "
-            "staging run, so that build is certified in one."
+            "Certify without a staging run, even where the build staged; "
+            "hosted telemetry remains active. The build manifest's staging "
+            "block then records the opt-out, saying when the build staged, "
+            "beside the build's own block. A build that did not stage is "
+            "certified without one regardless."
         ),
     )
     parser.add_argument(
@@ -14018,19 +14018,26 @@ def _certify_progress(
     4a). Certification stages where its build did, to the build's repository
     and prefix, in a run of its own, since a staging run's files start afresh
     when it opens. A build that did not stage (``--no-staging``, which
-    ``--exact-k`` requires) is certified without staging. A build that
-    staged is always certified in a staging run:
-    :func:`_refuse_certification_staging_options` refuses ``--no-staging``
-    for it.
+    ``--exact-k`` requires) is certified without staging. ``--no-staging``
+    opts certification out where the build staged too, as a build may opt
+    out: the publisher accepts a stated opt-out, and the reason says the
+    build staged, so the manifest shows that its certification did not.
     """
 
     settings = record.staging_settings
-    if settings["no_staging"]:
+    if settings["no_staging"] or args.no_staging:
+        build_run = record.staging.get("run_id")
+        reason = (
+            "the build did not stage (--no-staging)"
+            if settings["no_staging"]
+            else "--no-staging at certification; the build staged"
+            + (f" (run {build_run})" if build_run else "")
+        )
         return _BuildProgress(
             run_id=run_id,
             emitter=emitter,
             staging_bundle=None,
-            staging_opt_out_reason="the build did not stage (--no-staging)",
+            staging_opt_out_reason=reason,
         )
     staging_dir = args.staging_dir
     if staging_dir is None and not settings["repo_id"]:
@@ -14053,28 +14060,17 @@ def _certify_progress(
     )
 
 
-def _refuse_certification_staging_options(
+def _refuse_reopening_the_builds_staging_run(
     args: argparse.Namespace, record: _USBuildRecord
 ) -> None:
-    """Refuse the staging options that would publish a staged build unstaged.
+    """Refuse a ``--staging-run-id`` that names the build or its staging run.
 
-    The publisher checks the build manifest's top-level ``staging`` block,
-    which is certification's, and accepts a stated opt-out there. So a build
-    that staged is certified in a staging run (``--no-staging`` is refused),
-    and in a run of its own: a run reopened under the build's id would start
-    the build's files afresh.
+    Certification stages in a run of its own: a staging run's files start
+    afresh when it opens, so a run reopened under the build's id would
+    replace the build's progress and calibration curve.
     """
 
     build_run = record.staging.get("run_id")
-    if args.no_staging and not record.staging_settings["no_staging"]:
-        raise SystemExit(
-            f"Build {record.build} staged"
-            + (f" (run {build_run})" if build_run else "")
-            + ", so it is certified in a staging run of its own: the publisher "
-            "checks certification's staging block and would accept an opt-out "
-            "there. Certify it without --no-staging, with the build's staging "
-            "credential."
-        )
     if args.staging_run_id is not None and args.staging_run_id in {
         build_run,
         record.build,
@@ -14103,7 +14099,7 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
     global _ACTIVE_EMITTER
     args = _certify_parser().parse_args(argv)
     record = _read_us_build_record(args.build_dir / US_BUILD_RECORD_FILENAME)
-    _refuse_certification_staging_options(args, record)
+    _refuse_reopening_the_builds_staging_run(args, record)
     failures = _recorded_release_gate_failures(record.payload)
     if failures:
         raise SystemExit(

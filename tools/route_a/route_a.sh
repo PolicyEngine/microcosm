@@ -421,9 +421,8 @@ release_command() {
 certify_command() {
   # Certification stages where its build staged, in a run of its own, so it
   # needs the release stage's staging credential. Without staging it runs as
-  # the release stage does: online, without the HF tokens. Certification
-  # refuses --no-staging for a build that staged (microcosm#1585 item 11,
-  # PR 4a).
+  # the release stage does: online, without the HF tokens (microcosm#1585
+  # item 11, PR 4a).
   local -a staging=() launcher=()
   case "${ROUTE_A_STAGING-1}" in
   0)

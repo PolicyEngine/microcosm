@@ -20431,7 +20431,8 @@ def test_certification_stages_where_its_build_staged(
     tmp_path: Path, monkeypatch
 ) -> None:
     """Certification's own staging run carries the post-export verdicts and
-    the manifests; it follows the build's choice and destination."""
+    the manifests; it follows the build's choice and destination, and
+    --no-staging opts it out, saying when the build staged."""
     builder = _load_builder_module()
     emitter = SimpleNamespace(client=None, available=False)
 
@@ -20441,7 +20442,6 @@ def test_certification_stages_where_its_build_staged(
     record = builder._read_us_build_record(path)
     for argv in ([str(path.parent)], [str(path.parent), "--no-staging"]):
         args = builder._certify_parser().parse_args(argv)
-        builder._refuse_certification_staging_options(args, record)
         progress = builder._certify_progress(
             args, record=record, run_id="b-certify", emitter=emitter
         )
@@ -20459,6 +20459,12 @@ def test_certification_stages_where_its_build_staged(
     path, _ = _build_record_fixture(
         builder,
         staged,
+        staging={
+            "enabled": True,
+            "run_id": "build-run",
+            "repo_id": "policyengine/populace-us-staging",
+            "uploads_succeeded": 4,
+        },
         staging_settings={
             "no_staging": False,
             "repo_id": "policyengine/populace-us-staging",
@@ -20467,6 +20473,19 @@ def test_certification_stages_where_its_build_staged(
         },
     )
     record = builder._read_us_build_record(path)
+    # --no-staging opts certification out where its build staged too, as a
+    # build may opt out; the reason says the build staged.
+    opted_out = builder._certify_progress(
+        builder._certify_parser().parse_args([str(path.parent), "--no-staging"]),
+        record=record,
+        run_id="b-certify",
+        emitter=emitter,
+    )
+    assert opted_out.staging_bundle is None
+    assert builder._staging_manifest_block(opted_out) == {
+        "enabled": False,
+        "reason": "--no-staging at certification; the build staged (run build-run)",
+    }
     # A build that staged is certified into the same repository and prefix.
     built: dict[str, object] = {}
 
@@ -20525,10 +20544,9 @@ def test_a_build_refuses_an_out_awaiting_certification(tmp_path: Path) -> None:
         builder._refuse_overwriting_a_build_awaiting_certification(root)
 
 
-def test_certification_refuses_to_unstage_a_build_that_staged(tmp_path: Path) -> None:
-    """The publisher checks certification's staging block and accepts a
-    stated opt-out there, so --no-staging is refused for a build that staged,
-    and so is a --staging-run-id naming the build or its staging run, before
+def test_certification_never_reopens_the_builds_staging_run(tmp_path: Path) -> None:
+    """A staging run's files start afresh when it opens, so a
+    --staging-run-id naming the build or its staging run is refused, before
     certification touches the build (review of #1672)."""
     builder = _load_builder_module()
     path, _ = _build_record_fixture(
@@ -20555,12 +20573,6 @@ def test_certification_refuses_to_unstage_a_build_that_staged(tmp_path: Path) ->
     )
     earlier.write_text('{"an earlier attempt": true}')
 
-    with pytest.raises(
-        SystemExit,
-        match=r"Build populace-us-2024-test-build staged \(run build-run\), so it "
-        "is certified in a staging run of its own",
-    ):
-        builder.certify_main([str(path.parent), "--no-staging"])
     for run_id in ("build-run", "populace-us-2024-test-build"):
         with pytest.raises(
             SystemExit, match=f"--staging-run-id {run_id} names build"
@@ -20667,24 +20679,17 @@ def test_a_failed_build_holds_every_file_under_its_out(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("flag", "role"),
-    [
-        ("--base-h5", "dataset"),
-        ("--selection-source-h5", "dataset"),
-        ("--input-mass-reference-h5", "dataset"),
-        ("--export-input-mass-reference-h5", "dataset"),
-        ("--warm-start-calibration-npz", "calibration_weights"),
-    ],
+    "flag", ["--input-mass-reference-h5", "--export-input-mass-reference-h5"]
 )
-def test_a_later_build_refuses_a_failed_builds_files(
-    tmp_path: Path, capsys, flag: str, role: str
+def test_a_failed_build_is_no_input_mass_reference(
+    tmp_path: Path, capsys, flag: str
 ) -> None:
-    """A failed build keeps its H5 and calibration weights to be evaluated,
-    not built on: each option that reads an earlier build's file refuses
-    them, and reads a green build's as before (review of #1672)."""
+    """An input-mass reference is the certified yardstick a gate judges the
+    build against, so a failed build's H5 is refused there and a green
+    build's is read as before (review of #1672)."""
     builder = _load_builder_module()
     path, payload = _build_record_fixture(builder, tmp_path)
-    file = path.parent / payload["files"][role]["path"]
+    file = path.parent / payload["files"]["dataset"]["path"]
     argv = [
         "--ledger-facts",
         str(tmp_path / "facts.jsonl"),
@@ -20705,6 +20710,39 @@ def test_a_later_build_refuses_a_failed_builds_files(
         f"{flag} {file} belongs to build populace-us-2024-test-build"
         in capsys.readouterr().err
     )
+
+
+@pytest.mark.parametrize(
+    ("flag", "role"),
+    [
+        ("--base-h5", "dataset"),
+        ("--selection-source-h5", "dataset"),
+        ("--warm-start-calibration-npz", "calibration_weights"),
+    ],
+)
+def test_a_failed_build_may_start_a_later_build(
+    tmp_path: Path, flag: str, role: str
+) -> None:
+    """A failed build's H5 and calibration weights may start a later build, as
+    its base, selection source or warm start, which cuts a rerun's time while
+    its data is fixed: that build's own gates judge its result."""
+    builder = _load_builder_module()
+    path, payload = _build_record_fixture(
+        builder, tmp_path, terminal_gate_failures=["Input coverage failed: x"]
+    )
+    file = path.parent / payload["files"][role]["path"]
+    assert builder._failed_build_holding(file) is not None
+    argv = [
+        "--ledger-facts",
+        str(tmp_path / "facts.jsonl"),
+        "--out",
+        str(tmp_path / "next"),
+        "--no-staging",
+        flag,
+        str(file),
+    ]
+
+    assert getattr(builder._parse_args(argv), flag[2:].replace("-", "_")) == file
 
 
 def test_a_record_of_an_earlier_schema_names_the_code_that_built_it(

@@ -23,8 +23,8 @@ The driver, `supervise.py`, `sample_series.py`, `check_flags.py` and
 `with_hf_token.sh` live together here. The driver, supervisor and sampler
 originated in the off-repository Route A tooling. The release and certify
 stages enable staging telemetry by default; `ROUTE_A_STAGING=0` restores
-`--no-staging` for both. Certification refuses `--no-staging` for a build that
-staged, so certify with the setting the build ran with.
+`--no-staging` for both; when the build staged and its certification does not,
+the build manifest records the opt-out.
 
 ## Configure and run
 
@@ -205,7 +205,7 @@ overnight chain is alive, unless `EARLY_START_AFTER_HEAVY=1` and its log records
 | `base` | Runs `build_us_puf_support_base.py --stage all` on the pinned raw inputs, with seed 0, 32 estimators, target year 2024, district assignment/crosswalk and block ladder. Requires exit 0 and the expected H5, then hashes it. |
 | `preflight-base` | Runs `preflight_us_release_gates.py` on that H5 and the pinned feed, with the configured new-lineage mode and optional export-mass reference. Accepts 0 (clean) or 2 (AT-RISK); `RELEASE_DESPITE_PREFLIGHT_FAIL=1` also accepts 1 here. |
 | `release` | Runs `build_us_fiscal_refresh_release.py --base-h5` with the feed, SSI basis, SCF extract and configured release arguments; its `--release-id` is the build ID. Requires exit 0 and `<release-out>/build_record.json`. Staging telemetry is enabled for this stage. Without `--certify` the run ends here with `ROUTE_A_BUILT.json`. |
-| `certify` | With `--certify` only: runs `tools/certify_us_national_build.py <release-out>`. Certification stages where its build staged, in a run of its own, so with `ROUTE_A_STAGING=1` it gets the release stage's staging credential; with `ROUTE_A_STAGING=0` it runs as the release stage does, online without the HF credential variables, and with `--no-staging`, which certification refuses for a build that staged. Requires exit 0 and `<release-out>/releases/microcosm-us-2024-national/release_manifest.json`. |
+| `certify` | With `--certify` only: runs `tools/certify_us_national_build.py <release-out>`. Certification stages where its build staged, in a run of its own, so with `ROUTE_A_STAGING=1` it gets the release stage's staging credential; with `ROUTE_A_STAGING=0` it runs as the release stage does, online without the HF credential variables, and with `--no-staging`. Requires exit 0 and `<release-out>/releases/microcosm-us-2024-national/release_manifest.json`. |
 | `preflight-release` | Repeats the release-gate preflight with the candidate's release manifest. Accepts 0 or 2. |
 | `publisher-preflight` | Runs `microcosm-publish-release-build --preflight-only` against the release directory, `<release-out>/releases/microcosm-us-2024-national`, where a national run writes its build, and the artifacts. Requires exit 0. The command checks the build with its release contract, prints what it would publish, and starts no emitter. It takes no `--extra-file`: the command publishes every artifact the release manifest lists, including the two SCF education-debt fit tables of a release run with `--scf-education-debt` in `RELEASE_EXTRA_ARGS`. |
 

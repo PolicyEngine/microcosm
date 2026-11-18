@@ -111,9 +111,10 @@ A US national build and its certification are two steps (microcosm#1585 item
   dashboard, and a failed certification marks that run failed. The build
   manifest's `staging` block, which the publisher checks, is certification's,
   with the build's inside it under `build`. A build that did not stage is
-  certified without staging. The publisher accepts a stated opt-out in that
-  block, so certification refuses `--no-staging` for a build that staged, and
-  a `--staging-run-id` that names the build or its staging run.
+  certified without staging, and `--no-staging` opts certification out where
+  the build staged too, as a build may opt out; the block's reason then says
+  the build staged. Certification refuses a `--staging-run-id` that names the
+  build or its staging run, whose files a reopened run would start afresh.
 - **A failed release gate.** A build whose terminal gates fail still writes
   its H5, its calibration weights, its #568 weight evidence and its record,
   so it can be evaluated, and exits with the same "Release gates failed" error
@@ -122,11 +123,12 @@ A US national build and its certification are two steps (microcosm#1585 item
   replacing them. Certification refuses a record that carries release-gate
   failures, unless the build is evidence-tier, and refuses any build whose
   release directory holds the #568 weight evidence, which only a failed build
-  writes. Its files are for evaluation only: a later build refuses any file
-  under its `--out` as its base, selection source, input-mass reference or
-  warm start, and the post-export probe refuses its release directory as the
-  reference (the probe may still score its H5). Input gates still stop the
-  build where they fail.
+  writes. No gate judges against it: a later build refuses any file under
+  its `--out` as an input-mass reference, and the post-export probe refuses
+  its release directory as the reference. Its files may still start a later
+  build, as its base, selection source or warm start, since that build's own
+  gates judge the result, and the probe may score its H5. Input gates still
+  stop the build where they fail.
 - **Timing.** Both manifests' `timing` blocks carry `build_seconds` and
   `certify_seconds`; `total_build_seconds` is their sum.
 - **Drivers.** Route A (`tools/route_a/route_a.sh`) stops after the build with
